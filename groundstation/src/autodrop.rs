@@ -68,7 +68,7 @@ impl TargetSource {
     /// manually-marked point first (the operator just set it on purpose), then whichever other
     /// vehicle this one alone is tracking, then the gimbal - refusing only once none of the
     /// three actually produces a target.
-    fn fallback_order(self_id: Option<u8>) -> impl Iterator<Item = TargetSource> {
+    pub(crate) fn fallback_order(self_id: Option<u8>) -> impl Iterator<Item = TargetSource> {
         std::iter::once(TargetSource::Manual)
             .chain(
                 self_id

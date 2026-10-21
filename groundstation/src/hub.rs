@@ -3200,6 +3200,20 @@ impl Vehicle {
         }
     }
 
+    pub(crate) fn release_now(&self) -> Option<crate::dropsim::Release> {
+        let (lat, lon, _) = self.facts.coordinate?;
+        let (sin, cos) = self.facts.heading.to_radians().sin_cos();
+        Some(crate::dropsim::Release {
+            position: crate::dropsim::Point { lat, lon },
+            altitude_agl_m: self.facts.altitude_relative,
+            velocity: crate::dropsim::Velocity {
+                north_mps: self.facts.ground_speed * cos,
+                east_mps: self.facts.ground_speed * sin,
+            },
+            climb_mps: self.facts.climb_rate,
+        })
+    }
+
     fn tick_autodrop(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         let Some(crate::autodrop::State::Waiting {
             phase,
@@ -3237,11 +3251,7 @@ impl Vehicle {
                 Vec::new()
             }
             crate::autodrop::Phase::WaitingForRelease => {
-                let Some(position) = self
-                    .facts
-                    .coordinate
-                    .map(|(lat, lon, _)| crate::dropsim::Point { lat, lon })
-                else {
+                let Some(release) = self.release_now() else {
                     self.autodrop = Some(crate::autodrop::State::Waiting {
                         phase,
                         source,
@@ -3250,8 +3260,12 @@ impl Vehicle {
                     });
                     return Vec::new();
                 };
-                let altitude_agl_m = self.facts.altitude_relative;
-                let target = self.target_for_autodrop(source, position, altitude_agl_m, now_ms);
+                let target = self.target_for_autodrop(
+                    source,
+                    release.position,
+                    release.altitude_agl_m,
+                    now_ms,
+                );
                 let Some(target) = target else {
                     self.autodrop = Some(crate::autodrop::State::Waiting {
                         phase,
@@ -3261,19 +3275,7 @@ impl Vehicle {
                     });
                     return Vec::new();
                 };
-                let (sin, cos) = self.facts.heading.to_radians().sin_cos();
-                let plan = crate::dropsim::lead(
-                    crate::dropsim::Release {
-                        position,
-                        altitude_agl_m,
-                        velocity: crate::dropsim::Velocity {
-                            north_mps: self.facts.ground_speed * cos,
-                            east_mps: self.facts.ground_speed * sin,
-                        },
-                        climb_mps: self.facts.climb_rate,
-                    },
-                    target,
-                );
+                let plan = crate::dropsim::lead(release, target);
                 if plan.release_in_s > crate::autodrop::COMMAND_LATENCY_S {
                     let wait_ms =
                         ((plan.release_in_s - crate::autodrop::COMMAND_LATENCY_S) * 1000.0) as u64;

@@ -953,19 +953,20 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "payloadSetup": json!({ "setup": v.payload_setup().json(), "empty": v.empty_bays }),
         "bottles": v.releases.iter().map(|release| release.at(crate::hub::wall_ms())).collect::<Vec<_>>(),
         "autodrop": v.autodrop.as_ref().map(crate::autodrop::State::json),
-        "autodropTarget": v.facts.coordinate.and_then(|(lat, lon, _)| {
-            let source = match &v.autodrop {
-                Some(crate::autodrop::State::Waiting { source, .. }) => *source,
-                _ => crate::autodrop::TargetSource::Gimbal,
+        "autodropTarget": v.release_now().and_then(|release| {
+            let tried = |source: crate::autodrop::TargetSource| {
+                v.target_for_autodrop(source, release.position, release.altitude_agl_m, crate::hub::now_ms())
             };
-            v.target_for_autodrop(
-                source,
-                crate::dropsim::Point { lat, lon },
-                v.facts.altitude_relative,
-                crate::hub::now_ms(),
-            )
+            match &v.autodrop {
+                Some(crate::autodrop::State::Waiting { source, .. }) => tried(*source),
+                _ => crate::autodrop::TargetSource::fallback_order(Some(v.id)).find_map(tried),
+            }
         })
         .map(|t| json!({ "latitude": t.position.lat, "longitude": t.position.lon })),
+        "autodropImpact": v.release_now()
+            .filter(|_| v.flying)
+            .map(crate::dropsim::impact)
+            .map(|p| json!({ "latitude": p.lat, "longitude": p.lon })),
         "readyToFlyAvailable": v.status_bits.ready_to_fly_available,
         "readyToFly": v.status_bits.ready_to_fly,
         "allSensorsHealthy": v.status_bits.all_healthy,

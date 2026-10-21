@@ -16,6 +16,14 @@ class VideoArTest {
     }
 
     @Test
+    fun `the drop target and the predicted impact are read as their own marks`() {
+        val reading = arReading(JSONObject("""{"available":true,"aim":{"x":0.5,"up":0.1,"label":"Target","text":"100 m"},"impact":{"x":0.5,"up":0.0,"label":"Drop","text":"50 m"},"waypoints":[],"route":[]}"""))!!
+        assertEquals(ArMark(ArSpot(0.5f, 0.1f), "Target", "100 m"), reading.aim)
+        assertEquals(ArMark(ArSpot(0.5f, 0.0f), "Drop", "50 m"), reading.impact)
+        assertNull(arReading(JSONObject("""{"available":true}"""))!!.aim)
+    }
+
+    @Test
     fun `a spot is placed from the centre line in widths, so the frame's aspect does not distort it`() {
         val centre = arOffset(ArSpot(0.5f, 0f), 1600f, 900f)
         assertEquals(800f, centre.x, 1e-3f)

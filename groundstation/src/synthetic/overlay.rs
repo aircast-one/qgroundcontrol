@@ -86,6 +86,9 @@ const TRACKED: [u8; 4] = [0x00, 0xE5, 0xFF, 255];
 const TRACKED_PX: f64 = 28.0;
 const TRACKED_M: f64 = 6.0;
 const TRACKED_GLIDE_LIMIT: Duration = Duration::from_secs(2);
+const AIM: [u8; 4] = [0xFF, 0x3B, 0x30, 255];
+const IMPACT: [u8; 4] = [0xFF, 0xD6, 0x0A, 255];
+const IMPACT_PX: f64 = 32.0;
 const BRACKET_TEXELS: u32 = 10;
 const BRACKET_THICKNESS: u32 = 3;
 const GLYPHS: &str = "0123456789H";
@@ -170,6 +173,8 @@ pub struct Overlays {
     pub fences: Vec<Fence>,
     pub fence_top: f64,
     pub tracked: Option<Tracked>,
+    pub aim: Option<Spot>,
+    pub impact: Option<Spot>,
 }
 
 fn spot(value: &Value) -> Option<Spot> {
@@ -247,6 +252,8 @@ impl Overlays {
             tracked: view
                 .get("target")
                 .and_then(|target| Tracked::from_view(target, Instant::now())),
+            aim: view.get("aim").and_then(spot),
+            impact: view.get("impact").and_then(spot),
         })
     }
 
@@ -355,6 +362,19 @@ fn disc(colour: [u8; 4]) -> image::RgbaImage {
     })
 }
 
+fn hoop(colour: [u8; 4]) -> image::RgbaImage {
+    let middle = MARK_TEXELS as f32 / 2.0;
+    image::RgbaImage::from_fn(MARK_TEXELS, MARK_TEXELS, |x, y| {
+        let distance =
+            ((x as f32 + 0.5 - middle).powi(2) + (y as f32 + 0.5 - middle).powi(2)).sqrt() / middle;
+        image::Rgba(match distance {
+            d if (0.65..0.85).contains(&d) || d < 0.12 => colour,
+            d if (0.5..1.0).contains(&d) || d < 0.22 => [0, 0, 0, 255],
+            _ => [0, 0, 0, 0],
+        })
+    })
+}
+
 fn glyph_lit(glyph: usize, column: i32, row: i32) -> bool {
     (0..3).contains(&column)
         && (0..5).contains(&row)
@@ -419,6 +439,14 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
     let Some((origin_lat, origin_lng)) = overlays
         .home
         .or_else(|| overlays.tracked.as_ref().map(|tracked| tracked.at(now)))
+        .or_else(|| {
+            overlays
+                .aim
+                .iter()
+                .chain(&overlays.impact)
+                .next()
+                .map(|s| (s.latitude, s.longitude))
+        })
         .or_else(|| overlays.route.first().map(|s| (s.latitude, s.longitude)))
         .or_else(|| {
             overlays
@@ -492,6 +520,27 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
                 (billboard(camera, at, 0.0, size, size), FULL_UV)
             }),
             brackets(TRACKED),
+            Layer::OnTop,
+        ),
+        quads(
+            &frame,
+            overlays.aim.iter().map(|s| {
+                let at = lifted(s);
+                let size = TRACKED_PX.max(TRACKED_M / metres_per_px(camera, at));
+                (billboard(camera, at, 0.0, size, size), FULL_UV)
+            }),
+            brackets(AIM),
+            Layer::OnTop,
+        ),
+        quads(
+            &frame,
+            overlays.impact.iter().map(|s| {
+                (
+                    billboard(camera, lifted(s), 0.0, IMPACT_PX, IMPACT_PX),
+                    FULL_UV,
+                )
+            }),
+            hoop(IMPACT),
             Layer::OnTop,
         ),
     ]
@@ -658,6 +707,21 @@ mod tests {
                 .iter()
                 .all(|&i| (i as usize) < mesh.positions.len())
         }));
+    }
+
+    #[test]
+    fn the_drop_target_and_its_impact_point_draw_on_top_with_no_home_or_plan() {
+        let overlays = Overlays::from_view(&json!({
+            "fenceTop": 50.0,
+            "aim": { "latitude": -35.362, "longitude": 149.165, "aboveHome": 0.0 },
+            "impact": { "latitude": -35.3625, "longitude": 149.165, "aboveHome": 0.0 },
+        }))
+        .expect("overlays");
+        let layers: Vec<(Layer, usize)> = meshes(&overlays, 600.0, &camera())
+            .iter()
+            .map(|mesh| (mesh.layer, mesh.indices.len() / 6))
+            .collect();
+        assert_eq!(layers, vec![(Layer::OnTop, 1), (Layer::OnTop, 1)]);
     }
 
     #[test]

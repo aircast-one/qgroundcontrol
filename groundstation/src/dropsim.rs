@@ -92,6 +92,17 @@ pub fn simulate(release: Release, target: Target) -> Drop {
     }
 }
 
+pub fn impact(release: Release) -> Point {
+    simulate(
+        release,
+        Target {
+            position: release.position,
+            velocity: Velocity::default(),
+        },
+    )
+    .impact
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lead {
     pub release_in_s: f64,

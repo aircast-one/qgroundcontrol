@@ -24,6 +24,9 @@ const ROUTE_WIDTH = 3;
 const MARK_SIZE = 9;
 const ROUTE_COLOUR = Cesium.Color.fromCssColorString("#FFE9A6");
 const HOME_COLOUR = Cesium.Color.fromCssColorString("#4CAF50");
+const AIM_COLOUR = Cesium.Color.fromCssColorString("#FF3B30");
+const IMPACT_COLOUR = Cesium.Color.fromCssColorString("#FFD60A");
+const PIPPER_SIZE = 24;
 const INCLUSION_COLOUR = Cesium.Color.fromCssColorString("#FF8A65").withAlpha(0.25);
 const EXCLUSION_COLOUR = Cesium.Color.fromCssColorString("#E53935").withAlpha(0.3);
 const ALWAYS_SHOWN = Number.POSITIVE_INFINITY;
@@ -170,8 +173,12 @@ const wall = (points, inclusion, ground, top) =>
     appearance: new Cesium.PerInstanceColorAppearance({ translucent: true, flat: true }),
   });
 
-const marked = (points, labels, at, text, colour) => [
-  points.add({ position: at, pixelSize: MARK_SIZE, color: colour, outlineColor: Cesium.Color.BLACK, outlineWidth: 2, disableDepthTestDistance: ALWAYS_SHOWN }),
+const marked = (points, labels, at, text, colour, ring = false) => [
+  points.add(
+    ring
+      ? { position: at, pixelSize: PIPPER_SIZE, color: Cesium.Color.TRANSPARENT, outlineColor: colour, outlineWidth: 3, disableDepthTestDistance: ALWAYS_SHOWN }
+      : { position: at, pixelSize: MARK_SIZE, color: colour, outlineColor: Cesium.Color.BLACK, outlineWidth: 2, disableDepthTestDistance: ALWAYS_SHOWN },
+  ),
   labels.add({
     position: at,
     text,
@@ -180,7 +187,7 @@ const marked = (points, labels, at, text, colour) => [
     outlineColor: Cesium.Color.BLACK,
     outlineWidth: 3,
     style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-    pixelOffset: new Cesium.Cartesian2(0, -16),
+    pixelOffset: new Cesium.Cartesian2(0, ring ? -PIPPER_SIZE / 2 - 10 : -16),
     disableDepthTestDistance: ALWAYS_SHOWN,
   }),
 ];
@@ -200,6 +207,8 @@ const drawOverlays = () => {
     lines.add({ positions: plan.route.map((point) => lifted(point, ground, point.aboveHome)), width: ROUTE_WIDTH, material: Cesium.Material.fromType("Color", { color: ROUTE_COLOUR }) });
   plan.waypoints.map((point) => marked(points, labels, lifted(point, ground, point.aboveHome), point.label, Cesium.Color.WHITE));
   plan.home && marked(points, labels, lifted(plan.home, ground, 0), "H", HOME_COLOUR);
+  plan.aim && marked(points, labels, lifted(plan.aim, ground, 0), "Target", AIM_COLOUR);
+  plan.impact && marked(points, labels, lifted(plan.impact, ground, 0), "Drop", IMPACT_COLOUR, true);
   plan.polygons.filter((polygon) => polygon.points.length > 2).map((polygon) => drawn.add(wall([...polygon.points, polygon.points[0]], polygon.inclusion, ground, plan.fenceTop)));
   plan.circles.map((circle) => drawn.add(wall(ring(circle), circle.inclusion, ground, plan.fenceTop)));
   scene.primitives.add(drawn);

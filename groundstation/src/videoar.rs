@@ -24,6 +24,8 @@ pub const DEPS: &[&str] = &[
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
 const NEAR_M: f64 = 1.0;
 const HOME_LABEL: &str = "H";
+const AIM_LABEL: &str = "Target";
+const IMPACT_LABEL: &str = "Drop";
 const CAMERA_HFOV: &str = "settings.gimbalControllerSettings.cameraHFov.rawValue";
 pub const GROUND_AT: &str = "videoAr.groundAt";
 const REACH_M: f64 = 2000.0;
@@ -155,13 +157,18 @@ pub fn ar(
 ) -> Value {
     let looked = |at: (f64, f64), above: f64| seen(drone, drone_above, camera, at, above);
     let ahead = |space: Space| (space.2 > NEAR_M).then(|| framed(camera, space));
-    let home = spot_of(&overlays["home"]).and_then(|(at, above)| {
-        ahead(looked(at, above)).map(|mut shown| {
-            shown["label"] = json!(HOME_LABEL);
-            shown["text"] = json!(distance(crate::track::distance_m(drone, at)));
-            shown
+    let marked = |key: &str, label: &str| {
+        spot_of(&overlays[key]).and_then(|(at, above)| {
+            ahead(looked(at, above)).map(|mut shown| {
+                shown["label"] = json!(label);
+                shown["text"] = json!(distance(crate::track::distance_m(drone, at)));
+                shown
+            })
         })
-    });
+    };
+    let home = marked("home", HOME_LABEL);
+    let aim = marked("aim", AIM_LABEL);
+    let impact = marked("impact", IMPACT_LABEL);
     let waypoints: Vec<Value> = overlays["waypoints"]
         .as_array()
         .into_iter()
@@ -186,7 +193,7 @@ pub fn ar(
         .filter_map(|leg| clipped(leg[0], leg[1]))
         .map(|(from, to)| json!({ "from": framed(camera, from), "to": framed(camera, to) }))
         .collect();
-    json!({ "kind": "object", "class": "VideoAr", "available": true, "home": home, "waypoints": waypoints, "route": legs })
+    json!({ "kind": "object", "class": "VideoAr", "available": true, "home": home, "aim": aim, "impact": impact, "waypoints": waypoints, "route": legs })
 }
 
 pub fn camera(backend: &dyn Backend, gimbals: &Value, fixed_tilt: Option<f64>) -> Option<Camera> {
@@ -635,6 +642,43 @@ mod tests {
             ),
             (Some("H"), Some("100 m")),
             "facing home it is drawn with its distance"
+        );
+    }
+
+    #[test]
+    fn the_drop_target_and_the_predicted_impact_are_placed_on_the_ground_ahead() {
+        let drone = (-35.0, 149.0);
+        let north = |metres: f64| (-35.0 + (metres / EARTH_RADIUS_M).to_degrees(), 149.0);
+        let overlays = json!({
+            "aim": { "latitude": north(100.0).0, "longitude": 149.0 },
+            "impact": { "latitude": north(50.0).0, "longitude": 149.0 },
+        });
+        let looking_down = Camera {
+            pitch: -45.0,
+            ..LEVEL_NORTH
+        };
+        let shown = ar(drone, 50.0, looking_down, &overlays, &metres);
+        let up = |key: &str| shown[key]["up"].as_f64().unwrap();
+        assert_eq!(
+            (
+                shown["aim"]["label"].as_str(),
+                shown["aim"]["text"].as_str()
+            ),
+            (Some("Target"), Some("100 m"))
+        );
+        assert!(
+            up("impact").abs() < 1e-6,
+            "50 m ahead from 50 m up is dead centre of a 45° down camera, got {}",
+            up("impact")
+        );
+        assert!(
+            up("aim") > 0.0,
+            "the target farther ahead sits above the impact point in the picture"
+        );
+        assert_eq!(
+            ar(drone, 50.0, LEVEL_NORTH, &json!({}), &metres)["aim"],
+            Value::Null,
+            "no target, no mark"
         );
     }
 

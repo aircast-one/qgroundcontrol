@@ -30,8 +30,14 @@ pub const OVERLAY_DEPS: &[&str] = &[
     FENCE_TOP_ARDUPILOT,
     FENCE_TOP_PX4,
     TRACKED_TARGET,
+    DROP_TARGET,
+    DROP_IMPACT,
+    HAS_GRIPPER,
 ];
 const TRACKED_TARGET: &str = "vehicle.cameraManager.currentCameraInstance.trackingGeo";
+const DROP_TARGET: &str = "vehicle.autodropTarget";
+const DROP_IMPACT: &str = "vehicle.autodropImpact";
+const HAS_GRIPPER: &str = "vehicle.hasGripper";
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
 const FENCE_TOP_ARDUPILOT: &str = "vehicle.parameterManager.getParameter(-1,FENCE_ALT_MAX)";
 const FENCE_TOP_PX4: &str = "vehicle.parameterManager.getParameter(-1,GF_MAX_VER_DIST)";
@@ -524,13 +530,21 @@ pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let fence_top = [FENCE_TOP_ARDUPILOT, FENCE_TOP_PX4]
         .iter()
         .find_map(|path| raw(backend, path).filter(|metres| *metres > 0.0));
-    overlays(
+    let mut shown = overlays(
         home_amsl,
         &crate::missionitems::fly_items_view(backend, &["geometry".to_string()]),
         &crate::fences::fly_fences_view(backend, &[]),
         fence_top,
         &backend.value(TRACKED_TARGET)["value"],
-    )
+    );
+    let on_ground =
+        |path: &str| located(&backend.value(path)["value"]).map_or(Value::Null, |at| spot(at, 0.0));
+    shown["aim"] = on_ground(DROP_TARGET);
+    shown["impact"] = match backend.value(HAS_GRIPPER)["value"] == true {
+        true => on_ground(DROP_IMPACT),
+        false => Value::Null,
+    };
+    shown
 }
 
 pub fn synthetic_view(backend: &dyn Backend, _args: &[String]) -> Value {
