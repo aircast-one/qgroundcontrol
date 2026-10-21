@@ -9,8 +9,8 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PICK_RADIUS = 0.08
-LOST_AFTER_S = 2.0
-REACQUIRE_RADIUS = 0.12
+LOST_AFTER_S = 8.0
+REACQUIRE_RADIUS = 0.15
 LENS_EVERY_S = 2.0
 FIELDS = ("x", "y", "w", "h", "label", "conf")
 LENS = "settings.gimbalControllerSettings.cameraHFov"
@@ -43,40 +43,32 @@ def picked_rect(boxes, rect):
     return best if best and overlap(best, rect) > 0.1 else None
 
 
-def locked_on(box, now, previous=None):
-    at = centre(box)
-    moved = previous and now > previous["seen"]
-    velocity = (
-        tuple((a - b) / (now - previous["seen"]) for a, b in zip(at, previous["at"], strict=True))
-        if moved
-        else (previous or {}).get("velocity", (0.0, 0.0))
-    )
-    return {"id": box["id"], "seen": now, "at": at, "velocity": velocity}
+def locked_on(box, now):
+    return {"id": box["id"], "seen": now, "at": centre(box), "area": box["w"] * box["h"]}
 
 
-def expected(lock, now):
-    return tuple(
-        a + v * (now - lock["seen"]) for a, v in zip(lock["at"], lock["velocity"], strict=True)
-    )
+def similar(box, lock):
+    return 0.5 <= box["w"] * box["h"] / lock["area"] <= 2.0
 
 
 def kept(lock, boxes, now):
     if lock is None:
         return None
     same = next((b for b in boxes if b.get("id") == lock["id"]), None)
-    there = expected(lock, now)
     nearest = min(
         (
             b
             for b in boxes
-            if b.get("id") is not None and math.dist(centre(b), there) <= REACQUIRE_RADIUS
+            if b.get("id") is not None
+            and similar(b, lock)
+            and math.dist(centre(b), lock["at"]) <= REACQUIRE_RADIUS
         ),
-        key=lambda b: math.dist(centre(b), there),
+        key=lambda b: math.dist(centre(b), lock["at"]),
         default=None,
     )
     found = same or nearest
     if found:
-        return locked_on(found, now, lock)
+        return locked_on(found, now)
     return lock if now - lock["seen"] <= LOST_AFTER_S else None
 
 
@@ -163,11 +155,26 @@ class Device:
                 else picked(self.boxes, request["x"], request["y"])
             )
             self.lock = locked_on(box, self.captured) if box else None
-            return {"status": "tracking", "id": box["id"]} if box else {"status": "no-target"}
+            reply = {"status": "tracking", "id": box["id"]} if box else {"status": "no-target"}
+            self.note(
+                {
+                    "request": request,
+                    "visual": visual,
+                    "reply": reply,
+                    "boxes": [centre(b) for b in self.boxes],
+                }
+            )
+            return reply
+
+    def note(self, record):
+        if self.log:
+            self.log.write(json.dumps({"t": time.time()} | record) + "\n")
+            self.log.flush()
 
     def stop(self):
         with self.changed:
             self.lock = None
+            self.note({"request": "stop"})
         return {"status": "stopped"}
 
 

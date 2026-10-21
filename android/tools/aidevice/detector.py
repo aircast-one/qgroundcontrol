@@ -48,7 +48,9 @@ class Detector:
         bgr = np.ascontiguousarray(rgb[:, :, ::-1])
         options = {"imgsz": self.imgsz, "conf": self.conf, "device": self.device, "verbose": False}
         result = (
-            self.model.track(bgr, persist=True, tracker="bytetrack.yaml", **options)
+            self.model.track(
+                bgr, persist=True, tracker=str(Path(__file__).parent / "tracker.yaml"), **options
+            )
             if track
             else self.model.predict(bgr, **options)
         )[0]

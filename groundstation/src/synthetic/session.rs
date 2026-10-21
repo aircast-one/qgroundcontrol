@@ -1443,6 +1443,11 @@ impl Session {
             .collect()
     }
 
+    pub fn jump(&mut self) {
+        self.shown = None;
+        self.turn = None;
+    }
+
     pub fn frame(
         &mut self,
         target: Option<&Target>,
@@ -2175,6 +2180,34 @@ mod tests {
         assert!(
             (guess.heading - held.heading).abs() < 1e-9 && motion.heading == 0.0,
             "a gimbal holding its own heading does not turn with the yaw stick; predicting it fought the glide toward the gimbal's readings and shook the view: {motion:?}"
+        );
+    }
+
+    #[test]
+    fn after_a_jump_the_next_frame_is_drawn_at_the_asked_pose_not_part_way_there() {
+        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let aimed = |pitch: f64| Target {
+            pitch,
+            ..target("Bing Satellite")
+        };
+        session.frame(Some(&aimed(-10.0)), &[], 640, 360, at(0));
+        let glided = session
+            .frame(Some(&aimed(-40.0)), &[], 640, 360, at(100))
+            .expect("a frame")
+            .pose
+            .pitch;
+        session.jump();
+        let jumped = session
+            .frame(Some(&aimed(-70.0)), &[], 640, 360, at(200))
+            .expect("a frame")
+            .pose
+            .pitch;
+        assert!(glided > -40.0, "the display glides ({glided})");
+        assert!(
+            (jumped + 70.0).abs() < 1e-9,
+            "a measurement camera does not ({jumped})"
         );
     }
 

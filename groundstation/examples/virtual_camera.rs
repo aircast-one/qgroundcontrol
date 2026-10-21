@@ -32,6 +32,7 @@ fn drawn(
     let started = Instant::now();
     let mut latest = None;
     loop {
+        session.jump();
         latest = session
             .frame(Some(target), &[], width, height, Instant::now())
             .or(latest);
