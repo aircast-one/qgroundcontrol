@@ -1575,6 +1575,7 @@ mod deps_cover_reads {
         ("firmwarecatalog", include_str!("firmwarecatalog.rs")),
         ("settingsorder", include_str!("settingsorder.rs")),
         ("platformdisk", include_str!("platformdisk.rs")),
+        ("windisk", include_str!("windisk.rs")),
         ("platformserial", include_str!("platformserial.rs")),
         ("device", include_str!("device.rs")),
         ("deviceflights", include_str!("deviceflights.rs")),

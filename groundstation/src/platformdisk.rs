@@ -23,11 +23,14 @@ pub fn install(hooks: Hooks) -> bool {
 }
 
 pub fn installed() -> bool {
-    HOOKS.get().is_some()
+    HOOKS.get().is_some() || native::WRITES_CARDS
 }
 
 pub fn disks() -> Vec<Disk> {
-    HOOKS.get().map(|hooks| (hooks.disks)()).unwrap_or_default()
+    HOOKS
+        .get()
+        .map(|hooks| (hooks.disks)())
+        .unwrap_or_else(native::disks)
 }
 
 pub struct Card {
@@ -71,7 +74,7 @@ pub enum Opening {
 
 pub fn open(id: &str) -> Opening {
     match HOOKS.get().map(|hooks| (hooks.open)(id)) {
-        None => Opening::Failed("This device cannot write cards".to_string()),
+        None => native::open(id),
         Some(PERMISSION_PENDING) => Opening::PermissionPending,
         Some(fd) if fd < 0 => Opening::Failed("The card reader could not be opened".to_string()),
         Some(fd) => usb(id, fd),
@@ -108,4 +111,25 @@ fn usb(id: &str, _fd: i32) -> Opening {
         (hooks.close)(id);
     }
     Opening::Failed("USB card readers are not supported on this platform yet".to_string())
+}
+
+#[cfg(windows)]
+mod native {
+    pub const WRITES_CARDS: bool = true;
+    pub use crate::windisk::{disks, open};
+}
+
+#[cfg(not(windows))]
+mod native {
+    use super::{Disk, Opening};
+
+    pub const WRITES_CARDS: bool = false;
+
+    pub fn disks() -> Vec<Disk> {
+        Vec::new()
+    }
+
+    pub fn open(_id: &str) -> Opening {
+        Opening::Failed("This device cannot write cards".to_string())
+    }
 }

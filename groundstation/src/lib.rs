@@ -330,5 +330,7 @@ pub mod waypoints;
 #[cfg(all(target_family = "wasm", not(test)))]
 mod webhost;
 pub mod wfbhost;
+#[cfg_attr(not(windows), allow(dead_code))]
+pub mod windisk;
 
 pub use router::{Backend, Core};

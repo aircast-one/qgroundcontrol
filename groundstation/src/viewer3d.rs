@@ -519,11 +519,12 @@ fn path_items(
         .iter()
         .filter_map(|item| {
             let command = item["command"].as_i64().unwrap_or(0);
-            let at =
-                coordinate(&item["coordinate"]).or(home.filter(|_| command == RETURN_TO_LAUNCH))?;
+            let takeoff = item["kind"] == "takeoff";
+            let at = coordinate(&item["coordinate"])
+                .or(home.filter(|_| takeoff || command == RETURN_TO_LAUNCH))?;
             Some(PathItem {
                 launch: item["kind"] == "settings",
-                takeoff: item["kind"] == "takeoff",
+                takeoff,
                 command,
                 specifies_coordinate: item["specifiesCoordinate"].as_bool().unwrap_or(false),
                 at,
@@ -598,7 +599,7 @@ pub fn vehicle_view(backend: &dyn Backend, _args: &[String]) -> Value {
     );
     let vehicles: Vec<Value> = (0..count).filter_map(|index| {
         let vehicle = backend.value_fields(&format!("vehicles.vehicles.{index}"), &WATCHED_IN_3D.join(","));
-        let fact = |name: &str| vehicle[name].get("rawValue").or(vehicle[name].get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
+        let fact = |name: &str| crate::read::fact_property(&vehicle, name).and_then(|f| f.get("rawValue").or(f.get("value"))).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
         coordinate(&vehicle["coordinate"]).map(|(lat, lon)| json!({ "at": [lon, lat, fact("altitudeRelative") + bias], "heading": fact("heading") }))
     }).collect();
     json!({ "kind": "object", "class": "Viewer3DVehicles", "vehicles": vehicles })
@@ -786,6 +787,59 @@ mod tests {
         );
     }
 
+    #[test]
+    fn an_uploaded_takeoff_without_a_coordinate_climbs_from_home() {
+        let listed = json!({ "items": [
+            { "kind": "settings", "command": 0, "specifiesCoordinate": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "altitudeMetres": 0.0 },
+            { "kind": "takeoff", "command": 22, "sequence": 1, "specifiesCoordinate": false, "altitudeOnly": true, "coordinate": null, "altitudeMetres": 50.0 },
+            { "kind": "waypoint", "command": 16, "sequence": 2, "specifiesCoordinate": true, "coordinate": { "latitude": 47.2, "longitude": 8.0 }, "altitudeMetres": 50.0 },
+            { "kind": "waypoint", "command": 16, "sequence": 3, "specifiesCoordinate": true, "coordinate": { "latitude": 47.3, "longitude": 8.0 }, "altitudeMetres": 60.0 },
+            { "kind": "command", "command": 20, "sequence": 4, "specifiesCoordinate": false, "coordinate": null, "altitudeMetres": null },
+        ]});
+        let (items, home) = path_items(&listed, Some((46.9, 7.9)));
+        let (markers, segments) = path(&items, home);
+        assert_eq!(
+            markers
+                .iter()
+                .map(|m| (m.label.as_str(), m.colour))
+                .collect::<Vec<_>>(),
+            vec![
+                ("T", "green"),
+                ("2", "black"),
+                ("3", "black"),
+                ("L", "orange")
+            ],
+        );
+        assert_eq!(
+            markers[0].at,
+            (46.9, 7.9, 50.0),
+            "the takeoff stands over the vehicle's home at its climb altitude"
+        );
+        assert_eq!(
+            segments
+                .iter()
+                .map(|s| (s.from, s.to, s.rtl))
+                .collect::<Vec<_>>(),
+            vec![
+                ((46.9, 7.9, 50.0), (47.2, 8.0, 50.0), false),
+                ((47.2, 8.0, 50.0), (47.3, 8.0, 60.0), false),
+                ((47.3, 8.0, 60.0), (46.9, 7.9, 60.0), true),
+            ],
+            "the route starts at the takeoff, as QGC's takeoff item sits on the launch point"
+        );
+        let (planned, launch) = path_items(&listed, None);
+        assert_eq!(
+            path(&planned, launch).1.first().map(|s| s.from),
+            Some((47.0, 8.0, 50.0)),
+            "without a vehicle the plan's launch point is where the climb starts"
+        );
+        let (orphan, _) = path_items(&json!({ "items": [listed["items"][1].clone()] }), None);
+        assert!(
+            orphan.is_empty(),
+            "with no home the takeoff has nowhere to stand"
+        );
+    }
+
     struct Fleet(Vec<Value>);
 
     impl Backend for Fleet {
@@ -818,13 +872,19 @@ mod tests {
 
     #[test]
     fn every_located_vehicle_floats_and_is_watched_field_by_field() {
-        let flying = json!({ "kind": "object", "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "altitudeRelative": { "rawValue": 10.0 }, "heading": { "rawValue": 90.0 } });
-        let lost = json!({ "kind": "object", "coordinate": { "latitude": 0.0, "longitude": 0.0 }, "altitudeRelative": { "rawValue": 5.0 }, "heading": { "rawValue": 0.0 } });
+        let facts = |altitude: f64, heading: f64| {
+            json!([
+                { "kind": "fact", "name": "altitudeRelative", "value": altitude * 3.28084, "rawValue": altitude, "property": "altitudeRelative" },
+                { "kind": "fact", "name": "heading", "value": heading, "rawValue": heading, "property": "heading" },
+            ])
+        };
+        let flying = json!({ "kind": "object", "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "facts": facts(10.0, 90.0) });
+        let lost = json!({ "kind": "object", "coordinate": { "latitude": 0.0, "longitude": 0.0 }, "facts": facts(5.0, 0.0) });
         let view = vehicle_view(&Fleet(vec![flying.clone(), lost, flying]), &[]);
         assert_eq!(
             view["vehicles"],
             json!([{ "at": [8.0, 47.0, 12.0], "heading": 90.0 }, { "at": [8.0, 47.0, 12.0], "heading": 90.0 }]),
-            "altitudeBias lifts each frame; a vehicle with no position yet draws nothing"
+            "the facade lists vehicle facts under facts, raw metres win over the shown feet, altitudeBias lifts each frame and a vehicle with no position yet draws nothing"
         );
         assert!(
             vehicle_deps().contains(&"vehicles.vehicles.2.heading".to_string()),

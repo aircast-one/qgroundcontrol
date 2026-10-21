@@ -94,6 +94,9 @@ wgpu = { version = "30.0.1", optional = true, features = ["webgl"] }
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl"] }
+
 [target.'cfg(not(any(target_os = "ios", target_family = "wasm")))'.dependencies]
 serialport = "4.10.1"
 
