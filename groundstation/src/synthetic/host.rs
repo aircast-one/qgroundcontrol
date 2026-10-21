@@ -9,6 +9,7 @@ use super::overlay::Overlays;
 use super::render::{Renderer, Targets};
 use super::session::{Frame, Session, Stats, Target};
 use super::window::Window;
+pub use crate::synthview::Draw;
 
 const TICK: Duration = Duration::from_millis(16);
 const TOKEN_EVERY: Duration = Duration::from_secs(1);
@@ -17,23 +18,6 @@ const SUMMARY_EVERY: Duration = Duration::from_secs(10);
 const RELEASE_WAIT: Duration = Duration::from_secs(2);
 const KEEP_UNSEEN: Duration = Duration::from_secs(60);
 const WARM_PER_TICK: usize = 6;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Draw {
-    Loading,
-    Drawn,
-    Failed,
-}
-
-impl Draw {
-    pub fn name(self) -> &'static str {
-        match self {
-            Draw::Loading => "loading",
-            Draw::Drawn => "drawn",
-            Draw::Failed => "failed",
-        }
-    }
-}
 
 pub trait Feed: Send + Sync {
     fn pose(&self) -> Option<serde_json::Value>;
@@ -768,6 +752,11 @@ fn show(
             visit.note(&command);
             apply(command, &mut shown, &gpu);
         });
+        let awaited = draw.awaiting(shown.iter().any(|surface| !surface.drawn));
+        if awaited != draw {
+            draw = awaited;
+            feed.report(draw);
+        }
         visit.surfaces_peak = visit.surfaces_peak.max(shown.len());
     }
     visit.report(session.as_ref(), &gpu, draw);

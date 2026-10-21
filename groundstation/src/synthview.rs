@@ -66,6 +66,30 @@ const DRAW_LOADING: &str = "loading";
 static GROUND: Mutex<Option<(f64, u64)>> = Mutex::new(None);
 const GROUND_KEPT_MS: u64 = 2_000;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Draw {
+    Loading,
+    Drawn,
+    Failed,
+}
+
+impl Draw {
+    pub fn name(self) -> &'static str {
+        match self {
+            Draw::Loading => DRAW_LOADING,
+            Draw::Drawn => "drawn",
+            Draw::Failed => "failed",
+        }
+    }
+
+    pub fn awaiting(self, unpainted: bool) -> Self {
+        match (self, unpainted) {
+            (Draw::Drawn, true) => Draw::Loading,
+            (kept, _) => kept,
+        }
+    }
+}
+
 pub fn set_ground(above_home: Option<f64>) {
     *GROUND.lock().unwrap_or_else(PoisonError::into_inner) = above_home
         .filter(|metres| metres.is_finite())
@@ -591,6 +615,23 @@ pub fn synthetic_view(backend: &dyn Backend, _args: &[String]) -> Value {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn a_resized_or_new_surface_is_loading_until_it_shows_a_picture() {
+        assert_eq!(
+            Draw::Drawn.awaiting(true),
+            Draw::Loading,
+            "a head that grows the view keeps the last small frame on screen until the renderer paints the new size, so it must not be told the view is drawn"
+        );
+        assert_eq!(Draw::Drawn.awaiting(false), Draw::Drawn);
+        assert_eq!(Draw::Loading.awaiting(true), Draw::Loading);
+        assert_eq!(
+            Draw::Failed.awaiting(true),
+            Draw::Failed,
+            "a renderer that failed stays failed, a re-attach does not hide the failure"
+        );
+        assert_eq!(Draw::Loading.name(), "loading");
+    }
 
     struct Fake(BTreeMap<&'static str, Value>);
 
