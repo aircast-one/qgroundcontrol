@@ -7435,7 +7435,7 @@ impl Hub {
                 self.arrival.push(header.system_id);
                 if self.vehicles.len() > 1 {
                     crate::noticeboard::post_from_vehicle(
-                        crate::noticeboard::MESSAGE,
+                        crate::noticeboard::BRIEF,
                         &format!("Connected to Vehicle {}", header.system_id),
                     );
                 }

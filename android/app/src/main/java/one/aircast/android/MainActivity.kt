@@ -625,7 +625,12 @@ fun AircastShell(hostView: android.view.View?) {
                     }
                 }
                 if (onFly) one.aircast.android.ui.ConnectingCard(Modifier.align(Alignment.Center))
-                if (onFly) SnackbarHost(snackbars, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = FLY_NOTICE_TOP).widthIn(max = FLY_NOTICE_MAX_WIDTH)) { one.aircast.android.ui.AppSnackbar(it) }
+                val noticePlace = if (one.aircast.android.ui.flyIsPortrait()) {
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = with(androidx.compose.ui.platform.LocalDensity.current) { flyScreen.mapInsets.bottom.toDp() })
+                } else {
+                    Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = FLY_NOTICE_TOP)
+                }
+                if (onFly) SnackbarHost(snackbars, noticePlace.widthIn(max = FLY_NOTICE_MAX_WIDTH)) { one.aircast.android.ui.AppSnackbar(it) }
 
                 mapClickAt?.takeIf { tab == Tab.Fly }?.let { point ->
                     MapClickMenu(point) { mapClickAt = null }
