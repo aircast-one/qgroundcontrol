@@ -1,10 +1,27 @@
 import json
+import os
 import threading
 import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
-from aidevice import LOST_AFTER_S, Device, kept, payload, picked, picked_rect, serving
+import numpy as np
+from aidevice import (
+    LOST_AFTER_S,
+    Device,
+    kept,
+    payload,
+    picked,
+    picked_rect,
+    serving,
+    sidecar,
+    visual_payload,
+)
+
+SIDECAR = os.environ.get(
+    "AIRCAST_SIDECAR", str(Path(__file__).resolve().parents[4] / "aircastd" / "sidecar" / "detect")
+)
 
 
 def box(x, y, w=0.1, h=0.1, id=1, conf=0.8, label="car"):
@@ -113,3 +130,36 @@ class Api(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def scene(left, top, texture):
+    frame = np.full((360, 640, 3), 90, dtype=np.uint8)
+    frame[top : top + 40, left : left + 70] = texture
+    return frame
+
+
+class DeviceTracker(unittest.TestCase):
+    def test_the_device_s_visual_tracker_follows_a_drawn_box_every_frame(self):
+        tracker = sidecar(SIDECAR, 10).VisualTracker()
+        texture = np.random.default_rng(3).integers(0, 255, (40, 70, 3), dtype=np.uint8)
+        rect = {"x": 100 / 640, "y": 150 / 360, "w": 70 / 640, "h": 40 / 360}
+        first = scene(100, 150, texture)
+        tracker.ensure(first, rect, 1)
+        boxes = [
+            tracker.update(scene(100 + 6 * step, 150 + 2 * step, texture)) for step in range(1, 20)
+        ]
+        self.assertTrue(all(boxes), [tracker.reason for _ in boxes])
+        last = boxes[-1]
+        self.assertAlmostEqual(last.x * 640, 100 + 6 * 19, delta=8)
+        self.assertAlmostEqual(last.y * 360, 150 + 2 * 19, delta=8)
+
+    def test_a_held_visual_track_is_the_target_and_a_lost_one_reports_no_box(self):
+        held = visual_payload(
+            type("Box", (), {"x": 0.4, "y": 0.4, "w": 0.1, "h": 0.1, "conf": 0.9})(), 50
+        )
+        self.assertEqual(
+            (held["boxes"][0]["target"], held["boxes"][0]["label"], held["track"]["state"]),
+            (True, "tracked", "tracking"),
+        )
+        lost = visual_payload(None, 50)
+        self.assertEqual((lost["boxes"], lost["track"]["state"]), ([], "lost"))

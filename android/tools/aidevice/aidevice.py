@@ -1,12 +1,18 @@
 import argparse
 import concurrent.futures
+import importlib
 import json
 import math
+import os
+import sys
 import threading
 import time
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import numpy as np
 
 PICK_RADIUS = 0.08
 LOST_AFTER_S = 8.0
@@ -72,6 +78,33 @@ def kept(lock, boxes, now):
     return lock if now - lock["seen"] <= LOST_AFTER_S else None
 
 
+def sidecar(directory, fps):
+    os.environ.setdefault("DETECT_TRACKER_MODEL", str(Path(directory) / "vittrack.onnx"))
+    os.environ.setdefault("DETECT_FPS", str(fps))
+    sys.path.insert(0, str(directory))
+    return importlib.import_module("detect")
+
+
+def visual_payload(box, age_ms):
+    return {
+        "ageMs": round(age_ms),
+        "boxes": [
+            {
+                "x": b.x,
+                "y": b.y,
+                "w": b.w,
+                "h": b.h,
+                "label": "tracked",
+                "conf": b.conf,
+                "target": True,
+            }
+            for b in [box]
+            if b
+        ],
+        "track": {"state": "tracking" if box else "lost"},
+    }
+
+
 def payload(boxes, lock, age_ms):
     target = lock["id"] if lock else None
     visible = any(b.get("id") == target for b in boxes)
@@ -93,7 +126,7 @@ def read(phone, path):
 
 
 class Device:
-    def __init__(self, phone, camera, detector, fps, log=None):
+    def __init__(self, phone, camera, detector, fps, log=None, visual=None):
         self.phone, self.camera, self.detector, self.period, self.log = (
             phone,
             camera,
@@ -101,6 +134,7 @@ class Device:
             1 / fps,
             log,
         )
+        self.visual_tracker, self.visual, self.visual_box = visual, None, None
         self.changed = threading.Condition()
         self.pool = concurrent.futures.ThreadPoolExecutor(2)
         self.lens, self.lens_read = None, 0.0
@@ -125,18 +159,32 @@ class Device:
             if not pose.get("available"):
                 time.sleep(0.5)
                 continue
-            boxes = self.detector.boxes(self.camera.picture(pose, cars), track=True)
-            with self.changed:
-                self.boxes, self.captured, self.frames = boxes, started, self.frames + 1
-                self.lock = kept(self.lock, boxes, started)
-                self.changed.notify_all()
+            rgb = self.camera.picture(pose, cars)
+            visual = self.visual
+            if visual:
+                bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+                tracker = visual["tracker"]
+                tracker.ensure(bgr, visual["rect"], visual["seq"])
+                box = tracker.update(bgr)
+                with self.changed:
+                    self.visual_box, self.captured, self.frames = box, started, self.frames + 1
+                    self.changed.notify_all()
+            else:
+                boxes = self.detector.boxes(rgb, track=True)
+                with self.changed:
+                    self.boxes, self.captured, self.frames = boxes, started, self.frames + 1
+                    self.lock = kept(self.lock, boxes, started)
+                    self.changed.notify_all()
             if self.log:
-                locked = (self.lock or {}).get("id")
+                locked = "visual" if visual else (self.lock or {}).get("id")
                 record = {
                     "t": started,
-                    "boxes": len(boxes),
+                    "boxes": 1 if visual and self.visual_box else 0 if visual else len(self.boxes),
                     "lock": locked,
-                    "seen": any(b.get("id") == locked for b in boxes),
+                    "seen": bool(self.visual_box)
+                    if visual
+                    else any(b.get("id") == locked for b in self.boxes),
+                    "reason": visual["tracker"].reason if visual else "",
                 }
                 self.log.write(json.dumps(record) + "\n")
                 self.log.flush()
@@ -145,9 +193,22 @@ class Device:
     def latest(self, after):
         with self.changed:
             self.changed.wait_for(lambda: self.frames != after, timeout=5)
-            return self.frames, payload(self.boxes, self.lock, (time.time() - self.captured) * 1000)
+            age_ms = (time.time() - self.captured) * 1000
+            return self.frames, (
+                visual_payload(self.visual_box, age_ms)
+                if self.visual
+                else payload(self.boxes, self.lock, age_ms)
+            )
 
     def track(self, request, visual):
+        if visual and self.visual_tracker:
+            rect = {k: float(request[k]) for k in ("x", "y", "w", "h")}
+            with self.changed:
+                seq = (self.visual or {}).get("seq", 0) + 1
+                self.visual = {"rect": rect, "seq": seq, "tracker": self.visual_tracker()}
+                self.visual_box, self.lock = None, None
+                self.note({"request": request, "visual": True, "reply": {"status": "tracking"}})
+            return {"status": "tracking"}
         with self.changed:
             box = (
                 picked_rect(self.boxes, request)
@@ -173,7 +234,7 @@ class Device:
 
     def stop(self):
         with self.changed:
-            self.lock = None
+            self.lock, self.visual, self.visual_box = None, None, None
             self.note({"request": "stop"})
         return {"status": "stopped"}
 
@@ -235,7 +296,15 @@ def main():
         help="the phone's debug API, through adb forward",
     )
     parser.add_argument("--port", type=int, default=8099)
-    parser.add_argument("--model", default="visdrone-yolo11m.pt")
+    parser.add_argument("--model", default="visdrone-yolov8s.pt")
+    parser.add_argument(
+        "--sidecar",
+        default=os.environ.get(
+            "AIRCAST_SIDECAR",
+            str(Path(__file__).resolve().parents[4] / "aircastd" / "sidecar" / "detect"),
+        ),
+        help="the device's detection sidecar (aircastd/sidecar/detect); its VisualTracker follows a drawn box",
+    )
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--conf", type=float, default=0.2)
     parser.add_argument("--fps", type=float, default=10)
@@ -250,6 +319,7 @@ def main():
         Detector(args.model, imgsz=args.imgsz, conf=args.conf),
         args.fps,
         args.log,
+        sidecar(args.sidecar, args.fps).VisualTracker,
     )
     threading.Thread(target=device.run, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", args.port), serving(device)).serve_forever()
