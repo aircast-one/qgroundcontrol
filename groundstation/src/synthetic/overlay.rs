@@ -91,16 +91,17 @@ const IMPACT: [u8; 4] = [0xFF, 0xD6, 0x0A, 255];
 const IMPACT_PX: f64 = 32.0;
 const LEAD_PX: f64 = 22.0;
 const LEAD_LINE_PX: f64 = 2.0;
-const CAR_ROOF: usize = 0;
-const CAR_SIDE: usize = 1;
-const CAR_END: usize = 2;
-const CAR_GLASS: usize = 3;
-const CAR_COLOURS: [[u8; 4]; 4] = [
-    [0x42, 0xA5, 0xF5, 255],
-    [0x15, 0x65, 0xC0, 255],
-    [0x0D, 0x47, 0xA1, 255],
-    [0x26, 0x32, 0x38, 255],
+const CAR_PAINTS: [[u8; 4]; 4] = [
+    [0xE6, 0xE7, 0xE8, 255],
+    [0xA4, 0xA8, 0xAE, 255],
+    [0x24, 0x3B, 0x5C, 255],
+    [0x9C, 0x1F, 0x1F, 255],
 ];
+const CAR_GLASS: [u8; 4] = [0x1A, 0x20, 0x27, 255];
+const CAR_TYRE: [u8; 4] = [0x12, 0x12, 0x12, 255];
+const CAR_SHADOW: [u8; 4] = [0, 0, 0, 120];
+const GLASS_ROW: usize = CAR_PAINTS.len();
+const TYRE_ROW: usize = CAR_PAINTS.len() + 1;
 const BRACKET_TEXELS: u32 = 10;
 const BRACKET_THICKNESS: u32 = 3;
 const GLYPHS: &str = "0123456789H";
@@ -402,68 +403,145 @@ fn hoop(colour: [u8; 4]) -> image::RgbaImage {
     })
 }
 
-fn car_box(
-    half_width: f64,
-    half_length: f64,
-    (low, high): (f64, f64),
-    (roof, side, end): (usize, usize, usize),
-) -> [([DVec3; 4], usize); 5] {
-    let (w, l) = (half_width, half_length);
-    let p = DVec3::new;
+type Face = ([DVec3; 4], usize);
+
+fn rect(half_width: f64, rear: f64, front: f64) -> [(f64, f64); 4] {
     [
-        (
-            [
-                p(-w, -l, high),
-                p(w, -l, high),
-                p(w, l, high),
-                p(-w, l, high),
-            ],
-            roof,
-        ),
-        (
-            [p(w, -l, low), p(w, l, low), p(w, l, high), p(w, -l, high)],
-            side,
-        ),
-        (
-            [
-                p(-w, l, low),
-                p(-w, -l, low),
-                p(-w, -l, high),
-                p(-w, l, high),
-            ],
-            side,
-        ),
-        (
-            [p(-w, l, low), p(w, l, low), p(w, l, high), p(-w, l, high)],
-            end,
-        ),
-        (
-            [
-                p(w, -l, low),
-                p(-w, -l, low),
-                p(-w, -l, high),
-                p(w, -l, high),
-            ],
-            end,
-        ),
+        (-half_width, rear),
+        (half_width, rear),
+        (half_width, front),
+        (-half_width, front),
     ]
 }
 
-fn car_shape() -> Vec<([DVec3; 4], usize)> {
-    car_box(0.9, 2.2, (0.3, 1.0), (CAR_ROOF, CAR_SIDE, CAR_END))
-        .into_iter()
-        .chain(car_box(
-            0.8,
-            1.1,
-            (1.0, 1.45),
-            (CAR_ROOF, CAR_GLASS, CAR_GLASS),
-        ))
+fn span(left: f64, right: f64, rear: f64, front: f64) -> [(f64, f64); 4] {
+    [(left, rear), (right, rear), (right, front), (left, front)]
+}
+
+fn prism(
+    bottom: [(f64, f64); 4],
+    top: [(f64, f64); 4],
+    (low, high): (f64, f64),
+    lid: usize,
+    walls: usize,
+) -> Vec<Face> {
+    let at = |(x, y): (f64, f64), z: f64| DVec3::new(x, y, z);
+    std::iter::once((top.map(|c| at(c, high)), lid))
+        .chain((0..4).map(|i| {
+            let j = (i + 1) % 4;
+            (
+                [
+                    at(bottom[i], low),
+                    at(bottom[j], low),
+                    at(top[j], high),
+                    at(top[i], high),
+                ],
+                walls,
+            )
+        }))
         .collect()
 }
 
-fn colour_row(row: usize) -> [[f32; 2]; 4] {
-    let v = (row as f32 + 0.5) / CAR_COLOURS.len() as f32;
-    [[0.5, v]; 4]
+fn car_faces(paint: usize) -> Vec<Face> {
+    let wheels = [(-0.98, -0.76), (0.76, 0.98)]
+        .into_iter()
+        .flat_map(|(left, right)| {
+            [-1.38, 1.42].into_iter().flat_map(move |y| {
+                let tyre = span(left, right, y - 0.33, y + 0.33);
+                prism(tyre, tyre, (0.0, 0.62), TYRE_ROW, TYRE_ROW)
+            })
+        });
+    prism(
+        rect(0.9, -2.25, 2.25),
+        rect(0.88, -2.2, 2.2),
+        (0.3, 0.86),
+        paint,
+        paint,
+    )
+    .into_iter()
+    .chain(prism(
+        rect(0.84, -1.3, 0.85),
+        rect(0.7, -0.88, 0.32),
+        (0.86, 1.44),
+        paint,
+        GLASS_ROW,
+    ))
+    .chain(wheels)
+    .collect()
+}
+
+fn car_colours() -> image::RgbaImage {
+    let rows: Vec<[u8; 4]> = CAR_PAINTS
+        .iter()
+        .copied()
+        .chain([CAR_GLASS, CAR_TYRE])
+        .collect();
+    image::RgbaImage::from_fn(1, rows.len() as u32, |_, y| image::Rgba(rows[y as usize]))
+}
+
+fn car_turn(car: &Tracked, now: Instant) -> (f64, f64, DMat3) {
+    let (lat, lng) = car.at(now);
+    (
+        lat,
+        lng,
+        east_north_up(lat, lng) * DMat3::from_rotation_z(-car.east_speed.atan2(car.north_speed)),
+    )
+}
+
+pub fn cars(cars: &[Tracked], home_ground: f64, now: Instant) -> Vec<Arc<Mesh>> {
+    let Some(first) = cars.first() else {
+        return Vec::new();
+    };
+    let (origin_lat, origin_lng) = first.at(now);
+    let frame = &Frame::at(origin_lat, origin_lng);
+    let rows = (CAR_PAINTS.len() + 2) as f32;
+    let placed: Vec<([f32; 3], [f32; 3], [f32; 2])> = cars
+        .iter()
+        .enumerate()
+        .flat_map(|(index, car)| {
+            let (lat, lng, turn) = car_turn(car, now);
+            let base = ecef(lat, lng, home_ground + car.spot.above_home);
+            let to_local = frame.to_local * turn;
+            car_faces(index % CAR_PAINTS.len())
+                .into_iter()
+                .flat_map(move |(corners, row)| {
+                    let normal = (corners[1] - corners[0])
+                        .cross(corners[3] - corners[0])
+                        .normalize_or_zero();
+                    let lit = (to_local * normal).as_vec3().to_array();
+                    corners.map(|c| {
+                        (
+                            frame.local(base + turn * c),
+                            lit,
+                            [0.5, (row as f32 + 0.5) / rows],
+                        )
+                    })
+                })
+        })
+        .collect();
+    let count = (placed.len() / 4) as u32;
+    let body = Mesh::new(
+        frame.to_ecef,
+        placed.iter().map(|vertex| vertex.0).collect(),
+        placed.iter().map(|vertex| vertex.2).collect(),
+        (0..count)
+            .flat_map(|q| [0, 1, 2, 0, 2, 3].map(|i| q * 4 + i))
+            .collect(),
+        car_colours(),
+        Layer::Opaque,
+    )
+    .with_normals(placed.iter().map(|vertex| vertex.1).collect());
+    let shadows = cars.iter().map(|car| {
+        let (lat, lng, turn) = car_turn(car, now);
+        let base = ecef(lat, lng, home_ground + car.spot.above_home + 0.03);
+        (
+            rect(1.1, -2.5, 2.5).map(|(x, y)| base + turn * DVec3::new(x, y, 0.0)),
+            FULL_UV,
+        )
+    });
+    std::iter::once(Arc::new(body))
+        .chain(quads(frame, shadows, solid(CAR_SHADOW), Layer::Translucent))
+        .collect()
 }
 
 fn glyph_lit(glyph: usize, column: i32, row: i32) -> bool {
@@ -650,25 +728,10 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
             hoop(AIM),
             Layer::OnTop,
         ),
-        quads(
-            &frame,
-            overlays.cars.iter().flat_map(|car| {
-                let (lat, lng) = car.at(now);
-                let turn = east_north_up(lat, lng)
-                    * DMat3::from_rotation_z(-car.east_speed.atan2(car.north_speed));
-                let base = ecef(lat, lng, home_ground + car.spot.above_home);
-                car_shape()
-                    .into_iter()
-                    .map(move |(corners, row)| (corners.map(|c| base + turn * c), colour_row(row)))
-            }),
-            image::RgbaImage::from_fn(1, CAR_COLOURS.len() as u32, |_, y| {
-                image::Rgba(CAR_COLOURS[y as usize])
-            }),
-            Layer::Opaque,
-        ),
     ]
     .into_iter()
     .flatten()
+    .chain(cars(&overlays.cars, home_ground, now))
     .collect()
 }
 
@@ -877,14 +940,24 @@ mod tests {
             overlays.animating(),
             "a moving car keeps the view repainting"
         );
-        let layers: Vec<(Layer, usize)> = meshes(&overlays, 600.0, &camera())
+        let drawn = meshes(&overlays, 600.0, &camera());
+        let layers: Vec<(Layer, usize)> = drawn
             .iter()
             .map(|mesh| (mesh.layer, mesh.indices.len() / 6))
             .collect();
         assert_eq!(
             layers,
-            vec![(Layer::Opaque, 10)],
-            "a body and a cabin, five faces each"
+            vec![(Layer::Opaque, 30), (Layer::Translucent, 1)],
+            "a body, a glass cabin and four wheels, five lit faces each, over a contact shadow"
+        );
+        let body = &drawn[0];
+        assert_eq!(body.normals.len(), body.positions.len(), "the car is lit");
+        let size: Vec<f32> = (0..3).map(|i| body.high[i] - body.low[i]).collect();
+        assert!(
+            [1.44, 1.96, 4.5]
+                .iter()
+                .all(|want| size.iter().any(|got| (got - want).abs() < 0.05)),
+            "a 4.5 x 1.96 x 1.44 m car, wheels included: {size:?}"
         );
     }
 
