@@ -303,16 +303,11 @@ fn coasted(
 ) -> Option<crate::dropsim::Target> {
     let age_s = now_ms.saturating_sub(at_ms) as f64 / 1000.0;
     (now_ms.saturating_sub(at_ms) <= GIMBAL_FOLLOW_COAST_MS).then(|| {
-        let (lat, lon, _) = crate::geo::ned_to_geo(
-            target.velocity.north_mps * age_s,
-            target.velocity.east_mps * age_s,
-            0.0,
-            (target.position.lat, target.position.lon, 0.0),
-        );
-        crate::dropsim::Target {
-            position: crate::dropsim::Point { lat, lon },
-            ..target
-        }
+        crate::autodrop::coasted(
+            target,
+            crate::autodrop::roads_under(target).as_deref(),
+            age_s,
+        )
     })
 }
 
@@ -3491,6 +3486,15 @@ impl Vehicle {
         });
     }
 
+    fn aim_autodrop(&mut self, aim_at: crate::dropsim::Point, now_ms: u64) -> Vec<Vec<u8>> {
+        self.autodrop_aimed_ms = now_ms;
+        self.start_guided(
+            &json!({"action": "goto", "latitude": aim_at.lat, "longitude": aim_at.lon}),
+            now_ms,
+        )
+        .unwrap_or_default()
+    }
+
     fn tick_autodrop(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         let Some(crate::autodrop::State::Waiting {
             phase,
@@ -3550,8 +3554,23 @@ impl Vehicle {
                         started_ms,
                         due_ms: retry_due,
                     });
-                    return Vec::new();
+                    let lost = self
+                        .followed_last
+                        .and_then(|last| coasted(last, now_ms))
+                        .filter(|_| {
+                            now_ms.saturating_sub(self.autodrop_aimed_ms)
+                                >= crate::autodrop::REAIM_EVERY_MS
+                        })
+                        .and_then(|coasting| {
+                            crate::autodrop::aim_point(
+                                release.position,
+                                coasting,
+                                crate::autodrop::roads_under(coasting).as_deref(),
+                            )
+                        });
+                    return lost.map_or_else(Vec::new, |aim_at| self.aim_autodrop(aim_at, now_ms));
                 };
+                self.followed_last = Some((target, now_ms));
                 let roads = crate::autodrop::roads_under(target);
                 let plan = crate::autodrop::plan(release, target, roads.as_deref());
                 let until_ms =
@@ -3572,21 +3591,12 @@ impl Vehicle {
                     let reaim = (plan.release_in_s > crate::autodrop::REAIM_UNTIL_S || off_course)
                         && now_ms.saturating_sub(self.autodrop_aimed_ms)
                             >= crate::autodrop::REAIM_EVERY_MS;
-                    let Some(aim_at) = reaim
+                    return reaim
                         .then(|| {
                             crate::autodrop::aim_point(release.position, target, roads.as_deref())
                         })
                         .flatten()
-                    else {
-                        return Vec::new();
-                    };
-                    self.autodrop_aimed_ms = now_ms;
-                    return self
-                        .start_guided(
-                            &json!({"action": "goto", "latitude": aim_at.lat, "longitude": aim_at.lon}),
-                            now_ms,
-                        )
-                        .unwrap_or_default();
+                        .map_or_else(Vec::new, |aim_at| self.aim_autodrop(aim_at, now_ms));
                 }
                 let fired = self.start_guided(
                     &json!({"action": "gripper", "gripAction": 0.0, "bay": 0.0}),
@@ -10032,6 +10042,38 @@ mod tests {
         vehicle.autodrop = fired(crate::autodrop::Impact::Falling);
         vehicle.judge_impact(4_000, 13_000);
         assert_eq!(vehicle.autodrop, fired(crate::autodrop::Impact::Unseen));
+    }
+
+    #[test]
+    fn a_target_lost_mid_run_is_still_flown_at_where_it_should_be_for_a_while() {
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.manual_target = Some((47.0 + 300.0 / 111_320.0, 8.0));
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.facts.velocity = (10.0, 0.0, 0.0);
+        vehicle.autodrop = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Manual,
+            started_ms: 0,
+            due_ms: 0,
+        });
+        vehicle.tick_autodrop(1_000);
+        assert_eq!(vehicle.autodrop_aimed_ms, 1_000, "seen: aimed");
+        vehicle.manual_target = None;
+        vehicle.tick_autodrop(2_000);
+        assert_eq!(
+            vehicle.autodrop_aimed_ms, 2_000,
+            "lost a second ago: still aimed at where it was heading"
+        );
+        vehicle.tick_autodrop(8_500);
+        assert_eq!(
+            vehicle.autodrop_aimed_ms, 2_000,
+            "lost for longer than the coast: no guess to fly at"
+        );
+        assert!(matches!(
+            vehicle.autodrop,
+            Some(crate::autodrop::State::Waiting { .. })
+        ));
     }
 
     #[test]

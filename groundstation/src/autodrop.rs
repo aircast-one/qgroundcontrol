@@ -156,6 +156,27 @@ pub fn plan(
     }
 }
 
+pub fn coasted(target: Target, roads: Option<&crate::roads::Network>, seconds: f64) -> Target {
+    let there = sampled(&course(target, roads, seconds), seconds);
+    let (lat, lon, _) = ned_to_geo(
+        there.north_m,
+        there.east_m,
+        0.0,
+        (target.position.lat, target.position.lon, 0.0),
+    );
+    let speed = target.velocity.north_mps.hypot(target.velocity.east_mps);
+    Target {
+        position: Point { lat, lon },
+        velocity: there.heading_deg.map_or(target.velocity, |heading| {
+            let (sin, cos) = heading.to_radians().sin_cos();
+            Velocity {
+                north_mps: speed * cos,
+                east_mps: speed * sin,
+            }
+        }),
+    }
+}
+
 pub fn lead_now(
     release: dropsim::Release,
     target: Target,
