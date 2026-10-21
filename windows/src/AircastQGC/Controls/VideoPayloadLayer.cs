@@ -59,6 +59,7 @@ public sealed partial class VideoPayloadLayer : UserControl
     private ProximityRadar? _radar;
     private Gesture? _gesture;
     private bool _expanded;
+    private bool _pictured;
     private int _fit = VideoSurface.FitHeight;
     private double? _aspectSetting;
 
@@ -137,12 +138,28 @@ public sealed partial class VideoPayloadLayer : UserControl
         }
     }
 
+    public bool Pictured
+    {
+        get => _pictured;
+        set
+        {
+            _pictured = value;
+            EndGesture();
+            Sync();
+            Draw();
+        }
+    }
+
     private bool Decoding => VideoJson.Flag(_video, "decoding");
 
-    private bool TakesInput => _expanded && Decoding && (_tracking?.CanAim == true || _gimbal is not null);
+    private bool Synthetic => !Decoding && _pictured;
 
-    private Painted Picture => PayloadJson.Centred(_root.ActualWidth, _root.ActualHeight,
-        VideoSurface.ContentSize(_root.ActualWidth, _root.ActualHeight, VideoSurface.PictureAspect(_video, _aspectSetting), _fit));
+    private bool TakesInput => _expanded && (Decoding ? _tracking?.CanAim == true || _gimbal is not null : Synthetic && _tracking?.CanAim == true);
+
+    private Painted Picture => Synthetic
+        ? new Painted(0, 0, _root.ActualWidth, _root.ActualHeight)
+        : PayloadJson.Centred(_root.ActualWidth, _root.ActualHeight,
+            VideoSurface.ContentSize(_root.ActualWidth, _root.ActualHeight, VideoSurface.PictureAspect(_video, _aspectSetting), _fit));
 
     private void Start()
     {
@@ -186,7 +203,7 @@ public sealed partial class VideoPayloadLayer : UserControl
     private void Draw()
     {
         var picture = Picture;
-        FormLook.Fill(_drawing, Decoding ? RadarShapes(picture).Concat(TrackShapes(picture)) : []);
+        FormLook.Fill(_drawing, Decoding ? RadarShapes(picture).Concat(TrackShapes(picture)) : Synthetic ? TrackShapes(picture) : []);
     }
 
     private IEnumerable<UIElement> RadarShapes(Painted picture)

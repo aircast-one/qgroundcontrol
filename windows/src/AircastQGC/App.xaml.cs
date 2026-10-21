@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using AircastQGC.Core;
 using Microsoft.UI.Xaml;
 
@@ -36,9 +37,11 @@ public partial class App : Application
             }
             if (Environment.ProcessPath is { } exe) DeepLinks.Register(exe);
             Directory.CreateDirectory(MapCache);
-            CoreHost.Start("AircastQGC", "--save-path", SavePath,
+            var given = Environment.GetCommandLineArgs().Skip(1)
+                .Where(arg => !arg.StartsWith(DeepLinks.Scheme + ":", StringComparison.OrdinalIgnoreCase));
+            CoreHost.Start(["AircastQGC", .. given, "--save-path", SavePath,
                 "--settings", Path.Combine(AppData, "Aircast QGC.ini"), "--map-cache", Path.Combine(MapCache, "qgcMapCache.db"),
-                "--position-source", GcsLocation.SourceToken);
+                "--position-source", GcsLocation.SourceToken]);
             if (link is not null) DeepLinks.Handle(link);
             GcsLocation.Start();
             VideoDriver.Start();

@@ -28,6 +28,13 @@ public sealed partial class VideoMarks : UserControl
     private const string EdgeBrush = "VideoEdgeBrush";
     private const string BoxBrush = "DetectionBrush";
     private const string TargetBrush = "DetectionTargetBrush";
+    private const string AimBrush = "VideoArAimBrush";
+    private const string ImpactBrush = "VideoArImpactBrush";
+    private const double PipperRadius = 14;
+    private const double PipperWidth = 3;
+    private const double PipperDot = 2;
+    private const double LeadRadius = 9;
+    private const double LeadWidth = 2;
     private const double RouteWidth = 3;
     private const double EdgeWidth = 2;
     private const double MarkRadius = 7;
@@ -118,6 +125,16 @@ public sealed partial class VideoMarks : UserControl
         }
     }
 
+    public bool Pictured
+    {
+        get => _pictured;
+        set
+        {
+            _pictured = value;
+            Place();
+        }
+    }
+
     public bool FullScreen
     {
         get => _fullScreen;
@@ -145,6 +162,10 @@ public sealed partial class VideoMarks : UserControl
 
     private bool Decoding { get; set; }
 
+    private bool _pictured;
+
+    private bool Synthetic => !Decoding && _pictured;
+
     private bool Zooms => _expanded && Decoding && _zoomable;
 
     private static void Take(Action read, Action draw)
@@ -166,7 +187,7 @@ public sealed partial class VideoMarks : UserControl
     {
         var (width, height) = (_root.ActualWidth, _root.ActualHeight);
         if (width <= 0 || height <= 0) return;
-        var (shownWidth, shownHeight) = VideoSurface.ContentSize(width, height, Aspect, _fit);
+        var (shownWidth, shownHeight) = Synthetic ? (width, height) : VideoSurface.ContentSize(width, height, Aspect, _fit);
         _shown = (shownWidth, shownHeight);
         _root.Clip = new RectangleGeometry { Rect = new Rect(0, 0, width, height) };
         _picture.Width = shownWidth;
@@ -218,19 +239,42 @@ public sealed partial class VideoMarks : UserControl
             OverlayInk.Line(At(leg.From), At(leg.To), edge, RouteWidth + EdgeWidth * 2),
             OverlayInk.Line(At(leg.From), At(leg.To), route, RouteWidth),
         });
+        IEnumerable<UIElement> Caption(ArMark mark, Point at, double radius)
+        {
+            var caption = VideoMarksModel.ArCaption(mark);
+            var size = PreflightLook.Size("FontSizeCaption");
+            return caption.Length == 0
+                ? []
+                : OverlayInk.Outlined(caption, new Point(at.X - LabelWidth / 2, at.Y - radius - LabelGap - OverlayInk.LineHeight(size)), size, "TextPrimaryBrush", 1, 1, LabelWidth, bold: false);
+        }
         IEnumerable<UIElement> Marked(ArMark mark, string fill)
         {
             var at = At(mark.At);
-            var caption = VideoMarksModel.ArCaption(mark);
-            var size = PreflightLook.Size("FontSizeCaption");
-            var label = caption.Length == 0
-                ? []
-                : OverlayInk.Outlined(caption, new Point(at.X - LabelWidth / 2, at.Y - MarkRadius - LabelGap - OverlayInk.LineHeight(size)), size, "TextPrimaryBrush", 1, 1, LabelWidth, bold: false);
-            return new UIElement[] { OverlayInk.Dot(at, MarkRadius + EdgeWidth, edge), OverlayInk.Dot(at, MarkRadius, OverlayInk.Brush(fill)) }.Concat(label);
+            return new UIElement[] { OverlayInk.Dot(at, MarkRadius + EdgeWidth, edge), OverlayInk.Dot(at, MarkRadius, OverlayInk.Brush(fill)) }.Concat(Caption(mark, at, MarkRadius));
         }
+        IEnumerable<UIElement> Pipper(ArMark mark)
+        {
+            var at = At(mark.At);
+            var fill = OverlayInk.Brush(ImpactBrush);
+            return new UIElement[]
+            {
+                OverlayInk.Ring(at, PipperRadius, edge, PipperWidth + EdgeWidth * 2),
+                OverlayInk.Ring(at, PipperRadius, fill, PipperWidth),
+                OverlayInk.Dot(at, PipperDot, fill),
+            }.Concat(Caption(mark, at, PipperRadius));
+        }
+        var aimBrush = OverlayInk.Brush(AimBrush);
+        var leadLine = reading.LeadLine is { } line
+            ? new UIElement[] { OverlayInk.Line(At(line.From), At(line.To), edge, LeadWidth + EdgeWidth), OverlayInk.Line(At(line.From), At(line.To), aimBrush, LeadWidth) }
+            : [];
+        var lead = reading.Lead is { } spot
+            ? new UIElement[] { OverlayInk.Ring(At(spot), LeadRadius, edge, LeadWidth + EdgeWidth), OverlayInk.Ring(At(spot), LeadRadius, aimBrush, LeadWidth) }
+            : [];
         var marks = reading.Waypoints.SelectMany(mark => Marked(mark, "TextPrimaryBrush"));
         var home = reading.Home is { } shown ? Marked(shown, "SuccessBrush") : [];
-        return legs.Concat(marks).Concat(home).ToList();
+        var aim = reading.Aim is { } target ? Marked(target, AimBrush) : [];
+        var impact = reading.Impact is { } drop ? Pipper(drop) : [];
+        return legs.Concat(marks).Concat(home).Concat(leadLine).Concat(lead).Concat(aim).Concat(impact).ToList();
     }
 
     private void DrawObstacle()
@@ -268,9 +312,10 @@ public sealed partial class VideoMarks : UserControl
     private void DrawBoxes()
     {
         var (width, height) = _shown;
-        var boxes = Decoding ? VideoMarksModel.VisibleBoxes(_detections) : [];
+        var picture = Decoding || Synthetic;
+        var boxes = picture ? VideoMarksModel.VisibleBoxes(_detections) : [];
         FormLook.Fill(_boxes, boxes.SelectMany(box => BoxShapes(box, width, height)));
-        FormLook.Say(_troubleText, Decoding && VideoMarksModel.Trouble(_detections) is { } reason ? $"Detections: {reason}" : null);
+        FormLook.Say(_troubleText, picture && VideoMarksModel.Trouble(_detections) is { } reason ? $"Detections: {reason}" : null);
         _trouble.Visibility = _troubleText.Visibility;
     }
 

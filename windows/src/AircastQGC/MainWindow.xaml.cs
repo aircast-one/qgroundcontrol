@@ -145,6 +145,8 @@ public sealed partial class MainWindow : Window
         Marks.ZoomFrom(FlyContent, VideoTile, VideoLayer);
         VideoTile.PictureChanged += (_, _) =>
         {
+            Marks.Pictured = VideoTile.Picture;
+            VideoLayer.Pictured = VideoTile.Picture;
             if (!VideoTile.Picture) FullScreen(false);
             PaintFullScreen();
         };

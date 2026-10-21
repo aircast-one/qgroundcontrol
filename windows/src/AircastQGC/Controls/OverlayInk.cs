@@ -68,6 +68,14 @@ internal static class OverlayInk
         return dot;
     }
 
+    public static Ellipse Ring(Point centre, double radius, Brush stroke, double width)
+    {
+        var ring = new Ellipse { Width = radius * 2, Height = radius * 2, Stroke = stroke, StrokeThickness = width };
+        Canvas.SetLeft(ring, centre.X - radius);
+        Canvas.SetTop(ring, centre.Y - radius);
+        return ring;
+    }
+
     public static Microsoft.UI.Xaml.Shapes.Path Figure(Point start, IEnumerable<PathSegment> segments, bool closed)
     {
         var figure = new PathFigure { StartPoint = start, IsClosed = closed, IsFilled = closed };

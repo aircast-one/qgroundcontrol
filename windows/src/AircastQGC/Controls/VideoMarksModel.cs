@@ -9,7 +9,14 @@ internal readonly record struct ArSpot(double X, double Up);
 
 internal sealed record ArMark(ArSpot At, string Label, string Text);
 
-internal sealed record ArReading(ArMark? Home, IReadOnlyList<ArMark> Waypoints, IReadOnlyList<(ArSpot From, ArSpot To)> Route);
+internal sealed record ArReading(
+    ArMark? Home,
+    IReadOnlyList<ArMark> Waypoints,
+    IReadOnlyList<(ArSpot From, ArSpot To)> Route,
+    ArMark? Aim = null,
+    ArMark? Impact = null,
+    ArSpot? Lead = null,
+    (ArSpot From, ArSpot To)? LeadLine = null);
 
 internal sealed record DetectionBox(double X, double Y, double W, double H, string Label, double Confidence, bool Target);
 
@@ -42,6 +49,9 @@ internal static class VideoMarksModel
     private static ArMark? Mark(JsonNode? node) =>
         Spot(node) is ArSpot at ? new ArMark(at, Text(node!["label"]), Text(node["text"])) : null;
 
+    private static (ArSpot From, ArSpot To)? Leg(JsonNode? node) =>
+        node is JsonObject leg && Spot(leg["from"]) is ArSpot from && Spot(leg["to"]) is ArSpot to ? (from, to) : null;
+
     public static ArReading? Ar(JsonObject? view) =>
         view is not null && Flag(view["available"])
             ? new ArReading(
@@ -51,7 +61,11 @@ internal static class VideoMarksModel
                     .Select(leg => (From: Spot(leg["from"]), To: Spot(leg["to"])))
                     .Where(leg => leg.From is not null && leg.To is not null)
                     .Select(leg => (leg.From!.Value, leg.To!.Value))
-                    .ToList())
+                    .ToList(),
+                Mark(view["aim"]),
+                Mark(view["impact"]),
+                Spot(view["lead"]),
+                Leg(view["leadLine"]))
             : null;
 
     public static (double X, double Y) ArOffset(ArSpot spot, double width, double height) => (spot.X * width, height / 2 - spot.Up * width);

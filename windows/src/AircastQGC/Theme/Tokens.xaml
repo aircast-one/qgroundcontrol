@@ -39,6 +39,8 @@
             <SolidColorBrush x:Key="MapFieldBrush" Color="#293034" />
             <SolidColorBrush x:Key="VideoEdgeBrush" Color="#99000000" />
             <SolidColorBrush x:Key="VideoArRouteBrush" Color="#FFE9A6" />
+            <SolidColorBrush x:Key="VideoArAimBrush" Color="#FF3B30" />
+            <SolidColorBrush x:Key="VideoArImpactBrush" Color="#FFD60A" />
             <SolidColorBrush x:Key="DetectionBrush" Color="#4DD0E1" />
             <SolidColorBrush x:Key="DetectionTargetBrush" Color="#FFD54F" />
             <SolidColorBrush x:Key="ObstacleNearBrush" Color="#FF0000" />
@@ -105,6 +107,8 @@
             <SolidColorBrush x:Key="MapFieldBrush" Color="#E8E4DA" />
             <SolidColorBrush x:Key="VideoEdgeBrush" Color="#99000000" />
             <SolidColorBrush x:Key="VideoArRouteBrush" Color="#FFE9A6" />
+            <SolidColorBrush x:Key="VideoArAimBrush" Color="#FF3B30" />
+            <SolidColorBrush x:Key="VideoArImpactBrush" Color="#FFD60A" />
             <SolidColorBrush x:Key="DetectionBrush" Color="#4DD0E1" />
             <SolidColorBrush x:Key="DetectionTargetBrush" Color="#FFD54F" />
             <SolidColorBrush x:Key="ObstacleNearBrush" Color="#FF0000" />
