@@ -230,6 +230,8 @@ pub const OWNED: &[&str] = &[
     ESTIMATOR_ORIGIN,
     crate::videoar::GROUND_AT,
     MARK_TARGET,
+    crate::dropzone::ADD_CORNER,
+    crate::dropzone::CLEAR,
 ];
 
 pub fn owns(path: &str) -> bool {
@@ -580,6 +582,8 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         COMMIT_LINKS => crate::linkconnect::commit(backend, path),
         GROUND_SPEED | AIRSPEED => crate::speed::change(backend, path, args),
         crate::videoar::GROUND_AT => crate::videoar::ground_at(backend, args),
+        crate::dropzone::ADD_CORNER => crate::dropzone::add_corner(backend, args),
+        crate::dropzone::CLEAR => crate::dropzone::clear(backend),
         GOTO_LOCATION | POINT_AT | SET_HOME | FACE_POINT | ESTIMATOR_ORIGIN | MARK_TARGET => {
             match crate::mapclick::Click::of(path) {
                 Some(click) => crate::mapclick::send(backend, click, path, args),

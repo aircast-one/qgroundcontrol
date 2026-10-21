@@ -3716,6 +3716,28 @@ impl Vehicle {
                         .flatten()
                         .map_or_else(Vec::new, |aim_at| self.aim_autodrop(aim_at, now_ms));
                 }
+                let outside = crate::dropzone::refusal(
+                    &crate::dropzone::corners(),
+                    Some(crate::dropsim::impact(release)),
+                    crate::dropzone::required(!self.on_real_link()),
+                );
+                if outside.is_some() {
+                    self.note_progress(
+                        source,
+                        started_ms,
+                        now_ms,
+                        Some((release.position, target)),
+                        None,
+                        outside,
+                    );
+                    self.autodrop = Some(crate::autodrop::State::Waiting {
+                        phase,
+                        source,
+                        started_ms,
+                        due_ms: now_ms + crate::autodrop::AUTODROP_TICK_MS,
+                    });
+                    return Vec::new();
+                }
                 let fired = self.start_guided(
                     &json!({"action": "gripper", "gripAction": 0.0, "bay": self.autodrop_bay}),
                     now_ms,
@@ -3741,7 +3763,23 @@ impl Vehicle {
         }
     }
 
+    pub fn on_real_link(&self) -> bool {
+        self.link_kinds
+            .labels
+            .get(&self.link)
+            .is_some_and(|(_, kind)| kind != "mock")
+    }
+
     pub fn start_guided(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        if action.get("autodrop") == Some(&Value::Bool(true))
+            && let Some(reason) = crate::dropzone::refusal(
+                &crate::dropzone::corners(),
+                None,
+                crate::dropzone::required(!self.on_real_link()),
+            )
+        {
+            return Err(reason.to_string());
+        }
         match action.get("action").and_then(Value::as_str) {
             Some("rcOverride") => {
                 let whole = |key: &str| action.get(key).and_then(Value::as_i64);
@@ -9733,6 +9771,28 @@ mod tests {
         assert_eq!(
             vehicle.release_now().map(|release| release.altitude_agl_m),
             Some(40.0)
+        );
+    }
+
+    #[test]
+    fn an_intercept_on_a_real_link_without_a_drop_zone_is_refused() {
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.link_kinds.labels =
+            BTreeMap::from([(vehicle.link, ("Radio".to_string(), "serial".to_string()))]);
+        let refused = vehicle.start_guided(
+            &json!({ "action": "goto", "latitude": 47.0, "longitude": 8.0, "autodrop": true }),
+            0,
+        );
+        assert_eq!(refused, Err(crate::dropzone::NO_ZONE.to_string()));
+        vehicle.link_kinds.labels =
+            BTreeMap::from([(vehicle.link, ("Sim".to_string(), "mock".to_string()))]);
+        assert_ne!(
+            vehicle.start_guided(
+                &json!({ "action": "goto", "latitude": 47.0, "longitude": 8.0, "autodrop": true }),
+                0,
+            ),
+            Err(crate::dropzone::NO_ZONE.to_string()),
+            "a simulated vehicle is exempt"
         );
     }
 

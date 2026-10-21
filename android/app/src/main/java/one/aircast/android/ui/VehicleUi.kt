@@ -148,6 +148,7 @@ private fun waitingText(progress: JSONObject?): String {
         "junction" -> "Holding: junction ahead$left"
         "unseen" -> "Holding: waiting to see the $target again$left"
         "offTarget" -> "Holding: not lined up yet$left"
+        "outsideDropZone" -> "Holding: it would land outside the drop zone$left"
         else -> listOfNotNull(
             "Chasing the $target",
             progress.optDouble("distanceMeters").takeIf { !it.isNaN() }?.let { "%.0f m".format(it) },

@@ -1482,6 +1482,7 @@ mod deps_cover_reads {
         ("deviceforms", include_str!("deviceforms.rs")),
         ("devicewizard", include_str!("devicewizard.rs")),
         ("dropsim", include_str!("dropsim.rs")),
+        ("dropzone", include_str!("dropzone.rs")),
         ("pumpguard", include_str!("pumpguard.rs")),
         ("advancedui", include_str!("advancedui.rs")),
         ("applog", include_str!("applog.rs")),

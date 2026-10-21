@@ -319,6 +319,8 @@ fn offers(backend: &dyn Backend) -> Vec<Offer> {
         (flying, Offer { id: "Heading", path: "vehicle.guidedModeChangeHeading", label: "Set Heading", title: "Change Heading", message: "Set the vehicle heading towards the specified location", confirm: true }),
         (!gps, Offer { id: "EstimatorOrigin", path: "vehicle.setEstimatorOrigin", label: "Set Estimator Origin", title: "Set Estimator Origin", message: "Make the specified location the estimator origin", confirm: true }),
         (true, Offer { id: "MarkTarget", path: "vehicle.markTarget", label: "Mark as target", title: "Mark Target", message: "Mark the specified location as the manual target for Auto Intercept", confirm: false }),
+        (true, Offer { id: "DropZoneCorner", path: crate::dropzone::ADD_CORNER, label: "Add drop zone corner", title: "Drop Zone", message: "Add this point as a corner of the area Auto Intercept may drop into", confirm: false }),
+        (!crate::dropzone::corners().is_empty(), Offer { id: "DropZoneClear", path: crate::dropzone::CLEAR, label: "Clear drop zone", title: "Clear Drop Zone", message: "Remove every corner of the drop zone", confirm: true }),
     ]
     .into_iter()
     .filter_map(|(shown, offer)| shown.then_some(offer))
@@ -726,7 +728,8 @@ mod tests {
                 "ROI at location",
                 "Set home here",
                 "Set Heading",
-                "Mark as target"
+                "Mark as target",
+                "Add drop zone corner"
             ]
         );
         assert_eq!(
@@ -734,7 +737,7 @@ mod tests {
                 flying: false,
                 ..flying
             }),
-            ["Set home here", "Mark as target"],
+            ["Set home here", "Mark as target", "Add drop zone corner"],
             "on the ground only home can be moved, but a target can always be marked"
         );
         assert_eq!(
@@ -743,7 +746,12 @@ mod tests {
                 sensors: 0,
                 ..flying
             }),
-            ["Set home here", "Set Estimator Origin", "Mark as target"],
+            [
+                "Set home here",
+                "Set Estimator Origin",
+                "Mark as target",
+                "Add drop zone corner"
+            ],
             "a vehicle without GPS is offered an origin"
         );
         let actions = |b: &Offered| map_click_view(b, &[])["actions"].clone();

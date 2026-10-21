@@ -73,6 +73,7 @@ pub mod devicetrack;
 pub mod deviceviews;
 pub mod devicewizard;
 pub mod dropsim;
+pub mod dropzone;
 pub mod escal;
 pub mod escview;
 pub mod espbridge;

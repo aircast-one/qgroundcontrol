@@ -269,10 +269,18 @@ fn document_fences(backend: &dyn Backend, fence: &Value, rally: &Value) -> Value
 }
 
 pub fn fly_fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    match crate::coreplan::fly_fence_and_rally() {
+    let mut view = match crate::coreplan::fly_fence_and_rally() {
         Some((fence, rally)) => document_fences(backend, &fence, &rally),
         None => fences_view(backend, &[]),
+    };
+    if let (Some(mut zone), Some(polygons)) = (
+        crate::dropzone::fence_polygon(),
+        view.get_mut("polygons").and_then(Value::as_array_mut),
+    ) {
+        zone["index"] = json!(polygons.len());
+        polygons.push(zone);
     }
+    view
 }
 
 pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
