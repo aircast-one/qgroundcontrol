@@ -32,12 +32,30 @@ class Picking(unittest.TestCase):
 
 class Lock(unittest.TestCase):
     def test_a_seen_lock_is_refreshed_and_a_briefly_missing_one_is_kept(self):
-        lock = {"id": 3, "seen": 10.0}
+        lock = {"id": 3, "seen": 10.0, "at": (0.55, 0.55), "velocity": (0.0, 0.0)}
         self.assertEqual(kept(lock, [box(0.5, 0.5, id=3)], 11.0)["seen"], 11.0)
-        self.assertEqual(kept(lock, [box(0.5, 0.5, id=4)], 10.0 + LOST_AFTER_S), lock)
+        self.assertEqual(kept(lock, [box(0.9, 0.9, id=4)], 10.0 + LOST_AFTER_S), lock)
+
+    def test_a_renumbered_track_near_where_the_target_was_heading_keeps_the_lock(self):
+        lock = {"id": 3, "seen": 10.0, "at": (0.40, 0.50), "velocity": (0.10, 0.0)}
+        moved_on = box(0.45, 0.45, w=0.1, h=0.1, id=8)
+        decoy = box(0.05, 0.05, id=9)
+        held = kept(lock, [decoy, moved_on], 11.0)
+        self.assertEqual(held["id"], 8)
+        self.assertAlmostEqual(held["velocity"][0], 0.10, places=6)
+
+    def test_a_box_far_from_where_the_target_should_be_is_not_adopted(self):
+        lock = {"id": 3, "seen": 10.0, "at": (0.40, 0.50), "velocity": (0.0, 0.0)}
+        self.assertEqual(kept(lock, [box(0.85, 0.85, id=8)], 10.5), lock)
 
     def test_a_lock_missing_too_long_is_released(self):
-        self.assertIsNone(kept({"id": 3, "seen": 10.0}, [], 10.0 + LOST_AFTER_S + 0.1))
+        self.assertIsNone(
+            kept(
+                {"id": 3, "seen": 10.0, "at": (0.5, 0.5), "velocity": (0.0, 0.0)},
+                [],
+                10.0 + LOST_AFTER_S + 0.1,
+            )
+        )
         self.assertIsNone(kept(None, [box(0.5, 0.5)], 1.0))
 
 

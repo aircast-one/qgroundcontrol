@@ -1,4 +1,5 @@
 import argparse
+import concurrent.futures
 import json
 import math
 import threading
@@ -9,7 +10,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PICK_RADIUS = 0.08
 LOST_AFTER_S = 2.0
+REACQUIRE_RADIUS = 0.12
+LENS_EVERY_S = 2.0
 FIELDS = ("x", "y", "w", "h", "label", "conf")
+LENS = "settings.gimbalControllerSettings.cameraHFov"
 
 
 def centre(box):
@@ -39,11 +43,40 @@ def picked_rect(boxes, rect):
     return best if best and overlap(best, rect) > 0.1 else None
 
 
+def locked_on(box, now, previous=None):
+    at = centre(box)
+    moved = previous and now > previous["seen"]
+    velocity = (
+        tuple((a - b) / (now - previous["seen"]) for a, b in zip(at, previous["at"], strict=True))
+        if moved
+        else (previous or {}).get("velocity", (0.0, 0.0))
+    )
+    return {"id": box["id"], "seen": now, "at": at, "velocity": velocity}
+
+
+def expected(lock, now):
+    return tuple(
+        a + v * (now - lock["seen"]) for a, v in zip(lock["at"], lock["velocity"], strict=True)
+    )
+
+
 def kept(lock, boxes, now):
     if lock is None:
         return None
-    if any(b.get("id") == lock["id"] for b in boxes):
-        return lock | {"seen": now}
+    same = next((b for b in boxes if b.get("id") == lock["id"]), None)
+    there = expected(lock, now)
+    nearest = min(
+        (
+            b
+            for b in boxes
+            if b.get("id") is not None and math.dist(centre(b), there) <= REACQUIRE_RADIUS
+        ),
+        key=lambda b: math.dist(centre(b), there),
+        default=None,
+    )
+    found = same or nearest
+    if found:
+        return locked_on(found, now, lock)
     return lock if now - lock["seen"] <= LOST_AFTER_S else None
 
 
@@ -68,14 +101,26 @@ def read(phone, path):
 
 
 class Device:
-    def __init__(self, phone, camera, detector, fps):
-        self.phone, self.camera, self.detector, self.period = phone, camera, detector, 1 / fps
+    def __init__(self, phone, camera, detector, fps, log=None):
+        self.phone, self.camera, self.detector, self.period, self.log = (
+            phone,
+            camera,
+            detector,
+            1 / fps,
+            log,
+        )
         self.changed = threading.Condition()
+        self.pool = concurrent.futures.ThreadPoolExecutor(2)
+        self.lens, self.lens_read = None, 0.0
         self.boxes, self.lock, self.captured, self.frames = [], None, 0.0, 0
 
     def world(self):
-        pose = read(self.phone, "view.syntheticView")
-        return pose, read(self.phone, "view.syntheticOverlays").get("cars") or []
+        pose = self.pool.submit(read, self.phone, "view.syntheticView")
+        overlays = self.pool.submit(read, self.phone, "view.syntheticOverlays")
+        if time.time() - self.lens_read > LENS_EVERY_S:
+            self.lens, self.lens_read = read(self.phone, LENS).get("rawValue"), time.time()
+        shown = pose.result()
+        return shown | {"fov": self.lens or shown.get("fov")}, overlays.result().get("cars") or []
 
     def run(self):
         while True:
@@ -93,6 +138,16 @@ class Device:
                 self.boxes, self.captured, self.frames = boxes, started, self.frames + 1
                 self.lock = kept(self.lock, boxes, started)
                 self.changed.notify_all()
+            if self.log:
+                locked = (self.lock or {}).get("id")
+                record = {
+                    "t": started,
+                    "boxes": len(boxes),
+                    "lock": locked,
+                    "seen": any(b.get("id") == locked for b in boxes),
+                }
+                self.log.write(json.dumps(record) + "\n")
+                self.log.flush()
             time.sleep(max(self.period - (time.time() - started), 0))
 
     def latest(self, after):
@@ -107,7 +162,7 @@ class Device:
                 if visual
                 else picked(self.boxes, request["x"], request["y"])
             )
-            self.lock = {"id": box["id"], "seen": self.captured} if box else None
+            self.lock = locked_on(box, self.captured) if box else None
             return {"status": "tracking", "id": box["id"]} if box else {"status": "no-target"}
 
     def stop(self):
@@ -177,6 +232,7 @@ def main():
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--conf", type=float, default=0.2)
     parser.add_argument("--fps", type=float, default=10)
+    parser.add_argument("--log", type=argparse.FileType("a"), help="append one JSON line per frame")
     args = parser.parse_args()
     from detector import Detector
     from scene import VirtualCamera
@@ -186,6 +242,7 @@ def main():
         VirtualCamera(),
         Detector(args.model, imgsz=args.imgsz, conf=args.conf),
         args.fps,
+        args.log,
     )
     threading.Thread(target=device.run, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", args.port), serving(device)).serve_forever()
