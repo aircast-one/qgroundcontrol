@@ -62,6 +62,7 @@
                         </controls:LayoutSlot>
                     </StackPanel>
                     <controls:OrbitReadout HorizontalAlignment="Center" />
+                    <controls:AutoInterceptStatus x:Name="Intercept" HorizontalAlignment="Center" />
                     <InfoBar x:Name="Notice" Severity="Error" IsClosable="True" IsOpen="False"
                              HorizontalAlignment="Center" MaxWidth="480" />
                     <controls:LayoutSlot Key="messageBanner" Label="Vehicle messages" Hideable="False" HorizontalAlignment="Center">

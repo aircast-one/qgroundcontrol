@@ -45,6 +45,7 @@ public sealed partial class GuidedBar : UserControl
     private IReadOnlyList<(FrameworkElement Label, bool Primary)> _deckLabels = [];
     private IReadOnlyList<GuidedOffer> _offers = Array.Empty<GuidedOffer>();
     private GuidedOffer? _stop;
+    private MenuFlyoutItem? _extra;
     private bool _cutFired;
     private double _room = double.PositiveInfinity;
 
@@ -99,6 +100,15 @@ public sealed partial class GuidedBar : UserControl
 
     public void Stop() => BridgeWatch.Stop(WatchClient);
 
+    public void ShowExtra((string Label, string Glyph, Action Act)? extra)
+    {
+        if (_extra is { } shown) MoreMenu.Items.Remove(shown);
+        _extra = extra is { } offered ? Item(offered.Label, "", offered.Glyph, true, false, offered.Act) : null;
+        if (_extra is { } item) MoreMenu.Items.Insert(0, item);
+        MoreItem.Visibility = Seen(MoreMenu.Items.Count > 0);
+        Present();
+    }
+
     public void ShowChecklist(bool shown, string tip)
     {
         ChecklistItem.Visibility = Seen(shown);
@@ -135,7 +145,8 @@ public sealed partial class GuidedBar : UserControl
         _deckLabels = items.Select(item => (item.Label, item.Primary)).ToList();
         Strip.ItemsSource = items.Select(item => item.View).ToList();
         MoreMenu.Items.Clear();
-        rest.Select(MoreItemFor)
+        (_extra is { } extra ? [extra] : Array.Empty<MenuFlyoutItem>())
+            .Concat(rest.Select(MoreItemFor))
             .Concat(gripper.Count > 0 && !payloadOnRail ? [Item(PayloadLabel, "", PayloadGlyph, payloadReady, false, Payload)] : [])
             .ToList()
             .ForEach(MoreMenu.Items.Add);

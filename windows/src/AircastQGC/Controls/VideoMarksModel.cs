@@ -18,7 +18,7 @@ internal sealed record ArReading(
     ArSpot? Lead = null,
     (ArSpot From, ArSpot To)? LeadLine = null);
 
-internal sealed record DetectionBox(double X, double Y, double W, double H, string Label, double Confidence, bool Target);
+internal sealed record DetectionBox(double X, double Y, double W, double H, string Caption, bool Target);
 
 internal sealed record Detections(bool Available, bool Stale, IReadOnlyList<DetectionBox> Boxes, string? Error);
 
@@ -83,8 +83,7 @@ internal static class VideoMarksModel
                     Number(box["y"]) ?? 0,
                     Number(box["w"]) ?? 0,
                     Number(box["h"]) ?? 0,
-                    Text(box["label"]),
-                    Number(box["confidence"]) ?? 0,
+                    Text(box["caption"]),
                     Flag(box["target"]))).ToList(),
                 Said(view["error"]))
             : null;
@@ -94,18 +93,6 @@ internal static class VideoMarksModel
 
     public static string? Trouble(Detections? reading) =>
         reading is { Available: true } ? reading.Error ?? (reading.Stale ? NoFrames : null) : null;
-
-    public static string BoxCaption(DetectionBox box)
-    {
-        var percent = (int)(box.Confidence * 100);
-        return (string.IsNullOrWhiteSpace(box.Label), percent <= 0) switch
-        {
-            (true, true) => "",
-            (true, false) => $"{percent}%",
-            (false, true) => box.Label,
-            _ => $"{box.Label} {percent}%",
-        };
-    }
 
     public static LensReading? Lens(JsonObject? view) =>
         view is not null && Text(view["class"]) == "Lens"

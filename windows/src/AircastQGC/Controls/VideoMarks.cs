@@ -331,9 +331,8 @@ public sealed partial class VideoMarks : UserControl
         };
         Canvas.SetLeft(frame, box.X * width);
         Canvas.SetTop(frame, box.Y * height);
-        var caption = VideoMarksModel.BoxCaption(box);
-        if (caption.Length == 0) return [frame];
-        var tag = new Border { Background = colour, Padding = new Thickness(3, 0, 3, 0), Child = FormLook.Caption(caption, "AccentOnBrush") };
+        if (box.Caption.Length == 0) return [frame];
+        var tag = new Border { Background = colour, Padding = new Thickness(3, 0, 3, 0), Child = FormLook.Caption(box.Caption, "AccentOnBrush") };
         Canvas.SetLeft(tag, box.X * width);
         Canvas.SetTop(tag, box.Y * height);
         return [frame, tag];
