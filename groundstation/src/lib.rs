@@ -91,6 +91,7 @@ pub mod firstrun;
 pub mod flasher;
 pub mod flasherform;
 pub mod flightrecord;
+pub mod flightreplay;
 pub mod flightmodes;
 pub mod flowimage;
 pub mod flystate;

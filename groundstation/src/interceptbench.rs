@@ -124,6 +124,20 @@ struct World {
     rover: Sim,
     car: VecDeque<(u64, (f64, f64), f64)>,
     sequence: u8,
+    recording: Option<Recording>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Recording {
+    pub tlog: Vec<u8>,
+    pub detections: String,
+    pub truth: String,
+}
+
+fn framed(header: MavHeader, message: &MavMessage) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let _ = mavlink::write_v2_msg(&mut bytes, header, message);
+    bytes
 }
 
 impl World {
@@ -137,6 +151,12 @@ impl World {
                     component_id: component,
                     sequence: self.sequence,
                 };
+                if let Some(recording) = self.recording.as_mut() {
+                    recording.tlog.extend(crate::tlog::record(
+                        now_ms * 1000,
+                        &framed(header, &message),
+                    ));
+                }
                 let sent = self
                     .hub
                     .on_frame(origin(), &header, &message, now_ms * 1000, now_ms);
@@ -260,6 +280,16 @@ pub fn run(
     detector: Detector,
     on_roads: bool,
 ) -> Outcome {
+    recorded(network, seed, detector, on_roads, false).0
+}
+
+pub fn recorded(
+    network: Arc<crate::roads::Network>,
+    seed: u64,
+    detector: Detector,
+    on_roads: bool,
+    record: bool,
+) -> (Outcome, Option<Recording>) {
     crate::roads::provide(on_roads.then(|| network.clone()));
     crate::gimbalgeo::forget();
     *crate::detections::lock() = Default::default();
@@ -271,6 +301,7 @@ pub fn run(
         rover: Sim::new(options(Vehicle::Rover, false), CAR, None),
         car: VecDeque::new(),
         sequence: 0,
+        recording: record.then(Recording::default),
     };
     let bearing = rng.next() * 360.0;
     let distance = 60.0 + rng.next() * 60.0;
@@ -327,6 +358,11 @@ pub fn run(
             world.rover.tick(now);
             let ((lat, lon), _, heading, _) = world.rover.truth();
             world.car.push_back((now, (lat, lon), heading));
+            if let Some(recording) = world.recording.as_mut() {
+                recording
+                    .truth
+                    .push_str(&format!("{},{lat},{lon}\n", now as f64 / 1000.0));
+            }
             let outs = world.copter.tick(now);
             let ((dlat, dlon), alt, _, _) = world.copter.truth();
             let aim = world.copter.camera_aim();
@@ -351,6 +387,12 @@ pub fn run(
                 "ageMs": due - captured,
                 "boxes": [{"x": x, "y": y, "w": w, "h": h, "label": "car", "conf": 0.9, "target": true}],
             });
+            if let Some(recording) = world.recording.as_mut() {
+                recording.detections.push_str(&format!(
+                    "{}\n",
+                    crate::flightrecord::detection_record(&payload, now * 1000, due - captured)
+                ));
+            }
             let frame = crate::detections::frame_from(&payload, now, 0);
             if let Some(vehicle) = world.vehicle() {
                 let grounded = crate::detections::grounded(frame, |centre| {
@@ -449,7 +491,8 @@ pub fn run(
             break;
         }
     }
-    released.map_or(
+    let recording = world.recording.take();
+    let outcome = released.map_or(
         Outcome {
             dropped: false,
             hit: false,
@@ -503,7 +546,8 @@ pub fn run(
                     > TURNED_DEG,
             }
         },
-    )
+    );
+    (outcome, recording)
 }
 
 pub fn network() -> Arc<crate::roads::Network> {
@@ -614,6 +658,41 @@ mod tests {
         println!(
             "{}",
             serde_json::to_string_pretty(&bench(runs, detector, on_roads)).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_recorded_bench_flight_replays_with_the_tracking_the_live_run_had() {
+        let _exclusive = exclusive();
+        let (outcome, recording) = recorded(network(), 3, DETECTOR, true, true);
+        let recording = recording.expect("recorded");
+        crate::gimbalgeo::forget();
+        let report = crate::flightreplay::replay(
+            &recording.tlog,
+            &crate::flightreplay::detections(&recording.detections),
+            &crate::flightreplay::truth_csv(&recording.truth),
+            Some(COPTER),
+        );
+        *crate::detections::lock() = Default::default();
+        crate::roads::provide(None);
+        let p50 = report["trackErrorAgainstTruth"]["p50M"]
+            .as_f64()
+            .unwrap_or(f64::NAN);
+        let first = report["wouldRelease"][0]["truthMissM"]
+            .as_f64()
+            .unwrap_or(f64::NAN);
+        println!(
+            "live: {outcome:?}\nreplay: track p50 {p50:.2} m, p95 {:.2} m over {} samples, first would-release truth miss {first:.2} m",
+            report["trackErrorAgainstTruth"]["p95M"], report["trackErrorAgainstTruth"]["count"]
+        );
+        assert!(
+            outcome.dropped && p50 < 3.0,
+            "{}",
+            report["trackErrorAgainstTruth"]
+        );
+        assert!(
+            first < 2.2,
+            "the replayed release lands on the car's true track: {first}"
         );
     }
 
