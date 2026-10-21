@@ -149,6 +149,25 @@ pub fn parse(url: &str, port: Option<u16>) -> Option<Source> {
     })
 }
 
+fn caption(b: &Value) -> String {
+    let label = b.get("label").and_then(Value::as_str).unwrap_or("");
+    let percent = (b
+        .get("conf")
+        .and_then(Value::as_f64)
+        .filter(|s| s.is_finite())
+        .unwrap_or(0.0)
+        * 100.0) as i64;
+    match b.get("target").and_then(Value::as_bool) == Some(true) {
+        false => String::new(),
+        true => match (label.is_empty(), percent <= 0) {
+            (true, true) => String::new(),
+            (true, false) => format!("{percent}%"),
+            (false, true) => label.to_string(),
+            (false, false) => format!("{label} {percent}%"),
+        },
+    }
+}
+
 pub fn frame_from(payload: &Value, received_ms: u64, assumed_latency_ms: u64) -> Frame {
     let latency_ms = payload
         .get("ageMs")
@@ -170,6 +189,7 @@ pub fn frame_from(payload: &Value, received_ms: u64, assumed_latency_ms: u64) ->
                         "label": b.get("label").and_then(Value::as_str).unwrap_or(""),
                         "confidence": b.get("conf").and_then(Value::as_f64).filter(|score| score.is_finite()),
                         "target": b.get("target").and_then(Value::as_bool).unwrap_or(false),
+                        "caption": caption(b),
                     })
                 })
                 .collect()
@@ -602,7 +622,7 @@ mod tests {
         assert_eq!(fresh["ageMs"], 500);
         assert_eq!(
             fresh["boxes"][0],
-            json!({ "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4, "label": "car", "confidence": 0.91, "target": true })
+            json!({ "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4, "label": "car", "confidence": 0.91, "target": true, "caption": "car 91%" })
         );
 
         assert!(!feed.went_stale(5_500));

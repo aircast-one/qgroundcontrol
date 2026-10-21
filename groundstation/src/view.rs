@@ -15,6 +15,7 @@ use crate::apmsubmotors;
 use crate::applog;
 use crate::attitude;
 use crate::autodrop;
+use crate::autointercept;
 use crate::autotune;
 use crate::battery;
 use crate::calibration;
@@ -1069,6 +1070,11 @@ pub const VIEWS: &[View] = &[
         compute: autodrop::status_view,
     },
     View {
+        path: autointercept::VIEW,
+        deps: &[],
+        compute: autointercept::view,
+    },
+    View {
         path: "view.geoToNed",
         deps: geo::DEPS,
         compute: geo::geo_to_ned_view,
@@ -1254,6 +1260,7 @@ impl View {
             "view.viewer3dVehicle" => viewer3d::vehicle_deps(),
             "view.syntheticOverlays" => crate::synthview::overlay_deps(),
             "view.videoAr" => crate::videoar::deps(),
+            "view.autoIntercept" => autointercept::deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }
@@ -1353,6 +1360,7 @@ mod deps_cover_reads {
         ("apmmeta", include_str!("apmmeta.rs")),
         ("autoconnect", include_str!("autoconnect.rs")),
         ("autodrop", include_str!("autodrop.rs")),
+        ("autointercept", include_str!("autointercept.rs")),
         ("battery", include_str!("battery.rs")),
         ("batteryfacts", include_str!("batteryfacts.rs")),
         ("buildings", include_str!("buildings.rs")),

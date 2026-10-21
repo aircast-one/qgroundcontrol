@@ -174,6 +174,7 @@ pub const OWNED: &[&str] = &[
     PAUSE_VEHICLE,
     GRIPPER,
     AUTO_INTERCEPT_DROP,
+    crate::autointercept::PICK_ANOTHER,
     FIX_PAYLOAD,
     RESUME_MISSION,
     PLAN_SEND,
@@ -691,6 +692,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             answer
         }
         AUTO_INTERCEPT_DROP => crate::autodrop::run(backend, args),
+        crate::autointercept::PICK_ANOTHER => crate::autointercept::pick_another(backend),
         FIX_PAYLOAD => crate::guided::fix_payload(backend, path, args),
         RESUME_MISSION => {
             crate::guided::invoke_valued(backend, crate::guided::Valued::Resume, path, args)
