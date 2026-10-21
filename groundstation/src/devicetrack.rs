@@ -11,12 +11,42 @@ use crate::router::Backend;
 pub const TRACK_CHANGED: &str = "core.deviceTrack@changed";
 const CAMERA: &str = "vehicle.cameraManager.currentCameraInstance";
 const TRACK_TIMEOUT: Duration = Duration::from_secs(3);
+const TAP_REACH: f64 = 0.15;
 const JSON: [(&str, &str); 2] = [
     ("Content-Type", "application/json"),
     ("Accept", "application/json"),
 ];
 
 static ARMED: AtomicBool = AtomicBool::new(false);
+static LOCKED: AtomicBool = AtomicBool::new(false);
+
+pub fn locked() -> bool {
+    LOCKED.load(Ordering::Relaxed)
+}
+
+fn box_under(boxes: &[Value], x: f64, y: f64) -> Option<(f64, f64, f64, f64)> {
+    let rect = |b: &Value| {
+        Some((
+            b.get("x")?.as_f64()?,
+            b.get("y")?.as_f64()?,
+            b.get("w")?.as_f64()?,
+            b.get("h")?.as_f64()?,
+        ))
+    };
+    let rects: Vec<(f64, f64, f64, f64)> = boxes.iter().filter_map(rect).collect();
+    let gap = |(bx, by, bw, bh): (f64, f64, f64, f64)| (bx + bw / 2.0 - x).hypot(by + bh / 2.0 - y);
+    rects
+        .iter()
+        .copied()
+        .find(|&(bx, by, bw, bh)| (bx..=bx + bw).contains(&x) && (by..=by + bh).contains(&y))
+        .or_else(|| {
+            rects
+                .iter()
+                .copied()
+                .filter(|&r| gap(r) <= TAP_REACH)
+                .min_by(|a, b| gap(*a).total_cmp(&gap(*b)))
+        })
+}
 static ANNOUNCED: Mutex<Value> = Mutex::new(Value::Null);
 
 fn camera_tracks(camera: &Value) -> bool {
@@ -96,7 +126,16 @@ pub fn start(source: &Source, args: &str) -> Value {
         None => {
             return json!({ "ok": false, "result": Value::Null, "refusal": "malformed", "reason": "Tracking takes a rectangle {x, y, width, height} or a point {x, y} and a radius, each a fraction of the image from 0 to 1." });
         }
-        Some(Request::Point { x, y, .. }) => (source.track_url(), json!({ "x": x, "y": y })),
+        Some(Request::Point { x, y, .. }) => match crate::detections::lock()
+            .fresh_boxes(crate::hub::now_ms())
+            .and_then(|(boxes, _)| box_under(&boxes, x, y))
+        {
+            Some((bx, by, bw, bh)) => (
+                format!("{}/visual", source.track_url()),
+                json!({ "x": bx, "y": by, "w": bw, "h": bh }),
+            ),
+            None => (source.track_url(), json!({ "x": x, "y": y })),
+        },
         Some(Request::Rect {
             x,
             y,
@@ -114,13 +153,16 @@ pub fn start(source: &Source, args: &str) -> Value {
         Some(body.to_string().as_bytes()),
         TRACK_TIMEOUT,
     );
-    answer(sent, |reply| {
+    let answered = answer(sent, |reply| {
         (reply.get("status").and_then(Value::as_str) == Some("no-target"))
             .then_some("Nothing to track there.")
-    })
+    });
+    LOCKED.store(answered["ok"] == true, Ordering::Relaxed);
+    answered
 }
 
 pub fn stop(source: &Source) -> Value {
+    LOCKED.store(false, Ordering::Relaxed);
     answer(
         crate::http::send("DELETE", &source.track_url(), &JSON, None, TRACK_TIMEOUT),
         |_| None,
@@ -152,6 +194,26 @@ mod tests {
             camera: "gimbal".into(),
             port: None,
         }
+    }
+
+    #[test]
+    fn a_tap_on_a_detection_seeds_the_visual_tracker_with_that_box() {
+        let boxes = [
+            json!({ "x": 0.40, "y": 0.40, "w": 0.30, "h": 0.30 }),
+            json!({ "x": 0.47, "y": 0.47, "w": 0.02, "h": 0.02 }),
+            json!({ "x": 0.80, "y": 0.10, "w": 0.04, "h": 0.04 }),
+        ];
+        assert_eq!(
+            box_under(&boxes, 0.42, 0.42),
+            Some((0.40, 0.40, 0.30, 0.30)),
+            "inside a box wins"
+        );
+        assert_eq!(
+            box_under(&boxes, 0.90, 0.12),
+            Some((0.80, 0.10, 0.04, 0.04)),
+            "just beside a small car still picks it"
+        );
+        assert_eq!(box_under(&boxes, 0.10, 0.90), None, "nothing near the tap");
     }
 
     #[test]
