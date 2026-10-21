@@ -36,6 +36,7 @@ pub const CAR_LENGTH_M: f64 = 4.4;
 pub const CAR_WIDTH_M: f64 = 1.8;
 pub const RELEASE_MARGIN_M: f64 = 0.5;
 pub const TURNED_DEG: f64 = 15.0;
+pub const FRESH_SIGHTING_MS: u64 = 300;
 pub const TURN_WINDOW_MS: u64 = 2_000;
 const PLAN_STEP_S: f64 = 0.05;
 const PLAN_HORIZON_S: f64 = 60.0;
@@ -287,6 +288,10 @@ fn on_car(along_m: f64, across_m: f64, miss_m: f64, moving: bool, margin_m: f64)
         }
         false => miss_m <= CAR_WIDTH_M / 2.0 - margin_m,
     }
+}
+
+pub fn sighted(age_ms: Option<u64>) -> bool {
+    age_ms.is_some_and(|age| age <= FRESH_SIGHTING_MS)
 }
 
 pub fn releasable(plan: Plan, turned_deg: f64) -> bool {
@@ -1109,5 +1114,15 @@ mod tests {
             answer["reason"], "this build has no core vehicle to steer",
             "it must have resolved a target and reached the core_guided call, not been refused for lack of a gimbal: {answer}"
         );
+    }
+
+    #[test]
+    fn a_release_needs_the_target_seen_in_the_last_300_ms() {
+        assert!(sighted(Some(0)) && sighted(Some(FRESH_SIGHTING_MS)));
+        assert!(
+            !sighted(Some(FRESH_SIGHTING_MS + 1)),
+            "a 1.5 s coast is a prediction, not a sighting"
+        );
+        assert!(!sighted(None), "never seen");
     }
 }

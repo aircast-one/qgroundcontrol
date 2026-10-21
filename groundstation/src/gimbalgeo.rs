@@ -59,6 +59,7 @@ pub struct Track {
     east_m: f64,
     velocity: Velocity,
     at_ms: u64,
+    seen_ms: u64,
     headings: [Option<(u64, f64)>; HEADING_SAMPLES],
     steady: u8,
 }
@@ -85,6 +86,7 @@ impl Track {
             east_m: 0.0,
             velocity: velocity.unwrap_or_default(),
             at_ms: fix.at_ms,
+            seen_ms: fix.at_ms,
             headings: [None; HEADING_SAMPLES],
             steady: 0,
         }
@@ -212,7 +214,14 @@ fn followed(
     now_ms: u64,
 ) -> Option<Target> {
     let mut held = slot.lock().unwrap_or_else(PoisonError::into_inner);
-    *held = stepped(*held, seen);
+    let before = held.map(|track| (track.at_ms, track.origin));
+    *held = stepped(*held, seen).map(|track| match Some((track.at_ms, track.origin)) != before {
+        true => Track {
+            seen_ms: now_ms,
+            ..track
+        },
+        false => track,
+    });
     held.filter(|track| track.fresh(now_ms))
         .map(|track| track.target(now_ms))
 }
@@ -254,6 +263,13 @@ pub fn associated(seen: &[crate::detections::Seen], at_ms: u64) -> Option<Point>
         }
         None => seen.iter().find(|s| s.target).map(|s| s.position),
     }
+}
+
+pub fn tracked_sighting_age_ms(now_ms: u64) -> Option<u64> {
+    PICKED_TRACK
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .map(|track| now_ms.saturating_sub(track.seen_ms))
 }
 
 pub fn tracked_turn_deg(now_ms: u64, window_ms: u64) -> Option<f64> {
@@ -740,6 +756,41 @@ mod tests {
                 .iter()
                 .all(|step| (step - track.velocity.north_mps * 0.02).abs() < 1e-6),
             "every 20 ms the prediction advances by speed x 20 ms, got {steps:?}"
+        );
+    }
+
+    #[test]
+    fn only_an_accepted_detection_counts_as_seeing_the_target() {
+        let _fixes = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
+        forget();
+        let seen = |at_ms: u64, north: f64| {
+            Some((
+                Sensor::Detector,
+                Fix {
+                    position: metres_north(north),
+                    at_ms,
+                },
+                None,
+            ))
+        };
+        tracked(seen(1_000, 0.0), 1_300);
+        tracked(seen(1_100, 0.5), 1_400);
+        assert_eq!(
+            tracked_sighting_age_ms(1_500),
+            Some(100),
+            "counted from when the detection arrived, not from when the frame was taken"
+        );
+        tracked(None, 1_800);
+        assert_eq!(
+            tracked_sighting_age_ms(1_800),
+            Some(400),
+            "a missed frame is not a sighting"
+        );
+        tracked(seen(1_200, 500.0), 1_900);
+        assert_eq!(
+            tracked_sighting_age_ms(1_900),
+            Some(500),
+            "a box rejected as a jump is not the target seen again"
         );
     }
 

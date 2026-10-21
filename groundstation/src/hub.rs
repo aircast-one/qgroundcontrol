@@ -3286,6 +3286,15 @@ impl Vehicle {
         }
     }
 
+    fn seen_lately(&self, source: crate::autodrop::TargetSource, now_ms: u64) -> bool {
+        match source {
+            crate::autodrop::TargetSource::Tracked => {
+                crate::autodrop::sighted(crate::gimbalgeo::tracked_sighting_age_ms(now_ms))
+            }
+            _ => true,
+        }
+    }
+
     pub(crate) fn turned_deg(&self, source: crate::autodrop::TargetSource, now_ms: u64) -> f64 {
         match source {
             crate::autodrop::TargetSource::Tracked => {
@@ -3599,7 +3608,10 @@ impl Vehicle {
                 let plan = crate::autodrop::plan(release, target, roads.as_deref());
                 let until_ms = ((plan.release_in_s - self.release_latency_s) * 1000.0) as u64;
                 let due = until_ms == 0;
-                if !due || !crate::autodrop::releasable(plan, self.turned_deg(source, now_ms)) {
+                if !due
+                    || !crate::autodrop::releasable(plan, self.turned_deg(source, now_ms))
+                    || !self.seen_lately(source, now_ms)
+                {
                     let wait_ms = match due {
                         true => crate::autodrop::AUTODROP_TICK_MS,
                         false => until_ms.min(crate::autodrop::AUTODROP_TICK_MS),
