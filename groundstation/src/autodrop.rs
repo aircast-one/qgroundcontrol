@@ -121,18 +121,23 @@ fn every_branch_hits(
     flown_s: f64,
     drop_offset: (f64, f64),
 ) -> bool {
+    let heading_now = gimbalgeo::heading_of(target.velocity);
     courses_on_road(target, roads, flown_s, true).is_some_and(|branches| {
         branches.iter().all(|branch| {
             let there = sampled(branch, flown_s);
             let (miss_n, miss_e) = (drop_offset.0 + there.north_m, drop_offset.1 + there.east_m);
             let (along_m, across_m, moving) = framed(miss_n, miss_e, there.heading_deg);
-            on_car(
-                along_m,
-                across_m,
-                miss_n.hypot(miss_e),
-                moving,
-                RELEASE_MARGIN_M,
-            )
+            let straight_on = heading_now
+                .zip(there.heading_deg)
+                .is_some_and(|(now, then)| gimbalgeo::turn_between(now, then) <= TURNED_DEG);
+            straight_on
+                && on_car(
+                    along_m,
+                    across_m,
+                    miss_n.hypot(miss_e),
+                    moving,
+                    RELEASE_MARGIN_M,
+                )
         })
     })
 }

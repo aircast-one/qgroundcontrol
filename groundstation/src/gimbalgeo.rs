@@ -70,6 +70,10 @@ fn wrapped(degrees: f64) -> f64 {
     (degrees + 540.0).rem_euclid(360.0) - 180.0
 }
 
+pub fn turn_between(from_deg: f64, to_deg: f64) -> f64 {
+    wrapped(to_deg - from_deg).abs()
+}
+
 impl Track {
     pub fn start(sensor: Sensor, fix: Fix, velocity: Option<Velocity>) -> Track {
         Track {
