@@ -38,6 +38,16 @@ fn main() {
         (None, None) => Vec::new(),
     };
     let vehicle = argument(&given, "--vehicle").and_then(|id| id.parse().ok());
+    if let Some(out) = argument(&given, "--attitude") {
+        let rows: String =
+            groundstation::flightreplay::camera_attitude(&tlog_bytes, vehicle.unwrap_or(1))
+                .iter()
+                .map(|(at, heading, pitch)| format!("{at},{heading},{pitch}\n"))
+                .collect();
+        std::fs::write(&out, format!("wallUs,headingDeg,pitchDeg\n{rows}"))
+            .unwrap_or_else(|e| panic!("{out}: {e}"));
+        return;
+    }
     let report = groundstation::flightreplay::replay(&tlog_bytes, &detections, &truth, vehicle);
     let text = serde_json::to_string_pretty(&report).expect("a report serialises");
     match argument(&given, "--out").map(PathBuf::from) {

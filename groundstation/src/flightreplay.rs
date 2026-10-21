@@ -82,6 +82,45 @@ pub fn truth_from_tlog(tlog: &[u8], system: u8) -> Vec<(u64, f64, f64)> {
         .collect()
 }
 
+fn quaternion_angles(q: [f32; 4]) -> (f64, f64) {
+    let [w, x, y, z] = q.map(f64::from);
+    let pitch = (2.0 * (w * y - z * x)).clamp(-1.0, 1.0).asin().to_degrees();
+    let yaw = (2.0 * (w * z + x * y))
+        .atan2(1.0 - 2.0 * (y * y + z * z))
+        .to_degrees();
+    (yaw, pitch)
+}
+
+pub fn camera_attitude(tlog: &[u8], system: u8) -> Vec<(u64, f64, f64)> {
+    frames(tlog)
+        .into_iter()
+        .filter(|(_, header, _)| header.system_id == system)
+        .scan(
+            (None::<f64>, None::<(f64, f64, bool)>),
+            |(vehicle, gimbal), (at, _, message)| {
+                match message {
+                    MavMessage::ATTITUDE(d) => *vehicle = Some(f64::from(d.yaw).to_degrees()),
+                    MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(d) => {
+                        let (yaw, pitch) = quaternion_angles(d.q);
+                        let bits = d.flags.bits();
+                        let earth = bits & 64 != 0 || (bits & 32 == 0 && bits & 16 != 0);
+                        *gimbal = Some((yaw, pitch, earth));
+                    }
+                    _ => {}
+                }
+                Some(vehicle.zip(*gimbal).map(|(heading, (yaw, pitch, earth))| {
+                    let absolute = match earth {
+                        true => yaw,
+                        false => heading + yaw,
+                    };
+                    (at, absolute.rem_euclid(360.0), pitch)
+                }))
+            },
+        )
+        .flatten()
+        .collect()
+}
+
 fn frames(tlog: &[u8]) -> Vec<(u64, MavHeader, MavMessage)> {
     let mut decoded = Vec::new();
     crate::tlog::for_each(tlog, |at, header, message| {
@@ -270,6 +309,19 @@ mod tests {
             r#"<gpx><trk><trkseg><trkpt lat="47.0" lon="8.0"><time>2023-11-14T22:13:20Z</time></trkpt></trkseg></trk></gpx>"#,
         );
         assert_eq!(gpx, vec![(1_700_000_000_000_000, 47.0, 8.0)]);
+    }
+
+    #[test]
+    fn a_gimbal_quaternion_reads_as_yaw_and_pitch() {
+        let half = |deg: f64| deg.to_radians() / 2.0;
+        let yawed = [half(90.0).cos() as f32, 0.0, 0.0, half(90.0).sin() as f32];
+        let tilted = [half(-30.0).cos() as f32, 0.0, half(-30.0).sin() as f32, 0.0];
+        let (yaw, _) = quaternion_angles(yawed);
+        let (_, pitch) = quaternion_angles(tilted);
+        assert!(
+            (yaw - 90.0).abs() < 1e-4 && (pitch + 30.0).abs() < 1e-4,
+            "{yaw} {pitch}"
+        );
     }
 
     #[test]
