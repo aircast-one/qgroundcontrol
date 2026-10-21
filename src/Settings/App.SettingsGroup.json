@@ -431,6 +431,13 @@
             "label": "Detection latency in milliseconds"
         },
         {
+            "name": "autodropReleaseLatencyMs",
+            "shortDesc": "Milliseconds from Auto Intercept's drop command to the confirmed release, learned from every drop",
+            "type": "uint32",
+            "default": 150,
+            "label": "Drop release latency in milliseconds"
+        },
+        {
             "name": "loginAirLink",
             "shortDesc": "AirLink User Name",
             "type": "string",

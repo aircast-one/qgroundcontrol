@@ -300,6 +300,7 @@ const HIDDEN: &[&str] = &[
     "coreLinks",
     "detectionsHttpPort",
     "detectionsLatencyMs",
+    "autodropReleaseLatencyMs",
     "favoriteParameters",
     "activeVideoSource",
     "videoSource",

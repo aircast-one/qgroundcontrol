@@ -11,6 +11,16 @@ pub const COMMAND_LATENCY_S: f64 = 0.15;
 const LATENCY_RANGE_S: std::ops::RangeInclusive<f64> = 0.05..=1.0;
 const LATENCY_LEARNING: f64 = 0.5;
 
+pub const RELEASE_LATENCY_SETTING: &str = "settings.appSettings.autodropReleaseLatencyMs";
+
+pub fn calibrated_latency_s() -> f64 {
+    crate::settingsstore::raw_setting(RELEASE_LATENCY_SETTING)
+        .and_then(|ms| ms.as_f64())
+        .map_or(COMMAND_LATENCY_S, |ms| {
+            (ms / 1000.0).clamp(*LATENCY_RANGE_S.start(), *LATENCY_RANGE_S.end())
+        })
+}
+
 pub fn learned_latency_s(held_s: f64, measured_s: f64) -> f64 {
     (held_s + LATENCY_LEARNING * (measured_s - held_s))
         .clamp(*LATENCY_RANGE_S.start(), *LATENCY_RANGE_S.end())

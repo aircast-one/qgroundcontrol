@@ -727,7 +727,7 @@ impl Vehicle {
             rc_due: None,
             autodrop: None,
             autodrop_aimed_ms: 0,
-            release_latency_s: crate::autodrop::COMMAND_LATENCY_S,
+            release_latency_s: crate::autodrop::calibrated_latency_s(),
             manual_target: None,
             poses: std::collections::VecDeque::new(),
             gimbal_follow_due_ms: 0,
@@ -4223,6 +4223,11 @@ impl Vehicle {
                 self.release_latency_s = crate::autodrop::learned_latency_s(
                     self.release_latency_s,
                     now_ms.saturating_sub(at_ms) as f64 / 1000.0,
+                );
+                #[cfg(not(test))]
+                crate::settingsstore::set_raw(
+                    crate::autodrop::RELEASE_LATENCY_SETTING,
+                    &json!((self.release_latency_s * 1000.0).round() as u32),
                 );
             }
         }
