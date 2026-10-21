@@ -584,6 +584,7 @@ fn alone(
 pub fn bench(runs: u64, detector: Detector, on_roads: bool) -> Value {
     let _exclusive = exclusive();
     let network = network();
+    crate::terrainservice::level_around(47.3977, 8.5456);
     let outcomes: Vec<Outcome> = (1..=runs)
         .map(|seed| alone(network.clone(), seed, detector, on_roads))
         .collect();
@@ -620,6 +621,7 @@ mod tests {
     #[test]
     fn one_bench_run_drops_on_a_road_car() {
         let _exclusive = exclusive();
+        crate::terrainservice::level_around(47.3977, 8.5456);
         let outcome = alone(network(), 3, DETECTOR, true);
         assert!(outcome.dropped && outcome.hit, "{outcome:?}");
     }

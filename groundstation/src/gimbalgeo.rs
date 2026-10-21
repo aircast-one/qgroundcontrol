@@ -294,7 +294,7 @@ pub fn picture_to_ground(
     aim: (f64, f64),
     point: (f64, f64),
 ) -> Option<Point> {
-    picture_to_plane(lens, vehicle, altitude_agl_m, aim, point, 0.0)
+    picture_to_plane(lens, vehicle, altitude_agl_m, aim, point, &|_| 0.0)
 }
 
 pub fn picture_to_plane(
@@ -303,7 +303,7 @@ pub fn picture_to_plane(
     altitude_agl_m: f64,
     (yaw_deg, pitch_deg): (f64, f64),
     (x, y): (f64, f64),
-    plane_m: f64,
+    plane: &dyn Fn((f64, f64)) -> f64,
 ) -> Option<Point> {
     let camera = crate::videoar::Camera {
         heading: yaw_deg,
@@ -317,7 +317,7 @@ pub fn picture_to_plane(
         (camera, Some(lens.vertical_deg)),
         IMAGE_ASPECT,
         (2.0 * x - 1.0, 1.0 - 2.0 * y),
-        &|_| plane_m,
+        plane,
     )
     .map(|(lat, lon)| Point { lat, lon })
 }
@@ -711,6 +711,29 @@ mod tests {
             change > 0.0 && change <= MAX_ACCEL_MPS2 * 0.1 + 1e-9,
             "a 15 m jump a tenth of a second on moves the speed by at most {} m/s, got {change}",
             MAX_ACCEL_MPS2 * 0.1
+        );
+    }
+
+    #[test]
+    fn a_picture_point_meets_raised_ground_short_of_where_it_meets_the_home_plane() {
+        let drone = Point {
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let lens = lens_from(Some(70.0), None);
+        let ahead = |plane: &dyn Fn((f64, f64)) -> f64| {
+            let ground = picture_to_plane(lens, drone, 40.0, (0.0, -30.0), (0.5, 0.5), plane)
+                .expect("below the horizon");
+            geo_to_ned(ground.lat, ground.lon, 0.0, (47.0, 8.0, 0.0)).0
+        };
+        let (flat, raised) = (ahead(&|_| 0.0), ahead(&|_| 6.0));
+        assert!(
+            (flat - 40.0 / 30f64.to_radians().tan()).abs() < 1.0,
+            "{flat}"
+        );
+        assert!(
+            (flat - raised - 6.0 / 30f64.to_radians().tan()).abs() < 1.0,
+            "6 m of rise at a 30° look is about 10 m nearer: {flat} vs {raised}"
         );
     }
 

@@ -3335,7 +3335,7 @@ impl Vehicle {
         point: (f64, f64),
         at_ms: u64,
     ) -> Option<crate::dropsim::Point> {
-        self.picture_to_plane_at(point, 0.0, at_ms)
+        self.picture_to_plane_at(point, &|_| 0.0, at_ms)
     }
 
     pub(crate) fn object_at(
@@ -3343,13 +3343,18 @@ impl Vehicle {
         centre: (f64, f64),
         at_ms: u64,
     ) -> Option<crate::dropsim::Point> {
-        self.picture_to_plane_at(centre, crate::gimbalgeo::OBJECT_HALF_HEIGHT_M, at_ms)
+        let terrain = crate::videoar::terrain_above(self.home.map(|(lat, lon, _)| (lat, lon)));
+        self.picture_to_plane_at(
+            centre,
+            &|at| terrain(at) + crate::gimbalgeo::OBJECT_HALF_HEIGHT_M,
+            at_ms,
+        )
     }
 
     fn picture_to_plane_at(
         &self,
         point: (f64, f64),
-        plane_m: f64,
+        plane: &dyn Fn((f64, f64)) -> f64,
         at_ms: u64,
     ) -> Option<crate::dropsim::Point> {
         let pose = self.pose_at(at_ms)?;
@@ -3359,7 +3364,7 @@ impl Vehicle {
             pose.altitude_agl_m,
             pose.aim?,
             point,
-            plane_m,
+            plane,
         )
     }
 
@@ -3556,17 +3561,19 @@ impl Vehicle {
                     });
                     let lost = self
                         .followed_last
-                        .and_then(|last| coasted(last, now_ms))
+                        .filter(|(_, seen_ms)| *seen_ms >= started_ms)
                         .filter(|_| {
                             now_ms.saturating_sub(self.autodrop_aimed_ms)
                                 >= crate::autodrop::REAIM_EVERY_MS
                         })
-                        .and_then(|coasting| {
-                            crate::autodrop::aim_point(
+                        .and_then(|last| match coasted(last, now_ms) {
+                            Some(coasting) => crate::autodrop::aim_point(
                                 release.position,
                                 coasting,
                                 crate::autodrop::roads_under(coasting).as_deref(),
-                            )
+                            ),
+                            None => coasted(last, last.1 + GIMBAL_FOLLOW_COAST_MS)
+                                .map(|held| held.position),
                         });
                     return lost.map_or_else(Vec::new, |aim_at| self.aim_autodrop(aim_at, now_ms));
                 };
@@ -10067,8 +10074,8 @@ mod tests {
         );
         vehicle.tick_autodrop(8_500);
         assert_eq!(
-            vehicle.autodrop_aimed_ms, 2_000,
-            "lost for longer than the coast: no guess to fly at"
+            vehicle.autodrop_aimed_ms, 8_500,
+            "lost for longer than the coast: it goes to where the coast ended and waits there instead of flying on"
         );
         assert!(matches!(
             vehicle.autodrop,
