@@ -27,6 +27,7 @@ public partial class App : Application
     {
         try
         {
+            Elevation.AwaitPrevious(Environment.GetCommandLineArgs());
             var link = DeepLinks.In(Environment.CommandLine);
             if (await DeepLinks.Forwarded(link, Arrived))
             {

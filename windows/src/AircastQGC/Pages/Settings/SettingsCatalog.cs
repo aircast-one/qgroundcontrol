@@ -54,6 +54,8 @@ internal static class SettingsCatalog
     public const string MountpointBlock = "Mountpoint";
     public const string DevicePage = Device.DeviceLink.Page;
 
+    private static readonly SettingsEntry FlasherEntry = new(Flasher.Page, false, false, false, false, false, false, false, 0, [], Flasher.Keywords);
+
     private static readonly SettingsEntry DeviceEntry = new(DevicePage, false, false, false, false, false, false, false, 0, [],
         "aircast device aircastd companion raspberry pi camera cameras wi-fi network tailscale recordings flight log telemetry engineering setup");
 
@@ -62,6 +64,7 @@ internal static class SettingsCatalog
     public static readonly IReadOnlyList<(string Title, PageLook Look)> Looks =
     [
         ("General", new PageLook(SettingsGroup.General, "")),
+        (Flasher.Page, new PageLook(SettingsGroup.General, "")),
         ("PX4 Log Transfer", new PageLook(SettingsGroup.General, "\uE896")),
         ("Firmware Upgrade", new PageLook(SettingsGroup.General, "")),
         ("App Logging", new PageLook(SettingsGroup.General, "")),
@@ -107,7 +110,7 @@ internal static class SettingsCatalog
             .Where(page => page.Title.Length > 0)
             .Where(page => page.SectionCount > 0 || page.ShowsLinks || page.ShowsAbout || page.ShowsConsole || page.ShowsPx4Logs || page.ShowsVideoSources)
             .ToList() is { Count: > 0 } served
-            ? Ordered(served.Concat(PilotSettings.Pages.Select(Pilot)).Append(DeviceEntry))
+            ? Ordered(served.Concat(PilotSettings.Pages.Select(Pilot)).Append(FlasherEntry).Append(DeviceEntry))
             : [];
 
     private static SettingsEntry Pilot((string Title, SettingsGroup Group) page) =>

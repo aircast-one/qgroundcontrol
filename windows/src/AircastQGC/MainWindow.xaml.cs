@@ -30,7 +30,7 @@ public sealed partial class MainWindow : Window
     private string _page = NavPane.Fly;
     private ImmutableDictionary<string, UIElement> _pages = ImmutableDictionary<string, UIElement>.Empty;
     private bool _videoMain;
-    private bool _threeD;
+    private bool _threeD = FlyViewStore.LoadThreeD();
     private bool _fullScreen;
     private AppWindowPresenter? _windowed;
 
@@ -71,6 +71,7 @@ public sealed partial class MainWindow : Window
 
         NoVehicle.VehiclePresenceChanged += (_, present) => ShowVehicleOverlays(present);
         NoVehicle.OpenConnectionsRequested += (_, _) => OpenLinks();
+        NoVehicle.OpenFlasherRequested += (_, _) => OpenSettings(Pages.Settings.Flasher.Page);
 
         MapButtons.ZoomInRequested += (_, _) =>
         {
@@ -351,6 +352,7 @@ public sealed partial class MainWindow : Window
 
     private void ShowThreeD(bool on)
     {
+        if (on != _threeD) FlyViewStore.SaveThreeD(on);
         _threeD = on;
         Viewer.Visibility = Shown(on && !_videoMain);
         MapButtons.ThreeD(Viewer.Enabled, on);

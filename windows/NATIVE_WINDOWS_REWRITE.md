@@ -180,11 +180,28 @@ Show the map back to 2D. Frame cost at 2427×1518 px: median 2.8 ms, p95 3.4 ms 
 measured median 4.5–4.8 ms with a 4,370-building extract.
 Screenshots: `~/.claude/jobs/6037fcd4/tmp/design/round9-merge/shot-fly1-3d-flying.jpg`, `shot-fly1-1024-3d.jpg`.
 
-Still open: the core's `view.viewer3dVehicle` always reports altitude 0 and heading 0, so the drone is drawn on the ground facing north
-(Android shares it). `view.viewer3dPath` returns no segments for a normal uploaded mission, because the takeoff item has no coordinate,
-so no route line or T marker shows on any head. Real mouse, wheel and keys were not driven: the camera was moved through the same
-methods in-process. The chosen view is not saved across restarts (Android saves it). Switching OSM files builds the faces on the UI
-thread (about 100 ms for 4,370 buildings).
+Still open: real mouse, wheel and keys were not driven: the camera was moved through the same methods in-process. Switching OSM files
+builds the faces on the UI thread (about 100 ms for 4,370 buildings). Round 10 closed the altitude, heading, route and saved-view gaps.
+
+### Fly 3D view fixes (round 10)
+
+Core `viewer3d.rs`: `view.viewer3dVehicle` reads `altitudeRelative` and `heading` from the facade's `facts` array (raw metres first).
+Before, it looked for top-level fields and always drew the drone at 0 m facing north. A takeoff with no coordinate now stands on the
+vehicle home (else the plan's launch point), so an uploaded mission gets the green T marker and its route starts there, as in upstream
+QGC. The JSON shape is unchanged, so Android and web get both fixes with no edits. Windows keeps the 2D/3D choice across restarts in
+`%LOCALAPPDATA%\AircastQGC\fly-view.json` (`Controls/FlyViewStore`), as Android keeps its fly view.
+
+Merged build (2026-10-21, scratch variant, mock ArduCopter, the core's Zurich OSM extract, a takeoff and two waypoints sent with
+`plan.sendToVehicle`): the downloaded takeoff is cmd 22, altitude-only, with no coordinate. `view.viewer3dPath` gives T (green, over
+home at 50 m), 2 and 3 with orange segments T→2→3. In Auto at 50 m `view.viewer3dVehicle` read `[8.5463516, 47.3979914, 50.0]`
+heading 64, matching the vehicle's facts, and the drone sits on the route ribbon. Show the 3D view stored "ThreeD"; after a restart
+the 3D view came back; turning the setting off fell back to the map and stored "Map". The 3D setting, OSM path and `fly-view.json`
+were restored afterwards.
+Screenshots: `~/.claude/jobs/6037fcd4/tmp/design/round10-merge/shot-m10-3d-leg1.jpg`, `shot-m10-3d-restarted.jpg`.
+
+Still open: Windows keeps only 2D or 3D, not whether video is the main view (Android keeps Video, Map or ThreeD as one value). The
+debug API's `/mission/upload?file=` fails on the native host with `Unknown plan "all"`. Heading was judged from the readings and the
+default camera angle, not by orbiting.
 
 ### Video gestures and aspect ratio (round 9)
 
@@ -338,6 +355,7 @@ Not checked: flashing (no USB board on the VM), a message-rate change taking eff
 - ✓ settings — comm links · ◐ settings — mavlink (signing Disable not seen: the mock never completes signing) · ✓ settings — flight modes · ✓ settings — adsb server
 - ◐ settings — packet radio (no Wi-Fi adapter on the VM: only "Unavailable" and the Automatic adapter seen) · ✓ settings — remote id (GCS position block seen with an NMEA fix; the VM's own Windows fix is too coarse) · ✓ settings — rtk gps
 - ◐ settings — firmware upgrade (Analyze's FirmwareTool; flashing not checked, no USB board on the VM) · ✓ settings — 3d viewer · ✓ settings — about
+- ◐ settings — aircast card (SD-card flasher, see SD-card flasher (round 10); a virtual disk was written, no real reader or UAC prompt seen)
 
 One root page (`Pages/Settings/SettingsPage`, code-only) over `view.settings`, with the shared form engine in `Forms/` (also exposed as
 `FormView.SetupPage` for Vehicle Setup). Driven on `winvm` with no vehicle and against the mock ArduCopter and PX4 (2026-10-20). Seen working:
@@ -402,7 +420,37 @@ Settings search lists the On-screen RC controls editor under Editors > Fly view 
 
 The core fixes the head relies on (Windows serial ports and baud rates, `links` fields kept when the native host answers null, mock battery
 ids 0/1, `page`/`screen` per setup component, and round 6's fleet Return, Bluetooth host and synthetic view) are on fork/main (808c4bd521).
-The stage runtime's `groundstation.dll` is built from that commit.
+Round 10's core changes (`windisk.rs`, the `platformdisk` fallback, the `windows-sys` dependency and the `viewer3d.rs` fixes) are not on
+fork/main yet. The stage runtime's `groundstation.dll` is built from fork/main 667f20a521 plus those files, and they must land on fork/main
+before the head files that use them.
+
+### SD-card flasher (round 10)
+
+Settings > Aircast card (`Pages/Settings/FlasherPage`, General group, USB glyph) ports Android's Card → Setup → Write flow over
+`view.flasher` and the unchanged `flasher.*` commands; `FlasherModel` holds Android's pure step helpers. It opens from a row at the top of
+Settings > General and from "New drone? Flash an Aircast card" on Fly's no-vehicle card. Write asks first in a ContentDialog ("Erase and
+write"), then shows a ProgressBar with percent, speed and time left, Cancel, and ends in Card ready, Cancelled or Failed. A DisplayRequest
+keeps the screen on and navigation is locked while busy. Without administrator rights the card fails with "Writing a card needs
+administrator rights" and an InfoBar offers Restart as administrator (`Core/Elevation`: ShellExecute `runas` with `--after-exit-of <pid>`;
+`App.OnLaunched` waits for the old instance so the ports are free).
+
+Core: `groundstation/src/windisk.rs` is the Windows raw-disk backend behind `platformdisk` (`windows-sys` 0.61.2 as a `cfg(windows)`
+dependency, already in Cargo.lock). It lists `\\.\PhysicalDrive0..63` on the USB, SD and MMC buses, never the disk holding Windows or the
+app, as "vendor product · size". It opens the card read/write with the admin and write-protect refusals, and locks and dismounts the card's
+volumes only on the first write. `QGC_FLASHER_VIRTUAL_DISKS=1` also lists file-backed virtual disks; it is a test switch the app never sets.
+
+Merged build (2026-10-21, scratch variant with the virtual-disk switch, a fresh 6 GB VHDX holding a mounted FAT volume): Fly's link
+opened the page with only "Msft Virtual Disk · 6.4 GB" listed, not the NVMe system disk. After a safety check (File Backed Virtual,
+6442450944 bytes, not boot or system, the VHDX path, card id `\\.\PhysicalDrive1`) it downloaded Aircast OS v0.3.5, then wrote, verified
+and customised the card in 166 s (about 35 MB/s). Read back: MBR 55AA, a FAT32 `bootfs` with user-data (hostname falcon-11, pi
+password), network-config (field-net, regulatory domain US) and meta-data, and ext4 magic on partition 2. Relaunched with a Basic User
+token, the card showed the admin refusal with the InfoBar, its Restart dialog opened, and Cancel kept the app usable. The VHDX and the
+image cache were deleted afterwards.
+Screenshots: `~/.claude/jobs/6037fcd4/tmp/design/round10-merge/shot-m10-writing.jpg`, `shot-m10-done.jpg`, `shot-m10-needs-admin.jpg`.
+
+Still open: real elevation (UAC is off on the VM, so `runas` relaunches with the same token); no real USB or SD reader; external USB
+disks are listed too (no removable-media filter); closing the window mid-write gives no warning and leaves the card half-written; the
+PC's Wi-Fi name prefill and the metered note are untested (no Wi-Fi on the VM); the light theme was not screenshotted.
 
 ## Parity backlog
 
@@ -480,13 +528,13 @@ full screen, and the round-6 merge smoke real mouse slides for arm, takeoff, cha
   (merged build: "31 fps · 720p" on the full-size video) · ◐ AR overlay (draws from an injected payload; live home and waypoints blocked by the
   core's `synthview.rs overlays()`) · ✓ detection boxes from aircastd (SSE stub) · ◐ synthetic view (DX12 SwapChainPanel; drag and
   drag aim not driven; see Fly).
-- Settings: ✓ the light palette · ◐ app font size (XAML-built UI rescales live, code-built panels on their next render) · SD-card flasher (needs a Windows raw-disk backend in core; L).
+- Settings: ✓ the light palette · ◐ app font size (XAML-built UI rescales live, code-built panels on their next render) · ◐ SD-card flasher (Settings > Aircast card over the core's Windows raw-disk backend; a virtual disk was written, no real reader seen).
 - Plan: ✓ survey camera-calc block (brand/model, overlap, distance mode, set by altitude or ground resolution) · ✓ writes on a background lane; a big-survey edit still stalls
   the UI for the redraw (74–126 ms).
 
 ### P3: polish or low value on desktop
 
-- ◐ 3D viewer as a Fly view (core: vehicle at 0 m facing north, no route segments) · ◐ overlay layout editing (see Fly) · ✓ telemetry display editor (right-click entry not driven).
+- ✓ 3D viewer as a Fly view (altitude, heading, route and the saved view fixed in round 10) · ◐ overlay layout editing (see Fly) · ✓ telemetry display editor (right-click entry not driven).
 - ✓ Heading tape · ✓ guided-value presets and quick picks · ✓ Android's −/+ stepper, tap-to-type and probe sentence (merged build on the mock
   ArduCopter at 10 m: "already at 10.0 m and will not move", + three times "climb 3.0 m to 13.0 m", − "12.0 m", typed 25 "climb 15.0 m to
   25.0 m", and the slide flew it to 25 m) · ✓ mission identity confirm ·

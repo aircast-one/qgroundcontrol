@@ -33,6 +33,7 @@ internal static class SettingsBodies
 
     public static UIElement Body(SettingsEntry page, SettingsNav nav) =>
         page.Title == SettingsCatalog.DevicePage ? Device.DeviceScreens.Home(nav)
+        : page.Title == Flasher.Page ? new FlasherPage()
         : page.Pilot is { } group ? Scrolled(PilotSettings.Tab(group, nav.Open))
         : page.ShowsLinks ? new LinksPanel(nav, Form(page, nav))
         : page.ShowsAbout ? Scrolled(About(page.HelpLinks))
@@ -127,10 +128,21 @@ internal static class SettingsBodies
         return row;
     }
 
+    private static UIElement FlasherRow(SettingsNav nav)
+    {
+        var row = FormLook.Stretched(
+            FormLook.Row(FormLook.Line(12, FormLook.Glyph(SettingsCatalog.Look(Flasher.Page).Glyph, 16),
+                FormLook.Stack(2, FormLook.Text(Flasher.Page), FormLook.Caption(Flasher.Glance))), FormLook.Glyph("", 12)),
+            Flasher.Page, () => nav.Open(Flasher.Page));
+        ToolTipService.SetToolTip(row, Flasher.Glance);
+        return FormLook.Margined(FormLook.Card(row), new Thickness(0, 0, 0, 8));
+    }
+
     private static FormHooks Hooks(SettingsEntry page, SettingsNav nav) => new()
     {
         Top = form => page.ShowsNtrip ? new NtripStatusPanel(form.Reload)
             : page.ShowsPacketRadio ? new PacketRadioPanel(form.Reload)
+            : page.Title == SettingsCatalog.General ? FlasherRow(nav)
             : null,
         Replace = (form, section) => section.Group switch
         {

@@ -48,6 +48,14 @@
                                FontSize="{ThemeResource FontSizeBody}" />
                 </StackPanel>
             </Button>
+            <HyperlinkButton x:Name="OpenFlasherButton"
+                             AutomationProperties.Name="New drone? Flash an Aircast card"
+                             ToolTipService.ToolTip="Set up an SD card for a new drone"
+                             HorizontalAlignment="Center"
+                             FontFamily="{ThemeResource AppFontFamily}"
+                             FontSize="{ThemeResource FontSizeBody}"
+                             Content="New drone? Flash an Aircast card"
+                             Click="OnOpenFlasher" />
         </StackPanel>
     </Border>
 </UserControl>

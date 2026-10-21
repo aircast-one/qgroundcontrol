@@ -14,6 +14,7 @@ public sealed partial class NoVehicleState : UserControl
     private bool? _present;
 
     public event EventHandler? OpenConnectionsRequested;
+    public event EventHandler? OpenFlasherRequested;
     public event EventHandler<bool>? VehiclePresenceChanged;
 
     public bool HasVehicle => _present ?? false;
@@ -45,4 +46,7 @@ public sealed partial class NoVehicleState : UserControl
 
     private void OnOpenConnections(object sender, RoutedEventArgs e) =>
         OpenConnectionsRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnOpenFlasher(object sender, RoutedEventArgs e) =>
+        OpenFlasherRequested?.Invoke(this, EventArgs.Empty);
 }
