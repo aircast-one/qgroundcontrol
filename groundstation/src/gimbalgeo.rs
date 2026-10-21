@@ -32,6 +32,7 @@ pub const MAX_JUMP_M: f64 = 20.0;
 pub const ASSOCIATE_M: f64 = 6.0;
 const GATE_GROWTH_MPS: f64 = 3.0;
 pub const REACQUIRE_MS: u64 = 10_000;
+pub const CONFIRM_FIXES: u8 = 3;
 pub const OBJECT_HALF_HEIGHT_M: f64 = 0.75;
 pub const COAST_MS: u64 = 1_500;
 const SMOOTHING: f64 = 0.75;
@@ -59,6 +60,7 @@ pub struct Track {
     velocity: Velocity,
     at_ms: u64,
     headings: [Option<(u64, f64)>; HEADING_SAMPLES],
+    steady: u8,
 }
 
 pub fn heading_of(velocity: Velocity) -> Option<f64> {
@@ -84,6 +86,7 @@ impl Track {
             velocity: velocity.unwrap_or_default(),
             at_ms: fix.at_ms,
             headings: [None; HEADING_SAMPLES],
+            steady: 0,
         }
     }
 
@@ -140,6 +143,10 @@ impl Track {
             velocity,
             at_ms: fix.at_ms,
             headings: self.remembered(fix.at_ms, velocity),
+            steady: match miss_north.hypot(miss_east) <= ASSOCIATE_M {
+                true => self.steady.saturating_add(1),
+                false => 0,
+            },
             ..self
         }
     }
@@ -228,7 +235,9 @@ pub fn associated(seen: &[crate::detections::Seen], at_ms: u64) -> Option<Point>
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .filter(|track| {
-            track.sensor == Sensor::Detector && at_ms.saturating_sub(track.at_ms) <= REACQUIRE_MS
+            track.sensor == Sensor::Detector
+                && track.steady >= CONFIRM_FIXES
+                && at_ms.saturating_sub(track.at_ms) <= REACQUIRE_MS
         });
     match held {
         Some(track) => {
@@ -477,6 +486,33 @@ mod tests {
                 at_ms,
             );
         });
+    }
+
+    #[test]
+    fn a_track_started_from_a_bad_fix_takes_the_devices_pick_until_it_has_settled() {
+        let _fixes = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
+        forget();
+        tracked(
+            Some((
+                Sensor::Detector,
+                Fix {
+                    position: east_of(north_of(0.0), 18.0),
+                    at_ms: 0,
+                },
+                None,
+            )),
+            0,
+        );
+        let car = crate::detections::Seen {
+            position: north_of(0.5),
+            target: true,
+        };
+        assert_eq!(
+            associated(&[car], 100),
+            Some(car.position),
+            "one fix taken while the camera swung is no reason to refuse where the device sees the car"
+        );
+        forget();
     }
 
     #[test]
