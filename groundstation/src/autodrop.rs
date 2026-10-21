@@ -8,6 +8,13 @@ use crate::read::flag;
 use crate::router::Backend;
 
 pub const COMMAND_LATENCY_S: f64 = 0.15;
+const LATENCY_RANGE_S: std::ops::RangeInclusive<f64> = 0.05..=1.0;
+const LATENCY_LEARNING: f64 = 0.5;
+
+pub fn learned_latency_s(held_s: f64, measured_s: f64) -> f64 {
+    (held_s + LATENCY_LEARNING * (measured_s - held_s))
+        .clamp(*LATENCY_RANGE_S.start(), *LATENCY_RANGE_S.end())
+}
 pub const MAX_RUN_S: f64 = 90.0;
 pub const AUTODROP_TICK_MS: u64 = 150;
 const GUIDED_GOTO_LIMIT_M: f64 = 950.0;

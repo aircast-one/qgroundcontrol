@@ -446,6 +446,7 @@ pub struct Vehicle {
     rc_due: Option<u64>,
     pub autodrop: Option<crate::autodrop::State>,
     pub autodrop_aimed_ms: u64,
+    pub release_latency_s: f64,
     pub manual_target: Option<(f64, f64)>,
     poses: std::collections::VecDeque<Pose>,
     gimbal_follow_due_ms: u64,
@@ -726,6 +727,7 @@ impl Vehicle {
             rc_due: None,
             autodrop: None,
             autodrop_aimed_ms: 0,
+            release_latency_s: crate::autodrop::COMMAND_LATENCY_S,
             manual_target: None,
             poses: std::collections::VecDeque::new(),
             gimbal_follow_due_ms: 0,
@@ -3595,8 +3597,7 @@ impl Vehicle {
                 self.followed_last = Some((target, now_ms));
                 let roads = crate::autodrop::roads_under(target);
                 let plan = crate::autodrop::plan(release, target, roads.as_deref());
-                let until_ms =
-                    ((plan.release_in_s - crate::autodrop::COMMAND_LATENCY_S) * 1000.0) as u64;
+                let until_ms = ((plan.release_in_s - self.release_latency_s) * 1000.0) as u64;
                 let due = until_ms == 0;
                 if !due || !crate::autodrop::releasable(plan, self.turned_deg(source, now_ms)) {
                     let wait_ms = match due {
@@ -4203,7 +4204,7 @@ impl Vehicle {
         }
     }
 
-    fn gripper_answered(&mut self, accepted: Option<bool>) {
+    fn gripper_answered(&mut self, accepted: Option<bool>, now_ms: u64) {
         let Some(sent) = self
             .gripper
             .filter(|g| g.outcome == crate::guided::GripperOutcome::Sent)
@@ -4216,6 +4217,14 @@ impl Vehicle {
             && answered.outcome == crate::guided::GripperOutcome::Confirmed
         {
             self.releases.extend(self.released(answered.bay));
+            if let Some(crate::autodrop::State::Fired { bottle, at_ms, .. }) = self.autodrop
+                && bottle + 1 == self.releases.len()
+            {
+                self.release_latency_s = crate::autodrop::learned_latency_s(
+                    self.release_latency_s,
+                    now_ms.saturating_sub(at_ms) as f64 / 1000.0,
+                );
+            }
         }
         self.gripper_released_ms = match answered.empties() {
             Some(true) => Some(answered.at_ms),
@@ -4633,9 +4642,9 @@ impl Vehicle {
                 } => {
                     match failure {
                         Failure::ResultOnly => {
-                            self.gripper_answered(Some(result == RESULT_ACCEPTED))
+                            self.gripper_answered(Some(result == RESULT_ACCEPTED), now_ms)
                         }
-                        Failure::NoResponse => self.gripper_answered(None),
+                        Failure::NoResponse => self.gripper_answered(None, now_ms),
                         Failure::Duplicate => {}
                     }
                     Vec::new()
@@ -10050,6 +10059,17 @@ mod tests {
             matches!(vehicle.autodrop, Some(crate::autodrop::State::Fired { .. })),
             "{:?}",
             vehicle.autodrop
+        );
+        vehicle.gripper_answered(Some(true), due + 400);
+        assert!(
+            (vehicle.release_latency_s - 0.275).abs() < 1e-9,
+            "the drop confirmed 0.4 s after the command pulls the 0.15 s guess halfway there: {}",
+            vehicle.release_latency_s
+        );
+        assert_eq!(
+            crate::autodrop::learned_latency_s(0.15, 30.0),
+            1.0,
+            "a lost acknowledgement cannot teach a latency longer than a second"
         );
     }
 
