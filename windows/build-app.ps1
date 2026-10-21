@@ -3,7 +3,8 @@ param(
   [string]$Config = "Release",
   [ValidateSet("arm64", "x64")] [string]$Arch = "arm64",
   [string]$Stage = "C:\aircast-head\AircastQGC",
-  [string]$GstRoot = ""
+  [string]$GstRoot = "",
+  [int]$Jobs = 4
 )
 $ErrorActionPreference = "Stop"
 
@@ -16,7 +17,7 @@ robocopy $proj $Stage /E /XD bin obj runtime /R:5 /W:2 /NFL /NDL /NP /NJH /NJS |
 Copy-Item (Join-Path $PSScriptRoot "global.json") $Stage -Force
 
 "=== build core DLL -> stage runtime ==="
-& (Join-Path $PSScriptRoot "build-core.ps1") -Target $target -OutDir (Join-Path $Stage "runtime")
+& (Join-Path $PSScriptRoot "build-core.ps1") -Target $target -OutDir (Join-Path $Stage "runtime") -Jobs $Jobs
 
 "=== build video DLL + GStreamer runtime -> stage runtime ==="
 $video = @{ Arch = $Arch; OutDir = (Join-Path $Stage "runtime") } + $(if ($GstRoot) { @{ GstRoot = $GstRoot } } else { @{} })

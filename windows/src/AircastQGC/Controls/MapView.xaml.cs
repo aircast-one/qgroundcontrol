@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using AircastQGC.Core;
+using AircastQGC.Forms;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -269,6 +270,7 @@ public sealed partial class MapView : UserControl
 
     private void Refresh()
     {
+        if (Live.Hidden(this)) return;
         var type = TileType ?? MapNative.CurrentType();
         if (type != _mapType)
         {
@@ -320,7 +322,7 @@ public sealed partial class MapView : UserControl
 
     private void Watch(string path, Action<JsonObject> apply)
     {
-        try { BridgeWatch.Watch(_watchPrefix + path, new[] { path }, apply); }
+        try { BridgeWatch.Watch(_watchPrefix + path, new[] { path }, Live.WhileShown(this, apply)); }
         catch (Exception) { }
         apply(Read(path));
     }

@@ -140,6 +140,7 @@
     </ResourceDictionary.ThemeDictionaries>
 
     <FontFamily x:Key="AppFontFamily">Inter</FontFamily>
+    <FontFamily x:Key="IconFontFamily">Segoe Fluent Icons,Segoe MDL2 Assets</FontFamily>
 
     <Color x:Key="OsdShadowColor">#99000000</Color>
 

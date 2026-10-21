@@ -82,12 +82,13 @@ internal sealed record FlyStatus(
     bool ReadyToFly,
     bool Stale,
     bool RcSupported,
+    bool RcRequired,
     string RcSignalText,
     int? RcSignal,
     bool? RcOverride,
     TelemetryLink? Telemetry)
 {
-    public static readonly FlyStatus None = new(false, false, null, "", "", true, false, true, false, false, false, "", null, null, null);
+    public static readonly FlyStatus None = new(false, false, null, "", "", true, false, true, false, false, false, true, "", null, null, null);
 
     public static FlyStatus Parse(JsonObject? view) =>
         StatusJson.Is(view, "FlyState")
@@ -103,6 +104,7 @@ internal sealed record FlyStatus(
                 StatusJson.Flag(view["readyToFly"]),
                 StatusJson.Text(view["staleNotice"]).Length > 0,
                 StatusJson.Flag(view["rcSupported"]),
+                StatusJson.Flag(view["rcRequired"], true),
                 StatusJson.Text(view["rcSignalText"]),
                 StatusJson.Whole(view["rcSignal"]),
                 StatusJson.MaybeFlag(view["rcOverride"]),
@@ -110,7 +112,9 @@ internal sealed record FlyStatus(
             : None;
 
     public (string Text, bool Lost)? RcCell =>
-        RcSupported && RcSignalText.Trim().Length > 0 ? ($"{RcSignalText} RC", RcSignal == 0) : null;
+        !RcSupported || RcSignalText.Trim().Length == 0 ? null
+            : RcSignal == 0 && !RcRequired ? ("No RC", false)
+            : ($"{RcSignalText} RC", RcSignal == 0);
 
     public IReadOnlyList<DetailRow> RcRows =>
         RcSignalText.Trim().Length > 0 ? [new DetailRow("RSSI", RcSignalText)] : [];

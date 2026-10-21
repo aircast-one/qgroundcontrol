@@ -77,12 +77,16 @@ internal sealed class LinksPanel : UserControl
         edit.Click += (_, _) => _nav.Push($"Edit {row.Name}", new LinkEditor(row, _nav));
         delete.Click += (_, _) => Delete(row);
         more.Flyout = new MenuFlyout { Items = { edit, delete } };
+        var walled = LinkModel.MayBeWalled(row) && Firewall.BlocksUdp(row.Port);
         return FormLook.Row(
             FormLook.Lead(16, FormLook.Badge(LinkModel.Glyph(row.Type), row.Connected), FormLook.Stack(2,
                 FormLook.Text(row.Name),
                 FormLook.Caption(row.Connected && row.StatusLine == LinkModel.ConnectedStatus ? "" : row.StatusLine, row.GoneQuiet ? "CriticalBrush" : "TextSecondaryBrush"),
                 FormLook.Caption(row.LastError, "CriticalBrush"),
-                FormLook.Caption(row.LastError.Length > 0 ? LinkModel.RemedyText(row.ErrorRemedy) ?? "" : ""))),
+                FormLook.Caption(row.LastError.Length > 0 ? LinkModel.RemedyText(row.ErrorRemedy) ?? "" : ""),
+                walled ? FormLook.Caption(LinkModel.FirewallBlocks(row.Port), "CriticalBrush") : null,
+                walled ? FormLook.Caption(LinkModel.FirewallRemedy) : null,
+                walled ? FormLook.Margined(FormLook.Button(LinkModel.OpenFirewall, Firewall.OpenAllowedApps), new Thickness(0, 6, 0, 0)) : null)),
             FormLook.Line(8,
                 row.Connected ? FormLook.Margined(FormLook.Text(LinkModel.ConnectedStatus, "FontSizeBody", "SuccessBrush", true), new Thickness(0, 6, 8, 0)) : null,
                 FormLook.Button(LinkModel.PrimaryAction(row), () => Primary(row)),

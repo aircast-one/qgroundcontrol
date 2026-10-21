@@ -102,6 +102,7 @@
                     <controls:CameraSwitch VerticalAlignment="Top" />
                     <StackPanel MinWidth="56" Spacing="{StaticResource SpaceMd}">
                         <Border x:Name="AimSlot" HorizontalAlignment="Center" />
+                        <controls:GimbalTiltRail HorizontalAlignment="Center" />
                         <controls:StreamShutter x:Name="Shutter" HorizontalAlignment="Center" />
                         <Button x:Name="CameraButton" Style="{StaticResource FlyRoundButton}" Content="&#xE722;"
                                 HorizontalAlignment="Center" Visibility="Collapsed"

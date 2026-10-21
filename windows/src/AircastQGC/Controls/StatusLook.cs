@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using AircastQGC.Forms;
 using AircastQGC.Pages.Analyze;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
@@ -108,7 +109,7 @@ internal static class StatusLook
         var icon = new FontIcon
         {
             Glyph = glyph,
-            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontFamily = FormLook.Icons,
             FontSize = 12,
             Foreground = Tint(StatusTone.Muted),
             VerticalAlignment = VerticalAlignment.Center,

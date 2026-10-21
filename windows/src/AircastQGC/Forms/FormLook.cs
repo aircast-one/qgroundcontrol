@@ -23,7 +23,7 @@ internal static class FormLook
     public const double NumberWidth = 160;
     public const double RowMinHeight = 56;
 
-    public static FontFamily Icons { get; } = new("Segoe Fluent Icons");
+    public static FontFamily Icons => (FontFamily)Application.Current.Resources["IconFontFamily"];
 
     public static Brush Brush(string key) => PreflightLook.Token(key);
 
@@ -351,6 +351,11 @@ internal static class Live
         owner.Unloaded += (_, _) => BridgeWatch.Stop(client);
     }
 
+    public static Action<JsonObject> WhileShown(FrameworkElement owner, Action<JsonObject> apply) => new ShownGate(owner, apply).Take;
+
+    public static bool Hidden(DependencyObject element) =>
+        VisualTreeHelper.GetParent(element) is { } parent && (parent is UIElement { Visibility: Visibility.Collapsed } || Hidden(parent));
+
     public static Poller Poll<T>(FrameworkElement owner, TimeSpan every, Func<T> read, Action<T> apply) =>
         new(owner, every, async () => apply(await Task.Run(read)));
 
@@ -364,6 +369,28 @@ internal static class Live
             last = signature;
             apply(view);
         });
+    }
+}
+
+internal sealed class ShownGate(FrameworkElement owner, Action<JsonObject> apply)
+{
+    private JsonObject? _held;
+
+    public void Take(JsonObject view)
+    {
+        var hidden = Live.Hidden(owner);
+        if (hidden && _held is null) owner.LayoutUpdated += Replay;
+        if (!hidden && _held is not null) owner.LayoutUpdated -= Replay;
+        _held = hidden ? view : null;
+        if (!hidden) apply(view);
+    }
+
+    private void Replay(object? sender, object e)
+    {
+        if (_held is not { } view || Live.Hidden(owner)) return;
+        _held = null;
+        owner.LayoutUpdated -= Replay;
+        apply(view);
     }
 }
 

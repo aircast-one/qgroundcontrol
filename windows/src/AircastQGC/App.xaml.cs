@@ -36,7 +36,7 @@ public partial class App : Application
             }
             if (Environment.ProcessPath is { } exe) DeepLinks.Register(exe);
             Directory.CreateDirectory(MapCache);
-            CoreHost.Start("AircastQGC", "--no-autoconnect", "--save-path", SavePath,
+            CoreHost.Start("AircastQGC", "--save-path", SavePath,
                 "--settings", Path.Combine(AppData, "Aircast QGC.ini"), "--map-cache", Path.Combine(MapCache, "qgcMapCache.db"),
                 "--position-source", GcsLocation.SourceToken);
             if (link is not null) DeepLinks.Handle(link);

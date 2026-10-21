@@ -42,6 +42,7 @@ internal static class SettingsCatalog
     public const string General = "General";
     public const string Connections = "Connections";
     public const string FirmwareUpgrade = "Firmware Upgrade";
+    public const string Video = "Video";
     public const string UnitsGroup = "unitsSettings";
     public const string FlyViewGroup = "flyViewSettings";
     public const string Viewer3DGroup = "viewer3DSettings";
@@ -79,9 +80,8 @@ internal static class SettingsCatalog
         ("Plan View", new PageLook(SettingsGroup.Control, "")),
         ("Maps", new PageLook(SettingsGroup.Control, "")),
         ("3D Viewer", new PageLook(SettingsGroup.Control, "")),
-        ("Video", new PageLook(SettingsGroup.Camera, "")),
+        (Video, new PageLook(SettingsGroup.Camera, "")),
         ("Connections", new PageLook(SettingsGroup.Transmission, "")),
-        ("Video sources", new PageLook(SettingsGroup.Transmission, "")),
         ("MAVLink", new PageLook(SettingsGroup.Transmission, "")),
         ("Packet Radio", new PageLook(SettingsGroup.Transmission, "")),
         ("RTK GPS", new PageLook(SettingsGroup.Transmission, "")),
@@ -110,8 +110,15 @@ internal static class SettingsCatalog
             .Where(page => page.Title.Length > 0)
             .Where(page => page.SectionCount > 0 || page.ShowsLinks || page.ShowsAbout || page.ShowsConsole || page.ShowsPx4Logs || page.ShowsVideoSources)
             .ToList() is { Count: > 0 } served
-            ? Ordered(served.Concat(PilotSettings.Pages.Select(Pilot)).Append(FlasherEntry).Append(DeviceEntry))
+            ? Ordered(WithSourcesInVideo(served).Concat(PilotSettings.Pages.Select(Pilot)).Append(FlasherEntry).Append(DeviceEntry))
             : [];
+
+    private static IReadOnlyList<SettingsEntry> WithSourcesInVideo(IReadOnlyList<SettingsEntry> pages) =>
+        (pages.FirstOrDefault(page => page.ShowsVideoSources && page.Title != Video), pages.FirstOrDefault(page => page.Title == Video)) is ({ } sources, { } video)
+            ? pages.Where(page => page != sources)
+                .Select(page => page == video ? video with { ShowsVideoSources = true, Keywords = $"{video.Keywords}, {sources.Title.ToLowerInvariant()}, {sources.Keywords}" } : page)
+                .ToList()
+            : pages;
 
     private static SettingsEntry Pilot((string Title, SettingsGroup Group) page) =>
         new(page.Title, false, false, false, false, false, false, false, 0, [], PilotSettings.Keywords(page.Group), page.Group);

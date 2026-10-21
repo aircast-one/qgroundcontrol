@@ -15,7 +15,7 @@ public sealed partial class MapControls : UserControl
     private const string MapTypesPath = "view.mapTypes";
     private const string ObstacleSetting = "settings.flyViewSettings.showObstacleDistanceOverlay";
     private const string ThreeDGlyph = "\uF158";
-    private const string MapGlyph = "\uE800";
+    private const string MapGlyph = "\uE707";
     private const string ShowThreeD = "Show the 3D view";
     private const string ShowMap = "Show the map";
 

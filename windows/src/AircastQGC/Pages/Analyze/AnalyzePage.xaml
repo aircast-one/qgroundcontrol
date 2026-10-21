@@ -47,7 +47,7 @@
                     <Button x:Name="BackButton"
                             Width="36" Height="36" Padding="0"
                             VerticalAlignment="Center"
-                            FontFamily="Segoe Fluent Icons" FontSize="16"
+                            FontFamily="{StaticResource IconFontFamily}" FontSize="16"
                             Content="&#xE72B;"
                             Visibility="Collapsed"
                             AutomationProperties.Name="Back to Analyze"

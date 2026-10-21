@@ -25,6 +25,8 @@ public sealed partial class MainWindow : Window
     private const double FleetFloor = 120;
     private const double CornerRoom = 80;
 
+    private static readonly long DoubleClickMs = new Windows.UI.ViewManagement.UISettings().DoubleClickTime;
+
     private readonly FlightModeMenu _modes;
     private ImmutableStack<string> _history = ImmutableStack<string>.Empty;
     private string _page = NavPane.Fly;
@@ -33,6 +35,7 @@ public sealed partial class MainWindow : Window
     private bool _threeD = FlyViewStore.LoadThreeD();
     private bool _fullScreen;
     private AppWindowPresenter? _windowed;
+    private long _swappedAt;
 
     public MainWindow()
     {
@@ -45,6 +48,7 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+        AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         SetTitleBar(Shell.DragRegion);
         Shell.Loaded += (_, _) =>
         {
@@ -127,8 +131,11 @@ public sealed partial class MainWindow : Window
         VideoTile.SwapRequested += (_, _) => SwapVideo(!_videoMain);
         VideoTile.Pill = NoVideoMessage;
         AimSlot.Child = VideoTile.AimRail;
-        VideoTile.CameraTag.SizeChanged += (_, _) => Clearances();
-        VideoTile.CameraTag.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => Clearances());
+        PictureTags.ToList().ForEach(tag =>
+        {
+            tag.SizeChanged += (_, _) => Clearances();
+            tag.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => Clearances());
+        });
         PipFrame.Click += (_, _) => SwapVideo(false);
         ReadingsBar.AttitudeChanged += (_, _) => ShowVehicleOverlays(ReadingsBar.Visibility == Visibility.Visible);
         CameraPanel.CameraPresentChanged += (_, _) => CameraButton.Visibility = Shown(CameraPanel.CameraPresent);
@@ -280,10 +287,14 @@ public sealed partial class MainWindow : Window
         Clearances();
     }
 
+    private FrameworkElement[] PictureTags => [VideoTile.CameraTag, VideoLayer.AimTag];
+
     private double RailTop() =>
-        VideoTile.CameraTag is { Visibility: Visibility.Visible, ActualHeight: > 0 } tag
-            ? Math.Max(TileMargin, tag.TransformToVisual(FlyChrome).TransformPoint(new Windows.Foundation.Point(0, tag.ActualHeight)).Y + TileMargin)
-            : TileMargin;
+        PictureTags
+            .Where(tag => tag is { Visibility: Visibility.Visible, ActualHeight: > 0 })
+            .Select(tag => tag.TransformToVisual(FlyChrome).TransformPoint(new Windows.Foundation.Point(0, tag.ActualHeight)).Y + TileMargin)
+            .Append(TileMargin)
+            .Max();
 
     private void Clearances()
     {
@@ -334,6 +345,12 @@ public sealed partial class MainWindow : Window
 
     private void SwapVideo(bool videoMain)
     {
+        if (Environment.TickCount64 - _swappedAt < DoubleClickMs)
+        {
+            FullScreen(true);
+            return;
+        }
+        _swappedAt = Environment.TickCount64;
         if (!videoMain) FullScreen(false);
         _videoMain = videoMain;
         VideoTile.Expanded = videoMain;

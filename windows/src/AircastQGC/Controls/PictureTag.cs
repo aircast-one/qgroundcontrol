@@ -13,7 +13,7 @@ public sealed partial class PictureTag : UserControl
     public const string NoCamera = "No camera";
     public const string NoCameraMapView = "No camera · 3D map view";
     private const string VideoView = "view.video";
-    private const string VideoSourcesPage = "Video sources";
+    private const string VideoSettings = "Video settings";
     private const string VideoGlyph = "";
     private const string ArrowGlyph = "";
     private const string SettingsGlyph = "";
@@ -48,7 +48,7 @@ public sealed partial class PictureTag : UserControl
         PreflightLook.Chip(_button);
         new[] { "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed" }.ToList()
             .ForEach(key => _button.Resources[key] = FormLook.Brush("CautionBrush"));
-        ToolTipService.SetToolTip(_button, "Video sources");
+        ToolTipService.SetToolTip(_button, VideoSettings);
         _menu.Opening += (_, _) => Fill();
         Content = _button;
         Visibility = Visibility.Collapsed;
@@ -69,9 +69,9 @@ public sealed partial class PictureTag : UserControl
         var cameras = CameraList.Parse(Bridge.Get(CameraList.View));
         var streamOn = VideoJson.Flag(Bridge.Get(VideoView), "streamEnabled", true);
         var listed = CameraMenu.Items(cameras, streamOn, () => { });
-        var sources = new MenuFlyoutItem { Text = "Video sources", Icon = new FontIcon { Glyph = SettingsGlyph } };
+        var sources = new MenuFlyoutItem { Text = VideoSettings, Icon = new FontIcon { Glyph = SettingsGlyph } };
         ToolTipService.SetToolTip(sources, "Add or fix a camera in Settings");
-        sources.Click += (_, _) => FlyRequests.OpenSettings(VideoSourcesPage);
+        sources.Click += (_, _) => FlyRequests.OpenSettings(Pages.Settings.SettingsCatalog.Video);
         _menu.Items.Clear();
         listed.Concat(listed.Count > 0 ? new MenuFlyoutItemBase[] { new MenuFlyoutSeparator() } : []).Append(sources).ToList().ForEach(_menu.Items.Add);
     }

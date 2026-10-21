@@ -42,7 +42,7 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
             <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
-            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+            <Setter Property="FontFamily" Value="{StaticResource IconFontFamily}" />
             <Setter Property="FontSize" Value="16" />
         </Style>
 
@@ -82,7 +82,7 @@
                         </ScrollViewer>
                         <ToggleButton x:Name="ProfileButton" Grid.Column="1"
                                       Width="36" Height="36" Padding="0" VerticalAlignment="Top"
-                                      FontFamily="Segoe Fluent Icons" Content="&#xE9D2;"
+                                      FontFamily="{StaticResource IconFontFamily}" Content="&#xE9D2;"
                                       Click="OnProfileToggled"
                                       ToolTipService.ToolTip="Terrain profile"
                                       AutomationProperties.Name="Terrain profile" />
@@ -157,7 +157,7 @@
 
                 <Button x:Name="MenuButton" Grid.Column="2"
                         Width="40" Height="40" CornerRadius="20" Padding="0"
-                        FontFamily="Segoe Fluent Icons" Content="&#xE712;"
+                        FontFamily="{StaticResource IconFontFamily}" Content="&#xE712;"
                         Background="{ThemeResource CardBrush}" BorderBrush="{ThemeResource CardStrokeBrush}"
                         ToolTipService.ToolTip="Plan menu" AutomationProperties.Name="Plan menu">
                     <Button.Flyout>

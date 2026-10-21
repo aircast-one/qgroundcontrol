@@ -515,6 +515,27 @@ vehicle, mock ArduCopter, mock PX4, two ArduCopter mocks, a UDP H.264 test strea
 were mostly driven through in-process hooks or UI Automation; the round-5 merge smoke used a real mouse for the sticks and real keys for
 full screen, and the round-6 merge smoke real mouse slides for arm, takeoff, change altitude, fleet Arm and fleet Return.
 
+### Field call fixes (round 13)
+
+From a call with a field user flying real drones on the Windows app (2026-10-21):
+
+- UDP links: the core path was correct; Windows Firewall drops inbound UDP for an exe it was never asked about. A UDP link that
+  is connected but hears nothing now says the firewall is blocking port N and opens the allowed-apps page. Adding the radio's
+  address under "Also send to" works without admin (Windows lets the peer's replies in).
+- The Windows head started the core with `--no-autoconnect`, so USB radio and Pixhawk autoconnect, "Connect on start" links
+  and reconnects never ran; the flag is gone.
+- Radio latency: on Windows the serial port opened synchronously, so a write waited behind the pending read (uplink mean 420 ms,
+  p95 2 s on a quiet line). The core now opens COM ports overlapped (serial2), like QSerialPort: writes arrive in under 4 ms.
+- Gimbal: the gimbal worked, but Tap to point ignored drags and the mode pill hid under the title bar. A drag now moves the
+  camera, the pill sits below the status row, refused gimbal commands show for 4 s, and Android's tilt rail (Tilt chip plus a
+  vertical pitch slider) is in the camera column.
+- Video: one Video settings page (sources first). A double-click on the thumbnail swaps once and enters full screen.
+- Icons: one `IconFontFamily` ("Segoe Fluent Icons,Segoe MDL2 Assets") so icons show on Windows 10; the exe and window carry the
+  Aircast icon.
+- Scrolling: hidden Fly controls stop working behind other pages and replay their state on return (heartbeat gap p95 28-39 ms to
+  about 20 ms, gaps over 100 ms 9 to 0); the vehicle status sheet has one scroll viewer.
+- Not driven with real input on the final build (a firewall dialog blocked the VM desktop); no real radio or Windows 10 PC.
+
 ### P0: bugs and real-use blockers
 
 - ✓ Enforced checklist: `ChecklistGate` writes `vehicle.checkListState` 1/2 and the checklist pops up 1 s after connecting when enforced;

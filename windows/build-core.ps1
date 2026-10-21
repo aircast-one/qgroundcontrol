@@ -1,7 +1,8 @@
 #Requires -Version 5
 param(
   [string]$Target = "aarch64-pc-windows-msvc",
-  [string]$OutDir = (Join-Path $PSScriptRoot "src\AircastQGC\runtime")
+  [string]$OutDir = (Join-Path $PSScriptRoot "src\AircastQGC\runtime"),
+  [int]$Jobs = 4
 )
 $ErrorActionPreference = "Stop"
 if ($env:AIRCAST_SKIP_CORE -eq "1") { exit 0 }
@@ -24,7 +25,7 @@ if (Test-Path (Join-Path $params "Copter-4.5")) { $env:QGC_APM_PARAMS_DIR = $par
 
 Push-Location $core
 try {
-  cargo rustc --lib --release --features native-host,synthetic --crate-type cdylib --target $Target
+  cargo rustc --lib --release --features native-host,synthetic --crate-type cdylib --target $Target --jobs $Jobs
   if ($LASTEXITCODE -ne 0) { throw "cargo build failed ($LASTEXITCODE)" }
 } finally { Pop-Location }
 

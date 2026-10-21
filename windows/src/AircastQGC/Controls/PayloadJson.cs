@@ -11,7 +11,7 @@ internal sealed record GimbalChoice(string Name, int ManagerCompid, int DeviceId
 internal sealed record VideoAim(string Label, string Hint, bool OnScreen, bool ClickAndDrag)
 {
     public static readonly VideoAim Drag = new("Drag to move", "The camera follows your drag on the video.", false, false);
-    public static readonly VideoAim Point = new("Tap to point", "The camera turns to where you tap on the video.", true, false);
+    public static readonly VideoAim Point = new("Tap to point", "Tap to turn the camera there, or drag to move it.", true, false);
     public static readonly VideoAim Hold = new("Hold and drag", "Press, then drag away from that spot; the further you drag, the faster the camera turns.", true, true);
     public static readonly IReadOnlyList<VideoAim> All = [Drag, Point, Hold];
 

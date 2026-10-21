@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using AircastQGC.Controls;
+using AircastQGC.Forms;
 using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
@@ -57,7 +58,7 @@ internal static class Ui
     internal static FontIcon Glyph(string glyph, double size = 16, string brush = "TextPrimaryBrush") => new()
     {
         Glyph = glyph,
-        FontFamily = new FontFamily("Segoe Fluent Icons"),
+        FontFamily = FormLook.Icons,
         FontSize = size,
         Foreground = Token(brush),
         VerticalAlignment = VerticalAlignment.Center,
@@ -173,7 +174,7 @@ internal static class Ui
                 Child = new FontIcon
                 {
                     Glyph = glyph,
-                    FontFamily = new FontFamily("Segoe Fluent Icons"),
+                    FontFamily = FormLook.Icons,
                     FontSize = 28,
                     Foreground = Token("TextTertiaryBrush"),
                 },

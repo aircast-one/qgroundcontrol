@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json.Nodes;
 using AircastQGC.Core;
+using AircastQGC.Forms;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -24,8 +25,8 @@ public sealed class BatteryReturnBar : UserControl
             if (!CoreHost.Started) return;
             _battery = Bridge.Get(BatteryPath);
             _fly = Bridge.Get(FlyStatePath);
-            BridgeWatch.Watch($"{_client}.battery", [BatteryPath], view => Render(_battery = view));
-            BridgeWatch.Watch($"{_client}.fly", [FlyStatePath], view => Render(_fly = view));
+            BridgeWatch.Watch($"{_client}.battery", [BatteryPath], Live.WhileShown(this, view => Render(_battery = view)));
+            BridgeWatch.Watch($"{_client}.fly", [FlyStatePath], Live.WhileShown(this, view => Render(_fly = view)));
             Render(_battery);
         };
         Unloaded += (_, _) =>

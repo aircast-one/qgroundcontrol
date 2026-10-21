@@ -6,6 +6,7 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>AircastQGC</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>ARM64;x64</Platforms>
     <RuntimeIdentifiers>win-arm64;win-x64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
@@ -34,6 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Airframe\*.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\SetupSections\*.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Calibration\*.png" CopyToOutputDirectory="PreserveNewest" />

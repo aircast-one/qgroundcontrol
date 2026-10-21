@@ -23,8 +23,6 @@ internal sealed class VehicleStatusSheet
     private const string StatusSettingsPage = "Status Settings";
     private const string ParametersPage = "Parameters";
     private const string OverviewPage = "";
-    private const double MessagesHeight = 320;
-    private const double SettingsHeight = 360;
 
     private static readonly string[] Watched = [FlyStatePath, SensorsPath, MessagesPath, WarningsPath];
 
@@ -153,15 +151,11 @@ internal sealed class VehicleStatusSheet
             StatusLook.Spread(StatusLook.Heading("Messages"), _messagesShown ? StatusLook.Link("Clear", () => Ui.Off(() => Bridge.Invoke(ClearMessages))) : null),
             StatusLook.Link(_messagesShown ? "Hide messages" : "Show messages", () => Changed(() => _messagesShown = !_messagesShown)),
             _messagesShown
-                ? new ScrollViewer
-                {
-                    MaxHeight = MessagesHeight,
-                    Content = Ui.Column(lines.Select(m => (UIElement?)Ui.Line(
-                    [
-                        Ui.Caption(m.Time, "TextTertiaryBrush"),
-                        StatusLook.Line(m.Text, m.Level).With(t => t.MaxWidth = 280),
-                    ], 8)), 4),
-                }
+                ? Ui.Column(lines.Select(m => (UIElement?)Ui.Line(
+                [
+                    Ui.Caption(m.Time, "TextTertiaryBrush"),
+                    StatusLook.Line(m.Text, m.Level).With(t => t.MaxWidth = 280),
+                ], 8)), 4)
                 : null,
         ], 2);
     }
@@ -195,7 +189,7 @@ internal sealed class VehicleStatusSheet
         return
         [
             StatusLook.Action("Aircraft setup", () => Close(() => FlyRequests.OpenSetup(OverviewPage))),
-            new ScrollViewer { MaxHeight = SettingsHeight, Content = FormView.SetupPage(StatusSettingsPage) },
+            FormView.SetupPage(StatusSettingsPage),
             advanced
                 ? StatusLook.Spread(StatusLook.Line("Vehicle parameters"), Ui.Button("Configure", () => Close(() => FlyRequests.OpenSetup(ParametersPage))))
                 : null,

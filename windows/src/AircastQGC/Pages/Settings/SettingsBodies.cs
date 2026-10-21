@@ -23,6 +23,7 @@ internal static class SettingsBodies
     private const string OsmEnabledSetting = "settings.viewer3DSettings.enabled";
     private const string AdvancedUiView = "view.advancedUi";
     private const string SetAdvancedUi = "advancedUi.set";
+    private const string VideoSourcesHeading = "Video sources";
 
     private static readonly string[] UnitSystems = ["Metric", "Imperial", "Custom"];
     private static readonly (string Title, string Page, string Keywords)[] HeadEditors =
@@ -39,6 +40,7 @@ internal static class SettingsBodies
         : page.ShowsAbout ? Scrolled(About(page.HelpLinks))
         : page.ShowsConsole ? new AppLogPanel()
         : page.ShowsPx4Logs ? new Border { Padding = new Thickness(16, 0, 16, 0), Child = new Px4LogTransfer() }
+        : page.ShowsVideoSources && page.SectionCount > 0 ? Scrolled(FormLook.Stack(0, FormLook.Heading(VideoSourcesHeading), new CamerasPanel(), Form(page, nav)))
         : page.ShowsVideoSources ? Scrolled(new CamerasPanel())
         : page.Title == SettingsCatalog.FirmwareUpgrade ? new Analyze.FirmwareTool()
         : Scrolled(Form(page, nav));

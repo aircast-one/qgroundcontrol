@@ -20,7 +20,7 @@
         <StaticResource x:Key="ButtonBorderBrushDisabled" ResourceKey="ControlStrokeBrush" />
 
         <Style x:Key="RailIcon" TargetType="FontIcon">
-            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+            <Setter Property="FontFamily" Value="{StaticResource IconFontFamily}" />
             <Setter Property="FontSize" Value="20" />
         </Style>
 

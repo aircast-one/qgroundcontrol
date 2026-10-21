@@ -323,9 +323,9 @@ public sealed partial class GuidedConfirm : UserControl
 
     private void Knob_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        Knob.ReleasePointerCapture(e.Pointer);
         e.Handled = true;
         Slid();
+        Knob.ReleasePointerCapture(e.Pointer);
     }
 
     private void Slid()

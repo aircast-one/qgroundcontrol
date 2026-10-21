@@ -96,7 +96,7 @@ public sealed class HeadingTape : UserControl
         };
         IsHitTestVisible = false;
         Visibility = Visibility.Collapsed;
-        Live.Watch(this, TelemetryPanel.AttitudeView, view => Draw(TapeReading.Of(view)));
+        Live.Watch(this, TelemetryPanel.AttitudeView, Live.WhileShown(this, view => Draw(TapeReading.Of(view))));
     }
 
     public bool OverVideo

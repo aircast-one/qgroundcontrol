@@ -33,6 +33,8 @@ public sealed partial class VideoPayloadLayer : UserControl
     private const double LabelWidth = 64;
     private static readonly TimeSpan HoldRepeat = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan DragSpacing = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan RefusalShown = TimeSpan.FromSeconds(4);
+    private static readonly Thickness BelowStatusRow = new(16, 56, 16, 16);
 
     private enum Kind { Track, Drag, Point, Hold }
 
@@ -45,7 +47,11 @@ public sealed partial class VideoPayloadLayer : UserControl
     private readonly Rectangle _band;
     private readonly Button _aimPill;
     private readonly TextBlock _aimText = FormLook.Caption("", "TextPrimaryBrush");
+    private readonly TextBlock _refusalText = FormLook.Caption("", "CriticalBrush");
+    private readonly Border _refusal;
+    private readonly StackPanel _aimTag;
     private readonly DispatcherQueueTimer _hold;
+    private readonly DispatcherQueueTimer _refusalTimer;
     private readonly Stopwatch _sinceDrag = Stopwatch.StartNew();
     private JsonObject _video = new();
     private GimbalState? _gimbal;
@@ -66,20 +72,36 @@ public sealed partial class VideoPayloadLayer : UserControl
             Height = 28,
             Padding = new Thickness(12, 0, 12, 0),
             CornerRadius = new CornerRadius(14),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(16),
             Content = _aimText,
-            Visibility = Visibility.Collapsed,
         };
-        FormLook.Paint(_aimPill, ButtonLook.Standard);
+        PreflightLook.Chip(_aimPill);
         _aimPill.Click += (_, _) =>
         {
             if (_gimbal?.Aim is { } aim) GimbalCalls.ChooseAim(aim.Next);
         };
+        _refusalText.TextWrapping = TextWrapping.Wrap;
+        _refusalText.MaxWidth = 320;
+        _refusal = new Border
+        {
+            Padding = new Thickness(10, 4, 10, 4),
+            CornerRadius = new CornerRadius(8),
+            Background = FormLook.Brush("ChipBrush"),
+            IsHitTestVisible = false,
+            Child = _refusalText,
+            Visibility = Visibility.Collapsed,
+        };
+        _aimTag = new StackPanel
+        {
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = BelowStatusRow,
+            Visibility = Visibility.Collapsed,
+            Children = { _aimPill, _refusal },
+        };
         _root.Children.Add(_drawing);
         _root.Children.Add(_bandLayer);
-        _root.Children.Add(_aimPill);
+        _root.Children.Add(_aimTag);
         _root.PointerPressed += OnPressed;
         _root.PointerMoved += OnMoved;
         _root.PointerReleased += OnReleased;
@@ -94,9 +116,15 @@ public sealed partial class VideoPayloadLayer : UserControl
         _hold = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _hold.Interval = HoldRepeat;
         _hold.Tick += (_, _) => HoldTick();
+        _refusalTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _refusalTimer.Interval = RefusalShown;
+        _refusalTimer.IsRepeating = false;
+        _refusalTimer.Tick += (_, _) => _refusal.Visibility = Visibility.Collapsed;
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Halt();
     }
+
+    public FrameworkElement AimTag => _aimTag;
 
     public bool Expanded
     {
@@ -148,7 +176,7 @@ public sealed partial class VideoPayloadLayer : UserControl
     {
         _root.Background = TakesInput ? new SolidColorBrush(Colors.Transparent) : null;
         var aim = _expanded && Decoding ? _gimbal?.Aim : null;
-        _aimPill.Visibility = VideoJson.Shown(aim is not null);
+        _aimTag.Visibility = VideoJson.Shown(aim is not null);
         _aimText.Text = aim?.Label ?? "";
         AutomationProperties.SetName(_aimPill, aim is null ? "Video gimbal mode" : $"Video gimbal mode, {aim.Label}");
         ToolTipService.SetToolTip(_aimPill, aim is null ? null : $"Switch to {aim.Next.Label}");
@@ -241,7 +269,7 @@ public sealed partial class VideoPayloadLayer : UserControl
         var moved = gesture.Moved || Math.Abs(at.X - gesture.From.X) >= PayloadJson.TrackSlop || Math.Abs(at.Y - gesture.From.Y) >= PayloadJson.TrackSlop;
         var latest = gesture with { Latest = at, Moved = moved };
         if (gesture.Kind == Kind.Track && moved) ShowBand(gesture.From, at);
-        _gesture = gesture.Kind == Kind.Drag && moved && _sinceDrag.Elapsed >= DragSpacing ? SendDrag(latest) : latest;
+        _gesture = Drags(gesture.Kind) && moved && _sinceDrag.Elapsed >= DragSpacing ? SendDrag(latest) : latest;
         e.Handled = true;
     }
 
@@ -262,11 +290,13 @@ public sealed partial class VideoPayloadLayer : UserControl
                 var (pan, tilt) = Fraction(at);
                 Send("gimbal.onScreen", pan, tilt, true);
                 break;
-            case Kind.Drag when finished.Moved:
+            case Kind.Drag or Kind.Point when finished.Moved:
                 SendDrag(finished);
                 break;
         }
     }
+
+    private static bool Drags(Kind kind) => kind is Kind.Drag or Kind.Point;
 
     private void EndGesture()
     {
@@ -309,7 +339,21 @@ public sealed partial class VideoPayloadLayer : UserControl
         Send("gimbal.onScreen", Math.Clamp(now.Pan - start.Pan, -1, 1), Math.Clamp(now.Tilt - start.Tilt, -1, 1), false);
     }
 
-    private static void Send(string path, params object?[] args) => Task.Run(() => GimbalCalls.Call(path, args));
+    private void Send(string path, params object?[] args)
+    {
+        var ui = DispatcherQueue;
+        Task.Run(() => GimbalCalls.Call(path, args)).ContinueWith(done => ui.TryEnqueue(() => ShowRefusal(done.Result)), TaskScheduler.Default);
+    }
+
+    private void ShowRefusal(string? refusal)
+    {
+        if (refusal is null) return;
+        _refusalText.Text = refusal;
+        _refusalText.Visibility = Visibility.Visible;
+        _refusal.Visibility = Visibility.Visible;
+        _refusalTimer.Stop();
+        _refusalTimer.Start();
+    }
 
     private static void SendTracking(TrackRequest? request)
     {

@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json.Nodes;
 using AircastQGC.Core;
+using AircastQGC.Forms;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -101,6 +102,7 @@ public sealed partial class VideoSurface : UserControl
 
     private unsafe void Draw()
     {
+        if (Live.Hidden(this)) return;
         var frames = VideoNative.qgc_video_frames(Channel);
         var (width, height) = (VideoNative.qgc_video_width(Channel), VideoNative.qgc_video_height(Channel));
         if (frames == _shown || width <= 0 || height <= 0) return;

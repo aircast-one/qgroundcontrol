@@ -73,7 +73,7 @@ public sealed partial class MapPayloadLayer : UserControl
             take(view);
             Draw();
         }
-        BridgeWatch.Watch($"{_client}.{name}", [path], Apply);
+        BridgeWatch.Watch($"{_client}.{name}", [path], Live.WhileShown(this, Apply));
         Apply(Bridge.Get(path));
     }
 

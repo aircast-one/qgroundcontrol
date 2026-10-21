@@ -212,6 +212,7 @@ public sealed class RcControlsLayer : UserControl
     private bool _streamRecording;
     private bool _channelRecording;
     private bool _lightOn;
+    private bool _gimbalManager;
     private int _tilt = RcControls.PwmCenter;
     private int _pan = RcControls.PwmCenter;
     private int _zoom = RcControls.PwmCenter;
@@ -257,11 +258,16 @@ public sealed class RcControlsLayer : UserControl
             _channels = _channels.SetItem(channel.Name, RcControls.Channel(view));
             Render();
         }));
+        Live.Watch(this, GimbalCalls.View, view =>
+        {
+            _gimbalManager = PayloadJson.Gimbal(view) is not null;
+            Render();
+        });
         Unloaded += (_, _) => Release();
         Presence.OnHidden(this, Release);
     }
 
-    private RcCameraChannels Camera => RcCameraChannels.Of(_channels);
+    private RcCameraChannels Camera => _gimbalManager ? RcCameraChannels.Of(_channels) with { Tilt = 0, Pan = 0 } : RcCameraChannels.Of(_channels);
 
     private void Release()
     {
