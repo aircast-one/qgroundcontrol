@@ -300,8 +300,13 @@ fn follow(source: Source, generation: u64) {
                 crate::http::stream_lines(&source.stream_url(), MAX_EVENT_BYTES, |line| {
                     if let Some(payload) = event_payload(line) {
                         let latency_ms = lock().latency();
-                        let frame =
-                            grounded_now(frame_from(&payload, crate::hub::now_ms(), latency_ms));
+                        let frame = frame_from(&payload, crate::hub::now_ms(), latency_ms);
+                        crate::flightrecord::detection(
+                            &payload,
+                            frame.received_ms,
+                            frame.captured_ms,
+                        );
+                        let frame = grounded_now(frame);
                         if lock().receive(generation, frame) {
                             changed();
                         }
@@ -339,8 +344,13 @@ fn follow(source: Source, generation: u64) {
                     .filter_map(|line| event_payload(&line))
                     .map(|payload| {
                         let latency_ms = lock().latency();
-                        let frame =
-                            grounded_now(frame_from(&payload, crate::hub::now_ms(), latency_ms));
+                        let frame = frame_from(&payload, crate::hub::now_ms(), latency_ms);
+                        crate::flightrecord::detection(
+                            &payload,
+                            frame.received_ms,
+                            frame.captured_ms,
+                        );
+                        let frame = grounded_now(frame);
                         if lock().receive(generation, frame) {
                             changed();
                         }

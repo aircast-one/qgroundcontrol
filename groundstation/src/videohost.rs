@@ -253,6 +253,7 @@ fn begin_recording() -> Result<(), Option<&'static str>> {
         recording_file_name(&folder, &stamp, recording_format()).ok_or(Some(BAD_FORMAT_MESSAGE))?;
     let (_, _, width, height) = host.channels[MAIN_CHANNEL].reported;
     crate::subtitles::start(&file, Some((width, height)), crate::hub::now_ms());
+    crate::flightrecord::video_started(&file);
     host.recording_file = Some(file);
     Ok(())
 }

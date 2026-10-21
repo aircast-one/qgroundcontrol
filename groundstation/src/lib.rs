@@ -90,6 +90,7 @@ pub mod firmwareinfo;
 pub mod firstrun;
 pub mod flasher;
 pub mod flasherform;
+pub mod flightrecord;
 pub mod flightmodes;
 pub mod flowimage;
 pub mod flystate;
