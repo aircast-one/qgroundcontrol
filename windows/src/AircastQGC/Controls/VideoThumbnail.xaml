@@ -28,9 +28,6 @@
         <Style x:Key="VideoDotConnecting" TargetType="Ellipse">
             <Setter Property="Fill" Value="{ThemeResource CautionBrush}" />
         </Style>
-        <Style x:Key="VideoDotIdle" TargetType="Ellipse">
-            <Setter Property="Fill" Value="{ThemeResource TextTertiaryBrush}" />
-        </Style>
     </UserControl.Resources>
 
     <Grid>
@@ -69,13 +66,18 @@
                         Height="20"
                         Padding="8,0"
                         CornerRadius="10"
+                        BorderBrush="{ThemeResource CautionBrush}"
                         Background="{ThemeResource ChipBrush}">
                     <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceXs}">
-                        <Ellipse x:Name="Dot" Width="6" Height="6" VerticalAlignment="Center" Style="{StaticResource VideoDotIdle}" />
+                        <Ellipse x:Name="Dot" Width="6" Height="6" VerticalAlignment="Center" Style="{StaticResource VideoDotConnecting}" />
                         <TextBlock x:Name="Caption" Text="Video" Style="{StaticResource VideoCaption}" />
                     </StackPanel>
                 </Border>
             </Grid>
         </Button>
+        <local:PictureTag x:Name="NoCamera"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Top"
+                          Margin="16,56,16,16" />
     </Grid>
 </UserControl>

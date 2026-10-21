@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -14,9 +15,6 @@ namespace AircastQGC.Controls;
 public sealed partial class CameraSwitch : UserControl
 {
     private const string VideoView = "view.video";
-    private const string SetActiveSource = "video.setActiveVideoSource";
-    private const string MultiViewSetting = "settings.videoSettings.multiViewEnabled";
-    private const string Group = "camera-switch";
     private const string PipGlyph = "";
     private const string ArrowGlyph = "";
     private const double LabelMax = 120;
@@ -62,12 +60,11 @@ public sealed partial class CameraSwitch : UserControl
         });
     }
 
-    private IReadOnlyList<CameraEntry> Switchable =>
-        _cameras?.Cameras.Where(camera => camera.Active || camera.Problem.Length == 0).ToList() ?? [];
+    private IReadOnlyList<CameraEntry> Switchable => CameraMenu.Switchable(_cameras);
 
     private CameraEntry? Shown => Switchable.FirstOrDefault(camera => camera.Active) ?? Switchable.FirstOrDefault();
 
-    private bool PipOffered => _streamOn && _cameras?.PipSlot is not null;
+    private bool PipOffered => CameraMenu.PipOffered(_cameras, _streamOn);
 
     private void Paint()
     {
@@ -82,14 +79,40 @@ public sealed partial class CameraSwitch : UserControl
 
     private void Fill()
     {
-        var cameras = Switchable.Count > 1 ? Switchable.Select(CameraItem).ToList() : [];
-        var pip = PipOffered ? [PipItem()] : new List<MenuFlyoutItemBase>();
-        var divider = cameras.Count > 0 && pip.Count > 0 ? [new MenuFlyoutSeparator()] : new List<MenuFlyoutItemBase>();
         _menu.Items.Clear();
-        cameras.Concat(divider).Concat(pip).ToList().ForEach(_menu.Items.Add);
+        CameraMenu.Items(_cameras, _streamOn, Refresh).ToList().ForEach(_menu.Items.Add);
     }
 
-    private MenuFlyoutItemBase CameraItem(CameraEntry camera)
+    private void Refresh()
+    {
+        _cameras = CameraList.Parse(Bridge.Get(CameraList.View));
+        Paint();
+    }
+}
+
+internal static class CameraMenu
+{
+    private const string SetActiveSource = "video.setActiveVideoSource";
+    private const string MultiViewSetting = "settings.videoSettings.multiViewEnabled";
+    private const string Group = "camera-switch";
+    private const string PipGlyph = "\uEE49";
+    private const double Dot = 8;
+
+    public static IReadOnlyList<CameraEntry> Switchable(CameraList? cameras) =>
+        cameras?.Cameras.Where(camera => camera.Active || camera.Problem.Length == 0).ToList() ?? [];
+
+    public static bool PipOffered(CameraList? cameras, bool streamOn) => streamOn && cameras?.PipSlot is not null;
+
+    public static IReadOnlyList<MenuFlyoutItemBase> Items(CameraList? cameras, bool streamOn, Action changed)
+    {
+        var switchable = Switchable(cameras);
+        var listed = switchable.Count > 1 ? switchable.Select(camera => CameraItem(camera, changed)).ToList() : [];
+        var pip = PipOffered(cameras, streamOn) ? [PipItem(cameras?.PipEnabled == true, changed)] : new List<MenuFlyoutItemBase>();
+        var divider = listed.Count > 0 && pip.Count > 0 ? [new MenuFlyoutSeparator()] : new List<MenuFlyoutItemBase>();
+        return [.. listed, .. divider, .. pip];
+    }
+
+    private static MenuFlyoutItemBase CameraItem(CameraEntry camera, Action changed)
     {
         var (status, brush) = CameraList.StatusLook(camera.Status);
         var item = new RadioMenuFlyoutItem
@@ -105,13 +128,17 @@ public sealed partial class CameraSwitch : UserControl
         };
         AutomationProperties.SetItemStatus(item, status);
         ToolTipService.SetToolTip(item, status);
-        item.Click += (_, _) => Show(camera);
+        item.Click += (_, _) =>
+        {
+            if (camera.Active) return;
+            Bridge.Invoke(SetActiveSource, new JsonArray(camera.Slot));
+            changed();
+        };
         return item;
     }
 
-    private MenuFlyoutItemBase PipItem()
+    private static MenuFlyoutItemBase PipItem(bool on, Action changed)
     {
-        var on = _cameras?.PipEnabled == true;
         var item = new ToggleMenuFlyoutItem
         {
             Text = "Picture in picture",
@@ -122,21 +149,8 @@ public sealed partial class CameraSwitch : UserControl
         item.Click += (_, _) =>
         {
             Bridge.Set(MultiViewSetting, !on);
-            Refresh();
+            changed();
         };
         return item;
-    }
-
-    private void Show(CameraEntry camera)
-    {
-        if (camera.Active) return;
-        Bridge.Invoke(SetActiveSource, new JsonArray(camera.Slot));
-        Refresh();
-    }
-
-    private void Refresh()
-    {
-        _cameras = CameraList.Parse(Bridge.Get(CameraList.View));
-        Paint();
     }
 }

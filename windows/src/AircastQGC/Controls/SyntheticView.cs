@@ -42,7 +42,7 @@ internal static class SyntheticAim
 public sealed partial class SyntheticView : UserControl
 {
     public const string WaitingHeadline = "Waiting for the aircraft's position";
-    public const string WaitingDetail = "The synthetic view draws once the aircraft is connected and has a GPS fix and a home.";
+    public const string WaitingDetail = "The 3D map view draws once the aircraft is connected and has a GPS fix and a home.";
     private const string View = "view.syntheticView";
     private const string GimbalView = "view.gimbal";
     private const string AimPath = "syntheticView.aim";
@@ -87,7 +87,7 @@ public sealed partial class SyntheticView : UserControl
     private bool _wanted;
     private bool _aimable;
     private bool _showing;
-    private string? _standIn;
+    private bool _pictured;
 
     public SyntheticView()
     {
@@ -152,7 +152,7 @@ public sealed partial class SyntheticView : UserControl
         _root.PointerCaptureLost += (_, _) => _drag = null;
         Content = _root;
         Visibility = Visibility.Collapsed;
-        AutomationProperties.SetName(this, "Synthetic view");
+        AutomationProperties.SetName(this, "3D map view");
         _check = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _check.Interval = CheckEvery;
         _check.Tick += (_, _) => Sync();
@@ -182,6 +182,8 @@ public sealed partial class SyntheticView : UserControl
 
     public bool Chosen => _syntheticChosen;
 
+    public bool Pictured => _pictured;
+
     public bool Wanted
     {
         get => _wanted;
@@ -201,16 +203,6 @@ public sealed partial class SyntheticView : UserControl
             _sent = null;
             EndDrag();
             Sync();
-        }
-    }
-
-    public string? StandIn
-    {
-        get => _standIn;
-        set
-        {
-            _standIn = value;
-            PaintNote();
         }
     }
 
@@ -264,15 +256,14 @@ public sealed partial class SyntheticView : UserControl
 
     private void Sync()
     {
-        var showing = _wanted && Available && Native;
-        if (showing != _showing)
-        {
-            _showing = showing;
-            Visibility = VideoJson.Shown(showing);
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
+        var was = (_showing, _pictured);
+        _showing = _wanted && Available && Native;
+        Visibility = VideoJson.Shown(_showing);
         if (Attachable) Attach();
         else Detach();
+        _pictured = _showing && !_bindFailed && VideoJson.Text(_view, "draw") == Drawn;
+        _stage.Opacity = _pictured ? 1 : 0;
+        if (was != (_showing, _pictured)) Changed?.Invoke(this, EventArgs.Empty);
         _root.Background = CanAim || SteersGimbal ? TakesInput : null;
         PaintNote();
         PaintAim();
@@ -304,7 +295,7 @@ public sealed partial class SyntheticView : UserControl
         var draw = VideoJson.Text(_view, "draw");
         var failed = _bindFailed || draw == Failed;
         var loading = !failed && draw != Drawn;
-        var note = failed ? FailedNote : loading ? LoadingNote : _standIn;
+        var note = failed ? FailedNote : loading ? LoadingNote : null;
         _spinner.IsActive = loading && _showing;
         _spinner.Visibility = VideoJson.Shown(loading);
         FormLook.Say(_noteText, note);

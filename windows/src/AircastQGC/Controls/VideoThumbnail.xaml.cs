@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Text.Json.Nodes;
 using AircastQGC.Core;
+using AircastQGC.Forms;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -22,7 +23,7 @@ public sealed partial class VideoThumbnail : UserControl
     private readonly object _tip;
     private readonly string _swapName;
     private bool _expanded;
-    private string _standIn = "";
+    private bool _connected;
     private string _title = "Video";
     private string _headline = "No video";
     private string _detail = "";
@@ -42,6 +43,11 @@ public sealed partial class VideoThumbnail : UserControl
             PaintPlaceholder();
             PaintPicture();
         };
+        Live.Watch(this, NoVehicleState.FlyStatePath, fly =>
+        {
+            _connected = !NoVehicleState.IsNoVehicle(fly);
+            PaintPresence();
+        });
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Stop();
     }
@@ -55,6 +61,8 @@ public sealed partial class VideoThumbnail : UserControl
     public bool Picture { get; private set; }
 
     public FrameworkElement AimRail => Synthetic.AimRail;
+
+    public FrameworkElement CameraTag => NoCamera;
 
     public NoVideoPill? Pill
     {
@@ -79,14 +87,10 @@ public sealed partial class VideoThumbnail : UserControl
             AutomationProperties.SetName(Tile, value ? MainName : _swapName);
             Tile.IsTabStop = !value;
             Synthetic.Aimable = value;
-            Synthetic.StandIn = value ? _standIn : null;
             PaintPlaceholder();
+            PaintPresence();
         }
     }
-
-    public void Show() => Visibility = Visibility.Visible;
-
-    public void Hide() => Visibility = Visibility.Collapsed;
 
     private void Start()
     {
@@ -123,28 +127,33 @@ public sealed partial class VideoThumbnail : UserControl
         var camera = (video["cameras"] as JsonArray ?? new JsonArray())
             .OfType<JsonObject>()
             .FirstOrDefault(c => VideoJson.Int(c, "slot", -1) == active);
-        var status = camera is null ? "" : VideoJson.Text(camera, "status");
         var live = VideoJson.Flag(video, "decoding");
-        var connecting = VideoJson.Flag(video, "anyConnecting");
         var missing = VideoJson.Flag(video, "sourceChosen") ? VideoJson.Text(video, "noVideoText") : "";
 
         IsLive = live;
         _video = video;
         PaintAspect();
         _title = VideoJson.Or(camera is null ? "" : VideoJson.Text(camera, "title"), "Video");
-        _standIn = VideoJson.Text(video, "standIn");
         Synthetic.Wanted = !live;
-        Synthetic.StandIn = _expanded ? _standIn : null;
         Surface.Visibility = VideoJson.Shown(live);
-        Caption.Text = live || status.Length == 0 ? _title : $"{_title} · {status}";
-        Dot.Style = (Style)Resources[live ? "VideoDotLive" : connecting ? "VideoDotConnecting" : "VideoDotIdle"];
-        _headline = VideoJson.Flag(video, "streamEnabled", true)
-            ? VideoJson.Or(VideoJson.Text(video, "summary"), "No video")
-            : "Video off";
+        _headline = CameraState(video, camera);
         _detail = live ? "" : VideoJson.Or(VideoJson.Text(video, "noVideoReason"), missing);
         PaintPlaceholder();
         PaintPicture();
+        PaintPresence();
     }
+
+    private static string CameraState(JsonObject video, JsonObject? camera)
+    {
+        var status = camera is null ? "" : VideoJson.Text(camera, "status");
+        return !VideoJson.Flag(video, "streamEnabled", true) ? "Video off"
+            : !VideoJson.Flag(video, "available") ? VideoJson.Or(VideoJson.Text(video, "summary"), "No video")
+            : camera is not null && VideoJson.Flag(camera, "connecting") ? "Connecting to the camera…"
+            : status.Length > 0 ? $"Camera: {status}"
+            : VideoJson.Or(VideoJson.Text(video, "summary"), "No video");
+    }
+
+    private void PaintPresence() => Visibility = VideoJson.Shown(_expanded || _connected || IsLive);
 
     private void PaintPicture()
     {
@@ -158,14 +167,15 @@ public sealed partial class VideoThumbnail : UserControl
     {
         var shown = IsLive || Synthetic.Showing;
         var waiting = Synthetic.Chosen && !shown;
-        if (Synthetic.Chosen)
-        {
-            Caption.Text = _title;
-            Dot.Style = (Style)Resources[shown ? "VideoDotLive" : "VideoDotIdle"];
-        }
+        var tag = Synthetic.Pictured ? PictureTag.NoCameraMapView : PictureTag.NoCamera;
         var headline = waiting ? SyntheticView.WaitingHeadline : _headline;
+        Caption.Text = IsLive ? _title : tag;
+        CaptionPill.BorderThickness = new Thickness(IsLive ? 0 : 1);
+        Dot.Style = (Style)Resources[IsLive ? "VideoDotLive" : "VideoDotConnecting"];
         Headline.Text = headline;
         Placeholder.Visibility = VideoJson.Shown(!shown && !_expanded);
+        if (IsLive || !_expanded) NoCamera.Hide();
+        else NoCamera.Say(tag, Synthetic.Showing && !Synthetic.Chosen ? headline : "");
         if (shown || !_expanded) _pill?.Hide();
         else _pill?.Say(headline, waiting ? SyntheticView.WaitingDetail : _detail);
     }

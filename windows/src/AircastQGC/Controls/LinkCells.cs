@@ -35,6 +35,8 @@ public sealed class UsbRadioCell : UserControl
 {
     private readonly StatusPill _pill = StatusLook.Pill("USB radio", "");
 
+    internal StatusTone Tone { get; private set; }
+
     public UsbRadioCell()
     {
         _pill.Button.IsHitTestVisible = false;
@@ -46,7 +48,8 @@ public sealed class UsbRadioCell : UserControl
         {
             var badge = UsbRadio.Badge(view);
             Visibility = Ui.Shown(badge is not null);
-            if (badge is not null) StatusLook.Paint(_pill, badge.Text, UsbRadio.Tone(badge.State));
+            Tone = badge is null ? StatusTone.Normal : UsbRadio.Tone(badge.State);
+            if (badge is not null) StatusLook.Paint(_pill, badge.Text, Tone);
         });
     }
 }

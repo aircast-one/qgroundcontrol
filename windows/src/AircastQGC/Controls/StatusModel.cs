@@ -79,6 +79,7 @@ internal sealed record FlyStatus(
     bool Nominal,
     bool Fault,
     bool CanArm,
+    bool ReadyToFly,
     bool Stale,
     bool RcSupported,
     string RcSignalText,
@@ -86,7 +87,7 @@ internal sealed record FlyStatus(
     bool? RcOverride,
     TelemetryLink? Telemetry)
 {
-    public static readonly FlyStatus None = new(false, false, null, "", "", true, false, true, false, false, "", null, null, null);
+    public static readonly FlyStatus None = new(false, false, null, "", "", true, false, true, false, false, false, "", null, null, null);
 
     public static FlyStatus Parse(JsonObject? view) =>
         StatusJson.Is(view, "FlyState")
@@ -99,6 +100,7 @@ internal sealed record FlyStatus(
                 StatusJson.Flag(view["nominal"], true),
                 StatusJson.Flag(view["fault"]),
                 StatusJson.Flag(view["canArm"], true),
+                StatusJson.Flag(view["readyToFly"]),
                 StatusJson.Text(view["staleNotice"]).Length > 0,
                 StatusJson.Flag(view["rcSupported"]),
                 StatusJson.Text(view["rcSignalText"]),
@@ -114,6 +116,37 @@ internal sealed record FlyStatus(
         RcSignalText.Trim().Length > 0 ? [new DetailRow("RSSI", RcSignalText)] : [];
 
     public bool OverrideShown => RcOverride == true;
+}
+
+internal sealed record Readiness(string Text, string Detail, StatusTone Tone)
+{
+    private const string Ready = "Ready to fly";
+    private const string NotReady = "Not ready";
+    private const string AllPassed = "All checks passed.";
+    private const string SetupIncomplete = "Aircraft setup is not complete.";
+    private const string PreArm = "PreArm:";
+
+    public static Readiness? Of(FlyStatus fly, JsonObject? warnings)
+    {
+        if (!fly.Connected || fly.Armed || fly.ContactLost == true) return null;
+        var blocker = StatusJson.Text(warnings?["armingBlocker"]).Trim();
+        var more = VehicleReports.Checks(warnings).Count - 1;
+        var detail = fly.SummaryDetail == AllPassed && !fly.ReadyToFly ? SetupIncomplete : fly.SummaryDetail.Trim();
+        return blocker.Length > 0
+            ? new(Join(NotReady, Short(blocker) + (more > 0 ? $" +{more}" : "")), blocker, StatusTone.Critical)
+            : fly.ReadyToFly && fly.Nominal
+                ? new(Ready, detail, StatusTone.Good)
+                : new(Join(fly.StateText, Short(detail)), detail, fly.Fault || !fly.CanArm ? StatusTone.Critical : StatusTone.Caution);
+    }
+
+    private static string Short(string reason)
+    {
+        var text = reason.Trim();
+        var bare = text.StartsWith(PreArm, StringComparison.Ordinal) ? text[PreArm.Length..].TrimStart() : text;
+        return bare.Split(". ")[0].TrimEnd('.');
+    }
+
+    private static string Join(params string[] parts) => string.Join(" · ", parts.Where(part => part.Length > 0));
 }
 
 internal sealed record BatteryHeadline(

@@ -61,6 +61,63 @@
         <Style x:Key="KnobDestructiveStyle" TargetType="Border" BasedOn="{StaticResource KnobStyle}">
             <Setter Property="Background" Value="{ThemeResource CriticalBrush}" />
         </Style>
+
+        <Style x:Key="HoldButton" TargetType="Button">
+            <Setter Property="Background" Value="{ThemeResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{ThemeResource AccentOnBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{ThemeResource RadiusControl}" />
+            <Setter Property="MinHeight" Value="{StaticResource SizeControl}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid
+                            x:Name="Chrome"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Chrome.Opacity" Value="0.9" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Chrome.Opacity" Value="0.8" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="Chrome.Opacity" Value="0.4" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <ContentPresenter
+                                Content="{TemplateBinding Content}"
+                                Foreground="{TemplateBinding Foreground}"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="HoldButtonDestructive" TargetType="Button" BasedOn="{StaticResource HoldButton}">
+            <Setter Property="Background" Value="{ThemeResource StopBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource StopBrush}" />
+            <Setter Property="Foreground" Value="{ThemeResource StopOnBrush}" />
+        </Style>
     </UserControl.Resources>
 
     <Border
@@ -220,18 +277,57 @@
                 </Grid>
             </Border>
 
-            <Button
-                x:Name="CancelButton"
-                Content="Cancel"
-                MinWidth="80"
-                HorizontalAlignment="Center"
-                CornerRadius="{ThemeResource RadiusControl}"
-                BorderThickness="1"
-                Click="CancelButton_Click">
-                <Button.KeyboardAccelerators>
-                    <KeyboardAccelerator Key="Escape" />
-                </Button.KeyboardAccelerators>
-            </Button>
+            <Grid ColumnSpacing="{StaticResource SpaceSm}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button
+                    x:Name="ConfirmButton"
+                    Style="{StaticResource HoldButton}"
+                    AutomationProperties.HelpText="Hold to confirm, or press Enter."
+                    PreviewKeyDown="ConfirmButton_PreviewKeyDown"
+                    PreviewKeyUp="ConfirmButton_PreviewKeyUp"
+                    Click="ConfirmButton_Click">
+                    <Grid>
+                        <Border
+                            x:Name="HoldFill"
+                            Opacity="0.3"
+                            IsHitTestVisible="False"
+                            RenderTransformOrigin="0,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="HoldScale" ScaleX="0" />
+                            </Border.RenderTransform>
+                        </Border>
+                        <TextBlock
+                            x:Name="ConfirmText"
+                            Margin="12,0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontWeight="SemiBold"
+                            MaxLines="1"
+                            TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                </Button>
+                <Button
+                    x:Name="CancelButton"
+                    Grid.Column="1"
+                    Content="Cancel"
+                    MinWidth="80"
+                    CornerRadius="{ThemeResource RadiusControl}"
+                    BorderThickness="1"
+                    Click="CancelButton_Click">
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Escape" />
+                    </Button.KeyboardAccelerators>
+                </Button>
+            </Grid>
+
+            <TextBlock
+                Text="Hold to confirm, or press Enter"
+                Style="{StaticResource ConfirmCaption}"
+                Margin="0,-4,0,0"
+                HorizontalAlignment="Center" />
         </StackPanel>
     </Border>
 </UserControl>

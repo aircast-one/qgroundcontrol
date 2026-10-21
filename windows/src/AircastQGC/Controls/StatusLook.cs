@@ -36,7 +36,44 @@ internal static class FlyRequests
     public static void OpenFly() => Fly?.Invoke();
 }
 
-internal sealed record StatusPill(Button Button, FontIcon Icon, TextBlock Label);
+internal sealed record StatusPill(Button Button, FontIcon Icon, TextBlock Label, TextBlock Extra);
+
+internal sealed class DropPanel : Panel
+{
+    private const double Spacing = 6;
+
+    public double Saving { get; private set; }
+
+    private double Full => Width(Children);
+
+    private IReadOnlyList<UIElement> Shown(Size room) =>
+        Full <= room.Width + 0.5 ? Children.ToList() : Children.Take(Children.Count - 1).ToList();
+
+    private static double Width(IEnumerable<UIElement> children)
+    {
+        var widths = children.Select(child => child.DesiredSize.Width).Where(width => width > 0).ToList();
+        return widths.Sum() + Spacing * Math.Max(0, widths.Count - 1);
+    }
+
+    protected override Size MeasureOverride(Size available)
+    {
+        Children.ToList().ForEach(child => child.Measure(new Size(double.PositiveInfinity, available.Height)));
+        Saving = Full - Width(Children.Take(Children.Count - 1));
+        return new Size(Width(Shown(available)), Children.Select(child => child.DesiredSize.Height).DefaultIfEmpty(0).Max());
+    }
+
+    protected override Size ArrangeOverride(Size final)
+    {
+        var shown = Shown(final);
+        shown.Where(child => child.DesiredSize.Width > 0).Aggregate(0.0, (x, child) =>
+        {
+            child.Arrange(new Rect(x, (final.Height - child.DesiredSize.Height) / 2, child.DesiredSize.Width, child.DesiredSize.Height));
+            return x + child.DesiredSize.Width + Spacing;
+        });
+        Children.Except(shown).ToList().ForEach(child => child.Arrange(new Rect(0, 0, 0, 0)));
+        return final;
+    }
+}
 
 internal static class StatusLook
 {
@@ -78,6 +115,7 @@ internal static class StatusLook
             Visibility = Ui.Shown(glyph.Length > 0),
         };
         var label = Ui.Text("", "FontSizeCaption", wrap: false);
+        var extra = Ui.Text("", "FontSizeCaption", wrap: false);
         var button = new Button
         {
             Height = PillHeight,
@@ -86,20 +124,22 @@ internal static class StatusLook
             CornerRadius = new CornerRadius(PillHeight / 2),
             BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { icon, label } },
+            Content = new DropPanel { Children = { icon, label, extra } },
         }.Named(name);
         PreflightLook.Chip(button);
         ToolTipService.SetToolTip(button, name);
-        return new StatusPill(button, icon, label);
+        return new StatusPill(button, icon, label, extra);
     }
 
-    public static void Paint(StatusPill pill, string text, StatusTone tone)
+    public static void Paint(StatusPill pill, string text, StatusTone tone, string extra = "")
     {
         pill.Label.Text = text;
+        pill.Extra.Text = extra;
         pill.Icon.Foreground = Tint(tone == StatusTone.Normal ? StatusTone.Muted : tone);
         pill.Label.Foreground = Ui.Token("TextPrimaryBrush");
+        pill.Extra.Foreground = Ui.Token("TextPrimaryBrush");
         pill.Button.Background = Fill(tone);
-        AutomationProperties.SetHelpText(pill.Button, text);
+        AutomationProperties.SetHelpText(pill.Button, string.Join("  ", new[] { text, extra }.Where(part => part.Length > 0)));
     }
 
     public static Style Presenter() => new(typeof(FlyoutPresenter))

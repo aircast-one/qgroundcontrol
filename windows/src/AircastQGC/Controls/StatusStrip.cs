@@ -162,7 +162,8 @@ public sealed class StatusStrip : UserControl
         ];
         _cells.Where(cell => cell.Cell is Button && _opens.ContainsKey(cell.Key)).ToList()
             .ForEach(cell => ((Button)cell.Cell).Click += (_, _) => Open(cell.Key, cell.Cell));
-        _row = owner is null ? new StatusRow(_cells, cell => _tones.GetValueOrDefault(cell, StatusTone.Normal), () => new StatusStrip(this)) : null;
+        _row = owner is null ? new StatusRow(_cells, cell => cell is UsbRadioCell usb ? usb.Tone : _tones.GetValueOrDefault(cell, StatusTone.Normal), () => new StatusStrip(this)) : null;
+        if (_row is not null) _row.NeedChanged += () => NeedChanged?.Invoke();
         Content = _row?.View ?? new StatusList(_cells).View;
         VerticalAlignment = VerticalAlignment.Center;
 
@@ -173,6 +174,10 @@ public sealed class StatusStrip : UserControl
     }
 
     public void ShowLinks(FrameworkElement anchor) => (Fly.Connected ? _linksSheet : _offlineSheet).ShowAt(anchor);
+
+    public double Needed => _row?.Needed ?? 0;
+
+    public event Action? NeedChanged;
 
     private IReadOnlyList<string> Paths => _owner is null ? Watched : ListedWatched;
 
@@ -272,8 +277,9 @@ public sealed class StatusStrip : UserControl
         var headline = BatteryHeadline.Parse(View(BatteryPath));
         var extras = packs.Count == 0 ? [] : new[] { headline?.TimeLeft ?? "", BatteryModel.TotalCurrent(View(BatteryPath)) ?? "" }.Where(t => t.Length > 0);
         Show(_battery, fly.Connected && packs.Count > 0,
-            string.Join("  ", packs.Select(p => FormText.Spaced(p.Text, BatteryModel.CountText(p.Packs))).Concat(extras)),
-            BatteryModel.Worst(packs));
+            string.Join("  ", packs.Select(p => FormText.Spaced(p.Text, BatteryModel.CountText(p.Packs)))),
+            BatteryModel.Worst(packs),
+            string.Join("  ", extras));
 
         Show(_flightTime, fly.Connected, StatusText.FlightTime(_flownSeconds), StatusTone.Normal);
 
@@ -320,11 +326,11 @@ public sealed class StatusStrip : UserControl
         _row?.Paint();
     }
 
-    private void Show(StatusPill pill, bool shown, string text, StatusTone tone)
+    private void Show(StatusPill pill, bool shown, string text, StatusTone tone, string extra = "")
     {
         pill.Button.Visibility = Ui.Shown(shown);
         _tones = _tones.SetItem(pill.Button, shown ? tone : StatusTone.Normal);
-        if (shown) StatusLook.Paint(pill, text, tone);
+        if (shown) StatusLook.Paint(pill, text, tone, extra);
     }
 
     private void Then(Sheet? open, Action next)

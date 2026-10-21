@@ -76,9 +76,6 @@
 
             <StackPanel x:Name="LeftRail" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="16"
                         Spacing="{StaticResource SpaceSm}">
-                <Button x:Name="ChecklistButton" Style="{StaticResource FlyRailButton}" Content="&#xE9D5;"
-                        Visibility="Collapsed" ToolTipService.Placement="Right"
-                        ToolTipService.ToolTip="Pre-flight checklist" AutomationProperties.Name="Pre-flight checklist" />
                 <controls:GuidedBar x:Name="GuidedStrip" />
             </StackPanel>
 

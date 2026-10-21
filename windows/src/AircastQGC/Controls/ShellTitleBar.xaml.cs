@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using AircastQGC.Core;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
@@ -15,6 +16,9 @@ public sealed partial class ShellTitleBar : UserControl
     private const string FlyStatePath = "view.flyState";
     private const string VehicleLinksPath = "view.vehicleLinks";
     private const string FlightModesPath = "view.flightModes";
+    private const string WarningsPath = "view.warnings";
+    private const string ReadyGlyph = "\uE73E";
+    private const string NotReadyGlyph = "\uE7BA";
     private const string ArmedGlyph = "";
     private const string DisarmedGlyph = "";
     private const double StaleOpacity = 0.45;
@@ -22,16 +26,16 @@ public sealed partial class ShellTitleBar : UserControl
     private const double SubtitleRoom = 96;
     private const double StripFloor = 200;
     private const double DragFloor = 64;
+    private const double VerdictFloor = 80;
+    private const double VerdictCap = 240;
 
-    private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath };
+    private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath, WarningsPath };
     private static readonly string[] KnownStates = { "notConnected", "contactLost", "flying", "landing", "armed", "disarmed" };
 
     private readonly Dictionary<string, JsonObject> _views = new();
     private readonly VehicleStatusSheet _status = new();
     private string _pendingMode = "";
     private bool _onFly;
-
-    private enum Tone { Good, Caution, Critical, Unknown }
 
     public ShellTitleBar()
     {
@@ -41,6 +45,7 @@ public sealed partial class ShellTitleBar : UserControl
         Fixed.SizeChanged += (_, _) => Fit();
         Lead.SizeChanged += (_, _) => Fit();
         MoreButton.SizeChanged += (_, _) => Fit();
+        Strip.NeedChanged += Fit;
         PageMenu.Opening += (_, _) => PageMenu.Items.OfType<RadioMenuFlyoutItem>().ToList()
             .ForEach(item => item.IsChecked = item.Tag as string == CurrentPage);
         Unloaded += (_, _) => Array.ForEach(Watched, path => BridgeWatch.Stop(Client(path)));
@@ -120,6 +125,7 @@ public sealed partial class ShellTitleBar : UserControl
             ? Lead.Margin.Left + Lead.ActualWidth + MoreButton.ActualWidth + RightGroup.Spacing + DragFloor
             : DragArea.Padding.Left + DragArea.Padding.Right + LogoWidth + DragArea.ColumnSpacing + SubtitleRoom;
         var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - Fixed.ActualWidth - brand;
+        ArmedText.MaxWidth = Math.Clamp(room + ArmedText.ActualWidth - Strip.Needed, VerdictFloor, VerdictCap);
         var titled = !_onFly && room - title >= StripFloor;
         AppTitle.Visibility = Shown(titled);
         Strip.MaxWidth = Math.Max(0, room - (titled ? title : 0));
@@ -175,11 +181,12 @@ public sealed partial class ShellTitleBar : UserControl
         Readings.Visibility = Shown(connected);
         Readings.Opacity = Text(state, "staleNotice").Length == 0 ? 1 : StaleOpacity;
 
+        var verdict = Readiness.Of(FlyStatus.Parse(state), View(WarningsPath));
         var mode = Text(state, "mode");
         var pending = _pendingMode.Length > 0;
         var offersModes = View(FlightModesPath)["modes"] is JsonArray { Count: > 0 };
         var named = mode.Length == 0 ? "Mode unknown" : mode;
-        ModeText.Text = pending ? _pendingMode : _onFly && stateText.Length > 0 ? $"{named} · {stateText}" : named;
+        ModeText.Text = pending ? _pendingMode : _onFly && stateText.Length > 0 && verdict is null ? $"{named} · {stateText}" : named;
         ModeText.Foreground = Token(_onFly && alarming ? "CriticalBrush" : "TextPrimaryBrush");
         ModePill.IsEnabled = offersModes;
         ModeChevron.Visibility = Shown(offersModes && !pending);
@@ -187,43 +194,39 @@ public sealed partial class ShellTitleBar : UserControl
         ModePending.IsActive = pending;
 
         var armed = Flag(state, "armed") == true;
-        ArmedText.Text = armed ? "Armed" : "Disarmed";
-        ArmedIcon.Glyph = armed ? ArmedGlyph : DisarmedGlyph;
-        Paint(ArmedPill, ArmedIcon, armed ? Tone.Critical : Tone.Unknown);
+        ArmedText.Text = verdict?.Text ?? (armed ? "Armed" : "Disarmed");
+        ArmedIcon.Glyph = verdict switch
+        {
+            null => armed ? ArmedGlyph : DisarmedGlyph,
+            { Tone: StatusTone.Good } => ReadyGlyph,
+            _ => NotReadyGlyph,
+        };
+        Paint(ArmedPill, ArmedIcon, verdict?.Tone ?? (armed ? StatusTone.Critical : StatusTone.Muted));
+        ToolTipService.SetToolTip(ArmedPill, verdict is null ? "Vehicle status" : string.Join("\n", new[] { $"Disarmed · {verdict.Text}", verdict.Detail }.Where(line => line.Length > 0)));
+        AutomationProperties.SetHelpText(ArmedPill, verdict is null ? "" : $"Disarmed. {verdict.Text}");
     }
 
-    private static (string Label, Tone Level) Link(bool connected, bool? contactLost, JsonObject view)
+    private static (string Label, StatusTone Level) Link(bool connected, bool? contactLost, JsonObject view)
     {
-        if (!connected) return ("No vehicle", Tone.Unknown);
-        if (contactLost == true) return ("Contact lost", Tone.Critical);
+        if (!connected) return ("No vehicle", StatusTone.Muted);
+        if (contactLost == true) return ("Contact lost", StatusTone.Critical);
         var links = (view["links"] as JsonArray)?.OfType<JsonObject>().ToList() ?? new List<JsonObject>();
         var silent = links.Count(link => Flag(link, "commLost") == true);
-        var heard = contactLost == false ? Tone.Good : Tone.Unknown;
+        var heard = contactLost == false ? StatusTone.Good : StatusTone.Muted;
         var single = links.Count == 1 ? Text(links[0], "name") : "";
         return links.Count switch
         {
             < 2 => (single.Length == 0 ? "Connected" : single, heard),
             _ when silent == 0 => ($"{links.Count} links", heard),
-            _ when silent == links.Count => ("No link heard", Tone.Critical),
-            _ => (silent == 1 ? "1 link lost" : $"{silent} links lost", Tone.Caution),
+            _ when silent == links.Count => ("No link heard", StatusTone.Critical),
+            _ => (silent == 1 ? "1 link lost" : $"{silent} links lost", StatusTone.Caution),
         };
     }
 
-    private static void Paint(FrameworkElement pill, FontIcon icon, Tone tone)
+    private static void Paint(Control pill, FontIcon icon, StatusTone tone)
     {
-        icon.Foreground = Token(tone switch
-        {
-            Tone.Good => "SuccessBrush",
-            Tone.Caution => "CautionBrush",
-            Tone.Critical => "CriticalBrush",
-            _ => "TextTertiaryBrush",
-        });
-        pill.SetValue(pill is Control ? Control.BackgroundProperty : Border.BackgroundProperty, Token(tone switch
-        {
-            Tone.Caution => "CautionBgBrush",
-            Tone.Critical => "CriticalBgBrush",
-            _ => "ChipBrush",
-        }));
+        icon.Foreground = StatusLook.Tint(tone);
+        pill.Background = StatusLook.Fill(tone);
     }
 
     private static Brush Token(string key) =>

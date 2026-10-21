@@ -46,6 +46,6 @@ internal sealed class MissionPopups
         var due = ++_due;
         await Task.Delay(PopupDelay);
         if (due != _due || _offers.GetValueOrDefault(id) is not { Ready: true } settled) return;
-        if (!_card.IsOpen || id == LandAbort) _card.Show(settled);
+        if (!_card.IsOpen || id == LandAbort) _card.Show(settled, focus: false);
     }
 }

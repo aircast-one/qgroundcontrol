@@ -7,9 +7,12 @@ using System.Threading.Tasks;
 using AircastQGC.Core;
 using AircastQGC.Forms;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Animation;
+using Windows.System;
 
 namespace AircastQGC.Controls;
 
@@ -24,16 +27,21 @@ public sealed partial class GuidedConfirm : UserControl
     private const string Unanswered = "The vehicle has not reported what this action would send.";
     private const string Refused = "The vehicle was not sent the command.";
     private static readonly TimeSpan ProbeSettle = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan HoldToConfirm = TimeSpan.FromMilliseconds(800);
+    private static readonly TimeSpan HoldToConfirmDestructive = TimeSpan.FromMilliseconds(1500);
     private static readonly IReadOnlySet<string> Probed = new HashSet<string> { "changeAltitude", "pause", "changeSpeed" };
     private static readonly IReadOnlySet<string> SentenceOnly = new HashSet<string> { "changeAltitude", "pause" };
 
     private readonly DispatcherTimer _settle = new() { Interval = ProbeSettle };
+    private readonly Storyboard _hold = new();
+    private readonly DoubleAnimation _holdFill = new() { From = 0, To = 1 };
 
     private GuidedAsk? _ask;
     private GuidedOffer? _pending;
     private GuidedRange? _range;
     private double? _grabbedAt;
     private IReadOnlyList<(GuidedPick Pick, Action<bool> Mark, UIElement View)> _picks = [];
+    private bool _pointered;
 
     public event EventHandler<GuidedOffer>? Sent;
     public event EventHandler<string>? Failed;
@@ -45,6 +53,15 @@ public sealed partial class GuidedConfirm : UserControl
     {
         InitializeComponent();
         _settle.Tick += (_, _) => Probe();
+        Storyboard.SetTarget(_holdFill, HoldScale);
+        Storyboard.SetTargetProperty(_holdFill, "ScaleX");
+        _hold.Children.Add(_holdFill);
+        _hold.Completed += (_, _) => Confirm();
+        ConfirmButton.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => Hold()), true);
+        ConfirmButton.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => LetGo()), true);
+        ConfirmButton.AddHandler(PointerCanceledEvent, new PointerEventHandler((_, _) => LetGo()), true);
+        ConfirmButton.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => LetGo()), true);
+        ConfirmButton.AddHandler(PointerExitedEvent, new PointerEventHandler((_, _) => LetGo()), true);
         Unloaded += (_, _) =>
         {
             BridgeWatch.Stop(WatchClient);
@@ -52,7 +69,7 @@ public sealed partial class GuidedConfirm : UserControl
         };
     }
 
-    public bool Show(GuidedOffer offer)
+    public bool Show(GuidedOffer offer, bool focus = true)
     {
         if (!offer.Ready) return false;
         var range = offer.CarriesValue ? GuidedRange.From(ValueView(offer.Id, null)) : null;
@@ -67,12 +84,12 @@ public sealed partial class GuidedConfirm : UserControl
             Fields = GuidedExtras.For(offer.Id),
             WatchPath = GuidedOffer.ViewPath,
             StillOffered = view => GuidedOffer.List(view).Any(o => o.Id == offer.Id && o.Ready),
-        }, offer, range);
+        }, offer, range, focus);
         if (!offer.Confirm) Confirm();
         return true;
     }
 
-    public void Ask(GuidedAsk ask) => Open(ask, null, null);
+    public void Ask(GuidedAsk ask) => Open(ask, null, null, true);
 
     public void Confirm()
     {
@@ -92,7 +109,7 @@ public sealed partial class GuidedConfirm : UserControl
 
     public void Hide() => Close();
 
-    private void Open(GuidedAsk ask, GuidedOffer? offer, GuidedRange? range)
+    private void Open(GuidedAsk ask, GuidedOffer? offer, GuidedRange? range, bool focus)
     {
         _ask = ask;
         _pending = offer;
@@ -109,7 +126,13 @@ public sealed partial class GuidedConfirm : UserControl
         AlternativeButton.Content = ask.Alternative?.Title;
         AlternativeButton.Visibility = Seen(ask.Alternative != null);
         Knob.Style = Styled(ask.Destructive ? "KnobDestructiveStyle" : "KnobStyle");
-        SlideText.Text = $"Slide to {ask.Title.ToLower(CultureInfo.CurrentCulture)}";
+        SlideText.Text = $"Slide to {Phrase(ask.Title)}";
+        ConfirmButton.Style = Styled(ask.Destructive ? "HoldButtonDestructive" : "HoldButton");
+        HoldFill.Background = ConfirmButton.Foreground;
+        ConfirmText.Text = $"Confirm {Phrase(ask.Title)}";
+        AutomationProperties.SetName(ConfirmButton, ConfirmText.Text);
+        ToolTipService.SetToolTip(ConfirmButton, $"{ConfirmText.Text}. Hold to confirm, or press Enter.");
+        _holdFill.Duration = ask.Destructive ? HoldToConfirmDestructive : HoldToConfirm;
         OptionCheck.Content = offer?.Option ?? "";
         OptionCheck.IsChecked = false;
         OptionCheck.Visibility = Seen(offer?.Option.Length > 0);
@@ -120,9 +143,14 @@ public sealed partial class GuidedConfirm : UserControl
         if (range != null) PresentRange(range);
         if (range != null) Probe();
         ReleaseKnob();
+        ReleaseHold();
         Root.Visibility = Visibility.Visible;
         BridgeWatch.Watch(WatchClient, ask.WatchPath.Length > 0 ? new[] { ask.WatchPath } : Array.Empty<string>(), OnWatched);
+        if (focus) DispatcherQueue.TryEnqueue(() => (ask.Destructive ? CancelButton : ConfirmButton).Focus(FocusState.Programmatic));
     }
+
+    private static string Phrase(string title) =>
+        string.Join(' ', title.Split(' ').Select(word => word.Length > 1 && word.All(char.IsUpper) ? word : word.ToLower(CultureInfo.CurrentCulture)));
 
     private void PresentRange(GuidedRange range)
     {
@@ -179,6 +207,7 @@ public sealed partial class GuidedConfirm : UserControl
         PicksRow.Children.Clear();
         FieldsHost.Content = null;
         ReleaseKnob();
+        ReleaseHold();
         Root.Visibility = Visibility.Collapsed;
         BridgeWatch.Stop(WatchClient);
     }
@@ -294,10 +323,15 @@ public sealed partial class GuidedConfirm : UserControl
 
     private void Knob_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        var reached = _grabbedAt != null && Travel > 0 && KnobShift.X >= Travel - ReachSlack;
-        ReleaseKnob();
         Knob.ReleasePointerCapture(e.Pointer);
         e.Handled = true;
+        Slid();
+    }
+
+    private void Slid()
+    {
+        var reached = _grabbedAt != null && Travel > 0 && KnobShift.X >= Travel - ReachSlack;
+        ReleaseKnob();
         if (reached) Confirm();
     }
 
@@ -332,6 +366,39 @@ public sealed partial class GuidedConfirm : UserControl
     {
         Knob.IsHitTestVisible = sendable;
         SlideTrack.Opacity = sendable ? 1 : 0.4;
+        ConfirmButton.IsEnabled = sendable;
+        if (!sendable) ReleaseHold();
+    }
+
+    private void Hold()
+    {
+        _pointered = true;
+        if (ConfirmButton.IsEnabled && _ask != null) _hold.Begin();
+    }
+
+    private void LetGo()
+    {
+        ReleaseHold();
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => _pointered = false);
+    }
+
+    private void ReleaseHold() => _hold.Stop();
+
+    private void ConfirmButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pointered) _pointered = false;
+        else Confirm();
+    }
+
+    private void ConfirmButton_PreviewKeyDown(object sender, KeyRoutedEventArgs e) => e.Handled = Key(e.Key, e.KeyStatus.WasKeyDown);
+
+    private void ConfirmButton_PreviewKeyUp(object sender, KeyRoutedEventArgs e) => e.Handled = e.Key is VirtualKey.Enter or VirtualKey.Space;
+
+    private bool Key(VirtualKey key, bool repeat)
+    {
+        if (key == VirtualKey.Escape) Cancel();
+        else if (key is VirtualKey.Enter or VirtualKey.Space && !repeat && ConfirmButton.IsEnabled) Confirm();
+        return key is VirtualKey.Escape or VirtualKey.Enter or VirtualKey.Space;
     }
 
     private void Step(int delta)

@@ -127,6 +127,8 @@ public sealed partial class MainWindow : Window
         VideoTile.SwapRequested += (_, _) => SwapVideo(!_videoMain);
         VideoTile.Pill = NoVideoMessage;
         AimSlot.Child = VideoTile.AimRail;
+        VideoTile.CameraTag.SizeChanged += (_, _) => Clearances();
+        VideoTile.CameraTag.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => Clearances());
         PipFrame.Click += (_, _) => SwapVideo(false);
         ReadingsBar.AttitudeChanged += (_, _) => ShowVehicleOverlays(ReadingsBar.Visibility == Visibility.Visible);
         CameraPanel.CameraPresentChanged += (_, _) => CameraButton.Visibility = Shown(CameraPanel.CameraPresent);
@@ -171,7 +173,7 @@ public sealed partial class MainWindow : Window
 
         Checklist.StateChanged += (_, _) => PaintChecklistButton();
         GuidedStrip.DeckChanged += (_, _) => PaintChecklistButton();
-        ChecklistButton.Click += (_, _) => ToggleChecklist();
+        GuidedStrip.ChecklistRequested += (_, _) => ToggleChecklist();
         Checklist.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => FleetColumn.Visibility = Shown(!Checklist.IsOpen));
 
         var root = (FrameworkElement)Content;
@@ -278,11 +280,18 @@ public sealed partial class MainWindow : Window
         Clearances();
     }
 
+    private double RailTop() =>
+        VideoTile.CameraTag is { Visibility: Visibility.Visible, ActualHeight: > 0 } tag
+            ? Math.Max(TileMargin, tag.TransformToVisual(FlyChrome).TransformPoint(new Windows.Foundation.Point(0, tag.ActualHeight)).Y + TileMargin)
+            : TileMargin;
+
     private void Clearances()
     {
         var bar = BottomLeft.ActualHeight > 0 ? BottomLeft.ActualHeight + BottomGap : TileMargin;
         var rail = LeftRail.ActualWidth > 0 ? LeftRail.ActualWidth + TileMargin : 0;
-        LeftRail.Margin = new Thickness(TileMargin, TileMargin, 0, bar);
+        var top = RailTop();
+        LeftRail.Margin = new Thickness(TileMargin, top, 0, bar);
+        GuidedStrip.Room = FlyChrome.ActualHeight - top - bar;
         GuidedCard.Margin = new Thickness(TileMargin + rail, TileMargin, TileMargin, bar);
         LeftColumn.Margin = new Thickness(TileMargin + rail, LeftTop, TileMargin, bar + StatsRoom);
         FleetScroll.MaxHeight = RcLayer.Visibility == Visibility.Visible
@@ -436,12 +445,9 @@ public sealed partial class MainWindow : Window
         else Checklist.Show();
     }
 
-    private void PaintChecklistButton()
-    {
-        ChecklistButton.Visibility = Shown(Checklist.HasVehicle && !GuidedStrip.OnFlyingDeck);
-        ToolTipService.SetToolTip(ChecklistButton,
+    private void PaintChecklistButton() =>
+        GuidedStrip.ShowChecklist(Checklist.HasVehicle && !GuidedStrip.OnFlyingDeck,
             Checklist.Ready ? "Pre-flight checklist · Ready" : $"Pre-flight checklist · {Checklist.Progress}");
-    }
 
     private static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
 }

@@ -181,7 +181,7 @@
                             AutomationProperties.Name="Vehicle status" ToolTipService.ToolTip="Vehicle status">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon x:Name="ArmedIcon" Glyph="&#xE72E;" Style="{StaticResource PillIcon}" />
-                            <TextBlock x:Name="ArmedText" Style="{StaticResource PillText}" />
+                            <TextBlock x:Name="ArmedText" Style="{StaticResource PillText}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                     </Button>
                 </StackPanel>

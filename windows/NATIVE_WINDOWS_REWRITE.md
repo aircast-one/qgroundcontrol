@@ -223,6 +223,53 @@ were not pressed. The WHEP stream did not connect in the merged variant (its run
 was not re-run after the merge. With a live stream the aspect setting does not change the frame, by design. Over the synthetic view,
 full screen shows a black strip for 1–2 s while the renderer resizes.
 
+### Fly UX review fixes (round 11)
+
+A task-level review of the Fly view ("get the drone in the air, watch it, bring it back") ranked six findings. All six are fixed in
+the head; finding 1 also needed a core change.
+
+1. No camera, generated picture. A tag on the main picture (`Controls/PictureTag`, caution edge, acrylic chip) reads
+   "No camera · 3D map view" once the 3D view has drawn, and "No camera" before that. Its second line gives the camera state in plain
+   words ("Connecting to the camera…", "Camera: Reconnecting…", "Video off"). The tag is a button: its menu lists the cameras and the
+   picture-in-picture toggle (`CameraMenu`, shared with the camera chip) and opens Settings > Video sources. The thumbnail badge says
+   "No camera · 3D map view" instead of "WHEP · Connecting…". The 3D view hides its stale frame until it has painted at the new size,
+   so the black area with an old corner frame at 1024 wide is gone. Core (`synthview.rs`, `synthetic/host.rs`): `Draw::awaiting` makes
+   `view.syntheticView.draw` report `loading` from an attach or resize until the first frame at the new size is presented.
+2. Status row. Cells are fitted by severity: battery and the core's critical and caution cells are pinned, healthy cells overflow
+   first, the battery drops time and current when room is short, and the chevron names an abnormal cell it hides ("RC signal ›").
+   On the ground one verdict replaces "Disarmed": "Ready to fly" or "Not ready · <reason>", taken only from `view.flyState` and
+   `view.warnings`; it opens Vehicle status. Pinned cells get width before the verdict text.
+3. Guided confirm. The card has a focused "Confirm <action>" button: hold 0.8 s (1.5 s for destructive asks) with a sweeping fill,
+   or a fresh Enter or Space; Escape cancels; the slide stays. Destructive asks get a red button and focus starts on Cancel.
+   Automatic mission popups do not take focus. Ctrl+R opens the Return card.
+4. Rail labels. The rail owns Checklist, the actions, More and Stop, each with a short label (Take off, Start, Return, Land, Pause,
+   Payload, More, Checklist, Stop motors). When the labelled rail does not fit, only the primary keeps its label. Return uses a U-turn
+   arrow with an H instead of the house.
+5. Emphasis. Take off is the filled primary on the ground and Return in flight; Stop motors is a red outline at the bottom after a gap.
+6. No vehicle. The thumbnail is hidden while no vehicle is connected, the video is not the main view and no picture is live, so the
+   connect card stands alone.
+
+The rail starts below the picture tag (`MainWindow.RailTop`), so the two never overlap at short window heights.
+
+Merged build (2026-10-21, scratch variant, mock ArduCopter, the VM's saved camera at an address with nothing behind it): no vehicle at
+1440×900 and 1024×700 shows the connect card with no thumbnail. On the ground the verdict reads "Ready to fly" and the rail is
+Checklist, Take off (filled), More. In flight the rail is Pause, Return (filled, Ctrl+R), Land, Payload, More and an outlined
+Stop motors; the main 3D picture carries "No camera · 3D map view"; no protocol name appears in any text or button name. Right after a
+resize to 1024 the view showed "Loading 3D view…" over a blank picture and the tag read "No camera", then the full picture. Return was
+confirmed four ways in-process: a full hold, a fresh Enter (a repeated Enter did nothing), Enter and Escape posted as window messages
+to the app's own window, and Ctrl+R posted the same way opened the card. A 0.37 hold cancelled. The Stop card opened with focus on
+Cancel and Escape closed it with the motors running. Light palette checked once and restored. The tag menu opened Settings > Video
+sources. Core: `cargo test --lib` 2675 passed, iOS and wasm32 checks clean, DLL built on the VM.
+Screenshots: `~/.claude/jobs/6037fcd4/tmp/design/round11-ux/side-f1-video-label-1440.jpg` through `side-f6-no-vehicle.jpg`, and the
+`merged-before-*` / `merged-after-*` pairs in the same folder.
+
+Still open: the core has no "RC not required" signal, so the verdict can read "Ready to fly" next to a red "No signal RC" when the
+vehicle itself reports ready (proposed: `flyState.rcRequired` from PX4 `COM_RC_IN_MODE` or ArduPilot `RC_OPTIONS` bit 0). The `draw`
+state is shared by every 3D surface, so resizing the PiP's 3D view briefly marks the main one as loading. The camera title is user data
+and can still be a protocol name (the VM's camera is called "WHEP"). Android shows the thumbnail whenever a source is configured;
+Windows hides it with no vehicle unless the picture is live. Start mission sits on the ground rail; Android keeps it in More. No real
+mouse, touch or key press was sent: holds and slides ran through the card's own handlers and keys were posted to the app's window.
+
 ### Plan
 
 - ◐ plan (map tap-to-add and real pointer drags not driven: no pointer input on the shared VM; each drag handle's drop handler was driven in-process) · ✓ plan — replace plan · ✓ plan — upload warning · ✓ plan — terrain profile

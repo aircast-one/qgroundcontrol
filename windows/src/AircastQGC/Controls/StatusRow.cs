@@ -15,13 +15,26 @@ internal sealed record StatusCell(string Key, string Label, FrameworkElement Cel
 
 internal static class StatusFit
 {
-    public static (IReadOnlyList<int> Fitted, IReadOnlyList<int> Overflow, double Used) Fit(
-        IReadOnlyList<int> sequence, IReadOnlyList<double> widths, double room, double spacing)
+    public static (IReadOnlyList<int> Fitted, IReadOnlyList<int> Overflow, double Used, bool Squeezed) Fit(
+        IReadOnlyList<int> sequence, IReadOnlyList<double> widths, IReadOnlyList<double> compact, Func<int, int> rank, double room, double spacing)
     {
         var present = sequence.Where(i => widths[i] > 0).ToList();
-        var ends = present.Select((i, n) => present.Take(n + 1).Sum(k => widths[k]) + spacing * n).ToList();
-        var count = ends.TakeWhile(end => end <= room).Count();
-        return (present.Take(count).ToList(), present.Skip(count).ToList(), count == 0 ? 0 : ends[count - 1]);
+        var pinned = present.Where(i => rank(i) > 0).OrderByDescending(rank).ToList();
+        var free = present.Where(i => rank(i) == 0).ToList();
+        (ImmutableList<int> Taken, double Used) Pick(IReadOnlyList<double> sized)
+        {
+            double Add(double used, int i) => used + (used > 0 ? spacing : 0) + sized[i];
+            var held = pinned.Aggregate((Taken: ImmutableList<int>.Empty, Used: 0.0),
+                (acc, i) => Add(acc.Used, i) <= room ? (acc.Taken.Add(i), Add(acc.Used, i)) : acc);
+            var filled = free.Aggregate((held.Taken, held.Used, Open: true),
+                (acc, i) => acc.Open && Add(acc.Used, i) <= room ? (acc.Taken.Add(i), Add(acc.Used, i), true) : (acc.Taken, acc.Used, false));
+            return (filled.Taken, filled.Used);
+        }
+        var natural = Pick(widths);
+        var squeezed = pinned.Any(i => !natural.Taken.Contains(i)) && present.Any(i => compact[i] < widths[i]);
+        var (taken, used) = squeezed ? Pick(compact) : natural;
+        var fitted = present.Where(taken.Contains).ToList();
+        return (fitted, present.Except(fitted).ToList(), used, squeezed);
     }
 }
 
@@ -37,6 +50,10 @@ internal sealed class FitRow : Panel
 
     public event Action? Refitted;
 
+    public event Action? NeedChanged;
+
+    public double Needed { get; private set; }
+
     public IReadOnlyList<int> Sequence
     {
         get => _sequence;
@@ -46,6 +63,8 @@ internal sealed class FitRow : Panel
             InvalidateMeasure();
         }
     }
+
+    public Func<int, int> Rank { get; init; } = _ => 0;
 
     public IReadOnlyList<int> Overflow { get; private set; } = [];
 
@@ -60,18 +79,24 @@ internal sealed class FitRow : Panel
         return cell.Visibility == Visibility.Visible ? cell.DesiredSize.Width : 0;
     }
 
+    private static double Saving(Border slot) => slot.Child is ContentControl { Content: DropPanel drop } ? drop.Saving : 0;
+
     protected override Size MeasureOverride(Size available)
     {
         var slots = Slots;
         if (slots.Count == 0) return new Size(0, 0);
         var height = double.IsInfinity(available.Height) ? double.PositiveInfinity : available.Height;
         var widths = slots.Select(slot => Natural(slot, height)).ToList();
-        slots.ToList().ForEach(slot => slot.Measure(new Size(double.PositiveInfinity, height)));
+        var compact = slots.Select((slot, i) => widths[i] - Saving(slot)).ToList();
         var more = slots.Count - 1;
         var cells = _sequence.Where(i => i >= 0 && i < more).ToList();
         var anyPresent = Enumerable.Range(0, more).Any(i => widths[i] > 0);
         var reserve = anyPresent ? widths[more] + Spacing : 0;
-        var (fitted, overflow, used) = StatusFit.Fit(cells, widths, Math.Max(0, available.Width - reserve), Spacing);
+        var (fitted, overflow, used, squeezed) = StatusFit.Fit(cells, widths, compact, Rank, Math.Max(0, available.Width - reserve), Spacing);
+        var pinned = cells.Where(i => widths[i] > 0 && Rank(i) > 0).Select(i => compact[i]).ToList();
+        Need(pinned.Sum() + Spacing * pinned.Count + (anyPresent ? widths[more] : 0));
+        slots.Select((slot, i) => (slot, i)).ToList().ForEach(entry =>
+            entry.slot.Measure(new Size(squeezed && compact[entry.i] < widths[entry.i] ? compact[entry.i] : double.PositiveInfinity, height)));
         _fitted = fitted.ToImmutableHashSet();
         Overflow = overflow;
         var shown = Enumerable.Range(0, more).Where(i => cells.Contains(i) && (_fitted.Contains(i) || widths[i] <= 0)).ToImmutableHashSet();
@@ -96,6 +121,13 @@ internal sealed class FitRow : Panel
         return final;
     }
 
+    private void Need(double needed)
+    {
+        if (Math.Abs(needed - Needed) < 0.5) return;
+        Needed = needed;
+        DispatcherQueue.TryEnqueue(() => NeedChanged?.Invoke());
+    }
+
     private void Apply(ImmutableHashSet<int> shown, bool moreShown)
     {
         _shown = shown;
@@ -117,18 +149,22 @@ internal sealed class StatusRow
 {
     private const double PillHeight = 28;
     private const string MoreGlyph = "\uE76C";
+    private const int Pinned = 3;
 
     private readonly IReadOnlyList<StatusCell> _cells;
     private readonly Func<FrameworkElement, StatusTone> _tone;
-    private readonly FitRow _row = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly FitRow _row;
     private readonly Button _more;
     private readonly FontIcon _moreIcon;
+    private readonly TextBlock _moreText = Ui.Text("", "FontSizeCaption", wrap: false);
     private readonly Sheet _all;
+    private string _ranks = "";
 
     public StatusRow(IReadOnlyList<StatusCell> cells, Func<FrameworkElement, StatusTone> tone, Func<UIElement> list)
     {
         _cells = cells;
         _tone = tone;
+        _row = new FitRow { VerticalAlignment = VerticalAlignment.Center, Rank = Pin };
         _moreIcon = Ui.Glyph(MoreGlyph, 12, "TextSecondaryBrush");
         _more = new Button
         {
@@ -138,7 +174,7 @@ internal sealed class StatusRow
             CornerRadius = new CornerRadius(PillHeight / 2),
             BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,
-            Content = _moreIcon,
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { _moreText, _moreIcon } },
         }.Named("All status");
         PreflightLook.Chip(_more);
         ToolTipService.SetToolTip(_more, "All status");
@@ -164,6 +200,14 @@ internal sealed class StatusRow
 
     public UIElement View => _row;
 
+    public double Needed => _row.Needed;
+
+    public event Action? NeedChanged
+    {
+        add => _row.NeedChanged += value;
+        remove => _row.NeedChanged -= value;
+    }
+
     public FrameworkElement Anchor => _more;
 
     public void HideAll() => _all.Hide();
@@ -181,20 +225,38 @@ internal sealed class StatusRow
             .ToList();
     }
 
+    private int Pin(int index) => _cells[index].Key == StatusKeys.Battery ? Pinned : Rank(_tone(_cells[index].Cell));
+
     public void Paint()
     {
+        var ranks = string.Join(",", _cells.Select((_, i) => Pin(i)));
+        if (ranks != _ranks)
+        {
+            _ranks = ranks;
+            _row.InvalidateMeasure();
+        }
         var shown = _row.Sequence.ToHashSet();
         var tucked = _row.Overflow.Concat(Enumerable.Range(0, _cells.Count).Where(i => !shown.Contains(i)))
             .Select(i => _cells[i].Cell)
             .Where(cell => cell.Visibility == Visibility.Visible)
             .ToList();
         var worst = tucked.Select(_tone).OrderByDescending(Rank).DefaultIfEmpty(StatusTone.Normal).First();
+        var flagged = tucked.Where(cell => Rank(_tone(cell)) > 0).OrderByDescending(cell => Rank(_tone(cell))).Select(Label).ToList();
         _more.Background = StatusLook.Fill(worst);
         _moreIcon.Foreground = Rank(worst) > 0 ? StatusLook.Tint(worst) : Ui.Token("TextSecondaryBrush");
-        var names = tucked.Select(cell => _cells.First(c => c.Cell == cell).Label).ToList();
+        _moreText.Text = flagged.Count switch
+        {
+            0 => "",
+            1 => flagged[0],
+            _ => $"{flagged[0]} +{flagged.Count - 1}",
+        };
+        _moreText.Visibility = Ui.Shown(flagged.Count > 0);
+        var names = tucked.Select(Label).ToList();
         AutomationProperties.SetHelpText(_more, names.Count == 0 ? "" : $"Not in the title bar: {string.Join(", ", names)}");
-        ToolTipService.SetToolTip(_more, names.Count == 0 ? "All status" : $"All status · {names.Count} more");
+        ToolTipService.SetToolTip(_more, names.Count == 0 ? "All status" : $"All status · {string.Join(", ", names)}");
     }
+
+    private string Label(FrameworkElement cell) => _cells.First(c => c.Cell == cell).Label;
 
     private static int Rank(StatusTone tone) => tone switch
     {

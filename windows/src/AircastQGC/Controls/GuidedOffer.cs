@@ -45,7 +45,7 @@ public sealed record GuidedOffer(
         ["changeSpeed"] = "",
         ["landAbort"] = "",
         ["land"] = "",
-        ["rtl"] = "",
+        ["rtl"] = "",
         ["disarm"] = "",
         ["grab"] = "",
         ["release"] = "",
