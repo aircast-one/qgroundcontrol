@@ -169,6 +169,12 @@ pub fn ar(
     let home = marked("home", HOME_LABEL);
     let aim = marked("aim", AIM_LABEL);
     let impact = marked("impact", IMPACT_LABEL);
+    let placed = |key: &str| spot_of(&overlays[key]).map(|(at, above)| looked(at, above));
+    let lead = placed("lead").and_then(ahead);
+    let lead_line = placed("aim")
+        .zip(placed("lead"))
+        .and_then(|(from, to)| clipped(from, to))
+        .map(|(from, to)| json!({ "from": framed(camera, from), "to": framed(camera, to) }));
     let waypoints: Vec<Value> = overlays["waypoints"]
         .as_array()
         .into_iter()
@@ -193,7 +199,7 @@ pub fn ar(
         .filter_map(|leg| clipped(leg[0], leg[1]))
         .map(|(from, to)| json!({ "from": framed(camera, from), "to": framed(camera, to) }))
         .collect();
-    json!({ "kind": "object", "class": "VideoAr", "available": true, "home": home, "aim": aim, "impact": impact, "waypoints": waypoints, "route": legs })
+    json!({ "kind": "object", "class": "VideoAr", "available": true, "home": home, "aim": aim, "impact": impact, "lead": lead, "leadLine": lead_line, "waypoints": waypoints, "route": legs })
 }
 
 pub fn camera(backend: &dyn Backend, gimbals: &Value, fixed_tilt: Option<f64>) -> Option<Camera> {
@@ -679,6 +685,46 @@ mod tests {
             ar(drone, 50.0, LEVEL_NORTH, &json!({}), &metres)["aim"],
             Value::Null,
             "no target, no mark"
+        );
+    }
+
+    #[test]
+    fn the_lead_point_is_drawn_ahead_of_the_target_with_a_line_from_the_target_to_it() {
+        let drone = (-35.0, 149.0);
+        let north = |metres: f64| (-35.0 + (metres / EARTH_RADIUS_M).to_degrees(), 149.0);
+        let overlays = json!({
+            "aim": { "latitude": north(60.0).0, "longitude": 149.0 },
+            "lead": { "latitude": north(75.0).0, "longitude": 149.0 },
+        });
+        let looking_down = Camera {
+            pitch: -45.0,
+            ..LEVEL_NORTH
+        };
+        let shown = ar(drone, 50.0, looking_down, &overlays, &metres);
+        let (aim_up, lead_up) = (
+            shown["aim"]["up"].as_f64().unwrap(),
+            shown["lead"]["up"].as_f64().unwrap(),
+        );
+        assert!(
+            lead_up > aim_up,
+            "the car is heading away, so where it will be sits higher in the picture: {aim_up} vs {lead_up}"
+        );
+        assert!(
+            (shown["leadLine"]["from"]["up"].as_f64().unwrap() - aim_up).abs() < 1e-9
+                && (shown["leadLine"]["to"]["up"].as_f64().unwrap() - lead_up).abs() < 1e-9,
+            "the line runs from the target to the lead: {}",
+            shown["leadLine"]
+        );
+        assert_eq!(
+            ar(
+                drone,
+                50.0,
+                looking_down,
+                &json!({ "aim": overlays["aim"] }),
+                &metres
+            )["leadLine"],
+            Value::Null,
+            "no lead, no line"
         );
     }
 

@@ -89,6 +89,8 @@ const TRACKED_GLIDE_LIMIT: Duration = Duration::from_secs(2);
 const AIM: [u8; 4] = [0xFF, 0x3B, 0x30, 255];
 const IMPACT: [u8; 4] = [0xFF, 0xD6, 0x0A, 255];
 const IMPACT_PX: f64 = 32.0;
+const LEAD_PX: f64 = 22.0;
+const LEAD_LINE_PX: f64 = 2.0;
 const CAR_ROOF: usize = 0;
 const CAR_SIDE: usize = 1;
 const CAR_END: usize = 2;
@@ -185,6 +187,7 @@ pub struct Overlays {
     pub tracked: Option<Tracked>,
     pub aim: Option<Spot>,
     pub impact: Option<Spot>,
+    pub lead: Option<Spot>,
     pub cars: Vec<Tracked>,
 }
 
@@ -265,6 +268,7 @@ impl Overlays {
                 .and_then(|target| Tracked::from_view(target, Instant::now())),
             aim: view.get("aim").and_then(spot),
             impact: view.get("impact").and_then(spot),
+            lead: view.get("lead").and_then(spot),
             cars: listed(view, "cars")
                 .iter()
                 .filter_map(|car| Tracked::from_view(car, Instant::now()))
@@ -375,6 +379,14 @@ fn disc(colour: [u8; 4]) -> image::RgbaImage {
             [0, 0, 0, 0]
         })
     })
+}
+
+fn ribbon(camera: &Camera, a: DVec3, b: DVec3, width_px: f64) -> [DVec3; 4] {
+    let side = |p: DVec3| {
+        (b - a).cross(p - camera.eye).normalize_or_zero() * width_px / 2.0
+            * metres_per_px(camera, p)
+    };
+    [a - side(a), b - side(b), b + side(b), a + side(a)]
 }
 
 fn hoop(colour: [u8; 4]) -> image::RgbaImage {
@@ -540,13 +552,8 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
     let frame = Frame::at(origin_lat, origin_lng);
     let lifted = |s: &Spot| ecef(s.latitude, s.longitude, home_ground + s.above_home);
     let route = overlays.route.windows(2).map(|pair| {
-        let (a, b) = (lifted(&pair[0]), lifted(&pair[1]));
-        let side = |p: DVec3| {
-            (b - a).cross(p - camera.eye).normalize_or_zero() * ROUTE_PX / 2.0
-                * metres_per_px(camera, p)
-        };
         (
-            [a - side(a), b - side(b), b + side(b), a + side(a)],
+            ribbon(camera, lifted(&pair[0]), lifted(&pair[1]), ROUTE_PX),
             FULL_UV,
         )
     });
@@ -621,6 +628,26 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
                 )
             }),
             hoop(IMPACT),
+            Layer::OnTop,
+        ),
+        quads(
+            &frame,
+            overlays.aim.iter().zip(&overlays.lead).map(|(aim, lead)| {
+                (
+                    ribbon(camera, lifted(aim), lifted(lead), LEAD_LINE_PX),
+                    FULL_UV,
+                )
+            }),
+            solid(AIM),
+            Layer::OnTop,
+        ),
+        quads(
+            &frame,
+            overlays
+                .lead
+                .iter()
+                .map(|s| (billboard(camera, lifted(s), 0.0, LEAD_PX, LEAD_PX), FULL_UV)),
+            hoop(AIM),
             Layer::OnTop,
         ),
         quads(
@@ -818,6 +845,25 @@ mod tests {
             .map(|mesh| (mesh.layer, mesh.indices.len() / 6))
             .collect();
         assert_eq!(layers, vec![(Layer::OnTop, 1), (Layer::OnTop, 1)]);
+    }
+
+    #[test]
+    fn the_lead_point_draws_as_a_ring_with_a_line_back_to_the_target() {
+        let overlays = Overlays::from_view(&json!({
+            "fenceTop": 50.0,
+            "aim": { "latitude": -35.362, "longitude": 149.165, "aboveHome": 0.0 },
+            "lead": { "latitude": -35.3618, "longitude": 149.165, "aboveHome": 0.0 },
+        }))
+        .expect("overlays");
+        let layers: Vec<(Layer, usize)> = meshes(&overlays, 600.0, &camera())
+            .iter()
+            .map(|mesh| (mesh.layer, mesh.indices.len() / 6))
+            .collect();
+        assert_eq!(
+            layers,
+            vec![(Layer::OnTop, 1), (Layer::OnTop, 1), (Layer::OnTop, 1)],
+            "the target brackets, the line to the lead, and the lead ring"
+        );
     }
 
     #[test]

@@ -520,7 +520,7 @@ fun VehicleMap(
 
         recenterOnVehicle()
         do {
-            val now = withFrameNanos { it }
+            val now = System.nanoTime()
             (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
                 ?.setGeoJson(
                     when {
@@ -529,6 +529,7 @@ fun VehicleMap(
                     },
                 )
             if (keepCentered) recenterOnVehicle()
+            withFrameNanos { }
         } while (segments.values.any { now < it.endNs })
     }
 

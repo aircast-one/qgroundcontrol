@@ -874,6 +874,21 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
     use crate::cmdinfo::VehicleClass::{FixedWing, MultiRotor, Rover, Sub, Vtol};
     let home = home_facts(v.facts.coordinate, v.home);
     let gcs = gcs_relation(v.facts.coordinate);
+    let release = v.release_now();
+    let drop_target = release.and_then(|release| {
+        let tried = |source: crate::autodrop::TargetSource| {
+            v.target_for_autodrop(
+                source,
+                release.position,
+                release.altitude_agl_m,
+                crate::hub::now_ms(),
+            )
+        };
+        match &v.autodrop {
+            Some(crate::autodrop::State::Waiting { source, .. }) => tried(*source),
+            _ => crate::autodrop::TargetSource::fallback_order(Some(v.id)).find_map(tried),
+        }
+    });
     let facts: Vec<(&'static str, Value)> = vec![
         ("rcRSSI", json!(v.rc_rssi.shown)),
         ("heading", json!(v.facts.heading)),
@@ -953,16 +968,12 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "payloadSetup": json!({ "setup": v.payload_setup().json(), "empty": v.empty_bays }),
         "bottles": v.releases.iter().map(|release| release.at(crate::hub::wall_ms())).collect::<Vec<_>>(),
         "autodrop": v.autodrop.as_ref().map(crate::autodrop::State::json),
-        "autodropTarget": v.release_now().and_then(|release| {
-            let tried = |source: crate::autodrop::TargetSource| {
-                v.target_for_autodrop(source, release.position, release.altitude_agl_m, crate::hub::now_ms())
-            };
-            match &v.autodrop {
-                Some(crate::autodrop::State::Waiting { source, .. }) => tried(*source),
-                _ => crate::autodrop::TargetSource::fallback_order(Some(v.id)).find_map(tried),
-            }
-        })
-        .map(|t| json!({ "latitude": t.position.lat, "longitude": t.position.lon })),
+        "autodropTarget": drop_target.map(|t| json!({ "latitude": t.position.lat, "longitude": t.position.lon })),
+        "autodropLead": release
+            .zip(drop_target)
+            .filter(|_| v.flying)
+            .map(|(release, target)| crate::dropsim::simulate(release, target).target_at_impact)
+            .map(|p| json!({ "latitude": p.lat, "longitude": p.lon })),
         "autodropImpact": v.release_now()
             .filter(|_| v.flying)
             .map(crate::dropsim::impact)

@@ -32,11 +32,14 @@ pub const OVERLAY_DEPS: &[&str] = &[
     TRACKED_TARGET,
     DROP_TARGET,
     DROP_IMPACT,
+    DROP_LEAD,
     HAS_GRIPPER,
 ];
 const TRACKED_TARGET: &str = "vehicle.cameraManager.currentCameraInstance.trackingGeo";
 const DROP_TARGET: &str = "vehicle.autodropTarget";
 const DROP_IMPACT: &str = "vehicle.autodropImpact";
+const DROP_LEAD: &str = "vehicle.autodropLead";
+const LEAD_SHOWN_M: f64 = 1.0;
 const HAS_GRIPPER: &str = "vehicle.hasGripper";
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
 const FENCE_TOP_ARDUPILOT: &str = "vehicle.parameterManager.getParameter(-1,FENCE_ALT_MAX)";
@@ -597,9 +600,20 @@ pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
         |path: &str| located(&backend.value(path)["value"]).map_or(Value::Null, |at| spot(at, 0.0));
     shown["cars"] = cars(backend);
     shown["aim"] = on_ground(DROP_TARGET);
-    shown["impact"] = match backend.value(HAS_GRIPPER)["value"] == true {
+    let gripper = backend.value(HAS_GRIPPER)["value"] == true;
+    shown["impact"] = match gripper {
         true => on_ground(DROP_IMPACT),
         false => Value::Null,
+    };
+    shown["lead"] = match (
+        gripper,
+        located(&backend.value(DROP_TARGET)["value"]),
+        located(&backend.value(DROP_LEAD)["value"]),
+    ) {
+        (true, Some(aim), Some(lead)) if crate::track::distance_m(aim, lead) > LEAD_SHOWN_M => {
+            spot(lead, 0.0)
+        }
+        _ => Value::Null,
     };
     shown
 }

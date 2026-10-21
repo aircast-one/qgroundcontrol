@@ -28,61 +28,132 @@ pub fn ground_point(
     Some(Point { lat, lon })
 }
 
-pub fn velocity_from(previous: Fix, current: Fix) -> Option<Velocity> {
-    let dt_s = current.at_ms.checked_sub(previous.at_ms)? as f64 / 1000.0;
-    (dt_s > 0.0).then(|| {
-        let origin = (previous.position.lat, previous.position.lon, 0.0);
-        let (north_m, east_m, _) =
-            geo_to_ned(current.position.lat, current.position.lon, 0.0, origin);
-        Velocity {
-            north_mps: north_m / dt_s,
-            east_mps: east_m / dt_s,
-        }
-    })
+pub const MAX_JUMP_M: f64 = 20.0;
+pub const COAST_MS: u64 = 1_500;
+const SMOOTHING: f64 = 0.75;
+const POSITION_GAIN: f64 = 1.0 - SMOOTHING * SMOOTHING;
+const VELOCITY_GAIN: f64 = (1.0 - SMOOTHING) * (1.0 - SMOOTHING);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sensor {
+    Gimbal,
+    CameraGeo,
+    CameraImage,
+    Detector,
 }
 
-pub const VELOCITY_WINDOW_MS: u64 = 1000;
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Track {
+    sensor: Sensor,
+    origin: Point,
+    north_m: f64,
+    east_m: f64,
+    velocity: Velocity,
+    at_ms: u64,
+}
 
-static FIXES: Mutex<Vec<Fix>> = Mutex::new(Vec::new());
+impl Track {
+    pub fn start(sensor: Sensor, fix: Fix, velocity: Option<Velocity>) -> Track {
+        Track {
+            sensor,
+            origin: fix.position,
+            north_m: 0.0,
+            east_m: 0.0,
+            velocity: velocity.unwrap_or_default(),
+            at_ms: fix.at_ms,
+        }
+    }
+
+    fn predicted(&self, at_ms: u64) -> (f64, f64) {
+        let seconds = at_ms.saturating_sub(self.at_ms) as f64 / 1000.0;
+        (
+            self.north_m + self.velocity.north_mps * seconds,
+            self.east_m + self.velocity.east_mps * seconds,
+        )
+    }
+
+    pub fn updated(self, fix: Fix) -> Track {
+        let seconds = fix.at_ms.saturating_sub(self.at_ms) as f64 / 1000.0;
+        let (north, east) = self.predicted(fix.at_ms);
+        let (seen_north, seen_east, _) = geo_to_ned(
+            fix.position.lat,
+            fix.position.lon,
+            0.0,
+            (self.origin.lat, self.origin.lon, 0.0),
+        );
+        let (miss_north, miss_east) = (seen_north - north, seen_east - east);
+        match seconds > 0.0 && miss_north.hypot(miss_east) <= MAX_JUMP_M {
+            true => Track {
+                north_m: north + POSITION_GAIN * miss_north,
+                east_m: east + POSITION_GAIN * miss_east,
+                velocity: Velocity {
+                    north_mps: self.velocity.north_mps + VELOCITY_GAIN * miss_north / seconds,
+                    east_mps: self.velocity.east_mps + VELOCITY_GAIN * miss_east / seconds,
+                },
+                at_ms: fix.at_ms,
+                ..self
+            },
+            false => self,
+        }
+    }
+
+    pub fn target(&self, at_ms: u64) -> Target {
+        let (north, east) = self.predicted(at_ms);
+        let (lat, lon, _) = ned_to_geo(north, east, 0.0, (self.origin.lat, self.origin.lon, 0.0));
+        Target {
+            position: Point { lat, lon },
+            velocity: self.velocity,
+        }
+    }
+
+    fn fresh(&self, now_ms: u64) -> bool {
+        now_ms.saturating_sub(self.at_ms) <= COAST_MS
+    }
+}
+
+pub fn stepped(
+    held: Option<Track>,
+    seen: Option<(Sensor, Fix, Option<Velocity>)>,
+) -> Option<Track> {
+    match (held, seen) {
+        (Some(track), Some((sensor, fix, _)))
+            if track.sensor == sensor && track.fresh(fix.at_ms) =>
+        {
+            Some(track.updated(fix))
+        }
+        (Some(track), Some((sensor, fix, velocity))) if track.sensor == sensor => {
+            Some(Track::start(sensor, fix, velocity.or(Some(track.velocity))))
+        }
+        (_, Some((sensor, fix, velocity))) => Some(Track::start(sensor, fix, velocity)),
+        (held, None) => held,
+    }
+}
+
+static GIMBAL_TRACK: Mutex<Option<Track>> = Mutex::new(None);
+static PICKED_TRACK: Mutex<Option<Track>> = Mutex::new(None);
 
 #[cfg(test)]
 pub(crate) static TEST_FIXES: Mutex<()> = Mutex::new(());
 
-pub const MAX_JUMP_M: f64 = 20.0;
-
-fn window_target(fixes: &[Fix], current: Fix) -> Target {
-    let velocity = fixes
-        .first()
-        .and_then(|oldest| velocity_from(*oldest, current))
-        .unwrap_or_default();
-    Target {
-        position: current.position,
-        velocity,
-    }
+#[cfg(test)]
+pub(crate) fn forget() {
+    *GIMBAL_TRACK.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    *PICKED_TRACK.lock().unwrap_or_else(PoisonError::into_inner) = None;
 }
 
-pub fn windowed(fixes: &[Fix], current: Fix) -> (Target, Vec<Fix>) {
-    let recent: Vec<Fix> = fixes
-        .iter()
-        .copied()
-        .filter(|f| f.at_ms < current.at_ms && current.at_ms - f.at_ms <= VELOCITY_WINDOW_MS)
-        .collect();
-    let predicted = recent
-        .last()
-        .filter(|_| recent.len() >= 2)
-        .map(|last| carried(window_target(&recent, *last), last.at_ms, current.at_ms));
-    match predicted.filter(|expected| {
-        crate::track::distance_m(
-            (expected.position.lat, expected.position.lon),
-            (current.position.lat, current.position.lon),
-        ) > MAX_JUMP_M
-    }) {
-        Some(expected) => (expected, recent),
-        None => {
-            let kept: Vec<Fix> = recent.into_iter().chain(std::iter::once(current)).collect();
-            (window_target(&kept, current), kept)
-        }
-    }
+fn followed(
+    slot: &Mutex<Option<Track>>,
+    seen: Option<(Sensor, Fix, Option<Velocity>)>,
+    now_ms: u64,
+) -> Option<Target> {
+    let mut held = slot.lock().unwrap_or_else(PoisonError::into_inner);
+    *held = stepped(*held, seen);
+    held.filter(|track| track.fresh(now_ms))
+        .map(|track| track.target(now_ms))
+}
+
+pub fn tracked(seen: Option<(Sensor, Fix, Option<Velocity>)>, now_ms: u64) -> Option<Target> {
+    followed(&PICKED_TRACK, seen, now_ms)
 }
 
 pub fn track(
@@ -92,15 +163,17 @@ pub fn track(
     pitch_deg: f64,
     now_ms: u64,
 ) -> Option<Target> {
-    ground_point(vehicle, altitude_agl_m, yaw_deg, pitch_deg)
-        .map(|position| track_point(position, now_ms))
-}
-
-pub fn track_point(position: Point, at_ms: u64) -> Target {
-    let mut fixes = FIXES.lock().unwrap_or_else(PoisonError::into_inner);
-    let (target, kept) = windowed(&fixes, Fix { position, at_ms });
-    *fixes = kept;
-    target
+    let seen = ground_point(vehicle, altitude_agl_m, yaw_deg, pitch_deg).map(|position| {
+        (
+            Sensor::Gimbal,
+            Fix {
+                position,
+                at_ms: now_ms,
+            },
+            None,
+        )
+    });
+    seen.and_then(|seen| followed(&GIMBAL_TRACK, Some(seen), now_ms))
 }
 
 pub const IMAGE_ASPECT: f64 = 16.0 / 9.0;
@@ -200,20 +273,6 @@ pub fn ground_to_picture(
             0.5 - above / ahead * 0.5 / half_tan(lens.vertical_deg),
         )
     })
-}
-
-pub fn carried(target: Target, from_ms: u64, to_ms: u64) -> Target {
-    let seconds = to_ms.saturating_sub(from_ms) as f64 / 1000.0;
-    let (lat, lon, _) = ned_to_geo(
-        target.velocity.north_mps * seconds,
-        target.velocity.east_mps * seconds,
-        0.0,
-        (target.position.lat, target.position.lon, 0.0),
-    );
-    Target {
-        position: Point { lat, lon },
-        ..target
-    }
 }
 
 fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
@@ -336,76 +395,6 @@ mod tests {
     }
 
     #[test]
-    fn a_fix_far_from_where_the_track_is_heading_is_held_off_until_the_track_goes_quiet() {
-        let north = |metres: f64| Point {
-            lat: 47.0 + (metres / 6_371_000.0).to_degrees(),
-            lon: 8.0,
-        };
-        let steady: Vec<Fix> = (0_u32..5)
-            .map(|step| Fix {
-                position: north(f64::from(step) * 0.5),
-                at_ms: 1_000 + u64::from(step) * 100,
-            })
-            .collect();
-        let (target, kept) = windowed(
-            &steady,
-            Fix {
-                position: north(-282.0),
-                at_ms: 1_500,
-            },
-        );
-        let (ahead, _, _) = geo_to_ned(
-            target.position.lat,
-            target.position.lon,
-            0.0,
-            (47.0, 8.0, 0.0),
-        );
-        assert!(
-            (ahead - 2.5).abs() < 0.1 && kept == steady,
-            "a 284 m jump in a tenth of a second is a bad fix: the track carries on at 5 m/s instead, got {ahead}"
-        );
-        let (later, _) = windowed(
-            &kept,
-            Fix {
-                position: north(-282.0),
-                at_ms: 2_500,
-            },
-        );
-        assert_eq!(
-            later.position,
-            north(-282.0),
-            "once the old fixes age out of the window the new position is taken"
-        );
-    }
-
-    #[test]
-    fn a_target_is_carried_forward_along_its_velocity() {
-        let start = Target {
-            position: Point {
-                lat: 47.0,
-                lon: 8.0,
-            },
-            velocity: Velocity {
-                north_mps: 5.0,
-                east_mps: 0.0,
-            },
-        };
-        let later = carried(start, 1_000, 1_400);
-        let (north, east, _) = geo_to_ned(
-            later.position.lat,
-            later.position.lon,
-            0.0,
-            (47.0, 8.0, 0.0),
-        );
-        assert!(close(north, 2.0, 1e-6) && close(east, 0.0, 1e-6));
-        assert_eq!(later.velocity, start.velocity);
-    }
-
-    fn close(a: f64, b: f64, tol: f64) -> bool {
-        (a - b).abs() < tol
-    }
-
-    #[test]
     fn straight_down_lands_directly_below_the_vehicle() {
         let vehicle = Point {
             lat: 47.0,
@@ -450,69 +439,169 @@ mod tests {
         );
     }
 
-    #[test]
-    fn two_fixes_on_a_moving_target_produce_its_velocity() {
-        let vehicle = Point {
-            lat: 47.0,
+    fn close(a: f64, b: f64, tol: f64) -> bool {
+        (a - b).abs() < tol
+    }
+
+    fn metres_north(n: f64) -> Point {
+        Point {
+            lat: 47.0 + (n / 6_371_000.0).to_degrees(),
             lon: 8.0,
+        }
+    }
+
+    fn north_of_start(target: Target) -> f64 {
+        geo_to_ned(
+            target.position.lat,
+            target.position.lon,
+            0.0,
+            (47.0, 8.0, 0.0),
+        )
+        .0
+    }
+
+    fn noise(step: u32) -> f64 {
+        (f64::from(step) * 12.9898).sin() * 1.0
+    }
+
+    fn driven(steps: u32) -> Option<Track> {
+        (0..steps).fold(None, |held, step| {
+            let at_ms = 1_000 + u64::from(step) * 100;
+            let seen = metres_north(5.0 * f64::from(step) / 10.0 + noise(step));
+            stepped(
+                held,
+                Some((
+                    Sensor::Detector,
+                    Fix {
+                        position: seen,
+                        at_ms,
+                    },
+                    None,
+                )),
+            )
+        })
+    }
+
+    #[test]
+    fn noisy_fixes_along_a_straight_line_settle_on_the_true_speed_and_steady_the_position() {
+        let track = driven(60).expect("a track");
+        assert!(
+            (track.velocity.north_mps - 5.0).abs() < 0.5 && track.velocity.east_mps.abs() < 1e-9,
+            "6 s of fixes with 1 m noise at 10 Hz settle near 5 m/s north, got {:?}",
+            track.velocity
+        );
+        let truth = 5.0 * 5.9;
+        let error = (north_of_start(track.target(track.at_ms)) - truth).abs();
+        assert!(
+            error < 0.8,
+            "the filtered position beats the raw 1 m noise, got {error}"
+        );
+    }
+
+    #[test]
+    fn between_fixes_the_target_moves_on_smoothly_at_its_speed() {
+        let track = driven(60).unwrap();
+        let positions: Vec<f64> = (0..5)
+            .map(|step| north_of_start(track.target(track.at_ms + step * 20)))
+            .collect();
+        let steps: Vec<f64> = positions.windows(2).map(|pair| pair[1] - pair[0]).collect();
+        assert!(
+            steps
+                .iter()
+                .all(|step| (step - track.velocity.north_mps * 0.02).abs() < 1e-6),
+            "every 20 ms the prediction advances by speed x 20 ms, got {steps:?}"
+        );
+    }
+
+    #[test]
+    fn a_missed_frame_coasts_and_a_long_gap_drops_the_track() {
+        let _fixes = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
+        forget();
+        let seen = |at_ms: u64, north: f64| {
+            Some((
+                Sensor::Detector,
+                Fix {
+                    position: metres_north(north),
+                    at_ms,
+                },
+                None,
+            ))
         };
-        let first = ground_point(vehicle, 50.0, 0.0, -45.0).unwrap();
-        let (target, fixes) = windowed(
-            &[],
+        tracked(seen(1_000, 0.0), 1_000);
+        let moving = tracked(seen(2_000, 5.0), 2_000).unwrap();
+        let coasting = tracked(None, 2_500).expect("half a second without a frame still coasts");
+        assert!(north_of_start(coasting) > north_of_start(moving));
+        assert_eq!(
+            tracked(None, 2_000 + COAST_MS + 1),
+            None,
+            "a target unseen for longer than the coast window is no target"
+        );
+        assert_eq!(
+            tracked(seen(2_000 + COAST_MS + 100, 300.0), 2_000 + COAST_MS + 100)
+                .map(north_of_start)
+                .map(f64::round),
+            Some(300.0),
+            "the next fix after the track dropped starts a new one where it is seen"
+        );
+    }
+
+    #[test]
+    fn a_track_that_lapsed_restarts_where_it_is_seen_but_keeps_its_speed() {
+        let track = driven(60).unwrap();
+        let later = track.at_ms + COAST_MS + 500;
+        let restarted = stepped(
+            Some(track),
+            Some((
+                Sensor::Detector,
+                Fix {
+                    position: metres_north(100.0),
+                    at_ms: later,
+                },
+                None,
+            )),
+        )
+        .unwrap();
+        assert_eq!(restarted.velocity, track.velocity);
+        assert_eq!(north_of_start(restarted.target(later)).round(), 100.0);
+    }
+
+    #[test]
+    fn a_wild_fix_is_gated_out_and_the_same_frame_read_twice_changes_nothing() {
+        let track = driven(30).unwrap();
+        let wild = track.updated(Fix {
+            position: metres_north(-284.0),
+            at_ms: track.at_ms + 100,
+        });
+        assert_eq!(
+            wild, track,
+            "a 284 m jump in a tenth of a second is a bad fix"
+        );
+        let again = track.updated(Fix {
+            position: metres_north(1_000.0),
+            at_ms: track.at_ms,
+        });
+        assert_eq!(
+            again, track,
+            "a frame already folded in is not a new observation"
+        );
+    }
+
+    #[test]
+    fn a_camera_report_with_its_own_speed_starts_the_track_at_that_speed() {
+        let started = Track::start(
+            Sensor::CameraGeo,
             Fix {
-                position: first,
+                position: metres_north(0.0),
                 at_ms: 1_000,
             },
+            Some(Velocity {
+                north_mps: 3.0,
+                east_mps: -1.0,
+            }),
         );
         assert_eq!(
-            target.velocity,
-            Velocity::default(),
-            "a single fix carries no velocity yet"
-        );
-
-        let second = ground_point(vehicle, 50.0, 90.0, -45.0).unwrap();
-        let (target, fixes) = windowed(
-            &fixes,
-            Fix {
-                position: second,
-                at_ms: 1_800,
-            },
-        );
-        assert!(
-            close(target.velocity.north_mps, -62.5, 1e-3),
-            "the ground point swept from 50m north to 50m east over 0.8s, got {}",
-            target.velocity.north_mps
-        );
-        assert!(
-            close(target.velocity.east_mps, 62.5, 1e-3),
-            "got {}",
-            target.velocity.east_mps
-        );
-
-        let (again, _) = windowed(
-            &fixes,
-            Fix {
-                position: second,
-                at_ms: 1_800,
-            },
-        );
-        assert_eq!(
-            again.velocity, target.velocity,
-            "the same frame read twice is the same observation, not a stop"
-        );
-
-        let (late, kept) = windowed(
-            &fixes,
-            Fix {
-                position: second,
-                at_ms: 2_500,
-            },
-        );
-        assert_eq!(kept.len(), 2, "the fix from 1.5 s ago left the window");
-        assert_eq!(
-            late.velocity,
-            Velocity::default(),
-            "sitting still for 0.7 s"
+            (started.velocity.north_mps, started.velocity.east_mps),
+            (3.0, -1.0)
         );
     }
 

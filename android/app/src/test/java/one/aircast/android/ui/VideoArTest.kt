@@ -24,6 +24,14 @@ class VideoArTest {
     }
 
     @Test
+    fun `the lead point and the line from the target to it are read`() {
+        val reading = arReading(JSONObject("""{"available":true,"aim":{"x":0.5,"up":0.1,"label":"Target","text":"60 m"},"lead":{"x":0.5,"up":0.2},"leadLine":{"from":{"x":0.5,"up":0.1},"to":{"x":0.5,"up":0.2}},"waypoints":[],"route":[]}"""))!!
+        assertEquals(ArSpot(0.5f, 0.2f), reading.lead)
+        assertEquals(ArSpot(0.5f, 0.1f) to ArSpot(0.5f, 0.2f), reading.leadLine)
+        assertNull(arReading(JSONObject("""{"available":true}"""))!!.leadLine)
+    }
+
+    @Test
     fun `a spot is placed from the centre line in widths, so the frame's aspect does not distort it`() {
         val centre = arOffset(ArSpot(0.5f, 0f), 1600f, 900f)
         assertEquals(800f, centre.x, 1e-3f)
