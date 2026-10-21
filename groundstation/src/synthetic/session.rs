@@ -521,6 +521,14 @@ impl Frame {
         }
     }
 
+    pub fn terrain(&self) -> Option<crate::synthview::Terrain> {
+        let home = self.home_ground?;
+        let meshes = self.ground.clone();
+        Some(Arc::new(move |lat, lon| {
+            super::ground::height_at(&meshes, lat, lon).map(|height| height - home)
+        }))
+    }
+
     pub fn ground_above_home(&self) -> Option<f64> {
         self.under_ground
             .zip(self.home_ground)

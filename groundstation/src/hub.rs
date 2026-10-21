@@ -296,6 +296,7 @@ const GIMBAL_FOLLOW_MS: u64 = 200;
 const GIMBAL_FOLLOW_DEADBAND_DEG: f64 = 1.0;
 const GIMBAL_FOLLOW_AFTER_FIRE_MS: u64 = 5_000;
 const GIMBAL_FOLLOW_COAST_MS: u64 = 6_000;
+const TERRAIN_PASSES: usize = 4;
 
 fn coasted(
     (target, at_ms): (crate::dropsim::Target, u64),
@@ -3352,15 +3353,33 @@ impl Vehicle {
         plane_m: f64,
         at_ms: u64,
     ) -> Option<crate::dropsim::Point> {
+        self.picture_to_terrain_at(point, plane_m, at_ms, &|at| {
+            crate::synthview::ground_at(at.lat, at.lon)
+        })
+    }
+
+    pub(crate) fn picture_to_terrain_at(
+        &self,
+        point: (f64, f64),
+        above_ground_m: f64,
+        at_ms: u64,
+        ground: &dyn Fn(crate::dropsim::Point) -> Option<f64>,
+    ) -> Option<crate::dropsim::Point> {
         let pose = self.pose_at(at_ms)?;
-        crate::gimbalgeo::picture_to_plane(
-            crate::gimbalgeo::lens(),
-            pose.position,
-            pose.altitude_agl_m,
-            pose.aim?,
-            point,
-            plane_m,
-        )
+        let on_plane = |plane_m: f64| {
+            crate::gimbalgeo::picture_to_plane(
+                crate::gimbalgeo::lens(),
+                pose.position,
+                pose.altitude_agl_m,
+                pose.aim?,
+                point,
+                plane_m,
+            )
+        };
+        let height_at = |at: crate::dropsim::Point| ground(at).unwrap_or(0.0) + above_ground_m;
+        (0..TERRAIN_PASSES).try_fold(on_plane(height_at(pose.position))?, |at, _| {
+            on_plane(height_at(at))
+        })
     }
 
     fn followed_source(&self, now_ms: u64) -> Option<crate::autodrop::TargetSource> {
@@ -9878,6 +9897,52 @@ mod tests {
         assert!(
             vehicle.tick_gimbal_follow(2_000).is_empty(),
             "a camera tracking the object itself steers its own gimbal"
+        );
+    }
+
+    #[test]
+    fn a_box_on_raised_rendered_ground_projects_onto_the_object_not_beyond_it() {
+        let mut hub = gimbal_looking_45_down();
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.remember_pose(1_000);
+        let (raised, half) = (4.0, crate::gimbalgeo::OBJECT_HALF_HEIGHT_M);
+        let (yaw, pitch) = vehicle
+            .gimbal_aim()
+            .expect("the gimbal reports where it looks");
+        let (lat, lon) = crate::surveygrid::at_distance_and_azimuth((47.0, 8.0), 35.0, yaw);
+        let car = crate::dropsim::Point { lat, lon };
+        let picture = crate::gimbalgeo::ground_to_picture(
+            crate::gimbalgeo::lens(),
+            crate::dropsim::Point {
+                lat: 47.0,
+                lon: 8.0,
+            },
+            40.0 - raised - half,
+            (yaw, pitch),
+            car,
+        )
+        .expect("the car is in the picture");
+        let off = |at: crate::dropsim::Point| {
+            let (n, e, _) = crate::geo::geo_to_ned(at.lat, at.lon, 0.0, (car.lat, car.lon, 0.0));
+            n.hypot(e)
+        };
+        let on_terrain = vehicle
+            .picture_to_terrain_at(picture, half, 1_000, &|_| Some(raised))
+            .expect("projects");
+        let on_home_plane = vehicle
+            .picture_to_terrain_at(picture, half, 1_000, &|_| None)
+            .expect("projects");
+        assert!(
+            off(on_terrain) < 0.1,
+            "onto the ground the picture was drawn on: {} m off",
+            off(on_terrain)
+        );
+        assert!(
+            off(on_home_plane) > 3.0,
+            "the home plane lands metres beyond it, which is what the live runs saw: {} m off",
+            off(on_home_plane)
         );
     }
 

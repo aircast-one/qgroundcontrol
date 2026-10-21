@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
@@ -67,6 +67,8 @@ static CHANGED: AtomicBool = AtomicBool::new(false);
 static DRAW: Mutex<&'static str> = Mutex::new(DRAW_LOADING);
 const DRAW_LOADING: &str = "loading";
 static GROUND: Mutex<Option<(f64, u64)>> = Mutex::new(None);
+pub type Terrain = Arc<dyn Fn(f64, f64) -> Option<f64> + Send + Sync>;
+static TERRAIN: Mutex<Option<(Terrain, u64)>> = Mutex::new(None);
 #[cfg(test)]
 pub(crate) static TEST_GROUND: Mutex<()> = Mutex::new(());
 const GROUND_KEPT_MS: u64 = 2_000;
@@ -99,6 +101,20 @@ pub fn set_ground(above_home: Option<f64>) {
     *GROUND.lock().unwrap_or_else(PoisonError::into_inner) = above_home
         .filter(|metres| metres.is_finite())
         .map(|metres| (metres, crate::hub::now_ms()));
+}
+
+pub fn set_terrain(terrain: Option<Terrain>) {
+    *TERRAIN.lock().unwrap_or_else(PoisonError::into_inner) =
+        terrain.map(|terrain| (terrain, crate::hub::now_ms()));
+}
+
+pub fn ground_at(lat: f64, lon: f64) -> Option<f64> {
+    let terrain = TERRAIN
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+        .filter(|(_, at)| crate::hub::now_ms().saturating_sub(*at) <= GROUND_KEPT_MS)?;
+    (terrain.0)(lat, lon).filter(|metres| metres.is_finite())
 }
 
 pub fn ground_under(now_ms: u64) -> Option<f64> {

@@ -26,6 +26,7 @@ pub trait Feed: Send + Sync {
     fn sticks(&self) -> Vec<crate::virtualjoystick::StickSample>;
     fn report(&self, draw: Draw);
     fn ground(&self, above_home: Option<f64>);
+    fn terrain(&self, terrain: Option<crate::synthview::Terrain>);
 }
 
 enum Command {
@@ -661,6 +662,7 @@ fn show(
             });
         summary.frame_ms.push(millis(building.elapsed()));
         feed.ground(frame.as_ref().and_then(Frame::ground_above_home));
+        feed.terrain(frame.as_ref().and_then(Frame::terrain));
         if let Some((frame, session)) = frame.as_mut().zip(session.as_mut()) {
             session.warmed(
                 gpu.renderer

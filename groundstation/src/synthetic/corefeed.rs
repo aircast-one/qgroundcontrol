@@ -30,4 +30,8 @@ impl Feed for CoreFeed {
     fn ground(&self, above_home: Option<f64>) {
         crate::synthview::set_ground(above_home);
     }
+
+    fn terrain(&self, terrain: Option<crate::synthview::Terrain>) {
+        crate::synthview::set_terrain(terrain);
+    }
 }
