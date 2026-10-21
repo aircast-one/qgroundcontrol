@@ -58,12 +58,12 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn target_foot(&self) -> Option<(f64, f64)> {
+    pub fn target_centre(&self) -> Option<(f64, f64)> {
         let target = self.boxes.iter().find(|b| b["target"] == true)?;
         let number = |key: &str| target[key].as_f64();
         Some((
             number("x")? + number("w")? / 2.0,
-            number("y")? + number("h")?,
+            number("y")? + number("h")? / 2.0,
         ))
     }
 }
@@ -72,7 +72,7 @@ pub fn grounded(
     frame: Frame,
     project: impl FnOnce((f64, f64)) -> Option<crate::dropsim::Point>,
 ) -> Frame {
-    let target_ground = frame.target_foot().and_then(project);
+    let target_ground = frame.target_centre().and_then(project);
     Frame {
         target_ground,
         ..frame
@@ -81,10 +81,10 @@ pub fn grounded(
 
 fn grounded_now(frame: Frame) -> Frame {
     let captured_ms = frame.captured_ms;
-    grounded(frame, |foot| {
+    grounded(frame, |centre| {
         crate::hub::lock()
             .active()
-            .and_then(|vehicle| vehicle.picture_to_ground_at(foot, captured_ms))
+            .and_then(|vehicle| vehicle.object_at(centre, captured_ms))
     })
 }
 
@@ -431,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn the_target_box_is_grounded_at_its_bottom_centre_while_its_frame_is_fresh() {
+    fn the_target_box_is_grounded_at_its_centre_at_the_object_s_half_height_while_fresh() {
         let spot = crate::dropsim::Point {
             lat: 47.0,
             lon: 8.0,
@@ -445,14 +445,14 @@ mod tests {
             0,
         );
         let grounded = grounded(frame, |(x, y)| {
-            ((x - 0.5).abs() < 1e-9 && (y - 0.4).abs() < 1e-9).then_some(spot)
+            ((x - 0.5).abs() < 1e-9 && (y - 0.35).abs() < 1e-9).then_some(spot)
         });
         let mut feed = Feed::default();
         assert!(feed.receive(0, grounded));
         assert_eq!(
             feed.target_ground(5_400),
             Some((spot, 5_000)),
-            "the bottom-centre of the target box, projected, stamped with its frame time"
+            "the target box's centre, projected, stamped with its frame time"
         );
         assert_eq!(
             feed.target_ground(5_000 + STALE_MS + 1),
@@ -466,7 +466,7 @@ mod tests {
             0,
         );
         assert_eq!(
-            untargeted.target_foot(),
+            untargeted.target_centre(),
             None,
             "boxes, but none marked as the target"
         );

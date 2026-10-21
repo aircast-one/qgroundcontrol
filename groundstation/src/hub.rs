@@ -2734,8 +2734,6 @@ impl Vehicle {
                 number("longitude"),
                 action.get("terrain").and_then(Value::as_f64),
             ),
-            // Pure local bookkeeping for autodrop's manual target source - no vehicle command,
-            // nothing to send, so an empty step list that still succeeds (not Refused).
             "markTarget" => Plan::Steps(vec![]),
             "roi" => guidedcmd::roi(
                 &state,
@@ -3233,8 +3231,6 @@ impl Vehicle {
         sent
     }
 
-    /// Advances an in-flight `autodropStart` by one tick: no blocking, no sleeping - just
-    /// "is it due yet, and if so what's the next state". Mirrors `tick_rc_override`'s shape.
     pub(crate) fn target_for_autodrop(
         &self,
         source: crate::autodrop::TargetSource,
@@ -3279,7 +3275,7 @@ impl Vehicle {
                     .or_else(|| {
                         let image = self.camera_tracking_image.as_ref()?;
                         let at_ms = self.camera_tracking_image_ms;
-                        self.picture_to_ground_at(image.centre(), at_ms)
+                        self.object_at(image.centre(), at_ms)
                             .map(|position| (Sensor::CameraImage, Fix { position, at_ms }, None))
                     })
                     .or_else(|| {
@@ -3291,27 +3287,22 @@ impl Vehicle {
         }
     }
 
+    pub(crate) fn turned_deg(&self, source: crate::autodrop::TargetSource, now_ms: u64) -> f64 {
+        match source {
+            crate::autodrop::TargetSource::Tracked => {
+                crate::gimbalgeo::tracked_turn_deg(now_ms, crate::autodrop::TURN_WINDOW_MS)
+                    .unwrap_or_default()
+            }
+            _ => 0.0,
+        }
+    }
+
     fn gimbal_aim(&self) -> Option<(f64, f64)> {
         self.gimbals
             .active()
             .and_then(|pair| self.gimbals.get(pair))
             .and_then(|g| g.attitude)
             .map(|a| (f64::from(a.absolute_yaw), f64::from(a.pitch)))
-    }
-
-    pub(crate) fn picture_to_ground(
-        &self,
-        position: crate::dropsim::Point,
-        altitude_agl_m: f64,
-        point: (f64, f64),
-    ) -> Option<crate::dropsim::Point> {
-        crate::gimbalgeo::picture_to_ground(
-            crate::gimbalgeo::lens(),
-            position,
-            altitude_agl_m,
-            self.gimbal_aim()?,
-            point,
-        )
     }
 
     fn pose_now(&self, now_ms: u64) -> Option<Pose> {
@@ -3343,18 +3334,37 @@ impl Vehicle {
             .or_else(|| self.pose_now(at_ms))
     }
 
+    #[cfg(test)]
     pub(crate) fn picture_to_ground_at(
         &self,
         point: (f64, f64),
         at_ms: u64,
     ) -> Option<crate::dropsim::Point> {
+        self.picture_to_plane_at(point, 0.0, at_ms)
+    }
+
+    pub(crate) fn object_at(
+        &self,
+        centre: (f64, f64),
+        at_ms: u64,
+    ) -> Option<crate::dropsim::Point> {
+        self.picture_to_plane_at(centre, crate::gimbalgeo::OBJECT_HALF_HEIGHT_M, at_ms)
+    }
+
+    fn picture_to_plane_at(
+        &self,
+        point: (f64, f64),
+        plane_m: f64,
+        at_ms: u64,
+    ) -> Option<crate::dropsim::Point> {
         let pose = self.pose_at(at_ms)?;
-        crate::gimbalgeo::picture_to_ground(
+        crate::gimbalgeo::picture_to_plane(
             crate::gimbalgeo::lens(),
             pose.position,
             pose.altitude_agl_m,
             pose.aim?,
             point,
+            plane_m,
         )
     }
 
@@ -3442,6 +3452,45 @@ impl Vehicle {
         })
     }
 
+    fn judge_impact(&mut self, now_ms: u64, wall_ms: i64) {
+        let Some(crate::autodrop::State::Fired {
+            predicted_miss_m,
+            bottle,
+            impact: crate::autodrop::Impact::Falling,
+            at_ms,
+        }) = self.autodrop
+        else {
+            return;
+        };
+        let Some(release) = self.releases.get(bottle).copied() else {
+            return;
+        };
+        let lands_ms = release.at_ms + (release.falls_for_s() * 1000.0) as i64;
+        if wall_ms < lands_ms {
+            return;
+        }
+        let landed = release.at(lands_ms);
+        let target = self
+            .followed
+            .zip(self.release_now())
+            .and_then(|(source, here)| {
+                self.target_for_autodrop(source, here.position, here.altitude_agl_m, now_ms)
+            });
+        let impact = landed["latitude"]
+            .as_f64()
+            .zip(landed["longitude"].as_f64())
+            .zip(target)
+            .map_or(crate::autodrop::Impact::Unseen, |((lat, lon), target)| {
+                crate::autodrop::judged(crate::dropsim::Point { lat, lon }, target)
+            });
+        self.autodrop = Some(crate::autodrop::State::Fired {
+            predicted_miss_m,
+            bottle,
+            impact,
+            at_ms,
+        });
+    }
+
     fn tick_autodrop(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         let Some(crate::autodrop::State::Waiting {
             phase,
@@ -3503,24 +3552,30 @@ impl Vehicle {
                     });
                     return Vec::new();
                 };
-                let plan = crate::dropsim::lead(release, target);
-                let miss_now_m = crate::dropsim::simulate(release, target).miss_m;
-                let due = plan.release_in_s <= crate::autodrop::COMMAND_LATENCY_S;
-                if !due || miss_now_m > crate::autodrop::FIRE_WITHIN_M {
-                    let wait_ms =
-                        ((plan.release_in_s - crate::autodrop::COMMAND_LATENCY_S) * 1000.0) as u64;
+                let roads = crate::autodrop::roads_under(target);
+                let plan = crate::autodrop::plan(release, target, roads.as_deref());
+                let until_ms =
+                    ((plan.release_in_s - crate::autodrop::COMMAND_LATENCY_S) * 1000.0) as u64;
+                let due = until_ms == 0;
+                if !due || !crate::autodrop::releasable(plan, self.turned_deg(source, now_ms)) {
+                    let wait_ms = match due {
+                        true => crate::autodrop::AUTODROP_TICK_MS,
+                        false => until_ms.min(crate::autodrop::AUTODROP_TICK_MS),
+                    };
                     self.autodrop = Some(crate::autodrop::State::Waiting {
                         phase,
                         source,
                         started_ms,
-                        due_ms: now_ms + wait_ms.min(crate::autodrop::AUTODROP_TICK_MS),
+                        due_ms: now_ms + wait_ms,
                     });
                     let off_course = due || plan.miss_m > crate::autodrop::FIRE_WITHIN_M;
                     let reaim = (plan.release_in_s > crate::autodrop::REAIM_UNTIL_S || off_course)
                         && now_ms.saturating_sub(self.autodrop_aimed_ms)
                             >= crate::autodrop::REAIM_EVERY_MS;
                     let Some(aim_at) = reaim
-                        .then(|| crate::autodrop::aim_point(release.position, target))
+                        .then(|| {
+                            crate::autodrop::aim_point(release.position, target, roads.as_deref())
+                        })
                         .flatten()
                     else {
                         return Vec::new();
@@ -3539,7 +3594,9 @@ impl Vehicle {
                 );
                 self.autodrop = Some(match &fired {
                     Ok(_) => crate::autodrop::State::Fired {
-                        predicted_miss_m: miss_now_m,
+                        predicted_miss_m: plan.miss_m,
+                        bottle: self.releases.len(),
+                        impact: crate::autodrop::Impact::Falling,
                         at_ms: now_ms,
                     },
                     Err(reason) => crate::autodrop::State::GaveUp {
@@ -4770,6 +4827,7 @@ impl Vehicle {
         bytes.extend(self.tick_rc_override(now_ms));
         self.remember_pose(now_ms);
         bytes.extend(self.tick_autodrop(now_ms));
+        self.judge_impact(now_ms, wall_ms());
         bytes.extend(self.tick_gimbal_follow(now_ms));
         if let Some(line) = self.link_health_line(now_ms) {
             log::info!(target: "link", "{line}");
@@ -7821,14 +7879,21 @@ impl Hub {
             .collect()
     }
 
+    pub fn next_autodrop_due_ms(&self) -> Option<u64> {
+        self.vehicles
+            .values()
+            .filter_map(|vehicle| match vehicle.autodrop {
+                Some(crate::autodrop::State::Waiting { due_ms, .. }) => Some(due_ms),
+                _ => None,
+            })
+            .min()
+    }
+
     pub fn tick(&mut self, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
         self.tick_with(now_ms, 0)
     }
 
     pub fn tick_with(&mut self, now_ms: u64, now_s: u64) -> Vec<(LinkId, Vec<u8>)> {
-        // A snapshot taken before the mutable vehicle loop below, so autodrop's GPS-telemetry
-        // target source can read another vehicle's live position+velocity without reaching back
-        // into this same Hub while its lock is held (that would deadlock crate::hub::lock()).
         crate::gpstarget::refresh(
             self.vehicles
                 .iter()
@@ -9698,19 +9763,19 @@ mod tests {
                     at_ms,
                     0,
                 ),
-                |foot| v.picture_to_ground_at(foot, at_ms),
+                |centre| v.object_at(centre, at_ms),
             )))
         };
 
-        shown(vehicle, 0.4, start_ms);
+        shown(vehicle, 0.45, start_ms);
         let first = tracked_at(vehicle, start_ms + 100).expect("a fresh target box is a target");
         let (north, east) = metres_from_here(first);
         assert!(
             (north - 40.0).abs() < 2.0 && east.abs() < 0.5,
-            "the box's bottom-centre is the picture centre, 40 m ahead of a 45° down camera at 40 m, got {north} N {east} E"
+            "the box's centre is the picture centre, about 40 m ahead of a 45° down camera at 40 m, got {north} N {east} E"
         );
 
-        shown(vehicle, 0.35, start_ms + 500);
+        shown(vehicle, 0.40, start_ms + 500);
         let second = tracked_at(vehicle, start_ms + 600).unwrap();
         assert!(
             second.velocity.north_mps > 0.0 && second.velocity.east_mps.abs() < 0.5,
@@ -9873,10 +9938,108 @@ mod tests {
     }
 
     #[test]
+    fn tick_autodrop_wakes_when_the_release_falls_due_and_fires_then() {
+        let _ground = crate::synthview::TEST_GROUND
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let north = |metres: f64| crate::geo::ned_to_geo(metres, 0.0, 0.0, (47.0, 8.0, 0.0)).0;
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.manual_target = Some((
+            north(10.0 * (crate::dropsim::fall_time_s(40.0, 0.0) + 0.25)),
+            8.0,
+        ));
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.facts.velocity = (10.0, 0.0, 0.0);
+        vehicle.autodrop = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Manual,
+            started_ms: 0,
+            due_ms: 0,
+        });
+        vehicle.tick_autodrop(1_000);
+        let mut hub = Hub::default();
+        hub.vehicles.insert(1, vehicle);
+        let due = hub.next_autodrop_due_ms().expect("still waiting");
+        assert!(
+            (1_095..=1_105).contains(&due),
+            "a quarter second out, less the command latency, is a tenth of a second away: {due}"
+        );
+        let vehicle = hub.vehicles.get_mut(&1).expect("the vehicle");
+        vehicle.facts.coordinate = Some((north(1.0), 8.0, 0.0));
+        vehicle.tick_autodrop(due);
+        assert!(
+            matches!(vehicle.autodrop, Some(crate::autodrop::State::Fired { .. })),
+            "{:?}",
+            vehicle.autodrop
+        );
+    }
+
+    #[test]
+    fn once_the_bottle_lands_the_status_says_how_far_it_fell_from_the_target_if_still_seen() {
+        let _ground = crate::synthview::TEST_GROUND
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let fired = |impact| {
+            Some(crate::autodrop::State::Fired {
+                predicted_miss_m: 0.3,
+                bottle: 0,
+                impact,
+                at_ms: 0,
+            })
+        };
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.followed = Some(crate::autodrop::TargetSource::Manual);
+        vehicle.manual_target = Some((47.0 + 1.0 / 111_320.0, 8.0));
+        vehicle.autodrop = fired(crate::autodrop::Impact::Falling);
+        vehicle.judge_impact(1_000, 10_000);
+        assert_eq!(
+            vehicle.autodrop,
+            fired(crate::autodrop::Impact::Falling),
+            "no bottle yet"
+        );
+        vehicle.releases.push(crate::payloadfall::Release {
+            bay: 0,
+            at_ms: 9_000,
+            latitude: 47.0,
+            longitude: 8.0,
+            above_home: 40.0,
+            velocity: (0.0, 0.0, 0.0),
+            heading: 0.0,
+            ground: 0.0,
+        });
+        vehicle.judge_impact(1_000, 10_000);
+        assert_eq!(
+            vehicle.autodrop,
+            fired(crate::autodrop::Impact::Falling),
+            "still falling"
+        );
+        vehicle.judge_impact(4_000, 13_000);
+        assert!(
+            matches!(
+                vehicle.autodrop,
+                Some(crate::autodrop::State::Fired {
+                    impact: crate::autodrop::Impact::Seen { miss_m, on_target: false },
+                    ..
+                }) if (miss_m - 1.0).abs() < 0.05
+            ),
+            "a parked car has no heading, so only its half-width counts and a metre out misses: {:?}",
+            vehicle.autodrop
+        );
+        vehicle.manual_target = None;
+        vehicle.autodrop = fired(crate::autodrop::Impact::Falling);
+        vehicle.judge_impact(4_000, 13_000);
+        assert_eq!(vehicle.autodrop, fired(crate::autodrop::Impact::Unseen));
+    }
+
+    #[test]
     fn target_for_autodrop_reads_whichever_source_the_run_picked() {
         let _fixes = crate::gpstarget::TEST_FIXES
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
+        crate::gpstarget::refresh(std::collections::BTreeMap::new());
         let mut vehicle = Vehicle::heard(1);
         let here = crate::dropsim::Point {
             lat: 47.0,

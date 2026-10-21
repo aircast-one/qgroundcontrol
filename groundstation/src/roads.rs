@@ -422,6 +422,311 @@ impl Drive {
     }
 }
 
+pub fn fetch(lat: f64, lon: f64) -> Network {
+    let tiles: Vec<(u32, u32, Vec<u8>)> = tiles_around(lat, lon)
+        .into_iter()
+        .filter_map(|(x, y)| {
+            crate::maptiles::fetch(
+                crate::maptypes::BUILDING_TILES,
+                i32::try_from(x).ok()?,
+                i32::try_from(y).ok()?,
+                i32::try_from(ROAD_TILE_ZOOM).ok()?,
+                &crate::mapurls::keys_from_settings(),
+                None,
+                false,
+                &crate::maptiles::fetch_over_http,
+            )
+            .map(|raw| (x, y, raw))
+        })
+        .collect();
+    network(&tiles)
+}
+
+#[cfg(not(test))]
+struct Near {
+    wanted: (u32, u32),
+    network: Option<std::sync::Arc<Network>>,
+}
+
+#[cfg(not(test))]
+static NEAR: std::sync::Mutex<Option<Near>> = std::sync::Mutex::new(None);
+
+#[cfg(not(test))]
+fn held() -> std::sync::MutexGuard<'static, Option<Near>> {
+    NEAR.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(not(test))]
+pub fn near(lat: f64, lon: f64) -> Option<std::sync::Arc<Network>> {
+    let tile = tile_of(lat, lon);
+    let mut near = held();
+    if near.as_ref().is_none_or(|near| near.wanted != tile) {
+        let network = near.take().and_then(|near| near.network);
+        *near = Some(Near {
+            wanted: tile,
+            network,
+        });
+        load(lat, lon, tile);
+    }
+    near.as_ref().and_then(|near| near.network.clone())
+}
+
+#[cfg(not(any(test, target_family = "wasm")))]
+fn load(lat: f64, lon: f64, tile: (u32, u32)) {
+    std::thread::spawn(move || {
+        let fetched = std::sync::Arc::new(fetch(lat, lon));
+        if let Some(near) = held().as_mut().filter(|near| near.wanted == tile) {
+            near.network = Some(fetched);
+        }
+    });
+}
+
+#[cfg(all(not(test), target_family = "wasm"))]
+fn load(_: f64, _: f64, _: (u32, u32)) {}
+
+#[cfg(test)]
+thread_local! {
+    static PROVIDED: std::cell::RefCell<Option<std::sync::Arc<Network>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub fn near(_: f64, _: f64) -> Option<std::sync::Arc<Network>> {
+    PROVIDED.with(|provided| provided.borrow().clone())
+}
+
+#[cfg(test)]
+pub(crate) fn provide(network: Option<std::sync::Arc<Network>>) {
+    PROVIDED.with(|provided| *provided.borrow_mut() = network);
+}
+
+const MATCH_M: f64 = 8.0;
+const MATCH_DEG: f64 = 60.0;
+const RECOVER_MPS2: f64 = 2.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Matched {
+    from: usize,
+    to: usize,
+    along_m: f64,
+    offset_m: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Ahead {
+    pub at: (f64, f64),
+    pub heading_deg: f64,
+    pub junctions: usize,
+}
+
+fn bearing_deg(a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (north, east) = offset(a, b);
+    east.atan2(north).to_degrees()
+}
+
+fn signed_turn_deg(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
+    let (n1, e1) = offset(a, b);
+    let (n2, e2) = offset(b, c);
+    (n1 * e2 - e1 * n2).atan2(n1 * n2 + e1 * e2).to_degrees()
+}
+
+fn wrapped_deg(degrees: f64) -> f64 {
+    (degrees + 540.0).rem_euclid(360.0) - 180.0
+}
+
+fn moved(from: (f64, f64), north: f64, east: f64) -> (f64, f64) {
+    (
+        from.0 + north / METRES_PER_DEG,
+        from.1 + east / (METRES_PER_DEG * from.0.to_radians().cos()),
+    )
+}
+
+impl Network {
+    pub fn matched(&self, at: (f64, f64), heading_deg: f64) -> Option<Matched> {
+        (0..self.nodes.len())
+            .flat_map(|from| self.next[from].iter().map(move |&to| (from, to)))
+            .filter_map(|(from, to)| {
+                let (a, b) = (self.nodes[from], self.nodes[to]);
+                let length = metres(a, b);
+                let (en, ee) = offset(a, b);
+                let (pn, pe) = offset(a, at);
+                let along = ((pn * en + pe * ee) / length.max(f64::EPSILON)).clamp(0.0, length);
+                let (un, ue) = (en / length.max(f64::EPSILON), ee / length.max(f64::EPSILON));
+                let (dn, de) = (pn - un * along, pe - ue * along);
+                let distance = dn.hypot(de);
+                let aligned = wrapped_deg(bearing_deg(a, b) - heading_deg).abs() <= MATCH_DEG;
+                (aligned && distance <= MATCH_M).then(|| {
+                    (
+                        distance,
+                        Matched {
+                            from,
+                            to,
+                            along_m: along,
+                            offset_m: un * de - ue * dn,
+                        },
+                    )
+                })
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, matched)| matched)
+    }
+
+    fn onward(&self, from: usize, to: usize) -> (Option<usize>, bool) {
+        let options: Vec<(usize, f64)> = self.next[to]
+            .iter()
+            .copied()
+            .filter(|&n| n != from)
+            .map(|n| {
+                (
+                    n,
+                    signed_turn_deg(self.nodes[from], self.nodes[to], self.nodes[n]).abs(),
+                )
+            })
+            .collect();
+        let straightest = options
+            .iter()
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(n, _)| *n);
+        (straightest, options.len() != 1)
+    }
+
+    fn route(&self, matched: Matched, reach_m: f64) -> Vec<(usize, bool)> {
+        let legs: Vec<(usize, bool)> = std::iter::successors(
+            Some((matched.from, matched.to, 0.0)),
+            |&(from, to, travelled)| {
+                let travelled = travelled + metres(self.nodes[from], self.nodes[to]);
+                (travelled < reach_m)
+                    .then(|| self.onward(from, to).0)
+                    .flatten()
+                    .map(|next| (to, next, travelled))
+            },
+        )
+        .map(|(from, to, _)| (to, self.onward(from, to).1))
+        .collect();
+        std::iter::once((matched.from, false)).chain(legs).collect()
+    }
+
+    pub fn ahead(
+        &self,
+        matched: Matched,
+        speed_mps: f64,
+        lateral_mps2: f64,
+        step_s: f64,
+        steps: usize,
+    ) -> Vec<Ahead> {
+        let reach = matched.along_m + speed_mps * step_s * steps as f64 + 2.0 * LOOKAHEAD_M;
+        let route = self.route(matched, reach);
+        let points: Vec<(f64, f64)> = route.iter().map(|&(node, _)| self.nodes[node]).collect();
+        let starts: Vec<f64> = std::iter::once(0.0)
+            .chain(points.windows(2).scan(0.0, |total, pair| {
+                *total += metres(pair[0], pair[1]);
+                Some(*total)
+            }))
+            .collect();
+        let end = starts.last().copied().unwrap_or(0.0);
+        let dead_end = route.last().is_some_and(|&(_, ambiguous)| ambiguous) && end < reach;
+        let corners: Vec<(f64, f64)> = points
+            .windows(3)
+            .zip(&starts[1..])
+            .map(|(three, &at)| {
+                let turn = turn_deg(three[0], three[1], three[2]);
+                let limit = match turn {
+                    t if t < STRAIGHT_DEG => speed_mps,
+                    t => (lateral_mps2 * LOOKAHEAD_M / (2.0 * (t / 2.0).to_radians().sin()))
+                        .sqrt()
+                        .max(SLOWEST_MPS)
+                        .min(speed_mps),
+                };
+                (at, limit)
+            })
+            .chain(dead_end.then_some((end, 0.0)))
+            .collect();
+        let junctions: Vec<f64> = route
+            .iter()
+            .zip(&starts)
+            .filter(|((_, junction), _)| *junction)
+            .map(|(_, &at)| at)
+            .collect();
+        let last = points.len().saturating_sub(2);
+        let on_route = |s: f64| {
+            let leg = starts[1..]
+                .iter()
+                .position(|&end| end > s)
+                .unwrap_or(last)
+                .min(last);
+            self.placed(Matched {
+                from: route[leg].0,
+                to: route[leg + 1].0,
+                along_m: (s - starts[leg]).clamp(0.0, metres(points[leg], points[leg + 1])),
+                offset_m: matched.offset_m,
+            })
+        };
+        let start = Ahead {
+            at: self.placed(matched),
+            heading_deg: bearing_deg(self.nodes[matched.from], self.nodes[matched.to]),
+            junctions: 0,
+        };
+        let passed = |s: f64| {
+            junctions
+                .iter()
+                .filter(|&&at| at <= s + LOOKAHEAD_M)
+                .count()
+        };
+        std::iter::successors(
+            Some((matched.along_m, speed_mps, start)),
+            |&(
+                s,
+                speed,
+                Ahead {
+                    at, heading_deg, ..
+                },
+            )| {
+                let allowed = corners
+                    .iter()
+                    .filter(|(corner, _)| *corner >= s)
+                    .map(|(corner, limit)| {
+                        (limit * limit + 2.0 * BRAKE_MPS2 * (corner - s - LOOKAHEAD_M).max(0.0))
+                            .sqrt()
+                    })
+                    .fold(speed_mps, f64::min);
+                let speed = (speed + RECOVER_MPS2 * step_s).min(allowed);
+                let aim = on_route(s + LOOKAHEAD_M);
+                let heading = match metres(at, aim) > f64::EPSILON {
+                    true => bearing_deg(at, aim),
+                    false => heading_deg,
+                };
+                let (sin, cos) = heading.to_radians().sin_cos();
+                let s = s + speed * step_s;
+                Some((
+                    s,
+                    speed,
+                    Ahead {
+                        at: moved(at, speed * step_s * cos, speed * step_s * sin),
+                        heading_deg: heading,
+                        junctions: passed(s),
+                    },
+                ))
+            },
+        )
+        .take(steps + 1)
+        .map(|(_, _, ahead)| ahead)
+        .collect()
+    }
+
+    fn placed(&self, on: Matched) -> (f64, f64) {
+        let (a, b) = (self.nodes[on.from], self.nodes[on.to]);
+        let length = metres(a, b).max(f64::EPSILON);
+        let (en, ee) = offset(a, b);
+        let (un, ue) = (en / length, ee / length);
+        moved(
+            a,
+            un * on.along_m - ue * on.offset_m,
+            ue * on.along_m + un * on.offset_m,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -623,5 +928,113 @@ mod tests {
             corner_speed < straight_speed - 0.5,
             "{corner_speed} vs {straight_speed}"
         );
+    }
+
+    fn place(north: f64, east: f64) -> (f64, f64) {
+        moved(HOME, north, east)
+    }
+
+    fn two_way(pairs: &[(usize, usize)], count: usize) -> Vec<Vec<usize>> {
+        (0..count)
+            .map(|node| {
+                pairs
+                    .iter()
+                    .filter_map(|&(a, b)| match node {
+                        n if n == a => Some(b),
+                        n if n == b => Some(a),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn corner() -> Network {
+        let nodes = vec![place(0.0, 0.0), place(100.0, 0.0), place(100.0, 300.0)];
+        Network::of(nodes, two_way(&[(0, 1), (1, 2)], 3))
+    }
+
+    fn speeds(path: &[Ahead], step_s: f64) -> Vec<f64> {
+        path.windows(2)
+            .map(|pair| metres(pair[0].at, pair[1].at) / step_s)
+            .collect()
+    }
+
+    #[test]
+    fn a_car_matches_the_way_it_drives_and_keeps_its_place_in_the_lane() {
+        let roads = corner();
+        let northbound = roads.matched(place(30.0, 2.0), 5.0).expect("on the road");
+        assert_eq!((northbound.from, northbound.to), (0, 1));
+        assert!((northbound.along_m - 30.0).abs() < 0.1, "{northbound:?}");
+        assert!(
+            (northbound.offset_m - 2.0).abs() < 0.1,
+            "east of a northbound road is its right: {northbound:?}"
+        );
+        let southbound = roads.matched(place(30.0, 2.0), 185.0).expect("on the road");
+        assert_eq!((southbound.from, southbound.to), (1, 0));
+        assert!((southbound.offset_m + 2.0).abs() < 0.1, "{southbound:?}");
+        assert!(
+            roads.matched(place(30.0, 20.0), 0.0).is_none(),
+            "20 m off the road"
+        );
+        assert!(
+            roads.matched(place(30.0, 0.0), 90.0).is_none(),
+            "driving across the road"
+        );
+    }
+
+    #[test]
+    fn ahead_follows_the_road_round_a_corner_slowing_into_it() {
+        let roads = corner();
+        let matched = roads.matched(place(20.0, 0.0), 0.0).expect("on the road");
+        let step_s = 0.1;
+        let path = roads.ahead(matched, 10.0, 2.0, step_s, 250);
+        let end = path.last().expect("a path");
+        let (north, east) = offset(HOME, end.at);
+        assert!(
+            (north - 100.0).abs() < 1.5 && east > 60.0,
+            "ends on the eastbound leg: {north} {east}"
+        );
+        assert!((end.heading_deg - 90.0).abs() < 5.0, "{}", end.heading_deg);
+        let slowest = speeds(&path, step_s).into_iter().fold(f64::MAX, f64::min);
+        assert!(
+            slowest < 5.0,
+            "a right angle at 2 m/s² is taken under 5 m/s, not {slowest}"
+        );
+        assert!(path.iter().all(|ahead| ahead.junctions == 0));
+    }
+
+    #[test]
+    fn a_fork_or_a_dead_end_ahead_is_counted_as_a_junction() {
+        let fork = Network::of(
+            vec![
+                place(0.0, 0.0),
+                place(100.0, 0.0),
+                place(200.0, 0.0),
+                place(100.0, 100.0),
+            ],
+            two_way(&[(0, 1), (1, 2), (1, 3)], 4),
+        );
+        let matched = fork.matched(place(20.0, 0.0), 0.0).expect("on the road");
+        let path = fork.ahead(matched, 10.0, 2.0, 0.1, 150);
+        let (north, east) = offset(HOME, path.last().expect("a path").at);
+        assert!(
+            north > 150.0 && east.abs() < 1.0,
+            "the straightest way on: {north} {east}"
+        );
+        assert_eq!(path[0].junctions, 0);
+        assert_eq!(path.last().map(|ahead| ahead.junctions), Some(1));
+
+        let dead_end = Network::of(
+            vec![place(0.0, 0.0), place(60.0, 0.0)],
+            two_way(&[(0, 1)], 2),
+        );
+        let matched = dead_end
+            .matched(place(10.0, 0.0), 0.0)
+            .expect("on the road");
+        let path = dead_end.ahead(matched, 10.0, 2.0, 0.1, 150);
+        let (north, _) = offset(HOME, path.last().expect("a path").at);
+        assert!(north < 60.0, "it stops short of the end: {north}");
+        assert_eq!(path.last().map(|ahead| ahead.junctions), Some(1));
     }
 }

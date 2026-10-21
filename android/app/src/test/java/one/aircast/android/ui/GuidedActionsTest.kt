@@ -63,8 +63,20 @@ class GuidedActionsTest {
             autodropStatusLine(JSONObject("""{"state":"waiting","phase":"waitingForRelease"}""")),
         )
         assertEquals(
-            "Auto intercept: dropped, missed by about 1.6 m" to false,
-            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":1.62}""")),
+            "Auto intercept: dropped, predicted miss 1.6 m" to false,
+            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":1.62,"impact":"falling"}""")),
+        )
+        assertEquals(
+            "Auto intercept: dropped, predicted miss 0.4 m, estimated miss at impact 0.7 m (on target)" to false,
+            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":0.42,"impact":"seen","estimatedMissMeters":0.71,"estimatedOnTarget":true}""")),
+        )
+        assertEquals(
+            "Auto intercept: dropped, predicted miss 0.4 m, estimated miss at impact 2.3 m (off target)" to true,
+            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":0.42,"impact":"seen","estimatedMissMeters":2.31,"estimatedOnTarget":false}""")),
+        )
+        assertEquals(
+            "Auto intercept: dropped, predicted miss 0.4 m, target not tracked at impact" to false,
+            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":0.42,"impact":"unseen"}""")),
         )
         assertEquals(
             "Auto intercept gave up: no release window opened within the time limit" to true,

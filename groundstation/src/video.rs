@@ -883,6 +883,9 @@ mod tests {
 
     #[test]
     fn a_tracking_rectangle_is_offered_only_while_the_camera_is_tracking() {
+        let _feed = crate::detections::TEST_FEED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let cam = |extra: Value| {
             let mut c = json!({ "kind": "object", "modelName": "ZR30" });
             extra.as_object().unwrap().iter().for_each(|(k, v)| {

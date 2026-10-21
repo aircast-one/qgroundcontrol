@@ -322,12 +322,22 @@ pub(crate) fn start_pump() {
             .name("groundstation-pump".to_string())
             .spawn(|| {
                 loop {
-                    std::thread::sleep(PUMP_PERIOD);
+                    std::thread::sleep(until_next_pump());
                     pump_once();
                 }
             })
             .expect("pump thread");
     });
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn until_next_pump() -> std::time::Duration {
+    let now = crate::hub::now_ms();
+    crate::hub::lock()
+        .next_autodrop_due_ms()
+        .map_or(PUMP_PERIOD, |due| {
+            PUMP_PERIOD.min(std::time::Duration::from_millis(due.saturating_sub(now)))
+        })
 }
 
 #[cfg(target_family = "wasm")]
@@ -1047,10 +1057,6 @@ pub unsafe extern "C" fn qgc_core_tile_size(hash: *const c_char) -> i64 {
     }
 }
 
-/// Copies the tile into a buffer the caller owns, so nothing crosses the boundary that either side
-/// has to remember to free. Answers the number of bytes written, -1 when the cache has no such
-/// tile, -2 when the buffer is too small, and -3 when the database could not be read - which is a
-/// different fact from an absent tile and used to be reported as one.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_tile_copy(
     hash: *const c_char,

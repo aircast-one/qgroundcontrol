@@ -124,10 +124,23 @@ internal fun checklistStateValue(passed: Boolean): Int = if (passed) CHECKLIST_P
 internal fun offerWithdrawn(offerId: String?, offers: Map<String, GuidedOffer>): Boolean =
     offerId != null && offers[offerId]?.shown != true
 
-/** (message, isProblem) for the live auto-intercept run, or null while idle - nothing to say. */
+private fun firedLine(json: JSONObject): Pair<String, Boolean> {
+    val predicted = "Auto intercept: dropped, predicted miss %.1f m".format(json.optDouble("predictedMissMeters", 0.0))
+    val onTarget = json.optBoolean("estimatedOnTarget", false)
+    return when (json.optText("impact")) {
+        "seen" -> "%s, estimated miss at impact %.1f m (%s)".format(
+            predicted,
+            json.optDouble("estimatedMissMeters", 0.0),
+            if (onTarget) "on target" else "off target",
+        ) to !onTarget
+        "unseen" -> "$predicted, target not tracked at impact" to false
+        else -> predicted to false
+    }
+}
+
 internal fun autodropStatusLine(json: JSONObject?): Pair<String, Boolean>? = when (json?.optText("state")) {
     "waiting" -> (if (json.optText("phase") == "waitingForCruise") "Auto intercept: climbing to speed" else "Auto intercept: lining up the shot") to false
-    "fired" -> "Auto intercept: dropped, missed by about %.1f m".format(json.optDouble("predictedMissMeters", 0.0)) to false
+    "fired" -> firedLine(json)
     "gaveUp" -> "Auto intercept gave up: ${json.optText("reason")}" to true
     else -> null
 }
@@ -631,9 +644,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         MoreActionsSheet(
             tiles = listOfNotNull(
                 armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } },
-                // Grouped with Stop Motors, ahead of passive settings below: this starts an
-                // unsupervised flight-and-release, not a value to tweak, and shouldn't need a
-                // scroll to find.
                 MoreTile(if (autodropWaiting) "Stop Auto Intercept" else "Auto Intercept", R.drawable.ic_search, true) {
                     if (autodropWaiting) {
                         offMainDetached { VehicleCommands.stopAutoInterceptDrop() }

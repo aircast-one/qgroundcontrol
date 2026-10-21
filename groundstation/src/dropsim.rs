@@ -25,7 +25,7 @@ pub struct Release {
     pub climb_mps: f64,
 }
 
-fn fall_time_s(altitude_agl_m: f64, climb_mps: f64) -> f64 {
+pub fn fall_time_s(altitude_agl_m: f64, climb_mps: f64) -> f64 {
     let h = altitude_agl_m.max(0.0);
     (climb_mps + (climb_mps * climb_mps + 2.0 * GRAVITY_MPS2 * h).sqrt()) / GRAVITY_MPS2
 }
@@ -184,10 +184,6 @@ impl Intercept {
     }
 }
 
-/// The heading a fixed-speed course has to fly to meet a moving target, by the classic
-/// pursuit-intercept quadratic: the smallest non-negative T where the target's future
-/// position is exactly `speed_mps * T` away from the drone. None if no such T exists
-/// (the target is outrunning this speed on a course that never closes).
 pub fn intercept(drone_position: Point, speed_mps: f64, target: Target) -> Option<Intercept> {
     let origin = (drone_position.lat, drone_position.lon, 0.0);
     let (dn, de, _) = geo_to_ned(target.position.lat, target.position.lon, 0.0, origin);

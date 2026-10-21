@@ -972,7 +972,9 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "autodropLead": release
             .zip(drop_target)
             .filter(|_| v.flying)
-            .map(|(release, target)| crate::dropsim::simulate(release, target).target_at_impact)
+            .map(|(release, target)| {
+                crate::autodrop::lead_now(release, target, crate::autodrop::roads_under(target).as_deref())
+            })
             .map(|p| json!({ "latitude": p.lat, "longitude": p.lon })),
         "autodropImpact": v.release_now()
             .filter(|_| v.flying)

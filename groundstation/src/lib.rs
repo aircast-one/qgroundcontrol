@@ -124,6 +124,8 @@ pub mod inspector;
 pub mod inspectorchart;
 pub mod instrumentgroups;
 pub mod instruments;
+#[cfg(test)]
+mod interceptbench;
 pub mod itemcamera;
 pub mod itemfacts;
 pub mod itemposition;

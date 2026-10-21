@@ -703,23 +703,7 @@ fn flat(_: f64, _: f64) -> Option<f64> {
 fn fetch_roads(lat: f64, lon: f64) -> Option<mpsc::Receiver<crate::roads::Network>> {
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
-        let tiles: Vec<(u32, u32, Vec<u8>)> = crate::roads::tiles_around(lat, lon)
-            .into_iter()
-            .filter_map(|(x, y)| {
-                crate::maptiles::fetch(
-                    crate::maptypes::BUILDING_TILES,
-                    i32::try_from(x).ok()?,
-                    i32::try_from(y).ok()?,
-                    i32::try_from(crate::roads::ROAD_TILE_ZOOM).ok()?,
-                    &crate::mapurls::keys_from_settings(),
-                    None,
-                    false,
-                    &crate::maptiles::fetch_over_http,
-                )
-                .map(|raw| (x, y, raw))
-            })
-            .collect();
-        let _ = sender.send(crate::roads::network(&tiles));
+        let _ = sender.send(crate::roads::fetch(lat, lon));
     });
     Some(receiver)
 }
@@ -899,6 +883,10 @@ impl Sim {
 
     fn begin_roads(&mut self, network: std::sync::Arc<crate::roads::Network>) {
         let seed = (crate::hub::wall_ms() as u64) ^ (u64::from(self.system) << 32) ^ self.ticks;
+        self.begin_roads_seeded(network, seed);
+    }
+
+    fn begin_roads_seeded(&mut self, network: std::sync::Arc<crate::roads::Network>, seed: u64) {
         let Some(drive) = crate::roads::Drive::starting(&network, (self.lat, self.lon), seed)
         else {
             return;
@@ -3500,6 +3488,38 @@ impl MockLink {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *conditions = conditions.clone().changed(changes);
+    }
+}
+
+#[cfg(test)]
+impl Sim {
+    pub(crate) fn truth(&self) -> ((f64, f64), f64, f64, (f64, f64)) {
+        ((self.lat, self.lon), self.alt, self.heading, self.velocity)
+    }
+
+    pub(crate) fn camera_aim(&self) -> Option<(f64, f64)> {
+        self.gimbal.as_ref().map(|gimbal| {
+            let (yaw, pitch) = gimbal.aim();
+            (self.heading + yaw, pitch)
+        })
+    }
+
+    pub(crate) fn point_camera(&mut self, pitch: f64, heading: f64) {
+        let body_yaw = heading - self.heading;
+        if let Some(gimbal) = self.gimbal.as_mut() {
+            gimbal.point(pitch as f32, body_yaw as f32);
+        }
+    }
+
+    pub(crate) fn drive_roads_from(
+        &mut self,
+        network: std::sync::Arc<crate::roads::Network>,
+        at: (f64, f64),
+        seed: u64,
+    ) {
+        (self.lat, self.lon) = at;
+        self.conditions.roads = true;
+        self.begin_roads_seeded(network, seed);
     }
 }
 

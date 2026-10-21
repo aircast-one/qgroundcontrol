@@ -29,10 +29,15 @@ pub fn ground_point(
 }
 
 pub const MAX_JUMP_M: f64 = 20.0;
+pub const OBJECT_HALF_HEIGHT_M: f64 = 0.75;
 pub const COAST_MS: u64 = 1_500;
 const SMOOTHING: f64 = 0.75;
 const POSITION_GAIN: f64 = 1.0 - SMOOTHING * SMOOTHING;
 const VELOCITY_GAIN: f64 = (1.0 - SMOOTHING) * (1.0 - SMOOTHING);
+const MOVING_MPS: f64 = 1.0;
+const MAX_ACCEL_MPS2: f64 = 6.0;
+const HEADING_SAMPLES: usize = 12;
+const HEADING_EVERY_MS: u64 = 250;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sensor {
@@ -50,6 +55,16 @@ pub struct Track {
     east_m: f64,
     velocity: Velocity,
     at_ms: u64,
+    headings: [Option<(u64, f64)>; HEADING_SAMPLES],
+}
+
+pub fn heading_of(velocity: Velocity) -> Option<f64> {
+    (velocity.north_mps.hypot(velocity.east_mps) >= MOVING_MPS)
+        .then(|| velocity.east_mps.atan2(velocity.north_mps).to_degrees())
+}
+
+fn wrapped(degrees: f64) -> f64 {
+    (degrees + 540.0).rem_euclid(360.0) - 180.0
 }
 
 impl Track {
@@ -61,6 +76,7 @@ impl Track {
             east_m: 0.0,
             velocity: velocity.unwrap_or_default(),
             at_ms: fix.at_ms,
+            headings: [None; HEADING_SAMPLES],
         }
     }
 
@@ -70,6 +86,22 @@ impl Track {
             self.north_m + self.velocity.north_mps * seconds,
             self.east_m + self.velocity.east_mps * seconds,
         )
+    }
+
+    fn remembered(&self, at_ms: u64, velocity: Velocity) -> [Option<(u64, f64)>; HEADING_SAMPLES] {
+        let latest = self.headings.iter().flatten().map(|(t, _)| *t).max();
+        match (heading_of(velocity), latest) {
+            (Some(heading), last) if last.is_none_or(|t| at_ms >= t + HEADING_EVERY_MS) => {
+                let oldest = (0..HEADING_SAMPLES)
+                    .min_by_key(|&i| self.headings[i].map_or(0, |(t, _)| t))
+                    .unwrap_or(0);
+                std::array::from_fn(|i| match i == oldest {
+                    true => Some((at_ms, heading)),
+                    false => self.headings[i],
+                })
+            }
+            _ => self.headings,
+        }
     }
 
     pub fn updated(self, fix: Fix) -> Track {
@@ -82,18 +114,26 @@ impl Track {
             (self.origin.lat, self.origin.lon, 0.0),
         );
         let (miss_north, miss_east) = (seen_north - north, seen_east - east);
-        match seconds > 0.0 && miss_north.hypot(miss_east) <= MAX_JUMP_M {
-            true => Track {
-                north_m: north + POSITION_GAIN * miss_north,
-                east_m: east + POSITION_GAIN * miss_east,
-                velocity: Velocity {
-                    north_mps: self.velocity.north_mps + VELOCITY_GAIN * miss_north / seconds,
-                    east_mps: self.velocity.east_mps + VELOCITY_GAIN * miss_east / seconds,
-                },
-                at_ms: fix.at_ms,
-                ..self
-            },
-            false => self,
+        if seconds <= 0.0 || miss_north.hypot(miss_east) > MAX_JUMP_M {
+            return self;
+        }
+        let (change_north, change_east) = (
+            VELOCITY_GAIN * miss_north / seconds,
+            VELOCITY_GAIN * miss_east / seconds,
+        );
+        let limit =
+            (MAX_ACCEL_MPS2 * seconds / change_north.hypot(change_east).max(f64::EPSILON)).min(1.0);
+        let velocity = Velocity {
+            north_mps: self.velocity.north_mps + change_north * limit,
+            east_mps: self.velocity.east_mps + change_east * limit,
+        };
+        Track {
+            north_m: north + POSITION_GAIN * miss_north,
+            east_m: east + POSITION_GAIN * miss_east,
+            velocity,
+            at_ms: fix.at_ms,
+            headings: self.remembered(fix.at_ms, velocity),
+            ..self
         }
     }
 
@@ -104,6 +144,17 @@ impl Track {
             position: Point { lat, lon },
             velocity: self.velocity,
         }
+    }
+
+    pub fn turned_deg(&self, at_ms: u64, window_ms: u64) -> f64 {
+        heading_of(self.velocity).map_or(0.0, |now| {
+            self.headings
+                .iter()
+                .flatten()
+                .filter(|(t, _)| at_ms.saturating_sub(*t) <= window_ms)
+                .map(|(_, heading)| wrapped(now - heading).abs())
+                .fold(0.0, f64::max)
+        })
     }
 
     fn fresh(&self, now_ms: u64) -> bool {
@@ -154,6 +205,14 @@ fn followed(
 
 pub fn tracked(seen: Option<(Sensor, Fix, Option<Velocity>)>, now_ms: u64) -> Option<Target> {
     followed(&PICKED_TRACK, seen, now_ms)
+}
+
+pub fn tracked_turn_deg(now_ms: u64, window_ms: u64) -> Option<f64> {
+    PICKED_TRACK
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .filter(|track| track.fresh(now_ms))
+        .map(|track| track.turned_deg(now_ms, window_ms))
 }
 
 pub fn track(
@@ -232,8 +291,19 @@ pub fn picture_to_ground(
     lens: Lens,
     vehicle: Point,
     altitude_agl_m: f64,
+    aim: (f64, f64),
+    point: (f64, f64),
+) -> Option<Point> {
+    picture_to_plane(lens, vehicle, altitude_agl_m, aim, point, 0.0)
+}
+
+pub fn picture_to_plane(
+    lens: Lens,
+    vehicle: Point,
+    altitude_agl_m: f64,
     (yaw_deg, pitch_deg): (f64, f64),
     (x, y): (f64, f64),
+    plane_m: f64,
 ) -> Option<Point> {
     let camera = crate::videoar::Camera {
         heading: yaw_deg,
@@ -247,7 +317,7 @@ pub fn picture_to_ground(
         (camera, Some(lens.vertical_deg)),
         IMAGE_ASPECT,
         (2.0 * x - 1.0, 1.0 - 2.0 * y),
-        &|_| 0.0,
+        &|_| plane_m,
     )
     .map(|(lat, lon)| Point { lat, lon })
 }
@@ -583,6 +653,64 @@ mod tests {
         assert_eq!(
             again, track,
             "a frame already folded in is not a new observation"
+        );
+    }
+
+    #[test]
+    fn a_track_reports_how_far_its_heading_swung_in_the_recent_window() {
+        let at = |north: f64, east: f64| {
+            let (lat, lon, _) = ned_to_geo(north, east, 0.0, (47.0, 8.0, 0.0));
+            Point { lat, lon }
+        };
+        let path = |step: u32| match f64::from(step) {
+            s if s < 40.0 => at(s, 0.0),
+            s => at(40.0, s - 40.0),
+        };
+        let track = |steps: u32| {
+            {
+                (0..steps).fold(None, |held, step| {
+                    stepped(
+                        held,
+                        Some((
+                            Sensor::Detector,
+                            Fix {
+                                position: path(step),
+                                at_ms: 1_000 + u64::from(step) * 100,
+                            },
+                            None,
+                        )),
+                    )
+                })
+            }
+            .expect("a track")
+        };
+        let straight = track(40);
+        assert!(straight.turned_deg(straight.at_ms, 2_000) < 5.0);
+        let turned = track(60);
+        let swung = turned.turned_deg(turned.at_ms, 2_000);
+        assert!(
+            swung > 60.0,
+            "a right-angle turn shows within two seconds, got {swung}"
+        );
+        assert!(
+            turned.turned_deg(turned.at_ms + 10_000, 2_000) < 1.0,
+            "an old turn ages out"
+        );
+    }
+
+    #[test]
+    fn a_bad_fix_inside_the_gate_bends_the_speed_no_faster_than_a_car_can() {
+        let track = driven(60).unwrap();
+        let (north, _) = track.predicted(track.at_ms + 100);
+        let bad = track.updated(Fix {
+            position: metres_north(north + 15.0),
+            at_ms: track.at_ms + 100,
+        });
+        let change = bad.velocity.north_mps - track.velocity.north_mps;
+        assert!(
+            change > 0.0 && change <= MAX_ACCEL_MPS2 * 0.1 + 1e-9,
+            "a 15 m jump a tenth of a second on moves the speed by at most {} m/s, got {change}",
+            MAX_ACCEL_MPS2 * 0.1
         );
     }
 

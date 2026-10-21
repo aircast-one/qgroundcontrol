@@ -11,14 +11,229 @@ pub const COMMAND_LATENCY_S: f64 = 0.15;
 pub const MAX_RUN_S: f64 = 90.0;
 pub const AUTODROP_TICK_MS: u64 = 150;
 const GUIDED_GOTO_LIMIT_M: f64 = 950.0;
-// ponytail: this mock's observed ArduCopter guided-mode cruise speed (measured live,
-// repeatedly, across a long session). No cleaner source found: tuning.cruise in mocklink.rs
-// is a fixed default, not read from a vehicle parameter. Upgrade to a real cruise-speed fact
-// or parameter read if one is ever exposed.
 pub const CRUISE_MPS: f64 = 10.0;
 pub const REAIM_EVERY_MS: u64 = 1000;
 pub const REAIM_UNTIL_S: f64 = 2.0;
 pub const FIRE_WITHIN_M: f64 = 2.0;
+pub const CAR_LENGTH_M: f64 = 4.4;
+pub const CAR_WIDTH_M: f64 = 1.8;
+pub const RELEASE_MARGIN_M: f64 = 0.5;
+pub const TURNED_DEG: f64 = 15.0;
+pub const TURN_WINDOW_MS: u64 = 2_000;
+const PLAN_STEP_S: f64 = 0.05;
+const PLAN_HORIZON_S: f64 = 60.0;
+const REFINE_STEPS: i32 = 10;
+
+pub const CORNER_LATERAL_MPS2: f64 = 2.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Plan {
+    pub release_in_s: f64,
+    pub miss_m: f64,
+    pub along_m: f64,
+    pub across_m: f64,
+    pub moving: bool,
+    pub junction: bool,
+    pub target_at_impact: Point,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Course {
+    north_m: f64,
+    east_m: f64,
+    heading_deg: Option<f64>,
+    junctions: usize,
+}
+
+fn steps_for(seconds: f64) -> usize {
+    (seconds / PLAN_STEP_S).ceil() as usize + 1
+}
+
+fn road_course(
+    target: Target,
+    roads: Option<&crate::roads::Network>,
+    seconds: f64,
+) -> Option<Vec<Course>> {
+    let heading = gimbalgeo::heading_of(target.velocity)?;
+    let network = roads?;
+    let here = (target.position.lat, target.position.lon);
+    let matched = network.matched(here, heading)?;
+    let speed = target.velocity.north_mps.hypot(target.velocity.east_mps);
+    Some(
+        network
+            .ahead(
+                matched,
+                speed,
+                CORNER_LATERAL_MPS2,
+                PLAN_STEP_S,
+                steps_for(seconds),
+            )
+            .into_iter()
+            .map(|ahead| {
+                let (north_m, east_m, _) =
+                    geo_to_ned(ahead.at.0, ahead.at.1, 0.0, (here.0, here.1, 0.0));
+                Course {
+                    north_m,
+                    east_m,
+                    heading_deg: Some(ahead.heading_deg),
+                    junctions: ahead.junctions,
+                }
+            })
+            .collect(),
+    )
+}
+
+fn course(target: Target, roads: Option<&crate::roads::Network>, seconds: f64) -> Vec<Course> {
+    road_course(target, roads, seconds).unwrap_or_else(|| {
+        (0..=steps_for(seconds))
+            .map(|step| {
+                let flown = step as f64 * PLAN_STEP_S;
+                Course {
+                    north_m: target.velocity.north_mps * flown,
+                    east_m: target.velocity.east_mps * flown,
+                    heading_deg: gimbalgeo::heading_of(target.velocity),
+                    junctions: 0,
+                }
+            })
+            .collect()
+    })
+}
+
+fn sampled(course: &[Course], seconds: f64) -> Course {
+    let last = course.len() - 1;
+    let at = (seconds / PLAN_STEP_S).max(0.0);
+    let before = (at.floor() as usize).min(last);
+    let after = (before + 1).min(last);
+    let share = (at - before as f64).clamp(0.0, 1.0);
+    Course {
+        north_m: course[before].north_m + (course[after].north_m - course[before].north_m) * share,
+        east_m: course[before].east_m + (course[after].east_m - course[before].east_m) * share,
+        ..course[after]
+    }
+}
+
+pub fn plan(
+    release: dropsim::Release,
+    target: Target,
+    roads: Option<&crate::roads::Network>,
+) -> Plan {
+    let fall = dropsim::fall_time_s(release.altitude_agl_m, release.climb_mps);
+    let origin = (release.position.lat, release.position.lon, 0.0);
+    let (north, east, _) = geo_to_ned(target.position.lat, target.position.lon, 0.0, origin);
+    let course = course(target, roads, PLAN_HORIZON_S + fall);
+    let at = |release_in_s: f64| {
+        let flown = release_in_s + fall;
+        let there = sampled(&course, flown);
+        let miss = (
+            north + there.north_m - release.velocity.north_mps * flown,
+            east + there.east_m - release.velocity.east_mps * flown,
+        );
+        (release_in_s, miss, there)
+    };
+    let closest = |times: &mut dyn Iterator<Item = f64>| {
+        times
+            .map(at)
+            .min_by(|a, b| a.1.0.hypot(a.1.1).total_cmp(&b.1.0.hypot(b.1.1)))
+            .expect("the plan always tries at least one release time")
+    };
+    let steps = (PLAN_HORIZON_S / PLAN_STEP_S) as usize;
+    let (coarse, _, _) = closest(&mut (0..=steps).map(|step| step as f64 * PLAN_STEP_S));
+    let (release_in_s, (miss_n, miss_e), there) = closest(
+        &mut (-REFINE_STEPS..=REFINE_STEPS)
+            .map(|step| coarse + f64::from(step) * PLAN_STEP_S / f64::from(REFINE_STEPS))
+            .filter(|release_in_s| *release_in_s >= 0.0),
+    );
+    let (along_m, across_m, moving) = framed(miss_n, miss_e, there.heading_deg);
+    let (lat, lon, _) = ned_to_geo(north + there.north_m, east + there.east_m, 0.0, origin);
+    Plan {
+        release_in_s,
+        miss_m: miss_n.hypot(miss_e),
+        along_m,
+        across_m,
+        moving,
+        junction: there.junctions > 0,
+        target_at_impact: Point { lat, lon },
+    }
+}
+
+pub fn lead_now(
+    release: dropsim::Release,
+    target: Target,
+    roads: Option<&crate::roads::Network>,
+) -> Point {
+    let fall = dropsim::fall_time_s(release.altitude_agl_m, release.climb_mps);
+    let there = sampled(&course(target, roads, fall), fall);
+    let (lat, lon, _) = ned_to_geo(
+        there.north_m,
+        there.east_m,
+        0.0,
+        (target.position.lat, target.position.lon, 0.0),
+    );
+    Point { lat, lon }
+}
+
+pub fn roads_under(target: Target) -> Option<std::sync::Arc<crate::roads::Network>> {
+    gimbalgeo::heading_of(target.velocity)
+        .and_then(|_| crate::roads::near(target.position.lat, target.position.lon))
+}
+
+fn framed(miss_n: f64, miss_e: f64, heading_deg: Option<f64>) -> (f64, f64, bool) {
+    match heading_deg {
+        Some(heading) => {
+            let (sin, cos) = heading.to_radians().sin_cos();
+            (
+                miss_n * cos + miss_e * sin,
+                -miss_n * sin + miss_e * cos,
+                true,
+            )
+        }
+        None => (miss_n.hypot(miss_e), miss_n.hypot(miss_e), false),
+    }
+}
+
+fn on_car(along_m: f64, across_m: f64, miss_m: f64, moving: bool, margin_m: f64) -> bool {
+    match moving {
+        true => {
+            along_m.abs() <= CAR_LENGTH_M / 2.0 - margin_m
+                && across_m.abs() <= CAR_WIDTH_M / 2.0 - margin_m
+        }
+        false => miss_m <= CAR_WIDTH_M / 2.0 - margin_m,
+    }
+}
+
+pub fn releasable(plan: Plan, turned_deg: f64) -> bool {
+    on_car(
+        plan.along_m,
+        plan.across_m,
+        plan.miss_m,
+        plan.moving,
+        RELEASE_MARGIN_M,
+    ) && !plan.junction
+        && turned_deg <= TURNED_DEG
+}
+
+pub fn judged(landed: Point, target: Target) -> Impact {
+    let (miss_n, miss_e, _) = geo_to_ned(
+        landed.lat,
+        landed.lon,
+        0.0,
+        (target.position.lat, target.position.lon, 0.0),
+    );
+    let miss_m = miss_n.hypot(miss_e);
+    let (along_m, across_m, moving) =
+        framed(miss_n, miss_e, gimbalgeo::heading_of(target.velocity));
+    Impact::Seen {
+        miss_m,
+        on_target: on_car(along_m, across_m, miss_m, moving, 0.0),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Impact {
+    Falling,
+    Seen { miss_m: f64, on_target: bool },
+    Unseen,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
@@ -26,8 +241,6 @@ pub enum Phase {
     WaitingForRelease,
 }
 
-/// Where the tracked target's position+velocity comes from, each tick. Chosen once when the
-/// run is triggered, carried in `State::Waiting` for the whole run.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TargetSource {
     Gimbal,
@@ -60,8 +273,6 @@ impl TargetSource {
         }
     }
 
-    /// The `args`-array shape `of` parses back - used to hand a source already resolved by
-    /// `run`'s fallback chain down to `hub.rs`'s mission handler without it re-guessing.
     fn args(self) -> Value {
         match self {
             TargetSource::Gimbal => json!(["gimbal"]),
@@ -83,9 +294,6 @@ impl TargetSource {
     }
 }
 
-/// Lives on `hub::Vehicle`, advanced one tick at a time by `Vehicle::tick_autodrop` - no
-/// blocking sleeps anywhere, same shape as the `rc_due`/`gimbal_rate_due` repeating behaviours
-/// already in `hub.rs`. `None` means idle (never run, or its last result already read).
 #[derive(Debug, Clone, PartialEq)]
 pub enum State {
     Waiting {
@@ -96,6 +304,8 @@ pub enum State {
     },
     Fired {
         predicted_miss_m: f64,
+        bottle: usize,
+        impact: Impact,
         at_ms: u64,
     },
     GaveUp {
@@ -117,9 +327,23 @@ impl State {
             }),
             State::Fired {
                 predicted_miss_m,
+                impact,
                 at_ms,
+                ..
             } => {
-                json!({ "state": "fired", "predictedMissMeters": predicted_miss_m, "atMs": at_ms })
+                let (seen, miss_m, on_target) = match impact {
+                    Impact::Falling => ("falling", None, None),
+                    Impact::Seen { miss_m, on_target } => ("seen", Some(*miss_m), Some(*on_target)),
+                    Impact::Unseen => ("unseen", None, None),
+                };
+                json!({
+                    "state": "fired",
+                    "predictedMissMeters": predicted_miss_m,
+                    "atMs": at_ms,
+                    "impact": seen,
+                    "estimatedMissMeters": miss_m,
+                    "estimatedOnTarget": on_target,
+                })
             }
             State::GaveUp { reason, at_ms } => {
                 json!({ "state": "gaveUp", "reason": reason, "atMs": at_ms })
@@ -128,9 +352,36 @@ impl State {
     }
 }
 
-pub fn aim_point(position: Point, target: Target) -> Option<Point> {
-    dropsim::intercept(position, CRUISE_MPS, target)
-        .map(|solved| far_point_on_bearing(position, solved.lead_point, GUIDED_GOTO_LIMIT_M))
+pub fn aim_point(
+    position: Point,
+    target: Target,
+    roads: Option<&crate::roads::Network>,
+) -> Option<Point> {
+    road_lead(position, target, roads)
+        .or_else(|| {
+            dropsim::intercept(position, CRUISE_MPS, target).map(|solved| solved.lead_point)
+        })
+        .map(|lead| far_point_on_bearing(position, lead, GUIDED_GOTO_LIMIT_M))
+}
+
+fn road_lead(
+    position: Point,
+    target: Target,
+    roads: Option<&crate::roads::Network>,
+) -> Option<Point> {
+    let origin = (position.lat, position.lon, 0.0);
+    let (north, east, _) = geo_to_ned(target.position.lat, target.position.lon, 0.0, origin);
+    road_course(target, roads, PLAN_HORIZON_S)?
+        .into_iter()
+        .enumerate()
+        .find(|(step, there)| {
+            (north + there.north_m).hypot(east + there.east_m)
+                <= CRUISE_MPS * *step as f64 * PLAN_STEP_S
+        })
+        .map(|(_, there)| {
+            let (lat, lon, _) = ned_to_geo(north + there.north_m, east + there.east_m, 0.0, origin);
+            Point { lat, lon }
+        })
 }
 
 fn far_point_on_bearing(from: Point, towards: Point, distance_m: f64) -> Point {
@@ -205,16 +456,6 @@ fn target_from(
     }
 }
 
-/// Designate a target - aim the camera at it, track another connected vehicle, or mark a point
-/// on the map - call this, and the drone flies the intercept and drops the payload on its own:
-/// no further input. One snapshot of the chosen source decides the heading to fly; everything
-/// after that - waiting to reach cruise speed, polling the release window, firing the gripper -
-/// happens tick by tick inside the core (`hub::Vehicle::tick_autodrop`), re-reading the same
-/// source fresh each tick, not in this function. `args == ["stop"]` cancels a run in flight.
-/// `args[0]` picks the source: `"gimbal"`, `"manual"`, or `"vehicle"` with the target vehicle's
-/// id as `args[1]`. Omitted, it falls back through `TargetSource::fallback_order` instead of
-/// assuming the gimbal - an explicit choice is still honored exactly, refusing if that one
-/// source alone can't be read.
 pub fn run(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let Some(id) = vehicle_id(backend) else {
@@ -228,9 +469,6 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         };
     }
 
-    // ponytail: checks only bay 0, the one every drop this app has ever used in practice.
-    // A multi-bay rig with bay 0 empty but another bay still loaded would wrongly refuse here;
-    // upgrade to checking every bay once a real multi-bay autodrop scenario exists.
     if backend
         .value("vehicle.payloadSetup")
         .get("empty")
@@ -263,7 +501,7 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         resolved
     };
 
-    let Some(aim_at) = aim_point(position, target) else {
+    let Some(aim_at) = aim_point(position, target, roads_under(target).as_deref()) else {
         return json!({ "ok": false, "reason": "the target cannot be intercepted at this speed on this heading" });
     };
 
@@ -318,6 +556,134 @@ mod tests {
         );
     }
 
+    const ORIGIN: (f64, f64, f64) = (47.0, 8.0, 0.0);
+
+    fn at(north: f64, east: f64) -> Point {
+        let (lat, lon, _) = ned_to_geo(north, east, 0.0, ORIGIN);
+        Point { lat, lon }
+    }
+
+    fn north_east(point: Point) -> (f64, f64) {
+        let (north, east, _) = geo_to_ned(point.lat, point.lon, 0.0, ORIGIN);
+        (north, east)
+    }
+
+    fn corner() -> crate::roads::Network {
+        let node = |north: f64, east: f64| {
+            let point = at(north, east);
+            (point.lat, point.lon)
+        };
+        crate::roads::Network::of(
+            vec![node(0.0, 0.0), node(100.0, 0.0), node(100.0, 300.0)],
+            vec![vec![1], vec![0, 2], vec![1]],
+        )
+    }
+
+    fn hovering_over(point: Point) -> dropsim::Release {
+        dropsim::Release {
+            position: point,
+            altitude_agl_m: 40.0,
+            velocity: Velocity::default(),
+            climb_mps: 0.0,
+        }
+    }
+
+    fn northbound() -> Target {
+        Target {
+            position: at(20.0, 0.0),
+            velocity: Velocity {
+                north_mps: 8.0,
+                east_mps: 0.0,
+            },
+        }
+    }
+
+    #[test]
+    fn a_plan_on_a_road_waits_for_the_car_round_the_corner() {
+        let roads = corner();
+        let release = hovering_over(at(100.0, 60.0));
+        let on_road = plan(release, northbound(), Some(&roads));
+        assert!(on_road.miss_m < 0.5, "{on_road:?}");
+        assert!(on_road.release_in_s > 5.0, "{on_road:?}");
+        let (north, east) = north_east(on_road.target_at_impact);
+        assert!((north - 100.0).abs() < 1.0 && (east - 60.0).abs() < 1.0);
+        let straight = plan(release, northbound(), None);
+        assert!(
+            straight.miss_m > 50.0,
+            "the straight-line guess drives on north: {straight:?}"
+        );
+        let (lead_north, lead_east) = north_east(lead_now(release, northbound(), Some(&roads)));
+        assert!(lead_north > 20.0 && lead_north < 50.0 && lead_east.abs() < 1.0);
+    }
+
+    #[test]
+    fn the_drone_is_aimed_at_where_the_car_will_be_on_its_road() {
+        let roads = corner();
+        let drone = at(160.0, 120.0);
+        let aim = aim_point(drone, northbound(), Some(&roads)).expect("reachable");
+        let (north, east) = north_east(aim);
+        let (from_north, from_east) = (north - 160.0, east - 120.0);
+        assert!(
+            from_north < 0.0,
+            "it heads down to the eastbound leg, not north: {north} {east}"
+        );
+        assert!(
+            from_east.abs() < from_north.abs() * 2.0,
+            "{from_north} {from_east}"
+        );
+    }
+
+    #[test]
+    fn a_release_waits_out_a_junction_a_fresh_turn_or_a_miss_near_the_car_edge() {
+        let fits = Plan {
+            release_in_s: 0.0,
+            miss_m: 0.5,
+            along_m: 0.5,
+            across_m: 0.1,
+            moving: true,
+            junction: false,
+            target_at_impact: at(0.0, 0.0),
+        };
+        assert!(releasable(fits, 0.0));
+        assert!(!releasable(
+            Plan {
+                junction: true,
+                ..fits
+            },
+            0.0
+        ));
+        assert!(!releasable(fits, TURNED_DEG + 1.0));
+        assert!(!releasable(
+            Plan {
+                across_m: CAR_WIDTH_M / 2.0 - 0.1,
+                ..fits
+            },
+            0.0
+        ));
+        assert!(
+            releasable(
+                Plan {
+                    along_m: 1.5,
+                    miss_m: 1.5,
+                    ..fits
+                },
+                0.0
+            ),
+            "the car is long"
+        );
+        assert!(
+            !releasable(
+                Plan {
+                    moving: false,
+                    miss_m: 1.5,
+                    ..fits
+                },
+                0.0
+            ),
+            "parked: no heading"
+        );
+    }
+
     #[test]
     fn state_json_names_each_variant() {
         assert_eq!(
@@ -333,10 +699,25 @@ mod tests {
         assert_eq!(
             State::Fired {
                 predicted_miss_m: 1.5,
+                bottle: 0,
+                impact: Impact::Falling,
                 at_ms: 10
             }
             .json()["state"],
             "fired"
+        );
+        assert_eq!(
+            State::Fired {
+                predicted_miss_m: 0.4,
+                bottle: 0,
+                impact: Impact::Seen {
+                    miss_m: 1.2,
+                    on_target: true
+                },
+                at_ms: 10
+            }
+            .json(),
+            json!({ "state": "fired", "predictedMissMeters": 0.4, "atMs": 10, "impact": "seen", "estimatedMissMeters": 1.2, "estimatedOnTarget": true })
         );
         assert_eq!(
             State::GaveUp {
