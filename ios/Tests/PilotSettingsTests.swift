@@ -57,7 +57,7 @@ final class PilotSettingsTests: XCTestCase {
     }
 
     func testSettingsRowsReadInPilotWordsAndUnknownRowsKeepTheirs() {
-        XCTAssertEqual(pilotWorded(parameter("maxGoToLocationDistance")).heading, "Max fly-to distance")
+        XCTAssertEqual(pilotWorded(parameter("goToLocationRequiresConfirmInGuided")).heading, "Confirm fly-to first")
         XCTAssertEqual(pilotWorded(parameter("somethingElse")).shortLabel, "")
     }
 

@@ -58,7 +58,7 @@ class PilotSettingsTest {
 
     @Test
     fun `settings rows read in pilot words and unknown rows keep theirs`() {
-        assertEquals("Max fly-to distance", pilotWorded(parameter("maxGoToLocationDistance")).heading)
+        assertEquals("Confirm fly-to first", pilotWorded(parameter("goToLocationRequiresConfirmInGuided")).heading)
         assertEquals("", pilotWorded(parameter("somethingElse")).shortLabel)
     }
 

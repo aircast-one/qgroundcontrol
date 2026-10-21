@@ -54,7 +54,7 @@ describe('PilotSettingsTest', () => {
   });
 
   it('settings rows read in pilot words and unknown rows keep theirs', () => {
-    expect(pilotWorded(parameter('maxGoToLocationDistance')).heading).toBe('Max fly-to distance');
+    expect(pilotWorded(parameter('goToLocationRequiresConfirmInGuided')).heading).toBe('Confirm fly-to first');
     expect(pilotWorded(parameter('somethingElse')).shortLabel).toBe('');
   });
 

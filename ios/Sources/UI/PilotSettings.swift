@@ -287,7 +287,6 @@ func pilotChoices(_ fact: Fact) -> Fact {
 private let PILOT_LABELS = [
     "guidedMinimumAltitude": "Lowest altitude for takeoff and fly-to",
     "guidedMaximumAltitude": "Highest altitude for takeoff and fly-to",
-    "maxGoToLocationDistance": "Max fly-to distance",
     "forwardFlightGoToLocationLoiterRad": "Circle radius after fly-to (planes)",
     "goToLocationRequiresConfirmInGuided": "Confirm fly-to first",
     "updateHomePosition": "Home follows this phone",

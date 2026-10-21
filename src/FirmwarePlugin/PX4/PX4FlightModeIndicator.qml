@@ -67,7 +67,6 @@ ColumnLayout {
                 id:                 maxDistanceSlider
                 Layout.fillWidth:   true
                 fact:               controller.getParameterFact(-1, "GF_MAX_HOR_DIST")
-                to:                 flyViewSettings.maxGoToLocationDistance.value
                 majorTickStepSize:  500
                 enabled:            fact.value > 0
             }

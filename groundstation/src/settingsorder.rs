@@ -160,7 +160,6 @@ pub const ORDER: &[(&str, &[&str])] = &[
             "showLogReplayStatusBar",
             "showAdditionalIndicatorsCompass",
             "lockNoseUpCompass",
-            "maxGoToLocationDistance",
             "forwardFlightGoToLocationLoiterRad",
             "goToLocationRequiresConfirmInGuided",
             "keepMapCenteredOnVehicle",

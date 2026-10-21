@@ -247,7 +247,6 @@ export const pilotChoices = (fact: Fact): Fact => makeFact({ ...fact, enumString
 const PILOT_LABELS: ReadonlyMap<string, string> = new Map([
   ['guidedMinimumAltitude', 'Lowest altitude for takeoff and fly-to'],
   ['guidedMaximumAltitude', 'Highest altitude for takeoff and fly-to'],
-  ['maxGoToLocationDistance', 'Max fly-to distance'],
   ['forwardFlightGoToLocationLoiterRad', 'Circle radius after fly-to (planes)'],
   ['goToLocationRequiresConfirmInGuided', 'Confirm fly-to first'],
   ['updateHomePosition', 'Home follows this phone'],

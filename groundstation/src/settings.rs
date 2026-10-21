@@ -1252,7 +1252,6 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
                 &[
                     "guidedMinimumAltitude",
                     "guidedMaximumAltitude",
-                    "maxGoToLocationDistance",
                     "forwardFlightGoToLocationLoiterRad",
                     "goToLocationRequiresConfirmInGuided",
                     "updateHomePosition",

@@ -2649,22 +2649,15 @@ impl Vehicle {
             "goto" if !guidedcmd::guided_mode(&state) => {
                 Plan::Refused(guidedcmd::GUIDED_NOT_SUPPORTED.into())
             }
-            "goto" => match guidedcmd::too_far_refusal(
-                self.facts.coordinate.map(|(lat, lon, _)| (lat, lon)),
-                (number("latitude"), number("longitude")),
-                guidedcmd::max_goto_meters(),
-            ) {
-                Some(reason) => Plan::Refused(reason),
-                None => guidedcmd::goto(
-                    &state,
-                    number("latitude"),
-                    number("longitude"),
-                    action
-                        .get("loiterRadius")
-                        .and_then(Value::as_f64)
-                        .unwrap_or(0.0),
-                ),
-            },
+            "goto" => guidedcmd::goto(
+                &state,
+                number("latitude"),
+                number("longitude"),
+                action
+                    .get("loiterRadius")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0),
+            ),
             "changeAltitude" => guidedcmd::change_altitude(&state, number("delta"), flag("pause")),
             "pause" => guidedcmd::pause(&state),
             "rtl" => guidedcmd::rtl(&state, flag("smart")),
@@ -13550,8 +13543,8 @@ mod tests {
                 &json!({ "action": "goto", "latitude": 47.5, "longitude": 8.6 }),
                 3_300
             )
-            .is_err(),
-            "13 km is past the 1000 m Max Go To distance"
+            .is_ok(),
+            "a fly-to 13 km away goes out, no distance cap"
         );
         assert!(matches!(decode(&goto[1].1), MavMessage::MISSION_ITEM(i) if i.current == 2));
         let unsupported = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {

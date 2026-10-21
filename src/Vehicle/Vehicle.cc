@@ -1854,12 +1854,6 @@ bool Vehicle::guidedModeGotoLocation(const QGeoCoordinate& gotoCoord, double for
     if (!gotoCoord.isValid()) {
         return false;
     }
-    double maxDistance = SettingsManager::instance()->flyViewSettings()->maxGoToLocationDistance()->rawValue().toDouble();
-    if (coordinate().distanceTo(gotoCoord) > maxDistance) {
-        QGC::showAppMessage(QString("New location is too far. Must be less than %1 %2.").arg(qRound(FactMetaData::metersToAppSettingsHorizontalDistanceUnits(maxDistance).toDouble())).arg(FactMetaData::appSettingsHorizontalDistanceUnitsString()));
-        return false;
-    }
-
     return _firmwarePlugin->guidedModeGotoLocation(this, gotoCoord, forwardFlightLoiterRadius);
 }
 

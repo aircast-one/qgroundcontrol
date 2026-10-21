@@ -527,31 +527,6 @@ pub fn change_heading(
     }
 }
 
-const DEFAULT_MAX_GOTO_METERS: f64 = 1000.0;
-
-pub fn max_goto_meters() -> f64 {
-    crate::settingsstore::raw_setting("settings.flyViewSettings.maxGoToLocationDistance")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(DEFAULT_MAX_GOTO_METERS)
-}
-
-pub fn too_far_refusal(
-    from: Option<(f64, f64)>,
-    to: (f64, f64),
-    max_meters: f64,
-) -> Option<String> {
-    let distance = crate::surveygrid::distance_between(from?, to);
-    (distance > max_meters).then(|| {
-        let unit = crate::units::cooking("m");
-        let shown = unit.map_or(max_meters, |u| (u.shown)(max_meters));
-        format!(
-            "New location is too far. Must be less than {} {}.",
-            shown.round() as i64,
-            unit.map_or("m", |u| u.name)
-        )
-    })
-}
-
 fn loiter_direction(radius: f64) -> f64 {
     match radius {
         r if r > 0.0 => 0.0,
@@ -954,25 +929,6 @@ pub fn cancel_roi(state: &VehicleState) -> Plan {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_goto_beyond_the_fly_view_limit_is_refused_in_the_app_distance_unit() {
-        let from = Some((47.0, 8.0));
-        assert_eq!(
-            too_far_refusal(from, (47.005, 8.0), 1000.0),
-            None,
-            "556 m is inside a 1000 m limit"
-        );
-        assert_eq!(
-            too_far_refusal(from, (47.01, 8.0), 1000.0).as_deref(),
-            Some("New location is too far. Must be less than 1000 m.")
-        );
-        assert_eq!(
-            too_far_refusal(None, (47.01, 8.0), 1000.0),
-            None,
-            "with no vehicle position the goto refuses on its own"
-        );
-    }
 
     fn px4() -> VehicleState {
         VehicleState {

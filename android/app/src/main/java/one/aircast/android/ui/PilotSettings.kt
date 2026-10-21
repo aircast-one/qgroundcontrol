@@ -184,7 +184,6 @@ internal fun pilotChoices(fact: Fact): Fact = fact.copy(enumStrings = fact.enumS
 private val PILOT_LABELS = mapOf(
     "guidedMinimumAltitude" to "Lowest altitude for takeoff and fly-to",
     "guidedMaximumAltitude" to "Highest altitude for takeoff and fly-to",
-    "maxGoToLocationDistance" to "Max fly-to distance",
     "forwardFlightGoToLocationLoiterRad" to "Circle radius after fly-to (planes)",
     "goToLocationRequiresConfirmInGuided" to "Confirm fly-to first",
     "updateHomePosition" to "Home follows this phone",
