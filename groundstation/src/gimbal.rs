@@ -730,15 +730,32 @@ impl Gimbals {
     }
 
     pub fn aim(&mut self, pitch: f32, body_yaw: f32, now_ms: u64) -> Vec<Out> {
+        self.stream_aim(
+            FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME,
+            pitch,
+            body_yaw,
+            now_ms,
+        )
+    }
+
+    pub fn aim_heading(&mut self, pitch: f32, heading: f32, now_ms: u64) -> Vec<Out> {
+        self.stream_aim(
+            FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_LOCK | FLAG_YAW_IN_EARTH_FRAME,
+            pitch,
+            heading,
+            now_ms,
+        )
+    }
+
+    fn stream_aim(&mut self, flags: u32, pitch: f32, yaw: f32, now_ms: u64) -> Vec<Out> {
         let stop = self.stop_rates();
         let (target, control) = self.control(now_ms);
-        let flags = FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME;
         let aimed = target.map(|pair| Out::SetPitchYaw {
             component: pair.manager_compid,
             flags,
             device_id: pair.device_id,
             pitch: pitch.to_radians(),
-            yaw: wrap180(body_yaw).to_radians(),
+            yaw: wrap180(yaw).to_radians(),
         });
         control.into_iter().chain(stop).chain(aimed).collect()
     }

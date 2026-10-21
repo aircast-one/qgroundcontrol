@@ -16,6 +16,7 @@ const YAW_LIMIT: f32 = 180.0;
 pub struct Gimbal {
     pitch: f32,
     yaw: f32,
+    earth_yaw: Option<f32>,
     status_interval_us: i64,
     attitude_interval_us: i64,
     status_sent_ms: Option<u64>,
@@ -29,6 +30,7 @@ impl Default for Gimbal {
         Gimbal {
             pitch: 0.0,
             yaw: 0.0,
+            earth_yaw: None,
             status_interval_us: 0,
             attitude_interval_us: 0,
             status_sent_ms: None,
@@ -37,6 +39,10 @@ impl Default for Gimbal {
             secondary: (0, 0),
         }
     }
+}
+
+fn body_yaw(yaw: f32) -> f32 {
+    ((yaw + 540.0).rem_euclid(360.0) - 180.0).clamp(-YAW_LIMIT, YAW_LIMIT)
 }
 
 fn due(interval_us: i64, last: Option<u64>, now_ms: u64) -> bool {
@@ -64,8 +70,15 @@ impl Gimbal {
     }
 
     pub fn point(&mut self, pitch: f32, yaw: f32) {
+        self.earth_yaw = None;
         self.pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
-        self.yaw = ((yaw + 540.0).rem_euclid(360.0) - 180.0).clamp(-YAW_LIMIT, YAW_LIMIT);
+        self.yaw = body_yaw(yaw);
+    }
+
+    pub fn hold(&mut self, vehicle_heading: f64) {
+        if let Some(earth) = self.earth_yaw {
+            self.yaw = body_yaw(earth - vehicle_heading as f32);
+        }
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<Out> {
@@ -121,7 +134,12 @@ impl Gimbal {
                             self.pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
                         }
                         if !yaw.is_nan() {
-                            self.yaw = yaw.clamp(-YAW_LIMIT, YAW_LIMIT);
+                            let earth =
+                                params[4] as u32 & crate::gimbal::FLAG_YAW_IN_EARTH_FRAME != 0;
+                            self.earth_yaw = earth.then_some(yaw);
+                            if !earth {
+                                self.yaw = yaw.clamp(-YAW_LIMIT, YAW_LIMIT);
+                            }
                         }
                         reply(MavResult::MAV_RESULT_ACCEPTED)
                     }
@@ -328,6 +346,46 @@ mod tests {
                 if (i.pitch_min.to_degrees() + 90.0).abs() < 0.01
                     && (i.pitch_max.to_degrees() - 30.0).abs() < 0.01),
             "the app is told the same range"
+        );
+    }
+}
+#[cfg(test)]
+mod earth_frame_tests {
+    use super::*;
+
+    #[test]
+    fn a_heading_held_against_north_stays_put_while_the_vehicle_turns() {
+        let mut gimbal = Gimbal::default();
+        let earth = crate::gimbal::FLAG_YAW_LOCK | crate::gimbal::FLAG_YAW_IN_EARTH_FRAME;
+        gimbal.command(
+            (255, 190),
+            GIMBAL,
+            MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+            [-30.0, 170.0, f32::NAN, f32::NAN, earth as f32, 0.0, 0.0],
+        );
+        gimbal.hold(320.0);
+        assert_eq!(
+            gimbal.aim(),
+            (-150.0, -30.0),
+            "170 north-relative from a drone facing 320"
+        );
+        gimbal.hold(185.0);
+        assert_eq!(
+            gimbal.aim(),
+            (-15.0, -30.0),
+            "the drone turned, the camera did not"
+        );
+        gimbal.command(
+            (255, 190),
+            GIMBAL,
+            MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+            [-30.0, 20.0, f32::NAN, f32::NAN, 0.0, 0.0, 0.0],
+        );
+        gimbal.hold(90.0);
+        assert_eq!(
+            gimbal.aim(),
+            (20.0, -30.0),
+            "a vehicle-frame command turns with the drone again"
         );
     }
 }

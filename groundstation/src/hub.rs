@@ -295,6 +295,26 @@ const POSE_HISTORY_MS: u64 = 2_000;
 const GIMBAL_FOLLOW_MS: u64 = 200;
 const GIMBAL_FOLLOW_DEADBAND_DEG: f64 = 1.0;
 const GIMBAL_FOLLOW_AFTER_FIRE_MS: u64 = 5_000;
+const GIMBAL_FOLLOW_COAST_MS: u64 = 6_000;
+
+fn coasted(
+    (target, at_ms): (crate::dropsim::Target, u64),
+    now_ms: u64,
+) -> Option<crate::dropsim::Target> {
+    let age_s = now_ms.saturating_sub(at_ms) as f64 / 1000.0;
+    (now_ms.saturating_sub(at_ms) <= GIMBAL_FOLLOW_COAST_MS).then(|| {
+        let (lat, lon, _) = crate::geo::ned_to_geo(
+            target.velocity.north_mps * age_s,
+            target.velocity.east_mps * age_s,
+            0.0,
+            (target.position.lat, target.position.lon, 0.0),
+        );
+        crate::dropsim::Target {
+            position: crate::dropsim::Point { lat, lon },
+            ..target
+        }
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Pose {
@@ -434,6 +454,7 @@ pub struct Vehicle {
     poses: std::collections::VecDeque<Pose>,
     gimbal_follow_due_ms: u64,
     followed: Option<crate::autodrop::TargetSource>,
+    followed_last: Option<(crate::dropsim::Target, u64)>,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
     pub radio: crate::vehiclefact::RadioStatusFacts,
@@ -713,6 +734,7 @@ impl Vehicle {
             poses: std::collections::VecDeque::new(),
             gimbal_follow_due_ms: 0,
             followed: None,
+            followed_last: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
             radio: crate::vehiclefact::RadioStatusFacts::default(),
@@ -3378,9 +3400,14 @@ impl Vehicle {
                 .atan2(self.facts.velocity.0)
                 .to_degrees()
         });
-        let Some((pitch, body_yaw)) = self.release_now().and_then(|release| {
-            let target =
-                self.target_for_autodrop(source, release.position, release.altitude_agl_m, now_ms)?;
+        let seen = self.release_now().and_then(|release| {
+            self.target_for_autodrop(source, release.position, release.altitude_agl_m, now_ms)
+        });
+        if let Some(target) = seen {
+            self.followed_last = Some((target, now_ms));
+        }
+        let Some((pitch, heading)) = self.release_now().and_then(|release| {
+            let target = seen.or_else(|| coasted(self.followed_last?, now_ms))?;
             let wanted = crate::synthview::aim_at(
                 (
                     release.position.lat,
@@ -3390,12 +3417,13 @@ impl Vehicle {
                 (target.position.lat, target.position.lon, 0.0),
             );
             let (heading, pitch) = follow_aim(self.gimbal_aim(), wanted, travel, released)?;
-            follow_needed(self.gimbal_aim(), (heading, pitch))
-                .then_some((pitch, heading - self.facts.heading))
+            follow_needed(self.gimbal_aim(), (heading, pitch)).then_some((pitch, heading))
         }) else {
             return Vec::new();
         };
-        let outs = self.gimbals.aim(pitch as f32, body_yaw as f32, now_ms);
+        let outs = self
+            .gimbals
+            .aim_heading(pitch as f32, heading as f32, now_ms);
         self.gimbal_outs(outs, now_ms).unwrap_or_default()
     }
 
@@ -9736,20 +9764,34 @@ mod tests {
                 .map(|bytes| decode(bytes))
                 .find_map(|message| match message {
                     MavMessage::GIMBAL_MANAGER_SET_PITCHYAW(m) => {
-                        Some((m.pitch.to_degrees(), m.yaw.to_degrees()))
+                        Some((m.pitch.to_degrees(), m.yaw.to_degrees(), m.flags.bits()))
                     }
                     _ => None,
                 })
         };
 
-        let (pitch, yaw) = aimed(vehicle.tick_gimbal_follow(1_000)).expect("it aims at the target");
+        let (pitch, yaw, flags) =
+            aimed(vehicle.tick_gimbal_follow(1_000)).expect("it aims at the target");
         assert!(
             (pitch + 45.0).abs() < 0.5 && (yaw - 90.0).abs() < 0.5,
-            "40 m east from 40 m up is 45° down, 90° right of a north-facing drone, got {pitch}/{yaw}"
+            "40 m east from 40 m up is 45° down and due east, got {pitch}/{yaw}"
+        );
+        assert!(
+            flags & crate::gimbal::FLAG_YAW_IN_EARTH_FRAME != 0,
+            "the heading is held against north, so the camera stays on the target while the drone turns"
         );
         assert!(
             vehicle.tick_gimbal_follow(1_100).is_empty(),
             "no faster than five times a second"
+        );
+        vehicle.manual_target = None;
+        assert!(
+            aimed(vehicle.tick_gimbal_follow(1_200)).is_some(),
+            "a target that just went out of sight is still followed where it should be, so the detector can find it again"
+        );
+        assert!(
+            aimed(vehicle.tick_gimbal_follow(7_100)).is_none(),
+            "but not for ever"
         );
         vehicle.camera_tracking_image = Some(crate::cameratrack::TrackingImage::Point {
             x: 0.5,

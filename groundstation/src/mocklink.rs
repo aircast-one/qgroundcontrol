@@ -1283,7 +1283,7 @@ impl Sim {
                     m.yaw.to_degrees(),
                     m.pitch_rate,
                     m.yaw_rate,
-                    0.0,
+                    m.flags.bits() as f32,
                     0.0,
                     0.0,
                 ];
@@ -2013,7 +2013,11 @@ impl Sim {
                 } else {
                     params[1]
                 };
-                let pointed = [params[0], yaw, f32::NAN, f32::NAN, 0.0, 0.0, 0.0];
+                let flags = match command {
+                    MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW => params[4],
+                    _ => 0.0,
+                };
+                let pointed = [params[0], yaw, f32::NAN, f32::NAN, flags, 0.0, 0.0];
                 let system = self.system;
                 if let Some(gimbal) = self.gimbal.as_mut() {
                     gimbal.command(
@@ -2705,6 +2709,9 @@ impl Sim {
             if let Some(gimbal) = self.gimbal.as_mut() {
                 gimbal.point(pitch as f32, body_yaw as f32);
             }
+        }
+        if let Some(gimbal) = self.gimbal.as_mut() {
+            gimbal.hold(self.heading);
         }
         let here = Where {
             lat: e7(self.lat),
