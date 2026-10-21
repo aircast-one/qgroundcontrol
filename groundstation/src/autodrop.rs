@@ -114,10 +114,8 @@ fn payload_of(backend: &dyn Backend) -> (i64, Vec<i64>) {
         crate::read::value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue"))
             .map_or(1, |bays| bays as i64)
             .max(1);
-    let empty = backend
-        .value("vehicle.payloadSetup")
-        .get("empty")
-        .and_then(Value::as_array)
+    let empty = backend.value("vehicle.payloadSetup")["value"]["empty"]
+        .as_array()
         .map(|empty| empty.iter().filter_map(Value::as_i64).collect())
         .unwrap_or_default();
     (bays, empty)
@@ -1069,7 +1067,9 @@ mod tests {
         fn get(&self, path: &str) -> String {
             match path {
                 "vehicle.id" => json!({"kind": "value", "value": 1}).to_string(),
-                "vehicle.payloadSetup" => json!({"empty": [0]}).to_string(),
+                "vehicle.payloadSetup" => {
+                    json!({"kind": "value", "value": {"empty": [0]}}).to_string()
+                }
                 _ => "{}".to_string(),
             }
         }
