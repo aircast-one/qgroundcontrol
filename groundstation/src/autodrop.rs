@@ -44,6 +44,94 @@ const REFINE_STEPS: i32 = 10;
 const BRANCHES_WITHIN_S: f64 = 1.0;
 
 pub const CORNER_LATERAL_MPS2: f64 = 2.0;
+pub const TIMED_OUT: &str = "no release window opened within the time limit";
+pub const HOLD_AFTER_FIRE_MS: u64 = 1_000;
+const MOVING_MPS: f64 = 1.0;
+const CAR_LABELS: [&str; 5] = ["car", "van", "truck", "bus", "pickup"];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Progress {
+    pub target: String,
+    pub distance_m: Option<f64>,
+    pub speed_mps: Option<f64>,
+    pub searching: bool,
+    pub release_in_s: Option<f64>,
+    pub holding: Option<&'static str>,
+    pub time_left_s: f64,
+}
+
+impl Progress {
+    pub fn json(&self) -> Value {
+        json!({
+            "target": self.target,
+            "distanceMeters": self.distance_m,
+            "speedMps": self.speed_mps,
+            "moving": self.speed_mps.map(|speed| speed >= MOVING_MPS),
+            "searching": self.searching,
+            "releaseInSeconds": self.release_in_s,
+            "holding": self.holding,
+            "secondsLeft": self.time_left_s.max(0.0).round(),
+        })
+    }
+}
+
+pub fn label(source: TargetSource, seen_label: Option<&str>) -> String {
+    match source {
+        TargetSource::Tracked => seen_label
+            .map(str::trim)
+            .filter(|seen| !seen.is_empty())
+            .map(
+                |seen| match CAR_LABELS.iter().any(|car| seen.eq_ignore_ascii_case(car)) {
+                    true => "car".to_string(),
+                    false => seen.to_lowercase(),
+                },
+            )
+            .unwrap_or_else(|| "target".to_string()),
+        TargetSource::Vehicle(id) => format!("vehicle {id}"),
+        TargetSource::Manual => "marked point".to_string(),
+        TargetSource::Gimbal => "gimbal point".to_string(),
+    }
+}
+
+pub fn hold_reason(plan: Plan, turned_deg: f64) -> &'static str {
+    match (plan.junction, turned_deg > TURNED_DEG) {
+        (true, _) => "junction",
+        (false, true) => "turning",
+        (false, false) => "offTarget",
+    }
+}
+
+pub fn next_bay(bays: i64, empty: &[i64]) -> Option<(i64, usize)> {
+    let loaded: Vec<i64> = match bays > 1 {
+        true => (1..=bays).filter(|bay| !empty.contains(bay)).collect(),
+        false => (!empty.contains(&0)).then_some(0).into_iter().collect(),
+    };
+    loaded.first().map(|bay| (*bay, loaded.len()))
+}
+
+fn payload_of(backend: &dyn Backend) -> (i64, Vec<i64>) {
+    let bays =
+        crate::read::value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue"))
+            .map_or(1, |bays| bays as i64)
+            .max(1);
+    let empty = backend
+        .value("vehicle.payloadSetup")
+        .get("empty")
+        .and_then(Value::as_array)
+        .map(|empty| empty.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default();
+    (bays, empty)
+}
+
+pub fn payload_json(backend: &dyn Backend) -> Value {
+    let (bays, empty) = payload_of(backend);
+    let next = next_bay(bays, &empty);
+    json!({
+        "bays": bays,
+        "bay": next.map(|(bay, _)| bay),
+        "left": next.map_or(0, |(_, loaded)| loaded),
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Plan {
@@ -366,6 +454,15 @@ impl TargetSource {
         }
     }
 
+    pub fn kind(self) -> &'static str {
+        match self {
+            TargetSource::Gimbal => "gimbal",
+            TargetSource::Vehicle(_) => "vehicle",
+            TargetSource::Manual => "manual",
+            TargetSource::Tracked => "tracked",
+        }
+    }
+
     fn args(self) -> Value {
         match self {
             TargetSource::Gimbal => json!(["gimbal"]),
@@ -439,7 +536,7 @@ impl State {
                 })
             }
             State::GaveUp { reason, at_ms } => {
-                json!({ "state": "gaveUp", "reason": reason, "atMs": at_ms })
+                json!({ "state": "gaveUp", "reason": reason, "timedOut": reason == TIMED_OUT, "atMs": at_ms })
             }
         }
     }
@@ -562,14 +659,10 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         };
     }
 
-    if backend
-        .value("vehicle.payloadSetup")
-        .get("empty")
-        .and_then(Value::as_array)
-        .is_some_and(|empty| empty.iter().any(|bay| bay.as_i64() == Some(0)))
-    {
-        return json!({ "ok": false, "reason": "the payload bay is already empty" });
-    }
+    let (bays, empty) = payload_of(backend);
+    let Some((bay, _)) = next_bay(bays, &empty) else {
+        return json!({ "ok": false, "reason": "No bottles left" });
+    };
     let Some((position, altitude_agl_m)) = release_position(backend) else {
         return json!({ "ok": false, "reason": "no vehicle position yet" });
     };
@@ -604,6 +697,7 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         "longitude": aim_at.lon,
         "autodrop": true,
         "targetSource": source.args(),
+        "bay": bay,
         "vehicle": id,
     })) {
         Some(Ok(())) => json!({ "ok": true, "started": true }),
@@ -616,11 +710,18 @@ pub fn status_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let Some(id) = vehicle_id(backend).and_then(|v| v.as_u64()) else {
         return json!({ "kind": "object", "class": "AutodropStatus", "state": "idle" });
     };
-    let mut status = crate::hub::lock()
-        .vehicle(id as u8)
+    let hub = crate::hub::lock();
+    let vehicle = hub.vehicle(id as u8);
+    let mut status = vehicle
         .and_then(|v| v.autodrop.as_ref())
         .map(State::json)
         .unwrap_or_else(|| json!({ "state": "idle" }));
+    status["progress"] = vehicle
+        .and_then(|v| v.autodrop_progress.as_ref())
+        .filter(|_| status["state"] != "idle")
+        .map_or(Value::Null, Progress::json);
+    drop(hub);
+    status["payload"] = payload_json(backend);
     status["kind"] = json!("object");
     status["class"] = json!("AutodropStatus");
     status
@@ -983,9 +1084,35 @@ mod tests {
         let answer = run(&EmptyBayBackend, "[]");
         assert_eq!(
             (answer["ok"].as_bool(), answer["reason"].as_str()),
-            (Some(false), Some("the payload bay is already empty")),
+            (Some(false), Some("No bottles left")),
             "an empty bay should refuse before ever steering the vehicle, not fly the course and fire nothing: {answer}"
         );
+    }
+
+    #[test]
+    fn it_drops_the_next_loaded_bay_and_counts_what_is_left() {
+        assert_eq!(next_bay(1, &[]), Some((0, 1)), "one gripper is bay 0");
+        assert_eq!(
+            next_bay(1, &[0]),
+            None,
+            "and once it has dropped there is nothing left"
+        );
+        assert_eq!(next_bay(4, &[]), Some((1, 4)));
+        assert_eq!(
+            next_bay(4, &[1, 2]),
+            Some((3, 2)),
+            "bays 1 and 2 are gone: bay 3, two loaded"
+        );
+        assert_eq!(next_bay(4, &[1, 2, 3, 4]), None);
+    }
+
+    #[test]
+    fn the_target_is_named_the_way_a_pilot_would_say_it() {
+        assert_eq!(label(TargetSource::Tracked, Some("Truck")), "car");
+        assert_eq!(label(TargetSource::Tracked, Some("person")), "person");
+        assert_eq!(label(TargetSource::Tracked, None), "target");
+        assert_eq!(label(TargetSource::Vehicle(129), None), "vehicle 129");
+        assert_eq!(label(TargetSource::Manual, Some("car")), "marked point");
     }
 
     #[test]

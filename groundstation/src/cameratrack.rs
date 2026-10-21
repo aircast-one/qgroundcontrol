@@ -68,6 +68,7 @@ fn start_refusal(camera: &Value, asked: Option<&Request>) -> Option<(&'static st
 }
 
 pub fn start(backend: &dyn Backend, args: &str) -> Value {
+    crate::gimbalgeo::release_tracked();
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let asked = request(&given);
     let camera = backend.value_fields(

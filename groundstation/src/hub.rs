@@ -445,6 +445,9 @@ pub struct Vehicle {
     calibration_left_behind: bool,
     rc_due: Option<u64>,
     pub autodrop: Option<crate::autodrop::State>,
+    pub autodrop_progress: Option<crate::autodrop::Progress>,
+    pub autodrop_bay: f64,
+    pub autodrop_hold_due_ms: Option<u64>,
     pub autodrop_aimed_ms: u64,
     pub release_latency_s: f64,
     pub manual_target: Option<(f64, f64)>,
@@ -726,6 +729,9 @@ impl Vehicle {
             autotune_sent_ms: 0,
             rc_due: None,
             autodrop: None,
+            autodrop_progress: None,
+            autodrop_bay: 0.0,
+            autodrop_hold_due_ms: None,
             autodrop_aimed_ms: 0,
             release_latency_s: crate::autodrop::calibrated_latency_s(),
             manual_target: None,
@@ -3526,7 +3532,71 @@ impl Vehicle {
         .unwrap_or_default()
     }
 
+    fn hold_here(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        self.facts
+            .coordinate
+            .map(|(lat, lon, _)| crate::dropsim::Point { lat, lon })
+            .map_or_else(Vec::new, |here| self.aim_autodrop(here, now_ms))
+    }
+
+    pub(crate) fn autodrop_label(
+        &self,
+        source: crate::autodrop::TargetSource,
+        now_ms: u64,
+    ) -> String {
+        let camera_tracks =
+            self.camera_tracking_geo.is_some() || self.camera_tracking_image.is_some();
+        let seen = (!camera_tracks)
+            .then(|| crate::detections::lock().fresh_boxes(now_ms))
+            .flatten()
+            .and_then(|(boxes, _)| {
+                boxes
+                    .iter()
+                    .find(|found| found["target"] == true)
+                    .and_then(|found| found["label"].as_str().map(str::to_string))
+            });
+        crate::autodrop::label(source, seen.as_deref())
+    }
+
+    fn note_progress(
+        &mut self,
+        source: crate::autodrop::TargetSource,
+        started_ms: u64,
+        now_ms: u64,
+        seen: Option<(crate::dropsim::Point, crate::dropsim::Target)>,
+        release_in_s: Option<f64>,
+        holding: Option<&'static str>,
+    ) {
+        let previous = self.autodrop_progress.clone();
+        self.autodrop_progress = Some(crate::autodrop::Progress {
+            target: self.autodrop_label(source, now_ms),
+            distance_m: seen
+                .map(|(from, target)| {
+                    crate::track::distance_m(
+                        (from.lat, from.lon),
+                        (target.position.lat, target.position.lon),
+                    )
+                })
+                .or(previous.as_ref().and_then(|p| p.distance_m)),
+            speed_mps: seen
+                .map(|(_, target)| target.velocity.north_mps.hypot(target.velocity.east_mps))
+                .or(previous.as_ref().and_then(|p| p.speed_mps)),
+            searching: holding == Some("searching"),
+            release_in_s,
+            holding,
+            time_left_s: crate::autodrop::MAX_RUN_S
+                - now_ms.saturating_sub(started_ms) as f64 / 1000.0,
+        });
+    }
+
     fn tick_autodrop(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        let held = match self.autodrop_hold_due_ms {
+            Some(due) if now_ms >= due => {
+                self.autodrop_hold_due_ms = None;
+                self.hold_here(now_ms)
+            }
+            _ => Vec::new(),
+        };
         let Some(crate::autodrop::State::Waiting {
             phase,
             source,
@@ -3534,21 +3604,22 @@ impl Vehicle {
             due_ms,
         }) = self.autodrop
         else {
-            return Vec::new();
+            return held;
         };
         if now_ms < due_ms {
-            return Vec::new();
+            return held;
         }
         let retry_due = now_ms + crate::autodrop::AUTODROP_TICK_MS;
         if (now_ms.saturating_sub(started_ms) as f64 / 1000.0) >= crate::autodrop::MAX_RUN_S {
             self.autodrop = Some(crate::autodrop::State::GaveUp {
-                reason: "no release window opened within the time limit".to_string(),
+                reason: crate::autodrop::TIMED_OUT.to_string(),
                 at_ms: now_ms,
             });
-            return Vec::new();
+            return self.hold_here(now_ms);
         }
         match phase {
             crate::autodrop::Phase::WaitingForCruise => {
+                self.note_progress(source, started_ms, now_ms, None, None, Some("climbing"));
                 let ready = self.facts.ground_speed >= 0.8 * crate::autodrop::CRUISE_MPS;
                 self.autodrop = Some(crate::autodrop::State::Waiting {
                     phase: if ready {
@@ -3585,6 +3656,7 @@ impl Vehicle {
                         started_ms,
                         due_ms: retry_due,
                     });
+                    self.note_progress(source, started_ms, now_ms, None, None, Some("searching"));
                     let lost = self
                         .followed_last
                         .filter(|(_, seen_ms)| *seen_ms >= started_ms)
@@ -3608,10 +3680,21 @@ impl Vehicle {
                 let plan = crate::autodrop::plan(release, target, roads.as_deref());
                 let until_ms = ((plan.release_in_s - self.release_latency_s) * 1000.0) as u64;
                 let due = until_ms == 0;
-                if !due
-                    || !crate::autodrop::releasable(plan, self.turned_deg(source, now_ms))
-                    || !self.seen_lately(source, now_ms)
-                {
+                let turned = self.turned_deg(source, now_ms);
+                let seen = self.seen_lately(source, now_ms);
+                let releasable = crate::autodrop::releasable(plan, turned) && seen;
+                self.note_progress(
+                    source,
+                    started_ms,
+                    now_ms,
+                    Some((release.position, target)),
+                    (!due).then_some(plan.release_in_s - self.release_latency_s),
+                    (due && !releasable).then(|| match seen {
+                        true => crate::autodrop::hold_reason(plan, turned),
+                        false => "unseen",
+                    }),
+                );
+                if !due || !releasable {
                     let wait_ms = match due {
                         true => crate::autodrop::AUTODROP_TICK_MS,
                         false => until_ms.min(crate::autodrop::AUTODROP_TICK_MS),
@@ -3634,9 +3717,13 @@ impl Vehicle {
                         .map_or_else(Vec::new, |aim_at| self.aim_autodrop(aim_at, now_ms));
                 }
                 let fired = self.start_guided(
-                    &json!({"action": "gripper", "gripAction": 0.0, "bay": 0.0}),
+                    &json!({"action": "gripper", "gripAction": 0.0, "bay": self.autodrop_bay}),
                     now_ms,
                 );
+                self.autodrop_hold_due_ms = Some(match fired.is_ok() {
+                    true => now_ms + crate::autodrop::HOLD_AFTER_FIRE_MS,
+                    false => now_ms,
+                });
                 self.autodrop = Some(match &fired {
                     Ok(_) => crate::autodrop::State::Fired {
                         predicted_miss_m: plan.miss_m,
@@ -3669,8 +3756,14 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("autodropStop") => {
+                let running = matches!(self.autodrop, Some(crate::autodrop::State::Waiting { .. }));
                 self.autodrop = None;
-                return Ok(Vec::new());
+                self.autodrop_progress = None;
+                self.autodrop_hold_due_ms = None;
+                return Ok(match running {
+                    true => self.hold_here(now_ms),
+                    false => Vec::new(),
+                });
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
             Some("rcReleaseChannel") => {
@@ -4178,6 +4271,9 @@ impl Vehicle {
                         due_ms: now_ms,
                     });
                     self.autodrop_aimed_ms = now_ms;
+                    self.autodrop_bay = action.get("bay").and_then(Value::as_f64).unwrap_or(0.0);
+                    self.autodrop_progress = None;
+                    self.autodrop_hold_due_ms = None;
                 }
                 if action.get("action").and_then(Value::as_str) == Some("roi") && !steps.is_empty()
                 {
@@ -7940,9 +8036,12 @@ impl Hub {
     pub fn next_autodrop_due_ms(&self) -> Option<u64> {
         self.vehicles
             .values()
-            .filter_map(|vehicle| match vehicle.autodrop {
-                Some(crate::autodrop::State::Waiting { due_ms, .. }) => Some(due_ms),
-                _ => None,
+            .flat_map(|vehicle| {
+                let waiting = match vehicle.autodrop {
+                    Some(crate::autodrop::State::Waiting { due_ms, .. }) => Some(due_ms),
+                    _ => None,
+                };
+                waiting.into_iter().chain(vehicle.autodrop_hold_due_ms)
             })
             .min()
     }
@@ -10331,6 +10430,124 @@ mod tests {
                 reason: "no release window opened within the time limit".to_string(),
                 at_ms: past_limit,
             })
+        );
+    }
+
+    #[test]
+    fn giving_up_or_stopping_holds_position_instead_of_flying_on_to_the_far_aim_point() {
+        let waiting = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Gimbal,
+            started_ms: 0,
+            due_ms: 0,
+        });
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.autodrop = waiting.clone();
+        let past_limit = (crate::autodrop::MAX_RUN_S * 1000.0) as u64 + 1;
+        vehicle.tick_autodrop(past_limit);
+        assert_eq!(
+            vehicle.autodrop_aimed_ms, past_limit,
+            "a give-up sends the drone to where it is"
+        );
+
+        vehicle.autodrop = waiting;
+        let _ = vehicle.start_guided(&json!({ "action": "autodropStop" }), 200_000);
+        assert_eq!(
+            (vehicle.autodrop.is_none(), vehicle.autodrop_aimed_ms),
+            (true, 200_000),
+            "so does Stop"
+        );
+        assert!(
+            vehicle
+                .start_guided(&json!({ "action": "autodropStop" }), 300_000)
+                .is_ok()
+        );
+        assert_eq!(
+            vehicle.autodrop_aimed_ms, 200_000,
+            "but not when nothing was running"
+        );
+    }
+
+    #[test]
+    fn a_run_reports_what_it_chases_and_why_it_is_waiting() {
+        let _ground = crate::synthview::TEST_GROUND
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let north = |metres: f64| crate::geo::ned_to_geo(metres, 0.0, 0.0, (47.0, 8.0, 0.0)).0;
+        let waiting = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Manual,
+            started_ms: 0,
+            due_ms: 0,
+        });
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.facts.velocity = (10.0, 0.0, 0.0);
+        vehicle.autodrop = waiting.clone();
+        vehicle.tick_autodrop(10_000);
+        let lost = vehicle.autodrop_progress.clone().expect("progress");
+        assert_eq!(
+            (lost.searching, lost.holding, lost.time_left_s),
+            (true, Some("searching"), 80.0),
+            "nothing marked: it is looking for the target, 80 s of 90 left"
+        );
+
+        vehicle.manual_target = Some((north(200.0), 8.0));
+        vehicle.autodrop = waiting;
+        vehicle.tick_autodrop(10_000);
+        let closing = vehicle.autodrop_progress.clone().expect("progress");
+        assert_eq!(closing.target, "marked point");
+        assert!(
+            (closing.distance_m.unwrap() - 200.0).abs() < 0.5
+                && closing.holding.is_none()
+                && closing.release_in_s.is_some_and(|s| s > 10.0),
+            "200 m out at 10 m/s it is closing, not holding: {closing:?}"
+        );
+    }
+
+    #[test]
+    fn the_drop_uses_the_bay_the_run_was_started_with_and_holds_a_second_later() {
+        let _ground = crate::synthview::TEST_GROUND
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let north = |metres: f64| crate::geo::ned_to_geo(metres, 0.0, 0.0, (47.0, 8.0, 0.0)).0;
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.manual_target = Some((north(10.0 * crate::dropsim::fall_time_s(40.0, 0.0)), 8.0));
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.facts.velocity = (10.0, 0.0, 0.0);
+        vehicle.autodrop_bay = 3.0;
+        vehicle.autodrop = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Manual,
+            started_ms: 0,
+            due_ms: 0,
+        });
+        let frames = vehicle.tick_autodrop(1_000);
+        assert!(
+            matches!(vehicle.autodrop, Some(crate::autodrop::State::Fired { .. })),
+            "{:?}",
+            vehicle.autodrop
+        );
+        let bays: Vec<f32> = frames
+            .iter()
+            .map(|bytes| decode(bytes))
+            .filter_map(|message| match message {
+                MavMessage::COMMAND_LONG(m)
+                    if m.command
+                        == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_GRIPPER =>
+                {
+                    Some(m.param1)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bays, vec![3.0], "bay 3, not the single gripper's bay 0");
+        assert_eq!(
+            vehicle.autodrop_hold_due_ms,
+            Some(1_000 + crate::autodrop::HOLD_AFTER_FIRE_MS)
         );
     }
 
