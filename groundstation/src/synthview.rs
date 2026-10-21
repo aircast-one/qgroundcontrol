@@ -4,7 +4,7 @@ use std::sync::{Mutex, PoisonError};
 use serde_json::{Value, json};
 
 use crate::attitude::{point, raw};
-use crate::read::flag;
+use crate::read::{flag, integer};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -521,6 +521,25 @@ pub fn overlays(
     })
 }
 
+fn cars(backend: &dyn Backend) -> Value {
+    let active =
+        integer(&backend.value_fields("vehicle", "id"), "id").and_then(|id| u8::try_from(id).ok());
+    crate::gpstarget::ground_vehicles(active)
+        .iter()
+        .map(|car| {
+            json!({
+                "latitude": car.position.lat,
+                "longitude": car.position.lon,
+                "aboveHome": 0.0,
+                "northSpeed": car.velocity.north_mps,
+                "eastSpeed": car.velocity.east_mps,
+                "ageMs": 0.0,
+            })
+        })
+        .collect::<Vec<Value>>()
+        .into()
+}
+
 pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let home_amsl = backend
         .value("vehicle.homePosition")
@@ -539,6 +558,7 @@ pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
     );
     let on_ground =
         |path: &str| located(&backend.value(path)["value"]).map_or(Value::Null, |at| spot(at, 0.0));
+    shown["cars"] = cars(backend);
     shown["aim"] = on_ground(DROP_TARGET);
     shown["impact"] = match backend.value(HAS_GRIPPER)["value"] == true {
         true => on_ground(DROP_IMPACT),

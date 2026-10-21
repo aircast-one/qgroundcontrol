@@ -538,7 +538,17 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     RailDeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false)
                 }
             }
-            if (refusal != null || confirming != null || showingSent || autodropStatus != null) {
+            val deciding = refusal != null || confirming != null || showingSent
+            if (!deciding) autodropStatus?.let { (message, isProblem) ->
+                Surface(
+                    Modifier.align(Alignment.BottomCenter).widthIn(max = DECISION_CARD_WIDTH).padding(AircastSpace.s3),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) {
+                    Box(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) { AutodropStatusLine(message, isProblem) }
+                }
+            }
+            if (deciding) {
                 Surface(
                     Modifier.align(Alignment.Center).widthIn(max = DECISION_CARD_WIDTH).padding(AircastSpace.s3),
                     shape = MaterialTheme.shapes.extraLarge,

@@ -14,7 +14,7 @@ use super::geo::{Camera, Pose};
 use super::ground;
 use super::mesh::Mesh;
 use super::open::{Built, OpenScene, Want};
-use super::overlay::{self, Bottle, Overlays};
+use super::overlay::{self, Bottle, Overlays, Spot, Tracked};
 use super::predict::{self, Gain, Lag, Predicted, Step};
 use super::tileset::{self, GOOGLE_ROOT, ION_GOOGLE_ASSET, Parsed, Request, Selection, Tileset};
 use crate::virtualjoystick::StickSample;
@@ -480,7 +480,9 @@ impl Frame {
         let camera = Camera::new(&self.aimed(overlays, Instant::now()), width, height);
         let marks = overlays
             .zip(self.home_ground)
-            .map(|(overlays, ground)| overlay::meshes(overlays, ground, &camera))
+            .map(|(overlays, ground)| {
+                overlay::meshes(&self.on_ground(overlays, ground), ground, &camera)
+            })
             .unwrap_or_default();
         let bottles = self
             .home_ground
@@ -494,6 +496,29 @@ impl Frame {
                 .chain(bottles)
                 .collect(),
         )
+    }
+
+    fn on_ground(&self, overlays: &Overlays, home_ground: f64) -> Overlays {
+        let now = Instant::now();
+        Overlays {
+            cars: overlays
+                .cars
+                .iter()
+                .map(|car| {
+                    let (latitude, longitude) = car.at(now);
+                    let above_home = super::ground::height_at(&self.ground, latitude, longitude)
+                        .map_or(car.spot.above_home, |height| height - home_ground);
+                    Tracked {
+                        spot: Spot {
+                            above_home,
+                            ..car.spot.clone()
+                        },
+                        ..car.clone()
+                    }
+                })
+                .collect(),
+            ..overlays.clone()
+        }
     }
 
     pub fn ground_above_home(&self) -> Option<f64> {

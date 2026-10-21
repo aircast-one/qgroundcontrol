@@ -385,6 +385,7 @@ pub struct Vehicle {
     calibration_left_behind: bool,
     rc_due: Option<u64>,
     pub autodrop: Option<crate::autodrop::State>,
+    pub autodrop_aimed_ms: u64,
     pub manual_target: Option<(f64, f64)>,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
@@ -659,6 +660,7 @@ impl Vehicle {
             autotune_sent_ms: 0,
             rc_due: None,
             autodrop: None,
+            autodrop_aimed_ms: 0,
             manual_target: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
@@ -3202,13 +3204,13 @@ impl Vehicle {
 
     pub(crate) fn release_now(&self) -> Option<crate::dropsim::Release> {
         let (lat, lon, _) = self.facts.coordinate?;
-        let (sin, cos) = self.facts.heading.to_radians().sin_cos();
+        let (north_mps, east_mps, _) = self.facts.velocity;
         Some(crate::dropsim::Release {
             position: crate::dropsim::Point { lat, lon },
             altitude_agl_m: self.facts.altitude_relative,
             velocity: crate::dropsim::Velocity {
-                north_mps: self.facts.ground_speed * cos,
-                east_mps: self.facts.ground_speed * sin,
+                north_mps,
+                east_mps,
             },
             climb_mps: self.facts.climb_rate,
         })
@@ -3285,7 +3287,22 @@ impl Vehicle {
                         started_ms,
                         due_ms: now_ms + wait_ms.min(crate::autodrop::AUTODROP_TICK_MS),
                     });
-                    return Vec::new();
+                    let reaim = plan.release_in_s > crate::autodrop::REAIM_UNTIL_S
+                        && now_ms.saturating_sub(self.autodrop_aimed_ms)
+                            >= crate::autodrop::REAIM_EVERY_MS;
+                    let Some(aim_at) = reaim
+                        .then(|| crate::autodrop::aim_point(release.position, target))
+                        .flatten()
+                    else {
+                        return Vec::new();
+                    };
+                    self.autodrop_aimed_ms = now_ms;
+                    return self
+                        .start_guided(
+                            &json!({"action": "goto", "latitude": aim_at.lat, "longitude": aim_at.lon}),
+                            now_ms,
+                        )
+                        .unwrap_or_default();
                 }
                 let fired = self.start_guided(
                     &json!({"action": "gripper", "gripAction": 0.0, "bay": 0.0}),
@@ -3829,6 +3846,7 @@ impl Vehicle {
                         started_ms: now_ms,
                         due_ms: now_ms,
                     });
+                    self.autodrop_aimed_ms = now_ms;
                 }
                 if action.get("action").and_then(Value::as_str) == Some("roi") && !steps.is_empty()
                 {
@@ -7584,12 +7602,16 @@ impl Hub {
                 .iter()
                 .filter_map(|(id, vehicle)| {
                     let (lat, lon, _) = vehicle.facts.coordinate?;
+                    let (north, east, _) = vehicle.facts.velocity;
                     Some((
                         *id,
                         crate::gpstarget::Fix {
                             position: crate::dropsim::Point { lat, lon },
-                            ground_speed_mps: vehicle.facts.ground_speed,
-                            heading_deg: vehicle.facts.heading,
+                            ground_speed_mps: north.hypot(east),
+                            heading_deg: east.atan2(north).to_degrees(),
+                            on_ground: crate::plandoc::vehicle_class(i64::from(
+                                vehicle.vehicle_type,
+                            )) == crate::cmdinfo::VehicleClass::Rover,
                         },
                     ))
                 })
@@ -9279,6 +9301,7 @@ mod tests {
                 },
                 ground_speed_mps: 3.0,
                 heading_deg: 90.0,
+                on_ground: false,
             },
         );
         crate::gpstarget::refresh(fixes);
@@ -9294,6 +9317,49 @@ mod tests {
                 3.0
             )),
             "heading 90 (east) at 3 m/s is all east velocity, no north"
+        );
+    }
+
+    #[test]
+    fn tick_autodrop_re_aims_about_once_a_second_until_the_release_is_close() {
+        let mut vehicle = Vehicle::heard(1);
+        let waiting = |due_ms| {
+            Some(crate::autodrop::State::Waiting {
+                phase: crate::autodrop::Phase::WaitingForRelease,
+                source: crate::autodrop::TargetSource::Manual,
+                started_ms: 0,
+                due_ms,
+            })
+        };
+        vehicle.manual_target = Some((47.0 + 200.0 / 111_320.0, 8.0));
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.facts.velocity = (10.0, 0.0, 0.0);
+
+        vehicle.autodrop = waiting(0);
+        vehicle.tick_autodrop(5_000);
+        assert_eq!(
+            vehicle.autodrop_aimed_ms, 5_000,
+            "far from release, it re-aims"
+        );
+
+        vehicle.autodrop = waiting(0);
+        vehicle.tick_autodrop(5_500);
+        assert_eq!(
+            vehicle.autodrop_aimed_ms, 5_000,
+            "not again within a second"
+        );
+
+        vehicle.autodrop = waiting(0);
+        vehicle.tick_autodrop(6_000);
+        assert_eq!(vehicle.autodrop_aimed_ms, 6_000);
+
+        vehicle.manual_target = Some((47.0 + 40.0 / 111_320.0, 8.0));
+        vehicle.autodrop = waiting(0);
+        vehicle.tick_autodrop(8_000);
+        assert_eq!(
+            vehicle.autodrop_aimed_ms, 6_000,
+            "about a second from release the heading is left alone"
         );
     }
 

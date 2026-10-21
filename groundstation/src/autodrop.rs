@@ -16,6 +16,8 @@ const GUIDED_GOTO_LIMIT_M: f64 = 950.0;
 // is a fixed default, not read from a vehicle parameter. Upgrade to a real cruise-speed fact
 // or parameter read if one is ever exposed.
 pub const CRUISE_MPS: f64 = 10.0;
+pub const REAIM_EVERY_MS: u64 = 1000;
+pub const REAIM_UNTIL_S: f64 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
@@ -122,6 +124,11 @@ impl State {
             }
         }
     }
+}
+
+pub fn aim_point(position: Point, target: Target) -> Option<Point> {
+    dropsim::intercept(position, CRUISE_MPS, target)
+        .map(|solved| far_point_on_bearing(position, solved.lead_point, GUIDED_GOTO_LIMIT_M))
 }
 
 fn far_point_on_bearing(from: Point, towards: Point, distance_m: f64) -> Point {
@@ -243,10 +250,9 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         resolved
     };
 
-    let Some(solved) = dropsim::intercept(position, CRUISE_MPS, target) else {
+    let Some(aim_at) = aim_point(position, target) else {
         return json!({ "ok": false, "reason": "the target cannot be intercepted at this speed on this heading" });
     };
-    let aim_at = far_point_on_bearing(position, solved.lead_point, GUIDED_GOTO_LIMIT_M);
 
     match backend.core_guided(&json!({
         "action": "goto",
@@ -367,6 +373,7 @@ mod tests {
                 },
                 ground_speed_mps: 5.0,
                 heading_deg: 0.0,
+                on_ground: false,
             },
         );
         gpstarget::refresh(fixes);
@@ -465,6 +472,7 @@ mod tests {
                 },
                 ground_speed_mps: 5.0,
                 heading_deg: 0.0,
+                on_ground: false,
             },
         );
         gpstarget::refresh(fixes.clone());
@@ -483,6 +491,7 @@ mod tests {
                 position: Point { lat: 0.0, lon: 0.0 },
                 ground_speed_mps: 0.0,
                 heading_deg: 0.0,
+                on_ground: false,
             },
         );
         gpstarget::refresh(fixes);

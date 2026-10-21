@@ -13,6 +13,7 @@ pub struct Fix {
     pub position: Point,
     pub ground_speed_mps: f64,
     pub heading_deg: f64,
+    pub on_ground: bool,
 }
 
 impl Fix {
@@ -51,6 +52,16 @@ pub fn only_other(self_id: u8) -> Option<u8> {
     let mut others = fixes.keys().filter(|&&id| id != self_id);
     let first = *others.next()?;
     others.next().is_none().then_some(first)
+}
+
+pub fn ground_vehicles(except: Option<u8>) -> Vec<Target> {
+    FIXES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter(|(id, fix)| fix.on_ground && Some(**id) != except)
+        .map(|(_, fix)| fix.target())
+        .collect()
 }
 
 fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
@@ -118,6 +129,7 @@ mod tests {
             },
             ground_speed_mps: 5.0,
             heading_deg: 0.0,
+            on_ground: false,
         };
         let target = fix.target();
         assert!(close(target.velocity.north_mps, 5.0, 1e-9));
@@ -133,6 +145,7 @@ mod tests {
             },
             ground_speed_mps: 5.0,
             heading_deg: 90.0,
+            on_ground: false,
         };
         let target = fix.target();
         assert!(close(target.velocity.north_mps, 0.0, 1e-6));
@@ -152,6 +165,7 @@ mod tests {
                 },
                 ground_speed_mps: 5.0,
                 heading_deg: 0.0,
+                on_ground: false,
             },
         );
         refresh(fixes.clone());
@@ -177,6 +191,7 @@ mod tests {
                 position: Point { lat: 0.0, lon: 0.0 },
                 ground_speed_mps: 0.0,
                 heading_deg: 0.0,
+                on_ground: false,
             },
         );
         refresh(fixes);
@@ -224,6 +239,7 @@ mod tests {
                 },
                 ground_speed_mps: 0.0,
                 heading_deg: 0.0,
+                on_ground: false,
             },
         );
         refresh(fixes);

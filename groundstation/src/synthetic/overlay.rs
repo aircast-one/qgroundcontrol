@@ -89,6 +89,16 @@ const TRACKED_GLIDE_LIMIT: Duration = Duration::from_secs(2);
 const AIM: [u8; 4] = [0xFF, 0x3B, 0x30, 255];
 const IMPACT: [u8; 4] = [0xFF, 0xD6, 0x0A, 255];
 const IMPACT_PX: f64 = 32.0;
+const CAR_ROOF: usize = 0;
+const CAR_SIDE: usize = 1;
+const CAR_END: usize = 2;
+const CAR_GLASS: usize = 3;
+const CAR_COLOURS: [[u8; 4]; 4] = [
+    [0x42, 0xA5, 0xF5, 255],
+    [0x15, 0x65, 0xC0, 255],
+    [0x0D, 0x47, 0xA1, 255],
+    [0x26, 0x32, 0x38, 255],
+];
 const BRACKET_TEXELS: u32 = 10;
 const BRACKET_THICKNESS: u32 = 3;
 const GLYPHS: &str = "0123456789H";
@@ -175,6 +185,7 @@ pub struct Overlays {
     pub tracked: Option<Tracked>,
     pub aim: Option<Spot>,
     pub impact: Option<Spot>,
+    pub cars: Vec<Tracked>,
 }
 
 fn spot(value: &Value) -> Option<Spot> {
@@ -254,11 +265,15 @@ impl Overlays {
                 .and_then(|target| Tracked::from_view(target, Instant::now())),
             aim: view.get("aim").and_then(spot),
             impact: view.get("impact").and_then(spot),
+            cars: listed(view, "cars")
+                .iter()
+                .filter_map(|car| Tracked::from_view(car, Instant::now()))
+                .collect(),
         })
     }
 
     pub fn animating(&self) -> bool {
-        self.tracked.as_ref().is_some_and(Tracked::moving)
+        self.tracked.as_ref().is_some_and(Tracked::moving) || self.cars.iter().any(Tracked::moving)
     }
 }
 
@@ -375,6 +390,70 @@ fn hoop(colour: [u8; 4]) -> image::RgbaImage {
     })
 }
 
+fn car_box(
+    half_width: f64,
+    half_length: f64,
+    (low, high): (f64, f64),
+    (roof, side, end): (usize, usize, usize),
+) -> [([DVec3; 4], usize); 5] {
+    let (w, l) = (half_width, half_length);
+    let p = DVec3::new;
+    [
+        (
+            [
+                p(-w, -l, high),
+                p(w, -l, high),
+                p(w, l, high),
+                p(-w, l, high),
+            ],
+            roof,
+        ),
+        (
+            [p(w, -l, low), p(w, l, low), p(w, l, high), p(w, -l, high)],
+            side,
+        ),
+        (
+            [
+                p(-w, l, low),
+                p(-w, -l, low),
+                p(-w, -l, high),
+                p(-w, l, high),
+            ],
+            side,
+        ),
+        (
+            [p(-w, l, low), p(w, l, low), p(w, l, high), p(-w, l, high)],
+            end,
+        ),
+        (
+            [
+                p(w, -l, low),
+                p(-w, -l, low),
+                p(-w, -l, high),
+                p(w, -l, high),
+            ],
+            end,
+        ),
+    ]
+}
+
+fn car_shape() -> Vec<([DVec3; 4], usize)> {
+    car_box(0.9, 2.2, (0.3, 1.0), (CAR_ROOF, CAR_SIDE, CAR_END))
+        .into_iter()
+        .chain(car_box(
+            0.8,
+            1.1,
+            (1.0, 1.45),
+            (CAR_ROOF, CAR_GLASS, CAR_GLASS),
+        ))
+        .collect()
+}
+
+fn colour_row(row: usize) -> [[f32; 2]; 4] {
+    let v = (row as f32 + 0.5) / CAR_COLOURS.len() as f32;
+    [[0.5, v]; 4]
+}
+
 fn glyph_lit(glyph: usize, column: i32, row: i32) -> bool {
     (0..3).contains(&column)
         && (0..5).contains(&row)
@@ -439,6 +518,7 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
     let Some((origin_lat, origin_lng)) = overlays
         .home
         .or_else(|| overlays.tracked.as_ref().map(|tracked| tracked.at(now)))
+        .or_else(|| overlays.cars.first().map(|car| car.at(now)))
         .or_else(|| {
             overlays
                 .aim
@@ -542,6 +622,22 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
             }),
             hoop(IMPACT),
             Layer::OnTop,
+        ),
+        quads(
+            &frame,
+            overlays.cars.iter().flat_map(|car| {
+                let (lat, lng) = car.at(now);
+                let turn = east_north_up(lat, lng)
+                    * DMat3::from_rotation_z(-car.east_speed.atan2(car.north_speed));
+                let base = ecef(lat, lng, home_ground + car.spot.above_home);
+                car_shape()
+                    .into_iter()
+                    .map(move |(corners, row)| (corners.map(|c| base + turn * c), colour_row(row)))
+            }),
+            image::RgbaImage::from_fn(1, CAR_COLOURS.len() as u32, |_, y| {
+                image::Rgba(CAR_COLOURS[y as usize])
+            }),
+            Layer::Opaque,
         ),
     ]
     .into_iter()
@@ -722,6 +818,28 @@ mod tests {
             .map(|mesh| (mesh.layer, mesh.indices.len() / 6))
             .collect();
         assert_eq!(layers, vec![(Layer::OnTop, 1), (Layer::OnTop, 1)]);
+    }
+
+    #[test]
+    fn another_ground_vehicle_draws_as_a_car_that_drives_on_with_its_speed() {
+        let overlays = Overlays::from_view(&json!({
+            "fenceTop": 50.0,
+            "cars": [{ "latitude": -35.362, "longitude": 149.165, "aboveHome": 0.0, "northSpeed": 5.0, "eastSpeed": 0.0, "ageMs": 0.0 }],
+        }))
+        .expect("overlays");
+        assert!(
+            overlays.animating(),
+            "a moving car keeps the view repainting"
+        );
+        let layers: Vec<(Layer, usize)> = meshes(&overlays, 600.0, &camera())
+            .iter()
+            .map(|mesh| (mesh.layer, mesh.indices.len() / 6))
+            .collect();
+        assert_eq!(
+            layers,
+            vec![(Layer::Opaque, 10)],
+            "a body and a cabin, five faces each"
+        );
     }
 
     #[test]
