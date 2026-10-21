@@ -54,29 +54,57 @@ pub struct Frame {
     pub track: Value,
     pub received_ms: u64,
     pub captured_ms: u64,
-    pub target_ground: Option<crate::dropsim::Point>,
+    pub grounds: Vec<Seen>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Seen {
+    pub position: crate::dropsim::Point,
+    pub target: bool,
+}
+
+const CAR_SIZED: [&str; 3] = ["car", "van", "truck"];
+
+fn centre_of(found: &Value) -> Option<(f64, f64)> {
+    let number = |key: &str| found[key].as_f64();
+    Some((
+        number("x")? + number("w")? / 2.0,
+        number("y")? + number("h")? / 2.0,
+    ))
+}
+
+fn car_sized(found: &Value) -> bool {
+    found["target"] == true
+        || CAR_SIZED.iter().any(|label| {
+            found["label"]
+                .as_str()
+                .unwrap_or("")
+                .eq_ignore_ascii_case(label)
+        })
 }
 
 impl Frame {
     pub fn target_centre(&self) -> Option<(f64, f64)> {
-        let target = self.boxes.iter().find(|b| b["target"] == true)?;
-        let number = |key: &str| target[key].as_f64();
-        Some((
-            number("x")? + number("w")? / 2.0,
-            number("y")? + number("h")? / 2.0,
-        ))
+        centre_of(self.boxes.iter().find(|b| b["target"] == true)?)
     }
 }
 
 pub fn grounded(
     frame: Frame,
-    project: impl FnOnce((f64, f64)) -> Option<crate::dropsim::Point>,
+    project: impl Fn((f64, f64)) -> Option<crate::dropsim::Point>,
 ) -> Frame {
-    let target_ground = frame.target_centre().and_then(project);
-    Frame {
-        target_ground,
-        ..frame
-    }
+    let grounds = frame
+        .boxes
+        .iter()
+        .filter(|found| car_sized(found))
+        .filter_map(|found| {
+            centre_of(found).and_then(&project).map(|position| Seen {
+                position,
+                target: found["target"] == true,
+            })
+        })
+        .collect();
+    Frame { grounds, ..frame }
 }
 
 fn grounded_now(frame: Frame) -> Frame {
@@ -152,7 +180,7 @@ pub fn frame_from(payload: &Value, received_ms: u64, assumed_latency_ms: u64) ->
         track: payload.get("track").cloned().unwrap_or(Value::Null),
         received_ms,
         captured_ms: received_ms.saturating_sub(latency_ms),
-        target_ground: None,
+        grounds: Vec::new(),
     }
 }
 
@@ -213,11 +241,11 @@ impl Feed {
             .map(|f| (f.boxes.clone(), f.received_ms))
     }
 
-    pub fn target_ground(&self, now_ms: u64) -> Option<(crate::dropsim::Point, u64)> {
+    pub fn grounds(&self, now_ms: u64) -> Option<(Vec<Seen>, u64)> {
         self.frame
             .as_ref()
             .filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)
-            .and_then(|f| f.target_ground.map(|ground| (ground, f.captured_ms)))
+            .map(|f| (f.grounds.clone(), f.captured_ms))
     }
 
     pub fn tracker(&self, now_ms: u64) -> Option<(Source, Option<Value>)> {
@@ -450,14 +478,20 @@ mod tests {
         let mut feed = Feed::default();
         assert!(feed.receive(0, grounded));
         assert_eq!(
-            feed.target_ground(5_400),
-            Some((spot, 5_000)),
-            "the target box's centre, projected, stamped with its frame time"
+            feed.grounds(5_400),
+            Some((
+                vec![Seen {
+                    position: spot,
+                    target: true
+                }],
+                5_000
+            )),
+            "every car-sized box's centre, projected and stamped with its frame time; the person is not a candidate"
         );
         assert_eq!(
-            feed.target_ground(5_000 + STALE_MS + 1),
+            feed.grounds(5_000 + STALE_MS + 1),
             None,
-            "a stale frame is no target"
+            "a stale frame shows nothing"
         );
 
         let untargeted = frame_from(

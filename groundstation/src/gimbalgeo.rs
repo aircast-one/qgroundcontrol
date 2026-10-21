@@ -29,6 +29,9 @@ pub fn ground_point(
 }
 
 pub const MAX_JUMP_M: f64 = 20.0;
+pub const ASSOCIATE_M: f64 = 6.0;
+const GATE_GROWTH_MPS: f64 = 3.0;
+pub const REACQUIRE_MS: u64 = 10_000;
 pub const OBJECT_HALF_HEIGHT_M: f64 = 0.75;
 pub const COAST_MS: u64 = 1_500;
 const SMOOTHING: f64 = 0.75;
@@ -205,6 +208,39 @@ fn followed(
 
 pub fn tracked(seen: Option<(Sensor, Fix, Option<Velocity>)>, now_ms: u64) -> Option<Target> {
     followed(&PICKED_TRACK, seen, now_ms)
+}
+
+pub fn release_tracked() {
+    *PICKED_TRACK.lock().unwrap_or_else(PoisonError::into_inner) = None;
+}
+
+fn metres(a: Point, b: Point) -> f64 {
+    let (north, east, _) = geo_to_ned(a.lat, a.lon, 0.0, (b.lat, b.lon, 0.0));
+    north.hypot(east)
+}
+
+pub fn associated(seen: &[crate::detections::Seen], at_ms: u64) -> Option<Point> {
+    let held = PICKED_TRACK
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .filter(|track| {
+            track.sensor == Sensor::Detector && at_ms.saturating_sub(track.at_ms) <= REACQUIRE_MS
+        });
+    match held {
+        Some(track) => {
+            let gap_s = at_ms.saturating_sub(track.at_ms) as f64 / 1000.0;
+            let last = track.target(track.at_ms);
+            let roads = crate::autodrop::roads_under(last);
+            let expected = crate::autodrop::coasted(last, roads.as_deref(), gap_s).position;
+            let gate = (ASSOCIATE_M + GATE_GROWTH_MPS * gap_s).min(MAX_JUMP_M);
+            seen.iter()
+                .map(|s| (metres(s.position, expected), s.position))
+                .filter(|(off, _)| *off <= gate)
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, position)| position)
+        }
+        None => seen.iter().find(|s| s.target).map(|s| s.position),
+    }
 }
 
 pub fn tracked_turn_deg(now_ms: u64, window_ms: u64) -> Option<f64> {
@@ -407,6 +443,90 @@ pub fn gimbal_drop_lead_view(_backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn north_of(metres: f64) -> Point {
+        Point {
+            lat: 47.0 + (metres / 6_371_000.0_f64).to_degrees(),
+            lon: 8.0,
+        }
+    }
+
+    fn east_of(at: Point, metres: f64) -> Point {
+        Point {
+            lon: at.lon + (metres / (6_371_000.0 * at.lat.to_radians().cos())).to_degrees(),
+            ..at
+        }
+    }
+
+    fn driven_north_for_a_second() {
+        (0_u32..=10).for_each(|step| {
+            let at_ms = u64::from(step) * 100;
+            tracked(
+                Some((
+                    Sensor::Detector,
+                    Fix {
+                        position: north_of(f64::from(step) * 0.5),
+                        at_ms,
+                    },
+                    None,
+                )),
+                at_ms,
+            );
+        });
+    }
+
+    #[test]
+    fn the_core_follows_its_own_track_and_ignores_a_decoy_the_device_marks_as_the_target() {
+        let _fixes = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
+        forget();
+        let car = north_of(5.5);
+        let decoy = crate::detections::Seen {
+            position: east_of(car, 15.0),
+            target: true,
+        };
+        let real = crate::detections::Seen {
+            position: car,
+            target: false,
+        };
+        assert_eq!(
+            associated(&[decoy, real], 1_100),
+            Some(decoy.position),
+            "with no track yet, the device's pick starts it"
+        );
+        driven_north_for_a_second();
+        assert_eq!(
+            associated(&[decoy, real], 1_100),
+            Some(car),
+            "once tracking, the box where the car should be wins over the one flagged as the target"
+        );
+        forget();
+    }
+
+    #[test]
+    fn a_lost_track_reacquires_where_the_car_should_be_not_where_it_was_last_seen() {
+        let _fixes = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
+        forget();
+        driven_north_for_a_second();
+        let left_behind = crate::detections::Seen {
+            position: north_of(5.0),
+            target: true,
+        };
+        let moved_on = crate::detections::Seen {
+            position: north_of(20.0),
+            target: false,
+        };
+        assert_eq!(
+            associated(&[left_behind, moved_on], 4_000),
+            Some(moved_on.position),
+            "three seconds at 5 m/s later, the car is 15 m on"
+        );
+        assert_eq!(
+            associated(&[left_behind], 4_000 + REACQUIRE_MS),
+            Some(left_behind.position),
+            "a track lost for too long hands the pick back to the device"
+        );
+        forget();
+    }
 
     #[test]
     fn a_picture_point_and_its_ground_point_map_back_onto_each_other() {

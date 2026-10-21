@@ -90,6 +90,7 @@ fn answer(
 }
 
 pub fn start(source: &Source, args: &str) -> Value {
+    crate::gimbalgeo::release_tracked();
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let (url, body) = match request(&given) {
         None => {

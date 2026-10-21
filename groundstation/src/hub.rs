@@ -3275,7 +3275,8 @@ impl Vehicle {
                             .map(|position| (Sensor::CameraImage, Fix { position, at_ms }, None))
                     })
                     .or_else(|| {
-                        let (position, at_ms) = crate::detections::lock().target_ground(now_ms)?;
+                        let (seen, at_ms) = crate::detections::lock().grounds(now_ms)?;
+                        let position = crate::gimbalgeo::associated(&seen, at_ms)?;
                         Some((Sensor::Detector, Fix { position, at_ms }, None))
                     });
                 crate::gimbalgeo::tracked(seen, now_ms)
