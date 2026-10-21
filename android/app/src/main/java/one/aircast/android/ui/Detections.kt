@@ -13,6 +13,7 @@ internal data class DetectionBox(
     val label: String,
     val confidence: Double,
     val target: Boolean,
+    val caption: String,
 )
 
 internal data class Detections(
@@ -38,6 +39,7 @@ internal fun detections(view: JSONObject?): Detections? {
                     label = box.optText("label"),
                     confidence = box.optDouble("confidence", 0.0),
                     target = box.optBoolean("target"),
+                    caption = box.optText("caption"),
                 )
             }
         },
@@ -52,13 +54,3 @@ internal const val NO_FRAMES = "no frames from the detector"
 
 internal fun detectionTrouble(reading: Detections?): String? =
     reading?.takeIf { it.available }?.let { it.error ?: if (it.stale) NO_FRAMES else null }
-
-internal fun boxCaption(box: DetectionBox): String {
-    val percent = (box.confidence * 100).toInt()
-    return when {
-        box.label.isBlank() && percent <= 0 -> ""
-        box.label.isBlank() -> "$percent%"
-        percent <= 0 -> box.label
-        else -> "${box.label} $percent%"
-    }
-}

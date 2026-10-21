@@ -11,8 +11,8 @@ class DetectionsTest {
     private val served = """
         {"kind":"object","class":"Detections","available":true,"host":"10.0.0.4","camera":"front",
          "stale":false,"ageMs":40,
-         "boxes":[{"x":0.1,"y":0.2,"w":0.3,"h":0.4,"label":"car","confidence":0.91,"target":true},
-                  {"x":0.5,"y":0.5,"w":0.1,"h":0.1,"label":"person","confidence":0.42,"target":false}],
+         "boxes":[{"x":0.1,"y":0.2,"w":0.3,"h":0.4,"label":"car","confidence":0.91,"target":true,"caption":"car 91%"},
+                  {"x":0.5,"y":0.5,"w":0.1,"h":0.1,"label":"person","confidence":0.42,"target":false,"caption":""}],
          "track":null,"error":null}
     """
 
@@ -54,13 +54,10 @@ class DetectionsTest {
     }
 
     @Test
-    fun `a caption names what was seen and how sure the detector is`() {
+    fun `only the target carries the caption the core wrote for it`() {
         val reading = detections(JSONObject(served))!!
 
-        assertEquals("car 91%", boxCaption(reading.boxes[0]))
-        assertEquals("person 42%", boxCaption(reading.boxes[1]))
-        assertEquals("", boxCaption(reading.boxes[0].copy(label = "", confidence = 0.0)))
-        assertEquals("car", boxCaption(reading.boxes[0].copy(confidence = 0.0)))
+        assertEquals(listOf("car 91%", ""), reading.boxes.map { it.caption })
     }
 }
 

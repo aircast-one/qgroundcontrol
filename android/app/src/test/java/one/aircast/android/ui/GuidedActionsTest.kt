@@ -52,66 +52,23 @@ class GuidedActionsTest {
     }
 
     @Test
-    fun `auto intercept says what it chases, why it waits, how it ended and what to do next`() {
-        val shown = { json: String -> autodropShown(JSONObject(json)) }
-        assertNull("idle has nothing to say", autodropShown(null))
-        assertEquals(
-            AutodropShown("Locked on", false, listOf(AutodropAction.DropOnIt)),
-            autodropShown(JSONObject("""{"state":"idle"}"""), locked = true),
-        )
-        assertEquals(
-            AutodropShown("Chasing the car · 45 m · 5 m/s · release in ~3 s", false, listOf(AutodropAction.Stop)),
-            shown("""{"state":"waiting","progress":{"target":"car","distanceMeters":45.2,"speedMps":5.0,"moving":true,"releaseInSeconds":3.2,"holding":null,"secondsLeft":71}}"""),
-        )
-        assertEquals(
-            "Chasing the car · 60 m · 0 m/s · release in ~9 s · not moving — is this the right one?",
-            shown("""{"state":"waiting","progress":{"target":"car","distanceMeters":60,"speedMps":0.1,"moving":false,"releaseInSeconds":9,"secondsLeft":71}}""")?.text,
-        )
-        assertEquals(
-            "Holding: the car is turning · 52 s left",
-            shown("""{"state":"waiting","progress":{"target":"car","holding":"turning","secondsLeft":52}}""")?.text,
-        )
-        assertEquals(
-            "Holding: waiting to see the car again · 30 s left",
-            shown("""{"state":"waiting","progress":{"target":"car","holding":"unseen","secondsLeft":30}}""")?.text,
-        )
-        assertEquals(
-            AutodropShown("Lost the car — tap it to pick it up again · 40 s left", true, listOf(AutodropAction.Stop)),
-            shown("""{"state":"waiting","progress":{"target":"car","holding":"searching","searching":true,"secondsLeft":40}}"""),
-        )
-        assertEquals(
-            AutodropShown("Hit the car · 3 left", false, listOf(AutodropAction.DropAgain)),
-            shown("""{"state":"fired","impact":"seen","estimatedMissMeters":0.7,"estimatedOnTarget":true,"progress":{"target":"car"},"payload":{"bays":4,"bay":2,"left":3}}"""),
-        )
-        assertEquals(
-            AutodropShown("Missed by about 3 m · no bottles left", true, emptyList()),
-            shown("""{"state":"fired","impact":"seen","estimatedMissMeters":2.6,"estimatedOnTarget":false,"progress":{"target":"car"},"payload":{"bays":1,"bay":null,"left":0}}"""),
-        )
-        assertEquals(
-            AutodropShown("Couldn't line up a safe drop in 90 s — holding position", true, listOf(AutodropAction.TryAgain, AutodropAction.PickAnother)),
-            shown("""{"state":"gaveUp","reason":"no release window opened within the time limit","timedOut":true}"""),
-        )
-    }
-
-    @Test
-    fun `the auto intercept confirmation names the target and the bay`() {
-        assertEquals(
-            "Chase the car you're tracking (62 m, moving) and drop bay 2 when it lines up · 3 loaded. The drone steers and drops by itself.",
-            autodropConfirm(
-                JSONObject("""{"kind":"value","value":{"label":"car","source":"tracked","speedMps":5.0,"distanceMeters":61.6}}"""),
-                JSONObject("""{"payload":{"bays":4,"bay":2,"left":3}}"""),
+    fun `auto intercept is drawn from the core's view as it comes`() {
+        val shown = autoIntercept(
+            JSONObject(
+                """{"class":"AutoIntercept","visible":true,"tone":"problem","headline":"Couldn't line up a safe drop in 90 s — holding position",
+                   "actions":[{"id":"tryAgain","label":"Try again","path":"vehicle.autoInterceptDrop","args":[],"confirm":{"title":"Auto Intercept","text":"Chase the car"}},
+                              {"id":"pickAnother","label":"Pick another target","path":"vehicle.autoInterceptPickAnother","args":[],"confirm":null}],
+                   "entry":{"id":"stop","label":"Stop Auto Intercept","path":"vehicle.autoInterceptDrop","args":["stop"],"confirm":null},
+                   "hint":null,"picking":false}""",
             ),
-        )
-        assertEquals(
-            "Chase the marked point (120 m) and drop the payload when it lines up · 1 loaded. The drone steers and drops by itself.",
-            autodropConfirm(
-                JSONObject("""{"kind":"value","value":{"label":"marked point","source":"manual","speedMps":0,"distanceMeters":120}}"""),
-                JSONObject("""{"payload":{"bays":1,"bay":0,"left":1}}"""),
-            ),
-        )
-        assertEquals(
-            "Nothing to chase yet — track a target with the camera or mark one on the map.",
-            autodropConfirm(JSONObject("""{"kind":"value","value":null}"""), null),
-        )
+        )!!
+        assertEquals("Couldn't line up a safe drop in 90 s — holding position", shown.headline)
+        assertTrue(shown.problem)
+        assertEquals(listOf("Try again", "Pick another target"), shown.actions.map { it.label })
+        assertEquals(InterceptConfirm("Auto Intercept", "Chase the car"), shown.actions[0].confirm)
+        assertNull(shown.actions[1].confirm)
+        assertEquals(listOf<Any?>("stop"), shown.entry?.args)
+        assertNull(shown.hint)
+        assertNull("another view is not this one", autoIntercept(JSONObject("""{"class":"Detections"}""")))
     }
 }

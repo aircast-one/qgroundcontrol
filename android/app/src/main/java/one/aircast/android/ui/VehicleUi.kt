@@ -90,6 +90,7 @@ import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.qgcDerived
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
@@ -124,86 +125,44 @@ internal fun checklistStateValue(passed: Boolean): Int = if (passed) CHECKLIST_P
 internal fun offerWithdrawn(offerId: String?, offers: Map<String, GuidedOffer>): Boolean =
     offerId != null && offers[offerId]?.shown != true
 
-internal enum class AutodropAction(val label: String) {
-    DropOnIt("Drop on it"),
-    Stop("Stop"),
-    TryAgain("Try again"),
-    PickAnother("Pick another target"),
-    DropAgain("Drop again"),
-}
+internal const val AUTO_INTERCEPT = "view.autoIntercept"
 
-internal data class AutodropShown(val text: String, val problem: Boolean, val actions: List<AutodropAction>)
+internal data class InterceptConfirm(val title: String, val text: String)
 
-internal const val AUTODROP_TARGET = "vehicle.autodropTarget"
-private val FIXED_TARGETS = setOf("marked point", "gimbal point")
+internal data class InterceptAction(val id: String, val label: String, val path: String, val args: List<Any?>, val confirm: InterceptConfirm?)
 
-private fun waitingText(progress: JSONObject?): String {
-    if (progress == null) return "Auto Intercept starting"
-    val target = progress.optText("target").ifBlank { "target" }
-    val left = " · ${progress.optInt("secondsLeft")} s left"
-    return when (progress.optText("holding")) {
-        "climbing" -> "Chasing the $target · climbing to speed"
-        "searching" -> "Lost the $target — tap it to pick it up again$left"
-        "turning" -> "Holding: the $target is turning$left"
-        "junction" -> "Holding: junction ahead$left"
-        "unseen" -> "Holding: waiting to see the $target again$left"
-        "offTarget" -> "Holding: not lined up yet$left"
-        "outsideDropZone" -> "Holding: it would land outside the drop zone$left"
-        else -> listOfNotNull(
-            "Chasing the $target",
-            progress.optDouble("distanceMeters").takeIf { !it.isNaN() }?.let { "%.0f m".format(it) },
-            progress.optDouble("speedMps").takeIf { !it.isNaN() }?.let { "%.0f m/s".format(it) },
-            progress.optDouble("releaseInSeconds").takeIf { !it.isNaN() }?.let { "release in ~%.0f s".format(it.coerceAtLeast(1.0)) },
-            "not moving — is this the right one?".takeIf { target !in FIXED_TARGETS && !progress.isNull("moving") && !progress.optBoolean("moving") },
-        ).joinToString(" · ")
-    }
-}
+internal data class AutoIntercept(
+    val visible: Boolean,
+    val problem: Boolean,
+    val headline: String,
+    val actions: List<InterceptAction>,
+    val entry: InterceptAction?,
+    val hint: String?,
+    val picking: Boolean,
+)
 
-private fun firedShown(json: JSONObject): AutodropShown {
-    val target = json.optJSONObject("progress")?.optText("target")?.ifBlank { null } ?: "target"
-    val left = json.optJSONObject("payload")?.optInt("left", 0) ?: 0
-    val onTarget = json.optBoolean("estimatedOnTarget", false)
-    val outcome = when (json.optText("impact")) {
-        "seen" -> if (onTarget) "Hit the $target" else "Missed by about %.0f m".format(json.optDouble("estimatedMissMeters", 0.0).coerceAtLeast(1.0))
-        "unseen" -> "Dropped — couldn't see where it landed"
-        else -> "Dropped — falling"
-    }
-    val remaining = if (left > 0) "$left left" else "no bottles left"
-    return AutodropShown("$outcome · $remaining", json.optText("impact") == "seen" && !onTarget, listOfNotNull(AutodropAction.DropAgain.takeIf { left > 0 }))
-}
-
-internal fun autodropShown(json: JSONObject?, locked: Boolean = false): AutodropShown? = when (json?.optText("state")) {
-    "waiting" -> AutodropShown(waitingText(json.optJSONObject("progress")), json.optJSONObject("progress")?.optBoolean("searching") == true, listOf(AutodropAction.Stop))
-    "fired" -> firedShown(json)
-    "gaveUp" -> AutodropShown(
-        if (json.optBoolean("timedOut")) "Couldn't line up a safe drop in 90 s — holding position"
-        else "Auto Intercept stopped: ${json.optText("reason")} — holding position",
-        true,
-        listOf(AutodropAction.TryAgain, AutodropAction.PickAnother),
+private fun interceptAction(json: JSONObject?): InterceptAction? = json?.let { action ->
+    val args = action.optJSONArray("args")
+    InterceptAction(
+        id = action.optText("id"),
+        label = action.optText("label"),
+        path = action.optText("path"),
+        args = (0 until (args?.length() ?: 0)).map { args?.opt(it) },
+        confirm = action.optJSONObject("confirm")?.let { InterceptConfirm(it.optText("title"), it.optText("text")) },
     )
-    else -> if (locked) AutodropShown("Locked on", false, listOf(AutodropAction.DropOnIt)) else null
 }
 
-internal fun autodropConfirm(target: JSONObject?, status: JSONObject?): String {
-    val picked = target?.optJSONObject("value") ?: target?.takeIf { it.has("label") }
-    val label = picked?.optText("label")?.ifBlank { null }
-        ?: return "Nothing to chase yet — track a target with the camera or mark one on the map."
-    val what = when (picked.optText("source")) {
-        "tracked" -> "the $label you're tracking"
-        "manual" -> "the marked point"
-        "vehicle" -> label
-        else -> "the point the camera is aimed at"
-    }
-    val moving = picked.optDouble("speedMps", 0.0) >= 1.0
-    val about = listOfNotNull(
-        picked.optDouble("distanceMeters").takeIf { !it.isNaN() }?.let { "%.0f m".format(it) },
-        (if (moving) "moving" else "not moving").takeIf { picked.optText("source") in setOf("tracked", "vehicle") },
-    ).joinToString(", ").let { if (it.isBlank()) "" else " ($it)" }
-    val payload = status?.optJSONObject("payload")
-    val bays = payload?.optInt("bays", 1) ?: 1
-    val drop = if (bays > 1 && payload?.isNull("bay") == false) "bay ${payload.optInt("bay")}" else "the payload"
-    val loaded = payload?.optInt("left", 0)?.let { " · $it loaded" }.orEmpty()
-    return "Chase $what$about and drop $drop when it lines up$loaded. The drone steers and drops by itself."
+internal fun autoIntercept(view: JSONObject?): AutoIntercept? = view?.takeIf { it.optText("class") == "AutoIntercept" }?.let { shown ->
+    val actions = shown.optJSONArray("actions")
+    AutoIntercept(
+        visible = shown.optBoolean("visible"),
+        problem = shown.optText("tone") == "problem",
+        headline = shown.optText("headline"),
+        actions = (0 until (actions?.length() ?: 0)).mapNotNull { interceptAction(actions?.optJSONObject(it)) },
+        entry = interceptAction(shown.optJSONObject("entry")),
+        hint = shown.optText("hint").ifBlank { null },
+        picking = shown.optBoolean("picking"),
+    )
 }
 
 internal data class Instrument(val label: String, val reading: String, val id: String = "", val value: String = reading, val units: String = "", val raw: Double? = null, val defaultIcon: String = "")
@@ -479,12 +438,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val extras = remember(offers) { moreActions(offers) }
     val gripper = remember(extras) { gripperOffers(extras) }
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
-    val autodropJson by qgcPath(AUTODROP_STATUS)
-    val autodropTargetJson by qgcPath(AUTODROP_TARGET)
-    val autodropCameraJson by qgcPath(CAMERA_VIEW)
-    val autodropWaiting = autodropJson?.optText("state") == "waiting"
-    val lockShown = remember(autodropCameraJson) { trackingReading(autodropCameraJson)?.reported == true }
-    val autodropStatus = remember(autodropJson, lockShown) { autodropShown(autodropJson, lockShown) }
+    val intercept by qgcDerived(AUTO_INTERCEPT, ::autoIntercept)
+    val autodropStatus = intercept?.takeIf { it.visible }
     val payload = remember(actionsJson) { payloadOf(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
@@ -521,21 +476,18 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             sent(action)
         }
     }
-    val autoIntercept = GuidedAction(
-        name = "Auto Intercept",
-        confirm = autodropConfirm(autodropTargetJson, autodropJson),
-        destructive = false,
-        answer = { withContext(Dispatchers.Default) { VehicleCommands.startAutoInterceptDropRefusal() } },
-        run = { offMainDetached { VehicleCommands.startAutoInterceptDrop() } },
-    )
-    val onAutodrop: (AutodropAction) -> Unit = { picked ->
-        when (picked) {
-            AutodropAction.Stop -> offMainDetached { VehicleCommands.stopAutoInterceptDrop() }
-            AutodropAction.PickAnother -> offMainDetached {
-                Qgc.invoke(CAMERA_STOP_TRACKING)
-                Qgc.set(CAMERA_TRACKING_ARMED, true)
-            }
-            AutodropAction.DropOnIt, AutodropAction.TryAgain, AutodropAction.DropAgain -> ask(autoIntercept)
+    val onAutodrop: (InterceptAction) -> Unit = { picked ->
+        val args = picked.args.toTypedArray()
+        when (val confirm = picked.confirm) {
+            null -> offMainDetached { Qgc.invoke(picked.path, *args) }
+            else -> ask(
+                GuidedAction(
+                    name = confirm.title,
+                    confirm = confirm.text,
+                    destructive = false,
+                    answer = { withContext(Dispatchers.Default) { Qgc.refusalOf(picked.path, *args) } },
+                ),
+            )
         }
     }
     LaunchedEffect(popupDue) {
@@ -724,9 +676,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         MoreActionsSheet(
             tiles = listOfNotNull(
                 armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } },
-                MoreTile(if (autodropWaiting) "Stop Auto Intercept" else "Auto Intercept", R.drawable.ic_search, true) {
-                    onAutodrop(if (autodropWaiting) AutodropAction.Stop else AutodropAction.DropOnIt)
-                },
+                intercept?.entry?.let { entry -> MoreTile(entry.label, R.drawable.ic_search, true) { onAutodrop(entry) } },
             ) +
                 deckRest.filter { it.id != CHECKLIST && it.id != RELEASE }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
                 listOfNotNull(
@@ -856,10 +806,10 @@ private fun RefusalLine(message: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun AutodropStatusLine(shown: AutodropShown, onAction: (AutodropAction) -> Unit) {
+private fun AutodropStatusLine(shown: AutoIntercept, onAction: (InterceptAction) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            shown.text,
+            shown.headline,
             style = MaterialTheme.typography.bodyMedium,
             color = if (shown.problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f, fill = false),

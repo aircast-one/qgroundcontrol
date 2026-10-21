@@ -26,7 +26,6 @@ private const val VEHICLE_RC_CLEAR = "vehicle.clearRcChannelOverrides"
 private const val VEHICLE_REMOTE_ID_EMERGENCY = "vehicle.remoteIDManager.setEmergency"
 private const val VEHICLE_RESET_MESSAGES = "vehicle.resetAllMessages"
 private const val VEHICLE_CLEAR_MESSAGES = "vehicle.clearMessages"
-private const val VEHICLE_AUTO_INTERCEPT_DROP = "vehicle.autoInterceptDrop"
 
 internal object VehicleCommands {
     fun setArmed(armed: Boolean): Boolean = Qgc.set(VEHICLE_ARMED, armed)
@@ -63,7 +62,4 @@ internal object VehicleCommands {
     fun declareRemoteIdEmergency(declare: Boolean): Boolean = Qgc.invoke(VEHICLE_REMOTE_ID_EMERGENCY, declare)
     fun resetAllMessages(): Boolean = Qgc.invoke(VEHICLE_RESET_MESSAGES)
     fun clearMessages(): Boolean = Qgc.invoke(VEHICLE_CLEAR_MESSAGES)
-    fun startAutoInterceptDrop(): Boolean = Qgc.invoke(VEHICLE_AUTO_INTERCEPT_DROP)
-    fun startAutoInterceptDropRefusal(): String? = Qgc.refusalOf(VEHICLE_AUTO_INTERCEPT_DROP)
-    fun stopAutoInterceptDrop(): Boolean = Qgc.invoke(VEHICLE_AUTO_INTERCEPT_DROP, "stop")
 }

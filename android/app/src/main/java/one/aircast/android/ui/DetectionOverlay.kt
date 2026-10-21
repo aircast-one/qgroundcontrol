@@ -53,7 +53,7 @@ fun DetectionOverlay(modifier: Modifier = Modifier) {
         }
 
         boxes.forEach { box ->
-            val caption = if (box.target) boxCaption(box) else ""
+            val caption = box.caption
             if (caption.isNotBlank()) {
                 Text(
                     text = caption,

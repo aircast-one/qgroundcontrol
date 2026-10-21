@@ -197,11 +197,6 @@ internal fun trackingCanStart(reading: TrackingReading?): Boolean =
 internal fun trackingCanStop(reading: TrackingReading?): Boolean =
     reading != null && reading.requested
 
-internal const val TRACKING_HINT = "Tap or drag around what to track"
-
-internal fun trackingHint(reading: TrackingReading?): String? =
-    TRACKING_HINT.takeIf { trackingCanAim(reading) && reading?.reported != true }
-
 internal fun toggleTracking(reading: TrackingReading) = offMainDetached {
     when {
         reading.requested -> {

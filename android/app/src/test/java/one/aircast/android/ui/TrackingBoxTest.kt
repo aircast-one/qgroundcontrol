@@ -101,11 +101,4 @@ class TrackingBoxTest {
         assertEquals("Track something", trackingToggleLabel(trackingReading(camera(active = false))!!))
         assertEquals("Stop tracking", trackingToggleLabel(trackingReading(camera(active = true))!!))
     }
-
-    @Test
-    fun `the picture asks for a target only while tracking is armed and nothing is locked`() {
-        assertEquals(TRACKING_HINT, trackingHint(trackingReading(camera(active = true, reported = false, rect = "null"))))
-        assertNull("a point lock reports no rectangle but is still a lock", trackingHint(trackingReading(camera(active = true, rect = "null"))))
-        assertNull(trackingHint(trackingReading(camera(active = false, rect = "null"))))
-    }
 }

@@ -23,6 +23,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.qgcDerived
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 
@@ -35,8 +36,7 @@ fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
     val cameraJson by qgcPath(CAMERA_VIEW)
     val videoJson by qgcPath(VIDEO_VIEW)
     val tracking = remember(cameraJson) { trackingReading(cameraJson) }
-    val autodropJson by qgcPath(AUTODROP_STATUS)
-    val running = autodropJson?.optString("state") == "waiting"
+    val hint by qgcDerived(AUTO_INTERCEPT) { autoIntercept(it)?.hint }
     val source = remember(videoJson) { videoReading(videoJson)?.sourceSize }
     val box = tracking?.box
     val density = LocalDensity.current
@@ -72,7 +72,7 @@ fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
             }
         }
         Box(aim.matchParentSize())
-        trackingHint(tracking)?.takeIf { !running }?.let { hint ->
+        hint?.let { hint ->
             Surface(
                 shape = CircleShape,
                 color = Color.Black.copy(alpha = HINT_SCRIM_ALPHA),
