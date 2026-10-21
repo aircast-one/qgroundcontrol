@@ -3335,7 +3335,7 @@ impl Vehicle {
         point: (f64, f64),
         at_ms: u64,
     ) -> Option<crate::dropsim::Point> {
-        self.picture_to_plane_at(point, &|_| 0.0, at_ms)
+        self.picture_to_plane_at(point, 0.0, at_ms)
     }
 
     pub(crate) fn object_at(
@@ -3343,18 +3343,13 @@ impl Vehicle {
         centre: (f64, f64),
         at_ms: u64,
     ) -> Option<crate::dropsim::Point> {
-        let terrain = crate::videoar::terrain_above(self.home.map(|(lat, lon, _)| (lat, lon)));
-        self.picture_to_plane_at(
-            centre,
-            &|at| terrain(at) + crate::gimbalgeo::OBJECT_HALF_HEIGHT_M,
-            at_ms,
-        )
+        self.picture_to_plane_at(centre, crate::gimbalgeo::OBJECT_HALF_HEIGHT_M, at_ms)
     }
 
     fn picture_to_plane_at(
         &self,
         point: (f64, f64),
-        plane: &dyn Fn((f64, f64)) -> f64,
+        plane_m: f64,
         at_ms: u64,
     ) -> Option<crate::dropsim::Point> {
         let pose = self.pose_at(at_ms)?;
@@ -3364,7 +3359,7 @@ impl Vehicle {
             pose.altitude_agl_m,
             pose.aim?,
             point,
-            plane,
+            plane_m,
         )
     }
 

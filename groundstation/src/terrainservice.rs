@@ -212,31 +212,6 @@ pub fn height_now(latitude: f64, longitude: f64) -> Result<Option<f64>, String> 
 }
 
 #[cfg(test)]
-pub(crate) fn level_around(latitude: f64, longitude: f64) {
-    let (x, y) = crate::terrainquery::tile_xy(latitude, longitude);
-    (-3..=3)
-        .flat_map(|dx| (-3..=3).map(move |dy| (x + dx, y + dy)))
-        .for_each(|(x, y)| {
-            let (sw_lon, sw_lat) = (f64::from(x) * 0.01 - 180.0, f64::from(y) * 0.01 - 90.0);
-            stored(
-                (x, y),
-                Ok(Tile {
-                    sw_lat,
-                    sw_lon,
-                    ne_lat: sw_lat + 0.01,
-                    ne_lon: sw_lon + 0.01,
-                    min_elevation: 0,
-                    max_elevation: 0,
-                    avg_elevation: 0.0,
-                    grid_lat: 2,
-                    grid_lon: 2,
-                    elevations: vec![0; 4],
-                }),
-            )
-        });
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 

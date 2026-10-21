@@ -307,12 +307,8 @@ fn shown_lens(backend: &dyn Backend, synthetic: bool) -> Option<(Camera, Option<
 }
 
 fn ground_above_home(backend: &dyn Backend) -> impl Fn((f64, f64)) -> f64 {
-    terrain_above(point(backend, "vehicle.homePosition"))
-}
-
-pub fn terrain_above(home: Option<(f64, f64)>) -> impl Fn((f64, f64)) -> f64 {
-    let home =
-        home.and_then(|(latitude, longitude)| crate::terrainservice::height(latitude, longitude));
+    let home = point(backend, "vehicle.homePosition")
+        .and_then(|(latitude, longitude)| crate::terrainservice::height(latitude, longitude));
     move |(latitude, longitude)| {
         home.zip(crate::terrainservice::height(latitude, longitude))
             .map_or(0.0, |(home, here)| here - home)
