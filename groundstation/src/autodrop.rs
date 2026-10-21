@@ -80,7 +80,7 @@ pub fn label(source: TargetSource, seen_label: Option<&str>) -> String {
     match source {
         TargetSource::Tracked => seen_label
             .map(str::trim)
-            .filter(|seen| !seen.is_empty())
+            .filter(|seen| !seen.is_empty() && !seen.eq_ignore_ascii_case("tracked"))
             .map(
                 |seen| match CAR_LABELS.iter().any(|car| seen.eq_ignore_ascii_case(car)) {
                     true => "car".to_string(),
@@ -1143,6 +1143,11 @@ mod tests {
         assert_eq!(label(TargetSource::Tracked, Some("person")), "person");
         assert_eq!(label(TargetSource::Tracked, None), "target");
         assert_eq!(label(TargetSource::Vehicle(129), None), "vehicle 129");
+        assert_eq!(
+            label(TargetSource::Tracked, Some("tracked")),
+            "target",
+            "the device's visual tracker follows a box, not a class"
+        );
         assert_eq!(label(TargetSource::Manual, Some("car")), "marked point");
     }
 
