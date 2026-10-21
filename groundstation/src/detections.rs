@@ -9,7 +9,10 @@ pub const DEPS: &[&str] = &[
     "video.cameraUrls",
     "settings.appSettings.detectionsHttpPort.rawValue",
     "video.activeVideoSource",
+    LATENCY_SETTING,
 ];
+const LATENCY_SETTING: &str = "settings.appSettings.detectionsLatencyMs.rawValue";
+pub const DEFAULT_LATENCY_MS: u64 = 150;
 pub const STALE_MS: u64 = 1000;
 const RETRY: Duration = Duration::from_secs(1);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -50,6 +53,7 @@ pub struct Frame {
     pub boxes: Vec<Value>,
     pub track: Value,
     pub received_ms: u64,
+    pub captured_ms: u64,
     pub target_ground: Option<crate::dropsim::Point>,
 }
 
@@ -76,16 +80,18 @@ pub fn grounded(
 }
 
 fn grounded_now(frame: Frame) -> Frame {
+    let captured_ms = frame.captured_ms;
     grounded(frame, |foot| {
         crate::hub::lock()
             .active()
-            .and_then(|vehicle| vehicle.picture_to_ground_now(foot))
+            .and_then(|vehicle| vehicle.picture_to_ground_at(foot, captured_ms))
     })
 }
 
 #[derive(Debug, Default)]
 pub struct Feed {
     source: Option<Source>,
+    latency_ms: Option<u64>,
     generation: u64,
     frame: Option<Frame>,
     error: Option<String>,
@@ -115,7 +121,12 @@ pub fn parse(url: &str, port: Option<u16>) -> Option<Source> {
     })
 }
 
-pub fn frame_from(payload: &Value, received_ms: u64) -> Frame {
+pub fn frame_from(payload: &Value, received_ms: u64, assumed_latency_ms: u64) -> Frame {
+    let latency_ms = payload
+        .get("ageMs")
+        .and_then(Value::as_f64)
+        .filter(|age| age.is_finite() && *age >= 0.0)
+        .map_or(assumed_latency_ms, |age| age as u64);
     let boxes = payload
         .get("boxes")
         .and_then(Value::as_array)
@@ -140,6 +151,7 @@ pub fn frame_from(payload: &Value, received_ms: u64) -> Frame {
         boxes,
         track: payload.get("track").cloned().unwrap_or(Value::Null),
         received_ms,
+        captured_ms: received_ms.saturating_sub(latency_ms),
         target_ground: None,
     }
 }
@@ -150,6 +162,10 @@ pub fn event_payload(line: &str) -> Option<Value> {
 }
 
 impl Feed {
+    pub fn latency(&self) -> u64 {
+        self.latency_ms.unwrap_or(DEFAULT_LATENCY_MS)
+    }
+
     pub fn retarget(&mut self, source: Option<Source>) -> bool {
         if self.source == source {
             return false;
@@ -201,7 +217,7 @@ impl Feed {
         self.frame
             .as_ref()
             .filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)
-            .and_then(|f| f.target_ground.map(|ground| (ground, f.received_ms)))
+            .and_then(|f| f.target_ground.map(|ground| (ground, f.captured_ms)))
     }
 
     pub fn tracker(&self, now_ms: u64) -> Option<(Source, Option<Value>)> {
@@ -254,13 +270,13 @@ fn follow(source: Source, generation: u64) {
         while lock().generation == generation {
             let followed =
                 crate::http::stream_lines(&source.stream_url(), MAX_EVENT_BYTES, |line| {
-                    if let Some(payload) = event_payload(line)
-                        && lock().receive(
-                            generation,
-                            grounded_now(frame_from(&payload, crate::hub::now_ms())),
-                        )
-                    {
-                        changed();
+                    if let Some(payload) = event_payload(line) {
+                        let latency_ms = lock().latency();
+                        let frame =
+                            grounded_now(frame_from(&payload, crate::hub::now_ms(), latency_ms));
+                        if lock().receive(generation, frame) {
+                            changed();
+                        }
                     }
                     lock().generation == generation
                 })
@@ -294,7 +310,9 @@ fn follow(source: Source, generation: u64) {
                     .take_while(|_| lock().generation == generation)
                     .filter_map(|line| event_payload(&line))
                     .map(|payload| {
-                        let frame = grounded_now(frame_from(&payload, crate::hub::now_ms()));
+                        let latency_ms = lock().latency();
+                        let frame =
+                            grounded_now(frame_from(&payload, crate::hub::now_ms(), latency_ms));
                         if lock().receive(generation, frame) {
                             changed();
                         }
@@ -314,7 +332,7 @@ fn follow(source: Source, generation: u64) {
     }
 }
 
-pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
+pub fn wanted_source(backend: &dyn Backend) -> Option<Source> {
     let port = crate::read::value_number(&backend.value(DEPS[1]))
         .filter(|p| *p > 0.0 && *p <= 65535.0)
         .map(|p| p as u16);
@@ -329,8 +347,16 @@ pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let source = parse(&url, port).filter(|_| follows());
+    parse(&url, port).filter(|_| follows())
+}
+
+pub fn maintain(backend: &dyn Backend) {
+    let source = wanted_source(backend);
+    let latency_ms = crate::read::value_number(&backend.value(LATENCY_SETTING))
+        .filter(|ms| ms.is_finite() && *ms >= 0.0)
+        .map(|ms| ms as u64);
     let mut feed = lock();
+    feed.latency_ms = latency_ms;
     if feed.retarget(source.clone())
         && let Some(source) = source
     {
@@ -340,7 +366,11 @@ pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .expect("detections thread");
     }
-    feed.snapshot(crate::hub::now_ms())
+}
+
+pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    maintain(backend);
+    lock().snapshot(crate::hub::now_ms())
 }
 
 #[cfg(test)]
@@ -355,6 +385,51 @@ pub(crate) fn show(frame: Option<Frame>) {
 mod tests {
     use super::*;
 
+    struct Cameras {
+        url: &'static str,
+        port: f64,
+    }
+
+    impl Backend for Cameras {
+        fn get(&self, path: &str) -> String {
+            match path {
+                p if p == DEPS[1] => json!({ "value": self.port }).to_string(),
+                _ => "{}".to_string(),
+            }
+        }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String {
+            json!({ "activeVideoSource": 1, "cameraUrls": ["rtsp://10.0.0.1:8554/a", self.url] })
+                .to_string()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_feed_follows_the_active_camera_s_device_without_any_screen_asking() {
+        assert_eq!(
+            wanted_source(&Cameras {
+                url: "rtsp://192.168.1.5:8554/cam1",
+                port: 8099.0
+            }),
+            Some(Source {
+                host: "192.168.1.5".to_string(),
+                camera: "cam1".to_string(),
+                port: Some(8099),
+            })
+        );
+        assert_eq!(
+            wanted_source(&Cameras { url: "", port: 0.0 }),
+            None,
+            "no camera URL, no feed"
+        );
+    }
+
     #[test]
     fn the_target_box_is_grounded_at_its_bottom_centre_while_its_frame_is_fresh() {
         let spot = crate::dropsim::Point {
@@ -367,6 +442,7 @@ mod tests {
                 { "x": 0.4, "y": 0.3, "w": 0.2, "h": 0.1, "label": "car", "target": true },
             ] }),
             5_000,
+            0,
         );
         let grounded = grounded(frame, |(x, y)| {
             ((x - 0.5).abs() < 1e-9 && (y - 0.4).abs() < 1e-9).then_some(spot)
@@ -387,6 +463,7 @@ mod tests {
         let untargeted = frame_from(
             &json!({ "boxes": [{ "x": 0.1, "y": 0.1, "w": 0.1, "h": 0.1 }] }),
             6_000,
+            0,
         );
         assert_eq!(
             untargeted.target_foot(),
@@ -451,7 +528,7 @@ mod tests {
             r#"data: {"boxes":[{"label":"car","x":0.1,"y":0.2,"w":0.3,"h":0.4}],"ageMs":0}"#,
         )
         .unwrap();
-        assert!(feed.receive(generation, frame_from(&unscored, 1_000)));
+        assert!(feed.receive(generation, frame_from(&unscored, 1_000, 0)));
         assert_eq!(
             feed.snapshot(1_100)["boxes"][0]["confidence"],
             Value::Null,
@@ -475,7 +552,7 @@ mod tests {
         let generation = feed.generation;
         let payload = event_payload(r#"data: {"boxes":[{"label":"car","conf":0.91,"x":0.1,"y":0.2,"w":0.3,"h":0.4,"target":true}],"ageMs":0}"#).unwrap();
         assert!(event_payload(": keepalive").is_none());
-        assert!(feed.receive(generation, frame_from(&payload, 5_000)));
+        assert!(feed.receive(generation, frame_from(&payload, 5_000, 0)));
         let fresh = feed.snapshot(5_500);
         assert_eq!(fresh["stale"], false);
         assert_eq!(fresh["ageMs"], 500);
@@ -496,7 +573,7 @@ mod tests {
         );
         assert!(!feed.went_stale(6_100), "and only the first");
         assert!(
-            !feed.receive(generation - 1, frame_from(&payload, 7_000)),
+            !feed.receive(generation - 1, frame_from(&payload, 7_000, 0)),
             "a frame from a superseded stream is dropped"
         );
         assert!(feed.fail(generation, "connection refused".into()));

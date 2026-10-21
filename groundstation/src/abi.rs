@@ -462,6 +462,12 @@ pub(crate) fn pump_once() {
                 &crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)),
                 crate::hub::now_ms(),
             );
+            crate::detections::maintain(&crate::settingsstore::Owner(
+                crate::vehiclefacade::Facade(QtBackend),
+            ));
+            crate::gimbalgeo::set_lens(crate::gimbalgeo::lens_of(&crate::settingsstore::Owner(
+                crate::vehiclefacade::Facade(QtBackend),
+            )));
             let gimbals_live = crate::hub::lock().any_gimbals();
             if crate::gimbal::announce_due(crate::hub::now_ms(), gimbals_live) {
                 CORE.on_event(crate::gimbal::GIMBAL_CHANGED, "null")

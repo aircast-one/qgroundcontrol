@@ -299,6 +299,7 @@ const HIDDEN: &[&str] = &[
     "clearSettingsNextBoot",
     "coreLinks",
     "detectionsHttpPort",
+    "detectionsLatencyMs",
     "favoriteParameters",
     "activeVideoSource",
     "videoSource",

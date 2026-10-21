@@ -1,4 +1,5 @@
 import argparse
+import collections
 import json
 import math
 import time
@@ -40,6 +41,10 @@ def range_m(drone, altitude, car):
     return math.sqrt(north**2 + east**2 + altitude**2)
 
 
+def in_picture(picture):
+    return bool(picture) and 0 <= picture["x"] <= 1 and 0 <= picture["y"] <= 1
+
+
 def car_box(picture, metres):
     w = min(max(CAR_LENGTH_M / metres * FOCAL, 0.02), 0.5)
     h = w * ASPECT * 0.6
@@ -57,10 +62,18 @@ def car_box(picture, metres):
 def sim_boxes(base, fix):
     cars = read(base, "view.syntheticOverlays").get("cars") or []
     drone, altitude = fix
-    return [car_box(car["picture"], range_m(drone, altitude, car)) for car in cars if car.get("picture")][:1]
+    return [car_box(car["picture"], range_m(drone, altitude, car)) for car in cars if in_picture(car.get("picture"))][:1]
 
 
-def frames(sim, period):
+def delayed(samples, latency_s):
+    waiting = collections.deque()
+    for sampled_at, boxes in samples:
+        waiting.append((sampled_at, boxes))
+        while waiting and waiting[0][0] <= sampled_at - latency_s:
+            yield waiting.popleft()
+
+
+def sampled(sim, period):
     started = time.time()
     fix = drone_fix(sim) if sim else None
     refreshed = started
@@ -72,11 +85,18 @@ def frames(sim, period):
             boxes = sim_boxes(sim, fix) if sim else demo_boxes((now - started) * 0.6)
         except OSError:
             boxes = []
-        yield {"ageMs": 0, "boxes": boxes}
+        yield time.time(), boxes
         time.sleep(period)
 
 
-def serving(sim, period):
+def frames(sim, period, latency_ms=0):
+    return (
+        {"ageMs": round((time.time() - sampled_at) * 1000), "boxes": boxes}
+        for sampled_at, boxes in delayed(sampled(sim, period), latency_ms / 1000)
+    )
+
+
+def serving(sim, period, latency_ms):
     class Feed(BaseHTTPRequestHandler):
         def do_GET(self):
             if "/detections/stream" not in self.path:
@@ -89,7 +109,7 @@ def serving(sim, period):
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             try:
-                for payload in frames(sim, period):
+                for payload in frames(sim, period, latency_ms):
                     self.wfile.write(b"data: " + json.dumps(payload).encode() + b"\n\n")
                     self.wfile.flush()
             except OSError:
@@ -105,8 +125,9 @@ def main():
     parser = argparse.ArgumentParser(description="SSE detection feed: demo boxes, or a detector that sees the simulated car")
     parser.add_argument("--port", type=int, default=8099)
     parser.add_argument("--sim", metavar="DEBUG_API", help="e.g. http://127.0.0.1:8777 - box the simulated car where the phone's camera sees it")
+    parser.add_argument("--latency-ms", type=int, default=0, help="hold each frame at least this long before sending it, and report its true age in ageMs, like a detector that takes time to see")
     args = parser.parse_args()
-    ThreadingHTTPServer(("0.0.0.0", args.port), serving(args.sim, 0.1 if args.sim else 0.2)).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", args.port), serving(args.sim, 0.1 if args.sim else 0.2, args.latency_ms)).serve_forever()
 
 
 if __name__ == "__main__":

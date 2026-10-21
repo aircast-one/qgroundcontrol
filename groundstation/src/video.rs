@@ -52,7 +52,7 @@ pub fn stand_in_text(
     }
 }
 
-pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasVideoStream,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint,streamLabels,currentStream";
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasVideoStream,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,trackingImagePoint,trackingImageRadius,supportsTrackingRect,supportsTrackingPoint,streamLabels,currentStream";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.cameraManager.cameraLabels",
@@ -79,6 +79,8 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.trackingEnabled",
     "vehicle.cameraManager.currentCameraInstance.trackingImageIsActive",
     "vehicle.cameraManager.currentCameraInstance.trackingImageRect",
+    "vehicle.cameraManager.currentCameraInstance.trackingImagePoint",
+    "vehicle.cameraManager.currentCameraInstance.trackingImageRadius",
     "vehicle.cameraManager.currentCameraInstance.thermalMode",
     "vehicle.cameraManager.currentCameraInstance.streamLabels",
     "vehicle.cameraManager.currentCameraInstance.currentStream",
@@ -88,6 +90,19 @@ pub const CAMERA_DEPS: &[&str] = &[
 ];
 
 const UNDEFINED_MODE: i64 = -1;
+const POINT_BOX_RADIUS: f64 = 0.04;
+
+fn point_box(camera: &Value) -> Option<Value> {
+    let point = camera.get("trackingImagePoint")?;
+    let (x, y) = (point.get("x")?.as_f64()?, point.get("y")?.as_f64()?);
+    let radius = camera
+        .get("trackingImageRadius")
+        .and_then(Value::as_f64)
+        .filter(|r| *r > 0.0)
+        .unwrap_or(POINT_BOX_RADIUS);
+    let tall = radius * crate::gimbalgeo::IMAGE_ASPECT;
+    Some(json!({ "x": x - radius, "y": y - tall, "width": 2.0 * radius, "height": 2.0 * tall }))
+}
 const PHOTO_CAPTURE_IDLE: i64 = 0;
 const PHOTO_CAPTURE_IN_PROGRESS: i64 = 1;
 const PHOTO_CAPTURE_INTERVAL_IDLE: i64 = 2;
@@ -512,7 +527,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "requested": flag(&camera, "trackingEnabled"),
             "reported": flag(&camera, "trackingImageIsActive"),
             "shapes": tracking_shapes(&camera),
-            "rect": flag(&camera, "trackingImageIsActive").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object())).flatten(),
+            "rect": flag(&camera, "trackingImageIsActive").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object()).or_else(|| point_box(&camera))).flatten(),
         }))),
         "hasZoom": flag(&camera, "hasZoom"),
         "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(0.0),
@@ -844,6 +859,25 @@ mod tests {
         assert_eq!(
             recording[0]["offer"], "ready",
             "ResetSettings is gated on nothing in either the QML or the protocol, so a recording camera can still be reset"
+        );
+    }
+
+    #[test]
+    fn a_point_lock_is_drawn_as_a_box_around_the_point() {
+        let tracked = camera_view(
+            &Fake::new(
+                json!({ "kind": "object" }),
+                json!({ "kind": "object", "modelName": "MOCKCAM", "hasTracking": true, "supportsTrackingPoint": true, "trackingEnabled": true, "trackingImageIsActive": true, "trackingImageRect": null, "trackingImagePoint": { "x": 0.5, "y": 0.4 }, "trackingImageRadius": 0.05 }),
+            ),
+            &[],
+        );
+        let rect = &tracked["tracking"]["rect"];
+        let number = |key: &str| rect[key].as_f64().unwrap();
+        assert!(
+            (number("x") + number("width") / 2.0 - 0.5).abs() < 1e-9
+                && (number("y") + number("height") / 2.0 - 0.4).abs() < 1e-9
+                && (number("width") - 0.1).abs() < 1e-9,
+            "a tap lock reports a point and radius, not a rectangle, and still needs a box on the picture: {rect}"
         );
     }
 

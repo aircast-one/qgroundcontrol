@@ -244,6 +244,7 @@ impl Where {
 
 fn lock_on(at: &Where, picked: (f32, f32)) -> Option<Locked> {
     let ground = crate::gimbalgeo::picture_to_ground(
+        crate::gimbalgeo::lens(),
         at.point(),
         at.above_home_m,
         at.aim,
@@ -275,6 +276,7 @@ impl Tracking {
     fn following(&self, at: &Where) -> Option<(Tracking, crate::dropsim::Target)> {
         let target = locked_target(self.locked?)?;
         let (x, y) = crate::gimbalgeo::ground_to_picture(
+            crate::gimbalgeo::lens(),
             at.point(),
             at.above_home_m,
             at.aim,
@@ -301,6 +303,14 @@ fn chars<const N: usize>(text: &str) -> mavlink::types::CharArray<N> {
 }
 
 impl Cameras {
+    pub fn tracked_point(&self) -> Option<crate::dropsim::Point> {
+        self.cameras
+            .iter()
+            .find_map(|camera| camera.tracking.locked)
+            .and_then(locked_target)
+            .map(|target| target.position)
+    }
+
     pub fn new(video: Video) -> Cameras {
         let full = CameraCapFlags::CAMERA_CAP_FLAGS_CAPTURE_VIDEO
             | CameraCapFlags::CAMERA_CAP_FLAGS_CAPTURE_IMAGE
@@ -1009,6 +1019,11 @@ mod tests {
             (geo.lat, geo.vel_n),
             ((north(38.0) * 1e7) as i32, 5.0),
             "the car 2 m from the picked spot, not the one 60 m away nor the drone flying over it"
+        );
+        assert_eq!(
+            set.tracked_point(),
+            Some(fix(38.0, true).position),
+            "what the camera is locked on, for its gimbal to follow"
         );
     }
 

@@ -48,24 +48,41 @@ static FIXES: Mutex<Vec<Fix>> = Mutex::new(Vec::new());
 #[cfg(test)]
 pub(crate) static TEST_FIXES: Mutex<()> = Mutex::new(());
 
-pub fn windowed(fixes: &[Fix], current: Fix) -> (Target, Vec<Fix>) {
-    let kept: Vec<Fix> = fixes
-        .iter()
-        .copied()
-        .filter(|f| f.at_ms < current.at_ms && current.at_ms - f.at_ms <= VELOCITY_WINDOW_MS)
-        .chain(std::iter::once(current))
-        .collect();
-    let velocity = kept
+pub const MAX_JUMP_M: f64 = 20.0;
+
+fn window_target(fixes: &[Fix], current: Fix) -> Target {
+    let velocity = fixes
         .first()
         .and_then(|oldest| velocity_from(*oldest, current))
         .unwrap_or_default();
-    (
-        Target {
-            position: current.position,
-            velocity,
-        },
-        kept,
-    )
+    Target {
+        position: current.position,
+        velocity,
+    }
+}
+
+pub fn windowed(fixes: &[Fix], current: Fix) -> (Target, Vec<Fix>) {
+    let recent: Vec<Fix> = fixes
+        .iter()
+        .copied()
+        .filter(|f| f.at_ms < current.at_ms && current.at_ms - f.at_ms <= VELOCITY_WINDOW_MS)
+        .collect();
+    let predicted = recent
+        .last()
+        .filter(|_| recent.len() >= 2)
+        .map(|last| carried(window_target(&recent, *last), last.at_ms, current.at_ms));
+    match predicted.filter(|expected| {
+        crate::track::distance_m(
+            (expected.position.lat, expected.position.lon),
+            (current.position.lat, current.position.lon),
+        ) > MAX_JUMP_M
+    }) {
+        Some(expected) => (expected, recent),
+        None => {
+            let kept: Vec<Fix> = recent.into_iter().chain(std::iter::once(current)).collect();
+            (window_target(&kept, current), kept)
+        }
+    }
 }
 
 pub fn track(
@@ -88,7 +105,58 @@ pub fn track_point(position: Point, at_ms: u64) -> Target {
 
 pub const IMAGE_ASPECT: f64 = 16.0 / 9.0;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Lens {
+    pub horizontal_deg: f64,
+    pub vertical_deg: f64,
+}
+
+static LENS: Mutex<Option<Lens>> = Mutex::new(None);
+
+fn usable(degrees: Option<f64>) -> Option<f64> {
+    degrees.filter(|d| d.is_finite() && *d > 0.0 && *d < 180.0)
+}
+
+fn vertical_for(horizontal_deg: f64) -> f64 {
+    2.0 * ((horizontal_deg / 2.0).to_radians().tan() / IMAGE_ASPECT)
+        .atan()
+        .to_degrees()
+}
+
+pub fn lens_from(horizontal: Option<f64>, vertical: Option<f64>) -> Lens {
+    let horizontal_deg = usable(horizontal).unwrap_or(crate::synthview::CAMERA_FOV_DEG);
+    Lens {
+        horizontal_deg,
+        vertical_deg: usable(vertical).unwrap_or_else(|| vertical_for(horizontal_deg)),
+    }
+}
+
+pub fn lens_of(backend: &dyn Backend) -> Lens {
+    match crate::cameras::synthetic_picked(backend) {
+        true => lens_from(Some(crate::synthview::CAMERA_FOV_DEG), None),
+        false => {
+            let (horizontal, vertical, _) = crate::lens::field_of_view(backend);
+            lens_from(horizontal, vertical)
+        }
+    }
+}
+
+pub fn set_lens(lens: Lens) {
+    *LENS.lock().unwrap_or_else(PoisonError::into_inner) = Some(lens);
+}
+
+pub fn lens() -> Lens {
+    LENS.lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .unwrap_or_else(|| lens_from(None, None))
+}
+
+fn half_tan(degrees: f64) -> f64 {
+    (degrees / 2.0).to_radians().tan()
+}
+
 pub fn picture_to_ground(
+    lens: Lens,
     vehicle: Point,
     altitude_agl_m: f64,
     (yaw_deg, pitch_deg): (f64, f64),
@@ -98,12 +166,12 @@ pub fn picture_to_ground(
         heading: yaw_deg,
         pitch: pitch_deg,
         roll: 0.0,
-        fov: crate::synthview::CAMERA_FOV_DEG,
+        fov: lens.horizontal_deg,
     };
     crate::videoar::ground_point(
         (vehicle.lat, vehicle.lon),
         altitude_agl_m,
-        (camera, None),
+        (camera, Some(lens.vertical_deg)),
         IMAGE_ASPECT,
         (2.0 * x - 1.0, 1.0 - 2.0 * y),
         &|_| 0.0,
@@ -112,6 +180,7 @@ pub fn picture_to_ground(
 }
 
 pub fn ground_to_picture(
+    lens: Lens,
     vehicle: Point,
     altitude_agl_m: f64,
     (yaw_deg, pitch_deg): (f64, f64),
@@ -121,17 +190,30 @@ pub fn ground_to_picture(
         heading: yaw_deg,
         pitch: pitch_deg,
         roll: 0.0,
-        fov: crate::synthview::CAMERA_FOV_DEG,
+        fov: lens.horizontal_deg,
     };
     let (north, east, _) = geo_to_ned(target.lat, target.lon, 0.0, (vehicle.lat, vehicle.lon, 0.0));
     let (across, above, ahead) = crate::videoar::in_camera(camera, (east, north, -altitude_agl_m));
-    let scale = 0.5 / (crate::synthview::CAMERA_FOV_DEG / 2.0).to_radians().tan();
     (ahead > 0.0).then(|| {
         (
-            0.5 + across / ahead * scale,
-            0.5 - above / ahead * scale * IMAGE_ASPECT,
+            0.5 + across / ahead * 0.5 / half_tan(lens.horizontal_deg),
+            0.5 - above / ahead * 0.5 / half_tan(lens.vertical_deg),
         )
     })
+}
+
+pub fn carried(target: Target, from_ms: u64, to_ms: u64) -> Target {
+    let seconds = to_ms.saturating_sub(from_ms) as f64 / 1000.0;
+    let (lat, lon, _) = ned_to_geo(
+        target.velocity.north_mps * seconds,
+        target.velocity.east_mps * seconds,
+        0.0,
+        (target.position.lat, target.position.lon, 0.0),
+    );
+    Target {
+        position: Point { lat, lon },
+        ..target
+    }
 }
 
 fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
@@ -204,12 +286,119 @@ mod tests {
             lon: 8.0,
         };
         let aim = (30.0, -50.0);
-        let ground = picture_to_ground(drone, 40.0, aim, (0.3, 0.7)).expect("below the horizon");
-        let (x, y) = ground_to_picture(drone, 40.0, aim, ground).expect("in front of the camera");
+        [lens_from(None, None), lens_from(Some(40.0), Some(30.0))]
+            .iter()
+            .for_each(|lens| {
+                let ground = picture_to_ground(*lens, drone, 40.0, aim, (0.3, 0.7))
+                    .expect("below the horizon");
+                let (x, y) = ground_to_picture(*lens, drone, 40.0, aim, ground)
+                    .expect("in front of the camera");
+                assert!(
+                    (x - 0.3).abs() < 0.01 && (y - 0.7).abs() < 0.01,
+                    "round trip lands back on the picked point through {lens:?}, got ({x}, {y})"
+                );
+            });
+    }
+
+    #[test]
+    fn a_narrower_lens_puts_the_bottom_edge_of_the_picture_nearer_straight_ahead() {
+        let drone = Point {
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let ahead_m = |lens: Lens| {
+            let ground = picture_to_ground(lens, drone, 40.0, (0.0, -45.0), (0.5, 1.0)).unwrap();
+            geo_to_ned(ground.lat, ground.lon, 0.0, (drone.lat, drone.lon, 0.0)).0
+        };
+        let expected = |vertical: f64| 40.0 / (45.0 + vertical / 2.0).to_radians().tan();
+        assert!(close(
+            ahead_m(lens_from(Some(60.0), Some(20.0))),
+            expected(20.0),
+            0.01
+        ));
+        assert!(close(
+            ahead_m(lens_from(Some(60.0), Some(50.0))),
+            expected(50.0),
+            0.01
+        ));
         assert!(
-            (x - 0.3).abs() < 0.01 && (y - 0.7).abs() < 0.01,
-            "round trip lands back on the picked point, got ({x}, {y})"
+            close(
+                lens_from(None, None).horizontal_deg,
+                crate::synthview::CAMERA_FOV_DEG,
+                1e-9
+            ) && close(
+                lens_from(Some(0.0), Some(-5.0)).vertical_deg,
+                lens_from(None, None).vertical_deg,
+                1e-9
+            ),
+            "nothing usable known falls back to the synthetic camera's lens"
         );
+    }
+
+    #[test]
+    fn a_fix_far_from_where_the_track_is_heading_is_held_off_until_the_track_goes_quiet() {
+        let north = |metres: f64| Point {
+            lat: 47.0 + (metres / 6_371_000.0).to_degrees(),
+            lon: 8.0,
+        };
+        let steady: Vec<Fix> = (0_u32..5)
+            .map(|step| Fix {
+                position: north(f64::from(step) * 0.5),
+                at_ms: 1_000 + u64::from(step) * 100,
+            })
+            .collect();
+        let (target, kept) = windowed(
+            &steady,
+            Fix {
+                position: north(-282.0),
+                at_ms: 1_500,
+            },
+        );
+        let (ahead, _, _) = geo_to_ned(
+            target.position.lat,
+            target.position.lon,
+            0.0,
+            (47.0, 8.0, 0.0),
+        );
+        assert!(
+            (ahead - 2.5).abs() < 0.1 && kept == steady,
+            "a 284 m jump in a tenth of a second is a bad fix: the track carries on at 5 m/s instead, got {ahead}"
+        );
+        let (later, _) = windowed(
+            &kept,
+            Fix {
+                position: north(-282.0),
+                at_ms: 2_500,
+            },
+        );
+        assert_eq!(
+            later.position,
+            north(-282.0),
+            "once the old fixes age out of the window the new position is taken"
+        );
+    }
+
+    #[test]
+    fn a_target_is_carried_forward_along_its_velocity() {
+        let start = Target {
+            position: Point {
+                lat: 47.0,
+                lon: 8.0,
+            },
+            velocity: Velocity {
+                north_mps: 5.0,
+                east_mps: 0.0,
+            },
+        };
+        let later = carried(start, 1_000, 1_400);
+        let (north, east, _) = geo_to_ned(
+            later.position.lat,
+            later.position.lon,
+            0.0,
+            (47.0, 8.0, 0.0),
+        );
+        assert!(close(north, 2.0, 1e-6) && close(east, 0.0, 1e-6));
+        assert_eq!(later.velocity, start.velocity);
     }
 
     fn close(a: f64, b: f64, tol: f64) -> bool {

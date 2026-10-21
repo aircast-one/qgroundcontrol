@@ -2596,6 +2596,20 @@ impl Sim {
         self.watch();
         let slow = self.ticks.is_multiple_of(TICKS_PER_SECOND);
         self.ticks += 1;
+        if let Some(target) = self
+            .cameras
+            .as_ref()
+            .and_then(|cameras| cameras.tracked_point())
+        {
+            let (heading, pitch) = crate::synthview::aim_at(
+                (self.lat, self.lon, self.alt),
+                (target.lat, target.lon, 0.0),
+            );
+            let body_yaw = heading - self.heading;
+            if let Some(gimbal) = self.gimbal.as_mut() {
+                gimbal.point(pitch as f32, body_yaw as f32);
+            }
+        }
         let here = Where {
             lat: e7(self.lat),
             lon: e7(self.lon),
@@ -2613,7 +2627,15 @@ impl Sim {
             self.global_position(elapsed_ms),
             self.attitude(elapsed_ms),
             self.vfr_hud(),
-        ];
+        ]
+        .into_iter()
+        .chain(
+            self.gimbal
+                .as_mut()
+                .map(|gimbal| gimbal.tick(elapsed_ms))
+                .unwrap_or_default(),
+        )
+        .collect::<Vec<_>>();
         let cameras = self
             .cameras
             .as_mut()
@@ -2668,11 +2690,6 @@ impl Sim {
             })
             .chain([esc_info(elapsed_ms), esc_status(elapsed_ms), radio_status()])
             .chain(reminder);
-        let gimbal = self
-            .gimbal
-            .as_mut()
-            .map(|gimbal| gimbal.once_a_second(elapsed_ms))
-            .unwrap_or_default();
         let cameras = self
             .cameras
             .as_ref()
@@ -2691,11 +2708,7 @@ impl Sim {
             .vehicle
             .apm()
             .then(|| self.servo_output_raw(elapsed_ms));
-        core.chain(gimbal)
-            .chain(cameras)
-            .chain(rest)
-            .chain(servos)
-            .collect()
+        core.chain(cameras).chain(rest).chain(servos).collect()
     }
 
     fn heartbeat(&self) -> Out {

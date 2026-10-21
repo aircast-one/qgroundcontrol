@@ -12,11 +12,12 @@ class TrackingBoxTest {
     private fun camera(
         supported: Boolean = true,
         active: Boolean = true,
+        reported: Boolean = active,
         rect: String = """{"x":0.35,"y":0.30,"width":0.30,"height":0.40}""",
         shapes: String = """["rectangle","point"]""",
     ) = JSONObject(
         """{"kind":"object","class":"Camera","present":true,
-            "tracking":{"supported":$supported,"requested":$active,"reported":$active,
+            "tracking":{"supported":$supported,"requested":$active,"reported":$reported,
                         "shapes":$shapes,"rect":$rect}}""",
     )
 
@@ -99,5 +100,12 @@ class TrackingBoxTest {
     fun `the toggle says what the next tap does`() {
         assertEquals("Track something", trackingToggleLabel(trackingReading(camera(active = false))!!))
         assertEquals("Stop tracking", trackingToggleLabel(trackingReading(camera(active = true))!!))
+    }
+
+    @Test
+    fun `the picture asks for a target only while tracking is armed and nothing is locked`() {
+        assertEquals(TRACKING_HINT, trackingHint(trackingReading(camera(active = true, reported = false, rect = "null"))))
+        assertNull("a point lock reports no rectangle but is still a lock", trackingHint(trackingReading(camera(active = true, rect = "null"))))
+        assertNull(trackingHint(trackingReading(camera(active = false, rect = "null"))))
     }
 }

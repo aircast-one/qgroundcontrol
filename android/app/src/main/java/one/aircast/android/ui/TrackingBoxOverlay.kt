@@ -5,6 +5,13 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -20,6 +27,8 @@ import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 
 private val TRACK_COLOUR = Color(0xFF00E5FF)
+private const val HINT_SCRIM_ALPHA = 0.55f
+private val HINT_TOP = 56.dp
 
 @Composable
 fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
@@ -61,6 +70,14 @@ fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
             }
         }
         Box(aim.matchParentSize())
+        trackingHint(tracking)?.let { hint ->
+            Surface(
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = HINT_SCRIM_ALPHA),
+                contentColor = Color.White,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = HINT_TOP),
+            ) { Text(hint, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge) }
+        }
         if (box == null) {
             return@BoxWithConstraints
         }

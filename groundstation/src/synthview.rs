@@ -556,6 +556,7 @@ fn cars(backend: &dyn Backend) -> Value {
         .map(|(_, car)| {
             let picture = seen.and_then(|(((lat, lon), altitude), aim)| {
                 crate::gimbalgeo::ground_to_picture(
+                    crate::gimbalgeo::lens(),
                     crate::dropsim::Point { lat, lon },
                     altitude,
                     aim,

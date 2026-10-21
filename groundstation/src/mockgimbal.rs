@@ -4,6 +4,7 @@ use crate::mocklink::{AUTOPILOT, Out};
 
 pub const GIMBAL: u8 = 154;
 const STATUS_DEFAULT_INTERVAL_US: i64 = 1_000_000;
+const ATTITUDE_DEFAULT_INTERVAL_US: i64 = 100_000;
 const MANAGER_INFORMATION: u32 = 280;
 const MANAGER_STATUS: u32 = 281;
 const DEVICE_ATTITUDE_STATUS: u32 = 285;
@@ -62,7 +63,12 @@ impl Gimbal {
         (f64::from(self.yaw), f64::from(self.pitch))
     }
 
-    pub fn once_a_second(&mut self, now_ms: u64) -> Vec<Out> {
+    pub fn point(&mut self, pitch: f32, yaw: f32) {
+        self.pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
+        self.yaw = ((yaw + 540.0).rem_euclid(360.0) - 180.0).clamp(-YAW_LIMIT, YAW_LIMIT);
+    }
+
+    pub fn tick(&mut self, now_ms: u64) -> Vec<Out> {
         let status = due(self.status_interval_us, self.status_sent_ms, now_ms).then(|| {
             self.status_sent_ms = Some(now_ms);
             self.status()
@@ -84,8 +90,12 @@ impl Gimbal {
         let reply = |result| Some(vec![ack(component, from, command, result)]);
         match command {
             MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL => {
+                let default = match params[0] as u32 {
+                    DEVICE_ATTITUDE_STATUS => ATTITUDE_DEFAULT_INTERVAL_US,
+                    _ => STATUS_DEFAULT_INTERVAL_US,
+                };
                 let interval = match params[1] as i64 {
-                    0 => STATUS_DEFAULT_INTERVAL_US,
+                    0 => default,
                     asked if asked < -1 => return None,
                     asked => asked,
                 };
@@ -201,7 +211,7 @@ mod tests {
     #[test]
     fn status_flows_only_once_an_interval_is_asked_and_a_command_moves_the_gimbal() {
         let mut gimbal = Gimbal::default();
-        assert!(gimbal.once_a_second(0).is_empty());
+        assert!(gimbal.tick(0).is_empty());
         gimbal
             .command(
                 GCS,
@@ -218,7 +228,12 @@ mod tests {
                 [281.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             )
             .unwrap();
-        assert_eq!(gimbal.once_a_second(1000).len(), 2);
+        assert_eq!(gimbal.tick(1000).len(), 2);
+        assert_eq!(
+            gimbal.tick(1100).len(),
+            1,
+            "the attitude reports ten times a second so a steered camera follows promptly"
+        );
         let moved = gimbal
             .command(
                 GCS,
@@ -230,7 +245,7 @@ mod tests {
         assert!(
             matches!(&moved[0], (1, MavMessage::COMMAND_ACK(a)) if a.result == MavResult::MAV_RESULT_ACCEPTED)
         );
-        gimbal.once_a_second(5000);
+        gimbal.tick(5000);
         assert_eq!(
             (gimbal.pitch, gimbal.yaw),
             (-90.0, 30.0),
@@ -261,7 +276,7 @@ mod tests {
             )
             .unwrap();
         let reported: Vec<(f32, f32)> = (0..120)
-            .flat_map(|second| gimbal.once_a_second(second * 1000))
+            .flat_map(|second| gimbal.tick(second * 1000))
             .filter_map(|(_, message)| match message {
                 MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(a) => {
                     let (_, pitch, _) = crate::gimbal::euler_degrees(a.q);
@@ -299,7 +314,7 @@ mod tests {
             )
             .unwrap();
         aim(&mut gimbal, -90.0).unwrap();
-        let reported = gimbal.once_a_second(60_000);
+        let reported = gimbal.tick(60_000);
         assert_eq!(gimbal.pitch, -90.0, "straight down holds");
         assert!(
             matches!(&reported[..], [(GIMBAL, MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(a))]

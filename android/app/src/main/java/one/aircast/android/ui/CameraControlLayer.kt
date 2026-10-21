@@ -428,17 +428,7 @@ private fun ShutterButton(caption: String?, shutter: CameraShutter, onPress: () 
 @Composable
 private fun TrackingToggle(reading: TrackingReading, modifier: Modifier = Modifier) {
     TextButton(
-        onClick = {
-            offMainDetached {
-                when {
-                    reading.requested -> {
-                        Qgc.set(CAMERA_TRACKING_ARMED, false)
-                        Qgc.invoke(CAMERA_STOP_TRACKING)
-                    }
-                    else -> Qgc.set(CAMERA_TRACKING_ARMED, true)
-                }
-            }
-        },
+        onClick = { toggleTracking(reading) },
         modifier = modifier,
     ) { Text(trackingToggleLabel(reading), style = MaterialTheme.typography.labelLarge, maxLines = 1) }
 }

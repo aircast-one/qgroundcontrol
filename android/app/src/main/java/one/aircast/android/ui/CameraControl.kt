@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.map.optText
 
 internal const val CAM_MODE_PHOTO = 0
@@ -194,6 +196,21 @@ internal fun trackingCanStart(reading: TrackingReading?): Boolean =
 
 internal fun trackingCanStop(reading: TrackingReading?): Boolean =
     reading != null && reading.requested
+
+internal const val TRACKING_HINT = "Tap or drag around what to track"
+
+internal fun trackingHint(reading: TrackingReading?): String? =
+    TRACKING_HINT.takeIf { trackingCanAim(reading) && reading?.reported != true }
+
+internal fun toggleTracking(reading: TrackingReading) = offMainDetached {
+    when {
+        reading.requested -> {
+            Qgc.set(CAMERA_TRACKING_ARMED, false)
+            Qgc.invoke(CAMERA_STOP_TRACKING)
+        }
+        else -> Qgc.set(CAMERA_TRACKING_ARMED, true)
+    }
+}
 
 internal fun trackingRectObject(box: TrackingBox): JSONObject = JSONObject()
     .put("x", box.x).put("y", box.y).put("width", box.width).put("height", box.height)

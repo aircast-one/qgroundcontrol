@@ -96,7 +96,9 @@ internal fun CameraSwitch(splitRoom: Boolean, modifier: Modifier = Modifier) {
     val shown = switch?.shown ?: chipCamera(reading)
     val flyScreen = LocalFlyScreenState.current
     val settings = CAMERA_MENU_SHEETS.filter { (sheet, _) -> sheet in flyScreen.offeredSheets }
-    if ((switch == null && splitTo == null && settings.isEmpty()) || shown == null) return
+    val cameraJson by qgcPath(CAMERA_VIEW)
+    val tracking = remember(cameraJson) { trackingReading(cameraJson) }
+    if ((switch == null && splitTo == null && settings.isEmpty() && tracking == null) || shown == null) return
     var open by remember { mutableStateOf(false) }
     val white = MaterialTheme.aircast.outdoorForeground
     Box(modifier) {
@@ -145,7 +147,18 @@ internal fun CameraSwitch(splitRoom: Boolean, modifier: Modifier = Modifier) {
                     modifier = Modifier.semantics { role = Role.Switch },
                 )
             }
-            if (settings.isNotEmpty() && (switch != null || splitTo != null)) HorizontalDivider()
+            tracking?.let { reading ->
+                if (switch != null || splitTo != null) HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(trackingToggleLabel(reading)) },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_my_location), null, Modifier.size(CHIP_GLYPH)) },
+                    onClick = {
+                        open = false
+                        toggleTracking(reading)
+                    },
+                )
+            }
+            if (settings.isNotEmpty() && (switch != null || splitTo != null || tracking != null)) HorizontalDivider()
             settings.map { (sheet, label) ->
                 DropdownMenuItem(
                     text = { Text(label) },

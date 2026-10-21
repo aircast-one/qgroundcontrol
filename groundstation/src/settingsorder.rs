@@ -77,6 +77,7 @@ pub const ORDER: &[(&str, &[&str])] = &[
             "passAirLink",
             "coreLinks",
             "detectionsHttpPort",
+            "detectionsLatencyMs",
             "favoriteParameters",
             "showAppLogTimestampAsElapsedTime",
         ],

@@ -424,6 +424,13 @@
             "label": "HTTP port of the detections agent, 0 for the default"
         },
         {
+            "name": "detectionsLatencyMs",
+            "shortDesc": "Milliseconds from camera frame to detection box, used when the detections agent does not say",
+            "type": "uint32",
+            "default": 150,
+            "label": "Detection latency in milliseconds"
+        },
+        {
             "name": "loginAirLink",
             "shortDesc": "AirLink User Name",
             "type": "string",
