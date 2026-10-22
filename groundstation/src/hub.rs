@@ -3572,10 +3572,108 @@ impl Vehicle {
     }
 
     fn hold_here(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
-        self.facts
+        let speed = self.autodrop_speed(crate::autodrop::CRUISE_MPS, now_ms);
+        let held = self
+            .facts
             .coordinate
             .map(|(lat, lon, _)| crate::dropsim::Point { lat, lon })
-            .map_or_else(Vec::new, |here| self.aim_autodrop(here, now_ms))
+            .map_or_else(Vec::new, |here| self.aim_autodrop(here, now_ms));
+        speed.into_iter().chain(held).collect()
+    }
+
+    fn autodrop_speed(&mut self, metres_per_second: f64, now_ms: u64) -> Vec<Vec<u8>> {
+        self.start_guided(
+            &json!({"action": "speed", "ground": true, "metresPerSecond": metres_per_second}),
+            now_ms,
+        )
+        .unwrap_or_default()
+    }
+
+    fn tick_approach(
+        &mut self,
+        source: crate::autodrop::TargetSource,
+        started_ms: u64,
+        now_ms: u64,
+    ) -> Vec<Vec<u8>> {
+        let waiting = |phase, due_ms| crate::autodrop::State::Waiting {
+            phase,
+            source,
+            started_ms,
+            due_ms,
+        };
+        let Some(release) = self.release_now() else {
+            self.autodrop = Some(waiting(
+                crate::autodrop::Phase::Approaching,
+                now_ms + crate::autodrop::AUTODROP_TICK_MS,
+            ));
+            return Vec::new();
+        };
+        let target =
+            self.target_for_autodrop(source, release.position, release.altitude_agl_m, now_ms);
+        let settling = now_ms.saturating_sub(started_ms) < crate::autodrop::APPROACH_SETTLE_MS;
+        let close = target.is_some_and(|t| {
+            crate::track::distance_m(
+                (release.position.lat, release.position.lon),
+                (t.position.lat, t.position.lon),
+            ) <= crate::autodrop::engage_range_m()
+        });
+        let engage = !settling && close && self.seen_lately(source, now_ms);
+        if let Some(seen) = target {
+            self.followed_last = Some((seen, now_ms));
+        }
+        self.note_progress(
+            source,
+            started_ms,
+            now_ms,
+            target.map(|t| (release.position, t)),
+            None,
+            target.is_none().then_some("searching"),
+        );
+        match (engage, target) {
+            (true, Some(seen)) => {
+                self.autodrop = Some(waiting(crate::autodrop::Phase::WaitingForCruise, now_ms));
+                let speed = self.autodrop_speed(crate::autodrop::CRUISE_MPS, now_ms);
+                let aimed = crate::autodrop::aim_point(
+                    release.position,
+                    seen,
+                    crate::autodrop::roads_under(seen).as_deref(),
+                )
+                .map_or_else(Vec::new, |aim_at| self.aim_autodrop(aim_at, now_ms));
+                speed.into_iter().chain(aimed).collect()
+            }
+            _ => {
+                self.autodrop = Some(waiting(
+                    crate::autodrop::Phase::Approaching,
+                    now_ms + crate::autodrop::AUTODROP_TICK_MS,
+                ));
+                let due = now_ms.saturating_sub(self.autodrop_aimed_ms)
+                    >= crate::autodrop::REAIM_EVERY_MS;
+                let looked_at = (source == crate::autodrop::TargetSource::Tracked)
+                    .then(|| self.gimbal_aim())
+                    .flatten()
+                    .map(|(yaw, _)| (crate::autodrop::along_bearing(release.position, yaw), 0.0));
+                let toward = target
+                    .or_else(|| self.followed_last.and_then(|last| coasted(last, now_ms)))
+                    .map(|seen| {
+                        (
+                            seen.position,
+                            seen.velocity.north_mps.hypot(seen.velocity.east_mps),
+                        )
+                    })
+                    .or(looked_at);
+                match toward.filter(|_| due) {
+                    Some((position, target_speed_mps)) => {
+                        let speed = self.autodrop_speed(
+                            crate::autodrop::approach_speed(target_speed_mps, settling),
+                            now_ms,
+                        );
+                        let aimed = self.aim_autodrop(position, now_ms);
+                        speed.into_iter().chain(aimed).collect()
+                    }
+                    None => Vec::new(),
+                }
+            }
+        }
     }
 
     pub(crate) fn autodrop_label(
@@ -3657,6 +3755,7 @@ impl Vehicle {
             return self.hold_here(now_ms);
         }
         match phase {
+            crate::autodrop::Phase::Approaching => self.tick_approach(source, started_ms, now_ms),
             crate::autodrop::Phase::WaitingForCruise => {
                 self.note_progress(source, started_ms, now_ms, None, None, Some("climbing"));
                 let ready = self.facts.ground_speed >= 0.8 * crate::autodrop::CRUISE_MPS;
@@ -4342,12 +4441,12 @@ impl Vehicle {
                         .and_then(crate::autodrop::TargetSource::of)
                         .unwrap_or(crate::autodrop::TargetSource::Gimbal);
                     self.autodrop = Some(crate::autodrop::State::Waiting {
-                        phase: crate::autodrop::Phase::WaitingForCruise,
+                        phase: crate::autodrop::Phase::Approaching,
                         source,
                         started_ms: now_ms,
                         due_ms: now_ms,
                     });
-                    self.autodrop_aimed_ms = now_ms;
+                    self.autodrop_aimed_ms = 0;
                     self.autodrop_bay = action.get("bay").and_then(Value::as_f64).unwrap_or(0.0);
                     self.autodrop_progress = None;
                     self.autodrop_hold_due_ms = None;
@@ -10449,6 +10548,150 @@ mod tests {
     }
 
     #[test]
+    fn an_intercept_closes_in_gently_and_commits_only_inside_the_engage_range() {
+        let mut hub = Hub::default();
+        let from = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &from, &copter_heartbeat(4, true), 0, 0);
+        hub.vehicles.values_mut().for_each(|v| v.connected = true);
+        hub.on_frame(origin(0), &from, &copter_heartbeat(4, true), 0, 0);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let north = |metres: f64| Some((47.0 + metres / 111_320.0, 8.0));
+        let speeds = |frames: &[Vec<u8>]| -> Vec<f32> {
+            frames
+                .iter()
+                .filter_map(|bytes| match decode(bytes) {
+                    MavMessage::COMMAND_LONG(c)
+                        if c.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_CHANGE_SPEED => {
+                        Some(c.param2)
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let phase = |autodrop: &Option<crate::autodrop::State>| match autodrop {
+            Some(crate::autodrop::State::Waiting { phase, .. }) => Some(*phase),
+            _ => None,
+        };
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.manual_target = north(50.0);
+        vehicle.autodrop = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::Approaching,
+            source: crate::autodrop::TargetSource::Manual,
+            started_ms: 10_000,
+            due_ms: 0,
+        });
+        let first = vehicle.tick_autodrop(10_000);
+        assert_eq!(
+            speeds(&first),
+            vec![3.0],
+            "it settles at walking pace first"
+        );
+        assert_eq!(
+            phase(&vehicle.autodrop),
+            Some(crate::autodrop::Phase::Approaching),
+            "even inside the range, not before the lock has settled"
+        );
+        vehicle.manual_target = north(200.0);
+        vehicle.tick_autodrop(13_000);
+        assert_eq!(
+            phase(&vehicle.autodrop),
+            Some(crate::autodrop::Phase::Approaching),
+            "200 m out it keeps closing in"
+        );
+        vehicle.manual_target = north(60.0);
+        vehicle.tick_autodrop(14_000);
+        assert_eq!(
+            phase(&vehicle.autodrop),
+            Some(crate::autodrop::Phase::WaitingForCruise),
+            "settled and inside the range, it commits to the intercept"
+        );
+    }
+
+    #[test]
+    fn with_no_ground_fix_the_approach_flies_where_the_camera_looks() {
+        use mavlink::dialects::ardupilotmega::{
+            GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA,
+            GIMBAL_MANAGER_STATUS_DATA, MavCmd,
+        };
+        let _fixes = crate::gimbalgeo::TEST_FIXES
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let _feed = crate::detections::TEST_FEED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        crate::gimbalgeo::forget();
+        crate::detections::show(None);
+        let mut hub = Hub::default();
+        let from = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &from, &copter_heartbeat(4, true), 0, 0);
+        hub.vehicles.values_mut().for_each(|v| v.connected = true);
+        hub.on_frame(origin(0), &from, &copter_heartbeat(4, true), 0, 0);
+        hub.on_frame(
+            origin(0),
+            &from,
+            &MavMessage::GIMBAL_MANAGER_INFORMATION(GIMBAL_MANAGER_INFORMATION_DATA {
+                gimbal_device_id: 1,
+                ..Default::default()
+            }),
+            0,
+            0,
+        );
+        hub.on_frame(
+            origin(0),
+            &from,
+            &MavMessage::GIMBAL_MANAGER_STATUS(GIMBAL_MANAGER_STATUS_DATA {
+                gimbal_device_id: 1,
+                ..Default::default()
+            }),
+            0,
+            0,
+        );
+        let half = std::f32::consts::FRAC_1_SQRT_2;
+        hub.on_frame(
+            origin(0),
+            &from,
+            &MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(GIMBAL_DEVICE_ATTITUDE_STATUS_DATA {
+                gimbal_device_id: 1,
+                q: [half, 0.0, 0.0, half],
+                ..Default::default()
+            }),
+            0,
+            0,
+        );
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.autodrop = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::Approaching,
+            source: crate::autodrop::TargetSource::Tracked,
+            started_ms: 10_000,
+            due_ms: 0,
+        });
+        let goto = vehicle
+            .tick_autodrop(13_000)
+            .iter()
+            .find_map(|bytes| match decode(bytes) {
+                MavMessage::COMMAND_INT(c) if c.command == MavCmd::MAV_CMD_DO_REPOSITION => {
+                    Some((c.x, c.y))
+                }
+                _ => None,
+            });
+        assert!(
+            goto.is_some_and(|(x, y)| (x - 470_000_000).abs() < 100 && y > 80_100_000),
+            "the camera looks east, so it closes in eastwards: {goto:?}"
+        );
+    }
+
+    #[test]
     fn a_followed_picture_target_is_turned_to_a_step_at_a_time() {
         assert_eq!(
             eased(Some((350.0, -20.0)), (10.0, -30.0), 2.0, 30.0),
@@ -10465,6 +10708,17 @@ mod tests {
         assert_eq!(
             eased(Some((0.0, 0.0)), (90.0, -90.0), f64::INFINITY, 30.0),
             (90.0, -90.0)
+        );
+    }
+
+    #[test]
+    fn the_approach_speed_closes_on_the_target_without_racing() {
+        assert_eq!(crate::autodrop::approach_speed(5.0, true), 3.0);
+        assert_eq!(crate::autodrop::approach_speed(5.0, false), 8.0);
+        assert_eq!(crate::autodrop::approach_speed(0.0, false), 3.0);
+        assert_eq!(
+            crate::autodrop::approach_speed(20.0, false),
+            crate::autodrop::CRUISE_MPS
         );
     }
 

@@ -29,6 +29,11 @@ pub const MAX_RUN_S: f64 = 90.0;
 pub const AUTODROP_TICK_MS: u64 = 150;
 const GUIDED_GOTO_LIMIT_M: f64 = 950.0;
 pub const CRUISE_MPS: f64 = 10.0;
+pub const APPROACH_SETTLE_MS: u64 = 2_000;
+const SETTLE_MPS: f64 = 3.0;
+const CLOSING_MPS: f64 = 3.0;
+const ENGAGE_M: f64 = 100.0;
+pub const ENGAGE_RANGE_SETTING: &str = "settings.appSettings.autodropEngageRangeM";
 pub const REAIM_EVERY_MS: u64 = 1000;
 pub const REAIM_UNTIL_S: f64 = 2.0;
 pub const FIRE_WITHIN_M: f64 = 2.0;
@@ -429,8 +434,23 @@ pub enum Impact {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
+    Approaching,
     WaitingForCruise,
     WaitingForRelease,
+}
+
+pub fn engage_range_m() -> f64 {
+    crate::settingsstore::raw_setting(ENGAGE_RANGE_SETTING)
+        .and_then(|value| value.as_f64())
+        .filter(|metres| metres.is_finite() && *metres > 0.0)
+        .unwrap_or(ENGAGE_M)
+}
+
+pub fn approach_speed(target_speed_mps: f64, settling: bool) -> f64 {
+    match settling {
+        true => SETTLE_MPS,
+        false => (target_speed_mps + CLOSING_MPS).clamp(SETTLE_MPS, CRUISE_MPS),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -521,6 +541,7 @@ impl State {
             State::Waiting { phase, source, .. } => json!({
                 "state": "waiting",
                 "phase": match phase {
+                    Phase::Approaching => "approaching",
                     Phase::WaitingForCruise => "waitingForCruise",
                     Phase::WaitingForRelease => "waitingForRelease",
                 },
@@ -583,6 +604,17 @@ fn road_lead(
             let (lat, lon, _) = ned_to_geo(north + there.north_m, east + there.east_m, 0.0, origin);
             Point { lat, lon }
         })
+}
+
+pub fn along_bearing(from: Point, bearing_deg: f64) -> Point {
+    let (sin, cos) = bearing_deg.to_radians().sin_cos();
+    let (lat, lon, _) = ned_to_geo(
+        cos * GUIDED_GOTO_LIMIT_M,
+        sin * GUIDED_GOTO_LIMIT_M,
+        0.0,
+        (from.lat, from.lon, 0.0),
+    );
+    Point { lat, lon }
 }
 
 fn far_point_on_bearing(from: Point, towards: Point, distance_m: f64) -> Point {

@@ -301,6 +301,7 @@ const HIDDEN: &[&str] = &[
     "detectionsHttpPort",
     "detectionsLatencyMs",
     "autodropReleaseLatencyMs",
+    "autodropEngageRangeM",
     "autodropPayloadMassG",
     "autodropPayloadDragAreaCm2",
     "autodropWindManual",

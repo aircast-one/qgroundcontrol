@@ -438,6 +438,13 @@
             "label": "Drop release latency in milliseconds"
         },
         {
+            "name": "autodropEngageRangeM",
+            "shortDesc": "Auto Intercept closes in on a target farther than this before committing to the intercept",
+            "type": "double",
+            "default": 100,
+            "label": "Engage range in metres"
+        },
+        {
             "name": "autodropPayloadMassG",
             "shortDesc": "Mass of one payload in grams, for the drop's air drag (0 = no drag model)",
             "type": "uint32",

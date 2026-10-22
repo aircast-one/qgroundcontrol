@@ -79,6 +79,7 @@ pub const ORDER: &[(&str, &[&str])] = &[
             "detectionsHttpPort",
             "detectionsLatencyMs",
             "autodropReleaseLatencyMs",
+            "autodropEngageRangeM",
             "autodropPayloadMassG",
             "autodropPayloadDragAreaCm2",
             "autodropWindManual",
