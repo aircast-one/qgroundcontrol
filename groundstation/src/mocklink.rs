@@ -2713,7 +2713,7 @@ impl Sim {
             }
         }
         if let Some(gimbal) = self.gimbal.as_mut() {
-            gimbal.hold(self.heading);
+            gimbal.hold(self.heading, elapsed_ms);
         }
         let here = Where {
             lat: e7(self.lat),

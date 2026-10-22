@@ -11,12 +11,17 @@ const DEVICE_ATTITUDE_STATUS: u32 = 285;
 const PITCH_RANGE: (f32, f32) = (-90.0, 30.0);
 const ROLL_LIMIT: f32 = 45.0;
 const YAW_LIMIT: f32 = 180.0;
+const SLEW_DPS: f32 = 120.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gimbal {
     pitch: f32,
     yaw: f32,
+    wanted_pitch: f32,
+    wanted_yaw: f32,
     earth_yaw: Option<f32>,
+    heading: f32,
+    stepped_ms: Option<u64>,
     status_interval_us: i64,
     attitude_interval_us: i64,
     status_sent_ms: Option<u64>,
@@ -30,7 +35,11 @@ impl Default for Gimbal {
         Gimbal {
             pitch: 0.0,
             yaw: 0.0,
+            wanted_pitch: 0.0,
+            wanted_yaw: 0.0,
             earth_yaw: None,
+            heading: 0.0,
+            stepped_ms: None,
             status_interval_us: 0,
             attitude_interval_us: 0,
             status_sent_ms: None,
@@ -71,14 +80,21 @@ impl Gimbal {
 
     pub fn point(&mut self, pitch: f32, yaw: f32) {
         self.earth_yaw = None;
-        self.pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
-        self.yaw = body_yaw(yaw);
+        self.wanted_pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
+        self.wanted_yaw = body_yaw(yaw);
     }
 
-    pub fn hold(&mut self, vehicle_heading: f64) {
-        if let Some(earth) = self.earth_yaw {
-            self.yaw = body_yaw(earth - vehicle_heading as f32);
-        }
+    pub fn hold(&mut self, vehicle_heading: f64, now_ms: u64) {
+        self.heading = vehicle_heading as f32;
+        let wanted_yaw = self
+            .earth_yaw
+            .map_or(self.wanted_yaw, |earth| body_yaw(earth - self.heading));
+        let step = self.stepped_ms.map_or(f32::INFINITY, |at| {
+            SLEW_DPS * now_ms.saturating_sub(at) as f32 / 1000.0
+        });
+        self.stepped_ms = Some(now_ms);
+        self.pitch += (self.wanted_pitch - self.pitch).clamp(-step, step);
+        self.yaw = body_yaw(self.yaw + body_yaw(wanted_yaw - self.yaw).clamp(-step, step));
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<Out> {
@@ -131,14 +147,14 @@ impl Gimbal {
                     true => reply(MavResult::MAV_RESULT_DENIED),
                     false => {
                         if !pitch.is_nan() {
-                            self.pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
+                            self.wanted_pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
                         }
                         if !yaw.is_nan() {
                             let earth =
                                 params[4] as u32 & crate::gimbal::FLAG_YAW_IN_EARTH_FRAME != 0;
                             self.earth_yaw = earth.then_some(yaw);
                             if !earth {
-                                self.yaw = yaw.clamp(-YAW_LIMIT, YAW_LIMIT);
+                                self.wanted_yaw = yaw.clamp(-YAW_LIMIT, YAW_LIMIT);
                             }
                         }
                         reply(MavResult::MAV_RESULT_ACCEPTED)
@@ -176,7 +192,12 @@ impl Gimbal {
     }
 
     fn attitude(&self) -> Out {
-        let (pitch, yaw) = (self.pitch.to_radians() * 0.5, self.yaw.to_radians() * 0.5);
+        let earth = self.earth_yaw.is_some();
+        let reported = match earth {
+            true => body_yaw(self.yaw + self.heading),
+            false => self.yaw,
+        };
+        let (pitch, yaw) = (self.pitch.to_radians() * 0.5, reported.to_radians() * 0.5);
         let q = [
             pitch.cos() * yaw.cos(),
             -pitch.sin() * yaw.sin(),
@@ -189,7 +210,14 @@ impl Gimbal {
                 q,
                 flags: GimbalDeviceFlags::GIMBAL_DEVICE_FLAGS_NEUTRAL
                     | GimbalDeviceFlags::GIMBAL_DEVICE_FLAGS_ROLL_LOCK
-                    | GimbalDeviceFlags::GIMBAL_DEVICE_FLAGS_PITCH_LOCK,
+                    | GimbalDeviceFlags::GIMBAL_DEVICE_FLAGS_PITCH_LOCK
+                    | match earth {
+                        true => {
+                            GimbalDeviceFlags::GIMBAL_DEVICE_FLAGS_YAW_LOCK
+                                | GimbalDeviceFlags::GIMBAL_DEVICE_FLAGS_YAW_IN_EARTH_FRAME
+                        }
+                        false => GimbalDeviceFlags::empty(),
+                    },
                 delta_yaw: self.yaw,
                 ..Default::default()
             }),
@@ -263,6 +291,7 @@ mod tests {
         assert!(
             matches!(&moved[0], (1, MavMessage::COMMAND_ACK(a)) if a.result == MavResult::MAV_RESULT_ACCEPTED)
         );
+        gimbal.hold(0.0, 5000);
         gimbal.tick(5000);
         assert_eq!(
             (gimbal.pitch, gimbal.yaw),
@@ -332,6 +361,7 @@ mod tests {
             )
             .unwrap();
         aim(&mut gimbal, -90.0).unwrap();
+        gimbal.hold(0.0, 60_000);
         let reported = gimbal.tick(60_000);
         assert_eq!(gimbal.pitch, -90.0, "straight down holds");
         assert!(
@@ -340,6 +370,7 @@ mod tests {
             "the attitude it reports is straight down"
         );
         aim(&mut gimbal, 60.0).unwrap();
+        gimbal.hold(0.0, 70_000);
         assert_eq!(gimbal.pitch, 30.0, "it tilts up no further than 30");
         assert!(
             matches!(information(), (AUTOPILOT, MavMessage::GIMBAL_MANAGER_INFORMATION(i))
@@ -353,39 +384,53 @@ mod tests {
 mod earth_frame_tests {
     use super::*;
 
-    #[test]
-    fn a_heading_held_against_north_stays_put_while_the_vehicle_turns() {
-        let mut gimbal = Gimbal::default();
-        let earth = crate::gimbal::FLAG_YAW_LOCK | crate::gimbal::FLAG_YAW_IN_EARTH_FRAME;
+    fn pitch_yaw(gimbal: &mut Gimbal, pitch: f32, yaw: f32, flags: u32) {
         gimbal.command(
             (255, 190),
             GIMBAL,
             MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
-            [-30.0, 170.0, f32::NAN, f32::NAN, earth as f32, 0.0, 0.0],
+            [pitch, yaw, f32::NAN, f32::NAN, flags as f32, 0.0, 0.0],
         );
-        gimbal.hold(320.0);
+    }
+
+    #[test]
+    fn a_heading_held_against_north_stays_put_while_the_vehicle_turns() {
+        let mut gimbal = Gimbal::default();
+        let earth = crate::gimbal::FLAG_YAW_LOCK | crate::gimbal::FLAG_YAW_IN_EARTH_FRAME;
+        pitch_yaw(&mut gimbal, -30.0, 170.0, earth);
+        gimbal.hold(320.0, 0);
         assert_eq!(
             gimbal.aim(),
             (-150.0, -30.0),
             "170 north-relative from a drone facing 320"
         );
-        gimbal.hold(185.0);
+        gimbal.hold(185.0, 2_000);
         assert_eq!(
             gimbal.aim(),
             (-15.0, -30.0),
             "the drone turned, the camera did not"
         );
-        gimbal.command(
-            (255, 190),
-            GIMBAL,
-            MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
-            [-30.0, 20.0, f32::NAN, f32::NAN, 0.0, 0.0, 0.0],
-        );
-        gimbal.hold(90.0);
+        pitch_yaw(&mut gimbal, -30.0, 20.0, 0);
+        gimbal.hold(90.0, 4_000);
         assert_eq!(
             gimbal.aim(),
             (20.0, -30.0),
             "a vehicle-frame command turns with the drone again"
         );
+    }
+
+    #[test]
+    fn the_gimbal_slews_at_a_finite_rate_instead_of_jumping() {
+        let mut gimbal = Gimbal::default();
+        gimbal.hold(0.0, 0);
+        pitch_yaw(&mut gimbal, -90.0, 100.0, 0);
+        gimbal.hold(0.0, 250);
+        let (yaw, pitch) = gimbal.aim();
+        assert!(
+            (yaw - 30.0).abs() < 1e-3 && (pitch + 30.0).abs() < 1e-3,
+            "a quarter second at 120 deg/s moves 30 deg on each axis, got {yaw}/{pitch}"
+        );
+        gimbal.hold(0.0, 1_000);
+        assert_eq!(gimbal.aim(), (100.0, -90.0));
     }
 }
