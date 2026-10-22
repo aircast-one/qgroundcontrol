@@ -2487,7 +2487,10 @@ impl Sim {
         let wanted = self.alt + climb * dt;
         let into_terrain = was_airborne && floor > self.alt;
         let impact = was_airborne && wanted < floor && self.conditions.motor_failed;
-        let alt = wanted.max(floor);
+        let alt = match self.options.vehicle {
+            Vehicle::Rover => floor,
+            _ => wanted.max(floor),
+        };
         let lag = (dt / TILT_LAG_S).min(1.0);
         self.climb = (alt - self.alt) / dt;
         self.lat = lat;
@@ -5977,6 +5980,49 @@ mod tests {
             speeds.iter().any(|(_, _, (lat, lon))| *lon > east(40.0)
                 && (lat - corner.0).abs() * METRES_PER_DEG < 4.0),
             "it turned east onto the second street"
+        );
+    }
+
+    fn rolling(lat: f64, lon: f64) -> Option<f64> {
+        let (north, east) = (
+            (lat - HOME_LAT) * METRES_PER_DEG,
+            (lon - HOME_LON) * METRES_PER_DEG * HOME_LAT.to_radians().cos(),
+        );
+        Some(HOME_ALT_M + 8.0 * (north / 12.0).sin() + 6.0 * (east / 10.0).cos())
+    }
+
+    #[test]
+    fn a_rover_on_the_roads_keeps_its_wheels_on_rolling_ground_for_five_minutes() {
+        let raw = std::fs::read(format!(
+            "{}/../test/Bridge/fixtures/openfreemap-14-8580-5736-roads-around-mock-home.pbf",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .expect("the recorded roads around the mock home");
+        let network = std::sync::Arc::new(crate::roads::network(&[(8580, 5736, raw)]));
+        let mut sim = Sim {
+            ground: rolling,
+            ..Sim::new(options(Vehicle::Rover), 128, None)
+        };
+        sim.conditions.roads = true;
+        sim.begin_roads(network);
+        let (said, gaps): (Vec<String>, Vec<f64>) = (0..300)
+            .map(|_| {
+                let said = texts(&heard(&mut sim, 1));
+                (said, (sim.alt - sim.ground_rel(sim.lat, sim.lon)).abs())
+            })
+            .fold((Vec::new(), Vec::new()), |(mut all, mut gaps), (said, gap)| {
+                all.extend(said);
+                gaps.push(gap);
+                (all, gaps)
+            });
+        assert!(
+            sim.armed && !said.iter().any(|text| text.starts_with("Crash")),
+            "five minutes up and down the streets without a crash: {said:?}"
+        );
+        assert!(
+            gaps.iter().all(|gap| *gap < 0.01),
+            "a car stays on the ground, worst gap {} m",
+            gaps.iter().fold(0.0_f64, |a, b| a.max(*b))
         );
     }
 
