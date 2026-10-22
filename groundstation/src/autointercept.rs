@@ -11,6 +11,7 @@ pub const STOP_TRACKING: &str = "vehicle.cameraManager.currentCameraInstance.sto
 pub const TRACKING_HINT: &str = "Tap or drag around what to track";
 const TITLE: &str = "Auto Intercept";
 const FIXED_TARGETS: [&str; 2] = ["marked point", "gimbal point"];
+const UNPLACED: &str = "Locked on — can't place it on the ground yet";
 const NOTHING_TO_CHASE: &str =
     "Nothing to chase yet — track a target with the camera or mark one on the map.";
 
@@ -163,6 +164,8 @@ fn fired(status: &Value) -> (String, bool, Vec<&'static str>) {
 
 pub fn shown(status: &Value, target: &Value, tracking: &Value) -> Value {
     let state = text(status, "state");
+    let chased = !text(target, "label").is_empty();
+    let lock_placed = chased && text(target, "source") == "tracked";
     let locked = tracking.get("supported").and_then(Value::as_bool) == Some(true)
         && tracking.get("reported").and_then(Value::as_bool) == Some(true);
     let picking = tracking.get("supported").and_then(Value::as_bool) == Some(true)
@@ -189,19 +192,23 @@ pub fn shown(status: &Value, target: &Value, tracking: &Value) -> Value {
             true,
             vec!["tryAgain", "pickAnother"],
         )),
-        _ => locked.then(|| ("Locked on".to_string(), false, vec!["dropOnIt"])),
+        _ => locked.then(|| match lock_placed {
+            true => ("Locked on".to_string(), false, vec!["dropOnIt"]),
+            false => (UNPLACED.to_string(), false, vec![]),
+        }),
     };
     let confirm = confirm_text(target, &status["payload"]);
+    let start_confirm = chased.then_some(confirm.as_str());
     let make = |id: &str| match id {
         "stop" => action(id, "Stop", DROP, json!(["stop"]), None),
         "pickAnother" => action(id, "Pick another target", PICK_ANOTHER, json!([]), None),
-        "tryAgain" => action(id, "Try again", DROP, json!([]), Some(&confirm)),
-        "dropAgain" => action(id, "Drop again", DROP, json!([]), Some(&confirm)),
-        _ => action(id, "Drop on it", DROP, json!([]), Some(&confirm)),
+        "tryAgain" => action(id, "Try again", DROP, json!([]), start_confirm),
+        "dropAgain" => action(id, "Drop again", DROP, json!([]), start_confirm),
+        _ => action(id, "Drop on it", DROP, json!([]), start_confirm),
     };
     let entry = match state == "waiting" {
         true => action("stop", "Stop Auto Intercept", DROP, json!(["stop"]), None),
-        false => action("start", TITLE, DROP, json!([]), Some(&confirm)),
+        false => action("start", TITLE, DROP, json!([]), start_confirm),
     };
     let (headline, problem, ids) = line.unwrap_or_default();
     json!({
@@ -321,11 +328,10 @@ mod tests {
     fn auto_intercept_says_what_it_chases_why_it_waits_how_it_ended_and_what_to_do_next() {
         let idle = shown(&json!({"state":"idle"}), &Value::Null, &Value::Null);
         assert_eq!(idle["visible"], false, "idle has nothing to say");
-        let locked = shown(
-            &json!({"state":"idle"}),
-            &Value::Null,
-            &json!({"supported":true,"requested":true,"reported":true,"shapes":["point"]}),
-        );
+        let lock = json!({"supported":true,"requested":true,"reported":true,"shapes":["point"]});
+        let tracked =
+            json!({"label":"car","source":"tracked","speedMps":5.0,"distanceMeters":61.6});
+        let locked = shown(&json!({"state":"idle"}), &tracked, &lock);
         assert_eq!(
             (
                 &locked["headline"],
@@ -337,6 +343,39 @@ mod tests {
                 &json!("dropOnIt"),
                 &json!("Drop on it")
             )
+        );
+        let unplaced = shown(&json!({"state":"idle"}), &Value::Null, &lock);
+        assert_eq!(
+            (
+                &unplaced["headline"],
+                &unplaced["actions"],
+                &unplaced["entry"]["confirm"]
+            ),
+            (
+                &json!("Locked on — can't place it on the ground yet"),
+                &json!([]),
+                &Value::Null
+            ),
+            "a lock the core can't put on the ground offers no drop, and the menu start goes straight to its refusal"
+        );
+        let elsewhere = shown(
+            &json!({"state":"idle"}),
+            &json!({"label":"vehicle 129","source":"vehicle","speedMps":5.0,"distanceMeters":90}),
+            &lock,
+        );
+        assert_eq!(
+            (&elsewhere["headline"], &elsewhere["actions"]),
+            (
+                &json!("Locked on — can't place it on the ground yet"),
+                &json!([])
+            ),
+            "\"Drop on it\" beside the lock never chases a different, fallback target"
+        );
+        assert!(
+            elsewhere["entry"]["confirm"]["text"]
+                .as_str()
+                .is_some_and(|text| text.contains("vehicle 129")),
+            "the menu start still says plainly what it would chase"
         );
         assert_eq!(
             line(
