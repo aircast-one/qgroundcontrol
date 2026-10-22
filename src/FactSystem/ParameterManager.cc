@@ -260,7 +260,7 @@ void ParameterManager::_handleParamValue(int componentId, const QString &paramet
 
     _checkInitialLoadComplete();
 
-    qCDebug(ParameterManagerVerbose1Log) << _logVehiclePrefix(componentId) << "_parameterUpdate complete";
+    qCDebug(ParameterManagerVerbose1Log) << _logVehiclePrefix(componentId) << "_handleParamValue complete";
 }
 
 QString ParameterManager::_vehicleAndComponentString(int componentId) const
@@ -845,7 +845,7 @@ bool ParameterManager::_fillIndexBatchQueue(bool waitingParamTimeout)
     for (const int componentId: _waitingReadParamIndexMap.keys()) {
         if (_waitingReadParamIndexMap[componentId].count()) {
             qCDebug(ParameterManagerLog) << _logVehiclePrefix(componentId) << "_waitingReadParamIndexMap count" << _waitingReadParamIndexMap[componentId].count();
-            qCDebug(ParameterManagerVerbose1Log) << _logVehiclePrefix(componentId) << "_waitingReadParamIndexMap" << _waitingReadParamIndexMap[componentId];
+            qCDebug(ParameterManagerVerbose1Log) << _logVehiclePrefix(componentId) << "_waitingReadParamIndexMap (index, retry count)" << _waitingReadParamIndexMap[componentId];
         }
 
         for (const int paramIndex: _waitingReadParamIndexMap[componentId].keys()) {
@@ -882,7 +882,7 @@ void ParameterManager::_waitingParamTimeout()
         return;
     }
 
-    qCDebug(ParameterManagerLog) << _logVehiclePrefix(-1) << "_waitingParamTimeout";
+    qCDebug(ParameterManagerLog) << _logVehiclePrefix(-1) << "_waitingParamTimeout after" << _waitingParamTimeoutTimer.interval() << "ms";
 
     // Now that we have timed out for possibly the first time we can activate the index batch queue
     _indexBatchQueueActive = true;
@@ -1067,6 +1067,7 @@ void ParameterManager::_writeLocalParamCache(int vehicleId, int componentId)
     if (cacheFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         QDataStream ds(&cacheFile);
         ds << cacheMap;
+        qCDebug(ParameterManagerLog) << "Parameter cache written" << cacheFile.fileName() << "paramCount:" << cacheMap.count();
     } else {
         qCWarning(ParameterManagerLog) << "Failed to open cache file for writing" << cacheFile.fileName();
     }
@@ -1094,7 +1095,7 @@ void ParameterManager::_tryCacheHashLoad(int vehicleId, int componentId, const Q
     CacheMapName2ParamTypeVal cacheMap;
     QFile cacheFile(parameterCacheFile(vehicleId, componentId));
     if (!cacheFile.exists()) {
-        qCDebug(ParameterManagerLog) << "No parameter cache file";
+        qCDebug(ParameterManagerLog) << "Parameter cache usage failed - No parameter cache file";
         if (!_hashCheckDone) {
             _hashCheckDone = true;
             if (_cacheOnlyHashCheck) {
@@ -1407,12 +1408,14 @@ void ParameterManager::_paramRequestListTimeout()
         emit requestUnansweredChanged(_requestUnanswered);
     }
 
+    qCDebug(ParameterManagerLog) << _logVehiclePrefix(-1) << "Initial parameter request list retries exhausted, giving up";
     if (!_vehicle->genericFirmware()) {
         const QString errorMsg = tr("Vehicle %1 did not respond to request for parameters. "
                                     "This will cause %2 to be unable to display its full user interface.").arg(_vehicle->id()).arg(QCoreApplication::applicationName());
         qCDebug(ParameterManagerLog) << errorMsg;
         QGC::showAppMessage(errorMsg);
     }
+    emit initialParametersRequestFailed();
 }
 
 QString ParameterManager::_remapParamNameToVersion(const QString &paramName) const
@@ -1433,7 +1436,7 @@ QString ParameterManager::_remapParamNameToVersion(const QString &paramName) con
     const FirmwarePlugin::remapParamNameMajorVersionMap_t &majorVersionRemap = _vehicle->firmwarePlugin()->paramNameRemapMajorVersionMap();
     if (!majorVersionRemap.contains(majorVersion)) {
         // No mapping for this major version
-        qCDebug(ParameterManagerLog) << "_remapParamNameToVersion: no major version mapping";
+        qCDebug(ParameterManagerVerbose1Log) << "_remapParamNameToVersion: no major version mapping";
         return paramName;
     }
 

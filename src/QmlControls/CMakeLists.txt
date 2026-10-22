@@ -202,6 +202,7 @@ set(_qgc_controls_qml
     SettingsButton.qml
     SettingsGroupLayout.qml
     SetupPage.qml
+    SidebarDivider.qml
     SetupProgressBar.qml
     SetupSheet.qml
     SliderSwitch.qml

@@ -125,6 +125,7 @@ signals:
     void missingParametersChanged(bool missingParameters);
     void loadProgressChanged(float value);
     void cacheCheckOnlyFailed();
+    void initialParametersRequestFailed();      ///< Vehicle never responded to PARAM_REQUEST_LIST, all retries exhausted
     void pendingWritesChanged(bool pendingWrites);
     void requestUnansweredChanged(bool requestUnanswered);
     void parameterDownloadSkippedChanged();

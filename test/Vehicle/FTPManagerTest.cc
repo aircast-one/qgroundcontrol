@@ -2,6 +2,7 @@
 
 #include <QtCore/QFile>
 #include <QtCore/QStandardPaths>
+#include <QtCore/QTemporaryDir>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 
@@ -31,6 +32,52 @@ void FTPManagerTest::_testCaseWorker(const TestCase_t& testCase)
     QCOMPARE(spyDownloadComplete.count(), 1);
     QList<QVariant> arguments = spyDownloadComplete.takeFirst();
     QVERIFY2(arguments[1].toString().isEmpty(), qPrintable(arguments[1].toString()));
+    _disconnectMockLink();
+}
+
+void FTPManagerTest::_testDownloadUri_data()
+{
+    QTest::addColumn<QString>("uri");
+    QTest::addColumn<int>("fromCompId");
+    QTest::addColumn<bool>("absolutePath");
+
+    QTest::newRow("plain-absolute") << "/general.json" << int(MAV_COMP_ID_AUTOPILOT1) << true;
+    QTest::newRow("plain-relative") << "mocklink-size-239" << int(MAV_COMP_ID_AUTOPILOT1) << false;
+    QTest::newRow("scheme-absolute") << "mftp:///general.json" << int(MAV_COMP_ID_AUTOPILOT1) << true;
+    QTest::newRow("scheme-relative") << "mftp://mocklink-size-239" << int(MAV_COMP_ID_AUTOPILOT1) << false;
+    QTest::newRow("component-absolute") << "mftp://[;comp=1]/general.json" << int(MAV_COMP_ID_CAMERA) << true;
+    QTest::newRow("component-relative") << "mftp://[;comp=1]mocklink-size-239" << int(MAV_COMP_ID_CAMERA) << false;
+    QTest::newRow("uppercase-scheme") << "MFTP://[;comp=1]/general.json" << int(MAV_COMP_ID_CAMERA) << true;
+    QTest::newRow("default-component") << "mftp:///general.json" << int(MAV_COMP_ID_ALL) << true;
+}
+
+void FTPManagerTest::_testDownloadUri()
+{
+    QFETCH(QString, uri);
+    QFETCH(int, fromCompId);
+    QFETCH(bool, absolutePath);
+
+    _connectMockLinkNoInitialConnectSequence();
+    QVERIFY(_vehicle);
+    FTPManager* ftpManager = _vehicle->ftpManager();
+    QTemporaryDir destination;
+    QVERIFY(destination.isValid());
+    QSignalSpy spyDownloadComplete(ftpManager, &FTPManager::downloadComplete);
+    QVERIFY(ftpManager->download(fromCompId, uri, destination.path()));
+    QVERIFY_SIGNAL_WAIT(spyDownloadComplete, TestTimeout::longMs());
+    QCOMPARE(spyDownloadComplete.count(), 1);
+    const QList<QVariant> arguments = spyDownloadComplete.takeFirst();
+    QVERIFY2(arguments[1].toString().isEmpty(), qPrintable(arguments[1].toString()));
+
+    if (absolutePath) {
+        QFile expectedFile(QStringLiteral(":MockLink/General.MetaData.json"));
+        QVERIFY(expectedFile.open(QIODevice::ReadOnly));
+        QFile downloadedFile(arguments[0].toString());
+        QVERIFY(downloadedFile.open(QIODevice::ReadOnly));
+        QCOMPARE(downloadedFile.readAll(), expectedFile.readAll());
+    } else {
+        _verifyFileSizeAndDelete(arguments[0].toString(), 239);
+    }
     _disconnectMockLink();
 }
 
@@ -164,11 +211,22 @@ void FTPManagerTest::_testListDirectoryWithTime()
     _disconnectMockLink();
 }
 
+void FTPManagerTest::_testListDirectoryWithTimeFallback_data()
+{
+    QTest::addColumn<int>("nakError");
+
+    QTest::newRow("UnknownCommand (PX4)") << static_cast<int>(MavlinkFTP::kErrUnknownCommand);
+    QTest::newRow("Fail (ArduPilot)") << static_cast<int>(MavlinkFTP::kErrFail);
+}
+
 void FTPManagerTest::_testListDirectoryWithTimeFallback()
 {
+    QFETCH(int, nakError);
+
     _connectMockLinkNoInitialConnectSequence();
     FTPManager* ftpManager = _vehicle->ftpManager();
     _mockLink->mockLinkFTP()->setListDirectoryWithTimeSupported(false);
+    _mockLink->mockLinkFTP()->setListDirectoryWithTimeNakError(static_cast<MavlinkFTP::ErrorCode_t>(nakError));
     QSignalSpy spyListDirectoryComplete(ftpManager, &FTPManager::listDirectoryComplete);
     ftpManager->listDirectory(MAV_COMP_ID_AUTOPILOT1, "/");
     QVERIFY_SIGNAL_WAIT(spyListDirectoryComplete, TestTimeout::longMs());
@@ -177,11 +235,35 @@ void FTPManagerTest::_testListDirectoryWithTimeFallback()
     const QStringList entries = arguments[0].toStringList();
     QCOMPARE(entries.count(), 6);
     QVERIFY(arguments[1].toString().isEmpty());
+    QVERIFY(ftpManager->listDirectoryWithTimeUnsupported());
 
     // After falling back to kCmdListDirectory the entries carry no modification-time field.
     for (const QString &entry : entries) {
         QCOMPARE(entry.mid(1).count(QLatin1Char('\t')), 1);
     }
+    _disconnectMockLink();
+}
+
+void FTPManagerTest::_testListDirectoryWithTimeFailAfterSupported()
+{
+    _connectMockLinkNoInitialConnectSequence();
+    FTPManager* ftpManager = _vehicle->ftpManager();
+    QSignalSpy spyListDirectoryComplete(ftpManager, &FTPManager::listDirectoryComplete);
+
+    // First listing establishes kCmdListDirectoryWithTime support
+    ftpManager->listDirectory(MAV_COMP_ID_AUTOPILOT1, "/");
+    QVERIFY_SIGNAL_WAIT(spyListDirectoryComplete, TestTimeout::longMs());
+    QVERIFY(spyListDirectoryComplete.takeFirst()[1].toString().isEmpty());
+
+    // Once support is known a kErrFail Nak is a real failure, not a reason to fall back
+    _mockLink->mockLinkFTP()->setListDirectoryWithTimeSupported(false);
+    _mockLink->mockLinkFTP()->setListDirectoryWithTimeNakError(MavlinkFTP::kErrFail);
+    ftpManager->listDirectory(MAV_COMP_ID_AUTOPILOT1, "/");
+    QVERIFY_SIGNAL_WAIT(spyListDirectoryComplete, TestTimeout::longMs());
+    QList<QVariant> arguments = spyListDirectoryComplete.takeFirst();
+    QCOMPARE(arguments[0].toStringList().count(), 0);
+    QVERIFY(!arguments[1].toString().isEmpty());
+    QVERIFY(!ftpManager->listDirectoryWithTimeUnsupported());
     _disconnectMockLink();
 }
 

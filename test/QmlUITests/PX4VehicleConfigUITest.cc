@@ -26,6 +26,8 @@ void PX4VehicleConfigUITest::_testNavigateVehicleConfig()
     });
 }
 
+// Cycle through the axis buttons on a PID tuning tab. Each click exercises
+// the LineSeries remove/re-add path on GraphsView; qWait lets the polish pass run.
 void PX4VehicleConfigUITest::_cycleAxisButtons(const QStringList &axisNames)
 {
     for (const QString &name : axisNames) {

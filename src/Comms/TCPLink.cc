@@ -98,7 +98,8 @@ TCPWorker::~TCPWorker()
 
 bool TCPWorker::isConnected() const
 {
-    return (_socket && _socket->isOpen() && (_socket->state() == QAbstractSocket::ConnectedState));
+    // Called cross-thread from TCPLink; must not touch the thread-affine _socket
+    return _isConnected;
 }
 
 void TCPWorker::setupSocket()
@@ -205,6 +206,7 @@ void TCPWorker::writeData(const QByteArray &data)
 void TCPWorker::_onSocketConnected()
 {
     qCDebug(TCPLinkLog) << "Socket connected:" << _config->host() << _config->port();
+    _isConnected = true;
     _errorEmitted = false;
     emit connected();
 }
@@ -212,6 +214,8 @@ void TCPWorker::_onSocketConnected()
 void TCPWorker::_onSocketDisconnected()
 {
     qCDebug(TCPLinkLog) << "Socket disconnected:" << _config->host() << _config->port();
+    _isConnected = false;
+    _errorEmitted = false;
     emit disconnected();
 }
 
