@@ -12,6 +12,10 @@
 
 ## What Aircast adds
 
+<p align="center">
+  <img src=".github/readme/multi-camera.jpg" alt="Two cameras streaming at once in Aircast QGC, with the map as a draggable picture-in-picture tile" width="720">
+</p>
+
 - **Multiple cameras** — configure any number of video cameras in a unified camera list, mixing RTSP, WHEP/WebRTC, UDP, and TCP sources. Switch the active camera from an in-view button, or view several at once.
 - **Multi-camera video UX** — draggable, resizable, collapsible picture-in-picture and per-camera video tiles; drag the instrument and telemetry panels anywhere. Layout persists across restarts.
 - **Zero-restart camera switching** — switching the active camera keeps every stream playing, with no RTSP/WHEP renegotiation and no black-frame wait.
