@@ -70,6 +70,12 @@ MODELS = {
     "VehicleComponentInfo": "view.setup",
     "VibrationReading": "view.vibration",
     "VideoStatus": "view.video",
+    "CameraList": "view.cameras",
+    "EscCalibrationReading": "view.escCalibration",
+    "FirmwareJob": ["view.firmwareUpgrade", "view.firmwarePorts"],
+    "FlyDetail": "view.gps",
+    "ItemSpeed": ["view.itemFacts(1)", "view.missionItems"],
+    "TerrainDownload": "view.terrainDownload",
 }
 
 

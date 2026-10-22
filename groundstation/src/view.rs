@@ -1070,7 +1070,7 @@ pub const VIEWS: &[View] = &[
         compute: autodrop::status_view,
     },
     View {
-        path: autointercept::VIEW,
+        path: "view.autoIntercept",
         deps: &[],
         compute: autointercept::view,
     },

@@ -173,7 +173,7 @@ def views_to_modules():
                for match in re.finditer(r"\bfn (\w+_view)\b", source.read_text())}
     found = {}
     for entry in re.finditer(
-            r'View\s*\{\s*path:\s*"([^"]+)"[^}]*?compute:\s*([A-Za-z_]+)(?:::(\w+))?',
+            r'View\s*\{\s*path:\s*"([^"]+)"[^}]*?compute:\s*(?:crate::)?([A-Za-z_]+)(?:::(\w+))?',
             registry, re.S):
         path, first, second = entry.groups()
         found[path] = first if second else defines.get(first, first)
@@ -222,7 +222,7 @@ def keys_a_model_reads(name):
         stop = re.search(r"\n(?:final )?(?:struct|class|enum) \w+", following)
         body = following[: stop.start()] if stop else following
         keys = set()
-        for init in re.finditer(r"\n    (?:public )?init\??\(", body):
+        for init in re.finditer(r"\n    (?:public )?(?:init\??\(|static func read\((?:_ )?view\b)", body):
             open_brace = body.find("{", init.end())
             if open_brace < 0:
                 continue

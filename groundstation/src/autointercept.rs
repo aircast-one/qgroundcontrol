@@ -2,7 +2,6 @@ use serde_json::{Value, json};
 
 use crate::router::Backend;
 
-pub const VIEW: &str = "view.autoIntercept";
 pub const DROP: &str = "vehicle.autoInterceptDrop";
 pub const PICK_ANOTHER: &str = "vehicle.autoInterceptPickAnother";
 pub const PICK: &str = "vehicle.cameraManager.currentCameraInstance.startTracking";
