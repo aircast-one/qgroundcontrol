@@ -5,6 +5,7 @@ private let TRACK_COLOUR = Color(hex: 0x00E5FF)
 struct TrackingBoxOverlay: View {
     @QgcPath(CAMERA_VIEW) private var cameraJson
     @QgcPath(VIDEO_VIEW) private var videoJson
+    @QgcPath(AUTO_INTERCEPT) private var interceptJson
 
     var body: some View {
         if let tracking = trackingReading(cameraJson) {
@@ -20,6 +21,17 @@ struct TrackingBoxOverlay: View {
                                     sendTracking(trackingRequest(drag.startLocation.x, drag.startLocation.y, drag.location.x, drag.location.y, picture))
                                 }
                             )
+                    }
+                    if let hint = autoIntercept(interceptJson)?.hint {
+                        Text(hint)
+                            .font(.labelMedium)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, Space.s3)
+                            .padding(.vertical, Space.s1)
+                            .background(.black.opacity(0.6), in: Capsule())
+                            .padding(.top, Space.s3)
+                            .frame(maxWidth: .infinity, alignment: .top)
+                            .allowsHitTesting(false)
                     }
                     if let box = tracking.box {
                         Path(CGRect(x: picture.left + box.x * picture.width, y: picture.top + box.y * picture.height, width: box.width * picture.width, height: box.height * picture.height))

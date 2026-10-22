@@ -18,6 +18,56 @@ struct GuidedAction {
     var run: () -> Void = {}
 }
 
+let AUTO_INTERCEPT = "view.autoIntercept"
+
+struct InterceptConfirm: Equatable {
+    let title: String
+    let text: String
+}
+
+struct InterceptAction: Equatable {
+    let id: String
+    let label: String
+    let path: String
+    let args: [JSON]
+    let confirm: InterceptConfirm?
+}
+
+struct AutoIntercept: Equatable {
+    let visible: Bool
+    let problem: Bool
+    let headline: String
+    let actions: [InterceptAction]
+    let entry: InterceptAction?
+    let hint: String?
+    let picking: Bool
+}
+
+private func interceptAction(_ json: JSON) -> InterceptAction? {
+    json.objectOrNil.map { action in
+        InterceptAction(
+            id: action["id"].string,
+            label: action["label"].string,
+            path: action["path"].string,
+            args: action["args"].array,
+            confirm: action["confirm"].objectOrNil.map { InterceptConfirm(title: $0["title"].string, text: $0["text"].string) }
+        )
+    }
+}
+
+func autoIntercept(_ view: JSON?) -> AutoIntercept? {
+    guard let view, view["class"].string == "AutoIntercept" else { return nil }
+    return AutoIntercept(
+        visible: view["visible"].bool,
+        problem: view["tone"].string == "problem",
+        headline: view["headline"].string,
+        actions: view["actions"].array.compactMap(interceptAction),
+        entry: interceptAction(view["entry"]),
+        hint: view["hint"].textOrNil?.nonBlank,
+        picking: view["picking"].bool
+    )
+}
+
 let CHECKLIST_PASSED = 1
 let CHECKLIST_FAILED = 2
 
@@ -417,7 +467,7 @@ struct FlightActions<Center: View>: View {
     @QgcPath(MAP_CLICK_PATH) private var mapClickJson
     @QgcPath(PREFLIGHT) private var preflightJson
     @QgcPath(GUIDED_ACTIONS) private var actionsJson
-    @QgcPath(AUTODROP_STATUS) private var autodropJson
+    @QgcPath(AUTO_INTERCEPT) private var interceptJson
     @QgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups")) private var automaticMissionPopups
     @State private var room: CGSize = .zero
     @State private var centre: CGFloat = 0
@@ -427,7 +477,7 @@ struct FlightActions<Center: View>: View {
     private var state: FlyState? { flyState(stateJson) }
     private var armed: Bool { state?.armed == true }
     private var offers: [String: GuidedOffer] { guidedOffers(actionsJson) }
-    private var autodropWaiting: Bool { (autodropJson?["state"].string("") ?? "") == "waiting" }
+    private var intercept: AutoIntercept? { autoIntercept(interceptJson) }
 
     var body: some View {
         flightActions
@@ -530,6 +580,17 @@ struct FlightActions<Center: View>: View {
         }
     }
 
+    private func onIntercept(_ picked: InterceptAction) {
+        let args = picked.args.map(\.any)
+        guard let confirm = picked.confirm else {
+            offMain { Qgc.invoke(picked.path, arguments: args) }
+            return
+        }
+        ask(GuidedAction(name: confirm.title, confirm: confirm.text, destructive: false, answer: {
+            await offMain { Qgc.refusalOf(picked.path, arguments: args) }
+        }))
+    }
+
     private func guidedActionFor(_ offer: GuidedOffer) -> GuidedAction? {
         guidedCommand(offer.id, resumeFromSequence(actionsJson)).map { command in
             GuidedAction(name: offer.title, confirm: offer.prompt, destructive: offer.destructive, offerId: offer.id, run: command)
@@ -610,9 +671,7 @@ struct FlightActions<Center: View>: View {
             gripper.isEmpty ? nil : MoreTile(label: "Gripper", icon: .download, enabled: gripper.contains(where: \.ready), onClick: { actions.showGripper = true }),
             MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
             armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
-            MoreTile(label: autodropWaiting ? "Stop Auto Intercept" : "Auto Intercept", icon: .download, enabled: true, onClick: {
-                if autodropWaiting { VehicleCommands.stopAutoInterceptDrop() } else { VehicleCommands.startAutoInterceptDrop() }
-            }),
+            intercept?.entry.map { entry in MoreTile(label: entry.label, icon: .search, enabled: true, onClick: { onIntercept(entry) }) },
         ].compactMap { $0 }
         let offered = extras.filter { !entryIds.contains($0.id) && !GRIPPER_ACTIONS.contains($0.id) }.map { offer in
             MoreTile(label: offer.title, icon: guidedIcon(offer.id), enabled: offer.ready, warning: offer.destructive, onClick: {
@@ -644,8 +703,21 @@ struct FlightActions<Center: View>: View {
                         .padding(.bottom, max(RAIL_LIFT, railFloor))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
-                if flyScreen.refusal != nil || actions.pending != nil || showingSent {
+                let decidingCard = flyScreen.refusal != nil || actions.pending != nil || showingSent
+                if !decidingCard, let shown = intercept, shown.visible {
+                    InterceptLine(shown: shown, onAction: onIntercept)
+                        .padding(.horizontal, Space.s4)
+                        .padding(.vertical, Space.s2)
+                        .background(theme.colors.surfaceContainerLow, in: RoundedRectangle(cornerRadius: Corner.extraLarge))
+                        .frame(maxWidth: DECISION_CARD_WIDTH)
+                        .padding(Space.s3)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
+                if decidingCard {
                     VStack(alignment: .leading, spacing: Space.s3) {
+                        if let shown = intercept, shown.visible {
+                            InterceptLine(shown: shown, onAction: onIntercept)
+                        }
                         if let message = flyScreen.refusal {
                             Text(message).font(.bodyMedium).foregroundStyle(theme.colors.error)
                         }
@@ -660,6 +732,10 @@ struct FlightActions<Center: View>: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(alignment: .leading, spacing: Space.s3) {
+                if let shown = intercept, shown.visible {
+                    InterceptLine(shown: shown, onAction: onIntercept)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 if let message = flyScreen.refusal {
                     Text(message)
                         .font(.bodyMedium)
@@ -758,6 +834,24 @@ extension FlightActions where Center == EmptyView {
 }
 
 private let DECISION_CARD_WIDTH: CGFloat = 460
+
+private struct InterceptLine: View {
+    let shown: AutoIntercept
+    let onAction: (InterceptAction) -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: Space.s2) {
+            Text(shown.headline)
+                .font(.bodyMedium)
+                .foregroundStyle(shown.problem ? theme.colors.error : theme.colors.onSurfaceVariant)
+            ForEach(shown.actions, id: \.id) { action in
+                Button(action.label) { onAction(action) }
+                    .font(.labelLarge)
+            }
+        }
+    }
+}
 private let OSD_LABEL_ALPHA = 0.75
 let STOP_MOTORS = "Stop motors"
 private let RAIL_LIFT: CGFloat = 56

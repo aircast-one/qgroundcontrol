@@ -7,8 +7,7 @@ struct DetectionBox: Equatable {
     var y: Double
     var w: Double
     var h: Double
-    var label: String
-    var confidence: Double
+    var caption: String
     var target: Bool
 }
 
@@ -30,8 +29,7 @@ func detections(_ view: JSON?) -> Detections? {
                 y: box["y"].double(0),
                 w: box["w"].double(0),
                 h: box["h"].double(0),
-                label: box["label"].string,
-                confidence: box["confidence"].double(0),
+                caption: box["caption"].string,
                 target: box["target"].bool
             )
         },
@@ -50,12 +48,3 @@ func detectionTrouble(_ reading: Detections?) -> String? {
     return reading.error ?? (reading.stale ? NO_FRAMES : nil)
 }
 
-func boxCaption(_ box: DetectionBox) -> String {
-    let percent = Int(box.confidence * 100)
-    switch (box.label.isBlank, percent <= 0) {
-    case (true, true): return ""
-    case (true, false): return "\(percent)%"
-    case (false, true): return box.label
-    case (false, false): return "\(box.label) \(percent)%"
-    }
-}

@@ -5,7 +5,7 @@ final class DetectionsTests: XCTestCase {
     private let served = """
         {"kind":"object","class":"Detections","available":true,"host":"10.0.0.4","camera":"front",
          "stale":false,"ageMs":40,
-         "boxes":[{"x":0.1,"y":0.2,"w":0.3,"h":0.4,"label":"car","confidence":0.91,"target":true},
+         "boxes":[{"x":0.1,"y":0.2,"w":0.3,"h":0.4,"label":"car","confidence":0.91,"caption":"car 91%","target":true},
                   {"x":0.5,"y":0.5,"w":0.1,"h":0.1,"label":"person","confidence":0.42,"target":false}],
          "track":null,"error":null}
         """
@@ -16,7 +16,6 @@ final class DetectionsTests: XCTestCase {
 
     func testAFrameCarriesItsBoxesWithTheTargetMarked() {
         let reading = detections(JSON.parse(served))!
-        XCTAssertEqual(reading.boxes.map(\.label), ["car", "person"])
         XCTAssertEqual(reading.boxes.map(\.target), [true, false])
         XCTAssertEqual(reading.boxes[0].x, 0.1, accuracy: 1e-9)
         XCTAssertEqual(reading.boxes[0].h, 0.4, accuracy: 1e-9)
@@ -40,17 +39,9 @@ final class DetectionsTests: XCTestCase {
         XCTAssertNil(detectionTrouble(detections(JSON.parse(served))))
     }
 
-    func testACaptionNamesWhatWasSeenAndHowSureTheDetectorIs() {
+    func testOnlyTheTargetCarriesTheCaptionTheCoreWrote() {
         let reading = detections(JSON.parse(served))!
-        XCTAssertEqual(boxCaption(reading.boxes[0]), "car 91%")
-        XCTAssertEqual(boxCaption(reading.boxes[1]), "person 42%")
-        var blank = reading.boxes[0]
-        blank.label = ""
-        blank.confidence = 0
-        XCTAssertEqual(boxCaption(blank), "")
-        var unsure = reading.boxes[0]
-        unsure.confidence = 0
-        XCTAssertEqual(boxCaption(unsure), "car")
+        XCTAssertEqual(reading.boxes.map(\.caption), ["car 91%", ""])
     }
 }
 

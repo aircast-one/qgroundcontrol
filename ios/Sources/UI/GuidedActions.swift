@@ -1,7 +1,6 @@
 import Foundation
 
 let GUIDED_ACTIONS = "view.guidedActions"
-let AUTODROP_STATUS = "view.autodropStatus"
 
 struct GuidedOffer: Equatable {
     var id: String

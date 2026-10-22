@@ -23,9 +23,8 @@ struct DetectionOverlay: View {
                     }
                 }
                 ForEach(Array(boxes.enumerated()), id: \.offset) { _, box in
-                    let caption = boxCaption(box)
-                    if !caption.isBlank {
-                        Text(caption)
+                    if !box.caption.isBlank {
+                        Text(box.caption)
                             .font(.labelSmall)
                             .foregroundStyle(.black)
                             .padding(.horizontal, 3)

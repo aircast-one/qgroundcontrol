@@ -64,3 +64,16 @@ final class GuidedActionsTests: XCTestCase {
         XCTAssertEqual([four.dropText(1), four.dropText(3)], ["Drop bay 1", "Bay 3 empty, hold to drop"])
     }
 }
+
+final class AutoInterceptViewTests: XCTestCase {
+    func testTheCoresViewBecomesThePillItsButtonsAndTheMenuEntry() {
+        let shown = autoIntercept(JSON.parse(#"{"class":"AutoIntercept","visible":true,"tone":"problem","headline":"Couldn't line up a safe drop in 90 s — holding position","actions":[{"id":"tryAgain","label":"Try again","path":"vehicle.autoInterceptDrop","args":[],"confirm":{"title":"Auto Intercept","text":"Chase the car"}},{"id":"pickAnother","label":"Pick another target","path":"vehicle.autoInterceptPickAnother","args":[],"confirm":null}],"entry":{"id":"stop","label":"Stop Auto Intercept","path":"vehicle.autoInterceptDrop","args":["stop"],"confirm":null},"hint":null,"picking":false}"#))!
+        XCTAssertTrue(shown.problem)
+        XCTAssertEqual(shown.actions.map(\.label), ["Try again", "Pick another target"])
+        XCTAssertEqual(shown.actions.first?.confirm, InterceptConfirm(title: "Auto Intercept", text: "Chase the car"))
+        XCTAssertNil(shown.actions.last?.confirm)
+        XCTAssertEqual(shown.entry?.args, [.string("stop")])
+        XCTAssertNil(shown.hint)
+        XCTAssertNil(autoIntercept(JSON.parse(#"{"class":"Other"}"#)))
+    }
+}

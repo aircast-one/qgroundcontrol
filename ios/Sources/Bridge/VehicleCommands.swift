@@ -24,7 +24,6 @@ private let vehicleRcClear = "vehicle.clearRcChannelOverrides"
 private let vehicleRemoteIdEmergency = "vehicle.remoteIDManager.setEmergency"
 private let vehicleResetMessages = "vehicle.resetAllMessages"
 private let vehicleClearMessages = "vehicle.clearMessages"
-private let vehicleAutoInterceptDrop = "vehicle.autoInterceptDrop"
 
 enum VehicleCommands {
     @discardableResult static func setArmed(_ armed: Bool) -> Bool { Qgc.set(vehicleArmed, armed) }
@@ -59,6 +58,4 @@ enum VehicleCommands {
     @discardableResult static func declareRemoteIdEmergency(_ declare: Bool) -> Bool { Qgc.invoke(vehicleRemoteIdEmergency, declare) }
     @discardableResult static func resetAllMessages() -> Bool { Qgc.invoke(vehicleResetMessages) }
     @discardableResult static func clearMessages() -> Bool { Qgc.invoke(vehicleClearMessages) }
-    @discardableResult static func startAutoInterceptDrop() -> Bool { Qgc.invoke(vehicleAutoInterceptDrop) }
-    @discardableResult static func stopAutoInterceptDrop() -> Bool { Qgc.invoke(vehicleAutoInterceptDrop, "stop") }
 }
