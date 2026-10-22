@@ -261,6 +261,14 @@ impl Feed {
             .map(|f| (f.boxes.clone(), f.received_ms))
     }
 
+    pub fn target_width(&self, now_ms: u64) -> Option<f64> {
+        self.fresh_boxes(now_ms)?
+            .0
+            .iter()
+            .find(|found| found["target"] == true)?["w"]
+            .as_f64()
+    }
+
     pub fn grounds(&self, now_ms: u64) -> Option<(Vec<Seen>, u64)> {
         self.frame
             .as_ref()

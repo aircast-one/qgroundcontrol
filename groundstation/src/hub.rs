@@ -296,6 +296,10 @@ const GIMBAL_FOLLOW_MS: u64 = 200;
 const GIMBAL_FOLLOW_DEADBAND_DEG: f64 = 1.0;
 const GIMBAL_FOLLOW_AFTER_FIRE_MS: u64 = 5_000;
 const GIMBAL_FOLLOW_COAST_MS: u64 = 6_000;
+const GIMBAL_FOLLOW_STEP_BOXES: f64 = 0.5;
+const GIMBAL_FOLLOW_MIN_STEP_DEG: f64 = 0.3;
+const GIMBAL_FOLLOW_UNSEEN_STEP_DEG: f64 = 1.0;
+const GIMBAL_FOLLOW_IN_FRAME: f64 = 0.25;
 const TERRAIN_PASSES: usize = 4;
 
 fn coasted(
@@ -341,6 +345,23 @@ fn follow_aim(
         _ if pitch < NADIR_HOLD_DEG => Some((current.map_or(heading, |(yaw, _)| yaw), -90.0)),
         _ => Some((heading, pitch)),
     }
+}
+
+fn eased(
+    current: Option<(f64, f64)>,
+    (heading, pitch): (f64, f64),
+    step_deg: f64,
+    in_frame_deg: f64,
+) -> (f64, f64) {
+    let limited =
+        |error: f64| error.signum() * (error.abs() - in_frame_deg).max(error.abs().min(step_deg));
+    current.map_or((heading, pitch), |(yaw, current_pitch)| {
+        let turn = (heading - yaw + 180.0).rem_euclid(360.0) - 180.0;
+        (
+            (yaw + limited(turn)).rem_euclid(360.0),
+            current_pitch + limited(pitch - current_pitch),
+        )
+    })
 }
 
 fn follow_needed(current: Option<(f64, f64)>, (heading, pitch): (f64, f64)) -> bool {
@@ -3458,8 +3479,14 @@ impl Vehicle {
                 ),
                 (target.position.lat, target.position.lon, 0.0),
             );
-            let (heading, pitch) = follow_aim(self.gimbal_aim(), wanted, travel, released)?;
-            follow_needed(self.gimbal_aim(), (heading, pitch)).then_some((pitch, heading))
+            let wanted = follow_aim(self.gimbal_aim(), wanted, travel, released)?;
+            let (heading, pitch) = eased(
+                self.gimbal_aim(),
+                wanted,
+                self.follow_step_deg(source, now_ms),
+                crate::gimbalgeo::lens().horizontal_deg * GIMBAL_FOLLOW_IN_FRAME,
+            );
+            follow_needed(self.gimbal_aim(), wanted).then_some((pitch, heading))
         }) else {
             return Vec::new();
         };
@@ -3467,6 +3494,18 @@ impl Vehicle {
             .gimbals
             .aim_heading(pitch as f32, heading as f32, now_ms);
         self.gimbal_outs(outs, now_ms).unwrap_or_default()
+    }
+
+    fn follow_step_deg(&self, source: crate::autodrop::TargetSource, now_ms: u64) -> f64 {
+        match source {
+            crate::autodrop::TargetSource::Tracked => crate::detections::lock()
+                .target_width(now_ms)
+                .map_or(GIMBAL_FOLLOW_UNSEEN_STEP_DEG, |width| {
+                    (width * crate::gimbalgeo::lens().horizontal_deg * GIMBAL_FOLLOW_STEP_BOXES)
+                        .max(GIMBAL_FOLLOW_MIN_STEP_DEG)
+                }),
+            _ => f64::INFINITY,
+        }
     }
 
     pub(crate) fn release_now(&self) -> Option<crate::dropsim::Release> {
@@ -10406,6 +10445,26 @@ mod tests {
                 3.0
             )),
             "heading 90 (east) at 3 m/s is all east velocity, no north"
+        );
+    }
+
+    #[test]
+    fn a_followed_picture_target_is_turned_to_a_step_at_a_time() {
+        assert_eq!(
+            eased(Some((350.0, -20.0)), (10.0, -30.0), 2.0, 30.0),
+            (352.0, -22.0)
+        );
+        let (yaw, pitch) = eased(Some((10.0, -20.0)), (9.5, -20.2), 2.0, 30.0);
+        assert!((yaw - 9.5).abs() < 1e-9 && (pitch + 20.2).abs() < 1e-9);
+        assert_eq!(eased(None, (10.0, -30.0), 2.0, 30.0), (10.0, -30.0));
+        assert_eq!(
+            eased(Some((0.0, 0.0)), (50.0, -10.0), 2.0, 30.0),
+            (20.0, -2.0),
+            "a target about to leave the picture is brought back inside it at once"
+        );
+        assert_eq!(
+            eased(Some((0.0, 0.0)), (90.0, -90.0), f64::INFINITY, 30.0),
+            (90.0, -90.0)
         );
     }
 
