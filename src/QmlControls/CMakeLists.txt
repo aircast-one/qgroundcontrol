@@ -178,6 +178,7 @@ qt_add_qml_module(QGroundControlControlsModule
         SettingsButton.qml
         SettingsGroupLayout.qml
         SetupPage.qml
+        SidebarDivider.qml
         SliderSwitch.qml
         SubMenuButton.qml
         TimedProgressTracker.qml

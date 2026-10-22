@@ -162,6 +162,8 @@ public:
         return _missionItemHandler->requestListCount(type);
     }
 
+    void bumpAvailableModesMonitorSequence() { ++_availableModesMonitorSeqNumber; }
+
     enum RequestMessageFailureMode_t
     {
         FailRequestMessageNone,
@@ -466,7 +468,9 @@ private:
 
     int _availableModesWorkerNextModeIndex = 0;
     QMutex _availableModesWorkerMutex;
-    uint8_t _availableModesMonitorSeqNumber = 0;
+    /// Sequence number sent in AVAILABLE_MODES_MONITOR. Written from the test (main) thread via
+    /// bumpAvailableModesMonitorSequence, read from the worker thread at 1Hz/500Hz.
+    std::atomic<uint8_t> _availableModesMonitorSeqNumber = 0;
 
     QString _logDownloadFilename;
     bool _logsErased = false;

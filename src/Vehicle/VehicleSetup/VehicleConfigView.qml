@@ -123,6 +123,20 @@ Rectangle {
         return false
     }
 
+    function _componentVisible(component) {
+        if (!component || component.setupSource.toString() === "") {
+            return false
+        }
+        return _searchQuery.trim() === "" || _componentMatchesSearch(component)
+    }
+
+    function _anyComponentVisible() {
+        if (!_fullParameterVehicleAvailable) {
+            return false
+        }
+        return _activeVehicle.autopilotPlugin.vehicleComponents.some(_componentVisible)
+    }
+
     function showSummaryPanel() {
         if (mainWindow.allowViewSwitch()) {
             _showSummaryPanel()
@@ -334,6 +348,7 @@ Rectangle {
 
         QGCTextField {
             id:                 searchField
+            objectName:         "vehicleConfig_searchField"
             Layout.fillWidth:   true
             placeholderText:    qsTr("Search configuration...")
             visible:            _fullParameterVehicleAvailable
@@ -368,10 +383,12 @@ Rectangle {
                     onClicked: showSummaryPanel()
                 }
 
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight / 2
-                    visible: vehicleConfigView._searchQuery.trim() === ""
+                // When the component group is empty only this divider shows, not the second one
+                SidebarDivider {
+                    objectName: "vehicleConfig_summaryDivider"
+                    visible:    summaryButton.visible &&
+                                (vehicleConfigView._anyComponentVisible() || opticalFlowButton.visible ||
+                                 parametersButton.visible || firmwareButton.visible)
                 }
 
                 Repeater {
@@ -395,12 +412,7 @@ Rectangle {
                         property bool   matchesSearch:  comp ? vehicleConfigView._componentMatchesSearch(comp) : false
                         property bool   isExpanded:     hasSections && (isSearching ? matchesSearch : vehicleConfigView._isExpanded(index))
 
-                        visible: {
-                            if (!comp) return false
-                            if (comp.setupSource.toString() === "") return false
-                            if (isSearching) return matchesSearch
-                            return true
-                        }
+                        visible: vehicleConfigView._componentVisible(comp)
 
                         ConfigButton {
                             Layout.fillWidth:   true
@@ -503,6 +515,7 @@ Rectangle {
                 }
 
                 ConfigButton {
+                    id:                 opticalFlowButton
                     visible:            _activeVehicle ? _activeVehicle.flowImageIndex > 0 : false
                     text:               qsTr("Optical Flow")
                     Layout.fillWidth:   true
@@ -510,10 +523,10 @@ Rectangle {
                     onClicked:          showPanel("opticalflow", "qrc:/qml/QGroundControl/VehicleSetup/OpticalFlowSensor.qml")
                 }
 
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight / 2
-                    visible: vehicleConfigView._searchQuery.trim() === ""
+                SidebarDivider {
+                    objectName: "vehicleConfig_componentsDivider"
+                    visible:    (vehicleConfigView._anyComponentVisible() || opticalFlowButton.visible) &&
+                                (parametersButton.visible || firmwareButton.visible)
                 }
 
                 ConfigButton {
@@ -532,6 +545,7 @@ Rectangle {
 
                 ConfigButton {
                     id:                 firmwareButton
+                    objectName:         "vehicleConfig_firmwareButton"
                     icon.source:        "/qmlimages/FirmwareUpgradeIcon.png"
                     visible:            !ScreenTools.isMobile && _corePlugin.options.showFirmwareUpgrade &&
                                         vehicleConfigView._searchQuery.trim() === ""

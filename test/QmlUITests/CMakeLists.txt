@@ -30,6 +30,10 @@ target_sources(${CMAKE_PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/PX4AirframeSetupUITest.h
         ${CMAKE_CURRENT_SOURCE_DIR}/AppCloseWarningUITest.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/AppCloseWarningUITest.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/FlyViewCameraCaptureUITest.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/FlyViewCameraCaptureUITest.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/FlyViewCameraZoomUITest.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/FlyViewCameraZoomUITest.h
         ${CMAKE_CURRENT_SOURCE_DIR}/FlyViewProximityRadarUITest.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/FlyViewProximityRadarUITest.h
         ${CMAKE_CURRENT_SOURCE_DIR}/NTRIPSettingsUITest.cc
@@ -42,6 +46,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/RemoteIDSettingsUITest.h
         ${CMAKE_CURRENT_SOURCE_DIR}/Viewer3DUITest.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/Viewer3DUITest.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/CriticalVehicleMessageUITest.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/CriticalVehicleMessageUITest.h
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -58,11 +64,14 @@ add_qgc_test(APMSensorsCalibrationUITest LABELS Integration NoSanitizer TIMEOUT 
 add_qgc_test(APMFreshFlashUITest LABELS Integration NoSanitizer TIMEOUT 180)
 add_qgc_test(PX4AirframeSetupUITest LABELS Integration NoSanitizer StockUI TIMEOUT 120)
 add_qgc_test(AppCloseWarningUITest LABELS Integration NoSanitizer TIMEOUT 120)
+add_qgc_test(FlyViewCameraCaptureUITest LABELS Integration NoSanitizer TIMEOUT 120)
+add_qgc_test(FlyViewCameraZoomUITest LABELS Integration NoSanitizer TIMEOUT 120)
 add_qgc_test(FlyViewProximityRadarUITest LABELS Integration NoSanitizer TIMEOUT 120)
 add_qgc_test(NTRIPSettingsUITest LABELS Integration NoSanitizer TIMEOUT 120)
 add_qgc_test(OnboardLogUITest LABELS Integration NoSanitizer TIMEOUT 180)
 add_qgc_test(ParameterDiffDialogUITest LABELS Integration NoSanitizer TIMEOUT 180)
 add_qgc_test(RemoteIDSettingsUITest LABELS Integration NoSanitizer TIMEOUT 120)
+add_qgc_test(CriticalVehicleMessageUITest LABELS Integration NoSanitizer TIMEOUT 180)
 
 # Qt Quick 3D requires an RHI backend, which the default software Quick backend
 # cannot provide. On Linux the offscreen platform exposes GLX (CI runs ctest

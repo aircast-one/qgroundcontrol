@@ -9,12 +9,16 @@ class FTPManagerTest : public VehicleTestManualConnect
 private slots:
     void _performTestCases_data();
     void _performTestCases();
+    void _testDownloadUri_data();
+    void _testDownloadUri();
     void _performSizeBasedTestCases_data();
     void _performSizeBasedTestCases();
     void _testLostPackets();
     void _testListDirectory();
     void _testListDirectoryWithTime();
+    void _testListDirectoryWithTimeFallback_data();
     void _testListDirectoryWithTimeFallback();
+    void _testListDirectoryWithTimeFailAfterSupported();
     void _testListDirectoryNoResponse();
     void _testListDirectoryNakResponse();
     void _testListDirectoryNoSecondResponse();

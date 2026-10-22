@@ -382,10 +382,6 @@ void MockLink::run1HzTasks()
         _sendHomePositionDelayCount--;
     } else {
         _sendHomePosition();
-        if (_availableModesMonitorSeqNumber == 0) {
-            qCDebug(MockLinkLog) << "Bumping sequence number for available modes monitor to trigger requery of modes";
-            _availableModesMonitorSeqNumber = 1;
-        }
     }
 }
 
@@ -424,6 +420,11 @@ void MockLink::run10HzTasks()
 
 void MockLink::run500HzTasks()
 {
+    if (_mavlinkStarted && _connected && mavlinkChannelIsSet()) {
+        // Standard modes are served even on high-latency links since the request is still accepted there.
+        _availableModesWorker();
+    }
+
     if (linkConfiguration()->isHighLatency()) {
         return;
     }
@@ -434,7 +435,6 @@ void MockLink::run500HzTasks()
             _paramRequestListWorker();
         }
         _logDownloadWorker();
-        _availableModesWorker();
         _apmCompassCalWorker();
         _apmAccelCalWorker();
     }
