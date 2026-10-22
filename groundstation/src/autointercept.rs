@@ -40,11 +40,11 @@ fn waiting_text(progress: &Value) -> String {
     }
     let target = target_name(progress);
     let left = format!(
-        " · {} s left",
+        " · {:.0} s left",
         progress
             .get("secondsLeft")
-            .and_then(Value::as_i64)
-            .unwrap_or(0)
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
     );
     match text(progress, "holding") {
         "climbing" => format!("Chasing the {target} · climbing to speed"),
@@ -235,6 +235,7 @@ pub fn view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn pick_another(backend: &dyn Backend) -> Value {
+    crate::autodrop::run(backend, r#"["stop"]"#);
     backend.invoke(STOP_TRACKING, "[]");
     let armed =
         crate::read::object(&backend.set(TRACKING_ARMED, &json!({ "value": true }).to_string()));
@@ -252,6 +253,51 @@ pub fn pick_another(backend: &dyn Backend) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Recorder(std::cell::RefCell<Vec<String>>);
+
+    impl Backend for Recorder {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.id" => json!({ "value": 7 }).to_string(),
+                _ => String::new(),
+            }
+        }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String {
+            String::new()
+        }
+        fn core_guided(&self, action: &Value) -> Option<Result<(), String>> {
+            self.0.borrow_mut().push(format!(
+                "guided {}",
+                action["action"].as_str().unwrap_or("")
+            ));
+            Some(Ok(()))
+        }
+        fn set(&self, path: &str, _value: &str) -> String {
+            self.0.borrow_mut().push(format!("set {path}"));
+            json!({ "ok": true }).to_string()
+        }
+        fn invoke(&self, path: &str, args: &str) -> String {
+            self.0.borrow_mut().push(format!("invoke {path} {args}"));
+            String::new()
+        }
+        fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn picking_another_target_clears_the_finished_run_before_tracking_again() {
+        let backend = Recorder(std::cell::RefCell::new(Vec::new()));
+        assert_eq!(pick_another(&backend), json!({ "ok": true }));
+        assert_eq!(
+            backend.0.into_inner(),
+            vec![
+                "guided autodropStop".to_string(),
+                format!("invoke {STOP_TRACKING} []"),
+                format!("set {TRACKING_ARMED}"),
+            ],
+            "a give-up left in place keeps covering the new lock's \"Locked on · Drop on it\""
+        );
+    }
 
     fn line(status: Value) -> (String, String, Vec<String>) {
         let shown = shown(&status, &Value::Null, &Value::Null);
@@ -326,7 +372,7 @@ mod tests {
         .into_iter()
         .for_each(|(holding, said)| {
             assert_eq!(
-                headline(json!({"state":"waiting","progress":{"target":"car","holding":holding,"secondsLeft":52}})),
+                headline(json!({"state":"waiting","progress":{"target":"car","holding":holding,"secondsLeft":52.0}})),
                 said
             )
         });
