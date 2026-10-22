@@ -850,7 +850,7 @@ QByteArray DebugApiServer::_videoSettingJson(const QUrlQuery &query)
         return QJsonDocument(QJsonObject{{"error", QStringLiteral("unknown fact: %1").arg(factName)}}).toJson(QJsonDocument::Compact);
     }
     if (query.hasQueryItem(QStringLiteral("value"))) {
-        fact->setRawValue(query.queryItemValue(QStringLiteral("value")));
+        fact->setRawValue(query.queryItemValue(QStringLiteral("value"), QUrl::FullyDecoded));
     }
     return QJsonDocument(QJsonObject{{factName, QJsonValue::fromVariant(fact->rawValue())}}).toJson(QJsonDocument::Compact);
 }
