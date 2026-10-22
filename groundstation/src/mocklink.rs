@@ -6005,24 +6005,21 @@ mod tests {
         };
         sim.conditions.roads = true;
         sim.begin_roads(network);
-        let (said, gaps): (Vec<String>, Vec<f64>) = (0..300)
+        let samples: Vec<(Vec<String>, f64)> = (0..300)
             .map(|_| {
                 let said = texts(&heard(&mut sim, 1));
                 (said, (sim.alt - sim.ground_rel(sim.lat, sim.lon)).abs())
             })
-            .fold((Vec::new(), Vec::new()), |(mut all, mut gaps), (said, gap)| {
-                all.extend(said);
-                gaps.push(gap);
-                (all, gaps)
-            });
+            .collect();
+        let said: Vec<&String> = samples.iter().flat_map(|(said, _)| said).collect();
+        let worst_gap = samples.iter().map(|(_, gap)| *gap).fold(0.0, f64::max);
         assert!(
             sim.armed && !said.iter().any(|text| text.starts_with("Crash")),
             "five minutes up and down the streets without a crash: {said:?}"
         );
         assert!(
-            gaps.iter().all(|gap| *gap < 0.01),
-            "a car stays on the ground, worst gap {} m",
-            gaps.iter().fold(0.0_f64, |a, b| a.max(*b))
+            worst_gap < 0.01,
+            "a car stays on the ground, worst gap {worst_gap} m"
         );
     }
 
