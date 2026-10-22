@@ -1,7 +1,53 @@
 import { type Json, isNull, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 
 export const GUIDED_ACTIONS = 'view.guidedActions';
-export const AUTODROP_STATUS = 'view.autodropStatus';
+export const AUTO_INTERCEPT = 'view.autoIntercept';
+
+export type InterceptConfirm = { readonly title: string; readonly text: string };
+
+export type InterceptAction = {
+  readonly id: string;
+  readonly label: string;
+  readonly path: string;
+  readonly args: readonly unknown[];
+  readonly confirm: InterceptConfirm | null;
+};
+
+export type AutoIntercept = {
+  readonly visible: boolean;
+  readonly problem: boolean;
+  readonly headline: string;
+  readonly actions: readonly InterceptAction[];
+  readonly entry: InterceptAction | null;
+  readonly hint: string | null;
+  readonly picking: boolean;
+};
+
+const interceptAction = (action: Json): InterceptAction => {
+  const confirm = optJSONObject(action, 'confirm');
+  return {
+    id: optText(action, 'id'),
+    label: optText(action, 'label'),
+    path: optText(action, 'path'),
+    args: optJSONArray(action, 'args') ?? [],
+    confirm: confirm === null ? null : { title: optText(confirm, 'title'), text: optText(confirm, 'text') },
+  };
+};
+
+export const autoIntercept = (view: Json | null): AutoIntercept | null => {
+  if (view === null || optText(view, 'class') !== 'AutoIntercept') return null;
+  const entry = optJSONObject(view, 'entry');
+  const hint = optText(view, 'hint');
+  return {
+    visible: optBoolean(view, 'visible'),
+    problem: optText(view, 'tone') === 'problem',
+    headline: optText(view, 'headline'),
+    actions: jsonObjects(optJSONArray(view, 'actions')).map(interceptAction),
+    entry: entry === null ? null : interceptAction(entry),
+    hint: hint.trim() === '' ? null : hint,
+    picking: optBoolean(view, 'picking'),
+  };
+};
 
 export type GuidedOffer = {
   readonly id: string;

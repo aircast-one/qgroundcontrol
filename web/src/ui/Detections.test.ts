@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Json } from '@/bridge/Json';
-import { type Detections, NO_FRAMES, boxCaption, detectionTrouble, detections, visibleBoxes } from '@/ui/Detections';
+import { type Detections, NO_FRAMES, detectionTrouble, detections, visibleBoxes } from '@/ui/Detections';
 
 const served = (): Json => ({
   kind: 'object',
@@ -11,7 +11,7 @@ const served = (): Json => ({
   stale: false,
   ageMs: 40,
   boxes: [
-    { x: 0.1, y: 0.2, w: 0.3, h: 0.4, label: 'car', confidence: 0.91, target: true },
+    { x: 0.1, y: 0.2, w: 0.3, h: 0.4, label: 'car', confidence: 0.91, caption: 'car 91%', target: true },
     { x: 0.5, y: 0.5, w: 0.1, h: 0.1, label: 'person', confidence: 0.42, target: false },
   ],
   track: null,
@@ -22,7 +22,6 @@ describe('DetectionsTest', () => {
   it('a frame carries its boxes with the target marked', () => {
     const reading = detections(served())!;
 
-    expect(reading.boxes.map((it) => it.label)).toEqual(['car', 'person']);
     expect(reading.boxes.map((it) => it.target)).toEqual([true, false]);
     expect(reading.boxes[0]!.x).toBeCloseTo(0.1, 9);
     expect(reading.boxes[0]!.h).toBeCloseTo(0.4, 9);
@@ -52,14 +51,8 @@ describe('DetectionsTest', () => {
     expect(detectionTrouble(detections(served()))).toBeNull();
   });
 
-  it('a caption names what was seen and how sure the detector is', () => {
-    const reading = detections(served())!;
-    const [car, person] = reading.boxes;
-
-    expect(boxCaption(car!)).toBe('car 91%');
-    expect(boxCaption(person!)).toBe('person 42%');
-    expect(boxCaption({ ...car!, label: '', confidence: 0.0 })).toBe('');
-    expect(boxCaption({ ...car!, confidence: 0.0 })).toBe('car');
+  it('only the target carries the caption the core wrote', () => {
+    expect(detections(served())!.boxes.map((box) => box.caption)).toEqual(['car 91%', '']);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
-import { SINGLE_GRIPPER, bayOutput, guidedOffers, multiBay, payloadOf } from './GuidedActions';
+import { SINGLE_GRIPPER, autoIntercept, bayOutput, guidedOffers, multiBay, payloadOf } from './GuidedActions';
 import { GuidedAction, needsConfirm } from './VehicleUi';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -72,5 +72,33 @@ describe('GuidedActionsTest', () => {
   it('no view is no offers rather than a crash', () => {
     expect(guidedOffers(null)).toEqual(new Map());
     expect(guidedOffers(json('{}'))).toEqual(new Map());
+  });
+});
+
+describe('autoIntercept', () => {
+  it('reads the core view as served', () => {
+    const view = autoIntercept(
+      json(`{"kind":"autoIntercept","class":"AutoIntercept","visible":true,"tone":"problem","headline":"Lost the car",
+        "actions":[{"id":"tryAgain","label":"Try again","path":"vehicle.autoInterceptDrop","args":[],"confirm":{"title":"Drop on it","text":"The drone flies to the car."}},
+                   {"id":"stop","label":"Stop","path":"vehicle.autoInterceptDrop","args":["stop"],"confirm":null}],
+        "entry":{"id":"start","label":"Auto intercept","path":"vehicle.autoInterceptDrop","args":[],"confirm":{"title":"Drop on it","text":"Go"}},
+        "hint":"Tap a car to pick it","picking":true,"pickPath":"camera.startTracking"}`),
+    );
+    expect(view?.visible).toBe(true);
+    expect(view?.problem).toBe(true);
+    expect(view?.headline).toBe('Lost the car');
+    expect(view?.actions.map((it) => it.id)).toEqual(['tryAgain', 'stop']);
+    expect(view?.actions[0]?.confirm).toEqual({ title: 'Drop on it', text: 'The drone flies to the car.' });
+    expect(view?.actions[1]?.args).toEqual(['stop']);
+    expect(view?.actions[1]?.confirm).toBeNull();
+    expect(view?.entry?.label).toBe('Auto intercept');
+    expect(view?.hint).toBe('Tap a car to pick it');
+    expect(view?.picking).toBe(true);
+  });
+
+  it('treats a blank hint, missing entry and another class as absent', () => {
+    expect(autoIntercept(json('{"class":"AutoIntercept","visible":false,"hint":" ","actions":[]}'))).toMatchObject({ hint: null, entry: null, actions: [] });
+    expect(autoIntercept(json('{"class":"Other"}'))).toBeNull();
+    expect(autoIntercept(null)).toBeNull();
   });
 });

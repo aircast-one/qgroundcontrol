@@ -24,7 +24,7 @@ import { LocalFlyScreenState, OpenOnRequest } from './FlyScreenState';
 import { AnimatedVisibility, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
-import { AUTODROP_STATUS, GUIDED_ACTIONS, type GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
+import { AUTO_INTERCEPT, type AutoIntercept, GUIDED_ACTIONS, type GuidedOffer, type InterceptAction, type Payload, SINGLE_GRIPPER, autoIntercept, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
 import { type GuidedValueKind, GuidedValueFlow, type OpenGuidedValue, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
 import { holdLabel } from './HoldToConfirm';
@@ -414,8 +414,8 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const useChecklist = useMemo(() => preflightOffered(preflightJson), [preflightJson]);
   const actionsJson = useQgcPath(GUIDED_ACTIONS);
   const offers = useMemo(() => guidedOffers(actionsJson), [actionsJson]);
-  const autodropJson = useQgcPath(AUTODROP_STATUS);
-  const autodropWaiting = optText(autodropJson, 'state') === 'waiting';
+  const interceptJson = useQgcPath(AUTO_INTERCEPT);
+  const intercept = useMemo(() => autoIntercept(interceptJson), [interceptJson]);
   const extras = useMemo(() => moreActions(offers), [offers]);
   const gripper = useMemo(() => gripperOffers(extras), [extras]);
   const resumeFrom = useMemo(() => resumeFromSequence(actionsJson), [actionsJson]);
@@ -456,6 +456,10 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       sent(action);
     }
   };
+  const onIntercept = (picked: InterceptAction) =>
+    picked.confirm === null
+      ? void Qgc.invoke(picked.path, ...picked.args)
+      : ask(GuidedAction({ name: picked.confirm.title, confirm: picked.confirm.text, destructive: false, answer: () => Qgc.refusalOf(picked.path, ...picked.args) }));
   const offerAction = (offer: GuidedOffer, command: () => void): GuidedAction =>
     GuidedAction({ offerId: offer.id, name: offer.title, confirm: offer.prompt, destructive: offer.destructive, run: command });
 
@@ -568,6 +572,8 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       <SentNotice name={sentName ?? ''} onDismiss={() => setSentName(null)} />
     ) : null;
   const refusalLine = refusal !== null ? <RefusalLine message={refusal} onDismiss={() => setRefusal(null)} /> : null;
+  const interceptLine = intercept?.visible === true ? <InterceptLine intercept={intercept} onAction={onIntercept} /> : null;
+  const decidingCard = refusal !== null || confirming !== null || showingSent;
 
   const decisions = (
     <>
@@ -597,11 +603,21 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
           </div>
         </div>
       ) : null}
-      {refusal !== null || confirming !== null || showingSent ? (
+      {!decidingCard && interceptLine !== null ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
+          <div className="pointer-events-auto w-full p-3" style={{ maxWidth: DECISION_CARD_WIDTH }}>
+            <Surface shape="extraLarge" color={md('surfaceContainerLow')}>
+              <div className="px-4 py-2">{interceptLine}</div>
+            </Surface>
+          </div>
+        </div>
+      ) : null}
+      {decidingCard ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="pointer-events-auto w-full p-3" style={{ maxWidth: DECISION_CARD_WIDTH }}>
             <Surface shape="extraLarge" color={md('surfaceContainerLow')}>
               <div className="flex flex-col gap-3 p-4">
+                {interceptLine}
                 {refusalLine}
                 {confirmTrack}
               </div>
@@ -614,6 +630,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   ) : (
     <>
       <div className={`flex flex-col gap-3 p-4 ${className ?? ''}`}>
+        {interceptLine}
         {refusalLine}
         {confirmTrack}
         {deckTelemetry ? (
@@ -651,12 +668,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
           },
         }),
         ...(!armed ? [MoreTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
-        MoreTile({
-          label: autodropWaiting ? 'Stop Auto Intercept' : 'Auto Intercept',
-          icon: 'ic_drop',
-          enabled: true,
-          onClick: () => void (autodropWaiting ? VehicleCommands.stopAutoInterceptDrop() : VehicleCommands.startAutoInterceptDrop()),
-        }),
+        ...[intercept?.entry ?? null].flatMap((entry) => (entry === null ? [] : [MoreTile({ label: entry.label, icon: 'ic_search', enabled: true, onClick: () => onIntercept(entry) })])),
         ...extras
           .filter((it) => !entries.some((entry) => entry.id === it.id) && !GRIPPER_ACTIONS.includes(it.id))
           .map((offer) =>
@@ -790,6 +802,19 @@ export const RangeHint = ({ text }: { text: string }) => (
 );
 
 const flightModeNow = async (): Promise<string> => flyState(await Qgc.get(FLY_STATE))?.mode ?? '';
+
+const InterceptLine = ({ intercept, onAction }: { intercept: AutoIntercept; onAction: (action: InterceptAction) => void }) => (
+  <div className="flex w-full flex-wrap items-center gap-2">
+    <Text typography="bodyMedium" color={intercept.problem ? md('error') : md('onSurfaceVariant')} className="flex-1">
+      {intercept.headline}
+    </Text>
+    {intercept.actions.map((action) => (
+      <TextButton key={action.id} onClick={() => onAction(action)}>
+        {action.label}
+      </TextButton>
+    ))}
+  </div>
+);
 
 const RefusalLine = ({ message, onDismiss }: { message: string; onDismiss: () => void }) => (
   <div className="flex w-full items-center">

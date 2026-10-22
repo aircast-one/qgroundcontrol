@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
 import { Text } from '@/m3';
 import { Color, argb, md } from '@/theme/Colors';
-import { DETECTIONS, boxCaption, detectionTrouble, detections, visibleBoxes } from '@/ui/Detections';
+import { DETECTIONS, detectionTrouble, detections, visibleBoxes } from '@/ui/Detections';
 import { useElementSize } from '@/ui/FlyShell';
 import { VIDEO_VIEW, paintedRect, videoReading } from '@/ui/VideoView';
 
@@ -39,7 +39,7 @@ export const DetectionOverlay = ({ className }: { className?: string }) => {
         })}
       </svg>
       {boxes.map((box, index) => {
-        const caption = boxCaption(box);
+        const caption = box.caption;
         return caption.trim() === '' ? null : (
           <Text
             key={index}

@@ -1,9 +1,11 @@
 import { useMemo, useRef } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
+import { Text } from '@/m3';
 import { argb } from '@/theme/Colors';
 import { CAMERA_START_TRACKING, CAMERA_VIEW, type TrackingRequest, trackingCanAim, trackingPointObject, trackingReading, trackingRectObject, trackingRequest } from '@/ui/CameraControl';
 import { type Offset, useElementSize } from '@/ui/FlyShell';
+import { AUTO_INTERCEPT, autoIntercept } from '@/ui/GuidedActions';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VIDEO_VIEW, paintedRect, videoReading } from '@/ui/VideoView';
 
@@ -12,6 +14,8 @@ const TRACK_COLOUR = argb(0xff00e5ff);
 export const TrackingBoxOverlay = ({ className }: { className?: string }) => {
   const cameraJson = useQgcPath(CAMERA_VIEW);
   const videoJson = useQgcPath(VIDEO_VIEW);
+  const interceptJson = useQgcPath(AUTO_INTERCEPT);
+  const hint = useMemo(() => autoIntercept(interceptJson)?.hint ?? null, [interceptJson]);
   const tracking = useMemo(() => trackingReading(cameraJson), [cameraJson]);
   const source = useMemo(() => videoReading(videoJson)?.sourceSize ?? null, [videoJson]);
   const box = tracking?.box ?? null;
@@ -52,6 +56,15 @@ export const TrackingBoxOverlay = ({ className }: { className?: string }) => {
             strokeWidth={4}
           />
         </svg>
+      ) : null}
+      {hint !== null ? (
+        <div className="absolute inset-x-0 top-3 flex justify-center">
+          <span className="rounded-full bg-black/60 px-3 py-1">
+            <Text typography="labelMedium" color="#ffffff">
+              {hint}
+            </Text>
+          </span>
+        </div>
       ) : null}
     </div>
   );

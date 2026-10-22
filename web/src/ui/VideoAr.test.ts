@@ -15,6 +15,24 @@ describe('VideoArTest', () => {
     expect(arReading({ available: false })).toBeNull();
   });
 
+  it('the intercept target, drop ring and lead are read as their own marks', () => {
+    const reading = arReading({
+      available: true,
+      aim: { x: 0.5, up: 0.1, label: 'Target', text: '100 m' },
+      impact: { x: 0.5, up: 0.0, label: 'Drop', text: '50 m' },
+      lead: { x: 0.6, up: 0.1 },
+      leadLine: { from: { x: 0.5, up: 0.1 }, to: { x: 0.6, up: 0.1 } },
+      waypoints: [],
+      route: [],
+    })!;
+
+    expect(reading.aim).toEqual({ at: { x: 0.5, up: 0.1 }, label: 'Target', text: '100 m' });
+    expect(reading.impact?.label).toBe('Drop');
+    expect(reading.lead).toEqual({ x: 0.6, up: 0.1 });
+    expect(reading.leadLine).toEqual([{ x: 0.5, up: 0.1 }, { x: 0.6, up: 0.1 }]);
+    expect(arReading({ available: true })!.aim).toBeNull();
+  });
+
   it("a spot is placed from the centre line in widths, so the frame's aspect does not distort it", () => {
     const centre = arOffset({ x: 0.5, up: 0 }, 1600, 900);
     expect(centre.x).toBeCloseTo(800, 3);
