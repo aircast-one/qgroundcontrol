@@ -35,6 +35,7 @@ pub const REACQUIRE_MS: u64 = 10_000;
 pub const CONFIRM_FIXES: u8 = 3;
 pub const OBJECT_HALF_HEIGHT_M: f64 = 0.75;
 pub const COAST_MS: u64 = 1_500;
+pub const MIN_DEPRESSION_DEG: f64 = 15.0;
 const ARRIVAL_SAMPLES: usize = 5;
 const SMOOTHING: f64 = 0.75;
 const POSITION_GAIN: f64 = 1.0 - SMOOTHING * SMOOTHING;
@@ -407,6 +408,10 @@ pub fn picture_to_plane(
         &|_| plane_m,
     )
     .map(|(lat, lon)| Point { lat, lon })
+    .filter(|ground| {
+        let range = crate::track::distance_m((vehicle.lat, vehicle.lon), (ground.lat, ground.lon));
+        (altitude_agl_m - plane_m).atan2(range).to_degrees() >= MIN_DEPRESSION_DEG
+    })
 }
 
 pub fn ground_to_picture(
@@ -625,6 +630,25 @@ mod tests {
                     "round trip lands back on the picked point through {lens:?}, got ({x}, {y})"
                 );
             });
+    }
+
+    #[test]
+    fn a_point_near_the_horizon_is_not_placed_on_the_ground() {
+        let drone = Point {
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let lens = lens_from(Some(60.0), Some(34.0));
+        let centre_at = |pitch: f64| picture_to_ground(lens, drone, 40.0, (0.0, pitch), (0.5, 0.5));
+        assert_eq!(
+            centre_at(-6.0),
+            None,
+            "6 degrees down from 40 m is ~380 m out, where a 1 degree error moves the point ~64 m"
+        );
+        assert!(
+            centre_at(-20.0).is_some(),
+            "20 degrees down (~110 m out) is still placed"
+        );
     }
 
     #[test]
