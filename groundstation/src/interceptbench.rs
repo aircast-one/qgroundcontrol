@@ -23,6 +23,8 @@ const ALTITUDE_M: f32 = 40.0;
 const CONNECT_LIMIT_MS: u64 = 60_000;
 const CHASE_LIMIT_MS: u64 = 60_000;
 const CAR_SETTLES_MS: u64 = 3_000;
+const LOCK_TO_TRIGGER_MS: u64 = 1_000;
+const HOLD_WINDOW_MS: u64 = 10_000;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Detector {
@@ -42,6 +44,7 @@ pub struct Outcome {
     pub turned: bool,
     pub track_err_m: f64,
     pub speed_err_mps: f64,
+    pub held: f64,
 }
 
 struct Rng(u64);
@@ -132,6 +135,54 @@ pub struct Recording {
     pub tlog: Vec<u8>,
     pub detections: String,
     pub truth: String,
+}
+
+pub struct Tracker {
+    child: std::process::Child,
+    replies: std::io::BufReader<std::process::ChildStdout>,
+    pub frame_ms: u64,
+}
+
+impl Tracker {
+    pub fn spawn(command: &str, frame_ms: u64) -> std::io::Result<Tracker> {
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", command])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()?;
+        let stdout = child.stdout.take().ok_or(std::io::ErrorKind::BrokenPipe)?;
+        Ok(Tracker {
+            child,
+            replies: std::io::BufReader::new(stdout),
+            frame_ms,
+        })
+    }
+
+    pub fn look(&mut self, request: &Value) -> Value {
+        use std::io::{BufRead, Write};
+        let sent = self.child.stdin.as_mut().is_some_and(|stdin| {
+            writeln!(stdin, "{request}")
+                .and_then(|()| stdin.flush())
+                .is_ok()
+        });
+        let replies = &mut self.replies;
+        std::iter::from_fn(|| {
+            let mut line = String::new();
+            (sent && replies.read_line(&mut line).ok()? > 0).then_some(line)
+        })
+        .find_map(|line| {
+            serde_json::from_str::<Value>(&line)
+                .ok()
+                .filter(|reply| reply.get("box").is_some())
+        })
+        .unwrap_or(Value::Null)
+    }
+}
+
+impl Drop for Tracker {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
 }
 
 fn framed(header: MavHeader, message: &MavMessage) -> Vec<u8> {
@@ -290,6 +341,18 @@ pub fn recorded(
     on_roads: bool,
     record: bool,
 ) -> (Outcome, Option<Recording>) {
+    flown(network, seed, detector, on_roads, record, None)
+}
+
+fn flown(
+    network: Arc<crate::roads::Network>,
+    seed: u64,
+    detector: Detector,
+    on_roads: bool,
+    record: bool,
+    mut eyes: Option<&mut Tracker>,
+) -> (Outcome, Option<Recording>) {
+    let tick_ms = eyes.as_ref().map_or(SIM_TICK_MS, |eyes| eyes.frame_ms);
     crate::roads::provide(on_roads.then(|| network.clone()));
     crate::gimbalgeo::forget();
     *crate::detections::lock() = Default::default();
@@ -326,6 +389,9 @@ pub fn recorded(
     ]
     .concat();
     world.to_hub(setup, 0);
+    let home = world.copter.truth().0;
+    let mut seeded: Option<u64> = None;
+    let mut held: Vec<bool> = Vec::new();
 
     let lens = crate::gimbalgeo::lens();
     let mut pending: VecDeque<(u64, u64, (f64, f64, f64, f64))> = VecDeque::new();
@@ -340,7 +406,7 @@ pub fn recorded(
     };
     while now < limit(driving, triggered) {
         now += STEP_MS;
-        if driving.is_none() && now % SIM_TICK_MS == 0 {
+        if driving.is_none() && now % tick_ms == 0 {
             let ((lat, lon), alt, _, _) = world.copter.truth();
             let ready = alt >= f64::from(ALTITUDE_M) - 1.0
                 && world
@@ -354,7 +420,7 @@ pub fn recorded(
                 driving = Some(now);
             }
         }
-        if now % SIM_TICK_MS == 0 {
+        if now % tick_ms == 0 {
             world.rover.tick(now);
             let ((lat, lon), _, heading, _) = world.rover.truth();
             world.car.push_back((now, (lat, lon), heading));
@@ -371,13 +437,62 @@ pub fn recorded(
                     crate::synthview::aim_at((dlat, dlon, alt), (lat, lon, 0.0));
                 world.copter.point_camera(aim_pitch, aim_heading);
             }
-            let seen =
-                aim.and_then(|aim| seen_box(lens, (dlat, dlon), alt, aim, ((lat, lon), heading)));
-            if let Some(found) = seen.filter(|_| rng.next() >= detector.dropout) {
-                let jitter = |rng: &mut Rng| rng.gauss() * detector.noise;
-                let (x, y, w, h) = found;
-                let noisy = (x + jitter(&mut rng), y + jitter(&mut rng), w, h);
-                pending.push_back((now + detector.latency_ms, now, noisy));
+            let seen = match eyes.as_deref_mut() {
+                None => aim
+                    .and_then(|aim| seen_box(lens, (dlat, dlon), alt, aim, ((lat, lon), heading)))
+                    .filter(|_| rng.next() >= detector.dropout)
+                    .map(|(x, y, w, h)| {
+                        let jitter = |rng: &mut Rng| rng.gauss() * detector.noise;
+                        (x + jitter(&mut rng), y + jitter(&mut rng), w, h)
+                    }),
+                Some(eyes) => {
+                    let seed =
+                        seeded.is_none() && driving.is_some_and(|at| now >= at + CAR_SETTLES_MS);
+                    seeded = seeded.or(seed.then_some(now));
+                    let (north_mps, east_mps) = world.rover.truth().3;
+                    let reply = aim.map_or(Value::Null, |(aim_heading, aim_pitch)| {
+                        eyes.look(&json!({
+                            "pose": {
+                                "available": true,
+                                "latitude": dlat,
+                                "longitude": dlon,
+                                "aboveHome": alt,
+                                "homeLatitude": home.0,
+                                "homeLongitude": home.1,
+                                "heading": aim_heading,
+                                "pitch": aim_pitch,
+                                "roll": 0.0,
+                                "fov": lens.horizontal_deg,
+                                "imagery": "Bing Satellite",
+                                "northSpeed": 0.0,
+                                "eastSpeed": 0.0,
+                                "climbSpeed": 0.0,
+                                "rollRate": 0.0,
+                            },
+                            "cars": [{
+                                "latitude": lat,
+                                "longitude": lon,
+                                "aboveHome": 0.0,
+                                "northSpeed": north_mps,
+                                "eastSpeed": east_mps,
+                                "ageMs": 0.0,
+                            }],
+                            "seed": seed,
+                            "settleMs": tick_ms,
+                        }))
+                    });
+                    if seeded.is_some_and(|at| now < at + HOLD_WINDOW_MS) {
+                        held.push(reply["onTarget"].as_bool().unwrap_or(false));
+                    }
+                    let unit = |key: &str| reply["box"][key].as_f64();
+                    unit("x")
+                        .zip(unit("y"))
+                        .zip(unit("w").zip(unit("h")))
+                        .map(|((x, y), (w, h))| (x, y, w, h))
+                }
+            };
+            if let Some(found) = seen {
+                pending.push_back((now + detector.latency_ms, now, found));
             }
             world.to_hub(outs, now);
         }
@@ -408,7 +523,7 @@ pub fn recorded(
             }
             world.to_hub(queued, now);
         }
-        if now % SIM_TICK_MS == HUB_TICK_PHASE_MS
+        if now % tick_ms == HUB_TICK_PHASE_MS
             || world
                 .hub
                 .next_autodrop_due_ms()
@@ -420,6 +535,7 @@ pub fn recorded(
         }
         if triggered.is_none()
             && driving.is_some_and(|at| now >= at + CAR_SETTLES_MS)
+            && (eyes.is_none() || seeded.is_some_and(|at| now >= at + LOCK_TO_TRIGGER_MS))
             && now % 100 == 0
         {
             let aim = world.vehicle().and_then(|vehicle| {
@@ -478,7 +594,7 @@ pub fn recorded(
                 });
         }
         if let Some((at, release, _)) = released
-            && now >= at + (release.falls_for_s() * 1000.0) as u64 + SIM_TICK_MS * 2
+            && now >= at + (release.falls_for_s() * 1000.0) as u64 + tick_ms * 2
         {
             break;
         }
@@ -492,6 +608,10 @@ pub fn recorded(
         }
     }
     let recording = world.recording.take();
+    let held = match held.len() {
+        0 => f64::NAN,
+        frames => held.iter().filter(|on| **on).count() as f64 / frames as f64,
+    };
     let outcome = released.map_or(
         Outcome {
             dropped: false,
@@ -503,6 +623,7 @@ pub fn recorded(
             turned: false,
             track_err_m: f64::NAN,
             speed_err_mps: f64::NAN,
+            held,
         },
         |(at, release, predicted)| {
             let falls_ms = (release.falls_for_s() * 1000.0) as u64;
@@ -542,6 +663,7 @@ pub fn recorded(
                 predicted_m: predicted,
                 track_err_m: track_err,
                 speed_err_mps: speed_err,
+                held,
                 turned: heading_change(&world, at.saturating_sub(TURN_WINDOW_MS), land_ms)
                     > TURNED_DEG,
             }
@@ -644,6 +766,12 @@ mod tests {
         dropout: 0.1,
     };
 
+    const LIVE_TRACKER: Detector = Detector {
+        latency_ms: 100,
+        noise: 0.0,
+        dropout: 0.0,
+    };
+
     #[test]
     #[ignore = "the full bench takes minutes; run with --release -- --ignored --nocapture"]
     fn intercept_bench() {
@@ -693,6 +821,57 @@ mod tests {
         assert!(
             first < 2.2,
             "the replayed release lands on the car's true track: {first}"
+        );
+    }
+
+    #[test]
+    #[ignore = "renders through the virtual camera; BENCH_TRACKER='<python> benchtracker.py --sidecar <dir>'"]
+    fn tracker_bench() {
+        let _exclusive = exclusive();
+        let command =
+            std::env::var("BENCH_TRACKER").expect("BENCH_TRACKER names the tracker to run");
+        let number = |name: &str, fallback: u64| {
+            std::env::var(name)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(fallback)
+        };
+        let seeds = std::env::var("BENCH_SEEDS").unwrap_or_else(|_| "1,2,3,4,5,6".into());
+        let mut eyes = Tracker::spawn(&command, number("BENCH_FRAME_MS", 70)).expect("spawned");
+        let network = network();
+        let outcomes: Vec<Outcome> = seeds
+            .split(',')
+            .filter_map(|seed| seed.trim().parse().ok())
+            .map(|seed| {
+                eyes.look(&json!({"reset": true}));
+                let (outcome, _) = flown(
+                    network.clone(),
+                    seed,
+                    LIVE_TRACKER,
+                    true,
+                    false,
+                    Some(&mut eyes),
+                );
+                crate::gimbalgeo::forget();
+                *crate::detections::lock() = Default::default();
+                crate::gpstarget::refresh(std::collections::BTreeMap::new());
+                println!(
+                    "seed {seed}: held {:.2} dropped {} hit {} miss {:.1} m",
+                    outcome.held, outcome.dropped, outcome.hit, outcome.miss_m
+                );
+                outcome
+            })
+            .collect();
+        crate::roads::provide(None);
+        let held = outcomes
+            .iter()
+            .map(|o| o.held)
+            .filter(|h| h.is_finite())
+            .sum::<f64>()
+            / outcomes.len().max(1) as f64;
+        println!(
+            "held {held:.3}\n{}",
+            serde_json::to_string_pretty(&summary(&outcomes)).unwrap()
         );
     }
 
