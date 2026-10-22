@@ -1,6 +1,12 @@
 import Foundation
 
 final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
+    private let flying: Bool
+
+    init(flying: Bool = false) {
+        self.flying = flying
+    }
+
     static let probeID = "fenceRally"
 
     @Published private(set) var shapes: [FenceShape] = []
@@ -47,7 +53,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func reload() {
         reloads += 1
-        let fences = Bridge.group("view.fences")
+        let fences = flying ? Bridge.group("view.flyFences") : Bridge.group("view.fences")
         guard (fences["available"] as? NSNumber)?.boolValue == true else {
             set(\.status, "The plan is not available.")
             set(\.shapes, [])

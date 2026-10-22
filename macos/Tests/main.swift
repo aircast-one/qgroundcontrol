@@ -4913,11 +4913,10 @@ func checkEditableFields() {
 
 func checkDetections() {
     func box(_ label: String, _ x: Double, _ y: Double, _ w: Double, _ h: Double,
-             conf: Double? = 0.91) -> [String: Any] {
-        var made: [String: Any] = ["label": label, "x": x as NSNumber, "y": y as NSNumber,
+             caption: String? = nil) -> [String: Any] {
+        let made: [String: Any] = ["label": label, "x": x as NSNumber, "y": y as NSNumber,
                                    "w": w as NSNumber, "h": h as NSNumber]
-        if let conf { made["confidence"] = conf as NSNumber }
-        return made
+        return caption.map { made.merging(["caption": $0]) { _, new in new } } ?? made
     }
     func placed(_ picture: PaintedPicture?, _ json: [String: Any]) -> String {
         guard let picture, let decoded = DetectionBox(json) else { return "none" }
@@ -4930,34 +4929,13 @@ func checkDetections() {
     }
 
     let read = Detections(["available": true as NSNumber, "stale": false as NSNumber,
-                           "boxes": [box("car", 0.1, 0.2, 0.3, 0.4),
-                                     box("person", 0.5, 0.5, 0.2, 0.2, conf: nil)],
+                           "boxes": [box("car", 0.1, 0.2, 0.3, 0.4, caption: "car 91%"),
+                                     box("person", 0.5, 0.5, 0.2, 0.2)],
                            "error": ""])
     expect(read.boxes.count == 2, "every box the core sends is drawn")
-    expect(read.boxes[0].caption, "car 91%", "a box says what it is and how sure it is")
-    expect(read.boxes[1].caption, "person",
-           "and one with no confidence says only what it is; the QML wrote \"person NaN%\"")
+    expect(read.boxes[0].caption, "car 91%", "the target carries the caption the core wrote")
+    expect(read.boxes[1].caption, "", "and every other box carries none")
     expect(read.draws, "a fresh frame with boxes is drawn")
-
-    let asCoreServes: [String: Any] = ["x": 0.1 as NSNumber, "y": 0.2 as NSNumber,
-                                       "w": 0.3 as NSNumber, "h": 0.4 as NSNumber,
-                                       "label": "car", "confidence": 0.91 as NSNumber,
-                                       "target": true as NSNumber]
-    expect(DetectionBox(asCoreServes)?.caption ?? "", "car 91%",
-           "and the key is the one the CORE spells, copied from the shape detections.rs pins in "
-           + "its own test. The core RENAMES the upstream \"conf\" to \"confidence\" on the way "
-           + "out and this head went on reading the pre-rename name, so confidence was nil on "
-           + "EVERY box and every detection drawn over the video was captioned \"car\" with no "
-           + "percentage -- the number an operator uses to judge whether to trust the box. The "
-           + "QML original drew it, so this was a regression, and the old test passed throughout "
-           + "because its own fixture spelled the key the same wrong way the decoder did. A "
-           + "hand-written fixture can only ever agree with the decoder; this one is copied from "
-           + "the producer instead")
-    expect(DetectionBox(["label": "car", "x": 0.1 as NSNumber, "y": 0.2 as NSNumber,
-                         "w": 0.3 as NSNumber, "h": 0.4 as NSNumber,
-                         "conf": 0.91 as NSNumber])?.caption ?? "", "car",
-           "and the pre-rename spelling is pinned as NOT the key, so pointing the decoder back at "
-           + "\"conf\" goes red here rather than silently dropping every percentage again")
 
     expect(Detections(["available": true as NSNumber, "stale": true as NSNumber,
                        "boxes": [box("car", 0, 0, 1, 1)]]).draws == false,
@@ -4971,9 +4949,8 @@ func checkDetections() {
     expect(Detections(["available": true as NSNumber, "stale": false as NSNumber,
                        "boxes": [["label": "car", "x": 0 as NSNumber, "y": 0 as NSNumber,
                                   "w": 0 as NSNumber, "h": 0.5 as NSNumber],
-                                 box("", 0, 0, 1, 1),
                                  box("nan", Double.nan, 0, 1, 1)]]).boxes.isEmpty,
-           "a box with no width, no label, or a coordinate that is not a number is dropped "
+           "a box with no width or a coordinate that is not a number is dropped "
            + "rather than drawn as a line or thrown at the corner")
 
     let pane = (width: 320.0, height: 180.0)
@@ -5003,6 +4980,13 @@ func checkDetections() {
            + "nothing rather than guessing the pane is the picture")
     expect(rect(wide?.painted(inWidth: 0, height: 180)), "none",
            "a pane that has not been laid out yet has no picture in it either")
+
+    let portrait = tall?.painted(inWidth: pane.width, height: pane.height)
+    let picked = portrait?.fraction(atX: 92.5 + 135 * 0.5, y: 180 * 0.25)
+    expect(picked.map { "\($0.x),\($0.y)" } ?? "none", "0.5,0.25",
+           "a click on the picture is a fraction of the picture, the inverse of placing a box")
+    expect(portrait?.fraction(atX: 40, y: 90) == nil,
+           "a click in the black beside a portrait picture picks nothing")
 }
 
 checkDetections()
@@ -6035,6 +6019,40 @@ func checkSmartRTLCountsAsFlyingSomethingOfItsOwn() {
 checkSmartRTLCountsAsFlyingSomethingOfItsOwn()
 
 
+func checkTheAutoInterceptPillIsTheCoresView() {
+    let view: [String: Any] = [
+        "class": "AutoIntercept", "visible": true, "tone": "problem", "headline": "Lost the car",
+        "actions": [
+            ["id": "tryAgain", "label": "Try again", "path": "vehicle.autoInterceptDrop", "args": [],
+             "confirm": ["title": "Drop on it", "text": "The drone flies to the car."]],
+            ["id": "stop", "label": "Stop", "path": "vehicle.autoInterceptDrop", "args": ["stop"],
+             "confirm": NSNull()],
+        ],
+        "entry": ["id": "start", "label": "Auto intercept", "path": "vehicle.autoInterceptDrop", "args": [],
+                  "confirm": ["title": "Drop on it", "text": "Go"]],
+    ]
+    guard let intercept = AutoIntercept(view) else { return expect(false, "the core's view reads as a pill") }
+    expect(intercept.visible && intercept.problem, "a problem tone shows as one")
+    expect(intercept.headline, "Lost the car", "the headline is the core's")
+    expect(intercept.actions.map(\.id).joined(separator: ","), "tryAgain,stop", "the actions keep the core's order")
+    expect(intercept.actions.first?.confirm?.text ?? "", "The drone flies to the car.", "a confirm carries the core's text")
+    expect(intercept.actions.last?.confirm == nil, "stop goes without a confirm")
+    expect((intercept.actions.last?.args.first as? String) ?? "", "stop", "stop sends the core's argument")
+    expect(intercept.entry?.label ?? "", "Auto intercept", "the menu entry is the core's")
+    expect(intercept.offered.count == 3, "the entry is offered beside the actions")
+    expect(AutoIntercept(["class": "Other"]) == nil, "another view is not a pill")
+    let picking = AutoIntercept(["class": "AutoIntercept", "picking": true as NSNumber,
+                                 "pickPath": "vehicle.cameraManager.currentCameraInstance.startTracking",
+                                 "hint": "Tap or drag around what to track"])
+    expect(picking?.picking == true && picking?.hint == "Tap or drag around what to track"
+           && picking?.pickPath == "vehicle.cameraManager.currentCameraInstance.startTracking",
+           "while picking, the head knows where a tap goes and what to tell the pilot")
+    let target = DetectionBox(["x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4, "label": "car", "caption": "car 91%"])
+    let other = DetectionBox(["x": 0.5, "y": 0.5, "w": 0.1, "h": 0.1, "label": "car"])
+    expect(target?.caption ?? "", "car 91%", "the target carries the core's caption")
+    expect(other?.caption ?? "-", "", "other boxes carry none")
+}
+
 func checkTheInspectorSaysWhichSilenceItIsIn() {
     expect(InspectorList.emptyText(served: "Waiting for this vehicle's first message\u{2026}",
                                    count: 0) ?? "",
@@ -6068,9 +6086,10 @@ func checkTheInspectorSaysWhichSilenceItIsIn() {
            + "rather than two sentences that can drift")
 }
 checkTheInspectorSaysWhichSilenceItIsIn()
+checkTheAutoInterceptPillIsTheCoresView()
 
 
-let assertionFloor = 2321
+let assertionFloor = 2335
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

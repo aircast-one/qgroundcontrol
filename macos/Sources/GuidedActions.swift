@@ -11,6 +11,8 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var lastSent = ""
     @Published private(set) var range: GuidedRange?
     @Published var chosen = 0.0
+    @Published private(set) var intercept: AutoIntercept?
+    @Published private(set) var interceptPending: InterceptAction?
 
     var actions: [GuidedOffer] { offers.filter(\.shown) }
 
@@ -41,6 +43,37 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
         let active = (view["missionActive"] as? NSNumber)?.boolValue ?? false
         if active != missionActive { missionActive = active }
         if let pending, !(offers.first { $0.id == pending.id }?.ready ?? false) { self.pending = nil }
+        let reading = AutoIntercept(Bridge.group("view.autoIntercept"))
+        if reading != intercept { intercept = reading }
+        if let interceptPending, !(intercept?.offered.contains { $0.id == interceptPending.id } ?? false) {
+            self.interceptPending = nil
+        }
+    }
+
+    func ask(_ picked: InterceptAction) {
+        guard picked.confirm != nil else { return send(picked) }
+        interceptPending = picked
+    }
+
+    func confirmIntercept() {
+        guard let picked = interceptPending else { return }
+        interceptPending = nil
+        send(picked)
+    }
+
+    func cancelIntercept() {
+        interceptPending = nil
+    }
+
+    func pick(x: Double, y: Double, radius: Double) {
+        guard let path = intercept?.pickPath, intercept?.picking == true else { return }
+        guard let reason = WriteReport.reason(Bridge.invoke(path, [["x": x, "y": y], radius])) else { return }
+        writeFailure = reason.isEmpty ? "The camera refused to track that." : reason
+    }
+
+    private func send(_ picked: InterceptAction) {
+        guard let reason = WriteReport.reason(Bridge.invoke(picked.path, picked.args)) else { return }
+        writeFailure = reason.isEmpty ? "\(picked.label) was refused." : reason
     }
 
     func ask(_ offer: GuidedOffer) {

@@ -24,7 +24,7 @@ MODELS = {
     "FollowMe": "view.followMe",
     "ItemCamera": "view.itemCamera",
     "Fleet": "view.vehicles",
-    "FenceShape": "view.fences",
+    "FenceShape": ["view.fences", "view.flyFences"],
     "AdsbTraffic": "view.adsbTraffic",
     "FlyState": "view.flyState",
     "FrameSetup": "view.frame",
@@ -75,6 +75,7 @@ MODELS = {
     "FirmwareJob": ["view.firmwareUpgrade", "view.firmwarePorts"],
     "FlyDetail": "view.gps",
     "ItemSpeed": ["view.itemFacts(1)", "view.missionItems"],
+    "AutoIntercept": "view.autoIntercept",
     "TerrainDownload": "view.terrainDownload",
 }
 

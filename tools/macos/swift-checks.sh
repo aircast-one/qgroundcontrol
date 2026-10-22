@@ -53,7 +53,10 @@ shims=()
 [[ "$(uname)" == Darwin ]] || shims=("$root/tools/macos/linux-shims.swift")
 
 swiftc -Onone -o "$out" "${shims[@]}" \
+    -Xcc -fmodule-map-file="$root/src/Bridge/module.modulemap" -Xcc -I"$root/src/Bridge" \
     "$root/macos/Sources/DetectionModel.swift" \
+    "$root/macos/Sources/AutoInterceptModel.swift" \
+    "$root/macos/Sources/EscCalibrationModel.swift" \
     "$root/macos/Sources/LabelModel.swift" \
     "$root/macos/Sources/SetupCatalogueModel.swift" \
     "$root/macos/Sources/SettingsPages.swift" \

@@ -127,7 +127,9 @@ add_library(QGCNativeUI STATIC
     Sources/Speech.swift
     Sources/Bridge.swift
     Sources/Labels.swift
+    Sources/AutoInterceptModel.swift
     Sources/DetectionModel.swift
+    Sources/EscCalibrationModel.swift
     Sources/SetupCatalogueModel.swift
     Sources/SettingsPages.swift
     Sources/AboutModel.swift

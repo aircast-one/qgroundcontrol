@@ -33,6 +33,11 @@ struct PaintedPicture: Equatable {
         PaintedPicture(x: x + box.x * width, y: y + box.y * height,
                        width: box.width * width, height: box.height * height)
     }
+
+    func fraction(atX pointX: Double, y pointY: Double) -> (x: Double, y: Double)? {
+        let inside = (pointX - x) / width, down = (pointY - y) / height
+        return (0...1).contains(inside) && (0...1).contains(down) ? (inside, down) : nil
+    }
 }
 
 struct VideoCamera: Identifiable, Equatable {

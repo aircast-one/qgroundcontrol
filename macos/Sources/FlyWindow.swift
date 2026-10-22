@@ -763,6 +763,25 @@ struct GuidedConfirm: View {
                 .padding(Overlay.unit)
                 .frame(width: 320)
             }
+        } else if let picked = guided.interceptPending, let confirm = picked.confirm {
+            GlassPanel {
+                VStack(spacing: Overlay.unit * 0.6) {
+                    Text(confirm.title)
+                        .font(.title3.weight(.semibold))
+                    Text(confirm.text)
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    SlideToConfirm(title: "Slide to \(confirm.title.lowercased())",
+                                   destructive: false,
+                                   confirm: guided.confirmIntercept)
+                    Button("Cancel", action: guided.cancelIntercept)
+                        .keyboardShortcut(.cancelAction)
+                }
+                .padding(Overlay.unit)
+                .frame(width: 320)
+            }
         }
     }
 
@@ -796,26 +815,38 @@ struct GuidedStrip: View {
                     Button {
                         guided.ask(offer)
                     } label: {
-                        VStack(spacing: 2) {
-                            Image(systemName: offer.action.symbol)
-                                .font(.system(size: 18))
-                            Text(offer.title)
-                                .font(.caption2)
-                                .lineLimit(1)
-                        }
-                        .foregroundColor(offer.destructive ? Overlay.vehicle : .primary)
-                        .opacity(offer.blocked ? 0.35 : 1)
-                        .frame(width: 68)
-                        .padding(.vertical, 5)
-                        .contentShape(Rectangle())
+                        tile(offer.action.symbol, offer.title)
+                            .foregroundColor(offer.destructive ? Overlay.vehicle : .primary)
+                            .opacity(offer.blocked ? 0.35 : 1)
                     }
                     .buttonStyle(.plain)
                     .disabled(offer.blocked)
                     .help(offer.explanation)
                 }
+                if let entry = guided.intercept?.entry {
+                    Button {
+                        guided.ask(entry)
+                    } label: {
+                        tile("scope", entry.label)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(Overlay.step)
         }
+    }
+
+    private func tile(_ symbol: String, _ title: String) -> some View {
+        VStack(spacing: 2) {
+            Image(systemName: symbol)
+                .font(.system(size: 18))
+            Text(title)
+                .font(.caption2)
+                .lineLimit(1)
+        }
+        .frame(width: 68)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
     }
 }
 
@@ -993,6 +1024,48 @@ struct FlyView: View {
         .frame(maxWidth: 460)
     }
 
+    private static let picture = CGSize(width: 320, height: 180)
+    private static let pickRadius = 50.0
+
+    @ViewBuilder private var pickHint: some View {
+        if let hint = guided.intercept?.hint {
+            Text(hint)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.black.opacity(0.6), in: Capsule())
+                .foregroundColor(.white)
+                .padding(.top, 6)
+        }
+    }
+
+    private func pick(at location: CGPoint) {
+        guard let painted = video.status.sourceSize?.painted(inWidth: Self.picture.width,
+                                                              height: Self.picture.height),
+              let at = painted.fraction(atX: location.x, y: location.y) else { return }
+        guided.pick(x: at.x, y: at.y, radius: Self.pickRadius / painted.width)
+    }
+
+    private func interceptBanner(_ intercept: AutoIntercept) -> some View {
+        GlassPanel {
+            HStack(spacing: Overlay.step) {
+                Image(systemName: "scope")
+                    .foregroundColor(intercept.problem ? Overlay.vehicle : .accentColor)
+                Text(intercept.headline)
+                    .font(.caption)
+                    .foregroundColor(intercept.problem ? Overlay.vehicle : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(intercept.actions) { action in
+                    Button(action.label) { guided.ask(action) }
+                        .controlSize(.small)
+                }
+            }
+            .padding(.horizontal, Overlay.unit * 0.9)
+            .padding(.vertical, Overlay.unit * 0.5)
+        }
+        .frame(maxWidth: 460)
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             MissionMap(owner: "fly", items: mission.items,
@@ -1021,6 +1094,9 @@ struct FlyView: View {
                 if mapClick.overlays.roiActive {
                     roiBanner
                 }
+                if let intercept = guided.intercept, intercept.visible {
+                    interceptBanner(intercept)
+                }
             }
             .padding(.top, Overlay.unit)
             .transition(.opacity)
@@ -1035,7 +1111,7 @@ struct FlyView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
 
-            if !guided.actions.isEmpty {
+            if !guided.actions.isEmpty || guided.intercept?.entry != nil {
                 GuidedStrip(guided: guided)
                     .padding(Overlay.unit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -1051,7 +1127,10 @@ struct FlyView: View {
                         NativeVideoView(channel: QGC_VIDEO_MAIN)
                             .overlay(DetectionOverlay(detections: video.detections,
                                                       source: video.status.sourceSize))
-                            .frame(width: 320, height: 180)
+                            .overlay(alignment: .top) { pickHint }
+                            .frame(width: Self.picture.width, height: Self.picture.height)
+                            .gesture(SpatialTapGesture().onEnded { pick(at: $0.location) },
+                                     including: guided.intercept?.picking == true ? .all : .none)
                             .clipShape(RoundedRectangle(cornerRadius: Overlay.panelRadius))
                             .overlay(RoundedRectangle(cornerRadius: Overlay.panelRadius)
                                 .strokeBorder(Overlay.border, lineWidth: 1))
@@ -1119,7 +1198,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
 
     private let fly = FlyStore()
     private let mission = MissionStore()
-    private let fenceRally = FenceRallyStore()
+    private let fenceRally = FenceRallyStore(flying: true)
     private let instruments = InstrumentsStore()
     private let guided = GuidedStore()
     private let video = VideoStore.shared
@@ -1200,12 +1279,14 @@ struct DetectionOverlay: View {
             Rectangle()
                 .strokeBorder(DetectionOverlay.stroke, lineWidth: 2)
                 .frame(width: at.width, height: at.height)
-            Text(caption)
-                .font(.system(size: font, weight: .bold))
-                .foregroundColor(.black)
-                .padding(.horizontal, 3)
-                .background(DetectionOverlay.stroke)
-                .offset(y: -(font + 6))
+            if !caption.isEmpty {
+                Text(caption)
+                    .font(.system(size: font, weight: .bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 3)
+                    .background(DetectionOverlay.stroke)
+                    .offset(y: -(font + 6))
+            }
         }
         .frame(width: at.width, height: at.height, alignment: .topLeading)
         .position(x: at.x + at.width / 2, y: at.y + at.height / 2)
