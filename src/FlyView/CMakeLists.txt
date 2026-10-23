@@ -32,6 +32,7 @@ qt_add_qml_module(FlyViewModule
         FlyViewMap.qml
         FlyViewMissionCompleteDialog.qml
         FlyViewPreFlightChecklistPopup.qml
+        FlyViewRouteRecordAction.qml
         FlyViewToolStrip.qml
         FlyViewToolStripActionList.qml
 
@@ -81,6 +82,7 @@ qt_add_resources(FlyViewModule flyview_resources
         "${CMAKE_SOURCE_DIR}/resources/land.svg"
         "${CMAKE_SOURCE_DIR}/resources/NoVideoBackground.jpg"
         "${CMAKE_SOURCE_DIR}/resources/pause-mission.svg"
+        "${CMAKE_SOURCE_DIR}/resources/Stop.svg"
 )
 
 qt_add_resources(FlyViewModule flyview_qmlimages
