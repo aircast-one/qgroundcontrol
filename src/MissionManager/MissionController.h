@@ -228,6 +228,7 @@ public:
     static void sendItemsToVehicle(Vehicle* vehicle, QmlObjectListModel* visualMissionItems);
 
     bool loadTextFile(QFile& file, QString& errorString);
+    bool loadKmlFile(const QString& kmlFile, QString& errorString);
 
     QGCGeoBoundingCube* travelBoundingCube  () { return &_travelBoundingCube; }
     QGeoCoordinate      takeoffCoordinate   () { return _takeoffCoordinate; }

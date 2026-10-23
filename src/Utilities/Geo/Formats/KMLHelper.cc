@@ -1,12 +1,14 @@
 #include "KMLHelper.h"
-#include "KMLSchemaValidator.h"
-#include "QGCLoggingCategory.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtXml/QDomDocument>
-
 #include <algorithm>
+
+#include "KMLSchemaValidator.h"
+#include "QGCCompression.h"
+#include "QGCLoggingCategory.h"
 
 QGC_LOGGING_CATEGORY(KMLHelperLog, "Utilities.KMLHelper")
 
@@ -36,7 +38,11 @@ QDomDocument KMLHelper::_loadFile(const QString &kmlFile, QString &errorString)
     }
 
     QDomDocument doc;
-    const QDomDocument::ParseResult result = doc.setContent(&file, QDomDocument::ParseOption::Default);
+    const QDomDocument::ParseResult result =
+        QFileInfo(kmlFile).suffix().compare(QStringLiteral("kmz"), Qt::CaseInsensitive) == 0
+            ? doc.setContent(QGCCompression::extractFileData(kmlFile, QStringLiteral("doc.kml")),
+                             QDomDocument::ParseOption::Default)
+            : doc.setContent(&file, QDomDocument::ParseOption::Default);
     if (!result) {
         errorString = QCoreApplication::translate("KMLHelper", _errorPrefix).arg(QCoreApplication::translate("KML", "Unable to parse KML file: %1 error: %2 line: %3").arg(kmlFile).arg(result.errorMessage).arg(result.errorLine));
         return QDomDocument();
@@ -341,5 +347,46 @@ bool KMLHelper::loadPointsFromFile(const QString &kmlFile, QList<QGeoCoordinate>
         return false;
     }
 
+    return true;
+}
+
+bool KMLHelper::loadRouteFromFile(const QString& kmlFile, QList<QGeoCoordinate>& route, bool& absoluteAltitude,
+                                  QString& errorString)
+{
+    errorString.clear();
+    route.clear();
+    absoluteAltitude = false;
+
+    const QDomDocument domDocument = KMLHelper::_loadFile(kmlFile, errorString);
+    if (!errorString.isEmpty()) {
+        return false;
+    }
+
+    const bool isPath = !domDocument.elementsByTagName("LineString").isEmpty();
+    const QDomNodeList rgNodes = domDocument.elementsByTagName(isPath ? "LineString" : "Point");
+
+    bool allAbsolute = true;
+    for (int nodeIdx = 0; nodeIdx < rgNodes.count(); nodeIdx++) {
+        const QDomNode geometryNode = rgNodes.item(nodeIdx);
+        QList<QGeoCoordinate> coords;
+        if (!_parseCoordinateString(geometryNode.namedItem("coordinates").toElement().text(), coords, errorString)) {
+            qCWarning(KMLHelperLog) << "Route geometry" << nodeIdx
+                                    << QStringLiteral("(line %1)").arg(geometryNode.lineNumber())
+                                    << "skipped:" << errorString;
+            errorString.clear();
+            continue;
+        }
+        allAbsolute =
+            allAbsolute && geometryNode.namedItem("altitudeMode").toElement().text() == QStringLiteral("absolute");
+        route.append(isPath ? coords : coords.mid(0, 1));
+    }
+
+    if (route.isEmpty()) {
+        errorString = QCoreApplication::translate("KMLHelper", _errorPrefix)
+                          .arg(QCoreApplication::translate("KML", "No path or placemarks found in KML file"));
+        return false;
+    }
+
+    absoluteAltitude = allAbsolute;
     return true;
 }

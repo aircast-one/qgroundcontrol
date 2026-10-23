@@ -1,33 +1,28 @@
 #include "PlanMasterControllerTest.h"
 
+#include <QtCore/QDateTime>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QTemporaryDir>
+#include <QtPositioning/QGeoCoordinate>
+#include <QtTest/QSignalSpy>
+
 #include "AppSettings.h"
-#include "SurveyPlanCreator.h"
+#include "GeoFenceController.h"
+#include "MissionController.h"
 #include "MissionManager.h"
 #include "MultiSignalSpy.h"
 #include "MultiVehicleManager.h"
 #include "PlanMasterController.h"
 #include "QmlObjectListModel.h"
+#include "RallyPointController.h"
 #include "SettingsManager.h"
+#include "SimpleMissionItem.h"
+#include "SurveyPlanCreator.h"
 #include "TakeoffMissionItem.h"
 #include "Vehicle.h"
-#include "GeoFenceController.h"
-#include "RallyPointController.h"
-#include "MissionController.h"
-#include "QmlObjectListModel.h"
-
-#include <QtPositioning/QGeoCoordinate>
-
-#include <QtCore/QDir>
-#include <QtCore/QFile>
-#include <QtCore/QFileInfo>
-#include <QtCore/QTemporaryDir>
-
-#include <QtCore/QDateTime>
-#include <QtCore/QDir>
-#include <QtCore/QFile>
-#include <QtCore/QRegularExpression>
-#include <QtCore/QTemporaryDir>
-#include <QtTest/QSignalSpy>
 
 void PlanMasterControllerTest::init()
 {
@@ -129,6 +124,52 @@ void PlanMasterControllerTest::_testUndoTracksDirty(void)
 
     _masterController->redo();
     QVERIFY(_masterController->dirty());
+}
+
+void PlanMasterControllerTest::_testKmlGroundPathLoad()
+{
+    const double defaultAltitude =
+        SettingsManager::instance()->appSettings()->defaultMissionItemAltitude()->rawValue().toDouble();
+
+    _masterController->loadFromFile(":/unittest/RouteGroundPath.kml");
+
+    QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
+    QCOMPARE(visualItems->count(), 4);
+    QCOMPARE(_masterController->missionController()->globalAltitudeFrame(),
+             QGroundControlQmlGlobal::AltitudeFrameRelative);
+    for (int i = 1; i < visualItems->count(); i++) {
+        SimpleMissionItem* item = visualItems->value<SimpleMissionItem*>(i);
+        QVERIFY(item);
+        QCOMPARE(static_cast<MAV_CMD>(item->command()), MAV_CMD_NAV_WAYPOINT);
+        QCOMPARE(item->altitudeFrame(), QGroundControlQmlGlobal::AltitudeFrameRelative);
+        QCOMPARE(item->altitude()->rawValue().toDouble(), defaultAltitude);
+    }
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->coordinate().longitude(), 44.8010);
+}
+
+void PlanMasterControllerTest::_testKmzAbsolutePathLoad()
+{
+    _masterController->loadFromFile(":/unittest/RouteAbsolutePath.kmz");
+
+    QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
+    QCOMPARE(visualItems->count(), 4);
+    QCOMPARE(_masterController->missionController()->globalAltitudeFrame(),
+             QGroundControlQmlGlobal::AltitudeFrameAbsolute);
+    SimpleMissionItem* first = visualItems->value<SimpleMissionItem*>(1);
+    QCOMPARE(first->altitudeFrame(), QGroundControlQmlGlobal::AltitudeFrameAbsolute);
+    QCOMPARE(first->altitude()->rawValue().toDouble(), 560.5);
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->altitude()->rawValue().toDouble(), 590.25);
+}
+
+void PlanMasterControllerTest::_testKmlPlacemarksLoad()
+{
+    _masterController->loadFromFile(":/unittest/RoutePlacemarks.kml");
+
+    QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
+    QCOMPARE(visualItems->count(), 3);
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(1)->coordinate().latitude(), 41.7100);
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(2)->coordinate().latitude(), 41.7150);
+    QVERIFY(_masterController->dirtyForUpload());
 }
 
 void PlanMasterControllerTest::_testActiveVehicleChanged()

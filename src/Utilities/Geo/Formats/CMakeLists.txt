@@ -53,6 +53,7 @@ target_link_libraries(QGCGeoFormats
         $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::Location>
         $<$<NOT:$<BOOL:${QGC_HEADLESS_CORE}>>:Qt6::LocationPrivate>
         shp
+        QGCCompression
         QGCGeoMath
         QGCLogging
         QGCParsing

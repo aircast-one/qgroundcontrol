@@ -20,6 +20,7 @@
 #include "MissionSettingsItem.h"
 #include "PlanMasterController.h"
 #include "KMLPlanDomDocument.h"
+#include "KMLHelper.h"
 #include "QGCCorePlugin.h"
 #include "TakeoffMissionItem.h"
 #include "PlanViewSettings.h"
@@ -873,6 +874,34 @@ bool MissionController::loadTextFile(QFile& file, QString& errorString)
     if (!_loadTextMissionFile(stream, loadedVisualItems, errorStr)) {
         errorString = errorMessage.arg(errorStr);
         return false;
+    }
+
+    _initLoadedVisualItems(loadedVisualItems);
+
+    return true;
+}
+
+bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString)
+{
+    QList<QGeoCoordinate> route;
+    bool absoluteAltitude = false;
+    if (!KMLHelper::loadRouteFromFile(kmlFile, route, absoluteAltitude, errorString)) {
+        return false;
+    }
+
+    const double defaultAltitude =
+        SettingsManager::instance()->appSettings()->defaultMissionItemAltitude()->rawValue().toDouble();
+    const MAV_FRAME frame = absoluteAltitude ? MAV_FRAME_GLOBAL : MAV_FRAME_GLOBAL_RELATIVE_ALT;
+    setGlobalAltitudeFrame(absoluteAltitude ? QGroundControlQmlGlobal::AltitudeFrameAbsolute
+                                            : QGroundControlQmlGlobal::AltitudeFrameRelative);
+
+    QmlObjectListModel* loadedVisualItems = new QmlObjectListModel(this);
+    _addMissionSettings(loadedVisualItems);
+    for (const QGeoCoordinate& coordinate : std::as_const(route)) {
+        const MissionItem missionItem(0, MAV_CMD_NAV_WAYPOINT, frame, 0, 0, 0, qQNaN(), coordinate.latitude(),
+                                      coordinate.longitude(),
+                                      absoluteAltitude ? coordinate.altitude() : defaultAltitude, true, false);
+        loadedVisualItems->append(new SimpleMissionItem(_masterController, _flyView, missionItem));
     }
 
     _initLoadedVisualItems(loadedVisualItems);
