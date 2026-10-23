@@ -165,6 +165,13 @@ Item {
             id: videoSourceMenu
         }
 
+        FlyViewRouteRecordingOverlay {
+            z:                          _fullItemZorder + 3
+            anchors.top:                fullVideoCameraSwitchButton.visible ? fullVideoCameraSwitchButton.bottom : parent.top
+            anchors.horizontalCenter:   parent.horizontalCenter
+            anchors.topMargin:          fullVideoCameraSwitchButton.visible ? ScreenTools.defaultFontPixelHeight / 2 : toolbar.height + ScreenTools.defaultFontPixelHeight
+        }
+
         // Development tool for visualizing the insets for a paticular layer, show if needed
         FlyViewInsetViewer {
             id:                     widgetLayerInsetViewer

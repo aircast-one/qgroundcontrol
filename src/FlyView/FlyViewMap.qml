@@ -259,6 +259,14 @@ FlightMap {
         }
     }
 
+    MapPolyline {
+        line.width: 4
+        line.color: "#00e5ff"
+        z:          QGroundControl.zOrderTrajectoryLines + 1
+        visible:    !pipMode && globals.routeRecorder.recording
+        path:       globals.routeRecorder.path
+    }
+
     // Add the vehicles to the map
     MapItemView {
         model: QGroundControl.multiVehicleManager.vehicles

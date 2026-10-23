@@ -180,7 +180,7 @@ public class QGCActivity extends QtActivity {
         }
 
         if (!isValidImportFileName(displayName)) {
-            QGCLogger.w(TAG, "Rejected non-.plan file: " + displayName);
+            QGCLogger.w(TAG, "Rejected file type: " + displayName);
             return null;
         }
 
@@ -246,15 +246,14 @@ public class QGCActivity extends QtActivity {
         throw new IllegalStateException("resolveDestFile: no free filename found under " + destDir);
     }
 
-    /**
-     * Returns true when is a valid mission-file name that may be imported.
-     * A valid name is non-null, non-empty, and ends with the .plan extension
-     */
+    private static final String[] IMPORT_EXTENSIONS = {".plan", ".waypoints", ".kml", ".kmz"};
+
     public static boolean isValidImportFileName(final String displayName) {
         if (displayName == null || displayName.isEmpty()) {
             return false;
         }
-        return displayName.toLowerCase(java.util.Locale.ROOT).endsWith(".plan");
+        final String lowerName = displayName.toLowerCase(java.util.Locale.ROOT);
+        return java.util.Arrays.stream(IMPORT_EXTENSIONS).anyMatch(lowerName::endsWith);
     }
 
     public static String getSDCardPath() {

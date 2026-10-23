@@ -25,6 +25,24 @@ namespace KMLHelper
     /// Load all point entities
     bool loadPointsFromFile(const QString &kmlFile, QList<QGeoCoordinate> &points, QString &errorString);
 
-    bool loadRouteFromFile(const QString& kmlFile, QList<QGeoCoordinate>& route, bool& absoluteAltitude,
-                           QString& errorString);
+    struct Route
+    {
+        enum class Altitude
+        {
+            Ground,
+            AboveGround,
+            Absolute
+        };
+
+        QList<QGeoCoordinate> path;
+        Altitude altitude = Altitude::Ground;
+        int pathCount = 0;
+        int ignoredPointCount = 0;
+        qsizetype sourceVertexCount = 0;
+    };
+
+    bool loadRouteFromFile(const QString& kmlFile, Route& route, QString& errorString);
+
+    constexpr qsizetype kDenseTrackVertices = 200;
+    constexpr double kDenseTrackToleranceMeters = 3.0;
 }

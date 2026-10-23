@@ -371,4 +371,49 @@ QGeoCoordinate interpolateAtDistance(const QGeoCoordinate &from, const QGeoCoord
     return QGeoCoordinate(lat, lon, alt);
 }
 
+QList<QGeoCoordinate> simplifyPath(const QList<QGeoCoordinate>& path, double toleranceMeters)
+{
+    if (path.count() < 3) {
+        return path;
+    }
+
+    QList<QVector3D> points;
+    points.reserve(path.count());
+    for (const QGeoCoordinate& coordinate : path) {
+        points.append(convertGpsToEnu(coordinate, path.first()));
+    }
+
+    QList<bool> keep(path.count(), false);
+    keep.first() = true;
+    keep.last() = true;
+
+    QList<std::pair<qsizetype, qsizetype>> spans = {{0, path.count() - 1}};
+    while (!spans.isEmpty()) {
+        const auto [first, last] = spans.takeLast();
+        const QVector3D direction = (points[last] - points[first]).normalized();
+        qsizetype farthest = -1;
+        float farthestDistance = static_cast<float>(toleranceMeters);
+        for (qsizetype i = first + 1; i < last; i++) {
+            const float distance = points[i].distanceToLine(points[first], direction);
+            if (distance > farthestDistance) {
+                farthestDistance = distance;
+                farthest = i;
+            }
+        }
+        if (farthest >= 0) {
+            keep[farthest] = true;
+            spans.append({first, farthest});
+            spans.append({farthest, last});
+        }
+    }
+
+    QList<QGeoCoordinate> simplified;
+    for (qsizetype i = 0; i < path.count(); i++) {
+        if (keep[i]) {
+            simplified.append(path[i]);
+        }
+    }
+    return simplified;
+}
+
 } // namespace QGCGeo

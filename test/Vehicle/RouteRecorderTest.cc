@@ -8,46 +8,46 @@
 
 namespace {
 
-const QGeoCoordinate kStart(41.7100, 44.7900, 600.0);
+const QGeoCoordinate kGround(41.7100, 44.7900, 600.0);
 
-QList<QGeoCoordinate> leg(const QGeoCoordinate& from, double azimuth, int steps, double climbPerStep)
+QList<QGeoCoordinate> vertical(const QGeoCoordinate& at, double fromAltitude, double toAltitude)
 {
     QList<QGeoCoordinate> points;
-    for (int i = 1; i <= steps; i++) {
-        QGeoCoordinate point = from.atDistanceAndAzimuth(i * 5.0, azimuth);
-        point.setAltitude(from.altitude() + (i * climbPerStep));
-        points.append(point);
+    const double step = (toAltitude > fromAltitude) ? 3.0 : -3.0;
+    for (double altitude = fromAltitude; (step > 0) ? (altitude <= toAltitude) : (altitude >= toAltitude);
+         altitude += step) {
+        points.append(QGeoCoordinate(at.latitude(), at.longitude(), altitude));
     }
     return points;
 }
 
 }  // namespace
 
-void RouteRecorderTest::_straightLineKeepsOnlyTheEnds()
+void RouteRecorderTest::_climbAndDescentAtTheEndsAreTrimmed()
 {
-    const QList<QGeoCoordinate> path = QList<QGeoCoordinate>{kStart} + leg(kStart, 90, 40, 0);
+    const QGeoCoordinate top(kGround.latitude(), kGround.longitude(), 660.0);
+    QList<QGeoCoordinate> path = vertical(kGround, 600.0, 660.0);
+    for (int i = 1; i <= 50; i++) {
+        QGeoCoordinate point = top.atDistanceAndAzimuth(i * 2.0, 0);
+        point.setAltitude(660.0);
+        path.append(point);
+    }
+    path.append(vertical(path.last(), 660.0, 600.0));
 
-    const QList<QGeoCoordinate> route = RouteRecorder::simplify(path, RouteRecorder::kSimplifyToleranceMeters);
+    const QList<QGeoCoordinate> route = RouteRecorder::routeFromPath(path);
 
     QCOMPARE(route.count(), 2);
-    QCOMPARE(route.first(), path.first());
-    QCOMPARE(route.last(), path.last());
+    QCOMPARE(route.first().altitude(), 660.0);
+    QCOMPARE(route.last().altitude(), 660.0);
+    QVERIFY(route.first().distanceTo(route.last()) > 75.0);
 }
 
-void RouteRecorderTest::_cornerAndClimbAreKept()
+void RouteRecorderTest::_hoveringRecordsNoRoute()
 {
-    const QList<QGeoCoordinate> east = leg(kStart, 90, 20, 0);
-    const QList<QGeoCoordinate> north = leg(east.last(), 0, 20, 0);
-    const QList<QGeoCoordinate> climb = leg(north.last(), 0, 20, 2.0);
-    const QList<QGeoCoordinate> level = leg(climb.last(), 0, 20, 0);
-    const QList<QGeoCoordinate> path = QList<QGeoCoordinate>{kStart} + east + north + climb + level;
+    QList<QGeoCoordinate> path = vertical(kGround, 600.0, 660.0);
+    path.append(kGround.atDistanceAndAzimuth(4.0, 45, 60.0));
 
-    const QList<QGeoCoordinate> route = RouteRecorder::simplify(path, RouteRecorder::kSimplifyToleranceMeters);
-
-    QCOMPARE(route.count(), 5);
-    QCOMPARE(route[1], east.last());
-    QCOMPARE(route[2], north.last());
-    QCOMPARE(route[3], climb.last());
+    QVERIFY(RouteRecorder::routeFromPath(path).isEmpty());
 }
 
 void RouteRecorderTest::_savedRouteLoadsBackWithAbsoluteAltitudes()
@@ -55,19 +55,20 @@ void RouteRecorderTest::_savedRouteLoadsBackWithAbsoluteAltitudes()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     const QString fileName = dir.filePath(QStringLiteral("route.kml"));
-    const QList<QGeoCoordinate> saved = QList<QGeoCoordinate>{kStart} + leg(kStart, 45, 3, 10.0);
+    const QList<QGeoCoordinate> saved = {kGround.atDistanceAndAzimuth(0, 0, 60.0),
+                                         kGround.atDistanceAndAzimuth(150, 45, 70.0),
+                                         kGround.atDistanceAndAzimuth(300, 90, 80.0)};
 
     QVERIFY(RouteRecorder::saveKml(fileName, QStringLiteral("Route"), saved));
 
-    QList<QGeoCoordinate> loaded;
-    bool absoluteAltitude = false;
+    KMLHelper::Route loaded;
     QString errorString;
-    QVERIFY2(KMLHelper::loadRouteFromFile(fileName, loaded, absoluteAltitude, errorString), qPrintable(errorString));
-    QVERIFY(absoluteAltitude);
-    QCOMPARE(loaded.count(), saved.count());
+    QVERIFY2(KMLHelper::loadRouteFromFile(fileName, loaded, errorString), qPrintable(errorString));
+    QCOMPARE(loaded.altitude, KMLHelper::Route::Altitude::Absolute);
+    QCOMPARE(loaded.path.count(), saved.count());
     for (qsizetype i = 0; i < saved.count(); i++) {
-        QVERIFY(loaded[i].distanceTo(saved[i]) < 0.01);
-        QCOMPARE(loaded[i].altitude(), saved[i].altitude());
+        QVERIFY(loaded.path[i].distanceTo(saved[i]) < 0.01);
+        QCOMPARE(loaded.path[i].altitude(), saved[i].altitude());
     }
 }
 

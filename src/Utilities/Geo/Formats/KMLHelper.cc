@@ -8,6 +8,7 @@
 
 #include "KMLSchemaValidator.h"
 #include "QGCCompression.h"
+#include "QGCGeo.h"
 #include "QGCLoggingCategory.h"
 
 QGC_LOGGING_CATEGORY(KMLHelperLog, "Utilities.KMLHelper")
@@ -350,22 +351,23 @@ bool KMLHelper::loadPointsFromFile(const QString &kmlFile, QList<QGeoCoordinate>
     return true;
 }
 
-bool KMLHelper::loadRouteFromFile(const QString& kmlFile, QList<QGeoCoordinate>& route, bool& absoluteAltitude,
-                                  QString& errorString)
+bool KMLHelper::loadRouteFromFile(const QString& kmlFile, Route& route, QString& errorString)
 {
     errorString.clear();
-    route.clear();
-    absoluteAltitude = false;
+    route = Route();
 
     const QDomDocument domDocument = KMLHelper::_loadFile(kmlFile, errorString);
     if (!errorString.isEmpty()) {
         return false;
     }
 
-    const bool isPath = !domDocument.elementsByTagName("LineString").isEmpty();
-    const QDomNodeList rgNodes = domDocument.elementsByTagName(isPath ? "LineString" : "Point");
+    const QDomNodeList lineNodes = domDocument.elementsByTagName("LineString");
+    const QDomNodeList pointNodes = domDocument.elementsByTagName("Point");
+    const bool isPath = !lineNodes.isEmpty();
+    const QDomNodeList rgNodes = isPath ? lineNodes : pointNodes;
 
     bool allAbsolute = true;
+    bool allRelativeToGround = true;
     for (int nodeIdx = 0; nodeIdx < rgNodes.count(); nodeIdx++) {
         const QDomNode geometryNode = rgNodes.item(nodeIdx);
         QList<QGeoCoordinate> coords;
@@ -376,17 +378,35 @@ bool KMLHelper::loadRouteFromFile(const QString& kmlFile, QList<QGeoCoordinate>&
             errorString.clear();
             continue;
         }
-        allAbsolute =
-            allAbsolute && geometryNode.namedItem("altitudeMode").toElement().text() == QStringLiteral("absolute");
-        route.append(isPath ? coords : coords.mid(0, 1));
+        const QString altitudeMode = geometryNode.namedItem("altitudeMode").toElement().text();
+        allAbsolute = allAbsolute && (altitudeMode == QStringLiteral("absolute"));
+        allRelativeToGround = allRelativeToGround && (altitudeMode == QStringLiteral("relativeToGround"));
+        route.path.append(isPath ? coords : coords.mid(0, 1));
+        route.pathCount += isPath ? 1 : 0;
     }
 
-    if (route.isEmpty()) {
-        errorString = QCoreApplication::translate("KMLHelper", _errorPrefix)
-                          .arg(QCoreApplication::translate("KML", "No path or placemarks found in KML file"));
+    if (route.path.isEmpty()) {
+        errorString =
+            domDocument.elementsByTagName("Polygon").isEmpty()
+                ? QCoreApplication::translate("KMLHelper", _errorPrefix)
+                      .arg(QCoreApplication::translate("KML", "No path or placemarks found in KML file"))
+                : QCoreApplication::translate(
+                      "KML",
+                      "This file only has areas. To fly over an area, use Pattern > Survey and load the file there.");
         return false;
     }
 
-    absoluteAltitude = allAbsolute;
+    const bool hasAltitudes = std::any_of(route.path.cbegin(), route.path.cend(),
+                                          [](const QGeoCoordinate& coordinate) { return coordinate.altitude() > 0; });
+    route.altitude = !hasAltitudes         ? Route::Altitude::Ground
+                     : allAbsolute         ? Route::Altitude::Absolute
+                     : allRelativeToGround ? Route::Altitude::AboveGround
+                                           : Route::Altitude::Ground;
+    route.ignoredPointCount = isPath ? pointNodes.count() : 0;
+    route.sourceVertexCount = route.path.count();
+    if (isPath && (route.path.count() > kDenseTrackVertices)) {
+        route.path = QGCGeo::simplifyPath(route.path, kDenseTrackToleranceMeters);
+    }
+
     return true;
 }

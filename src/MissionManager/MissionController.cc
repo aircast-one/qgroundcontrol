@@ -21,6 +21,7 @@
 #include "PlanMasterController.h"
 #include "KMLPlanDomDocument.h"
 #include "KMLHelper.h"
+#include "AppMessages.h"
 #include "QGCCorePlugin.h"
 #include "TakeoffMissionItem.h"
 #include "PlanViewSettings.h"
@@ -857,28 +858,68 @@ bool MissionController::loadTextFile(QFile& file, QString& errorString)
 
 bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString)
 {
-    QList<QGeoCoordinate> route;
-    bool absoluteAltitude = false;
-    if (!KMLHelper::loadRouteFromFile(kmlFile, route, absoluteAltitude, errorString)) {
+    KMLHelper::Route route;
+    if (!KMLHelper::loadRouteFromFile(kmlFile, route, errorString)) {
         return false;
     }
 
     const double defaultAltitude =
         SettingsManager::instance()->appSettings()->defaultMissionItemAltitude()->rawValue().toDouble();
-    const MAV_FRAME frame = absoluteAltitude ? MAV_FRAME_GLOBAL : MAV_FRAME_GLOBAL_RELATIVE_ALT;
-    setGlobalAltitudeFrame(absoluteAltitude ? QGroundControlQmlGlobal::AltitudeFrameAbsolute
-                                            : QGroundControlQmlGlobal::AltitudeFrameRelative);
+    const QGroundControlQmlGlobal::AltitudeFrame frame = (route.altitude == KMLHelper::Route::Altitude::Absolute)
+                                                             ? QGroundControlQmlGlobal::AltitudeFrameAbsolute
+                                                             : QGroundControlQmlGlobal::AltitudeFrameCalcAboveTerrain;
+    setGlobalAltitudeFrame(frame);
 
     QmlObjectListModel* loadedVisualItems = new QmlObjectListModel(this);
     _addMissionSettings(loadedVisualItems);
-    for (const QGeoCoordinate& coordinate : std::as_const(route)) {
-        const MissionItem missionItem(0, MAV_CMD_NAV_WAYPOINT, frame, 0, 0, 0, qQNaN(), coordinate.latitude(),
-                                      coordinate.longitude(),
-                                      absoluteAltitude ? coordinate.altitude() : defaultAltitude, true, false);
-        loadedVisualItems->append(new SimpleMissionItem(_masterController, _flyView, missionItem));
+    for (const QGeoCoordinate& coordinate : std::as_const(route.path)) {
+        SimpleMissionItem* item = new SimpleMissionItem(_masterController, _flyView, false);
+        item->setCommand(MAV_CMD_NAV_WAYPOINT);
+        item->setAltitudeFrame(frame);
+        item->altitude()->setRawValue((route.altitude == KMLHelper::Route::Altitude::Ground) ? defaultAltitude
+                                                                                             : coordinate.altitude());
+        item->setCoordinate(coordinate);
+        loadedVisualItems->append(item);
     }
 
     _initLoadedVisualItems(loadedVisualItems);
+
+    const bool addTakeoff = _controllerVehicle->supports()->takeoffMissionCommand() &&
+                            !_planViewSettings->takeoffItemNotRequired()->rawValue().toBool();
+    if (addTakeoff) {
+        (void) insertTakeoffItem(QGeoCoordinate(), 1, false);
+    }
+
+    QStringList summary = {tr("Imported %1 waypoints.").arg(route.path.count())};
+    if (route.pathCount > 1) {
+        summary.append(tr("%1 paths were joined end to end.").arg(route.pathCount));
+    }
+    if (route.sourceVertexCount > route.path.count()) {
+        summary.append(tr("The path had %1 points and was simplified to %2 waypoints.")
+                           .arg(route.sourceVertexCount)
+                           .arg(route.path.count()));
+    }
+    if (route.ignoredPointCount > 0) {
+        summary.append(tr("%1 placemarks were ignored because the file also has a path.").arg(route.ignoredPointCount));
+    }
+    switch (route.altitude) {
+        case KMLHelper::Route::Altitude::Ground:
+            summary.append(
+                tr("The file has no flight altitudes: waypoints are %1 m above the terrain. Check the terrain "
+                   "profile before uploading.")
+                    .arg(defaultAltitude));
+            break;
+        case KMLHelper::Route::Altitude::AboveGround:
+            summary.append(tr("Altitudes are kept above the terrain, as in the file."));
+            break;
+        case KMLHelper::Route::Altitude::Absolute:
+            summary.append(tr("Altitudes are kept above sea level, as in the file."));
+            break;
+    }
+    if (addTakeoff) {
+        summary.append(tr("A takeoff was added at the start."));
+    }
+    QGC::showAppMessage(summary.join(QLatin1Char(' ')), tr("KML imported"));
 
     return true;
 }

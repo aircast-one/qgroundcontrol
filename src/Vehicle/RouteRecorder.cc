@@ -3,16 +3,21 @@
 #include <QtCore/QDateTime>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
-#include <QtGui/QVector3D>
+#include <QtCore/QFileInfo>
+#include <QtCore/QSaveFile>
+#include <algorithm>
 
-#include "AppMessages.h"
 #include "AppSettings.h"
 #include "KMLDomDocument.h"
 #include "QGCGeo.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
 
-RouteRecorder::RouteRecorder(QObject* parent) : QObject(parent) {}
+RouteRecorder::RouteRecorder(QObject* parent) : QObject(parent)
+{
+    _saveTimer.setInterval(kSaveIntervalMs);
+    (void) connect(&_saveTimer, &QTimer::timeout, this, [this]() { (void) _save(); });
+}
 
 void RouteRecorder::start(Vehicle* vehicle)
 {
@@ -20,106 +25,102 @@ void RouteRecorder::start(Vehicle* vehicle)
         return;
     }
 
+    const QString missionDir = SettingsManager::instance()->appSettings()->missionSavePath();
+    if (missionDir.isEmpty()) {
+        emit finished(QString(), tr("Route not recorded: set a save location in Application Settings."));
+        return;
+    }
+
+    _name = tr("Route %1").arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh-mm-ss")));
+    _fileName = QDir(missionDir).filePath(QStringLiteral("%1.%2").arg(_name, AppSettings::kmlFileExtension));
     _path.clear();
+    _pathVariant.clear();
+    _distance = 0;
     _vehicle = vehicle;
     _recording = true;
     (void) connect(vehicle, &Vehicle::coordinateChanged, this, &RouteRecorder::_addCoordinate);
     _addCoordinate(vehicle->coordinate());
+    _saveTimer.start();
     emit recordingChanged();
+    emit pathChanged();
 }
 
-QString RouteRecorder::stop()
+void RouteRecorder::stop()
 {
     if (!_recording) {
-        return QString();
+        return;
     }
 
     if (_vehicle) {
         (void) disconnect(_vehicle, &Vehicle::coordinateChanged, this, &RouteRecorder::_addCoordinate);
     }
     _vehicle.clear();
+    _saveTimer.stop();
     _recording = false;
     emit recordingChanged();
 
-    if (_path.count() < 2) {
-        QGC::showAppMessage(tr("Route not saved: the vehicle did not move while recording."));
-        return QString();
+    if (routeFromPath(_path).count() < 2) {
+        (void) QFile::remove(_fileName);
+        emit finished(QString(), tr("Route not saved: the vehicle didn't fly far enough while recording."));
+        return;
     }
-
-    const QString missionDir = SettingsManager::instance()->appSettings()->missionSavePath();
-    if (missionDir.isEmpty()) {
-        QGC::showAppMessage(tr("Route not saved: set a save location in Application Settings."));
-        return QString();
+    if (!_save()) {
+        emit finished(QString(), tr("Route save error %1").arg(_fileName));
+        return;
     }
-
-    const QString name =
-        tr("Route %1").arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh-mm-ss")));
-    const QString fileName =
-        QDir(missionDir).filePath(QStringLiteral("%1.%2").arg(name, AppSettings::kmlFileExtension));
-    if (!saveKml(fileName, name, simplify(_path, kSimplifyToleranceMeters))) {
-        QGC::showAppMessage(tr("Route save error %1").arg(fileName));
-        return QString();
-    }
-
-    QGC::showAppMessage(tr("Route saved to %1. Open it in Plan to edit it and upload it as a mission.").arg(fileName));
-    return fileName;
+    emit finished(_fileName, tr("Route saved: %1").arg(QFileInfo(_fileName).fileName()));
 }
 
 void RouteRecorder::_addCoordinate(const QGeoCoordinate& coordinate)
 {
-    if (!coordinate.isValid() || qIsNaN(coordinate.altitude())) {
+    if (!_vehicle || !_vehicle->flying() || !coordinate.isValid() || qIsNaN(coordinate.altitude())) {
         return;
     }
-    if (!_path.isEmpty() && _path.last().distanceTo(coordinate) < kMinSpacingMeters &&
-        qAbs(_path.last().altitude() - coordinate.altitude()) < kMinSpacingMeters) {
+    if (!_path.isEmpty() && (_path.last().distanceTo(coordinate) < kMinSpacingMeters) &&
+        (qAbs(_path.last().altitude() - coordinate.altitude()) < kMinSpacingMeters)) {
         return;
     }
+    _distance += _path.isEmpty() ? 0 : _path.last().distanceTo(coordinate);
     _path.append(coordinate);
+    _pathVariant.append(QVariant::fromValue(coordinate));
+    emit pathChanged();
 }
 
-QList<QGeoCoordinate> RouteRecorder::simplify(const QList<QGeoCoordinate>& path, double toleranceMeters)
+bool RouteRecorder::_save() const
 {
-    if (path.count() < 3) {
-        return path;
+    const QList<QGeoCoordinate> route = routeFromPath(_path);
+    return (route.count() >= 2) && saveKml(_fileName, _name, route);
+}
+
+QList<QGeoCoordinate> RouteRecorder::trimVerticalEnds(const QList<QGeoCoordinate>& path, double radiusMeters)
+{
+    if (path.isEmpty()) {
+        return {};
     }
 
-    QList<QVector3D> points;
-    points.reserve(path.count());
-    for (const QGeoCoordinate& coordinate : path) {
-        points.append(QGCGeo::convertGpsToEnu(coordinate, path.first()));
+    const QGeoCoordinate start = path.first();
+    const QGeoCoordinate end = path.last();
+    const auto firstAway = std::find_if(path.cbegin(), path.cend(), [&](const QGeoCoordinate& coordinate) {
+        return start.distanceTo(coordinate) >= radiusMeters;
+    });
+    if (firstAway == path.cend()) {
+        return {};
+    }
+    const auto lastAway = std::find_if(path.crbegin(), path.crend(), [&](const QGeoCoordinate& coordinate) {
+        return end.distanceTo(coordinate) >= radiusMeters;
+    });
+    if (lastAway == path.crend()) {
+        return {};
     }
 
-    QList<bool> keep(path.count(), false);
-    keep.first() = true;
-    keep.last() = true;
+    const qsizetype first = std::distance(path.cbegin(), firstAway) - 1;
+    const qsizetype last = path.count() - std::distance(path.crbegin(), lastAway);
+    return path.mid(first, last - first + 1);
+}
 
-    QList<std::pair<qsizetype, qsizetype>> spans = {{0, path.count() - 1}};
-    while (!spans.isEmpty()) {
-        const auto [first, last] = spans.takeLast();
-        const QVector3D direction = (points[last] - points[first]).normalized();
-        qsizetype farthest = -1;
-        float farthestDistance = static_cast<float>(toleranceMeters);
-        for (qsizetype i = first + 1; i < last; i++) {
-            const float distance = points[i].distanceToLine(points[first], direction);
-            if (distance > farthestDistance) {
-                farthestDistance = distance;
-                farthest = i;
-            }
-        }
-        if (farthest >= 0) {
-            keep[farthest] = true;
-            spans.append({first, farthest});
-            spans.append({farthest, last});
-        }
-    }
-
-    QList<QGeoCoordinate> simplified;
-    for (qsizetype i = 0; i < path.count(); i++) {
-        if (keep[i]) {
-            simplified.append(path[i]);
-        }
-    }
-    return simplified;
+QList<QGeoCoordinate> RouteRecorder::routeFromPath(const QList<QGeoCoordinate>& path)
+{
+    return QGCGeo::simplifyPath(trimVerticalEnds(path, kTrimRadiusMeters), kSimplifyToleranceMeters);
 }
 
 bool RouteRecorder::saveKml(const QString& fileName, const QString& name, const QList<QGeoCoordinate>& route)
@@ -128,10 +129,10 @@ bool RouteRecorder::saveKml(const QString& fileName, const QString& name, const 
     QDomElement placemark = kml.addPlacemark(name, true);
     (void) kml.addLineString(placemark, route, QStringLiteral("absolute"), false);
 
-    QFile file(fileName);
+    QSaveFile file(fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return false;
     }
     const QByteArray bytes = kml.toByteArray();
-    return file.write(bytes) == bytes.size();
+    return (file.write(bytes) == bytes.size()) && file.commit();
 }

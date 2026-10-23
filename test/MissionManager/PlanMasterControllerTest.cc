@@ -87,45 +87,62 @@ void PlanMasterControllerTest::_testKmlGroundPathLoad()
     const double defaultAltitude =
         SettingsManager::instance()->appSettings()->defaultMissionItemAltitude()->rawValue().toDouble();
 
+    expectAppMessage(
+        QRegularExpression("Imported 3 waypoints\\..*no flight altitudes.*above the terrain.*takeoff was added"));
     _masterController->loadFromFile(":/unittest/RouteGroundPath.kml");
+    verifyExpectedLogMessage();
 
     QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
-    QCOMPARE(visualItems->count(), 4);
+    QCOMPARE(visualItems->count(), 5);
+    QVERIFY(qobject_cast<TakeoffMissionItem*>(visualItems->get(1)));
     QCOMPARE(_masterController->missionController()->globalAltitudeFrame(),
-             QGroundControlQmlGlobal::AltitudeFrameRelative);
-    for (int i = 1; i < visualItems->count(); i++) {
+             QGroundControlQmlGlobal::AltitudeFrameCalcAboveTerrain);
+    for (int i = 2; i < visualItems->count(); i++) {
         SimpleMissionItem* item = visualItems->value<SimpleMissionItem*>(i);
         QVERIFY(item);
         QCOMPARE(static_cast<MAV_CMD>(item->command()), MAV_CMD_NAV_WAYPOINT);
-        QCOMPARE(item->altitudeFrame(), QGroundControlQmlGlobal::AltitudeFrameRelative);
+        QCOMPARE(item->altitudeFrame(), QGroundControlQmlGlobal::AltitudeFrameCalcAboveTerrain);
         QCOMPARE(item->altitude()->rawValue().toDouble(), defaultAltitude);
     }
-    QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->coordinate().longitude(), 44.8010);
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(4)->coordinate().longitude(), 44.8010);
 }
 
 void PlanMasterControllerTest::_testKmzAbsolutePathLoad()
 {
+    expectAppMessage(QRegularExpression("above sea level, as in the file"));
     _masterController->loadFromFile(":/unittest/RouteAbsolutePath.kmz");
+    verifyExpectedLogMessage();
 
     QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
-    QCOMPARE(visualItems->count(), 4);
+    QCOMPARE(visualItems->count(), 5);
     QCOMPARE(_masterController->missionController()->globalAltitudeFrame(),
              QGroundControlQmlGlobal::AltitudeFrameAbsolute);
-    SimpleMissionItem* first = visualItems->value<SimpleMissionItem*>(1);
+    SimpleMissionItem* first = visualItems->value<SimpleMissionItem*>(2);
     QCOMPARE(first->altitudeFrame(), QGroundControlQmlGlobal::AltitudeFrameAbsolute);
     QCOMPARE(first->altitude()->rawValue().toDouble(), 560.5);
-    QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->altitude()->rawValue().toDouble(), 590.25);
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(4)->altitude()->rawValue().toDouble(), 590.25);
 }
 
 void PlanMasterControllerTest::_testKmlPlacemarksLoad()
 {
+    expectAppMessage(QRegularExpression("Imported 2 waypoints"));
     _masterController->loadFromFile(":/unittest/RoutePlacemarks.kml");
+    verifyExpectedLogMessage();
 
     QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
-    QCOMPARE(visualItems->count(), 3);
-    QCOMPARE(visualItems->value<SimpleMissionItem*>(1)->coordinate().latitude(), 41.7100);
-    QCOMPARE(visualItems->value<SimpleMissionItem*>(2)->coordinate().latitude(), 41.7150);
+    QCOMPARE(visualItems->count(), 4);
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(2)->coordinate().latitude(), 41.7100);
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->coordinate().latitude(), 41.7150);
     QVERIFY(_masterController->dirtyForUpload());
+}
+
+void PlanMasterControllerTest::_testKmlAreaOnlyPointsToSurvey()
+{
+    expectAppMessage(QRegularExpression("only has areas.*Pattern > Survey"));
+    _masterController->loadFromFile(":/unittest/PolygonGood.kml");
+    verifyExpectedLogMessage();
+
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 1);
 }
 
 void PlanMasterControllerTest::_testActiveVehicleChanged()
