@@ -63,6 +63,10 @@ bool initialize(const QStringList& arguments, const Environment::ValidationResul
 void bindDebugLevelFact(Fact* fact, QObject* context);
 #ifndef QGC_HEADLESS_CORE
 void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget);
+/// Deactivates and releases @p receiver's QGCQVideoSinkController(s) without binding a new one,
+/// so a receiver that stops being displayed (no widget assigned) stops pushing frames into
+/// whatever QVideoSink it was last pointed at.
+void detachAppSink(QObject* receiver);
 void onMainWindowReady(QQuickWindow* window);
 #endif
 

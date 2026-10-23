@@ -15,9 +15,14 @@
 #include "GstSourceFactory.h"
 #include "HwBuffers/dmabuf/GstDmaDrmCaps.h"
 #include "QGCQVideoSinkController.h"
+#include "SettingsManager.h"
+#include "VideoManager.h"
+#include "VideoSettings.h"
 #include "gstqgc/GstQgcAllocation.h"
 #include "gstqgc/GstQgcCaps.h"
 #include "gstqgc/GstQgcVideoFormats.h"
+
+#include <QtCore/QJsonArray>
 
 #if defined(QGC_HAS_GST_DMABUF_GPU_PATH)
 #include "GstDmaBufVideoBuffer.h"
@@ -1152,6 +1157,160 @@ void GStreamerTest::_testQVideoSinkControllerNoWindowStartsInactive()
 
     gst_object_unref(qvideosink);
     gst_object_unref(bin);
+}
+
+void GStreamerTest::_testDetachAppSinkStopsAReceiverLeavingItsSharedSink()
+{
+    // Two receivers can be re-pointed at the same QVideoSink over time (e.g. the main video
+    // widget, handed from the old active camera's receiver to the new one). Each receiver owns
+    // its own qgcvideosinkbin, so setupQVideoSinkElement()'s same-parent cleanup never sees the
+    // other receiver's controller. Without an explicit detach when a receiver stops being
+    // displayed, its qgcqvideosink element keeps "active" and stays bound to the shared sink,
+    // so it goes on pushing frames into the same QVideoSink the new receiver just took over -
+    // the two streams flicker against each other.
+    GStreamer::redirectGLibLogging();
+    QVERIFY2(GStreamer::completeInit(), "completeInit failed");
+
+    GstElement* binA = gst_element_factory_make("qgcvideosinkbin", nullptr);
+    GstElement* binB = gst_element_factory_make("qgcvideosinkbin", nullptr);
+    QVERIFY2(binA && binB, "qgcvideosinkbin factory not found");
+
+    GstElement* qvideosinkA = gst_qgc_video_sink_bin_get_qvideosink(GST_QGC_VIDEO_SINK_BIN(binA));
+    GstElement* qvideosinkB = gst_qgc_video_sink_bin_get_qvideosink(GST_QGC_VIDEO_SINK_BIN(binB));
+    QVERIFY2(qvideosinkA && qvideosinkB, "qvideosink accessor returned NULL after factory_make");
+
+    QVideoSink sharedSink;
+    QObject receiverA;
+    QObject receiverB;
+
+    QVERIFY2(GStreamer::setupQVideoSinkElement(binA, &sharedSink, &receiverA),
+             "setupQVideoSinkElement() for receiver A failed");
+
+    gpointer installedSink = nullptr;
+    gboolean active = FALSE;
+    g_object_get(qvideosinkA, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(&sharedSink));
+    QCOMPARE(active, TRUE);
+
+    // Receiver A stops being the camera shown on the shared widget.
+    GStreamer::detachAppSink(&receiverA);
+
+    installedSink = &sharedSink;
+    active = TRUE;
+    g_object_get(qvideosinkA, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(nullptr));
+    QCOMPARE(active, FALSE);
+
+    // Receiver B now takes over the same shared widget.
+    QVERIFY2(GStreamer::setupQVideoSinkElement(binB, &sharedSink, &receiverB),
+             "setupQVideoSinkElement() for receiver B failed");
+
+    installedSink = nullptr;
+    active = FALSE;
+    g_object_get(qvideosinkB, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(&sharedSink));
+    QCOMPARE(active, TRUE);
+
+    // A must still be quiet - detaching it must not have been undone by B's attach.
+    installedSink = &sharedSink;
+    active = TRUE;
+    g_object_get(qvideosinkA, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(nullptr));
+    QCOMPARE(active, FALSE);
+
+    gst_object_unref(qvideosinkA);
+    gst_object_unref(qvideosinkB);
+    gst_object_unref(binA);
+    gst_object_unref(binB);
+}
+
+void GStreamerTest::_testSwitchingCamerasThroughVideoManagerDetachesTheOldSink()
+{
+    // End-to-end reproduction of the dual-RTSP flicker bug through the real switching path:
+    // two real GstVideoReceivers registered on the real VideoManager singleton, switched with
+    // VideoManager's own camera-index Facts, rebound with the real _rebindWidgets(). Before the
+    // fix, switching the active camera left the old receiver's controller active on the shared
+    // main widget's QVideoSink while the new receiver's controller took it over.
+    GStreamer::redirectGLibLogging();
+    QVERIFY2(GStreamer::completeInit(), "completeInit failed");
+
+    VideoManager *const vm = VideoManager::instance();
+    VideoSettings *const settings = SettingsManager::instance()->videoSettings();
+
+    const QVariant savedCameras = settings->cameras()->rawValue();
+    const QVariant savedActive = settings->activeVideoSource()->rawValue();
+    const QVariant savedMultiView = settings->multiViewEnabled()->rawValue();
+    const QVariant savedStreamEnabled = settings->streamEnabled()->rawValue();
+    const auto savedReceivers = vm->_videoReceivers;
+    const auto savedState = vm->_receiverState;
+    const auto savedMainWidget = vm->_mainWidget;
+    const auto savedPipWidget = vm->_pipWidget;
+    const auto restore = qScopeGuard([&] {
+        vm->_videoReceivers = savedReceivers;
+        vm->_receiverState = savedState;
+        vm->_mainWidget = savedMainWidget;
+        vm->_pipWidget = savedPipWidget;
+        settings->cameras()->setRawValue(savedCameras);
+        settings->activeVideoSource()->setRawValue(savedActive);
+        settings->multiViewEnabled()->setRawValue(savedMultiView);
+        settings->streamEnabled()->setRawValue(savedStreamEnabled);
+    });
+
+    // Keep streaming off so nothing tries a real RTSP connection - this test is only about the
+    // sink/controller wiring _rebindWidgets() does, which happens purely from the widget
+    // assignment and does not depend on the receiver ever starting.
+    settings->streamEnabled()->setRawValue(false);
+    QJsonArray cameras;
+    cameras.append(VideoSettings::camera(QStringLiteral("cam1"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://127.0.0.1:65500/one")));
+    cameras.append(VideoSettings::camera(QStringLiteral("cam2"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://127.0.0.1:65500/two")));
+    settings->multiViewEnabled()->setRawValue(false);
+    settings->storeCameras(cameras, 0);
+
+    // A bare QQuickVideoOutput has no window, so QGCQVideoSinkController::syncActiveToWindowVisibility
+    // (called from attachAppSink) always drives its controller's "active" property to false here -
+    // that is correct, windowless-item behaviour, not the bug. The defect is about which QVideoSink
+    // destination each receiver's element is wired to, so assert on the "qvideosink" GObject property
+    // instead of "active".
+    QQuickVideoOutput mainOutput;
+    vm->_mainWidget = &mainOutput;
+    vm->_pipWidget = nullptr;
+
+    // Register directly rather than through _initVideoReceiver(): that also wires cloud-failover
+    // watching and onStart/onStop signal handlers meant for a receiver with a real lifecycle, none
+    // of which this test needs - it only exercises _rebindWidgets()'s widget/sink bookkeeping.
+    GstVideoReceiver main;
+    main.setName(QStringLiteral("videoContent"));
+    GstVideoReceiver extra0;
+    extra0.setName(QStringLiteral("extraVideo0"));
+    vm->_videoReceivers.clear();
+    vm->_receiverState.clear();
+    vm->_videoReceivers.append(&main);
+    vm->_videoReceivers.append(&extra0);
+
+    const auto installedSinkOf = [](QObject *receiver) -> gpointer {
+        for (auto *controller : QGCQVideoSinkController::controllersOf(receiver)) {
+            gpointer installed = nullptr;
+            g_object_get(const_cast<GstElement*>(controller->element()), "qvideosink", &installed, nullptr);
+            if (installed) {
+                return installed;
+            }
+        }
+        return nullptr;
+    };
+    const gpointer sharedSink = static_cast<gpointer>(mainOutput.videoSink());
+
+    vm->_rebindWidgets();
+    QVERIFY2(main.sink(), "main receiver never got a sink bound to the shared widget");
+    QCOMPARE(installedSinkOf(&main), sharedSink);
+    QVERIFY2(!extra0.sink(), "second receiver got a sink before it was ever displayed");
+
+    settings->activeVideoSource()->setRawValue(1);
+    vm->_rebindWidgets();
+
+    QVERIFY2(extra0.sink(), "second receiver never got a sink after the switch");
+    QCOMPARE(installedSinkOf(&extra0), sharedSink);
+    QVERIFY2(installedSinkOf(&main) != sharedSink,
+             "old receiver's element is still wired to the shared widget's sink after losing it - this is the flicker bug");
 }
 
 void GStreamerTest::_testCpuZeroCopyFrameRejectsWritableMap()

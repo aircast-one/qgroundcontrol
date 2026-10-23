@@ -152,6 +152,15 @@ void VideoBackend::attachSink(QObject *receiver, void *sink, QQuickItem *widget)
 #endif
 }
 
+void VideoBackend::detachSink(QObject *receiver)
+{
+#if defined(QGC_GST_STREAMING) && !defined(QGC_HEADLESS_CORE)
+    GStreamer::detachAppSink(receiver);
+#else
+    Q_UNUSED(receiver);
+#endif
+}
+
 bool VideoBackend::attachNativeSink(void *sink, int channel)
 {
 #ifdef QGC_GST_STREAMING

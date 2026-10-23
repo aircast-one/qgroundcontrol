@@ -366,6 +366,17 @@ VideoReceiver* createVideoReceiver(QObject* parent)
     return new GstVideoReceiver(parent);
 }
 
+namespace {
+void releaseSinkControllersOf(QObject* controllerParent)
+{
+    for (auto* c : QGCQVideoSinkController::controllersOf(controllerParent)) {
+        c->setActive(false);
+        c->prepareForRelease();
+        c->deleteLater();
+    }
+}
+}
+
 #ifndef QGC_HEADLESS_CORE
 bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* controllerParent)
 {
@@ -374,11 +385,7 @@ bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* contr
         return false;
     }
 
-    for (auto* c : QGCQVideoSinkController::controllersOf(controllerParent)) {
-        c->setActive(false);
-        c->prepareForRelease();
-        c->deleteLater();
-    }
+    releaseSinkControllersOf(controllerParent);
 
     HwBuffers::onPipelineRestart();
 
@@ -422,6 +429,14 @@ void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget)
     }
 
     QGCQVideoSinkController::syncActiveToWindowVisibility(receiver, videoOutput);
+}
+
+void detachAppSink(QObject* receiver)
+{
+    if (!receiver) {
+        return;
+    }
+    releaseSinkControllersOf(receiver);
 }
 
 #endif

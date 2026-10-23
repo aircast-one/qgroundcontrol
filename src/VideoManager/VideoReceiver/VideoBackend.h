@@ -49,6 +49,9 @@ void applyDecoderPriorities(int rawOption);
 void onMainWindowReady(QQuickWindow *window);
 void bindDebugLevelFact(Fact *fact, QObject *context);
 void attachSink(QObject *receiver, void *sink, QQuickItem *widget);
+/// Stops @p receiver's sink from pushing frames into whatever widget it was last attached to,
+/// without attaching it to a new one. Call when a receiver stops being displayed.
+void detachSink(QObject *receiver);
 bool attachNativeSink(void *sink, int channel);
 
 }

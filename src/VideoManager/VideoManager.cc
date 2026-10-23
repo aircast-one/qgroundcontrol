@@ -1084,6 +1084,7 @@ void VideoManager::_rebindWidgets()
         }
         receiver->setWidget(desired);
         if (!desired) {
+            VideoBackend::detachSink(receiver);
             continue;
         }
         if (!receiver->sink()) {
