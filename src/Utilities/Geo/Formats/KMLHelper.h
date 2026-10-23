@@ -24,4 +24,7 @@ namespace KMLHelper
 
     /// Load all point entities
     bool loadPointsFromFile(const QString &kmlFile, QList<QGeoCoordinate> &points, QString &errorString);
+
+    bool loadRouteFromFile(const QString& kmlFile, QList<QGeoCoordinate>& route, bool& absoluteAltitude,
+                           QString& errorString);
 }

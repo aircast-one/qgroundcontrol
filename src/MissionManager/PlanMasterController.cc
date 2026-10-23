@@ -361,6 +361,9 @@ void PlanMasterController::loadFromFile(const QString& filename)
     bool success = false;
     if (fileInfo.suffix() == AppSettings::waypointsFileExtension || fileInfo.suffix() == QStringLiteral("txt")) {
         success = _missionController.loadTextFile(file, errorString);
+    } else if (fileInfo.suffix().compare(AppSettings::kmlFileExtension, Qt::CaseInsensitive) == 0 ||
+               fileInfo.suffix().compare(QStringLiteral("kmz"), Qt::CaseInsensitive) == 0) {
+        success = _missionController.loadKmlFile(filename, errorString);
     } else {
         success = _loadPlanJson(file.readAll(), errorString);
     }
@@ -586,8 +589,12 @@ QStringList PlanMasterController::loadNameFilters(void) const
 {
     QStringList filters;
 
-    filters << tr("Supported types (*.%1 *.%2 *.%3)").arg(AppSettings::planFileExtension).arg(AppSettings::waypointsFileExtension).arg("txt") <<
-               tr("All Files (*)");
+    filters << tr("Supported types (*.%1 *.%2 *.%3 *.%4 *.kmz)")
+                   .arg(AppSettings::planFileExtension)
+                   .arg(AppSettings::waypointsFileExtension)
+                   .arg("txt")
+                   .arg(AppSettings::kmlFileExtension)
+            << tr("All Files (*)");
     return filters;
 }
 
