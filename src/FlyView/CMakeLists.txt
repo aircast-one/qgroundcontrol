@@ -30,6 +30,7 @@ qgc_qml_only_library(FlyViewModule
         FlyViewMap.qml
         FlyViewMissionCompleteDialog.qml
         FlyViewPreFlightChecklistPopup.qml
+        FlyViewRouteRecordAction.qml
         FlyViewToolStrip.qml
         FlyViewToolStripActionList.qml
 
@@ -86,6 +87,7 @@ qgc_qml_resources(FlyViewModule flyview_resources
         "${CMAKE_SOURCE_DIR}/resources/land.svg"
         "${CMAKE_SOURCE_DIR}/resources/NoVideoBackground.jpg"
         "${CMAKE_SOURCE_DIR}/resources/pause-mission.svg"
+        "${CMAKE_SOURCE_DIR}/resources/Stop.svg"
 )
 
 qgc_qml_resources(FlyViewModule flyview_qmlimages
