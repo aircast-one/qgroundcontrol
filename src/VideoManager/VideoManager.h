@@ -60,6 +60,7 @@ class VideoManager : public QObject
     friend class VideoManagerInitTest;
     friend class VideoManagerTest;
     friend class VideoCameraSwitchTest;
+    friend class GStreamerTest;
 
 public:
     explicit VideoManager(QObject *parent = nullptr);

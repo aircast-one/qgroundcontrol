@@ -57,6 +57,10 @@ QList<VideoDecoderOptions> availableDecoderFamilies();
 Environment::ValidationResult prepareEnvironment();
 bool initialize(const QStringList& arguments, const Environment::ValidationResult& envResult);
 void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget);
+/// Deactivates and releases @p receiver's QGCQVideoSinkController(s) without binding a new one,
+/// so a receiver that stops being displayed (no widget assigned) stops pushing frames into
+/// whatever QVideoSink it was last pointed at.
+void detachAppSink(QObject* receiver);
 void bindDebugLevelFact(Fact* fact, QObject* context);
 void onMainWindowReady(QQuickWindow* window);
 

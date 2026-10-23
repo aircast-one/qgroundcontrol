@@ -332,6 +332,17 @@ VideoReceiver* createVideoReceiver(QObject* parent)
     return new GstVideoReceiver(parent);
 }
 
+namespace {
+void releaseSinkControllersOf(QObject* controllerParent)
+{
+    for (auto* c : QGCQVideoSinkController::controllersOf(controllerParent)) {
+        c->setActive(false);
+        c->prepareForRelease();
+        c->deleteLater();
+    }
+}
+}
+
 bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* controllerParent)
 {
     if (!sinkBin || !videoSink || !controllerParent) {
@@ -340,15 +351,7 @@ bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* contr
         return false;
     }
 
-    // Idempotent re-setup: tear down prior controllers so repeated startDecoding cycles
-    // don't accumulate dangling ones.
-    for (auto* c : QGCQVideoSinkController::controllersOf(controllerParent)) {
-        c->setActive(false);
-        // Stop the poll timer synchronously: deleteLater is deferred and the timer would otherwise
-        // keep binding the same element while the new controller is being installed.
-        c->prepareForRelease();
-        c->deleteLater();
-    }
+    releaseSinkControllersOf(controllerParent);
 
     // Clear the GL bridge's exhausted-retry latch so a restart after Qt's globalShareContext
     // appears can prime on the next NEED_CONTEXT. No-op when already primed.
@@ -400,6 +403,14 @@ void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget)
     }
 
     QGCQVideoSinkController::syncActiveToWindowVisibility(receiver, videoOutput);
+}
+
+void detachAppSink(QObject* receiver)
+{
+    if (!receiver) {
+        return;
+    }
+    releaseSinkControllersOf(receiver);
 }
 
 void bindDebugLevelFact(Fact* fact, QObject* context)

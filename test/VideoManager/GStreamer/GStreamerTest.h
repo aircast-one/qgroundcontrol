@@ -61,6 +61,7 @@ private slots:
     void _testQVideoSinkControllerNullSinkStillDeactivatesOnDestroy();
     void _testQVideoSinkControllerRepeatedSetupKeepsNewBindingActive();
     void _testQVideoSinkControllerNoWindowStartsInactive();
+    void _testDetachAppSinkStopsAReceiverLeavingItsSharedSink();
     void _testContextBridgeRegistry();
     void _testHwBufferLifecycleResetsNativeCaches();
     void _testHwFrameTexturesRejectsForeignOldTextures();

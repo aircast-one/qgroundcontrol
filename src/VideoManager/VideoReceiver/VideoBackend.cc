@@ -145,3 +145,12 @@ void VideoBackend::attachSink(QObject *receiver, void *sink, QQuickItem *widget)
     Q_UNUSED(widget);
 #endif
 }
+
+void VideoBackend::detachSink(QObject *receiver)
+{
+#ifdef QGC_GST_STREAMING
+    GStreamer::detachAppSink(receiver);
+#else
+    Q_UNUSED(receiver);
+#endif
+}

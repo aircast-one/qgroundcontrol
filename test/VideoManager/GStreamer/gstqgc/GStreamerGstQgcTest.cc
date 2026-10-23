@@ -1154,6 +1154,71 @@ void GStreamerTest::_testQVideoSinkControllerNoWindowStartsInactive()
     gst_object_unref(bin);
 }
 
+void GStreamerTest::_testDetachAppSinkStopsAReceiverLeavingItsSharedSink()
+{
+    // Two receivers can be re-pointed at the same QVideoSink over time (e.g. the main video
+    // widget, handed from the old active camera's receiver to the new one). Each receiver owns
+    // its own qgcvideosinkbin, so setupQVideoSinkElement()'s same-parent cleanup never sees the
+    // other receiver's controller. Without an explicit detach when a receiver stops being
+    // displayed, its qgcqvideosink element keeps "active" and stays bound to the shared sink,
+    // so it goes on pushing frames into the same QVideoSink the new receiver just took over -
+    // the two streams flicker against each other.
+    GStreamer::redirectGLibLogging();
+    QVERIFY2(GStreamer::completeInit(), "completeInit failed");
+
+    GstElement* binA = gst_element_factory_make("qgcvideosinkbin", nullptr);
+    GstElement* binB = gst_element_factory_make("qgcvideosinkbin", nullptr);
+    QVERIFY2(binA && binB, "qgcvideosinkbin factory not found");
+
+    GstElement* qvideosinkA = gst_qgc_video_sink_bin_get_qvideosink(GST_QGC_VIDEO_SINK_BIN(binA));
+    GstElement* qvideosinkB = gst_qgc_video_sink_bin_get_qvideosink(GST_QGC_VIDEO_SINK_BIN(binB));
+    QVERIFY2(qvideosinkA && qvideosinkB, "qvideosink accessor returned NULL after factory_make");
+
+    QVideoSink sharedSink;
+    QObject receiverA;
+    QObject receiverB;
+
+    QVERIFY2(GStreamer::setupQVideoSinkElement(binA, &sharedSink, &receiverA),
+             "setupQVideoSinkElement() for receiver A failed");
+
+    gpointer installedSink = nullptr;
+    gboolean active = FALSE;
+    g_object_get(qvideosinkA, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(&sharedSink));
+    QCOMPARE(active, TRUE);
+
+    // Receiver A stops being the camera shown on the shared widget.
+    GStreamer::detachAppSink(&receiverA);
+
+    installedSink = &sharedSink;
+    active = TRUE;
+    g_object_get(qvideosinkA, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(nullptr));
+    QCOMPARE(active, FALSE);
+
+    // Receiver B now takes over the same shared widget.
+    QVERIFY2(GStreamer::setupQVideoSinkElement(binB, &sharedSink, &receiverB),
+             "setupQVideoSinkElement() for receiver B failed");
+
+    installedSink = nullptr;
+    active = FALSE;
+    g_object_get(qvideosinkB, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(&sharedSink));
+    QCOMPARE(active, TRUE);
+
+    // A must still be quiet - detaching it must not have been undone by B's attach.
+    installedSink = &sharedSink;
+    active = TRUE;
+    g_object_get(qvideosinkA, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(nullptr));
+    QCOMPARE(active, FALSE);
+
+    gst_object_unref(qvideosinkA);
+    gst_object_unref(qvideosinkB);
+    gst_object_unref(binA);
+    gst_object_unref(binB);
+}
+
 void GStreamerTest::_testCpuZeroCopyFrameRejectsWritableMap()
 {
     GstVideoInfo info;
