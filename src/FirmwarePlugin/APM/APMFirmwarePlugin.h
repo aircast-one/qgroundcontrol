@@ -45,6 +45,7 @@ public:
     virtual QString guidedFlightMode() const;
 
     static void stopGuidedOrbit(Vehicle* vehicle);
+    QObject* startGuidedOrbit(Vehicle* vehicle) const;
     static constexpr const char* kGuidedOrbitObjectName = "APMGuidedOrbit";
     void pauseVehicle(Vehicle *vehicle) const override;
     void guidedModeRTL(Vehicle *vehicle, bool smartRTL) const override;

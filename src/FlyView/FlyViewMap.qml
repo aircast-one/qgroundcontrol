@@ -524,8 +524,8 @@ FlightMap {
             }
         }
 
-        function show(coord) {
-            _mapCircle.radius.rawValue = defaultRadius
+        function show(coord, radius) {
+            _mapCircle.radius.rawValue = radius > 0 ? radius : defaultRadius
             orbitMapCircle.center = coord
             orbitMapCircle.visible = true
         }
@@ -679,6 +679,7 @@ FlightMap {
             property var  mapClickCoord
             property bool fromVideo:    false
             property var  _gimbalSettings: QGroundControl.settingsManager.gimbalControllerSettings
+            property real _orbitRadius: orbitMapCircle.defaultRadius
 
             sourceComponent: Component {
                 ColumnLayout {
@@ -710,8 +711,31 @@ FlightMap {
                         visible:            globals.guidedControllerFlyView.showOrbit
                         onClicked: {
                             mapClickDropPanel.close()
-                            orbitMapCircle.show(mapClickCoord)
+                            orbitMapCircle.show(mapClickCoord, mapClickDropPanel._orbitRadius)
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionOrbit, mapClickCoord, orbitMapCircle)
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth:   true
+                        visible:            globals.guidedControllerFlyView.showOrbit
+
+                        QGCButton {
+                            text:       "−"
+                            enabled:    mapClickDropPanel._orbitRadius > 10
+                            onClicked:  mapClickDropPanel._orbitRadius = Math.max(10, mapClickDropPanel._orbitRadius - 10)
+                        }
+
+                        QGCLabel {
+                            Layout.fillWidth:       true
+                            horizontalAlignment:    Text.AlignHCenter
+                            text:                   qsTr("Radius %1").arg(QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnitsString(mapClickDropPanel._orbitRadius, 0))
+                        }
+
+                        QGCButton {
+                            text:       "+"
+                            enabled:    mapClickDropPanel._orbitRadius < 500
+                            onClicked:  mapClickDropPanel._orbitRadius = Math.min(500, mapClickDropPanel._orbitRadius + 10)
                         }
                     }
 

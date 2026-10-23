@@ -784,19 +784,25 @@ void Vehicle::_handleOrbitExecutionStatus(const mavlink_message_t& message)
 
     mavlink_msg_orbit_execution_status_decode(&message, &orbitStatus);
 
-    double newRadius =  qAbs(static_cast<double>(orbitStatus.radius));
+    setOrbitStatus(QGeoCoordinate(static_cast<double>(orbitStatus.x) / qPow(10.0, 7.0),
+                                  static_cast<double>(orbitStatus.y) / qPow(10.0, 7.0)),
+                   static_cast<double>(orbitStatus.radius));
+}
+
+void Vehicle::setOrbitStatus(const QGeoCoordinate& center, double radius)
+{
+    const double newRadius = qAbs(radius);
     if (!QGC::fuzzyCompare(_orbitMapCircle->radius()->rawValue().toDouble(), newRadius)) {
         _orbitMapCircle->radius()->setRawValue(newRadius);
     }
 
-    bool newOrbitClockwise = orbitStatus.radius > 0 ? true : false;
+    const bool newOrbitClockwise = radius > 0;
     if (_orbitMapCircle->clockwiseRotation() != newOrbitClockwise) {
         _orbitMapCircle->setClockwiseRotation(newOrbitClockwise);
     }
 
-    QGeoCoordinate newCenter(static_cast<double>(orbitStatus.x) / qPow(10.0, 7.0), static_cast<double>(orbitStatus.y) / qPow(10.0, 7.0));
-    if (_orbitMapCircle->center() != newCenter) {
-        _orbitMapCircle->setCenter(newCenter);
+    if (_orbitMapCircle->center() != center) {
+        _orbitMapCircle->setCenter(center);
     }
 
     if (!_orbitActive) {

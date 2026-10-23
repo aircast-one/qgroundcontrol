@@ -12,4 +12,5 @@ private slots:
     void _offCentreTapsBendTheRay();
     void _horizonAndSkyHitNoGround();
     void _fovComesFromTheCameraSensor();
+    void _groundPointsProjectBackToThePressedPixel();
 };

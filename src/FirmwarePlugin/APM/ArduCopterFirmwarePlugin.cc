@@ -256,8 +256,7 @@ void ArduCopterFirmwarePlugin::guidedModeOrbit(Vehicle* vehicle, const QGeoCoord
     vehicle->guidedModeROI(centerCoord);
     setGuidedMode(vehicle, true);
 
-    QObject* orbit = new QObject(vehicle);
-    orbit->setObjectName(kGuidedOrbitObjectName);
+    QObject* orbit = startGuidedOrbit(vehicle);
 
     const bool clockwise = radius >= 0;
     const double orbitRadius = qAbs(radius);
@@ -268,7 +267,8 @@ void ArduCopterFirmwarePlugin::guidedModeOrbit(Vehicle* vehicle, const QGeoCoord
     QTimer* timer = new QTimer(orbit);
     timer->setInterval(kOrbitUpdateMs);
     (void) connect(timer, &QTimer::timeout, orbit,
-                   [vehicle, centerCoord, orbitRadius, amslAltitude, clockwise, stepDeg, azimuth]() {
+                   [vehicle, centerCoord, orbitRadius, amslAltitude, clockwise, stepDeg, azimuth, radius]() {
+                       vehicle->setOrbitStatus(centerCoord, radius);
                        SharedLinkInterfacePtr sharedLink = vehicle->vehicleLinkManager()->primaryLink().lock();
                        if (!sharedLink) {
                            return;
@@ -301,11 +301,5 @@ void ArduCopterFirmwarePlugin::guidedModeOrbit(Vehicle* vehicle, const QGeoCoord
                        (void) vehicle->sendMessageOnLinkThreadSafe(sharedLink.get(), message);
                    });
 
-    const QString guidedMode = guidedFlightMode();
-    (void) connect(vehicle, &Vehicle::flightModeChanged, orbit, [orbit, guidedMode](const QString& mode) {
-        if (mode != guidedMode) {
-            orbit->deleteLater();
-        }
-    });
     timer->start();
 }

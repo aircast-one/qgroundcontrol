@@ -752,6 +752,20 @@ void APMFirmwarePlugin::stopGuidedOrbit(Vehicle* vehicle)
     delete vehicle->findChild<QObject*>(QLatin1String(kGuidedOrbitObjectName), Qt::FindDirectChildrenOnly);
 }
 
+QObject* APMFirmwarePlugin::startGuidedOrbit(Vehicle* vehicle) const
+{
+    stopGuidedOrbit(vehicle);
+    QObject* orbit = new QObject(vehicle);
+    orbit->setObjectName(QLatin1String(kGuidedOrbitObjectName));
+    const QString guidedMode = guidedFlightMode();
+    (void) connect(vehicle, &Vehicle::flightModeChanged, orbit, [orbit, guidedMode](const QString& mode) {
+        if (mode != guidedMode) {
+            orbit->deleteLater();
+        }
+    });
+    return orbit;
+}
+
 void APMFirmwarePlugin::pauseVehicle(Vehicle *vehicle) const
 {
     stopGuidedOrbit(vehicle);

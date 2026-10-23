@@ -483,12 +483,61 @@ Item {
         }
     }
 
+    Canvas {
+        id:             orbitOutline
+        anchors.fill:   parent
+        visible:        _videoIsMain && !!_activeVehicle && (_orbitPending || _activeVehicle.orbitActive)
+
+        property var  _pendingCircle:   globals.guidedControllerFlyView.orbitMapCircle
+        property bool _orbitPending:    !!_pendingCircle && _pendingCircle.visible
+
+        onVisibleChanged: requestPaint()
+
+        Timer {
+            interval:       200
+            repeat:         true
+            running:        orbitOutline.visible
+            onTriggered:    orbitOutline.requestPaint()
+        }
+
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.reset()
+            if (!visible) {
+                return
+            }
+            const center = _orbitPending ? _pendingCircle.center : _activeVehicle.orbitMapCircle.center
+            const radius = _orbitPending ? _pendingCircle.radius() : _activeVehicle.orbitMapCircle.radius.rawValue
+            const videoWidth = videoStreaming.getWidth()
+            const videoHeight = videoStreaming.getHeight()
+            const marginH = (width - videoWidth) / 2
+            const marginV = (height - videoHeight) / 2
+            ctx.strokeStyle = "#00e5ff"
+            ctx.lineWidth = ScreenTools.defaultFontPixelHeight / 6
+            ctx.beginPath()
+            _activeVehicle.gimbalController.videoOutlineOfCircle(center, radius, 48).reduce((drawing, point) => {
+                const inView = !isNaN(point.x) && Math.abs(point.x) < 3 && Math.abs(point.y) < 3
+                if (inView) {
+                    const x = marginH + ((point.x + 1) / 2) * videoWidth
+                    const y = marginV + ((1 - point.y) / 2) * videoHeight
+                    if (drawing) {
+                        ctx.lineTo(x, y)
+                    } else {
+                        ctx.moveTo(x, y)
+                    }
+                }
+                return inView
+            }, false)
+            ctx.stroke()
+        }
+    }
+
     Item {
         id:                 lookAtReticle
         anchors.centerIn:   parent
         width:              ScreenTools.defaultFontPixelHeight * 4
         height:             width
-        visible:            _videoIsMain && !!_activeVehicle && _activeVehicle.isROIEnabled
+        visible:            _videoIsMain && !!_activeVehicle && (_activeVehicle.isROIEnabled || _activeVehicle.orbitActive)
 
         Rectangle {
             anchors.fill:   parent
@@ -525,12 +574,12 @@ Item {
             QGCLabel {
                 anchors.verticalCenter: parent.verticalCenter
                 color:                  "white"
-                text:                   qsTr("Looking at this point")
+                text:                   _activeVehicle && _activeVehicle.orbitActive ? qsTr("Orbiting this point") : qsTr("Looking at this point")
             }
 
             QGCButton {
                 text:       qsTr("Stop")
-                onClicked:  _activeVehicle.stopGuidedModeROI()
+                onClicked:  _activeVehicle.orbitActive ? _activeVehicle.pauseVehicle() : _activeVehicle.stopGuidedModeROI()
             }
         }
     }

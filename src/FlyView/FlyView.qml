@@ -234,7 +234,7 @@ Item {
         objectName:             "telemetryValuesBar"
         settingsGroup:          factValueGrid.telemetryBarSettingsGroup
         specificVehicleForCard: null
-        visible:                toolbar.visible
+        visible:                toolbar.visible && !(dockedInToolbar && guidedActionsController.guidedUIVisible)
 
         readonly property bool dockedInToolbar: y < ScreenTools.toolbarHeight
         readonly property bool _fitsInToolbar:  toolbar.dockAreaRight - toolbar.dockAreaLeft >= width

@@ -61,4 +61,22 @@ void GimbalGroundProjectionTest::_fovComesFromTheCameraSensor()
     QVERIFY(!QGCCameraManager::fovFromSensor(4.0, 4.6188, 0, 0, 0, hfov, vfov));
 }
 
+void GimbalGroundProjectionTest::_groundPointsProjectBackToThePressedPixel()
+{
+    const QList<QPointF> pixels = {{0, 0}, {0.4, -0.3}, {-0.8, 0.5}, {0.9, -0.9}};
+    for (const QPointF& pixel : pixels) {
+        const QGeoCoordinate ground =
+            GimbalController::projectToGround(kCamera, 80, 37, -35, 60, 36, pixel.x(), pixel.y());
+        QVERIFY(ground.isValid());
+        QPointF back;
+        QVERIFY(GimbalController::projectToVideo(kCamera, 80, 37, -35, 60, 36, ground, back));
+        QVERIFY2(qAbs(back.x() - pixel.x()) < 0.001, qPrintable(QString::number(back.x())));
+        QVERIFY2(qAbs(back.y() - pixel.y()) < 0.001, qPrintable(QString::number(back.y())));
+    }
+
+    QPointF behind;
+    QVERIFY(!GimbalController::projectToVideo(kCamera, 80, 37, -35, 60, 36, kCamera.atDistanceAndAzimuth(200, 217),
+                                              behind));
+}
+
 UT_REGISTER_TEST_LIGHTWEIGHT(GimbalGroundProjectionTest, TestLabel::Unit, TestLabel::Vehicle)
