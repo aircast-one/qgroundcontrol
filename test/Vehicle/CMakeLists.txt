@@ -9,6 +9,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         APMStartMissionTest.h
         FTPManagerTest.cc
         FTPManagerTest.h
+        GimbalGroundProjectionTest.cc
+        GimbalGroundProjectionTest.h
         FirmwareUpdateAvailableTest.cc
         FirmwareUpdateAvailableTest.h
         FTPControllerTest.cc
@@ -62,6 +64,7 @@ add_qgc_test(InitialConnectTest LABELS Integration Vehicle)
 add_qgc_test(InitialConnectPeripheralStartupTest LABELS Integration Vehicle)
 add_qgc_test(AircastLinkFactGroupTest LABELS Unit Vehicle)
 add_qgc_test(RouteRecorderTest LABELS Unit Vehicle)
+add_qgc_test(GimbalGroundProjectionTest LABELS Unit Vehicle)
 add_qgc_test(MAVLinkLogManagerTest LABELS Integration Vehicle)
 add_qgc_test(MavCommandQueueReentrancyTest LABELS Integration Vehicle)
 add_qgc_test(FirmwareUpdateAvailableTest LABELS Integration Vehicle)

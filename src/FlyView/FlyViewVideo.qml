@@ -1,5 +1,6 @@
 import QtQuick
 import QtMultimedia
+import QtPositioning
 
 import QGroundControl
 import QGroundControl.Controls
@@ -9,6 +10,22 @@ Item {
 
     property Item pipView
     property Item pipState: videoPipState
+
+    signal groundPointPressed(var coordinate, point position)
+
+    function _groundCoordinateAt(vehicle, x, y) {
+        var videoWidth = videoStreaming.getWidth()
+        var videoHeight = videoStreaming.getHeight()
+        if (videoWidth <= 0 || videoHeight <= 0) {
+            return QtPositioning.coordinate()
+        }
+        var panPct = ((x - (width - videoWidth) / 2) / videoWidth) * 2 - 1
+        var tiltPct = 1 - ((y - (height - videoHeight) / 2) / videoHeight) * 2
+        if (Math.abs(panPct) > 1 || Math.abs(tiltPct) > 1) {
+            return QtPositioning.coordinate()
+        }
+        return vehicle.gimbalController.groundCoordinateAt(panPct, tiltPct)
+    }
 
     PipState {
         id:         videoPipState
@@ -92,10 +109,9 @@ Item {
         property real _pressY:      0
         property bool _dragging:    false
         property bool _doubleClicked: false
+        property bool _longPressed: false
         readonly property real _dragThreshold: 10
 
-        // Defer single-click handling so a double-click (fullscreen toggle) doesn't also
-        // fire an unintended gimbal click-to-point/tracking command on its first click.
         Timer {
             id:         singleClickTimer
             interval:   Qt.styleHints.mouseDoubleClickInterval
@@ -111,8 +127,6 @@ Item {
         }
 
         onDoubleClicked: {
-            // Fires on the second press of a double-click. The second release still emits
-            // onReleased, so flag it to prevent re-arming the single-click timer.
             _doubleClicked = true
             singleClickTimer.stop()
             QGroundControl.videoManager.fullScreen = !QGroundControl.videoManager.fullScreen
@@ -122,9 +136,26 @@ Item {
             _pressX = mouse.x
             _pressY = mouse.y
             _dragging = false
-            // Clear any stale flag (e.g. double-click followed by drag releases through the
-            // drag branch without consuming it). Safe: pressed is emitted before doubleClicked.
             _doubleClicked = false
+            _longPressed = false
+        }
+
+        onPressAndHold: (mouse) => {
+            var vehicle = QGroundControl.multiVehicleManager.activeVehicle
+            if (_dragging || !vehicle) {
+                return
+            }
+            _longPressed = true
+            if (!vehicle.gimbalController.activeGimbal) {
+                mainWindow.showCriticalVehicleMessage(qsTr("The vehicle reports no gimbal, so a spot in the picture can't be placed on the map."))
+                return
+            }
+            var coordinate = _root._groundCoordinateAt(vehicle, mouse.x, mouse.y)
+            if (!coordinate.isValid) {
+                mainWindow.showCriticalVehicleMessage(qsTr("Press and hold on a spot below the horizon."))
+                return
+            }
+            _root.groundPointPressed(coordinate, flyViewVideoMouseArea.mapToItem(globals.parent, mouse.x, mouse.y))
         }
 
         onPositionChanged: (mouse) => {
@@ -144,8 +175,9 @@ Item {
                 onScreenGimbalController.mouseDragEnd()
                 cameraTrackingController.mouseDragEnd(mouse.x, mouse.y)
             } else if (_doubleClicked) {
-                // Second release of a double-click - fullscreen toggle already handled
                 _doubleClicked = false
+            } else if (_longPressed) {
+                _longPressed = false
             } else {
                 singleClickTimer.clickX = mouse.x
                 singleClickTimer.clickY = mouse.y

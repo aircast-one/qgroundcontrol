@@ -98,6 +98,8 @@ Item {
         FlyViewVideo {
             id:         videoControl
             pipView:    _pipView
+
+            onGroundPointPressed: (coordinate, position) => mapControl.showClickMenu(coordinate, position)
         }
 
         PipView {

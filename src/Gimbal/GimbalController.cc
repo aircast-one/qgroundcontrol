@@ -498,6 +498,54 @@ void GimbalController::gimbalOnScreenControl(float panPct, float tiltPct, bool c
     }
 }
 
+QGeoCoordinate GimbalController::groundCoordinateAt(float panPct, float tiltPct) const
+{
+    if (!_activeGimbal) {
+        return QGeoCoordinate();
+    }
+
+    GimbalControllerSettings* settings = SettingsManager::instance()->gimbalControllerSettings();
+    const double altitudeRelative = _vehicle->altitudeRelative()->rawValue().toDouble();
+    const double altitudeAboveTerrain = _vehicle->altitudeAboveTerr()->rawValue().toDouble();
+    const double heightAboveGround =
+        (std::isfinite(altitudeAboveTerrain) && (altitudeAboveTerrain > 0)) ? altitudeAboveTerrain : altitudeRelative;
+
+    QGeoCoordinate target = projectToGround(
+        _vehicle->coordinate(), heightAboveGround,
+        _vehicle->heading()->rawValue().toDouble() + _activeGimbal->bodyYaw()->rawValue().toDouble(),
+        _activeGimbal->absolutePitch()->rawValue().toDouble(), settings->cameraHFov()->rawValue().toDouble(),
+        settings->cameraVFov()->rawValue().toDouble(), panPct, tiltPct);
+    if (target.isValid()) {
+        target.setAltitude(altitudeRelative - heightAboveGround);
+    }
+    return target;
+}
+
+QGeoCoordinate GimbalController::projectToGround(const QGeoCoordinate& camera, double heightAboveGround, double yawDeg,
+                                                 double pitchDeg, double hFovDeg, double vFovDeg, double panPct,
+                                                 double tiltPct)
+{
+    if (!camera.isValid() || !std::isfinite(heightAboveGround) || (heightAboveGround <= 0) || !std::isfinite(yawDeg) ||
+        !std::isfinite(pitchDeg)) {
+        return QGeoCoordinate();
+    }
+
+    const double right = panPct * std::tan(qDegreesToRadians(hFovDeg / 2.0));
+    const double up = tiltPct * std::tan(qDegreesToRadians(vFovDeg / 2.0));
+    const double pitch = qDegreesToRadians(pitchDeg);
+    const double forward = std::cos(pitch) - (up * std::sin(pitch));
+    const double vertical = std::sin(pitch) + (up * std::cos(pitch));
+    const double horizontal = std::hypot(forward, right);
+
+    if (std::atan2(-vertical, horizontal) < qDegreesToRadians(kMinDepressionDeg)) {
+        return QGeoCoordinate();
+    }
+
+    const double distance = heightAboveGround * horizontal / -vertical;
+    const double azimuth = yawDeg + qRadiansToDegrees(std::atan2(right, forward));
+    return QGeoCoordinate(camera.latitude(), camera.longitude()).atDistanceAndAzimuth(distance, azimuth);
+}
+
 void GimbalController::sendPitchBodyYaw(float pitch, float yaw, bool showError)
 {
     if (!_tryGetGimbalControl()) {

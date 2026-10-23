@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtCore/QTimer>
+#include <QtPositioning/QGeoCoordinate>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "Gimbal.h"
@@ -43,6 +44,14 @@ public:
     /// @param pitch_rate_deg_s Pitch rate in degrees per second
     /// @param yaw_rate_deg_s Yaw rate in degrees per second
     Q_INVOKABLE void sendGimbalRate(float pitch_rate_deg_s, float yaw_rate_deg_s);
+
+    Q_INVOKABLE QGeoCoordinate groundCoordinateAt(float panPct, float tiltPct) const;
+
+    static QGeoCoordinate projectToGround(const QGeoCoordinate& camera, double heightAboveGround, double yawDeg,
+                                          double pitchDeg, double hFovDeg, double vFovDeg, double panPct,
+                                          double tiltPct);
+
+    static constexpr double kMinDepressionDeg = 1.0;
 
 signals:
     void activeGimbalChanged();
