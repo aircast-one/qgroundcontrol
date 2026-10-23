@@ -911,6 +911,9 @@ bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString
         item->setCommand(roiNoneSupported ? MAV_CMD_DO_SET_ROI_NONE : MAV_CMD_DO_SET_ROI);
         if (!roiNoneSupported) {
             item->missionItem().setParam1(MAV_ROI_NONE);
+            item->setAltitudeFrame(QGroundControlQmlGlobal::AltitudeFrameRelative);
+            item->altitude()->setRawValue(0.0);
+            item->setCoordinate(QGeoCoordinate(0.0, 0.0, 0.0));
         }
         return item;
     };
@@ -983,9 +986,7 @@ bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString
 
     const bool addTakeoff = _controllerVehicle->supports()->takeoffMissionCommand() &&
                             !_planViewSettings->takeoffItemNotRequired()->rawValue().toBool();
-    if (addTakeoff) {
-        (void) insertTakeoffItem(QGeoCoordinate(), 1, false);
-    }
+    const VisualMissionItem* takeoffItem = addTakeoff ? insertTakeoffItem(QGeoCoordinate(), 1, false) : nullptr;
 
     QStringList summary = {tr("Imported %1 waypoints.").arg(route.path.count())};
     if (route.pathCount > 1) {
@@ -1021,7 +1022,11 @@ bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString
             tr("Terrain-following altitudes need terrain data from the internet. Offline, set the altitude "
                "mode to Relative before uploading."));
     }
-    if (addTakeoff) {
+    if (takeoffItem && takeoffItem->wizardMode()) {
+        summary.append(
+            tr("A takeoff was added at the start. Drag its T on the map to the climb-out spot, into the "
+               "wind, and press Done before uploading."));
+    } else if (takeoffItem) {
         summary.append(tr("A takeoff was added at the start."));
     }
     summary.append(tr("A return to launch was added at the end."));

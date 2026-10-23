@@ -4,6 +4,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QScopeGuard>
 #include <QtCore/QTemporaryDir>
 #include <QtTest/QSignalSpy>
 
@@ -141,20 +142,26 @@ void PlanMasterControllerTest::_testKmlPlacemarksLoad()
     QVERIFY(_masterController->dirtyForUpload());
 }
 
+static bool writeTowersKml(const QString& filename)
+{
+    QFile file(filename);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return false;
+    }
+    return file.write(R"(<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><LineString><coordinates>44.7900,41.7100,0 44.7950,41.7120,0 44.8010,41.7150,0</coordinates></LineString></Placemark>
+  <Placemark><name>Tower A</name><Point><coordinates>44.7951,41.7122,0</coordinates></Point></Placemark>
+  <Placemark><name>Tower B</name><Point><coordinates>44.8012,41.7151,0</coordinates></Point></Placemark>
+</Document></kml>)") != -1;
+}
+
 void PlanMasterControllerTest::_testKmlTowersBecomeLookAtPoints()
 {
     QTemporaryDir tempDir;
     QVERIFY(tempDir.isValid());
     const QString filename = tempDir.filePath(QStringLiteral("towers.kml"));
-    QFile file(filename);
-    QVERIFY(file.open(QIODevice::WriteOnly));
-    QVERIFY(file.write(R"(<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
-  <Placemark><LineString><coordinates>44.7900,41.7100,0 44.7950,41.7120,0 44.8010,41.7150,0</coordinates></LineString></Placemark>
-  <Placemark><name>Tower A</name><Point><coordinates>44.7951,41.7122,0</coordinates></Point></Placemark>
-  <Placemark><name>Tower B</name><Point><coordinates>44.8012,41.7151,0</coordinates></Point></Placemark>
-</Document></kml>)") != -1);
-    file.close();
+    QVERIFY(writeTowersKml(filename));
 
     expectAppMessage(QRegularExpression("2 placemarks became look-at points"));
     _masterController->loadFromFile(filename);
@@ -169,6 +176,62 @@ void PlanMasterControllerTest::_testKmlTowersBecomeLookAtPoints()
         QCOMPARE(static_cast<MAV_CMD>(visualItems->value<SimpleMissionItem*>(i + 2)->command()), expected[i]);
     }
     QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->coordinate().longitude(), 44.7951);
+}
+
+void PlanMasterControllerTest::_testKmlTowersOnArduPilot()
+{
+    Fact* firmwareClass = SettingsManager::instance()->appSettings()->offlineEditingFirmwareClass();
+    const QVariant previousFirmwareClass = firmwareClass->rawValue();
+    const auto restoreFirmwareClass = qScopeGuard([&]() { firmwareClass->setRawValue(previousFirmwareClass); });
+    firmwareClass->setRawValue(QGCMAVLink::FirmwareClassArduPilot);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString filename = tempDir.filePath(QStringLiteral("towers.kml"));
+    QVERIFY(writeTowersKml(filename));
+
+    expectAppMessage(QRegularExpression("2 placemarks became look-at points"));
+    _masterController->loadFromFile(filename);
+    verifyExpectedLogMessage();
+
+    const QList<MAV_CMD> expected = {MAV_CMD_NAV_WAYPOINT,        MAV_CMD_DO_SET_ROI,   MAV_CMD_NAV_WAYPOINT,
+                                     MAV_CMD_DO_SET_ROI,          MAV_CMD_NAV_WAYPOINT, MAV_CMD_DO_SET_ROI,
+                                     MAV_CMD_NAV_RETURN_TO_LAUNCH};
+    QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
+    QCOMPARE(visualItems->count(), expected.count() + 2);
+    for (qsizetype i = 0; i < expected.count(); i++) {
+        QCOMPARE(static_cast<MAV_CMD>(visualItems->value<SimpleMissionItem*>(i + 2)->command()), expected[i]);
+    }
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->missionItem().param1(), static_cast<double>(MAV_ROI_LOCATION));
+
+    SimpleMissionItem* stopLooking = visualItems->value<SimpleMissionItem*>(7);
+    QCOMPARE(stopLooking->missionItem().param1(), static_cast<double>(MAV_ROI_NONE));
+    QCOMPARE(stopLooking->missionItem().param5(), 0.0);
+    QCOMPARE(stopLooking->missionItem().param6(), 0.0);
+    QCOMPARE(stopLooking->missionItem().param7(), 0.0);
+    QCOMPARE(stopLooking->readyForSaveState(), VisualMissionItem::ReadyForSave);
+}
+
+void PlanMasterControllerTest::_testKmlTakeoffNeedsPlacingOnFixedWing()
+{
+    AppSettings* appSettings = SettingsManager::instance()->appSettings();
+    const QVariant previousFirmwareClass = appSettings->offlineEditingFirmwareClass()->rawValue();
+    const QVariant previousVehicleClass = appSettings->offlineEditingVehicleClass()->rawValue();
+    const auto restoreOfflineVehicle = qScopeGuard([&]() {
+        appSettings->offlineEditingFirmwareClass()->setRawValue(previousFirmwareClass);
+        appSettings->offlineEditingVehicleClass()->setRawValue(previousVehicleClass);
+    });
+    appSettings->offlineEditingFirmwareClass()->setRawValue(QGCMAVLink::FirmwareClassArduPilot);
+    appSettings->offlineEditingVehicleClass()->setRawValue(QGCMAVLink::VehicleClassFixedWing);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString filename = tempDir.filePath(QStringLiteral("towers.kml"));
+    QVERIFY(writeTowersKml(filename));
+
+    expectAppMessage(QRegularExpression("Drag its T on the map"));
+    _masterController->loadFromFile(filename);
+    verifyExpectedLogMessage();
 }
 
 void PlanMasterControllerTest::_testRecordedRouteReplaysTheCamera()
