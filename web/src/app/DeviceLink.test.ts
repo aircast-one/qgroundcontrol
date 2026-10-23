@@ -1,56 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, firstAnswered, secureOrigins, securePage, typedOrigin } from './DeviceLink';
+import { deviceBase, deviceCameras, deviceLinkName, deviceSocket } from './DeviceLink';
 
 describe('the link to the device serving this page', () => {
-  it('reaches telemetry on the device that served the page, on the address the browser already used', () => {
-    expect(deviceSocket('http://falcon.local/')).toBe('ws://falcon.local/fly/mavlink');
-    expect(deviceSocket('http://192.168.1.100/index.html?x=1#y')).toBe('ws://192.168.1.100/fly/mavlink');
-    expect(deviceSocket('https://falcon-gb3v.d.aircast.one/')).toBe('wss://falcon-gb3v.d.aircast.one/fly/mavlink');
+  it('reaches telemetry beside the page, on the address the browser already used', () => {
+    expect(deviceSocket('http://falcon.local/fly/')).toBe('ws://falcon.local/fly/mavlink');
+    expect(deviceSocket('http://192.168.1.100/fly/index.html?x=1#y')).toBe('ws://192.168.1.100/fly/mavlink');
+    expect(deviceSocket('https://falcon.tail.ts.net/fly/')).toBe('wss://falcon.tail.ts.net/fly/mavlink');
   });
 
-  it('pairs the core with the endpoints under /fly/ on the device that served the page', () => {
-    expect(deviceBase('http://falcon.local/')).toBe('http://falcon.local/fly/');
-    expect(deviceBase('http://192.168.1.100/index.html?x=1#y')).toBe('http://192.168.1.100/fly/');
+  it('pairs the core with the folder the device served the page from', () => {
+    expect(deviceBase('http://falcon.local/fly/')).toBe('http://falcon.local/fly/');
+    expect(deviceBase('http://192.168.1.100/fly/index.html?x=1#y')).toBe('http://192.168.1.100/fly/');
   });
 
   it('is named after the device, or the address when the device has no name', () => {
     expect(deviceLinkName({ name: 'falcon' }, '192.168.1.100')).toBe('Aircast falcon');
     expect(deviceLinkName({ name: ' ' }, '192.168.1.100')).toBe('Aircast 192.168.1.100');
     expect(deviceLinkName({}, 'falcon.local')).toBe('Aircast falcon.local');
-  });
-
-  it('moves a page the device served over http to the https address it names, keeping where the pilot was', () => {
-    const secure = 'https://192-168-1-50.6f1c2a9e-3b7d-4e21-9a55-0c8d7e6f5a41.d.aircast.one';
-    expect(securePage('http://192.168.1.50/fly/?x=1#plan', secure)).toBe(`${secure}/fly/?x=1#plan`);
-    expect(securePage('http://192.168.1.50/fly/', `${secure}/ignored/path`)).toBe(`${secure}/fly/`);
-    expect(securePage(`${secure}/fly/`, secure)).toBeNull();
-    expect(securePage('http://192.168.1.50/fly/', '')).toBeNull();
-    expect(securePage('http://192.168.1.50/fly/', 'http://192.168.1.50')).toBeNull();
-  });
-
-  it('asks a typed plain-http address for its https origin, and nothing else', () => {
-    expect(typedOrigin(' 192.168.1.100 ')).toBe('http://192.168.1.100');
-    expect(typedOrigin('falcon.local:8080/fly/')).toBe('http://falcon.local:8080');
-    expect(typedOrigin('http://Falcon.Local/')).toBe('http://falcon.local');
-    expect(typedOrigin('https://192-168-1-100.a.d.aircast.one')).toBeNull();
-    expect(typedOrigin('')).toBeNull();
-    expect(typedOrigin('not a host at all/')).toBeNull();
-  });
-
-  it('tries the name the device goes by first, then the name for the address it was reached on', () => {
-    expect(secureOrigins({ origin: 'https://falcon-k3q7.d.aircast.one', fallback: 'https://192-168-1-100.falcon-k3q7.d.aircast.one' })).toEqual(['https://falcon-k3q7.d.aircast.one', 'https://192-168-1-100.falcon-k3q7.d.aircast.one']);
-    expect(secureOrigins({ origin: 'https://100-64-0-5.falcon-k3q7.d.aircast.one' })).toEqual(['https://100-64-0-5.falcon-k3q7.d.aircast.one']);
-    expect(secureOrigins({ origin: '' })).toEqual([]);
-    expect(secureOrigins({ origin: 'http://192.168.1.100' })).toEqual([]);
-    expect(secureOrigins(null)).toEqual([]);
-  });
-
-  it('moves to the preferred https page that answered, whichever answered first', () => {
-    const pages = ['https://falcon-gb3v.d.aircast.one/fly/', 'https://192-168-1-100.falcon-gb3v.d.aircast.one/fly/'];
-    expect(firstAnswered(pages, [true, true])).toBe(pages[0]);
-    expect(firstAnswered(pages, [false, true])).toBe(pages[1]);
-    expect(firstAnswered(pages, [false, false])).toBeNull();
-    expect(firstAnswered([], [])).toBeNull();
   });
 
   it('hands the core each camera as a name and the WHEP address the device gave', () => {
