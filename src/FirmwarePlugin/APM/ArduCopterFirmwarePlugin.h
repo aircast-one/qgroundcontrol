@@ -45,6 +45,14 @@ public:
     explicit ArduCopterFirmwarePlugin(QObject *parent = nullptr);
     ~ArduCopterFirmwarePlugin();
 
+    void guidedModeOrbit(Vehicle* vehicle, const QGeoCoordinate& centerCoord, double radius,
+                         double amslAltitude) const override;
+
+    static void orbitVelocityNorthEast(double azimuthDeg, bool clockwise, double speed, double& north, double& east);
+
+    static constexpr double kOrbitSpeedMetersSecond = 4.0;
+    static constexpr int kOrbitUpdateMs = 200;
+
     void guidedModeLand(Vehicle *vehicle) const override { _setFlightModeAndValidate(vehicle, landFlightMode()); }
     const FirmwarePlugin::remapParamNameMajorVersionMap_t &paramNameRemapMajorVersionMap() const override { return _remapParamName; }
     int remapParamNameHigestMinorVersionNumber(int majorVersionNumber) const override;

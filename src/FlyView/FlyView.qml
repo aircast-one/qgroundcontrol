@@ -99,7 +99,7 @@ Item {
             id:         videoControl
             pipView:    _pipView
 
-            onGroundPointPressed: (coordinate, position) => mapControl.showClickMenu(coordinate, position)
+            onGroundPointPressed: (coordinate, position) => mapControl.showClickMenu(coordinate, position, true)
         }
 
         PipView {

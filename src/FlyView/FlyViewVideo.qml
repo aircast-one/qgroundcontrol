@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import QtMultimedia
 import QtPositioning
 
@@ -12,6 +13,35 @@ Item {
     property Item pipState: videoPipState
 
     signal groundPointPressed(var coordinate, point position)
+
+    property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
+    property bool   _videoIsMain:       pipState.state === pipState.fullState
+    readonly property string _holdHintSeenKey: "VideoPressAndHoldHintSeen"
+    property bool   _holdHintSeen:      QGroundControl.loadBoolGlobalSetting(_holdHintSeenKey, false)
+    property bool   _holdHintEligible:  _videoIsMain && !_holdHintSeen && !!_activeVehicle && !!_activeVehicle.gimbalController.activeGimbal
+    property bool   _showHoldHint:      false
+    property string _holdHintText:      ""
+    property real   _overlayMargins:    ScreenTools.defaultFontPixelWidth
+
+    on_HoldHintEligibleChanged: {
+        if (_holdHintEligible) {
+            _flashHoldHint(qsTr("Press and hold a spot to look at it or fly there"), 10000)
+        } else {
+            _showHoldHint = false
+        }
+    }
+
+    function _flashHoldHint(text, durationMs) {
+        _holdHintText = text
+        _showHoldHint = true
+        holdHintTimer.interval = durationMs
+        holdHintTimer.restart()
+    }
+
+    Timer {
+        id:             holdHintTimer
+        onTriggered:    _showHoldHint = false
+    }
 
     function _groundCoordinateAt(vehicle, x, y) {
         var videoWidth = videoStreaming.getWidth()
@@ -138,29 +168,37 @@ Item {
             _dragging = false
             _doubleClicked = false
             _longPressed = false
+            if (_activeVehicle) {
+                holdRing.start(mouse.x, mouse.y)
+            }
         }
 
         onPressAndHold: (mouse) => {
+            holdRing.stop()
             var vehicle = QGroundControl.multiVehicleManager.activeVehicle
             if (_dragging || !vehicle) {
                 return
             }
             _longPressed = true
             if (!vehicle.gimbalController.activeGimbal) {
-                mainWindow.showCriticalVehicleMessage(qsTr("The vehicle reports no gimbal, so a spot in the picture can't be placed on the map."))
+                _root._flashHoldHint(qsTr("The vehicle reports no gimbal, so a spot in the picture can't be placed on the map"), 4000)
                 return
             }
             var coordinate = _root._groundCoordinateAt(vehicle, mouse.x, mouse.y)
             if (!coordinate.isValid) {
-                mainWindow.showCriticalVehicleMessage(qsTr("Press and hold on a spot below the horizon."))
+                _root._flashHoldHint(qsTr("Press and hold on a spot below the horizon"), 4000)
                 return
             }
             _root.groundPointPressed(coordinate, flyViewVideoMouseArea.mapToItem(globals.parent, mouse.x, mouse.y))
+            QGroundControl.saveBoolGlobalSetting(_holdHintSeenKey, true)
+            _holdHintSeen = true
+            _showHoldHint = false
         }
 
         onPositionChanged: (mouse) => {
             if (!_dragging && (Math.abs(mouse.x - _pressX) >= _dragThreshold || Math.abs(mouse.y - _pressY) >= _dragThreshold)) {
                 _dragging = true
+                holdRing.stop()
                 onScreenGimbalController.mouseDragStart(_pressX, _pressY)
                 cameraTrackingController.mouseDragStart(_pressX, _pressY)
             }
@@ -171,6 +209,7 @@ Item {
         }
 
         onReleased: (mouse) => {
+            holdRing.stop()
             if (_dragging) {
                 onScreenGimbalController.mouseDragEnd()
                 cameraTrackingController.mouseDragEnd(mouse.x, mouse.y)
@@ -361,6 +400,137 @@ Item {
                         onClicked:      tile.setTileExpanded(true)
                     }
                 }
+            }
+        }
+    }
+
+    Item {
+        id:         holdRing
+        width:      ScreenTools.defaultFontPixelHeight * 3
+        height:     width
+        visible:    false
+
+        property real progress: 0
+        property real _stroke:  ScreenTools.defaultFontPixelHeight / 4
+
+        function start(x, y) {
+            holdRing.x = x - (width / 2)
+            holdRing.y = y - (height / 2)
+            progress = 0
+            holdRingDelay.restart()
+        }
+
+        function stop() {
+            holdRingDelay.stop()
+            holdRingFill.stop()
+            visible = false
+        }
+
+        Timer {
+            id:         holdRingDelay
+            interval:   150
+            onTriggered: {
+                holdRing.visible = true
+                holdRingFill.restart()
+            }
+        }
+
+        NumberAnimation {
+            id:         holdRingFill
+            target:     holdRing
+            property:   "progress"
+            from:       0
+            to:         1
+            duration:   Math.max(Qt.styleHints.mousePressAndHoldInterval - holdRingDelay.interval, 100)
+        }
+
+        Shape {
+            anchors.fill: parent
+
+            ShapePath {
+                strokeColor:    "white"
+                strokeWidth:    holdRing._stroke
+                fillColor:      "transparent"
+                capStyle:       ShapePath.RoundCap
+
+                PathAngleArc {
+                    centerX:    holdRing.width / 2
+                    centerY:    holdRing.height / 2
+                    radiusX:    (holdRing.width / 2) - holdRing._stroke
+                    radiusY:    radiusX
+                    startAngle: -90
+                    sweepAngle: 360 * holdRing.progress
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.horizontalCenter:   parent.horizontalCenter
+        anchors.bottom:             parent.bottom
+        anchors.bottomMargin:       parent.height * 0.2
+        width:                      holdHintLabel.width + (_overlayMargins * 2)
+        height:                     holdHintLabel.height + _overlayMargins
+        radius:                     height / 2
+        color:                      Qt.rgba(0, 0, 0, 0.6)
+        visible:                    _showHoldHint
+
+        QGCLabel {
+            id:                 holdHintLabel
+            anchors.centerIn:   parent
+            color:              "white"
+            text:               _holdHintText
+        }
+    }
+
+    Item {
+        id:                 lookAtReticle
+        anchors.centerIn:   parent
+        width:              ScreenTools.defaultFontPixelHeight * 4
+        height:             width
+        visible:            _videoIsMain && !!_activeVehicle && _activeVehicle.isROIEnabled
+
+        Rectangle {
+            anchors.fill:   parent
+            radius:         width / 2
+            color:          "transparent"
+            border.color:   "white"
+            border.width:   ScreenTools.defaultFontPixelHeight / 8
+        }
+
+        Rectangle {
+            anchors.centerIn:   parent
+            width:              ScreenTools.defaultFontPixelHeight / 3
+            height:             width
+            radius:             width / 2
+            color:              "white"
+        }
+    }
+
+    Rectangle {
+        anchors.top:                lookAtReticle.bottom
+        anchors.topMargin:          _overlayMargins
+        anchors.horizontalCenter:   parent.horizontalCenter
+        width:                      lookAtRow.width + (_overlayMargins * 2)
+        height:                     lookAtRow.height + _overlayMargins
+        radius:                     _overlayMargins
+        color:                      Qt.rgba(0, 0, 0, 0.6)
+        visible:                    lookAtReticle.visible
+
+        Row {
+            id:                 lookAtRow
+            anchors.centerIn:   parent
+            spacing:            _overlayMargins
+
+            QGCLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                color:                  "white"
+                text:                   qsTr("Looking at this point")
+            }
+
+            QGCButton {
+                text:       qsTr("Stop")
+                onClicked:  _activeVehicle.stopGuidedModeROI()
             }
         }
     }

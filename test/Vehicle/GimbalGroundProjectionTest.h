@@ -11,4 +11,5 @@ private slots:
     void _centreRayFollowsGimbalYawAndPitch();
     void _offCentreTapsBendTheRay();
     void _horizonAndSkyHitNoGround();
+    void _fovComesFromTheCameraSensor();
 };

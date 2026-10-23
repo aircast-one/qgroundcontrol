@@ -194,3 +194,12 @@ uint32_t ArduPlaneFirmwarePlugin::_convertToCustomFlightModeEnum(uint32_t val) c
         return UINT32_MAX;
     }
 }
+
+void ArduPlaneFirmwarePlugin::guidedModeOrbit(Vehicle* vehicle, const QGeoCoordinate& centerCoord, double radius,
+                                              double amslAltitude) const
+{
+    vehicle->sendMavCommandInt(vehicle->defaultComponentId(), MAV_CMD_DO_REPOSITION, MAV_FRAME_GLOBAL, true, -1.0f,
+                               MAV_DO_REPOSITION_FLAGS_CHANGE_MODE, static_cast<float>(qAbs(radius)),
+                               (radius < 0) ? 1.0f : 0.0f, centerCoord.latitude(), centerCoord.longitude(),
+                               static_cast<float>(amslAltitude));
+}

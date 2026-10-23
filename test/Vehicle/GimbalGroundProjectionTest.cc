@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "GimbalController.h"
+#include "QGCCameraManager.h"
 
 namespace {
 
@@ -43,6 +44,21 @@ void GimbalGroundProjectionTest::_horizonAndSkyHitNoGround()
     QVERIFY(!GimbalController::projectToGround(kCamera, 100, 0, 0, 90, 45, 0, 0).isValid());
     QVERIFY(!GimbalController::projectToGround(kCamera, 100, 0, -15, 90, 45, 0, 1).isValid());
     QVERIFY(!GimbalController::projectToGround(kCamera, 0, 0, -45, 90, 45, 0, 0).isValid());
+}
+
+void GimbalGroundProjectionTest::_fovComesFromTheCameraSensor()
+{
+    double hfov = 0;
+    double vfov = 0;
+    QVERIFY(QGCCameraManager::fovFromSensor(4.0, 4.6188, 0, 1280, 720, hfov, vfov));
+    QVERIFY(qAbs(hfov - 60.0) < 0.01);
+    QVERIFY(qAbs(vfov - 35.98) < 0.01);
+
+    QVERIFY(QGCCameraManager::fovFromSensor(4.0, 4.6188, 2.0, 0, 0, hfov, vfov));
+    QVERIFY(qAbs(vfov - 28.07) < 0.01);
+
+    QVERIFY(!QGCCameraManager::fovFromSensor(0, 4.6188, 2.0, 1280, 720, hfov, vfov));
+    QVERIFY(!QGCCameraManager::fovFromSensor(4.0, 4.6188, 0, 0, 0, hfov, vfov));
 }
 
 UT_REGISTER_TEST_LIGHTWEIGHT(GimbalGroundProjectionTest, TestLabel::Unit, TestLabel::Vehicle)

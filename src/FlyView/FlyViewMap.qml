@@ -588,7 +588,7 @@ FlightMap {
         sourceItem: MissionItemIndexLabel {
             checked:    true
             index:      -1
-            label:      qsTr("ROI here", "Make this a Region Of Interest")
+            label:      qsTr("Looking here", "The gimbal is looking at this point")
         }
 
         //-- Visibilty controlled by actual state
@@ -650,7 +650,7 @@ FlightMap {
 
                     QGCButton {
                         Layout.fillWidth:   true
-                        text:               qsTr("Cancel ROI")
+                        text:               qsTr("Stop looking")
                         onClicked: {
                             _activeVehicle.stopGuidedModeROI()
                             roiEditDropPanel.close()
@@ -676,7 +676,9 @@ FlightMap {
         DropPanel {
             id: mapClickDropPanel
 
-            property var mapClickCoord
+            property var  mapClickCoord
+            property bool fromVideo:    false
+            property var  _gimbalSettings: QGroundControl.settingsManager.gimbalControllerSettings
 
             sourceComponent: Component {
                 ColumnLayout {
@@ -715,7 +717,7 @@ FlightMap {
 
                     QGCButton {
                         Layout.fillWidth:   true
-                        text:               qsTr("ROI at location")
+                        text:               qsTr("Look at this point")
                         visible:            globals.guidedControllerFlyView.showROI
                         onClicked: {
                             mapClickDropPanel.close()
@@ -725,8 +727,18 @@ FlightMap {
 
                     QGCButton {
                         Layout.fillWidth:   true
+                        text:               qsTr("Stop looking")
+                        visible:            globals.guidedControllerFlyView.showROI && _activeVehicle && _activeVehicle.isROIEnabled
+                        onClicked: {
+                            mapClickDropPanel.close()
+                            _activeVehicle.stopGuidedModeROI()
+                        }
+                    }
+
+                    QGCButton {
+                        Layout.fillWidth:   true
                         text:               qsTr("Set home here")
-                        visible:            globals.guidedControllerFlyView.showSetHome
+                        visible:            globals.guidedControllerFlyView.showSetHome && !fromVideo
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionSetHome, mapClickCoord)
@@ -736,7 +748,7 @@ FlightMap {
                     QGCButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Set Estimator Origin")
-                        visible:            globals.guidedControllerFlyView.showSetEstimatorOrigin
+                        visible:            globals.guidedControllerFlyView.showSetEstimatorOrigin && !fromVideo
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionSetEstimatorOrigin, mapClickCoord)
@@ -746,11 +758,19 @@ FlightMap {
                     QGCButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Set Heading")
-                        visible:            globals.guidedControllerFlyView.showChangeHeading
+                        visible:            globals.guidedControllerFlyView.showChangeHeading && !fromVideo
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionChangeHeading, mapClickCoord)
                         }
+                    }
+
+                    QGCLabel {
+                        Layout.fillWidth:       true
+                        Layout.maximumWidth:    ScreenTools.defaultFontPixelWidth * 30
+                        wrapMode:               Text.WordWrap
+                        visible:                fromVideo && _gimbalSettings.cameraHFov.valueEqualsDefault && _gimbalSettings.cameraVFov.valueEqualsDefault
+                        text:                   qsTr("The camera's field of view isn't set, so this spot may be off. Set it in Settings > Gimbal.")
                     }
 
                     ColumnLayout {
@@ -763,19 +783,19 @@ FlightMap {
         }
     }
 
-    function showClickMenu(clickCoord, position) {
-        if (!globals.guidedControllerFlyView.guidedUIVisible &&
-            (globals.guidedControllerFlyView.showGotoLocation || globals.guidedControllerFlyView.showOrbit ||
-             globals.guidedControllerFlyView.showROI || globals.guidedControllerFlyView.showSetHome ||
-             globals.guidedControllerFlyView.showSetEstimatorOrigin)) {
-            var dropPanel = mapClickDropPanelComponent.createObject(mainWindow, { mapClickCoord: clickCoord, clickRect: Qt.rect(position.x, position.y, 0, 0) })
+    function showClickMenu(clickCoord, position, fromVideo) {
+        var guided = globals.guidedControllerFlyView
+        var anyAction = guided.showGotoLocation || guided.showOrbit || guided.showROI ||
+                        (!fromVideo && (guided.showSetHome || guided.showSetEstimatorOrigin))
+        if (!guided.guidedUIVisible && anyAction) {
+            var dropPanel = mapClickDropPanelComponent.createObject(mainWindow, { mapClickCoord: clickCoord, fromVideo: fromVideo, clickRect: Qt.rect(position.x, position.y, 0, 0) })
             dropPanel.open()
         }
     }
 
     onMapClicked: (position) => {
         position = Qt.point(position.x, position.y)
-        showClickMenu(_root.toCoordinate(position, false), _root.mapToItem(globals.parent, position))
+        showClickMenu(_root.toCoordinate(position, false), _root.mapToItem(globals.parent, position), false)
     }
 
     MapScale {

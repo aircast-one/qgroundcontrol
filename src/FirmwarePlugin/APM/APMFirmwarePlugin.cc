@@ -66,13 +66,16 @@ bool APMFirmwarePlugin::isCapable(const Vehicle* vehicle, FirmwareCapabilities c
     uint32_t available = SetFlightModeCapability | PauseVehicleCapability | GuidedModeCapability | ROIModeCapability;
     if (vehicle->fixedWing()) {
         available |= TakeoffVehicleCapability;
+        available |= OrbitModeCapability;
     } else if (vehicle->multiRotor()) {
         available |= TakeoffVehicleCapability;
         available |= GuidedTakeoffCapability;
         available |= ChangeHeadingCapability;
+        available |= OrbitModeCapability;
     } else if (vehicle->vtol()) {
         available |= TakeoffVehicleCapability;
         available |= GuidedTakeoffCapability;
+        available |= OrbitModeCapability;
     } else if (vehicle->sub()) {
         available |= ChangeHeadingCapability;
     }
@@ -744,8 +747,14 @@ void APMFirmwarePlugin::setGuidedMode(Vehicle *vehicle, bool guidedMode) const
     }
 }
 
+void APMFirmwarePlugin::stopGuidedOrbit(Vehicle* vehicle)
+{
+    delete vehicle->findChild<QObject*>(QLatin1String(kGuidedOrbitObjectName), Qt::FindDirectChildrenOnly);
+}
+
 void APMFirmwarePlugin::pauseVehicle(Vehicle *vehicle) const
 {
+    stopGuidedOrbit(vehicle);
     _setFlightModeAndValidate(vehicle, pauseFlightMode());
 }
 
@@ -774,6 +783,7 @@ out:
 
 bool APMFirmwarePlugin::guidedModeGotoLocation(Vehicle *vehicle, const QGeoCoordinate &gotoCoord, double forwardFlightLoiterRadius) const
 {
+    stopGuidedOrbit(vehicle);
     if (qIsNaN(vehicle->altitudeRelative()->rawValue().toDouble())) {
         QGC::showAppMessage(QStringLiteral("Unable to go to location, vehicle position not known."));
         return false;
@@ -845,6 +855,7 @@ void APMFirmwarePlugin::guidedModeRTL(Vehicle *vehicle, bool smartRTL) const
 
 void APMFirmwarePlugin::guidedModeChangeAltitude(Vehicle *vehicle, double altitudeChange, bool pauseVehicle)
 {
+    stopGuidedOrbit(vehicle);
     if (qIsNaN(vehicle->altitudeRelative()->rawValue().toDouble())) {
         QGC::showAppMessage(tr("Unable to change altitude, vehicle altitude not known."));
         return;
@@ -936,6 +947,7 @@ void APMFirmwarePlugin::guidedModeTakeoff(Vehicle *vehicle, double altitudeRel) 
 
 void APMFirmwarePlugin::guidedModeChangeHeading(Vehicle *vehicle, const QGeoCoordinate &headingCoord) const
 {
+    stopGuidedOrbit(vehicle);
     if (!isCapable(vehicle, FirmwarePlugin::ChangeHeadingCapability)) {
         QGC::showAppMessage(tr("Vehicle does not support guided rotate"));
         return;

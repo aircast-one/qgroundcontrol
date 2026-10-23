@@ -43,6 +43,9 @@ public:
     explicit ArduPlaneFirmwarePlugin(QObject *parent = nullptr);
     ~ArduPlaneFirmwarePlugin();
 
+    void guidedModeOrbit(Vehicle* vehicle, const QGeoCoordinate& centerCoord, double radius,
+                         double amslAltitude) const override;
+
     QString offlineEditingParamFile(Vehicle *vehicle) const override { Q_UNUSED(vehicle); return QStringLiteral(":/FirmwarePlugin/APM/Plane.OfflineEditing.params"); }
     QString autoDisarmParameter(Vehicle *vehicle) const override { Q_UNUSED(vehicle); return QStringLiteral("LAND_DISARMDELAY"); }
     int remapParamNameHigestMinorVersionNumber(int majorVersionNumber) const override;

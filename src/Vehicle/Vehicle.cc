@@ -1950,30 +1950,7 @@ void Vehicle::guidedModeOrbit(const QGeoCoordinate& centerCoord, double radius, 
         QGC::showAppMessage(QStringLiteral("Orbit mode not supported by Vehicle."));
         return;
     }
-    if (capabilityBits() & MAV_PROTOCOL_CAPABILITY_COMMAND_INT) {
-        sendMavCommandInt(
-                    defaultComponentId(),
-                    MAV_CMD_DO_ORBIT,
-                    MAV_FRAME_GLOBAL,
-                    true,                           // show error if fails
-                    static_cast<float>(radius),
-                    static_cast<float>(qQNaN()),    // Use default velocity
-                    static_cast<float>(ORBIT_YAW_BEHAVIOUR_UNCHANGED),       // Use current or vehicle default yaw behavior
-                    static_cast<float>(qQNaN()),    // Use vehicle default num of orbits behavior
-                    centerCoord.latitude(), centerCoord.longitude(), static_cast<float>(amslAltitude));
-    } else {
-        sendMavCommand(
-                    defaultComponentId(),
-                    MAV_CMD_DO_ORBIT,
-                    true,                           // show error if fails
-                    static_cast<float>(radius),
-                    static_cast<float>(qQNaN()),    // Use default velocity
-                    static_cast<float>(ORBIT_YAW_BEHAVIOUR_UNCHANGED),       // Use current or vehicle default yaw behavior
-                    static_cast<float>(qQNaN()),    // Use vehicle default num of orbits behavior
-                    static_cast<float>(centerCoord.latitude()),
-                    static_cast<float>(centerCoord.longitude()),
-                    static_cast<float>(amslAltitude));
-    }
+    _firmwarePlugin->guidedModeOrbit(this, centerCoord, radius, amslAltitude);
 }
 
 void Vehicle::guidedModeROI(const QGeoCoordinate& centerCoord)

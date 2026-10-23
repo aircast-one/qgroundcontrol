@@ -93,6 +93,9 @@ public:
     double currentCameraAspect();
     Q_INVOKABLE void requestCameraFovForComp(int compId);
 
+    static bool fovFromSensor(double focalLengthMm, double sensorWidthMm, double sensorHeightMm, int resolutionH,
+                              int resolutionV, double& hfovDeg, double& vfovDeg);
+
 private:
     int _zoomValueCurrent = 0;
 
