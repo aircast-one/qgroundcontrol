@@ -10,6 +10,7 @@ Column {
 
     property var    _recorder:      globals.routeRecorder
     property string _savedFile:     ""
+    property string _routeName:     _savedFile.split(/[\\/]/).pop().replace(/\.kml$/i, "")
     property string _message:       ""
     property bool   _showNotice:    false
     property real   _margins:       ScreenTools.defaultFontPixelWidth
@@ -86,8 +87,15 @@ Column {
             QGCTextField {
                 Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 26
                 visible:                _savedFile !== ""
-                text:                   _savedFile.split(/[\\/]/).pop().replace(/\.kml$/i, "")
-                onEditingFinished:      _savedFile = _recorder.renameFile(_savedFile, text)
+                text:                   _routeName
+
+                onEditingFinished: {
+                    const wanted = text.trim()
+                    const renamed = _recorder.renameFile(_savedFile, wanted)
+                    _message = (renamed === _savedFile && wanted !== "" && wanted !== _routeName) ? qsTr("Name already used") : qsTr("Route saved")
+                    _savedFile = renamed
+                    text = Qt.binding(() => _routeName)
+                }
             }
 
             QGCButton {

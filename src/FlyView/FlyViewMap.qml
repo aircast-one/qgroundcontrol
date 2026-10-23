@@ -811,7 +811,13 @@ FlightMap {
         var guided = globals.guidedControllerFlyView
         var anyAction = guided.showGotoLocation || guided.showOrbit || guided.showROI ||
                         (!fromVideo && (guided.showSetHome || guided.showSetEstimatorOrigin))
+        var missionPrompt = guided.confirmDialog.action === guided.actionStartMission ||
+                            guided.confirmDialog.action === guided.actionContinueMission
+        if (anyAction && guided.guidedUIVisible && missionPrompt) {
+            guided.closeAll()
+        }
         if (!guided.guidedUIVisible && anyAction) {
+            QGroundControl.videoManager.fullScreen = false
             var dropPanel = mapClickDropPanelComponent.createObject(mainWindow, { mapClickCoord: clickCoord, fromVideo: fromVideo, clickRect: Qt.rect(position.x, position.y, 0, 0) })
             dropPanel.open()
         }

@@ -488,7 +488,7 @@ Item {
         anchors.fill:   parent
         visible:        _videoIsMain && !!_activeVehicle && (_orbitPending || _activeVehicle.orbitActive)
 
-        property var  _pendingCircle:   globals.guidedControllerFlyView.orbitMapCircle
+        property var  _pendingCircle:   globals.guidedControllerFlyView ? globals.guidedControllerFlyView.orbitMapCircle : null
         property bool _orbitPending:    !!_pendingCircle && _pendingCircle.visible
 
         onVisibleChanged: requestPaint()
