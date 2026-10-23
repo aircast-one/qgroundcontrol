@@ -10,4 +10,5 @@ private slots:
     void _climbAndDescentAtTheEndsAreTrimmed();
     void _hoveringRecordsNoRoute();
     void _savedRouteLoadsBackWithAbsoluteAltitudes();
+    void _renameKeepsTheExtensionAndRefusesToOverwrite();
 };

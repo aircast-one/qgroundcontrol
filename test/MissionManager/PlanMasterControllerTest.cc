@@ -8,11 +8,14 @@
 #include <QtTest/QSignalSpy>
 
 #include "AppSettings.h"
+#include "CameraSection.h"
 #include "MissionManager.h"
+#include "MissionSettingsItem.h"
 #include "MultiSignalSpy.h"
 #include "MultiVehicleManager.h"
 #include "PlanMasterController.h"
 #include "QmlObjectListModel.h"
+#include "RouteRecorder.h"
 #include "SettingsManager.h"
 #include "SimpleMissionItem.h"
 #include "SurveyPlanCreator.h"
@@ -87,17 +90,18 @@ void PlanMasterControllerTest::_testKmlGroundPathLoad()
     const double defaultAltitude =
         SettingsManager::instance()->appSettings()->defaultMissionItemAltitude()->rawValue().toDouble();
 
-    expectAppMessage(
-        QRegularExpression("Imported 3 waypoints\\..*no flight altitudes.*above the terrain.*takeoff was added"));
+    expectAppMessage(QRegularExpression(
+        "Imported 3 waypoints\\..*no flight altitudes.*above the terrain.*Offline.*takeoff was added.*return to launch",
+        QRegularExpression::DotMatchesEverythingOption));
     _masterController->loadFromFile(":/unittest/RouteGroundPath.kml");
     verifyExpectedLogMessage();
 
     QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
-    QCOMPARE(visualItems->count(), 5);
+    QCOMPARE(visualItems->count(), 6);
     QVERIFY(qobject_cast<TakeoffMissionItem*>(visualItems->get(1)));
     QCOMPARE(_masterController->missionController()->globalAltitudeFrame(),
              QGroundControlQmlGlobal::AltitudeFrameCalcAboveTerrain);
-    for (int i = 2; i < visualItems->count(); i++) {
+    for (int i = 2; i < 5; i++) {
         SimpleMissionItem* item = visualItems->value<SimpleMissionItem*>(i);
         QVERIFY(item);
         QCOMPARE(static_cast<MAV_CMD>(item->command()), MAV_CMD_NAV_WAYPOINT);
@@ -105,6 +109,7 @@ void PlanMasterControllerTest::_testKmlGroundPathLoad()
         QCOMPARE(item->altitude()->rawValue().toDouble(), defaultAltitude);
     }
     QCOMPARE(visualItems->value<SimpleMissionItem*>(4)->coordinate().longitude(), 44.8010);
+    QCOMPARE(static_cast<MAV_CMD>(visualItems->value<SimpleMissionItem*>(5)->command()), MAV_CMD_NAV_RETURN_TO_LAUNCH);
 }
 
 void PlanMasterControllerTest::_testKmzAbsolutePathLoad()
@@ -114,7 +119,7 @@ void PlanMasterControllerTest::_testKmzAbsolutePathLoad()
     verifyExpectedLogMessage();
 
     QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
-    QCOMPARE(visualItems->count(), 5);
+    QCOMPARE(visualItems->count(), 6);
     QCOMPARE(_masterController->missionController()->globalAltitudeFrame(),
              QGroundControlQmlGlobal::AltitudeFrameAbsolute);
     SimpleMissionItem* first = visualItems->value<SimpleMissionItem*>(2);
@@ -130,10 +135,77 @@ void PlanMasterControllerTest::_testKmlPlacemarksLoad()
     verifyExpectedLogMessage();
 
     QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
-    QCOMPARE(visualItems->count(), 4);
+    QCOMPARE(visualItems->count(), 5);
     QCOMPARE(visualItems->value<SimpleMissionItem*>(2)->coordinate().latitude(), 41.7100);
     QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->coordinate().latitude(), 41.7150);
     QVERIFY(_masterController->dirtyForUpload());
+}
+
+void PlanMasterControllerTest::_testKmlTowersBecomeLookAtPoints()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString filename = tempDir.filePath(QStringLiteral("towers.kml"));
+    QFile file(filename);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QVERIFY(file.write(R"(<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><LineString><coordinates>44.7900,41.7100,0 44.7950,41.7120,0 44.8010,41.7150,0</coordinates></LineString></Placemark>
+  <Placemark><name>Tower A</name><Point><coordinates>44.7951,41.7122,0</coordinates></Point></Placemark>
+  <Placemark><name>Tower B</name><Point><coordinates>44.8012,41.7151,0</coordinates></Point></Placemark>
+</Document></kml>)") != -1);
+    file.close();
+
+    expectAppMessage(QRegularExpression("2 placemarks became look-at points"));
+    _masterController->loadFromFile(filename);
+    verifyExpectedLogMessage();
+
+    const QList<MAV_CMD> expected = {MAV_CMD_NAV_WAYPOINT,        MAV_CMD_DO_SET_ROI_LOCATION, MAV_CMD_NAV_WAYPOINT,
+                                     MAV_CMD_DO_SET_ROI_LOCATION, MAV_CMD_NAV_WAYPOINT,        MAV_CMD_DO_SET_ROI_NONE,
+                                     MAV_CMD_NAV_RETURN_TO_LAUNCH};
+    QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
+    QCOMPARE(visualItems->count(), expected.count() + 2);
+    for (qsizetype i = 0; i < expected.count(); i++) {
+        QCOMPARE(static_cast<MAV_CMD>(visualItems->value<SimpleMissionItem*>(i + 2)->command()), expected[i]);
+    }
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->coordinate().longitude(), 44.7951);
+}
+
+void PlanMasterControllerTest::_testRecordedRouteReplaysTheCamera()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString filename = tempDir.filePath(QStringLiteral("recorded.kml"));
+    const QGeoCoordinate start(41.7100, 44.7900, 650.0);
+    const QGeoCoordinate tower(41.7110, 44.7930, 600.0);
+    QVERIFY(RouteRecorder::saveKml(filename, QStringLiteral("Route"),
+                                   {{start, -30.0, 10.0, QGeoCoordinate()},
+                                    {start.atDistanceAndAzimuth(100, 0, 0.0), -30.2, 10.0, QGeoCoordinate()},
+                                    {start.atDistanceAndAzimuth(150, 45, 10.0), -45.0, 0.0, tower},
+                                    {start.atDistanceAndAzimuth(300, 90, 20.0), -60.0, 0.0, QGeoCoordinate()}}));
+
+    expectAppMessage(QRegularExpression("camera angles and look-at points from the recording"));
+    _masterController->loadFromFile(filename);
+    verifyExpectedLogMessage();
+
+    const QList<MAV_CMD> expected = {MAV_CMD_NAV_WAYPOINT, MAV_CMD_NAV_WAYPOINT,        MAV_CMD_DO_SET_ROI_LOCATION,
+                                     MAV_CMD_NAV_WAYPOINT, MAV_CMD_DO_SET_ROI_NONE,     MAV_CMD_DO_MOUNT_CONTROL,
+                                     MAV_CMD_NAV_WAYPOINT, MAV_CMD_NAV_RETURN_TO_LAUNCH};
+    QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
+    QCOMPARE(visualItems->count(), expected.count() + 2);
+    for (qsizetype i = 0; i < expected.count(); i++) {
+        QCOMPARE(static_cast<MAV_CMD>(visualItems->value<SimpleMissionItem*>(i + 2)->command()), expected[i]);
+    }
+    CameraSection* initialCamera = visualItems->value<MissionSettingsItem*>(0)->cameraSection();
+    QVERIFY(initialCamera->specifyGimbal());
+    QCOMPARE(initialCamera->gimbalPitch()->rawValue().toDouble(), -30.0);
+    QCOMPARE(initialCamera->gimbalYaw()->rawValue().toDouble(), 10.0);
+    SimpleMissionItem* roi = visualItems->value<SimpleMissionItem*>(4);
+    QCOMPARE(roi->altitudeFrame(), QGroundControlQmlGlobal::AltitudeFrameAbsolute);
+    QCOMPARE(roi->altitude()->rawValue().toDouble(), 600.0);
+    const MissionItem& gimbalAfterLookAt = visualItems->value<SimpleMissionItem*>(7)->missionItem();
+    QCOMPARE(gimbalAfterLookAt.param1(), -60.0);
+    QCOMPARE(gimbalAfterLookAt.param7(), static_cast<double>(MAV_MOUNT_MODE_MAVLINK_TARGETING));
 }
 
 void PlanMasterControllerTest::_testKmlAreaOnlyPointsToSurvey()

@@ -20,6 +20,14 @@ class RouteRecorder : public QObject
     Q_PROPERTY(QVariantList path READ path NOTIFY pathChanged)
 
 public:
+    struct Sample
+    {
+        QGeoCoordinate coordinate;
+        double gimbalPitch = qQNaN();
+        double gimbalYaw = qQNaN();
+        QGeoCoordinate lookAt;
+    };
+
     explicit RouteRecorder(QObject* parent = nullptr);
 
     bool recording() const { return _recording; }
@@ -30,10 +38,11 @@ public:
 
     Q_INVOKABLE void start(Vehicle* vehicle);
     Q_INVOKABLE void stop();
+    Q_INVOKABLE QString renameFile(const QString& fileName, const QString& newName);
 
-    static QList<QGeoCoordinate> trimVerticalEnds(const QList<QGeoCoordinate>& path, double radiusMeters);
+    static QList<qsizetype> routeIndices(const QList<QGeoCoordinate>& path);
     static QList<QGeoCoordinate> routeFromPath(const QList<QGeoCoordinate>& path);
-    static bool saveKml(const QString& fileName, const QString& name, const QList<QGeoCoordinate>& route);
+    static bool saveKml(const QString& fileName, const QString& name, const QList<Sample>& route);
 
     static constexpr double kMinSpacingMeters = 2.0;
     static constexpr double kSimplifyToleranceMeters = 3.0;
@@ -47,12 +56,15 @@ signals:
 
 private:
     void _addCoordinate(const QGeoCoordinate& coordinate);
+    void _lookAtChanged(const QGeoCoordinate& center);
+    QList<Sample> _route() const;
     bool _save() const;
 
     QPointer<Vehicle> _vehicle;
     bool _recording = false;
-    QList<QGeoCoordinate> _path;
+    QList<Sample> _samples;
     QVariantList _pathVariant;
+    QGeoCoordinate _lookAt;
     double _distance = 0;
     QString _name;
     QString _fileName;

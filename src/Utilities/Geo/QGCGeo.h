@@ -190,5 +190,6 @@ QList<QGeoCoordinate> interpolatePath(const QGeoCoordinate &from, const QGeoCoor
 QGeoCoordinate interpolateAtDistance(const QGeoCoordinate &from, const QGeoCoordinate &to, double distance);
 
 QList<QGeoCoordinate> simplifyPath(const QList<QGeoCoordinate>& path, double toleranceMeters);
+QList<qsizetype> simplifyPathIndices(const QList<QGeoCoordinate>& path, double toleranceMeters);
 
 } // namespace QGCGeo

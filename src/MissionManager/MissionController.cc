@@ -870,9 +870,100 @@ bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString
                                                              : QGroundControlQmlGlobal::AltitudeFrameCalcAboveTerrain;
     setGlobalAltitudeFrame(frame);
 
+    QList<QGeoCoordinate> placemarkBefore(route.path.count());
+    qsizetype lookAtCount = 0;
+    for (const QGeoCoordinate& placemark : std::as_const(route.placemarks)) {
+        const auto nearest = std::min_element(route.path.cbegin(), route.path.cend(),
+                                              [&placemark](const QGeoCoordinate& a, const QGeoCoordinate& b) {
+                                                  return placemark.distanceTo(a) < placemark.distanceTo(b);
+                                              });
+        qsizetype index = std::distance(route.path.cbegin(), nearest);
+        while ((index < placemarkBefore.count()) && placemarkBefore[index].isValid()) {
+            index++;
+        }
+        if (index < placemarkBefore.count()) {
+            placemarkBefore[index] = placemark;
+            lookAtCount++;
+        }
+    }
+
+    const bool roiLocationSupported = _controllerVehicle->firmwarePlugin()
+                                          ->supportedMissionCommands(QGCMAVLink::VehicleClassGeneric)
+                                          .contains(MAV_CMD_DO_SET_ROI_LOCATION);
+    const auto roiItem = [this, roiLocationSupported](const QGeoCoordinate& target,
+                                                      QGroundControlQmlGlobal::AltitudeFrame roiFrame,
+                                                      double altitude) {
+        SimpleMissionItem* item = new SimpleMissionItem(_masterController, _flyView, false);
+        item->setCommand(roiLocationSupported ? MAV_CMD_DO_SET_ROI_LOCATION : MAV_CMD_DO_SET_ROI);
+        if (!roiLocationSupported) {
+            item->missionItem().setParam1(MAV_ROI_LOCATION);
+        }
+        item->setAltitudeFrame(roiFrame);
+        item->altitude()->setRawValue(altitude);
+        item->setCoordinate(target);
+        return item;
+    };
+    const bool roiNoneSupported = _controllerVehicle->firmwarePlugin()
+                                      ->supportedMissionCommands(QGCMAVLink::VehicleClassGeneric)
+                                      .contains(MAV_CMD_DO_SET_ROI_NONE);
+    const auto roiNoneItem = [this, roiNoneSupported]() {
+        SimpleMissionItem* item = new SimpleMissionItem(_masterController, _flyView, false);
+        item->setCommand(roiNoneSupported ? MAV_CMD_DO_SET_ROI_NONE : MAV_CMD_DO_SET_ROI);
+        if (!roiNoneSupported) {
+            item->missionItem().setParam1(MAV_ROI_NONE);
+        }
+        return item;
+    };
+
+    constexpr double kGimbalChangeDegrees = 1.0;
+    const auto gimbalItem = [this](double pitch, double yaw) {
+        SimpleMissionItem* item = new SimpleMissionItem(_masterController, _flyView, false);
+        item->setCommand(MAV_CMD_DO_MOUNT_CONTROL);
+        item->missionItem().setParam1(pitch);
+        item->missionItem().setParam3(yaw);
+        item->missionItem().setParam7(MAV_MOUNT_MODE_MAVLINK_TARGETING);
+        return item;
+    };
+
     QmlObjectListModel* loadedVisualItems = new QmlObjectListModel(this);
     _addMissionSettings(loadedVisualItems);
-    for (const QGeoCoordinate& coordinate : std::as_const(route.path)) {
+    QGeoCoordinate lookingAt;
+    double gimbalPitch = qQNaN();
+    double gimbalYaw = qQNaN();
+    bool cameraFromRecording = false;
+    for (qsizetype i = 0; i < route.path.count(); i++) {
+        if (!route.lookAt.isEmpty()) {
+            const QGeoCoordinate recordedLookAt = route.lookAt[i];
+            if (recordedLookAt.isValid() && (recordedLookAt != lookingAt)) {
+                loadedVisualItems->append(
+                    roiItem(recordedLookAt, QGroundControlQmlGlobal::AltitudeFrameAbsolute, recordedLookAt.altitude()));
+                lookingAt = recordedLookAt;
+                gimbalPitch = qQNaN();
+                cameraFromRecording = true;
+            } else if (!recordedLookAt.isValid() && lookingAt.isValid()) {
+                loadedVisualItems->append(roiNoneItem());
+                lookingAt = QGeoCoordinate();
+                gimbalPitch = qQNaN();
+            }
+        }
+        if (placemarkBefore[i].isValid()) {
+            loadedVisualItems->append(roiItem(
+                placemarkBefore[i], frame,
+                (frame == QGroundControlQmlGlobal::AltitudeFrameAbsolute) ? placemarkBefore[i].altitude() : 0.0));
+            lookingAt = placemarkBefore[i];
+        }
+        const double pitch = route.gimbalPitch.value(i, qQNaN());
+        const double yaw = std::isfinite(route.gimbalYaw.value(i, qQNaN())) ? route.gimbalYaw[i] : 0.0;
+        const bool gimbalUnchanged = std::isfinite(gimbalPitch) && (qAbs(pitch - gimbalPitch) < kGimbalChangeDegrees) &&
+                                     (qAbs(yaw - gimbalYaw) < kGimbalChangeDegrees);
+        if (!lookingAt.isValid() && std::isfinite(pitch) && !gimbalUnchanged) {
+            loadedVisualItems->append(gimbalItem(pitch, yaw));
+            gimbalPitch = pitch;
+            gimbalYaw = yaw;
+            cameraFromRecording = true;
+        }
+
+        const QGeoCoordinate& coordinate = route.path[i];
         SimpleMissionItem* item = new SimpleMissionItem(_masterController, _flyView, false);
         item->setCommand(MAV_CMD_NAV_WAYPOINT);
         item->setAltitudeFrame(frame);
@@ -881,6 +972,12 @@ bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString
         item->setCoordinate(coordinate);
         loadedVisualItems->append(item);
     }
+    if (lookingAt.isValid()) {
+        loadedVisualItems->append(roiNoneItem());
+    }
+    SimpleMissionItem* returnItem = new SimpleMissionItem(_masterController, _flyView, false);
+    returnItem->setCommand(MAV_CMD_NAV_RETURN_TO_LAUNCH);
+    loadedVisualItems->append(returnItem);
 
     _initLoadedVisualItems(loadedVisualItems);
 
@@ -899,8 +996,11 @@ bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString
                            .arg(route.sourceVertexCount)
                            .arg(route.path.count()));
     }
-    if (route.ignoredPointCount > 0) {
-        summary.append(tr("%1 placemarks were ignored because the file also has a path.").arg(route.ignoredPointCount));
+    if (lookAtCount > 0) {
+        summary.append(tr("%1 placemarks became look-at points along the path.").arg(lookAtCount));
+    }
+    if (cameraFromRecording) {
+        summary.append(tr("The camera angles and look-at points from the recording were added."));
     }
     switch (route.altitude) {
         case KMLHelper::Route::Altitude::Ground:
@@ -916,10 +1016,16 @@ bool MissionController::loadKmlFile(const QString& kmlFile, QString& errorString
             summary.append(tr("Altitudes are kept above sea level, as in the file."));
             break;
     }
+    if (frame == QGroundControlQmlGlobal::AltitudeFrameCalcAboveTerrain) {
+        summary.append(
+            tr("Terrain-following altitudes need terrain data from the internet. Offline, set the altitude "
+               "mode to Relative before uploading."));
+    }
     if (addTakeoff) {
         summary.append(tr("A takeoff was added at the start."));
     }
-    QGC::showAppMessage(summary.join(QLatin1Char(' ')), tr("KML imported"));
+    summary.append(tr("A return to launch was added at the end."));
+    QGC::showAppMessage(summary.join(QLatin1Char('\n')), tr("KML imported"));
 
     return true;
 }

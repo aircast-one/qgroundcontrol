@@ -23,7 +23,6 @@ Column {
             _savedFile = fileName
             _message = message
             _showNotice = true
-            noticeTimer.restart()
         }
 
         function onRecordingChanged() {
@@ -31,12 +30,6 @@ Column {
                 _showNotice = false
             }
         }
-    }
-
-    Timer {
-        id:         noticeTimer
-        interval:   15000
-        onTriggered: _showNotice = false
     }
 
     Rectangle {
@@ -89,6 +82,13 @@ Column {
             spacing:            _margins
 
             QGCLabel { text: _message }
+
+            QGCTextField {
+                Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 26
+                visible:                _savedFile !== ""
+                text:                   _savedFile.split(/[\\/]/).pop().replace(/\.kml$/i, "")
+                onEditingFinished:      _savedFile = _recorder.renameFile(_savedFile, text)
+            }
 
             QGCButton {
                 text:       qsTr("Open in Plan")

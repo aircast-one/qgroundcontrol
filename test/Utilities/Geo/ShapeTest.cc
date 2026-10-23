@@ -473,7 +473,7 @@ void ShapeTest::_testKMLRouteIgnoresPlacemarksBesidePath()
     QVERIFY2(KMLHelper::loadRouteFromFile(kmlFile, route, errorString), qPrintable(errorString));
     QCOMPARE(route.path.count(), 4);
     QCOMPARE(route.pathCount, 2);
-    QCOMPARE(route.ignoredPointCount, 2);
+    QCOMPARE(route.placemarks.count(), 2);
     QCOMPARE(route.altitude, KMLHelper::Route::Altitude::Ground);
 }
 

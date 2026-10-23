@@ -37,9 +37,17 @@ namespace KMLHelper
         QList<QGeoCoordinate> path;
         Altitude altitude = Altitude::Ground;
         int pathCount = 0;
-        int ignoredPointCount = 0;
         qsizetype sourceVertexCount = 0;
+        QList<QGeoCoordinate> placemarks;
+        QList<double> gimbalPitch;
+        QList<double> gimbalYaw;
+        QList<QGeoCoordinate> lookAt;
     };
+
+    QString routeGimbalData(const QList<double>& pitch, const QList<double>& yaw);
+    QString routeLookAtData(const QList<QGeoCoordinate>& lookAt);
+    constexpr const char* kRouteGimbalDataName = "gimbal";
+    constexpr const char* kRouteLookAtDataName = "lookAt";
 
     bool loadRouteFromFile(const QString& kmlFile, Route& route, QString& errorString);
 

@@ -3,6 +3,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
+#include <QtCore/QRegularExpression>
 #include <QtXml/QDomDocument>
 #include <algorithm>
 
@@ -402,11 +403,83 @@ bool KMLHelper::loadRouteFromFile(const QString& kmlFile, Route& route, QString&
                      : allAbsolute         ? Route::Altitude::Absolute
                      : allRelativeToGround ? Route::Altitude::AboveGround
                                            : Route::Altitude::Ground;
-    route.ignoredPointCount = isPath ? pointNodes.count() : 0;
+    if (isPath) {
+        for (int nodeIdx = 0; nodeIdx < pointNodes.count(); nodeIdx++) {
+            QList<QGeoCoordinate> coords;
+            if (_parseCoordinateString(pointNodes.item(nodeIdx).namedItem("coordinates").toElement().text(), coords,
+                                       errorString)) {
+                route.placemarks.append(coords.first());
+            }
+            errorString.clear();
+        }
+    }
+
+    if (lineNodes.count() == 1) {
+        const QDomNodeList dataNodes = lineNodes.item(0).parentNode().toElement().elementsByTagName("Data");
+        for (int nodeIdx = 0; nodeIdx < dataNodes.count(); nodeIdx++) {
+            const QDomElement data = dataNodes.item(nodeIdx).toElement();
+            const QStringList tokens = data.firstChildElement("value").text().split(
+                QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+            if (tokens.count() != route.path.count()) {
+                continue;
+            }
+            if (data.attribute("name") == QLatin1String(kRouteGimbalDataName)) {
+                for (const QString& token : tokens) {
+                    const QStringList values = token.split(QLatin1Char(','));
+                    route.gimbalPitch.append(values.value(0).toDouble());
+                    route.gimbalYaw.append(values.value(1).toDouble());
+                }
+            } else if (data.attribute("name") == QLatin1String(kRouteLookAtDataName)) {
+                for (const QString& token : tokens) {
+                    const QStringList values = token.split(QLatin1Char(','));
+                    route.lookAt.append(
+                        (values.count() == 3)
+                            ? QGeoCoordinate(values[1].toDouble(), values[0].toDouble(), values[2].toDouble())
+                            : QGeoCoordinate());
+                }
+            }
+        }
+    }
+
     route.sourceVertexCount = route.path.count();
     if (isPath && (route.path.count() > kDenseTrackVertices)) {
-        route.path = QGCGeo::simplifyPath(route.path, kDenseTrackToleranceMeters);
+        const QList<qsizetype> kept = QGCGeo::simplifyPathIndices(route.path, kDenseTrackToleranceMeters);
+        const auto subset = [&kept](const auto& values) {
+            std::decay_t<decltype(values)> result;
+            for (const qsizetype index : kept) {
+                if (index < values.count()) {
+                    result.append(values[index]);
+                }
+            }
+            return result;
+        };
+        route.path = subset(route.path);
+        route.gimbalPitch = subset(route.gimbalPitch);
+        route.gimbalYaw = subset(route.gimbalYaw);
+        route.lookAt = subset(route.lookAt);
     }
 
     return true;
+}
+
+QString KMLHelper::routeGimbalData(const QList<double>& pitch, const QList<double>& yaw)
+{
+    QStringList tokens;
+    for (qsizetype i = 0; i < pitch.count(); i++) {
+        tokens.append(QStringLiteral("%1,%2").arg(pitch[i], 0, 'f', 1).arg(yaw.value(i, qQNaN()), 0, 'f', 1));
+    }
+    return tokens.join(QLatin1Char(' '));
+}
+
+QString KMLHelper::routeLookAtData(const QList<QGeoCoordinate>& lookAt)
+{
+    QStringList tokens;
+    for (const QGeoCoordinate& coordinate : lookAt) {
+        tokens.append(coordinate.isValid() ? QStringLiteral("%1,%2,%3")
+                                                 .arg(coordinate.longitude(), 0, 'f', 7)
+                                                 .arg(coordinate.latitude(), 0, 'f', 7)
+                                                 .arg(coordinate.altitude(), 0, 'f', 1)
+                                           : QStringLiteral("-"));
+    }
+    return tokens.join(QLatin1Char(' '));
 }

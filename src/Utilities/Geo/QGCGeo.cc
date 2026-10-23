@@ -373,8 +373,21 @@ QGeoCoordinate interpolateAtDistance(const QGeoCoordinate &from, const QGeoCoord
 
 QList<QGeoCoordinate> simplifyPath(const QList<QGeoCoordinate>& path, double toleranceMeters)
 {
+    QList<QGeoCoordinate> simplified;
+    for (const qsizetype index : simplifyPathIndices(path, toleranceMeters)) {
+        simplified.append(path[index]);
+    }
+    return simplified;
+}
+
+QList<qsizetype> simplifyPathIndices(const QList<QGeoCoordinate>& path, double toleranceMeters)
+{
     if (path.count() < 3) {
-        return path;
+        QList<qsizetype> all;
+        for (qsizetype i = 0; i < path.count(); i++) {
+            all.append(i);
+        }
+        return all;
     }
 
     QList<QVector3D> points;
@@ -407,13 +420,13 @@ QList<QGeoCoordinate> simplifyPath(const QList<QGeoCoordinate>& path, double tol
         }
     }
 
-    QList<QGeoCoordinate> simplified;
+    QList<qsizetype> kept;
     for (qsizetype i = 0; i < path.count(); i++) {
         if (keep[i]) {
-            simplified.append(path[i]);
+            kept.append(i);
         }
     }
-    return simplified;
+    return kept;
 }
 
 } // namespace QGCGeo
