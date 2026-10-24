@@ -240,6 +240,7 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     socket.pipe(upstream);
   });
   upstream.on('error', () => socket.destroy());
+  socket.on('error', () => upstream.destroy());
 };
 [http, upgrading, https, offline].forEach((server) => server.on('upgrade', upgrade));
 
