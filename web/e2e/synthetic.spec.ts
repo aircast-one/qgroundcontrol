@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, slideAcross, takeOff, test } from './fixtures';
+import { connectMock, expect, flightMode, flyNow, slideAcross, takeOff, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -26,8 +26,7 @@ test('the synthetic view stays on screen in flight with no camera, and comes bac
 });
 
 const syntheticCanvas = async (page: Page) => {
-  const later = page.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
+  await flyNow(page);
   const canvas = page.locator('canvas:not(.maplibregl-canvas)').filter({ visible: true }).first();
   await expect(canvas).toBeVisible({ timeout: 30_000 });
   return (await canvas.boundingBox())!;

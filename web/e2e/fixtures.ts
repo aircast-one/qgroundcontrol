@@ -54,6 +54,14 @@ export const slideAcross = async (page: Page, target: Locator) => {
   await page.mouse.up();
 };
 
+export const flyNow = async (page: Page) => {
+  const later = page.getByRole('button', { name: 'Fly now, finish loading in background' });
+  await expect(async () => {
+    if (await later.isVisible()) await later.click({ timeout: 2_000 });
+    await expect(later).toBeHidden({ timeout: 2_000 });
+  }).toPass();
+};
+
 export const vehicleStatus = async (page: Page) => {
   await page.getByRole('button', { name: /^Not fully ready$|^Ready to fly$|^Armed$/ }).first().click();
   return page.getByRole('dialog');
