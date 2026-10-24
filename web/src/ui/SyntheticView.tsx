@@ -273,7 +273,7 @@ export const SyntheticView = ({
   const gestures = usePointerGestures(aiming);
   const hold = usePictureHold(aimable ? onGround : null, true, true);
   return (
-    <div {...gestures} {...hold} data-gesture={aiming !== null || undefined} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
+    <div {...gestures} {...hold} data-gesture={canAim ? 'look' : steersGimbal ? 'gimbal' : undefined} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
       <div className="relative size-full">
         {nativeChosen(view) ? <NativePage view={view} standIn={standIn} /> : <SyntheticPage view={view} standIn={standIn} />}
         {aimable && groundSpot !== null ? <PictureMark spot={groundSpot} /> : null}
