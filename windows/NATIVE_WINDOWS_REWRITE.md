@@ -42,7 +42,7 @@ Status: ▢ todo · ◐ in progress · ✓ done
 
 - ✓ fly · ◐ fly — flight mode (refused-change notice untested: the mock accepts every mode) · ◐ fly — camera (frames ✓, picture-in-picture ✓, video fit ✓; WHEP not seen in the shipped build: `build-whep.ps1` put `gstwebrtchttp.dll` in `C:\gstreamer`, but the stage's bundled runtime predates it until `build-video.ps1` is rerun) · ✓ fly — map context menu
 - ✓ fly — armed, confirm return · ✓ fly — checklist · ✓ fly — no vehicle
-- ✓ fly — host notices, message banner and sheet, voice alerts, disarm toast · ✓ fly — status strip and detail sheets · ✓ fly — multi-vehicle, operator position, Follow Me · ✓ fly — prompts (enforced checklist, mission popups, mission complete, close guard, connecting card, mission progress, set waypoint, resume failed, first run) · ✓ fly — payload (gimbal pill and sheet, map wedge, beam and radar, record shutter, gripper bays, camera details); details and gaps in the parity backlog below
+- ✓ fly — host notices, message banner and sheet, voice alerts, disarm toast · ✓ fly — status strip and detail sheets · ✓ fly — multi-vehicle, operator position, Follow Me · ✓ fly — prompts (enforced checklist, mission popups, mission complete, close guard, connecting card, mission progress, set waypoint, resume failed, first run) · ✓ fly — field ops (KML/KMZ open, video press-and-hold and right-click menu, orbit radius, look-at reticle, route recording; round 14) · ✓ fly — payload (gimbal pill and sheet, map wedge, beam and radar, record shutter, gripper bays, camera details); details and gaps in the parity backlog below
 - ✓ fly — on-screen sticks · ✓ fly — heading tape, guided presets and quick picks, mission identity card, ROI pin sheet · ◐ fly — operator control and VTOL cell (synthetic views only) · ✓ fly — video grid lines, full screen (rail, F11, Escape, double-click), aspect ratio, detection boxes · ◐ fly — obstacle arc, readout and map overlay, AR marks (constructed payloads only) · ✓ fly — Aircast device status chip
 - ✓ fly — title bar fit and All status sheet · ◐ fly — overlay layout editing (widget drags driven in-process only) · ✓ fly — short-window layout · ◐ fly — synthetic view (drag aim not driven) · ◐ fly — 3D view (core reports the vehicle at 0 m facing north and no route segments)
 
@@ -535,6 +535,31 @@ From a call with a field user flying real drones on the Windows app (2026-10-21)
 - Scrolling: hidden Fly controls stop working behind other pages and replay their state on return (heartbeat gap p95 28-39 ms to
   about 20 ms, gaps over 100 ms 9 to 0); the vehicle status sheet has one scroll viewer.
 - Not driven with real input on the final build (a firewall dialog blocked the VM desktop); no real radio or Windows 10 PC.
+
+### Field ops (round 14)
+
+The field-ops features from the Qt app, on the core's KML import, route recorder, ArduPilot orbit and video projection:
+
+- ✓ Plan > Open takes `.kml`/`.kmz`; the core's "KML imported" summary shows as a host dialog and its refusals (areas only, broken
+  XML, nothing found) in the Plan status line.
+- ✓ Press and hold the main video (mouse, touch or pen) or right-click it: a ring fills over 0.8 s, `videoAr.groundAt` places the
+  spot and the map click menu opens there with only Go to location, Orbit at location, Look at this point and Stop looking, plus the
+  core's field-of-view warning. It leaves full screen and closes an automatic Start/Continue Mission prompt. One-time hint
+  (`%LOCALAPPDATA%\AircastQGC\video-hold-hint-seen`), "Press and hold on a spot below the horizon", and the no-gimbal message. The
+  gimbal's Hold aim mode keeps press-and-hold for steering; right-click still opens the menu there.
+- ✓ Orbit confirm: a 10–500 m radius stepper (10 m steps, 30 m default, from `orbitRadiusMetres`) with "Orbit the location at a
+  50 m radius", direction and height; the map menu and the video menu share it. The pending circle (`videoAr.outline`) and the running
+  orbit (`view.videoAr.orbit`) are drawn on decoded video.
+- ✓ While looking at or orbiting a point: a reticle at the picture centre and "Looking at this point" / "Orbiting this point" with
+  Stop (stop looking, or pause when orbiting). The map pin already reads "Looking here".
+- ✓ Route recording: Route/Stop on the left rail, the "Recording route · 230 m" pill, the recorded path on the Fly map, and a
+  "Route saved" notice that stays until dismissed with the editable name (a used name reverts and says "Name already used"),
+  Open in Plan and Dismiss.
+- Smoke on `winvm` against the mock ArduCopter with a gimbal (synthetic view; the stage's WHEP source never decodes): hold and
+  right-click menus, the stepper 30 → 50 m, Look at then Stop, a confirmed orbit with its chip and Stop, the horizon hint, a 230 m
+  route saved, renamed, refused on a used name and opened in Plan with the KML summary. Not seen: the outline on decoded video, the
+  map path and the hold ring (the VM presented a black window this round, so nothing was looked at), touch input, the picker with a
+  `.kmz`.
 
 ### P0: bugs and real-use blockers
 
