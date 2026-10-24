@@ -24,6 +24,9 @@ private slots:
     void _testKMLAltitudeParsing();
     void _testKMLCoordinateValidation();
     void _testKMLExportSchemaValidation();
+    void _testKMLRouteIgnoresPlacemarksBesidePath();
+    void _testKMLRouteKeepsAltitudesAboveGround();
+    void _testKMLRouteSimplifiesDenseTrack();
 
 private:
     static QString _copyRes(const QString& dirPath, const QString& name);

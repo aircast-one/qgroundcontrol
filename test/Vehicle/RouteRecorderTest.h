@@ -7,7 +7,8 @@ class RouteRecorderTest : public UnitTest
     Q_OBJECT
 
 private slots:
-    void _straightLineKeepsOnlyTheEnds();
-    void _cornerAndClimbAreKept();
+    void _climbAndDescentAtTheEndsAreTrimmed();
+    void _hoveringRecordsNoRoute();
     void _savedRouteLoadsBackWithAbsoluteAltitudes();
+    void _renameKeepsTheExtensionAndRefusesToOverwrite();
 };

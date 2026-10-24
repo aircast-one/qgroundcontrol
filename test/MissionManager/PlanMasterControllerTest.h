@@ -17,6 +17,11 @@ private slots:
     void _testKmlGroundPathLoad();
     void _testKmzAbsolutePathLoad();
     void _testKmlPlacemarksLoad();
+    void _testKmlAreaOnlyPointsToSurvey();
+    void _testKmlTowersBecomeLookAtPoints();
+    void _testKmlTowersOnArduPilot();
+    void _testKmlTakeoffNeedsPlacingOnFixedWing();
+    void _testRecordedRouteReplaysTheCamera();
     void _testActiveVehicleChanged();
     void _testDirtyFlagsMatrix_data();
     void _testDirtyFlagsMatrix();

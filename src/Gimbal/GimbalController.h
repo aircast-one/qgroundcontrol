@@ -1,6 +1,9 @@
 #pragma once
 
+#include <QtCore/QPointF>
 #include <QtCore/QTimer>
+#include <QtCore/QVariantList>
+#include <QtPositioning/QGeoCoordinate>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "Gimbal.h"
@@ -44,6 +47,18 @@ public:
     /// @param yaw_rate_deg_s Yaw rate in degrees per second
     Q_INVOKABLE void sendGimbalRate(float pitch_rate_deg_s, float yaw_rate_deg_s);
 
+    Q_INVOKABLE QGeoCoordinate groundCoordinateAt(float panPct, float tiltPct) const;
+    Q_INVOKABLE QVariantList videoOutlineOfCircle(const QGeoCoordinate& center, double radius, int segments) const;
+
+    static bool projectToVideo(const QGeoCoordinate& camera, double heightAboveGround, double yawDeg, double pitchDeg,
+                               double hFovDeg, double vFovDeg, const QGeoCoordinate& ground, QPointF& pct);
+
+    static QGeoCoordinate projectToGround(const QGeoCoordinate& camera, double heightAboveGround, double yawDeg,
+                                          double pitchDeg, double hFovDeg, double vFovDeg, double panPct,
+                                          double tiltPct);
+
+    static constexpr double kMinDepressionDeg = 1.0;
+
 signals:
     void activeGimbalChanged();
     void showAcquireGimbalControlPopup(); // This triggers a popup in QML asking the user for aproval to take control
@@ -63,6 +78,9 @@ private slots:
     void _rateSenderTimeout();
 
 private:
+    bool _cameraState(double& heightAboveGround, double& altitudeRelative, double& yawDeg, double& pitchDeg,
+                      double& hFovDeg, double& vFovDeg) const;
+
     struct GimbalPairId {
         GimbalPairId() = default;
         GimbalPairId(uint8_t _managerCompid, uint8_t _deviceId)

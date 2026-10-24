@@ -1,6 +1,13 @@
 #include "ArduCopterFirmwarePlugin.h"
+
+#include <QtCore/QTimer>
+#include <cmath>
+#include <memory>
+
+#include "MAVLinkProtocol.h"
 #include "ParameterManager.h"
 #include "Vehicle.h"
+#include "VehicleLinkManager.h"
 
 bool ArduCopterFirmwarePlugin::_remapParamNameIntialized = false;
 FirmwarePlugin::remapParamNameMajorVersionMap_t ArduCopterFirmwarePlugin::_remapParamName;
@@ -228,4 +235,70 @@ uint32_t ArduCopterFirmwarePlugin::_convertToCustomFlightModeEnum(uint32_t val) 
     default:
         return UINT32_MAX;
     }
+}
+
+void ArduCopterFirmwarePlugin::orbitVelocityNorthEast(double azimuthDeg, bool clockwise, double speed, double& north,
+                                                      double& east)
+{
+    const double travel = qDegreesToRadians(azimuthDeg + (clockwise ? 90.0 : -90.0));
+    north = speed * std::cos(travel);
+    east = speed * std::sin(travel);
+}
+
+void ArduCopterFirmwarePlugin::guidedModeOrbit(Vehicle* vehicle, const QGeoCoordinate& centerCoord, double radius,
+                                               double amslAltitude) const
+{
+    stopGuidedOrbit(vehicle);
+    if (qAbs(radius) < 1.0) {
+        return;
+    }
+    vehicle->guidedModeROI(centerCoord);
+    setGuidedMode(vehicle, true);
+
+    QObject* orbit = startGuidedOrbit(vehicle);
+
+    const bool clockwise = radius >= 0;
+    const double orbitRadius = qAbs(radius);
+    const double stepDeg =
+        qRadiansToDegrees(kOrbitSpeedMetersSecond / orbitRadius) * (kOrbitUpdateMs / 1000.0) * (clockwise ? 1.0 : -1.0);
+    const auto azimuth = std::make_shared<double>(centerCoord.azimuthTo(vehicle->coordinate()));
+
+    QTimer* timer = new QTimer(orbit);
+    timer->setInterval(kOrbitUpdateMs);
+    (void) connect(timer, &QTimer::timeout, orbit,
+                   [vehicle, centerCoord, orbitRadius, amslAltitude, clockwise, stepDeg, azimuth, radius]() {
+                       vehicle->setOrbitStatus(centerCoord, radius);
+                       SharedLinkInterfacePtr sharedLink = vehicle->vehicleLinkManager()->primaryLink().lock();
+                       if (!sharedLink) {
+                           return;
+                       }
+                       *azimuth += stepDeg;
+                       const QGeoCoordinate target = centerCoord.atDistanceAndAzimuth(orbitRadius, *azimuth);
+                       double north = 0;
+                       double east = 0;
+                       orbitVelocityNorthEast(*azimuth, clockwise, kOrbitSpeedMetersSecond, north, east);
+
+                       mavlink_set_position_target_global_int_t positionTarget{};
+                       positionTarget.target_system = static_cast<uint8_t>(vehicle->id());
+                       positionTarget.target_component = static_cast<uint8_t>(vehicle->defaultComponentId());
+                       positionTarget.coordinate_frame = MAV_FRAME_GLOBAL_INT;
+                       positionTarget.type_mask =
+                           POSITION_TARGET_TYPEMASK_AX_IGNORE | POSITION_TARGET_TYPEMASK_AY_IGNORE |
+                           POSITION_TARGET_TYPEMASK_AZ_IGNORE | POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
+                       positionTarget.lat_int = static_cast<int32_t>(target.latitude() * 1e7);
+                       positionTarget.lon_int = static_cast<int32_t>(target.longitude() * 1e7);
+                       positionTarget.alt = static_cast<float>(amslAltitude);
+                       positionTarget.vx = static_cast<float>(north);
+                       positionTarget.vy = static_cast<float>(east);
+                       positionTarget.yaw = static_cast<float>(qDegreesToRadians(target.azimuthTo(centerCoord)));
+
+                       mavlink_message_t message{};
+                       (void) mavlink_msg_set_position_target_global_int_encode_chan(
+                           static_cast<uint8_t>(MAVLinkProtocol::instance()->getSystemId()),
+                           static_cast<uint8_t>(MAVLinkProtocol::getComponentId()), sharedLink->mavlinkChannel(),
+                           &message, &positionTarget);
+                       (void) vehicle->sendMessageOnLinkThreadSafe(sharedLink.get(), message);
+                   });
+
+    timer->start();
 }

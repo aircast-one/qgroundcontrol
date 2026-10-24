@@ -223,6 +223,8 @@ Item {
                 overlayRig: _overlayRig
                 pipView:    _pipView
                 visible:    mainWindow.flyViewActive
+
+                onGroundPointPressed: (coordinate, position) => mapControl.showClickMenu(coordinate, position, true)
             }
         }
 
@@ -317,6 +319,13 @@ Item {
 
         VideoSourceMenu {
             id: videoSourceMenu
+        }
+
+        FlyViewRouteRecordingOverlay {
+            z:                          _fullItemZorder + 3
+            anchors.top:                fullVideoCameraSwitchButton.visible ? fullVideoCameraSwitchButton.bottom : parent.top
+            anchors.horizontalCenter:   parent.horizontalCenter
+            anchors.topMargin:          fullVideoCameraSwitchButton.visible ? ScreenTools.defaultFontPixelHeight / 2 : toolbar.height + ScreenTools.defaultFontPixelHeight
         }
         FlyViewInsetViewer {
             id:                     widgetLayerInsetViewer

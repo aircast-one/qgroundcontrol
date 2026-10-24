@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Shapes
+import QtPositioning
 
 import QGroundControl
 import QGroundControl.Controls
@@ -13,6 +15,51 @@ Item {
 
     property int    _track_rec_x:       0
     property int    _track_rec_y:       0
+
+    signal groundPointPressed(var coordinate, point position)
+
+    property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
+    property bool   _videoIsMain:       pipState.state === pipState.fullState
+    readonly property string _holdHintSeenKey: "VideoPressAndHoldHintSeen"
+    property bool   _holdHintSeen:      QGroundControl.loadBoolGlobalSetting(_holdHintSeenKey, false)
+    property bool   _holdHintEligible:  _videoIsMain && !_holdHintSeen && !!_activeVehicle && !!_activeVehicle.gimbalController.activeGimbal
+    property bool   _showHoldHint:      false
+    property string _holdHintText:      ""
+    property real   _overlayMargins:    ScreenTools.defaultFontPixelWidth
+
+    on_HoldHintEligibleChanged: {
+        if (_holdHintEligible) {
+            _flashHoldHint(qsTr("Press and hold a spot to look at it or fly there"), 10000)
+        } else {
+            _showHoldHint = false
+        }
+    }
+
+    function _flashHoldHint(text, durationMs) {
+        _holdHintText = text
+        _showHoldHint = true
+        holdHintTimer.interval = durationMs
+        holdHintTimer.restart()
+    }
+
+    Timer {
+        id:             holdHintTimer
+        onTriggered:    _showHoldHint = false
+    }
+
+    function _groundCoordinateAt(vehicle, x, y) {
+        var videoWidth = videoStreaming.getWidth()
+        var videoHeight = videoStreaming.getHeight()
+        if (videoWidth <= 0 || videoHeight <= 0) {
+            return QtPositioning.coordinate()
+        }
+        var panPct = ((x - (width - videoWidth) / 2) / videoWidth) * 2 - 1
+        var tiltPct = 1 - ((y - (height - videoHeight) / 2) / videoHeight) * 2
+        if (Math.abs(panPct) > 1 || Math.abs(tiltPct) > 1) {
+            return QtPositioning.coordinate()
+        }
+        return vehicle.gimbalController.groundCoordinateAt(panPct, tiltPct)
+    }
 
     PipState {
         id:         videoPipState
@@ -131,6 +178,9 @@ Item {
         property double radius:     20
         property var trackingROI:   null
         property var trackingStatus: trackingStatusComponent.createObject(flyViewVideoMouseArea, {})
+        property bool _dragging:    false
+        property bool _longPressed: false
+        readonly property real _dragThreshold: 10
 
         onClicked:       onScreenGimbalController.clickControl()
         onDoubleClicked: QGroundControl.videoManager.fullScreen = !QGroundControl.videoManager.fullScreen
@@ -140,6 +190,11 @@ Item {
 
             _track_rec_x = mouse.x
             _track_rec_y = mouse.y
+            _dragging = false
+            _longPressed = false
+            if (_activeVehicle) {
+                holdRing.start(mouse.x, mouse.y)
+            }
 
             //create a new rectangle at the wanted position
             if(videoStreaming._camera) {
@@ -151,8 +206,32 @@ Item {
                 }
             }
         }
+        onPressAndHold: (mouse) => {
+            holdRing.stop()
+            var vehicle = QGroundControl.multiVehicleManager.activeVehicle
+            if (_dragging || !vehicle) {
+                return
+            }
+            _longPressed = true
+            if (!vehicle.gimbalController.activeGimbal) {
+                _root._flashHoldHint(qsTr("The vehicle reports no gimbal, so a spot in the picture can't be placed on the map"), 4000)
+                return
+            }
+            var coordinate = _root._groundCoordinateAt(vehicle, mouse.x, mouse.y)
+            if (!coordinate.isValid) {
+                _root._flashHoldHint(qsTr("Press and hold on a spot below the horizon"), 4000)
+                return
+            }
+            _root.groundPointPressed(coordinate, flyViewVideoMouseArea.mapToItem(globals.parent, mouse.x, mouse.y))
+            QGroundControl.saveBoolGlobalSetting(_holdHintSeenKey, true)
+            _holdHintSeen = true
+            _showHoldHint = false
+        }
         onPositionChanged: (mouse) => {
-            //on move, update the width of rectangle
+            if (!_dragging && (Math.abs(mouse.x - _track_rec_x) >= _dragThreshold || Math.abs(mouse.y - _track_rec_y) >= _dragThreshold)) {
+                _dragging = true
+                holdRing.stop()
+            }
             if (trackingROI !== null) {
                 if (mouse.x < trackingROI.x) {
                     trackingROI.x = mouse.x
@@ -170,10 +249,15 @@ Item {
         }
         onReleased: (mouse) => {
             onScreenGimbalController.releaseControl()
-            
+            holdRing.stop()
+
             //if there is already a selection, delete it
             if (trackingROI !== null) {
                 trackingROI.destroy();
+            }
+            if (_longPressed) {
+                _longPressed = false
+                return
             }
 
             if(videoStreaming._camera) {
@@ -279,5 +363,185 @@ Item {
     ObstacleDistanceOverlayVideo {
         id: obstacleDistance
         showText: pipState.state === pipState.fullState
+    }
+
+    Item {
+        id:         holdRing
+        width:      ScreenTools.defaultFontPixelHeight * 3
+        height:     width
+        visible:    false
+
+        property real progress: 0
+        property real _stroke:  ScreenTools.defaultFontPixelHeight / 4
+
+        function start(x, y) {
+            holdRing.x = x - (width / 2)
+            holdRing.y = y - (height / 2)
+            progress = 0
+            holdRingDelay.restart()
+        }
+
+        function stop() {
+            holdRingDelay.stop()
+            holdRingFill.stop()
+            visible = false
+        }
+
+        Timer {
+            id:         holdRingDelay
+            interval:   150
+            onTriggered: {
+                holdRing.visible = true
+                holdRingFill.restart()
+            }
+        }
+
+        NumberAnimation {
+            id:         holdRingFill
+            target:     holdRing
+            property:   "progress"
+            from:       0
+            to:         1
+            duration:   Math.max(Qt.styleHints.mousePressAndHoldInterval - holdRingDelay.interval, 100)
+        }
+
+        Shape {
+            anchors.fill: parent
+
+            ShapePath {
+                strokeColor:    "white"
+                strokeWidth:    holdRing._stroke
+                fillColor:      "transparent"
+                capStyle:       ShapePath.RoundCap
+
+                PathAngleArc {
+                    centerX:    holdRing.width / 2
+                    centerY:    holdRing.height / 2
+                    radiusX:    (holdRing.width / 2) - holdRing._stroke
+                    radiusY:    radiusX
+                    startAngle: -90
+                    sweepAngle: 360 * holdRing.progress
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.horizontalCenter:   parent.horizontalCenter
+        anchors.bottom:             parent.bottom
+        anchors.bottomMargin:       parent.height * 0.2
+        width:                      holdHintLabel.width + (_overlayMargins * 2)
+        height:                     holdHintLabel.height + _overlayMargins
+        radius:                     height / 2
+        color:                      Qt.rgba(0, 0, 0, 0.6)
+        visible:                    _showHoldHint
+
+        QGCLabel {
+            id:                 holdHintLabel
+            anchors.centerIn:   parent
+            color:              "white"
+            text:               _holdHintText
+        }
+    }
+
+    Canvas {
+        id:             orbitOutline
+        anchors.fill:   parent
+        visible:        _videoIsMain && !!_activeVehicle && (_orbitPending || _activeVehicle.orbitActive)
+
+        property var  _pendingCircle:   globals && globals.guidedControllerFlyView ? globals.guidedControllerFlyView.orbitMapCircle : null
+        property bool _orbitPending:    !!_pendingCircle && _pendingCircle.visible
+
+        onVisibleChanged: requestPaint()
+
+        Timer {
+            interval:       200
+            repeat:         true
+            running:        orbitOutline.visible
+            onTriggered:    orbitOutline.requestPaint()
+        }
+
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.reset()
+            if (!visible) {
+                return
+            }
+            const center = _orbitPending ? _pendingCircle.center : _activeVehicle.orbitMapCircle.center
+            const radius = _orbitPending ? _pendingCircle.radius() : _activeVehicle.orbitMapCircle.radius.rawValue
+            const videoWidth = videoStreaming.getWidth()
+            const videoHeight = videoStreaming.getHeight()
+            const marginH = (width - videoWidth) / 2
+            const marginV = (height - videoHeight) / 2
+            ctx.strokeStyle = "#00e5ff"
+            ctx.lineWidth = ScreenTools.defaultFontPixelHeight / 6
+            ctx.beginPath()
+            _activeVehicle.gimbalController.videoOutlineOfCircle(center, radius, 48).reduce((drawing, point) => {
+                const inView = !isNaN(point.x) && Math.abs(point.x) < 3 && Math.abs(point.y) < 3
+                if (inView) {
+                    const x = marginH + ((point.x + 1) / 2) * videoWidth
+                    const y = marginV + ((1 - point.y) / 2) * videoHeight
+                    if (drawing) {
+                        ctx.lineTo(x, y)
+                    } else {
+                        ctx.moveTo(x, y)
+                    }
+                }
+                return inView
+            }, false)
+            ctx.stroke()
+        }
+    }
+
+    Item {
+        id:                 lookAtReticle
+        anchors.centerIn:   parent
+        width:              ScreenTools.defaultFontPixelHeight * 4
+        height:             width
+        visible:            _videoIsMain && !!_activeVehicle && (_activeVehicle.isROIEnabled || _activeVehicle.orbitActive)
+
+        Rectangle {
+            anchors.fill:   parent
+            radius:         width / 2
+            color:          "transparent"
+            border.color:   "white"
+            border.width:   ScreenTools.defaultFontPixelHeight / 8
+        }
+
+        Rectangle {
+            anchors.centerIn:   parent
+            width:              ScreenTools.defaultFontPixelHeight / 3
+            height:             width
+            radius:             width / 2
+            color:              "white"
+        }
+    }
+
+    Rectangle {
+        anchors.top:                lookAtReticle.bottom
+        anchors.topMargin:          _overlayMargins
+        anchors.horizontalCenter:   parent.horizontalCenter
+        width:                      lookAtRow.width + (_overlayMargins * 2)
+        height:                     lookAtRow.height + _overlayMargins
+        radius:                     _overlayMargins
+        color:                      Qt.rgba(0, 0, 0, 0.6)
+        visible:                    lookAtReticle.visible
+
+        Row {
+            id:                 lookAtRow
+            anchors.centerIn:   parent
+            spacing:            _overlayMargins
+
+            QGCLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                color:                  "white"
+                text:                   _activeVehicle && _activeVehicle.orbitActive ? qsTr("Orbiting this point") : qsTr("Looking at this point")
+            }
+
+            QGCButton {
+                text:       qsTr("Stop")
+                onClicked:  _activeVehicle.orbitActive ? _activeVehicle.pauseVehicle() : _activeVehicle.stopGuidedModeROI()
+            }
+        }
     }
 }

@@ -355,6 +355,30 @@ void QGCCameraManager::_handleCameraInfo(const mavlink_message_t& message)
     }
 
     _aspectByCompId.insert(message.compid, aspect);
+
+    double hfov = 0;
+    double vfov = 0;
+    if (fovFromSensor(info.focal_length, info.sensor_size_h, info.sensor_size_v, info.resolution_h, info.resolution_v,
+                      hfov, vfov)) {
+        GimbalControllerSettings* settings = SettingsManager::instance()->gimbalControllerSettings();
+        settings->cameraHFov()->setRawValue(hfov);
+        settings->cameraVFov()->setRawValue(vfov);
+    }
+    requestCameraFovForComp(message.compid);
+}
+
+bool QGCCameraManager::fovFromSensor(double focalLengthMm, double sensorWidthMm, double sensorHeightMm, int resolutionH,
+                                     int resolutionV, double& hfovDeg, double& vfovDeg)
+{
+    const double sensorHeight = (sensorHeightMm > 0.0)                     ? sensorHeightMm
+                                : ((resolutionH > 0) && (resolutionV > 0)) ? sensorWidthMm * resolutionV / resolutionH
+                                                                           : 0.0;
+    if (!(focalLengthMm > 0.0) || !(sensorWidthMm > 0.0) || !(sensorHeight > 0.0)) {
+        return false;
+    }
+    hfovDeg = 2.0 * std::atan(sensorWidthMm / (2.0 * focalLengthMm)) * 180.0 / kPi;
+    vfovDeg = 2.0 * std::atan(sensorHeight / (2.0 * focalLengthMm)) * 180.0 / kPi;
+    return std::isfinite(hfovDeg) && std::isfinite(vfovDeg);
 }
 
 void QGCCameraManager::_checkForLostCameras()

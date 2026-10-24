@@ -31,6 +31,7 @@ qgc_qml_only_library(FlyViewModule
         FlyViewMissionCompleteDialog.qml
         FlyViewPreFlightChecklistPopup.qml
         FlyViewRouteRecordAction.qml
+        FlyViewRouteRecordingOverlay.qml
         FlyViewToolStrip.qml
         FlyViewToolStripActionList.qml
 

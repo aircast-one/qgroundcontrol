@@ -189,4 +189,7 @@ QList<QGeoCoordinate> interpolatePath(const QGeoCoordinate &from, const QGeoCoor
 /// @note Useful for midpoint: interpolateAtDistance(from, to, geodesicDistance(from, to) / 2)
 QGeoCoordinate interpolateAtDistance(const QGeoCoordinate &from, const QGeoCoordinate &to, double distance);
 
+QList<QGeoCoordinate> simplifyPath(const QList<QGeoCoordinate>& path, double toleranceMeters);
+QList<qsizetype> simplifyPathIndices(const QList<QGeoCoordinate>& path, double toleranceMeters);
+
 } // namespace QGCGeo

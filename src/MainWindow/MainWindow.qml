@@ -81,6 +81,7 @@ ApplicationWindow {
         readonly property var       planMasterControllerFlyView:    flyView.planController
         readonly property var       guidedControllerFlyView:        flyView.guidedController
         readonly property var       overlayRigFlyView:              flyView.overlayRig
+        readonly property RouteRecorder routeRecorder:              RouteRecorder { }
 
         property int                validationErrorCount:           0
         property string             navigationBlockedReason:        ""
@@ -138,6 +139,11 @@ ApplicationWindow {
 
     function showPlanView() {
         flyViewActive = false
+    }
+
+    function openPlanFile(file) {
+        showPlanView()
+        planView.loadPlanFile(file)
     }
 
     function showFlyView() {

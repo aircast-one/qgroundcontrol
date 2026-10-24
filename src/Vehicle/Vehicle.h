@@ -332,6 +332,7 @@ public:
     ///     @param radius Distance from vehicle to centerCoord
     ///     @param amslAltitude Desired vehicle altitude
     Q_INVOKABLE void guidedModeOrbit(const QGeoCoordinate& centerCoord, double radius, double amslAltitude);
+    void setOrbitStatus(const QGeoCoordinate& center, double radius);
 
     /// Command vehicle to keep given point as ROI
     ///     @param centerCoord ROI coordinates

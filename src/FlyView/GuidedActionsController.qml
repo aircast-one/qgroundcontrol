@@ -69,7 +69,6 @@ Item {
     readonly property string changeAirspeedMessage:             qsTr("Change the equivalent airspeed setpoint")
     readonly property string gotoMessage:                       qsTr("Move the vehicle to the specified location")
              property string setWaypointMessage:                qsTr("Adjust current waypoint to %1").arg(_actionData)
-    readonly property string orbitMessage:                      qsTr("Orbit the vehicle around the specified location")
     readonly property string landAbortMessage:                  qsTr("Abort the landing sequence")
     readonly property string pauseMessage:                      qsTr("Pause at current position")
     readonly property string mvPauseMessage:                    qsTr("Pause selected vehicles at their current position")
@@ -492,7 +491,7 @@ Item {
             break;
         case actionOrbit:
             confirmDialog.title = orbitTitle
-            confirmDialog.message = orbitMessage
+            confirmDialog.message = qsTr("Orbit the location at a %1 radius").arg(QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnitsString(orbitMapCircle.radius(), 0))
             confirmDialog.hideTrigger = Qt.binding(function() { return !showOrbit })
             guidedValueSlider.visible = true
             break;
