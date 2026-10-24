@@ -617,7 +617,7 @@ fun AircastShell(hostView: android.view.View?) {
                         LayoutWidget("missionProgress") { one.aircast.android.ui.MissionProgressCard() }
                         LayoutWidget("obstacleReadout") { ObstacleReadout() }
                         LayoutWidget("terrainData") { TerrainDataWarning() }
-                        LayoutWidget("routeRecording", hideable = false) { one.aircast.android.ui.RouteRecordingOverlay(onOpenedInPlan = { selectTab(Tab.Plan) }) }
+                        LayoutWidget("routeRecording", hideable = false) { one.aircast.android.ui.RouteRecordingPill() }
                         flyOrbitReadout()
                         flyFollowMeReadout()
                         flyRcControlsLayer()
@@ -667,7 +667,10 @@ fun AircastShell(hostView: android.view.View?) {
                 } else {
                     Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = FLY_NOTICE_TOP)
                 }
-                if (onFly) SnackbarHost(snackbars, noticePlace.widthIn(max = FLY_NOTICE_MAX_WIDTH)) { one.aircast.android.ui.AppSnackbar(it) }
+                if (onFly) Column(noticePlace.widthIn(max = FLY_NOTICE_MAX_WIDTH), horizontalAlignment = Alignment.CenterHorizontally) {
+                    one.aircast.android.ui.RouteSavedNotice(onOpenedInPlan = { selectTab(Tab.Plan) })
+                    SnackbarHost(snackbars) { one.aircast.android.ui.AppSnackbar(it) }
+                }
 
                 mapClickAt?.takeIf { tab == Tab.Fly }?.let { point ->
                     MapClickMenu(point, only = picturePressed?.actions, warning = picturePressed?.warning) {
