@@ -6274,6 +6274,22 @@ impl Vehicle {
                     version: info.definition_version,
                     uri: info.definition_uri.clone(),
                 });
+                let fov_settings = [
+                    "settings.gimbalControllerSettings.cameraHFov",
+                    "settings.gimbalControllerSettings.cameraVFov",
+                ];
+                if let Some((horizontal, vertical)) =
+                    info.field_of_view_from_sensor().filter(|_| {
+                        !fov_settings
+                            .iter()
+                            .any(|path| crate::settingsstore::is_stored(path))
+                    })
+                {
+                    crate::settingsstore::set_raw_together(&[
+                        (fov_settings[0], json!(horizontal.round() as u32)),
+                        (fov_settings[1], json!(vertical.round() as u32)),
+                    ]);
+                }
                 self.cameras.on_camera_information(compid, info, now_ms);
                 Vec::new()
             }
