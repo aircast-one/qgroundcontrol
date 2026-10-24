@@ -148,11 +148,9 @@ internal fun OrbitOutline(modifier: Modifier = Modifier) {
     val legs = outlineLegs(if (pending != null) polled else running)
     if (legs.isEmpty()) return
     Canvas(modifier) {
-        legs.map { (from, to) ->
-            val (start, end) = arOffset(from, size.width, size.height) to arOffset(to, size.width, size.height)
-            drawLine(EDGE_COLOUR, start, end, OUTLINE_WIDTH.toPx() + EDGE_WIDTH.toPx() * 2, StrokeCap.Round)
-            drawLine(OUTLINE_COLOUR, start, end, OUTLINE_WIDTH.toPx(), StrokeCap.Round)
-        }
+        val placed = legs.map { (from, to) -> arOffset(from, size.width, size.height) to arOffset(to, size.width, size.height) }
+        placed.map { (start, end) -> drawLine(EDGE_COLOUR, start, end, OUTLINE_WIDTH.toPx() + EDGE_WIDTH.toPx() * 2, StrokeCap.Round) }
+        placed.map { (start, end) -> drawLine(OUTLINE_COLOUR, start, end, OUTLINE_WIDTH.toPx(), StrokeCap.Round) }
     }
 }
 
