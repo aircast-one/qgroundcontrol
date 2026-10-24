@@ -48,18 +48,8 @@ jobs:
       - name: Rust toolchain
         uses: ./.github/actions/rust-toolchain
         with:
+          cache: 'true'
           targets: wasm32-unknown-unknown
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            groundstation/target
-          key: groundstation-${{ runner.os }}-${{ hashFiles('groundstation/rust-toolchain.toml', 'groundstation/Cargo.lock') }}
-          restore-keys: groundstation-${{ runner.os }}-
 
       - name: ArduPilot parameter metadata
         run: git clone --depth 1 https://github.com/ArduPilot/ParameterRepository .cache/CPM/ardupilotparams/main
