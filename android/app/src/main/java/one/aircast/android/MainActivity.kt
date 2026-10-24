@@ -612,6 +612,7 @@ fun AircastShell(hostView: android.view.View?) {
                         LayoutWidget("missionProgress") { one.aircast.android.ui.MissionProgressCard() }
                         LayoutWidget("obstacleReadout") { ObstacleReadout() }
                         LayoutWidget("terrainData") { TerrainDataWarning() }
+                        LayoutWidget("routeRecording", hideable = false) { one.aircast.android.ui.RouteRecordingOverlay(onOpenedInPlan = { selectTab(Tab.Plan) }) }
                         flyOrbitReadout()
                         flyFollowMeReadout()
                         flyRcControlsLayer()

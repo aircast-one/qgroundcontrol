@@ -4,6 +4,7 @@ import org.json.JSONObject
 
 const val TRACK_VIEW = "view.track"
 const val TRACK_TAIL_VIEW = "view.track(tail)"
+const val RECORDED_ROUTE_VIEW = "view.routeRecorder"
 
 data class TrackReading(
     val points: List<TrackPoint>,
@@ -39,3 +40,8 @@ fun mergedTrack(held: TrackReading?, tail: TrackReading): TrackReading? = when {
 fun plottedTrack(reading: TrackReading): List<TrackPoint> = reading.points.filter { isPlottable(it.latitude, it.longitude) }
 
 fun trackDraws(reading: TrackReading): Boolean = reading.available && plottedTrack(reading).size > 1
+
+fun recordedRoute(view: JSONObject?): List<TrackPoint> =
+    view?.takeIf { it.optBoolean("recording") }?.optJSONArray("path")?.let { path ->
+        (0 until path.length()).mapNotNull { path.optJSONObject(it) }.map { TrackPoint(it.optDouble("latitude"), it.optDouble("longitude")) }
+    }.orEmpty().filter { isPlottable(it.latitude, it.longitude) }

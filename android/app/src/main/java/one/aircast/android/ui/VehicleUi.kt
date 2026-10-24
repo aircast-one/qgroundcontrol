@@ -442,6 +442,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val autodropStatus = intercept?.takeIf { it.visible }
     val payload = remember(actionsJson) { payloadOf(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
+    val routeRecorder by qgcDerived(ROUTE_RECORDER_VIEW, ::routeRecorder)
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
     var popupDue by remember { mutableStateOf<GuidedOffer?>(null) }
 
@@ -688,6 +689,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                         .takeIf { preflightOffered(preflightJson) },
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
                     MoreTile("Payload", R.drawable.ic_payload, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
+                    routeTile(routeRecorder) { recording -> scope.launch { refusal = withContext(Dispatchers.Default) { toggleRoute(recording) } } },
                     MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
                     MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
                 ) +
