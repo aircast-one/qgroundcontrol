@@ -1,0 +1,108 @@
+name: Web
+
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'groundstation/**'
+      - 'src/**'
+      - 'resources/**'
+      - 'android/app/src/main/res/**'
+      - '.github/workflows/web.yml'
+      - '.github/workflows/aircast-release.yml'
+      - '.github/actions/rust-toolchain/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'web/**'
+      - 'groundstation/**'
+      - 'src/**'
+      - 'resources/**'
+      - 'android/app/src/main/res/**'
+      - '.github/workflows/web.yml'
+      - '.github/workflows/aircast-release.yml'
+      - '.github/actions/rust-toolchain/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  MEDIAMTX_VERSION: v1.19.2
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install llvm, ffmpeg and mediamtx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends llvm ffmpeg
+          curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin mediamtx
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/wasm-bindgen
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            groundstation/target
+          key: web-core-${{ runner.os }}-${{ hashFiles('groundstation/rust-toolchain.toml', 'groundstation/Cargo.lock') }}
+          restore-keys: web-core-${{ runner.os }}-
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: web/e2e/wt/go.mod
+          cache-dependency-path: web/e2e/wt/go.sum
+
+      - name: Build core
+        run: ./build-core.sh
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npx vite build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E
+        run: npm run e2e
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: web-e2e-results
+          path: web/test-results
+          retention-days: 7
