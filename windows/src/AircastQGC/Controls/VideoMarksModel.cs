@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text.Json.Nodes;
 
@@ -16,7 +17,8 @@ internal sealed record ArReading(
     ArMark? Aim = null,
     ArMark? Impact = null,
     ArSpot? Lead = null,
-    (ArSpot From, ArSpot To)? LeadLine = null);
+    (ArSpot From, ArSpot To)? LeadLine = null,
+    IReadOnlyList<ArSpot?>? Orbit = null);
 
 internal sealed record DetectionBox(double X, double Y, double W, double H, string Caption, bool Target);
 
@@ -31,6 +33,7 @@ internal static class VideoMarksModel
     public const string LensView = "view.lens";
     public const string NoFrames = "no frames from the detector";
     public static readonly IReadOnlyList<double> GridFractions = [0.33, 0.66];
+    private const double OutlineReach = 1.5;
 
     private static double? Number(JsonNode? node) =>
         node is JsonValue value && value.TryGetValue<double>(out var number) && double.IsFinite(number) ? number : null;
@@ -65,8 +68,20 @@ internal static class VideoMarksModel
                 Mark(view["aim"]),
                 Mark(view["impact"]),
                 Spot(view["lead"]),
-                Leg(view["leadLine"]))
+                Leg(view["leadLine"]),
+                Outline((view["orbit"] as JsonObject)?["outline"]))
             : null;
+
+    public static IReadOnlyList<ArSpot?> Outline(JsonNode? node) =>
+        node is JsonArray array ? array.Select(Spot).ToList() : [];
+
+    public static IReadOnlyList<IReadOnlyList<ArSpot>> OutlineRuns(IReadOnlyList<ArSpot?> outline) =>
+        outline
+            .Select(spot => spot is { } at && Math.Abs(at.X - 0.5) <= OutlineReach && Math.Abs(at.Up) <= OutlineReach ? spot : null)
+            .Aggregate(ImmutableList.Create(ImmutableList<ArSpot>.Empty), (runs, spot) =>
+                spot is { } at ? runs.SetItem(runs.Count - 1, runs[^1].Add(at)) : runs.Add(ImmutableList<ArSpot>.Empty))
+            .Where(run => run.Count > 1)
+            .ToList<IReadOnlyList<ArSpot>>();
 
     public static (double X, double Y) ArOffset(ArSpot spot, double width, double height) => (spot.X * width, height / 2 - spot.Up * width);
 
