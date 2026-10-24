@@ -96,6 +96,7 @@ test('a browser that cannot reach USB says so once, instead of claiming nothing 
 });
 
 test('the RC transmitter entry hands a plugged-in EdgeTX radio to the stick input', async ({ page }) => {
+  await page.addLocatorHandler(page.getByText('An EdgeTX radio is streaming its sticks on USB. Fly with it?'), () => page.getByRole('button', { name: 'Not now', exact: true }).click());
   await plugInR2d2Radio(page);
   await openApp(page);
   await page.getByRole('button', { name: /How to connect/ }).click();

@@ -52,6 +52,7 @@ const indicator = (page: Page, text: string) => page.getByText(text, { exact: tr
 test('a radio streaming the script is found by what it sends, offered once, and flies ArduPilot on its own channel numbers', async ({ page }) => {
   test.setTimeout(300_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
+  await page.addLocatorHandler(page.getByText('Configuration tasks remain before this vehicle is ready to fly.', { exact: false }), () => page.getByRole('button', { name: 'Later', exact: true }).click());
   await plugInR2d2Radio(page);
   await openApp(page);
 
