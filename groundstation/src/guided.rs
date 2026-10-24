@@ -417,18 +417,20 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn speed_limits_live(backend: &dyn Backend, px4: bool, apm: bool, forward_flight: bool) -> bool {
-    let names: &[&str] = match (forward_flight, px4, apm) {
-        (false, true, _) => &["MPC_XY_VEL_MAX"],
-        (false, false, true) => &["WPNAV_SPEED"],
-        (true, true, _) => &["FW_AIRSPD_MIN", "FW_AIRSPD_MAX"],
-        (true, false, true) => &["r.AIRSPEED_MIN", "r.AIRSPEED_MAX"],
+    let required: &[&[&str]] = match (forward_flight, px4, apm) {
+        (false, true, _) => &[&["MPC_XY_VEL_MAX"]],
+        (false, false, true) => &[&["WP_SPD", "WPNAV_SPEED"]],
+        (true, true, _) => &[&["FW_AIRSPD_MIN"], &["FW_AIRSPD_MAX"]],
+        (true, false, true) => &[&["AIRSPEED_MIN"], &["AIRSPEED_MAX"]],
         _ => return false,
     };
-    names.iter().all(|name| {
-        crate::read::result_flag(&backend.invoke(
-            "vehicle.parameterManager.parameterExists",
-            &json!([-1, name]).to_string(),
-        ))
+    required.iter().all(|names| {
+        names.iter().any(|name| {
+            crate::read::result_flag(&backend.invoke(
+                "vehicle.parameterManager.parameterExists",
+                &json!([-1, name]).to_string(),
+            ))
+        })
     })
 }
 
@@ -2208,7 +2210,10 @@ mod tests {
 
     #[test]
     fn the_speed_offer_follows_the_live_parameter_when_the_latched_flag_is_stale() {
-        struct Fake(bool);
+        struct Fake {
+            forward_flight: bool,
+            reported: &'static [&'static str],
+        }
         impl Backend for Fake {
             fn get(&self, _p: &str) -> String {
                 String::new()
@@ -2217,7 +2222,7 @@ mod tests {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
                     "vehicle.supports" => json!({ "kind": "object", "guidedMode": true }).to_string(),
-                    "vehicle" => json!({ "kind": "object", "armed": true, "flying": true, "haveMRSpeedLimits": false, "apmFirmware": true, "px4Firmware": false, "flightMode": "Guided" }).to_string(),
+                    "vehicle" => json!({ "kind": "object", "armed": true, "flying": true, "haveMRSpeedLimits": false, "haveFWSpeedLimits": false, "fixedWing": self.forward_flight, "apmFirmware": true, "px4Firmware": false, "flightMode": "Guided" }).to_string(),
                     _ => json!({ "kind": "object" }).to_string(),
                 }
             }
@@ -2226,13 +2231,34 @@ mod tests {
             }
             fn invoke(&self, path: &str, args: &str) -> String {
                 assert_eq!(path, "vehicle.parameterManager.parameterExists");
-                assert!(args.contains("WPNAV_SPEED"));
-                json!({ "ok": true, "result": self.0 }).to_string()
+                let asked = serde_json::from_str::<Value>(args).unwrap()[1].clone();
+                json!({ "ok": true, "result": self.reported.iter().any(|name| asked == *name) })
+                    .to_string()
             }
             fn watch(&self, _p: &[String]) {}
         }
-        assert!(read_state(&Fake(true)).speed_limits);
-        assert!(!read_state(&Fake(false)).speed_limits);
+        let copter = |reported| Fake {
+            forward_flight: false,
+            reported,
+        };
+        assert!(
+            read_state(&copter(&["WPNAV_SPEED"])).speed_limits,
+            "ArduCopter 4.5 and older"
+        );
+        assert!(
+            read_state(&copter(&["WP_SPD"])).speed_limits,
+            "ArduCopter 4.7 renamed WPNAV_SPEED to WP_SPD"
+        );
+        assert!(!read_state(&copter(&[])).speed_limits);
+        let plane = |reported| Fake {
+            forward_flight: true,
+            reported,
+        };
+        assert!(
+            read_state(&plane(&["AIRSPEED_MIN", "AIRSPEED_MAX"])).speed_limits,
+            "the core and ParameterManager remap AIRSPEED_MIN to ARSPD_FBW_MIN for older planes themselves"
+        );
+        assert!(!read_state(&plane(&["AIRSPEED_MIN"])).speed_limits);
     }
 }
 
