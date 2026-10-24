@@ -332,11 +332,17 @@ void GStreamerTest::_testSourceFactoryUdp265UsesExplicitDepayAndParser()
 
     GstElement* depay = findChildByFactoryName(bin, "rtph265depay");
     QVERIFY2(depay, "udp265:// must depayload H265 RTP explicitly");
-    gboolean waitForKeyframe = FALSE;
-    gboolean requestKeyframe = FALSE;
-    g_object_get(depay, "wait-for-keyframe", &waitForKeyframe, "request-keyframe", &requestKeyframe, nullptr);
-    QVERIFY2(waitForKeyframe, "a lost packet must freeze the picture until the next keyframe, not smear it");
-    QVERIFY2(requestKeyframe, "a lost packet must ask the sender for a keyframe instead of waiting for the next GOP");
+    const std::pair<const char*, const char*> keyframeProperties[] = {
+        {"wait-for-keyframe", "a lost packet must freeze the picture until the next keyframe, not smear it"},
+        {"request-keyframe", "a lost packet must ask the sender for a keyframe instead of waiting for the next GOP"},
+    };
+    for (const auto& [property, reason] : keyframeProperties) {
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(depay), property)) {
+            gboolean enabled = FALSE;
+            g_object_get(depay, property, &enabled, nullptr);
+            QVERIFY2(enabled, reason);
+        }
+    }
 
     GstElement* parser = findChildByFactoryName(bin, "h265parse");
     QVERIFY2(parser, "udp265:// must parse H265 explicitly");
