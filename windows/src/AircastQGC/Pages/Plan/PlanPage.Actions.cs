@@ -32,7 +32,7 @@ public sealed partial class PlanPage
     private const string PlanExtension = ".plan";
     private const string KmlExtension = ".kml";
     private const string FlightSpeedUsed = "The mission flight speed is used instead";
-    private static readonly string[] OpenTypes = [".plan", ".mission", ".waypoints", ".txt"];
+    private static readonly string[] OpenTypes = [".plan", ".mission", ".waypoints", ".txt", ".kml", ".kmz"];
     private static readonly string[] BoundaryTypes = [".kml", ".shp", ".shx", ".dbf", ".prj"];
     private static readonly string[] DefaultSpeeds = ["cruise", "hover", "ascent", "descent"];
     private static readonly HashSet<string> SpeedsSetByFlightSpeed = ["cruise", "hover"];
@@ -211,10 +211,16 @@ public sealed partial class PlanPage
 
     private void OnOpen(object sender, RoutedEventArgs e) => Open();
 
-    private async void Open()
+    public async void OpenFile(string path)
+    {
+        _status = PlanStatus.From(await PlanCalls.Queued(() => PlanCalls.Read(PlanCalls.PlanView)));
+        Open(path);
+    }
+
+    private async void Open(string? given = null)
     {
         if (!_status.CanOpen || (_status.Dirty && !await Confirmed(PlanConfirm.Open))) return;
-        if (await PickOpen(OpenTypes) is not { } path) return;
+        if ((given ?? await PickOpen(OpenTypes)) is not { } path) return;
         var outcome = await PlanCalls.Queued(() => PlanCalls.Invoke($"{PlanRoot}.loadFromFile", path));
         if (!outcome.Ok)
         {
