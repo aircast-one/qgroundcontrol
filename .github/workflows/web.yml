@@ -36,13 +36,9 @@ env:
   MEDIAMTX_VERSION: v1.19.2
 
 jobs:
-  web:
+  core:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    defaults:
-      run:
-        shell: bash
-        working-directory: web
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -52,11 +48,8 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Install llvm, ffmpeg and mediamtx
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends llvm ffmpeg
-          curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin mediamtx
+      - name: Install llvm
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends llvm
 
       - uses: actions/cache@v5
         with:
@@ -69,19 +62,37 @@ jobs:
           key: web-core-${{ runner.os }}-${{ hashFiles('groundstation/rust-toolchain.toml', 'groundstation/Cargo.lock') }}
           restore-keys: web-core-${{ runner.os }}-
 
+      - name: Build core
+        run: web/build-core.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web-core
+          path: web/src/core/pkg
+          retention-days: 1
+
+  checks:
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - uses: actions/setup-go@v7
+      - uses: actions/download-artifact@v8
         with:
-          go-version-file: web/e2e/wt/go.mod
-          cache-dependency-path: web/e2e/wt/go.sum
-
-      - name: Build core
-        run: ./build-core.sh
+          name: web-core
+          path: web/src/core/pkg
 
       - run: npm ci
 
@@ -94,15 +105,58 @@ jobs:
       - name: Build
         run: npx vite build
 
+  e2e:
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install ffmpeg and mediamtx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin mediamtx
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: web/e2e/wt/go.mod
+          cache-dependency-path: web/e2e/wt/go.sum
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: web-core
+          path: web/src/core/pkg
+
+      - run: npm ci
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
       - name: E2E
-        run: npm run e2e
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ strategy.job-total }}
+        run: npx playwright test --shard="${SHARD}/${SHARDS}" --workers=1 --reporter=list,github
 
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: web-e2e-results
+          name: web-e2e-results-${{ matrix.shard }}
           path: web/test-results
           retention-days: 7
