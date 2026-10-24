@@ -366,6 +366,7 @@ VideoReceiver* createVideoReceiver(QObject* parent)
     return new GstVideoReceiver(parent);
 }
 
+#ifndef QGC_HEADLESS_CORE
 namespace {
 void releaseSinkControllersOf(QObject* controllerParent)
 {
@@ -377,7 +378,6 @@ void releaseSinkControllersOf(QObject* controllerParent)
 }
 }
 
-#ifndef QGC_HEADLESS_CORE
 bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* controllerParent)
 {
     if (!sinkBin || !videoSink || !controllerParent) {
