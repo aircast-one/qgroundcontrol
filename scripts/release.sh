@@ -99,5 +99,6 @@ trap 'rm -f "$NOTES_FILE"' EXIT
 scripts/release-notes.sh "$NEW_VERSION" > "$NOTES_FILE"
 git tag -a "$NEW_VERSION" --cleanup=verbatim -F "$NOTES_FILE"
 git push fork "$NEW_VERSION"
+gh workflow run aircast-release.yml -R aircast-one/qgroundcontrol --ref main -f version="$NEW_VERSION"
 
 log_info "Released $NEW_VERSION"
