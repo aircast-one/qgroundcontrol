@@ -108,14 +108,18 @@ internal fun openRouteInPlan(file: String): String? {
 internal fun RouteRecordingOverlay(onOpenedInPlan: () -> Unit) {
     val recorder by qgcDerived(ROUTE_RECORDER_VIEW, ::routeRecorder)
     val shown = recorder ?: return
+    val flyScreen = LocalFlyScreenState.current
+    val scope = rememberCoroutineScope()
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        shown.text?.let { RecordingPill(it) }
+        shown.text?.let { text ->
+            RecordingPill(text) { scope.launch { withContext(Dispatchers.Default) { toggleRoute(recording = true) }?.let { flyScreen.refusal = it } } }
+        }
         shown.message?.takeIf { !shown.recording }?.let { message -> RouteSavedNotice(shown, message, onOpenedInPlan) }
     }
 }
 
 @Composable
-private fun RecordingPill(text: String) {
+internal fun RecordingPill(text: String, onStop: () -> Unit) {
     val blink by rememberInfiniteTransition(label = "recording").animateFloat(
         initialValue = 1f,
         targetValue = BLINK_LOW,
@@ -123,9 +127,10 @@ private fun RecordingPill(text: String) {
         label = "dot",
     )
     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(DOT_SIZE).alpha(blink).background(Color.Red, CircleShape))
             Text(text, style = MaterialTheme.typography.labelLarge)
+            TextButton(onClick = onStop) { Text("Stop") }
         }
     }
 }
