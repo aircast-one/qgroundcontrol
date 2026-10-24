@@ -555,11 +555,11 @@ The field-ops features from the Qt app, on the core's KML import, route recorder
 - ✓ Route recording: Route/Stop on the left rail, the "Recording route · 230 m" pill, the recorded path on the Fly map, and a
   "Route saved" notice that stays until dismissed with the editable name (a used name reverts and says "Name already used"),
   Open in Plan and Dismiss.
-- Smoke on `winvm` against the mock ArduCopter with a gimbal (synthetic view; the stage's WHEP source never decodes): hold and
-  right-click menus, the stepper 30 → 50 m, Look at then Stop, a confirmed orbit with its chip and Stop, the horizon hint, a 230 m
-  route saved, renamed, refused on a used name and opened in Plan with the KML summary. Not seen: the outline on decoded video, the
-  map path and the hold ring (the VM presented a black window this round, so nothing was looked at), touch input, the picker with a
-  `.kmz`.
+- Smoke on `winvm` against the mock ArduCopter with a gimbal and the local MediaMTX WHEP test stream (decoded): hold and
+  right-click menus (with Stop looking and the field-of-view warning), the hold ring, the stepper 30 → 50 m with the pending circle
+  on the video, a confirmed orbit with its circle, chip and Stop, Look at then Stop, the horizon hint, the recording pill and path on
+  the map, a route saved, renamed, refused on a used name and opened in Plan with the KML summary; screenshotted. Not seen: touch
+  input, the picker with a `.kmz`.
 
 ### P0: bugs and real-use blockers
 
