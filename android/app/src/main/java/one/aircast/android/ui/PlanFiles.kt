@@ -58,11 +58,18 @@ class PlanFileActions(
     val opened: () -> Int = { 0 },
 )
 
-internal fun planLoad(path: String): Boolean? =
-    Qgc.invokeResult("$PLAN_ROOT.loadFromFile", path) as? Boolean
+internal fun planLoad(path: String): JSONObject? = Qgc.call("$PLAN_ROOT.loadFromFile", path)
 
-internal fun loadFailureMessage(loaded: Boolean?): String? =
-    if (loaded == null) "The plan could not be loaded. The current plan is unchanged." else null
+internal fun planLoaded(answer: JSONObject?): Boolean = answer?.opt("result") == true
+
+private const val LOAD_FAILED = "The plan could not be loaded. The current plan is unchanged."
+
+internal fun loadFailureMessage(answer: JSONObject?): String? = when {
+    planLoaded(answer) -> null
+    answer?.optText("refusal")?.isNotBlank() == true -> answer.optText("reason").ifBlank { LOAD_FAILED }
+    answer?.opt("result") == false -> null
+    else -> LOAD_FAILED
+}
 
 internal fun planSave(path: String): String? {
     if (Qgc.invokeResult("$PLAN_ROOT.saveToFile", path) != true) {
@@ -103,11 +110,18 @@ private fun lastDistance(items: JSONArray): Double? {
 }
 
 private val TEXT_MISSION_SUFFIXES = setOf("waypoints", "txt")
+private val KML_SUFFIXES = setOf("kml", "kmz")
 
 internal fun openedFileName(shown: String?): String =
     shown?.substringAfterLast('/')?.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: OPEN_FALLBACK
 
 internal fun isTextMission(name: String): Boolean = name.substringAfterLast('.', "") in TEXT_MISSION_SUFFIXES
+
+internal fun isKml(name: String): Boolean = name.substringAfterLast('.', "").lowercase() in KML_SUFFIXES
+
+internal fun isImportedMission(name: String): Boolean = isTextMission(name) || isKml(name)
+
+internal fun openedMessage(name: String): String? = if (isKml(name)) null else "Plan opened."
 
 private fun displayName(context: Context, uri: Uri): String? = runCatching {
     context.contentResolver
@@ -262,15 +276,15 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 if (!copyIn(context, chosen, staged)) {
                     return@withContext "That file could not be read." to false
                 }
-                planLoad(staged.absolutePath).let { loadFailureMessage(it) to (it == true) }
+                planLoad(staged.absolutePath).let { loadFailureMessage(it) to planLoaded(it) }
             }
             if (!loaded) {
                 failure?.let(onResult)
                 return@launch
             }
-            if (isTextMission(staged.name)) forget() else adopt(chosen)
+            if (isImportedMission(staged.name)) forget() else adopt(chosen)
             opened.intValue += 1
-            onResult("Plan opened.")
+            openedMessage(staged.name)?.let(onResult)
         }
     }
 

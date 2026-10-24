@@ -387,7 +387,148 @@ pub fn set_current_mission(state: &VehicleState, sequence: f64) -> Plan {
     }])
 }
 
+pub const ORBIT_SPEED_MPS: f64 = 4.0;
+pub const ORBIT_UPDATE_MS: u64 = 200;
+const ORBIT_STATUS_MS: u64 = 1000;
+pub const FRAME_GLOBAL_INT: u8 = 5;
+pub const ORBIT_TYPE_MASK: u16 = 64 | 128 | 256 | 2048;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GuidedOrbit {
+    pub centre: (f64, f64),
+    pub radius: f64,
+    pub altitude_amsl: f64,
+    pub azimuth: f64,
+    pub streams: bool,
+    pub mode: u32,
+    pub due_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OrbitTarget {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub altitude_amsl: f64,
+    pub north: f64,
+    pub east: f64,
+    pub yaw_rad: f64,
+}
+
+pub fn orbit_velocity(azimuth_deg: f64, clockwise: bool, speed: f64) -> (f64, f64) {
+    let travel = (azimuth_deg + if clockwise { 90.0 } else { -90.0 }).to_radians();
+    (speed * travel.cos(), speed * travel.sin())
+}
+
+pub fn guided_orbit(
+    state: &VehicleState,
+    (centre, radius, altitude_amsl): ((f64, f64), f64, f64),
+    vehicle_at: Option<(f64, f64)>,
+    mode: u32,
+    now_ms: u64,
+) -> Option<GuidedOrbit> {
+    let streams = modes::vehicle_class(state.vehicle_type) == VehicleClass::MultiRotor;
+    (state.autopilot == AUTOPILOT_ARDUPILOT && (!streams || radius.abs() >= 1.0)).then(|| {
+        GuidedOrbit {
+            centre,
+            radius,
+            altitude_amsl,
+            azimuth: vehicle_at.map_or(0.0, |at| initial_bearing(centre, at)),
+            streams,
+            mode,
+            due_ms: now_ms,
+        }
+    })
+}
+
+impl GuidedOrbit {
+    pub fn in_mode(self, custom_mode: u32, guided: Option<u32>) -> Option<GuidedOrbit> {
+        (custom_mode == self.mode || Some(custom_mode) == guided).then_some(GuidedOrbit {
+            mode: custom_mode,
+            ..self
+        })
+    }
+
+    pub fn step(self, now_ms: u64) -> (GuidedOrbit, Option<OrbitTarget>) {
+        if !self.streams {
+            return (
+                GuidedOrbit {
+                    due_ms: now_ms + ORBIT_STATUS_MS,
+                    ..self
+                },
+                None,
+            );
+        }
+        let clockwise = self.radius >= 0.0;
+        let radius = self.radius.abs();
+        let turn = (ORBIT_SPEED_MPS / radius).to_degrees() * (ORBIT_UPDATE_MS as f64 / 1000.0);
+        let azimuth = self.azimuth + if clockwise { turn } else { -turn };
+        let (latitude, longitude) =
+            crate::surveygrid::at_distance_and_azimuth(self.centre, radius, azimuth);
+        let (north, east) = orbit_velocity(azimuth, clockwise, ORBIT_SPEED_MPS);
+        (
+            GuidedOrbit {
+                azimuth,
+                due_ms: now_ms + ORBIT_UPDATE_MS,
+                ..self
+            },
+            Some(OrbitTarget {
+                latitude,
+                longitude,
+                altitude_amsl: self.altitude_amsl,
+                north,
+                east,
+                yaw_rad: initial_bearing((latitude, longitude), self.centre).to_radians(),
+            }),
+        )
+    }
+}
+
+fn look_at_centre(state: &VehicleState, latitude: f64, longitude: f64) -> Vec<Step> {
+    match roi(state, latitude, longitude, 0.0, FRAME_GLOBAL_RELATIVE_ALT) {
+        Plan::Steps(steps) => steps,
+        Plan::Refused(_) => Vec::new(),
+    }
+}
+
 pub fn orbit(state: &VehicleState, latitude: f64, longitude: f64, radius: f64, amsl: f64) -> Plan {
+    match (state.autopilot, modes::vehicle_class(state.vehicle_type)) {
+        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) if radius.abs() < 1.0 => {
+            Plan::Steps(Vec::new())
+        }
+        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => match mode_or_refuse(state, GUIDED) {
+            Ok(guided) => Plan::Steps(
+                look_at_centre(state, latitude, longitude)
+                    .into_iter()
+                    .chain(guided)
+                    .collect(),
+            ),
+            Err(reason) => Plan::Refused(reason),
+        },
+        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => Plan::Steps(
+            look_at_centre(state, latitude, longitude)
+                .into_iter()
+                .chain(std::iter::once(Step::Command {
+                    command: CMD_DO_REPOSITION,
+                    params: [
+                        -1.0,
+                        REPOSITION_CHANGE_MODE,
+                        radius.abs(),
+                        if radius < 0.0 { 1.0 } else { 0.0 },
+                        latitude,
+                        longitude,
+                        amsl,
+                    ],
+                    command_int: true,
+                    frame: FRAME_GLOBAL,
+                    show_error: true,
+                }))
+                .collect(),
+        ),
+        _ => do_orbit(state, latitude, longitude, radius, amsl),
+    }
+}
+
+fn do_orbit(state: &VehicleState, latitude: f64, longitude: f64, radius: f64, amsl: f64) -> Plan {
     let command_int = state.capabilities & CAP_COMMAND_INT != 0;
     Plan::Steps(vec![Step::Command {
         command: CMD_DO_ORBIT,
@@ -1161,6 +1302,124 @@ mod tests {
                 other => format!("{other:?}"),
             })
             .collect()
+    }
+
+    #[test]
+    fn the_orbit_velocity_turns_the_way_the_copter_circles_like_ardu_copter_orbit_test() {
+        let (north, east) = orbit_velocity(0.0, true, 4.0);
+        assert!(north.abs() < 1e-9 && (east - 4.0).abs() < 1e-9);
+        let (north, east) = orbit_velocity(90.0, false, 4.0);
+        assert!((north - 4.0).abs() < 1e-9 && east.abs() < 1e-9);
+    }
+
+    #[test]
+    fn an_ardupilot_copter_orbit_looks_at_the_centre_and_switches_to_guided() {
+        assert_eq!(
+            modes_of(orbit(&copter(), 47.4, 8.5, 50.0, 530.0)),
+            ["cmd 195", "mode Guided", "wait Guided"]
+        );
+        let Plan::Steps(steps) = orbit(&copter(), 47.4, 8.5, 50.0, 530.0) else {
+            panic!()
+        };
+        assert!(matches!(
+            steps[0],
+            Step::Command { frame: FRAME_GLOBAL_RELATIVE_ALT, params, .. } if params[4] == 47.4 && params[6] == 0.0
+        ));
+        assert_eq!(
+            orbit(&copter(), 47.4, 8.5, 0.5, 530.0),
+            Plan::Steps(Vec::new()),
+            "a radius under a metre is not flown"
+        );
+    }
+
+    #[test]
+    fn an_ardupilot_plane_orbit_repositions_with_the_loiter_radius_and_direction() {
+        let plane = VehicleState {
+            vehicle_type: 1,
+            ..copter()
+        };
+        let Plan::Steps(steps) = orbit(&plane, 47.4, 8.5, -80.0, 530.0) else {
+            panic!()
+        };
+        assert_eq!(command(&steps[0]).0, CMD_DO_SET_ROI_LOCATION);
+        assert_eq!(
+            command(&steps[1]),
+            (
+                CMD_DO_REPOSITION,
+                [-1.0, REPOSITION_CHANGE_MODE, 80.0, 1.0, 47.4, 8.5, 530.0],
+                true
+            ),
+            "counter-clockwise is loiter direction 1"
+        );
+        let vtol = VehicleState {
+            vehicle_type: 20,
+            ..copter()
+        };
+        assert_eq!(
+            modes_of(orbit(&vtol, 47.4, 8.5, 80.0, 530.0)),
+            ["cmd 195", "cmd 192"]
+        );
+    }
+
+    #[test]
+    fn a_guided_orbit_steps_four_metres_a_tick_around_the_centre_facing_it() {
+        let centre = (47.4, 8.5);
+        let east = crate::surveygrid::at_distance_and_azimuth(centre, 50.0, 90.0);
+        let started = guided_orbit(&copter(), (centre, 50.0, 530.0), Some(east), 5, 1_000).unwrap();
+        assert!((started.azimuth - 90.0).abs() < 0.01 && started.streams);
+        let (next, target) = started.step(1_000);
+        let target = target.unwrap();
+        assert_eq!(next.due_ms, 1_000 + ORBIT_UPDATE_MS);
+        let travelled =
+            crate::surveygrid::distance_between(east, (target.latitude, target.longitude));
+        assert!(
+            (travelled - 0.8).abs() < 0.01,
+            "4 m/s for 200 ms: {travelled}"
+        );
+        assert!(
+            (crate::surveygrid::distance_between(centre, (target.latitude, target.longitude))
+                - 50.0)
+                .abs()
+                < 0.01
+        );
+        assert!(
+            target.north < -3.9 && target.east.abs() < 0.1,
+            "clockwise from the east is southward"
+        );
+        assert!(
+            (target.yaw_rad.to_degrees() - 270.0).abs() < 1.0,
+            "the nose stays on the centre"
+        );
+        assert_eq!(target.altitude_amsl, 530.0);
+        assert_eq!(
+            started.in_mode(4, Some(4)).map(|o| o.mode),
+            Some(4),
+            "switching into Guided keeps it"
+        );
+        assert_eq!(
+            started.in_mode(6, Some(4)),
+            None,
+            "leaving for anything else stops it"
+        );
+        let plane = VehicleState {
+            vehicle_type: 1,
+            ..copter()
+        };
+        let reporting = guided_orbit(&plane, (centre, 80.0, 530.0), None, 15, 0).unwrap();
+        assert_eq!(
+            reporting.step(0),
+            (
+                GuidedOrbit {
+                    due_ms: 1_000,
+                    ..reporting
+                },
+                None
+            )
+        );
+        assert_eq!(
+            guided_orbit(&px4(), (centre, 80.0, 530.0), None, 0, 0),
+            None
+        );
     }
 
     #[test]

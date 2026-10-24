@@ -29,4 +29,24 @@ class AutoMissionPopupTest {
     fun `continue mission pops up too`() {
         assertEquals("continueMission", autoMissionPopup(emptySet(), mapOf("continueMission" to offer("continueMission", "ready")), enabled = true)?.id)
     }
+
+    @Test
+    fun `a press on the video closes a start or continue mission prompt but never the land abort`() {
+        assertEquals(true, dismissesMissionPrompt("startMission"))
+        assertEquals(true, dismissesMissionPrompt("continueMission"))
+        assertEquals(false, dismissesMissionPrompt("landAbort"))
+        assertEquals(false, dismissesMissionPrompt("rtl"))
+        assertEquals(false, dismissesMissionPrompt(null))
+    }
+
+    @Test
+    fun `the click menu opens over a mission prompt it closes, but never over another guided confirm`() {
+        assertEquals(true, clickMenuAllowed(openDecision(null, confirming = false, panelOpen = false)))
+        assertEquals(true, clickMenuAllowed(openDecision("startMission", confirming = true, panelOpen = false)))
+        assertEquals(true, clickMenuAllowed(openDecision("continueMission", confirming = true, panelOpen = false)))
+        assertEquals(false, clickMenuAllowed(openDecision("rtl", confirming = true, panelOpen = false)))
+        assertEquals(false, clickMenuAllowed(openDecision("landAbort", confirming = true, panelOpen = false)))
+        assertEquals(false, clickMenuAllowed(openDecision(null, confirming = true, panelOpen = false)))
+        assertEquals(false, clickMenuAllowed(openDecision(null, confirming = false, panelOpen = true)))
+    }
 }

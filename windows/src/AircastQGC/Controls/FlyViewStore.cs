@@ -12,6 +12,22 @@ internal static class FlyViewStore
     private static readonly string StorePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AircastQGC", "fly-view.json");
 
+    private static readonly string HoldHintPath = Path.Combine(Path.GetDirectoryName(StorePath)!, "video-hold-hint-seen");
+
+    public static bool LoadHoldHintSeen() => File.Exists(HoldHintPath);
+
+    public static void SaveHoldHintSeen()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(HoldHintPath)!);
+            File.WriteAllText(HoldHintPath, "");
+        }
+        catch (Exception e) when (InstrumentSelectionStore.Recoverable(e))
+        {
+        }
+    }
+
     public static bool LoadThreeD()
     {
         try

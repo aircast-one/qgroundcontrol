@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using AircastQGC.Core;
+using Windows.Foundation;
 
 namespace AircastQGC.Controls;
 
@@ -11,6 +12,10 @@ public sealed class MapPointEventArgs(double latitude, double longitude) : Event
     public double Latitude { get; } = latitude;
     public double Longitude { get; } = longitude;
 }
+
+public sealed record PictureGround(double Latitude, double Longitude, IReadOnlyList<string> Actions, string Warning, Point At);
+
+public sealed record OrbitPreview(double Latitude, double Longitude, double RadiusMetres);
 
 public sealed record MapClickAction(string Kind, string Path, string Label, string Title, string Message, bool Confirm)
 {
@@ -22,6 +27,7 @@ public sealed record MapClickAction(string Kind, string Path, string Label, stri
         "SetHome" => "",
         "Heading" => "",
         "EstimatorOrigin" => "",
+        "StopLooking" => "\uE711",
         _ => string.Empty,
     };
 

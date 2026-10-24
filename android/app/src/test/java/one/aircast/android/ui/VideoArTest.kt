@@ -38,4 +38,22 @@ class VideoArTest {
         assertEquals(450f, centre.y, 1e-3f)
         assertEquals(450f - 160f, arOffset(ArSpot(0.5f, 0.1f), 1600f, 900f).y, 1e-3f)
     }
+
+    @Test
+    fun `an orbit outline is drawn only between neighbours both in front of the camera`() {
+        val spots = outlineSpots(JSONObject("""{"outline":[{"x":0.1,"up":0.0},{"x":0.2,"up":0.0},null,{"x":0.4,"up":0.0},{"x":0.5,"up":0.0}]}"""))
+        assertEquals(5, spots.size)
+        assertNull(spots[2])
+        assertEquals(
+            listOf(ArSpot(0.1f, 0f) to ArSpot(0.2f, 0f), ArSpot(0.4f, 0f) to ArSpot(0.5f, 0f)),
+            outlineLegs(spots),
+        )
+        assertEquals(emptyList<ArSpot?>(), outlineSpots(null))
+    }
+
+    @Test
+    fun `the running orbit's outline comes with the video overlay, and none when not orbiting`() {
+        assertEquals(listOf(ArSpot(0.5f, -0.1f), null), orbitOutline(JSONObject("""{"available":true,"orbit":{"radiusMetres":30.0,"outline":[{"x":0.5,"up":-0.1},null]}}""")))
+        assertEquals(emptyList<ArSpot?>(), orbitOutline(JSONObject("""{"available":true,"orbit":null}""")))
+    }
 }

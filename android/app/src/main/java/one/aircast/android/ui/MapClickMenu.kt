@@ -40,8 +40,8 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.LoiterEdit
-import one.aircast.map.MINIMUM_CIRCLE_RADIUS_METRES
 import one.aircast.map.OrbitCircle
+import one.aircast.map.SettingStepper
 import one.aircast.map.loiterEditNumber
 import one.aircast.map.optText
 import one.aircast.map.aircast
@@ -54,6 +54,8 @@ internal const val MAP_CLICK_PATH = "view.mapClick"
 internal data class MapPoint(val latitude: Double, val longitude: Double)
 
 internal const val ORBIT_ACTION = "Orbit"
+
+internal const val STOP_LOOKING_ACTION = "StopLooking"
 
 internal const val RETURN_HOME_INSTEAD = "Return home instead"
 
@@ -114,23 +116,43 @@ internal fun mapClickActions(view: JSONObject?): List<MapClickAction> {
 
 internal data class OrbitChoice(val radiusMetres: Double, val clockwise: Boolean, val aboveHomeMetres: Double)
 
-internal data class OrbitDefaults(val radius: Double, val unit: String, val metresPerUnit: Double, val clockwise: Boolean)
+private const val ORBIT_RADIUS_DEFAULT_METRES = 30.0
+private val ORBIT_RADIUS_METRES = 10.0..500.0
+private const val ORBIT_RADIUS_STEP_METRES = 10.0
 
-internal fun orbitDefaults(view: JSONObject?): OrbitDefaults = OrbitDefaults(
-    radius = view?.optDouble("orbitDefaultRadius")?.takeIf { !it.isNaN() } ?: 0.0,
-    unit = view?.optText("orbitRadiusUnit").orEmpty(),
-    metresPerUnit = view?.optDouble("orbitMetresPerUnit")?.takeIf { !it.isNaN() && it > 0 } ?: 1.0,
-    clockwise = view?.optBoolean("orbitClockwise", true) ?: true,
+internal data class OrbitDefaults(
+    val radiusMetres: Double,
+    val unit: String,
+    val metresPerUnit: Double,
+    val clockwise: Boolean,
+    val radiusRange: ClosedFloatingPointRange<Double> = ORBIT_RADIUS_METRES,
+    val radiusStep: Double = ORBIT_RADIUS_STEP_METRES,
 )
 
-internal fun radiusMetres(entered: String, defaults: OrbitDefaults): Double? =
-    one.aircast.map.typedNumber(entered.ifBlank { defaults.radius.toString() })?.let { it * defaults.metresPerUnit }
+internal fun orbitDefaults(view: JSONObject?): OrbitDefaults {
+    val radius = view?.optJSONObject("orbitRadiusMetres")
+    val metres = { key: String, otherwise: Double -> radius?.optDouble(key)?.takeIf { it.isFinite() && it > 0 } ?: otherwise }
+    return OrbitDefaults(
+        radiusMetres = metres("default", ORBIT_RADIUS_DEFAULT_METRES),
+        unit = view?.optText("orbitRadiusUnit").orEmpty(),
+        metresPerUnit = view?.optDouble("orbitMetresPerUnit")?.takeIf { !it.isNaN() && it > 0 } ?: 1.0,
+        clockwise = view?.optBoolean("orbitClockwise", true) ?: true,
+        radiusRange = metres("min", ORBIT_RADIUS_METRES.start)..metres("max", ORBIT_RADIUS_METRES.endInclusive),
+        radiusStep = metres("step", ORBIT_RADIUS_STEP_METRES),
+    )
+}
 
 internal fun orbitOpened(point: MapPoint, defaults: OrbitDefaults): OrbitCircle =
-    OrbitCircle(TrackPoint(point.latitude, point.longitude), (radiusMetres("", defaults) ?: 0.0).coerceAtLeast(MINIMUM_CIRCLE_RADIUS_METRES), defaults.clockwise)
+    OrbitCircle(TrackPoint(point.latitude, point.longitude), defaults.radiusMetres.coerceIn(defaults.radiusRange), defaults.clockwise)
 
-internal fun orbitEdit(circle: OrbitCircle, defaults: OrbitDefaults): LoiterEdit =
-    LoiterEdit(circle.radiusMetres, circle.clockwise, defaults.unit, defaults.metresPerUnit)
+internal fun orbitRadiusText(radiusMetres: Double, defaults: OrbitDefaults): String =
+    listOf(Math.round(radiusMetres / defaults.metresPerUnit).toString(), defaults.unit).filter { it.isNotBlank() }.joinToString(" ")
+
+internal fun orbitSentence(radiusMetres: Double, defaults: OrbitDefaults): String =
+    "Orbit the location at a ${orbitRadiusText(radiusMetres, defaults)} radius"
+
+internal fun offeredActions(view: JSONObject?, only: List<String>?): List<MapClickAction> =
+    mapClickActions(view).filter { only == null || it.id in only }
 
 internal fun orbitArgs(point: MapPoint, choice: OrbitChoice): Array<Any> =
     arrayOf(point.latitude, point.longitude, choice.radiusMetres, choice.clockwise, choice.aboveHomeMetres)
@@ -141,17 +163,18 @@ internal fun coordinateLines(point: MapPoint): List<String> = listOf(
 )
 
 private fun send(action: MapClickAction, point: MapPoint, orbit: OrbitChoice?): String? =
-    when (orbit) {
-        null -> Qgc.refusalOf(action.path, JSONObject().put("latitude", point.latitude).put("longitude", point.longitude))
-        else -> Qgc.refusalOf(action.path, *orbitArgs(point, orbit))
+    when {
+        orbit != null -> Qgc.refusalOf(action.path, *orbitArgs(point, orbit))
+        action.id == STOP_LOOKING_ACTION -> Qgc.refusalOf(action.path)
+        else -> Qgc.refusalOf(action.path, JSONObject().put("latitude", point.latitude).put("longitude", point.longitude))
     }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
+internal fun MapClickMenu(point: MapPoint, only: List<String>? = null, warning: String? = null, onDismiss: () -> Unit) {
     val view by qgcPath(MAP_CLICK_PATH)
     val vehicleCoordinate by qgcPath("vehicle.coordinate")
-    val actions = remember(view) { mapClickActions(view) }
+    val actions = remember(view, only) { offeredActions(view, only) }
     if (view != null && actions.isEmpty()) {
         LaunchedEffect(point) { onDismiss() }
         return
@@ -197,6 +220,14 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                             refusal = null
                             if (action.confirm) confirming = action else run(action)
                         },
+                    )
+                }
+                warning?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.aircast.warning,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                     )
                 }
             } else {
@@ -260,8 +291,6 @@ private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitD
         onDispose { mapEdits.orbit = null }
     }
     val circle = mapEdits.orbit ?: opened
-    val edit = orbitEdit(circle, defaults)
-    var typed by remember(opened) { mutableStateOf<String?>(null) }
     var height by remember(opened) { mutableStateOf<GuidedAltitude?>(null) }
     var target by remember(opened) { mutableStateOf<Double?>(null) }
     var settled by remember(opened) { mutableStateOf<Double?>(null) }
@@ -278,7 +307,7 @@ private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitD
     Box(Modifier.fillMaxSize().navigationBarsPadding().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
         GuidedValuePanel(
             title = sentenceCase(action.title),
-            sentence = action.message,
+            sentence = orbitSentence(circle.radiusMetres, defaults),
             commitLabel = action.title,
             commitEnabled = height != null,
             onCommit = {
@@ -296,16 +325,14 @@ private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitD
             onCancel = onDone,
             modifier = Modifier.widthIn(max = 560.dp),
         ) {
-            OutlinedTextField(
-                value = loiterRadiusField(typed, edit),
-                onValueChange = { text ->
-                    typed = text
-                    mapEdits.orbit = circle.copy(radiusMetres = loiterTyped(text, edit).radiusMetres)
-                },
-                label = { Text(listOf("Radius", defaults.unit).filter { it.isNotBlank() }.joinToString(" ")) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
+            val perUnit = defaults.metresPerUnit
+            SettingStepper(
+                label = "Radius",
+                value = circle.radiusMetres / perUnit,
+                unit = defaults.unit,
+                step = defaults.radiusStep / perUnit,
+                range = (defaults.radiusRange.start / perUnit)..(defaults.radiusRange.endInclusive / perUnit),
+                onSet = { shown -> mapEdits.orbit = (mapEdits.orbit ?: opened).copy(radiusMetres = shown * perUnit) },
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Clockwise", Modifier.weight(1f))
@@ -466,9 +493,9 @@ internal fun RoiSheet(at: TrackPoint, onDismiss: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("ROI", style = MaterialTheme.typography.titleMedium)
+            Text("Looking here", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { run(STOP_ROI_PATH, emptyArray()) }) { Text("Cancel ROI") }
+                OutlinedButton(onClick = { run(STOP_ROI_PATH, emptyArray()) }) { Text("Stop looking") }
                 OutlinedButton(onClick = { editing = true }) { Text("Edit position") }
             }
             refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }

@@ -12,8 +12,8 @@ use mavlink::dialects::ardupilotmega::{
     PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, PARAM_MAP_RC_DATA, PARAM_REQUEST_LIST_DATA,
     PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PING_DATA, PositionTargetTypemask,
     RC_CHANNELS_OVERRIDE_DATA, REQUEST_EVENT_DATA, SERIAL_CONTROL_DATA,
-    SET_POSITION_TARGET_LOCAL_NED_DATA, SYSTEM_TIME_DATA, SerialControlDev, SerialControlFlag,
-    TERRAIN_DATA_DATA,
+    SET_POSITION_TARGET_GLOBAL_INT_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SYSTEM_TIME_DATA,
+    SerialControlDev, SerialControlFlag, TERRAIN_DATA_DATA,
 };
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
@@ -93,6 +93,16 @@ pub enum Outbound {
         latitude: f64,
         longitude: f64,
         altitude_relative: f64,
+    },
+    PositionTargetGlobalInt {
+        target: (u8, u8),
+        frame: u8,
+        type_mask: u16,
+        latitude: f64,
+        longitude: f64,
+        altitude: f64,
+        velocity: (f64, f64, f64),
+        yaw_rad: f64,
     },
     ParamRequestList {
         target: (u8, u8),
@@ -671,6 +681,20 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
             x: *x as f32,
             y: *y as f32,
             z: *z as f32,
+            type_mask: PositionTargetTypemask::from_bits_retain(*type_mask),
+            target_system: target.0,
+            target_component: target.1,
+            coordinate_frame: MavFrame::from_u8(*f)?,
+            ..Default::default()
+        })),
+        Outbound::PositionTargetGlobalInt { target, frame: f, type_mask, latitude, longitude, altitude, velocity, yaw_rad } => Some(MavMessage::SET_POSITION_TARGET_GLOBAL_INT(SET_POSITION_TARGET_GLOBAL_INT_DATA {
+            lat_int: (latitude * 1e7) as i32,
+            lon_int: (longitude * 1e7) as i32,
+            alt: *altitude as f32,
+            vx: velocity.0 as f32,
+            vy: velocity.1 as f32,
+            vz: velocity.2 as f32,
+            yaw: *yaw_rad as f32,
             type_mask: PositionTargetTypemask::from_bits_retain(*type_mask),
             target_system: target.0,
             target_component: target.1,

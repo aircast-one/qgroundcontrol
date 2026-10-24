@@ -385,6 +385,17 @@ impl Info {
         }
     }
 
+    pub fn field_of_view_from_sensor(&self) -> Option<(f64, f64)> {
+        let focal = finite_positive(self.focal_length_mm)?;
+        let width = finite_positive(self.sensor_size_h_mm)?;
+        let height = finite_positive(self.sensor_size_v_mm).or_else(|| {
+            (self.resolution_h > 0 && self.resolution_v > 0)
+                .then(|| width * f64::from(self.resolution_v) / f64::from(self.resolution_h))
+        })?;
+        let angle = |size: f64| (2.0 * (size / (2.0 * focal)).atan()).to_degrees();
+        Some((angle(width), angle(height)))
+    }
+
     pub fn capability_tokens(&self) -> Vec<&'static str> {
         CAPABILITIES
             .iter()
@@ -3440,6 +3451,31 @@ mod tests {
             ..camera.clone()
         };
         assert_eq!(blind.aspect_vertical_over_horizontal(), None);
+        let (h, v) = camera.field_of_view_from_sensor().unwrap();
+        assert!(
+            (h - 68.866).abs() < 0.001 && (v - 53.638).abs() < 0.001,
+            "QGCCameraManager::fovFromSensor: 2 atan(size / 2 f): {h} {v}"
+        );
+        let no_height = Info {
+            sensor_size_v_mm: 0.0,
+            ..camera.clone()
+        }
+        .field_of_view_from_sensor()
+        .unwrap();
+        assert!(
+            (no_height.1 - (2.0 * (6.17 * 1080.0 / 1920.0 / 9.0_f64).atan()).to_degrees()).abs()
+                < 1e-9,
+            "a missing sensor height comes from the picture's proportions"
+        );
+        assert_eq!(
+            Info {
+                focal_length_mm: 0.0,
+                ..camera.clone()
+            }
+            .field_of_view_from_sensor(),
+            None
+        );
+        assert_eq!(blind.field_of_view_from_sensor(), None);
         assert!((vertical_field_of_view_degrees(90.0, Some(1.0)).unwrap() - 90.0).abs() < 1e-9);
         assert!(
             (vertical_field_of_view_degrees(90.0, None).unwrap() - 58.715_507_085_582_54).abs()

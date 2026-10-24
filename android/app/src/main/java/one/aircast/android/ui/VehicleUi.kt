@@ -49,6 +49,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.text.TextStyle
@@ -442,6 +443,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val autodropStatus = intercept?.takeIf { it.visible }
     val payload = remember(actionsJson) { payloadOf(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
+    val routeRecorder by qgcDerived(ROUTE_RECORDER_VIEW, ::routeRecorder)
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
     var popupDue by remember { mutableStateOf<GuidedOffer?>(null) }
 
@@ -502,6 +504,12 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
     }
 
+    val decision = openDecision(pending?.offerId, pending != null, guidedValue != null || editingLoiter != null)
+    DisposableEffect(decision) {
+        flyScreen.openDecision = decision
+        onDispose { flyScreen.openDecision = null }
+    }
+
     PreflightChecklistReset(checklist, available)
 
     if (!available) {
@@ -560,6 +568,10 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             ARM_REQUEST -> entries.firstOrNull { it.id == ARM_REQUEST && it.enabled }?.onClick?.invoke()
                 ?: armedStopOffer(offers, armed)?.let { pending = emergencyStopAction(it) }
                 ?: run { refusal = deckRequestRefusal(offers[if (armed) "disarm" else "arm"]) }
+            DISMISS_MISSION_PROMPT -> {
+                if (dismissesMissionPrompt(pending?.offerId)) pending = null
+                if (dismissesMissionPrompt(popupDue?.id)) popupDue = null
+            }
             else -> entries.firstOrNull { it.id == asked && it.enabled }?.onClick?.invoke() ?: offers[asked]?.takeIf { it.ready }?.let { offer ->
                 guidedCommand(offer.id, resumeFrom)?.let { command ->
                     ask(GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command))
@@ -684,6 +696,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                         .takeIf { preflightOffered(preflightJson) },
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
                     MoreTile("Payload", R.drawable.ic_payload, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
+                    routeTile(routeRecorder) { recording -> scope.launch { refusal = withContext(Dispatchers.Default) { toggleRoute(recording) } } },
                     MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
                     MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
                 ) +

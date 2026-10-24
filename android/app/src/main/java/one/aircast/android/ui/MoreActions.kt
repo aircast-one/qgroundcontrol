@@ -36,6 +36,20 @@ internal val AUTO_POPUP_ACTIONS = listOf(LAND_ABORT, "startMission", "continueMi
 
 internal fun popupReplacesOpenConfirm(id: String): Boolean = id == LAND_ABORT
 
+internal const val DISMISS_MISSION_PROMPT = "dismissMissionPrompt"
+
+internal fun dismissesMissionPrompt(offerId: String?): Boolean = offerId != null && offerId != LAND_ABORT && offerId in AUTO_POPUP_ACTIONS
+
+internal const val OTHER_DECISION = "decision"
+
+internal fun openDecision(confirmingOffer: String?, confirming: Boolean, panelOpen: Boolean): String? = when {
+    confirming -> confirmingOffer ?: OTHER_DECISION
+    panelOpen -> OTHER_DECISION
+    else -> null
+}
+
+internal fun clickMenuAllowed(decision: String?): Boolean = decision == null || dismissesMissionPrompt(decision)
+
 internal fun autoMissionPopup(wasReady: Set<String>, offers: Map<String, GuidedOffer>, enabled: Boolean): GuidedOffer? =
     AUTO_POPUP_ACTIONS.mapNotNull { offers[it] }.firstOrNull { (enabled || it.id == LAND_ABORT) && it.ready && it.id !in wasReady }
 

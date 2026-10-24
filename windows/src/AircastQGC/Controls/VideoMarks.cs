@@ -24,6 +24,9 @@ public sealed partial class VideoMarks : UserControl
     private const string FitView = "view.control(settings.videoSettings.videoFit)";
     private const string GridView = "view.control(settings.videoSettings.gridLines)";
     private const string StepZoom = "vehicle.cameraManager.currentCameraInstance.stepZoom";
+    private const string OutlinePath = "videoAr.outline";
+    private const string OrbitBrush = "OrbitOutlineBrush";
+    private const double OrbitWidth = 3;
     private const string RouteBrush = "VideoArRouteBrush";
     private const string EdgeBrush = "VideoEdgeBrush";
     private const string BoxBrush = "DetectionBrush";
@@ -51,6 +54,7 @@ public sealed partial class VideoMarks : UserControl
     private readonly Grid _picture = new();
     private readonly Canvas _grid = new();
     private readonly Canvas _ar = new();
+    private readonly Canvas _orbit = new();
     private readonly Canvas _obstacle = new();
     private readonly Canvas _boxes = new();
     private readonly TextBlock _troubleText = FormLook.Caption("", "CriticalBrush");
@@ -58,6 +62,7 @@ public sealed partial class VideoMarks : UserControl
     private readonly Button _exit;
     private JsonObject _video = new();
     private ArReading? _arReading;
+    private OrbitPreview? _pendingOrbit;
     private ObstacleDrawing? _drawing;
     private Detections? _detections;
     private (double Width, double Height) _shown;
@@ -92,7 +97,7 @@ public sealed partial class VideoMarks : UserControl
         _exit.VerticalAlignment = VerticalAlignment.Top;
         _exit.Margin = new Thickness(16);
         _exit.Visibility = Visibility.Collapsed;
-        new UIElement[] { _grid, _ar, _obstacle, _boxes }.ToList().ForEach(_picture.Children.Add);
+        new UIElement[] { _grid, _orbit, _ar, _obstacle, _boxes }.ToList().ForEach(_picture.Children.Add);
         _stage.Children.Add(_picture);
         _root.Children.Add(_stage);
         _root.Children.Add(_trouble);
@@ -132,6 +137,16 @@ public sealed partial class VideoMarks : UserControl
         {
             _pictured = value;
             Place();
+        }
+    }
+
+    public OrbitPreview? PendingOrbit
+    {
+        get => _pendingOrbit;
+        set
+        {
+            _pendingOrbit = value;
+            DrawOrbit();
         }
     }
 
@@ -221,8 +236,36 @@ public sealed partial class VideoMarks : UserControl
             : []);
     }
 
-    private void DrawAr() =>
+    private void DrawAr()
+    {
         FormLook.Fill(_ar, Decoding && _expanded && _arReading is { } reading ? ArShapes(reading) : []);
+        DrawOrbit();
+    }
+
+    private void DrawOrbit()
+    {
+        var (width, height) = _shown;
+        IReadOnlyList<ArSpot?> outline = !Decoding || !_expanded ? []
+            : _pendingOrbit is { } pending ? PendingOutline(pending)
+            : _arReading?.Orbit ?? [];
+        var edge = OverlayInk.Brush(EdgeBrush);
+        var ink = OverlayInk.Brush(OrbitBrush);
+        FormLook.Fill(_orbit, VideoMarksModel.OutlineRuns(outline).SelectMany(run => new UIElement[]
+        {
+            OutlineLine(run, width, height, edge, OrbitWidth + EdgeWidth * 2),
+            OutlineLine(run, width, height, ink, OrbitWidth),
+        }));
+    }
+
+    private static IReadOnlyList<ArSpot?> PendingOutline(OrbitPreview circle) =>
+        VideoMarksModel.Outline(Bridge.Invoke(OutlinePath, new JsonArray(circle.Latitude, circle.Longitude, circle.RadiusMetres))["outline"]);
+
+    private static Polyline OutlineLine(IReadOnlyList<ArSpot> run, double width, double height, Brush stroke, double thickness)
+    {
+        var line = new Polyline { Stroke = stroke, StrokeThickness = thickness, StrokeLineJoin = PenLineJoin.Round };
+        run.Select(spot => VideoMarksModel.ArOffset(spot, width, height)).ToList().ForEach(at => line.Points.Add(new Point(at.X, at.Y)));
+        return line;
+    }
 
     private IEnumerable<UIElement> ArShapes(ArReading reading)
     {
@@ -340,7 +383,7 @@ public sealed partial class VideoMarks : UserControl
 
     private bool OverVideo(object source) => Lineage(source as DependencyObject).Any(IsVideoPart);
 
-    private bool OnPicture(object source) =>
+    internal bool OnPicture(object source) =>
         _expanded && OverVideo(source) && !Lineage(source as DependencyObject).TakeWhile(node => !IsVideoPart(node)).Any(node => node is Control { IsTabStop: true });
 
     private bool IsVideoPart(DependencyObject node) => node is UIElement element && _videoParts.Contains(element);

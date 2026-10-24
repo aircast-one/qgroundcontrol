@@ -790,6 +790,11 @@ pub const VIEWS: &[View] = &[
         compute: orbit::orbit_view,
     },
     View {
+        path: "view.routeRecorder",
+        deps: crate::routerec::DEPS,
+        compute: crate::routerec::route_recorder_view,
+    },
+    View {
         path: "view.vehicleLinks",
         deps: vehiclelinks::DEPS,
         compute: vehiclelinks::vehicle_links_view,
@@ -1449,6 +1454,8 @@ mod deps_cover_reads {
         ("syslink", include_str!("syslink.rs")),
         ("sensorsettings", include_str!("sensorsettings.rs")),
         ("kml", include_str!("kml.rs")),
+        ("kmlmission", include_str!("kmlmission.rs")),
+        ("routerec", include_str!("routerec.rs")),
         ("label", include_str!("label.rs")),
         ("landing", include_str!("landing.rs")),
         ("linkconfig", include_str!("linkconfig.rs")),

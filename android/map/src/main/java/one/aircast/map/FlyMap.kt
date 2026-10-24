@@ -118,6 +118,8 @@ fun FlyMap(
     var centreOn by remember { mutableStateOf(saved?.centre) }
     var centreZoom by remember { mutableStateOf(saved?.zoom) }
     val keepCentered by mapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)")
+    val routeJson by mapPath(RECORDED_ROUTE_VIEW)
+    val route = remember(routeJson) { recordedRoute(routeJson) }
 
     var mainZoom by remember { mutableDoubleStateOf(saved?.zoom ?: 0.0) }
     var zoomedForPip by remember { mutableStateOf(false) }
@@ -218,6 +220,7 @@ fun FlyMap(
             goto = plan.goto,
             clickMarker = clickMarker,
             orbit = plan.orbit,
+            recordedRoute = route,
             selectedWaypoint = plan.current,
             otherMissions = plan.others,
             fitRequest = fitRequest,

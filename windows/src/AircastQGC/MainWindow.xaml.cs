@@ -96,6 +96,7 @@ public sealed partial class MainWindow : Window
         Viewer.EnabledChanged += (_, _) => ShowThreeD(_threeD && Viewer.Enabled);
         Map.MapRightTapped += (latitude, longitude, at) =>
         {
+            DismissMissionPrompt();
             if (MapMenu.Show(latitude, longitude, Map.TransformToVisual(MapMenu).TransformPoint(at)))
                 Map.ShowClickMarker(latitude, longitude);
         };
@@ -104,6 +105,7 @@ public sealed partial class MainWindow : Window
             if (MapMenu.Target == null) Map.HideClickMarker();
         };
         MapMenu.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
+        MapMenu.OrbitPreviewChanged += (_, circle) => Marks.PendingOrbit = circle;
         Map.VehicleTapped += id =>
         {
             if (_videoMain) SwapVideo(false);
@@ -147,6 +149,12 @@ public sealed partial class MainWindow : Window
         MapPayload.Attach(Map);
         ObstacleOnMap.Attach(Map);
         Marks.ZoomFrom(FlyContent, VideoTile, VideoLayer);
+        VideoLayer.HoldFrom(FlyContent, Marks.OnPicture);
+        VideoLayer.GroundPressed += (_, ground) => OpenVideoMenu(ground);
+        RouteRec.StateChanged += (_, _) => GuidedStrip.ShowRoute(RouteRec.Available, RouteRec.Recording);
+        GuidedStrip.RouteRequested += (_, _) => RouteRec.Toggle();
+        RouteRec.Refused += (_, reason) => Warn(reason);
+        RouteRec.OpenRequested += (_, file) => OpenPlan(file);
         VideoTile.PictureChanged += (_, _) =>
         {
             Marks.Pictured = VideoTile.Picture;
@@ -243,6 +251,26 @@ public sealed partial class MainWindow : Window
         var offer = GuidedOffer.List(Bridge.Get(GuidedOffer.ViewPath)).FirstOrDefault(o => o.Id == id);
         if (offer is { Ready: true }) GuidedCard.Show(offer);
         else Warn(offer?.Reason is { Length: > 0 } reason ? reason : ArmControls.Unavailable);
+    }
+
+    private void OpenPlan(string file)
+    {
+        Go(NavPane.Plan);
+        if (_page == NavPane.Plan) (HostedPage(NavPane.Plan) as Pages.Plan.PlanPage)?.OpenFile(file);
+    }
+
+    private void OpenVideoMenu(PictureGround ground)
+    {
+        FullScreen(false);
+        Root.UpdateLayout();
+        DismissMissionPrompt();
+        if (MapMenu.Show(ground.Latitude, ground.Longitude, VideoLayer.TransformToVisual(MapMenu).TransformPoint(ground.At), ground))
+            Map.ShowClickMarker(ground.Latitude, ground.Longitude);
+    }
+
+    private void DismissMissionPrompt()
+    {
+        if (GuidedCard.Pending?.Id is "startMission" or "continueMission") GuidedCard.Hide();
     }
 
     private void GoBack()
