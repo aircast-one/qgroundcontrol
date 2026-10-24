@@ -270,7 +270,7 @@ fn supports(autopilot: u8, vehicle_type: u8) -> Value {
         "roiMode": !sub && (apm || (px4 && class == MultiRotor)),
         "smartRTL": apm && matches!(class, MultiRotor | Rover),
         "changeHeading": (apm || px4) && class == MultiRotor,
-        "orbitMode": px4 && matches!(class, MultiRotor | Vtol | FixedWing),
+        "orbitMode": (px4 || apm) && matches!(class, MultiRotor | Vtol | FixedWing),
         "takeoffMissionCommand": takeoff,
         "guidedTakeoffWithAltitude": guided_takeoff,
         "guidedTakeoffWithoutAltitude": takeoff && !guided_takeoff,
@@ -4839,7 +4839,7 @@ mod tests {
                 &known
             )
             .0,
-            json!({ "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true })
+            json!({ "guidedTakeoffWithAltitude": true, "orbitMode": true, "smartRTL": true })
                 .as_object()
                 .unwrap()
                 .clone(),
