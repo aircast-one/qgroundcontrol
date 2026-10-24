@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -99,6 +100,32 @@ private suspend fun AwaitPointerEventScope.onControl(pointer: PointerId): Boolea
     return controlPress.get() == pointer
 }
 
+private val picturePress = java.util.concurrent.atomic.AtomicReference<PointerId?>(null)
+
+internal class PictureHoldHandlers(
+    val onPressing: (Offset?) -> Unit,
+    val onTap: () -> Unit,
+    val onHeld: (Offset, IntSize) -> Unit,
+)
+
+internal fun Modifier.pictureHold(handlers: PictureHoldHandlers): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        picturePress.set(down.id)
+        handlers.onPressing(down.position)
+        val press = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { pressOutcome(down.id, down.position, owned = false, pass = PointerEventPass.Initial) }
+        handlers.onPressing(null)
+        when (press) {
+            null -> {
+                handlers.onHeld(down.position, size)
+                follow(down.id, down.position) {}
+            }
+            Press.Released -> handlers.onTap()
+            else -> Unit
+        }
+    }
+}
+
 internal fun Modifier.videoGestures(handlers: VideoGestureHandlers, pass: PointerEventPass = PointerEventPass.Initial): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = pass)
@@ -110,7 +137,7 @@ internal fun Modifier.videoGestures(handlers: VideoGestureHandlers, pass: Pointe
         when {
             press is Press.Moved && !owned && handlers.claimsSwipe(press.by) ->
                 handlers.onSwipe(follow(down.id, down.position + press.by, pass) {} - down.position)
-            press == null -> if (handlers.onHold(down.position)) {
+            press == null -> if (picturePress.get() != down.id && handlers.onHold(down.position)) {
                 follow(down.id, down.position, pass, handlers.onHoldDrag)
                 handlers.onHoldEnd()
             }

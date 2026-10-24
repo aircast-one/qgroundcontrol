@@ -305,12 +305,38 @@ fun AircastShell(hostView: android.view.View?) {
     var videoFullScreen by remember { mutableStateOf(false) }
 
     val flightActions = remember { movableContentOf<one.aircast.android.ui.FlyDeckLayout> { layout -> FlightActions(layout = layout, center = { one.aircast.android.ui.CameraShutters() }) } }
-    val flyVideo = remember {
-        movableContentOf<Modifier, Boolean> { mod, expanded ->
-            VideoSurface(modifier = mod, expanded = expanded, fullScreen = videoFullScreen, onClick = { flyView = one.aircast.android.ui.flyViewSwapped(flyView) }, onDoubleTap = { videoFullScreen = !videoFullScreen })
+    var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }
+    var picturePressed by remember { mutableStateOf<one.aircast.android.ui.PicturePress?>(null) }
+    var pictureHoldHint by remember { mutableStateOf(MapHoldHint.Unseen) }
+    val pictureGoTo by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.MAP_CLICK_PATH) { json -> one.aircast.android.ui.mapClickActions(json).any { it.id == one.aircast.android.ui.GOTO_ACTION } }
+    val snackbars = remember { SnackbarHostState() }
+    val pictureScope = rememberCoroutineScope()
+    val pressPicture: (one.aircast.android.ui.PicturePress) -> Unit = { press ->
+        pictureHoldHint = MapHoldHint.Learned
+        val point = press.point
+        if (point == null) {
+            pictureScope.launch { snackbars.showSnackbar(press.reason) }
+        } else {
+            videoFullScreen = false
+            flyScreen.deckRequest = one.aircast.android.ui.DISMISS_MISSION_PROMPT
+            mapClickAt = point
+            picturePressed = press
         }
     }
-    var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }
+    val flyVideo = remember {
+        movableContentOf<Modifier, Boolean> { mod, expanded ->
+            VideoSurface(
+                modifier = mod,
+                expanded = expanded,
+                fullScreen = videoFullScreen,
+                onClick = { flyView = one.aircast.android.ui.flyViewSwapped(flyView) },
+                onDoubleTap = { videoFullScreen = !videoFullScreen },
+                onGround = pressPicture.takeIf { pictureGoTo },
+                onPictureTap = { if (pictureGoTo && pictureHoldHint == MapHoldHint.Unseen) pictureHoldHint = MapHoldHint.Due },
+                groundSpot = picturePressed?.spot?.takeIf { mapClickAt != null },
+            )
+        }
+    }
     var mapHoldHint by remember { mutableStateOf(MapHoldHint.Unseen) }
     var waypointTapped by remember { mutableStateOf<Int?>(null) }
     var roiTapped by remember { mutableStateOf<TrackPoint?>(null) }
@@ -326,6 +352,7 @@ fun AircastShell(hostView: android.view.View?) {
                 onMapClick = { lat, lon ->
                     mapHoldHint = MapHoldHint.Learned
                     mapClickAt = MapPoint(lat, lon)
+                    picturePressed = null
                 },
                 onPlainTap = { if (mapHoldHint == MapHoldHint.Unseen) mapHoldHint = MapHoldHint.Due },
                 onMissionItemClick = { waypointTapped = it },
@@ -341,11 +368,15 @@ fun AircastShell(hostView: android.view.View?) {
     val flyFollowMeReadout = remember { movableContentOf { LayoutWidget("followMe") { FollowMeReadout() } } }
     val flyRcControlsLayer = remember { movableContentOf { LayoutWidget("rcControls") { RcControlsLayer() } } }
 
-    val snackbars = remember { SnackbarHostState() }
     LaunchedEffect(mapHoldHint) {
         if (mapHoldHint != MapHoldHint.Due) return@LaunchedEffect
         snackbars.showSnackbar(MAP_HOLD_HINT)
         mapHoldHint = MapHoldHint.Learned
+    }
+    LaunchedEffect(pictureHoldHint) {
+        if (pictureHoldHint != MapHoldHint.Due) return@LaunchedEffect
+        snackbars.showSnackbar(one.aircast.android.ui.PICTURE_HOLD_HINT)
+        pictureHoldHint = MapHoldHint.Learned
     }
     val alerts = remember { SnackbarHostState() }
     var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
@@ -633,7 +664,10 @@ fun AircastShell(hostView: android.view.View?) {
                 if (onFly) SnackbarHost(snackbars, noticePlace.widthIn(max = FLY_NOTICE_MAX_WIDTH)) { one.aircast.android.ui.AppSnackbar(it) }
 
                 mapClickAt?.takeIf { tab == Tab.Fly }?.let { point ->
-                    MapClickMenu(point) { mapClickAt = null }
+                    MapClickMenu(point, only = picturePressed?.actions, warning = picturePressed?.warning) {
+                        mapClickAt = null
+                        picturePressed = null
+                    }
                 }
                 waypointTapped?.takeIf { tab == Tab.Fly }?.let { sequence ->
                     SetWaypointSheet(sequence) { waypointTapped = null }

@@ -64,6 +64,14 @@ internal fun arReading(view: JSONObject?): ArReading? = view?.takeIf { it.optBoo
     )
 }
 
+internal fun outlineSpots(json: JSONObject?): List<ArSpot?> =
+    json?.optJSONArray("outline")?.let { listed -> (0 until listed.length()).map { spot(listed.optJSONObject(it)) } }.orEmpty()
+
+internal fun orbitOutline(view: JSONObject?): List<ArSpot?> = outlineSpots(view?.optJSONObject("orbit"))
+
+internal fun outlineLegs(points: List<ArSpot?>): List<Pair<ArSpot, ArSpot>> =
+    points.zipWithNext().mapNotNull { (from, to) -> from?.let { start -> to?.let { start to it } } }
+
 internal fun arOffset(spot: ArSpot, width: Float, height: Float): Offset = Offset(spot.x * width, height / 2 - spot.up * width)
 
 private fun DrawScope.marked(measurer: TextMeasurer, style: TextStyle, mark: ArMark, fill: Color, ring: Boolean = false) {

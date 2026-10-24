@@ -560,6 +560,10 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             ARM_REQUEST -> entries.firstOrNull { it.id == ARM_REQUEST && it.enabled }?.onClick?.invoke()
                 ?: armedStopOffer(offers, armed)?.let { pending = emergencyStopAction(it) }
                 ?: run { refusal = deckRequestRefusal(offers[if (armed) "disarm" else "arm"]) }
+            DISMISS_MISSION_PROMPT -> {
+                if (dismissesMissionPrompt(pending?.offerId)) pending = null
+                if (dismissesMissionPrompt(popupDue?.id)) popupDue = null
+            }
             else -> entries.firstOrNull { it.id == asked && it.enabled }?.onClick?.invoke() ?: offers[asked]?.takeIf { it.ready }?.let { offer ->
                 guidedCommand(offer.id, resumeFrom)?.let { command ->
                     ask(GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command))

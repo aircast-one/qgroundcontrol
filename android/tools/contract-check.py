@@ -233,7 +233,6 @@ ACCEPTED_ON = {
     ("view.gpsRtk", "targetAccuracy"): "GPSIndicatorPage.qml's RTK GPS Status shows only active, numSatellites, currentDuration, currentAccuracy and valid, which RtkIndicator.kt reads; the rest is core survey/driver diagnostics QGC never shows",
     ("view.gpsRtk", "targetDuration"): "GPSIndicatorPage.qml's RTK GPS Status shows only active, numSatellites, currentDuration, currentAccuracy and valid, which RtkIndicator.kt reads; the rest is core survey/driver diagnostics QGC never shows",
     ("view.gpsRtk", "withinAccuracyLimit"): "GPSIndicatorPage.qml's RTK GPS Status shows only active, numSatellites, currentDuration, currentAccuracy and valid, which RtkIndicator.kt reads; the rest is core survey/driver diagnostics QGC never shows",
-    ("view.guidedActions", "roiActive"): "folded by the core into offers and roi, which GuidedActions.kt and RoiMarker.kt read",
     ("view.guidedActions", "roiSupported"): "folded by the core into offers, which GuidedActions.kt reads",
     ("view.hostNotices", "acknowledgedThrough"): "HostNotices.kt reads the core's split of the queue into banners, dialogs and unseen; these are the raw queue and its acknowledgement bookkeeping",
     ("view.hostNotices", "latestId"): "HostNotices.kt reads the core's split of the queue into banners, dialogs and unseen; these are the raw queue and its acknowledgement bookkeeping",
