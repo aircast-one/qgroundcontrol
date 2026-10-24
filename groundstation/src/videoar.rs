@@ -32,7 +32,18 @@ pub const OUTLINE: &str = "videoAr.outline";
 const OUTLINE_SEGMENTS: usize = 36;
 const REACH_M: f64 = 2000.0;
 const STEP_M: f64 = 5.0;
-const PICTURE_ACTIONS: [&str; 4] = ["GoTo", "Orbit", "Roi", "Heading"];
+const PICTURE_ACTIONS: [&str; 4] = ["GoTo", "Orbit", "Roi", "StopLooking"];
+const DEFAULT_FOV_WARNING: &str =
+    "The camera's field of view isn't set, so this spot may be off. Set it in Settings > Gimbal.";
+
+fn field_of_view_unset(backend: &dyn Backend) -> bool {
+    let (_, _, source) = crate::lens::field_of_view(backend);
+    let at_default = |name: &str| {
+        backend.value(&format!("settings.gimbalControllerSettings.{name}"))["valueEqualsDefault"]
+            == true
+    };
+    source == crate::lens::Source::Setting && at_default("cameraHFov") && at_default("cameraVFov")
+}
 
 type Space = (f64, f64, f64);
 
@@ -409,7 +420,9 @@ pub fn ground_at(backend: &dyn Backend, args: &str) -> Value {
         &ground_above_home(backend),
     ) {
         Some((latitude, longitude)) => {
-            json!({ "ok": true, "latitude": latitude, "longitude": longitude, "actions": PICTURE_ACTIONS })
+            let warning =
+                (!synthetic && field_of_view_unset(backend)).then_some(DEFAULT_FOV_WARNING);
+            json!({ "ok": true, "latitude": latitude, "longitude": longitude, "actions": PICTURE_ACTIONS, "warning": warning })
         }
         None => refused(
             "notGround",
@@ -1108,6 +1121,32 @@ mod tests {
         assert!(
             wide.is_some_and(|(ahead, _)| (ahead - 20.0 / bottom_edge.tan()).abs() < 0.05),
             "a picture twice as wide as tall spans half the tangent above and below the middle"
+        );
+    }
+
+    #[test]
+    fn a_field_of_view_left_at_its_default_is_warned_about() {
+        let settings = |h: bool, v: bool| {
+            Fake(BTreeMap::from([
+                (
+                    "settings.gimbalControllerSettings.cameraHFov",
+                    json!({ "kind": "fact", "valueEqualsDefault": h }),
+                ),
+                (
+                    "settings.gimbalControllerSettings.cameraVFov",
+                    json!({ "kind": "fact", "valueEqualsDefault": v }),
+                ),
+            ]))
+        };
+        assert!(field_of_view_unset(&settings(true, true)));
+        assert!(
+            !field_of_view_unset(&settings(true, false)),
+            "either angle set by the operator or the camera is a field of view to trust"
+        );
+        assert_eq!(
+            PICTURE_ACTIONS,
+            ["GoTo", "Orbit", "Roi", "StopLooking"],
+            "the video menu has no home, heading or origin"
         );
     }
 

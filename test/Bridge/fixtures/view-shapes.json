@@ -3840,6 +3840,10 @@
         "view.mapClick.orbitClockwise",
         "view.mapClick.orbitDefaultRadius",
         "view.mapClick.orbitMetresPerUnit",
+        "view.mapClick.orbitRadiusMetres.default",
+        "view.mapClick.orbitRadiusMetres.max",
+        "view.mapClick.orbitRadiusMetres.min",
+        "view.mapClick.orbitRadiusMetres.step",
         "view.mapClick.orbitRadiusUnit",
         "view.mapScale(120).available",
         "view.mapScale(120).class",
@@ -8301,6 +8305,10 @@
         "view.mapClick.orbitClockwise",
         "view.mapClick.orbitDefaultRadius",
         "view.mapClick.orbitMetresPerUnit",
+        "view.mapClick.orbitRadiusMetres.default",
+        "view.mapClick.orbitRadiusMetres.max",
+        "view.mapClick.orbitRadiusMetres.min",
+        "view.mapClick.orbitRadiusMetres.step",
         "view.mapClick.orbitRadiusUnit",
         "view.mapScale(120).available",
         "view.mapScale(120).class",
@@ -12885,6 +12893,12 @@
         "orbitClockwise": "bool",
         "orbitDefaultRadius": "number",
         "orbitMetresPerUnit": "number",
+        "orbitRadiusMetres": {
+            "default": "number",
+            "max": "number",
+            "min": "number",
+            "step": "number"
+        },
         "orbitRadiusUnit": "string"
     },
     "view.mapScale(120)": {
