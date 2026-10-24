@@ -27,6 +27,7 @@ public sealed record MapClickAction(string Kind, string Path, string Label, stri
         "SetHome" => "",
         "Heading" => "",
         "EstimatorOrigin" => "",
+        "StopLooking" => "\uE711",
         _ => string.Empty,
     };
 
