@@ -139,17 +139,21 @@ test('a dropped water bottle falls from the drone and lies on the ground below t
   await expect.poll(async () => (await view()).aboveHome, { timeout: 30_000 }).toBeGreaterThan(9);
   expect((await view()).bottles).toEqual([]);
 
+  await app.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { subscribe: (path: string, listener: () => void) => void; path: (path: string) => { bottles?: Bottle[] } | null } };
+    const page = window as unknown as { bottleTrail: Bottle[] };
+    page.bottleTrail = [];
+    Qgc.subscribe('view.syntheticView', () => {
+      page.bottleTrail = [...page.bottleTrail, ...(Qgc.path('view.syntheticView')?.bottles ?? [])];
+    });
+  }, '/src/bridge/Qgc.ts');
   await slideAcross(app, app.getByRole('button', { name: 'Slide to drop' }));
-  const seen: Bottle[] = [];
-  const watched = async () => {
-    const bottles = (await view()).bottles ?? [];
-    seen.push(...bottles);
-    return bottles;
-  };
-  await expect.poll(async () => (await watched()).some((it) => it.landed || it.aboveHome < 7), { intervals: [25], timeout: 30_000 }).toBe(true);
+  const bottles = async () => (await view()).bottles ?? [];
+  await expect.poll(async () => (await bottles()).some((it) => it.landed || it.aboveHome < 7), { intervals: [25], timeout: 30_000 }).toBe(true);
   await app.screenshot({ path: testInfo.outputPath('bottle-falling.png') });
-  await expect.poll(async () => (await watched()).map((it) => it.landed), { intervals: [25], timeout: 30_000 }).toEqual([true]);
-  const falling = seen.filter((it) => !it.landed).map((it) => it.aboveHome);
+  await expect.poll(async () => (await bottles()).map((it) => it.landed), { intervals: [25], timeout: 30_000 }).toEqual([true]);
+  const trail = await app.evaluate(() => (window as unknown as { bottleTrail: Bottle[] }).bottleTrail);
+  const falling = trail.filter((it) => !it.landed).map((it) => it.aboveHome);
   expect(falling.length, 'it was seen in the air before it landed').toBeGreaterThan(0);
   expect(Math.max(...falling), 'it fell from the drone').toBeGreaterThan(Math.min(...falling));
   await expect(app.getByText('Payload dropped')).toBeVisible();
