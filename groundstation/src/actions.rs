@@ -230,6 +230,7 @@ pub const OWNED: &[&str] = &[
     FACE_POINT,
     ESTIMATOR_ORIGIN,
     crate::videoar::GROUND_AT,
+    crate::videoar::OUTLINE,
     MARK_TARGET,
     crate::dropzone::ADD_CORNER,
     crate::dropzone::CLEAR,
@@ -585,6 +586,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         COMMIT_LINKS => crate::linkconnect::commit(backend, path),
         GROUND_SPEED | AIRSPEED => crate::speed::change(backend, path, args),
         crate::videoar::GROUND_AT => crate::videoar::ground_at(backend, args),
+        crate::videoar::OUTLINE => crate::videoar::outline(backend, args),
         crate::dropzone::ADD_CORNER => crate::dropzone::add_corner(backend, args),
         crate::dropzone::CLEAR => crate::dropzone::clear(backend),
         GOTO_LOCATION | POINT_AT | SET_HOME | FACE_POINT | ESTIMATOR_ORIGIN | MARK_TARGET => {
