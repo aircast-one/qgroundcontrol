@@ -8,7 +8,9 @@ case "${PLATFORM_NAME:-iphonesimulator}" in
     *) triple=aarch64-apple-ios-sim ;;
 esac
 
+cargo_bin=$(PATH="$HOME/.cargo/bin:$PATH" && dirname "$(command -v cargo)")
+
 cd "$(dirname "$0")/../groundstation"
-exec env -i HOME="$HOME" PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+exec env -i HOME="$HOME" PATH="$cargo_bin:/usr/bin:/bin:/usr/sbin:/sbin" \
     IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}" \
     cargo build --lib --release --features native-host,synthetic --target "$triple"
