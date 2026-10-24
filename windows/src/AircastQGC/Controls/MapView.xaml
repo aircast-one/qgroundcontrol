@@ -20,6 +20,11 @@
             <Setter Property="StrokeEndLineCap" Value="Round" />
         </Style>
 
+        <Style x:Key="RecordedLine" TargetType="Polyline" BasedOn="{StaticResource RouteLine}">
+            <Setter Property="Stroke" Value="{ThemeResource OrbitOutlineBrush}" />
+            <Setter Property="StrokeThickness" Value="4" />
+        </Style>
+
         <Style x:Key="TrackLine" TargetType="Polyline" BasedOn="{StaticResource RouteLine}">
             <Setter Property="Stroke" Value="{ThemeResource CriticalBrush}" />
             <Setter Property="StrokeThickness" Value="2" />

@@ -147,6 +147,10 @@ public sealed partial class MainWindow : Window
         MapPayload.Attach(Map);
         ObstacleOnMap.Attach(Map);
         Marks.ZoomFrom(FlyContent, VideoTile, VideoLayer);
+        RouteRec.StateChanged += (_, _) => GuidedStrip.ShowRoute(RouteRec.Available, RouteRec.Recording);
+        GuidedStrip.RouteRequested += (_, _) => RouteRec.Toggle();
+        RouteRec.Refused += (_, reason) => Warn(reason);
+        RouteRec.OpenRequested += (_, file) => OpenPlan(file);
         VideoTile.PictureChanged += (_, _) =>
         {
             Marks.Pictured = VideoTile.Picture;
@@ -243,6 +247,12 @@ public sealed partial class MainWindow : Window
         var offer = GuidedOffer.List(Bridge.Get(GuidedOffer.ViewPath)).FirstOrDefault(o => o.Id == id);
         if (offer is { Ready: true }) GuidedCard.Show(offer);
         else Warn(offer?.Reason is { Length: > 0 } reason ? reason : ArmControls.Unavailable);
+    }
+
+    private void OpenPlan(string file)
+    {
+        Go(NavPane.Plan);
+        if (_page == NavPane.Plan) (HostedPage(NavPane.Plan) as Pages.Plan.PlanPage)?.OpenFile(file);
     }
 
     private void GoBack()
