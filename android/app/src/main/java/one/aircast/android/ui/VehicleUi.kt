@@ -49,6 +49,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.text.TextStyle
@@ -501,6 +502,12 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 ask(GuidedAction(name = settled.title, confirm = settled.prompt, destructive = settled.destructive, offerId = settled.id, run = command))
             }
         }
+    }
+
+    val decision = openDecision(pending?.offerId, pending != null, guidedValue != null || editingLoiter != null)
+    DisposableEffect(decision) {
+        flyScreen.openDecision = decision
+        onDispose { flyScreen.openDecision = null }
     }
 
     PreflightChecklistReset(checklist, available)

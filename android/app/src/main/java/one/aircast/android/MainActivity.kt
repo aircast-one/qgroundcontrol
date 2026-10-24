@@ -311,16 +311,22 @@ fun AircastShell(hostView: android.view.View?) {
     val pictureGoTo by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.MAP_CLICK_PATH) { json -> one.aircast.android.ui.mapClickActions(json).any { it.id == one.aircast.android.ui.GOTO_ACTION } }
     val snackbars = remember { SnackbarHostState() }
     val pictureScope = rememberCoroutineScope()
+    val openClickMenu: (MapPoint, one.aircast.android.ui.PicturePress?) -> Unit = { point, press ->
+        val decision = flyScreen.openDecision
+        if (one.aircast.android.ui.clickMenuAllowed(decision)) {
+            if (decision != null) flyScreen.deckRequest = one.aircast.android.ui.DISMISS_MISSION_PROMPT
+            videoFullScreen = false
+            mapClickAt = point
+            picturePressed = press
+        }
+    }
     val pressPicture: (one.aircast.android.ui.PicturePress) -> Unit = { press ->
         pictureHoldHint = MapHoldHint.Learned
         val point = press.point
         if (point == null) {
             pictureScope.launch { snackbars.showSnackbar(press.reason) }
         } else {
-            videoFullScreen = false
-            flyScreen.deckRequest = one.aircast.android.ui.DISMISS_MISSION_PROMPT
-            mapClickAt = point
-            picturePressed = press
+            openClickMenu(point, press)
         }
     }
     val flyVideo = remember {
@@ -351,8 +357,7 @@ fun AircastShell(hostView: android.view.View?) {
                 pip = flyView == one.aircast.android.ui.FlyView.Video && !flyIsPortrait(),
                 onMapClick = { lat, lon ->
                     mapHoldHint = MapHoldHint.Learned
-                    mapClickAt = MapPoint(lat, lon)
-                    picturePressed = null
+                    openClickMenu(MapPoint(lat, lon), null)
                 },
                 onPlainTap = { if (mapHoldHint == MapHoldHint.Unseen) mapHoldHint = MapHoldHint.Due },
                 onMissionItemClick = { waypointTapped = it },

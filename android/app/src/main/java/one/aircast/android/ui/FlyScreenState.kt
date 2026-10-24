@@ -19,6 +19,7 @@ internal class FlyScreenState(val layout: OverlayLayoutState) {
     var pendingMode by mutableStateOf<String?>(null)
     var instrumentEdits by mutableIntStateOf(0)
     var guidedPanels by mutableIntStateOf(0)
+    var openDecision by mutableStateOf<String?>(null)
     val guidedPanelOpen: Boolean get() = guidedPanels > 0
     val controlRequestDeadlines = mutableStateMapOf<Int, Long>()
     val mapEdits = FlyMapEdits()

@@ -38,4 +38,15 @@ class AutoMissionPopupTest {
         assertEquals(false, dismissesMissionPrompt("rtl"))
         assertEquals(false, dismissesMissionPrompt(null))
     }
+
+    @Test
+    fun `the click menu opens over a mission prompt it closes, but never over another guided confirm`() {
+        assertEquals(true, clickMenuAllowed(openDecision(null, confirming = false, panelOpen = false)))
+        assertEquals(true, clickMenuAllowed(openDecision("startMission", confirming = true, panelOpen = false)))
+        assertEquals(true, clickMenuAllowed(openDecision("continueMission", confirming = true, panelOpen = false)))
+        assertEquals(false, clickMenuAllowed(openDecision("rtl", confirming = true, panelOpen = false)))
+        assertEquals(false, clickMenuAllowed(openDecision("landAbort", confirming = true, panelOpen = false)))
+        assertEquals(false, clickMenuAllowed(openDecision(null, confirming = true, panelOpen = false)))
+        assertEquals(false, clickMenuAllowed(openDecision(null, confirming = false, panelOpen = true)))
+    }
 }
