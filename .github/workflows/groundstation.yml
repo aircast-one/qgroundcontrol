@@ -72,6 +72,10 @@ jobs:
         working-directory: groundstation
         run: cargo test --locked
 
+      - name: Test the synthetic view
+        working-directory: groundstation
+        run: cargo test --locked --features synthetic
+
       - name: Check the browser build
         working-directory: groundstation
         run: cargo check --locked --lib --target wasm32-unknown-unknown
