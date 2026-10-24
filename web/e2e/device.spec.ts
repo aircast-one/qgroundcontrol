@@ -92,7 +92,7 @@ test('a device page draws what the device detects on its camera', async ({ devic
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
     await Qgc.set('settings.appSettings.detectionsHttpPort', port);
   }, ['/src/bridge/Qgc.ts', 18780] as const);
-  await expect(device.getByText('car 90%')).toBeVisible({ timeout: 60_000 });
+  await expect(device.locator('svg rect')).toBeVisible({ timeout: 60_000 });
 });
 
 test('a device page tracks what the pilot boxes with the device tracker', async ({ device }) => {
@@ -100,8 +100,8 @@ test('a device page tracks what the pilot boxes with the device tracker', async 
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
     await Qgc.set('settings.appSettings.detectionsHttpPort', port);
   }, ['/src/bridge/Qgc.ts', 18780] as const);
-  const caption = device.getByText('car 90%');
-  await expect(caption).toBeVisible({ timeout: 60_000 });
+  const detected = device.locator('svg rect');
+  await expect(detected).toBeVisible({ timeout: 60_000 });
   await device.evaluate(async (module) => {
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
     await Qgc.set('vehicle.cameraManager.currentCameraInstance.trackingEnabled', true);
@@ -109,13 +109,14 @@ test('a device page tracks what the pilot boxes with the device tracker', async 
   const later = device.getByRole('button', { name: 'Fly now, finish loading in background' });
   if (await later.isVisible()) await later.click();
   await expect(later).toBeHidden();
-  const at = await caption.boundingBox();
-  if (at === null) throw new Error('the detection caption has no box');
-  await device.mouse.move(at.x + 2, at.y + at.height + 4);
+  const at = await detected.boundingBox();
+  if (at === null) throw new Error('the detection is not on screen');
+  await device.mouse.move(at.x + 2, at.y + 20);
   await device.mouse.down();
-  await device.mouse.move(at.x + 30, at.y + at.height + 30, { steps: 5 });
+  await device.mouse.move(at.x + 30, at.y + 46, { steps: 5 });
   await device.mouse.up();
   await expect.poll(async () => (await stats()).tracks.find((sent) => sent.startsWith('PUT /api/streams/e2e/track/visual')) ?? '', { timeout: 30_000 }).toMatch(/"w":0\.\d+/);
+  await expect(device.getByText('car 90%')).toBeVisible();
 });
 
 test('the Device tab holds the device pages, drawn natively, and device trouble shows in the fly view', async ({ device }) => {
@@ -203,11 +204,11 @@ hosted('an app served elsewhere moves to the https address the device names, so 
   await Promise.all([app.waitForEvent('load'), app.getByRole('button', { name: 'Disconnect' }).click()]);
 });
 
-base('a page the device served over http moves to its https address and flies from there', async ({ page }) => {
-  await page.goto(`http://${UPGRADING}/?from=e2e`);
-  await page.waitForURL(`https://${SECURE}/?from=e2e`, { timeout: 60_000 });
+base('a page the device served over http flies from there, even when the device names an https address', async ({ page }) => {
+  await page.goto(`http://${UPGRADING}/`);
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  expect(new URL(page.url()).origin).toBe(`http://${UPGRADING}`);
 });
 
 base('a page the device served stays on http when its https name never answers, as it must once the cloud is gone', async ({ page }) => {

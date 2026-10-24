@@ -19,7 +19,6 @@ export const DEVICE_TLS_PORT = 18785;
 export const UPGRADING_PORT = 18786;
 export const OFFLINE_PORT = 18787;
 const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
-const UNANSWERED_NAME = 'https://localhost:1';
 const VITE = Number(process.env.E2E_PORT ?? 8800);
 const HOME = { lat: 47.3977, lon: 8.5456 };
 const TICK_MS = 250;
@@ -135,7 +134,7 @@ const AIRCRAFT = {
 };
 
 const app = (request: IncomingMessage, response: ServerResponse) => {
-  const path = request.url ?? '/';
+  const path = (request.url ?? '/').replace(/^\/fly(?=\/)/, '');
   const upstream = forward({ host: 'localhost', port: VITE, path, method: request.method, headers: { ...request.headers, host: `localhost:${VITE}` } }, (answer) => {
     response.writeHead(answer.statusCode ?? 502, answer.headers);
     answer.pipe(response);
@@ -144,7 +143,7 @@ const app = (request: IncomingMessage, response: ServerResponse) => {
   request.pipe(upstream);
 };
 
-const device = (named: { origin: string; fallback?: string }, secure: boolean) => (request: IncomingMessage, response: ServerResponse) => {
+const device = (named: { origin: string }, secure: boolean) => (request: IncomingMessage, response: ServerResponse) => {
   const url = new URL(request.url ?? '/', `http://localhost:${DEVICE_PORT}`);
   if (secure) seen.secure = [...seen.secure, url.pathname];
   if (url.pathname === '/api/tls') return json(response, 200, named);
@@ -168,6 +167,7 @@ const device = (named: { origin: string; fallback?: string }, secure: boolean) =
   if (url.pathname.startsWith('/fly/files/') || url.pathname === '/fly/files') return void files(request, response, url);
   if (url.pathname === '/fly/proxy') return void proxy(request, response);
   if (url.pathname === '/api/telemetry/firmware' && request.method === 'POST') return void firmware(request, response);
+  if (url.pathname === '/') return void response.writeHead(302, { Location: '/fly/' }).end();
   return app(request, response);
 };
 
@@ -178,7 +178,7 @@ const certificate = (): { key: Buffer; cert: Buffer } => {
 };
 
 const http = createServer(device({ origin: '' }, false));
-const upgrading = createServer(device({ origin: UNANSWERED_NAME, fallback: SECURE_ORIGIN }, false));
+const upgrading = createServer(device({ origin: SECURE_ORIGIN }, false));
 const https = createSecureServer(certificate(), device({ origin: SECURE_ORIGIN }, true));
 const offline = createServer(device({ origin: 'https://10.255.255.1' }, false));
 
