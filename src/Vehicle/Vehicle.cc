@@ -784,19 +784,25 @@ void Vehicle::_handleOrbitExecutionStatus(const mavlink_message_t& message)
 
     mavlink_msg_orbit_execution_status_decode(&message, &orbitStatus);
 
-    double newRadius =  qAbs(static_cast<double>(orbitStatus.radius));
+    setOrbitStatus(QGeoCoordinate(static_cast<double>(orbitStatus.x) / qPow(10.0, 7.0),
+                                  static_cast<double>(orbitStatus.y) / qPow(10.0, 7.0)),
+                   static_cast<double>(orbitStatus.radius));
+}
+
+void Vehicle::setOrbitStatus(const QGeoCoordinate& center, double radius)
+{
+    const double newRadius = qAbs(radius);
     if (!QGC::fuzzyCompare(_orbitMapCircle->radius()->rawValue().toDouble(), newRadius)) {
         _orbitMapCircle->radius()->setRawValue(newRadius);
     }
 
-    bool newOrbitClockwise = orbitStatus.radius > 0 ? true : false;
+    const bool newOrbitClockwise = radius > 0;
     if (_orbitMapCircle->clockwiseRotation() != newOrbitClockwise) {
         _orbitMapCircle->setClockwiseRotation(newOrbitClockwise);
     }
 
-    QGeoCoordinate newCenter(static_cast<double>(orbitStatus.x) / qPow(10.0, 7.0), static_cast<double>(orbitStatus.y) / qPow(10.0, 7.0));
-    if (_orbitMapCircle->center() != newCenter) {
-        _orbitMapCircle->setCenter(newCenter);
+    if (_orbitMapCircle->center() != center) {
+        _orbitMapCircle->setCenter(center);
     }
 
     if (!_orbitActive) {
@@ -1950,30 +1956,7 @@ void Vehicle::guidedModeOrbit(const QGeoCoordinate& centerCoord, double radius, 
         QGC::showAppMessage(QStringLiteral("Orbit mode not supported by Vehicle."));
         return;
     }
-    if (capabilityBits() & MAV_PROTOCOL_CAPABILITY_COMMAND_INT) {
-        sendMavCommandInt(
-                    defaultComponentId(),
-                    MAV_CMD_DO_ORBIT,
-                    MAV_FRAME_GLOBAL,
-                    true,                           // show error if fails
-                    static_cast<float>(radius),
-                    static_cast<float>(qQNaN()),    // Use default velocity
-                    static_cast<float>(ORBIT_YAW_BEHAVIOUR_UNCHANGED),       // Use current or vehicle default yaw behavior
-                    static_cast<float>(qQNaN()),    // Use vehicle default num of orbits behavior
-                    centerCoord.latitude(), centerCoord.longitude(), static_cast<float>(amslAltitude));
-    } else {
-        sendMavCommand(
-                    defaultComponentId(),
-                    MAV_CMD_DO_ORBIT,
-                    true,                           // show error if fails
-                    static_cast<float>(radius),
-                    static_cast<float>(qQNaN()),    // Use default velocity
-                    static_cast<float>(ORBIT_YAW_BEHAVIOUR_UNCHANGED),       // Use current or vehicle default yaw behavior
-                    static_cast<float>(qQNaN()),    // Use vehicle default num of orbits behavior
-                    static_cast<float>(centerCoord.latitude()),
-                    static_cast<float>(centerCoord.longitude()),
-                    static_cast<float>(amslAltitude));
-    }
+    _firmwarePlugin->guidedModeOrbit(this, centerCoord, radius, amslAltitude);
 }
 
 void Vehicle::guidedModeROI(const QGeoCoordinate& centerCoord)

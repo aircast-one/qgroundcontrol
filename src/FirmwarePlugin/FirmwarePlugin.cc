@@ -145,6 +145,22 @@ void FirmwarePlugin::guidedModeTakeoff(Vehicle *vehicle, double takeoffAltRel) c
     QGC::showAppMessage(guided_mode_not_supported_by_vehicle);
 }
 
+void FirmwarePlugin::guidedModeOrbit(Vehicle* vehicle, const QGeoCoordinate& centerCoord, double radius,
+                                     double amslAltitude) const
+{
+    if (vehicle->capabilityBits() & MAV_PROTOCOL_CAPABILITY_COMMAND_INT) {
+        vehicle->sendMavCommandInt(vehicle->defaultComponentId(), MAV_CMD_DO_ORBIT, MAV_FRAME_GLOBAL, true,
+                                   static_cast<float>(radius), static_cast<float>(qQNaN()),
+                                   static_cast<float>(ORBIT_YAW_BEHAVIOUR_UNCHANGED), static_cast<float>(qQNaN()),
+                                   centerCoord.latitude(), centerCoord.longitude(), static_cast<float>(amslAltitude));
+    } else {
+        vehicle->sendMavCommand(vehicle->defaultComponentId(), MAV_CMD_DO_ORBIT, true, static_cast<float>(radius),
+                                static_cast<float>(qQNaN()), static_cast<float>(ORBIT_YAW_BEHAVIOUR_UNCHANGED),
+                                static_cast<float>(qQNaN()), static_cast<float>(centerCoord.latitude()),
+                                static_cast<float>(centerCoord.longitude()), static_cast<float>(amslAltitude));
+    }
+}
+
 bool FirmwarePlugin::guidedModeGotoLocation(Vehicle *vehicle, const QGeoCoordinate &gotoCoord, double forwardFlightLoiterRadius) const
 {
     Q_UNUSED(vehicle);

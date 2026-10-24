@@ -2,12 +2,13 @@
 
 #include <QtCore/QDir>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QTemporaryDir>
 #include <QtCore/QTextStream>
 
 #include "KMLDomDocument.h"
+#include "KMLHelper.h"
 #include "KMLSchemaValidator.h"
 #include "ShapeFileHelper.h"
-#include <QtCore/QTemporaryDir>
 
 namespace {
 
@@ -455,3 +456,63 @@ void ShapeTest::_testKMLExportSchemaValidation()
 }
 
 UT_REGISTER_TEST(ShapeTest, TestLabel::Unit, TestLabel::Utilities)
+
+void ShapeTest::_testKMLRouteIgnoresPlacemarksBesidePath()
+{
+    QTemporaryDir tempDir;
+    const QString kmlFile = _writeKmlFile(tempDir.path(), "mixed.kml", R"(<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><LineString><coordinates>44.79,41.71,0 44.80,41.72,0</coordinates></LineString></Placemark>
+  <Placemark><LineString><coordinates>44.81,41.73,0 44.82,41.74,0</coordinates></LineString></Placemark>
+  <Placemark><Point><coordinates>44.85,41.75,0</coordinates></Point></Placemark>
+  <Placemark><Point><coordinates>44.86,41.76,0</coordinates></Point></Placemark>
+</Document></kml>)");
+
+    KMLHelper::Route route;
+    QString errorString;
+    QVERIFY2(KMLHelper::loadRouteFromFile(kmlFile, route, errorString), qPrintable(errorString));
+    QCOMPARE(route.path.count(), 4);
+    QCOMPARE(route.pathCount, 2);
+    QCOMPARE(route.placemarks.count(), 2);
+    QCOMPARE(route.altitude, KMLHelper::Route::Altitude::Ground);
+}
+
+void ShapeTest::_testKMLRouteKeepsAltitudesAboveGround()
+{
+    QTemporaryDir tempDir;
+    const QString kmlFile = _writeKmlFile(tempDir.path(), "relative.kml", R"(<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><LineString><altitudeMode>relativeToGround</altitudeMode>
+    <coordinates>44.79,41.71,80 44.80,41.72,120</coordinates></LineString></Placemark>
+</Document></kml>)");
+
+    KMLHelper::Route route;
+    QString errorString;
+    QVERIFY2(KMLHelper::loadRouteFromFile(kmlFile, route, errorString), qPrintable(errorString));
+    QCOMPARE(route.altitude, KMLHelper::Route::Altitude::AboveGround);
+    QCOMPARE(route.path[1].altitude(), 120.0);
+}
+
+void ShapeTest::_testKMLRouteSimplifiesDenseTrack()
+{
+    const QGeoCoordinate start(41.71, 44.79);
+    QStringList coordinates;
+    for (int i = 0; i <= 300; i++) {
+        const QGeoCoordinate point = (i <= 150)
+                                         ? start.atDistanceAndAzimuth(i * 2.0, 0)
+                                         : start.atDistanceAndAzimuth(300, 0).atDistanceAndAzimuth((i - 150) * 2.0, 90);
+        coordinates.append(
+            QStringLiteral("%1,%2,0").arg(point.longitude(), 0, 'f', 8).arg(point.latitude(), 0, 'f', 8));
+    }
+    QTemporaryDir tempDir;
+    const QString kmlFile = _writeKmlFile(tempDir.path(), "track.kml",
+                                          QStringLiteral(R"(<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Placemark><LineString><coordinates>%1</coordinates></LineString></Placemark></kml>)")
+                                              .arg(coordinates.join(QLatin1Char(' '))));
+
+    KMLHelper::Route route;
+    QString errorString;
+    QVERIFY2(KMLHelper::loadRouteFromFile(kmlFile, route, errorString), qPrintable(errorString));
+    QCOMPARE(route.sourceVertexCount, 301);
+    QCOMPARE(route.path.count(), 3);
+}

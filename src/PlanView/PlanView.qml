@@ -169,6 +169,12 @@ Item {
         }
     }
 
+    function loadPlanFile(file) {
+        _planMasterController.loadFromFile(file)
+        _planMasterController.fitViewportToItems()
+        _missionController.setCurrentPlanViewSeqNum(0, true)
+    }
+
     function insertSimpleItemAfterCurrent(coordinate) {
         var nextIndex = _missionController.currentPlanViewVIIndex + 1
         _missionController.insertSimpleMissionItem(coordinate, nextIndex, true /* makeCurrentItem */)
@@ -228,9 +234,7 @@ Item {
         }
 
         onAcceptedForLoad: (file) => {
-            _planMasterController.loadFromFile(file)
-            _planMasterController.fitViewportToItems()
-            _missionController.setCurrentPlanViewSeqNum(0, true)
+            loadPlanFile(file)
             close()
         }
     }

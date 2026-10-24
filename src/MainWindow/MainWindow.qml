@@ -78,6 +78,7 @@ ApplicationWindow {
         readonly property real      defaultTextWidth:               ScreenTools.defaultFontPixelWidth
         readonly property var       planMasterControllerFlyView:    flyView.planController
         readonly property var       guidedControllerFlyView:        flyView.guidedController
+        readonly property RouteRecorder routeRecorder:              RouteRecorder { }
 
         // Number of QGCTextField's with validation errors. Used to prevent closing panels with validation errors.
         property int                validationErrorCount:           0
@@ -137,6 +138,11 @@ ApplicationWindow {
         flyView.visible = false
         planView.visible = true
         toolDrawer.visible = false
+    }
+
+    function openPlanFile(file) {
+        showPlanView()
+        planView.loadPlanFile(file)
     }
 
     function showFlyView() {

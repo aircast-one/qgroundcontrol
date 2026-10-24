@@ -259,6 +259,14 @@ FlightMap {
         }
     }
 
+    MapPolyline {
+        line.width: 4
+        line.color: "#00e5ff"
+        z:          QGroundControl.zOrderTrajectoryLines + 1
+        visible:    !pipMode && globals.routeRecorder.recording
+        path:       globals.routeRecorder.path
+    }
+
     // Add the vehicles to the map
     MapItemView {
         model: QGroundControl.multiVehicleManager.vehicles
@@ -516,8 +524,8 @@ FlightMap {
             }
         }
 
-        function show(coord) {
-            _mapCircle.radius.rawValue = defaultRadius
+        function show(coord, radius) {
+            _mapCircle.radius.rawValue = radius > 0 ? radius : defaultRadius
             orbitMapCircle.center = coord
             orbitMapCircle.visible = true
         }
@@ -580,7 +588,7 @@ FlightMap {
         sourceItem: MissionItemIndexLabel {
             checked:    true
             index:      -1
-            label:      qsTr("ROI here", "Make this a Region Of Interest")
+            label:      qsTr("Looking here", "The gimbal is looking at this point")
         }
 
         //-- Visibilty controlled by actual state
@@ -642,7 +650,7 @@ FlightMap {
 
                     QGCButton {
                         Layout.fillWidth:   true
-                        text:               qsTr("Cancel ROI")
+                        text:               qsTr("Stop looking")
                         onClicked: {
                             _activeVehicle.stopGuidedModeROI()
                             roiEditDropPanel.close()
@@ -668,7 +676,10 @@ FlightMap {
         DropPanel {
             id: mapClickDropPanel
 
-            property var mapClickCoord
+            property var  mapClickCoord
+            property bool fromVideo:    false
+            property var  _gimbalSettings: QGroundControl.settingsManager.gimbalControllerSettings
+            property real _orbitRadius: orbitMapCircle.defaultRadius
 
             sourceComponent: Component {
                 ColumnLayout {
@@ -700,14 +711,37 @@ FlightMap {
                         visible:            globals.guidedControllerFlyView.showOrbit
                         onClicked: {
                             mapClickDropPanel.close()
-                            orbitMapCircle.show(mapClickCoord)
+                            orbitMapCircle.show(mapClickCoord, mapClickDropPanel._orbitRadius)
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionOrbit, mapClickCoord, orbitMapCircle)
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth:   true
+                        visible:            globals.guidedControllerFlyView.showOrbit
+
+                        QGCButton {
+                            text:       "−"
+                            enabled:    mapClickDropPanel._orbitRadius > 10
+                            onClicked:  mapClickDropPanel._orbitRadius = Math.max(10, mapClickDropPanel._orbitRadius - 10)
+                        }
+
+                        QGCLabel {
+                            Layout.fillWidth:       true
+                            horizontalAlignment:    Text.AlignHCenter
+                            text:                   qsTr("Radius %1").arg(QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnitsString(mapClickDropPanel._orbitRadius, 0))
+                        }
+
+                        QGCButton {
+                            text:       "+"
+                            enabled:    mapClickDropPanel._orbitRadius < 500
+                            onClicked:  mapClickDropPanel._orbitRadius = Math.min(500, mapClickDropPanel._orbitRadius + 10)
                         }
                     }
 
                     QGCButton {
                         Layout.fillWidth:   true
-                        text:               qsTr("ROI at location")
+                        text:               qsTr("Look at this point")
                         visible:            globals.guidedControllerFlyView.showROI
                         onClicked: {
                             mapClickDropPanel.close()
@@ -717,8 +751,18 @@ FlightMap {
 
                     QGCButton {
                         Layout.fillWidth:   true
+                        text:               qsTr("Stop looking")
+                        visible:            globals.guidedControllerFlyView.showROI && _activeVehicle && _activeVehicle.isROIEnabled
+                        onClicked: {
+                            mapClickDropPanel.close()
+                            _activeVehicle.stopGuidedModeROI()
+                        }
+                    }
+
+                    QGCButton {
+                        Layout.fillWidth:   true
                         text:               qsTr("Set home here")
-                        visible:            globals.guidedControllerFlyView.showSetHome
+                        visible:            globals.guidedControllerFlyView.showSetHome && !fromVideo
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionSetHome, mapClickCoord)
@@ -728,7 +772,7 @@ FlightMap {
                     QGCButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Set Estimator Origin")
-                        visible:            globals.guidedControllerFlyView.showSetEstimatorOrigin
+                        visible:            globals.guidedControllerFlyView.showSetEstimatorOrigin && !fromVideo
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionSetEstimatorOrigin, mapClickCoord)
@@ -738,11 +782,19 @@ FlightMap {
                     QGCButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Set Heading")
-                        visible:            globals.guidedControllerFlyView.showChangeHeading
+                        visible:            globals.guidedControllerFlyView.showChangeHeading && !fromVideo
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionChangeHeading, mapClickCoord)
                         }
+                    }
+
+                    QGCLabel {
+                        Layout.fillWidth:       true
+                        Layout.maximumWidth:    ScreenTools.defaultFontPixelWidth * 30
+                        wrapMode:               Text.WordWrap
+                        visible:                fromVideo && _gimbalSettings.cameraHFov.valueEqualsDefault && _gimbalSettings.cameraVFov.valueEqualsDefault
+                        text:                   qsTr("The camera's field of view isn't set, so this spot may be off. Set it in Settings > Gimbal.")
                     }
 
                     ColumnLayout {
@@ -755,19 +807,25 @@ FlightMap {
         }
     }
 
-    onMapClicked: (position) => {
-        if (!globals.guidedControllerFlyView.guidedUIVisible &&
-            (globals.guidedControllerFlyView.showGotoLocation || globals.guidedControllerFlyView.showOrbit ||
-             globals.guidedControllerFlyView.showROI || globals.guidedControllerFlyView.showSetHome ||
-             globals.guidedControllerFlyView.showSetEstimatorOrigin)) {
-
-            position = Qt.point(position.x, position.y)
-            var clickCoord = _root.toCoordinate(position, false /* clipToViewPort */)
-            // For some strange reason using mainWindow in mapToItem doesn't work, so we use globals.parent instead which also gets us mainWindow
-            position = _root.mapToItem(globals.parent, position)
-            var dropPanel = mapClickDropPanelComponent.createObject(mainWindow, { mapClickCoord: clickCoord, clickRect: Qt.rect(position.x, position.y, 0, 0) })
+    function showClickMenu(clickCoord, position, fromVideo) {
+        var guided = globals.guidedControllerFlyView
+        var anyAction = guided.showGotoLocation || guided.showOrbit || guided.showROI ||
+                        (!fromVideo && (guided.showSetHome || guided.showSetEstimatorOrigin))
+        var missionPrompt = guided.confirmDialog.action === guided.actionStartMission ||
+                            guided.confirmDialog.action === guided.actionContinueMission
+        if (anyAction && guided.guidedUIVisible && missionPrompt) {
+            guided.closeAll()
+        }
+        if (!guided.guidedUIVisible && anyAction) {
+            QGroundControl.videoManager.fullScreen = false
+            var dropPanel = mapClickDropPanelComponent.createObject(mainWindow, { mapClickCoord: clickCoord, fromVideo: fromVideo, clickRect: Qt.rect(position.x, position.y, 0, 0) })
             dropPanel.open()
         }
+    }
+
+    onMapClicked: (position) => {
+        position = Qt.point(position.x, position.y)
+        showClickMenu(_root.toCoordinate(position, false), _root.mapToItem(globals.parent, position), false)
     }
 
     MapScale {

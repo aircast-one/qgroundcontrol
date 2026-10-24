@@ -231,6 +231,9 @@ public:
     /// @return true: goto command accepted, false: goto failed (vehicle not moved)
     virtual bool guidedModeGotoLocation(Vehicle *vehicle, const QGeoCoordinate &gotoCoord, double forwardFlightLoiterRadius = 0.0) const;
 
+    virtual void guidedModeOrbit(Vehicle* vehicle, const QGeoCoordinate& centerCoord, double radius,
+                                 double amslAltitude) const;
+
     /// Command vehicle to change altitude
     ///     @param altitudeChange If > 0, go up by amount specified, if < 0, go down by amount specified
     ///     @param pauseVehicle true: pause vehicle prior to altitude change
