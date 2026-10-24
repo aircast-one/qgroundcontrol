@@ -26,23 +26,41 @@ class MapClickMenuTest {
     fun `an orbit sends the point, radius, direction and height above home in that order`() {
         val args = orbitArgs(MapPoint(47.4, 8.5), OrbitChoice(radiusMetres = 30.0, clockwise = false, aboveHomeMetres = 50.0))
         assertEquals(listOf<Any>(47.4, 8.5, 30.0, false, 50.0), args.toList())
-        val feet = orbitDefaults(JSONObject("""{"orbitDefaultRadius":98.4252,"orbitRadiusUnit":"ft","orbitMetresPerUnit":0.3048,"orbitClockwise":true}"""))
-        assertEquals(30.0, radiusMetres("", feet)!!, 1e-3)
-        assertEquals(15.24, radiusMetres("50", feet)!!, 1e-9)
-        assertEquals(null, radiusMetres("wide", feet))
     }
 
     @Test
-    fun `orbit at location opens a default circle on the tapped point that the radius field edits in app units`() {
-        val feet = orbitDefaults(JSONObject("""{"orbitDefaultRadius":98.4252,"orbitRadiusUnit":"ft","orbitMetresPerUnit":0.3048,"orbitClockwise":true}"""))
+    fun `orbit at location opens the core's default circle on the tapped point, stepped within its bounds`() {
+        val feet = orbitDefaults(JSONObject("""{"orbitRadiusMetres":{"default":30.0,"min":10.0,"max":500.0,"step":10.0},"orbitRadiusUnit":"ft","orbitMetresPerUnit":0.3048,"orbitClockwise":true}"""))
         val opened = orbitOpened(MapPoint(47.4, 8.5), feet)
         assertEquals(one.aircast.map.TrackPoint(47.4, 8.5), opened.centre)
-        assertEquals(30.0, opened.radiusMetres, 1e-3)
+        assertEquals(30.0, opened.radiusMetres, 0.0)
         assertTrue(opened.clockwise)
-        val edit = orbitEdit(opened.copy(radiusMetres = 15.24, clockwise = false), feet)
-        assertEquals("50", loiterRadiusField(null, edit))
-        assertEquals(30.48, loiterTyped("100", edit).radiusMetres, 1e-9)
-        assertEquals(one.aircast.map.MINIMUM_CIRCLE_RADIUS_METRES, orbitOpened(MapPoint(47.4, 8.5), orbitDefaults(null)).radiusMetres, 0.0)
+        assertEquals(10.0..500.0, feet.radiusRange)
+        assertEquals(10.0, feet.radiusStep, 0.0)
+        assertEquals(30.0, orbitOpened(MapPoint(47.4, 8.5), orbitDefaults(null)).radiusMetres, 0.0)
+        assertEquals(10.0, orbitOpened(MapPoint(47.4, 8.5), orbitDefaults(JSONObject("""{"orbitRadiusMetres":{"default":2.0,"min":10.0,"max":500.0,"step":10.0}}"""))).radiusMetres, 0.0)
+    }
+
+    @Test
+    fun `the orbit confirm states the radius in the operator's unit as QGC does`() {
+        val metres = orbitDefaults(JSONObject("""{"orbitRadiusUnit":"m","orbitMetresPerUnit":1.0}"""))
+        assertEquals("Orbit the location at a 50 m radius", orbitSentence(50.0, metres))
+        val feet = orbitDefaults(JSONObject("""{"orbitRadiusUnit":"ft","orbitMetresPerUnit":0.3048}"""))
+        assertEquals("Orbit the location at a 98 ft radius", orbitSentence(30.0, feet))
+    }
+
+    @Test
+    fun `a press on the video offers only the actions the core lists for a picture`() {
+        val view = JSONObject(
+            """{"actions":[{"id":"GoTo","label":"Go to location"},{"id":"Orbit","label":"Orbit at location"},""" +
+                """{"id":"Roi","label":"Look at this point"},{"id":"StopLooking","label":"Stop looking"},""" +
+                """{"id":"SetHome","label":"Set home here"},{"id":"Heading","label":"Set Heading"}]}""",
+        )
+        assertEquals(
+            listOf("GoTo", "Orbit", "Roi", "StopLooking"),
+            offeredActions(view, listOf("GoTo", "Orbit", "Roi", "StopLooking")).map { it.id },
+        )
+        assertEquals(6, offeredActions(view, null).size)
     }
 
     @Test

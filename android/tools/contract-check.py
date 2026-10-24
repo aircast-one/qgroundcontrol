@@ -180,6 +180,7 @@ def head_keys(root):
 
 ACCEPTED_ON = {
     ("view.gcsPosition", "sources"): "the table of every position source; the map reads usable, heading and the coordinate, and this head has no source picker",
+    ("view.mapClick", "orbitDefaultRadius"): "the orbit default in the operator's unit; MapClickMenu.kt reads orbitRadiusMetres, the same default in metres beside the stepper's bounds",
     ("view.track", "recording"): "the track records while the vehicle is armed; the map draws the points it is given and shows no recording badge",
     ("view.video", "connecting"): "the macOS head's per-camera spinner; this head reads each camera's status token from view.cameras",
     ("view.video", "recording"): "the shutter watches video.recording itself (CameraControlLayer VIDEO_RECORDING_STATE)",

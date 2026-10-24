@@ -40,7 +40,7 @@ fun installRoiLayer(style: Style) {
     )
     style.addLayer(
         SymbolLayer(ROI_LABEL_LAYER, ROI_SOURCE).withProperties(
-            PropertyFactory.textField("ROI here"),
+            PropertyFactory.textField("Looking here"),
             PropertyFactory.textSize(12f),
             PropertyFactory.textColor("#FFFFFF"),
             PropertyFactory.textOffset(arrayOf(0f, 1.6f)),
