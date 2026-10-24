@@ -16,6 +16,10 @@ required-features = ["native-host"]
 name = "synthetic_shot"
 required-features = ["synthetic"]
 
+[[example]]
+name = "virtual_camera"
+required-features = ["synthetic"]
+
 [features]
 native-host = []
 jni-host = ["native-host", "dep:jni"]
