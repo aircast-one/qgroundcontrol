@@ -250,6 +250,7 @@ pub mod replay;
 pub mod resumemission;
 pub mod roads;
 pub mod router;
+pub mod routerec;
 pub mod rtcm;
 pub mod rtkbase;
 #[cfg(test)]

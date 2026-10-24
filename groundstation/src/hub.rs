@@ -435,6 +435,7 @@ pub struct Vehicle {
     pub roi_enabled: bool,
     pub mode_ack: Option<(u8, u64)>,
     pub roi_coord: Option<(f64, f64, f64)>,
+    roi_frame: u8,
     pub comm_lost_enabled: bool,
     gimbal_rate_due: Option<u64>,
     pub gimbals: crate::gimbal::Gimbals,
@@ -709,6 +710,7 @@ impl Vehicle {
             roi_enabled: false,
             mode_ack: None,
             roi_coord: None,
+            roi_frame: guidedcmd::FRAME_GLOBAL_RELATIVE_ALT,
             comm_lost_enabled: true,
             gimbal_rate_due: None,
             gimbals: crate::gimbal::Gimbals::default(),
@@ -4457,6 +4459,11 @@ impl Vehicle {
                         |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
                     self.roi_coord =
                         Some((number("latitude"), number("longitude"), number("altitude")));
+                    self.roi_frame = action
+                        .get("frame")
+                        .and_then(Value::as_u64)
+                        .and_then(|f| u8::try_from(f).ok())
+                        .unwrap_or(guidedcmd::FRAME_GLOBAL);
                 }
                 if action.get("action").and_then(Value::as_str) == Some("markTarget") {
                     let number =
@@ -6576,6 +6583,40 @@ impl Vehicle {
     fn clear_trigger_points(&mut self) {
         self.image_captured_seen = false;
         self.trigger_points.clear();
+    }
+
+    pub fn look_at_amsl(&self) -> Option<(f64, f64, f64)> {
+        let finite = |value: f64| if value.is_finite() { value } else { 0.0 };
+        self.roi_coord
+            .filter(|_| self.roi_enabled)
+            .map(|(latitude, longitude, altitude)| {
+                let base = match self.roi_frame {
+                    guidedcmd::FRAME_GLOBAL => 0.0,
+                    _ => finite(self.home.map_or(f64::NAN, |home| home.2)),
+                };
+                (latitude, longitude, base + finite(altitude))
+            })
+    }
+
+    pub fn route_observation(&self) -> crate::routerec::Observed {
+        let gimbal = self
+            .gimbals
+            .active()
+            .and_then(|pair| self.gimbals.get(pair))
+            .and_then(|gimbal| gimbal.attitude)
+            .map(|attitude| (f64::from(attitude.pitch), f64::from(attitude.body_yaw)));
+        crate::routerec::Observed {
+            flying: self.flying,
+            sample: self
+                .facts
+                .coordinate
+                .filter(|(_, _, altitude)| altitude.is_finite())
+                .map(|position| crate::routerec::Sample {
+                    position,
+                    gimbal,
+                    look_at: self.look_at_amsl(),
+                }),
+        }
     }
 
     pub fn orbit_active(&self, now_ms: u64) -> bool {
@@ -12086,6 +12127,23 @@ mod tests {
             0,
         );
         assert!(hub.active().unwrap().roi_enabled);
+        hub.vehicles.get_mut(&1).unwrap().home = Some((47.0, 8.0, 500.0));
+        assert_eq!(
+            hub.active().unwrap().look_at_amsl(),
+            Some((47.4, 8.5, 500.0)),
+            "a look-at sent above home is recorded above sea level, as RouteRecorder::_lookAtChanged adds the home altitude"
+        );
+        hub.guided(None, &json!({ "action": "roi", "latitude": 47.4, "longitude": 8.5, "altitude": 610.0, "frame": 0 }), 2).unwrap();
+        assert_eq!(
+            hub.active().unwrap().look_at_amsl(),
+            Some((47.4, 8.5, 610.0))
+        );
+        hub.vehicles.get_mut(&1).unwrap().facts.coordinate = Some((47.1, 8.1, 650.0));
+        let observed = hub.active().unwrap().route_observation();
+        assert_eq!(
+            observed.sample.map(|s| (s.position, s.look_at)),
+            Some(((47.1, 8.1, 650.0), Some((47.4, 8.5, 610.0))))
+        );
         hub.on_frame(
             origin(0),
             &header,

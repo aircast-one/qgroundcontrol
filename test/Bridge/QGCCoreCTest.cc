@@ -1604,6 +1604,7 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
         { QStringLiteral("view.syntheticView"), QStringLiteral("places a camera at the vehicle, and the test runs with none, so it only ever says unavailable") },
         { QStringLiteral("view.flasher"), QStringLiteral("lists the card readers plugged into the machine and the releases on the download server, which differ from one machine and day to the next") },
         { QStringLiteral("view.contract"), QStringLiteral("enumerates VIEWS and their enumerations, so recording its shape pins the fixture against itself") },
+        { QStringLiteral("view.routeRecorder"), QStringLiteral("records the flown route of a core-hosted vehicle, and coreLinks is off in the recorder, so it only ever says nothing is recording") },
     };
 
     QSet<QString> recorded;

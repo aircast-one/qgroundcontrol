@@ -1254,6 +1254,10 @@ pub fn parameter_save_path() -> Option<String> {
     save_child("Parameters")
 }
 
+pub fn mission_save_path() -> Option<String> {
+    save_child("Missions")
+}
+
 pub fn video_save_path() -> Option<String> {
     save_child("Video")
 }
