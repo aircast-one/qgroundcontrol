@@ -101,6 +101,36 @@ final class PilotSettingsTests: XCTestCase {
         XCTAssertTrue(pilotSearchHits("  ").isEmpty)
     }
 
+    func testArduCopterSpeedLimitsReadInMetresPerSecondUnderBoth45CentimetreAnd47MetreNames() {
+        let limits = pilotSettings(.Control)
+        let names = ["LOIT_SPEED", "LOIT_SPEED_MS", "PILOT_SPEED_UP", "PILOT_SPD_UP", "PILOT_SPEED_DN", "PILOT_SPD_DN"]
+        let asked = names.map { name in limits.first { $0.parameters.contains(name) }.map { parameterPath(name, $0.quantity) } }
+        XCTAssertEqual(asked, names.map { "vehicle.parameterManager.getParameter(-1,\($0),speed)" })
+    }
+
+    func testAPilotRowWritesThroughTheConvertingPathItWasReadFromSoMetresPerSecondLandAsCentimetres() {
+        let read = JSON.parse(#"{"kind":"fact","name":"LOIT_SPEED","units":"m/s","valueString":"10","value":10}"#)
+        let horizontal = pilotSettings(.Control).first { $0.label == "Max horizontal speed" }!
+        let fact = firstReported(horizontal) { name in name == "LOIT_SPEED" ? factFromParameter(name, read, "speed") : nil }
+        XCTAssertEqual(fact?.path, "vehicle.parameterManager.getParameter(-1,LOIT_SPEED,speed)")
+        XCTAssertEqual(fact?.units, "m/s")
+    }
+
+    func testEveryLimitInAUnitReadsInThePilotsUnitAndFailsafeChoicesStayRaw() {
+        let quantities = Dictionary(uniqueKeysWithValues: (pilotSettings(.Safety) + pilotSettings(.Control)).map { ($0.label, $0.quantity) })
+        XCTAssertEqual(quantities, [
+            "Return-to-home altitude": "altitude",
+            "Max altitude": "altitude",
+            "Max distance": "distance",
+            "Signal lost": nil,
+            "Remote controller lost": nil,
+            "Low battery": nil,
+            "Max horizontal speed": "speed",
+            "Max climb speed": "speed",
+            "Max descent speed": "speed",
+        ])
+    }
+
     func testOfflineSafetyStillListsItsSectionsInDjisOrderSoThePilotKnowsTheyExist() {
         XCTAssertEqual(pilotSections(pilotSettings(.Safety)).map(\.key), ["Return to home", "Flight protection", "If something goes wrong"])
     }
