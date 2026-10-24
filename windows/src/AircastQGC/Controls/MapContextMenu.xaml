@@ -53,6 +53,13 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+                        <TextBlock x:Name="Caution"
+                                   Visibility="Collapsed"
+                                   Margin="16,0,16,12"
+                                   FontFamily="{ThemeResource AppFontFamily}"
+                                   FontSize="{StaticResource FontSizeCaption}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
 
                     <TextBlock x:Name="Refusal"
