@@ -1,7 +1,8 @@
-import { type ReactNode, useState } from 'react';
+import type { ReactNode } from 'react';
 import { FilledTonalButton, OutlinedTextField, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
 import { type CameraView, type ServerDest, type ShareLink, SETUP_SECTIONS, cloudflareTarget, openedSection, parseCameras } from '@/ui/DeviceCameras';
+import { useDeviceDraft } from '@/ui/DeviceDraft';
 import { ActionButton, CopyRow, DeviceColumns, DeviceForm, DeviceNotice, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import { LinkedNoticeView, PartDisclosure } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
@@ -49,7 +50,6 @@ const CameraSetup = ({ camera, opened, onOpen, onClose }: { camera: CameraView; 
               <LinkedNoticeView notice={setup.radio.notice} onOpen={onOpen} />
               {setup.radio.form ? (
                 <DeviceForm
-                  key={setup.radio.address}
                   method="PUT"
                   path={`/api/streams/${name}/wfb`}
                   submit="Save"
@@ -124,7 +124,8 @@ const CameraSetup = ({ camera, opened, onOpen, onClose }: { camera: CameraView; 
                 checked={setup.detect.on}
                 on={{ method: 'PUT', path: `/api/streams/${name}/detect` }}
                 off={{ method: 'DELETE', path: `/api/streams/${name}/detect` }}
-                success={setup.detect.on ? `Detection turned off for ${name}.` : `Detection turned on for ${name}.`}
+                success={`Detection turned on for ${name}.`}
+                offSuccess={`Detection turned off for ${name}.`}
               />
               <DeviceText text="Draw object-detection boxes over this camera. The video is untouched — boxes are sent as data and drawn by viewers, so there's no added latency. Needs the detection sidecar running on the device." />
               {setup.detect.model !== '' ? (
@@ -143,7 +144,8 @@ const CameraSetup = ({ camera, opened, onOpen, onClose }: { camera: CameraView; 
                 checked={setup.record.on}
                 on={{ method: 'PUT', path: `/api/streams/${name}/record` }}
                 off={{ method: 'DELETE', path: `/api/streams/${name}/record` }}
-                success={setup.record.on ? `Recording turned off for ${name} — download it under Settings → Recordings.` : `Recording turned on for ${name}.`}
+                success={`Recording turned on for ${name}.`}
+                offSuccess={`Recording turned off for ${name} — download it under Settings → Recordings.`}
               />
               <DeviceText text="Recorded in ten-minute segments to this device's storage, and playable as soon as a segment closes. The oldest go when the size limit is reached, so recording can never fill the card and take the device down with it." />
               {setup.record.full ? (
@@ -272,7 +274,6 @@ const ServerBody = ({ camera, dest, onOpen }: { camera: CameraView; dest: Server
       {dest.kind === 'whip' ? (
         <>
           <DeviceForm
-            key={dest.url}
             method="PUT"
             path={path}
             submit="Save"
@@ -297,7 +298,6 @@ const ServerBody = ({ camera, dest, onOpen }: { camera: CameraView; dest: Server
       ) : null}
       {dest.kind === 'livekit' ? (
         <DeviceForm
-          key={`${dest.url}|${dest.key}|${dest.secret}`}
           method="PUT"
           path={path}
           submit="Save"
@@ -323,7 +323,7 @@ const ServerBody = ({ camera, dest, onOpen }: { camera: CameraView; dest: Server
           ]}
         />
       ) : null}
-      {dest.kind === 'cloudflare' ? <CloudflareForm key={`${dest.app}|${dest.track}|${dest.secret}`} name={name} dest={dest} /> : null}
+      {dest.kind === 'cloudflare' ? <CloudflareForm name={name} dest={dest} /> : null}
       {dest.on ? (
         <Row>
           <ActionButton
@@ -359,10 +359,15 @@ const ServerBody = ({ camera, dest, onOpen }: { camera: CameraView; dest: Server
 
 const CloudflareForm = ({ name, dest }: { name: string; dest: ServerDest }) => {
   const action = useDeviceAction();
-  const [app, setApp] = useState(dest.app);
-  const [secret, setSecret] = useState(dest.secret);
-  const [track, setTrack] = useState(dest.track);
+  const draft = useDeviceDraft({ app: dest.app, secret: dest.secret, track: dest.track });
+  const app = draft.values.app ?? dest.app;
+  const secret = draft.values.secret ?? dest.secret;
+  const track = draft.values.track ?? dest.track;
   const urlRefused = action.refusal?.field === 'url';
+  const save = () =>
+    void action
+      .run({ method: 'PUT', path: `/api/stream/sfu/${name}/cloudflare`, body: { url: cloudflareTarget(app, track), secret } }, `Publishing ${name} to Cloudflare.`)
+      .then((done) => (done ? draft.accept({ app, secret, track }) : undefined));
   return (
     <div className="flex flex-col gap-3 px-list py-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -378,7 +383,7 @@ const CloudflareForm = ({ name, dest }: { name: string; dest: ServerDest }) => {
         autoCorrect={false}
         isError={urlRefused}
         supportingText={urlRefused ? action.refusal?.message : undefined}
-        onValueChange={setApp}
+        onValueChange={(value) => draft.edit('app', value)}
       />
       <OutlinedTextField
         label="App secret"
@@ -387,30 +392,18 @@ const CloudflareForm = ({ name, dest }: { name: string; dest: ServerDest }) => {
         keyboardType="password"
         isError={action.refusal?.field === 'secret'}
         supportingText={action.refusal?.field === 'secret' ? action.refusal.message : undefined}
-        onValueChange={setSecret}
+        onValueChange={(value) => draft.edit('secret', value)}
       />
       <OutlinedTextField
         label="Track name"
         value={track}
         autoCorrect={false}
         supportingText="Not from Cloudflare — a name you pick. Viewers subscribe to this stream by this name. The camera name works fine."
-        onValueChange={setTrack}
+        onValueChange={(value) => draft.edit('track', value)}
       />
       <RefusalText refusal={action.refusal !== null && (action.refusal.field === 'url' || action.refusal.field === 'secret') ? null : action.refusal} field={action.refusal?.field ?? ''} />
       <div>
-        <FilledTonalButton
-          enabled={!action.busy}
-          onClick={() =>
-            void action.run(
-              {
-                method: 'PUT',
-                path: `/api/stream/sfu/${name}/cloudflare`,
-                body: { url: cloudflareTarget(app, track), secret },
-              },
-              `Publishing ${name} to Cloudflare.`,
-            )
-          }
-        >
+        <FilledTonalButton enabled={!action.busy} onClick={save}>
           Save
         </FilledTonalButton>
       </div>

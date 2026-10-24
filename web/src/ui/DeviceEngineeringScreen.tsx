@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, RadioButton, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
+import { useDeviceDraft } from '@/ui/DeviceDraft';
 import { ActionButton, ConfirmDialog, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, SecretField, useDeviceAction } from '@/ui/DeviceKit';
 import { ButtonRow, StatusLine } from '@/ui/DeviceKitSettings';
-import { type DiagnosticsSettings, type EngineeringView, type PublishSignIn, modeNamed, parseEngineering, shownFields, signInBody, signInKey } from '@/ui/DeviceEngineering';
+import { type DiagnosticsSettings, type EngineeringView, type PublishSignIn, modeNamed, parseEngineering, shownFields, signInBody, signInValues } from '@/ui/DeviceEngineering';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
@@ -70,20 +71,29 @@ const PublishSection = ({ publish, onOpen }: { publish: PublishSignIn; onOpen: (
       <TextButton onClick={() => onOpen('/streaming')}>Choose where cameras publish</TextButton>
     </ButtonRow>
     <DeviceDisclosure title="Advanced · sign-in credentials" summary="How this device signs in to video servers.">
-      <SignInEditor key={signInKey(publish)} publish={publish} />
+      <SignInEditor publish={publish} />
     </DeviceDisclosure>
   </DeviceSection>
 );
 
 const SignInEditor = ({ publish }: { publish: PublishSignIn }) => {
   const action = useDeviceAction();
-  const [mode, setMode] = useState(publish.mode);
-  const [edits, setEdits] = useState<Readonly<Record<string, string>>>({});
+  const chosen = useDeviceDraft({ mode: publish.mode });
+  const edits = useDeviceDraft(signInValues(publish));
   const [asking, setAsking] = useState(false);
+  const mode = chosen.values.mode ?? publish.mode;
+  const setMode = (value: string) => chosen.edit('mode', value);
   const picked = modeNamed(publish, mode);
   const dirty = mode !== publish.mode;
   const confirm = dirty ? (picked?.confirm ?? '') : '';
-  const save = () => void action.run({ method: 'PUT', path: '/api/stream/sfu/oauth', body: signInBody(publish, mode, edits) }, 'Publishing sign-in saved.');
+  const save = () => {
+    const body = signInBody(publish, mode, edits.values);
+    void action.run({ method: 'PUT', path: '/api/stream/sfu/oauth', body }, 'Publishing sign-in saved.').then((done) => {
+      if (!done) return;
+      chosen.accept({ mode });
+      edits.accept(body);
+    });
+  };
   return (
     <div className="flex flex-col gap-3 px-list py-2">
       <div role="radiogroup" aria-label="Sign-in method" className="flex flex-col gap-2">
@@ -114,24 +124,24 @@ const SignInEditor = ({ publish }: { publish: PublishSignIn }) => {
           <SecretField
             key={field.name}
             label={field.label}
-            value={edits[field.name] ?? field.value}
+            value={edits.values[field.name] ?? field.value}
             placeholder={field.placeholder}
             isError={action.refusal?.field === field.name}
             supportingText={action.refusal?.field === field.name ? action.refusal.message : undefined}
-            onValueChange={(value) => setEdits({ ...edits, [field.name]: value })}
+            onValueChange={(value) => edits.edit(field.name, value)}
           />
         ) : (
           <OutlinedTextField
             key={field.name}
             label={field.label}
             ariaLabel={field.label}
-            value={edits[field.name] ?? field.value}
+            value={edits.values[field.name] ?? field.value}
             placeholder={field.placeholder}
             keyboardType="uri"
             autoCorrect={false}
             isError={action.refusal?.field === field.name}
             supportingText={action.refusal?.field === field.name ? action.refusal.message : undefined}
-            onValueChange={(value) => setEdits({ ...edits, [field.name]: value })}
+            onValueChange={(value) => edits.edit(field.name, value)}
           />
         ),
       )}
@@ -163,7 +173,7 @@ const SignInEditor = ({ publish }: { publish: PublishSignIn }) => {
 const DiagnosticsSection = ({ diagnostics }: { diagnostics: DiagnosticsSettings }) => (
   <DeviceSection title="Remote diagnostics" badge={diagnostics.status}>
     <DeviceText text={diagnostics.hint} />
-    <DiagnosticsForm key={`${diagnostics.endpoint}|${diagnostics.token}`} diagnostics={diagnostics} />
+    <DiagnosticsForm diagnostics={diagnostics} />
     <DeviceSwitchRow
       title="Stream this device's logs"
       checked={diagnostics.streaming}
@@ -181,9 +191,11 @@ const DiagnosticsSection = ({ diagnostics }: { diagnostics: DiagnosticsSettings 
 
 const DiagnosticsForm = ({ diagnostics }: { diagnostics: DiagnosticsSettings }) => {
   const action = useDeviceAction();
-  const [endpoint, setEndpoint] = useState(diagnostics.endpoint);
-  const [token, setToken] = useState(diagnostics.token);
+  const draft = useDeviceDraft({ endpoint: diagnostics.endpoint, token: diagnostics.token });
+  const endpoint = draft.values.endpoint ?? diagnostics.endpoint;
+  const token = draft.values.token ?? diagnostics.token;
   const refused = (field: string) => action.refusal?.field === field;
+  const save = () => void action.run({ method: 'POST', path: '/api/diagnostics/config', body: { endpoint, token } }, 'Diagnostics endpoint saved.').then((done) => (done ? draft.accept({ endpoint, token }) : undefined));
   return (
     <div className="flex flex-col gap-3 px-list py-2" role="group" aria-label="Diagnostics endpoint">
       <OutlinedTextField
@@ -195,7 +207,7 @@ const DiagnosticsForm = ({ diagnostics }: { diagnostics: DiagnosticsSettings }) 
         autoCorrect={false}
         isError={refused('endpoint')}
         supportingText={refused('endpoint') ? action.refusal?.message : undefined}
-        onValueChange={setEndpoint}
+        onValueChange={(value) => draft.edit('endpoint', value)}
       />
       <SecretField
         label={diagnostics.tokenLabel}
@@ -203,14 +215,14 @@ const DiagnosticsForm = ({ diagnostics }: { diagnostics: DiagnosticsSettings }) 
         placeholder="none"
         isError={refused('token')}
         supportingText={refused('token') ? action.refusal?.message : undefined}
-        onValueChange={setToken}
+        onValueChange={(value) => draft.edit('token', value)}
       />
       {action.refusal !== null && !refused('endpoint') && !refused('token') ? <RefusalText refusal={action.refusal} field={action.refusal.field} /> : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>
           Stored on the device only.
         </Text>
-        <FilledTonalButton enabled={!action.busy} onClick={() => void action.run({ method: 'POST', path: '/api/diagnostics/config', body: { endpoint, token } }, 'Diagnostics endpoint saved.')}>
+        <FilledTonalButton enabled={!action.busy} onClick={save}>
           Save
         </FilledTonalButton>
       </div>

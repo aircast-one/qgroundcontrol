@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { useProduceState } from '@/kotlin/Compose';
 import { FilledTonalButton, IconButton, OutlinedTextField, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
+import { useDeviceDraft } from '@/ui/DeviceDraft';
 import { CopyRow, DeviceBadgeText, DeviceColumns, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
@@ -64,7 +64,7 @@ export const TelemetryScreen = (_: DeviceScreenProps) => {
       right={
         <>
           <DeviceSection title="MAVLink settings">
-            <MavlinkEditor key={`${view.settings.endpoints}|${view.settings.baud}`} view={view} />
+            <MavlinkEditor view={view} />
           </DeviceSection>
           {view.gimbal !== null ? <GimbalSection gimbal={view.gimbal} /> : null}
         </>
@@ -74,16 +74,21 @@ export const TelemetryScreen = (_: DeviceScreenProps) => {
 };
 
 const MavlinkEditor = ({ view }: { view: TelemetryView }) => {
-  const [typed, setTyped] = useState<readonly EndpointRow[] | null>(null);
-  const [baud, setBaud] = useState(view.settings.baud);
+  const stored = useProduceState<EndpointEditor | null>(null, [view.settings.endpoints], async (set) => set(await endpointEditor(view.schemes, null, view.settings.endpoints)));
+  const typed = useDeviceDraft<readonly EndpointRow[] | null>({ rows: stored?.rows.map((it) => it.row) ?? null });
+  const typedBaud = useDeviceDraft({ baud: view.settings.baud });
   const action = useDeviceAction();
-  const editor = useProduceState<EndpointEditor | null>(null, [typed], async (set) => set(await endpointEditor(view.schemes, typed, view.settings.endpoints)));
-  if (editor === null) return null;
-  const rows = typed ?? editor.rows.map((it) => it.row);
-  const change = (index: number, next: EndpointRow) => setTyped(rows.map((row, at) => (at === index ? next : row)));
+  const rows = typed.values.rows ?? null;
+  const baud = typedBaud.values.baud ?? view.settings.baud;
+  const editor = useProduceState<EndpointEditor | null>(null, [JSON.stringify(rows)], async (set) => set(rows === null ? null : await endpointEditor(view.schemes, rows, view.settings.endpoints)));
+  if (rows === null || editor === null) return null;
+  const setRows = (next: readonly EndpointRow[]) => typed.edit('rows', next);
+  const change = (index: number, next: EndpointRow) => setRows(rows.map((row, at) => (at === index ? next : row)));
   const save = async () => {
     const saved = await endpointEditor(view.schemes, rows, view.settings.endpoints);
-    return saved === null ? false : action.run({ method: 'PUT', path: '/api/telemetry/config', body: { endpoints: saved.endpoints, baud } }, 'MAVLink settings applied.');
+    if (saved === null || !(await action.run({ method: 'PUT', path: '/api/telemetry/config', body: { endpoints: saved.endpoints, baud } }, 'MAVLink settings applied.'))) return;
+    typed.accept({ rows });
+    typedBaud.accept({ baud });
   };
   return (
     <div className="flex flex-col gap-3 px-list py-2">
@@ -94,11 +99,11 @@ const MavlinkEditor = ({ view }: { view: TelemetryView }) => {
           row={row}
           shown={editor.rows[index] ?? editor.blank}
           onChange={(next) => change(index, next)}
-          onRemove={() => setTyped(rows.filter((_, at) => at !== index))}
+          onRemove={() => setRows(rows.filter((_, at) => at !== index))}
         />
       ))}
       <div>
-        <TextButton onClick={() => setTyped([...rows, editor.blank.row])}>+ Add endpoint</TextButton>
+        <TextButton onClick={() => setRows([...rows, editor.blank.row])}>+ Add endpoint</TextButton>
       </div>
       <OutlinedTextField
         label="Serial baud"
@@ -108,7 +113,7 @@ const MavlinkEditor = ({ view }: { view: TelemetryView }) => {
         className="max-w-md"
         isError={action.refusal?.field === 'baud'}
         supportingText={action.refusal?.field === 'baud' ? action.refusal.message : 'The baud only matters for a serial flight controller — USB autopilots ignore it, Betaflight ships at 115200.'}
-        onValueChange={setBaud}
+        onValueChange={(value) => typedBaud.edit('baud', value)}
       />
       <Text typography="bodySmall" color={md('onSurfaceVariant')}>
         Takes effect on save — no reboot.
@@ -160,7 +165,6 @@ const GimbalSection = ({ gimbal }: { gimbal: GimbalSettings }) => (
   <DeviceSection title={gimbal.title} badge={gimbal.status}>
     <DeviceText text={gimbal.about} />
     <DeviceForm
-      key={`${gimbal.vendor}|${gimbal.model}|${gimbal.cameraAddr}|${gimbal.mavlinkAddr}`}
       method="PUT"
       path="/api/gimbal/config"
       submit="Save"

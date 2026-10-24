@@ -121,7 +121,8 @@ const CameraTile = ({ camera, onPick }: { camera: CameraView; onPick: () => void
         checked={camera.recording}
         on={{ method: 'PUT', path: `/api/streams/${camera.name}/record` }}
         off={{ method: 'DELETE', path: `/api/streams/${camera.name}/record` }}
-        success={camera.recording ? `Recording turned off for ${camera.name} — download it under Settings → Recordings.` : `Recording turned on for ${camera.name}.`}
+        success={`Recording turned on for ${camera.name}.`}
+        offSuccess={`Recording turned off for ${camera.name} — download it under Settings → Recordings.`}
       />
     </div>
   </section>

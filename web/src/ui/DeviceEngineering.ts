@@ -108,4 +108,4 @@ export const signInBody = (publish: PublishSignIn, value: string, edits: Readonl
   return Object.fromEntries(publish.fields.map((field) => [field.name, clears.includes(field.name) ? '' : (edits[field.name] ?? field.value)]));
 };
 
-export const signInKey = (publish: PublishSignIn): string => [publish.mode, ...publish.fields.map((field) => field.value)].join('|');
+export const signInValues = (publish: PublishSignIn): Readonly<Record<string, string>> => Object.fromEntries(publish.fields.map((field) => [field.name, field.value]));

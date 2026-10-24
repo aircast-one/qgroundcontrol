@@ -1,7 +1,8 @@
-import { type ReactNode, useState } from 'react';
+import type { ReactNode } from 'react';
 import { FilledTonalButton, IconButton, LinearProgressIndicator, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
+import { useDeviceDraft } from '@/ui/DeviceDraft';
 import { ActionButton, type DeviceBadge, DeviceBadgeText, DeviceChart, DeviceColumns, DeviceDisclosure, DeviceFact, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceSwitchRow, DeviceText, type DeviceOption, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
 import { type ShapedField, ShapedForm } from '@/ui/DeviceKitForms';
 import {
@@ -194,7 +195,6 @@ const ModemSection = ({ modem }: { modem: ModemCard }) => (
     {modem.sim !== null ? (
       <DeviceDisclosure title="SIM & APN" summary={modem.sim.summary}>
         <DeviceForm
-          key={`${modem.sim.apn}|${modem.sim.metered}`}
           method="PUT"
           path="/api/network/cellular"
           submit="Save"
@@ -234,7 +234,6 @@ const StarlinkSection = ({ starlink }: { starlink: StarlinkCard }) => (
       <DeviceText text="The network address of the Starlink dish. Leave the default unless the dish is reached at a different address on this device's network. Port 9200 is assumed if you leave it off." />
       {starlink.address.defaultFirst ? <UseDefaultAddress fallback={starlink.address.fallback} /> : null}
       <DeviceForm
-        key={starlink.address.value}
         method="PUT"
         path="/api/starlink/config"
         submit="Save"
@@ -264,7 +263,8 @@ const DemoDish = ({ demo }: { demo: StarlinkDemo }) => {
         checked={demo.on}
         on={{ method: 'POST', path: '/api/starlink/demo', body: { condition: 'healthy' } }}
         off={{ method: 'POST', path: '/api/starlink/demo', body: { condition: 'off' } }}
-        success={demo.on ? 'Demo dish off.' : 'Demo dish on — simulated, not a real dish.'}
+        success="Demo dish on — simulated, not a real dish."
+        offSuccess="Demo dish off."
       />
       {demo.on ? (
         <div className="px-list py-2">
@@ -290,11 +290,8 @@ const ipv4Fields = (methods: readonly DeviceOption[], ipv4: IPv4Settings): reado
   { name: 'dns', label: 'DNS', value: ipv4.dns, placeholder: '8.8.8.8, 1.1.1.1', keyboard: 'uri' },
 ];
 
-const ipv4Key = (ipv4: IPv4Settings): string => [ipv4.method, ipv4.metric, ipv4.address, ipv4.gateway, ipv4.dns].join('|');
-
 const RenameForm = ({ uuid, name }: { uuid: string; name: string }) => (
   <DeviceForm
-    key={name}
     method="PUT"
     path={`/api/network/connections/${uuid}/name`}
     submit="Rename"
@@ -376,7 +373,6 @@ const LinkRow = ({ link, methods }: { link: NetLink; methods: readonly DeviceOpt
     <DeviceDisclosure title={link.name} summary={linkSummary(link)}>
       <div role="group" aria-label={link.name} className="flex flex-col">
         <ShapedForm
-          key={ipv4Key(link.editor.ipv4)}
           method="PUT"
           path={`/api/network/interfaces/${link.editor.iface}`}
           submit="Save"
@@ -415,7 +411,6 @@ const SavedRow = ({ profile, methods }: { profile: SavedProfile; methods: readon
     <div role="group" aria-label={profile.name} className="flex flex-col">
       <RenameForm uuid={profile.uuid} name={profile.name} />
       <ShapedForm
-        key={ipv4Key(profile.ipv4)}
         method="PUT"
         path={`/api/network/connections/${profile.uuid}/ipv4`}
         submit="Save"
@@ -448,7 +443,6 @@ const DataSection = ({ data }: { data: DataCard }) => (
     {data.gauge !== null ? <Gauge gauge={data.gauge} /> : <DeviceNotice notice={{ level: DeviceLevel.Neutral, text: 'No usage recorded yet — counters accumulate as data flows.' }} />}
     <DeviceDisclosure title="Data caps & warnings" summary={data.budget.summary}>
       <DeviceForm
-        key={`${data.budget.monthlyCapGB}|${data.budget.flightCapMB}|${data.budget.warnPercent}`}
         method="PUT"
         path="/api/usage/budget"
         submit="Save"
@@ -593,7 +587,6 @@ export const TailscaleSection = ({ tailscale }: { tailscale: TailscaleCard }) =>
 const ControlServer = ({ control }: { control: TailscaleControl }) => (
   <DeviceDisclosure title={control.title} initiallyOpen={control.open}>
     <DeviceForm
-      key={`${control.server}|${control.authKeySet}`}
       method="PUT"
       path="/api/tailscale/control"
       submit="Save"
@@ -651,7 +644,8 @@ const RelaySection = ({ relay }: { relay: RelayCard }) => (
         checked={relay.on}
         on={{ method: 'PUT', path: '/api/stream/webrtc-mode', body: { relay: 'true' } }}
         off={{ method: 'PUT', path: '/api/stream/webrtc-mode', body: { relay: 'false' } }}
-        success={relay.on ? 'Remote video goes over Tailscale again.' : 'Remote video now goes through your relay.'}
+        success="Remote video now goes through your relay."
+        offSuccess="Remote video goes over Tailscale again."
       />
     ) : (
       <div className="flex items-center gap-4 px-list py-3">
@@ -665,7 +659,7 @@ const RelaySection = ({ relay }: { relay: RelayCard }) => (
       </div>
     )}
     <DeviceNotice notice={relay.notice} />
-    <IceEditor key={JSON.stringify(relay.servers)} servers={relay.servers} />
+    <IceEditor servers={relay.servers} />
     <DeviceDisclosure title="Technical details">
       <DeviceText text="Off (default) advertises the tailscale 100.x and LAN host candidates. On stops advertising the tailscale host candidate and routes WebRTC media through the configured STUN/TURN ICE servers over UDP, so symmetric-CGNAT sessions on cellular relay over UDP instead of falling back to Tailscale DERP (TCP). Same-LAN viewers still use the direct LAN candidate." />
     </DeviceDisclosure>
@@ -673,12 +667,15 @@ const RelaySection = ({ relay }: { relay: RelayCard }) => (
 );
 
 const IceEditor = ({ servers }: { servers: readonly IceServer[] }) => {
-  const [rows, setRows] = useState(() => iceRows(servers));
+  const draft = useDeviceDraft({ rows: iceRows(servers) });
+  const rows = draft.values.rows ?? iceRows(servers);
+  const setRows = (next: readonly IceServer[]) => draft.edit('rows', next);
   const action = useDeviceAction();
   const change = (index: number, next: IceServer) => setRows(rows.map((row, at) => (at === index ? next : row)));
   const save = async () => {
-    const servers = await iceServerLines(rows);
-    return servers === null ? false : action.run({ method: 'PUT', path: '/api/stream/webrtc-ice-servers', body: { servers } }, 'Servers saved.');
+    const lines = await iceServerLines(rows);
+    if (lines === null || !(await action.run({ method: 'PUT', path: '/api/stream/webrtc-ice-servers', body: { servers: lines } }, 'Servers saved.'))) return;
+    draft.accept({ rows });
   };
   return (
     <div className="flex flex-col gap-3 px-list py-2">

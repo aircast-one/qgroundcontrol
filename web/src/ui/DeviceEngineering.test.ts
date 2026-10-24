@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { modeNamed, parseEngineering, shownFields, signInBody, signInKey } from '@/ui/DeviceEngineering';
+import { edited, reconciled, shownValues } from '@/ui/DeviceDraft';
+import { modeNamed, parseEngineering, shownFields, signInBody, signInValues } from '@/ui/DeviceEngineering';
 
 const field = (name: string, value = '', secret = false) => ({ name, label: name, value, placeholder: '', secret });
 
@@ -50,9 +51,11 @@ describe('DeviceEngineeringTest', () => {
     expect(signInBody(publish, 'oauth', { clientSecret: 'new' })).toMatchObject({ clientSecret: 'new', token: '' });
   });
 
-  it('the editor starts over only when what is saved changes', () => {
-    expect(signInKey(publish)).toBe(signInKey(parseEngineering(served)!.publish));
-    expect(signInKey(publish)).not.toBe(signInKey({ ...publish, mode: 'token' }));
-    expect(signInKey(publish)).not.toBe(signInKey({ ...publish, fields: publish.fields.map((it) => (it.name === 'token' ? { ...it, value: 'new' } : it)) }));
+  it('a new view keeps what was typed and takes the untouched credentials from the device', () => {
+    const next = { ...publish, fields: publish.fields.map((it) => (it.name === 'clientId' ? { ...it, value: 'pilot' } : it)) };
+    const drafts = reconciled(edited({}, 'token', 'typed-token'), signInValues(publish), signInValues(next));
+    const values = shownValues(signInValues(next), drafts);
+    expect(values).toMatchObject({ clientId: 'pilot', token: 'typed-token' });
+    expect(signInBody(next, 'token', values)).toMatchObject({ clientId: 'pilot', token: 'typed-token' });
   });
 });

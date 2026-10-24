@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, Text } from '@/m3';
 import { md } from '@/theme/Colors';
-import { type ActionConfirm, ConfirmDialog, type DeviceField, DeviceSelect, SecretField, formBody, useDeviceAction } from '@/ui/DeviceKit';
+import { type ActionConfirm, ConfirmDialog, type DeviceField, DeviceSelect, SecretField, useDeviceAction, useFormDraft } from '@/ui/DeviceKit';
 import type { DeviceMethod } from '@/ui/DeviceView';
 
 export type FormValues = Readonly<Record<string, string>>;
@@ -30,14 +30,12 @@ export const ShapedForm = ({
   onDone?: () => void;
 }) => {
   const action = useDeviceAction();
-  const [values, setValues] = useState<FormValues>({});
+  const { values: current, set, saved } = useFormDraft(fields, method);
   const [asking, setAsking] = useState(false);
-  const current = formBody(fields, values);
-  const set = (name: string) => (value: string) => setValues((it) => ({ ...it, [name]: value }));
   const send = () =>
     void action.run({ method, path, body: current }, success).then((done) => {
       if (!done) return;
-      setValues({});
+      saved(current);
       onDone();
     });
   const refusedOn = (field: ShapedField) => action.refusal?.field === field.name;

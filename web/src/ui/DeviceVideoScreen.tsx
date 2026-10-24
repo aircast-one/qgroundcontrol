@@ -49,7 +49,6 @@ const RadioSection = ({ radio }: { radio: RadioSettings }) => (
   <DeviceSection title="Packet radio" badge={radio.status}>
     <DeviceText text="The channel has to match the ground station exactly — a mismatch looks the same as a dead radio. Saving restarts the radio, so the link drops for a few seconds." />
     <DeviceForm
-      key={`${radio.channel}|${radio.region}|${radio.txPower}`}
       method="PUT"
       path="/api/stream/wfb/radio"
       submit="Save"

@@ -4,6 +4,7 @@ import { copyToClipboard } from '@/kotlin/Platform';
 import { AlertDialog, BasicAlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, type KeyboardType, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
+import { type Fields, useDeviceDraft } from '@/ui/DeviceDraft';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { type DeviceMethod, type DeviceRefusal, deviceCall, deviceQr } from '@/ui/DeviceView';
@@ -276,11 +277,12 @@ export const DeviceSwitchRow = ({
   confirmOn?: ActionConfirm | null;
 }) => {
   const action = useDeviceAction();
-  const [pending, setPending] = useState<boolean | null>(null);
+  const draft = useDeviceDraft({ checked });
   const [asking, setAsking] = useState(false);
+  const shown = draft.values.checked ?? checked;
   const flip = (next: boolean) => {
-    setPending(next);
-    void action.run(next ? on : off, next ? success : offSuccess).then(() => setPending(null));
+    draft.edit('checked', next);
+    void action.run(next ? on : off, next ? success : offSuccess).then((done) => (done ? draft.accept({ checked: next }) : draft.discard()));
   };
   return (
     <>
@@ -293,7 +295,7 @@ export const DeviceSwitchRow = ({
             </Text>
           ) : null}
         </div>
-        <Switch checked={pending ?? checked} enabled={enabled && !action.busy} label={title} onCheckedChange={(next) => (next && confirmOn !== null ? setAsking(true) : flip(next))} />
+        <Switch checked={shown} enabled={enabled && !action.busy} label={title} onCheckedChange={(next) => (next && confirmOn !== null ? setAsking(true) : flip(next))} />
       </div>
       <RefusalText refusal={action.refusal} />
       {asking && confirmOn !== null ? <ConfirmDialog {...confirmOn} onConfirm={() => flip(true)} onDismiss={() => setAsking(false)} /> : null}
@@ -426,6 +428,18 @@ export type DeviceField = {
 export const formBody = (fields: readonly DeviceField[], values: Readonly<Record<string, string>>): Record<string, string> =>
   Object.fromEntries(fields.map((field) => [field.name, values[field.name] ?? field.value]));
 
+export const fieldValues = (fields: readonly DeviceField[]): Fields<string> => Object.fromEntries(fields.map((field) => [field.name, field.value]));
+
+export const useFormDraft = (fields: readonly DeviceField[], method: DeviceMethod) => {
+  const draft = useDeviceDraft(fieldValues(fields));
+  const values = formBody(fields, draft.values);
+  return {
+    values,
+    set: (name: string) => (value: string) => draft.edit(name, value),
+    saved: (sent: Fields<string>) => (method === 'POST' ? draft.discard() : draft.accept(sent)),
+  };
+};
+
 export const DeviceForm = ({
   fields,
   method,
@@ -448,13 +462,12 @@ export const DeviceForm = ({
   onDone?: () => void;
 }) => {
   const action = useDeviceAction();
-  const [values, setValues] = useState<Readonly<Record<string, string>>>({});
+  const { values, set, saved } = useFormDraft(fields, method);
   const [asking, setAsking] = useState(false);
-  const set = (name: string) => (value: string) => setValues((it) => ({ ...it, [name]: value }));
   const send = () =>
-    void action.run({ method, path, body: { ...formBody(fields, values), ...extra } }, success).then((done) => {
+    void action.run({ method, path, body: { ...values, ...extra } }, success).then((done) => {
       if (!done) return;
-      setValues({});
+      saved(values);
       onDone();
     });
   return (

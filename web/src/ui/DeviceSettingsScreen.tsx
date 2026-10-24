@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
+import { useDeviceDraft } from '@/ui/DeviceDraft';
 import { ActionButton, CopyRow, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, LinkButton, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
 import { ButtonRow, StackedFact, StatusLine, TypedConfirmDialog } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
@@ -125,14 +126,15 @@ const CloudSection = ({ cloud }: { cloud: CloudAccount }) => (
         <CopyRow label="Or go to the link and enter this code" text={cloud.userCode} />
       </>
     ) : (
-      <CloudConnect key={cloud.issuer} cloud={cloud} />
+      <CloudConnect cloud={cloud} />
     )}
   </DeviceSection>
 );
 
 const CloudConnect = ({ cloud }: { cloud: CloudAccount }) => {
   const action = useDeviceAction();
-  const [issuer, setIssuer] = useState(cloud.issuer);
+  const draft = useDeviceDraft({ issuer: cloud.issuer });
+  const issuer = draft.values.issuer ?? cloud.issuer;
   const refusedIssuer = action.refusal?.field === 'issuer';
   return (
     <>
@@ -149,13 +151,16 @@ const CloudConnect = ({ cloud }: { cloud: CloudAccount }) => {
             autoCorrect={false}
             isError={refusedIssuer}
             supportingText="Leave this alone unless you were told to use a different Aircast environment."
-            onValueChange={setIssuer}
+            onValueChange={(value) => draft.edit('issuer', value)}
           />
         </div>
       </DeviceDisclosure>
       <RefusalText refusal={action.refusal} field={action.refusal?.field ?? ''} />
       <ButtonRow>
-        <FilledTonalButton enabled={!action.busy} onClick={() => void action.run({ method: 'POST', path: '/api/cloud/connect', body: { issuer } }, 'Sign-in started — the code appears here in a moment.')}>
+        <FilledTonalButton
+          enabled={!action.busy}
+          onClick={() => void action.run({ method: 'POST', path: '/api/cloud/connect', body: { issuer } }, 'Sign-in started — the code appears here in a moment.').then((done) => (done ? draft.accept({ issuer }) : undefined))}
+        >
           Connect
         </FilledTonalButton>
       </ButtonRow>
