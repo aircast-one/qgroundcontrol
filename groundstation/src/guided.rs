@@ -140,7 +140,7 @@ impl GuidedState {
     pub fn drop_label(&self) -> String {
         self.next_bay().map_or_else(
             || Action::Release.title().to_string(),
-            |bay| format!("Drop bay {bay} · {} left", self.bays_left()),
+            |bay| format!("Drop {bay} · {} left", self.bays_left()),
         )
     }
 
@@ -1892,7 +1892,7 @@ mod tests {
             (
                 "Drop bay 2",
                 "Open the gripper and drop the payload.",
-                "Drop bay 2 · 2 left".to_string()
+                "Drop 2 · 2 left".to_string()
             )
         );
         let emptied = GuidedState {
@@ -1909,7 +1909,7 @@ mod tests {
             (
                 "Drop bay 1",
                 "Bay 1 is counted empty. Drop it only if you reloaded it.",
-                "Drop bay 1 · 0 left".to_string()
+                "Drop 1 · 0 left".to_string()
             ),
             "every bay dropped: the deck still offers bay 1, and says none are left"
         );

@@ -158,7 +158,7 @@ test('dropping bays quickly from the deck shows each bay as it drops, never one 
   const notice = vehicle.getByRole('status').filter({ hasText: / dropped$/ });
   await [1, 2, 3].reduce(async (previous, bay) => {
     await previous;
-    await vehicle.getByRole('button', { name: `Slide to drop ${bay}`, exact: true }).click();
+    await vehicle.getByRole('button', { name: `Slide to drop ${bay} · ${BAY_OUTPUTS.length + 1 - bay} left`, exact: true }).click();
     await slideAcross(vehicle, vehicle.getByRole('button', { name: /^Slide to drop/ }));
     await expect(notice, `the notice on screen after dropping bay ${bay} names bay ${bay}`).toHaveText([`Bay ${bay} dropped`], { timeout: 1_500 });
   }, Promise.resolve());
