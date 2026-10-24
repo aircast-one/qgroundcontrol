@@ -94,6 +94,53 @@ pub fn geo_to_ned(lat: f64, lon: f64, alt: f64, origin: (f64, f64, f64)) -> (f64
     (north, east, -up)
 }
 
+type Space = (f64, f64, f64);
+
+fn distance_to_line(point: Space, from: Space, to: Space) -> f64 {
+    let along = (to.0 - from.0, to.1 - from.1, to.2 - from.2);
+    let offset = (point.0 - from.0, point.1 - from.1, point.2 - from.2);
+    let length = (along.0 * along.0 + along.1 * along.1 + along.2 * along.2).sqrt();
+    let cross = (
+        offset.1 * along.2 - offset.2 * along.1,
+        offset.2 * along.0 - offset.0 * along.2,
+        offset.0 * along.1 - offset.1 * along.0,
+    );
+    match length > 0.0 {
+        true => (cross.0 * cross.0 + cross.1 * cross.1 + cross.2 * cross.2).sqrt() / length,
+        false => (offset.0 * offset.0 + offset.1 * offset.1 + offset.2 * offset.2).sqrt(),
+    }
+}
+
+fn kept_between(points: &[Space], first: usize, last: usize, tolerance: f64) -> Vec<usize> {
+    (first + 1..last)
+        .map(|i| (i, distance_to_line(points[i], points[first], points[last])))
+        .filter(|(_, distance)| *distance > tolerance)
+        .min_by(|a, b| b.1.total_cmp(&a.1))
+        .map(|(farthest, _)| {
+            kept_between(points, first, farthest, tolerance)
+                .into_iter()
+                .chain(std::iter::once(farthest))
+                .chain(kept_between(points, farthest, last, tolerance))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn simplify_path_indices(path: &[Space], tolerance_m: f64) -> Vec<usize> {
+    let Some((&origin, _)) = path.split_first().filter(|_| path.len() >= 3) else {
+        return (0..path.len()).collect();
+    };
+    let points: Vec<Space> = path
+        .iter()
+        .map(|&(lat, lon, alt)| geo_to_ned(lat, lon, alt, origin))
+        .collect();
+    let last = points.len() - 1;
+    std::iter::once(0)
+        .chain(kept_between(&points, 0, last, tolerance_m))
+        .chain(std::iter::once(last))
+        .collect()
+}
+
 pub fn ned_to_geo(x: f64, y: f64, z: f64, origin: (f64, f64, f64)) -> (f64, f64, f64) {
     let (olat, olon, oalt) = origin;
     let (north, east, up) = (x, y, -z);
@@ -225,6 +272,35 @@ mod tests {
         );
         let (lat, lon, alt) = ned_to_geo(0.0, 0.0, 0.0, ORIGIN);
         assert!(close(lat, ORIGIN.0) && close(lon, ORIGIN.1) && close(alt, 0.0));
+    }
+
+    fn leg(from: Space, azimuth: f64, steps: usize, climb: f64) -> Vec<Space> {
+        (1..=steps)
+            .map(|i| {
+                let (lat, lon) = crate::surveygrid::at_distance_and_azimuth(
+                    (from.0, from.1),
+                    i as f64 * 5.0,
+                    azimuth,
+                );
+                (lat, lon, from.2 + i as f64 * climb)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_path_keeps_its_corners_and_climbs_like_geo_test_simplify_path() {
+        let start = (41.71, 44.79, 600.0);
+        let straight: Vec<Space> = std::iter::once(start)
+            .chain(leg(start, 90.0, 40, 0.0))
+            .collect();
+        assert_eq!(simplify_path_indices(&straight, 3.0), vec![0, 40]);
+        let east = leg(start, 90.0, 20, 0.0);
+        let north = leg(*east.last().unwrap(), 0.0, 20, 0.0);
+        let climb = leg(*north.last().unwrap(), 0.0, 20, 2.0);
+        let level = leg(*climb.last().unwrap(), 0.0, 20, 0.0);
+        let path: Vec<Space> = [vec![start], east, north, climb, level].concat();
+        assert_eq!(simplify_path_indices(&path, 3.0), vec![0, 20, 40, 60, 80]);
+        assert_eq!(simplify_path_indices(&path[..2], 3.0), vec![0, 1]);
     }
 
     #[test]

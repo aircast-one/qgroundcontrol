@@ -491,6 +491,10 @@ fn open_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
             ))
         }
         "waypoints" | "txt" => None,
+        _ if crate::kml::is_kml(path) => crate::kml::read(path)
+            .and_then(|text| crate::kml::route(&text))
+            .err()
+            .map(|reason| ("notAPlan", reason)),
         _ if serde_json::from_str::<Value>(&text).is_err() => Some((
             "notAPlan",
             "This file is not a plan: it is not JSON.".to_string(),
@@ -581,6 +585,14 @@ fn plan_refusal(
     }
 }
 
+fn failure_reason(answer: &Value) -> Value {
+    answer
+        .get("reason")
+        .filter(|reason| reason.as_str().is_some_and(|text| !text.is_empty()))
+        .cloned()
+        .unwrap_or_else(|| json!("The plan controller did not carry it out."))
+}
+
 pub fn plan_action(backend: &dyn Backend, action: PlanAction, path: &str, args: &str) -> Value {
     let file = serde_json::from_str::<Value>(args)
         .ok()
@@ -607,7 +619,10 @@ pub fn plan_action(backend: &dyn Backend, action: PlanAction, path: &str, args: 
         "ok": done,
         "result": returns.then_some(done),
         "refusal": Value::Null,
-        "reason": match done { true => Value::Null, false => json!("The plan controller did not carry it out.") },
+        "reason": match done {
+            true => Value::Null,
+            false => failure_reason(&answer),
+        },
     })
 }
 
@@ -1346,6 +1361,36 @@ mod tests {
             ),
             None,
             "a CRLF file reads the same as QTextStream::readLine sees it"
+        );
+        assert_eq!(
+            token(
+                PlanAction::Open,
+                &good,
+                Some(&write(
+                    "g.KML",
+                    "<kml><Placemark><LineString><coordinates>8,47 8.1,47.1</coordinates></LineString></Placemark></kml>"
+                ))
+            ),
+            None,
+            "a path in a KML opens as a mission"
+        );
+        assert_eq!(
+            failure_reason(&json!({ "ok": false, "reason": "Mission: no items" })),
+            json!("Mission: no items"),
+            "what the controller said went wrong is passed on"
+        );
+        assert_eq!(
+            failure_reason(&json!({ "result": false })),
+            json!("The plan controller did not carry it out.")
+        );
+        let area = write(
+            "h.kml",
+            "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>8,47 8.1,47 8.1,47.1 8,47</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>",
+        );
+        assert_eq!(
+            plan_refusal(PlanAction::Open, &good, Some(&area)),
+            Some(("notAPlan", crate::kml::AREAS_ONLY.to_string())),
+            "the reason a KML cannot be flown reaches the head instead of a generic one"
         );
         assert_eq!(
             token(PlanAction::Open, &good, Some("/no/such/file.plan")),

@@ -218,7 +218,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
     match path {
         OPEN => first_text(args).map_or_else(
             || refused("Open needs the path of a .plan file."),
-            |file| open(&file),
+            |file| open(backend, &file),
         ),
         SAVE => first_text(args).map_or_else(
             || refused("Save needs a path to write the plan to."),
@@ -1043,26 +1043,130 @@ fn load_failed_text(file: &str, reason: &str) -> String {
     format!("Error loading Plan file ({file}). {reason}")
 }
 
-fn open(file: &str) -> Value {
+struct Imported {
+    document: Document,
+    wizard: Option<usize>,
+    summary: Option<String>,
+}
+
+fn takes_off(document: &Document) -> bool {
+    use crate::cmdinfo::{Firmware, VehicleClass};
+    matches!(
+        plandoc::firmware(document.firmware_type),
+        Firmware::Px4 | Firmware::ArduPilot
+    ) && matches!(
+        plandoc::vehicle_class(document.vehicle_type),
+        VehicleClass::FixedWing | VehicleClass::MultiRotor | VehicleClass::Vtol
+    )
+}
+
+struct KmlContext {
+    types: (i64, i64),
+    offline_vehicle_type: i64,
+    vehicle_home: Option<[f64; 3]>,
+    takeoff_not_required: bool,
+}
+
+fn kml_document(
+    route: &crate::kml::Route,
+    context: &KmlContext,
+    defaults: &plandoc::EditDefaults,
+) -> Result<Imported, String> {
+    let imported = crate::kmlmission::mission(
+        route,
+        context.types.0,
+        context.types.1,
+        defaults.mission_item_altitude,
+    );
+    let loaded = with_offline_speeds(
+        plandoc::load_text_mission(
+            &crate::planfile::write(&imported.mission),
+            context.offline_vehicle_type,
+        )
+        .map_err(|e| format!("Mission: {e}"))?,
+    );
+    let homed = Document {
+        home: context
+            .vehicle_home
+            .or_else(|| plandoc::home_from_first_coordinate(&loaded, None)),
+        ..loaded
+    };
+    let takeoff = takes_off(&homed) && !context.takeoff_not_required;
+    let placing = takeoff
+        && plandoc::vehicle_class(homed.vehicle_type) == crate::cmdinfo::VehicleClass::FixedWing;
+    let document = match takeoff {
+        true => plandoc::insert_takeoff(&homed, 1, defaults)?,
+        false => homed,
+    };
+    Ok(Imported {
+        document,
+        wizard: placing.then_some(1),
+        summary: Some(crate::kmlmission::summary(
+            route,
+            &imported,
+            defaults.mission_item_altitude,
+            &crate::kmlmission::Added {
+                takeoff,
+                takeoff_needs_placing: placing,
+            },
+        )),
+    })
+}
+
+fn load_kml(backend: &dyn Backend, file: &str) -> Result<Imported, String> {
+    let route = crate::kml::route(&crate::kml::read(file)?)?;
+    let defaults =
+        edit_defaults(backend).ok_or("The default mission item altitude is not known.")?;
+    let context = KmlContext {
+        types: planned_types(),
+        offline_vehicle_type: offline_type("offlineEditingVehicleClass"),
+        vehicle_home: active_vehicle_home(),
+        takeoff_not_required: planning_setting("takeoffItemNotRequired", false),
+    };
+    kml_document(&route, &context, &defaults).map(|imported| Imported {
+        document: plandoc::above_terrain(&imported.document, &terrain_height),
+        ..imported
+    })
+}
+
+fn load_file(backend: &dyn Backend, file: &str) -> Result<Imported, String> {
+    let plain = |document| Imported {
+        document,
+        wizard: None,
+        summary: None,
+    };
+    match crate::kml::is_kml(file) {
+        true => load_kml(backend, file),
+        false => crate::vfs::read(file)
+            .map_err(|e| format!("{e} {file}"))
+            .and_then(|bytes| {
+                let text = String::from_utf8_lossy(&bytes);
+                match is_text_mission(file) {
+                    true => load_text_mission(&text),
+                    false => load_plan(&text),
+                }
+            })
+            .map(plain),
+    }
+}
+
+const KML_IMPORTED: &str = "KML imported";
+
+fn open(backend: &dyn Backend, file: &str) -> Value {
     forget_raw_edits();
     let connected = !offline();
-    let loaded = crate::vfs::read(file)
-        .map_err(|e| format!("{e} {file}"))
-        .and_then(|bytes| {
-            let text = String::from_utf8_lossy(&bytes);
-            match is_text_mission(file) {
-                true => load_text_mission(&text),
-                false => load_plan(&text),
-            }
-        });
-    match loaded {
-        Ok(document) => {
+    match load_file(backend, file) {
+        Ok(Imported {
+            document,
+            wizard,
+            summary,
+        }) => {
             let count = document.items.len();
             {
                 let mut state = held();
                 let before = state.document.take();
                 state.document = Some(document);
-                state.wizard = None;
+                state.wizard = wizard;
                 remember(&mut state, before, crate::hub::now_ms());
                 state.selected = 0;
                 state.file = Some(plan_file_after_load(file));
@@ -1071,7 +1175,10 @@ fn open(file: &str) -> Value {
             }
             settle_home_on_terrain(None);
             changed();
-            json!({ "ok": true, "items": count, "result": true })
+            if let Some(summary) = &summary {
+                crate::noticeboard::post(crate::noticeboard::MESSAGE, KML_IMPORTED, summary);
+            }
+            json!({ "ok": true, "items": count, "result": true, "summary": summary })
         }
         Err(reason) => {
             held().file = None;
@@ -3574,7 +3681,7 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
         "plan.loadFromFile" => first_text(args).map_or_else(
             || refused("Open needs the path of a .plan file."),
             |file| {
-                let opened = open(&file);
+                let opened = open(backend, &file);
                 if let Some(reason) = opened["reason"].as_str().filter(|_| opened["ok"] != true) {
                     crate::noticeboard::post(
                         crate::noticeboard::MESSAGE,
@@ -4218,6 +4325,220 @@ mod tests {
             current_after_remove(1, 0),
             0,
             "with nothing left the settings item is current"
+        );
+    }
+
+    fn kml_plan(text: &str, types: (i64, i64)) -> Imported {
+        kml_document(
+            &crate::kml::route(text).unwrap(),
+            &KmlContext {
+                types,
+                offline_vehicle_type: types.1,
+                vehicle_home: None,
+                takeoff_not_required: false,
+            },
+            &plandoc::EditDefaults {
+                mission_item_altitude: 50.0,
+                map_center: None,
+                vtol_transition_distance: 300.0,
+            },
+        )
+        .unwrap()
+    }
+
+    fn kml_fixture(name: &str) -> String {
+        crate::kml::read(&format!(
+            "{}/../test/MissionManager/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap()
+    }
+
+    fn simple_at(document: &Document, index: usize) -> &plandoc::Simple {
+        match &document.items[index] {
+            plandoc::Item::Simple(simple) => simple,
+            plandoc::Item::Complex { .. } => panic!("item {index} is not simple"),
+        }
+    }
+
+    fn commands_of(document: &Document) -> Vec<i64> {
+        (0..document.items.len())
+            .map(|i| simple_at(document, i).command)
+            .collect()
+    }
+
+    const PX4_COPTER: (i64, i64) = (12, 2);
+    const APM_COPTER: (i64, i64) = (3, 2);
+    const TOWERS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><LineString><coordinates>44.7900,41.7100,0 44.7950,41.7120,0 44.8010,41.7150,0</coordinates></LineString></Placemark>
+  <Placemark><name>Tower A</name><Point><coordinates>44.7951,41.7122,0</coordinates></Point></Placemark>
+  <Placemark><name>Tower B</name><Point><coordinates>44.8012,41.7151,0</coordinates></Point></Placemark>
+</Document></kml>"#;
+
+    #[test]
+    fn a_ground_path_opens_above_the_terrain_with_a_takeoff_and_a_return_like_plan_master_controller_test()
+     {
+        let imported = kml_plan(&kml_fixture("RouteGroundPath.kml"), PX4_COPTER);
+        let document = &imported.document;
+        assert_eq!(commands_of(document), vec![22, 16, 16, 16, 20]);
+        assert_eq!(
+            document.global_altitude_mode,
+            crate::altitudemodes::CALC_ABOVE_TERRAIN
+        );
+        (1..4).for_each(|i| {
+            let held = simple_at(document, i).altitude.clone().unwrap();
+            assert_eq!(
+                (held.mode, held.altitude),
+                (crate::altitudemodes::CALC_ABOVE_TERRAIN, 50.0)
+            );
+        });
+        assert_eq!(simple_at(document, 3).params[5], Some(44.8010));
+        let summary = imported.summary.unwrap();
+        assert!(
+            regex::Regex::new(r"(?s)Imported 3 waypoints\..*no flight altitudes.*above the terrain.*Offline.*takeoff was added.*return to launch")
+                .unwrap()
+                .is_match(&summary),
+            "{summary}"
+        );
+        assert_eq!(imported.wizard, None);
+    }
+
+    #[test]
+    fn an_absolute_kmz_keeps_its_altitudes_above_sea_level() {
+        let imported = kml_plan(&kml_fixture("RouteAbsolutePath.kmz"), PX4_COPTER);
+        let document = &imported.document;
+        assert_eq!(
+            document.global_altitude_mode,
+            crate::altitudemodes::ABSOLUTE
+        );
+        let first = simple_at(document, 1).altitude.clone().unwrap();
+        assert_eq!(
+            (first.mode, first.altitude),
+            (crate::altitudemodes::ABSOLUTE, 560.5)
+        );
+        assert_eq!(
+            simple_at(document, 3).altitude.clone().unwrap().altitude,
+            590.25
+        );
+        assert!(
+            imported
+                .summary
+                .unwrap()
+                .contains("above sea level, as in the file")
+        );
+        let points = kml_plan(&kml_fixture("RoutePlacemarks.kml"), PX4_COPTER).document;
+        assert_eq!(commands_of(&points), vec![22, 16, 16, 20]);
+        assert_eq!(
+            (
+                simple_at(&points, 1).params[4],
+                simple_at(&points, 2).params[4]
+            ),
+            (Some(41.7100), Some(41.7150))
+        );
+    }
+
+    #[test]
+    fn towers_beside_a_path_become_look_at_points_before_their_nearest_vertex() {
+        let imported = kml_plan(TOWERS, PX4_COPTER);
+        assert_eq!(
+            commands_of(&imported.document),
+            vec![22, 16, 195, 16, 195, 16, 197, 20]
+        );
+        assert_eq!(simple_at(&imported.document, 2).params[5], Some(44.7951));
+        assert!(
+            imported
+                .summary
+                .unwrap()
+                .contains("2 placemarks became look-at points")
+        );
+    }
+
+    #[test]
+    fn towers_on_ardupilot_stop_looking_with_a_zero_location_that_uploads() {
+        let document = kml_plan(TOWERS, APM_COPTER).document;
+        assert_eq!(
+            commands_of(&document),
+            vec![22, 16, 201, 16, 201, 16, 201, 20]
+        );
+        assert_eq!(simple_at(&document, 2).params[0], Some(3.0));
+        let stop = simple_at(&document, 6);
+        assert_eq!(stop.params[0], Some(0.0));
+        assert_eq!(
+            (stop.params[4], stop.params[5], stop.params[6]),
+            (Some(0.0), Some(0.0), Some(0.0))
+        );
+        assert_eq!(stop.frame, 3);
+        assert!(
+            !plandoc::awaiting_terrain(&Document {
+                items: vec![document.items[6].clone()],
+                ..document.clone()
+            }),
+            "the stop-looking item never waits for terrain"
+        );
+    }
+
+    #[test]
+    fn a_fixed_wing_takeoff_asks_to_be_placed() {
+        let imported = kml_plan(TOWERS, (12, 1));
+        assert_eq!(imported.wizard, Some(1));
+        assert!(imported.summary.unwrap().contains("Drag its T on the map"));
+        let vtol = kml_plan(TOWERS, (12, 20)).document;
+        assert_eq!(
+            simple_at(&vtol, 0).command,
+            84,
+            "a VTOL gets a VTOL takeoff"
+        );
+        let rover = kml_plan(TOWERS, (12, 10));
+        assert_eq!(
+            commands_of(&rover.document)[0],
+            16,
+            "a rover has no takeoff"
+        );
+        assert!(!rover.summary.unwrap().contains("takeoff"));
+    }
+
+    #[test]
+    fn a_recorded_route_replays_its_camera_like_plan_master_controller_test() {
+        let start = (41.7100, 44.7900);
+        let moved = |distance: f64, azimuth: f64| {
+            crate::surveygrid::at_distance_and_azimuth(start, distance, azimuth)
+        };
+        let (second, third, fourth) = (moved(100.0, 0.0), moved(150.0, 45.0), moved(300.0, 90.0));
+        let text = format!(
+            r#"<kml><Document><Placemark><ExtendedData><Data name="gimbal"><value>-30.0,10.0 -30.2,10.0 -45.0,0.0 -60.0,0.0</value></Data><Data name="lookAt"><value>- - 44.7930000,41.7110000,600.0 -</value></Data></ExtendedData><LineString><altitudeMode>absolute</altitudeMode><coordinates>44.79,41.71,650 {},{},650 {},{},660 {},{},670</coordinates></LineString></Placemark></Document></kml>"#,
+            second.1, second.0, third.1, third.0, fourth.1, fourth.0
+        );
+        let imported = kml_plan(&text, PX4_COPTER);
+        let document = &imported.document;
+        assert_eq!(
+            commands_of(document),
+            vec![22, 16, 16, 195, 16, 197, 205, 16, 20]
+        );
+        let initial = &document.settings_sections;
+        assert_eq!(
+            initial
+                .iter()
+                .map(|s| (s.command, s.params[0], s.params[2]))
+                .collect::<Vec<_>>(),
+            vec![(205, Some(-30.0), Some(10.0))],
+            "the first angle is the plan's initial camera setting"
+        );
+        let roi = simple_at(document, 3).altitude.clone().unwrap();
+        assert_eq!(
+            (roi.mode, roi.altitude),
+            (crate::altitudemodes::ABSOLUTE, 600.0)
+        );
+        let gimbal = simple_at(document, 6);
+        assert_eq!(
+            (gimbal.params[0], gimbal.params[6]),
+            (Some(-60.0), Some(2.0))
+        );
+        assert!(
+            imported
+                .summary
+                .unwrap()
+                .contains("camera angles and look-at points from the recording")
         );
     }
 

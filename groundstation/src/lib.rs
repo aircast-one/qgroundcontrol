@@ -140,6 +140,7 @@ mod jnihost;
 pub mod joystick;
 pub mod joystickhost;
 pub mod kml;
+pub mod kmlmission;
 pub mod label;
 pub mod landing;
 pub mod landingpattern;
