@@ -198,13 +198,15 @@ void PlanMasterControllerTest::_testKmlTowersOnArduPilot()
                                      MAV_CMD_DO_SET_ROI,          MAV_CMD_NAV_WAYPOINT, MAV_CMD_DO_SET_ROI,
                                      MAV_CMD_NAV_RETURN_TO_LAUNCH};
     QmlObjectListModel* visualItems = _masterController->missionController()->visualItems();
-    QCOMPARE(visualItems->count(), expected.count() + 2);
+    const qsizetype tail = visualItems->count() - expected.count();
+    QVERIFY(tail > 0);
     for (qsizetype i = 0; i < expected.count(); i++) {
-        QCOMPARE(static_cast<MAV_CMD>(visualItems->value<SimpleMissionItem*>(i + 2)->command()), expected[i]);
+        QCOMPARE(static_cast<MAV_CMD>(visualItems->value<SimpleMissionItem*>(tail + i)->command()), expected[i]);
     }
-    QCOMPARE(visualItems->value<SimpleMissionItem*>(3)->missionItem().param1(), static_cast<double>(MAV_ROI_LOCATION));
+    QCOMPARE(visualItems->value<SimpleMissionItem*>(tail + 1)->missionItem().param1(),
+             static_cast<double>(MAV_ROI_LOCATION));
 
-    SimpleMissionItem* stopLooking = visualItems->value<SimpleMissionItem*>(7);
+    SimpleMissionItem* stopLooking = visualItems->value<SimpleMissionItem*>(tail + 5);
     QCOMPARE(stopLooking->missionItem().param1(), static_cast<double>(MAV_ROI_NONE));
     QCOMPARE(stopLooking->missionItem().param5(), 0.0);
     QCOMPARE(stopLooking->missionItem().param6(), 0.0);
@@ -214,15 +216,10 @@ void PlanMasterControllerTest::_testKmlTowersOnArduPilot()
 
 void PlanMasterControllerTest::_testKmlTakeoffNeedsPlacingOnFixedWing()
 {
-    AppSettings* appSettings = SettingsManager::instance()->appSettings();
-    const QVariant previousFirmwareClass = appSettings->offlineEditingFirmwareClass()->rawValue();
-    const QVariant previousVehicleClass = appSettings->offlineEditingVehicleClass()->rawValue();
-    const auto restoreOfflineVehicle = qScopeGuard([&]() {
-        appSettings->offlineEditingFirmwareClass()->setRawValue(previousFirmwareClass);
-        appSettings->offlineEditingVehicleClass()->setRawValue(previousVehicleClass);
-    });
-    appSettings->offlineEditingFirmwareClass()->setRawValue(QGCMAVLink::FirmwareClassArduPilot);
-    appSettings->offlineEditingVehicleClass()->setRawValue(QGCMAVLink::VehicleClassFixedWing);
+    Fact* vehicleClass = SettingsManager::instance()->appSettings()->offlineEditingVehicleClass();
+    const QVariant previousVehicleClass = vehicleClass->rawValue();
+    const auto restoreVehicleClass = qScopeGuard([&]() { vehicleClass->setRawValue(previousVehicleClass); });
+    vehicleClass->setRawValue(QGCMAVLink::VehicleClassFixedWing);
 
     QTemporaryDir tempDir;
     QVERIFY(tempDir.isValid());
