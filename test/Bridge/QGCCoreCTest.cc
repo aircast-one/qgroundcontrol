@@ -70,6 +70,18 @@ QStringList paths;
 QStringList payloads;
 QString readDuringEvent;
 
+const QStringList kServedOnlyByACoreHostedVehicle = {
+    QStringLiteral("vehicle.autodropImpact"),
+    QStringLiteral("vehicle.autodropLead"),
+    QStringLiteral("vehicle.autodropTarget"),
+    QStringLiteral("vehicle.bottles"),
+    QStringLiteral("vehicle.cameraManager.currentCameraInstance.trackingGeo"),
+    QStringLiteral("vehicle.customMode"),
+    QStringLiteral("vehicle.payloadSetup"),
+    QStringLiteral("vehicle.rcChannelOverrides"),
+    QStringLiteral("video.previews"),
+};
+
 QJsonObject take(char *owned)
 {
     const QJsonObject object = QJsonDocument::fromJson(QByteArray(owned)).object();
@@ -1921,7 +1933,12 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     }
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 
-    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes.json"));
+#ifdef QGC_CUSTOM_BUILD
+    const QString fixtureName = QStringLiteral("fixtures/view-shapes-custom.json");
+#else
+    const QString fixtureName = QStringLiteral("fixtures/view-shapes.json");
+#endif
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(fixtureName);
     if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
         QFile out(fixture);
         QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -3796,7 +3813,8 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
             if (named.contains(QLatin1Char('@'))) {
                 continue;
             }
-            if (named.startsWith(QStringLiteral("vehicle.parameterManager.getParameter("))) {
+            if (named.startsWith(QStringLiteral("vehicle.parameterManager.getParameter(")) ||
+                kServedOnlyByACoreHostedVehicle.contains(named)) {
                 continue;
             }
             checked++;
@@ -3986,7 +4004,8 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
     QStringList unbound;
     for (const QJsonValue &entry : reported) {
         const QString dep = entry.toObject().value(QStringLiteral("path")).toString();
-        if (dep.startsWith(QStringLiteral("vehicle.parameterManager.getParameter(")) || knowinglyPolled.contains(dep)) {
+        if (dep.startsWith(QStringLiteral("vehicle.parameterManager.getParameter(")) || knowinglyPolled.contains(dep) ||
+            kServedOnlyByACoreHostedVehicle.contains(dep)) {
             continue;
         }
         if (!entry.toObject().value(QStringLiteral("bound")).toBool(false)) {
