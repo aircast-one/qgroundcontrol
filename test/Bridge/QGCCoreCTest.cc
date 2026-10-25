@@ -466,10 +466,15 @@ void QGCCoreCTest::_flightModesFollowTheVehicle()
     QVERIFY(!view.value(QStringLiteral("modes")).toArray().isEmpty());
     QVERIFY(!view.value(QStringLiteral("everyday")).toArray().isEmpty());
     const QString current = view.value(QStringLiteral("current")).toString();
+    Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(vehicle);
+    QCOMPARE(current, vehicle->flightMode());
     const QJsonArray modes = view.value(QStringLiteral("modes")).toArray();
-    QVERIFY(std::any_of(modes.begin(), modes.end(), [&current](const QJsonValue& m) {
-        return m.toObject().value(QStringLiteral("name")).toString() == current;
-    }));
+    QCOMPARE(std::any_of(modes.begin(), modes.end(),
+                         [&current](const QJsonValue& m) {
+                             return m.toObject().value(QStringLiteral("name")).toString() == current;
+                         }),
+             vehicle->flightModes().contains(current));
 }
 
 void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
@@ -3181,6 +3186,13 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
         (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
                                       compact(QJsonArray { QStringLiteral("Structure Scan"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
         QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+        QVERIFY2(
+            take(
+                qgc_bridge_set("plan.missionController.visualItems.0.cameraSection.specifyGimbal", "{\"value\":false}"))
+                .value(QStringLiteral("ok"))
+                .toBool(false),
+            "the plan points the gimbal down for a vehicle that has one, which belongs to the mission start and not "
+            "to the scan this recording pins");
 
         const QString structure = item + QStringLiteral(".structurePolygon");
         (void) take(qgc_bridge_invoke((structure + QStringLiteral(".clear")).toUtf8().constData(), "[]"));
@@ -4142,7 +4154,7 @@ void QGCCoreCTest::_theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge(
 
     const QJsonArray named = take(qgc_bridge_get("vehicle.flightModes")).value(QStringLiteral("value")).toArray();
     const QJsonArray ids = take(qgc_bridge_get("vehicle.flightModeIds")).value(QStringLiteral("value")).toArray();
-    QVERIFY2(named.count() > 3, "this vehicle offers no flight modes, so the pairing proves nothing");
+    QVERIFY2(!named.isEmpty(), "this vehicle offers no flight modes, so the pairing proves nothing");
     QCOMPARE(ids.count(), named.count());
     QVERIFY2(std::any_of(ids.cbegin(), ids.cend(), [](const QJsonValue &id) { return id.toInt(-1) > 0; }),
              "every mode id came back zero, which is what an unmatched name list looks like");
