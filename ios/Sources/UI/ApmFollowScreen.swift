@@ -4,11 +4,17 @@ let APM_FOLLOW_VIEW = "view.apmFollow"
 let APM_FOLLOW_SCREEN = "apmFollow"
 let APM_FOLLOW_ENABLE = "apmFollow.enable"
 let APM_FOLLOW_RESET = "apmFollow.reset"
+let APM_FOLLOW_LEAD = "apmFollow.lead"
 let APM_FOLLOW_POSITION = "apmFollow.position"
 let APM_FOLLOW_POINT = "apmFollow.point"
 let APM_FOLLOW_OFFSETS = "apmFollow.offsets"
 let APM_FOLLOW_HEIGHT = "apmFollow.height"
 private let WAITING_POLL_MS = 500
+
+struct FollowLead: Equatable {
+    let id: Int
+    let name: String
+}
 
 struct ApmFollow: Equatable {
     let available: Bool
@@ -18,6 +24,8 @@ struct ApmFollow: Equatable {
     let unsupportedText: String
     let showSettings: Bool
     let rover: Bool
+    let leads: [FollowLead]
+    let leadIndex: Int
     let positionOptions: [String]
     let positionIndex: Int
     let pointOptions: [String]
@@ -49,6 +57,8 @@ func apmFollow(_ view: JSON?) -> ApmFollow? {
         unsupportedText: it["unsupportedText"].string,
         showSettings: it["showSettings"].bool,
         rover: it["rover"].bool,
+        leads: it["leads"].objects.map { FollowLead(id: $0["id"].int(0), name: $0["name"].string) },
+        leadIndex: it["leadIndex"].int(-1),
         positionOptions: it["positionOptions"].strings,
         positionIndex: it["positionIndex"].int(0),
         pointOptions: it["pointOptions"].strings,
@@ -107,6 +117,9 @@ struct ApmFollowScreen: View {
                 }
                 if follow.showSettings {
                     SectionHeader(text: "Follow me settings")
+                    if follow.leads.count > 1 {
+                        Choice(label: "Follow", options: follow.leads.map(\.name), index: follow.leadIndex) { act(APM_FOLLOW_LEAD, follow.leads[$0].id) }
+                    }
                     Choice(label: "Vehicle position", options: follow.positionOptions, index: follow.positionIndex) { act(APM_FOLLOW_POSITION, $0) }
                     if !follow.rover {
                         Choice(label: "Point vehicle", options: follow.pointOptions, index: follow.pointIndex) { act(APM_FOLLOW_POINT, $0) }

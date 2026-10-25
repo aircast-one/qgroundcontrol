@@ -15,6 +15,15 @@ final class ApmFollowScreenTests: XCTestCase {
         XCTAssertEqual(oneDecimal(follow.angle), "45.0")
     }
 
+    func testTheLeadListCarriesEachSystemIdSoAPickNamesTheSystemRatherThanARow() throws {
+        let follow = try XCTUnwrap(apmFollow(JSON.parse(#"""
+            {"available":true,"leads":[{"id":255,"name":"Ground station"},{"id":2,"name":"Vehicle 2"}],"leadIndex":1}
+            """#)))
+        XCTAssertEqual(follow.leads, [FollowLead(id: 255, name: "Ground station"), FollowLead(id: 2, name: "Vehicle 2")])
+        XCTAssertEqual(follow.leads[follow.leadIndex].id, 2)
+        XCTAssertEqual(apmFollow(JSON.parse(#"{"available":true}"#))?.leadIndex, -1)
+    }
+
     func testOffsetsShowAndTypeInTheAppDistanceUnits() throws {
         let follow = try XCTUnwrap(apmFollow(JSON.parse(#"""
             {"available":true,"distance":3.048,"height":6.096,"horizontalUnit":"ft","horizontalMetresPerUnit":0.3048,

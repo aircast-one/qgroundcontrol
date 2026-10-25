@@ -10,6 +10,31 @@ test('ArduPilot setup names the frame and failsafe actions from the parameter me
   await expect(app.getByRole('button', { name: /^Flight modes .*Stabilize/ })).toBeVisible();
 });
 
+test('ArduPilot follow takes another connected vehicle as its lead', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await app.getByRole('button', { name: /^Links / }).click();
+  await app.getByRole('button', { name: 'Add link…' }).click();
+  await app.getByRole('button', { name: /^Simulated vehicle/ }).click();
+  await app.getByRole('button', { name: 'Vehicle Type' }).click();
+  await app.getByRole('menuitem', { name: 'APM ArduCopter Vehicle' }).click();
+  await app.getByRole('button', { name: 'Start', exact: true }).click();
+  await app.getByRole('button', { name: 'Close settings' }).click();
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Follow me/ }).click();
+  await app.getByRole('checkbox', { name: 'Enable follow me' }).click();
+  await expect(app.getByRole('checkbox', { name: 'Enable follow me' })).toBeChecked();
+  const reset = app.getByRole('button', { name: 'Reset to supported settings' });
+  const settings = app.getByText('Follow me settings');
+  await expect(reset.or(settings)).toBeVisible();
+  if (await reset.isVisible()) await reset.click();
+  await app.getByRole('button', { name: 'Ground station', exact: true }).click();
+  await app.getByRole('menuitem', { name: 'Vehicle 129' }).click();
+  await expect(app.getByRole('button', { name: 'Vehicle 129', exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Point at Vehicle 129', exact: true })).toBeVisible();
+});
+
 test('PX4 setup lists sensors, radio and parameters for the vehicle', async ({ app }) => {
   await connectMock(app);
   await openAircraftSetup(app);

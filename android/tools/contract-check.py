@@ -474,6 +474,8 @@ ACCEPTED = {
     "position": "view.apmServos lists ArduPilot SERVOn outputs and the recording rig is PX4, so its list is empty; apmservos.rs servos_view serves it",
     "pwm": "view.apmServos lists ArduPilot SERVOn outputs and the recording rig is PX4, so its list is empty; apmservos.rs servos_view serves it",
     "angle": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",
+    "leadIndex": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",
+    "leads": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",
     "pointIndex": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",
     "pointOptions": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",
     "positionIndex": "view.apmFollow serves ArduPilot FOLL_* parameters and the recording rig is PX4, so it records only available=false; apmfollow.rs follow_view serves it",

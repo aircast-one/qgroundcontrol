@@ -396,6 +396,37 @@ fn with_gripper(params: Vec<Param>) -> Vec<Param> {
         .collect()
 }
 
+const MOCK_FOLLOW_GROUP: [(&str, f64, MavParamType); 9] = [
+    ("FOLL_SYSID", 0.0, MavParamType::MAV_PARAM_TYPE_INT16),
+    ("FOLL_DIST_MAX", 100.0, MavParamType::MAV_PARAM_TYPE_REAL32),
+    ("FOLL_OFS_TYPE", 0.0, MavParamType::MAV_PARAM_TYPE_INT8),
+    ("FOLL_OFS_X", 0.0, MavParamType::MAV_PARAM_TYPE_REAL32),
+    ("FOLL_OFS_Y", 0.0, MavParamType::MAV_PARAM_TYPE_REAL32),
+    ("FOLL_OFS_Z", 0.0, MavParamType::MAV_PARAM_TYPE_REAL32),
+    ("FOLL_YAW_BEHAVE", 1.0, MavParamType::MAV_PARAM_TYPE_INT8),
+    ("FOLL_POS_P", 0.1, MavParamType::MAV_PARAM_TYPE_REAL32),
+    ("FOLL_ALT_TYPE", 1.0, MavParamType::MAV_PARAM_TYPE_INT8),
+];
+
+fn with_follow(params: Vec<Param>) -> Vec<Param> {
+    let follows = params.iter().any(|p| p.name == "FOLL_ENABLE");
+    let group = MOCK_FOLLOW_GROUP
+        .iter()
+        .filter(|_| follows)
+        .map(|(name, value, kind)| Param {
+            name: name.to_string(),
+            kind: *kind,
+            value: *value,
+        });
+    params
+        .into_iter()
+        .chain(group)
+        .map(|p| (p.name.clone(), p))
+        .collect::<BTreeMap<String, Param>>()
+        .into_values()
+        .collect()
+}
+
 fn fresh_flash(params: Vec<Param>) -> Vec<Param> {
     let channels: Vec<String> = RC_MAPS
         .iter()
@@ -744,7 +775,7 @@ fn traffic(home: (f64, f64), home_amsl: f64) -> Vec<Adsb> {
 
 impl Sim {
     pub fn new(options: Options, system: u8, served: Option<String>) -> Sim {
-        let loaded = with_gripper(parse_params(options.vehicle.params()));
+        let loaded = with_follow(with_gripper(parse_params(options.vehicle.params())));
         let params = if options.vehicle.apm() && options.apm_start_fresh_params {
             fresh_flash(loaded)
         } else {
