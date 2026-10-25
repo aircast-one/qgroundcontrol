@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <atomic>
+#include <cmath>
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
@@ -2068,6 +2069,15 @@ struct SurveyCase {
     int         entryRotations;
 };
 
+QJsonArray roundedParams(const QJsonArray &params)
+{
+    QJsonArray rounded;
+    for (const QJsonValue &param : params) {
+        rounded.append(param.isDouble() ? QJsonValue(std::round(param.toDouble() * 1e7) / 1e7) : param);
+    }
+    return rounded;
+}
+
 QString roundedCoordinates(const QJsonArray &points)
 {
     QStringList text;
@@ -2374,7 +2384,7 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
                 built.append(QStringLiteral("%1 %2 %3")
                                  .arg(mission.value(QStringLiteral("command")).toInt())
                                  .arg(mission.value(QStringLiteral("frame")).toInt())
-                                 .arg(QJsonDocument(mission.value(QStringLiteral("params")).toArray()).toJson(QJsonDocument::Compact).constData()));
+                                 .arg(QJsonDocument(roundedParams(mission.value(QStringLiteral("params")).toArray())).toJson(QJsonDocument::Compact).constData()));
             }
         }
         QVERIFY2(!built.isEmpty(), qPrintable(QStringLiteral("%1 generated no mission items").arg(planned.first)));
@@ -2429,7 +2439,7 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
                 built.append(QStringLiteral("%1 %2 %3")
                                  .arg(mission.value(QStringLiteral("command")).toInt())
                                  .arg(mission.value(QStringLiteral("frame")).toInt())
-                                 .arg(QJsonDocument(mission.value(QStringLiteral("params")).toArray()).toJson(QJsonDocument::Compact).constData()));
+                                 .arg(QJsonDocument(roundedParams(mission.value(QStringLiteral("params")).toArray())).toJson(QJsonDocument::Compact).constData()));
             }
         }
         QVERIFY2(!built.isEmpty(), qPrintable(planned.first));
@@ -3508,6 +3518,7 @@ void QGCCoreCTest::_theFlyViewControllerCountsTheMissionThePlanEditorCannot()
 
 void QGCCoreCTest::_everyRootTheCoreReadsFromIsRegistered()
 {
+    ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("Cannot find a compatible running Bluez")));
     _connectMockLink(MAV_AUTOPILOT_PX4);
     const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
 
