@@ -8,10 +8,15 @@
  ****************************************************************************/
 
 #include "FlyViewToolBarEditTest.h"
+
+#include <QtQml/QQmlContext>
+
+#include "JoystickManager.h"
 #include "QuickInteractionTestHelpers.h"
 
 static bool load(QQuickView &view)
 {
+    view.engine()->rootContext()->setContextProperty(QStringLiteral("joystickManager"), JoystickManager::instance());
     return loadTestView(view, QStringLiteral("qrc:/unittest/FlyViewToolBarEditTest.qml"));
 }
 
@@ -42,8 +47,6 @@ void FlyViewToolBarEditTest::_hiddenToolComesBackAsAGhostInEditMode()
     QTRY_COMPARE(slot->opacity(), 1.0);
 }
 
-// Takes away every spare pixel between the left cluster and the tool buttons, plus half the
-// status pill, so the bar has to give ground no matter what the font metrics are.
 static void narrowUntilTheStatusPillGivesGround(QQuickView &view, QQuickItem *pill, QQuickItem *analyze)
 {
     const qreal clusterRight = pill->mapToScene(QPointF(pill->width(), 0)).x();
@@ -77,6 +80,7 @@ void FlyViewToolBarEditTest::_narrowBarKeepsEveryToolClearOfTheButtons()
 
 void FlyViewToolBarEditTest::_narrowBarDropsTheIndicatorRow()
 {
+    _connectMockLink(MAV_AUTOPILOT_PX4);
     QQuickView view;
     QVERIFY(load(view));
 
@@ -84,8 +88,7 @@ void FlyViewToolBarEditTest::_narrowBarDropsTheIndicatorRow()
     QQuickItem *const indicators = findItemByName(view.rootObject(), QStringLiteral("flyViewToolIndicators"));
     QQuickItem *const analyze = findItemByName(view.rootObject(), QStringLiteral("analyzeButton"));
     QVERIFY(pill && indicators && analyze);
-    view.rootObject()->setSize(QSizeF(2400, view.rootObject()->height()));
-    view.resize(2400, qRound(view.rootObject()->height()));
+    setHidden(view, QStringLiteral("GCSBatteryIndicator"), true);
     QTRY_VERIFY(indicators->width() > 0);
 
     narrowUntilTheStatusPillGivesGround(view, pill, analyze);
