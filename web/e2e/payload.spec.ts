@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, flightMode, itemCount, openAircraftSetup, openPlanAtVehicle, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
+import { connectMock, expect, flightMode, itemCount, openAircraftSetup, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -182,6 +182,7 @@ test('a planned four-drop mission on servo bays uploads, flies and drops each ba
   await vehicle.getByRole('button', { name: 'Upload', exact: true }).click();
   await expect(vehicle.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
   await vehicle.getByRole('button', { name: 'Fly', exact: true }).last().click();
+  await showMapFull(vehicle);
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to start mission' }));
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
