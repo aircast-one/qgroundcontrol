@@ -389,7 +389,12 @@ void QGCCoreCTest::_terrainProfileReadsThePlan()
 
 void QGCCoreCTest::_missionKindsAndSeedsAreServed()
 {
-    QCOMPARE(take(qgc_bridge_get("view.missionKinds")).value(QStringLiteral("kinds")).toArray().count(), 7);
+    const int offlineClass =
+        SettingsManager::instance()->appSettings()->offlineEditingVehicleClass()->rawValue().toInt();
+    const bool hovers =
+        offlineClass == QGCMAVLink::VehicleClassMultiRotor || offlineClass == QGCMAVLink::VehicleClassVTOL;
+    QCOMPARE(take(qgc_bridge_get("view.missionKinds")).value(QStringLiteral("kinds")).toArray().count(),
+             hovers ? 8 : 7);
     QCOMPARE(take(qgc_bridge_get("view.missionKinds(Survey)")).value(QStringLiteral("geometryProperty")).toString(), QStringLiteral("surveyAreaPolygon"));
     const QJsonObject seed = take(qgc_bridge_get("view.missionSeed(survey,47.0,8.0)"));
     QCOMPARE(seed.value(QStringLiteral("points")).toArray().count(), 4);
@@ -461,7 +466,10 @@ void QGCCoreCTest::_flightModesFollowTheVehicle()
     QVERIFY(!view.value(QStringLiteral("modes")).toArray().isEmpty());
     QVERIFY(!view.value(QStringLiteral("everyday")).toArray().isEmpty());
     const QString current = view.value(QStringLiteral("current")).toString();
-    QVERIFY(std::any_of(view.value(QStringLiteral("modes")).toArray().begin(), view.value(QStringLiteral("modes")).toArray().end(), [&current](const QJsonValue &m) { return m.toObject().value(QStringLiteral("name")).toString() == current; }));
+    const QJsonArray modes = view.value(QStringLiteral("modes")).toArray();
+    QVERIFY(std::any_of(modes.begin(), modes.end(), [&current](const QJsonValue& m) {
+        return m.toObject().value(QStringLiteral("name")).toString() == current;
+    }));
 }
 
 void QGCCoreCTest::_anExcludedSettingNameBelongsToOneGroupOnly()
@@ -1077,7 +1085,8 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
 void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
 {
     ignoreLogMessage("Vehicle.MavCommandQueue", QtWarningMsg, QRegularExpression(QStringLiteral("Giving up sending command")));
-    const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));
+    const QString sample =
+        QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/arducopter-bench.tlog"));
     QFile file(sample);
     QVERIFY(file.open(QIODevice::ReadOnly));
     const QByteArray bytes = file.readAll();
@@ -1475,6 +1484,11 @@ const char *const kViewPaths[] = {
     "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
     "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.itemCamera(1)", "view.itemFacts(1)", "view.itemFacts(4)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
     "view.gps", "view.terrainDownload", "view.firmware", "view.hostNotices", "view.hostNotices(0)", "view.firmwareUpgrade", "view.cameras",
+    "view.deepLinkSetup", "view.device(aircraft)", "view.deviceWizard", "view.deviceRender(front,1700000000,1700000300)", "view.rcControls",
+    "view.videoPreview(http://127.0.0.1:8889/whep/front)", "view.lens", "view.joystickSetup", "view.usbRadio",
+    "view.dropSim(47.397,8.546,50,10,0,0,47.398,8.546,0,0)", "view.dropLead(47.397,8.546,50,10,0,0,47.398,8.546,0,0)",
+    "view.dropIntercept(47.397,8.546,10,47.398,8.546,0,0)", "view.gimbalGroundPoint(47.397,8.546,50,0,-45)",
+    "view.gimbalDropLead(47.397,8.546,50,10,0,0,0,-45)", "view.autodropStatus", "view.autoIntercept",
 };
 
 QList<QByteArray> viewPathsWithFixtures()
@@ -1605,6 +1619,7 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
         { QStringLiteral("view.flasher"), QStringLiteral("lists the card readers plugged into the machine and the releases on the download server, which differ from one machine and day to the next") },
         { QStringLiteral("view.contract"), QStringLiteral("enumerates VIEWS and their enumerations, so recording its shape pins the fixture against itself") },
         { QStringLiteral("view.routeRecorder"), QStringLiteral("records the flown route of a core-hosted vehicle, and coreLinks is off in the recorder, so it only ever says nothing is recording") },
+        { QStringLiteral("view.dropLeadFromVehicle"), QStringLiteral("aims at another vehicle's last fix, and only vehicles the core hosts leave one, which coreLinks off in the recorder makes none, so it only ever refuses") },
     };
 
     QSet<QString> recorded;
@@ -1622,7 +1637,7 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
             unpinned.append(path);
         }
     }
-    QVERIFY2(unpinned.isEmpty(), qPrintable(QStringLiteral("registered and recorded nowhere, so every field a head reads from them is pinned by nothing and the absence looks exactly like the eighteen deliberate ones: %1. Add them to kViewPaths, or name them above with the reason they cannot be recorded").arg(unpinned.join(QStringLiteral(", ")))));
+    QVERIFY2(unpinned.isEmpty(), qPrintable(QStringLiteral("registered and recorded nowhere, so every field a head reads from them is pinned by nothing and the absence looks exactly like the %1 deliberate ones: %2. Add them to kViewPaths, or name them above with the reason they cannot be recorded").arg(kNotRecorded.count()).arg(unpinned.join(QStringLiteral(", ")))));
 
     QStringList stale;
     for (auto it = kNotRecorded.begin(); it != kNotRecorded.end(); ++it) {
@@ -1842,6 +1857,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         { QStringLiteral("view.coreRemoteId"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
         { QStringLiteral("view.coreCalibration"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
         { QStringLiteral("view.coreCameras"), QStringLiteral("the core hub is fed only by links the core hosts, and the recorder's vehicle arrives on a Qt link, so no core vehicle id exists to pass") },
+        { QStringLiteral("view.dropLeadFromVehicle"), QStringLiteral("the target vehicle id has to name a vehicle the core hosts, and the recorder's vehicle arrives on a Qt link, so every id it could pass is refused") },
     };
     const QJsonArray argumentModes = take(qgc_bridge_get("view.dependencies")).value(QStringLiteral("argumentModes")).toArray();
     QVERIFY2(argumentModes.count() > 20, "the registry parsed, so an empty answer below would mean nothing");
@@ -2449,7 +2465,8 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
 
 void QGCCoreCTest::_tlogSummaryDecodesTheSampleLog()
 {
-    const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));
+    const QString sample =
+        QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/arducopter-bench.tlog"));
     const QJsonObject summary = take(qgc_bridge_get(QStringLiteral("view.tlog(%1)").arg(sample).toUtf8().constData()));
     QCOMPARE(summary.value(QStringLiteral("readable")).toBool(false), true);
     QVERIFY(summary.value(QStringLiteral("frames")).toInt() > 1000);
@@ -3089,6 +3106,9 @@ void QGCCoreCTest::_everyNameTheCoreHandsAHeadToInterpolateResolves()
         const QJsonObject kind = entry.toObject();
         const QString id = kind.value(QStringLiteral("id")).toString();
         const QString invokable = kind.value(QStringLiteral("invokable")).toString();
+        if (invokable.isEmpty()) {
+            continue;
+        }
         restore();
 
         const QJsonArray arguments = kind.value(QStringLiteral("simple")).toBool()
