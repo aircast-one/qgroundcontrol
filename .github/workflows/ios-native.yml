@@ -56,3 +56,37 @@ jobs:
           xcodebuild -project Aircast.xcodeproj -scheme Aircast -configuration Release \
             -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build \
             | grep -E "error:|warning: unable|BUILD (SUCCEEDED|FAILED)" ; test "${PIPESTATUS[0]}" -eq 0
+
+  test:
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: aarch64-apple-ios-sim
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Unit tests
+        working-directory: ios
+        run: |
+          ./fetch-deps.sh
+          xcodegen generate
+          xcodebuild -project Aircast.xcodeproj -scheme Aircast -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' CODE_SIGNING_ALLOWED=NO test \
+            | grep -E -A1 "error:|Test Case .* failed|Test Suite 'All tests' (passed|failed)|\*\* TEST (SUCCEEDED|FAILED)" ; test "${PIPESTATUS[0]}" -eq 0
