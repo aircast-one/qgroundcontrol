@@ -39,9 +39,11 @@ func syntheticAvailable(_ view: JSON?) -> Bool { view?["available"].bool == true
 
 func syntheticChosen(_ reading: CamerasReading?) -> Bool { reading?.cameras.first(where: \.active)?.source == SYNTHETIC_SOURCE }
 
-func syntheticAims(_ view: JSON?, _ cameras: CamerasReading?) -> Bool {
-    syntheticAvailable(view) && view?["aimable"].bool == true && cameras?.cameras.contains { $0.active && $0.source == SYNTHETIC_SOURCE } == true
+func syntheticFree(_ view: JSON?, picked: Bool) -> Bool {
+    syntheticAvailable(view) && view?["locksOnTarget"].bool != true && (picked || view?["gimbalAimed"].bool != true)
 }
+
+func syntheticAims(_ view: JSON?, _ cameras: CamerasReading?) -> Bool { syntheticChosen(cameras) && syntheticFree(view, picked: true) }
 
 func syntheticPoseScript(_ view: JSON) -> String { "window.aircast && window.aircast.pose(\(view.text))" }
 
@@ -240,10 +242,11 @@ struct SyntheticView: View {
     var standIn: String?
     @QgcPath(SYNTHETIC_VIEW) private var view
     @QgcPath(SYNTHETIC_OVERLAYS) private var overlays
+    @ShownCameras private var cameras
     @State private var dragStart: (tilt: Double, pan: Double)?
     @State private var sent: (tilt: Double, pan: Double)?
 
-    private var canAim: Bool { aimable && view?["aimable"].bool == true }
+    private var canAim: Bool { aimable && syntheticFree(view, picked: syntheticChosen(cameras)) }
 
     var body: some View {
         GeometryReader { geometry in

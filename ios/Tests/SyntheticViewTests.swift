@@ -55,7 +55,18 @@ final class SyntheticViewTests: XCTestCase {
         let cameras = { (source: String) in camerasReading(JSON.parse(#"{"class":"Cameras","cameras":[{"slot":0,"source":"\#(source)","active":true}]}"#)) }
         XCTAssertTrue(syntheticAims(aimable, cameras(SYNTHETIC_SOURCE)))
         XCTAssertFalse(syntheticAims(aimable, cameras("RTSP Video Stream")), "a dropped stream's synthetic fallback still lets a swipe switch cameras")
-        XCTAssertFalse(syntheticAims(JSON.parse(#"{"available":true,"aimable":false}"#), cameras(SYNTHETIC_SOURCE)))
+        XCTAssertFalse(syntheticAims(JSON.parse(#"{"available":true,"aimable":false,"locksOnTarget":true}"#), cameras(SYNTHETIC_SOURCE)), "a view locked on a tracked target takes no aim")
+        XCTAssertTrue(syntheticAims(JSON.parse(#"{"available":true,"aimable":false,"gimbalAimed":true}"#), cameras(SYNTHETIC_SOURCE)), "picked a moment ago, it aims before the core sends a view that knows")
         XCTAssertFalse(syntheticAims(aimable, nil))
+    }
+
+    func testPickingTheSyntheticViewHandsTheDragToTheViewAtOnceBeforeTheCoreSendsAViewMadeAfterThePick() {
+        let standingIn = JSON.parse(#"{"available":true,"aimable":false,"gimbalAimed":true,"locksOnTarget":false}"#)
+        XCTAssertFalse(syntheticFree(standingIn, picked: false), "standing in for the gimbal's camera, the view follows the gimbal")
+        XCTAssertTrue(syntheticFree(standingIn, picked: true), "the gimbal belongs to the camera the pilot left, so the very next drag aims the view")
+        let pickedEarlier = JSON.parse(#"{"available":true,"aimable":true,"gimbalAimed":true,"locksOnTarget":false}"#)
+        XCTAssertFalse(syntheticFree(pickedEarlier, picked: false), "and switching back to the gimbal camera takes the drag off the view just as fast")
+        XCTAssertFalse(syntheticFree(JSON.parse(#"{"available":true,"aimable":false,"gimbalAimed":false,"locksOnTarget":true}"#), picked: true), "a target lock still holds the picked view")
+        XCTAssertFalse(syntheticFree(JSON.parse(#"{"available":false}"#), picked: true))
     }
 }

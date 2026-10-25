@@ -34,16 +34,24 @@ const syntheticCanvas = async (page: Page) => {
 
 const read = (page: Page, path: string) => page.evaluate(async ([module, watched]) => ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get(watched), ['/src/bridge/Qgc.ts', path] as const);
 
-const grab = async (page: Page, drags: 'look' | 'gimbal') => {
-  const canvas = page.locator(`[data-gesture=${drags}] canvas`);
-  await expect(canvas).toBeVisible();
-  const box = (await canvas.boundingBox())!;
+const call = (page: Page, path: string, ...args: unknown[]) =>
+  page.evaluate(async ([module, called, given]) => ((await import(module)) as { Qgc: { call: (path: string, ...args: unknown[]) => Promise<unknown> } }).Qgc.call(called, ...given), ['/src/bridge/Qgc.ts', path, args] as const);
+
+const dragAcross = async (page: Page, box: { x: number; y: number; width: number; height: number }) => {
   const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x - box.width / 4, y + box.height / 6, { steps: 12 });
   await page.mouse.up();
 };
+
+const grab = async (page: Page, drags: 'look' | 'gimbal') => {
+  const canvas = page.locator(`[data-gesture=${drags}] canvas`);
+  await expect(canvas).toBeVisible();
+  await dragAcross(page, (await canvas.boundingBox())!);
+};
+
+const gimbalYaw = async (page: Page) => ((await read(page, 'view.gimbal')) as { gimbals?: { bodyYaw: number | null }[] } | null)?.gimbals?.[0]?.bodyYaw ?? null;
 
 test('a mouse drag grabs the synthetic view like a map: pulled left and down, it turns right and looks up', async ({ vehicle }) => {
   await syntheticCanvas(vehicle);
@@ -58,7 +66,7 @@ test('a mouse drag grabs the synthetic view like a map: pulled left and down, it
 test('with a gimbal, dragging the synthetic view turns the gimbal the same way, by the angle the drag spans', async ({ app }) => {
   await connectMock(app, ['Enable gimbal']);
   await syntheticCanvas(app);
-  const yaw = async () => ((await read(app, 'view.gimbal')) as { gimbals?: { bodyYaw: number | null }[] } | null)?.gimbals?.[0]?.bodyYaw ?? null;
+  const yaw = () => gimbalYaw(app);
   await expect.poll(yaw, { timeout: 30_000 }).not.toBeNull();
   const before = (await yaw()) as number;
   await grab(app, 'gimbal');
@@ -68,16 +76,36 @@ test('with a gimbal, dragging the synthetic view turns the gimbal the same way, 
 
 
 test('with a gimbal, a drag on the picked synthetic view turns the view and leaves the real camera where it is', async ({ app }) => {
-  await app.evaluate(async (module) => ((await import(module)) as { Qgc: { call: (path: string, ...args: unknown[]) => Promise<unknown> } }).Qgc.call('cameras.add', 'Synthetic view', 'Synthetic View', ''), '/src/bridge/Qgc.ts');
+  await call(app, 'cameras.add', 'Synthetic view', 'Synthetic View', '');
   await connectMock(app, ['Enable gimbal']);
   await syntheticCanvas(app);
-  const yaw = async () => ((await read(app, 'view.gimbal')) as { gimbals?: { bodyYaw: number | null }[] } | null)?.gimbals?.[0]?.bodyYaw ?? null;
+  const yaw = () => gimbalYaw(app);
   const pan = async () => ((await read(app, 'view.syntheticView')) as { pan: number }).pan;
   await expect.poll(yaw, { timeout: 30_000 }).not.toBeNull();
   const [yawBefore, panBefore] = [(await yaw()) as number, await pan()];
   await grab(app, 'look');
   await expect.poll(async () => (await pan()) - panBefore, { timeout: 10_000 }).toBeGreaterThan(12);
   expect(Math.abs(((await yaw()) as number) - yawBefore), 'the gimbal is not the picked camera').toBeLessThan(2);
+});
+
+test('with a gimbal, the drag right after picking the synthetic view turns the view, not the gimbal it stood in for', async ({ app }) => {
+  await call(app, 'cameras.add', 'Gimbal camera', 'RTSP Video Stream', 'rtsp://127.0.0.1:9/none');
+  await call(app, 'cameras.add', 'Synthetic view', 'Synthetic View', '');
+  await connectMock(app, ['Enable gimbal']);
+  await syntheticCanvas(app);
+  const chip = app.getByRole('button', { name: /^Cameras, showing / });
+  await expect(chip).toHaveAccessibleName('Cameras, showing Gimbal camera');
+  await expect.poll(() => gimbalYaw(app), { timeout: 30_000 }).not.toBeNull();
+  const standIn = app.locator('[data-gesture=gimbal] canvas');
+  await expect(standIn).toBeVisible();
+  const box = (await standIn.boundingBox())!;
+  const pan = async () => ((await read(app, 'view.syntheticView')) as { pan: number }).pan;
+  const [yawBefore, panBefore] = [(await gimbalYaw(app)) as number, await pan()];
+  await chip.click();
+  await app.getByRole('menuitem', { name: 'Synthetic view' }).click();
+  await dragAcross(app, box);
+  await expect.poll(async () => (await pan()) - panBefore, { timeout: 10_000 }).toBeGreaterThan(12);
+  expect(Math.abs(((await gimbalYaw(app)) as number) - yawBefore), 'the pick hands the drag over at once, the gimbal belongs to the other camera').toBeLessThan(2);
 });
 
 test('with a gimbal and the synthetic view standing in for the camera, the tilt slider takes the drag: pulled down, the camera tilts down', async ({ app }) => {

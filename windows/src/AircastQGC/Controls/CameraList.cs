@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
+using AircastQGC.Core;
 
 namespace AircastQGC.Controls;
 
@@ -38,6 +40,7 @@ internal sealed record CameraList(bool Readable, string Reason, bool PipEnabled,
     public const string SyntheticSource = "Synthetic View";
     public const string SyntheticLabel = "Synthetic view";
     public const string LiveStatus = "live";
+    private const string SetActiveSource = "video.setActiveVideoSource";
 
     private static readonly string[] GroupOrder = ["Video streams", "Vehicle and radio presets", "This device"];
 
@@ -48,6 +51,16 @@ internal sealed record CameraList(bool Readable, string Reason, bool PipEnabled,
         ["noSignal"] = ("No signal", "CriticalBrush"),
         ["idle"] = ("Not playing", "TextTertiaryBrush"),
     };
+
+    public static event Action<JsonObject>? Picked;
+
+    public static JsonObject Pick(int slot)
+    {
+        Bridge.Invoke(SetActiveSource, new JsonArray(slot));
+        var shown = Bridge.Get(View);
+        Picked?.Invoke(shown);
+        return shown;
+    }
 
     public IReadOnlyList<CameraEntry> Stored => Cameras.Where(c => c.Stored is not null).ToList();
 

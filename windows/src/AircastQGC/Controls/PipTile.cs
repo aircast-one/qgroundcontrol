@@ -11,7 +11,6 @@ public sealed partial class PipTile : UserControl
 {
     private const string Client = "pip-tile";
     private const string SetPipShown = "video.setPipShown";
-    private const string SetActiveSource = "video.setActiveVideoSource";
 
     private readonly VideoSurface _surface = new() { Channel = VideoNative.Pip };
     private readonly SyntheticView _synthetic = new();
@@ -120,7 +119,6 @@ public sealed partial class PipTile : UserControl
     private void Swap()
     {
         if (_slot is not int slot) return;
-        Bridge.Invoke(SetActiveSource, new JsonArray(slot));
-        Render(Bridge.Get(CameraList.View));
+        Render(CameraList.Pick(slot));
     }
 }

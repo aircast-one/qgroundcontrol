@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json.Nodes;
 using AircastQGC.Core;
 using AircastQGC.Forms;
 using Microsoft.UI.Xaml;
@@ -92,7 +91,6 @@ public sealed partial class CameraSwitch : UserControl
 
 internal static class CameraMenu
 {
-    private const string SetActiveSource = "video.setActiveVideoSource";
     private const string MultiViewSetting = "settings.videoSettings.multiViewEnabled";
     private const string Group = "camera-switch";
     private const string PipGlyph = "\uEE49";
@@ -131,7 +129,7 @@ internal static class CameraMenu
         item.Click += (_, _) =>
         {
             if (camera.Active) return;
-            Bridge.Invoke(SetActiveSource, new JsonArray(camera.Slot));
+            CameraList.Pick(camera.Slot);
             changed();
         };
         return item;

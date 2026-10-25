@@ -1,15 +1,16 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 import type { Json } from '@/bridge/Json';
 import { VideoCommands } from '@/bridge/BridgeCommands';
+import { Qgc } from '@/bridge/Qgc';
 import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import { useUpdatedRef } from '@/kotlin/Compose';
-import { useValue } from '@/kotlin/State';
+import { mutableStateOf, useValue } from '@/kotlin/State';
 import { DropdownMenu, DropdownMenuItem, HorizontalDivider, Surface, Text } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { CAMERA_VIEW, trackingCanAim, trackingReading } from '@/ui/CameraControl';
 import { CAMERA_SHEET } from '@/ui/CameraControlLayer';
-import { CAMERAS_VIEW, type CameraEntry, CameraStatus, type CamerasReading, camerasReading } from '@/ui/Cameras';
+import { CAMERAS_VIEW, type CameraEntry, CameraStatus, CamerasReading, camerasReading } from '@/ui/Cameras';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { GIMBAL_INDICATOR_PATH, onScreenGimbal } from '@/ui/GimbalIndicator';
 import { useOsdBackdrop } from '@/ui/Osd';
@@ -62,17 +63,36 @@ export const CameraStatusDot = ({ status, className }: { status: CameraStatus; c
   return <span role="img" aria-label={status.label} className={`block shrink-0 rounded-full ${className ?? ''}`} style={{ width: SWITCH_DOT, height: SWITCH_DOT, background: tint }} />;
 };
 
-export const showCamera = (slot: number, onRefused: () => void = () => undefined): void =>
+export type CameraPick = { readonly slot: number; readonly on: Json | null };
+
+const cameraPick = mutableStateOf<CameraPick | null>(null);
+
+export const pickedReading = (json: Json | null, pick: CameraPick | null): CamerasReading | null => {
+  const reading = camerasReading(json);
+  return reading === null || pick === null || pick.on !== json ? reading : CamerasReading({ ...reading, cameras: reading.cameras.map((it) => ({ ...it, active: it.slot === pick.slot })) });
+};
+
+export const useCamerasReading = (): CamerasReading | null => {
+  const json = useQgcPath(CAMERAS_VIEW);
+  const pick = useValue(cameraPick);
+  return useMemo(() => pickedReading(json, pick), [json, pick]);
+};
+
+export const showCamera = (slot: number, onRefused: () => void = () => undefined): void => {
+  const pick = { slot, on: Qgc.path(CAMERAS_VIEW) };
+  cameraPick.value = pick;
   void (async () => {
-    if (!(await VideoCommands.setActiveSource(slot))) onRefused();
+    if (await VideoCommands.setActiveSource(slot)) return;
+    if (cameraPick.value === pick) cameraPick.value = null;
+    onRefused();
   })();
+};
 
 export const chipCamera = (reading: CamerasReading | null): CameraEntry | null =>
   reading === null ? null : (reading.cameras.find((it) => it.active) ?? reading.cameras[0] ?? null);
 
 export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; className?: string }) => {
-  const json = useQgcPath(CAMERAS_VIEW);
-  const reading = useMemo(() => camerasReading(json), [json]);
+  const reading = useCamerasReading();
   const switchState = cameraSwitchState(reading);
   const splitTo = splitToggleTarget(reading, splitRoom, useStreamOn());
   const shown = switchState?.shown ?? chipCamera(reading);
@@ -171,8 +191,7 @@ export const neighbourCamera = (state: CameraSwitchState | null, step: number): 
 };
 
 export const useRememberCameraSwiper = (): ((step: number) => boolean) => {
-  const json = useQgcPath(CAMERAS_VIEW);
-  const state = useUpdatedRef(cameraSwitchState(camerasReading(json)));
+  const state = useUpdatedRef(cameraSwitchState(useCamerasReading()));
   return useCallback((step: number) => {
     const next = neighbourCamera(state.current, step);
     if (next === null) return false;

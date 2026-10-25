@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import one.aircast.android.R
+import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.VideoCommands
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcDerived
@@ -40,6 +41,7 @@ import one.aircast.map.aircast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
+import org.json.JSONObject
 
 private const val SWITCH_SCRIM_ALPHA = 0.55f
 private const val SWITCH_BORDER_ALPHA = 0.4f
@@ -83,14 +85,38 @@ internal fun CameraStatusDot(status: CameraStatus, modifier: Modifier = Modifier
     Box(modifier.size(SWITCH_DOT).background(cameraStatusTint(status), CircleShape).semantics { contentDescription = status.label })
 }
 
-internal fun showCamera(slot: Int, onRefused: () -> Unit = {}) = offMainInOrder { if (!VideoCommands.setActiveSource(slot)) onRefused() }
+internal data class CameraPick(val slot: Int, val on: JSONObject?)
+
+private val cameraPick = mutableStateOf<CameraPick?>(null)
+
+internal fun pickedReading(json: JSONObject?, pick: CameraPick?): CamerasReading? =
+    camerasReading(json)?.let { reading ->
+        if (pick == null || pick.on !== json) reading else reading.copy(cameras = reading.cameras.map { it.copy(active = it.slot == pick.slot) })
+    }
+
+@Composable
+internal fun rememberCamerasReading(): CamerasReading? {
+    val json by qgcPath(CAMERAS_VIEW)
+    val pick by cameraPick
+    return remember(json, pick) { pickedReading(json, pick) }
+}
+
+internal fun showCamera(slot: Int, onRefused: () -> Unit = {}) {
+    val pick = CameraPick(slot, Qgc.path(CAMERAS_VIEW).value)
+    cameraPick.value = pick
+    offMainInOrder {
+        if (!VideoCommands.setActiveSource(slot)) {
+            if (cameraPick.value === pick) cameraPick.value = null
+            onRefused()
+        }
+    }
+}
 
 internal fun chipCamera(reading: CamerasReading?): CameraEntry? = reading?.cameras?.let { cameras -> cameras.firstOrNull { it.active } ?: cameras.firstOrNull() }
 
 @Composable
 internal fun CameraSwitch(splitRoom: Boolean, modifier: Modifier = Modifier) {
-    val json by qgcPath(CAMERAS_VIEW)
-    val reading = remember(json) { camerasReading(json) }
+    val reading = rememberCamerasReading()
     val switch = cameraSwitchState(reading)
     val splitTo = splitToggleTarget(reading, splitRoom, streamOn())
     val shown = switch?.shown ?: chipCamera(reading)
@@ -184,8 +210,7 @@ internal fun neighbourCamera(state: CameraSwitchState?, step: Int): CameraEntry?
 
 @Composable
 internal fun rememberCameraSwiper(): (Int) -> Boolean {
-    val json by qgcPath(CAMERAS_VIEW)
-    val state by rememberUpdatedState(cameraSwitchState(camerasReading(json)))
+    val state by rememberUpdatedState(cameraSwitchState(rememberCamerasReading()))
     return remember { { step -> neighbourCamera(state, step)?.let { showCamera(it.slot); true } ?: false } }
 }
 

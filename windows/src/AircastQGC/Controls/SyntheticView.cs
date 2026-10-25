@@ -162,14 +162,7 @@ public sealed partial class SyntheticView : UserControl
             Sync();
         });
         Live.Watch(this, GimbalView, view => _gimbalAt = GimbalAt(view));
-        Live.Watch(this, CameraList.View, view =>
-        {
-            var chosen = CameraList.Parse(view)?.Cameras.Any(c => c.Active && c.Source == CameraList.SyntheticSource) == true;
-            var changed = chosen != _syntheticChosen;
-            _syntheticChosen = chosen;
-            PaintAim();
-            if (changed) Changed?.Invoke(this, EventArgs.Empty);
-        });
+        Live.Watch(this, CameraList.View, TakeCameras);
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Halt();
     }
@@ -210,9 +203,11 @@ public sealed partial class SyntheticView : UserControl
 
     private bool Native => VideoJson.Flag(_view, "native");
 
-    private bool CanAim => _aimable && VideoJson.Flag(_view, "aimable");
+    private bool Free => Available && !VideoJson.Flag(_view, "locksOnTarget") && (_syntheticChosen || !VideoJson.Flag(_view, "gimbalAimed"));
 
-    private bool SteersGimbal => _aimable && Available && !VideoJson.Flag(_view, "aimable", true);
+    private bool CanAim => _aimable && Free;
+
+    private bool SteersGimbal => _aimable && Available && !Free;
 
     private double Tilt => VideoJson.Number(_view["tilt"]) ?? SyntheticAim.DefaultTilt;
 
@@ -226,6 +221,8 @@ public sealed partial class SyntheticView : UserControl
 
     private void Start()
     {
+        CameraList.Picked -= TakeCameras;
+        CameraList.Picked += TakeCameras;
         if (XamlRoot is { } root) root.Changed += OnRootChanged;
         _check.Start();
         Fit();
@@ -234,6 +231,7 @@ public sealed partial class SyntheticView : UserControl
     private void Halt()
     {
         if (IsLoaded) return;
+        CameraList.Picked -= TakeCameras;
         if (XamlRoot is { } root) root.Changed -= OnRootChanged;
         _check.Stop();
         EndDrag();
@@ -267,6 +265,15 @@ public sealed partial class SyntheticView : UserControl
         _root.Background = CanAim || SteersGimbal ? TakesInput : null;
         PaintNote();
         PaintAim();
+    }
+
+    private void TakeCameras(JsonObject view)
+    {
+        var chosen = CameraList.Parse(view)?.Cameras.Any(c => c.Active && c.Source == CameraList.SyntheticSource) == true;
+        var changed = chosen != _syntheticChosen;
+        _syntheticChosen = chosen;
+        Sync();
+        if (changed) Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void Attach()

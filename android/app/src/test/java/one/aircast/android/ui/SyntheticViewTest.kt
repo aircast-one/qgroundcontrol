@@ -55,11 +55,21 @@ class SyntheticViewTest {
 
     @Test
     fun `with a gimbal aiming the view a finger drag steers the gimbal, without one it looks around`() {
-        val gimballed = JSONObject("""{"available":true,"aimable":false}""")
-        assertTrue("the view follows the gimbal, so a drag has to move the gimbal or it does nothing", gimbalAimsSynthetic(gimballed, aimable = true))
-        assertFalse("free look keeps its own drag", gimbalAimsSynthetic(JSONObject("""{"available":true,"aimable":true}"""), aimable = true))
-        assertFalse("a thumbnail or second pane never takes the drag", gimbalAimsSynthetic(gimballed, aimable = false))
-        assertFalse(gimbalAimsSynthetic(JSONObject("""{"available":false,"aimable":false}"""), aimable = true))
+        val gimballed = JSONObject("""{"available":true,"aimable":false,"gimbalAimed":true}""")
+        assertEquals("the view follows the gimbal, so a drag has to move the gimbal or it does nothing", SyntheticDrag.Gimbal, syntheticDrag(gimballed, picked = false, aimable = true))
+        assertEquals("free look keeps its own drag", SyntheticDrag.Look, syntheticDrag(JSONObject("""{"available":true,"aimable":true,"gimbalAimed":false}"""), picked = false, aimable = true))
+        assertNull("a thumbnail or second pane never takes the drag", syntheticDrag(gimballed, picked = false, aimable = false))
+        assertNull(syntheticDrag(JSONObject("""{"available":false,"aimable":false}"""), picked = false, aimable = true))
+        assertEquals("a view locked on a tracked target is not the pilot's to aim", SyntheticDrag.Gimbal, syntheticDrag(JSONObject("""{"available":true,"aimable":false,"locksOnTarget":true}"""), picked = false, aimable = true))
+    }
+
+    @Test
+    fun `picking the synthetic view hands the drag to the view at once, before the core sends a view made after the pick`() {
+        val standingIn = JSONObject("""{"available":true,"aimable":false,"gimbalAimed":true,"locksOnTarget":false}""")
+        assertEquals("the gimbal belongs to the camera the pilot left, so the very next drag aims the view", SyntheticDrag.Look, syntheticDrag(standingIn, picked = true, aimable = true))
+        val pickedEarlier = JSONObject("""{"available":true,"aimable":true,"gimbalAimed":true,"locksOnTarget":false}""")
+        assertEquals("and switching back to the gimbal camera hands the drag back to the gimbal just as fast", SyntheticDrag.Gimbal, syntheticDrag(pickedEarlier, picked = false, aimable = true))
+        assertEquals("a target lock still holds the picked view", SyntheticDrag.Gimbal, syntheticDrag(JSONObject("""{"available":true,"aimable":false,"gimbalAimed":false,"locksOnTarget":true}"""), picked = true, aimable = true))
     }
 
     @Test
@@ -107,7 +117,8 @@ class SyntheticViewTest {
         val cameras = { source: String -> camerasReading(JSONObject("""{"class":"Cameras","cameras":[{"slot":0,"source":"$source","active":true},{"slot":1,"source":"RTSP Video Stream","active":false}]}""")) }
         assertTrue(syntheticAims(aimable, cameras(SYNTHETIC_SOURCE)))
         assertFalse("a dropped RTSP stream shows the synthetic view as a fallback, and a swipe still switches cameras", syntheticAims(aimable, cameras("RTSP Video Stream")))
-        assertFalse(syntheticAims(JSONObject("""{"available":true,"aimable":false}"""), cameras(SYNTHETIC_SOURCE)))
+        assertFalse("a view locked on a tracked target takes no aim", syntheticAims(JSONObject("""{"available":true,"aimable":false,"locksOnTarget":true}"""), cameras(SYNTHETIC_SOURCE)))
+        assertTrue("picked a moment ago, it aims before the core sends a view that knows", syntheticAims(JSONObject("""{"available":true,"aimable":false,"gimbalAimed":true}"""), cameras(SYNTHETIC_SOURCE)))
         assertFalse(syntheticAims(aimable, null))
     }
 }

@@ -47,7 +47,7 @@ internal static class CameraCommands
 
     public static string? Move(int from, int to) => FormWrites.Call("cameras.move", Subject, from, to);
 
-    public static void Show(int slot) => FormWrites.Ok("video.setActiveVideoSource", slot);
+    public static void Show(int slot) => CameraList.Pick(slot);
 
     public static string? Save(CameraDraft draft) => draft.Stored is int slot
         ? Update(slot, draft.Name, draft.Source, draft.Url, CameraDraft.TypedTilt(draft.Tilt))

@@ -658,11 +658,23 @@ pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn synthetic_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let gimbals = match crate::cameras::synthetic_picked(backend) {
+    framed(
+        backend,
+        &crate::gimbal::gimbal_view(backend, &[]),
+        crate::cameras::synthetic_picked(backend),
+        aimed(),
+    )
+}
+
+pub fn framed(backend: &dyn Backend, gimbals: &Value, picked: bool, aim: (f64, f64)) -> Value {
+    let followed = match picked {
         true => json!({ "gimbals": [] }),
-        false => crate::gimbal::gimbal_view(backend, &[]),
+        false => gimbals.clone(),
     };
-    synthetic(backend, &gimbals, aimed())
+    crate::altitude::merge(
+        synthetic(backend, &followed, aim),
+        json!({ "gimbalAimed": gimbal_aim(gimbals).is_some() }),
+    )
 }
 
 #[cfg(test)]
@@ -768,6 +780,28 @@ mod tests {
         let untracked = synthetic(&flying(&[]), &no_gimbal(), DEFAULT_AIM);
         assert_eq!(untracked["aimable"], true);
         assert_eq!(untracked["locksOnTarget"], false);
+    }
+
+    #[test]
+    fn the_view_says_whether_a_gimbal_aims_it_whichever_camera_is_picked() {
+        let gimbal =
+            json!({ "gimbals": [{ "active": true, "absoluteYaw": 90.0, "pitch": -30.0 }] });
+        let standing_in = framed(&flying(&[]), &gimbal, false, DEFAULT_AIM);
+        assert_eq!(
+            (&standing_in["aimable"], &standing_in["gimbalAimed"]),
+            (&json!(false), &json!(true)),
+            "standing in for the gimbal's camera, the view follows the gimbal"
+        );
+        let picked = framed(&flying(&[]), &gimbal, true, DEFAULT_AIM);
+        assert_eq!(
+            (&picked["aimable"], &picked["gimbalAimed"]),
+            (&json!(true), &json!(true)),
+            "picked as the camera it is aimed by the pilot, and still says a gimbal is there, so a head that has just switched cameras can tell how a drag steers before the core's next view"
+        );
+        assert_eq!(
+            framed(&flying(&[]), &no_gimbal(), false, DEFAULT_AIM)["gimbalAimed"],
+            false
+        );
     }
 
     #[test]

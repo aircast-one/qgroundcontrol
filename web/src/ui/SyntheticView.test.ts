@@ -5,12 +5,12 @@ import {
   SyntheticDraw,
   dragStart,
   gimbalAim,
-  gimbalAimsSynthetic,
   pageOf,
   shownCameraStatus,
   shownNote,
   syntheticAims,
   syntheticAvailable,
+  syntheticDrag,
   syntheticOverlaysScript,
   syntheticPan,
   syntheticPoseScript,
@@ -64,11 +64,20 @@ describe('SyntheticViewTest', () => {
   });
 
   it('with a gimbal aiming the view a finger drag steers the gimbal, without one it looks around', () => {
-    const gimballed = { available: true, aimable: false };
-    expect(gimbalAimsSynthetic(gimballed, true), 'the view follows the gimbal, so a drag has to move the gimbal or it does nothing').toBe(true);
-    expect(gimbalAimsSynthetic({ available: true, aimable: true }, true), 'free look keeps its own drag').toBe(false);
-    expect(gimbalAimsSynthetic(gimballed, false), 'a thumbnail or second pane never takes the drag').toBe(false);
-    expect(gimbalAimsSynthetic({ available: false, aimable: false }, true)).toBe(false);
+    const gimballed = { available: true, aimable: false, gimbalAimed: true };
+    expect(syntheticDrag(gimballed, false, true), 'the view follows the gimbal, so a drag has to move the gimbal or it does nothing').toBe('gimbal');
+    expect(syntheticDrag({ available: true, aimable: true, gimbalAimed: false }, false, true), 'free look keeps its own drag').toBe('look');
+    expect(syntheticDrag(gimballed, false, false), 'a thumbnail or second pane never takes the drag').toBeNull();
+    expect(syntheticDrag({ available: false, aimable: false }, false, true)).toBeNull();
+    expect(syntheticDrag({ available: true, aimable: false, locksOnTarget: true }, false, true), 'a view locked on a tracked target is not the pilot\'s to aim').toBe('gimbal');
+  });
+
+  it('picking the synthetic view hands the drag to the view at once, before the core sends a view made after the pick', () => {
+    const standingIn = { available: true, aimable: false, gimbalAimed: true, locksOnTarget: false };
+    expect(syntheticDrag(standingIn, true, true), 'the gimbal belongs to the camera the pilot left, so the very next drag aims the view').toBe('look');
+    const pickedEarlier = { available: true, aimable: true, gimbalAimed: true, locksOnTarget: false };
+    expect(syntheticDrag(pickedEarlier, false, true), 'and switching back to the gimbal camera hands the drag back to the gimbal just as fast').toBe('gimbal');
+    expect(syntheticDrag({ available: true, aimable: false, gimbalAimed: false, locksOnTarget: true }, true, true), 'a target lock still holds the picked view').toBe('gimbal');
   });
 
   it('a drag starts from where the active gimbal points', () => {
@@ -110,7 +119,8 @@ describe('SyntheticViewTest', () => {
     const cameras = (source: string) => camerasReading({ class: 'Cameras', cameras: [{ slot: 0, source, active: true }, { slot: 1, source: 'RTSP Video Stream', active: false }] });
     expect(syntheticAims(aimable, cameras(SYNTHETIC_SOURCE))).toBe(true);
     expect(syntheticAims(aimable, cameras('RTSP Video Stream')), 'a dropped RTSP stream shows the synthetic view as a fallback, and a swipe still switches cameras').toBe(false);
-    expect(syntheticAims({ available: true, aimable: false }, cameras(SYNTHETIC_SOURCE))).toBe(false);
+    expect(syntheticAims({ available: true, aimable: false, locksOnTarget: true }, cameras(SYNTHETIC_SOURCE)), 'a view locked on a tracked target takes no aim').toBe(false);
+    expect(syntheticAims({ available: true, aimable: false, gimbalAimed: true }, cameras(SYNTHETIC_SOURCE)), 'picked a moment ago, it aims before the core sends a view that knows').toBe(true);
     expect(syntheticAims(aimable, null)).toBe(false);
   });
 });

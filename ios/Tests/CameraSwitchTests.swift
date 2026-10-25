@@ -67,6 +67,15 @@ final class CameraSwitchTests: XCTestCase {
         XCTAssertNil(chipCamera(nil))
     }
 
+    func testThePilotsPickShowsAtOnceAndHoldsUntilTheCoreSendsACameraListMadeAfterIt() {
+        let shown = JSON.parse(#"{"class":"Cameras","cameras":[\#(camera(0, active: true)),\#(camera(1))]}"#)
+        XCTAssertEqual(pickedReading(shown, CameraPick(slot: 1, on: shown))?.cameras.map(\.active), [false, true], "the pick moves the active camera before the core answers")
+        XCTAssertEqual(pickedReading(shown, nil)?.cameras.map(\.active), [true, false])
+        let answered = JSON.parse(#"{"class":"Cameras","cameras":[\#(camera(0, active: true)),\#(camera(2))]}"#)
+        XCTAssertEqual(pickedReading(answered, CameraPick(slot: 1, on: shown))?.cameras.map(\.active), [true, false], "a list the core sent after the pick is the core's word")
+        XCTAssertNil(pickedReading(nil, CameraPick(slot: 1, on: nil)))
+    }
+
     func testTheSyntheticCameraCountsAsChosenOnlyWhenItIsTheOneOnScreen() {
         let synthetic = #"{"slot":1,"title":"Synthetic","short":"Synthetic","source":"Synthetic View","active":true,"status":"idle","problem":null}"#
         XCTAssertTrue(syntheticChosen(reading(camera(0), synthetic)))
