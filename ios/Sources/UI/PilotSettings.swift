@@ -6,29 +6,33 @@ struct PilotSetting: Equatable {
     var section: String
     let hint: String
     var whenUnlimited: String? = nil
+    var quantity: String? = nil
 }
 
 private let RETURN_HOME = "Return to home"
 private let FLIGHT_PROTECTION = "Flight protection"
 private let FAILSAFES = "If something goes wrong"
 private let FLIGHT_LIMITS = "Flight limits"
+private let ALTITUDE = "altitude"
+private let DISTANCE = "distance"
+private let SPEED = "speed"
 
 func pilotSettings(_ group: SettingsGroup) -> [PilotSetting] {
     switch group {
     case .Safety:
         return [
-            PilotSetting(label: "Return-to-home altitude", parameters: ["RTL_RETURN_ALT", "RTL_ALT_M", "RTL_ALT"], section: RETURN_HOME, hint: "Climbs to this height before flying home."),
-            PilotSetting(label: "Max altitude", parameters: ["GF_MAX_VER_DIST", "FENCE_ALT_MAX"], section: FLIGHT_PROTECTION, hint: "The aircraft will not climb above this.", whenUnlimited: "Most countries cap flights at 120 m."),
-            PilotSetting(label: "Max distance", parameters: ["GF_MAX_HOR_DIST", "FENCE_RADIUS"], section: FLIGHT_PROTECTION, hint: "The aircraft will not fly farther from home than this."),
+            PilotSetting(label: "Return-to-home altitude", parameters: ["RTL_RETURN_ALT", "RTL_ALT_M", "RTL_ALT"], section: RETURN_HOME, hint: "Climbs to this height before flying home.", quantity: ALTITUDE),
+            PilotSetting(label: "Max altitude", parameters: ["GF_MAX_VER_DIST", "FENCE_ALT_MAX"], section: FLIGHT_PROTECTION, hint: "The aircraft will not climb above this.", whenUnlimited: "Most countries cap flights at 120 m.", quantity: ALTITUDE),
+            PilotSetting(label: "Max distance", parameters: ["GF_MAX_HOR_DIST", "FENCE_RADIUS"], section: FLIGHT_PROTECTION, hint: "The aircraft will not fly farther from home than this.", quantity: DISTANCE),
             PilotSetting(label: "Signal lost", parameters: ["NAV_DLL_ACT", "FS_GCS_ENABLE"], section: FAILSAFES, hint: "When the link to this app drops."),
             PilotSetting(label: "Remote controller lost", parameters: ["NAV_RCL_ACT", "FS_THR_ENABLE"], section: FAILSAFES, hint: "When the remote controller drops."),
             PilotSetting(label: "Low battery", parameters: ["COM_LOW_BAT_ACT", "BATT_FS_LOW_ACT"], section: FAILSAFES, hint: "When the battery runs low."),
         ]
     case .Control:
         return [
-            PilotSetting(label: "Max horizontal speed", parameters: ["MPC_XY_VEL_MAX", "LOIT_SPEED_MS", "LOIT_SPEED"], section: FLIGHT_LIMITS, hint: "Fastest the aircraft flies forward and sideways."),
-            PilotSetting(label: "Max climb speed", parameters: ["MPC_Z_VEL_MAX_UP", "PILOT_SPD_UP", "PILOT_SPEED_UP"], section: FLIGHT_LIMITS, hint: "Fastest the aircraft climbs."),
-            PilotSetting(label: "Max descent speed", parameters: ["MPC_Z_VEL_MAX_DN", "PILOT_SPD_DN", "PILOT_SPEED_DN"], section: FLIGHT_LIMITS, hint: "Fastest the aircraft descends."),
+            PilotSetting(label: "Max horizontal speed", parameters: ["MPC_XY_VEL_MAX", "LOIT_SPEED_MS", "LOIT_SPEED"], section: FLIGHT_LIMITS, hint: "Fastest the aircraft flies forward and sideways.", quantity: SPEED),
+            PilotSetting(label: "Max climb speed", parameters: ["MPC_Z_VEL_MAX_UP", "PILOT_SPD_UP", "PILOT_SPEED_UP"], section: FLIGHT_LIMITS, hint: "Fastest the aircraft climbs.", quantity: SPEED),
+            PilotSetting(label: "Max descent speed", parameters: ["MPC_Z_VEL_MAX_DN", "PILOT_SPD_DN", "PILOT_SPEED_DN"], section: FLIGHT_LIMITS, hint: "Fastest the aircraft descends.", whenUnlimited: "At 0 it descends as fast as it climbs.", quantity: SPEED),
         ]
     default:
         return []
@@ -103,7 +107,7 @@ struct PilotSettings: View {
                 let settings = settings
                 shown = await offMain {
                     settings.compactMap { setting in
-                        firstReported(setting) { parameterFact($0) }.map { ShownPilotSetting(setting: setting, fact: $0) }
+                        firstReported(setting) { parameterFact($0, setting.quantity) }.map { ShownPilotSetting(setting: setting, fact: $0) }
                     }
                 }
             }
@@ -245,7 +249,7 @@ private struct PilotFactRow: View {
     init(shown: Fact, setting: PilotSetting) {
         self.shown = shown
         self.setting = setting
-        _live = QgcPath(parameterPath(shown.name))
+        _live = QgcPath(parameterPath(shown.name, setting.quantity))
         _fact = State(initialValue: shown)
     }
 
@@ -259,7 +263,8 @@ private struct PilotFactRow: View {
         .task(id: RowKey(name: shown.name, live: live, revision: revision)) {
             let name = shown.name
             let label = shown.shortLabel
-            let read = await offMain { parameterFact(name).map { labeled($0, label) } }
+            let quantity = setting.quantity
+            let read = await offMain { parameterFact(name, quantity).map { labeled($0, label) } }
             fact = read ?? shown
         }
     }

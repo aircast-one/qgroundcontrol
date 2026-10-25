@@ -25,9 +25,8 @@ ensure_tools_dir(__file__)
 from common.gh_actions import gh, gh_error, write_github_output, write_step_summary
 from common.markdown import md_table
 
-# Build caches are the expensive-to-rebuild data the GC must never evict; the
-# 10 GiB/repo pool is reclaimed from everything else first.
-DEFAULT_PROTECT = r"^(ccache|cpm-modules)-"
+DEFAULT_PROTECT = r"^(ccache|cpm-modules|v0-rust)-"
+_FAMILY_SUFFIX = re.compile(r"(-(?:[0-9a-f]{8,}|\d+))+$")
 _MIB = 1024 * 1024
 
 
@@ -133,23 +132,37 @@ def list_caches_usage(repo: str, limit: int = 200) -> list[CacheUsage]:
     ]
 
 
+def cache_family(key: str) -> str:
+    return _FAMILY_SUFFIX.sub("", key)
+
+
+def protected_caches(caches: list[CacheUsage], protect: str) -> set[CacheUsage]:
+    protect_re = re.compile(protect)
+    newest = {
+        cache_family(cache.key): cache
+        for cache in sorted(caches, key=lambda cache: cache.last_accessed)
+        if protect_re.search(cache.key)
+    }
+    return set(newest.values())
+
+
 def select_prune_victims(
     caches: list[CacheUsage], *, keep_mb: int, high_water_mb: int, protect: str
 ) -> tuple[list[CacheUsage], int, int]:
     """Pick evictable caches to delete; return (victims, total_bytes, projected_bytes).
 
-    No-op below high_water_mb. Above it, evicts non-protected caches largest-first
-    (cold-first on ties) until the pool would drop to keep_mb. Protected build
-    caches are never selected, so the floor can exceed keep_mb.
+    No-op below high_water_mb. Above it, evicts caches largest-first (cold-first
+    on ties) until the pool would drop to keep_mb. The newest cache of each
+    protected build-cache family is never selected, so the floor can exceed keep_mb.
     """
-    protect_re = re.compile(protect)
     total = sum(cache.size_bytes for cache in caches)
     if total <= high_water_mb * _MIB:
         return [], total, total
 
     keep = keep_mb * _MIB
+    kept = protected_caches(caches, protect)
     evictable = sorted(
-        (cache for cache in caches if not protect_re.search(cache.key)),
+        (cache for cache in caches if cache not in kept),
         key=lambda cache: (-cache.size_bytes, cache.last_accessed),
     )
     victims: list[CacheUsage] = []

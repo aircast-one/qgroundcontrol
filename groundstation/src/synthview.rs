@@ -388,25 +388,31 @@ const PILOT_YAW_MODES: [&str; 6] = [
 ];
 const CLIMB_MODES: [&str; 3] = ["Altitude Hold", "Loiter", "Position Hold"];
 const RC_HALF_RANGE: f64 = 500.0;
-const CM_PER_M: f64 = 100.0;
+const LOITER_SPEED: &[(&str, f64)] = &[("LOIT_SPEED_MS", 1.0), ("LOIT_SPEED", 100.0)];
+const CLIMB_SPEED_UP: &[(&str, f64)] = &[("PILOT_SPD_UP", 1.0), ("PILOT_SPEED_UP", 100.0)];
+const CLIMB_SPEED_DOWN: &[(&str, f64)] = &[("PILOT_SPD_DN", 1.0), ("PILOT_SPEED_DN", 100.0)];
 
 fn param(backend: &dyn Backend, name: &str) -> Option<f64> {
-    raw(
-        backend,
-        &format!("vehicle.parameterManager.getParameter(-1,{name})"),
-    )
+    reported(backend, &[(name, 1.0)])
 }
 
-fn gain(
-    backend: &dyn Backend,
-    full: &str,
-    scale: f64,
-    expo: Option<&str>,
-    deadzone: &str,
-) -> Value {
+fn reported(backend: &dyn Backend, names: &[(&str, f64)]) -> Option<f64> {
+    names.iter().find_map(|(name, raw_per_unit)| {
+        let fact = backend.value(&format!(
+            "vehicle.parameterManager.getParameter(-1,{}{name})",
+            crate::paramremap::NO_REMAP
+        ));
+        fact.get("name")
+            .and_then(Value::as_str)
+            .filter(|reported| !reported.is_empty())?;
+        crate::router::raw_of(&fact).map(|raw| raw / raw_per_unit)
+    })
+}
+
+fn gain(backend: &dyn Backend, full: &[(&str, f64)], expo: Option<&str>, deadzone: &str) -> Value {
     let read = || {
         Some(
-            json!({ "full": param(backend, full)? / scale, "expo": expo.map_or(Some(0.0), |name| param(backend, name))?, "deadzone": param(backend, deadzone)? / RC_HALF_RANGE }),
+            json!({ "full": reported(backend, full)?, "expo": expo.map_or(Some(0.0), |name| param(backend, name))?, "deadzone": param(backend, deadzone)? / RC_HALF_RANGE }),
         )
     };
     read().unwrap_or(Value::Null)
@@ -418,20 +424,35 @@ pub fn response(backend: &dyn Backend, vehicle: &Value) -> Value {
     };
     let acro = mode == "Acro";
     let yaw = match (acro, PILOT_YAW_MODES.contains(&mode)) {
-        (true, _) => gain(backend, "ACRO_Y_RATE", 1.0, Some("ACRO_Y_EXPO"), "RC4_DZ"),
-        (false, true) => gain(backend, "PILOT_Y_RATE", 1.0, Some("PILOT_Y_EXPO"), "RC4_DZ"),
+        (true, _) => gain(
+            backend,
+            &[("ACRO_Y_RATE", 1.0)],
+            Some("ACRO_Y_EXPO"),
+            "RC4_DZ",
+        ),
+        (false, true) => gain(
+            backend,
+            &[("PILOT_Y_RATE", 1.0)],
+            Some("PILOT_Y_EXPO"),
+            "RC4_DZ",
+        ),
         (false, false) => Value::Null,
     };
     let tilt = |deadzone: &str| {
         if acro {
-            gain(backend, "ACRO_RP_RATE", 1.0, Some("ACRO_RP_EXPO"), deadzone)
+            gain(
+                backend,
+                &[("ACRO_RP_RATE", 1.0)],
+                Some("ACRO_RP_EXPO"),
+                deadzone,
+            )
         } else {
             Value::Null
         }
     };
     let loiter = |deadzone: &str| {
         if mode == "Loiter" {
-            gain(backend, "LOIT_SPEED", CM_PER_M, None, deadzone)
+            gain(backend, LOITER_SPEED, None, deadzone)
         } else {
             Value::Null
         }
@@ -439,8 +460,8 @@ pub fn response(backend: &dyn Backend, vehicle: &Value) -> Value {
     let climb = CLIMB_MODES
         .contains(&mode)
         .then(|| {
-            let up = param(backend, "PILOT_SPEED_UP")? / CM_PER_M;
-            let down = param(backend, "PILOT_SPEED_DN").filter(|down| *down > 0.0).map_or(up, |down| down / CM_PER_M);
+            let up = reported(backend, CLIMB_SPEED_UP)?;
+            let down = reported(backend, CLIMB_SPEED_DOWN).filter(|down| *down > 0.0).unwrap_or(up);
             Some(json!({ "up": up, "down": down, "deadzone": param(backend, "THR_DZ")? / RC_HALF_RANGE }))
         })
         .flatten()
@@ -637,11 +658,23 @@ pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn synthetic_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let gimbals = match crate::cameras::synthetic_picked(backend) {
+    framed(
+        backend,
+        &crate::gimbal::gimbal_view(backend, &[]),
+        crate::cameras::synthetic_picked(backend),
+        aimed(),
+    )
+}
+
+pub fn framed(backend: &dyn Backend, gimbals: &Value, picked: bool, aim: (f64, f64)) -> Value {
+    let followed = match picked {
         true => json!({ "gimbals": [] }),
-        false => crate::gimbal::gimbal_view(backend, &[]),
+        false => gimbals.clone(),
     };
-    synthetic(backend, &gimbals, aimed())
+    crate::altitude::merge(
+        synthetic(backend, &followed, aim),
+        json!({ "gimbalAimed": gimbal_aim(gimbals).is_some() }),
+    )
 }
 
 #[cfg(test)]
@@ -750,6 +783,28 @@ mod tests {
     }
 
     #[test]
+    fn the_view_says_whether_a_gimbal_aims_it_whichever_camera_is_picked() {
+        let gimbal =
+            json!({ "gimbals": [{ "active": true, "absoluteYaw": 90.0, "pitch": -30.0 }] });
+        let standing_in = framed(&flying(&[]), &gimbal, false, DEFAULT_AIM);
+        assert_eq!(
+            (&standing_in["aimable"], &standing_in["gimbalAimed"]),
+            (&json!(false), &json!(true)),
+            "standing in for the gimbal's camera, the view follows the gimbal"
+        );
+        let picked = framed(&flying(&[]), &gimbal, true, DEFAULT_AIM);
+        assert_eq!(
+            (&picked["aimable"], &picked["gimbalAimed"]),
+            (&json!(true), &json!(true)),
+            "picked as the camera it is aimed by the pilot, and still says a gimbal is there, so a head that has just switched cameras can tell how a drag steers before the core's next view"
+        );
+        assert_eq!(
+            framed(&flying(&[]), &no_gimbal(), false, DEFAULT_AIM)["gimbalAimed"],
+            false
+        );
+    }
+
+    #[test]
     fn the_aim_at_a_spot_is_its_bearing_and_its_angle_below() {
         let (heading, pitch) = aim_at((0.0, 0.0, 100.0), (0.0, 0.001, 0.0));
         assert!((heading - 90.0).abs() < 1e-6);
@@ -835,21 +890,7 @@ mod tests {
             (Some(3.0), Some(-4.0), Some(1.5)),
             "the view carries the drone's NED velocity as north, east and up"
         );
-        let params = |pairs: &[(&'static str, f64)]| {
-            pairs
-                .iter()
-                .map(|(name, value)| {
-                    (
-                        Box::leak(
-                            format!("vehicle.parameterManager.getParameter(-1,{name})")
-                                .into_boxed_str(),
-                        ) as &'static str,
-                        json!(*value),
-                    )
-                })
-                .collect::<Vec<_>>()
-        };
-        let tuned = params(&[
+        let tuned = parameters(&[
             ("PILOT_Y_RATE", 150.0),
             ("PILOT_Y_EXPO", 0.0),
             ("RC4_DZ", 20.0),
@@ -971,6 +1012,80 @@ mod tests {
     const COPTER_ACRO: u32 = 1;
     const COPTER_LOITER: u32 = 5;
     const COPTER_POSITION_HOLD: u32 = 16;
+
+    fn parameter_path(asked: &str) -> &'static str {
+        Box::leak(format!("vehicle.parameterManager.getParameter(-1,{asked})").into_boxed_str())
+    }
+
+    fn answered(asked: &str, name: &str, value: f64) -> (&'static str, Value) {
+        (
+            parameter_path(asked),
+            json!({ "kind": "fact", "name": name, "rawValue": value, "value": value }),
+        )
+    }
+
+    fn parameters(reported: &[(&'static str, f64)]) -> Vec<(&'static str, Value)> {
+        reported
+            .iter()
+            .map(|(name, value)| answered(&format!("noremap.{name}"), name, *value))
+            .collect()
+    }
+
+    fn absent(names: &[&str]) -> Vec<(&'static str, Value)> {
+        names
+            .iter()
+            .map(|name| answered(&format!("noremap.{name}"), "", 0.0))
+            .collect()
+    }
+
+    #[test]
+    fn arducopter_4_7_metres_and_4_5_centimetres_predict_the_same_loiter_and_climb() {
+        let sticks = parameters(&[("RC1_DZ", 20.0), ("RC2_DZ", 20.0), ("THR_DZ", 100.0)]);
+        let copter_4_5 = [
+            sticks.clone(),
+            parameters(&[
+                ("LOIT_SPEED", 1250.0),
+                ("PILOT_SPEED_UP", 250.0),
+                ("PILOT_SPEED_DN", 150.0),
+            ]),
+            absent(&["LOIT_SPEED_MS", "PILOT_SPD_UP", "PILOT_SPD_DN"]),
+            vec![
+                answered("LOIT_SPEED_MS", "LOIT_SPEED", 1250.0),
+                answered("PILOT_SPD_UP", "PILOT_SPEED_UP", 250.0),
+                copter_in(COPTER_LOITER),
+            ],
+        ]
+        .concat();
+        let copter_4_7 = [
+            sticks,
+            parameters(&[
+                ("LOIT_SPEED_MS", 12.5),
+                ("PILOT_SPD_UP", 2.5),
+                ("PILOT_SPD_DN", 1.5),
+            ]),
+            absent(&["LOIT_SPEED", "PILOT_SPEED_UP", "PILOT_SPEED_DN"]),
+            vec![copter_in(COPTER_LOITER)],
+        ]
+        .concat();
+        let response = |reported: &[(&'static str, Value)]| {
+            synthetic(&flying(reported), &no_gimbal(), DEFAULT_AIM)["response"].clone()
+        };
+        assert_eq!(
+            response(&copter_4_7)["forward"],
+            json!({ "full": 12.5, "expo": 0.0, "deadzone": 0.04 }),
+            "4.7 renamed Loiter's top speed LOIT_SPEED_MS and holds it in m/s"
+        );
+        assert_eq!(
+            response(&copter_4_7)["climb"],
+            json!({ "up": 2.5, "down": 1.5, "deadzone": 0.2 }),
+            "and the climb limits PILOT_SPD_UP and PILOT_SPD_DN, also in m/s"
+        );
+        assert_eq!(
+            response(&copter_4_5),
+            response(&copter_4_7),
+            "4.5's centimetre LOIT_SPEED and PILOT_SPEED_UP/DN predict the same, though the core answers a 4.5 copter asked for the new name with the old one's centimetres and an absent name with a nameless 0"
+        );
+    }
 
     #[test]
     fn in_acro_the_view_banks_and_pitches_with_the_drone_so_the_pilot_sees_the_horizon_they_fly_by()

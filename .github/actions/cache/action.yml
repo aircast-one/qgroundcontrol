@@ -52,6 +52,11 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: python3 "${GITHUB_WORKSPACE}/.github/scripts/ccache_helper.py" scope --event-name "${EVENT_NAME}" --ref-name "${REF_NAME}" --ref-type "${REF_TYPE}" --pr-number "${PR_NUMBER:-}"
 
+    - name: Stamp the ccache generation with the ISO week
+      id: ccache-week
+      shell: bash
+      run: echo "week=$(date -u +%G%V)" >> "${GITHUB_OUTPUT}"
+
     - name: Point ccache at the cached directory
       shell: bash
       run: |
@@ -161,7 +166,7 @@ runs:
       uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ inputs.host }}-${{ inputs.target }}-${{ inputs.build-type }}${{ inputs.variant && format('-{0}', inputs.variant) }}-${{ steps.cache-scope.outputs.scope }}-${{ hashFiles('.github/build-config.json', 'tools/configs/ccache.conf') }}
+        key: ccache-${{ inputs.host }}-${{ inputs.target }}-${{ inputs.build-type }}${{ inputs.variant && format('-{0}', inputs.variant) }}-${{ steps.cache-scope.outputs.scope }}-${{ hashFiles('.github/build-config.json', 'tools/configs/ccache.conf') }}-${{ steps.ccache-week.outputs.week }}
         restore-keys: |
           ccache-${{ inputs.host }}-${{ inputs.target }}-${{ inputs.build-type }}${{ inputs.variant && format('-{0}', inputs.variant) }}-${{ steps.cache-scope.outputs.scope }}-
           ccache-${{ inputs.host }}-${{ inputs.target }}-${{ inputs.build-type }}${{ inputs.variant && format('-{0}', inputs.variant) }}-shared-
@@ -172,7 +177,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ inputs.host }}-${{ inputs.target }}-${{ inputs.build-type }}${{ inputs.variant && format('-{0}', inputs.variant) }}-${{ steps.cache-scope.outputs.scope }}-${{ hashFiles('.github/build-config.json', 'tools/configs/ccache.conf') }}
+        key: ccache-${{ inputs.host }}-${{ inputs.target }}-${{ inputs.build-type }}${{ inputs.variant && format('-{0}', inputs.variant) }}-${{ steps.cache-scope.outputs.scope }}-${{ hashFiles('.github/build-config.json', 'tools/configs/ccache.conf') }}-${{ steps.ccache-week.outputs.week }}
         restore-keys: |
           ccache-${{ inputs.host }}-${{ inputs.target }}-${{ inputs.build-type }}${{ inputs.variant && format('-{0}', inputs.variant) }}-${{ steps.cache-scope.outputs.scope }}-
           ccache-${{ inputs.host }}-${{ inputs.target }}-${{ inputs.build-type }}${{ inputs.variant && format('-{0}', inputs.variant) }}-shared-

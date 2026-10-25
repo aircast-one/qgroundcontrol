@@ -48,11 +48,11 @@ struct FlyNoVideoMessage: View {
     @HasVehicle private var hasVehicle
     @QgcPath(VIDEO_VIEW) private var videoJson
     @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
-    @QgcPath(CAMERAS_VIEW) private var camerasJson
+    @ShownCameras private var cameras
 
     var body: some View {
         let video = videoReading(videoJson)
-        let chosen = syntheticChosen(camerasReading(camerasJson))
+        let chosen = syntheticChosen(cameras)
         if looksForAircraft(connected: hasVehicle, video: video, syntheticChosen: chosen) {
             AwaitingAircraftLine(syntheticChosen: chosen)
         } else if syntheticAvailable(syntheticJson) {
@@ -147,10 +147,8 @@ struct VideoSurface: View {
 
     var body: some View {
         let video = videoReading(videoJson)
-        if video?.available == false {
-            if expanded && syntheticAvailable(syntheticJson) {
-                SyntheticView(aimable: true)
-            } else if expanded {
+        if video?.available == false && !(expanded && syntheticAvailable(syntheticJson)) {
+            if expanded {
                 NoVideoArea(underFlyChrome: expanded && !fullScreen, thumb: false, video: video)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(theme.colors.surfaceVariant)

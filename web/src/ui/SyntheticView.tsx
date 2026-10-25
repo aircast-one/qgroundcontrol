@@ -7,7 +7,8 @@ import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { mutableStateMapOf, useValue } from '@/kotlin/State';
 import { CircularProgressIndicator, Text } from '@/m3';
 import { Color, aircast, withAlpha } from '@/theme/Colors';
-import { CAMERAS_VIEW, type CameraEntry, CameraStatus, type CamerasReading, camerasReading } from '@/ui/Cameras';
+import { type CameraEntry, CameraStatus, type CamerasReading } from '@/ui/Cameras';
+import { useCamerasReading } from '@/ui/CameraSwitch';
 import { gimbalRefusal } from '@/ui/GimbalIndicator';
 import { osdShadow } from '@/ui/Osd';
 import { type PicturePress, type PictureSpot, PictureMark, usePictureHold } from '@/ui/PictureHold';
@@ -82,22 +83,27 @@ export const syntheticLook = (from: Aim, dragged: { x: number; y: number }, size
   syntheticPan(from[1], dragged.x, size.width, hFov),
 ];
 
-export const syntheticAims = (view: Json | null, cameras: CamerasReading | null): boolean =>
-  syntheticAvailable(view) && optBoolean(view, 'aimable') && (cameras?.cameras.some((it) => it.active && it.source === SYNTHETIC_SOURCE) ?? false);
+export const syntheticFree = (view: Json | null, picked: boolean): boolean =>
+  syntheticAvailable(view) && !optBoolean(view, 'locksOnTarget') && (picked || !optBoolean(view, 'gimbalAimed'));
+
+export type SyntheticDrag = 'look' | 'gimbal';
+
+export const syntheticDrag = (view: Json | null, picked: boolean, aimable: boolean): SyntheticDrag | null =>
+  !aimable || !syntheticAvailable(view) ? null : syntheticFree(view, picked) ? 'look' : 'gimbal';
+
+export const syntheticAims = (view: Json | null, cameras: CamerasReading | null): boolean => syntheticChosen(cameras) && syntheticFree(view, true);
 
 export const useRememberSyntheticAims = (): boolean => {
   const view = useQgcPath(SYNTHETIC_VIEW);
-  const camerasJson = useQgcPath(CAMERAS_VIEW);
-  return useMemo(() => syntheticAims(view, camerasReading(camerasJson)), [view, camerasJson]);
+  const cameras = useCamerasReading();
+  return useMemo(() => syntheticAims(view, cameras), [view, cameras]);
 };
 
 export const useRememberSyntheticAvailable = (): boolean => useQgcDerived(SYNTHETIC_VIEW, syntheticAvailable);
 
 export const syntheticChosen = (reading: CamerasReading | null): boolean => reading?.cameras.find((it) => it.active)?.source === SYNTHETIC_SOURCE;
 
-const syntheticChosenOf = (json: Json | null): boolean => syntheticChosen(camerasReading(json));
-
-export const useRememberSyntheticChosen = (): boolean => useQgcDerived(CAMERAS_VIEW, syntheticChosenOf);
+export const useRememberSyntheticChosen = (): boolean => syntheticChosen(useCamerasReading());
 
 type SyntheticWindow = Window & {
   aircast?: unknown;
@@ -182,8 +188,6 @@ export type ShownNote = { readonly text: string; readonly atEdge: boolean };
 export const shownNote = (draw: SyntheticDraw, standIn: string | null, announced: boolean): ShownNote | null =>
   draw.note !== null ? { text: draw.note, atEdge: false } : standIn !== null ? { text: standIn, atEdge: announced } : null;
 
-export const gimbalAimsSynthetic = (view: Json | null, aimable: boolean): boolean => aimable && syntheticAvailable(view) && view !== null && !optBoolean(view, 'aimable', true);
-
 const GIMBAL_STATE = 'view.gimbal';
 const GIMBAL_AIM_COMMAND = 'gimbal.aim';
 const GIMBAL_CENTER_COMMAND = 'gimbal.center';
@@ -215,7 +219,8 @@ export const SyntheticView = ({
   groundSpot?: PictureSpot | null;
 }) => {
   const view = useQgcPath(SYNTHETIC_VIEW);
-  const canAim = aimable && optBoolean(view, 'aimable');
+  const drag = syntheticDrag(view, syntheticChosen(useCamerasReading()), aimable);
+  const canAim = drag === 'look';
   const aimedTilt = useUpdatedRef(view === null ? DEFAULT_TILT_DEG : optDouble(view, 'tilt', DEFAULT_TILT_DEG));
   const pan = useUpdatedRef(view === null ? 0.0 : optDouble(view, 'pan', 0.0));
   const fov = useUpdatedRef(view === null ? CAMERA_FOV_DEG : optDouble(view, 'fov', CAMERA_FOV_DEG));
@@ -224,7 +229,6 @@ export const SyntheticView = ({
     sent.value = [tilt, turned];
     void Qgc.invoke(SYNTHETIC_AIM, tilt, turned);
   };
-  const steersGimbal = gimbalAimsSynthetic(view, aimable);
   const gimbalJson = useQgcPath(GIMBAL_STATE);
   const gimbalAt = useUpdatedRef(gimbalAim(gimbalJson));
   const lastAim = useRef<Aim | null>(null);
@@ -247,7 +251,7 @@ export const SyntheticView = ({
         },
         onDoubleTap: () => send(DEFAULT_TILT_DEG, 0.0),
       }
-    : steersGimbal
+    : drag === 'gimbal'
       ? {
           onDragStart: () => {
             look.current.start = dragStart(gimbalAt.current, lastAim.current, uptimeMillis() - lastAimAt.current);
@@ -273,7 +277,7 @@ export const SyntheticView = ({
   const gestures = usePointerGestures(aiming);
   const hold = usePictureHold(aimable ? onGround : null, true, true);
   return (
-    <div {...gestures} {...hold} data-gesture={aiming !== null || undefined} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
+    <div {...gestures} {...hold} data-gesture={drag ?? undefined} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
       <div className="relative size-full">
         {nativeChosen(view) ? <NativePage view={view} standIn={standIn} /> : <SyntheticPage view={view} standIn={standIn} />}
         {aimable && groundSpot !== null ? <PictureMark spot={groundSpot} /> : null}

@@ -9,9 +9,9 @@ private func afterColon(_ key: String) -> String {
     key.firstIndex(of: ":").map { String(key[key.index(after: $0)...]) } ?? key
 }
 
-func parameterPath(_ key: String) -> String {
+func parameterPath(_ key: String, _ quantity: String? = nil) -> String {
     let component = key.firstIndex(of: ":").flatMap { Int(key[..<$0]) }
-    return "\(PARAMETER_MANAGER).getParameter(\(component ?? DEFAULT_COMPONENT),\(component == nil ? key : afterColon(key)))"
+    return "\(PARAMETER_MANAGER).getParameter(\(component ?? DEFAULT_COMPONENT),\(component == nil ? key : afterColon(key))\(quantity.map { ",\($0)" } ?? ""))"
 }
 
 func parameterKeys(_ namesByComponent: [(Int, [String])]) -> [String] {
@@ -296,8 +296,8 @@ private func parameterSummary(_ names: [String]) -> ParameterSummary {
     )
 }
 
-func parameterFact(_ name: String) -> Fact? {
-    factFromParameter(name, Qgc.get(parameterPath(name)))
+func parameterFact(_ name: String, _ quantity: String? = nil) -> Fact? {
+    factFromParameter(name, Qgc.get(parameterPath(name, quantity)), quantity)
 }
 
 private struct ChoiceButton: View {

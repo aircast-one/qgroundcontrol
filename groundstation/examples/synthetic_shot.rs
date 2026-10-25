@@ -40,6 +40,8 @@ fn main() {
         roll_rate: 0.0,
         response: groundstation::synthetic::session::Response::default(),
         round_trip: None,
+        bottles: Vec::new(),
+        locked: false,
     };
     groundstation::terrainservice::set_cache_path(arg("--cache").map(std::path::PathBuf::from));
     let mut session = Session::new(&token, Arc::new(Network)).expect("fetch workers");

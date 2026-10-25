@@ -113,14 +113,24 @@ internal fun syntheticTilt(from: Double, draggedPx: Float, heightPx: Int): Doubl
 internal fun syntheticPan(from: Double, draggedPx: Float, widthPx: Int): Double =
     ((from + draggedPx.toDouble() / widthPx.coerceAtLeast(1) * PAN_SPAN_DEG + 180.0).mod(360.0)) - 180.0
 
-internal fun syntheticAims(view: JSONObject?, cameras: CamerasReading?): Boolean =
-    syntheticAvailable(view) && view?.optBoolean("aimable") == true && cameras?.cameras?.any { it.active && it.source == SYNTHETIC_SOURCE } == true
+internal fun syntheticFree(view: JSONObject?, picked: Boolean): Boolean =
+    syntheticAvailable(view) && view?.optBoolean("locksOnTarget") != true && (picked || view?.optBoolean("gimbalAimed") != true)
+
+internal enum class SyntheticDrag { Look, Gimbal }
+
+internal fun syntheticDrag(view: JSONObject?, picked: Boolean, aimable: Boolean): SyntheticDrag? = when {
+    !aimable || !syntheticAvailable(view) -> null
+    syntheticFree(view, picked) -> SyntheticDrag.Look
+    else -> SyntheticDrag.Gimbal
+}
+
+internal fun syntheticAims(view: JSONObject?, cameras: CamerasReading?): Boolean = syntheticChosen(cameras) && syntheticFree(view, picked = true)
 
 @Composable
 internal fun rememberSyntheticAims(): Boolean {
     val view by qgcPath(SYNTHETIC_VIEW)
-    val camerasJson by qgcPath(CAMERAS_VIEW)
-    return remember(view, camerasJson) { syntheticAims(view, camerasReading(camerasJson)) }
+    val cameras = rememberCamerasReading()
+    return remember(view, cameras) { syntheticAims(view, cameras) }
 }
 
 @Composable
@@ -129,7 +139,7 @@ internal fun rememberSyntheticAvailable(): Boolean = one.aircast.android.bridge.
 internal fun syntheticChosen(reading: CamerasReading?): Boolean = reading?.cameras?.firstOrNull { it.active }?.source == SYNTHETIC_SOURCE
 
 @Composable
-internal fun rememberSyntheticChosen(): Boolean = one.aircast.android.bridge.qgcDerived(CAMERAS_VIEW) { syntheticChosen(camerasReading(it)) }.value
+internal fun rememberSyntheticChosen(): Boolean = syntheticChosen(rememberCamerasReading())
 
 private fun tileResponse(encodedPath: String): WebResourceResponse =
     coreTile(encodedPath)?.let { WebResourceResponse(tileMimeType(it), null, 200, "OK", emptyMap(), it.inputStream()) }
@@ -196,9 +206,6 @@ internal data class ShownNote(val text: String, val atEdge: Boolean)
 internal fun shownNote(draw: SyntheticDraw, standIn: String?, announced: Boolean): ShownNote? =
     draw.note?.let { ShownNote(it, atEdge = false) } ?: standIn?.let { ShownNote(it, atEdge = announced) }
 
-internal fun gimbalAimsSynthetic(view: JSONObject?, aimable: Boolean): Boolean =
-    aimable && syntheticAvailable(view) && view?.optBoolean("aimable", true) == false
-
 private const val GIMBAL_STATE = "view.gimbal"
 private const val GIMBAL_AIM_COMMAND = "gimbal.aim"
 private const val GIMBAL_CENTER_COMMAND = "gimbal.center"
@@ -217,7 +224,8 @@ internal fun gimbalAim(view: JSONObject?): Pair<Double, Double>? =
 @Composable
 internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = false, standIn: String? = null) {
     val view by qgcPath(SYNTHETIC_VIEW)
-    val canAim = aimable && view?.optBoolean("aimable") == true
+    val drag = syntheticDrag(view, syntheticChosen(rememberCamerasReading()), aimable)
+    val canAim = drag == SyntheticDrag.Look
     val aimedTilt by rememberUpdatedState(view?.optDouble("tilt", DEFAULT_TILT_DEG) ?: DEFAULT_TILT_DEG)
     val pan by rememberUpdatedState(view?.optDouble("pan", 0.0) ?: 0.0)
     val sent = remember(canAim) { mutableStateOf<Pair<Double, Double>?>(null) }
@@ -225,7 +233,7 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
         sent.value = tilt to turned
         offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, tilt, turned) }
     }
-    val steersGimbal = gimbalAimsSynthetic(view, aimable)
+    val steersGimbal = drag == SyntheticDrag.Gimbal
     val gimbalJson by qgcPath(GIMBAL_STATE)
     val gimbalAt by rememberUpdatedState(gimbalAim(gimbalJson))
     val lastAim = remember { mutableStateOf<Pair<Double, Double>?>(null) }

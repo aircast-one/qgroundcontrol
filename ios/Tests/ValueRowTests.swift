@@ -83,6 +83,10 @@ final class ValueRowTests: XCTestCase {
         XCTAssertEqual(slider?.from, 20)
         XCTAssertEqual(slider?.to, 500)
         XCTAssertEqual(sliderFor(number("0", min: "0", max: "10000", bounded: true, name: "GF_MAX_HOR_DIST"))?.from, 50)
+        let copter45 = sliderFor(number("1500", min: "200", max: "300000", bounded: true, name: "RTL_ALT", units: "cm"))
+        let copter47 = sliderFor(number("15", min: "2", max: "3000", bounded: true, name: "RTL_ALT_M"))
+        XCTAssertEqual([copter45?.from, copter45?.to], [2000, 50000])
+        XCTAssertEqual([copter47?.from, copter47?.to], [20, 500], "ArduCopter 4.7 renamed RTL_ALT to RTL_ALT_M in metres")
     }
 
     func testAPendingValueReadsLikeTheRow() {

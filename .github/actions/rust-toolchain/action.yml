@@ -14,6 +14,10 @@ inputs:
     description: "Install cargo-ndk at the version pinned in build-config.json"
     required: false
     default: "false"
+  cache:
+    description: "Build every Rust target of the job into groundstation/target and cache its dependencies, saved only from main"
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -64,6 +68,18 @@ runs:
         done
         rustup show active-toolchain
         rustup target list --installed
+
+    - name: Share one Rust target directory
+      if: inputs.cache == 'true'
+      shell: bash
+      run: echo "CARGO_TARGET_DIR=${GITHUB_WORKSPACE}/groundstation/target" >> "${GITHUB_ENV}"  # zizmor: ignore[github-env]
+
+    - name: Cache Rust dependencies
+      if: inputs.cache == 'true'
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: groundstation
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - name: Install cargo-ndk
       if: inputs.cargo-ndk == 'true'

@@ -1,5 +1,5 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { openMenu, test as hosted } from './fixtures';
+import { flyNow, openMenu, test as hosted } from './fixtures';
 
 const DEVICE = 'http://localhost:18780';
 const UPGRADING = 'localhost:18786';
@@ -106,9 +106,7 @@ test('a device page tracks what the pilot boxes with the device tracker', async 
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
     await Qgc.set('vehicle.cameraManager.currentCameraInstance.trackingEnabled', true);
   }, '/src/bridge/Qgc.ts');
-  const later = device.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
-  await expect(later).toBeHidden();
+  await flyNow(device);
   const at = await detected.boundingBox();
   if (at === null) throw new Error('the detection is not on screen');
   await device.mouse.move(at.x + 2, at.y + 20);

@@ -22,7 +22,11 @@ function(qgc_rust_require_target triple)
     endif()
 endfunction()
 
-set(QGC_RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/groundstation)
+if(DEFINED ENV{CARGO_TARGET_DIR})
+    cmake_path(SET QGC_RUST_TARGET_DIR "$ENV{CARGO_TARGET_DIR}")
+else()
+    set(QGC_RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/groundstation)
+endif()
 get_property(QGC_APM_PARAMS_DIR GLOBAL PROPERTY QGC_APM_PARAMS_DIR)
 set(QGC_CARGO_RUN ${CMAKE_COMMAND} -E env QGC_APM_PARAMS_DIR=${QGC_APM_PARAMS_DIR} ${QGC_CARGO})
 set(QGC_RUST_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml)
@@ -132,9 +136,6 @@ else()
             VERBATIM
         )
     elseif(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        # A cross build (the aarch64 Docker variant) links the target's library, not the
-        # host's: cargo builds for the target triple, links with the cross compiler, and
-        # libudev-sys (serialport) finds libudev through the toolchain's pkg-config sysroot.
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
             set(QGC_RUST_TRIPLE aarch64-unknown-linux-gnu)
         else()

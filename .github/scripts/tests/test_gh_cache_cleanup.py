@@ -195,6 +195,29 @@ def test_select_prune_victims_floor_above_keep_when_protected_dominates() -> Non
     assert projected == 9500 * 1024 * 1024
 
 
+def test_select_prune_victims_evicts_superseded_build_caches() -> None:
+    old = _usage("ccache-mac-clang_64-Release-manual-main-9dbdfa81-40071224253", 700, accessed="2026-10-23")
+    new = _usage("ccache-mac-clang_64-Release-manual-main-9dbdfa81-40083073143", 700, accessed="2026-10-24")
+    caches = [old, new, _usage("cpm-modules-shared-5109bddc", 500), _usage("qt-mac-desktop", 400)]
+    victims, _total, _projected = mod.select_prune_victims(
+        caches, keep_mb=1000, high_water_mb=1500, protect=mod.DEFAULT_PROTECT
+    )
+    assert [v.key for v in victims] == [old.key, "qt-mac-desktop"]
+
+
+def test_cache_family_drops_hash_and_run_suffixes() -> None:
+    assert mod.cache_family("ccache-linux-android-Release-manual-main-9dbdfa8122a5-40083073143") == (
+        "ccache-linux-android-Release-manual-main"
+    )
+    assert mod.cache_family("cpm-modules-shared-5109bddc8add8c92") == "cpm-modules-shared"
+    assert mod.cache_family("v0-rust-build-macos-Darwin-arm64-2a5ee9fb-e0a3f3bc") == (
+        "v0-rust-build-macos-Darwin-arm64"
+    )
+    assert mod.cache_family("ccache-windows_arm64-win64_msvc2022_arm64-Release-shared") == (
+        "ccache-windows_arm64-win64_msvc2022_arm64-Release-shared"
+    )
+
+
 def test_list_caches_usage_parses_json(monkeypatch) -> None:
     payload = '[{"key":"ccache-x","ref":"refs/heads/master","sizeInBytes":1048576,"lastAccessedAt":"2026-01-01"}]'
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: completed(payload))

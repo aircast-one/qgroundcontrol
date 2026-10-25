@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { connectMock, expect, flightMode, flyNow, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -26,8 +26,7 @@ const shownPoint = async (page: Page): Promise<Coordinate> => {
 const chosenSpot = (page: Page) => page.locator('svg[aria-label="Chosen spot"]');
 
 const pictureCentre = async (page: Page) => {
-  const later = page.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
+  await flyNow(page);
   const canvas = page.locator('canvas:not(.maplibregl-canvas)').filter({ visible: true }).first();
   await expect(canvas).toBeVisible({ timeout: 30_000 });
   const box = (await canvas.boundingBox())!;

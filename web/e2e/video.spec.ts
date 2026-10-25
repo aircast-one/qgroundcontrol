@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Page } from '@playwright/test';
-import { connectMock, expect, test } from './fixtures';
+import { connectMock, expect, flyNow, test } from './fixtures';
 
 const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
 
@@ -106,8 +106,7 @@ const holdGimbal = (page: Page, at: { pitch: number; yaw: number }) =>
 test('the gimbal sheet chooses what a drag on the video does and opens every gimbal setting', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);
-  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
+  await flyNow(app);
   await app.getByRole('button', { name: /^Cameras, showing/ }).click();
   await app.getByRole('menuitem', { name: 'Gimbal settings' }).click();
   await expect(app.getByText('On the video', { exact: true })).toBeVisible();
@@ -124,9 +123,7 @@ test('the switch on the video steps through every way a drag steers the gimbal',
   await connectMock(app, ['Enable gimbal']);
   const video = app.locator('video').first();
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
-  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
-  await expect(later).toBeHidden();
+  await flyNow(app);
   const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
   await expect(mode).toHaveAccessibleName('Video gimbal mode, Tap to point');
   await mode.click();
@@ -143,9 +140,7 @@ test('holding a drag on the video keeps the gimbal turning, however late its ang
   await connectMock(app, ['Enable gimbal']);
   const video = app.locator('video').first();
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
-  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
-  await expect(later).toBeHidden();
+  await flyNow(app);
   const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
   await mode.click();
   await expect(mode).toHaveAccessibleName('Video gimbal mode, Hold and drag');
@@ -179,9 +174,7 @@ test('a tap on the live picture turns the gimbal along the ray through that poin
       return gimbal?.pitch == null || gimbal.bodyYaw == null ? null : { pitch: gimbal.pitch, yaw: gimbal.bodyYaw };
     }, '/src/bridge/Qgc.ts');
   await expect.poll(aim, { timeout: 30_000 }).not.toBeNull();
-  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
-  await expect(later).toBeHidden();
+  await flyNow(app);
   const box = await video.boundingBox();
   if (box === null) throw new Error('the video has no box');
   await holdGimbal(app, (await aim()) as { pitch: number; yaw: number });
@@ -272,9 +265,7 @@ test('measuring the lens learns how wide the camera sees from how far a detectio
 test('dragging the picture turns the gimbal the other way, as far as the drag spans through the lens, however late its angle reports', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);
-  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
-  await expect(later).toBeHidden();
+  await flyNow(app);
   await app.evaluate(async (module) => {
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
     await Qgc.set('settings.gimbalControllerSettings.enableOnScreenControl', false);
@@ -313,9 +304,7 @@ const liveGimbalVideo = async (page: Page) => {
   await connectMock(page, ['Enable gimbal']);
   const video = page.locator('video').first();
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
-  const later = page.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
-  await expect(later).toBeHidden();
+  await flyNow(page);
   await expect(page.getByRole('button', { name: /^Video gimbal mode/ })).toHaveAccessibleName('Video gimbal mode, Tap to point');
   await expect.poll(gimbalAim(page), { timeout: 30_000 }).not.toBeNull();
   const box = (await video.boundingBox())!;

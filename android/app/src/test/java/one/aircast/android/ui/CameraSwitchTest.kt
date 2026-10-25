@@ -70,6 +70,16 @@ class CameraSwitchTest {
     }
 
     @Test
+    fun `the pilot's pick shows at once and holds until the core sends a camera list made after it`() {
+        val shown = JSONObject("""{"class":"Cameras","cameras":[${camera(0, active = true)},${camera(1)}]}""")
+        assertEquals("the pick moves the active camera before the core answers", listOf(false, true), pickedReading(shown, CameraPick(1, shown))?.cameras?.map { it.active })
+        assertEquals(listOf(true, false), pickedReading(shown, null)?.cameras?.map { it.active })
+        val answered = JSONObject("""{"class":"Cameras","cameras":[${camera(0, active = true)},${camera(1)}]}""")
+        assertEquals("a list the core sent after the pick is the core's word, even when something else moved the camera back", listOf(true, false), pickedReading(answered, CameraPick(1, shown))?.cameras?.map { it.active })
+        assertNull(pickedReading(null, CameraPick(1, null)))
+    }
+
+    @Test
     fun `the synthetic camera counts as chosen only when it is the one on screen`() {
         val synthetic = """{"slot":1,"title":"Synthetic","short":"Synthetic","source":"$SYNTHETIC_SOURCE","active":true,"status":"idle","problem":null}"""
         assertEquals(true, syntheticChosen(reading(camera(0), synthetic)))

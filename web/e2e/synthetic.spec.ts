@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, slideAcross, takeOff, test } from './fixtures';
+import { connectMock, expect, flightMode, flyNow, slideAcross, takeOff, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -26,8 +26,7 @@ test('the synthetic view stays on screen in flight with no camera, and comes bac
 });
 
 const syntheticCanvas = async (page: Page) => {
-  const later = page.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
+  await flyNow(page);
   const canvas = page.locator('canvas:not(.maplibregl-canvas)').filter({ visible: true }).first();
   await expect(canvas).toBeVisible({ timeout: 30_000 });
   return (await canvas.boundingBox())!;
@@ -35,7 +34,10 @@ const syntheticCanvas = async (page: Page) => {
 
 const read = (page: Page, path: string) => page.evaluate(async ([module, watched]) => ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get(watched), ['/src/bridge/Qgc.ts', path] as const);
 
-const grab = async (page: Page, box: { x: number; y: number; width: number; height: number }) => {
+const call = (page: Page, path: string, ...args: unknown[]) =>
+  page.evaluate(async ([module, called, given]) => ((await import(module)) as { Qgc: { call: (path: string, ...args: unknown[]) => Promise<unknown> } }).Qgc.call(called, ...given), ['/src/bridge/Qgc.ts', path, args] as const);
+
+const dragAcross = async (page: Page, box: { x: number; y: number; width: number; height: number }) => {
   const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
   await page.mouse.move(x, y);
   await page.mouse.down();
@@ -43,11 +45,18 @@ const grab = async (page: Page, box: { x: number; y: number; width: number; heig
   await page.mouse.up();
 };
 
+const grab = async (page: Page, drags: 'look' | 'gimbal') => {
+  const canvas = page.locator(`[data-gesture=${drags}] canvas`);
+  await expect(canvas).toBeVisible();
+  await dragAcross(page, (await canvas.boundingBox())!);
+};
+
+const gimbalYaw = async (page: Page) => ((await read(page, 'view.gimbal')) as { gimbals?: { bodyYaw: number | null }[] } | null)?.gimbals?.[0]?.bodyYaw ?? null;
+
 test('a mouse drag grabs the synthetic view like a map: pulled left and down, it turns right and looks up', async ({ vehicle }) => {
-  const box = await syntheticCanvas(vehicle);
-  await expect.poll(async () => ((await read(vehicle, 'view.syntheticView')) as { aimable?: boolean }).aimable, { timeout: 30_000 }).toBe(true);
+  await syntheticCanvas(vehicle);
   const before = (await read(vehicle, 'view.syntheticView')) as { pan: number; tilt: number };
-  await grab(vehicle, box);
+  await grab(vehicle, 'look');
   await expect.poll(async () => ((await read(vehicle, 'view.syntheticView')) as { pan: number }).pan - before.pan, { timeout: 10_000 }).toBeGreaterThan(12);
   const after = (await read(vehicle, 'view.syntheticView')) as { pan: number; tilt: number };
   expect(after.pan - before.pan, 'a quarter of the width spans a quarter of the 70° lens').toBeLessThan(25);
@@ -56,28 +65,57 @@ test('a mouse drag grabs the synthetic view like a map: pulled left and down, it
 
 test('with a gimbal, dragging the synthetic view turns the gimbal the same way, by the angle the drag spans', async ({ app }) => {
   await connectMock(app, ['Enable gimbal']);
-  const box = await syntheticCanvas(app);
-  const yaw = async () => ((await read(app, 'view.gimbal')) as { gimbals?: { bodyYaw: number | null }[] } | null)?.gimbals?.[0]?.bodyYaw ?? null;
+  await syntheticCanvas(app);
+  const yaw = () => gimbalYaw(app);
   await expect.poll(yaw, { timeout: 30_000 }).not.toBeNull();
   const before = (await yaw()) as number;
-  await grab(app, box);
+  await grab(app, 'gimbal');
   await expect.poll(async () => ((await yaw()) as number) - before, { timeout: 10_000 }).toBeGreaterThan(12);
   expect(((await yaw()) as number) - before).toBeLessThan(25);
 });
 
 
 test('with a gimbal, a drag on the picked synthetic view turns the view and leaves the real camera where it is', async ({ app }) => {
+  await call(app, 'cameras.add', 'Synthetic view', 'Synthetic View', '');
   await connectMock(app, ['Enable gimbal']);
-  await app.evaluate(async (module) => ((await import(module)) as { Qgc: { call: (path: string, ...args: unknown[]) => Promise<unknown> } }).Qgc.call('cameras.add', 'Synthetic view', 'Synthetic View', ''), '/src/bridge/Qgc.ts');
-  const box = await syntheticCanvas(app);
-  const yaw = async () => ((await read(app, 'view.gimbal')) as { gimbals?: { bodyYaw: number | null }[] } | null)?.gimbals?.[0]?.bodyYaw ?? null;
+  await syntheticCanvas(app);
+  const yaw = () => gimbalYaw(app);
   const pan = async () => ((await read(app, 'view.syntheticView')) as { pan: number }).pan;
   await expect.poll(yaw, { timeout: 30_000 }).not.toBeNull();
-  await expect.poll(async () => ((await read(app, 'view.syntheticView')) as { aimable?: boolean }).aimable, { timeout: 30_000 }).toBe(true);
   const [yawBefore, panBefore] = [(await yaw()) as number, await pan()];
-  await grab(app, box);
+  await grab(app, 'look');
   await expect.poll(async () => (await pan()) - panBefore, { timeout: 10_000 }).toBeGreaterThan(12);
   expect(Math.abs(((await yaw()) as number) - yawBefore), 'the gimbal is not the picked camera').toBeLessThan(2);
+});
+
+test('with a gimbal, the drag right after picking the synthetic view turns the view, not the gimbal it stood in for', async ({ app }) => {
+  await call(app, 'cameras.add', 'Gimbal camera', 'RTSP Video Stream', 'rtsp://127.0.0.1:9/none');
+  await call(app, 'cameras.add', 'Synthetic view', 'Synthetic View', '');
+  await connectMock(app, ['Enable gimbal']);
+  await syntheticCanvas(app);
+  const chip = app.getByRole('button', { name: /^Cameras, showing / });
+  await expect(chip).toHaveAccessibleName('Cameras, showing Gimbal camera');
+  await expect.poll(() => gimbalYaw(app), { timeout: 30_000 }).not.toBeNull();
+  const standIn = app.locator('[data-gesture=gimbal] canvas');
+  await expect(standIn).toBeVisible();
+  const box = (await standIn.boundingBox())!;
+  const pan = async () => ((await read(app, 'view.syntheticView')) as { pan: number }).pan;
+  const [yawBefore, panBefore] = [(await gimbalYaw(app)) as number, await pan()];
+  await chip.click();
+  await app.getByRole('menuitem', { name: 'Synthetic view' }).click();
+  await dragAcross(app, box);
+  await expect.poll(async () => (await pan()) - panBefore, { timeout: 10_000 }).toBeGreaterThan(12);
+  expect(Math.abs(((await gimbalYaw(app)) as number) - yawBefore), 'the pick hands the drag over at once, the gimbal belongs to the other camera').toBeLessThan(2);
+});
+
+test('adding the first camera keeps the 3D view on screen where it was instead of building a new one', async ({ vehicle }) => {
+  await syntheticCanvas(vehicle);
+  const shown = await vehicle.locator('[data-gesture] canvas').elementHandle();
+  await call(vehicle, 'cameras.add', 'Synthetic view', 'Synthetic View', '');
+  const pageVideo = () => vehicle.evaluate(async (module) => ((await import(module)) as { Qgc: { path: (path: string) => { available?: boolean } | null } }).Qgc.path('view.video')?.available, '/src/bridge/Qgc.ts');
+  await expect.poll(pageVideo, { timeout: 10_000 }).toBe(true);
+  await expect(vehicle.locator('[data-gesture=look] canvas')).toBeVisible();
+  expect(await shown!.evaluate((canvas) => canvas.isConnected), 'the canvas the pilot was looking at is still the one on screen').toBe(true);
 });
 
 test('with a gimbal and the synthetic view standing in for the camera, the tilt slider takes the drag: pulled down, the camera tilts down', async ({ app }) => {
@@ -139,17 +177,21 @@ test('a dropped water bottle falls from the drone and lies on the ground below t
   await expect.poll(async () => (await view()).aboveHome, { timeout: 30_000 }).toBeGreaterThan(9);
   expect((await view()).bottles).toEqual([]);
 
+  await app.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { subscribe: (path: string, listener: () => void) => void; path: (path: string) => { bottles?: Bottle[] } | null } };
+    const page = window as unknown as { bottleTrail: Bottle[] };
+    page.bottleTrail = [];
+    Qgc.subscribe('view.syntheticView', () => {
+      page.bottleTrail = [...page.bottleTrail, ...(Qgc.path('view.syntheticView')?.bottles ?? [])];
+    });
+  }, '/src/bridge/Qgc.ts');
   await slideAcross(app, app.getByRole('button', { name: 'Slide to drop' }));
-  const seen: Bottle[] = [];
-  const watched = async () => {
-    const bottles = (await view()).bottles ?? [];
-    seen.push(...bottles);
-    return bottles;
-  };
-  await expect.poll(async () => (await watched()).some((it) => it.landed || it.aboveHome < 7), { intervals: [25], timeout: 30_000 }).toBe(true);
+  const bottles = async () => (await view()).bottles ?? [];
+  await expect.poll(async () => (await bottles()).some((it) => it.landed || it.aboveHome < 7), { intervals: [25], timeout: 30_000 }).toBe(true);
   await app.screenshot({ path: testInfo.outputPath('bottle-falling.png') });
-  await expect.poll(async () => (await watched()).map((it) => it.landed), { intervals: [25], timeout: 30_000 }).toEqual([true]);
-  const falling = seen.filter((it) => !it.landed).map((it) => it.aboveHome);
+  await expect.poll(async () => (await bottles()).map((it) => it.landed), { intervals: [25], timeout: 30_000 }).toEqual([true]);
+  const trail = await app.evaluate(() => (window as unknown as { bottleTrail: Bottle[] }).bottleTrail);
+  const falling = trail.filter((it) => !it.landed).map((it) => it.aboveHome);
   expect(falling.length, 'it was seen in the air before it landed').toBeGreaterThan(0);
   expect(Math.max(...falling), 'it fell from the drone').toBeGreaterThan(Math.min(...falling));
   await expect(app.getByText('Payload dropped')).toBeVisible();

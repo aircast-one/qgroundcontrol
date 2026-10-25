@@ -1,4 +1,5 @@
 name: Aircast Release
+run-name: Aircast Release ${{ inputs.version }}
 
 
 permissions:
@@ -6,12 +7,6 @@ permissions:
   id-token: write
 
 on:
-  push:
-    tags:
-      - "aircast-v[0-9]+.[0-9]+.[0-9]+"
-      - "aircast-v*-beta.*"
-      - "aircast-v*-staging.*"
-      - "aircast-v*-dev.*"
   workflow_dispatch:
     inputs:
       version:
@@ -33,15 +28,8 @@ jobs:
     steps:
       - id: config
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          REF_NAME: ${{ github.ref_name }}
-          INPUT_VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
-          if [ "$EVENT_NAME" == "push" ]; then
-            VERSION="$REF_NAME"
-          else
-            VERSION="$INPUT_VERSION"
-          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "short_version=${VERSION#aircast-}" >> "$GITHUB_OUTPUT"
 
@@ -106,6 +94,7 @@ jobs:
       - name: Rust toolchain
         uses: ./.github/actions/rust-toolchain
         with:
+          cache: 'true'
           android-abis: ${{ env.QT_ANDROID_ABIS }}
           cargo-ndk: 'true'
 
@@ -277,6 +266,7 @@ jobs:
         if: ${{ env.HAS_ASC_KEY == 'true' }}
         uses: ./.github/actions/rust-toolchain
         with:
+          cache: 'true'
           targets: aarch64-apple-ios
 
       - name: Install XcodeGen and fastlane
@@ -398,6 +388,8 @@ jobs:
 
       - name: Rust toolchain
         uses: ./.github/actions/rust-toolchain
+        with:
+          cache: 'true'
 
       - name: Install packet radio native deps
         run: brew install --quiet libusb libsodium create-dmg
@@ -596,6 +588,8 @@ jobs:
 
       - name: Rust toolchain
         uses: ./.github/actions/rust-toolchain
+        with:
+          cache: 'true'
 
       - name: Configure
         uses: ./.github/actions/cmake-configure
@@ -677,6 +671,8 @@ jobs:
 
       - name: Rust toolchain
         uses: ./.github/actions/rust-toolchain
+        with:
+          cache: 'true'
 
       - name: Configure
         uses: ./.github/actions/cmake-configure
@@ -761,6 +757,8 @@ jobs:
 
       - name: Rust toolchain
         uses: ./.github/actions/rust-toolchain
+        with:
+          cache: 'true'
 
       - name: Configure
         uses: ./.github/actions/cmake-configure
@@ -826,6 +824,7 @@ jobs:
       - name: Rust toolchain
         uses: ./.github/actions/rust-toolchain
         with:
+          cache: 'true'
           targets: wasm32-unknown-unknown
 
       - name: Install llvm

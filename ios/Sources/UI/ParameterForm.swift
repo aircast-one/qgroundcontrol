@@ -14,9 +14,9 @@ func sectionMatches(_ rows: ParameterRows, _ search: String) -> Bool {
     return query.isEmpty || ([rows.title] + rows.keywords).contains { $0.lowercased().contains(query) }
 }
 
-func factFromParameter(_ name: String, _ json: JSON) -> Fact? {
+func factFromParameter(_ name: String, _ json: JSON, _ quantity: String? = nil) -> Fact? {
     guard json["kind"].string == "fact", !json["name"].string.isEmpty else { return nil }
-    var fact = Qgc.factAt(parameterPath(name), json)
+    var fact = Qgc.factAt(parameterPath(name, quantity), json)
     fact.name = name
     return fact
 }

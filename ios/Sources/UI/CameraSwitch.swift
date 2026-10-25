@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 private let SWITCH_SCRIM_ALPHA = 0.55
@@ -63,19 +64,79 @@ struct CameraStatusDot: View {
     }
 }
 
+struct CameraPick: Equatable, Sendable {
+    let slot: Int
+    let on: JSON?
+}
+
+func pickedReading(_ json: JSON?, _ pick: CameraPick?) -> CamerasReading? {
+    guard let reading = camerasReading(json) else { return nil }
+    guard let pick, pick.on == json else { return reading }
+    return CamerasReading(
+        readable: reading.readable,
+        reason: reading.reason,
+        pip: reading.pip,
+        cameras: reading.cameras.map { camera in
+            CameraEntry(
+                slot: camera.slot, stored: camera.stored, title: camera.title, short: camera.short, name: camera.name, source: camera.source, url: camera.url,
+                tilt: camera.tilt, problem: camera.problem, fromDrone: camera.fromDrone, active: camera.slot == pick.slot, status: camera.status
+            )
+        },
+        kinds: reading.kinds
+    )
+}
+
+@MainActor
+@Observable
+final class CameraPicks {
+    static let shared = CameraPicks()
+    private(set) var pick: CameraPick?
+    @ObservationIgnored private var answered: AnyCancellable?
+
+    func make(_ slot: Int) -> CameraPick {
+        let list = QgcWatch.subject(CAMERAS_VIEW)
+        let made = CameraPick(slot: slot, on: list.json)
+        pick = made
+        answered = list.$json.dropFirst().first().sink { [weak self] _ in self?.drop(made) }
+        return made
+    }
+
+    func drop(_ made: CameraPick) {
+        guard pick == made else { return }
+        pick = nil
+        answered = nil
+    }
+}
+
+@propertyWrapper
+struct ShownCameras: DynamicProperty {
+    @QgcPath(CAMERAS_VIEW) private var json
+
+    init() {}
+
+    var wrappedValue: CamerasReading? { pickedReading(json, MainActor.assumeIsolated { CameraPicks.shared.pick }) }
+}
+
 func showCamera(_ slot: Int, _ onRefused: @escaping @MainActor () -> Void = {}) {
-    offMainInOrder { if !VideoCommands.setActiveSource(slot) { onMain(onRefused) } }
+    let made = MainActor.assumeIsolated { CameraPicks.shared.make(slot) }
+    offMainInOrder {
+        if !VideoCommands.setActiveSource(slot) {
+            onMain {
+                CameraPicks.shared.drop(made)
+                onRefused()
+            }
+        }
+    }
 }
 
 struct CameraSwitch: View {
     let splitRoom: Bool
-    @QgcPath(CAMERAS_VIEW) private var json
+    @ShownCameras private var reading
     @StreamOn private var streamOn
     @Environment(\.theme) private var theme
     @Environment(\.flyOsd) private var flyOsd
 
     var body: some View {
-        let reading = camerasReading(json)
         let switchState = cameraSwitchState(reading)
         let splitTo = splitToggleTarget(reading, splitRoom, streamOn)
         if let shown = switchState?.shown ?? chipCamera(reading), switchState != nil || splitTo != nil {
@@ -155,12 +216,12 @@ func neighbourCamera(_ state: CameraSwitchState?, _ step: Int) -> CameraEntry? {
 
 @propertyWrapper
 struct CameraSwiper: DynamicProperty {
-    @QgcPath(CAMERAS_VIEW) private var json
+    @ShownCameras private var reading
 
     init() {}
 
     var wrappedValue: (Int) -> Bool {
-        let state = cameraSwitchState(camerasReading(json))
+        let state = cameraSwitchState(reading)
         return { step in
             guard let next = neighbourCamera(state, step) else { return false }
             showCamera(next.slot)
@@ -181,11 +242,11 @@ struct GimbalDrags: DynamicProperty {
 @propertyWrapper
 struct SyntheticAims: DynamicProperty {
     @QgcPath(SYNTHETIC_VIEW) private var synthetic
-    @QgcPath(CAMERAS_VIEW) private var cameras
+    @ShownCameras private var cameras
 
     init() {}
 
-    var wrappedValue: Bool { syntheticAims(synthetic, camerasReading(cameras)) }
+    var wrappedValue: Bool { syntheticAims(synthetic, cameras) }
 }
 
 struct CameraChip: View {

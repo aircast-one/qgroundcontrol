@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { camerasReading } from './Cameras';
-import { cameraSwitchState, chipCamera, neighbourCamera, pipCamera, splitToggleTarget } from './CameraSwitch';
+import { cameraSwitchState, chipCamera, neighbourCamera, pickedReading, pipCamera, splitToggleTarget } from './CameraSwitch';
 import { SYNTHETIC_SOURCE, syntheticChosen } from './SyntheticView';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -60,6 +60,16 @@ describe('CameraSwitchTest', () => {
     expect(chipCamera(reading([camera(0), camera(1)]))?.slot).toBe(0);
     expect(chipCamera(reading([]))).toBeNull();
     expect(chipCamera(null)).toBeNull();
+  });
+
+  it("the pilot's pick shows at once and holds until the core sends a camera list made after it", () => {
+    const shown = json(`{"class":"Cameras","cameras":[${camera(0, true)},${camera(1)}]}`);
+    const picked = pickedReading(shown, { slot: 1, on: shown });
+    expect(picked?.cameras.map((it) => it.active), 'the pick moves the active camera before the core answers').toEqual([false, true]);
+    expect(pickedReading(shown, null)?.cameras.map((it) => it.active)).toEqual([true, false]);
+    const answered = json(`{"class":"Cameras","cameras":[${camera(0, true)},${camera(1)}]}`);
+    expect(pickedReading(answered, { slot: 1, on: shown })?.cameras.map((it) => it.active), "a list the core sent after the pick is the core's word, even when something else moved the camera back").toEqual([true, false]);
+    expect(pickedReading(null, { slot: 1, on: null })).toBeNull();
   });
 
   it('the synthetic camera counts as chosen only when it is the one on screen', () => {
