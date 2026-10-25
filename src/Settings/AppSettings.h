@@ -58,6 +58,7 @@ public:
     DEFINE_SETTINGFACT(passAirLink)
     DEFINE_SETTINGFACT(coreLinks)
     DEFINE_SETTINGFACT(detectionsHttpPort)
+    DEFINE_SETTINGFACT(detectionsLatencyMs)
     DEFINE_SETTINGFACT(favoriteParameters)
     DEFINE_SETTINGFACT(showAppLogTimestampAsElapsedTime)
 

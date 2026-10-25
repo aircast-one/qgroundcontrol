@@ -240,6 +240,7 @@ DECLARE_SETTINGSFACT(AppSettings, loginAirLink)
 DECLARE_SETTINGSFACT(AppSettings, passAirLink)
 DECLARE_SETTINGSFACT(AppSettings, coreLinks)
 DECLARE_SETTINGSFACT(AppSettings, detectionsHttpPort)
+DECLARE_SETTINGSFACT(AppSettings, detectionsLatencyMs)
 DECLARE_SETTINGSFACT(AppSettings, favoriteParameters)
 DECLARE_SETTINGSFACT(AppSettings, showAppLogTimestampAsElapsedTime)
 
