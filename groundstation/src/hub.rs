@@ -16951,7 +16951,8 @@ mod tests {
         };
         let mut hub = Hub::default();
         metadata_asked(&mut hub, &autopilot);
-        let general = br#"{"version":1,"metadataTypes":[{"type":1,"uri":"mftp://etc/extras/gone.json","fileCrc":5,"uriFallback":"mftp://etc/extras/parameters.json","fileCrcFallback":6},{"type":4,"uri":"http://127.0.0.1:1/events.json","fileCrc":8}]}"#.to_vec();
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let general = format!(r#"{{"version":1,"metadataTypes":[{{"type":1,"uri":"mftp://etc/extras/gone.json","fileCrc":5,"uriFallback":"mftp://etc/extras/parameters.json","fileCrcFallback":6}},{{"type":4,"uri":"http://{}/events.json","fileCrc":8}}]}}"#, silent.local_addr().unwrap()).into_bytes();
         let parameters = br#"{"version":1,"parameters":[{"name":"RTL_ALT","type":"float","shortDesc":"Return altitude"}]}"#.to_vec();
         let files = BTreeMap::from([
             ("/etc/extras/component_general.json".to_string(), general),
@@ -16988,6 +16989,7 @@ mod tests {
                 .all(|(_, b)| !matches!(decode(b), MavMessage::FILE_TRANSFER_PROTOCOL(_))),
             "events are fetched over HTTP, not FTP"
         );
+        drop(silent);
         let started = web_time::Instant::now();
         let answered = std::iter::repeat_with(|| {
             std::thread::yield_now();
