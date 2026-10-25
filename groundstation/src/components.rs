@@ -383,10 +383,8 @@ fn ardupilot_entries(vehicle: &Vehicle) -> Vec<Entry> {
             true,
             true,
         )),
-        (cfg!(debug_assertions)
-            && matches!(class, VehicleClass::MultiRotor | VehicleClass::Rover)
-            && exists("FOLL_ENABLE"))
-        .then(|| entry("Follow Me", "APMFollowComponent", UNKNOWN, true, true)),
+        (matches!(class, VehicleClass::MultiRotor | VehicleClass::Rover) && exists("FOLL_ENABLE"))
+            .then(|| entry("Follow Me", "APMFollowComponent", UNKNOWN, true, true)),
         (vehicle.vehicle_type == HELICOPTER && at_least(vehicle.version, (4, 0, 0)))
             .then(|| entry("Heli", "APMHeliComponent", UNKNOWN, true, false)),
         COPTER_TYPES
@@ -706,7 +704,7 @@ mod tests {
                 (1, "FOLL_ENABLE", 0.0),
             ],
         );
-        let expected: Vec<&str> = [
+        let expected = [
             "ESC",
             "Failsafes",
             "Flight Modes",
@@ -724,10 +722,8 @@ mod tests {
             "Servo Outputs",
             "Tuning",
             "Tuning - Advanced",
-        ]
-        .into_iter()
-        .chain(cfg!(debug_assertions).then_some("Follow Me"))
-        .collect::<Vec<_>>();
+            "Follow Me",
+        ];
         assert_eq!(names(&copter).len(), expected.len());
         assert!(expected.iter().all(|name| names(&copter).contains(name)));
         assert_eq!(

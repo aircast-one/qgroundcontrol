@@ -1,5 +1,5 @@
 import { type MouseEvent, useState } from 'react';
-import { type Json, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
+import { type Json, jsonObjects, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { delay, format } from '@/kotlin/Std';
@@ -13,11 +13,14 @@ export const APM_FOLLOW_VIEW = 'view.apmFollow';
 export const APM_FOLLOW_SCREEN = 'apmFollow';
 export const APM_FOLLOW_ENABLE = 'apmFollow.enable';
 export const APM_FOLLOW_RESET = 'apmFollow.reset';
+export const APM_FOLLOW_LEAD = 'apmFollow.lead';
 export const APM_FOLLOW_POSITION = 'apmFollow.position';
 export const APM_FOLLOW_POINT = 'apmFollow.point';
 export const APM_FOLLOW_OFFSETS = 'apmFollow.offsets';
 export const APM_FOLLOW_HEIGHT = 'apmFollow.height';
 const WAITING_POLL_MS = 500;
+
+export type FollowLead = { id: number; name: string };
 
 export type ApmFollow = {
   available: boolean;
@@ -27,6 +30,8 @@ export type ApmFollow = {
   unsupportedText: string;
   showSettings: boolean;
   rover: boolean;
+  leads: readonly FollowLead[];
+  leadIndex: number;
   positionOptions: readonly string[];
   positionIndex: number;
   pointOptions: readonly string[];
@@ -55,6 +60,8 @@ export const apmFollow = (view: Json | null): ApmFollow | null =>
         unsupportedText: optText(view, 'unsupportedText'),
         showSettings: optBoolean(view, 'showSettings'),
         rover: optBoolean(view, 'rover'),
+        leads: jsonObjects(optJSONArray(view, 'leads')).map((lead) => ({ id: optInt(lead, 'id'), name: optText(lead, 'name') })),
+        leadIndex: optInt(view, 'leadIndex', -1),
         positionOptions: jsonStrings(optJSONArray(view, 'positionOptions')),
         positionIndex: optInt(view, 'positionIndex'),
         pointOptions: jsonStrings(optJSONArray(view, 'pointOptions')),
@@ -124,6 +131,9 @@ export const ApmFollowScreen = ({ className }: { className?: string }) => {
       {follow.showSettings ? (
         <>
           <SectionHeader text="Follow me settings" />
+          {follow.leads.length > 1 ? (
+            <Choice label="Follow" options={follow.leads.map((lead) => lead.name)} index={follow.leadIndex} onPick={(it) => act(APM_FOLLOW_LEAD, follow.leads[it]?.id)} />
+          ) : null}
           <Choice label="Vehicle position" options={follow.positionOptions} index={follow.positionIndex} onPick={(it) => act(APM_FOLLOW_POSITION, it)} />
           {!follow.rover ? <Choice label="Point vehicle" options={follow.pointOptions} index={follow.pointIndex} onPick={(it) => act(APM_FOLLOW_POINT, it)} /> : null}
           {follow.positionIndex === 1 ? (

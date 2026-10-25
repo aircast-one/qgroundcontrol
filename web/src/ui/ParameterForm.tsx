@@ -1,5 +1,6 @@
 import { type ReactNode, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc, makeFact } from '@/bridge/Qgc';
+import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, isJson, isNull, jsonObjects, jsonStrings, opt, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { FilledTonalButton, OutlinedButton, Slider, Surface, Text, stepsFor } from '@/m3';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
@@ -12,7 +13,7 @@ import { parameterPath } from '@/ui/ParametersScreen';
 import { type PowerCalculator, PowerCalcDialog, powerCalculator } from '@/ui/PowerCalc';
 import { FactRow } from '@/ui/SettingsScreen';
 import { EmptyState, SectionHeader } from '@/ui/SetupRow';
-import { setupPagePath } from '@/ui/SetupView';
+import { SETUP, parametersReady, setupPagePath } from '@/ui/SetupView';
 
 export type ParameterRows = {
   title: string;
@@ -129,8 +130,11 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
   const [calculating, setCalculating] = useState<PowerCalculator | null>(null);
   const [calibratingEscs, setCalibratingEscs] = useState(false);
   const reload = () => setReloads((it) => it + 1);
+  const setup = useQgcPath(SETUP);
+  const ready = parametersReady(setup);
 
-  useLaunchedEffect([page, section, reloads], async (scope) => {
+  useLaunchedEffect([page, section, reloads, ready], async (scope) => {
+    if (!ready) return;
     if (reloads === 0) await Qgc.invoke(SETUP_PAGE_OPENED, page);
     const read = (await readPage(page)).filter((it) => section === null || it.title === section);
     if (!scope.isActive()) return;
@@ -138,7 +142,7 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
     setLoaded(true);
   });
 
-  if (!loaded) return <Text className={`block px-list py-4 ${className ?? ''}`}>Reading parameters from the vehicle.</Text>;
+  if (!ready || !loaded) return <Text className={`block px-list py-4 ${className ?? ''}`}>{(ready ? '' : optText(setup, 'parametersText').trim()) || 'Reading parameters from the vehicle.'}</Text>;
 
   if (rows.length === 0) return <EmptyState icon="ic_tune" title="Nothing to set here" text={EMPTY_PAGE_TEXTS.get(page) ?? 'This vehicle exposes none of these parameters.'} className={className} />;
 

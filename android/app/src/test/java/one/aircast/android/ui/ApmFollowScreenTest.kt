@@ -24,6 +24,16 @@ class ApmFollowScreenTest {
     }
 
     @Test
+    fun `the lead list carries each system id so a pick names the system rather than a row`() {
+        val follow = apmFollow(
+            JSONObject("""{"available":true,"leads":[{"id":255,"name":"Ground station"},{"id":2,"name":"Vehicle 2"}],"leadIndex":1}"""),
+        )!!
+        assertEquals(listOf(FollowLead(255, "Ground station"), FollowLead(2, "Vehicle 2")), follow.leads)
+        assertEquals(2, follow.leads[follow.leadIndex].id)
+        assertEquals(-1, apmFollow(JSONObject("""{"available":true}"""))!!.leadIndex)
+    }
+
+    @Test
     fun `offsets show and type in the app distance units`() {
         val follow = apmFollow(
             JSONObject(

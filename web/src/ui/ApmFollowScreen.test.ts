@@ -17,6 +17,16 @@ describe('ApmFollowScreenTest', () => {
     expect(oneDecimal(follow.angle)).toBe('45.0');
   });
 
+  it('the lead list carries each system id so a pick names the system rather than a row', () => {
+    const follow = apmFollow(JSON.parse('{"available":true,"leads":[{"id":255,"name":"Ground station"},{"id":2,"name":"Vehicle 2"}],"leadIndex":1}'));
+    expect(follow?.leads).toEqual([
+      { id: 255, name: 'Ground station' },
+      { id: 2, name: 'Vehicle 2' },
+    ]);
+    expect(follow === null ? null : follow.leads[follow.leadIndex]?.id).toBe(2);
+    expect(apmFollow(JSON.parse('{"available":true}'))?.leadIndex).toBe(-1);
+  });
+
   it('offsets show and type in the app distance units', () => {
     const follow = apmFollow(
       JSON.parse(`{"available":true,"distance":3.048,"height":6.096,"horizontalUnit":"ft","horizontalMetresPerUnit":0.3048,

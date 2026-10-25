@@ -48,11 +48,14 @@ internal const val APM_FOLLOW_VIEW = "view.apmFollow"
 internal const val APM_FOLLOW_SCREEN = "apmFollow"
 internal const val APM_FOLLOW_ENABLE = "apmFollow.enable"
 internal const val APM_FOLLOW_RESET = "apmFollow.reset"
+internal const val APM_FOLLOW_LEAD = "apmFollow.lead"
 internal const val APM_FOLLOW_POSITION = "apmFollow.position"
 internal const val APM_FOLLOW_POINT = "apmFollow.point"
 internal const val APM_FOLLOW_OFFSETS = "apmFollow.offsets"
 internal const val APM_FOLLOW_HEIGHT = "apmFollow.height"
 private const val WAITING_POLL_MS = 500L
+
+internal data class FollowLead(val id: Int, val name: String)
 
 internal data class ApmFollow(
     val available: Boolean,
@@ -62,6 +65,8 @@ internal data class ApmFollow(
     val unsupportedText: String,
     val showSettings: Boolean,
     val rover: Boolean,
+    val leads: List<FollowLead>,
+    val leadIndex: Int,
     val positionOptions: List<String>,
     val positionIndex: Int,
     val pointOptions: List<String>,
@@ -91,6 +96,10 @@ internal fun apmFollow(view: JSONObject?): ApmFollow? = view?.takeIf { it.optBoo
         unsupportedText = it.optText("unsupportedText"),
         showSettings = it.optBoolean("showSettings"),
         rover = it.optBoolean("rover"),
+        leads = it.optJSONArray("leads")?.let { array ->
+            (0 until array.length()).mapNotNull { at -> array.optJSONObject(at) }.map { lead -> FollowLead(lead.optInt("id"), lead.optText("name")) }
+        }.orEmpty(),
+        leadIndex = it.optInt("leadIndex", -1),
         positionOptions = it.strings("positionOptions"),
         positionIndex = it.optInt("positionIndex"),
         pointOptions = it.strings("pointOptions"),
@@ -148,6 +157,7 @@ fun ApmFollowScreen(modifier: Modifier = Modifier) {
         }
         if (follow.showSettings) {
             SectionHeader("Follow me settings")
+            if (follow.leads.size > 1) Choice("Follow", follow.leads.map { it.name }, follow.leadIndex) { act(APM_FOLLOW_LEAD, follow.leads[it].id) }
             Choice("Vehicle position", follow.positionOptions, follow.positionIndex) { act(APM_FOLLOW_POSITION, it) }
             if (!follow.rover) Choice("Point vehicle", follow.pointOptions, follow.pointIndex) { act(APM_FOLLOW_POINT, it) }
             if (follow.positionIndex == 1) {

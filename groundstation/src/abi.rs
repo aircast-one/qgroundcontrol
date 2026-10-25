@@ -705,6 +705,7 @@ fn install_hub_sink() {
                 deliver(outbound);
                 if crate::vehiclefacade::switched_on() && !dropped {
                     crate::forwarding::forward(frame);
+                    crate::apmfollow::relay(frame);
                     let (vehicles, active) = {
                         let hub = crate::hub::lock();
                         (hub.vehicle_ids(), hub.active_id())
