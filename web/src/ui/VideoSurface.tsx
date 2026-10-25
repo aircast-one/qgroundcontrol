@@ -175,9 +175,8 @@ export const VideoSurface = ({
   const synthetic = useRememberSyntheticAvailable();
   const secondCamera = useShownSecondCamera();
 
-  if (video?.available === false) {
-    if (synthetic && !expanded) return <SyntheticThumb className={className} />;
-    if (synthetic) return <SyntheticView className={`size-full ${className ?? ''}`} aimable onGround={onGround} groundSpot={groundSpot} />;
+  if (video?.available === false && !(synthetic && expanded)) {
+    if (synthetic) return <SyntheticThumb className={className} />;
     if (!expanded) return null;
     return (
       <Surface className={`size-full ${className ?? ''}`} color={Color.Black}>

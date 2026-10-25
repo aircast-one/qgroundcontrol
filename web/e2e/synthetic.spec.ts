@@ -108,6 +108,16 @@ test('with a gimbal, the drag right after picking the synthetic view turns the v
   expect(Math.abs(((await gimbalYaw(app)) as number) - yawBefore), 'the pick hands the drag over at once, the gimbal belongs to the other camera').toBeLessThan(2);
 });
 
+test('adding the first camera keeps the 3D view on screen where it was instead of building a new one', async ({ vehicle }) => {
+  await syntheticCanvas(vehicle);
+  const shown = await vehicle.locator('[data-gesture] canvas').elementHandle();
+  await call(vehicle, 'cameras.add', 'Synthetic view', 'Synthetic View', '');
+  const pageVideo = () => vehicle.evaluate(async (module) => ((await import(module)) as { Qgc: { path: (path: string) => { available?: boolean } | null } }).Qgc.path('view.video')?.available, '/src/bridge/Qgc.ts');
+  await expect.poll(pageVideo, { timeout: 10_000 }).toBe(true);
+  await expect(vehicle.locator('[data-gesture=look] canvas')).toBeVisible();
+  expect(await shown!.evaluate((canvas) => canvas.isConnected), 'the canvas the pilot was looking at is still the one on screen').toBe(true);
+});
+
 test('with a gimbal and the synthetic view standing in for the camera, the tilt slider takes the drag: pulled down, the camera tilts down', async ({ app }) => {
   await connectMock(app, ['Enable camera', 'Enable gimbal']);
   const notice = app.getByRole('status', { name: /showing synthetic view$/ });

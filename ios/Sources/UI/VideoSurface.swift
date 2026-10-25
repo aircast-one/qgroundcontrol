@@ -147,10 +147,8 @@ struct VideoSurface: View {
 
     var body: some View {
         let video = videoReading(videoJson)
-        if video?.available == false {
-            if expanded && syntheticAvailable(syntheticJson) {
-                SyntheticView(aimable: true)
-            } else if expanded {
+        if video?.available == false && !(expanded && syntheticAvailable(syntheticJson)) {
+            if expanded {
                 NoVideoArea(underFlyChrome: expanded && !fullScreen, thumb: false, video: video)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(theme.colors.surfaceVariant)

@@ -158,16 +158,8 @@ fun VideoSurface(
     val video = remember(videoJson) { videoReading(videoJson) }
     val synthetic = rememberSyntheticAvailable()
 
-    if (video?.available == false) {
+    if (video?.available == false && !(expanded && synthetic)) {
         if (!expanded) return
-        if (synthetic) {
-            Box(modifier.fillMaxSize()) {
-                SyntheticView(Modifier.fillMaxSize(), aimable = true)
-                DetectionOverlay(Modifier.fillMaxSize())
-                TrackingBoxOverlay(Modifier.fillMaxSize())
-            }
-            return
-        }
         Surface(modifier.fillMaxSize(), color = Color.Black) {
             NoVideoArea(expanded && !fullScreen, thumb = false, video = video)
         }
