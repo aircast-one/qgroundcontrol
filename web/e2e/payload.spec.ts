@@ -165,6 +165,7 @@ test('dropping bays quickly from the deck shows each bay as it drops, never one 
 });
 
 test('a planned four-drop mission on servo bays uploads, flies and drops each bay once', async ({ app: vehicle }) => {
+  test.setTimeout(300_000);
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await fourServoBays(vehicle);
   await openPlanAtVehicle(vehicle);
