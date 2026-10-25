@@ -24,4 +24,33 @@ namespace KMLHelper
 
     /// Load all point entities
     bool loadPointsFromFile(const QString &kmlFile, QList<QGeoCoordinate> &points, QString &errorString);
+
+    struct Route
+    {
+        enum class Altitude
+        {
+            Ground,
+            AboveGround,
+            Absolute
+        };
+
+        QList<QGeoCoordinate> path;
+        Altitude altitude = Altitude::Ground;
+        int pathCount = 0;
+        qsizetype sourceVertexCount = 0;
+        QList<QGeoCoordinate> placemarks;
+        QList<double> gimbalPitch;
+        QList<double> gimbalYaw;
+        QList<QGeoCoordinate> lookAt;
+    };
+
+    QString routeGimbalData(const QList<double>& pitch, const QList<double>& yaw);
+    QString routeLookAtData(const QList<QGeoCoordinate>& lookAt);
+    constexpr const char* kRouteGimbalDataName = "gimbal";
+    constexpr const char* kRouteLookAtDataName = "lookAt";
+
+    bool loadRouteFromFile(const QString& kmlFile, Route& route, QString& errorString);
+
+    constexpr qsizetype kDenseTrackVertices = 200;
+    constexpr double kDenseTrackToleranceMeters = 3.0;
 }

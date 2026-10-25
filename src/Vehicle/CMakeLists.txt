@@ -25,6 +25,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         RemoteIDManager.h
         RequestMessageCoordinator.cc
         RequestMessageCoordinator.h
+        RouteRecorder.cc
+        RouteRecorder.h
         StandardModes.cc
         StandardModes.h
         TerrainProtocolHandler.cc

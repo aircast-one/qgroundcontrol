@@ -37,6 +37,7 @@ private slots:
 
     void _interpolatePath_test();
     void _interpolateAtDistance_test();
+    void _simplifyPath_test();
 
     // Property-based tests
     void _distanceProperties_test();

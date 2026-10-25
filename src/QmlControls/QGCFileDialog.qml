@@ -21,7 +21,7 @@ Item {
     signal acceptedForLoad(string file)
     signal acceptedForSave(string file)
     signal rejected
-    signal fileImportedNotify           // Emitted on a successful import so the open dialog can refresh its list.
+    signal fileImportedNotify(string file)
 
     function openForLoad() {
         _openForLoad = true
@@ -110,9 +110,9 @@ Item {
         target: QGCFileDialogController
         enabled: Qt.platform.os === "android" && _root._importPending
 
-        function onFileImported() {
+        function onFileImported(filePath) {
             _root._importPending = false
-            _root.fileImportedNotify()
+            _root.fileImportedNotify(filePath)
         }
 
         function onImportFailed(errorMessage) {
@@ -164,8 +164,9 @@ Item {
 
             Connections {
                 target: _root
-                function onFileImportedNotify() {
-                    fileRepeater.model = QGCFileDialogController.getFiles(folder, _rgExtensions)
+                function onFileImportedNotify(file) {
+                    mobileFileOpenDialog.close()
+                    _root.acceptedForLoad(file)
                 }
             }
 

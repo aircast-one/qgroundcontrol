@@ -44,10 +44,15 @@ public class QGCActivityTest {
     }
 
     @Test
+    public void isValidImportFileName_acceptsWaypointsAndGoogleEarthFiles() {
+        assertTrue(QGCActivity.isValidImportFileName("mission.waypoints"));
+        assertTrue(QGCActivity.isValidImportFileName("towers.kml"));
+        assertTrue(QGCActivity.isValidImportFileName("Towers.KMZ"));
+    }
+
+    @Test
     public void isValidImportFileName_returnsFalseForWrongExtension() {
-        assertFalse(QGCActivity.isValidImportFileName("mission.kml"));
         assertFalse(QGCActivity.isValidImportFileName("mission.json"));
-        assertFalse(QGCActivity.isValidImportFileName("mission.waypoints"));
         assertFalse(QGCActivity.isValidImportFileName("mission"));
     }
 
@@ -63,8 +68,7 @@ public class QGCActivityTest {
 
     @Test
     public void isValidImportFileName_returnsFalseForPlanAsPrefix() {
-        // ".plan" must be the suffix, not just appear somewhere in the name.
-        assertFalse(QGCActivity.isValidImportFileName("plan.kml"));
+        assertFalse(QGCActivity.isValidImportFileName("plan.json"));
         assertFalse(QGCActivity.isValidImportFileName("mission.plan.bak"));
     }
 

@@ -1,12 +1,16 @@
 #include "KMLHelper.h"
-#include "KMLSchemaValidator.h"
-#include "QGCLoggingCategory.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QRegularExpression>
 #include <QtXml/QDomDocument>
-
 #include <algorithm>
+
+#include "KMLSchemaValidator.h"
+#include "QGCCompression.h"
+#include "QGCGeo.h"
+#include "QGCLoggingCategory.h"
 
 QGC_LOGGING_CATEGORY(KMLHelperLog, "Utilities.KMLHelper")
 
@@ -36,7 +40,11 @@ QDomDocument KMLHelper::_loadFile(const QString &kmlFile, QString &errorString)
     }
 
     QDomDocument doc;
-    const QDomDocument::ParseResult result = doc.setContent(&file, QDomDocument::ParseOption::Default);
+    const QDomDocument::ParseResult result =
+        QFileInfo(kmlFile).suffix().compare(QStringLiteral("kmz"), Qt::CaseInsensitive) == 0
+            ? doc.setContent(QGCCompression::extractFileData(kmlFile, QStringLiteral("doc.kml")),
+                             QDomDocument::ParseOption::Default)
+            : doc.setContent(&file, QDomDocument::ParseOption::Default);
     if (!result) {
         errorString = QCoreApplication::translate("KMLHelper", _errorPrefix).arg(QCoreApplication::translate("KML", "Unable to parse KML file: %1 error: %2 line: %3").arg(kmlFile).arg(result.errorMessage).arg(result.errorLine));
         return QDomDocument();
@@ -342,4 +350,136 @@ bool KMLHelper::loadPointsFromFile(const QString &kmlFile, QList<QGeoCoordinate>
     }
 
     return true;
+}
+
+bool KMLHelper::loadRouteFromFile(const QString& kmlFile, Route& route, QString& errorString)
+{
+    errorString.clear();
+    route = Route();
+
+    const QDomDocument domDocument = KMLHelper::_loadFile(kmlFile, errorString);
+    if (!errorString.isEmpty()) {
+        return false;
+    }
+
+    const QDomNodeList lineNodes = domDocument.elementsByTagName("LineString");
+    const QDomNodeList pointNodes = domDocument.elementsByTagName("Point");
+    const bool isPath = !lineNodes.isEmpty();
+    const QDomNodeList rgNodes = isPath ? lineNodes : pointNodes;
+
+    bool allAbsolute = true;
+    bool allRelativeToGround = true;
+    for (int nodeIdx = 0; nodeIdx < rgNodes.count(); nodeIdx++) {
+        const QDomNode geometryNode = rgNodes.item(nodeIdx);
+        QList<QGeoCoordinate> coords;
+        if (!_parseCoordinateString(geometryNode.namedItem("coordinates").toElement().text(), coords, errorString)) {
+            qCWarning(KMLHelperLog) << "Route geometry" << nodeIdx
+                                    << QStringLiteral("(line %1)").arg(geometryNode.lineNumber())
+                                    << "skipped:" << errorString;
+            errorString.clear();
+            continue;
+        }
+        const QString altitudeMode = geometryNode.namedItem("altitudeMode").toElement().text();
+        allAbsolute = allAbsolute && (altitudeMode == QStringLiteral("absolute"));
+        allRelativeToGround = allRelativeToGround && (altitudeMode == QStringLiteral("relativeToGround"));
+        route.path.append(isPath ? coords : coords.mid(0, 1));
+        route.pathCount += isPath ? 1 : 0;
+    }
+
+    if (route.path.isEmpty()) {
+        errorString =
+            domDocument.elementsByTagName("Polygon").isEmpty()
+                ? QCoreApplication::translate("KMLHelper", _errorPrefix)
+                      .arg(QCoreApplication::translate("KML", "No path or placemarks found in KML file"))
+                : QCoreApplication::translate(
+                      "KML",
+                      "This file only has areas. To fly over an area, use Pattern > Survey and load the file there.");
+        return false;
+    }
+
+    const bool hasAltitudes = std::any_of(route.path.cbegin(), route.path.cend(),
+                                          [](const QGeoCoordinate& coordinate) { return coordinate.altitude() > 0; });
+    route.altitude = !hasAltitudes         ? Route::Altitude::Ground
+                     : allAbsolute         ? Route::Altitude::Absolute
+                     : allRelativeToGround ? Route::Altitude::AboveGround
+                                           : Route::Altitude::Ground;
+    if (isPath) {
+        for (int nodeIdx = 0; nodeIdx < pointNodes.count(); nodeIdx++) {
+            QList<QGeoCoordinate> coords;
+            if (_parseCoordinateString(pointNodes.item(nodeIdx).namedItem("coordinates").toElement().text(), coords,
+                                       errorString)) {
+                route.placemarks.append(coords.first());
+            }
+            errorString.clear();
+        }
+    }
+
+    if (lineNodes.count() == 1) {
+        const QDomNodeList dataNodes = lineNodes.item(0).parentNode().toElement().elementsByTagName("Data");
+        for (int nodeIdx = 0; nodeIdx < dataNodes.count(); nodeIdx++) {
+            const QDomElement data = dataNodes.item(nodeIdx).toElement();
+            const QStringList tokens = data.firstChildElement("value").text().split(
+                QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+            if (tokens.count() != route.path.count()) {
+                continue;
+            }
+            if (data.attribute("name") == QLatin1String(kRouteGimbalDataName)) {
+                for (const QString& token : tokens) {
+                    const QStringList values = token.split(QLatin1Char(','));
+                    route.gimbalPitch.append(values.value(0).toDouble());
+                    route.gimbalYaw.append(values.value(1).toDouble());
+                }
+            } else if (data.attribute("name") == QLatin1String(kRouteLookAtDataName)) {
+                for (const QString& token : tokens) {
+                    const QStringList values = token.split(QLatin1Char(','));
+                    route.lookAt.append(
+                        (values.count() == 3)
+                            ? QGeoCoordinate(values[1].toDouble(), values[0].toDouble(), values[2].toDouble())
+                            : QGeoCoordinate());
+                }
+            }
+        }
+    }
+
+    route.sourceVertexCount = route.path.count();
+    if (isPath && (route.path.count() > kDenseTrackVertices)) {
+        const QList<qsizetype> kept = QGCGeo::simplifyPathIndices(route.path, kDenseTrackToleranceMeters);
+        const auto subset = [&kept](const auto& values) {
+            std::decay_t<decltype(values)> result;
+            for (const qsizetype index : kept) {
+                if (index < values.count()) {
+                    result.append(values[index]);
+                }
+            }
+            return result;
+        };
+        route.path = subset(route.path);
+        route.gimbalPitch = subset(route.gimbalPitch);
+        route.gimbalYaw = subset(route.gimbalYaw);
+        route.lookAt = subset(route.lookAt);
+    }
+
+    return true;
+}
+
+QString KMLHelper::routeGimbalData(const QList<double>& pitch, const QList<double>& yaw)
+{
+    QStringList tokens;
+    for (qsizetype i = 0; i < pitch.count(); i++) {
+        tokens.append(QStringLiteral("%1,%2").arg(pitch[i], 0, 'f', 1).arg(yaw.value(i, qQNaN()), 0, 'f', 1));
+    }
+    return tokens.join(QLatin1Char(' '));
+}
+
+QString KMLHelper::routeLookAtData(const QList<QGeoCoordinate>& lookAt)
+{
+    QStringList tokens;
+    for (const QGeoCoordinate& coordinate : lookAt) {
+        tokens.append(coordinate.isValid() ? QStringLiteral("%1,%2,%3")
+                                                 .arg(coordinate.longitude(), 0, 'f', 7)
+                                                 .arg(coordinate.latitude(), 0, 'f', 7)
+                                                 .arg(coordinate.altitude(), 0, 'f', 1)
+                                           : QStringLiteral("-"));
+    }
+    return tokens.join(QLatin1Char(' '));
 }

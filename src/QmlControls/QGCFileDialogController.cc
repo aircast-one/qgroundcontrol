@@ -206,7 +206,7 @@ void QGCFileDialogController::_handleImportResult(const QString& filePath)
 {
     if (filePath.isEmpty()) {
         qCWarning(QGCFileDialogControllerLog) << "Import failed: empty file path received from Java";
-        emit importFailed(tr("Failed to import file"));
+        emit importFailed(tr("Failed to import the file. Plan, waypoints, KML and KMZ files can be imported."));
         return;
     }
 

@@ -49,7 +49,7 @@ jobs:
         shell: bash
 
     env:
-      PACKAGE: QGroundControl
+      PACKAGE: AircastQGC
 
     steps:
       - name: Harden Runner

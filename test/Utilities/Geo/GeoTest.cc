@@ -476,4 +476,34 @@ void GeoTest::_qbenchmarkGeodesicDistance()
     QVERIFY(dist > 0);
 }
 
+void GeoTest::_simplifyPath_test()
+{
+    const QGeoCoordinate start(41.71, 44.79, 600);
+    const auto leg = [](const QGeoCoordinate& from, double azimuth, int steps, double climbPerStep) {
+        QList<QGeoCoordinate> points;
+        for (int i = 1; i <= steps; i++) {
+            QGeoCoordinate point = from.atDistanceAndAzimuth(i * 5.0, azimuth);
+            point.setAltitude(from.altitude() + (i * climbPerStep));
+            points.append(point);
+        }
+        return points;
+    };
+
+    const QList<QGeoCoordinate> straight = QList<QGeoCoordinate>{start} + leg(start, 90, 40, 0);
+    const QList<QGeoCoordinate> simplifiedStraight = QGCGeo::simplifyPath(straight, 3.0);
+    QCOMPARE(simplifiedStraight.count(), 2);
+    QCOMPARE(simplifiedStraight.last(), straight.last());
+
+    const QList<QGeoCoordinate> east = leg(start, 90, 20, 0);
+    const QList<QGeoCoordinate> north = leg(east.last(), 0, 20, 0);
+    const QList<QGeoCoordinate> climb = leg(north.last(), 0, 20, 2.0);
+    const QList<QGeoCoordinate> level = leg(climb.last(), 0, 20, 0);
+    const QList<QGeoCoordinate> simplified =
+        QGCGeo::simplifyPath(QList<QGeoCoordinate>{start} + east + north + climb + level, 3.0);
+    QCOMPARE(simplified.count(), 5);
+    QCOMPARE(simplified[1], east.last());
+    QCOMPARE(simplified[2], north.last());
+    QCOMPARE(simplified[3], climb.last());
+}
+
 UT_REGISTER_TEST_LIGHTWEIGHT(GeoTest, TestLabel::Unit, TestLabel::Utilities)

@@ -48,6 +48,9 @@ qt_add_resources(${CMAKE_PROJECT_NAME} "MissionManagerTest_res"
         PolygonBadXml.kml
         PolygonGood.kml
         PolygonMissingNode.kml
+        RouteAbsolutePath.kmz
+        RouteGroundPath.kml
+        RoutePlacemarks.kml
         SectionTest.plan
         UT-MavCmdInfoCommon.json
         UT-MavCmdInfoFixedWing.json

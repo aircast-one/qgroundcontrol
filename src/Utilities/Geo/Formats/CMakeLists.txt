@@ -53,6 +53,7 @@ target_link_libraries(QGCGeoFormats
         Qt6::Location
         Qt6::LocationPrivate
         shp
+        QGCCompression
         QGCGeoMath
         QGCLogging
         QGCParsing
