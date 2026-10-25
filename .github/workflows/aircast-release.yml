@@ -177,6 +177,101 @@ jobs:
           ./gradlew --no-daemon :app:testQtDebugUnitTest :map:testDebugUnitTest
           ./gradlew --no-daemon :app:assembleQtRelease
 
+      - name: Collect the native head APK
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
+        run: |
+          for f in android/app/build/outputs/apk/qt/release/app-qt-release*.apk; do
+            case "$f" in
+              *unsigned*) cp "$f" "out/AircastAndroid-${SHORT}-unsigned.apk" ;;
+              *)          cp "$f" "out/AircastAndroid-${SHORT}.apk" ;;
+            esac
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qgc-android
+          path: out/*.apk
+          if-no-files-found: error
+
+  build-android-core:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      HAS_RELEASE_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_PLAY_UPLOAD_KEYSTORE: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 != '' }}
+      AIRCAST_ABI: arm64-v8a
+      QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
+      QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
+      QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+      QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+      QT_ANDROID_ABIS: ${{ needs.setup.outputs.is_production == 'true' && 'arm64-v8a;armeabi-v7a' || 'arm64-v8a' }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.setup.outputs.version }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set Android SDK location
+        run: |
+          echo "ANDROID_SDK_ROOT=${RUNNER_TEMP}/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "$GITHUB_ENV"
+
+      - name: Build Setup (Android)
+        id: setup
+        uses: ./.github/actions/build-setup
+        with:
+          mode: android
+          qt-host: linux
+          qt-arch: linux_gcc_64
+          abis: ${{ env.QT_ANDROID_ABIS }}
+          build-type: Release
+          save-cache: 'false'
+
+      - name: Install host build dependencies
+        uses: ./.github/actions/install-dependencies
+
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
+        with:
+          cache: 'true'
+          android-abis: ${{ env.QT_ANDROID_ABIS }}
+          cargo-ndk: 'true'
+
+      - name: Install release signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$QT_ANDROID_KEYSTORE_STORE_PASS" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$QT_ANDROID_KEYSTORE_PATH"
+            echo "Installed aircast release keystore"
+          else
+            echo "::warning::No keystore secret - signing the APK with a throwaway debug key"
+            keytool -genkey -v \
+              -keystore "${RUNNER_TEMP}/debug.keystore" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            {
+              echo "QT_ANDROID_KEYSTORE_PATH=${RUNNER_TEMP}/debug.keystore"
+              echo "QT_ANDROID_KEYSTORE_ALIAS=androiddebugkey"
+              echo "QT_ANDROID_KEYSTORE_STORE_PASS=android"
+              echo "QT_ANDROID_KEYSTORE_KEY_PASS=android"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up the pinned JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ steps.setup.outputs.android_java_version }}
+
       - name: Install the Play upload keystore
         if: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' }}
         env:
@@ -200,7 +295,7 @@ jobs:
       - name: Collect the Rust core head bundle
         env:
           SHORT: ${{ needs.setup.outputs.short_version }}
-        run: cp android/app/build/outputs/bundle/coreRelease/app-core-release.aab "out/AircastAndroidCore-${SHORT}.aab"
+        run: mkdir -p out && cp android/app/build/outputs/bundle/coreRelease/app-core-release.aab "out/AircastAndroidCore-${SHORT}.aab"
 
       - name: Authenticate to Google Play
         id: play_auth
@@ -222,23 +317,10 @@ jobs:
           track: ${{ needs.setup.outputs.is_production == 'true' && (vars.PLAY_PRODUCTION_TRACK || 'production') || (needs.setup.outputs.environment == 'beta' && (vars.PLAY_BETA_TRACK || 'alpha') || 'internal') }}
           status: completed
 
-      - name: Collect the native head APK
-        env:
-          SHORT: ${{ needs.setup.outputs.short_version }}
-        run: |
-          for f in android/app/build/outputs/apk/qt/release/app-qt-release*.apk; do
-            case "$f" in
-              *unsigned*) cp "$f" "out/AircastAndroid-${SHORT}-unsigned.apk" ;;
-              *)          cp "$f" "out/AircastAndroid-${SHORT}.apk" ;;
-            esac
-          done
-
       - uses: actions/upload-artifact@v7
         with:
-          name: qgc-android
-          path: |
-            out/*.apk
-            out/*.aab
+          name: qgc-android-core
+          path: out/*.aab
           if-no-files-found: error
 
   build-ios:
@@ -444,6 +526,80 @@ jobs:
             hdiutil detach /Volumes/AircastQGC -force && break || sleep 3
           done || true
 
+      - name: Collect DMG
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
+        run: |
+          mkdir -p out
+          cp "${RUNNER_TEMP}/build/AircastQGC.dmg" "out/AircastQGC-${SHORT}.dmg"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qgc-macos
+          path: out/*.dmg
+          if-no-files-found: error
+
+      - name: Collect SDK
+        working-directory: ${{ runner.temp }}/build
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
+          OUT_DIR: ${{ github.workspace }}/out
+        run: |
+          cmake --install . --config Release --component sdk --prefix sdk
+          mkdir -p sdk/bundle
+          cp -R staging/AircastQGC.app/Contents/Frameworks staging/AircastQGC.app/Contents/PlugIns staging/AircastQGC.app/Contents/Resources sdk/bundle/
+          tar -cf - -C sdk . | zstd -T0 -3 > "${OUT_DIR}/AircastQGC-sdk-${SHORT}.tar.zst"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qgc-macos-sdk
+          path: out/*.tar.zst
+          if-no-files-found: error
+
+  build-macos-native:
+    needs: setup
+    runs-on: macos-15
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      MACOS_SIGN: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.setup.outputs.version }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build Setup
+        uses: ./.github/actions/build-setup
+        with:
+          qt-host: mac
+          qt-arch: clang_64
+          build-type: Release
+          cache-variant: headless
+          cache-key-suffix: headless
+
+      - name: Install Dependencies
+        uses: ./.github/actions/install-dependencies
+
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain
+        with:
+          cache: 'true'
+
+      - name: Install packet radio native deps
+        run: brew install --quiet libusb libsodium create-dmg
+
+      - name: Import Code Signing Certificate
+        if: env.MACOS_SIGN == 'true'
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+
       - name: CMake configure (headless core)
         uses: ./.github/actions/cmake-configure
         with:
@@ -470,7 +626,7 @@ jobs:
           QGC_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
 
       - name: Build the native-UI bundle
-        working-directory: ${{ runner.temp }}/build
+        working-directory: ${{ runner.temp }}/build-headless
         env:
           SIGN_IDENTITY: ${{ env.MACOS_SIGN == 'true' && secrets.MACOS_SIGNING_IDENTITY || '' }}
           NOTARY_USER: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
@@ -479,7 +635,7 @@ jobs:
         run: |
           apple_retry() { for attempt in 1 2 3 4 5 6; do "$@" && return 0; echo "Apple check failed (attempt $attempt of 6), retrying in 20 s: $*"; sleep 20; done; return 1; }
           set -euo pipefail
-          SRC=../build-headless/staging/AircastQGC.app
+          SRC=staging/AircastQGC.app
           DST=staging-native/AircastQGCNative.app
           rm -rf staging-native && mkdir -p staging-native
           cp -R "$SRC" "$DST"
@@ -509,7 +665,7 @@ jobs:
           "$DST/Contents/MacOS/AircastQGCNative" --simple-boot-test
 
       - name: No Qt GUI module in the native bundle
-        working-directory: ${{ runner.temp }}/build
+        working-directory: ${{ runner.temp }}/build-headless
         run: |
           set -euo pipefail
           APP=staging-native/AircastQGCNative.app
@@ -525,7 +681,7 @@ jobs:
           exit $FOUND
 
       - name: Package the native-UI DMG
-        working-directory: ${{ runner.temp }}/build
+        working-directory: ${{ runner.temp }}/build-headless
         run: |
           set -euo pipefail
           create-dmg --volname "AircastQGC Native" --filesystem APFS \
@@ -536,30 +692,12 @@ jobs:
           SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
           mkdir -p out
-          cp "${RUNNER_TEMP}/build/AircastQGC.dmg" "out/AircastQGC-${SHORT}.dmg"
-          cp "${RUNNER_TEMP}/build/AircastQGCNative.dmg" "out/AircastQGCNative-${SHORT}.dmg"
+          cp "${RUNNER_TEMP}/build-headless/AircastQGCNative.dmg" "out/AircastQGCNative-${SHORT}.dmg"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: qgc-macos
+          name: qgc-macos-native
           path: out/*.dmg
-          if-no-files-found: error
-
-      - name: Collect SDK
-        working-directory: ${{ runner.temp }}/build
-        env:
-          SHORT: ${{ needs.setup.outputs.short_version }}
-          OUT_DIR: ${{ github.workspace }}/out
-        run: |
-          cmake --install . --config Release --component sdk --prefix sdk
-          mkdir -p sdk/bundle
-          cp -R staging/AircastQGC.app/Contents/Frameworks staging/AircastQGC.app/Contents/PlugIns staging/AircastQGC.app/Contents/Resources sdk/bundle/
-          tar -cf - -C sdk . | zstd -T0 -3 > "${OUT_DIR}/AircastQGC-sdk-${SHORT}.tar.zst"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: qgc-macos-sdk
-          path: out/*.tar.zst
           if-no-files-found: error
 
   build-windows:
@@ -882,7 +1020,7 @@ jobs:
                 -d @-
 
   publish:
-    needs: [setup, build-android, build-macos, build-windows, build-windows-native, build-linux, build-web]
+    needs: [setup, build-android, build-android-core, build-macos, build-macos-native, build-windows, build-windows-native, build-linux, build-web]
     if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -899,7 +1037,9 @@ jobs:
           IS_PRODUCTION: ${{ needs.setup.outputs.is_production }}
           RESULTS: |
             Android ${{ needs.build-android.result }}
+            Android-core ${{ needs.build-android-core.result }}
             macOS ${{ needs.build-macos.result }}
+            macOS-native ${{ needs.build-macos-native.result }}
             Windows ${{ needs.build-windows.result }}
             Windows-native ${{ needs.build-windows-native.result }}
             Linux ${{ needs.build-linux.result }}
@@ -1035,7 +1175,7 @@ jobs:
           fi
 
   notify:
-    needs: [setup, build-android, build-ios, build-macos, build-windows, build-windows-arm64, build-windows-native, build-linux, build-web, publish, cleanup-old-releases]
+    needs: [setup, build-android, build-android-core, build-ios, build-macos, build-macos-native, build-windows, build-windows-arm64, build-windows-native, build-linux, build-web, publish, cleanup-old-releases]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1043,8 +1183,10 @@ jobs:
           VERSION: ${{ needs.setup.outputs.version }}
           ENVIRONMENT: ${{ needs.setup.outputs.environment }}
           ANDROID: ${{ needs.build-android.result }}
+          ANDROID_CORE: ${{ needs.build-android-core.result }}
           IOS: ${{ needs.build-ios.result }}
           MACOS: ${{ needs.build-macos.result }}
+          MACOS_NATIVE: ${{ needs.build-macos-native.result }}
           WINDOWS: ${{ needs.build-windows.result }}
           WINDOWS_ARM64: ${{ needs.build-windows-arm64.result }}
           WINDOWS_NATIVE: ${{ needs.build-windows-native.result }}
@@ -1056,8 +1198,10 @@ jobs:
             echo "## Aircast QGC Release"
             echo "- **Version:** $VERSION ($ENVIRONMENT)"
             echo "- **Android:** $ANDROID"
+            echo "- **Android core head:** $ANDROID_CORE"
             echo "- **iOS:** $IOS"
             echo "- **macOS:** $MACOS"
+            echo "- **macOS native UI:** $MACOS_NATIVE"
             echo "- **Windows:** $WINDOWS"
             echo "- **Windows ARM64:** $WINDOWS_ARM64 (non-blocking)"
             echo "- **Windows native (WinUI, arm64 + x64):** $WINDOWS_NATIVE"
