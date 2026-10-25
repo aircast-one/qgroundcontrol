@@ -8,13 +8,15 @@
  ****************************************************************************/
 
 #include "FlightModeReportingTest.h"
+
+#include <QtTest/QSignalSpy>
+#include <QtTest/QTest>
+#include <algorithm>
+
 #include "FirmwarePlugin.h"
 #include "MockLink.h"
 #include "MultiVehicleManager.h"
 #include "Vehicle.h"
-
-#include <QtTest/QSignalSpy>
-#include <QtTest/QTest>
 
 void FlightModeReportingTest::_renamingTheModeAnnouncesItEvenThoughTheModeBitsAreUnchanged()
 {
@@ -62,11 +64,16 @@ void FlightModeReportingTest::_advancedModesAreASettableSubsetAndLeaveEverydayMo
     Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
     QVERIFY(vehicle);
 
+    const FlightModeList table = vehicle->firmwarePlugin()->flightModeList();
+    QVERIFY(std::any_of(table.cbegin(), table.cend(), [](const FirmwareFlightMode& mode) { return mode.advanced; }));
+
     const QStringList all = vehicle->flightModes();
     const QStringList advanced = vehicle->advancedFlightModes();
-    QVERIFY(!advanced.isEmpty());
     QVERIFY(advanced.size() < all.size());
-    for (const QString &mode : advanced) {
+    for (const FirmwareFlightMode& mode : table) {
+        QCOMPARE(advanced.contains(mode.mode_name), mode.canBeSet && mode.advanced);
+    }
+    for (const QString& mode : advanced) {
         QVERIFY2(all.contains(mode), qPrintable(mode));
     }
 }

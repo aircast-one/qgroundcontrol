@@ -378,17 +378,19 @@ void TelemetryChipsTest::_deletingTheWidestChipReleasesItsColumnSpan()
     QTRY_VERIFY(widestChipWidth(view.rootObject()) > 0);
 
     const QList<QQuickItem*> chips = chipsOf(view.rootObject());
-    int widestColumn = 0;
-    qreal widest = 0;
-    for (int i = 0; i < chips.count(); i++) {
-        if (chips.at(i)->width() > widest) {
-            widest = chips.at(i)->width();
-            widestColumn = i;
-        }
-    }
+    const qreal widest = widestChipWidth(view.rootObject());
     QTRY_COMPARE(layer->property("_widestChip").toReal(), widest);
 
-    grid->deleteColumn(widestColumn);
+    QList<int> widestColumns;
+    for (int i = 0; i < chips.count(); i++) {
+        if (qFuzzyCompare(chips.at(i)->width(), widest)) {
+            widestColumns.prepend(i);
+        }
+    }
+    QVERIFY(widestColumns.count() < chips.count());
+    for (const int column : std::as_const(widestColumns)) {
+        grid->deleteColumn(column);
+    }
 
     QTRY_COMPARE(chipsOf(view.rootObject()).count(), grid->columns()->count());
     const qreal remainingWidest = widestChipWidth(view.rootObject());

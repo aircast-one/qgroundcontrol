@@ -1,14 +1,14 @@
 #include "PlanViewLayoutTest.h"
 
 #include <QtCore/QRegularExpression>
+#include <QtQml/QQmlContext>
+#include <QtQml/QQmlIncubationController>
+#include <QtQml/QQmlPropertyMap>
+#include <memory>
+
+#include "PlanViewSettings.h"
 #include "QuickInteractionTestHelpers.h"
 #include "SettingsManager.h"
-#include "PlanViewSettings.h"
-
-#include <QtQml/QQmlContext>
-#include <QtQml/QQmlPropertyMap>
-
-#include <memory>
 
 namespace {
 
@@ -50,6 +50,23 @@ public:
 private:
     Fact *const    _fact;
     const QVariant _saved;
+};
+
+class DrainedView : public QQuickView
+{
+public:
+    ~DrainedView() override
+    {
+        QQmlIncubationController* const controller = engine()->incubationController();
+        if (controller) {
+            (void) QTest::qWaitFor(
+                [controller] {
+                    controller->incubateFor(50);
+                    return controller->incubatingObjectCount() == 0;
+                },
+                TestTimeout::shortMs());
+        }
+    }
 };
 
 bool load(QQuickView &view, QQmlPropertyMap &globals, Layout &layout)
@@ -111,7 +128,7 @@ void PlanViewLayoutTest::_narrowWindowStacksTheInspectorUnderTheDock()
 {
     const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
     QQmlPropertyMap &globals = *globalsOwner;
-    QQuickView view;
+    DrainedView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
 
@@ -129,7 +146,7 @@ void PlanViewLayoutTest::_narrowWindowGivesTheTerrainProfileItsOwnBand()
     MissionStatusScope status(true);
     const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
     QQmlPropertyMap &globals = *globalsOwner;
-    QQuickView view;
+    DrainedView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
     QVERIFY(settled(layout, [&] { return inspectorUnderTheDock(layout); }));
@@ -149,7 +166,7 @@ void PlanViewLayoutTest::_wideWindowKeepsTheInspectorOnTheRight()
 {
     const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
     QQmlPropertyMap &globals = *globalsOwner;
-    QQuickView view;
+    DrainedView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
 
@@ -165,7 +182,7 @@ void PlanViewLayoutTest::_rotatingBackRestoresTheSideInspector()
 {
     const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
     QQmlPropertyMap &globals = *globalsOwner;
-    QQuickView view;
+    DrainedView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
 

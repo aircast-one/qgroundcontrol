@@ -84,6 +84,8 @@ void FlyViewToolBarEditTest::_narrowBarDropsTheIndicatorRow()
     QQuickItem *const indicators = findItemByName(view.rootObject(), QStringLiteral("flyViewToolIndicators"));
     QQuickItem *const analyze = findItemByName(view.rootObject(), QStringLiteral("analyzeButton"));
     QVERIFY(pill && indicators && analyze);
+    view.rootObject()->setSize(QSizeF(2400, view.rootObject()->height()));
+    view.resize(2400, qRound(view.rootObject()->height()));
     QTRY_VERIFY(indicators->width() > 0);
 
     narrowUntilTheStatusPillGivesGround(view, pill, analyze);
