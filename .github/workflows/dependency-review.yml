@@ -25,6 +25,7 @@ permissions:
 jobs:
   dependency-review:
     name: Review Dependencies
+    if: github.repository_owner == 'mavlink'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
