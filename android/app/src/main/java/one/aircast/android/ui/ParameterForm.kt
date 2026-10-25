@@ -36,6 +36,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.qgcPath
 import one.aircast.map.optText
 
 internal data class ParameterRows(
@@ -150,6 +151,12 @@ internal fun readPage(page: String): List<ParameterRows> {
 
 internal const val SETUP_PAGE_OPENED = "setup.pageOpened"
 
+internal const val READING_PARAMETERS = "Reading parameters from the vehicle."
+
+internal fun parameterFormWait(setup: JSONObject?): String? =
+    if (parametersReady(setup)) null
+    else setup?.optString("parametersText").orEmpty().trim().ifBlank { READING_PARAMETERS }
+
 internal val EMPTY_PAGE_TEXTS = mapOf("Gimbal" to "Gimbal settings are not available for this firmware version.")
 
 @Composable
@@ -166,15 +173,19 @@ internal fun ParameterForm(
     var calculating by remember { mutableStateOf<PowerCalculator?>(null) }
     var calibratingEscs by remember { mutableStateOf(false) }
 
-    LaunchedEffect(page, section, reloads) {
+    val setupJson by qgcPath(SETUP)
+    val waiting = remember(setupJson) { parameterFormWait(setupJson) }
+
+    LaunchedEffect(page, section, reloads, waiting == null) {
+        if (waiting != null) return@LaunchedEffect
         rows = withContext(Dispatchers.Default) {
             if (reloads == 0) Qgc.invoke(SETUP_PAGE_OPENED, page)
             readPage(page).filter { section == null || it.title == section } }
         loaded = true
     }
 
-    if (!loaded) {
-        Text("Reading parameters from the vehicle.", modifier.padding(16.dp))
+    if (waiting != null || !loaded) {
+        Text(waiting ?: READING_PARAMETERS, modifier.padding(16.dp))
         return
     }
 

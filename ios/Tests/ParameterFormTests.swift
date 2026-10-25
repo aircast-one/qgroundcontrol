@@ -325,4 +325,15 @@ final class ControlBoundsTests: XCTestCase {
         XCTAssertEqual(sliderValue(0.1349, 3, ""), "0.135")
         XCTAssertEqual(sliderValue(38, 0, "%"), "38 %")
     }
+
+    func testAFormOpenedBeforeTheParametersArriveWaitsInsteadOfReportingAnEmptyPage() {
+        XCTAssertEqual(parameterFormWait(nil), READING_PARAMETERS)
+        XCTAssertEqual(parameterFormWait(JSON.parse(#"{"connected":true,"parametersReady":false}"#)), READING_PARAMETERS)
+        XCTAssertEqual(
+            parameterFormWait(JSON.parse(#"{"connected":true,"parametersReady":false,"parametersText":" Downloading parameters 40% "}"#)),
+            "Downloading parameters 40%"
+        )
+        XCTAssertEqual(parameterFormWait(JSON.parse(#"{"connected":false,"parametersReady":true}"#)), READING_PARAMETERS)
+        XCTAssertNil(parameterFormWait(JSON.parse(#"{"connected":true,"parametersReady":true}"#)))
+    }
 }

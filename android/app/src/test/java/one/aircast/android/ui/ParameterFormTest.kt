@@ -391,4 +391,16 @@ class ControlBoundsTest {
         assertEquals(12346f, sliderSnapped(12345.68f, 0))
         assertEquals(0.14f, sliderSnapped(0.1351f, 2))
     }
+
+    @Test
+    fun `a form opened before the parameters arrive waits instead of reporting an empty page`() {
+        assertEquals(READING_PARAMETERS, parameterFormWait(null))
+        assertEquals(READING_PARAMETERS, parameterFormWait(JSONObject("""{"connected":true,"parametersReady":false}""")))
+        assertEquals(
+            "Downloading parameters 40%",
+            parameterFormWait(JSONObject("""{"connected":true,"parametersReady":false,"parametersText":" Downloading parameters 40% "}""")),
+        )
+        assertEquals(READING_PARAMETERS, parameterFormWait(JSONObject("""{"connected":false,"parametersReady":true}""")))
+        assertNull(parameterFormWait(JSONObject("""{"connected":true,"parametersReady":true}""")))
+    }
 }

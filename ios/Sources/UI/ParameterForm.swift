@@ -103,6 +103,12 @@ func readPage(_ page: String) -> [ParameterRows] {
 
 let SETUP_PAGE_OPENED = "setup.pageOpened"
 
+let READING_PARAMETERS = "Reading parameters from the vehicle."
+
+func parameterFormWait(_ setup: JSON?) -> String? {
+    parametersReady(setup) ? nil : (setup?["parametersText"].string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).ifBlank(READING_PARAMETERS)
+}
+
 let EMPTY_PAGE_TEXTS = ["Gimbal": "Gimbal settings are not available for this firmware version."]
 
 struct ParameterForm: View {
@@ -111,6 +117,7 @@ struct ParameterForm: View {
     var section: String? = nil
     var footer: AnyView? = nil
     @Environment(\.theme) private var theme
+    @QgcPath(SETUP) private var setupJson
     @State private var rows: [ParameterRows] = []
     @State private var loaded = false
     @State private var reloads = 0
@@ -121,11 +128,13 @@ struct ParameterForm: View {
         let page: String
         let section: String?
         let reloads: Int
+        let ready: Bool
     }
 
     var body: some View {
         content
-            .task(id: Load(page: page, section: section, reloads: reloads)) {
+            .task(id: Load(page: page, section: section, reloads: reloads, ready: parameterFormWait(setupJson) == nil)) {
+                guard parameterFormWait(setupJson) == nil else { return }
                 let page = page, section = section, first = reloads == 0
                 rows = await offMain {
                     if first { Qgc.invoke(SETUP_PAGE_OPENED, page) }
@@ -142,8 +151,10 @@ struct ParameterForm: View {
     }
 
     @ViewBuilder private var content: some View {
-        if !loaded {
-            Text("Reading parameters from the vehicle.").padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        if let waiting = parameterFormWait(setupJson) {
+            Text(waiting).padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        } else if !loaded {
+            Text(READING_PARAMETERS).padding(16).frame(maxWidth: .infinity, alignment: .leading)
         } else if rows.isEmpty {
             EmptyState(icon: .tune, title: "Nothing to set here", text: EMPTY_PAGE_TEXTS[page] ?? "This vehicle exposes none of these parameters.")
         } else {
