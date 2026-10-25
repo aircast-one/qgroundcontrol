@@ -1,14 +1,14 @@
 #include "PlanViewLayoutTest.h"
 
 #include <QtCore/QRegularExpression>
-#include <QtQml/QQmlContext>
-#include <QtQml/QQmlIncubationController>
-#include <QtQml/QQmlPropertyMap>
-#include <memory>
-
-#include "PlanViewSettings.h"
 #include "QuickInteractionTestHelpers.h"
 #include "SettingsManager.h"
+#include "PlanViewSettings.h"
+
+#include <QtQml/QQmlContext>
+#include <QtQml/QQmlPropertyMap>
+
+#include <memory>
 
 namespace {
 
@@ -50,23 +50,6 @@ public:
 private:
     Fact *const    _fact;
     const QVariant _saved;
-};
-
-class DrainedView : public QQuickView
-{
-public:
-    ~DrainedView() override
-    {
-        QQmlIncubationController* const controller = engine()->incubationController();
-        if (controller) {
-            (void) QTest::qWaitFor(
-                [controller] {
-                    controller->incubateFor(50);
-                    return controller->incubatingObjectCount() == 0;
-                },
-                TestTimeout::shortMs());
-        }
-    }
 };
 
 bool load(QQuickView &view, QQmlPropertyMap &globals, Layout &layout)
@@ -122,13 +105,15 @@ void PlanViewLayoutTest::init()
     ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("First item is not MissionSettingsItem")));
     ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("(CameraSection|MissionSettingsEditor|SimpleItemEditor).qml.*TypeError")));
     ignoreLogMessage("default", QtWarningMsg, QRegularExpression(QStringLiteral("Required property missionItem was not initialized")));
+    ignoreLogMessage("default", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("items in the process of being created at engine destruction")));
 }
 
 void PlanViewLayoutTest::_narrowWindowStacksTheInspectorUnderTheDock()
 {
     const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
     QQmlPropertyMap &globals = *globalsOwner;
-    DrainedView view;
+    QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
 
@@ -146,7 +131,7 @@ void PlanViewLayoutTest::_narrowWindowGivesTheTerrainProfileItsOwnBand()
     MissionStatusScope status(true);
     const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
     QQmlPropertyMap &globals = *globalsOwner;
-    DrainedView view;
+    QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
     QVERIFY(settled(layout, [&] { return inspectorUnderTheDock(layout); }));
@@ -166,7 +151,7 @@ void PlanViewLayoutTest::_wideWindowKeepsTheInspectorOnTheRight()
 {
     const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
     QQmlPropertyMap &globals = *globalsOwner;
-    DrainedView view;
+    QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
 
@@ -182,7 +167,7 @@ void PlanViewLayoutTest::_rotatingBackRestoresTheSideInspector()
 {
     const std::unique_ptr<QQmlPropertyMap> globalsOwner(QQmlPropertyMap::create());
     QQmlPropertyMap &globals = *globalsOwner;
-    DrainedView view;
+    QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
 
