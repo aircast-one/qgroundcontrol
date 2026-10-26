@@ -78,4 +78,12 @@ class TrackViewTest {
         val tail = trackReading(served(5))
         assertEquals(tail, mergedTrack(trackReading(served(300, generation = 7)), tail))
     }
+
+    @Test
+    fun `the recorded route is drawn while recording and only its plottable samples`() {
+        val view = { recording: Boolean -> JSONObject("""{"class":"RouteRecorder","recording":$recording,"path":[{"latitude":47.1,"longitude":8.1},{"latitude":0.0,"longitude":0.0},{"latitude":47.2,"longitude":8.2}]}""") }
+        assertEquals(listOf(TrackPoint(47.1, 8.1), TrackPoint(47.2, 8.2)), recordedRoute(view(true)))
+        assertTrue(recordedRoute(view(false)).isEmpty())
+        assertTrue(recordedRoute(null).isEmpty())
+    }
 }

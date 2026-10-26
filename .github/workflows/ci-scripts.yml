@@ -11,6 +11,8 @@ on:
       - 'tools/*.py'
       - 'tools/uv.lock'
       - 'tools/tests/**'
+      - 'tools/android/studio.py'
+      - 'tools/macos/xcode.py'
       - 'tools/common/**'
       - 'tools/generators/**'
       - 'tools/analyzers/**'
@@ -30,6 +32,8 @@ on:
       - 'tools/*.py'
       - 'tools/uv.lock'
       - 'tools/tests/**'
+      - 'tools/android/studio.py'
+      - 'tools/macos/xcode.py'
       - 'tools/common/**'
       - 'tools/generators/**'
       - 'tools/analyzers/**'
@@ -50,7 +54,6 @@ jobs:
     name: Lint Workflows
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # checks: write scoped here: only actionlint reports via github-pr-check.
     permissions:
       contents: read
       checks: write
@@ -108,6 +111,8 @@ jobs:
             tools/*.py
             tools/setup
             tools/tests
+            tools/android/studio.py
+            tools/macos/xcode.py
             tools/common
             tools/generators
             tools/analyzers

@@ -42,6 +42,7 @@ public sealed partial class GuidedBar : UserControl
 
     private readonly Storyboard _cut = new();
     private readonly IReadOnlyList<FrameworkElement> _fixedLabels;
+    private readonly TextBlock _routeText;
     private IReadOnlyList<(FrameworkElement Label, bool Primary)> _deckLabels = [];
     private IReadOnlyList<GuidedOffer> _offers = Array.Empty<GuidedOffer>();
     private GuidedOffer? _stop;
@@ -56,6 +57,8 @@ public sealed partial class GuidedBar : UserControl
     public event EventHandler? PayloadRequested;
 
     public event EventHandler? ChecklistRequested;
+
+    public event EventHandler? RouteRequested;
 
     public event EventHandler? DeckChanged;
 
@@ -77,7 +80,8 @@ public sealed partial class GuidedBar : UserControl
     public GuidedBar()
     {
         InitializeComponent();
-        _fixedLabels = [Caption(ChecklistItem, "Checklist"), Caption(MoreItem, "More"), Caption(StopItem, StopLabel)];
+        _routeText = new TextBlock { Text = "Route", Style = Styled("RailLabel") };
+        _fixedLabels = [Caption(ChecklistItem, "Checklist"), Caption(RouteItem, _routeText), Caption(MoreItem, "More"), Caption(StopItem, StopLabel)];
         var fill = new DoubleAnimation { From = 0, To = 1, Duration = HoldToCut, EnableDependentAnimation = true };
         Storyboard.SetTarget(fill, StopHold);
         Storyboard.SetTargetProperty(fill, "Value");
@@ -88,6 +92,8 @@ public sealed partial class GuidedBar : UserControl
         StopButton.AddHandler(PointerCanceledEvent, new PointerEventHandler(StopLost), true);
         StopButton.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(StopLost), true);
         ChecklistButton.Click += (_, _) => ChecklistRequested?.Invoke(this, EventArgs.Empty);
+        RouteButton.Click += (_, _) => RouteRequested?.Invoke(this, EventArgs.Empty);
+        ShowRoute(false, false);
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Stop();
     }
@@ -113,6 +119,19 @@ public sealed partial class GuidedBar : UserControl
     {
         ChecklistItem.Visibility = Seen(shown);
         ToolTipService.SetToolTip(ChecklistButton, tip);
+        Present();
+    }
+
+    public void ShowRoute(bool shown, bool recording)
+    {
+        var tip = recording ? "Stop recording the route" : "Record the flown route";
+        RouteItem.Visibility = Seen(shown);
+        _routeText.Text = recording ? "Stop" : "Route";
+        RouteGlyph.Glyph = recording ? "\uE71A" : "\uE7C8";
+        if (recording) RouteGlyph.Foreground = PreflightLook.Token("RecordBrush");
+        else RouteGlyph.ClearValue(IconElement.ForegroundProperty);
+        ToolTipService.SetToolTip(RouteButton, tip);
+        AutomationProperties.SetName(RouteButton, tip);
         Present();
     }
 
@@ -160,7 +179,7 @@ public sealed partial class GuidedBar : UserControl
 
     private void Present()
     {
-        Root.Visibility = Seen(_deckLabels.Count > 0 || new UIElement[] { ChecklistItem, MoreItem, StopItem }.Any(item => item.Visibility == Visibility.Visible));
+        Root.Visibility = Seen(_deckLabels.Count > 0 || new UIElement[] { ChecklistItem, RouteItem, MoreItem, StopItem }.Any(item => item.Visibility == Visibility.Visible));
         Fit();
     }
 
@@ -229,9 +248,11 @@ public sealed partial class GuidedBar : UserControl
         },
     };
 
-    private FrameworkElement Caption(Panel item, string text)
+    private FrameworkElement Caption(Panel item, string text) => Caption(item, new TextBlock { Text = text, Style = Styled("RailLabel") });
+
+    private FrameworkElement Caption(Panel item, TextBlock text)
     {
-        var label = Osd.Shadowed(new TextBlock { Text = text, Style = Styled("RailLabel") });
+        var label = Osd.Shadowed(text);
         label.HorizontalAlignment = HorizontalAlignment.Center;
         label.IsHitTestVisible = false;
         item.Children.Add(label);

@@ -72,6 +72,8 @@ private const val HOME_SOURCE = "aircast-home"
 private const val HOME_LAYER = "aircast-home-layer"
 private const val HOME_LABEL_LAYER = "aircast-home-label-layer"
 private const val TRAIL_LAYER = "aircast-trail-layer"
+private const val ROUTE_SOURCE = "aircast-recorded-route"
+private const val ROUTE_LAYER = "aircast-recorded-route-layer"
 
 private const val DEFAULT_ZOOM = 17.0
 
@@ -228,6 +230,7 @@ fun VehicleMap(
     collisionLegs: List<Pair<TrackPoint, TrackPoint>> = emptyList(),
     orbit: OrbitCircle? = null,
     otherMissions: List<OtherMission> = emptyList(),
+    recordedRoute: List<TrackPoint> = emptyList(),
 ) {
     val mapEdits = one.aircast.map.LocalFlyMapEdits.current
     val latestMapClick by rememberUpdatedState(onMapClick)
@@ -551,6 +554,17 @@ fun VehicleMap(
         )
     }
 
+    LaunchedEffect(style, recordedRoute) {
+        val routeStyle = style ?: return@LaunchedEffect
+        (routeStyle.getSource(ROUTE_SOURCE) as? GeoJsonSource)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                listOf(recordedRoute).filter { it.size > 1 }.map { route ->
+                    Feature.fromGeometry(LineString.fromLngLats(route.map { Point.fromLngLat(it.longitude, it.latitude) }))
+                },
+            ),
+        )
+    }
+
     val recenterNow by rememberUpdatedState(::recenterOnVehicle)
     LaunchedEffect(trackingResumesAtMs) {
         if (trackingResumesAtMs == 0L) return@LaunchedEffect
@@ -695,6 +709,17 @@ private fun installLayers(style: Style) {
         )
     }
 
+    if (style.getSource(ROUTE_SOURCE) == null) {
+        style.addSource(GeoJsonSource(ROUTE_SOURCE))
+        style.addLayerAbove(
+            LineLayer(ROUTE_LAYER, ROUTE_SOURCE).withProperties(
+                PropertyFactory.lineColor("#00E5FF"),
+                PropertyFactory.lineWidth(4f),
+            ),
+            TRAIL_LAYER,
+        )
+    }
+
     if (style.getSource(HOME_SOURCE) == null) {
         style.addSource(GeoJsonSource(HOME_SOURCE))
         style.addLayer(
@@ -724,6 +749,7 @@ internal const val PIP_TRAFFIC_SCALE = 1f / 2.5f
 
 private fun applyPip(style: Style, pip: Boolean) {
     style.getLayer(TRAIL_LAYER)?.setProperties(PropertyFactory.visibility(if (pip) Property.NONE else Property.VISIBLE))
+    style.getLayer(ROUTE_LAYER)?.setProperties(PropertyFactory.visibility(if (pip) Property.NONE else Property.VISIBLE))
     val scale = if (pip) PIP_ICON_SCALE else 1f
     style.getLayer(VEHICLE_LAYER)?.setProperties(
         PropertyFactory.circleRadius(Expression.switchCase(Expression.get(ACTIVE_PROPERTY), Expression.literal(9f * scale), Expression.literal(6f * scale))),

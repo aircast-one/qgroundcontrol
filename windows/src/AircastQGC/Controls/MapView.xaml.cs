@@ -36,6 +36,7 @@ public sealed partial class MapView : UserControl
     private const string MapClickPath = "view.mapClick";
     private const string GuidedPath = "view.guidedActions";
     private const string VehiclesPath = "view.vehicles";
+    private const string RoutePath = "view.routeRecorder";
     private const string RallyLabel = "R";
     private const string RoiLabel = "Looking here";
     private const int ReturnToLaunch = 20;
@@ -55,7 +56,7 @@ public sealed partial class MapView : UserControl
     private const double LabelGap = 2;
     private const double SideGap = 4;
     private const double SideLabelHalfHeight = 8;
-    private static readonly string[] WatchedPaths = [TrackPath, TrafficPath, OrbitPath, MapClickPath, GuidedPath, VehiclesPath];
+    private static readonly string[] WatchedPaths = [TrackPath, TrafficPath, OrbitPath, MapClickPath, GuidedPath, VehiclesPath, RoutePath];
     private static readonly TimeSpan PanSuspension = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan PlanPollInterval = TimeSpan.FromSeconds(2);
@@ -111,6 +112,7 @@ public sealed partial class MapView : UserControl
     private CircleMark? _orbit;
     private Geo? _roi;
     private Geo? _clickMark;
+    private IReadOnlyList<Geo> _recorded = [];
     private double _scaleAcross = double.NaN;
     private MapScale? _scale;
     private bool _scaleHidden;
@@ -316,6 +318,11 @@ public sealed partial class MapView : UserControl
         Watch(GuidedPath, view =>
         {
             _roi = MapOverlayJson.Roi(view);
+            DrawGuides();
+        });
+        Watch(RoutePath, view =>
+        {
+            _recorded = MapOverlayJson.Recorded(view);
             DrawGuides();
         });
     }
@@ -588,7 +595,8 @@ public sealed partial class MapView : UserControl
             ? [Pin(roi, Labelled(Disc("RoiDisc", MarkSize), MarkSize, RoiLabel))]
             : [];
         IEnumerable<Drawn> clicked = _clickMark is { } click ? [Pin(click, ClickMark())] : [];
-        return orbit.Concat(going).Concat(looking).Concat(clicked);
+        IEnumerable<Drawn> recorded = _recorded.Count > 1 ? [Line(_recorded, "RecordedLine")] : [];
+        return recorded.Concat(orbit).Concat(going).Concat(looking).Concat(clicked);
     }
 
     private Drawn Line(IEnumerable<Geo> points, string style)

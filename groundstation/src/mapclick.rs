@@ -42,6 +42,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.armed",
     "vehicle.flightMode",
     "vehicle.sensorsPresentBits",
+    "vehicle.isROIEnabled",
     "settings.flyViewSettings.goToLocationRequiresConfirmInGuided",
     "vehicle.homePosition",
     "vehicle.landing",
@@ -57,6 +58,7 @@ pub const DEPS: &[&str] = &[
 ];
 
 const ORBIT_DEFAULT_RADIUS_METRES: f64 = 30.0;
+const ORBIT_RADIUS_METRES: (f64, f64, f64) = (10.0, 500.0, 10.0);
 const ARRIVED_METRES: f64 = 5.0;
 const SETTLED_MPS: f64 = 0.5;
 const PERCENT: f64 = 100.0;
@@ -286,7 +288,7 @@ struct Offer {
 fn offers(backend: &dyn Backend) -> Vec<Offer> {
     let vehicle = backend.value_fields(
         "vehicle",
-        "flying,sensorsPresentBits,flightMode,gotoFlightMode",
+        "flying,sensorsPresentBits,flightMode,gotoFlightMode,isROIEnabled",
     );
     let supports = backend.value_fields("vehicle.supports", "roiMode,orbitMode");
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
@@ -314,7 +316,8 @@ fn offers(backend: &dyn Backend) -> Vec<Offer> {
     [
         (flying, Offer { id: "GoTo", path: "vehicle.guidedModeGotoLocation", label: "Go to location", title: "Go To Location", message: "Move the vehicle to the specified location", confirm: !in_goto_mode || confirm_in_guided }),
         (orbit, Offer { id: "Orbit", path: "guided.orbit", label: "Orbit at location", title: "Orbit", message: "Orbit the vehicle around the specified location", confirm: true }),
-        (flying && flag(&supports, "roiMode"), Offer { id: "Roi", path: "vehicle.guidedModeROI", label: "ROI at location", title: "ROI", message: "Make the specified location a Region Of Interest", confirm: false }),
+        (flying && flag(&supports, "roiMode"), Offer { id: "Roi", path: "vehicle.guidedModeROI", label: "Look at this point", title: "Look at", message: "Point the camera at the specified location", confirm: false }),
+        (flying && flag(&supports, "roiMode") && flag(&vehicle, "isROIEnabled"), Offer { id: "StopLooking", path: "vehicle.stopGuidedModeROI", label: "Stop looking", title: "Stop looking", message: "Stop pointing the camera at the location it is looking at", confirm: false }),
         (true, Offer { id: "SetHome", path: "vehicle.doSetHome", label: "Set home here", title: "Set Home", message: "Set vehicle home as the specified location. This will affect Return to Home position", confirm: true }),
         (flying, Offer { id: "Heading", path: "vehicle.guidedModeChangeHeading", label: "Set Heading", title: "Change Heading", message: "Set the vehicle heading towards the specified location", confirm: true }),
         (!gps, Offer { id: "EstimatorOrigin", path: "vehicle.setEstimatorOrigin", label: "Set Estimator Origin", title: "Set Estimator Origin", message: "Make the specified location the estimator origin", confirm: true }),
@@ -352,6 +355,12 @@ pub fn map_click_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })),
         "gotoLocation": goto_location(backend),
         "orbitDefaultRadius": unit.show(ORBIT_DEFAULT_RADIUS_METRES),
+        "orbitRadiusMetres": {
+            "default": ORBIT_DEFAULT_RADIUS_METRES,
+            "min": ORBIT_RADIUS_METRES.0,
+            "max": ORBIT_RADIUS_METRES.1,
+            "step": ORBIT_RADIUS_METRES.2,
+        },
         "orbitRadiusUnit": unit.name,
         "orbitMetresPerUnit": 1.0 / unit.factor,
         "orbitClockwise": true,
@@ -668,6 +677,7 @@ mod tests {
         roi: bool,
         confirm_in_guided: f64,
         orbit: bool,
+        looking: bool,
     }
     impl Backend for Offered {
         fn get(&self, p: &str) -> String {
@@ -683,7 +693,7 @@ mod tests {
         }
         fn get_fields(&self, p: &str, _f: &str) -> String {
             match p {
-                "vehicle" => json!({ "kind": "object", "flying": self.flying, "sensorsPresentBits": self.sensors, "flightMode": self.mode, "gotoFlightMode": "Guided" }),
+                "vehicle" => json!({ "kind": "object", "flying": self.flying, "sensorsPresentBits": self.sensors, "flightMode": self.mode, "gotoFlightMode": "Guided", "isROIEnabled": self.looking }),
                 "vehicle.supports" => json!({ "kind": "object", "roiMode": self.roi, "orbitMode": self.orbit }),
                 _ => json!({ "kind": "null" }),
             }
@@ -720,12 +730,13 @@ mod tests {
             roi: true,
             confirm_in_guided: 0.0,
             orbit: false,
+            looking: false,
         };
         assert_eq!(
             labels(&flying),
             [
                 "Go to location",
-                "ROI at location",
+                "Look at this point",
                 "Set home here",
                 "Set Heading",
                 "Mark as target",
@@ -790,6 +801,19 @@ mod tests {
             "an orbit follows the goto when the vehicle supports it and home carries an altitude"
         );
         assert_eq!(map_click_view(&flying, &[])["orbitDefaultRadius"], 30.0);
+        assert_eq!(
+            map_click_view(&flying, &[])["orbitRadiusMetres"],
+            json!({ "default": 30.0, "min": 10.0, "max": 500.0, "step": 10.0 }),
+            "the radius stepper FlyViewMap shows beside Orbit at location"
+        );
+        assert_eq!(
+            labels(&Offered {
+                looking: true,
+                ..flying
+            })[1..3],
+            ["Look at this point", "Stop looking"],
+            "Stop looking is offered while the camera is looking at a point"
+        );
         assert_eq!(
             map_click_view(&Vehicle(RefCell::new(vec![])), &[])["offered"],
             true

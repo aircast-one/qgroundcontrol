@@ -72,6 +72,16 @@
                 </Button>
             </StackPanel>
 
+            <StackPanel x:Name="RouteItem" Spacing="{StaticResource SpaceXs}" Visibility="Collapsed">
+                <Button
+                    x:Name="RouteButton"
+                    Style="{StaticResource FlyRailButton}"
+                    HorizontalAlignment="Center"
+                    ToolTipService.Placement="Right">
+                    <FontIcon x:Name="RouteGlyph" Glyph="&#xE7C8;" Style="{StaticResource RailIcon}" />
+                </Button>
+            </StackPanel>
+
             <ItemsControl x:Name="Strip" IsTabStop="False">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>

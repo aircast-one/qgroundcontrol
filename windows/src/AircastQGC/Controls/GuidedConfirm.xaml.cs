@@ -117,6 +117,7 @@ public sealed partial class GuidedConfirm : UserControl
         TitleText.Text = ask.Title;
         TitleText.Style = Styled(ask.Destructive ? "ConfirmTitleDestructive" : "ConfirmTitle");
         PromptText.Text = SentenceOnly.Contains(offer?.Id ?? "") && range != null ? "" : ask.Prompt;
+        PromptText.Visibility = Seen(PromptText.Text.Length > 0);
         WarningText.Text = ask.Warning;
         WarningText.Visibility = Seen(ask.Warning.Length > 0);
         FieldsHost.Content = ask.Fields;
@@ -359,6 +360,7 @@ public sealed partial class GuidedConfirm : UserControl
         var view = await Task.Run(() => ValueView(offer.Id, at));
         if (_pending != offer || ValueSlider.Value != at) return;
         PromptText.Text = string.Join("\n", new[] { SentenceOnly.Contains(offer.Id) ? "" : ask.Prompt, GuidedJson.Text(view, "sentence") }.Where(part => part.Length > 0));
+        PromptText.Visibility = Seen(PromptText.Text.Length > 0);
         Sendable(offer.Id == "changeSpeed" ? GuidedJson.Text(view, "command").Length > 0 : GuidedJson.Flag(view, "sends", false));
     }
 

@@ -40,6 +40,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.Alignment
@@ -147,12 +154,15 @@ private fun sidesAround(room: Rect, obstacle: Rect, gap: Float): List<Rect> = li
 )
 
 @Composable
-fun VideoSurface(
+internal fun VideoSurface(
     modifier: Modifier = Modifier,
     expanded: Boolean = false,
     fullScreen: Boolean = false,
     onClick: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
+    onGround: ((PicturePress) -> Unit)? = null,
+    onPictureTap: () -> Unit = {},
+    groundSpot: Offset? = null,
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
@@ -168,26 +178,55 @@ fun VideoSurface(
 
     val second = shownSecondCamera().takeIf { expanded }
     Row(modifier) {
-        MainPane(video, synthetic, Modifier.weight(1f).fillMaxHeight(), expanded, fullScreen, onClick, onDoubleTap)
+        MainPane(video, synthetic, Modifier.weight(1f).fillMaxHeight(), expanded, fullScreen, onClick, onDoubleTap, PictureGround(onGround, onPictureTap, groundSpot))
         second?.let { SecondPane(it, Modifier.weight(1f).fillMaxHeight()) }
     }
 }
 
+private class PictureGround(val onGround: ((PicturePress) -> Unit)?, val onTap: () -> Unit, val spot: Offset?)
+
 @Composable
-private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifier, expanded: Boolean, fullScreen: Boolean, onClick: () -> Unit, onDoubleTap: () -> Unit) {
+private fun rememberPictureHold(ground: PictureGround, gimbal: Boolean, pressing: (Offset?) -> Unit): Modifier {
+    val hasGimbal by rememberUpdatedState(gimbal)
+    val onGround by rememberUpdatedState(ground.onGround)
+    val onTap by rememberUpdatedState(ground.onTap)
+    val scope = rememberCoroutineScope()
+    return remember {
+        Modifier.pictureHold(
+            PictureHoldHandlers(
+                onPressing = pressing,
+                onTap = { onTap() },
+                onHeld = { at, size ->
+                    scope.launch {
+                        val press = withContext(Dispatchers.Default) { groundAt(at, size.width, size.height, hasGimbal) }
+                        onGround?.invoke(press)
+                    }
+                },
+            ),
+        )
+    }
+}
+
+@Composable
+private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifier, expanded: Boolean, fullScreen: Boolean, onClick: () -> Unit, onDoubleTap: () -> Unit, ground: PictureGround) {
     val cameraJson by qgcPath(CAMERA_VIEW)
     val zoomable = remember(cameraJson) { cameraReading(cameraJson)?.hasZoom == true }
     val showGrid by qgcBool(settingControl("settings.videoSettings.gridLines"))
     val fitMode by qgcValue(settingControl("settings.videoSettings.videoFit"))
     val aspectSetting by qgcValue(settingControl("settings.videoSettings.aspectRatio"))
     val aspect = videoAspect(video?.sourceSize, (aspectSetting as? Number)?.toDouble() ?: aspectSetting?.toString()?.toDoubleOrNull())
+    val gimbalJson by qgcPath(GIMBAL_INDICATOR_PATH)
+    val holdDrives = remember(gimbalJson) { onScreenGimbal(gimbalJson)?.let { it.enabled && it.clickAndDrag } == true }
+    val holds = expanded && video?.decoding == true && ground.onGround != null && !holdDrives
+    var pressing by remember { mutableStateOf<Offset?>(null) }
+    val hold = rememberPictureHold(ground, gimbalJson?.optBoolean("shown", false) == true) { pressing = it }
 
     BoxWithConstraints(
         (if (expanded) modifier.pinchZoom(zoomable).pointerInput(video?.decoding) { if (video?.decoding == true) detectTapGestures(onDoubleTap = { onDoubleTap() }) } else modifier.clickable { onClick() }).clipToBounds(),
         contentAlignment = Alignment.Center,
     ) {
         val (contentWidth, contentHeight) = videoContentSize(maxWidth.value, maxHeight.value, aspect, (fitMode as? Number)?.toInt() ?: fitMode?.toString()?.toIntOrNull() ?: VIDEO_FIT_HEIGHT)
-        Box(Modifier.requiredSize(contentWidth.dp, contentHeight.dp)) {
+        Box(Modifier.requiredSize(contentWidth.dp, contentHeight.dp).then(if (holds) hold else Modifier)) {
         VideoChannelSurface(MAIN_VIDEO_CHANNEL, Modifier.fillMaxSize())
 
         if (video?.decoding == true) {
@@ -199,8 +238,12 @@ private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifie
             DetectionOverlay(Modifier.fillMaxSize())
             TrackingBoxOverlay(Modifier.fillMaxSize())
             if (expanded) VideoStatsPill(Modifier.fillMaxSize())
+            if (expanded) OrbitOutline(Modifier.fillMaxSize())
+            HoldRing(pressing.takeIf { holds })
+            ground.spot?.let { PictureMark(it) }
         }
         }
+        if (expanded && video?.decoding == true) LookAtReticle(Modifier.align(Alignment.Center))
         if (expanded && video?.decoding == true) GimbalModeSwitch(Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s2))
 
         if (video?.decoding != true && synthetic) {

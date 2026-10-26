@@ -435,6 +435,7 @@ pub struct Vehicle {
     pub roi_enabled: bool,
     pub mode_ack: Option<(u8, u64)>,
     pub roi_coord: Option<(f64, f64, f64)>,
+    roi_frame: u8,
     pub comm_lost_enabled: bool,
     gimbal_rate_due: Option<u64>,
     pub gimbals: crate::gimbal::Gimbals,
@@ -484,6 +485,7 @@ pub struct Vehicle {
     pub rc_rssi: crate::vehiclefact::RcRssi,
     pub orbit_heard_ms: Option<u64>,
     pub orbit_circle: Option<(f32, i32, i32)>,
+    guided_orbit: Option<guidedcmd::GuidedOrbit>,
     pub prearm: Option<(String, u64)>,
     prearm_spoken: BTreeMap<String, u64>,
     announced: (Option<String>, bool, bool),
@@ -709,6 +711,7 @@ impl Vehicle {
             roi_enabled: false,
             mode_ack: None,
             roi_coord: None,
+            roi_frame: guidedcmd::FRAME_GLOBAL_RELATIVE_ALT,
             comm_lost_enabled: true,
             gimbal_rate_due: None,
             gimbals: crate::gimbal::Gimbals::default(),
@@ -768,6 +771,7 @@ impl Vehicle {
             rc_rssi: crate::vehiclefact::RcRssi::default(),
             orbit_heard_ms: None,
             orbit_circle: None,
+            guided_orbit: None,
             prearm: None,
             prearm_spoken: BTreeMap::new(),
             announced: (None, false, false),
@@ -4406,6 +4410,12 @@ impl Vehicle {
         if self.guided.running() {
             return Err("A guided action is still running.".to_string());
         }
+        if matches!(
+            action.get("action").and_then(Value::as_str),
+            Some("pause" | "goto" | "changeAltitude" | "heading" | "orbit")
+        ) {
+            self.guided_orbit = None;
+        }
         let action = &self.with_drop_bay(action);
         match self.plan(action) {
             Plan::Refused(reason) => Err(reason),
@@ -4457,6 +4467,29 @@ impl Vehicle {
                         |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
                     self.roi_coord =
                         Some((number("latitude"), number("longitude"), number("altitude")));
+                    self.roi_frame = action
+                        .get("frame")
+                        .and_then(Value::as_u64)
+                        .and_then(|f| u8::try_from(f).ok())
+                        .unwrap_or(guidedcmd::FRAME_GLOBAL);
+                }
+                if action.get("action").and_then(Value::as_str) == Some("orbit")
+                    && !steps.is_empty()
+                {
+                    let number =
+                        |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
+                    let centre = (number("latitude"), number("longitude"));
+                    self.guided_orbit = guidedcmd::guided_orbit(
+                        &self.planning_state(),
+                        (centre, number("radius"), number("altitudeAmsl")),
+                        self.facts.coordinate.map(|(lat, lon, _)| (lat, lon)),
+                        self.custom_mode,
+                        now_ms,
+                    );
+                    if self.guided_orbit.is_some() {
+                        self.roi_coord = Some((centre.0, centre.1, 0.0));
+                        self.roi_frame = guidedcmd::FRAME_GLOBAL_RELATIVE_ALT;
+                    }
                 }
                 if action.get("action").and_then(Value::as_str) == Some("markTarget") {
                     let number =
@@ -5159,6 +5192,7 @@ impl Vehicle {
         bytes.extend(self.tick_autodrop(now_ms));
         self.judge_impact(now_ms, wall_ms());
         bytes.extend(self.tick_gimbal_follow(now_ms));
+        bytes.extend(self.tick_guided_orbit(now_ms));
         if let Some(line) = self.link_health_line(now_ms) {
             log::info!(target: "link", "{line}");
         }
@@ -6240,6 +6274,22 @@ impl Vehicle {
                     version: info.definition_version,
                     uri: info.definition_uri.clone(),
                 });
+                let fov_settings = [
+                    "settings.gimbalControllerSettings.cameraHFov",
+                    "settings.gimbalControllerSettings.cameraVFov",
+                ];
+                if let Some((horizontal, vertical)) =
+                    info.field_of_view_from_sensor().filter(|_| {
+                        !fov_settings
+                            .iter()
+                            .any(|path| crate::settingsstore::is_stored(path))
+                    })
+                {
+                    crate::settingsstore::set_raw_together(&[
+                        (fov_settings[0], json!(horizontal.round() as u32)),
+                        (fov_settings[1], json!(vertical.round() as u32)),
+                    ]);
+                }
                 self.cameras.on_camera_information(compid, info, now_ms);
                 Vec::new()
             }
@@ -6576,6 +6626,75 @@ impl Vehicle {
     fn clear_trigger_points(&mut self) {
         self.image_captured_seen = false;
         self.trigger_points.clear();
+    }
+
+    fn tick_guided_orbit(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        let guided = crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, "Guided");
+        let Some(orbit) = self.guided_orbit.filter(|orbit| now_ms >= orbit.due_ms) else {
+            return Vec::new();
+        };
+        let Some(orbit) = orbit.in_mode(self.custom_mode, guided) else {
+            self.guided_orbit = None;
+            return Vec::new();
+        };
+        let (next, target) = orbit.step(now_ms);
+        self.guided_orbit = Some(next);
+        self.orbit_heard_ms = Some(now_ms);
+        self.orbit_circle = Some((
+            orbit.radius as f32,
+            (orbit.centre.0 * 1e7) as i32,
+            (orbit.centre.1 * 1e7) as i32,
+        ));
+        let vehicle = (self.id, self.component);
+        target
+            .and_then(|t| {
+                self.encode(&Outbound::PositionTargetGlobalInt {
+                    target: vehicle,
+                    frame: guidedcmd::FRAME_GLOBAL_INT,
+                    type_mask: guidedcmd::ORBIT_TYPE_MASK,
+                    latitude: t.latitude,
+                    longitude: t.longitude,
+                    altitude: t.altitude_amsl,
+                    velocity: (t.north, t.east, 0.0),
+                    yaw_rad: t.yaw_rad,
+                })
+            })
+            .into_iter()
+            .collect()
+    }
+
+    pub fn look_at_amsl(&self) -> Option<(f64, f64, f64)> {
+        let finite = |value: f64| if value.is_finite() { value } else { 0.0 };
+        self.roi_coord
+            .filter(|_| self.roi_enabled)
+            .map(|(latitude, longitude, altitude)| {
+                let base = match self.roi_frame {
+                    guidedcmd::FRAME_GLOBAL => 0.0,
+                    _ => finite(self.home.map_or(f64::NAN, |home| home.2)),
+                };
+                (latitude, longitude, base + finite(altitude))
+            })
+    }
+
+    pub fn route_observation(&self) -> crate::routerec::Observed {
+        let gimbal = self
+            .gimbals
+            .active()
+            .and_then(|pair| self.gimbals.get(pair))
+            .and_then(|gimbal| gimbal.attitude)
+            .map(|attitude| (f64::from(attitude.pitch), f64::from(attitude.body_yaw)));
+        crate::routerec::Observed {
+            flying: self.flying,
+            sample: self
+                .facts
+                .coordinate
+                .filter(|(_, _, altitude)| altitude.is_finite())
+                .map(|position| crate::routerec::Sample {
+                    position,
+                    gimbal,
+                    look_at: self.look_at_amsl(),
+                }),
+        }
     }
 
     pub fn orbit_active(&self, now_ms: u64) -> bool {
@@ -12086,6 +12205,23 @@ mod tests {
             0,
         );
         assert!(hub.active().unwrap().roi_enabled);
+        hub.vehicles.get_mut(&1).unwrap().home = Some((47.0, 8.0, 500.0));
+        assert_eq!(
+            hub.active().unwrap().look_at_amsl(),
+            Some((47.4, 8.5, 500.0)),
+            "a look-at sent above home is recorded above sea level, as RouteRecorder::_lookAtChanged adds the home altitude"
+        );
+        hub.guided(None, &json!({ "action": "roi", "latitude": 47.4, "longitude": 8.5, "altitude": 610.0, "frame": 0 }), 2).unwrap();
+        assert_eq!(
+            hub.active().unwrap().look_at_amsl(),
+            Some((47.4, 8.5, 610.0))
+        );
+        hub.vehicles.get_mut(&1).unwrap().facts.coordinate = Some((47.1, 8.1, 650.0));
+        let observed = hub.active().unwrap().route_observation();
+        assert_eq!(
+            observed.sample.map(|s| (s.position, s.look_at)),
+            Some(((47.1, 8.1, 650.0), Some((47.4, 8.5, 610.0))))
+        );
         hub.on_frame(
             origin(0),
             &header,
@@ -14214,6 +14350,107 @@ mod tests {
         h.custom_mode = custom_mode;
         h.base_mode = MavModeFlag::from_bits_retain(if armed { 0x81 } else { 0x01 });
         MavMessage::HEARTBEAT(h)
+    }
+
+    #[test]
+    fn an_ardupilot_copter_orbit_streams_its_position_target_at_five_hertz_until_it_leaves_guided()
+    {
+        use mavlink::dialects::ardupilotmega::{MavCmd, MavFrame};
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        hub.vehicles.get_mut(&1).unwrap().facts.coordinate = Some((47.4, 8.501, 520.0));
+        let orbit = json!({ "action": "orbit", "latitude": 47.4, "longitude": 8.5, "radius": 50.0, "altitudeAmsl": 530.0 });
+        let started = hub.guided(None, &orbit, 1_000).unwrap();
+        let commands: Vec<MavCmd> = started
+            .iter()
+            .filter_map(|(_, bytes)| match decode(bytes) {
+                MavMessage::COMMAND_LONG(c) => Some(c.command),
+                MavMessage::COMMAND_INT(c) => Some(c.command),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            commands,
+            vec![
+                MavCmd::MAV_CMD_DO_SET_ROI_LOCATION,
+                MavCmd::MAV_CMD_DO_SET_MODE
+            ]
+        );
+        let streamed = |out: Vec<(LinkId, Vec<u8>)>| -> Vec<_> {
+            out.iter()
+                .filter_map(|(_, bytes)| match decode(bytes) {
+                    MavMessage::SET_POSITION_TARGET_GLOBAL_INT(t) => Some(t),
+                    _ => None,
+                })
+                .collect()
+        };
+        let targets = |hub: &mut Hub, now_ms: u64| streamed(hub.tick(now_ms));
+        let first = streamed(hub.on_frame(
+            origin(4),
+            &autopilot,
+            &copter_heartbeat(4, true),
+            1_100_000,
+            1_100,
+        ));
+        assert_eq!(first.len(), 1);
+        assert_eq!(
+            (
+                first[0].coordinate_frame,
+                first[0].type_mask.bits(),
+                first[0].alt
+            ),
+            (MavFrame::MAV_FRAME_GLOBAL_INT, 2496, 530.0)
+        );
+        assert!(
+            targets(&mut hub, 1_200).is_empty(),
+            "five a second, not ten"
+        );
+        assert_eq!(targets(&mut hub, 1_300).len(), 1);
+        let vehicle = hub.active().unwrap();
+        assert!(vehicle.orbit_active(1_400));
+        assert_eq!(
+            vehicle.orbit_circle,
+            Some((50.0, 474_000_000, 85_000_000)),
+            "ArduPilot sends no ORBIT_EXECUTION_STATUS, so the core reports its own orbit"
+        );
+        assert_eq!(vehicle.roi_coord, Some((47.4, 8.5, 0.0)));
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &copter_heartbeat(5, true),
+            1_500_000,
+            1_500,
+        );
+        assert!(targets(&mut hub, 1_600).is_empty(), "Loiter ends the orbit");
+        assert!(hub.active().unwrap().orbit_active(1_600));
+        assert!(!hub.active().unwrap().orbit_active(1_400 + 3_000));
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &copter_heartbeat(4, true),
+            5_000_000,
+            5_000,
+        );
+        hub.guided(None, &orbit, 5_000).unwrap();
+        let again = streamed(hub.on_frame(
+            origin(4),
+            &autopilot,
+            &copter_heartbeat(4, true),
+            5_100_000,
+            5_100,
+        ));
+        assert_eq!(again.len(), 1, "a new orbit streams again");
+        hub.guided(None, &json!({ "action": "pause" }), 5_200)
+            .unwrap();
+        assert!(
+            targets(&mut hub, 5_400).is_empty(),
+            "a pause stops the stream"
+        );
     }
 
     #[test]

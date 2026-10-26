@@ -313,6 +313,103 @@ fn survey_mark(area: &[Coord]) -> Node {
     )
 }
 
+fn kml_root(body: Vec<Node>) -> String {
+    let root = Node::Element {
+        name: "kml".to_string(),
+        attributes: vec![
+            ("xmlns", KML_NAMESPACE.to_string()),
+            ("xmlns:xsi", XSI_NAMESPACE.to_string()),
+            (
+                "xsi:schemaLocation",
+                format!("{KML_NAMESPACE} {KML_SCHEMA}"),
+            ),
+        ],
+        children: vec![element("Document", body)],
+    };
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}",
+        written(&root, 0)
+    )
+}
+
+fn fixed(value: f64, decimals: usize) -> String {
+    match value.is_nan() {
+        true => "nan".to_string(),
+        false => format!("{value:.decimals$}"),
+    }
+}
+
+pub struct RouteSample {
+    pub position: Coord,
+    pub gimbal: Option<(f64, f64)>,
+    pub look_at: Option<Coord>,
+}
+
+pub fn route(name: &str, samples: &[RouteSample]) -> String {
+    let joined = |tokens: Vec<String>| tokens.join(" ");
+    let gimbal = joined(
+        samples
+            .iter()
+            .map(|s| {
+                let (pitch, yaw) = s.gimbal.unwrap_or((f64::NAN, f64::NAN));
+                format!("{},{}", fixed(pitch, 1), fixed(yaw, 1))
+            })
+            .collect(),
+    );
+    let look_at = joined(
+        samples
+            .iter()
+            .map(|s| {
+                s.look_at
+                    .map_or("-".to_string(), |(latitude, longitude, altitude)| {
+                        format!("{longitude:.7},{latitude:.7},{}", fixed(altitude, 1))
+                    })
+            })
+            .collect(),
+    );
+    let data = |key: &str, value: String| Node::Element {
+        name: "Data".to_string(),
+        attributes: vec![("name", key.to_string())],
+        children: vec![text("value", value)],
+    };
+    let path: Vec<Coord> = samples.iter().map(|s| s.position).collect();
+    kml_root(vec![
+        text("name", name),
+        text("open", "1"),
+        styled(
+            "Style",
+            BALLOON_STYLE,
+            vec![element(
+                "BalloonStyle",
+                vec![text("text", "$[description]")],
+            )],
+        ),
+        element(
+            "Placemark",
+            vec![
+                text("name", name),
+                text("visibility", "1"),
+                element(
+                    "ExtendedData",
+                    vec![
+                        data(crate::kml::GIMBAL_DATA, gimbal),
+                        data(crate::kml::LOOK_AT_DATA, look_at),
+                    ],
+                ),
+                element(
+                    "LineString",
+                    vec![
+                        text("extrude", "0"),
+                        text("tessellate", "1"),
+                        text("altitudeMode", "absolute"),
+                        text("coordinates", coord_lines(&path)),
+                    ],
+                ),
+            ],
+        ),
+    ])
+}
+
 pub fn document(plan: &Value, planned: &Planned) -> Result<String, String> {
     let items = crate::planitems::flatten(plan)?;
     let areas: Vec<Node> = plan["mission"]["items"]
@@ -335,22 +432,7 @@ pub fn document(plan: &Value, planned: &Planned) -> Result<String, String> {
     .into_iter()
     .flatten()
     .collect::<Vec<Node>>();
-    let root = Node::Element {
-        name: "kml".to_string(),
-        attributes: vec![
-            ("xmlns", KML_NAMESPACE.to_string()),
-            ("xmlns:xsi", XSI_NAMESPACE.to_string()),
-            (
-                "xsi:schemaLocation",
-                format!("{KML_NAMESPACE} {KML_SCHEMA}"),
-            ),
-        ],
-        children: vec![element("Document", body)],
-    };
-    Ok(format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}",
-        written(&root, 0)
-    ))
+    Ok(kml_root(body))
 }
 
 pub fn with_extension(file: &str) -> String {

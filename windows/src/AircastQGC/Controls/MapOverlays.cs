@@ -142,6 +142,9 @@ internal static class MapOverlayJson
     internal static IReadOnlyList<Geo> Track(JsonObject view) =>
         MapUiJson.Flag(view["available"]) ? Points(view["points"]) : [];
 
+    internal static IReadOnlyList<Geo> Recorded(JsonObject view) =>
+        MapUiJson.Flag(view["recording"]) ? Points(view["path"]) : [];
+
     internal static IReadOnlyList<TrafficMark> Traffic(JsonObject view)
     {
         var unit = MapUiJson.Text((view["units"] as JsonObject)?["altitude"]);

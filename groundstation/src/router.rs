@@ -187,16 +187,7 @@ impl<B: Backend> Core<B> {
                 Some(v) => v.deps_for(&view::split(path).1),
                 None => vec![path.clone()],
             })
-            .filter(|dep| {
-                dep != crate::coreplan::CHANGED
-                    && dep != crate::terrainservice::TERRAIN_CHANGED
-                    && dep != crate::mavinspect::INSPECTOR_CHANGED
-                    && dep != crate::noticeboard::NOTICES_CHANGED
-                    && dep != crate::gimbal::GIMBAL_CHANGED
-                    && dep != crate::viewer3d::VIEWER3D_CHANGED
-                    && dep != crate::synthview::SYNTHETIC_CHANGED
-                    && dep != crate::deeplinksetup::SETUP_CHANGED
-            })
+            .filter(|dep| !(dep.starts_with("core.") && dep.ends_with("@changed")))
             .chain(crate::coreplan::host_watches())
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -481,6 +472,25 @@ mod tests {
         assert_eq!(projected["count"], 0);
         assert!(projected.get("items").is_none());
         assert_eq!(projected["unknownFields"][0], "bogus");
+    }
+
+    #[test]
+    fn the_events_the_core_raises_itself_are_never_asked_of_the_backend() {
+        let core = Core::new(Fake::default());
+        let every_view: Vec<String> = view::VIEWS.iter().map(|v| v.path.to_string()).collect();
+        core.watch("", &every_view);
+        let raised_here: Vec<String> = core
+            .backend
+            .watched
+            .borrow()
+            .iter()
+            .filter(|dep| dep.starts_with("core.") && dep.ends_with("@changed"))
+            .cloned()
+            .collect();
+        assert!(
+            raised_here.is_empty(),
+            "the core raises these itself, so a backend asked to watch them binds nothing and the view is served by the idle poll: {raised_here:?}"
+        );
     }
 
     #[test]

@@ -625,7 +625,7 @@ pub fn previous_altitude_mode(doc: &Document, visual_index: i64) -> Option<i64> 
     previous_altitude(doc, &commands, visual_index).map(|(_, mode)| mode)
 }
 
-fn param_defaults(command: Option<&cmdinfo::Command>) -> [Option<f64>; 7] {
+pub fn param_defaults(command: Option<&cmdinfo::Command>) -> [Option<f64>; 7] {
     std::array::from_fn(|i| {
         let listed = command.and_then(|c| c.params.get(&(i as u8 + 1)));
         match listed {

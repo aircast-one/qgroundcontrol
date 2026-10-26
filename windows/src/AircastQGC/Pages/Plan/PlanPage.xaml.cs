@@ -603,7 +603,7 @@ public sealed partial class PlanPage : UserControl
         Key(VirtualKey.Z, VirtualKeyModifiers.Control, Undo);
         Key(VirtualKey.Y, VirtualKeyModifiers.Control, Redo);
         Key(VirtualKey.S, VirtualKeyModifiers.Control, Save);
-        Key(VirtualKey.O, VirtualKeyModifiers.Control, Open);
+        Key(VirtualKey.O, VirtualKeyModifiers.Control, () => Open());
     }
 
     private void DeleteSelected()

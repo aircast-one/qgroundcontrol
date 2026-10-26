@@ -14,6 +14,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 
@@ -26,6 +27,20 @@ public sealed partial class VideoPayloadLayer : UserControl
     private const string RadarView = "view.proximityRadar";
     private const string FitView = "view.control(settings.videoSettings.videoFit)";
     private const string StartTracking = "vehicle.cameraManager.currentCameraInstance.startTracking";
+    private const string OrbitView = "view.orbit";
+    private const string GroundAt = "videoAr.groundAt";
+    private const string PauseVehicle = "vehicle.pauseVehicle";
+    private const string StopLooking = "vehicle.stopGuidedModeROI";
+    private const string NotGround = "notGround";
+    private const string HoldHint = "Press and hold or right-click a spot to look at it or fly there";
+    private const string BelowHorizon = "Press and hold on a spot below the horizon";
+    private const string NoGimbal = "The vehicle reports no gimbal, so a spot in the picture can't be placed on the map";
+    private const string OsdText = "OsdTextBrush";
+    private const string OsdBack = "VideoEdgeBrush";
+    private const double RingSize = 48;
+    private const double ReticleSize = 48;
+    private const double ReticleDot = 8;
+    private const double HintLift = 0.2;
     private const double SectorSweep = 45;
     private const double SectorGap = 3.6;
     private const double ArcOffset = -112.5;
@@ -35,6 +50,10 @@ public sealed partial class VideoPayloadLayer : UserControl
     private static readonly TimeSpan DragSpacing = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan RefusalShown = TimeSpan.FromSeconds(4);
     private static readonly Thickness BelowStatusRow = new(16, 56, 16, 16);
+    private static readonly TimeSpan RingDelay = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan HoldTime = TimeSpan.FromMilliseconds(800);
+    private static readonly TimeSpan HintShown = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan FirstHintShown = TimeSpan.FromSeconds(10);
 
     private enum Kind { Track, Drag, Point, Hold }
 
@@ -53,6 +72,21 @@ public sealed partial class VideoPayloadLayer : UserControl
     private readonly DispatcherQueueTimer _hold;
     private readonly DispatcherQueueTimer _refusalTimer;
     private readonly Stopwatch _sinceDrag = Stopwatch.StartNew();
+    private readonly Canvas _ringLayer = new() { IsHitTestVisible = false };
+    private readonly ProgressRing _ring;
+    private readonly Storyboard _holding = new();
+    private readonly TextBlock _hintText = FormLook.Text("", "FontSizeBody", OsdText);
+    private readonly Border _hint;
+    private readonly DispatcherQueueTimer _hintTimer;
+    private readonly TextBlock _lookText = FormLook.Text("", "FontSizeBody", OsdText);
+    private readonly Grid _look;
+    private Func<object, bool> _onPicture = _ => false;
+    private (uint Pointer, Point From)? _press;
+    private bool _vehicle;
+    private bool _looking;
+    private bool _orbiting;
+    private bool _hintDue;
+    private bool _hintSeen = FlyViewStore.LoadHoldHintSeen();
     private JsonObject _video = new();
     private GimbalState? _gimbal;
     private TrackingState? _tracking;
@@ -100,8 +134,44 @@ public sealed partial class VideoPayloadLayer : UserControl
             Visibility = Visibility.Collapsed,
             Children = { _aimPill, _refusal },
         };
+        _ring = new ProgressRing
+        {
+            Width = RingSize,
+            Height = RingSize,
+            IsIndeterminate = false,
+            Minimum = 0,
+            Maximum = 1,
+            Value = 0,
+            Foreground = FormLook.Brush(OsdText),
+            Background = new SolidColorBrush(Colors.Transparent),
+            Visibility = Visibility.Collapsed,
+        };
+        _ringLayer.Children.Add(_ring);
+        var fill = new DoubleAnimation { From = 0, To = 1, BeginTime = RingDelay, Duration = HoldTime - RingDelay, EnableDependentAnimation = true };
+        Storyboard.SetTarget(fill, _ring);
+        Storyboard.SetTargetProperty(fill, "Value");
+        _holding.Children.Add(fill);
+        _holding.Completed += (_, _) => Held();
+        _hintText.TextWrapping = TextWrapping.Wrap;
+        _hintText.TextAlignment = TextAlignment.Center;
+        _hint = new Border
+        {
+            Padding = new Thickness(14, 6, 14, 6),
+            CornerRadius = new CornerRadius(16),
+            MaxWidth = 480,
+            Background = FormLook.Brush(OsdBack),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed,
+            Child = _hintText,
+        };
+        _look = LookAt();
         _root.Children.Add(_drawing);
         _root.Children.Add(_bandLayer);
+        _root.Children.Add(_look);
+        _root.Children.Add(_ringLayer);
+        _root.Children.Add(_hint);
         _root.Children.Add(_aimTag);
         _root.PointerPressed += OnPressed;
         _root.PointerMoved += OnMoved;
@@ -111,6 +181,7 @@ public sealed partial class VideoPayloadLayer : UserControl
         _root.SizeChanged += (_, e) =>
         {
             _root.Clip = new RectangleGeometry { Rect = new Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
+            _hint.Margin = new Thickness(16, 16, 16, e.NewSize.Height * HintLift);
             Draw();
         };
         Content = _root;
@@ -121,11 +192,26 @@ public sealed partial class VideoPayloadLayer : UserControl
         _refusalTimer.Interval = RefusalShown;
         _refusalTimer.IsRepeating = false;
         _refusalTimer.Tick += (_, _) => _refusal.Visibility = Visibility.Collapsed;
+        _hintTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _hintTimer.IsRepeating = false;
+        _hintTimer.Tick += (_, _) => _hint.Visibility = Visibility.Collapsed;
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Halt();
     }
 
+    public event EventHandler<PictureGround>? GroundPressed;
+
     public FrameworkElement AimTag => _aimTag;
+
+    public void HoldFrom(UIElement area, Func<object, bool> onPicture)
+    {
+        _onPicture = onPicture;
+        area.AddHandler(PointerPressedEvent, new PointerEventHandler(OnAreaPressed), true);
+        area.AddHandler(PointerMovedEvent, new PointerEventHandler(OnAreaMoved), true);
+        area.AddHandler(PointerReleasedEvent, new PointerEventHandler(OnAreaEnded), true);
+        area.AddHandler(PointerCanceledEvent, new PointerEventHandler(OnAreaEnded), true);
+        area.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(OnAreaEnded), true);
+    }
 
     public bool Expanded
     {
@@ -134,6 +220,7 @@ public sealed partial class VideoPayloadLayer : UserControl
         {
             _expanded = value;
             EndGesture();
+            CancelHold();
             Sync();
         }
     }
@@ -145,6 +232,7 @@ public sealed partial class VideoPayloadLayer : UserControl
         {
             _pictured = value;
             EndGesture();
+            CancelHold();
             Sync();
             Draw();
         }
@@ -153,6 +241,8 @@ public sealed partial class VideoPayloadLayer : UserControl
     private bool Decoding => VideoJson.Flag(_video, "decoding");
 
     private bool Synthetic => !Decoding && _pictured;
+
+    private bool Holdable => _expanded && _vehicle && (Decoding || Synthetic);
 
     private bool TakesInput => _expanded && (Decoding ? _tracking?.CanAim == true || _gimbal is not null : Synthetic && _tracking?.CanAim == true);
 
@@ -169,6 +259,12 @@ public sealed partial class VideoPayloadLayer : UserControl
         Watch("radar", RadarView, view => _radar = PayloadJson.Radar(view));
         Watch("fit", FitView, view => _fit = VideoJson.Number(view["value"]) is double mode ? (int)mode : VideoSurface.FitHeight);
         Watch("aspect", VideoSurface.AspectView, view => _aspectSetting = VideoJson.Number(view["value"]));
+        Watch("orbit", OrbitView, view => _orbiting = PayloadJson.OrbitLabel(view) is not null);
+        Watch("guided", GuidedOffer.ViewPath, view =>
+        {
+            _vehicle = GuidedOffer.List(view).Count > 0;
+            _looking = MapOverlayJson.Roi(view) is not null;
+        });
     }
 
     private void Watch(string name, string path, Action<JsonObject> take)
@@ -185,7 +281,7 @@ public sealed partial class VideoPayloadLayer : UserControl
     private void Halt()
     {
         if (IsLoaded) return;
-        new[] { "video", "camera", "gimbal", "radar", "fit", "aspect" }.ToList().ForEach(name => BridgeWatch.Stop($"{_client}.{name}"));
+        new[] { "video", "camera", "gimbal", "radar", "fit", "aspect", "orbit", "guided" }.ToList().ForEach(name => BridgeWatch.Stop($"{_client}.{name}"));
         EndGesture();
     }
 
@@ -197,7 +293,144 @@ public sealed partial class VideoPayloadLayer : UserControl
         _aimText.Text = aim?.Label ?? "";
         AutomationProperties.SetName(_aimPill, aim is null ? "Video gimbal mode" : $"Video gimbal mode, {aim.Label}");
         ToolTipService.SetToolTip(_aimPill, aim is null ? null : $"Switch to {aim.Next.Label}");
+        _look.Visibility = VideoJson.Shown(_expanded && (Decoding || Synthetic) && (_looking || _orbiting));
+        FormLook.Say(_lookText, _orbiting ? "Orbiting this point" : "Looking at this point");
+        var hintDue = Holdable && _gimbal is not null && !_hintSeen;
+        if (hintDue && !_hintDue) Hint(HoldHint, FirstHintShown);
+        if (!hintDue && _hintDue && _hintText.Text == HoldHint) _hint.Visibility = Visibility.Collapsed;
+        _hintDue = hintDue;
+        if (!Holdable) CancelHold();
         Draw();
+    }
+
+    private Grid LookAt()
+    {
+        var ink = FormLook.Brush(OsdText);
+        var reticle = new Grid
+        {
+            Width = ReticleSize,
+            Height = ReticleSize,
+            IsHitTestVisible = false,
+            Children =
+            {
+                new Ellipse { Stroke = ink, StrokeThickness = 3 },
+                new Ellipse { Width = ReticleDot, Height = ReticleDot, Fill = ink },
+            },
+        };
+        var chip = new Border
+        {
+            Margin = new Thickness(0, 8, 0, 0),
+            Padding = new Thickness(12, 4, 4, 4),
+            CornerRadius = new CornerRadius(8),
+            Background = FormLook.Brush(OsdBack),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = FormLook.Line(8, FormLook.Margined(_lookText, new Thickness(0, 0, 0, 2)), FormLook.Button("Stop", StopWatching)),
+        };
+        _lookText.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetRow(reticle, 1);
+        Grid.SetRow(chip, 2);
+        return new Grid
+        {
+            Visibility = Visibility.Collapsed,
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = GridLength.Auto },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+            },
+            Children = { reticle, chip },
+        };
+    }
+
+    private void StopWatching() => Send(_orbiting ? PauseVehicle : StopLooking);
+
+    private void Hint(string text, TimeSpan shown)
+    {
+        FormLook.Say(_hintText, text);
+        _hint.Visibility = Visibility.Visible;
+        _hintTimer.Interval = shown;
+        _hintTimer.Stop();
+        _hintTimer.Start();
+    }
+
+    private void OnAreaPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!Holdable || !_onPicture(e.OriginalSource)) return;
+        var point = e.GetCurrentPoint(_root);
+        if (_press is { } held && held.Pointer != e.Pointer.PointerId)
+        {
+            CancelHold();
+            return;
+        }
+        if (point.Properties.IsRightButtonPressed)
+        {
+            CancelHold();
+            Ask(point.Position);
+            return;
+        }
+        if (!point.Properties.IsLeftButtonPressed || _gimbal?.Aim == VideoAim.Hold) return;
+        _press = (e.Pointer.PointerId, point.Position);
+        Canvas.SetLeft(_ring, point.Position.X - RingSize / 2);
+        Canvas.SetTop(_ring, point.Position.Y - RingSize / 2);
+        _ring.Value = 0;
+        _ring.Visibility = Visibility.Visible;
+        _holding.Begin();
+    }
+
+    private void OnAreaMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (_press is not { } held || held.Pointer != e.Pointer.PointerId) return;
+        var at = e.GetCurrentPoint(_root).Position;
+        if (Math.Abs(at.X - held.From.X) >= PayloadJson.TrackSlop || Math.Abs(at.Y - held.From.Y) >= PayloadJson.TrackSlop) CancelHold();
+    }
+
+    private void OnAreaEnded(object sender, PointerRoutedEventArgs e)
+    {
+        if (_press is { } held && held.Pointer == e.Pointer.PointerId) CancelHold();
+    }
+
+    private void CancelHold()
+    {
+        _holding.Stop();
+        _ring.Visibility = Visibility.Collapsed;
+        _press = null;
+    }
+
+    private void Held()
+    {
+        if (_press is not { } held) return;
+        CancelHold();
+        EndGesture();
+        Ask(held.From);
+    }
+
+    private async void Ask(Point at)
+    {
+        if (_gimbal is null && !Synthetic)
+        {
+            Hint(NoGimbal, HintShown);
+            return;
+        }
+        var picture = Picture;
+        var (pan, tilt) = PayloadJson.ScreenFraction(at.X - picture.Left, at.Y - picture.Top, picture.Width, picture.Height);
+        if (picture.Width <= 0 || picture.Height <= 0 || Math.Abs(pan) > 1 || Math.Abs(tilt) > 1)
+        {
+            Hint(BelowHorizon, HintShown);
+            return;
+        }
+        var synthetic = Synthetic;
+        var answer = await Task.Run(() => Bridge.Invoke(GroundAt, new JsonArray(pan, tilt, picture.Width / picture.Height, synthetic)));
+        if (MapUiJson.RefusalOf(answer) is { } refusal)
+        {
+            Hint(MapUiJson.Text(answer["refusal"]) == NotGround ? BelowHorizon : refusal, HintShown);
+            return;
+        }
+        if (MapUiJson.Number(answer["latitude"]) is not double latitude || MapUiJson.Number(answer["longitude"]) is not double longitude) return;
+        if (!_hintSeen) FlyViewStore.SaveHoldHintSeen();
+        _hintSeen = true;
+        if (_hintText.Text == HoldHint) _hint.Visibility = Visibility.Collapsed;
+        GroundPressed?.Invoke(this, new PictureGround(latitude, longitude, MapUiJson.Texts(answer["actions"]), MapUiJson.Text(answer["warning"]), at));
     }
 
     private void Draw()
@@ -267,8 +500,9 @@ public sealed partial class VideoPayloadLayer : UserControl
 
     private void OnPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!TakesInput || e.OriginalSource is not (Grid or Canvas)) return;
-        var at = e.GetCurrentPoint(_root).Position;
+        var pressed = e.GetCurrentPoint(_root);
+        if (!TakesInput || e.OriginalSource is not (Grid or Canvas) || pressed.Properties.IsRightButtonPressed) return;
+        var at = pressed.Position;
         var kind = _tracking?.CanAim == true ? Kind.Track
             : _gimbal?.Aim == VideoAim.Hold ? Kind.Hold
             : _gimbal?.Aim == VideoAim.Point ? Kind.Point

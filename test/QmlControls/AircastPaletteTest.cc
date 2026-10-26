@@ -3,6 +3,7 @@
 #include <QtTest/QTest>
 
 #include "AircastTheme.h"
+#include "QGCCorePlugin.h"
 #include "QGCPalette.h"
 
 namespace {
@@ -18,6 +19,14 @@ qreal contrastRatio(const QColor& a, const QColor& b)
     const qreal la = luminance(a);
     const qreal lb = luminance(b);
     return (qMax(la, lb) + 0.05) / (qMin(la, lb) + 0.05);
+}
+
+QColor themedRole(const char* name, QGCPalette::Theme theme, QGCPalette::ColorGroup group, QRgb token)
+{
+    const QColor color = QColor::fromRgb(token);
+    QGCPalette::PaletteColorInfo_t info = {{color, color}, {color, color}};
+    QGCCorePlugin::instance()->paletteOverride(QString::fromLatin1(name), info);
+    return info[theme][group];
 }
 
 constexpr qreal kBodyTextContrast = 4.5;
@@ -42,20 +51,23 @@ void AircastPaletteTest::_paletteRolesAreTheTokenRoles()
 
         QGCPalette enabled;
         enabled.setColorGroupEnabled(true);
-        QCOMPARE(enabled.window(), QColor::fromRgb(s.surface));
-        QCOMPARE(enabled.windowShade(), QColor::fromRgb(s.surfaceContainer));
-        QCOMPARE(enabled.text(), QColor::fromRgb(s.onSurface));
-        QCOMPARE(enabled.button(), QColor::fromRgb(s.secondaryContainer));
-        QCOMPARE(enabled.buttonHighlight(), QColor::fromRgb(s.primary));
-        QCOMPARE(enabled.colorBlue(), QColor::fromRgb(s.primary));
-        QCOMPARE(enabled.colorRed(), QColor::fromRgb(s.error));
-        QCOMPARE(enabled.colorGreen(), QColor::fromRgb(s.success));
-        QCOMPARE(enabled.colorOrange(), QColor::fromRgb(s.warning));
-        QCOMPARE(enabled.groupBorder(), QColor::fromRgb(s.outlineVariant));
+        QCOMPARE(enabled.window(), themedRole("window", t.theme, QGCPalette::ColorGroupEnabled, s.surface));
+        QCOMPARE(enabled.windowShade(),
+                 themedRole("windowShade", t.theme, QGCPalette::ColorGroupEnabled, s.surfaceContainer));
+        QCOMPARE(enabled.text(), themedRole("text", t.theme, QGCPalette::ColorGroupEnabled, s.onSurface));
+        QCOMPARE(enabled.button(), themedRole("button", t.theme, QGCPalette::ColorGroupEnabled, s.secondaryContainer));
+        QCOMPARE(enabled.buttonHighlight(),
+                 themedRole("buttonHighlight", t.theme, QGCPalette::ColorGroupEnabled, s.primary));
+        QCOMPARE(enabled.colorBlue(), themedRole("colorBlue", t.theme, QGCPalette::ColorGroupEnabled, s.primary));
+        QCOMPARE(enabled.colorRed(), themedRole("colorRed", t.theme, QGCPalette::ColorGroupEnabled, s.error));
+        QCOMPARE(enabled.colorGreen(), themedRole("colorGreen", t.theme, QGCPalette::ColorGroupEnabled, s.success));
+        QCOMPARE(enabled.colorOrange(), themedRole("colorOrange", t.theme, QGCPalette::ColorGroupEnabled, s.warning));
+        QCOMPARE(enabled.groupBorder(),
+                 themedRole("groupBorder", t.theme, QGCPalette::ColorGroupEnabled, s.outlineVariant));
 
         QGCPalette disabled;
         disabled.setColorGroupEnabled(false);
-        QCOMPARE(disabled.text(), QColor::fromRgb(s.onSurfaceVariant));
+        QCOMPARE(disabled.text(), themedRole("text", t.theme, QGCPalette::ColorGroupDisabled, s.onSurfaceVariant));
     }
     QCOMPARE(AircastTokens::dark.surface, 0x0D0E11u);
     QCOMPARE(AircastTokens::dark.primary, 0x0088F2u);

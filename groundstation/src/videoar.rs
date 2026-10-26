@@ -28,9 +28,22 @@ const AIM_LABEL: &str = "Target";
 const IMPACT_LABEL: &str = "Drop";
 const CAMERA_HFOV: &str = "settings.gimbalControllerSettings.cameraHFov.rawValue";
 pub const GROUND_AT: &str = "videoAr.groundAt";
+pub const OUTLINE: &str = "videoAr.outline";
+const OUTLINE_SEGMENTS: usize = 36;
 const REACH_M: f64 = 2000.0;
 const STEP_M: f64 = 5.0;
-const PICTURE_ACTIONS: [&str; 4] = ["GoTo", "Orbit", "Roi", "Heading"];
+const PICTURE_ACTIONS: [&str; 4] = ["GoTo", "Orbit", "Roi", "StopLooking"];
+const DEFAULT_FOV_WARNING: &str =
+    "The camera's field of view isn't set, so this spot may be off. Set it in Settings > Gimbal.";
+
+fn field_of_view_unset(backend: &dyn Backend) -> bool {
+    let (_, _, source) = crate::lens::field_of_view(backend);
+    let at_default = |name: &str| {
+        backend.value(&format!("settings.gimbalControllerSettings.{name}"))["valueEqualsDefault"]
+            == true
+    };
+    source == crate::lens::Source::Setting && at_default("cameraHFov") && at_default("cameraVFov")
+}
 
 type Space = (f64, f64, f64);
 
@@ -44,6 +57,7 @@ pub struct Camera {
 
 pub fn deps() -> Vec<String> {
     DEPS.iter()
+        .chain(crate::orbit::DEPS)
         .map(|dep| dep.to_string())
         .chain(crate::synthview::overlay_deps())
         .collect()
@@ -202,6 +216,43 @@ pub fn ar(
     json!({ "kind": "object", "class": "VideoAr", "available": true, "home": home, "aim": aim, "impact": impact, "lead": lead, "leadLine": lead_line, "waypoints": waypoints, "route": legs })
 }
 
+pub fn circle_outline(
+    drone: (f64, f64),
+    drone_above: f64,
+    camera: Camera,
+    (centre, radius): ((f64, f64), f64),
+    segments: usize,
+    ground: &dyn Fn((f64, f64)) -> f64,
+) -> Vec<Value> {
+    (0..=segments)
+        .map(|i| {
+            let at = crate::surveygrid::at_distance_and_azimuth(
+                centre,
+                radius.abs(),
+                360.0 * i as f64 / segments as f64,
+            );
+            let space = seen(drone, drone_above, camera, at, ground(at));
+            match space.2 > NEAR_M {
+                true => framed(camera, space),
+                false => Value::Null,
+            }
+        })
+        .collect()
+}
+
+fn orbiting(backend: &dyn Backend) -> Option<((f64, f64), f64)> {
+    let orbit = crate::orbit::orbit_view(backend, &[]);
+    let centre = &orbit["centre"];
+    (orbit["orbiting"] == true)
+        .then(|| {
+            Some((
+                (centre["latitude"].as_f64()?, centre["longitude"].as_f64()?),
+                orbit["radiusMetres"].as_f64()?,
+            ))
+        })
+        .flatten()
+}
+
 pub fn camera(backend: &dyn Backend, gimbals: &Value, fixed_tilt: Option<f64>) -> Option<Camera> {
     let fov = value_number(&backend.value(CAMERA_HFOV)).filter(|fov| *fov > 0.0 && *fov < 180.0)?;
     match fixed_tilt {
@@ -240,7 +291,23 @@ pub fn video_ar(
     };
     let unit = Unit::horizontal(backend);
     let distance = |metres: f64| format_measure(unit.show(metres), &unit.name);
-    ar(drone, drone_above, camera, overlays, &distance)
+    let orbit = orbiting(backend).map(|(centre, radius)| {
+        json!({
+            "centre": { "latitude": centre.0, "longitude": centre.1 },
+            "radiusMetres": radius,
+            "outline": circle_outline(drone, drone_above, camera, (centre, radius), OUTLINE_SEGMENTS, &ground_above_home(backend)),
+        })
+    });
+    let shown = ar(drone, drone_above, camera, overlays, &distance);
+    Value::Object(
+        shown
+            .as_object()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .chain([("orbit".to_string(), orbit.unwrap_or(Value::Null))])
+            .collect(),
+    )
 }
 
 fn half_tan(degrees: f64) -> f64 {
@@ -353,7 +420,9 @@ pub fn ground_at(backend: &dyn Backend, args: &str) -> Value {
         &ground_above_home(backend),
     ) {
         Some((latitude, longitude)) => {
-            json!({ "ok": true, "latitude": latitude, "longitude": longitude, "actions": PICTURE_ACTIONS })
+            let warning =
+                (!synthetic && field_of_view_unset(backend)).then_some(DEFAULT_FOV_WARNING);
+            json!({ "ok": true, "latitude": latitude, "longitude": longitude, "actions": PICTURE_ACTIONS, "warning": warning })
         }
         None => refused(
             "notGround",
@@ -363,6 +432,52 @@ pub fn ground_at(backend: &dyn Backend, args: &str) -> Value {
             ),
         ),
     }
+}
+
+pub fn outline(backend: &dyn Backend, args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let number = |index: usize| {
+        given
+            .get(index)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
+    let refused = |token: &str, reason: &str| json!({ "ok": false, "refusal": token, "reason": reason, "outline": [] });
+    let circle = number(0)
+        .filter(|lat| (-90.0..=90.0).contains(lat))
+        .zip(number(1).filter(|lon| (-180.0..=180.0).contains(lon)))
+        .zip(number(2).filter(|radius| *radius != 0.0));
+    let segments = match given.get(3) {
+        None | Some(Value::Null) => Some(OUTLINE_SEGMENTS),
+        Some(count) => count
+            .as_u64()
+            .and_then(|n| usize::try_from(n).ok())
+            .filter(|n| *n >= 3),
+    };
+    let Some((circle, segments)) = circle.zip(segments) else {
+        return refused(
+            "badCircle",
+            "Give the circle as a latitude, a longitude and a radius in metres, then how many segments from 3 up.",
+        );
+    };
+    let placed = point(backend, "vehicle.coordinate").zip(raw(backend, "vehicle.altitudeRelative"));
+    let aimed = camera(
+        backend,
+        &crate::gimbal::gimbal_view(backend, &[]),
+        crate::cameras::active_tilt(backend),
+    );
+    let Some(((drone, drone_above), camera)) = placed.zip(aimed) else {
+        return refused(
+            "notPlaced",
+            "Where the aircraft is and where its camera looks are not known yet.",
+        );
+    };
+    json!({
+        "ok": true,
+        "refusal": Value::Null,
+        "reason": Value::Null,
+        "outline": circle_outline(drone, drone_above, camera, circle, segments, &ground_above_home(backend)),
+    })
 }
 
 pub fn video_ar_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -578,6 +693,81 @@ mod tests {
             ),
             (Some(true), Some(HOME_LABEL)),
             "home behind the drone shows once the gimbal looks back at it"
+        );
+    }
+
+    #[test]
+    fn a_ground_circle_below_is_outlined_on_the_picture_and_one_behind_is_not() {
+        let drone = (-35.0, 149.0);
+        let looking_down = Camera {
+            pitch: -90.0,
+            ..LEVEL_NORTH
+        };
+        let flat = |_: (f64, f64)| 0.0;
+        let below = circle_outline(drone, 50.0, looking_down, (drone, 20.0), 4, &flat);
+        assert_eq!(
+            below.len(),
+            5,
+            "closed: the first point is repeated at the end"
+        );
+        assert_eq!(below[0], below[4]);
+        let north = &below[0];
+        assert!(
+            (north["x"].as_f64().unwrap() - 0.5).abs() < 1e-6
+                && (north["up"].as_f64().unwrap() - 0.2).abs() < 1e-3,
+            "20 m north of a camera 50 m up looking straight down at a 90 degree lens: {north}"
+        );
+        assert!(
+            (below[1]["x"].as_f64().unwrap() - 0.7).abs() < 1e-3,
+            "east is to the right"
+        );
+        let south = (-35.0 - (300.0 / EARTH_RADIUS_M).to_degrees(), 149.0);
+        assert!(
+            circle_outline(drone, 50.0, LEVEL_NORTH, (south, 20.0), 8, &flat)
+                .iter()
+                .all(Value::is_null),
+            "a circle behind the camera has nothing to draw"
+        );
+    }
+
+    #[test]
+    fn the_running_orbit_is_outlined_in_the_view_and_a_circle_is_outlined_on_request() {
+        let orbiting = Fake(
+            flying(Some(80.0))
+                .0
+                .into_iter()
+                .chain([
+                    ("vehicle", json!({ "kind": "object", "orbitActive": true })),
+                    (
+                        "vehicle.vehicleLinkManager",
+                        json!({ "kind": "object", "communicationLost": false }),
+                    ),
+                    (
+                        "vehicle.orbitMapCircle",
+                        json!({ "kind": "object", "center": { "latitude": -34.999, "longitude": 149.0 }, "clockwiseRotation": true, "facts": [{ "property": "radius", "rawValue": 30.0 }] }),
+                    ),
+                ])
+                .collect(),
+        );
+        let shown = video_ar(&orbiting, &gimbal(0.0, -30.0), &json!({}), None);
+        assert_eq!(shown["orbit"]["radiusMetres"], 30.0);
+        assert_eq!(
+            shown["orbit"]["outline"].as_array().map(Vec::len),
+            Some(OUTLINE_SEGMENTS + 1)
+        );
+        assert_eq!(
+            video_ar(&flying(Some(80.0)), &gimbal(0.0, -30.0), &json!({}), None)["orbit"],
+            Value::Null,
+            "no orbit, no circle"
+        );
+        assert_eq!(outline(&orbiting, "[-35.0, 149.0]")["refusal"], "badCircle");
+        assert_eq!(
+            outline(&orbiting, "[-35.0, 149.0, 30.0, 2]")["refusal"],
+            "badCircle"
+        );
+        assert_eq!(
+            outline(&Fake(BTreeMap::new()), "[-35.0, 149.0, 30.0]")["refusal"],
+            "notPlaced"
         );
     }
 
@@ -931,6 +1121,32 @@ mod tests {
         assert!(
             wide.is_some_and(|(ahead, _)| (ahead - 20.0 / bottom_edge.tan()).abs() < 0.05),
             "a picture twice as wide as tall spans half the tangent above and below the middle"
+        );
+    }
+
+    #[test]
+    fn a_field_of_view_left_at_its_default_is_warned_about() {
+        let settings = |h: bool, v: bool| {
+            Fake(BTreeMap::from([
+                (
+                    "settings.gimbalControllerSettings.cameraHFov",
+                    json!({ "kind": "fact", "valueEqualsDefault": h }),
+                ),
+                (
+                    "settings.gimbalControllerSettings.cameraVFov",
+                    json!({ "kind": "fact", "valueEqualsDefault": v }),
+                ),
+            ]))
+        };
+        assert!(field_of_view_unset(&settings(true, true)));
+        assert!(
+            !field_of_view_unset(&settings(true, false)),
+            "either angle set by the operator or the camera is a field of view to trust"
+        );
+        assert_eq!(
+            PICTURE_ACTIONS,
+            ["GoTo", "Orbit", "Roi", "StopLooking"],
+            "the video menu has no home, heading or origin"
         );
     }
 
