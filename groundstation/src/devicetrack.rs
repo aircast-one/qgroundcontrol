@@ -70,6 +70,10 @@ fn reading(found: Option<(Source, Option<Value>)>, armed: bool) -> Option<Value>
     })
 }
 
+pub fn pursuit_state() -> Value {
+    crate::detections::lock().pursuit(crate::hub::now_ms())
+}
+
 pub fn tracking(camera: &Value) -> Option<Value> {
     (!camera_tracks(camera))
         .then(|| reading(tracker(), ARMED.load(Ordering::Relaxed)))
@@ -77,7 +81,10 @@ pub fn tracking(camera: &Value) -> Option<Value> {
 }
 
 pub fn take_changed() -> bool {
-    let now = reading(tracker(), ARMED.load(Ordering::Relaxed)).unwrap_or(Value::Null);
+    let now = json!([
+        reading(tracker(), ARMED.load(Ordering::Relaxed)),
+        pursuit_state(),
+    ]);
     let mut announced = ANNOUNCED.lock().unwrap_or_else(PoisonError::into_inner);
     let changed = *announced != now;
     *announced = now;
@@ -165,6 +172,20 @@ pub fn stop(source: &Source) -> Value {
     LOCKED.store(false, Ordering::Relaxed);
     answer(
         crate::http::send("DELETE", &source.track_url(), &JSON, None, TRACK_TIMEOUT),
+        |_| None,
+    )
+}
+
+pub fn pursue(source: &Source) -> Value {
+    answer(
+        crate::http::send("POST", &source.pursue_url(), &JSON, None, TRACK_TIMEOUT),
+        |_| None,
+    )
+}
+
+pub fn stop_pursue(source: &Source) -> Value {
+    answer(
+        crate::http::send("DELETE", &source.pursue_url(), &JSON, None, TRACK_TIMEOUT),
         |_| None,
     )
 }
