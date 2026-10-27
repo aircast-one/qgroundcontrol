@@ -17,6 +17,8 @@ import {
   CAMERA_PHOTO_MODE,
   CAMERA_SET_MODE,
   CAMERA_SHEET_VIDEO_SETTINGS,
+  CAMERA_START_PURSUIT,
+  CAMERA_STOP_PURSUIT,
   CAMERA_STOP_TRACKING,
   CAMERA_THERMAL_MODE,
   CAMERA_THERMAL_OPACITY,
@@ -29,6 +31,7 @@ import {
   type DestructiveAction,
   PHOTO_LAPSE_MAX_S,
   PHOTO_LAPSE_MIN_S,
+  type PursuitReading,
   THERMAL_MODES,
   type ThermalReading,
   type TrackingReading,
@@ -41,6 +44,7 @@ import {
   destructiveReasonFor,
   lapsePlan,
   modeTapSwitches,
+  pursuitReading,
   shutterCaption,
   shutterReadout,
   thermalModeLabel,
@@ -126,6 +130,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
   const [details, setDetails] = useState(false);
   const thermal = useMemo(() => thermalReading(cameraJson), [cameraJson]);
   const tracking = useMemo(() => trackingReading(cameraJson), [cameraJson]);
+  const pursuit = useMemo(() => pursuitReading(cameraJson), [cameraJson]);
   const destructive = useMemo(() => destructiveActions(cameraJson), [cameraJson]);
 
   if (!shown) return null;
@@ -183,6 +188,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
           camera={camera}
           thermal={thermal}
           tracking={tracking}
+          pursuit={pursuit}
           destructive={destructive}
           storage={[panel.freeText, panel.batteryText].filter((it): it is string => it !== null)}
           current={camera.selected ?? 0}
@@ -504,6 +510,67 @@ const TrackingToggle = ({ reading }: { reading: TrackingReading }) => (
   </TextButton>
 );
 
+const ChaseControl = ({ reading }: { reading: PursuitReading }) => {
+  const [confirming, setConfirming] = useState(false);
+  const [refused, setRefused] = useTimedRefusal();
+  if (reading.engaged)
+    return (
+      <div className="px-3">
+        <Surface
+          onClick={() => void Qgc.invoke(CAMERA_STOP_PURSUIT)}
+          shape="full"
+          color={md('error')}
+          contentColor={md('onError')}
+          className="flex w-full items-center justify-center py-3"
+          label="Stop chasing the target"
+        >
+          <Text typography="titleMedium" maxLines={1}>
+            Chasing — Stop
+          </Text>
+        </Surface>
+      </div>
+    );
+  return (
+    <>
+      <div className="flex items-center px-3">
+        <TextButton contentColor={aircast('outdoorForeground')} enabled={reading.ready} onClick={() => setConfirming(true)}>
+          <Text typography="labelLarge" maxLines={1}>
+            Chase
+          </Text>
+        </TextButton>
+      </div>
+      {!reading.ready && reading.reason.trim() !== '' ? (
+        <Text typography="labelSmall" color={md('onSurfaceVariant')} className="px-sheet">
+          {reading.reason}
+        </Text>
+      ) : null}
+      {refused !== null ? (
+        <Text typography="bodySmall" color={md('error')} className="px-sheet">
+          {refused}
+        </Text>
+      ) : null}
+      {confirming ? (
+        <AlertDialog
+          onDismissRequest={() => setConfirming(false)}
+          title="Chase the target?"
+          text="The aircraft will fly itself toward the locked target. Keep the area clear and be ready to take manual control."
+          confirmButton={
+            <TextButton
+              onClick={() => {
+                setConfirming(false);
+                void (async () => setRefused(await Qgc.refusalOf(CAMERA_START_PURSUIT)))();
+              }}
+            >
+              <span style={{ color: md('error') }}>Chase</span>
+            </TextButton>
+          }
+          dismissButton={<TextButton onClick={() => setConfirming(false)}>Cancel</TextButton>}
+        />
+      ) : null}
+    </>
+  );
+};
+
 const SheetRadioRow = ({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) => (
   <div onClick={onClick} className="flex min-h-14 w-full cursor-pointer items-center gap-4 px-4 hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]">
     <RadioButton selected={selected} onClick={null} label={label} />
@@ -520,6 +587,7 @@ const CameraDetailsSheet = ({
   camera,
   thermal,
   tracking,
+  pursuit,
   destructive,
   storage,
   current,
@@ -529,6 +597,7 @@ const CameraDetailsSheet = ({
   camera: CameraReading;
   thermal: ThermalReading | null;
   tracking: TrackingReading | null;
+  pursuit: PursuitReading | null;
   destructive: readonly DestructiveAction[];
   storage: readonly string[];
   current: number;
@@ -588,6 +657,7 @@ const CameraDetailsSheet = ({
         <TrackingToggle reading={tracking} />
       </div>
     ) : null}
+    {pursuit !== null ? <ChaseControl reading={pursuit} /> : null}
     <LensSection />
     {thermal !== null ? (
       <>

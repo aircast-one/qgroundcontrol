@@ -33,6 +33,7 @@ import one.aircast.map.AircastSheet
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -434,6 +435,58 @@ private fun TrackingToggle(reading: TrackingReading, modifier: Modifier = Modifi
 }
 
 @Composable
+private fun ChaseControl(pursuit: PursuitReading, modifier: Modifier = Modifier) {
+    var confirming by remember { mutableStateOf(false) }
+    var refusal by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(refusal) {
+        if (refusal != null) {
+            delay(REFUSAL_MS)
+            refusal = null
+        }
+    }
+    Column(modifier) {
+        if (pursuit.engaged) {
+            Button(
+                onClick = { offMainDetached { Qgc.invoke(CAMERA_STOP_PURSUIT) } },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics { contentDescription = "Stop chasing" },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            ) { Text("Chasing — Stop", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1) }
+        } else {
+            TextButton(onClick = { confirming = true }, enabled = pursuit.ready) {
+                Text("Chase", style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            }
+            (refusal ?: pursuit.reason.takeIf { !pursuit.ready && it.isNotBlank() })?.let { why ->
+                Text(
+                    why,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        }
+    }
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text("Chase the target?") },
+            text = { Text("The aircraft will fly toward the tracked target.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirming = false
+                    offMainDetached { refusal = Qgc.refusalOf(CAMERA_START_PURSUIT) }
+                }) { Text("Chase", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirming = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
 private fun SheetRadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton, onClick = onClick).heightIn(min = 56.dp).padding(horizontal = 16.dp),
@@ -539,6 +592,7 @@ private fun CameraDetailsSheet(
             }
         }
         tracking?.let { reading -> TrackingToggle(reading, Modifier.padding(horizontal = 12.dp)) }
+        tracking?.pursuit?.let { pursuit -> ChaseControl(pursuit, Modifier.padding(horizontal = 12.dp)) }
         LensSection()
 
         thermal?.let { thermal ->

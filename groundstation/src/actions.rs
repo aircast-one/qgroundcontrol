@@ -86,6 +86,12 @@ const START_TRACKING: &str = "vehicle.cameraManager.currentCameraInstance.startT
 const INSERT_PATTERN: &str = "plan.missionController.insertComplexMissionItem";
 const INSERT_PATTERN_FILE: &str = "plan.missionController.insertComplexMissionItemFromKMLOrSHP";
 const STOP_TRACKING: &str = "vehicle.cameraManager.currentCameraInstance.stopTracking";
+const START_PURSUIT: &str = "vehicle.cameraManager.currentCameraInstance.startPursuit";
+const STOP_PURSUIT: &str = "vehicle.cameraManager.currentCameraInstance.stopPursuit";
+
+fn pursuit_unavailable() -> Value {
+    json!({ "ok": false, "result": Value::Null, "refusal": Value::Null, "reason": "Pursuit needs an Aircast device camera." })
+}
 const THERMAL_MODE: &str = "vehicle.cameraManager.currentCameraInstance.thermalMode";
 const THERMAL_OPACITY: &str = "vehicle.cameraManager.currentCameraInstance.thermalOpacity";
 const TRACKING_ENABLED: &str = "vehicle.cameraManager.currentCameraInstance.trackingEnabled";
@@ -200,6 +206,8 @@ pub const OWNED: &[&str] = &[
     INSERT_PATTERN,
     INSERT_PATTERN_FILE,
     STOP_TRACKING,
+    START_PURSUIT,
+    STOP_PURSUIT,
     RC_OVERRIDE,
     RC_OVERRIDE_RELEASE,
     RC_OVERRIDE_RELEASE_CHANNEL,
@@ -633,6 +641,14 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             || crate::cameratrack::start(backend, args),
             |source| crate::devicetrack::start(&source, args),
         ),
+        STOP_PURSUIT => crate::devicetrack::applies(backend)
+            .map_or_else(pursuit_unavailable, |source| {
+                crate::devicetrack::stop_pursue(&source)
+            }),
+        START_PURSUIT => crate::devicetrack::applies(backend)
+            .map_or_else(pursuit_unavailable, |source| {
+                crate::devicetrack::pursue(&source)
+            }),
         CONNECT_LINK => crate::linkconnect::connect(backend, path, args),
         START_SUPPORT => crate::linkconnect::support_forwarding(
             backend,

@@ -529,6 +529,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "shapes": tracking_shapes(&camera),
             "rect": flag(&camera, "trackingImageIsActive").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object()).or_else(|| point_box(&camera))).flatten(),
         }))),
+        "pursuit": crate::devicetrack::pursuit_state(),
         "hasZoom": flag(&camera, "hasZoom"),
         "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(0.0),
         "canRecord": present && integer(&camera, "captureVideoState").is_some_and(|state| state != CAPTURE_DISABLED),
