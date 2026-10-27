@@ -16,6 +16,7 @@ dependencyResolutionManagement {
 rootProject.name = "aircast-android"
 include(":app")
 include(":map")
+include(":bridge")
 
 val buildConfig = groovy.json.JsonSlurper().parse(file("../.github/build-config.json")) as Map<*, *>
 val androidConfig = buildConfig["android"] as Map<*, *>
