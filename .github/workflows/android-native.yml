@@ -1,0 +1,80 @@
+name: Android App
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'groundstation/**'
+      - 'deploy/android/**'
+      - '.github/build-config.json'
+      - '.github/workflows/android-native.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - 'groundstation/**'
+      - 'deploy/android/**'
+      - '.github/build-config.json'
+      - '.github/workflows/android-native.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  AQT_SOURCE: 'git+https://github.com/miurahr/aqtinstall.git@8d961e61720b3c06583517fbc68d57ec0a4e9f95'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      AIRCAST_ABI: arm64-v8a
+      AIRCAST_QGC_AAR: ${{ github.workspace }}/android/no-qt.aar
+      AIRCAST_VERSION_CODE: ${{ github.run_number }}
+      AIRCAST_VERSION_NAME: ci
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set Android SDK location
+        run: |
+          echo "ANDROID_SDK_ROOT=${RUNNER_TEMP}/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "$GITHUB_ENV"
+
+      - name: Build Setup (Android)
+        id: setup
+        uses: ./.github/actions/build-setup
+        with:
+          mode: android
+          qt-host: linux
+          qt-arch: linux_gcc_64
+          abis: arm64-v8a
+          build-type: Release
+          save-cache: 'false'
+
+      - name: Install host build dependencies
+        uses: ./.github/actions/install-dependencies
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          android-abis: arm64-v8a
+          cargo-ndk: 'true'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ steps.setup.outputs.android_java_version }}
+
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon :app:testCoreDebugUnitTest
