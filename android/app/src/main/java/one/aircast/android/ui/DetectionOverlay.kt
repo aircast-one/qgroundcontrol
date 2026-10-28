@@ -36,10 +36,12 @@ import kotlinx.coroutines.delay
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
+import one.aircast.map.aircast
 
 private val BOX_COLOUR = Color(0xFF4DD0E1).copy(alpha = 0.55f)
 private val TARGET_COLOUR = Color(0xFFFFD54F)
 private const val REFUSAL_MS = 4000L
+private const val SCRIM_ALPHA = 0.55f
 
 @Composable
 private fun ChaseOsd(pursuit: PursuitReading, modifier: Modifier = Modifier) {
@@ -71,8 +73,8 @@ private fun ChaseOsd(pursuit: PursuitReading, modifier: Modifier = Modifier) {
                 Text(
                     why,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 2.dp),
+                    color = MaterialTheme.aircast.outdoorForeground,
+                    modifier = Modifier.osdShadow().background(osdBackdrop(Color.Black.copy(alpha = SCRIM_ALPHA)), RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 2.dp),
                 )
             }
         }
