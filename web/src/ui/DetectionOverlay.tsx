@@ -3,19 +3,22 @@ import { type Json } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { AlertDialog, Surface, Text, TextButton } from '@/m3';
-import { Color, argb, md, withAlpha } from '@/theme/Colors';
+import { Color, aircast, argb, md, withAlpha } from '@/theme/Colors';
 import { CAMERA_START_PURSUIT, CAMERA_STOP_PURSUIT, type PursuitReading, pursuitReading } from '@/ui/CameraControl';
 import { DETECTIONS, detectionTrouble, detections, visibleBoxes } from '@/ui/Detections';
 import { useElementSize } from '@/ui/FlyShell';
+import { osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { VIDEO_VIEW, paintedRect, videoReading } from '@/ui/VideoView';
 
 const BOX_COLOUR = argb(0xff4dd0e1);
 const TARGET_COLOUR = argb(0xffffd54f);
 const REFUSAL_MS = 4000;
-const DISABLED_ALPHA = 0.14;
+const SCRIM_ALPHA = 0.55;
+const DISABLED_CONTENT_ALPHA = 0.6;
+const BORDER_ALPHA = 0.4;
 
-const Pill = ({ onClick, color, contentColor, label, children }: { onClick?: () => void; color: string; contentColor: string; label: string; children: string }) => (
-  <Surface onClick={onClick} shape="full" color={color} contentColor={contentColor} className="pointer-events-auto flex min-w-[140px] items-center justify-center px-6 py-3 shadow-lg" label={label}>
+const Pill = ({ onClick, color, contentColor, border, label, children }: { onClick?: () => void; color: string; contentColor: string; border?: string; label: string; children: string }) => (
+  <Surface onClick={onClick} shape="full" color={color} contentColor={contentColor} border={border} className={`pointer-events-auto flex min-w-[140px] items-center justify-center px-6 py-3 ${osdShadow()}`} label={label}>
     <Text typography="titleMedium" maxLines={1}>
       {children}
     </Text>
@@ -23,7 +26,7 @@ const Pill = ({ onClick, color, contentColor, label, children }: { onClick?: () 
 );
 
 const OverlayNote = ({ background, color, children }: { background: string; color: string; children: string }) => (
-  <Text typography="labelSmall" color={color} className="rounded-full px-2.5 py-0.5" style={{ background }}>
+  <Text typography="labelSmall" color={color} className={`rounded-full px-2.5 py-0.5 ${osdShadow()}`} style={{ background }}>
     {children}
   </Text>
 );
@@ -31,6 +34,8 @@ const OverlayNote = ({ background, color, children }: { background: string; colo
 const ChaseOsd = ({ reading }: { reading: PursuitReading }) => {
   const [confirming, setConfirming] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  const scrim = useOsdBackdrop(withAlpha(Color.Black, SCRIM_ALPHA));
+  const foreground = aircast('outdoorForeground');
   useEffect(() => {
     if (refused === null) return undefined;
     const timer = setTimeout(() => setRefused(null), REFUSAL_MS);
@@ -44,14 +49,15 @@ const ChaseOsd = ({ reading }: { reading: PursuitReading }) => {
     <div className="flex flex-col items-center gap-1">
       <Pill
         onClick={reading.ready ? () => setConfirming(true) : undefined}
-        color={reading.ready ? md('primary') : withAlpha(Color.White, DISABLED_ALPHA)}
-        contentColor={reading.ready ? md('onPrimary') : withAlpha(Color.White, 0.6)}
+        color={reading.ready ? md('primary') : scrim}
+        contentColor={reading.ready ? md('onPrimary') : withAlpha(foreground, DISABLED_CONTENT_ALPHA)}
+        border={reading.ready ? undefined : `1px solid ${withAlpha(foreground, BORDER_ALPHA)}`}
         label="Chase the locked target"
       >
         Chase
       </Pill>
       {!reading.ready && reading.reason.trim() !== '' ? (
-        <OverlayNote background={withAlpha(Color.Black, 0.6)} color={Color.White}>
+        <OverlayNote background={scrim} color={foreground}>
           {reading.reason}
         </OverlayNote>
       ) : null}
