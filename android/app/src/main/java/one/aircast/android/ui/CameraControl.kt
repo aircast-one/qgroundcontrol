@@ -162,6 +162,15 @@ internal data class PursuitReading(
     val reason: String,
 )
 
+internal fun pursuitReading(view: JSONObject?): PursuitReading? =
+    view?.optJSONObject("pursuit")?.let {
+        PursuitReading(
+            engaged = it.optBoolean("engaged"),
+            ready = it.optBoolean("ready"),
+            reason = it.optText("reason"),
+        )
+    }
+
 internal data class TrackingReading(
     val supported: Boolean,
     val requested: Boolean,
@@ -188,13 +197,7 @@ internal fun trackingReading(view: JSONObject?): TrackingReading? {
         box = rect?.let {
             TrackingBox(it.optDouble("x"), it.optDouble("y"), it.optDouble("width"), it.optDouble("height"))
         }?.takeIf { it.width > 0.0 && it.height > 0.0 },
-        pursuit = view?.optJSONObject("pursuit")?.let {
-            PursuitReading(
-                engaged = it.optBoolean("engaged"),
-                ready = it.optBoolean("ready"),
-                reason = it.optText("reason"),
-            )
-        },
+        pursuit = pursuitReading(view),
     )
 }
 

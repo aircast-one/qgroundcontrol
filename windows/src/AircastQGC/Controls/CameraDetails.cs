@@ -65,7 +65,7 @@ public sealed partial class CameraDetails : UserControl
         state.Streams.Count > 1 ? Section("VIDEO STREAM", Radios(state.Streams, state.CurrentStream, index => Write($"{Instance}.currentStream", index))) : null,
         state.CapturesPhotos ? PhotoMode(state) : null,
         state.Tracking is { } tracking ? Wide(FormLook.Button(tracking.ToggleLabel, () => ToggleTracking(tracking), ButtonLook.Standard, "")) : null,
-        state.Pursuit is { } pursuit ? Chase(pursuit) : null,
+        state.Pursuit is { } pursuit && state.Tracking is { Box: { } } ? Chase(pursuit) : null,
         state.ThermalMode is { } mode ? Thermal(mode, state.ThermalOpacity) : null,
         state.Destructive.Count > 0 ? Section("STORAGE AND RESET", FormLook.Stack(4, state.Destructive.Select(Destructive))) : null,
     ];
@@ -152,8 +152,8 @@ public sealed partial class CameraDetails : UserControl
 
     private async void StartChase()
     {
-        if (!await FormLook.Confirm(XamlRoot, "Chase target",
-            "The aircraft will fly toward the tracked target. Keep the area clear and be ready to stop.", "Chase", "Cancel")) return;
+        if (!await FormLook.Confirm(XamlRoot, "Chase the target?",
+            "The aircraft will fly itself toward the locked target. Keep the area clear and be ready to take manual control.", "Chase", "Cancel")) return;
         Report(FormWrites.Call($"{Instance}.startPursuit", CameraSubject));
     }
 
