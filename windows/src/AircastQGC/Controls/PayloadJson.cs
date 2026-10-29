@@ -58,6 +58,11 @@ internal sealed record TrackingState(bool Requested, IReadOnlyList<string> Shape
     public string ToggleLabel => Requested ? "Stop tracking" : "Track something";
 }
 
+internal sealed record PursuitState(bool Engaged, bool Ready, string Reason)
+{
+    public string Label => Engaged ? "Chasing — Stop" : "Chase";
+}
+
 internal abstract record TrackRequest;
 
 internal sealed record TrackArea(TrackBox Rect) : TrackRequest;
@@ -89,6 +94,7 @@ internal sealed record CameraDetailsState(
     bool Timelapse,
     double LapseSeconds,
     TrackingState? Tracking,
+    PursuitState? Pursuit,
     string? ThermalMode,
     double? ThermalOpacity,
     IReadOnlyList<DestructiveAction> Destructive);
@@ -165,6 +171,14 @@ internal static class PayloadJson
                 && MapUiJson.Number(rect["height"]) is double h && h > 0
                     ? new TrackBox(x, y, w, h)
                     : null)
+            : null;
+
+    public static PursuitState? Pursuit(JsonObject camera) =>
+        camera["pursuit"] is JsonObject pursuit
+            ? new PursuitState(
+                MapUiJson.Flag(pursuit["engaged"]),
+                MapUiJson.Flag(pursuit["ready"]),
+                MapUiJson.Text(pursuit["reason"]))
             : null;
 
     public static TrackRequest? Track((double X, double Y) press, (double X, double Y) release, Painted picture)
@@ -261,6 +275,7 @@ internal static class PayloadJson
         MapUiJson.Text(view["photoMode"]) == "timelapse",
         Math.Clamp(MapUiJson.Number(view["lapseSeconds"]) ?? LapseMin, LapseMin, LapseMax),
         Tracking(view),
+        Pursuit(view),
         MapUiJson.Flag(view["thermalAvailable"]) && MapUiJson.Text(view["thermalMode"]) is { Length: > 0 } mode ? mode : null,
         MapUiJson.Number(view["thermalOpacity"]),
         MapUiJson.Objects(view["destructiveActions"])

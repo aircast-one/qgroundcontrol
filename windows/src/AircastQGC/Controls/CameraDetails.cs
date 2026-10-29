@@ -122,6 +122,7 @@ public sealed partial class CameraDetails : UserControl
         ? FormWrites.Set($"{Instance}.trackingEnabled", false) ?? FormWrites.Call($"{Instance}.stopTracking", CameraSubject)
         : FormWrites.Set($"{Instance}.trackingEnabled", true));
 
+
     private UIElement Radios(IReadOnlyList<string> labels, int selected, Action<int> pick)
     {
         var group = $"{_client}.{++_groups}";

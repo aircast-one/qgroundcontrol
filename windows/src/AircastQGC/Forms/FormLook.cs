@@ -15,7 +15,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace AircastQGC.Forms;
 
-internal enum ButtonLook { Standard, Accent, Subtle }
+internal enum ButtonLook { Standard, Accent, Subtle, Stop }
 
 internal static class FormLook
 {
@@ -204,6 +204,7 @@ internal static class FormLook
         {
             case ButtonLook.Accent: PreflightLook.Accent(button); break;
             case ButtonLook.Subtle: PreflightLook.Subtle(button); break;
+            case ButtonLook.Stop: PreflightLook.Stop(button); break;
             default: PreflightLook.Standard(button); break;
         }
     }

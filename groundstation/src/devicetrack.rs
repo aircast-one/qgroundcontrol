@@ -70,6 +70,10 @@ fn reading(found: Option<(Source, Option<Value>)>, armed: bool) -> Option<Value>
     })
 }
 
+pub fn pursuit_state() -> Value {
+    crate::detections::lock().pursuit(crate::hub::now_ms())
+}
+
 pub fn tracking(camera: &Value) -> Option<Value> {
     (!camera_tracks(camera))
         .then(|| reading(tracker(), ARMED.load(Ordering::Relaxed)))
@@ -77,15 +81,34 @@ pub fn tracking(camera: &Value) -> Option<Value> {
 }
 
 pub fn take_changed() -> bool {
-    let now = reading(tracker(), ARMED.load(Ordering::Relaxed)).unwrap_or(Value::Null);
+    let now = json!([
+        reading(tracker(), ARMED.load(Ordering::Relaxed)),
+        pursuit_state(),
+    ]);
     let mut announced = ANNOUNCED.lock().unwrap_or_else(PoisonError::into_inner);
     let changed = *announced != now;
     *announced = now;
     changed
 }
 
+fn camera(backend: &dyn Backend) -> Value {
+    backend.value_fields(CAMERA, "hasTracking")
+}
+
+pub fn offered(pursuit: Value, camera: &Value) -> Value {
+    if camera_tracks(camera) {
+        Value::Null
+    } else {
+        pursuit
+    }
+}
+
+pub fn offered_by(backend: &dyn Backend, pursuit: Value) -> Value {
+    offered(pursuit, &camera(backend))
+}
+
 pub fn applies(backend: &dyn Backend) -> Option<Source> {
-    (!camera_tracks(&backend.value_fields(CAMERA, "hasTracking")))
+    (!camera_tracks(&camera(backend)))
         .then(tracker)
         .flatten()
         .map(|(source, _)| source)
@@ -169,6 +192,20 @@ pub fn stop(source: &Source) -> Value {
     )
 }
 
+pub fn pursue(source: &Source) -> Value {
+    answer(
+        crate::http::send("POST", &source.pursue_url(), &JSON, None, TRACK_TIMEOUT),
+        |_| None,
+    )
+}
+
+pub fn stop_pursue(source: &Source) -> Value {
+    answer(
+        crate::http::send("DELETE", &source.pursue_url(), &JSON, None, TRACK_TIMEOUT),
+        |_| None,
+    )
+}
+
 pub fn write(value: &str) -> Value {
     match serde_json::from_str::<Value>(value)
         .ok()
@@ -214,6 +251,25 @@ mod tests {
             "just beside a small car still picks it"
         );
         assert_eq!(box_under(&boxes, 0.10, 0.90), None, "nothing near the tap");
+    }
+
+    #[test]
+    fn chase_is_not_offered_when_the_gimbal_camera_tracks_on_its_own() {
+        let ready = json!({ "engaged": false, "ready": true, "reason": "" });
+        assert_eq!(
+            offered(ready.clone(), &json!({ "hasTracking": true })),
+            Value::Null,
+            "startPursuit refuses while the camera tracks natively, so the heads must not offer Chase"
+        );
+        assert_eq!(
+            offered(ready.clone(), &json!({ "hasTracking": false })),
+            ready
+        );
+        assert_eq!(
+            offered(ready.clone(), &json!({})),
+            ready,
+            "an aircastd stream camera reports no tracking"
+        );
     }
 
     #[test]

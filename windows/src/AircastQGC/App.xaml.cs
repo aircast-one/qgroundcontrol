@@ -46,6 +46,7 @@ public partial class App : Application
             GcsLocation.Start();
             VideoDriver.Start();
             _window = new MainWindow();
+            NativeDebug.Install(_window);
             _window.Closed += (_, _) =>
             {
                 VideoDriver.Stop();

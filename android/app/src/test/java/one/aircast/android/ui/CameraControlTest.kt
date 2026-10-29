@@ -58,6 +58,30 @@ class CameraControlTest {
     }
 }
 
+class TrackingPursuitTest {
+
+    private fun tracking(extra: String) =
+        trackingReading(JSONObject("""{"tracking":{"supported":true}$extra}"""))
+
+    @Test
+    fun `tracking without a pursuit field offers no chase`() {
+        assertNull(tracking("")!!.pursuit)
+    }
+
+    @Test
+    fun `a pursuit that is not ready carries the reason to show the operator`() {
+        val pursuit = tracking(""","pursuit":{"engaged":false,"ready":false,"reason":"No target locked"}""")!!.pursuit!!
+        assertFalse(pursuit.engaged)
+        assertFalse(pursuit.ready)
+        assertEquals("No target locked", pursuit.reason)
+    }
+
+    @Test
+    fun `an engaged pursuit reads as engaged`() {
+        assertTrue(tracking(""","pursuit":{"engaged":true,"ready":true,"reason":""}""")!!.pursuit!!.engaged)
+    }
+}
+
 class CameraModeChangeTest {
     private fun view(extra: String) = JSONObject(
         """{"present":true,"hasModes":true,"modeText":"Photo",$extra}""",
