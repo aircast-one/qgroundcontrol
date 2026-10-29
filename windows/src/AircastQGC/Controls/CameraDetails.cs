@@ -65,7 +65,6 @@ public sealed partial class CameraDetails : UserControl
         state.Streams.Count > 1 ? Section("VIDEO STREAM", Radios(state.Streams, state.CurrentStream, index => Write($"{Instance}.currentStream", index))) : null,
         state.CapturesPhotos ? PhotoMode(state) : null,
         state.Tracking is { } tracking ? Wide(FormLook.Button(tracking.ToggleLabel, () => ToggleTracking(tracking), ButtonLook.Standard, "")) : null,
-        state.Pursuit is { } pursuit && state.Tracking is { Box: { } } ? Chase(pursuit) : null,
         state.ThermalMode is { } mode ? Thermal(mode, state.ThermalOpacity) : null,
         state.Destructive.Count > 0 ? Section("STORAGE AND RESET", FormLook.Stack(4, state.Destructive.Select(Destructive))) : null,
     ];
@@ -123,41 +122,6 @@ public sealed partial class CameraDetails : UserControl
         ? FormWrites.Set($"{Instance}.trackingEnabled", false) ?? FormWrites.Call($"{Instance}.stopTracking", CameraSubject)
         : FormWrites.Set($"{Instance}.trackingEnabled", true));
 
-    private UIElement Chase(PursuitState pursuit) => pursuit.Engaged ? Wide(Abort(pursuit.Label)) : Engage(pursuit);
-
-    private UIElement Engage(PursuitState pursuit)
-    {
-        var button = Wide(FormLook.Button(pursuit.Label, StartChase, ButtonLook.Standard, ""));
-        button.IsEnabled = pursuit.Ready;
-        return FormLook.Stack(2, button, FormLook.Caption(pursuit.Ready ? "" : pursuit.Reason, "TextTertiaryBrush"));
-    }
-
-    private Button Abort(string label)
-    {
-        var button = FormLook.Button(label, StopChase);
-        button.MinHeight = FormLook.RowMinHeight;
-        button.BorderThickness = new Thickness(2);
-        button.Resources["ButtonBackground"] = FormLook.Brush("CriticalBgBrush");
-        button.Resources["ButtonBackgroundPointerOver"] = FormLook.Brush("CriticalBgBrush");
-        button.Resources["ButtonBackgroundPressed"] = FormLook.Brush("CriticalBrush");
-        button.Resources["ButtonForeground"] = FormLook.Brush("CriticalBrush");
-        button.Resources["ButtonForegroundPointerOver"] = FormLook.Brush("CriticalBrush");
-        button.Resources["ButtonForegroundPressed"] = FormLook.Brush("CriticalBrush");
-        button.Resources["ButtonBorderBrush"] = FormLook.Brush("CriticalBrush");
-        button.Resources["ButtonBorderBrushPointerOver"] = FormLook.Brush("CriticalBrush");
-        button.Resources["ButtonBorderBrushPressed"] = FormLook.Brush("CriticalBrush");
-        AutomationProperties.SetName(button, label);
-        return button;
-    }
-
-    private async void StartChase()
-    {
-        if (!await FormLook.Confirm(XamlRoot, "Chase the target?",
-            "The aircraft will fly itself toward the locked target. Keep the area clear and be ready to take manual control.", "Chase", "Cancel")) return;
-        Report(FormWrites.Call($"{Instance}.startPursuit", CameraSubject));
-    }
-
-    private void StopChase() => Report(FormWrites.Call($"{Instance}.stopPursuit", CameraSubject));
 
     private UIElement Radios(IReadOnlyList<string> labels, int selected, Action<int> pick)
     {

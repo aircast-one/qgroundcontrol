@@ -27,6 +27,8 @@ public sealed partial class VideoPayloadLayer : UserControl
     private const string RadarView = "view.proximityRadar";
     private const string FitView = "view.control(settings.videoSettings.videoFit)";
     private const string StartTracking = "vehicle.cameraManager.currentCameraInstance.startTracking";
+    private const string CameraInstance = "vehicle.cameraManager.currentCameraInstance";
+    private const string CameraSubject = "The camera";
     private const string OrbitView = "view.orbit";
     private const string GroundAt = "videoAr.groundAt";
     private const string PauseVehicle = "vehicle.pauseVehicle";
@@ -69,6 +71,9 @@ public sealed partial class VideoPayloadLayer : UserControl
     private readonly TextBlock _refusalText = FormLook.Caption("", "CriticalBrush");
     private readonly Border _refusal;
     private readonly StackPanel _aimTag;
+    private readonly Button _chaseButton;
+    private readonly TextBlock _chaseReason = FormLook.Caption("", "TextSecondaryBrush");
+    private readonly StackPanel _chase;
     private readonly DispatcherQueueTimer _hold;
     private readonly DispatcherQueueTimer _refusalTimer;
     private readonly Stopwatch _sinceDrag = Stopwatch.StartNew();
@@ -90,6 +95,7 @@ public sealed partial class VideoPayloadLayer : UserControl
     private JsonObject _video = new();
     private GimbalState? _gimbal;
     private TrackingState? _tracking;
+    private PursuitState? _pursuit;
     private ProximityRadar? _radar;
     private Gesture? _gesture;
     private bool _expanded;
@@ -134,6 +140,27 @@ public sealed partial class VideoPayloadLayer : UserControl
             Visibility = Visibility.Collapsed,
             Children = { _aimPill, _refusal },
         };
+        _chaseButton = new Button
+        {
+            MinWidth = 160,
+            MinHeight = 44,
+            Padding = new Thickness(20, 0, 20, 0),
+            CornerRadius = new CornerRadius(22),
+            Content = "Chase",
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        _chaseButton.Click += (_, _) => OnChase();
+        _chaseReason.HorizontalAlignment = HorizontalAlignment.Center;
+        _chaseReason.TextAlignment = TextAlignment.Center;
+        _chase = new StackPanel
+        {
+            Spacing = 4,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = BelowStatusRow,
+            Visibility = Visibility.Collapsed,
+            Children = { _chaseButton, _chaseReason },
+        };
         _ring = new ProgressRing
         {
             Width = RingSize,
@@ -173,6 +200,7 @@ public sealed partial class VideoPayloadLayer : UserControl
         _root.Children.Add(_ringLayer);
         _root.Children.Add(_hint);
         _root.Children.Add(_aimTag);
+        _root.Children.Add(_chase);
         _root.PointerPressed += OnPressed;
         _root.PointerMoved += OnMoved;
         _root.PointerReleased += OnReleased;
@@ -254,7 +282,7 @@ public sealed partial class VideoPayloadLayer : UserControl
     private void Start()
     {
         Watch("video", VideoView, view => _video = view);
-        Watch("camera", CameraView, view => _tracking = PayloadJson.Tracking(view));
+        Watch("camera", CameraView, view => { _tracking = PayloadJson.Tracking(view); _pursuit = PayloadJson.Pursuit(view); });
         Watch("gimbal", GimbalCalls.View, view => _gimbal = PayloadJson.Gimbal(view));
         Watch("radar", RadarView, view => _radar = PayloadJson.Radar(view));
         Watch("fit", FitView, view => _fit = VideoJson.Number(view["value"]) is double mode ? (int)mode : VideoSurface.FitHeight);
@@ -300,7 +328,54 @@ public sealed partial class VideoPayloadLayer : UserControl
         if (!hintDue && _hintDue && _hintText.Text == HoldHint) _hint.Visibility = Visibility.Collapsed;
         _hintDue = hintDue;
         if (!Holdable) CancelHold();
+        UpdateChase();
         Draw();
+    }
+
+    private void UpdateChase()
+    {
+        var show = _pursuit is not null && _tracking?.Box is not null && _expanded && (Decoding || Synthetic);
+        _chase.Visibility = VideoJson.Shown(show);
+        if (_pursuit is not { } pursuit) return;
+        if (pursuit.Engaged)
+        {
+            _chaseButton.Content = "Chasing — Stop";
+            _chaseButton.IsEnabled = true;
+            _chaseReason.Visibility = Visibility.Collapsed;
+            StyleChase(engaged: true);
+        }
+        else
+        {
+            _chaseButton.Content = "Chase";
+            _chaseButton.IsEnabled = pursuit.Ready;
+            FormLook.Say(_chaseReason, pursuit.Ready ? "" : pursuit.Reason);
+            StyleChase(engaged: false);
+        }
+    }
+
+    private void StyleChase(bool engaged)
+    {
+        var fill = FormLook.Brush(engaged ? "CriticalBrush" : "AccentBrush");
+        var ink = new SolidColorBrush(Colors.White);
+        _chaseButton.Resources["ButtonBackground"] = fill;
+        _chaseButton.Resources["ButtonBackgroundPointerOver"] = fill;
+        _chaseButton.Resources["ButtonBackgroundPressed"] = fill;
+        _chaseButton.Resources["ButtonForeground"] = ink;
+        _chaseButton.Resources["ButtonForegroundPointerOver"] = ink;
+        _chaseButton.Resources["ButtonForegroundPressed"] = ink;
+    }
+
+    private async void OnChase()
+    {
+        if (_pursuit is not { } pursuit) return;
+        if (pursuit.Engaged)
+        {
+            ShowRefusal(FormWrites.Call($"{CameraInstance}.stopPursuit", CameraSubject));
+            return;
+        }
+        if (!await FormLook.Confirm(XamlRoot, "Chase the target?",
+            "The aircraft will fly itself toward the locked target. Keep the area clear and be ready to take manual control.", "Chase", "Cancel")) return;
+        ShowRefusal(FormWrites.Call($"{CameraInstance}.startPursuit", CameraSubject));
     }
 
     private Grid LookAt()
