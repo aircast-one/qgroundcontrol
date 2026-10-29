@@ -91,8 +91,24 @@ pub fn take_changed() -> bool {
     changed
 }
 
+fn camera(backend: &dyn Backend) -> Value {
+    backend.value_fields(CAMERA, "hasTracking")
+}
+
+pub fn offered(pursuit: Value, camera: &Value) -> Value {
+    if camera_tracks(camera) {
+        Value::Null
+    } else {
+        pursuit
+    }
+}
+
+pub fn offered_by(backend: &dyn Backend, pursuit: Value) -> Value {
+    offered(pursuit, &camera(backend))
+}
+
 pub fn applies(backend: &dyn Backend) -> Option<Source> {
-    (!camera_tracks(&backend.value_fields(CAMERA, "hasTracking")))
+    (!camera_tracks(&camera(backend)))
         .then(tracker)
         .flatten()
         .map(|(source, _)| source)
@@ -235,6 +251,25 @@ mod tests {
             "just beside a small car still picks it"
         );
         assert_eq!(box_under(&boxes, 0.10, 0.90), None, "nothing near the tap");
+    }
+
+    #[test]
+    fn chase_is_not_offered_when_the_gimbal_camera_tracks_on_its_own() {
+        let ready = json!({ "engaged": false, "ready": true, "reason": "" });
+        assert_eq!(
+            offered(ready.clone(), &json!({ "hasTracking": true })),
+            Value::Null,
+            "startPursuit refuses while the camera tracks natively, so the heads must not offer Chase"
+        );
+        assert_eq!(
+            offered(ready.clone(), &json!({ "hasTracking": false })),
+            ready
+        );
+        assert_eq!(
+            offered(ready.clone(), &json!({})),
+            ready,
+            "an aircastd stream camera reports no tracking"
+        );
     }
 
     #[test]

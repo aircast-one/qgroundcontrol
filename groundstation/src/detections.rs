@@ -451,7 +451,9 @@ pub fn maintain(backend: &dyn Backend) {
 
 pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
     maintain(backend);
-    lock().snapshot(crate::hub::now_ms())
+    let mut view = lock().snapshot(crate::hub::now_ms());
+    view["pursuit"] = crate::devicetrack::offered_by(backend, view["pursuit"].take());
+    view
 }
 
 #[cfg(test)]
