@@ -242,6 +242,10 @@ export const sameCamera = (a: WizardCamera | null, b: WizardCamera): boolean => 
 
 export const continueLeads = (rtsp: string): boolean => rtsp.trim() !== '';
 
+export const repairing = (view: CameraWizardView): boolean => !view.isNew && view.lookingFor !== '';
+
+export const nextOffered = (view: CameraWizardView, rtsp: string, picked: boolean): boolean => !repairing(view) || picked || rtsp.trim() !== '';
+
 export const scanLeads = (rtsp: string, picked: boolean): boolean => rtsp.trim() === '' && !picked;
 
 export const openWizard = async (view: CameraWizardView, scan: boolean): Promise<number> => optInt(optJSONObject(await Qgc.call(WIZARD_OPEN, view.json, scan), 'result'), 'session', -1);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NO_FORM, continueLeads, parseCameraWizard, parseDeviceWizard, parseWizardForm, parseWizardNext, sameCamera, scanLeads } from '@/ui/DeviceCameraWizard';
+import { NO_FORM, continueLeads, nextOffered, parseCameraWizard, parseDeviceWizard, parseWizardForm, parseWizardNext, repairing, sameCamera, scanLeads } from '@/ui/DeviceCameraWizard';
 
 describe('DeviceCameraWizardTest', () => {
   it('reads the wizard the device serves', () => {
@@ -27,6 +27,13 @@ describe('DeviceCameraWizardTest', () => {
     expect(view?.title).toBe('cam2 is not answering');
     expect(view?.checks).toEqual(["The RTSP port in the camera's app is the one in its address — 192.168.8.10:554"]);
     expect(parseCameraWizard({ name: 'cam' })?.checks).toEqual([]);
+    expect(repairing(view!)).toBe(true);
+    expect(repairing(parseCameraWizard({ name: 'cam', new: true, lookingFor: 'x' })!)).toBe(false);
+    expect(repairing(parseCameraWizard({ name: 'cam', new: false })!)).toBe(false);
+    expect(nextOffered(view!, '', false)).toBe(false);
+    expect(nextOffered(view!, '', true)).toBe(true);
+    expect(nextOffered(view!, 'rtsp://x', false)).toBe(true);
+    expect(nextOffered(parseCameraWizard({ name: 'cam', new: true })!, '', false)).toBe(true);
     expect(view?.interfaces[0]?.address).toBe('192.168.8.2/24');
     expect(view?.piCamera?.action).toBe('Use it');
     expect(view?.json.others).toEqual([{ name: 'cam', source: 'rtsp://x' }]);

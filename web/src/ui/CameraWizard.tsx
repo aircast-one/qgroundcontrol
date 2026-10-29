@@ -19,6 +19,8 @@ import {
   type WizardRefusal,
   applyCamera,
   continueLeads,
+  nextOffered,
+  repairing,
   fixWizardPort,
   openWizard,
   parseDeviceWizard,
@@ -237,7 +239,7 @@ export const CameraWizard = ({
 
   return (
     <div className="flex flex-col gap-3 px-list py-2" role="group" aria-label={view.isNew ? 'New camera' : `Set up ${view.name}`}>
-      <StepNames step={step} skipsPort={step === 1 && form.skipsPort} />
+      {repairing(view) && step === 1 ? null : <StepNames step={step} skipsPort={step === 1 && form.skipsPort} />}
       {step === 1 ? (
         <>
           {view.piCamera !== null ? (
@@ -282,7 +284,7 @@ export const CameraWizard = ({
           ) : null}
           {wizard.checklist === '' ? (
             <div className="flex flex-col items-start gap-2">
-              <Hint text="Plug the camera in and look for it." />
+              {repairing(view) ? null : <Hint text="Plug the camera in and look for it." />}
               <Scan enabled={!wizard.scanning} onClick={() => void scanForCameras()}>
                 {wizard.scanning ? 'Looking…' : 'Scan for cameras'}
               </Scan>
@@ -338,7 +340,7 @@ export const CameraWizard = ({
               {wizard.camsHint !== '' ? <Hint text={wizard.camsHint} /> : null}
             </div>
           ) : null}
-          {wizard.details !== '' ? (
+          {wizard.details !== '' && (!repairing(view) || wizard.todo.length > 0) ? (
             <Fold title={wizard.details} {...tech}>
               <ScanDetails wizard={wizard} coverage={view.coverage} input={input} onInput={changeInput} onFix={(port) => void fixWizardPort(port.iface, input(port).text.trim())} />
             </Fold>
@@ -407,7 +409,7 @@ export const CameraWizard = ({
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
-            <Next onClick={() => void advance(rtsp, name)}>{form.next}</Next>
+            {nextOffered(view, rtsp, picked !== null) ? <Next onClick={() => void advance(rtsp, name)}>{form.next}</Next> : null}
             {onCancel !== null ? <TextButton onClick={onCancel}>Cancel</TextButton> : null}
           </div>
           {view.isNew ? (

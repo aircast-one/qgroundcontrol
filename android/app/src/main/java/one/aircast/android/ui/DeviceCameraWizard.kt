@@ -192,6 +192,10 @@ internal fun parseWizardForm(json: JSONObject?): WizardForm = json?.let { Wizard
 
 internal fun continueLeads(rtsp: String): Boolean = rtsp.isNotBlank()
 
+internal fun repairing(view: CameraWizardView): Boolean = !view.isNew && view.lookingFor.isNotEmpty()
+
+internal fun nextOffered(view: CameraWizardView, rtsp: String, picked: Boolean): Boolean = !repairing(view) || picked || rtsp.isNotBlank()
+
 internal fun scanLeads(rtsp: String, picked: Boolean): Boolean = rtsp.isBlank() && !picked
 
 private suspend fun wizardCall(path: String, vararg args: Any?): JSONObject? = withContext(Dispatchers.Default) { Qgc.call(path, *args) }

@@ -292,7 +292,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).semantics { contentDescription = if (view.isNew) "New camera" else "Set up ${view.name}" },
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        StepNames(step, skipsPort = step == 1 && form.skipsPort)
+        if (!(repairing(view) && step == 1)) StepNames(step, skipsPort = step == 1 && form.skipsPort)
         if (step == 1) {
             view.piCamera?.let { pi ->
                 Row(
@@ -335,7 +335,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
             if (view.lookingFor.isNotEmpty()) Text(view.lookingFor, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.aircast.warning)
             if (wizard.checklist.isEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DeviceHint("Plug the camera in and look for it.")
+                    if (!repairing(view)) DeviceHint("Plug the camera in and look for it.")
                     LeadButton(scanLeads(rtsp, picked != null), onClick = { scope.launch { scanForCameras() } }, enabled = !wizard.scanning) {
                         Text(if (wizard.scanning) "Looking…" else "Scan for cameras")
                     }
@@ -381,7 +381,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                     if (wizard.camsHint.isNotEmpty()) DeviceHint(wizard.camsHint)
                 }
             }
-            if (wizard.details.isNotEmpty()) {
+            if (wizard.details.isNotEmpty() && (!repairing(view) || wizard.todo.isNotEmpty())) {
                 Fold(wizard.details, techOpen, { techOpen = it }) {
                     ScanDetails(wizard, view.coverage, ::input, { port, change -> inputs = inputs + (port.iface to change) }) { port ->
                         scope.launch { fixWizardPort(port.iface, input(port).text.trim()) }
@@ -441,7 +441,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                LeadButton(continueLeads(rtsp), onClick = { scope.launch { advance(rtsp, name) } }) { Text(form.next) }
+                if (nextOffered(view, rtsp, picked != null)) LeadButton(continueLeads(rtsp), onClick = { scope.launch { advance(rtsp, name) } }) { Text(form.next) }
                 onCancel?.let { TextButton(onClick = it) { Text("Cancel") } }
             }
             if (view.isNew) Fold("No camera? Use a video file", fileOpen, { fileOpen = it }) {

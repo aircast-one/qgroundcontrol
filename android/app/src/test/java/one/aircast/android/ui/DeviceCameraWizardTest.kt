@@ -23,6 +23,13 @@ class DeviceCameraWizardTest {
         assertEquals("cam2 is not answering", view?.title)
         assertEquals(listOf("The camera has power — its light is on"), view?.checks)
         assertEquals(emptyList<String>(), parseCameraWizard(JSONObject("""{"name":"cam"}"""))?.checks)
+        val dark = parseCameraWizard(JSONObject("""{"name":"cam","new":false,"lookingFor":"The camera refuses the connection."}"""))!!
+        assertTrue(repairing(dark))
+        assertFalse(repairing(parseCameraWizard(JSONObject("""{"name":"cam","new":true,"lookingFor":"x"}"""))!!))
+        assertFalse(nextOffered(dark, "", picked = false))
+        assertTrue(nextOffered(dark, "", picked = true))
+        assertTrue(nextOffered(dark, "rtsp://x", picked = false))
+        assertTrue(nextOffered(parseCameraWizard(JSONObject("""{"name":"cam","new":true}"""))!!, "", picked = false))
         assertEquals("192.168.8.2/24", view?.interfaces?.firstOrNull()?.address)
         assertEquals("Use it", view?.piCamera?.action)
         assertEquals("cam", view?.json?.optJSONArray("others")?.optJSONObject(0)?.optString("name"))
