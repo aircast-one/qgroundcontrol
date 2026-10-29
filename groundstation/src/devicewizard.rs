@@ -74,6 +74,7 @@ struct Port {
     kind: String,
     state: String,
     subnet: String,
+    subnets: Vec<String>,
     checked: i64,
     reason: String,
     tried_address: String,
@@ -191,6 +192,15 @@ fn ports_of(json: &Value) -> Vec<Port> {
             kind: text(it, "type"),
             state: text(it, "state"),
             subnet: text(it, "subnet"),
+            subnets: it["subnets"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
             checked: integer(it, "checked").unwrap_or(0),
             reason: text(it, "reason"),
             tried_address: text(it, "triedAddress"),
@@ -288,9 +298,29 @@ fn address_part(cidr: &str) -> &str {
     cidr.split('/').next().unwrap_or_default()
 }
 
+fn port_subnets(port: &Port) -> Vec<&str> {
+    match port.subnets.is_empty() {
+        true => Some(port.subnet.as_str())
+            .filter(|s| !s.is_empty())
+            .into_iter()
+            .collect(),
+        false => port.subnets.iter().map(String::as_str).collect(),
+    }
+}
+
+fn port_reaches(port: &Port, host: &str) -> bool {
+    !host.is_empty()
+        && port_subnets(port)
+            .iter()
+            .any(|subnet| same_subnet(host, subnet))
+}
+
+fn subnets_label(port: &Port) -> String {
+    port_subnets(port).join(", ")
+}
+
 fn port_has_subnet(port: &Port, want: &str) -> bool {
-    let host = address_part(want);
-    !port.subnet.is_empty() && !host.is_empty() && same_subnet(host, &port.subnet)
+    port_reaches(port, address_part(want))
 }
 
 fn first_suggest(port: &Port) -> String {
@@ -366,7 +396,8 @@ fn state_label(port: &Port) -> String {
     match port.state.as_str() {
         "searched" => format!(
             "checked {} addresses on {} — nothing answered",
-            port.checked, port.subnet
+            port.checked,
+            subnets_label(port)
         ),
         "no-carrier" if port.kind == "wi-fi" => "not connected to any network".into(),
         "no-carrier" => "nothing plugged in — check the cable and the camera's power".into(),
@@ -398,7 +429,7 @@ fn port_label(port: &Port) -> String {
 }
 
 fn cable_label(port: &Port, host: &str) -> String {
-    match !host.is_empty() && !port.subnet.is_empty() && same_subnet(host, &port.subnet) {
+    match port_reaches(port, host) {
         true => format!(
             "nothing answered at {host} on {} — the port is set right; check the cable goes to the camera, not a router or switch.",
             port.iface
@@ -439,9 +470,7 @@ fn scan_outcome(cams: Vec<Camera>, ports: Vec<Port>, source_host: &str) -> Outco
     let (todo, rest): (Vec<(Scanned, bool)>, Vec<(Scanned, bool)>) = ports
         .iter()
         .map(|port| {
-            let found = cams
-                .iter()
-                .any(|cam| !port.subnet.is_empty() && same_subnet(&cam.host, &port.subnet));
+            let found = cams.iter().any(|cam| port_reaches(port, &cam.host));
             let wired = !cable_label(port, source_host).is_empty() && !fresh;
             (
                 Scanned {
@@ -667,12 +696,9 @@ fn cam_url(base: &str, user: &str, pass: &str) -> String {
 
 fn reachable_port<'a>(rtsp: &str, ports: &'a [Port]) -> Option<&'a Port> {
     let host = rtsp_host(rtsp);
-    ports.iter().find(|port| {
-        !host.is_empty()
-            && !port.uplink
-            && !port.subnet.is_empty()
-            && same_subnet(&host, &port.subnet)
-    })
+    ports
+        .iter()
+        .find(|port| !port.uplink && port_reaches(port, &host))
 }
 
 fn commits_now(rtsp: &str, ports: &[Port]) -> bool {
@@ -1721,6 +1747,33 @@ mod tests {
         assert_eq!(wizard.templates, vec![siyi()]);
         assert!(!wizard.is_new);
         assert_eq!(wizard_of(&Value::Null), Wizard::default());
+    }
+
+    #[test]
+    fn a_port_on_every_camera_subnet_owns_a_camera_on_any_of_them() {
+        let found = json!({
+            "cameras": [{ "host": "192.168.2.119", "port": 554, "url": "rtsp://192.168.2.119:554/s", "pathFound": true }],
+            "ports": [{ "interface": "eth0", "label": "Ethernet port (eth0)", "type": "ethernet", "state": "searched", "subnet": "192.168.144.0/24", "subnets": ["192.168.144.0/24", "192.168.2.0/24"], "checked": 506 }],
+        });
+        let port = &ports_of(&found)[0];
+        assert!(port_reaches(port, "192.168.2.119"));
+        assert!(!port_reaches(port, "192.168.8.4"));
+        assert!(port_has_subnet(port, "192.168.2.2/24"));
+        assert_eq!(
+            state_label(port),
+            "checked 506 addresses on 192.168.144.0/24, 192.168.2.0/24 — nothing answered"
+        );
+        let outcome = scan_outcome(cameras_of(&found, "viewpro"), ports_of(&found), "");
+        assert!(
+            outcome.todo.is_empty(),
+            "the port that found the camera is not something to fix"
+        );
+        assert!(outcome.rest[0].found);
+
+        let legacy = ports_of(
+            &json!({ "ports": [{ "interface": "eth0", "state": "searched", "subnet": "192.168.8.0/24" }] }),
+        );
+        assert!(port_reaches(&legacy[0], "192.168.8.4"));
     }
 
     #[test]
