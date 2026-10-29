@@ -123,6 +123,8 @@ public sealed partial class MainWindow : Window
         GuidedStrip.ActionRequested += (_, offer) => GuidedCard.Show(offer);
         Intercept.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
         Intercept.Refused += (_, reason) => Warn(reason);
+        Chase.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
+        Chase.Refused += (_, reason) => Warn(reason);
         Intercept.EntryChanged += (_, entry) =>
             GuidedStrip.ShowExtra(entry is null ? null : (entry.Label, "\uE81D", () => Intercept.Run(entry)));
         GuidedStrip.CutRequested += (_, offer) =>
