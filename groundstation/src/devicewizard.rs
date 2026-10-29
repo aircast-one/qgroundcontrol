@@ -44,6 +44,8 @@ const VERIFY_ATTEMPTS: usize = 10;
 const VERIFY_POLL: Duration = Duration::from_millis(1500);
 const PORT_UP_ATTEMPTS: usize = 15;
 const PORT_UP_POLL: Duration = Duration::from_secs(1);
+const RESCAN_WAIT: u8 = 10;
+const RESCAN_TICK: Duration = Duration::from_secs(1);
 
 fn pattern(source: &str) -> Regex {
     Regex::new(source).expect("a fixed pattern compiles")
@@ -116,6 +118,7 @@ struct Template {
 struct Wizard {
     name: String,
     is_new: bool,
+    dark: bool,
     rtsp: String,
     source: String,
     subnets: Vec<Subnet>,
@@ -150,6 +153,7 @@ fn wizard_of(json: &Value) -> Wizard {
     Wizard {
         name: text(json, "name"),
         is_new: flag(json, "new"),
+        dark: !flag(json, "new") && !text(json, "lookingFor").is_empty(),
         rtsp: text(json, "rtsp"),
         source: text(json, "source"),
         subnets: objects(json, "subnets")
@@ -830,6 +834,7 @@ struct Session {
     note: String,
     outcome: Option<Outcome>,
     scans: u64,
+    again: u8,
     adopt: Option<Camera>,
     no_port: bool,
     fixing: BTreeMap<String, (bool, String)>,
@@ -982,6 +987,7 @@ async fn scan(device: &impl Device, id: u64, auto: bool) -> Option<Outcome> {
     let wizard = session().wizard.clone();
     change(id, |held| {
         held.scanning = true;
+        held.again = 0;
         held.note = SCANNING_NOTE.into();
         held.outcome = None;
         held.fixing.clear();
@@ -1258,6 +1264,36 @@ async fn apply(device: &impl Device, id: u64, job: u64, setup: Setup) {
     );
 }
 
+fn still_dark(held: &Session) -> bool {
+    held.applying.state.is_empty()
+        && (held.scanning
+            || held
+                .outcome
+                .as_ref()
+                .is_some_and(|found| found.cams.is_empty()))
+}
+
+async fn rescan(device: &impl Device, id: u64) {
+    let found_one = |outcome: Option<Outcome>| outcome.is_none_or(|found| !found.cams.is_empty());
+    if found_one(scan(device, id, false).await) {
+        return;
+    }
+    loop {
+        for left in (1..=RESCAN_WAIT).rev() {
+            if !change_where(
+                |held| held.id == id && still_dark(held),
+                |held| held.again = left,
+            ) {
+                return;
+            }
+            device.pause(RESCAN_TICK).await;
+        }
+        if found_one(scan(device, id, false).await) {
+            return;
+        }
+    }
+}
+
 fn begin(wizard: Wizard) -> u64 {
     let mut held = session();
     let id = held.id + 1;
@@ -1272,13 +1308,16 @@ fn begin(wizard: Wizard) -> u64 {
 
 fn open(wizard: &Value, scan_now: bool) -> Value {
     let wizard = wizard_of(wizard);
-    let is_new = wizard.is_new;
+    let (is_new, dark) = (wizard.is_new, wizard.dark);
     let id = begin(wizard);
     if is_new {
         launch(move || find_ports_job(id));
     }
-    if is_new || scan_now {
-        launch(move || scan_job(id, is_new));
+    match (is_new, scan_now, dark) {
+        (true, _, _) => launch(move || scan_job(id, true)),
+        (false, true, true) => launch(move || rescan_job(id)),
+        (false, true, false) => launch(move || scan_job(id, false)),
+        (false, false, _) => {}
     }
     json!({ "ok": true, "result": { "session": id } })
 }
@@ -1289,6 +1328,10 @@ async fn find_ports_job(id: u64) {
 
 async fn scan_job(id: u64, auto: bool) {
     scan(&Connected, id, auto).await;
+}
+
+async fn rescan_job(id: u64) {
+    rescan(&Connected, id).await;
 }
 
 async fn fix_port_job(id: u64, iface: String, want: String) {
@@ -1483,6 +1526,7 @@ fn view_of(held: &Session) -> Value {
         "session": held.id,
         "scanning": held.scanning,
         "scans": held.scans,
+        "again": held.again,
         "adopt": held.adopt.as_ref().map(camera_json),
         "note": if quiet { "" } else { held.note.as_str() },
         "checklist": match quiet && !held.note.is_empty() {
@@ -2322,6 +2366,65 @@ mod tests {
         assert_eq!(view["todoHeading"], "Try this");
         assert_eq!(view["todo"][0]["open"], true);
         assert_eq!(view["adopt"], Value::Null);
+    }
+
+    #[test]
+    fn a_dark_camera_is_looked_for_again_every_ten_seconds_until_it_answers() {
+        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let id = begin(wizard(false));
+        let nothing = answered(json!({
+            "cameras": [],
+            "ports": [{ "interface": "eth0", "label": "Ethernet port (eth0)", "type": "ethernet", "state": "connected", "subnet": "192.168.8.2/24" }],
+        }));
+        let device = scripted(vec![
+            ("POST /api/streams/scan", nothing.clone()),
+            ("POST /api/streams/scan", nothing),
+            (
+                "POST /api/streams/scan",
+                answered(json!({
+                    "cameras": [{ "host": "192.168.8.10", "url": "rtsp://192.168.8.10:554/stream", "pathFound": true }],
+                    "ports": [{ "interface": "eth0", "label": "Ethernet port (eth0)", "type": "ethernet", "state": "connected", "subnet": "192.168.8.2/24" }],
+                })),
+            ),
+        ]);
+        quietly(rescan(&device, id));
+        assert_eq!(
+            device.asked.borrow().len(),
+            3,
+            "two silent scans, then the one that found it"
+        );
+        assert_eq!(
+            device.paused.get(),
+            2 * RESCAN_WAIT as usize,
+            "a countdown between scans, none after the camera answered"
+        );
+        let view = shown();
+        assert_eq!(view["again"], 0);
+        assert_eq!(view["cams"][0]["host"], "192.168.8.10");
+        assert_eq!(
+            view["adopt"]["host"], "192.168.8.10",
+            "the camera that came back is picked for the pilot"
+        );
+    }
+
+    #[test]
+    fn the_countdown_stops_when_the_pilot_moves_on() {
+        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let id = begin(wizard(false));
+        let device = scripted(vec![(
+            "POST /api/streams/scan",
+            answered(
+                json!({ "cameras": [], "ports": [{ "interface": "eth0", "label": "Ethernet port (eth0)", "type": "ethernet", "state": "connected" }] }),
+            ),
+        )]);
+        change(id, |held| held.applying.state = "working");
+        quietly(rescan(&device, id));
+        assert_eq!(
+            device.paused.get(),
+            0,
+            "an apply in flight ends the loop before its first tick"
+        );
+        assert_eq!(shown()["again"], 0);
     }
 
     #[test]

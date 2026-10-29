@@ -76,12 +76,6 @@ import org.json.JSONObject
 import java.io.File
 
 private val BOX_SHAPE = RoundedCornerShape(12.dp)
-private val CABLE_CHECKS = listOf(
-    "The cable goes from the camera to this device's camera port",
-    "The camera has power — its light is on",
-    "Give it 30 seconds after power-on",
-)
-
 private data class CameraSignIn(val shown: Boolean, val asked: Boolean)
 
 private data class PortInput(val open: Boolean, val text: String)
@@ -352,9 +346,12 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 Column(Modifier.boxed(MaterialTheme.colorScheme.outlineVariant), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(wizard.checklist, style = MaterialTheme.typography.titleSmall)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        CABLE_CHECKS.map { Text("☐ $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        view.checks.map { Text("☐ $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
-                    Button(onClick = { scope.launch { scanForCameras() } }, enabled = !wizard.scanning) { Text(if (wizard.scanning) "Looking…" else "Scan again") }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { scope.launch { scanForCameras() } }, enabled = !wizard.scanning) { Text(if (wizard.scanning) "Looking…" else "Scan again") }
+                        if (wizard.again > 0) DeviceHint("Checking again in ${wizard.again} s…")
+                    }
                 }
             }
             if (wizard.cams.isNotEmpty()) {
@@ -447,7 +444,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 LeadButton(continueLeads(rtsp), onClick = { scope.launch { advance(rtsp, name) } }) { Text(form.next) }
                 onCancel?.let { TextButton(onClick = it) { Text("Cancel") } }
             }
-            Fold("No camera? Use a video file", fileOpen, { fileOpen = it }) {
+            if (view.isNew) Fold("No camera? Use a video file", fileOpen, { fileOpen = it }) {
                 DeviceHint("Upload a video and the device loops it as a stream — a stand-in camera for trying out detection and the overlays.")
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { picker.launch(arrayOf("video/*")) }) { Text("Choose a video file") }

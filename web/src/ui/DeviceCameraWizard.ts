@@ -10,12 +10,14 @@ export type PortOption = {
 
 export type CameraWizardView = {
   readonly name: string;
+  readonly title: string;
   readonly isNew: boolean;
   readonly suggestedName: string;
   readonly rtsp: string;
   readonly rtspHint: string;
   readonly addressOpen: boolean;
   readonly lookingFor: string;
+  readonly checks: readonly string[];
   readonly piCamera: { readonly note: string; readonly action: string } | null;
   readonly iface: string;
   readonly interfaces: readonly PortOption[];
@@ -62,6 +64,7 @@ export type DeviceWizard = {
   readonly session: number;
   readonly scanning: boolean;
   readonly scans: number;
+  readonly again: number;
   readonly adopt: WizardCamera | null;
   readonly note: string;
   readonly checklist: string;
@@ -121,12 +124,14 @@ export const parseCameraWizard = (json: unknown): CameraWizardView | null => {
   const pi = optJSONObject(json, 'piCamera');
   return {
     name: optText(json, 'name'),
+    title: optText(json, 'title'),
     isNew: optBoolean(json, 'new'),
     suggestedName: optText(json, 'suggestedName'),
     rtsp: optText(json, 'rtsp'),
     rtspHint: optText(json, 'rtspHint'),
     addressOpen: optBoolean(json, 'addressOpen'),
     lookingFor: optText(json, 'lookingFor'),
+    checks: (optJSONArray(json, 'checks') ?? []).filter((it): it is string => typeof it === 'string'),
     piCamera: pi === null ? null : { note: optText(pi, 'note'), action: optText(pi, 'action') },
     iface: optText(json, 'interface'),
     interfaces: jsonObjects(optJSONArray(json, 'interfaces')).map((it) => ({
@@ -175,6 +180,7 @@ export const parseDeviceWizard = (json: Json | null): DeviceWizard => {
     session: optInt(json, 'session', -1),
     scanning: optBoolean(json, 'scanning'),
     scans: optInt(json, 'scans'),
+    again: optInt(json, 'again'),
     adopt: parseWizardCamera(optJSONObject(json, 'adopt')),
     note: optText(json, 'note'),
     checklist: optText(json, 'checklist'),

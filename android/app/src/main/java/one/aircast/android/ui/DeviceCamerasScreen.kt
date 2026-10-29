@@ -69,8 +69,9 @@ internal fun DeviceCamerasScreen(props: DeviceScreenProps) {
 @Composable
 private fun Cameras(view: CamerasView, shown: CamerasShown, props: DeviceScreenProps, onAdd: () -> Unit, onPick: (String) -> Unit) {
     val canAdd = shown != CamerasShown.Add
+    val repairing = (shown as? CamerasShown.Camera)?.camera?.live == false
     if (view.cameras.isNotEmpty()) CameraTabs(view.cameras, (shown as? CamerasShown.Camera)?.camera, onPick)
-    if (canAdd || view.cloudLink.isNotEmpty()) {
+    if (!repairing && (canAdd || view.cloudLink.isNotEmpty())) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (canAdd) TextButton(onClick = onAdd) { Text("+ Add camera") }
             Spacer(Modifier.weight(1f))
@@ -87,7 +88,7 @@ private fun Cameras(view: CamerasView, shown: CamerasShown, props: DeviceScreenP
             view.cameras.map { camera -> key(camera.name) { CameraTile(camera) { onPick(camera.name) } } }
             TopicRow(view.video, props.onOpen)
         }
-        CamerasShown.Add -> DeviceSection("Add a camera") { CameraWizard(view.add, onDone = onPick) }
+        CamerasShown.Add -> DeviceSection(view.add.title) { CameraWizard(view.add, onDone = onPick) }
     }
 }
 
@@ -161,7 +162,7 @@ private fun CameraDetail(camera: CameraView, scan: Boolean, onOpen: (String) -> 
     var wizard by rememberSaveable { mutableStateOf(scan.takeIf { it }) }
     when (val scanning = wizard) {
         null -> CameraOverview(camera, onOpen) { wizard = it }
-        else -> DeviceSection("Set up ${camera.name}", camera.status) {
+        else -> DeviceSection(camera.wizard.title, camera.status) {
             CameraWizard(camera.wizard, scan = scanning, onCancel = { wizard = null }, onDone = { wizard = null })
         }
     }

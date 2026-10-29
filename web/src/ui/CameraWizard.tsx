@@ -293,14 +293,15 @@ export const CameraWizard = ({
             <div className="flex flex-col gap-2 rounded-shape-md border border-outline-variant px-4 py-3" role="group" aria-label="Checklist">
               <Text typography="titleSmall">{wizard.checklist}</Text>
               <ul className="flex list-none flex-col gap-1 text-body-medium text-on-surface-variant">
-                <li>☐ The cable goes from the camera to this device's camera port</li>
-                <li>☐ The camera has power — its light is on</li>
-                <li>☐ Give it 30 seconds after power-on</li>
+                {view.checks.map((check) => (
+                  <li key={check}>☐ {check}</li>
+                ))}
               </ul>
-              <div>
+              <div className="flex flex-wrap items-center gap-3">
                 <Button enabled={!wizard.scanning} onClick={() => void scanForCameras()}>
                   {wizard.scanning ? 'Looking…' : 'Scan again'}
                 </Button>
+                {wizard.again > 0 ? <Hint text={`Checking again in ${wizard.again} s…`} /> : null}
               </div>
             </div>
           ) : null}
@@ -409,20 +410,22 @@ export const CameraWizard = ({
             <Next onClick={() => void advance(rtsp, name)}>{form.next}</Next>
             {onCancel !== null ? <TextButton onClick={onCancel}>Cancel</TextButton> : null}
           </div>
-          <Fold title="No camera? Use a video file" {...fileFold}>
-            <Hint text="Upload a video and the device loops it as a stream — a stand-in camera for trying out detection and the overlays." />
-            <div className="flex flex-wrap items-center gap-2">
-              <OutlinedButton onClick={() => void openDocument(['video/*']).then((chosen) => chosen !== null && setFile(chosen))}>Choose a video file</OutlinedButton>
-              <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="min-w-0 truncate">
-                {file?.name ?? 'H.264 .mp4 works best'}
-              </Text>
-            </div>
-            <div>
-              <OutlinedButton enabled={!uploading} onClick={() => void upload()}>
-                {uploading ? 'Uploading…' : 'Upload & start'}
-              </OutlinedButton>
-            </div>
-          </Fold>
+          {view.isNew ? (
+            <Fold title="No camera? Use a video file" {...fileFold}>
+              <Hint text="Upload a video and the device loops it as a stream — a stand-in camera for trying out detection and the overlays." />
+              <div className="flex flex-wrap items-center gap-2">
+                <OutlinedButton onClick={() => void openDocument(['video/*']).then((chosen) => chosen !== null && setFile(chosen))}>Choose a video file</OutlinedButton>
+                <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="min-w-0 truncate">
+                  {file?.name ?? 'H.264 .mp4 works best'}
+                </Text>
+              </div>
+              <div>
+                <OutlinedButton enabled={!uploading} onClick={() => void upload()}>
+                  {uploading ? 'Uploading…' : 'Upload & start'}
+                </OutlinedButton>
+              </div>
+            </Fold>
+          ) : null}
         </>
       ) : null}
       {step === 2 ? (

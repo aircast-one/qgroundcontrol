@@ -62,7 +62,7 @@ export const CamerasScreen = ({ query, onOpen }: DeviceScreenProps) => {
           ))}
         </ScrollableTabRow>
       ) : null}
-      {(!adding && view.cameras.length > 0) || view.cloudLink !== '' ? (
+      {(shown.kind !== 'camera' || shown.camera.live) && ((!adding && view.cameras.length > 0) || view.cloudLink !== '') ? (
         <div className="flex flex-wrap items-center justify-between gap-2 px-list pt-2">
           {!adding && view.cameras.length > 0 ? <TextButton onClick={() => setAdding(true)}>+ Add camera</TextButton> : <span />}
           {view.cloudLink !== '' ? <LinkButton href={view.cloudLink} look="outlined" external>Watch in the cloud</LinkButton> : null}
@@ -84,7 +84,7 @@ export const CamerasScreen = ({ query, onOpen }: DeviceScreenProps) => {
           <TopicRow page={view.video} onOpen={onOpen} />
         </>
       ) : (
-        <DeviceSection title="Add a camera">
+        <DeviceSection title={view.add.title}>
           <CameraWizard view={view.add} onDone={pick} />
         </DeviceSection>
       )}
@@ -132,7 +132,7 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
   const [wizard, setWizard] = useState<{ readonly scan: boolean; readonly fixPort: PortAddress | null } | null>(scan ? { scan: true, fixPort: null } : null);
   if (wizard !== null)
     return (
-      <DeviceSection title={`Set up ${camera.name}`} badge={camera.status}>
+      <DeviceSection title={camera.wizard.title} badge={camera.status}>
         <CameraWizard view={camera.wizard} scan={wizard.scan} fixPort={wizard.fixPort} onCancel={() => setWizard(null)} onDone={() => setWizard(null)} />
       </DeviceSection>
     );

@@ -5,10 +5,13 @@ describe('DeviceCameraWizardTest', () => {
   it('reads the wizard the device serves', () => {
     const view = parseCameraWizard({
       name: 'cam2',
+      title: 'cam2 is not answering',
       new: false,
       source: 'rtsp://192.168.8.10:554/stream',
       rtsp: '',
       rtspHint: 'rtsp://192.168.8.10:554/stream',
+      lookingFor: 'The camera at 192.168.8.10:554 refuses the connection.',
+      checks: ["The RTSP port in the camera's app is the one in its address — 192.168.8.10:554", 7],
       interface: 'eth0',
       interfaces: [
         {
@@ -21,6 +24,9 @@ describe('DeviceCameraWizardTest', () => {
       others: [{ name: 'cam', source: 'rtsp://x' }],
     });
     expect(view?.iface).toBe('eth0');
+    expect(view?.title).toBe('cam2 is not answering');
+    expect(view?.checks).toEqual(["The RTSP port in the camera's app is the one in its address — 192.168.8.10:554"]);
+    expect(parseCameraWizard({ name: 'cam' })?.checks).toEqual([]);
     expect(view?.interfaces[0]?.address).toBe('192.168.8.2/24');
     expect(view?.piCamera?.action).toBe('Use it');
     expect(view?.json.others).toEqual([{ name: 'cam', source: 'rtsp://x' }]);
@@ -29,6 +35,7 @@ describe('DeviceCameraWizardTest', () => {
 
   it('reads what the core made of the scan, the ports and the running setup', () => {
     const wizard = parseDeviceWizard({
+      again: 7,
       session: 3,
       scanning: false,
       scans: 2,
@@ -65,6 +72,7 @@ describe('DeviceCameraWizardTest', () => {
     });
     expect(wizard.session).toBe(3);
     expect(wizard.scans).toBe(2);
+    expect(wizard.again).toBe(7);
     expect(wizard.adopt?.url).toBe('rtsp://192.168.8.10:554/stream1');
     expect(wizard.todo[0]?.options[0]).toEqual({ cidr: '192.168.144.2/24', text: '192.168.144.2/24 · found 192.168.144.25' });
     expect(wizard.todo[0]?.busy).toBe(true);
