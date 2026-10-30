@@ -20,6 +20,8 @@ fn number(name: &str, fallback: f64) -> f64 {
 fn main() {
     let token = arg("--token").unwrap_or_default();
     let (width, height) = (1280, 720);
+    let frames = number("--frames", 1.0) as usize;
+    let yaw_per_frame = number("--yawrate", 0.0) / 30.0;
     let target = Target {
         latitude: number("--lat", -35.36213),
         longitude: number("--lng", 149.16514),
@@ -54,19 +56,28 @@ fn main() {
             .or(drawn);
         std::thread::sleep(Duration::from_millis(100));
     }
-    let frame = drawn.expect("something to draw");
-    let (camera, meshes) = frame.view(None, width, height);
+    drawn.expect("something to draw");
     println!("{:?}", session.take_stats());
     println!("google took over after {:?}", session.handover());
-    println!(
-        "{} meshes after {:.1} s",
-        meshes.len(),
-        started.elapsed().as_secs_f64()
-    );
     let mut renderer = Renderer::new().expect("a GPU adapter");
-    let picture = renderer
-        .picture(&camera, &frame.backfill, &meshes, width, height)
-        .expect("rendered picture");
+    let targets = renderer.targets(width, height);
+    let picture = (0..frames.max(1))
+        .map(|index| {
+            let turned = Target {
+                heading: target.heading + yaw_per_frame * index as f64,
+                ..target.clone()
+            };
+            let frame = session
+                .frame(Some(&turned), &[], width, height, Instant::now())
+                .expect("a frame to draw");
+            let (camera, meshes) = frame.view(None, width, height);
+            println!("{} meshes in frame {index}", meshes.len());
+            renderer
+                .picture(&camera, &frame.backfill, &meshes, &targets, width, height)
+                .expect("rendered picture")
+        })
+        .last()
+        .expect("a picture");
     let out = arg("--out").unwrap_or_else(|| "synthetic.png".into());
     picture.save(&out).expect("saved picture");
     println!("wrote {out}");

@@ -23,7 +23,7 @@ const INDEX_BYTES: u64 = 4;
 const ARENA_VERTICES: u32 = 1 << 19;
 const ARENA_INDICES: u32 = 1 << 21;
 const DRAW_BYTES: u64 = 128;
-const SCENE_BYTES: u64 = 416;
+const SCENE_BYTES: u64 = 496;
 const SAMPLES: u32 = 4;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
@@ -37,6 +37,9 @@ const SSAO: bool = true;
 const SURFACE: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const OCCLUSION: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const SHADOWS: bool = true;
+const TAA: bool = true;
+const HISTORY: f32 = 0.9;
+const JITTERS: usize = 8;
 const SHADOW_SIZE: u32 = 2048;
 const CASCADES: usize = 3;
 const CASCADE_FAR_M: [f64; CASCADES] = [300.0, 2000.0, 10000.0];
@@ -45,7 +48,7 @@ const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
     wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3];
 const DRAW_ATTRIBUTES: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, 10 => Float32x4];
 const SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var picture: texture_2d<f32>;
 @group(1) @binding(1) var tile_sampler: sampler;
@@ -337,7 +340,7 @@ struct Placed {
 @fragment fn fs() {}
 ";
 const POST_SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var screen_sampler: sampler;
 @group(1) @binding(1) var picture: texture_2d<f32>;
@@ -363,10 +366,7 @@ const KERNEL = array<vec3<f32>, 12>(
     vec3<f32>(-0.038, -0.098, 0.170), vec3<f32>(-0.164, 0.048, 0.191), vec3<f32>(-0.314, -0.010, 0.083), vec3<f32>(-0.178, 0.187, 0.314),
     vec3<f32>(-0.067, 0.422, 0.259), vec3<f32>(-0.301, -0.159, 0.502), vec3<f32>(-0.078, -0.675, 0.254), vec3<f32>(0.467, -0.645, 0.314),
 );
-const EDGE_THRESHOLD = 0.166;
-const EDGE_THRESHOLD_MIN = 0.0833;
-const SUBPIXEL = 0.75;
-const SEARCH_STEPS = 12;
+const CLIP_SIGMA = 1.0;
 
 @vertex fn vs(@builtin(vertex_index) index: u32) -> Out {
     let corner = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
@@ -495,76 +495,82 @@ fn surface_at(uv: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(total / max(weight, 1.0));
 }
 
-fn shown(uv: vec2<f32>) -> vec4<f32> {
-    let glow = textureSampleLevel(second, screen_sampler, uv, 0.0).rgb * BLOOM;
-    let shade = max(1.0 - textureSampleLevel(third, screen_sampler, uv, 0.0).r * AO_STRENGTH, 0.0);
-    let colour = aces((textureSampleLevel(picture, screen_sampler, uv, 0.0).rgb * shade + glow) * EXPOSURE);
-    return vec4<f32>(colour, sqrt(dot(colour, vec3<f32>(0.299, 0.587, 0.114))));
+@fragment fn fs_shown(f: Out) -> @location(0) vec4<f32> {
+    let glow = textureSampleLevel(second, screen_sampler, f.uv, 0.0).rgb * BLOOM;
+    let shade = max(1.0 - textureSampleLevel(third, screen_sampler, f.uv, 0.0).r * AO_STRENGTH, 0.0);
+    return vec4<f32>(aces((textureSampleLevel(picture, screen_sampler, f.uv, 0.0).rgb * shade + glow) * EXPOSURE), 1.0);
 }
 
-fn search_step(i: i32) -> f32 {
-    return select(select(2.0, 1.5, i == 1), select(4.0, 8.0, i == SEARCH_STEPS - 1), i >= SEARCH_STEPS - 2);
+fn velocity(uv: vec2<f32>, surface: vec4<f32>) -> vec2<f32> {
+    let direction = ray(uv);
+    let seen = select(vec4<f32>(direction, 0.0), vec4<f32>(direction * surface.w, 1.0), surface.w > 0.0);
+    let clip = scene.previous * seen;
+    if (clip.w <= 0.0) { return vec2<f32>(2.0); }
+    let before = vec2<f32>(clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5);
+    return uv - scene.temporal.xy - before;
+}
+
+fn ycocg(c: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(0.25 * c.r + 0.5 * c.g + 0.25 * c.b, 0.5 * c.r - 0.5 * c.b, -0.25 * c.r + 0.5 * c.g - 0.25 * c.b);
+}
+
+fn rgb(c: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z);
+}
+
+fn history_at(at: vec2<f32>) -> vec3<f32> {
+    return textureSampleLevel(second, screen_sampler, at, 0.0).rgb;
+}
+
+fn catmull_rom(uv: vec2<f32>, size: vec2<f32>) -> vec3<f32> {
+    let sample = uv * size - 0.5;
+    let centre = floor(sample) + 0.5;
+    let t = sample - centre + 0.5;
+    let w0 = t * (-0.5 + t * (1.0 - 0.5 * t));
+    let w1 = 1.0 + t * t * (-2.5 + 1.5 * t);
+    let w2 = t * (0.5 + t * (2.0 - 1.5 * t));
+    let w3 = t * t * (-0.5 + 0.5 * t);
+    let w12 = w1 + w2;
+    let offset = w2 / w12;
+    let p0 = (centre - 1.0) / size;
+    let p3 = (centre + 2.0) / size;
+    let p12 = (centre + offset) / size;
+    var total = history_at(vec2<f32>(p12.x, p0.y)) * w12.x * w0.y;
+    total += history_at(vec2<f32>(p0.x, p12.y)) * w0.x * w12.y;
+    total += history_at(p12) * w12.x * w12.y;
+    total += history_at(vec2<f32>(p3.x, p12.y)) * w3.x * w12.y;
+    total += history_at(vec2<f32>(p12.x, p3.y)) * w12.x * w3.y;
+    return max(total, vec3<f32>(0.0));
+}
+
+@fragment fn fs_taa(f: Out) -> @location(0) vec4<f32> {
+    let size = vec2<f32>(textureDimensions(picture));
+    let texel = 1.0 / size;
+    let current = textureSampleLevel(picture, screen_sampler, f.uv, 0.0).rgb;
+    let moved = velocity(f.uv, textureSampleLevel(third, screen_sampler, f.uv, 0.0));
+    let before = f.uv - moved;
+    var mean = vec3<f32>(0.0);
+    var square = vec3<f32>(0.0);
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let c = ycocg(textureSampleLevel(picture, screen_sampler, f.uv + vec2<f32>(f32(x), f32(y)) * texel, 0.0).rgb);
+            mean += c;
+            square += c * c;
+        }
+    }
+    mean /= 9.0;
+    let sigma = sqrt(max(square / 9.0 - mean * mean, vec3<f32>(0.0)));
+    let low = mean - sigma * CLIP_SIGMA;
+    let high = mean + sigma * CLIP_SIGMA;
+    let history = clamp(ycocg(catmull_rom(before, size)), low, high);
+    let pixels = length(moved * size);
+    let inside = f32(all(before >= vec2<f32>(0.0)) && all(before <= vec2<f32>(1.0)));
+    let weight = scene.temporal.z * inside * (1.0 - 0.5 * smoothstep(0.0, 32.0, pixels));
+    return vec4<f32>(mix(current, rgb(history), weight), 1.0);
 }
 
 @fragment fn fs(f: Out) -> @location(0) vec4<f32> {
-    let texel = 1.0 / vec2<f32>(textureDimensions(picture));
-    let m = shown(f.uv);
-    let n = shown(f.uv + vec2<f32>(0.0, -texel.y)).a;
-    let s = shown(f.uv + vec2<f32>(0.0, texel.y)).a;
-    let w = shown(f.uv + vec2<f32>(-texel.x, 0.0)).a;
-    let e = shown(f.uv + vec2<f32>(texel.x, 0.0)).a;
-    let brightest = max(m.a, max(max(n, s), max(w, e)));
-    let range = brightest - min(m.a, min(min(n, s), min(w, e)));
-    if (range < max(EDGE_THRESHOLD_MIN, brightest * EDGE_THRESHOLD)) { return vec4<f32>(m.rgb, 1.0); }
-    let nw = shown(f.uv - texel).a;
-    let ne = shown(f.uv + vec2<f32>(texel.x, -texel.y)).a;
-    let sw = shown(f.uv + vec2<f32>(-texel.x, texel.y)).a;
-    let se = shown(f.uv + texel).a;
-    let edge_horizontal = abs(-2.0 * w + nw + sw) + abs(-2.0 * m.a + n + s) * 2.0 + abs(-2.0 * e + ne + se);
-    let edge_vertical = abs(-2.0 * s + sw + se) + abs(-2.0 * m.a + w + e) * 2.0 + abs(-2.0 * n + nw + ne);
-    let horizontal = edge_horizontal >= edge_vertical;
-    let luma1 = select(w, n, horizontal);
-    let luma2 = select(e, s, horizontal);
-    let gradient1 = luma1 - m.a;
-    let gradient2 = luma2 - m.a;
-    let steepest1 = abs(gradient1) >= abs(gradient2);
-    let gradient_scaled = 0.25 * max(abs(gradient1), abs(gradient2));
-    let step_length = select(texel.x, texel.y, horizontal) * select(1.0, -1.0, steepest1);
-    let local_average = 0.5 * (select(luma2, luma1, steepest1) + m.a);
-    let along = select(vec2<f32>(0.0, texel.y), vec2<f32>(texel.x, 0.0), horizontal);
-    let across = select(vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), horizontal);
-    let start = f.uv + across * step_length * 0.5;
-    var uv1 = start - along;
-    var uv2 = start + along;
-    var end1 = shown(uv1).a - local_average;
-    var end2 = shown(uv2).a - local_average;
-    var reached1 = abs(end1) >= gradient_scaled;
-    var reached2 = abs(end2) >= gradient_scaled;
-    for (var i = 1; i < SEARCH_STEPS; i++) {
-        if (reached1 && reached2) { break; }
-        if (!reached1) {
-            uv1 -= along * search_step(i);
-            end1 = shown(uv1).a - local_average;
-            reached1 = abs(end1) >= gradient_scaled;
-        }
-        if (!reached2) {
-            uv2 += along * search_step(i);
-            end2 = shown(uv2).a - local_average;
-            reached2 = abs(end2) >= gradient_scaled;
-        }
-    }
-    let distance1 = select(f.uv.y - uv1.y, f.uv.x - uv1.x, horizontal);
-    let distance2 = select(uv2.y - f.uv.y, uv2.x - f.uv.x, horizontal);
-    let nearest1 = distance1 < distance2;
-    let pixel_offset = 0.5 - min(distance1, distance2) / (distance1 + distance2);
-    let darker_centre = m.a < local_average;
-    let right_way = ((select(end2, end1, nearest1)) < 0.0) != darker_centre;
-    let edge_offset = select(0.0, pixel_offset, right_way);
-    let average = (2.0 * (n + s + w + e) + nw + ne + sw + se) / 12.0;
-    let subpixel1 = clamp(abs(average - m.a) / range, 0.0, 1.0);
-    let subpixel2 = (-2.0 * subpixel1 + 3.0) * subpixel1 * subpixel1;
-    let offset = max(edge_offset, subpixel2 * subpixel2 * SUBPIXEL);
-    return vec4<f32>(shown(f.uv + across * offset * step_length).rgb, 1.0);
+    return vec4<f32>(textureSampleLevel(picture, screen_sampler, f.uv, 0.0).rgb, 1.0);
 }
 ";
 
@@ -751,6 +757,12 @@ pub struct Targets {
     up_binds: Vec<wgpu::BindGroup>,
     post_bind: wgpu::BindGroup,
     rays_bind: wgpu::BindGroup,
+    history: [wgpu::TextureView; 2],
+    taa_binds: [wgpu::BindGroup; 2],
+    motion_binds: [wgpu::BindGroup; 2],
+    tonemapped: wgpu::TextureView,
+    frame: Cell<usize>,
+    previous: Cell<Option<(glam::DMat4, glam::DVec3)>>,
 }
 
 pub struct Renderer {
@@ -761,6 +773,8 @@ pub struct Renderer {
     shadow: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
+    shown: wgpu::RenderPipeline,
+    taa: wgpu::RenderPipeline,
     prefilter: wgpu::RenderPipeline,
     down: wgpu::RenderPipeline,
     up: wgpu::RenderPipeline,
@@ -795,6 +809,24 @@ fn uniform(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayou
         },
         count: None,
     }
+}
+
+fn halton(index: usize, base: usize) -> f64 {
+    std::iter::successors(Some(index), |i| (i / base > 0).then_some(i / base))
+        .zip(std::iter::successors(Some(1.0 / base as f64), |f| {
+            Some(f / base as f64)
+        }))
+        .map(|(i, f)| (i % base) as f64 * f)
+        .sum()
+}
+
+fn jitter(frame: usize, camera: &Camera) -> glam::DVec2 {
+    let index = frame % JITTERS + 1;
+    let height = camera.height_px.max(1.0);
+    glam::DVec2::new(
+        (halton(index, 2) - 0.5) * 2.0 / (camera.aspect * height),
+        (halton(index, 3) - 0.5) * 2.0 / height,
+    )
 }
 
 fn bytes(values: impl IntoIterator<Item = f32>) -> Vec<u8> {
@@ -1276,6 +1308,8 @@ impl Renderer {
             screen_pipeline(&device, &post_layout, &post_shader, entry, color, blend)
         };
         let post = screen("fs", format, None);
+        let shown = screen("fs_shown", HDR, None);
+        let taa = screen("fs_taa", HDR, None);
         let prefilter = screen("fs_prefilter", HDR, None);
         let down = screen("fs_down", HDR, None);
         let up = screen("fs_up", HDR, Some(ADDITIVE));
@@ -1328,6 +1362,8 @@ impl Renderer {
             shadow,
             sky,
             post,
+            shown,
+            taa,
             prefilter,
             down,
             up,
@@ -1532,9 +1568,28 @@ impl Renderer {
         });
         pass.set_pipeline(&self.post);
         pass.set_bind_group(0, &self.scene_bind, &[]);
-        pass.set_bind_group(1, &targets.post_bind, &[]);
+        pass.set_bind_group(1, &targets.motion_binds[targets.frame.get() % 2], &[]);
         pass.draw(0..3, 0..1);
         pass
+    }
+
+    fn temporal(&self, encoder: &mut wgpu::CommandEncoder, targets: &Targets) {
+        let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
+        let parity = targets.frame.get() % 2;
+        self.screen(
+            encoder,
+            &targets.tonemapped,
+            clear,
+            &self.shown,
+            &targets.post_bind,
+        );
+        self.screen(
+            encoder,
+            &targets.history[parity],
+            clear,
+            &self.taa,
+            &targets.taa_binds[parity],
+        );
     }
 
     fn screen(
@@ -1666,7 +1721,27 @@ impl Renderer {
             .filter_map(|gone| gone.place)
             .for_each(|place| release(&mut self.arenas, place));
         close_empty(&mut self.arenas);
-        let view_projection = camera.projection() * camera.view();
+        let steady = camera.projection() * camera.view();
+        let offset = if TAA {
+            jitter(targets.frame.get(), camera)
+        } else {
+            glam::DVec2::ZERO
+        };
+        let view_projection = glam::DMat4::from_translation(offset.extend(0.0)) * steady;
+        let previous = targets.previous.get().map_or(steady, |(before, eye)| {
+            before * glam::DMat4::from_translation(camera.eye - eye)
+        });
+        let temporal = [
+            offset.x as f32 * 0.5,
+            offset.y as f32 * -0.5,
+            if TAA && targets.previous.get().is_some() {
+                HISTORY
+            } else {
+                0.0
+            },
+            0.0,
+        ];
+        targets.previous.set(Some((steady, camera.eye)));
         let layer_of = |mesh: &Mesh| {
             LAYERS
                 .iter()
@@ -1725,8 +1800,8 @@ impl Renderer {
             &self.scene,
             0,
             &bytes(
-                camera
-                    .unproject()
+                view_projection
+                    .inverse()
                     .as_mat4()
                     .to_cols_array()
                     .into_iter()
@@ -1746,7 +1821,9 @@ impl Renderer {
                             0.0,
                         ]
                     }))
-                    .chain(direction(camera.eye)),
+                    .chain(direction(camera.eye))
+                    .chain(previous.as_mat4().to_cols_array())
+                    .chain(temporal),
             ),
         );
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -1824,6 +1901,7 @@ impl Renderer {
                 });
         }
         self.effects(&mut encoder, targets);
+        self.temporal(&mut encoder, targets);
         {
             let mut pass = self.finish(&mut encoder, target, targets);
             pass.set_vertex_buffer(1, draws.buffer.slice(..));
@@ -1837,6 +1915,7 @@ impl Renderer {
                 });
         }
         self.queue.submit([encoder.finish()]);
+        targets.frame.set(targets.frame.get() + 1);
     }
 
     fn draw_buffer(&self, slots: usize) -> Draws {
@@ -1850,11 +1929,16 @@ impl Renderer {
     }
 
     pub fn clear(&mut self, target: &wgpu::TextureView, targets: &Targets) {
+        self.queue
+            .write_buffer(&self.scene, SCENE_BYTES - 16, &bytes([0.0; 4]));
+        targets.previous.set(None);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         drop(Self::pass(&mut encoder, targets));
         self.effects(&mut encoder, targets);
+        self.temporal(&mut encoder, targets);
         drop(self.finish(&mut encoder, target, targets));
         self.queue.submit([encoder.finish()]);
+        targets.frame.set(targets.frame.get() + 1);
     }
 
     pub fn present(&self, frame: wgpu::SurfaceTexture) {
@@ -1937,6 +2021,19 @@ impl Renderer {
             .map(|source| bind(source, source, source))
             .collect();
         let post_bind = bind(&resolved, &mips[0], &blurred);
+        let tonemapped = texture("synthetic tonemapped", HDR, 1, readable);
+        let history = [
+            texture("synthetic history", HDR, 1, readable),
+            texture("synthetic history", HDR, 1, readable),
+        ];
+        let taa_binds = [
+            bind(&tonemapped, &history[1], &surface),
+            bind(&tonemapped, &history[0], &surface),
+        ];
+        let motion_binds = [
+            bind(&history[0], &surface, &surface),
+            bind(&history[1], &surface, &surface),
+        ];
         let ssao_bind = bind(&surface, &surface, &surface);
         let blur_bind = bind(&occlusion, &surface, &surface);
         let rays_bind = bind(&resolved, &surface, &surface);
@@ -2000,6 +2097,12 @@ impl Renderer {
             up_binds,
             post_bind,
             rays_bind,
+            history,
+            taa_binds,
+            motion_binds,
+            tonemapped,
+            frame: Cell::new(0),
+            previous: Cell::new(None),
         }
     }
 
@@ -2008,6 +2111,7 @@ impl Renderer {
         camera: &Camera,
         backfill: &[Arc<Mesh>],
         meshes: &[Arc<Mesh>],
+        targets: &Targets,
         width: u32,
         height: u32,
     ) -> Result<image::RgbaImage, String> {
@@ -2026,10 +2130,9 @@ impl Renderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        let targets = self.targets(width, height);
         self.draw(
             &target.create_view(&Default::default()),
-            &targets,
+            targets,
             camera,
             backfill,
             meshes,
