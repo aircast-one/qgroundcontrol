@@ -33,7 +33,7 @@ const served = (clientId: string, issuer = 'https://auth.example.com') => ({
 
 const screenFor = (view: unknown) => {
   device.view = view;
-  return <EngineeringScreen href="/settings/engineering" query={new URLSearchParams()} onOpen={() => undefined} onClose={() => undefined} />;
+  return <EngineeringScreen href="/settings/engineering" query={new URLSearchParams()} onOpen={() => undefined} onOpenFrom={() => undefined} onClose={() => undefined} />;
 };
 
 const signIn = () => within(screen.getByRole('region', { name: 'Publishing sign-in' }));

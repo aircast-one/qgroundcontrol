@@ -43,7 +43,7 @@ internal fun DeviceCameraSetupScreen(props: DeviceScreenProps) {
             DeviceNotice(DeviceBadge(DeviceLevel.Neutral, "Pick a camera on the Cameras page to set it up."))
             TextButton(onClick = { props.onOpen("/streaming") }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Cameras →") }
         }
-        else -> key(camera.name) { CameraSetupParts(camera, openedSection(props.href), props.onOpen, props.onClose) }
+        else -> key(camera.name) { CameraSetupParts(camera, openedSection(props.href), props.onOpen, props.onOpenFrom, props.onClose) }
     }
 }
 
@@ -53,7 +53,7 @@ private fun Sub(text: String) {
 }
 
 @Composable
-private fun CameraSetupParts(camera: CameraView, opened: String, onOpen: (String) -> Unit, onClose: () -> Unit) {
+private fun CameraSetupParts(camera: CameraView, opened: String, onOpen: (String) -> Unit, onOpenFrom: (String, String) -> Unit, onClose: () -> Unit) {
     val name = camera.name
     val setup = camera.setup
     PartDisclosure(setup.watch.part, CameraSetupSection.Watch, opened) { WatchBody(camera, onOpen) }
@@ -115,6 +115,7 @@ private fun CameraSetupParts(camera: CameraView, opened: String, onOpen: (String
         DeviceText("A link stops working when it expires or when you turn it off. It is not a lock: anyone who can already reach this device on your network can watch the camera anyway.")
     }
     PartDisclosure(setup.detect.part, CameraSetupSection.Detect, opened) {
+        val detectHere = cameraSectionHref(name, CameraSetupSection.Detect)
         DeviceSwitchRow(
             title = "Draw detection boxes for $name",
             checked = setup.detect.on,
@@ -123,9 +124,12 @@ private fun CameraSetupParts(camera: CameraView, opened: String, onOpen: (String
             success = "Detection turned on for $name.",
             offSuccess = "Detection turned off for $name.",
         )
-        DeviceText("Draw object-detection boxes over this camera. The video is untouched — boxes are sent as data and drawn by viewers, so there's no added latency. Needs the detection sidecar running on the device.")
-        if (setup.detect.model.isNotEmpty()) NoteLink(setup.detect.model, "Change model →", MaterialTheme.typography.bodyMedium) { onOpen("/settings/video") }
-        setup.detect.notice?.let { LinkedNoticeView(it, onOpen) }
+        DeviceText(
+            "Draw object-detection boxes over this camera. The video is untouched — boxes are sent as data and drawn by viewers, so there's no added latency. " +
+                "The model, and whether it runs on the CPU or the Hailo-8, is set on the Detection page.",
+        )
+        if (setup.detect.model.isNotEmpty()) NoteLink(setup.detect.model, "Change model →", MaterialTheme.typography.bodyMedium) { onOpenFrom("/settings/detection", detectHere) }
+        setup.detect.notice?.let { notice -> LinkedNoticeView(notice) { onOpenFrom(it, detectHere) } }
     }
     PartDisclosure(setup.record.part, CameraSetupSection.Record, opened) {
         DeviceSwitchRow(

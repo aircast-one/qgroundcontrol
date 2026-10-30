@@ -4,7 +4,15 @@ import androidx.compose.runtime.Composable
 import java.net.URI
 import java.net.URLDecoder
 
-internal data class DeviceScreenProps(val href: String, val query: Map<String, String>, val onOpen: (String) -> Unit, val onClose: () -> Unit)
+internal data class DeviceScreenProps(
+    val href: String,
+    val query: Map<String, String>,
+    val onOpen: (String) -> Unit,
+    val onOpenFrom: (href: String, returnTo: String) -> Unit,
+    val onClose: () -> Unit,
+)
+
+internal fun openedFrom(stack: List<String>, href: String, returnTo: String): List<String> = stack.dropLast(1) + returnTo + href
 
 internal data class DeviceScreenEntry(val title: String, val screen: @Composable (DeviceScreenProps) -> Unit)
 
@@ -15,6 +23,7 @@ internal val DEVICE_SCREENS: Map<String, DeviceScreenEntry> = mapOf(
     "/settings/device" to DeviceScreenEntry("Device") { DeviceSettingsScreen(it) },
     "/settings/engineering" to DeviceScreenEntry("Engineering") { DeviceEngineeringScreen(it) },
     "/settings/video" to DeviceScreenEntry("Video engine") { DeviceVideoScreen(it) },
+    "/settings/detection" to DeviceScreenEntry("Detection") { DeviceDetectionScreen(it) },
     "/settings/recordings" to DeviceScreenEntry("Recordings") { DeviceRecordingsScreen() },
     "/network" to DeviceScreenEntry("Connection") { DeviceNetworkScreen(it) },
     "/streaming" to DeviceScreenEntry("Cameras") { DeviceCamerasScreen(it) },

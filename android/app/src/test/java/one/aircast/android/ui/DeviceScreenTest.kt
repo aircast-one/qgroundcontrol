@@ -24,7 +24,8 @@ class DeviceScreenTest {
             "pages",
             org.json.JSONArray(
                 """[{"title":"Ground station links","href":"/connect","icon":"qr-code"},{"title":"Cameras","href":"/streaming","icon":"video"},
-                    {"title":"Video engine","href":"/settings/video","icon":"sliders-horizontal"},{"title":"Connection","href":"/network","icon":"network"},
+                    {"title":"Video engine","href":"/settings/video","icon":"sliders-horizontal"},{"title":"Detection","href":"/settings/detection","icon":"crosshair"},
+                    {"title":"Connection","href":"/network","icon":"network"},
                     {"title":"Telemetry","href":"/telemetry","icon":"activity"},{"title":"Recordings","href":"/settings/recordings","icon":"gauge"},
                     {"title":"Flight log","href":"/flights","icon":"clock"},{"title":"Device","href":"/settings/device","icon":"settings"},
                     {"title":"Engineering","href":"/settings/engineering","icon":"server"},{"title":"Watching & recording","href":"/settings/camera?camera=cam","icon":"sliders-horizontal"},
@@ -52,6 +53,7 @@ class DeviceScreenTest {
     fun `every device page has its own icon, and an unknown one falls back`() {
         assertEquals(R.drawable.ic_videocam, devicePageIcon("video"))
         assertEquals(R.drawable.ic_build, devicePageIcon("scan-search"))
+        assertEquals(R.drawable.ic_center_focus, devicePageIcon("crosshair"))
         assertEquals(R.drawable.ic_settings, devicePageIcon("unheard-of"))
     }
 
@@ -60,10 +62,10 @@ class DeviceScreenTest {
         val native = { href: String -> devicePath(href).path in DEVICE_SCREENS }
         val status = parseDeviceStatus(aircraft)!!
         val linked = (listOfNotNull(status.action?.href, status.setup?.href) + status.checks.map { it.href } + status.pages.map { it.href }).filter { it.isNotEmpty() }
-        assertEquals(16, linked.size)
+        assertEquals(17, linked.size)
         assertEquals(emptyList<String>(), linked.filterNot(native))
         val screens = File("src/main/java/one/aircast/android/ui").listFiles { file -> file.name.startsWith("Device") || file.name == "CameraWizard.kt" }.orEmpty()
-        val opened = screens.flatMap { file -> Regex("""onOpen\("([^"]+)"\)""").findAll(file.readText()).map { it.groupValues[1] }.toList() }
+        val opened = screens.flatMap { file -> Regex("""onOpen(?:From)?\("([^"]+)"[,)]""").findAll(file.readText()).map { it.groupValues[1] }.toList() }
         assertTrue(opened.size > 5)
         assertEquals(emptyList<String>(), opened.filterNot(native))
     }

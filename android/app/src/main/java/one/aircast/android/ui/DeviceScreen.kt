@@ -61,7 +61,7 @@ internal fun DeviceTab(open: String?, onOpen: (String) -> Unit, onClose: () -> U
     CompositionLocalProvider(LocalDeviceOrigin provides reading.origin) {
         when {
             current != null && opened != null && entry != null -> key(current) {
-                NativeDevicePage(entry, DeviceScreenProps(current, opened.query, { stack = stack + it }, back), back)
+                NativeDevicePage(entry, DeviceScreenProps(current, opened.query, { stack = stack + it }, { href, returnTo -> stack = openedFrom(stack, href, returnTo) }, back), back)
             }
             reading.origin.isEmpty() -> ConnectDevice()
             else -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {

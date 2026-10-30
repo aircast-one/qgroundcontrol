@@ -1,14 +1,9 @@
-import { useContext, useState } from 'react';
-import { Checkbox, FilledTonalButton, OutlinedTextField, Text } from '@/m3';
-import { md } from '@/theme/Colors';
-import { ActionButton, CopyRow, DeviceBadgeText, DeviceColumns, DeviceDisclosure, DeviceForm, DeviceNotice, DeviceSection, DeviceText, LinkButton, RefusalText } from '@/ui/DeviceKit';
-import { ButtonRow, StackedFact, StatusLine, StepText } from '@/ui/DeviceKitSettings';
+import { ActionButton, CopyRow, DeviceColumns, DeviceDisclosure, DeviceForm, DeviceSection, DeviceText, LinkButton } from '@/ui/DeviceKit';
+import { ButtonRow, StatusLine, StepText } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceLevel';
-import { SHARING_OFF, SharingStage, type DetectModel, type DetectionSettings, type PublicSharing, type RadioSettings, modelPath, parseVideo, uploadModel } from '@/ui/DeviceVideo';
-import { type DeviceRefusal, useDeviceView } from '@/ui/DeviceView';
+import { SHARING_OFF, SharingStage, type PublicSharing, type RadioSettings, parseVideo } from '@/ui/DeviceVideo';
+import { useDeviceView } from '@/ui/DeviceView';
 import { FootNote, SetupRow } from '@/ui/SetupRow';
-import { LocalChangeNotice } from '@/ui/ValueRow';
 
 export const VideoScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('video', parseVideo);
@@ -19,27 +14,9 @@ export const VideoScreen = ({ onOpen }: DeviceScreenProps) => {
       <StatusLine text="These apply to every camera on this device. Which camera goes where is set on the camera itself." />
     </>
   );
-  const detection = (
-    <>
-      <DetectionSection detection={view.detection} />
-      <StatusLine text="Detection runs on the device and sends boxes as data — the picture itself is untouched. Pick the model for what the camera is looking at: an aerial model hallucinates trucks on a desk. Draw-a-box tracking works whichever model is active." />
-    </>
-  );
   return (
     <>
-      {view.radio !== null ? (
-        <DeviceColumns
-          left={<RadioSection radio={view.radio} />}
-          right={
-            <>
-              {sharing}
-              {detection}
-            </>
-          }
-        />
-      ) : (
-        <DeviceColumns left={sharing} right={detection} />
-      )}
+      {view.radio !== null ? <DeviceColumns left={<RadioSection radio={view.radio} />} right={sharing} /> : sharing}
       <SetupRow title={view.engineering.title} subtitle={view.engineering.summary} icon="ic_terminal" onClick={() => onOpen(view.engineering.href)} />
     </>
   );
@@ -123,101 +100,3 @@ const SharingSection = ({ sharing }: { sharing: PublicSharing }) => (
     )}
   </DeviceSection>
 );
-
-const DetectionSection = ({ detection }: { detection: DetectionSettings }) => (
-  <DeviceSection title="Detection model">
-    <StackedFact label="In use" value={detection.status.text} />
-    {detection.unavailable ? (
-      <DeviceNotice notice={{ level: DeviceLevel.Warn, text: "Detection is unavailable — this device has no AI accelerator, so .hef models can't run. Switch to an .onnx model to detect on the CPU. Draw-a-box tracking still works on every camera." }} />
-    ) : null}
-    {detection.models.length === 0 ? <DeviceText text="No models installed yet." /> : detection.models.map((model) => <ModelRow key={model.name} model={model} />)}
-    <DeviceDisclosure title="Add a model" summary="A .hef for the Hailo-8 or an .onnx for the CPU, with its class labels.">
-      <ModelUploadForm />
-    </DeviceDisclosure>
-  </DeviceSection>
-);
-
-const ModelRow = ({ model }: { model: DetectModel }) => (
-  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-list py-2" role="group" aria-label={model.name}>
-    <div className="flex min-w-0 flex-1 basis-48 flex-col">
-      <Text typography="bodyLarge" className="break-all">
-        {model.name}
-      </Text>
-      {model.about !== '' ? (
-        <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-          {model.about}
-        </Text>
-      ) : null}
-      <span className="flex items-center gap-3">
-        <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          {model.size}
-        </Text>
-        <DeviceBadgeText badge={model.classes} />
-      </span>
-    </div>
-    {model.active ? (
-      <DeviceBadgeText badge={{ level: DeviceLevel.Ready, text: 'Active' }} />
-    ) : (
-      <span className="flex items-center gap-1">
-        <ActionButton label="Use" request={{ method: 'PUT', path: '/api/stream/detect/settings', body: { hef: model.path } }} success="Model switched — detection restarts on the new model." />
-        <ActionButton
-          label="Delete"
-          tonal={false}
-          request={{ method: 'DELETE', path: modelPath(model.name) }}
-          success="Model deleted."
-          confirm={{ title: `Delete ${model.name}?`, text: `Delete ${model.name}? Anyone relying on it loses it from this device.`, confirm: 'Delete' }}
-        />
-      </span>
-    )}
-  </div>
-);
-
-const fileInput =
-  'block w-full max-w-md cursor-pointer rounded-shape-xs border border-outline text-body-small text-on-surface-variant file:mr-3 file:cursor-pointer file:border-0 file:bg-secondary-container file:px-3 file:py-2 file:text-label-large file:text-on-secondary-container';
-
-const ModelUploadForm = () => {
-  const notice = useContext(LocalChangeNotice);
-  const [hef, setHef] = useState<File | null>(null);
-  const [labels, setLabels] = useState<File | null>(null);
-  const [about, setAbout] = useState('');
-  const [use, setUse] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [refusal, setRefusal] = useState<DeviceRefusal | null>(null);
-  const upload = () => {
-    if (hef === null) return setRefusal({ message: 'Choose a .hef or .onnx model file.', field: '' });
-    setBusy(true);
-    setRefusal(null);
-    void uploadModel({ hef, labels, about, use }).then((outcome) => {
-      setBusy(false);
-      setRefusal(outcome.refusal);
-      if (outcome.message !== '') notice.show(outcome.message, null);
-    });
-  };
-  return (
-    <div className="flex flex-col gap-3 px-list py-2">
-      <label className="grid gap-label">
-        <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          Model (.hef for the Hailo-8, .onnx for the CPU)
-        </Text>
-        <input type="file" accept=".hef,.onnx" aria-label="Model file" className={fileInput} onChange={(event) => setHef(event.target.files?.[0] ?? null)} />
-      </label>
-      <label className="grid gap-label">
-        <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          Class labels (.labels, one per line — optional). Without labels, boxes are named by class number.
-        </Text>
-        <input type="file" accept=".labels,.txt" aria-label="Class labels file" className={fileInput} onChange={(event) => setLabels(event.target.files?.[0] ?? null)} />
-      </label>
-      <OutlinedTextField label="What it's for (shown next to the model — optional)" ariaLabel="What it's for" value={about} placeholder="Aerial — vehicles at 400 ft" onValueChange={setAbout} />
-      <span className="flex items-center gap-3">
-        <Checkbox checked={use} label="Switch to this model after upload" onCheckedChange={setUse} />
-        <Text typography="bodyMedium">Switch to this model after upload</Text>
-      </span>
-      <RefusalText refusal={refusal} />
-      <div>
-        <FilledTonalButton enabled={!busy} onClick={upload}>
-          {busy ? 'Uploading…' : 'Upload model'}
-        </FilledTonalButton>
-      </div>
-    </div>
-  );
-};

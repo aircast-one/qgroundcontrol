@@ -202,3 +202,5 @@ internal object CameraSetupSection {
 }
 
 internal fun openedSection(href: String): String = href.substringAfter('#', "")
+
+internal fun cameraSectionHref(camera: String, section: String): String = "/settings/camera?camera=${uriComponent(camera)}#$section"

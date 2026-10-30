@@ -13,7 +13,7 @@ import { FootNote } from '@/ui/SetupRow';
 
 type Open = (href: string) => void;
 
-export const CameraSetupScreen = ({ href, query, onOpen, onClose }: DeviceScreenProps) => {
+export const CameraSetupScreen = ({ href, query, onOpen, onOpenFrom, onClose }: DeviceScreenProps) => {
   const view = useDeviceView('cameras', parseCameras);
   if (view === null) return <FootNote text="Waiting for the device to answer…" />;
   const camera = view.cameras.find((it) => it.name === (query.get('camera') ?? ''));
@@ -31,13 +31,14 @@ export const CameraSetupScreen = ({ href, query, onOpen, onClose }: DeviceScreen
         </div>
       </>
     );
-  return <CameraSetup key={camera.name} camera={camera} opened={openedSection(href)} onOpen={onOpen} onClose={onClose} />;
+  return <CameraSetup key={camera.name} camera={camera} opened={openedSection(href)} onOpen={onOpen} onOpenFrom={onOpenFrom} onClose={onClose} />;
 };
 
 const Row = ({ children }: { children: ReactNode }) => <div className="flex flex-wrap items-center gap-2 px-list py-2">{children}</div>;
 
-const CameraSetup = ({ camera, opened, onOpen, onClose }: { camera: CameraView; opened: string; onOpen: Open; onClose: () => void }) => {
+const CameraSetup = ({ camera, opened, onOpen, onOpenFrom, onClose }: { camera: CameraView; opened: string; onOpen: Open; onOpenFrom: (href: string, returnTo: string) => void; onClose: () => void }) => {
   const { name, setup } = camera;
+  const fromDetect = (href: string) => onOpenFrom(href, `/settings/camera?camera=${encodeURIComponent(name)}#${SETUP_SECTIONS.detect}`);
   return (
     <>
       <DeviceColumns
@@ -127,16 +128,16 @@ const CameraSetup = ({ camera, opened, onOpen, onClose }: { camera: CameraView; 
                 success={`Detection turned on for ${name}.`}
                 offSuccess={`Detection turned off for ${name}.`}
               />
-              <DeviceText text="Draw object-detection boxes over this camera. The video is untouched — boxes are sent as data and drawn by viewers, so there's no added latency. Needs the detection sidecar running on the device." />
+              <DeviceText text="Draw object-detection boxes over this camera. The video is untouched — boxes are sent as data and drawn by viewers, so there's no added latency. The model, and whether it runs on the CPU or the Hailo-8, is set on the Detection page." />
               {setup.detect.model !== '' ? (
                 <Row>
                   <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
                     {setup.detect.model}
                   </Text>
-                  <TextButton onClick={() => onOpen('/settings/video')}>Change model →</TextButton>
+                  <TextButton onClick={() => fromDetect('/settings/detection')}>Change model →</TextButton>
                 </Row>
               ) : null}
-              {setup.detect.notice !== null ? <LinkedNoticeView notice={setup.detect.notice} onOpen={onOpen} /> : null}
+              {setup.detect.notice !== null ? <LinkedNoticeView notice={setup.detect.notice} onOpen={fromDetect} /> : null}
             </PartDisclosure>
             <PartDisclosure part={setup.record.part} id={SETUP_SECTIONS.record} opened={opened}>
               <DeviceSwitchRow

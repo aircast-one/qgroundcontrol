@@ -58,6 +58,7 @@ bytesPerSample
 bytesPerSecond
 bytesReceived
 bytesSent
+cam
 camera
 cameraAddr
 cameras
@@ -147,6 +148,7 @@ distanceM
 dns
 dnsName
 DNSName
+domain
 down
 downlink
 downlinkBps
@@ -160,10 +162,12 @@ editable
 editor
 enabled
 end
+ended_at
 endedAt
 endpoint
 endpointNotice
 endpoints
+engine
 engineering
 environment
 err
@@ -172,6 +176,7 @@ error_description
 errorCode
 errorDescription
 events
+eventsAlert
 everPresent
 expires
 expires_in
@@ -312,6 +317,7 @@ methods
 metric
 metricPlaceholder
 minBytesPerSecond
+missing
 mode
 model
 models
@@ -323,6 +329,7 @@ monthlyCapBytes
 monthlyCapGB
 months
 msp
+multi_connect
 name
 Name
 needs
@@ -350,6 +357,7 @@ online
 open
 operator
 options
+origin
 other
 others
 outage
@@ -358,6 +366,7 @@ packets
 packetsSent
 pages
 part
+part_bytes
 password
 path
 pathFound
@@ -401,6 +410,7 @@ record
 recorded
 recording
 recoveries
+ref
 region
 registration
 relay
@@ -424,6 +434,7 @@ satellites
 sats
 saved
 scan
+scanned
 schemes
 scope
 sdp
@@ -479,6 +490,7 @@ standby
 starlink
 start
 started
+started_at
 startedAt
 startUnix
 state
@@ -512,6 +524,7 @@ telemetry
 templates
 text
 throttlePct
+tilt
 times
 title
 to

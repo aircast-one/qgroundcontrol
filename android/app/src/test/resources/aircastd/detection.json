@@ -1,0 +1,18 @@
+{
+  "status": {
+    "level": 3,
+    "text": "no model active"
+  },
+  "unavailable": false,
+  "cameras": [
+    {
+      "name": "cam2",
+      "on": false,
+      "status": {
+        "level": 3,
+        "text": "off"
+      }
+    }
+  ],
+  "models": []
+}

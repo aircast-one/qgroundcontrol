@@ -77,6 +77,7 @@ private val PAGE_ICONS = mapOf(
     "qr-code" to R.drawable.ic_link,
     "video" to R.drawable.ic_videocam,
     "sliders-horizontal" to R.drawable.ic_tune,
+    "crosshair" to R.drawable.ic_center_focus,
     "network" to R.drawable.ic_lan,
     "activity" to R.drawable.ic_analytics,
     "gauge" to R.drawable.ic_stop_circle,

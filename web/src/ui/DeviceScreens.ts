@@ -10,8 +10,15 @@ import { CamerasScreen } from '@/ui/DeviceCamerasScreen';
 import { SetupScreen } from '@/ui/DeviceSetupScreen';
 import { TelemetryScreen } from '@/ui/DeviceTelemetryScreen';
 import { VideoScreen } from '@/ui/DeviceVideoScreen';
+import { DetectionScreen } from '@/ui/DeviceDetectionScreen';
 
-export type DeviceScreenProps = { readonly href: string; readonly query: URLSearchParams; readonly onOpen: (href: string) => void; readonly onClose: () => void };
+export type DeviceScreenProps = {
+  readonly href: string;
+  readonly query: URLSearchParams;
+  readonly onOpen: (href: string) => void;
+  readonly onOpenFrom: (href: string, returnTo: string) => void;
+  readonly onClose: () => void;
+};
 
 export type DeviceScreenEntry = { readonly title: string; readonly screen: (props: DeviceScreenProps) => ReactNode; readonly narrow?: boolean };
 
@@ -22,6 +29,7 @@ export const DEVICE_SCREENS: ReadonlyMap<string, DeviceScreenEntry> = new Map<st
   ['/settings/device', { title: 'Device', screen: DeviceSettingsScreen }],
   ['/settings/engineering', { title: 'Engineering', screen: EngineeringScreen }],
   ['/settings/video', { title: 'Video engine', screen: VideoScreen }],
+  ['/settings/detection', { title: 'Detection', screen: DetectionScreen }],
   ['/settings/recordings', { title: 'Recordings', screen: RecordingsScreen }],
   ['/network', { title: 'Connection', screen: NetworkScreen }],
   ['/streaming', { title: 'Cameras', screen: CamerasScreen }],

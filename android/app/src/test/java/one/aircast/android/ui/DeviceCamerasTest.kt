@@ -125,4 +125,12 @@ class DeviceCamerasTest {
         assertEquals("cam-watch", openedSection("/settings/camera?camera=cam2#cam-watch"))
         assertEquals("", openedSection("/settings/camera?camera=cam2"))
     }
+
+    @Test
+    fun `a link followed from a camera's detection section comes back to that section`() {
+        val back = cameraSectionHref("front cam", CameraSetupSection.Detect)
+        assertEquals(listOf("/streaming", back, "/settings/detection"), openedFrom(listOf("/streaming", "/settings/camera?camera=front%20cam"), "/settings/detection", back))
+        assertEquals(DevicePath("/settings/camera", mapOf("camera" to "front cam")), devicePath(back))
+        assertEquals(CameraSetupSection.Detect, openedSection(back))
+    }
 }

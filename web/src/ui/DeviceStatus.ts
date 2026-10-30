@@ -97,6 +97,7 @@ const PAGE_ICONS: ReadonlyMap<string, DrawableName> = new Map<string, DrawableNa
   ['qr-code', 'ic_link'],
   ['video', 'ic_videocam'],
   ['sliders-horizontal', 'ic_tune'],
+  ['crosshair', 'ic_center_focus'],
   ['network', 'ic_lan'],
   ['activity', 'ic_analytics'],
   ['gauge', 'ic_stop_circle'],

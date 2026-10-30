@@ -17,6 +17,7 @@ class DeviceViewFixturesTest {
         assertTrue(parseDeviceSettings(served("device"))!!.stats.isNotEmpty())
         assertTrue(parseEngineering(served("engineering")) != null)
         assertTrue(parseVideo(served("video")) != null)
+        assertEquals("cam2", parseDetection(served("detection"))?.cameras?.first()?.name)
         assertTrue(parseRecordings(served("recordings"))!!.limit.options.isNotEmpty())
         assertEquals("Wi-Fi (wlan0)", parseNetwork(served("network"))?.uplink?.title)
         assertEquals("cam2", parseCameras(served("cameras"))?.cameras?.first()?.name)

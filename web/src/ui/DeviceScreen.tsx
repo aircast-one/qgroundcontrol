@@ -44,7 +44,15 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
   if (current !== null && opened !== null && entry !== undefined)
     return (
       <PageColumn wide={entry.narrow !== true}>
-        <NativeDevicePage key={current} entry={entry} href={current} query={opened.query} onOpen={(href) => setStack([...stack, href])} onBack={back} />
+        <NativeDevicePage
+          key={current}
+          entry={entry}
+          href={current}
+          query={opened.query}
+          onOpen={(href) => setStack([...stack, href])}
+          onOpenFrom={(href, returnTo) => setStack([...stack.slice(0, -1), returnTo, href])}
+          onBack={back}
+        />
       </PageColumn>
     );
   if (!served && reading.origin === '')
@@ -189,12 +197,26 @@ const HealthSection = ({ health }: { health: DeviceHealth }) => (
   </DeviceSection>
 );
 
-const NativeDevicePage = ({ entry, href, query, onOpen, onBack }: { entry: DeviceScreenEntry; href: string; query: URLSearchParams; onOpen: (href: string) => void; onBack: () => void }) => {
+const NativeDevicePage = ({
+  entry,
+  href,
+  query,
+  onOpen,
+  onOpenFrom,
+  onBack,
+}: {
+  entry: DeviceScreenEntry;
+  href: string;
+  query: URLSearchParams;
+  onOpen: (href: string) => void;
+  onOpenFrom: (href: string, returnTo: string) => void;
+  onBack: () => void;
+}) => {
   useBackHandler(true, onBack);
   return (
     <>
       <OverridePageHeading title={entry.title} onBack={onBack} />
-      <div className="h-full w-full overflow-y-auto">{entry.screen({ href, query, onOpen, onClose: onBack })}</div>
+      <div className="h-full w-full overflow-y-auto">{entry.screen({ href, query, onOpen, onOpenFrom, onClose: onBack })}</div>
     </>
   );
 };
