@@ -22,7 +22,7 @@ const INDEX_BYTES: u64 = 4;
 const ARENA_VERTICES: u32 = 1 << 19;
 const ARENA_INDICES: u32 = 1 << 21;
 const DRAW_BYTES: u64 = 128;
-const SCENE_BYTES: u64 = 96;
+const SCENE_BYTES: u64 = 160;
 const SAMPLES: u32 = 4;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
@@ -31,8 +31,11 @@ const LAYERS: [Layer; 3] = [Layer::Opaque, Layer::Translucent, Layer::OnTop];
 const ANISOTROPY: u16 = 16;
 const BLOOM: bool = true;
 const BLOOM_MIPS: usize = 5;
+const SSAO: bool = true;
+const SURFACE: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+const OCCLUSION: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var picture: texture_2d<f32>;
 @group(1) @binding(1) var tile_sampler: sampler;
@@ -43,6 +46,7 @@ struct Placed {
 };
 struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) seen: vec3<f32>, @location(2) normal: vec3<f32> };
 struct SkyOut { @builtin(position) position: vec4<f32>, @location(0) screen: vec2<f32> };
+struct Frag { @location(0) colour: vec4<f32>, @location(1) surface: vec4<f32> };
 
 const ZENITH = vec3<f32>(0.06, 0.18, 0.5);
 const HORIZON = vec3<f32>(0.5, 0.62, 0.78);
@@ -56,9 +60,13 @@ fn sky(direction: vec3<f32>) -> vec3<f32> {
     return mix(HORIZON, ZENITH, above) + SUNLIGHT * glow;
 }
 
+fn facing(normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
+    return select(normalize(normal), -normalize(normal), dot(normal, seen) > 0.0);
+}
+
 fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
     if (dot(normal, normal) < 0.25) { return colour; }
-    let outward = select(normalize(normal), -normalize(normal), dot(normal, seen) > 0.0);
+    let outward = facing(normal, seen);
     let level = AMBIENT + (1.0 - AMBIENT) * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0);
     let skylight = AMBIENT * (0.5 + 0.5 * max(dot(outward, scene.zenith.xyz), 0.0));
     return colour * (skylight + (1.0 - AMBIENT) * max(dot(outward, scene.sun.xyz), 0.0)) / level;
@@ -70,11 +78,12 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
     return Out(mvp * vec4<f32>(v.position, 1.0), v.uv, (model * vec4<f32>(v.position, 1.0)).xyz, (model * vec4<f32>(v.normal, 0.0)).xyz);
 }
 
-@fragment fn fs(f: Out) -> @location(0) vec4<f32> {
+@fragment fn fs(f: Out) -> Frag {
     let colour = textureSample(picture, tile_sampler, f.uv);
     let distance = max(length(f.seen), 1.0);
     let haze = 1.0 - exp(-distance / HAZE_M);
-    return vec4<f32>(mix(sunlit(colour.rgb, f.normal, f.seen), sky(f.seen / distance), haze), colour.a);
+    let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
+    return Frag(vec4<f32>(mix(sunlit(colour.rgb, f.normal, f.seen), sky(f.seen / distance), haze), colour.a), vec4<f32>(normal, distance));
 }
 
 @fragment fn fs_plain(f: Out) -> @location(0) vec4<f32> {
@@ -86,23 +95,33 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
     return SkyOut(vec4<f32>(corner, 0.0, 1.0), corner);
 }
 
-@fragment fn fs_sky(f: SkyOut) -> @location(0) vec4<f32> {
+@fragment fn fs_sky(f: SkyOut) -> Frag {
     let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
-    return vec4<f32>(sky(normalize(through.xyz / through.w)), 1.0);
+    return Frag(vec4<f32>(sky(normalize(through.xyz / through.w)), 1.0), vec4<f32>(0.0));
 }
 ";
 const POST_SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var screen_sampler: sampler;
 @group(1) @binding(1) var picture: texture_2d<f32>;
-@group(1) @binding(2) var bloom: texture_2d<f32>;
+@group(1) @binding(2) var second: texture_2d<f32>;
+@group(1) @binding(3) var third: texture_2d<f32>;
 struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
 
 const EXPOSURE = 1.3;
 const BLOOM = 0.06;
 const BLOOM_THRESHOLD = 1.0;
 const BLOOM_KNEE = 0.5;
+const AO_RADIUS = 6.0;
+const AO_BIAS = 0.05;
+const AO_STRENGTH = 1.5;
+const AO_SAMPLES = 12;
+const KERNEL = array<vec3<f32>, 12>(
+    vec3<f32>(-0.088, 0.007, 0.047), vec3<f32>(-0.022, 0.102, 0.020), vec3<f32>(-0.061, -0.103, 0.036), vec3<f32>(0.060, -0.055, 0.133),
+    vec3<f32>(-0.038, -0.098, 0.170), vec3<f32>(-0.164, 0.048, 0.191), vec3<f32>(-0.314, -0.010, 0.083), vec3<f32>(-0.178, 0.187, 0.314),
+    vec3<f32>(-0.067, 0.422, 0.259), vec3<f32>(-0.301, -0.159, 0.502), vec3<f32>(-0.078, -0.675, 0.254), vec3<f32>(0.467, -0.645, 0.314),
+);
 const EDGE_THRESHOLD = 0.166;
 const EDGE_THRESHOLD_MIN = 0.0833;
 const SUBPIXEL = 0.75;
@@ -156,9 +175,66 @@ fn bright(colour: vec3<f32>) -> vec3<f32> {
     return vec4<f32>((tap(f.uv, texel, 0.0, 0.0) * 4.0 + edges * 2.0 + corners) / 16.0, 1.0);
 }
 
+fn ray(uv: vec2<f32>) -> vec3<f32> {
+    let through = scene.unproject * vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.5, 1.0);
+    return normalize(through.xyz / through.w);
+}
+
+fn noise(pixel: vec2<f32>) -> f32 {
+    return fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
+}
+
+fn surface_at(uv: vec2<f32>) -> vec4<f32> {
+    return textureSampleLevel(picture, screen_sampler, uv, 0.0);
+}
+
+@fragment fn fs_ssao(f: Out) -> @location(0) vec4<f32> {
+    let surface = surface_at(f.uv);
+    let depth = surface.w;
+    if (depth <= 0.0 || dot(surface.xyz, surface.xyz) < 0.25) { return vec4<f32>(0.0); }
+    let normal = normalize(surface.xyz);
+    let position = ray(f.uv) * depth;
+    let angle = noise(f.position.xy) * 6.2831853;
+    let random = vec3<f32>(cos(angle), sin(angle), 0.37);
+    let tangent = normalize(random - normal * dot(random, normal));
+    let bitangent = cross(normal, tangent);
+    var kernel = KERNEL;
+    var occlusion = 0.0;
+    for (var i = 0; i < AO_SAMPLES; i++) {
+        let k = kernel[i];
+        let sample = position + (tangent * k.x + bitangent * k.y + normal * k.z) * AO_RADIUS;
+        let clip = scene.project * vec4<f32>(sample, 1.0);
+        if (clip.w <= 0.0) { continue; }
+        let ndc = clip.xy / clip.w;
+        let seen = surface_at(vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5)).w;
+        if (seen <= 0.0) { continue; }
+        let range = smoothstep(0.0, 1.0, AO_RADIUS / abs(depth - seen));
+        occlusion += select(0.0, range, seen < length(sample) - AO_BIAS);
+    }
+    return vec4<f32>(occlusion / f32(AO_SAMPLES));
+}
+
+@fragment fn fs_blur(f: Out) -> @location(0) vec4<f32> {
+    let texel = 1.0 / vec2<f32>(textureDimensions(picture));
+    let depth = textureSampleLevel(second, screen_sampler, f.uv, 0.0).w;
+    var total = 0.0;
+    var weight = 0.0;
+    for (var y = -2; y < 2; y++) {
+        for (var x = -2; x < 2; x++) {
+            let at = f.uv + (vec2<f32>(f32(x), f32(y)) + 0.5) * texel;
+            let near = textureSampleLevel(second, screen_sampler, at, 0.0).w;
+            let w = select(0.0, 1.0, abs(near - depth) < AO_RADIUS);
+            total += textureSampleLevel(picture, screen_sampler, at, 0.0).r * w;
+            weight += w;
+        }
+    }
+    return vec4<f32>(total / max(weight, 1.0));
+}
+
 fn shown(uv: vec2<f32>) -> vec4<f32> {
-    let glow = textureSampleLevel(bloom, screen_sampler, uv, 0.0).rgb * BLOOM;
-    let colour = aces((textureSampleLevel(picture, screen_sampler, uv, 0.0).rgb + glow) * EXPOSURE);
+    let glow = textureSampleLevel(second, screen_sampler, uv, 0.0).rgb * BLOOM;
+    let shade = max(1.0 - textureSampleLevel(third, screen_sampler, uv, 0.0).r * AO_STRENGTH, 0.0);
+    let colour = aces((textureSampleLevel(picture, screen_sampler, uv, 0.0).rgb * shade + glow) * EXPOSURE);
     return vec4<f32>(colour, sqrt(dot(colour, vec3<f32>(0.299, 0.587, 0.114))));
 }
 
@@ -398,6 +474,12 @@ pub struct Targets {
     samples: wgpu::TextureView,
     depth: wgpu::TextureView,
     resolved: wgpu::TextureView,
+    surface_samples: wgpu::TextureView,
+    surface: wgpu::TextureView,
+    occlusion: wgpu::TextureView,
+    blurred: wgpu::TextureView,
+    ssao_bind: wgpu::BindGroup,
+    blur_bind: wgpu::BindGroup,
     mips: Vec<wgpu::TextureView>,
     down_binds: Vec<wgpu::BindGroup>,
     up_binds: Vec<wgpu::BindGroup>,
@@ -414,6 +496,8 @@ pub struct Renderer {
     prefilter: wgpu::RenderPipeline,
     down: wgpu::RenderPipeline,
     up: wgpu::RenderPipeline,
+    ssao: wgpu::RenderPipeline,
+    blur: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     screen_layout: wgpu::BindGroupLayout,
     draws: Option<Draws>,
@@ -484,6 +568,22 @@ fn pipeline(
             "fs_plain",
         ),
     };
+    let targets = [
+        Some(wgpu::ColorTargetState {
+            format: color,
+            blend,
+            write_mask: wgpu::ColorWrites::ALL,
+        }),
+        Some(wgpu::ColorTargetState {
+            format: SURFACE,
+            blend: None,
+            write_mask: if layer == Layer::Translucent {
+                wgpu::ColorWrites::empty()
+            } else {
+                wgpu::ColorWrites::ALL
+            },
+        }),
+    ];
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("synthetic"),
         layout: Some(layout),
@@ -503,7 +603,12 @@ fn pipeline(
         primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
         depth_stencil: (layer != Layer::OnTop).then(|| depth_state(depth_write, compare)),
         multisample: multisample(if layer == Layer::OnTop { 1 } else { SAMPLES }),
-        fragment: Some(wgpu::FragmentState { module: shader, entry_point: Some(fragment), compilation_options: Default::default(), targets: &[Some(wgpu::ColorTargetState { format: color, blend, write_mask: wgpu::ColorWrites::ALL })] }),
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some(fragment),
+            compilation_options: Default::default(),
+            targets: if layer == Layer::OnTop { &targets[..1] } else { &targets },
+        }),
         multiview_mask: None,
         cache: None,
     })
@@ -531,11 +636,18 @@ fn sky_pipeline(
             module: shader,
             entry_point: Some("fs_sky"),
             compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: color,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[
+                Some(wgpu::ColorTargetState {
+                    format: color,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                }),
+                Some(wgpu::ColorTargetState {
+                    format: SURFACE,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                }),
+            ],
         }),
         multiview_mask: None,
         cache: None,
@@ -672,6 +784,7 @@ impl Renderer {
                 },
                 sampled(1),
                 sampled(2),
+                sampled(3),
             ],
         });
         let post_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -692,6 +805,8 @@ impl Renderer {
         let prefilter = screen("fs_prefilter", HDR, None);
         let down = screen("fs_down", HDR, None);
         let up = screen("fs_up", HDR, Some(ADDITIVE));
+        let ssao = screen("fs_ssao", OCCLUSION, None);
+        let blur = screen("fs_blur", OCCLUSION, None);
         let scene = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("synthetic scene"),
             size: SCENE_BYTES,
@@ -732,6 +847,8 @@ impl Renderer {
             prefilter,
             down,
             up,
+            ssao,
+            blur,
             layout,
             screen_layout,
             draws: None,
@@ -872,15 +989,26 @@ impl Renderer {
     fn pass<'a>(encoder: &'a mut wgpu::CommandEncoder, targets: &Targets) -> wgpu::RenderPass<'a> {
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("synthetic"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &targets.samples,
-                depth_slice: None,
-                resolve_target: Some(&targets.resolved),
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(SKY),
-                    store: wgpu::StoreOp::Discard,
-                },
-            })],
+            color_attachments: &[
+                Some(wgpu::RenderPassColorAttachment {
+                    view: &targets.samples,
+                    depth_slice: None,
+                    resolve_target: Some(&targets.resolved),
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(SKY),
+                        store: wgpu::StoreOp::Discard,
+                    },
+                }),
+                Some(wgpu::RenderPassColorAttachment {
+                    view: &targets.surface_samples,
+                    depth_slice: None,
+                    resolve_target: Some(&targets.surface),
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Discard,
+                    },
+                }),
+            ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &targets.depth,
                 depth_ops: Some(wgpu::Operations {
@@ -949,10 +1077,26 @@ impl Renderer {
     }
 
     fn effects(&self, encoder: &mut wgpu::CommandEncoder, targets: &Targets) {
+        let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
+        if SSAO {
+            self.screen(
+                encoder,
+                &targets.occlusion,
+                clear,
+                &self.ssao,
+                &targets.ssao_bind,
+            );
+            self.screen(
+                encoder,
+                &targets.blurred,
+                clear,
+                &self.blur,
+                &targets.blur_bind,
+            );
+        }
         if !BLOOM {
             return;
         }
-        let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
         targets
             .mips
             .iter()
@@ -1081,6 +1225,7 @@ impl Renderer {
                     .as_mat4()
                     .to_cols_array()
                     .into_iter()
+                    .chain(view_projection.as_mat4().to_cols_array())
                     .chain(direction(camera.zenith))
                     .chain(direction(camera.sun)),
             ),
@@ -1191,41 +1336,57 @@ impl Renderer {
         let mips: Vec<wgpu::TextureView> = (0..BLOOM_MIPS)
             .map(|level| sized("synthetic bloom", HDR, 1, readable, level as u32 + 1))
             .collect();
-        let bind = |picture: &wgpu::TextureView, bloom: &wgpu::TextureView| {
-            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("synthetic screen"),
-                layout: &self.screen_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Sampler(&self.post_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(picture),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(bloom),
-                    },
-                ],
-            })
-        };
+        let surface = texture("synthetic surface", SURFACE, 1, readable);
+        let occlusion = sized("synthetic occlusion", OCCLUSION, 1, readable, 1);
+        let blurred = sized("synthetic occlusion", OCCLUSION, 1, readable, 1);
+        let bind =
+            |picture: &wgpu::TextureView, second: &wgpu::TextureView, third: &wgpu::TextureView| {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("synthetic screen"),
+                    layout: &self.screen_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::Sampler(&self.post_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(picture),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(second),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(third),
+                        },
+                    ],
+                })
+            };
         let down_binds = std::iter::once(&resolved)
             .chain(&mips)
             .take(BLOOM_MIPS)
-            .map(|source| bind(source, source))
+            .map(|source| bind(source, source, source))
             .collect();
         let up_binds = mips
             .iter()
             .skip(1)
-            .map(|source| bind(source, source))
+            .map(|source| bind(source, source, source))
             .collect();
-        let post_bind = bind(&resolved, &mips[0]);
+        let post_bind = bind(&resolved, &mips[0], &blurred);
+        let ssao_bind = bind(&surface, &surface, &surface);
+        let blur_bind = bind(&occlusion, &surface, &surface);
         Targets {
             samples: texture("synthetic samples", HDR, SAMPLES, transient),
             depth: texture("synthetic depth", DEPTH, SAMPLES, transient),
             resolved,
+            surface_samples: texture("synthetic surface samples", SURFACE, SAMPLES, transient),
+            surface,
+            occlusion,
+            blurred,
+            ssao_bind,
+            blur_bind,
             mips,
             down_binds,
             up_binds,
