@@ -328,7 +328,9 @@ fn facing(normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
 
 fn shadowed(cascade: i32, position: vec3<f32>, normal: vec3<f32>) -> f32 {
     let detail = scene.cascades[cascade];
-    let lifted = position + normal * detail.y * 1.5;
+    let facing_sun = clamp(dot(normal, scene.sun.xyz), 0.05, 1.0);
+    let slope = clamp(sqrt(1.0 - facing_sun * facing_sun) / facing_sun, 0.0, 6.0);
+    let lifted = position + normal * detail.y * (1.5 + slope);
     let seen = scene.light[cascade] * vec4<f32>(lifted, 1.0);
     let uv = seen.xy * vec2<f32>(0.5, -0.5) + 0.5;
     if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || seen.z > 1.0) { return 1.0; }
@@ -336,7 +338,7 @@ fn shadowed(cascade: i32, position: vec3<f32>, normal: vec3<f32>) -> f32 {
     var reached = 0.0;
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
-            reached += textureSampleCompareLevel(shadow, shadow_sampler, uv + vec2<f32>(f32(x), f32(y)) * texel, cascade, seen.z - detail.z);
+            reached += textureSampleCompareLevel(shadow, shadow_sampler, uv + vec2<f32>(f32(x), f32(y)) * texel, cascade, seen.z - detail.z * (1.0 + slope));
         }
     }
     return reached / 9.0;
@@ -349,8 +351,8 @@ fn sunlight_reaching(position: vec3<f32>, normal: vec3<f32>) -> f32 {
     let near = shadowed(cascade, position, normal);
     let edge = scene.cascades[cascade].x;
     let fade = smoothstep(edge * 0.85, edge, distance);
-    if (fade <= 0.0 || cascade == 2) { return near; }
-    return mix(near, shadowed(cascade + 1, position, normal), fade);
+    if (fade <= 0.0) { return near; }
+    return mix(near, select(shadowed(cascade + 1, position, normal), 1.0, cascade == 2), fade);
 }
 
 fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> vec3<f32> {
