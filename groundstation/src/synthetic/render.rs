@@ -38,7 +38,9 @@ const SURFACE: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const OCCLUSION: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const SHADOWS: bool = true;
 const TAA: bool = true;
+const MOTION_BLUR: bool = true;
 const HISTORY: f32 = 0.9;
+const SHUTTER: f32 = 0.5;
 const JITTERS: usize = 8;
 const SHADOW_SIZE: u32 = 2048;
 const CASCADES: usize = 3;
@@ -367,6 +369,8 @@ const KERNEL = array<vec3<f32>, 12>(
     vec3<f32>(-0.067, 0.422, 0.259), vec3<f32>(-0.301, -0.159, 0.502), vec3<f32>(-0.078, -0.675, 0.254), vec3<f32>(0.467, -0.645, 0.314),
 );
 const CLIP_SIGMA = 1.0;
+const BLUR_TAPS = 8;
+const BLUR_REACH_PX = 16.0;
 
 @vertex fn vs(@builtin(vertex_index) index: u32) -> Out {
     let corner = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
@@ -570,7 +574,19 @@ fn catmull_rom(uv: vec2<f32>, size: vec2<f32>) -> vec3<f32> {
 }
 
 @fragment fn fs(f: Out) -> @location(0) vec4<f32> {
-    return vec4<f32>(textureSampleLevel(picture, screen_sampler, f.uv, 0.0).rgb, 1.0);
+    let size = vec2<f32>(textureDimensions(picture));
+    let moved = velocity(f.uv, textureSampleLevel(second, screen_sampler, f.uv, 0.0)) * scene.temporal.w;
+    let pixels = length(moved * size);
+    let colour = textureSampleLevel(picture, screen_sampler, f.uv, 0.0).rgb;
+    if (pixels < 0.5 || pixels > 1000.0) { return vec4<f32>(colour, 1.0); }
+    let along = moved * min(1.0, BLUR_REACH_PX / pixels);
+    let start = noise(f.position.xy) - 0.5;
+    var total = vec3<f32>(0.0);
+    for (var i = 0; i < BLUR_TAPS; i++) {
+        let t = (f32(i) + start) / f32(BLUR_TAPS) - 0.5;
+        total += textureSampleLevel(picture, screen_sampler, f.uv + along * t, 0.0).rgb;
+    }
+    return vec4<f32>(total / f32(BLUR_TAPS), 1.0);
 }
 ";
 
@@ -1739,7 +1755,7 @@ impl Renderer {
             } else {
                 0.0
             },
-            0.0,
+            if MOTION_BLUR { SHUTTER } else { 0.0 },
         ];
         targets.previous.set(Some((steady, camera.eye)));
         let layer_of = |mesh: &Mesh| {
