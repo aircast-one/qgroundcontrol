@@ -237,7 +237,7 @@ internal sealed class LinkDetails : UserControl
         typed =>
         {
             var servers = LinkModel.WithServer(_draft.Servers, typed, _draft.ShownPort(_udpDefault));
-            FormLook.Say(_error, LinkModel.UdpServer(typed, _draft.ShownPort(_udpDefault)) is null ? "Enter a server as an address, or address:port." : null);
+            FormLook.Say(_error, LinkModel.UdpServer(typed, _draft.ShownPort(_udpDefault)) is null ? "Enter an address, or address:port." : null);
             _draft = _draft with { Servers = servers };
             return Task.FromResult(servers);
         },
@@ -589,7 +589,7 @@ internal sealed class ServerList : UserControl
     {
         _add = add;
         _remove = remove;
-        var typed = FormLook.Field("", "Also send to", "127.0.0.1:14550");
+        var typed = FormLook.Field("", "Vehicle address", "Example: 192.168.4.1:14550");
         typed.IsSpellCheckEnabled = false;
         async void Add()
         {
@@ -605,7 +605,7 @@ internal sealed class ServerList : UserControl
         Content = FormLook.Stack(4,
             _rows,
             FormLook.Line(8, FormLook.Margined(typed, new Thickness(0)), FormLook.Margined(FormLook.IconButton("", "Add address", Add), new Thickness(0, 26, 0, 0))),
-            FormLook.Caption("Optional. One address per device that should get telemetry too."));
+            FormLook.Caption("Optional. Add it when the vehicle doesn't send to this port by itself, like sitl.aircast.one."));
         typed.Width = 300;
         Render(servers);
     }

@@ -386,7 +386,7 @@ internal static class LinkModel
             .ToList();
 
     public const string OpenFirewall = "Open firewall settings";
-    public const string FirewallRemedy = "Allow Aircast QGC on Private and Public networks in the firewall's allowed apps (an administrator must confirm), or add the radio's address under Also send to: Windows lets replies from an address the app sends to through.";
+    public const string FirewallRemedy = "Allow Aircast QGC on Private and Public networks in the firewall's allowed apps (an administrator must confirm), or add the radio's address under Vehicle address: Windows lets replies from an address the app sends to through.";
 
     public static string FirewallBlocks(int port) => $"Windows Firewall is blocking telemetry arriving on UDP port {port}.";
 

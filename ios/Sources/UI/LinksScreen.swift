@@ -982,7 +982,7 @@ private struct DraftServers: View {
         ServerList(
             servers: draft.servers,
             onAdd: { typed in
-                onError(udpServer(typed, draft.shownPort(udpDefault)) == nil ? "Enter a server as an address, or address:port." : nil)
+                onError(udpServer(typed, draft.shownPort(udpDefault)) == nil ? "Enter an address, or address:port." : nil)
                 onDraft(withChanges(draft) { $0.servers = withServer(draft.servers, typed, draft.shownPort(udpDefault)) })
             },
             onRemove: { gone in onDraft(withChanges(draft) { $0.servers = draft.servers.filter { $0 != gone } }) }
@@ -1304,13 +1304,13 @@ private struct ServerList: View {
                 .frame(minHeight: 48)
             }
             HStack(alignment: .bottom) {
-                LinkTextField(label: "Also send to", value: typed, placeholder: "127.0.0.1:14550", keyboard: .URL, onSubmit: { if !typed.isBlank { add() } }) { typed = $0 }
+                LinkTextField(label: "Vehicle address", value: typed, placeholder: "Example: 192.168.4.1:14550", keyboard: .URL, onSubmit: { if !typed.isBlank { add() } }) { typed = $0 }
                 Button(action: add) { Image(.add).frame(width: 44, height: 36).contentShape(Rectangle()) }
                     .buttonStyle(.borderless)
                     .disabled(typed.isBlank)
                     .accessibilityLabel("Add address")
             }
-            Text("Optional. One address per device that should get telemetry too.").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+            Text("Optional. Add it when the vehicle doesn't send to this port by itself, like sitl.aircast.one.").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
         }
     }
 

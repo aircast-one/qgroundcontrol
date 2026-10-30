@@ -956,7 +956,7 @@ private fun DraftServers(draft: LinkDraft, udpDefault: String, onError: (String?
     ServerList(
         draft.servers,
         onAdd = { typed ->
-            onError("Enter a server as an address, or address:port.".takeIf { udpServer(typed, draft.shownPort(udpDefault)) == null })
+            onError("Enter an address, or address:port.".takeIf { udpServer(typed, draft.shownPort(udpDefault)) == null })
             onDraft(draft.copy(servers = withServer(draft.servers, typed, draft.shownPort(udpDefault))))
         },
         onRemove = { gone -> onDraft(draft.copy(servers = draft.servers.filterNot { it == gone })) },
@@ -1310,9 +1310,9 @@ private fun ServerList(servers: List<String>, onAdd: (String) -> Unit, onRemove:
         OutlinedTextField(
             value = typed,
             onValueChange = { typed = it },
-            label = { Text("Also send to") },
-            placeholder = { Text("127.0.0.1:14550") },
-            supportingText = { Text("Optional. One address per device that should get telemetry too.") },
+            label = { Text("Vehicle address") },
+            placeholder = { Text("Example: 192.168.4.1:14550") },
+            supportingText = { Text("Optional. Add it when the vehicle doesn't send to this port by itself, like sitl.aircast.one.") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (typed.isNotBlank()) add() }),

@@ -1080,7 +1080,7 @@ const DraftServers = ({ draft, udpDefault, onError, onDraft }: { draft: LinkDraf
   <ServerList
     servers={draft.servers}
     onAdd={(typed) => {
-      onError(udpServer(typed, shownPort(draft, udpDefault)) === null ? 'Enter a server as an address, or address:port.' : null);
+      onError(udpServer(typed, shownPort(draft, udpDefault)) === null ? 'Enter an address, or address:port.' : null);
       onDraft({ ...draft, servers: withServer(draft.servers, typed, shownPort(draft, udpDefault)) });
     }}
     onRemove={(gone) => onDraft({ ...draft, servers: draft.servers.filter((it) => it !== gone) })}
@@ -1469,9 +1469,9 @@ const ServerList = ({ servers, onAdd, onRemove }: { servers: readonly string[]; 
       <OutlinedTextField
         value={typed}
         onValueChange={setTyped}
-        label="Also send to"
-        placeholder="127.0.0.1:14550"
-        supportingText="Optional. One address per device that should get telemetry too."
+        label="Vehicle address"
+        placeholder="Example: 192.168.4.1:14550"
+        supportingText="Optional. Add it when the vehicle doesn't send to this port by itself, like sitl.aircast.one."
         keyboardType="uri"
         onDone={() => {
           if (typed.trim() !== '') add();
