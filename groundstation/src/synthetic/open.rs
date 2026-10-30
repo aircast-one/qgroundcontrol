@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::f64::consts::{FRAC_1_SQRT_2, PI};
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,11 +33,15 @@ const MAX_TERRAIN_TILES: usize = 800;
 const MAX_HEIGHT_TILES: usize = 500;
 const UNIMAGED: [u8; 4] = [118, 124, 104, 255];
 const ROOF: [u8; 4] = [217, 211, 199, 255];
-const WALL: [u8; 4] = [200, 194, 182, 255];
-const ROOF_U: f32 = 0.25;
+const WALL_SHADE: f32 = 0.75;
+const WALL_GREY: f32 = 0.3;
+const WALL_VARIETY: f32 = 0.08;
+const PALETTE_WIDTH: u32 = 64;
+const SAMPLED_CORNERS: usize = 15;
+const ROOF_PICTURE_ZOOM: u32 = 16;
+const ROOF_LIFT: f32 = 1.5;
 const BOUNDS_BLOCK: usize = 16;
 const NO_HEIGHTS: (f32, f32) = (f32::MAX, f32::MIN);
-const WALL_U: f32 = 0.75;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TileKey {
@@ -252,6 +256,7 @@ pub enum Want {
     },
     Houses {
         key: TileKey,
+        imagery: String,
         patch: Patch,
     },
 }
@@ -310,11 +315,17 @@ impl Want {
                     )),
                 }
             }
-            Want::Houses { key, patch } => Built::Houses(
+            Want::Houses {
                 key,
-                fetcher
-                    .map(BUILDINGS, key.z, key.x, key.y)
-                    .map(|json| building_mesh(key, &json, Some(&patch))),
+                imagery,
+                patch,
+            } => Built::Houses(
+                key,
+                fetcher.map(BUILDINGS, key.z, key.x, key.y).map(|json| {
+                    building_mesh(key, &json, Some(&patch), &|under| {
+                        picture(fetcher, &imagery, under).map(|(picture, _)| picture)
+                    })
+                }),
             ),
         }
     }
@@ -533,11 +544,95 @@ fn terrain_mesh(key: TileKey, patch: Option<&Patch>, picture: Option<image::Rgba
     .with_normals(normals)
 }
 
-fn palette() -> image::RgbaImage {
-    image::RgbaImage::from_fn(2, 1, |x, _| image::Rgba(if x == 0 { ROOF } else { WALL }))
+fn palette(colours: &[[u8; 4]]) -> image::RgbaImage {
+    let rows = (colours.len() as u32).div_ceil(PALETTE_WIDTH).max(1);
+    image::RgbaImage::from_fn(PALETTE_WIDTH, rows, |x, y| {
+        image::Rgba(
+            colours
+                .get((y * PALETTE_WIDTH + x) as usize)
+                .copied()
+                .unwrap_or(ROOF),
+        )
+    })
+}
+
+fn palette_uv(index: usize, count: usize) -> [f32; 2] {
+    let rows = (count as u32).div_ceil(PALETTE_WIDTH).max(1);
+    [
+        (index as u32 % PALETTE_WIDTH) as f32 / PALETTE_WIDTH as f32 + 0.5 / PALETTE_WIDTH as f32,
+        (index as u32 / PALETTE_WIDTH) as f32 / rows as f32 + 0.5 / rows as f32,
+    ]
+}
+
+fn centre_of(outline: &[(f64, f64)]) -> (f64, f64) {
+    let count = outline.len() as f64;
+    outline
+        .iter()
+        .fold((0.0, 0.0), |(u, v), p| (u + p.0 / count, v + p.1 / count))
+}
+
+fn under(key: TileKey, outline: &[(f64, f64)]) -> (TileKey, f64, f64) {
+    let scale = f64::from(1u32 << ROOF_PICTURE_ZOOM.saturating_sub(key.z));
+    let (u, v) = centre_of(outline);
+    let (du, dv) = (
+        (u * scale).floor().clamp(0.0, scale - 1.0),
+        (v * scale).floor().clamp(0.0, scale - 1.0),
+    );
+    (
+        TileKey {
+            z: key.z.max(ROOF_PICTURE_ZOOM),
+            x: key.x * scale as u32 + du as u32,
+            y: key.y * scale as u32 + dv as u32,
+        },
+        du,
+        dv,
+    )
+}
+
+fn roof_colour(
+    key: TileKey,
+    pictures: &HashMap<TileKey, Option<image::RgbaImage>>,
+    outline: &[(f64, f64)],
+) -> [u8; 4] {
+    let (sub, du, dv) = under(key, outline);
+    let Some(Some(picture)) = pictures.get(&sub) else {
+        return ROOF;
+    };
+    let scale = f64::from(1u32 << (sub.z - key.z));
+    let (width, height) = picture.dimensions();
+    let samples: Vec<[u8; 4]> = std::iter::once(centre_of(outline))
+        .chain(outline.iter().copied().take(SAMPLED_CORNERS))
+        .map(|(u, v)| {
+            let x = (((u * scale - du).clamp(0.0, 1.0) * f64::from(width)) as u32).min(width - 1);
+            let y = (((v * scale - dv).clamp(0.0, 1.0) * f64::from(height)) as u32).min(height - 1);
+            picture.get_pixel(x, y).0
+        })
+        .collect();
+    std::array::from_fn(|channel| {
+        let mean =
+            samples.iter().map(|s| f32::from(s[channel])).sum::<f32>() / samples.len() as f32;
+        (if channel == 3 { mean } else { mean * ROOF_LIFT }).min(255.0) as u8
+    })
+}
+
+fn wall_colour(roof: [u8; 4], outline: &[(f64, f64)]) -> [u8; 4] {
+    let seed = outline[0].0.to_bits() ^ outline[0].1.to_bits().rotate_left(17);
+    let variety = 1.0 + WALL_VARIETY * ((seed % 1000) as f32 / 500.0 - 1.0);
+    let grey = (f32::from(roof[0]) + f32::from(roof[1]) + f32::from(roof[2])) / 3.0;
+    let shade = |channel: u8| {
+        ((f32::from(channel) * (1.0 - WALL_GREY) + grey * WALL_GREY) * WALL_SHADE * variety)
+            .clamp(0.0, 255.0) as u8
+    };
+    [shade(roof[0]), shade(roof[1]), shade(roof[2]), 255]
 }
 
 #[derive(Default)]
+struct Footprint {
+    rings: Vec<Vec<(f64, f64)>>,
+    base: f64,
+    top: f64,
+}
+
 struct Part {
     positions: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
@@ -573,7 +668,7 @@ fn joined(parts: impl Iterator<Item = Part>) -> Part {
     }
 }
 
-fn wall(a: DVec3, b: DVec3, low: f64, high: f64) -> Part {
+fn wall(a: DVec3, b: DVec3, low: f64, high: f64, uv: [f32; 2]) -> Part {
     let up = |p: DVec3, h: f64| (p + DVec3::Z * h).as_vec3().to_array();
     let along = b - a;
     let outward = DVec3::new(-along.y, along.x, 0.0)
@@ -582,13 +677,13 @@ fn wall(a: DVec3, b: DVec3, low: f64, high: f64) -> Part {
         .to_array();
     Part {
         positions: vec![up(a, low), up(b, low), up(b, high), up(a, high)],
-        uvs: vec![[WALL_U, 0.5]; 4],
+        uvs: vec![uv; 4],
         normals: vec![outward; 4],
         indices: vec![0, 1, 2, 0, 2, 3],
     }
 }
 
-fn roof(rings: &[Vec<DVec3>], height: f64) -> Part {
+fn roof(rings: &[Vec<DVec3>], height: f64, uv: [f32; 2]) -> Part {
     let flat: Vec<[f64; 2]> = rings.iter().flatten().map(|p| [p.x, p.y]).collect();
     let holes: Vec<u32> = rings
         .iter()
@@ -607,13 +702,18 @@ fn roof(rings: &[Vec<DVec3>], height: f64) -> Part {
             .flatten()
             .map(|p| (*p + DVec3::Z * height).as_vec3().to_array())
             .collect(),
-        uvs: vec![[ROOF_U, 0.5]; flat.len()],
+        uvs: vec![uv; flat.len()],
         normals: vec![[0.0, 0.0, 1.0]; flat.len()],
         indices: triangles,
     }
 }
 
-fn building_mesh(key: TileKey, json: &[u8], patch: Option<&Patch>) -> Option<Mesh> {
+fn building_mesh(
+    key: TileKey,
+    json: &[u8],
+    patch: Option<&Patch>,
+    pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
+) -> Option<Mesh> {
     let tile: serde_json::Value = serde_json::from_slice(json).ok()?;
     let extent = tile
         .get("extent")
@@ -624,7 +724,7 @@ fn building_mesh(key: TileKey, json: &[u8], patch: Option<&Patch>) -> Option<Mes
     let flat_at = |u: f64, v: f64| -> DVec3 {
         to_local * (ecef(key.latitude(v), key.longitude(u), 0.0) - origin)
     };
-    let parts = tile
+    let footprints: Vec<Footprint> = tile
         .get("buildings")
         .and_then(serde_json::Value::as_array)
         .into_iter()
@@ -641,13 +741,39 @@ fn building_mesh(key: TileKey, json: &[u8], patch: Option<&Patch>) -> Option<Mes
                         .collect()
                 })
                 .collect();
-            let outline = rings.first().filter(|ring| ring.len() >= 3)?;
+            rings.first().filter(|ring| ring.len() >= 3)?;
             let top = building.get("height").and_then(serde_json::Value::as_f64)?;
             let base = building
                 .get("base")
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
-            let floor = ground(outline[0].0, outline[0].1);
+            Some(Footprint { rings, base, top })
+        })
+        .collect();
+    let slots = footprints.len() * 2;
+    let fetched: HashMap<TileKey, Option<image::RgbaImage>> = footprints
+        .iter()
+        .map(|footprint| under(key, &footprint.rings[0]).0)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .map(|sub| (sub, pictures(sub)))
+        .collect();
+    let colours: Vec<[u8; 4]> = footprints
+        .iter()
+        .flat_map(|footprint| {
+            let roof = roof_colour(key, &fetched, &footprint.rings[0]);
+            [roof, wall_colour(roof, &footprint.rings[0])]
+        })
+        .collect();
+    let parts = footprints
+        .iter()
+        .enumerate()
+        .map(|(index, Footprint { rings, base, top })| {
+            let floor = ground(rings[0][0].0, rings[0][0].1);
+            let (roof_uv, wall_uv) = (
+                palette_uv(index * 2, slots),
+                palette_uv(index * 2 + 1, slots),
+            );
             let placed: Vec<Vec<DVec3>> = rings
                 .iter()
                 .map(|ring| ring.iter().map(|&(u, v)| flat_at(u, v)).collect())
@@ -659,12 +785,11 @@ fn building_mesh(key: TileKey, json: &[u8], patch: Option<&Patch>) -> Option<Mes
                         ring[(i + 1) % ring.len()],
                         floor + base,
                         floor + top,
+                        wall_uv,
                     )
                 })
             });
-            Some(joined(
-                walls.chain(std::iter::once(roof(&placed, floor + top))),
-            ))
+            joined(walls.chain(std::iter::once(roof(&placed, floor + top, roof_uv))))
         });
     let whole = joined(parts);
     (!whole.indices.is_empty()).then(|| {
@@ -673,7 +798,7 @@ fn building_mesh(key: TileKey, json: &[u8], patch: Option<&Patch>) -> Option<Mes
             whole.positions,
             whole.uvs,
             whole.indices,
-            palette(),
+            palette(&colours),
             Layer::Opaque,
         )
         .with_normals(whole.normals)
@@ -933,7 +1058,11 @@ impl OpenScene {
             && idle
             && let Some(patch) = self.patch(key, wanted, now)
         {
-            wanted.push(Want::Houses { key, patch });
+            wanted.push(Want::Houses {
+                key,
+                imagery: self.imagery.clone(),
+                patch,
+            });
         }
         self.houses.get(&key).and_then(|entry| entry.mesh.clone())
     }
@@ -1604,8 +1733,13 @@ mod tests {
             span: 1.0,
         };
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 3000, 1000, 3000, 3000, 1000, 3000]], "height": 9.0 }] });
-        let house = building_mesh(key, &serde_json::to_vec(&json).unwrap(), Some(&patch))
-            .expect("a building");
+        let house = building_mesh(
+            key,
+            &serde_json::to_vec(&json).unwrap(),
+            Some(&patch),
+            &|_| None,
+        )
+        .expect("a building");
         scene.houses.insert(
             key,
             HouseEntry {
@@ -1633,6 +1767,38 @@ mod tests {
     }
 
     #[test]
+    fn a_building_takes_its_roof_from_the_picture_under_it_and_darker_walls() {
+        let key = TileKey {
+            z: 14,
+            x: 14980,
+            y: 9903,
+        };
+        let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 1100, 1000, 1100, 1100, 1000, 1100]], "height": 9.0 }] });
+        let mesh = building_mesh(key, &serde_json::to_vec(&json).unwrap(), None, &|under| {
+            (under.z == ROOF_PICTURE_ZOOM).then(|| solid([120, 40, 40, 255]))
+        })
+        .expect("a building");
+        let palette = mesh.take_texture().expect("palette")[0].clone();
+        let roof = palette.get_pixel(0, 0).0;
+        let wall = palette.get_pixel(1, 0).0;
+        assert_eq!(roof, [180, 60, 60, 255]);
+        assert!(
+            wall[0] < roof[0] && wall[0] > roof[0] / 2,
+            "wall {wall:?} is a darker roof {roof:?}"
+        );
+        assert!(
+            wall[1] > roof[1] / 2,
+            "walls are greyer than the roof: {wall:?}"
+        );
+        let uvs: std::collections::HashSet<[u32; 2]> = mesh
+            .uvs
+            .iter()
+            .map(|uv| [(uv[0] * PALETTE_WIDTH as f32) as u32, (uv[1] * 1.0) as u32])
+            .collect();
+        assert_eq!(uvs, [[0, 0], [1, 0]].into_iter().collect());
+    }
+
+    #[test]
     fn a_square_building_gets_four_walls_and_a_two_triangle_roof() {
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 1100, 1000, 1100, 1100, 1000, 1100]], "height": 9.0, "base": 0.0 }] });
         let mesh = building_mesh(
@@ -1643,6 +1809,7 @@ mod tests {
             },
             &serde_json::to_vec(&json).unwrap(),
             None,
+            &|_| None,
         )
         .expect("a building");
         assert_eq!(mesh.indices.len(), 4 * 6 + 2 * 3);
@@ -1697,6 +1864,7 @@ mod tests {
             },
             &serde_json::to_vec(&json).unwrap(),
             None,
+            &|_| None,
         )
         .expect("buildings");
         assert_eq!(
