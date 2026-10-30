@@ -177,6 +177,7 @@ internal sealed class LinkDetails : UserControl
     private readonly TextBox _name = FormLook.Field("", "Name");
     private readonly Button _connect;
     private readonly AircastCloudFields? _cloud;
+    private readonly ServerList? _servers;
     private LinkDraft _draft;
     private JsonObject _view;
 
@@ -194,10 +195,11 @@ internal sealed class LinkDetails : UserControl
         _cloud = type == LinkType.AircastCloud
             ? new AircastCloudFields(_draft.ApiBase, _draft.DeviceId, api => Change(_draft with { ApiBase = api }), id => Change(_draft with { DeviceId = id }))
             : null;
+        _servers = type == LinkType.Udp ? Servers() : null;
         Content = SettingsBodies.Scrolled(FormLook.Stack(12,
             FormLook.Text(LinkModel.Kind(type).About, "FontSizeBody", "TextSecondaryBrush"),
             Fields(),
-            type == LinkType.Udp ? Servers() : null,
+            _servers,
             type == LinkType.Mock ? null : LinkForms.Advanced(false, Advanced()),
             _error,
             _connect));
@@ -234,12 +236,11 @@ internal sealed class LinkDetails : UserControl
     };
 
     private ServerList Servers() => new(_draft.Servers,
+        typed => LinkModel.ServerFormError(typed, _draft.ShownPort(_udpDefault)),
         typed =>
         {
-            var servers = LinkModel.WithServer(_draft.Servers, typed, _draft.ShownPort(_udpDefault));
-            FormLook.Say(_error, LinkModel.UdpServer(typed, _draft.ShownPort(_udpDefault)) is null ? "Enter an address, or address:port." : null);
-            _draft = _draft with { Servers = servers };
-            return Task.FromResult(servers);
+            _draft = _draft with { Servers = LinkModel.WithServer(_draft.Servers, typed, _draft.ShownPort(_udpDefault)) };
+            return Task.FromResult(_draft.Servers);
         },
         gone =>
         {
@@ -265,10 +266,15 @@ internal sealed class LinkDetails : UserControl
         FormLook.Say(_portError, field == "port" ? invalid : null);
         FormLook.Say(_error, field is null ? invalid : null);
         if (invalid is not null) return;
-        var name = draft.Name.Trim().Length > 0 ? draft.Name.Trim() : LinkModel.UniqueName(LinkModel.SuggestedName(draft, Ports, _udpDefault), taken);
+        var pending = _servers?.Pending ?? "";
+        var serverProblem = LinkModel.ServerFormError(pending, draft.ShownPort(_udpDefault));
+        _servers?.Say(serverProblem);
+        if (serverProblem is not null) return;
+        var ready = draft with { Servers = LinkModel.WithServer(draft.Servers, pending, draft.ShownPort(_udpDefault)) };
+        var name = ready.Name.Trim().Length > 0 ? ready.Name.Trim() : LinkModel.UniqueName(LinkModel.SuggestedName(ready, Ports, _udpDefault), taken);
         _connect.IsEnabled = false;
         FormLook.Say(_error, null);
-        var failed = await FormWrites.Off(() => LinkCommands.Add(draft, name, _udpDefault));
+        var failed = await FormWrites.Off(() => LinkCommands.Add(ready, name, _udpDefault));
         _connect.IsEnabled = true;
         if (failed is not null)
         {
@@ -289,6 +295,7 @@ internal sealed class LinkEditor : UserControl
     private readonly TextBlock _locked = FormLook.Caption("", "CriticalBrush");
     private readonly Button _save;
     private readonly StackPanel _fields = new() { Spacing = 12 };
+    private readonly ServerList? _servers;
     private LinkEdit _edit;
     private BluetoothDevice? _device;
 
@@ -305,15 +312,17 @@ internal sealed class LinkEditor : UserControl
         var name = FormLook.Field(_edit.Name, "Name");
         name.TextChanged += (_, _) => _edit = _edit with { Name = name.Text };
         FormLook.Fill(_fields, [Fields(LinkModel.Ports(view), LinkModel.Bauds(view))]);
+        _servers = row.Editing == LinkEditing.PortOnly
+            ? new ServerList(row.Servers,
+                typed => LinkModel.ServerFormError(typed, ListenPort(_edit)),
+                host => FormWrites.Off(() => LinkCommands.ChangeServer(row.Index, "addHost", host)),
+                host => FormWrites.Off(() => LinkCommands.ChangeServer(row.Index, "removeHost", host)))
+            : null;
         Content = SettingsBodies.Scrolled(FormLook.Stack(12,
             FormLook.Text(LinkModel.Kind(row.Type).About, "FontSizeBody", "TextSecondaryBrush"),
             _locked,
             _fields,
-            row.Editing == LinkEditing.PortOnly
-                ? new ServerList(row.Servers,
-                    host => FormWrites.Off(() => LinkCommands.ChangeServer(row.Index, "addHost", host)),
-                    host => FormWrites.Off(() => LinkCommands.ChangeServer(row.Index, "removeHost", host)))
-                : null,
+            _servers,
             LinkForms.Advanced(LinkModel.EditShowsAdvanced(row), FormLook.Stack(12,
                 name,
                 row.Editing == LinkEditing.Serial ? LinkForms.Framing(_edit.Framing, framing => _edit = _edit with { Framing = framing }) : null,
@@ -345,6 +354,8 @@ internal sealed class LinkEditor : UserControl
         _ => LinkForms.Port(_row.Editing == LinkEditing.PortOnly ? "Listening port" : "Port", _edit.Port, true, port => _edit = _edit with { Port = port }),
     };
 
+    private string ListenPort(LinkEdit edit) => LinkModel.EditedPort(_row.Editing, edit.Port, _udpDefault).ToString(CultureInfo.InvariantCulture);
+
     private async void Save()
     {
         var edit = _edit;
@@ -352,6 +363,11 @@ internal sealed class LinkEditor : UserControl
         var invalid = LinkModel.EditError(_row.Editing, edit, _udpDefault);
         FormLook.Say(_error, invalid);
         if (invalid is not null) return;
+        var pending = _servers?.Pending ?? "";
+        var serverProblem = LinkModel.ServerFormError(pending, ListenPort(edit));
+        _servers?.Say(serverProblem);
+        if (serverProblem is not null) return;
+        var typedServer = LinkModel.UdpServer(pending, ListenPort(edit));
         var rows = await FormWrites.Off(LinkCommands.Rows);
         if (LinkModel.Connected(rows, _row.Index) || rows.All(r => r.Index != _row.Index))
         {
@@ -364,7 +380,11 @@ internal sealed class LinkEditor : UserControl
                 rows.Where(r => r.Index != _row.Index).Select(r => r.Name).ToList());
         var writes = LinkModel.EditWrites(_row.Editing, edit, name, LinkModel.EditedPort(_row.Editing, edit.Port, _udpDefault));
         _save.IsEnabled = false;
-        await FormWrites.Off(() => LinkCommands.Apply(_row.Index, writes, device));
+        await FormWrites.Off(() =>
+        {
+            if (typedServer is not null) LinkCommands.ChangeServer(_row.Index, "addHost", typedServer);
+            LinkCommands.Apply(_row.Index, writes, device);
+        });
         _nav.Pop();
     }
 }
@@ -581,37 +601,62 @@ internal sealed class BluetoothPicker : UserControl
 
 internal sealed class ServerList : UserControl
 {
+    private readonly Func<string, string?> _check;
     private readonly Func<string, Task<IReadOnlyList<string>>> _add;
     private readonly Func<string, Task<IReadOnlyList<string>>> _remove;
+    private readonly TextBox _typed = FormLook.Field("", "Server addresses (optional)", "Example: 127.0.0.1:14550");
+    private readonly TextBlock _problem = FormLook.Caption("", "CriticalBrush");
     private readonly StackPanel _rows = new() { Spacing = 4 };
 
-    public ServerList(IReadOnlyList<string> servers, Func<string, Task<IReadOnlyList<string>>> add, Func<string, Task<IReadOnlyList<string>>> remove)
+    public ServerList(IReadOnlyList<string> servers, Func<string, string?> check, Func<string, Task<IReadOnlyList<string>>> add, Func<string, Task<IReadOnlyList<string>>> remove)
     {
+        _check = check;
         _add = add;
         _remove = remove;
-        var typed = FormLook.Field("", "Vehicle address", "Example: 192.168.4.1:14550");
-        typed.IsSpellCheckEnabled = false;
-        async void Add()
+        _typed.IsSpellCheckEnabled = false;
+        _typed.Width = 300;
+        AutomationProperties.SetName(_typed, "Server address");
+        var addServer = FormLook.Button("Add server", Add);
+        addServer.IsEnabled = false;
+        _typed.TextChanged += (_, _) =>
         {
-            var text = typed.Text.Trim();
-            if (text.Length == 0) return;
-            typed.Text = "";
-            Render(await _add(text));
-        }
-        typed.KeyDown += (_, e) =>
+            addServer.IsEnabled = Pending.Length > 0;
+            Say(null);
+        };
+        _typed.KeyDown += (_, e) =>
         {
-            if (e.Key == Windows.System.VirtualKey.Enter) Add();
+            if (e.Key == Windows.System.VirtualKey.Enter && Pending.Length > 0) Add();
         };
         Content = FormLook.Stack(4,
-            _rows,
-            FormLook.Line(8, FormLook.Margined(typed, new Thickness(0)), FormLook.Margined(FormLook.IconButton("", "Add address", Add), new Thickness(0, 26, 0, 0))),
-            FormLook.Caption("Optional. Add it when the vehicle doesn't send to this port by itself, like sitl.aircast.one."));
-        typed.Width = 300;
+            FormLook.Line(8, FormLook.Margined(_typed, new Thickness(0)), FormLook.Margined(addServer, new Thickness(0, 26, 0, 0))),
+            _problem,
+            _rows);
         Render(servers);
+    }
+
+    public string Pending => _typed.Text.Trim();
+
+    public void Say(string? problem) => FormLook.Say(_problem, problem);
+
+    private async void Add()
+    {
+        var text = Pending;
+        var problem = _check(text);
+        Say(problem);
+        if (problem is not null) return;
+        _typed.Text = "";
+        Render(await _add(text));
     }
 
     private void Render(IReadOnlyList<string> servers) => FormLook.Fill(_rows, servers.Select(server =>
         (UIElement)FormLook.Line(8,
             FormLook.Margined(FormLook.Text(server), new Thickness(0, 6, 0, 0)),
-            FormLook.IconButton("", $"Remove {server}", async () => Render(await _remove(server))))));
+            Removal(server))));
+
+    private Button Removal(string server)
+    {
+        var button = FormLook.Button("Remove", async () => Render(await _remove(server)), ButtonLook.Subtle);
+        AutomationProperties.SetName(button, $"Remove {server}");
+        return button;
+    }
 }

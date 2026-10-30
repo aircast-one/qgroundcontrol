@@ -48,12 +48,15 @@ import {
   rowConnected,
   serialFormError,
   serialPortChoices,
+  serverFormError,
+  SERVER_FORMAT,
   suggestedLinkName,
   toolLinkKinds,
   udpServer,
   uniqueLinkName,
   withPluggedPort,
   withServer,
+  withTypedServer,
   webSocketUrlError,
   DEFAULT_WEBSOCKET_URL,
   webSocketLinkName,
@@ -328,6 +331,20 @@ describe('UdpServerFormTest', () => {
     const once = withServer([], '10.0.0.2', '14550');
     expect(withServer(once, '10.0.0.2:14550', '14550')).toEqual(['10.0.0.2:14550']);
     expect(withServer(once, 'bad:host:name', '14550')).toEqual(once);
+  });
+
+  it('a server still in the field is added when the link is saved, like UdpSettings saveSettings', () => {
+    const typed = LinkDraft({ type: LinkType.Udp, servers: ['10.0.0.2:14550'], server: 'sitl.aircast.one' });
+    expect(withTypedServer(typed, '14550')).toEqual({ ...typed, servers: ['10.0.0.2:14550', 'sitl.aircast.one:14550'], server: '' });
+    expect(withTypedServer(LinkDraft({ type: LinkType.Udp }), '14550').servers).toEqual([]);
+  });
+
+  it('a server still in the field that could not be added stops the link from being made', () => {
+    expect(serverFormError('', '14550')).toBeNull();
+    expect(serverFormError('sitl.aircast.one', '14550')).toBeNull();
+    expect(serverFormError('sitl.aircast.one:99999', '14550')).toBe(SERVER_FORMAT);
+    expect(draftError(LinkDraft({ type: LinkType.Udp, server: 'a:b:c' }), '14550', [], false)).toBe(SERVER_FORMAT);
+    expect(draftError(LinkDraft({ type: LinkType.Udp, server: 'sitl.aircast.one' }), '14550', [], false)).toBeNull();
   });
 
   it('formErrorsPointAtTheFieldThatFailed', () => {

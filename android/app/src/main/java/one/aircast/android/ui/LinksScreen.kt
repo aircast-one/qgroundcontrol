@@ -345,6 +345,11 @@ internal fun udpServer(typed: String, localPort: String): String? {
 internal fun withServer(servers: List<String>, typed: String, localPort: String): List<String> =
     udpServer(typed, localPort)?.takeIf { it !in servers }?.let { servers + it } ?: servers
 
+internal const val SERVER_FORMAT = "Enter a server such as 127.0.0.1:14550, with a port from 1 to 65535."
+
+internal fun serverFormError(typed: String, localPort: String): String? =
+    SERVER_FORMAT.takeUnless { typed.isBlank() || udpServer(typed, localPort) != null }
+
 internal fun linkFormError(type: LinkType, host: String, port: String, udpDefault: String = DEFAULT_PORT): String? {
     val parsed = port.ifBlank { if (type == LinkType.Udp) udpDefault else port }.toIntOrNull()
     return when {
@@ -713,6 +718,7 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
     var device by remember { mutableStateOf<BluetoothDeviceChoice?>(null) }
     var advanced by remember { mutableStateOf(editShowsAdvanced(row)) }
     var error by remember { mutableStateOf<String?>(null) }
+    var server by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val cancel: () -> Unit = {
@@ -732,6 +738,9 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
     val udpListen by one.aircast.android.bridge.qgcValue(UDP_LISTEN_PORT)
     val udpDefault = (udpListen as? Number)?.toInt()?.takeIf { it in 1..65535 }?.toString() ?: DEFAULT_PORT
     val editable = linkRows(linksJson).firstOrNull { it.index == row.index }?.connected != true
+    val listenPort = editedPort(row.editing, edit.port, udpDefault).toString()
+    val serverError = error?.takeIf { it == serverFormError(server, listenPort) }
+    val typedServer = udpServer(server, listenPort).takeIf { row.editing == LinkEditing.PortOnly }
 
     BackHandler(onBack = cancel)
     OverridePageHeading("Edit ${row.name}", cancel)
@@ -746,21 +755,34 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
             }
             if (!editable) Text(EDIT_WHILE_CONNECTED, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             EditLinkFields(row.editing, edit, editable, ports, bauds, device, { device = it }, { logPicker.launch(arrayOf("*/*")) }) { edit = it }
-            if (row.editing == LinkEditing.PortOnly) UdpServers(row.index, row.servers)
+            if (row.editing == LinkEditing.PortOnly) UdpServers(
+                row.index,
+                row.servers,
+                server,
+                serverError,
+                onTyped = {
+                    server = it
+                    if (serverError != null) error = null
+                },
+                onAdd = {
+                    error = serverFormError(server, listenPort)
+                    typedServer.also { if (error == null) server = "" }
+                },
+            )
             AdvancedDisclosure(advanced) { advanced = !advanced }
             if (advanced) {
                 OutlinedTextField(value = edit.name, onValueChange = { edit = edit.copy(name = it) }, label = { Text("Name") }, enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (row.editing == LinkEditing.Serial) SerialFramingControls(edit.framing) { edit = edit.copy(framing = it) }
                 LinkFlagSwitches(edit.autoConnect, edit.highLatency, { edit = edit.copy(autoConnect = it) }, { edit = edit.copy(highLatency = it) })
             }
-            error?.let {
+            error?.takeIf { serverError == null }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             Button(
                 enabled = editable,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                 onClick = {
-                    error = editError(row.editing, edit, udpDefault)
+                    error = editError(row.editing, edit, udpDefault) ?: serverFormError(server, listenPort).takeIf { row.editing == LinkEditing.PortOnly }
                     if (error == null) scope.launch {
                         val rows = withContext(Dispatchers.Default) { currentRows() }
                         if (rows.firstOrNull { it.index == row.index }?.connected != false) {
@@ -769,7 +791,10 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
                         }
                         val resolved = edit.name.trim().ifBlank { uniqueLinkName(editSuggestion(row, edit, device, ports), rows.filter { it.index != row.index }.map { it.name }) }
                         val writes = editWrites(row.editing, resolved, edit.host, editedPort(row.editing, edit.port, udpDefault), edit.portName, edit.baud, edit.autoConnect, edit.highLatency, edit.framing, edit.logFile)
-                        withContext(Dispatchers.Default) { applyEdit(row.index, writes, device) }
+                        withContext(Dispatchers.Default) {
+                            typedServer?.let { Qgc.invoke("$LINKS_PATH.${row.index}.addHost", it) }
+                            applyEdit(row.index, writes, device)
+                        }
                         if (row.editing == LinkEditing.LogFile) withContext(Dispatchers.IO) { pruneReplayFolder(context, row.name, edit.logFile) }
                         onSaved()
                     }
@@ -806,6 +831,7 @@ internal data class LinkDraft(
     val host: String = "",
     val port: String = "",
     val servers: List<String> = emptyList(),
+    val server: String = "",
     val portName: String = "",
     val baud: Int = DEFAULT_BAUD,
     val framing: SerialFraming = SerialFraming(),
@@ -819,6 +845,9 @@ internal data class LinkDraft(
 )
 
 internal fun LinkDraft.shownPort(udpDefault: String): String = port.ifBlank { portFor(type, udpDefault) }
+
+internal fun LinkDraft.withTypedServer(udpDefault: String): LinkDraft =
+    copy(servers = withServer(servers, server, shownPort(udpDefault)), server = "")
 
 internal fun LinkDraft.withPluggedPort(ports: List<SerialPortChoice>): LinkDraft =
     copy(portName = portName.ifBlank { ports.singleOrNull()?.port.orEmpty() })
@@ -838,6 +867,7 @@ internal fun draftError(draft: LinkDraft, udpDefault: String, taken: List<String
     LinkType.LogReplay -> "Choose a log file to replay.".takeIf { draft.replayLog.isBlank() }
     LinkType.Serial -> serialFormError(draft.portName, draft.baud, taken, draft.name, anyPorts)
     else -> linkFormError(draft.type, draft.host, draft.shownPort(udpDefault), udpDefault)
+        ?: serverFormError(draft.server, draft.shownPort(udpDefault)).takeIf { draft.type == LinkType.Udp }
 }
 
 internal enum class AddOutcome { Connected, SavedNotConnected, Failed }
@@ -952,13 +982,14 @@ private fun NewLinkFields(
 }
 
 @Composable
-private fun DraftServers(draft: LinkDraft, udpDefault: String, onError: (String?) -> Unit, onDraft: (LinkDraft) -> Unit) {
+private fun DraftServers(draft: LinkDraft, udpDefault: String, error: String?, onError: (String?) -> Unit, onDraft: (LinkDraft) -> Unit) {
+    val invalid = serverFormError(draft.server, draft.shownPort(udpDefault))
     ServerList(
         draft.servers,
-        onAdd = { typed ->
-            onError("Enter an address, or address:port.".takeIf { udpServer(typed, draft.shownPort(udpDefault)) == null })
-            onDraft(draft.copy(servers = withServer(draft.servers, typed, draft.shownPort(udpDefault))))
-        },
+        draft.server,
+        error,
+        onTyped = { onDraft(draft.copy(server = it)) },
+        onAdd = { if (invalid == null) onDraft(draft.withTypedServer(udpDefault)) else onError(invalid) },
         onRemove = { gone -> onDraft(draft.copy(servers = draft.servers.filterNot { it == gone })) },
     )
 }
@@ -996,8 +1027,14 @@ private fun AddLinkDetails(type: LinkType, onBack: () -> Unit, onAdded: () -> Un
     val logPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) typed = typed.copy(replayLog = uri.toString())
     }
-    val fieldError = error?.takeIf { (type == LinkType.Udp || type == LinkType.Tcp) && it == linkFormError(type, draft.host, draft.shownPort(udpDefault), udpDefault) }
-        ?.let { linkFormErrorField(type, draft.host, draft.shownPort(udpDefault), udpDefault) }
+    val fieldError = error?.let { shown ->
+        when {
+            (type == LinkType.Udp || type == LinkType.Tcp) && shown == linkFormError(type, draft.host, draft.shownPort(udpDefault), udpDefault) ->
+                linkFormErrorField(type, draft.host, draft.shownPort(udpDefault), udpDefault)
+            type == LinkType.Udp && shown == serverFormError(draft.server, draft.shownPort(udpDefault)) -> "server"
+            else -> null
+        }
+    }
     val suggestedName = suggestedLinkName(draft, ports, udpDefault)
     val change: (LinkDraft) -> Unit = { changed ->
         typed = changed
@@ -1014,7 +1051,7 @@ private fun AddLinkDetails(type: LinkType, onBack: () -> Unit, onAdded: () -> Un
         ) {
             Text(linkKind(type).about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             NewLinkFields(draft, ports, bauds, error.takeIf { fieldError == "host" }, error.takeIf { fieldError == "port" }, cloudErrors, { logPicker.launch(arrayOf("*/*")) }, change)
-            if (type == LinkType.Udp) DraftServers(draft, udpDefault, { error = it }, change)
+            if (type == LinkType.Udp) DraftServers(draft, udpDefault, error.takeIf { fieldError == "server" }, { error = it }, change)
             if (type != LinkType.Mock) {
                 AdvancedDisclosure(advanced) { advanced = !advanced }
                 if (advanced) NewLinkAdvanced(draft, suggestedName, ports, change)
@@ -1033,7 +1070,7 @@ private fun AddLinkDetails(type: LinkType, onBack: () -> Unit, onAdded: () -> Un
                         busy = true
                         val name = draft.name.trim().ifBlank { uniqueLinkName(suggestedName, taken) }
                         scope.launch {
-                            val outcome = withContext(Dispatchers.Default) { addLink(context, draft, name, udpDefault) }
+                            val outcome = withContext(Dispatchers.Default) { addLink(context, draft.withTypedServer(udpDefault), name, udpDefault) }
                             busy = false
                             if (outcome == AddOutcome.Failed) error = addFailure(type) else onAdded()
                         }
@@ -1276,7 +1313,7 @@ private fun FramingPicker(label: String, shown: String, choices: List<String>, o
 }
 
 @Composable
-private fun UdpServers(index: Int, initial: List<String>) {
+private fun UdpServers(index: Int, initial: List<String>, typed: String, error: String?, onTyped: (String) -> Unit, onAdd: () -> String?) {
     val scope = rememberCoroutineScope()
     var servers by remember { mutableStateOf(initial) }
 
@@ -1290,36 +1327,38 @@ private fun UdpServers(index: Int, initial: List<String>) {
         }
     }
 
-    ServerList(servers, onAdd = { change("addHost", it) }, onRemove = { change("removeHost", it) })
+    ServerList(servers, typed, error, onTyped, onAdd = { onAdd()?.let { change("addHost", it) } }, onRemove = { change("removeHost", it) })
 }
 
 @Composable
-private fun ServerList(servers: List<String>, onAdd: (String) -> Unit, onRemove: (String) -> Unit) {
-    var typed by remember { mutableStateOf("") }
-    val add = {
-        onAdd(typed.trim())
-        typed = ""
-    }
+private fun ServerList(servers: List<String>, typed: String, error: String?, onTyped: (String) -> Unit, onAdd: () -> Unit, onRemove: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            "Server addresses (optional)",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (error == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = typed,
+                onValueChange = onTyped,
+                placeholder = { Text("Example: 127.0.0.1:14550") },
+                isError = error != null,
+                supportingText = error?.let { { Text(it) } },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (typed.isNotBlank()) onAdd() }),
+                modifier = Modifier.weight(1f),
+            )
+            Box(Modifier.heightIn(min = 56.dp), contentAlignment = Alignment.Center) {
+                OutlinedButton(enabled = typed.isNotBlank(), onClick = onAdd) { Text("Add server") }
+            }
+        }
         servers.forEach { server ->
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(server, modifier = Modifier.weight(1f))
-                androidx.compose.material3.IconButton(onClick = { onRemove(server) }) { Icon(painterResource(R.drawable.ic_close), "Remove $server") }
+                TextButton(onClick = { onRemove(server) }, modifier = Modifier.semantics { contentDescription = "Remove $server" }) { Text("Remove") }
             }
         }
-        OutlinedTextField(
-            value = typed,
-            onValueChange = { typed = it },
-            label = { Text("Vehicle address") },
-            placeholder = { Text("Example: 192.168.4.1:14550") },
-            supportingText = { Text("Optional. Add it when the vehicle doesn't send to this port by itself, like sitl.aircast.one.") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
-            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (typed.isNotBlank()) add() }),
-            trailingIcon = {
-                androidx.compose.material3.IconButton(enabled = typed.isNotBlank(), onClick = add) { Icon(painterResource(R.drawable.ic_add), "Add address") }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }

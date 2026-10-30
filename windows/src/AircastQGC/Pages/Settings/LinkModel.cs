@@ -339,6 +339,11 @@ internal static class LinkModel
     public static IReadOnlyList<string> WithServer(IReadOnlyList<string> servers, string typed, string localPort) =>
         UdpServer(typed, localPort) is { } server && !servers.Contains(server) ? servers.Append(server).ToList() : servers;
 
+    public const string ServerFormat = "Enter a server such as 127.0.0.1:14550, with a port from 1 to 65535.";
+
+    public static string? ServerFormError(string typed, string localPort) =>
+        typed.Trim().Length == 0 || UdpServer(typed, localPort) is not null ? null : ServerFormat;
+
     public static LinkEdit Edit(LinkRow row) => new(row.Name, row.Host, row.Port.ToString(CultureInfo.InvariantCulture), row.PortName,
         row.Baud > 0 ? row.Baud : DefaultBaud, row.AutoConnect, row.HighLatency, row.Framing, row.Filename);
 
@@ -386,7 +391,7 @@ internal static class LinkModel
             .ToList();
 
     public const string OpenFirewall = "Open firewall settings";
-    public const string FirewallRemedy = "Allow Aircast QGC on Private and Public networks in the firewall's allowed apps (an administrator must confirm), or add the radio's address under Vehicle address: Windows lets replies from an address the app sends to through.";
+    public const string FirewallRemedy = "Allow Aircast QGC on Private and Public networks in the firewall's allowed apps (an administrator must confirm), or add the radio's address under Server addresses: Windows lets replies from an address the app sends to through.";
 
     public static string FirewallBlocks(int port) => $"Windows Firewall is blocking telemetry arriving on UDP port {port}.";
 

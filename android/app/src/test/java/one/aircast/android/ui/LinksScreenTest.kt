@@ -314,6 +314,22 @@ class UdpServerFormTest {
     }
 
     @Test
+    fun aServerStillInTheFieldIsAddedWhenTheLinkIsSavedLikeUdpSettingsSaveSettings() {
+        val typed = LinkDraft(LinkType.Udp, servers = listOf("10.0.0.2:14550"), server = "sitl.aircast.one")
+        assertEquals(typed.copy(servers = listOf("10.0.0.2:14550", "sitl.aircast.one:14550"), server = ""), typed.withTypedServer("14550"))
+        assertEquals(emptyList<String>(), LinkDraft(LinkType.Udp).withTypedServer("14550").servers)
+    }
+
+    @Test
+    fun aServerStillInTheFieldThatCouldNotBeAddedStopsTheLinkFromBeingMade() {
+        assertNull(serverFormError("", "14550"))
+        assertNull(serverFormError("sitl.aircast.one", "14550"))
+        assertEquals(SERVER_FORMAT, serverFormError("sitl.aircast.one:99999", "14550"))
+        assertEquals(SERVER_FORMAT, draftError(LinkDraft(LinkType.Udp, server = "a:b:c"), "14550", emptyList(), anyPorts = false))
+        assertNull(draftError(LinkDraft(LinkType.Udp, server = "sitl.aircast.one"), "14550", emptyList(), anyPorts = false))
+    }
+
+    @Test
     fun formErrorsPointAtTheFieldThatFailed() {
         assertEquals("port", linkFormErrorField(LinkType.Udp, "", "70000", "14550"))
         assertEquals("port", linkFormErrorField(LinkType.Tcp, "10.0.0.2", "abc"))

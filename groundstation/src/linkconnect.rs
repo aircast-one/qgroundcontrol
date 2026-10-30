@@ -234,7 +234,17 @@ pub fn create(backend: &dyn Backend, how: Create, path: &str, args: &str) -> Val
             text(1),
             text(2),
             whole(3),
-            json!([text(0), text(1), text(2), whole(3)]),
+            Value::Array(
+                [
+                    json!(text(0)),
+                    json!(text(1)),
+                    json!(text(2)),
+                    json!(whole(3)),
+                ]
+                .into_iter()
+                .chain(given.get(4).filter(|servers| servers.is_array()).cloned())
+                .collect(),
+            ),
         ),
         Create::Serial => (
             "serial".to_string(),
@@ -605,6 +615,17 @@ mod tests {
         assert_eq!(
             manager.0.borrow().as_slice(),
             &[r#"["Radio","ttyUSB0",57600]"#.to_string()]
+        );
+        create(
+            &manager,
+            Create::AndConnect,
+            "links.createAndConnectLink",
+            r#"["UDP", "Field", "", 14550, ["sitl.aircast.one"]]"#,
+        );
+        assert_eq!(
+            manager.0.borrow().last().map(String::as_str),
+            Some(r#"["UDP","Field","",14550,["sitl.aircast.one"]]"#),
+            "a web page's UDP relay opens once, so the servers ride along with the create"
         );
         assert_eq!(
             create(

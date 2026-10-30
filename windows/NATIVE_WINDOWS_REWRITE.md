@@ -521,7 +521,7 @@ From a call with a field user flying real drones on the Windows app (2026-10-21)
 
 - UDP links: the core path was correct; Windows Firewall drops inbound UDP for an exe it was never asked about. A UDP link that
   is connected but hears nothing now says the firewall is blocking port N and opens the allowed-apps page. Adding the radio's
-  address under "Vehicle address" works without admin (Windows lets the peer's replies in).
+  address under "Server addresses" works without admin (Windows lets the peer's replies in).
 - The Windows head started the core with `--no-autoconnect`, so USB radio and Pixhawk autoconnect, "Connect on start" links
   and reconnects never ran; the flag is gone.
 - Radio latency: on Windows the serial port opened synchronously, so a write waited behind the pending read (uplink mean 420 ms,

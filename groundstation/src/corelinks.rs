@@ -229,8 +229,14 @@ pub fn created(kind: &str, name: &str, host: &str, port: i64) -> Option<LinkConf
     }
 }
 
-fn create_and_connect(kind: &str, name: &str, host: &str, port: i64) -> bool {
-    let Some(config) = created(kind, name, host, port) else {
+pub fn with_servers(config: LinkConfig, servers: &[String]) -> LinkConfig {
+    servers.iter().fold(config, |config, server| {
+        edited(&config, "addHost", &json!(server)).unwrap_or(config)
+    })
+}
+
+fn create_and_connect(kind: &str, name: &str, host: &str, port: i64, servers: &[String]) -> bool {
+    let Some(config) = created(kind, name, host, port).map(|c| with_servers(c, servers)) else {
         return false;
     };
     if !add(config) {
@@ -1441,7 +1447,23 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             given.get(0).and_then(Value::as_str).and_then(indexed)?
         )),
         "links.createAndConnectLink" => {
-            json!(create_and_connect(&text(0), &text(1), &text(2), whole(3)))
+            let servers: Vec<String> = given
+                .get(4)
+                .and_then(Value::as_array)
+                .map(|list| {
+                    list.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            json!(create_and_connect(
+                &text(0),
+                &text(1),
+                &text(2),
+                whole(3),
+                &servers
+            ))
         }
         "links.createSerialConfiguration" => json!(create_serial(&text(0), &text(1), whole(2))),
         "links.createLogReplayConfiguration" => json!(create_replay(&text(0), &text(1))),
@@ -1641,6 +1663,26 @@ mod tests {
                 hosts: vec![("192.168.4.1".into(), 14550)]
             },
             "createAndConnectLink listens on the port it sends to"
+        );
+        assert_eq!(
+            with_servers(
+                created("udp", "Field", "", 14550).unwrap(),
+                &[
+                    "sitl.aircast.one".into(),
+                    "10.0.0.2:14555".into(),
+                    "a:b:c".into(),
+                    "sitl.aircast.one:14550".into()
+                ]
+            )
+            .kind,
+            Kind::Udp {
+                local_port: 14550,
+                hosts: vec![
+                    ("sitl.aircast.one".into(), 14550),
+                    ("10.0.0.2".into(), 14555)
+                ]
+            },
+            "servers given to createAndConnectLink are on the link before it connects, so a device relay opens with them"
         );
         let tcp = created("tcp", "Bench", "10.0.0.5", 5760).unwrap();
         assert_eq!(

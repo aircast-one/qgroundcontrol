@@ -239,6 +239,20 @@ final class UdpServerFormTests: XCTestCase {
         XCTAssertEqual(withServer(once, "bad:host:name", "14550"), once)
     }
 
+    func testAServerStillInTheFieldIsAddedWhenTheLinkIsSavedLikeUdpSettingsSaveSettings() {
+        let typed = LinkDraft(type: .Udp, servers: ["10.0.0.2:14550"], server: "sitl.aircast.one")
+        XCTAssertEqual(typed.withTypedServer("14550"), LinkDraft(type: .Udp, servers: ["10.0.0.2:14550", "sitl.aircast.one:14550"]))
+        XCTAssertEqual(LinkDraft(type: .Udp).withTypedServer("14550").servers, [])
+    }
+
+    func testAServerStillInTheFieldThatCouldNotBeAddedStopsTheLinkFromBeingMade() {
+        XCTAssertNil(serverFormError("", "14550"))
+        XCTAssertNil(serverFormError("sitl.aircast.one", "14550"))
+        XCTAssertEqual(serverFormError("sitl.aircast.one:99999", "14550"), SERVER_FORMAT)
+        XCTAssertEqual(draftError(LinkDraft(type: .Udp, server: "a:b:c"), "14550", [], false), SERVER_FORMAT)
+        XCTAssertNil(draftError(LinkDraft(type: .Udp, server: "sitl.aircast.one"), "14550", [], false))
+    }
+
     func testFormErrorsPointAtTheFieldThatFailed() {
         XCTAssertEqual(linkFormErrorField(.Udp, "", "70000", udpDefault: "14550"), "port")
         XCTAssertEqual(linkFormErrorField(.Tcp, "10.0.0.2", "abc"), "port")

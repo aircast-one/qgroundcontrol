@@ -8,7 +8,7 @@ import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
 import { delay, same } from '@/kotlin/Std';
-import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, FilterChip, IconButton, OutlinedButton, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
+import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, FilterChip, OutlinedButton, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { type DrawableName } from '@/res/drawables';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
@@ -337,6 +337,10 @@ export const withServer = (servers: readonly string[], typed: string, localPort:
   return server === null || servers.includes(server) ? servers : [...servers, server];
 };
 
+export const SERVER_FORMAT = 'Enter a server such as 127.0.0.1:14550, with a port from 1 to 65535.';
+
+export const serverFormError = (typed: string, localPort: string): string | null => (typed.trim() === '' || udpServer(typed, localPort) !== null ? null : SERVER_FORMAT);
+
 const parsedPort = (type: LinkType, port: string, udpDefault: string): number | null => toIntOrNull(port.trim() === '' ? (type === LinkType.Udp ? udpDefault : port) : port);
 
 export const linkFormError = (type: LinkType, host: string, port: string, udpDefault: string = DEFAULT_PORT): string | null => {
@@ -526,15 +530,6 @@ const writeNewLinkFraming = async (name: string, framing: SerialFraming): Promis
   const row = await rowNamed(name);
   if (row === null) return false;
   await Promise.all(framingWrites(row.index, framing).map(([path, value]) => Qgc.set(path, value)));
-  await LinkCommands.commitConfigurations();
-  return true;
-};
-
-const addServers = async (name: string, servers: readonly string[]): Promise<boolean> => {
-  if (servers.length === 0) return true;
-  const row = await rowNamed(name);
-  if (row === null) return false;
-  await Promise.all(servers.map((it) => Qgc.invoke(`${LINKS_PATH}.${row.index}.addHost`, it)));
   await LinkCommands.commitConfigurations();
   return true;
 };
@@ -730,6 +725,7 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
   const [device, setDevice] = useState<BluetoothDeviceChoice | null>(null);
   const [advanced, setAdvanced] = useState(() => editShowsAdvanced(row));
   const [error, setError] = useState<string | null>(null);
+  const [server, setServer] = useState('');
   const cancel = () => {
     if (row.editing === LinkEditing.LogFile) void pruneReplayFolder(row.name, row.filename);
     onDismiss();
@@ -751,10 +747,13 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
   const udpDefault = udpDefaultOf(useQgcValue(UDP_LISTEN_PORT));
   const editable = linkRows(linksJson).find((it) => it.index === row.index)?.connected !== true;
   const about = linkKind(row.type).about;
+  const listenPort = String(editedPort(row.editing, edit.port, udpDefault));
+  const serverError = error !== null && error === serverFormError(server, listenPort) ? error : null;
+  const typedServer = row.editing === LinkEditing.PortOnly ? udpServer(server, listenPort) : null;
 
   useBackHandler(true, cancel);
   const save = () => {
-    const invalid = editError(row.editing, edit, udpDefault);
+    const invalid = editError(row.editing, edit, udpDefault) ?? (row.editing === LinkEditing.PortOnly ? serverFormError(server, listenPort) : null);
     setError(invalid);
     if (invalid !== null) return;
     void (async () => {
@@ -766,6 +765,7 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
       const typedName = edit.name.trim();
       const resolved = typedName === '' ? uniqueLinkName(editSuggestion(row, edit, device, ports), rows.filter((it) => it.index !== row.index).map((it) => it.name)) : typedName;
       const writes = editWrites(row.editing, resolved, edit.host, editedPort(row.editing, edit.port, udpDefault), edit.portName, edit.baud, edit.autoConnect, edit.highLatency, edit.framing, edit.logFile);
+      if (typedServer !== null) await Qgc.invoke(`${LINKS_PATH}.${row.index}.addHost`, typedServer);
       await applyEdit(row.index, writes, device);
       if (row.editing === LinkEditing.LogFile) await pruneReplayFolder(row.name, edit.logFile);
       onSaved();
@@ -787,7 +787,24 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
           </Text>
         ) : null}
         <EditLinkFields editing={row.editing} edit={edit} enabled={editable} ports={ports} bauds={bauds} device={device} onDevice={setDevice} onPickLog={pickLog} onEdit={setEdit} />
-        {row.editing === LinkEditing.PortOnly ? <UdpServers index={row.index} initial={row.servers} /> : null}
+        {row.editing === LinkEditing.PortOnly ? (
+          <UdpServers
+            index={row.index}
+            initial={row.servers}
+            typed={server}
+            error={serverError}
+            onTyped={(it) => {
+              setServer(it);
+              if (serverError !== null) setError(null);
+            }}
+            onAdd={() => {
+              const invalid = serverFormError(server, listenPort);
+              setError(invalid);
+              if (invalid === null) setServer('');
+              return typedServer;
+            }}
+          />
+        ) : null}
         <AdvancedDisclosure open={advanced} onToggle={() => setAdvanced(!advanced)} />
         {advanced ? (
           <>
@@ -796,7 +813,7 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
             <LinkFlagSwitches autoConnect={edit.autoConnect} highLatency={edit.highLatency} onAutoConnect={(it) => setEdit({ ...edit, autoConnect: it })} onHighLatency={(it) => setEdit({ ...edit, highLatency: it })} />
           </>
         ) : null}
-        {error !== null ? (
+        {error !== null && serverError === null ? (
           <Text typography="bodySmall" color={md('error')}>
             {error}
           </Text>
@@ -842,6 +859,7 @@ export type LinkDraft = {
   host: string;
   port: string;
   servers: readonly string[];
+  server: string;
   portName: string;
   baud: number;
   framing: SerialFraming;
@@ -859,6 +877,7 @@ export const LinkDraft = (fields: Pick<LinkDraft, 'type'> & Partial<LinkDraft>):
   host: '',
   port: '',
   servers: [],
+  server: '',
   portName: '',
   baud: DEFAULT_BAUD,
   framing: SerialFraming(),
@@ -873,6 +892,8 @@ export const LinkDraft = (fields: Pick<LinkDraft, 'type'> & Partial<LinkDraft>):
 });
 
 export const shownPort = (draft: LinkDraft, udpDefault: string): string => orIfBlank(draft.port, portFor(draft.type, udpDefault));
+
+export const withTypedServer = (draft: LinkDraft, udpDefault: string): LinkDraft => ({ ...draft, servers: withServer(draft.servers, draft.server, shownPort(draft, udpDefault)), server: '' });
 
 export const withPluggedPort = (draft: LinkDraft, ports: readonly SerialPortChoice[]): LinkDraft => ({
   ...draft,
@@ -893,7 +914,7 @@ export const draftError = (draft: LinkDraft, udpDefault: string, taken: readonly
   if (draft.type === LinkType.Bluetooth) return draft.device === null ? 'Pick a Bluetooth device.' : null;
   if (draft.type === LinkType.LogReplay) return draft.replayLog.trim() === '' ? 'Choose a log file to replay.' : null;
   if (draft.type === LinkType.Serial) return serialFormError(draft.portName, draft.baud, taken, draft.name, anyPorts);
-  return linkFormError(draft.type, draft.host, shownPort(draft, udpDefault), udpDefault);
+  return linkFormError(draft.type, draft.host, shownPort(draft, udpDefault), udpDefault) ?? (draft.type === LinkType.Udp ? serverFormError(draft.server, shownPort(draft, udpDefault)) : null);
 };
 
 export type AddOutcome = { readonly name: 'Connected' | 'SavedNotConnected' | 'Failed'; readonly ordinal: number };
@@ -921,7 +942,8 @@ const createLink = async (draft: LinkDraft, name: string, port: number, staged: 
   if (draft.type === LinkType.LogReplay) return staged !== null && (await LinkCommands.createLogReplay(name, staged)) && connectNamed(name);
   if (draft.type === LinkType.Bluetooth) return draft.device !== null && LinkCommands.createBluetooth(name, draft.device.name, draft.device.address);
   if (draft.type === LinkType.Serial) return (await LinkCommands.createSerial(name, draft.portName, draft.baud)) && (await writeNewLinkFraming(name, draft.framing)) && connectNamed(name);
-  return (await Qgc.invokeResult('links.createAndConnectLink', draft.type.id, name, draft.type === LinkType.Udp ? '' : draft.host, port)) === true;
+  if (draft.type === LinkType.Udp) return (await Qgc.invokeResult('links.createAndConnectLink', draft.type.id, name, '', port, [...draft.servers])) === true;
+  return (await Qgc.invokeResult('links.createAndConnectLink', draft.type.id, name, draft.host, port)) === true;
 };
 
 const addLink = async (draft: LinkDraft, name: string, udpDefault: string, replayFile: File | null): Promise<AddOutcome> => {
@@ -930,10 +952,7 @@ const addLink = async (draft: LinkDraft, name: string, udpDefault: string, repla
   const saved = draft.type !== LinkType.Mock && (await currentRows()).some((it) => it.name === name);
   const outcome = addOutcome(created, saved);
   if (outcome === AddOutcome.Failed && staged !== null) await discardStagedLog(staged);
-  if (saved) {
-    await addServers(name, draft.servers);
-    await writeNewLinkFlags(name, draft.autoConnect, draft.highLatency);
-  }
+  if (saved) await writeNewLinkFlags(name, draft.autoConnect, draft.highLatency);
   return outcome;
 };
 
@@ -1076,16 +1095,19 @@ const NewLinkFields = ({
   );
 };
 
-const DraftServers = ({ draft, udpDefault, onError, onDraft }: { draft: LinkDraft; udpDefault: string; onError: (error: string | null) => void; onDraft: (draft: LinkDraft) => void }) => (
-  <ServerList
-    servers={draft.servers}
-    onAdd={(typed) => {
-      onError(udpServer(typed, shownPort(draft, udpDefault)) === null ? 'Enter an address, or address:port.' : null);
-      onDraft({ ...draft, servers: withServer(draft.servers, typed, shownPort(draft, udpDefault)) });
-    }}
-    onRemove={(gone) => onDraft({ ...draft, servers: draft.servers.filter((it) => it !== gone) })}
-  />
-);
+const DraftServers = ({ draft, udpDefault, error, onError, onDraft }: { draft: LinkDraft; udpDefault: string; error: string | null; onError: (error: string | null) => void; onDraft: (draft: LinkDraft) => void }) => {
+  const invalid = serverFormError(draft.server, shownPort(draft, udpDefault));
+  return (
+    <ServerList
+      servers={draft.servers}
+      typed={draft.server}
+      error={error}
+      onTyped={(it) => onDraft({ ...draft, server: it })}
+      onAdd={() => (invalid === null ? onDraft(withTypedServer(draft, udpDefault)) : onError(invalid))}
+      onRemove={(gone) => onDraft({ ...draft, servers: draft.servers.filter((it) => it !== gone) })}
+    />
+  );
+};
 
 const NewLinkAdvanced = ({ draft, suggestedName, ports, onDraft }: { draft: LinkDraft; suggestedName: string; ports: readonly SerialPortChoice[]; onDraft: (draft: LinkDraft) => void }) => (
   <>
@@ -1178,7 +1200,11 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
     })();
   const formTyped = type === LinkType.Udp || type === LinkType.Tcp;
   const fieldError =
-    error !== null && formTyped && error === linkFormError(type, draft.host, shownPort(draft, udpDefault), udpDefault) ? linkFormErrorField(type, draft.host, shownPort(draft, udpDefault), udpDefault) : null;
+    error !== null && formTyped && error === linkFormError(type, draft.host, shownPort(draft, udpDefault), udpDefault)
+      ? linkFormErrorField(type, draft.host, shownPort(draft, udpDefault), udpDefault)
+      : error !== null && type === LinkType.Udp && error === serverFormError(draft.server, shownPort(draft, udpDefault))
+        ? 'server'
+        : null;
   const suggestedName = suggestedLinkName(draft, ports, udpDefault);
   const change = (changed: LinkDraft) => {
     setTyped(changed);
@@ -1196,7 +1222,7 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
     const typedName = draft.name.trim();
     const name = typedName === '' ? uniqueLinkName(suggestedName, taken) : typedName;
     void (async () => {
-      const outcome = await addLink(draft, name, udpDefault, replayFile);
+      const outcome = await addLink(withTypedServer(draft, udpDefault), name, udpDefault, replayFile);
       setBusy(false);
       if (outcome === AddOutcome.Failed) setError(addFailure(type));
       else onAdded();
@@ -1220,7 +1246,7 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
           onPickLog={pickLog}
           onDraft={change}
         />
-        {type === LinkType.Udp ? <DraftServers draft={draft} udpDefault={udpDefault} onError={setError} onDraft={change} /> : null}
+        {type === LinkType.Udp ? <DraftServers draft={draft} udpDefault={udpDefault} error={fieldError === 'server' ? error : null} onError={setError} onDraft={change} /> : null}
         {type !== LinkType.Mock ? (
           <>
             <AdvancedDisclosure open={advanced} onToggle={() => setAdvanced(!advanced)} />
@@ -1439,7 +1465,7 @@ const FramingPicker = ({ label, shown, choices, onPick }: { label: string; shown
   );
 };
 
-const UdpServers = ({ index, initial }: { index: number; initial: readonly string[] }) => {
+const UdpServers = ({ index, initial, typed, error, onTyped, onAdd }: { index: number; initial: readonly string[]; typed: string; error: string | null; onTyped: (typed: string) => void; onAdd: () => string | null }) => {
   const [servers, setServers] = useState(initial);
   const change = (action: string, host: string) =>
     void (async () => {
@@ -1447,42 +1473,46 @@ const UdpServers = ({ index, initial }: { index: number; initial: readonly strin
       const served = (await currentRows()).find((it) => it.index === index)?.servers ?? null;
       setServers((it) => served ?? it);
     })();
-  return <ServerList servers={servers} onAdd={(it) => change('addHost', it)} onRemove={(it) => change('removeHost', it)} />;
+  const add = () => {
+    const server = onAdd();
+    if (server !== null) change('addHost', server);
+  };
+  return <ServerList servers={servers} typed={typed} error={error} onTyped={onTyped} onAdd={add} onRemove={(it) => change('removeHost', it)} />;
 };
 
-const ServerList = ({ servers, onAdd, onRemove }: { servers: readonly string[]; onAdd: (server: string) => void; onRemove: (server: string) => void }) => {
-  const [typed, setTyped] = useState('');
-  const add = () => {
-    onAdd(typed.trim());
-    setTyped('');
-  };
-  return (
-    <div className="flex flex-col gap-1">
-      {servers.map((server) => (
-        <div key={server} className="flex min-h-12 w-full items-center">
-          <Text className="flex-1">{server}</Text>
-          <IconButton onClick={() => onRemove(server)} label={`Remove ${server}`}>
-            <Drawable name="ic_close" />
-          </IconButton>
-        </div>
-      ))}
+const ServerList = ({ servers, typed, error, onTyped, onAdd, onRemove }: { servers: readonly string[]; typed: string; error: string | null; onTyped: (typed: string) => void; onAdd: () => void; onRemove: (server: string) => void }) => (
+  <div className="flex flex-col gap-label">
+    <Text typography="bodySmall" color={md(error === null ? 'onSurfaceVariant' : 'error')}>
+      Server addresses (optional)
+    </Text>
+    <div className="flex items-start gap-2">
       <OutlinedTextField
         value={typed}
-        onValueChange={setTyped}
-        label="Vehicle address"
-        placeholder="Example: 192.168.4.1:14550"
-        supportingText="Optional. Add it when the vehicle doesn't send to this port by itself, like sitl.aircast.one."
+        onValueChange={onTyped}
+        ariaLabel="Server address"
+        placeholder="Example: 127.0.0.1:14550"
+        isError={error !== null}
+        supportingText={error ?? undefined}
         keyboardType="uri"
+        autoCorrect={false}
         onDone={() => {
-          if (typed.trim() !== '') add();
+          if (typed.trim() !== '') onAdd();
         }}
-        trailingIcon={
-          <IconButton enabled={typed.trim() !== ''} onClick={add} label="Add address">
-            <Drawable name="ic_add" />
-          </IconButton>
-        }
-        className="w-full"
+        className="min-w-0 flex-1"
       />
+      <div className="flex h-14 items-center">
+        <OutlinedButton enabled={typed.trim() !== ''} onClick={onAdd}>
+          Add server
+        </OutlinedButton>
+      </div>
     </div>
-  );
-};
+    {servers.map((server) => (
+      <div key={server} className="flex min-h-12 w-full items-center">
+        <Text className="flex-1">{server}</Text>
+        <TextButton onClick={() => onRemove(server)} label={`Remove ${server}`}>
+          Remove
+        </TextButton>
+      </div>
+    ))}
+  </div>
+);

@@ -87,6 +87,16 @@ test('a device page reaches a TCP vehicle on its network through the device', as
   await expect.poll(async () => (await stats()).tcpHeartbeats, { timeout: 30_000 }).toBeGreaterThan(0);
 });
 
+test('a device page sends a UDP link to the server still typed on its form', async ({ device }) => {
+  await settingsPage(device, 'Transmission', /^Links/);
+  await device.getByRole('button', { name: 'Add link…' }).click();
+  await device.getByRole('button', { name: /^Wi-Fi or network/ }).click();
+  await device.getByRole('textbox', { name: 'Listening port' }).fill('18791');
+  await device.getByRole('textbox', { name: 'Server address' }).fill('127.0.0.1:18783');
+  await device.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect.poll(async () => (await stats()).relays.some((query) => query.includes('udp=18791&to=127.0.0.1%3A18783')), { timeout: 30_000 }).toBe(true);
+});
+
 test('a device page draws what the device detects on its camera', async ({ device }) => {
   await device.evaluate(async ([module, port]) => {
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };

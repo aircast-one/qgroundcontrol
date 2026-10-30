@@ -294,6 +294,12 @@ func withServer(_ servers: [String], _ typed: String, _ localPort: String) -> [S
     udpServer(typed, localPort).flatMap { servers.contains($0) ? nil : servers + [$0] } ?? servers
 }
 
+let SERVER_FORMAT = "Enter a server such as 127.0.0.1:14550, with a port from 1 to 65535."
+
+func serverFormError(_ typed: String, _ localPort: String) -> String? {
+    typed.isBlank || udpServer(typed, localPort) != nil ? nil : SERVER_FORMAT
+}
+
 private func parsedPort(_ type: LinkType, _ port: String, _ udpDefault: String) -> Int? {
     Int(port.isBlank && type == .Udp ? udpDefault : port)
 }
@@ -690,6 +696,7 @@ private struct EditLinkPage: View {
     @State private var edit: LinkEdit
     @State private var advanced: Bool
     @State private var error: String?
+    @State private var server = ""
     @State private var picking = false
     @QgcPath(LINKS_VIEW) private var linksJson
     @QgcValue(UDP_LISTEN_PORT) private var udpListen
@@ -706,6 +713,9 @@ private struct EditLinkPage: View {
     private var udpDefault: String { udpPortOrDefault(udpListen) }
     private var ports: [SerialPortChoice] { serialPortChoices(linksJson) }
     private var editable: Bool { linkRows(linksJson).first { $0.index == row.index }?.connected != true }
+    private var listenPort: String { String(editedPort(row.editing, edit.port, udpDefault)) }
+    private var serverError: String? { error != nil && error == serverFormError(server, listenPort) ? error : nil }
+    private var typedServer: String? { row.editing == .PortOnly ? udpServer(server, listenPort) : nil }
 
     var body: some View {
         PageFrame(title: "Edit \(row.name)", backLabel: "Back to links", onBack: cancel, action: "Save and connect", actionEnabled: editable, onAction: save) {
@@ -717,14 +727,29 @@ private struct EditLinkPage: View {
             }
             EditLinkFields(editing: row.editing, edit: edit, enabled: editable, onPickLog: { picking = true }) { edit = $0 }
             if row.editing == .PortOnly {
-                UdpServers(index: row.index, initial: row.servers)
+                UdpServers(
+                    index: row.index,
+                    initial: row.servers,
+                    typed: server,
+                    error: serverError,
+                    onTyped: { typed in
+                        if serverError != nil { error = nil }
+                        server = typed
+                    },
+                    onAdd: {
+                        let added = typedServer
+                        error = serverFormError(server, listenPort)
+                        if error == nil { server = "" }
+                        return added
+                    }
+                )
             }
             AdvancedDisclosure(open: advanced) { advanced.toggle() }
             if advanced {
                 LinkTextField(label: "Name", value: edit.name, enabled: editable) { name in edit.name = name }
                 LinkFlagSwitches(autoConnect: edit.autoConnect, highLatency: edit.highLatency, onAutoConnect: { edit.autoConnect = $0 }, onHighLatency: { edit.highLatency = $0 })
             }
-            if let error {
+            if let error, serverError == nil {
                 Text(error).font(.bodySmall).foregroundStyle(theme.colors.error)
             }
         }
@@ -747,9 +772,9 @@ private struct EditLinkPage: View {
     }
 
     private func save() {
-        error = editError(row.editing, edit, udpDefault)
+        error = editError(row.editing, edit, udpDefault) ?? (row.editing == .PortOnly ? serverFormError(server, listenPort) : nil)
         guard error == nil else { return }
-        let row = row, edit = edit, udpDefault = udpDefault, ports = ports
+        let row = row, edit = edit, udpDefault = udpDefault, ports = ports, typedServer = typedServer
         Task { @MainActor in
             let rows = await offMain { currentRows() }
             guard rows.first(where: { $0.index == row.index })?.connected == false else {
@@ -758,7 +783,10 @@ private struct EditLinkPage: View {
             }
             let resolved = edit.name.trimmed.ifBlank(uniqueLinkName(editSuggestion(row, edit, nil, ports), rows.filter { $0.index != row.index }.map(\.name)))
             let writes = editWrites(row.editing, resolved, edit.host, editedPort(row.editing, edit.port, udpDefault), edit.portName, edit.baud, edit.autoConnect, edit.highLatency, framing: edit.framing, logFile: edit.logFile)
-            await offMain { applyEdit(row.index, writes, nil) }
+            await offMain {
+                if let typedServer { Qgc.invoke("\(LINKS_PATH).\(row.index).addHost", typedServer) }
+                applyEdit(row.index, writes, nil)
+            }
             if row.editing == .LogFile {
                 await offMain { pruneReplayFolder(row.name, edit.logFile) }
             }
@@ -803,6 +831,7 @@ struct LinkDraft: Equatable {
     var host = ""
     var port = ""
     var servers: [String] = []
+    var server = ""
     var portName = ""
     var baud = DEFAULT_BAUD
     var framing = SerialFraming()
@@ -817,6 +846,13 @@ struct LinkDraft: Equatable {
 
 extension LinkDraft {
     func shownPort(_ udpDefault: String) -> String { port.ifBlank(portFor(type, udpDefault)) }
+
+    func withTypedServer(_ udpDefault: String) -> LinkDraft {
+        withChanges(self) {
+            $0.servers = withServer(servers, server, shownPort(udpDefault))
+            $0.server = ""
+        }
+    }
 
     func withPluggedPort(_ ports: [SerialPortChoice]) -> LinkDraft {
         withChanges(self) { $0.portName = portName.ifBlank(ports.count == 1 ? ports[0].port : "") }
@@ -840,7 +876,9 @@ func draftError(_ draft: LinkDraft, _ udpDefault: String, _ taken: [String], _ a
     case .Bluetooth: draft.device == nil ? "Pick a Bluetooth device." : nil
     case .LogReplay: draft.replayLog.isBlank ? "Choose a log file to replay." : nil
     case .Serial: serialFormError(draft.portName, draft.baud, taken, draft.name, anyPorts)
-    default: linkFormError(draft.type, draft.host, draft.shownPort(udpDefault), udpDefault: udpDefault)
+    default:
+        linkFormError(draft.type, draft.host, draft.shownPort(udpDefault), udpDefault: udpDefault)
+            ?? (draft.type == .Udp ? serverFormError(draft.server, draft.shownPort(udpDefault)) : nil)
     }
 }
 
@@ -975,15 +1013,19 @@ private struct NewLinkFields: View {
 private struct DraftServers: View {
     let draft: LinkDraft
     let udpDefault: String
+    let error: String?
     let onError: (String?) -> Void
     let onDraft: (LinkDraft) -> Void
 
     var body: some View {
         ServerList(
             servers: draft.servers,
-            onAdd: { typed in
-                onError(udpServer(typed, draft.shownPort(udpDefault)) == nil ? "Enter an address, or address:port." : nil)
-                onDraft(withChanges(draft) { $0.servers = withServer(draft.servers, typed, draft.shownPort(udpDefault)) })
+            typed: draft.server,
+            error: error,
+            onTyped: { typed in onDraft(withChanges(draft) { $0.server = typed }) },
+            onAdd: {
+                let invalid = serverFormError(draft.server, draft.shownPort(udpDefault))
+                if let invalid { onError(invalid) } else { onDraft(draft.withTypedServer(udpDefault)) }
             },
             onRemove: { gone in onDraft(withChanges(draft) { $0.servers = draft.servers.filter { $0 != gone } }) }
         )
@@ -1036,8 +1078,9 @@ private struct AddLinkDetails: View {
 
     private var fieldError: String? {
         let port = draft.shownPort(udpDefault)
-        guard let error, type == .Udp || type == .Tcp, error == linkFormError(type, draft.host, port, udpDefault: udpDefault) else { return nil }
-        return linkFormErrorField(type, draft.host, port, udpDefault: udpDefault)
+        guard let error, type == .Udp || type == .Tcp else { return nil }
+        if error == linkFormError(type, draft.host, port, udpDefault: udpDefault) { return linkFormErrorField(type, draft.host, port, udpDefault: udpDefault) }
+        return type == .Udp && error == serverFormError(draft.server, port) ? "server" : nil
     }
 
     var body: some View {
@@ -1052,7 +1095,7 @@ private struct AddLinkDetails: View {
                 onDraft: change
             )
             if type == .Udp {
-                DraftServers(draft: draft, udpDefault: udpDefault, onError: { error = $0 }, onDraft: change)
+                DraftServers(draft: draft, udpDefault: udpDefault, error: fieldError == "server" ? error : nil, onError: { error = $0 }, onDraft: change)
             }
             if type != .Mock {
                 AdvancedDisclosure(open: advanced) { advanced.toggle() }
@@ -1086,7 +1129,7 @@ private struct AddLinkDetails: View {
         error = invalid.flatMap { $0.isBlank ? nil : $0 }
         guard invalid == nil else { return }
         busy = true
-        let draft = draft, udpDefault = udpDefault, picked = pickedLog, type = type
+        let draft = draft.withTypedServer(udpDefault), udpDefault = udpDefault, picked = pickedLog, type = type
         let name = draft.name.trimmed.ifBlank(uniqueLinkName(suggestedName, taken))
         Task { @MainActor in
             let outcome = await offMain { addLink(draft, name, udpDefault, picked) }
@@ -1262,16 +1305,24 @@ func remedyText(_ remedy: String) -> String? {
 private struct UdpServers: View {
     let index: Int
     let initial: [String]
+    let typed: String
+    let error: String?
+    let onTyped: (String) -> Void
+    let onAdd: () -> String?
     @State private var servers: [String]
 
-    init(index: Int, initial: [String]) {
+    init(index: Int, initial: [String], typed: String, error: String?, onTyped: @escaping (String) -> Void, onAdd: @escaping () -> String?) {
         self.index = index
         self.initial = initial
+        self.typed = typed
+        self.error = error
+        self.onTyped = onTyped
+        self.onAdd = onAdd
         _servers = State(initialValue: initial)
     }
 
     var body: some View {
-        ServerList(servers: servers, onAdd: { change("addHost", $0) }, onRemove: { change("removeHost", $0) })
+        ServerList(servers: servers, typed: typed, error: error, onTyped: onTyped, onAdd: { if let added = onAdd() { change("addHost", added) } }, onRemove: { change("removeHost", $0) })
     }
 
     private func change(_ action: String, _ host: String) {
@@ -1287,35 +1338,41 @@ private struct UdpServers: View {
 
 private struct ServerList: View {
     let servers: [String]
-    let onAdd: (String) -> Void
+    let typed: String
+    let error: String?
+    let onTyped: (String) -> Void
+    let onAdd: () -> Void
     let onRemove: (String) -> Void
-    @State private var typed = ""
     @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            Text("Server addresses (optional)").font(.labelMedium).foregroundStyle(error == nil ? theme.colors.onSurfaceVariant : theme.colors.error)
+            HStack {
+                TextField("Example: 127.0.0.1:14550", text: Binding(get: { typed }, set: onTyped))
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.roundedBorder)
+                    .submitLabel(.done)
+                    .onSubmit { if !typed.isBlank { onAdd() } }
+                    .accessibilityLabel("Server address")
+                Button("Add server", action: onAdd)
+                    .buttonStyle(.bordered)
+                    .disabled(typed.isBlank)
+            }
+            if let error {
+                Text(error).font(.bodySmall).foregroundStyle(theme.colors.error)
+            }
             ForEach(servers, id: \.self) { server in
                 HStack {
                     Text(server).frame(maxWidth: .infinity, alignment: .leading)
-                    Button { onRemove(server) } label: { Image(.close).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                    Button("Remove") { onRemove(server) }
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Remove \(server)")
                 }
                 .frame(minHeight: 48)
             }
-            HStack(alignment: .bottom) {
-                LinkTextField(label: "Vehicle address", value: typed, placeholder: "Example: 192.168.4.1:14550", keyboard: .URL, onSubmit: { if !typed.isBlank { add() } }) { typed = $0 }
-                Button(action: add) { Image(.add).frame(width: 44, height: 36).contentShape(Rectangle()) }
-                    .buttonStyle(.borderless)
-                    .disabled(typed.isBlank)
-                    .accessibilityLabel("Add address")
-            }
-            Text("Optional. Add it when the vehicle doesn't send to this port by itself, like sitl.aircast.one.").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
         }
-    }
-
-    private func add() {
-        onAdd(typed.trimmed)
-        typed = ""
     }
 }
