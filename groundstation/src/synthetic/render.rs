@@ -29,6 +29,8 @@ const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
 const LAYERS: [Layer; 3] = [Layer::Opaque, Layer::Translucent, Layer::OnTop];
 
 const ANISOTROPY: u16 = 16;
+const BLOOM: bool = true;
+const BLOOM_MIPS: usize = 5;
 const SHADER: &str = r"
 struct Scene { unproject: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
@@ -90,11 +92,17 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
 }
 ";
 const POST_SHADER: &str = r"
-@group(0) @binding(0) var picture: texture_2d<f32>;
-@group(0) @binding(1) var picture_sampler: sampler;
+struct Scene { unproject: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
+@group(0) @binding(0) var<uniform> scene: Scene;
+@group(1) @binding(0) var screen_sampler: sampler;
+@group(1) @binding(1) var picture: texture_2d<f32>;
+@group(1) @binding(2) var bloom: texture_2d<f32>;
 struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
 
 const EXPOSURE = 1.3;
+const BLOOM = 0.06;
+const BLOOM_THRESHOLD = 1.0;
+const BLOOM_KNEE = 0.5;
 const EDGE_THRESHOLD = 0.166;
 const EDGE_THRESHOLD_MIN = 0.0833;
 const SUBPIXEL = 0.75;
@@ -114,8 +122,43 @@ fn aces(colour: vec3<f32>) -> vec3<f32> {
     return clamp(ACES_OUT * fitted, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+fn tap(uv: vec2<f32>, texel: vec2<f32>, x: f32, y: f32) -> vec3<f32> {
+    return textureSampleLevel(picture, screen_sampler, uv + texel * vec2<f32>(x, y), 0.0).rgb;
+}
+
+fn down13(uv: vec2<f32>) -> vec3<f32> {
+    let texel = 1.0 / vec2<f32>(textureDimensions(picture));
+    let corners = tap(uv, texel, -2.0, -2.0) + tap(uv, texel, 2.0, -2.0) + tap(uv, texel, -2.0, 2.0) + tap(uv, texel, 2.0, 2.0);
+    let edges = tap(uv, texel, 0.0, -2.0) + tap(uv, texel, -2.0, 0.0) + tap(uv, texel, 2.0, 0.0) + tap(uv, texel, 0.0, 2.0);
+    let inner = tap(uv, texel, -1.0, -1.0) + tap(uv, texel, 1.0, -1.0) + tap(uv, texel, -1.0, 1.0) + tap(uv, texel, 1.0, 1.0);
+    return tap(uv, texel, 0.0, 0.0) * 0.125 + corners * 0.03125 + edges * 0.0625 + inner * 0.125;
+}
+
+fn bright(colour: vec3<f32>) -> vec3<f32> {
+    let level = max(colour.r, max(colour.g, colour.b));
+    let soft = clamp(level - BLOOM_THRESHOLD + BLOOM_KNEE, 0.0, 2.0 * BLOOM_KNEE);
+    let knee = soft * soft / (4.0 * BLOOM_KNEE + 0.0001);
+    return colour * max(knee, level - BLOOM_THRESHOLD) / max(level, 0.0001);
+}
+
+@fragment fn fs_prefilter(f: Out) -> @location(0) vec4<f32> {
+    return vec4<f32>(bright(down13(f.uv)), 1.0);
+}
+
+@fragment fn fs_down(f: Out) -> @location(0) vec4<f32> {
+    return vec4<f32>(down13(f.uv), 1.0);
+}
+
+@fragment fn fs_up(f: Out) -> @location(0) vec4<f32> {
+    let texel = 1.0 / vec2<f32>(textureDimensions(picture));
+    let corners = tap(f.uv, texel, -1.0, -1.0) + tap(f.uv, texel, 1.0, -1.0) + tap(f.uv, texel, -1.0, 1.0) + tap(f.uv, texel, 1.0, 1.0);
+    let edges = tap(f.uv, texel, 0.0, -1.0) + tap(f.uv, texel, -1.0, 0.0) + tap(f.uv, texel, 1.0, 0.0) + tap(f.uv, texel, 0.0, 1.0);
+    return vec4<f32>((tap(f.uv, texel, 0.0, 0.0) * 4.0 + edges * 2.0 + corners) / 16.0, 1.0);
+}
+
 fn shown(uv: vec2<f32>) -> vec4<f32> {
-    let colour = aces(textureSampleLevel(picture, picture_sampler, uv, 0.0).rgb * EXPOSURE);
+    let glow = textureSampleLevel(bloom, screen_sampler, uv, 0.0).rgb * BLOOM;
+    let colour = aces((textureSampleLevel(picture, screen_sampler, uv, 0.0).rgb + glow) * EXPOSURE);
     return vec4<f32>(colour, sqrt(dot(colour, vec3<f32>(0.299, 0.587, 0.114))));
 }
 
@@ -355,7 +398,10 @@ pub struct Targets {
     samples: wgpu::TextureView,
     depth: wgpu::TextureView,
     resolved: wgpu::TextureView,
-    hdr: wgpu::BindGroup,
+    mips: Vec<wgpu::TextureView>,
+    down_binds: Vec<wgpu::BindGroup>,
+    up_binds: Vec<wgpu::BindGroup>,
+    post_bind: wgpu::BindGroup,
 }
 
 pub struct Renderer {
@@ -365,7 +411,11 @@ pub struct Renderer {
     backfill: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
+    prefilter: wgpu::RenderPipeline,
+    down: wgpu::RenderPipeline,
+    up: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
+    screen_layout: wgpu::BindGroupLayout,
     draws: Option<Draws>,
     scene: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
@@ -492,14 +542,16 @@ fn sky_pipeline(
     })
 }
 
-fn post_pipeline(
+fn screen_pipeline(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
     shader: &wgpu::ShaderModule,
+    entry: &str,
     color: wgpu::TextureFormat,
+    blend: Option<wgpu::BlendState>,
 ) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("synthetic post"),
+        label: Some(entry),
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module: shader,
@@ -512,11 +564,11 @@ fn post_pipeline(
         multisample: multisample(1),
         fragment: Some(wgpu::FragmentState {
             module: shader,
-            entry_point: Some("fs"),
+            entry_point: Some(entry),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: color,
-                blend: None,
+                blend,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -524,6 +576,28 @@ fn post_pipeline(
         cache: None,
     })
 }
+
+fn sampled(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+const ADDITIVE: wgpu::BlendState = wgpu::BlendState {
+    color: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::One,
+        dst_factor: wgpu::BlendFactor::One,
+        operation: wgpu::BlendOperation::Add,
+    },
+    alpha: wgpu::BlendComponent::REPLACE,
+};
 
 impl Renderer {
     pub fn new() -> Result<Self, String> {
@@ -587,9 +661,22 @@ impl Renderer {
             label: Some("synthetic post"),
             source: wgpu::ShaderSource::Wgsl(POST_SHADER.into()),
         });
+        let screen_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("synthetic screen"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                sampled(1),
+                sampled(2),
+            ],
+        });
         let post_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("synthetic post"),
-            bind_group_layouts: &[Some(&layout)],
+            bind_group_layouts: &[Some(&scene_layout), Some(&screen_layout)],
             immediate_size: 0,
         });
         let pipelines = LAYERS.map(|layer| {
@@ -598,7 +685,13 @@ impl Renderer {
         });
         let backfill = pipeline(&device, &pipeline_layout, &shader, HDR, Layer::Backfill);
         let sky = sky_pipeline(&device, &sky_layout, &shader, HDR);
-        let post = post_pipeline(&device, &post_layout, &post_shader, format);
+        let screen = |entry: &str, color: wgpu::TextureFormat, blend: Option<wgpu::BlendState>| {
+            screen_pipeline(&device, &post_layout, &post_shader, entry, color, blend)
+        };
+        let post = screen("fs", format, None);
+        let prefilter = screen("fs_prefilter", HDR, None);
+        let down = screen("fs_down", HDR, None);
+        let up = screen("fs_up", HDR, Some(ADDITIVE));
         let scene = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("synthetic scene"),
             size: SCENE_BYTES,
@@ -636,7 +729,11 @@ impl Renderer {
             backfill,
             sky,
             post,
+            prefilter,
+            down,
+            up,
             layout,
+            screen_layout,
             draws: None,
             scene,
             scene_bind,
@@ -817,9 +914,64 @@ impl Renderer {
             ..Default::default()
         });
         pass.set_pipeline(&self.post);
-        pass.set_bind_group(0, &targets.hdr, &[]);
+        pass.set_bind_group(0, &self.scene_bind, &[]);
+        pass.set_bind_group(1, &targets.post_bind, &[]);
         pass.draw(0..3, 0..1);
         pass
+    }
+
+    fn screen(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        load: wgpu::LoadOp<wgpu::Color>,
+        pipeline: &wgpu::RenderPipeline,
+        bind: &wgpu::BindGroup,
+    ) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("synthetic screen"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            ..Default::default()
+        });
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, &self.scene_bind, &[]);
+        pass.set_bind_group(1, bind, &[]);
+        pass.draw(0..3, 0..1);
+    }
+
+    fn effects(&self, encoder: &mut wgpu::CommandEncoder, targets: &Targets) {
+        if !BLOOM {
+            return;
+        }
+        let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
+        targets
+            .mips
+            .iter()
+            .zip(&targets.down_binds)
+            .enumerate()
+            .for_each(|(level, (mip, bind))| {
+                let pipeline = if level == 0 {
+                    &self.prefilter
+                } else {
+                    &self.down
+                };
+                self.screen(encoder, mip, clear, pipeline, bind);
+            });
+        targets
+            .mips
+            .iter()
+            .zip(&targets.up_binds)
+            .rev()
+            .for_each(|(mip, bind)| self.screen(encoder, mip, wgpu::LoadOp::Load, &self.up, bind));
     }
 
     pub fn warm(&mut self, arrived: Vec<Arc<Mesh>>, most: usize) -> usize {
@@ -964,9 +1116,9 @@ impl Renderer {
                     layer_draws(&mut pass, &bound, *layer);
                 });
         }
+        self.effects(&mut encoder, targets);
         {
             let mut pass = self.finish(&mut encoder, target, targets);
-            pass.set_bind_group(0, &self.scene_bind, &[]);
             pass.set_vertex_buffer(1, draws.buffer.slice(..));
             LAYERS
                 .iter()
@@ -993,6 +1145,7 @@ impl Renderer {
     pub fn clear(&mut self, target: &wgpu::TextureView, targets: &Targets) {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         drop(Self::pass(&mut encoder, targets));
+        self.effects(&mut encoder, targets);
         drop(self.finish(&mut encoder, target, targets));
         self.queue.submit([encoder.finish()]);
     }
@@ -1002,16 +1155,17 @@ impl Renderer {
     }
 
     pub fn targets(&self, width: u32, height: u32) -> Targets {
-        let texture = |label: &str,
-                       format: wgpu::TextureFormat,
-                       sample_count: u32,
-                       usage: wgpu::TextureUsages| {
+        let sized = |label: &str,
+                     format: wgpu::TextureFormat,
+                     sample_count: u32,
+                     usage: wgpu::TextureUsages,
+                     shrink: u32| {
             self.device
                 .create_texture(&wgpu::TextureDescriptor {
                     label: Some(label),
                     size: wgpu::Extent3d {
-                        width,
-                        height,
+                        width: (width >> shrink).max(1),
+                        height: (height >> shrink).max(1),
                         depth_or_array_layers: 1,
                     },
                     mip_level_count: 1,
@@ -1023,33 +1177,59 @@ impl Renderer {
                 })
                 .create_view(&Default::default())
         };
+        let texture = |label: &str,
+                       format: wgpu::TextureFormat,
+                       sample_count: u32,
+                       usage: wgpu::TextureUsages| {
+            sized(label, format, sample_count, usage, 0)
+        };
         let transient =
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TRANSIENT_ATTACHMENT;
-        let resolved = texture(
-            "synthetic resolved",
-            HDR,
-            1,
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        );
-        let hdr = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("synthetic post"),
-            layout: &self.layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&resolved),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.post_sampler),
-                },
-            ],
-        });
+        let readable =
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        let resolved = texture("synthetic resolved", HDR, 1, readable);
+        let mips: Vec<wgpu::TextureView> = (0..BLOOM_MIPS)
+            .map(|level| sized("synthetic bloom", HDR, 1, readable, level as u32 + 1))
+            .collect();
+        let bind = |picture: &wgpu::TextureView, bloom: &wgpu::TextureView| {
+            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("synthetic screen"),
+                layout: &self.screen_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Sampler(&self.post_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(picture),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(bloom),
+                    },
+                ],
+            })
+        };
+        let down_binds = std::iter::once(&resolved)
+            .chain(&mips)
+            .take(BLOOM_MIPS)
+            .map(|source| bind(source, source))
+            .collect();
+        let up_binds = mips
+            .iter()
+            .skip(1)
+            .map(|source| bind(source, source))
+            .collect();
+        let post_bind = bind(&resolved, &mips[0]);
         Targets {
             samples: texture("synthetic samples", HDR, SAMPLES, transient),
             depth: texture("synthetic depth", DEPTH, SAMPLES, transient),
             resolved,
-            hdr,
+            mips,
+            down_binds,
+            up_binds,
+            post_bind,
         }
     }
 
