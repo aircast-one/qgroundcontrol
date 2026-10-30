@@ -10,6 +10,7 @@ use super::mesh::{Layer, Mesh, solid};
 
 const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+const HDR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const SKY: wgpu::Color = wgpu::Color {
     r: 0.3,
     g: 0.45,
@@ -86,6 +87,101 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
 @fragment fn fs_sky(f: SkyOut) -> @location(0) vec4<f32> {
     let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
     return vec4<f32>(sky(normalize(through.xyz / through.w)), 1.0);
+}
+";
+const POST_SHADER: &str = r"
+@group(0) @binding(0) var picture: texture_2d<f32>;
+@group(0) @binding(1) var picture_sampler: sampler;
+struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
+
+const EXPOSURE = 1.3;
+const EDGE_THRESHOLD = 0.166;
+const EDGE_THRESHOLD_MIN = 0.0833;
+const SUBPIXEL = 0.75;
+const SEARCH_STEPS = 12;
+
+@vertex fn vs(@builtin(vertex_index) index: u32) -> Out {
+    let corner = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
+    return Out(vec4<f32>(corner * 2.0 - 1.0, 0.0, 1.0), vec2<f32>(corner.x, 1.0 - corner.y));
+}
+
+const ACES_IN = mat3x3<f32>(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
+const ACES_OUT = mat3x3<f32>(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
+
+fn aces(colour: vec3<f32>) -> vec3<f32> {
+    let v = ACES_IN * colour;
+    let fitted = (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.4329510) + 0.238081);
+    return clamp(ACES_OUT * fitted, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+fn shown(uv: vec2<f32>) -> vec4<f32> {
+    let colour = aces(textureSampleLevel(picture, picture_sampler, uv, 0.0).rgb * EXPOSURE);
+    return vec4<f32>(colour, sqrt(dot(colour, vec3<f32>(0.299, 0.587, 0.114))));
+}
+
+fn search_step(i: i32) -> f32 {
+    return select(select(2.0, 1.5, i == 1), select(4.0, 8.0, i == SEARCH_STEPS - 1), i >= SEARCH_STEPS - 2);
+}
+
+@fragment fn fs(f: Out) -> @location(0) vec4<f32> {
+    let texel = 1.0 / vec2<f32>(textureDimensions(picture));
+    let m = shown(f.uv);
+    let n = shown(f.uv + vec2<f32>(0.0, -texel.y)).a;
+    let s = shown(f.uv + vec2<f32>(0.0, texel.y)).a;
+    let w = shown(f.uv + vec2<f32>(-texel.x, 0.0)).a;
+    let e = shown(f.uv + vec2<f32>(texel.x, 0.0)).a;
+    let brightest = max(m.a, max(max(n, s), max(w, e)));
+    let range = brightest - min(m.a, min(min(n, s), min(w, e)));
+    if (range < max(EDGE_THRESHOLD_MIN, brightest * EDGE_THRESHOLD)) { return vec4<f32>(m.rgb, 1.0); }
+    let nw = shown(f.uv - texel).a;
+    let ne = shown(f.uv + vec2<f32>(texel.x, -texel.y)).a;
+    let sw = shown(f.uv + vec2<f32>(-texel.x, texel.y)).a;
+    let se = shown(f.uv + texel).a;
+    let edge_horizontal = abs(-2.0 * w + nw + sw) + abs(-2.0 * m.a + n + s) * 2.0 + abs(-2.0 * e + ne + se);
+    let edge_vertical = abs(-2.0 * s + sw + se) + abs(-2.0 * m.a + w + e) * 2.0 + abs(-2.0 * n + nw + ne);
+    let horizontal = edge_horizontal >= edge_vertical;
+    let luma1 = select(w, n, horizontal);
+    let luma2 = select(e, s, horizontal);
+    let gradient1 = luma1 - m.a;
+    let gradient2 = luma2 - m.a;
+    let steepest1 = abs(gradient1) >= abs(gradient2);
+    let gradient_scaled = 0.25 * max(abs(gradient1), abs(gradient2));
+    let step_length = select(texel.x, texel.y, horizontal) * select(1.0, -1.0, steepest1);
+    let local_average = 0.5 * (select(luma2, luma1, steepest1) + m.a);
+    let along = select(vec2<f32>(0.0, texel.y), vec2<f32>(texel.x, 0.0), horizontal);
+    let across = select(vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), horizontal);
+    let start = f.uv + across * step_length * 0.5;
+    var uv1 = start - along;
+    var uv2 = start + along;
+    var end1 = shown(uv1).a - local_average;
+    var end2 = shown(uv2).a - local_average;
+    var reached1 = abs(end1) >= gradient_scaled;
+    var reached2 = abs(end2) >= gradient_scaled;
+    for (var i = 1; i < SEARCH_STEPS; i++) {
+        if (reached1 && reached2) { break; }
+        if (!reached1) {
+            uv1 -= along * search_step(i);
+            end1 = shown(uv1).a - local_average;
+            reached1 = abs(end1) >= gradient_scaled;
+        }
+        if (!reached2) {
+            uv2 += along * search_step(i);
+            end2 = shown(uv2).a - local_average;
+            reached2 = abs(end2) >= gradient_scaled;
+        }
+    }
+    let distance1 = select(f.uv.y - uv1.y, f.uv.x - uv1.x, horizontal);
+    let distance2 = select(uv2.y - f.uv.y, uv2.x - f.uv.x, horizontal);
+    let nearest1 = distance1 < distance2;
+    let pixel_offset = 0.5 - min(distance1, distance2) / (distance1 + distance2);
+    let darker_centre = m.a < local_average;
+    let right_way = ((select(end2, end1, nearest1)) < 0.0) != darker_centre;
+    let edge_offset = select(0.0, pixel_offset, right_way);
+    let average = (2.0 * (n + s + w + e) + nw + ne + sw + se) / 12.0;
+    let subpixel1 = clamp(abs(average - m.a) / range, 0.0, 1.0);
+    let subpixel2 = (-2.0 * subpixel1 + 3.0) * subpixel1 * subpixel1;
+    let offset = max(edge_offset, subpixel2 * subpixel2 * SUBPIXEL);
+    return vec4<f32>(shown(f.uv + across * offset * step_length).rgb, 1.0);
 }
 ";
 
@@ -258,20 +354,23 @@ fn draw_slots(needed: usize) -> usize {
 pub struct Targets {
     samples: wgpu::TextureView,
     depth: wgpu::TextureView,
+    resolved: wgpu::TextureView,
+    hdr: wgpu::BindGroup,
 }
 
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    format: wgpu::TextureFormat,
     pipelines: [wgpu::RenderPipeline; 3],
     backfill: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
+    post: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     draws: Option<Draws>,
     scene: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
     sampler: wgpu::Sampler,
+    post_sampler: wgpu::Sampler,
     resident: Resident<GpuMesh>,
     arenas: Vec<Option<Arena<ArenaBuffers>>>,
     pub uploads: usize,
@@ -305,9 +404,9 @@ fn depth_state(write: bool, compare: wgpu::CompareFunction) -> wgpu::DepthStenci
     }
 }
 
-fn multisample() -> wgpu::MultisampleState {
+fn multisample(count: u32) -> wgpu::MultisampleState {
     wgpu::MultisampleState {
-        count: SAMPLES,
+        count,
         ..Default::default()
     }
 }
@@ -352,8 +451,8 @@ fn pipeline(
             ],
         },
         primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
-        depth_stencil: Some(depth_state(depth_write, compare)),
-        multisample: multisample(),
+        depth_stencil: (layer != Layer::OnTop).then(|| depth_state(depth_write, compare)),
+        multisample: multisample(if layer == Layer::OnTop { 1 } else { SAMPLES }),
         fragment: Some(wgpu::FragmentState { module: shader, entry_point: Some(fragment), compilation_options: Default::default(), targets: &[Some(wgpu::ColorTargetState { format: color, blend, write_mask: wgpu::ColorWrites::ALL })] }),
         multiview_mask: None,
         cache: None,
@@ -377,10 +476,43 @@ fn sky_pipeline(
         },
         primitive: Default::default(),
         depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Always)),
-        multisample: multisample(),
+        multisample: multisample(SAMPLES),
         fragment: Some(wgpu::FragmentState {
             module: shader,
             entry_point: Some("fs_sky"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: color,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+fn post_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    color: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("synthetic post"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        primitive: Default::default(),
+        depth_stencil: None,
+        multisample: multisample(1),
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs"),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: color,
@@ -451,10 +583,22 @@ impl Renderer {
             bind_group_layouts: &[Some(&scene_layout)],
             immediate_size: 0,
         });
-        let pipelines =
-            LAYERS.map(|layer| pipeline(&device, &pipeline_layout, &shader, format, layer));
-        let backfill = pipeline(&device, &pipeline_layout, &shader, format, Layer::Backfill);
-        let sky = sky_pipeline(&device, &sky_layout, &shader, format);
+        let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("synthetic post"),
+            source: wgpu::ShaderSource::Wgsl(POST_SHADER.into()),
+        });
+        let post_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("synthetic post"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipelines = LAYERS.map(|layer| {
+            let color = if layer == Layer::OnTop { format } else { HDR };
+            pipeline(&device, &pipeline_layout, &shader, color, layer)
+        });
+        let backfill = pipeline(&device, &pipeline_layout, &shader, HDR, Layer::Backfill);
+        let sky = sky_pipeline(&device, &sky_layout, &shader, HDR);
+        let post = post_pipeline(&device, &post_layout, &post_shader, format);
         let scene = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("synthetic scene"),
             size: SCENE_BYTES,
@@ -478,18 +622,26 @@ impl Renderer {
             anisotropy_clamp: ANISOTROPY,
             ..Default::default()
         });
+        let post_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
         Self {
             device,
             queue,
-            format,
             pipelines,
             backfill,
             sky,
+            post,
             layout,
             draws: None,
             scene,
             scene_bind,
             sampler,
+            post_sampler,
             resident: Resident::default(),
             arenas: Vec::new(),
             uploads: 0,
@@ -620,17 +772,13 @@ impl Renderer {
         self.resident.len()
     }
 
-    fn pass<'a>(
-        encoder: &'a mut wgpu::CommandEncoder,
-        target: &wgpu::TextureView,
-        targets: &Targets,
-    ) -> wgpu::RenderPass<'a> {
+    fn pass<'a>(encoder: &'a mut wgpu::CommandEncoder, targets: &Targets) -> wgpu::RenderPass<'a> {
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("synthetic"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &targets.samples,
                 depth_slice: None,
-                resolve_target: Some(target),
+                resolve_target: Some(&targets.resolved),
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(SKY),
                     store: wgpu::StoreOp::Discard,
@@ -646,6 +794,32 @@ impl Renderer {
             }),
             ..Default::default()
         })
+    }
+
+    fn finish<'a>(
+        &'a self,
+        encoder: &'a mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        targets: &'a Targets,
+    ) -> wgpu::RenderPass<'a> {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("synthetic post"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            ..Default::default()
+        });
+        pass.set_pipeline(&self.post);
+        pass.set_bind_group(0, &targets.hdr, &[]);
+        pass.draw(0..3, 0..1);
+        pass
     }
 
     pub fn warm(&mut self, arrived: Vec<Arc<Mesh>>, most: usize) -> usize {
@@ -760,8 +934,18 @@ impl Renderer {
             ),
         );
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        let layer_draws =
+            |pass: &mut wgpu::RenderPass, bound: &Cell<Option<usize>>, layer: Layer| {
+                drawable
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (mesh, _))| mesh.layer == layer)
+                    .for_each(|(slot, (_, gpu))| {
+                        record(pass, &self.arenas, bound, gpu, placed(behind.len() + slot))
+                    });
+            };
         {
-            let mut pass = Self::pass(&mut encoder, target, targets);
+            let mut pass = Self::pass(&mut encoder, targets);
             pass.set_bind_group(0, &self.scene_bind, &[]);
             pass.set_pipeline(&self.sky);
             pass.draw(0..3, 0..1);
@@ -774,21 +958,23 @@ impl Renderer {
             LAYERS
                 .iter()
                 .zip(&self.pipelines)
+                .filter(|(layer, _)| **layer != Layer::OnTop)
                 .for_each(|(layer, pipeline)| {
                     pass.set_pipeline(pipeline);
-                    drawable
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, (mesh, _))| mesh.layer == *layer)
-                        .for_each(|(slot, (_, gpu))| {
-                            record(
-                                &mut pass,
-                                &self.arenas,
-                                &bound,
-                                gpu,
-                                placed(behind.len() + slot),
-                            )
-                        });
+                    layer_draws(&mut pass, &bound, *layer);
+                });
+        }
+        {
+            let mut pass = self.finish(&mut encoder, target, targets);
+            pass.set_bind_group(0, &self.scene_bind, &[]);
+            pass.set_vertex_buffer(1, draws.buffer.slice(..));
+            LAYERS
+                .iter()
+                .zip(&self.pipelines)
+                .filter(|(layer, _)| **layer == Layer::OnTop)
+                .for_each(|(layer, pipeline)| {
+                    pass.set_pipeline(pipeline);
+                    layer_draws(&mut pass, &Cell::new(None), *layer);
                 });
         }
         self.queue.submit([encoder.finish()]);
@@ -806,7 +992,8 @@ impl Renderer {
 
     pub fn clear(&mut self, target: &wgpu::TextureView, targets: &Targets) {
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        drop(Self::pass(&mut encoder, target, targets));
+        drop(Self::pass(&mut encoder, targets));
+        drop(self.finish(&mut encoder, target, targets));
         self.queue.submit([encoder.finish()]);
     }
 
@@ -815,7 +1002,10 @@ impl Renderer {
     }
 
     pub fn targets(&self, width: u32, height: u32) -> Targets {
-        let attachment = |label: &str, format: wgpu::TextureFormat| {
+        let texture = |label: &str,
+                       format: wgpu::TextureFormat,
+                       sample_count: u32,
+                       usage: wgpu::TextureUsages| {
             self.device
                 .create_texture(&wgpu::TextureDescriptor {
                     label: Some(label),
@@ -825,18 +1015,41 @@ impl Renderer {
                         depth_or_array_layers: 1,
                     },
                     mip_level_count: 1,
-                    sample_count: SAMPLES,
+                    sample_count,
                     dimension: wgpu::TextureDimension::D2,
                     format,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                        | wgpu::TextureUsages::TRANSIENT_ATTACHMENT,
+                    usage,
                     view_formats: &[],
                 })
                 .create_view(&Default::default())
         };
+        let transient =
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TRANSIENT_ATTACHMENT;
+        let resolved = texture(
+            "synthetic resolved",
+            HDR,
+            1,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        );
+        let hdr = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("synthetic post"),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&resolved),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.post_sampler),
+                },
+            ],
+        });
         Targets {
-            samples: attachment("synthetic samples", self.format),
-            depth: attachment("synthetic depth", DEPTH),
+            samples: texture("synthetic samples", HDR, SAMPLES, transient),
+            depth: texture("synthetic depth", DEPTH, SAMPLES, transient),
+            resolved,
+            hdr,
         }
     }
 
