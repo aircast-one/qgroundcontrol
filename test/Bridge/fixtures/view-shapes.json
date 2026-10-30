@@ -2348,6 +2348,7 @@
         "view.deviceRender(front,1700000000,1700000300).progress",
         "view.deviceRender(front,1700000000,1700000300).url",
         "view.deviceWizard.adopt",
+        "view.deviceWizard.again",
         "view.deviceWizard.apply.camera",
         "view.deviceWizard.apply.field",
         "view.deviceWizard.apply.n",
@@ -7670,6 +7671,7 @@
         "view.deviceRender(front,1700000000,1700000300).progress",
         "view.deviceRender(front,1700000000,1700000300).url",
         "view.deviceWizard.adopt",
+        "view.deviceWizard.again",
         "view.deviceWizard.apply.camera",
         "view.deviceWizard.apply.field",
         "view.deviceWizard.apply.n",
@@ -12100,6 +12102,7 @@
     },
     "view.deviceWizard": {
         "adopt": "null",
+        "again": "number",
         "apply": {
             "camera": "string",
             "field": "string",
