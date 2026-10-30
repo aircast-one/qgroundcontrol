@@ -1,4 +1,4 @@
-import { type PointerEvent, useContext, useEffect, useRef, useState } from 'react';
+import { type PointerEvent, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Json } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useProduceState } from '@/kotlin/Compose';
@@ -131,8 +131,10 @@ const FlightsSplit = ({ flights, linked }: { flights: readonly FlightEntry[]; li
 
 const FlightBody = ({ flight, active, onActive }: { flight: FlightEntry; active: number | null; onActive: (index: number | null) => void }) => {
   const [alertsOnly, setAlertsOnly] = useState(false);
+  const body = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => void Array.from(body.current?.querySelectorAll('li') ?? []).at(-1)?.scrollIntoView({ block: 'end' }), []);
   return (
-    <div className="pb-4">
+    <div ref={body} className="pb-4">
       {hasLines(flight) ? (
         <>
           <div role="group" aria-label="Lines" className="flex flex-wrap items-center gap-2 px-list py-2">
