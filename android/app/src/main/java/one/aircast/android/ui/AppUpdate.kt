@@ -30,7 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -44,13 +43,13 @@ import java.io.File
 import java.time.Instant
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.AppInstall
 import one.aircast.android.R
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.qgcDerived
 import one.aircast.android.installedFromPlay
 import one.aircast.android.installerOf
 import one.aircast.map.optText
@@ -61,7 +60,6 @@ internal const val PLAY_UPDATES = "Updates come through Google Play"
 internal const val DISCONNECT_FIRST = "Disconnect from the vehicle first"
 private const val UPDATE_SUBJECT = "The updater"
 private const val NOTES_MAX_LINES = 12
-private const val POLL_MS = 1000L
 
 internal enum class UpdatePhase(val token: String) {
     Idle("idle"), Checking("checking"), UpToDate("upToDate"), Available("available"), Downloading("downloading"), Ready("ready"), Failed("failed");
@@ -138,15 +136,7 @@ internal fun plainNotes(markdown: String): String =
 internal fun checkedAtMillis(checkedAt: String): Long? = runCatching { Instant.parse(checkedAt).toEpochMilli() }.getOrNull()
 
 @Composable
-private fun polledAppUpdate(): AppUpdateReading? {
-    val reading by produceState<AppUpdateReading?>(null) {
-        while (true) {
-            value = withContext(Dispatchers.Default) { appUpdateReading(Qgc.get(APP_UPDATE_VIEW)) }
-            delay(POLL_MS)
-        }
-    }
-    return reading
-}
+internal fun watchedAppUpdate(): AppUpdateReading? = qgcDerived(APP_UPDATE_VIEW, ::appUpdateReading).value
 
 private fun openUrl(context: Context, url: String) =
     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -167,7 +157,7 @@ private fun rememberInstall(file: String): () -> Unit {
 internal fun UpdatesSection() {
     val context = LocalContext.current
     val fromPlay = remember { installedFromPlay(installerOf(context)) }
-    val reading = polledAppUpdate() ?: return
+    val reading = watchedAppUpdate() ?: return
     val installError by AppInstall.outcome.collectAsState()
     var refusal by remember { mutableStateOf<String?>(null) }
     val install = rememberInstall(reading.file)
@@ -245,7 +235,7 @@ private val UPDATE_BANNER_CORNER = 12.dp
 internal fun UpdateBanner(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val fromPlay = remember { installedFromPlay(installerOf(context)) }
-    val reading = polledAppUpdate()?.takeIf { bannerShown(it, fromPlay) } ?: return
+    val reading = watchedAppUpdate()?.takeIf { bannerShown(it, fromPlay) } ?: return
     val installError by AppInstall.outcome.collectAsState()
     val install = rememberInstall(reading.file)
     val act: (String) -> Unit = { path -> offMainDetached { Qgc.invoke(path) } }

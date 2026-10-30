@@ -30,14 +30,16 @@ fun ConnectionLocks() {
     val vehicles by qgcPath(VEHICLES_VIEW)
     val links by qgcPath(LINKS_VIEW)
     val connected = vehicleConnected(vehicles)
+    val downloading = watchedAppUpdate()?.phase == UpdatePhase.Downloading
+    val awake = connected || downloading
     val linked = connected || linkAwaitingVehicle(links)
     val context = LocalContext.current
     val askToNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(linked) {
         if (linked && notificationsBlocked(context)) askToNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
-    DisposableEffect(connected) {
-        if (!connected) return@DisposableEffect onDispose { }
+    DisposableEffect(awake) {
+        if (!awake) return@DisposableEffect onDispose { }
         val window = (context as? Activity)?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
