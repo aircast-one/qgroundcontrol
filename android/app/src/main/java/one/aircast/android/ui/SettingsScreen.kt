@@ -422,6 +422,7 @@ private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>
             pages.map { pageEntry(it) }
             TabSetupRows(group, onOpenSetup)
         }
+        if (group == SettingsGroup.General) UpdatesSection()
     }
 }
 

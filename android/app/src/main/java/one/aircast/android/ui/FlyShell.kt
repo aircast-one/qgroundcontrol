@@ -323,6 +323,7 @@ internal fun FlyScreen(
                             }
                             HeadingTape(Modifier.align(Alignment.CenterHorizontally))
                             TrafficBanner()
+                            UpdateBanner()
                             Row(
                                 Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),

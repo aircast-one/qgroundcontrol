@@ -352,6 +352,7 @@ internal fun FlyPortrait(
                     BatteryReturnBar(Modifier.align(Alignment.TopCenter))
                 }
                 TrafficBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
+                UpdateBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
             }
             }
             if (fullScreen) stickPad?.let { pad ->
