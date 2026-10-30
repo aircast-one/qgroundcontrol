@@ -83,6 +83,9 @@ const CLOUD_EXTINCTION = 0.006;
 const CLOUD_ALBEDO = 0.92;
 const CLOUD_DRIFT = vec2<f32>(5.0, 2.0);
 const CLOUD_LIGHT_STEP_M = 220.0;
+const FOG = true;
+const FOG_DENSITY = 0.00006;
+const FOG_HEIGHT_M = 400.0;
 
 struct Air { light: vec3<f32>, through: vec3<f32> };
 
@@ -169,19 +172,19 @@ fn henyey_greenstein(cosine: f32, g: f32) -> f32 {
     return (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosine, 1.5));
 }
 
-fn cloud_density(horizontal: vec2<f32>, height: f32, octaves: i32) -> f32 {
+fn cloud_density(horizontal: vec2<f32>, height: f32, octaves: i32, fineness: f32) -> f32 {
     let shape = fbm(horizontal * CLOUD_SCALE + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE, octaves);
     let rise = (height - CLOUD_BASE_M) / (CLOUD_TOP_M - CLOUD_BASE_M);
     let profile = smoothstep(0.0, 0.12, rise) * (1.0 - smoothstep(0.55, 1.0, rise));
     let detail = fbm(horizontal * CLOUD_SCALE * 6.0 + vec2<f32>(3.7, 1.3) + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE * 1.4, octaves);
-    let body = clamp((shape - (1.0 - CLOUD_COVER)) / CLOUD_COVER * 6.0 - rise * 0.8 - detail * 0.8, 0.0, 1.0);
+    let body = clamp((shape - (1.0 - CLOUD_COVER)) / CLOUD_COVER * 6.0 - rise * 0.8 - detail * 0.8 * fineness, 0.0, 1.0);
     return body * profile;
 }
 
 fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
     let up = dot(direction, scene.zenith.xyz);
-    if (!CLOUDS || up < 0.02) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
-    let fade = smoothstep(0.02, 0.15, up);
+    if (!CLOUDS || up < 0.08) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    let fade = smoothstep(0.08, 0.25, up);
     let start = CLOUD_BASE_M / up;
     let steps = select(CLOUD_STEPS, CLOUD_GRAZING_STEPS, up < 0.3);
     let step = min(CLOUD_TOP_M / up - start, 18000.0) / f32(steps);
@@ -195,14 +198,15 @@ fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
     var through = 1.0;
     var light = vec3<f32>(0.0);
     for (var i = 0; i < steps; i++) {
-        let t = start + (f32(i) + jitter) * step;
+        let t = start + (f32(i) + 0.25 + 0.5 * jitter) * step;
+        let fineness = 1.0 - smoothstep(6000.0, 15000.0, t);
         let p = direction * t;
-        let density = cloud_density(vec2<f32>(dot(scene.eye.xyz + p, east), dot(scene.eye.xyz + p, north)), up * t, 4);
+        let density = cloud_density(vec2<f32>(dot(scene.eye.xyz + p, east), dot(scene.eye.xyz + p, north)), up * t, 4, fineness);
         if (density <= 0.0) { continue; }
         var toward = 0.0;
         for (var j = 0; j < 2; j++) {
             let q = p + scene.sun.xyz * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M;
-            toward += cloud_density(vec2<f32>(dot(scene.eye.xyz + q, east), dot(scene.eye.xyz + q, north)), up * t + sun_up * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M, 3) * CLOUD_LIGHT_STEP_M;
+            toward += cloud_density(vec2<f32>(dot(scene.eye.xyz + q, east), dot(scene.eye.xyz + q, north)), up * t + sun_up * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M, 3, fineness) * CLOUD_LIGHT_STEP_M;
         }
         let beer = exp(-toward * CLOUD_EXTINCTION);
         let powder = 1.0 - exp(-toward * CLOUD_EXTINCTION * 2.0);
@@ -221,6 +225,23 @@ fn clouded_sky(direction: vec3<f32>, jitter: f32) -> vec3<f32> {
     if (cover.a >= 1.0) { return clear; }
     let near = scatter(direction, CLOUD_BASE_M / max(dot(direction, scene.zenith.xyz), 0.015), 4);
     return clear * cover.a + cover.rgb * near.through + near.light * (1.0 - cover.a);
+}
+
+fn fog_amount(seen: vec3<f32>) -> f32 {
+    if (!FOG) { return 0.0; }
+    let climb = dot(seen, scene.zenith.xyz);
+    let along = select(FOG_HEIGHT_M * (1.0 - exp(-climb / FOG_HEIGHT_M)) / climb, 1.0, abs(climb) < 1.0);
+    return 1.0 - exp(-FOG_DENSITY * length(seen) * along);
+}
+
+fn fog_colour(direction: vec3<f32>) -> vec3<f32> {
+    let level = direction - scene.zenith.xyz * dot(direction, scene.zenith.xyz);
+    let horizon = select(level, vec3<f32>(0.0), dot(level, level) < 1e-6);
+    return sky_air(normalize(horizon + scene.zenith.xyz * 0.02), 4).light;
+}
+
+fn fogged(colour: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
+    return mix(colour, fog_colour(seen / max(length(seen), 1.0)), fog_amount(seen));
 }
 
 fn facing(normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
@@ -277,7 +298,7 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
     let air = scatter(f.seen / distance, distance, 4);
     let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
     let lit = sunlight_reaching(f.seen, normal);
-    return Frag(vec4<f32>(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, colour.a), vec4<f32>(normal, distance));
+    return Frag(vec4<f32>(fogged(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, f.seen), colour.a), vec4<f32>(normal, distance));
 }
 
 @fragment fn fs_plain(f: Out) -> @location(0) vec4<f32> {
@@ -291,7 +312,10 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
 
 @fragment fn fs_sky(f: SkyOut) -> Frag {
     let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
-    return Frag(vec4<f32>(clouded_sky(normalize(through.xyz / through.w), dither(f.position.xy)), 1.0), vec4<f32>(0.0));
+    let direction = normalize(through.xyz / through.w);
+    let up = dot(direction, scene.zenith.xyz);
+    let reach = min(select(to_space(up), -2.0 * PLANET_M * up + 20000.0, up < 0.0), 60000.0);
+    return Frag(vec4<f32>(fogged(clouded_sky(direction, dither(f.position.xy)), direction * reach), 1.0), vec4<f32>(0.0));
 }
 ";
 const SHADOW_SHADER: &str = r"
