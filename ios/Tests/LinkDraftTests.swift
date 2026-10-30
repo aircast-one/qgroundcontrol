@@ -63,7 +63,7 @@ final class LinkEditTests: XCTestCase {
     func testEditOpensAdvancedWhenTheLinkAlreadyUsesSomethingInIt() {
         XCTAssertFalse(editShowsAdvanced(row()))
         XCTAssertTrue(editShowsAdvanced(row(autoConnect: true)))
-        XCTAssertTrue(editShowsAdvanced(row(servers: ["10.0.0.9:14550"])))
+        XCTAssertFalse(editShowsAdvanced(row(servers: ["10.0.0.9:14550"])))
         XCTAssertTrue(editShowsAdvanced(row(editing: .Serial, framing: SerialFraming(dataBits: 7))))
     }
 

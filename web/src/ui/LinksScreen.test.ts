@@ -456,7 +456,7 @@ describe('LinkEditTest', () => {
   it('edit opens Advanced when the link already uses something in it', () => {
     expect(editShowsAdvanced(row())).toBe(false);
     expect(editShowsAdvanced(row({ autoConnect: true }))).toBe(true);
-    expect(editShowsAdvanced(row({ servers: ['10.0.0.9:14550'] }))).toBe(true);
+    expect(editShowsAdvanced(row({ servers: ['10.0.0.9:14550'] }))).toBe(false);
     expect(editShowsAdvanced(row({ editing: LinkEditing.Serial, framing: SerialFraming({ dataBits: 7 }) }))).toBe(true);
   });
 

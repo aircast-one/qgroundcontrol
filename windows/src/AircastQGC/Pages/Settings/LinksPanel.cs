@@ -197,6 +197,7 @@ internal sealed class LinkDetails : UserControl
         Content = SettingsBodies.Scrolled(FormLook.Stack(12,
             FormLook.Text(LinkModel.Kind(type).About, "FontSizeBody", "TextSecondaryBrush"),
             Fields(),
+            type == LinkType.Udp ? Servers() : null,
             type == LinkType.Mock ? null : LinkForms.Advanced(false, Advanced()),
             _error,
             _connect));
@@ -232,23 +233,22 @@ internal sealed class LinkDetails : UserControl
             _portError),
     };
 
+    private ServerList Servers() => new(_draft.Servers,
+        typed =>
+        {
+            var servers = LinkModel.WithServer(_draft.Servers, typed, _draft.ShownPort(_udpDefault));
+            FormLook.Say(_error, LinkModel.UdpServer(typed, _draft.ShownPort(_udpDefault)) is null ? "Enter a server as an address, or address:port." : null);
+            _draft = _draft with { Servers = servers };
+            return Task.FromResult(servers);
+        },
+        gone =>
+        {
+            _draft = _draft with { Servers = _draft.Servers.Where(s => s != gone).ToList() };
+            return Task.FromResult(_draft.Servers);
+        });
+
     private UIElement Advanced() => FormLook.Stack(12,
         _name,
-        _type == LinkType.Udp
-            ? new ServerList(_draft.Servers,
-                typed =>
-                {
-                    var servers = LinkModel.WithServer(_draft.Servers, typed, _draft.ShownPort(_udpDefault));
-                    FormLook.Say(_error, LinkModel.UdpServer(typed, _draft.ShownPort(_udpDefault)) is null ? "Enter a server as an address, or address:port." : null);
-                    _draft = _draft with { Servers = servers };
-                    return Task.FromResult(servers);
-                },
-                gone =>
-                {
-                    _draft = _draft with { Servers = _draft.Servers.Where(s => s != gone).ToList() };
-                    return Task.FromResult(_draft.Servers);
-                })
-            : null,
         _type == LinkType.Serial && Ports.Count > 0 ? LinkForms.Framing(_draft.Framing, framing => _draft = _draft with { Framing = framing }) : null,
         LinkForms.Flags(_draft.AutoConnect, _draft.HighLatency,
             on => _draft = _draft with { AutoConnect = on },
@@ -309,13 +309,13 @@ internal sealed class LinkEditor : UserControl
             FormLook.Text(LinkModel.Kind(row.Type).About, "FontSizeBody", "TextSecondaryBrush"),
             _locked,
             _fields,
+            row.Editing == LinkEditing.PortOnly
+                ? new ServerList(row.Servers,
+                    host => FormWrites.Off(() => LinkCommands.ChangeServer(row.Index, "addHost", host)),
+                    host => FormWrites.Off(() => LinkCommands.ChangeServer(row.Index, "removeHost", host)))
+                : null,
             LinkForms.Advanced(LinkModel.EditShowsAdvanced(row), FormLook.Stack(12,
                 name,
-                row.Editing == LinkEditing.PortOnly
-                    ? new ServerList(row.Servers,
-                        host => FormWrites.Off(() => LinkCommands.ChangeServer(row.Index, "addHost", host)),
-                        host => FormWrites.Off(() => LinkCommands.ChangeServer(row.Index, "removeHost", host)))
-                    : null,
                 row.Editing == LinkEditing.Serial ? LinkForms.Framing(_edit.Framing, framing => _edit = _edit with { Framing = framing }) : null,
                 LinkForms.Flags(_edit.AutoConnect, _edit.HighLatency,
                     on => _edit = _edit with { AutoConnect = on },

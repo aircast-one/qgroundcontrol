@@ -530,7 +530,7 @@ func linkEdit(_ row: LinkRow) -> LinkEdit {
 }
 
 func editShowsAdvanced(_ row: LinkRow) -> Bool {
-    row.autoConnect || row.highLatency || !row.servers.isEmpty || row.framing != SerialFraming()
+    row.autoConnect || row.highLatency || row.framing != SerialFraming()
 }
 
 func editedPort(_ editing: LinkEditing, _ port: String, _ udpDefault: String) -> Int {
@@ -716,12 +716,12 @@ private struct EditLinkPage: View {
                 Text(EDIT_WHILE_CONNECTED).font(.bodyMedium).foregroundStyle(theme.colors.error)
             }
             EditLinkFields(editing: row.editing, edit: edit, enabled: editable, onPickLog: { picking = true }) { edit = $0 }
+            if row.editing == .PortOnly {
+                UdpServers(index: row.index, initial: row.servers)
+            }
             AdvancedDisclosure(open: advanced) { advanced.toggle() }
             if advanced {
                 LinkTextField(label: "Name", value: edit.name, enabled: editable) { name in edit.name = name }
-                if row.editing == .PortOnly {
-                    UdpServers(index: row.index, initial: row.servers)
-                }
                 LinkFlagSwitches(autoConnect: edit.autoConnect, highLatency: edit.highLatency, onAutoConnect: { edit.autoConnect = $0 }, onHighLatency: { edit.highLatency = $0 })
             }
             if let error {
@@ -972,25 +972,31 @@ private struct NewLinkFields: View {
     }
 }
 
-private struct NewLinkAdvanced: View {
+private struct DraftServers: View {
     let draft: LinkDraft
-    let suggestedName: String
     let udpDefault: String
     let onError: (String?) -> Void
     let onDraft: (LinkDraft) -> Void
 
     var body: some View {
+        ServerList(
+            servers: draft.servers,
+            onAdd: { typed in
+                onError(udpServer(typed, draft.shownPort(udpDefault)) == nil ? "Enter a server as an address, or address:port." : nil)
+                onDraft(withChanges(draft) { $0.servers = withServer(draft.servers, typed, draft.shownPort(udpDefault)) })
+            },
+            onRemove: { gone in onDraft(withChanges(draft) { $0.servers = draft.servers.filter { $0 != gone } }) }
+        )
+    }
+}
+
+private struct NewLinkAdvanced: View {
+    let draft: LinkDraft
+    let suggestedName: String
+    let onDraft: (LinkDraft) -> Void
+
+    var body: some View {
         LinkTextField(label: "Name", value: draft.name, placeholder: suggestedName) { name in onDraft(withChanges(draft) { $0.name = name }) }
-        if draft.type == .Udp {
-            ServerList(
-                servers: draft.servers,
-                onAdd: { typed in
-                    onError(udpServer(typed, draft.shownPort(udpDefault)) == nil ? "Enter a server as an address, or address:port." : nil)
-                    onDraft(withChanges(draft) { $0.servers = withServer(draft.servers, typed, draft.shownPort(udpDefault)) })
-                },
-                onRemove: { gone in onDraft(withChanges(draft) { $0.servers = draft.servers.filter { $0 != gone } }) }
-            )
-        }
         LinkFlagSwitches(
             autoConnect: draft.autoConnect,
             highLatency: draft.highLatency,
@@ -1045,10 +1051,13 @@ private struct AddLinkDetails: View {
                 onPickLog: { picking = true },
                 onDraft: change
             )
+            if type == .Udp {
+                DraftServers(draft: draft, udpDefault: udpDefault, onError: { error = $0 }, onDraft: change)
+            }
             if type != .Mock {
                 AdvancedDisclosure(open: advanced) { advanced.toggle() }
                 if advanced {
-                    NewLinkAdvanced(draft: draft, suggestedName: suggestedName, udpDefault: udpDefault, onError: { error = $0 }, onDraft: change)
+                    NewLinkAdvanced(draft: draft, suggestedName: suggestedName, onDraft: change)
                 }
             }
             if fieldError == nil, let error {

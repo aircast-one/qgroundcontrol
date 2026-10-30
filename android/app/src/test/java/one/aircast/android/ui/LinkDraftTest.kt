@@ -74,7 +74,7 @@ class LinkEditTest {
     fun `edit opens Advanced when the link already uses something in it`() {
         assertFalse(editShowsAdvanced(row()))
         assertTrue(editShowsAdvanced(row(autoConnect = true)))
-        assertTrue(editShowsAdvanced(row(servers = listOf("10.0.0.9:14550"))))
+        assertFalse(editShowsAdvanced(row(servers = listOf("10.0.0.9:14550"))))
         assertTrue(editShowsAdvanced(row(editing = LinkEditing.Serial, framing = SerialFraming(dataBits = 7))))
     }
 

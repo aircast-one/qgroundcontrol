@@ -343,7 +343,7 @@ internal static class LinkModel
         row.Baud > 0 ? row.Baud : DefaultBaud, row.AutoConnect, row.HighLatency, row.Framing, row.Filename);
 
     public static bool EditShowsAdvanced(LinkRow row) =>
-        row.AutoConnect || row.HighLatency || row.Servers.Count > 0 || row.Framing != new SerialFraming();
+        row.AutoConnect || row.HighLatency || row.Framing != new SerialFraming();
 
     public static int EditedPort(LinkEditing editing, string port, string udpDefault) =>
         int.TryParse(port.Trim().Length > 0 ? port.Trim() : editing == LinkEditing.PortOnly ? udpDefault : "", out var parsed) ? parsed : 0;

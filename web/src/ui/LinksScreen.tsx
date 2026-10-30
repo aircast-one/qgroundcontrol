@@ -596,7 +596,7 @@ export const linkEdit = (row: LinkRow): LinkEdit => ({
   logFile: row.filename,
 });
 
-export const editShowsAdvanced = (row: LinkRow): boolean => row.autoConnect || row.highLatency || row.servers.length > 0 || !same(row.framing, SerialFraming());
+export const editShowsAdvanced = (row: LinkRow): boolean => row.autoConnect || row.highLatency || !same(row.framing, SerialFraming());
 
 export const editedPort = (editing: LinkEditing, port: string, udpDefault: string): number =>
   toIntOrNull(port.trim() === '' ? (editing === LinkEditing.PortOnly ? udpDefault : port) : port) ?? 0;
@@ -787,11 +787,11 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
           </Text>
         ) : null}
         <EditLinkFields editing={row.editing} edit={edit} enabled={editable} ports={ports} bauds={bauds} device={device} onDevice={setDevice} onPickLog={pickLog} onEdit={setEdit} />
+        {row.editing === LinkEditing.PortOnly ? <UdpServers index={row.index} initial={row.servers} /> : null}
         <AdvancedDisclosure open={advanced} onToggle={() => setAdvanced(!advanced)} />
         {advanced ? (
           <>
             <OutlinedTextField value={edit.name} onValueChange={(it) => setEdit({ ...edit, name: it })} label="Name" enabled={editable} className="w-full" />
-            {row.editing === LinkEditing.PortOnly ? <UdpServers index={row.index} initial={row.servers} /> : null}
             {row.editing === LinkEditing.Serial ? <SerialFramingControls framing={edit.framing} onChange={(it) => setEdit({ ...edit, framing: it })} /> : null}
             <LinkFlagSwitches autoConnect={edit.autoConnect} highLatency={edit.highLatency} onAutoConnect={(it) => setEdit({ ...edit, autoConnect: it })} onHighLatency={(it) => setEdit({ ...edit, highLatency: it })} />
           </>
@@ -1076,33 +1076,20 @@ const NewLinkFields = ({
   );
 };
 
-const NewLinkAdvanced = ({
-  draft,
-  suggestedName,
-  ports,
-  udpDefault,
-  onError,
-  onDraft,
-}: {
-  draft: LinkDraft;
-  suggestedName: string;
-  ports: readonly SerialPortChoice[];
-  udpDefault: string;
-  onError: (error: string | null) => void;
-  onDraft: (draft: LinkDraft) => void;
-}) => (
+const DraftServers = ({ draft, udpDefault, onError, onDraft }: { draft: LinkDraft; udpDefault: string; onError: (error: string | null) => void; onDraft: (draft: LinkDraft) => void }) => (
+  <ServerList
+    servers={draft.servers}
+    onAdd={(typed) => {
+      onError(udpServer(typed, shownPort(draft, udpDefault)) === null ? 'Enter a server as an address, or address:port.' : null);
+      onDraft({ ...draft, servers: withServer(draft.servers, typed, shownPort(draft, udpDefault)) });
+    }}
+    onRemove={(gone) => onDraft({ ...draft, servers: draft.servers.filter((it) => it !== gone) })}
+  />
+);
+
+const NewLinkAdvanced = ({ draft, suggestedName, ports, onDraft }: { draft: LinkDraft; suggestedName: string; ports: readonly SerialPortChoice[]; onDraft: (draft: LinkDraft) => void }) => (
   <>
     <OutlinedTextField value={draft.name} onValueChange={(it) => onDraft({ ...draft, name: it })} label="Name" placeholder={suggestedName} className="w-full" />
-    {draft.type === LinkType.Udp ? (
-      <ServerList
-        servers={draft.servers}
-        onAdd={(typed) => {
-          onError(udpServer(typed, shownPort(draft, udpDefault)) === null ? 'Enter a server as an address, or address:port.' : null);
-          onDraft({ ...draft, servers: withServer(draft.servers, typed, shownPort(draft, udpDefault)) });
-        }}
-        onRemove={(gone) => onDraft({ ...draft, servers: draft.servers.filter((it) => it !== gone) })}
-      />
-    ) : null}
     {draft.type === LinkType.Serial && ports.length > 0 ? <SerialFramingControls framing={draft.framing} onChange={(it) => onDraft({ ...draft, framing: it })} /> : null}
     <LinkFlagSwitches autoConnect={draft.autoConnect} highLatency={draft.highLatency} onAutoConnect={(it) => onDraft({ ...draft, autoConnect: it })} onHighLatency={(it) => onDraft({ ...draft, highLatency: it })} />
   </>
@@ -1233,10 +1220,11 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
           onPickLog={pickLog}
           onDraft={change}
         />
+        {type === LinkType.Udp ? <DraftServers draft={draft} udpDefault={udpDefault} onError={setError} onDraft={change} /> : null}
         {type !== LinkType.Mock ? (
           <>
             <AdvancedDisclosure open={advanced} onToggle={() => setAdvanced(!advanced)} />
-            {advanced ? <NewLinkAdvanced draft={draft} suggestedName={suggestedName} ports={ports} udpDefault={udpDefault} onError={setError} onDraft={change} /> : null}
+            {advanced ? <NewLinkAdvanced draft={draft} suggestedName={suggestedName} ports={ports} onDraft={change} /> : null}
           </>
         ) : null}
         {fieldError === null && error !== null ? (

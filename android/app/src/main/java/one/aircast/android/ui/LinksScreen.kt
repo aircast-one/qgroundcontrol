@@ -613,7 +613,7 @@ internal fun linkEdit(row: LinkRow): LinkEdit = LinkEdit(
 )
 
 internal fun editShowsAdvanced(row: LinkRow): Boolean =
-    row.autoConnect || row.highLatency || row.servers.isNotEmpty() || row.framing != SerialFraming()
+    row.autoConnect || row.highLatency || row.framing != SerialFraming()
 
 internal fun editedPort(editing: LinkEditing, port: String, udpDefault: String): Int =
     port.ifBlank { if (editing == LinkEditing.PortOnly) udpDefault else port }.toIntOrNull() ?: 0
@@ -746,10 +746,10 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
             }
             if (!editable) Text(EDIT_WHILE_CONNECTED, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             EditLinkFields(row.editing, edit, editable, ports, bauds, device, { device = it }, { logPicker.launch(arrayOf("*/*")) }) { edit = it }
+            if (row.editing == LinkEditing.PortOnly) UdpServers(row.index, row.servers)
             AdvancedDisclosure(advanced) { advanced = !advanced }
             if (advanced) {
                 OutlinedTextField(value = edit.name, onValueChange = { edit = edit.copy(name = it) }, label = { Text("Name") }, enabled = editable, singleLine = true, modifier = Modifier.fillMaxWidth())
-                if (row.editing == LinkEditing.PortOnly) UdpServers(row.index, row.servers)
                 if (row.editing == LinkEditing.Serial) SerialFramingControls(edit.framing) { edit = edit.copy(framing = it) }
                 LinkFlagSwitches(edit.autoConnect, edit.highLatency, { edit = edit.copy(autoConnect = it) }, { edit = edit.copy(highLatency = it) })
             }
@@ -952,7 +952,19 @@ private fun NewLinkFields(
 }
 
 @Composable
-private fun NewLinkAdvanced(draft: LinkDraft, suggestedName: String, ports: List<SerialPortChoice>, udpDefault: String, onError: (String?) -> Unit, onDraft: (LinkDraft) -> Unit) {
+private fun DraftServers(draft: LinkDraft, udpDefault: String, onError: (String?) -> Unit, onDraft: (LinkDraft) -> Unit) {
+    ServerList(
+        draft.servers,
+        onAdd = { typed ->
+            onError("Enter a server as an address, or address:port.".takeIf { udpServer(typed, draft.shownPort(udpDefault)) == null })
+            onDraft(draft.copy(servers = withServer(draft.servers, typed, draft.shownPort(udpDefault))))
+        },
+        onRemove = { gone -> onDraft(draft.copy(servers = draft.servers.filterNot { it == gone })) },
+    )
+}
+
+@Composable
+private fun NewLinkAdvanced(draft: LinkDraft, suggestedName: String, ports: List<SerialPortChoice>, onDraft: (LinkDraft) -> Unit) {
     OutlinedTextField(
         value = draft.name,
         onValueChange = { onDraft(draft.copy(name = it)) },
@@ -960,14 +972,6 @@ private fun NewLinkAdvanced(draft: LinkDraft, suggestedName: String, ports: List
         placeholder = { Text(suggestedName) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
-    )
-    if (draft.type == LinkType.Udp) ServerList(
-        draft.servers,
-        onAdd = { typed ->
-            onError("Enter a server as an address, or address:port.".takeIf { udpServer(typed, draft.shownPort(udpDefault)) == null })
-            onDraft(draft.copy(servers = withServer(draft.servers, typed, draft.shownPort(udpDefault))))
-        },
-        onRemove = { gone -> onDraft(draft.copy(servers = draft.servers.filterNot { it == gone })) },
     )
     if (draft.type == LinkType.Serial && ports.isNotEmpty()) SerialFramingControls(draft.framing) { onDraft(draft.copy(framing = it)) }
     LinkFlagSwitches(draft.autoConnect, draft.highLatency, { onDraft(draft.copy(autoConnect = it)) }, { onDraft(draft.copy(highLatency = it)) })
@@ -1010,9 +1014,10 @@ private fun AddLinkDetails(type: LinkType, onBack: () -> Unit, onAdded: () -> Un
         ) {
             Text(linkKind(type).about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             NewLinkFields(draft, ports, bauds, error.takeIf { fieldError == "host" }, error.takeIf { fieldError == "port" }, cloudErrors, { logPicker.launch(arrayOf("*/*")) }, change)
+            if (type == LinkType.Udp) DraftServers(draft, udpDefault, { error = it }, change)
             if (type != LinkType.Mock) {
                 AdvancedDisclosure(advanced) { advanced = !advanced }
-                if (advanced) NewLinkAdvanced(draft, suggestedName, ports, udpDefault, { error = it }, change)
+                if (advanced) NewLinkAdvanced(draft, suggestedName, ports, change)
             }
             if (fieldError == null) error?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
