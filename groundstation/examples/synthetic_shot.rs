@@ -57,6 +57,9 @@ fn main() {
         std::thread::sleep(Duration::from_millis(100));
     }
     drawn.expect("something to draw");
+    let when = arg("--utc")
+        .map(|utc| utc.parse().expect("an RFC 3339 time"))
+        .unwrap_or_else(chrono::Utc::now);
     println!("{:?}", session.take_stats());
     println!("google took over after {:?}", session.handover());
     let mut renderer = Renderer::new().expect("a GPU adapter");
@@ -70,7 +73,7 @@ fn main() {
             let frame = session
                 .frame(Some(&turned), &[], width, height, Instant::now())
                 .expect("a frame to draw");
-            let (camera, meshes) = frame.view(None, width, height);
+            let (camera, meshes) = frame.view_at(None, width, height, when);
             println!("{} meshes in frame {index}", meshes.len());
             renderer
                 .picture(&camera, &frame.backfill, &meshes, &targets, width, height)

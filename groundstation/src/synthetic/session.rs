@@ -18,6 +18,7 @@ use super::overlay::{self, Bottle, Overlays, Spot, Tracked};
 use super::predict::{self, Gain, Lag, Predicted, Step};
 use super::tileset::{self, GOOGLE_ROOT, ION_GOOGLE_ASSET, Parsed, Request, Selection, Tileset};
 use crate::virtualjoystick::StickSample;
+use chrono::{DateTime, Utc};
 
 const WORKERS: usize = 8;
 const MAX_IN_FLIGHT: usize = 24;
@@ -477,7 +478,17 @@ impl Frame {
         width: u32,
         height: u32,
     ) -> (Camera, Vec<Arc<Mesh>>) {
-        let camera = Camera::new(&self.aimed(overlays, Instant::now()), width, height);
+        self.view_at(overlays, width, height, Utc::now())
+    }
+
+    pub fn view_at(
+        &self,
+        overlays: Option<&Overlays>,
+        width: u32,
+        height: u32,
+        when: DateTime<Utc>,
+    ) -> (Camera, Vec<Arc<Mesh>>) {
+        let camera = Camera::at(&self.aimed(overlays, Instant::now()), width, height, when);
         let marks = overlays
             .zip(self.home_ground)
             .map(|(overlays, ground)| {

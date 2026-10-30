@@ -1,9 +1,10 @@
+use chrono::{DateTime, Utc};
 use glam::dcamera::rh::{proj::directx, view};
 use glam::{DMat3, DMat4, DVec3};
 
 const WGS84_A: f64 = 6_378_137.0;
 const WGS84_E2: f64 = 6.694_379_990_14e-3;
-const SUN_EAST_NORTH_UP: DVec3 = DVec3::new(-0.6, 0.8, 1.0);
+const LOWEST_SUN_DEGREES: f64 = 8.0;
 
 pub fn ecef(latitude: f64, longitude: f64, height: f64) -> DVec3 {
     let (lat, lng) = (latitude.to_radians(), longitude.to_radians());
@@ -12,6 +13,17 @@ pub fn ecef(latitude: f64, longitude: f64, height: f64) -> DVec3 {
         (n + height) * lat.cos() * lng.cos(),
         (n + height) * lat.cos() * lng.sin(),
         (n * (1.0 - WGS84_E2) + height) * lat.sin(),
+    )
+}
+
+pub fn sun_east_north_up(latitude: f64, longitude: f64, when: DateTime<Utc>) -> DVec3 {
+    let sun::Position { azimuth, altitude } =
+        sun::pos(when.timestamp_millis(), latitude, longitude);
+    let altitude = altitude.max(LOWEST_SUN_DEGREES.to_radians());
+    DVec3::new(
+        azimuth.sin() * altitude.cos(),
+        azimuth.cos() * altitude.cos(),
+        altitude.sin(),
     )
 }
 
@@ -49,6 +61,10 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(pose: &Pose, width_px: u32, height_px: u32) -> Self {
+        Self::at(pose, width_px, height_px, Utc::now())
+    }
+
+    pub fn at(pose: &Pose, width_px: u32, height_px: u32, when: DateTime<Utc>) -> Self {
         let frame = east_north_up(pose.latitude, pose.longitude);
         let (heading, pitch, roll) = (
             pose.heading.to_radians(),
@@ -69,7 +85,7 @@ impl Camera {
             forward: frame * forward,
             up: frame * up,
             zenith: frame * DVec3::Z,
-            sun: (frame * SUN_EAST_NORTH_UP).normalize(),
+            sun: frame * sun_east_north_up(pose.latitude, pose.longitude, when),
             fovy: 2.0 * ((pose.fov.to_radians() / 2.0).tan() / aspect).atan(),
             aspect,
             height_px: f64::from(height_px),
@@ -142,34 +158,48 @@ mod tests {
     }
 
     #[test]
-    fn the_sun_shines_from_high_in_the_north_west_wherever_the_camera_is() {
-        let camera = Camera::new(
-            &Pose {
-                latitude: 0.0,
-                longitude: 0.0,
-                height: 0.0,
-                heading: 0.0,
-                pitch: 0.0,
-                roll: 0.0,
-                fov: 60.0,
-            },
-            1280,
-            720,
+    fn the_sun_stands_due_south_over_greenwich_at_noon_on_the_equinox() {
+        let noon = "2026-03-20T12:07:00Z".parse().unwrap();
+        let camera = Camera::at(&level(51.4769, 0.0), 1280, 720, noon);
+        let frame = east_north_up(51.4769, 0.0);
+        let (east, north, up) = (
+            camera.sun.dot(frame.x_axis),
+            camera.sun.dot(frame.y_axis),
+            camera.sun.dot(frame.z_axis),
         );
+        assert!(east.abs() < 0.02, "due south, got east {east}");
+        assert!(north < 0.0, "due south, got north {north}");
         assert!(
-            (camera.zenith - DVec3::X).length() < 1e-9,
-            "straight up at the origin is +X in ECEF, got {}",
-            camera.zenith
+            (up.asin().to_degrees() - 38.5).abs() < 0.6,
+            "38.5 degrees up, got {}",
+            up.asin().to_degrees()
         );
+    }
+
+    #[test]
+    fn the_sun_never_drops_below_the_lighting_floor_at_night() {
+        let midnight = "2026-03-20T00:07:00Z".parse().unwrap();
+        let camera = Camera::at(&level(51.4769, 0.0), 1280, 720, midnight);
+        let up = camera.sun.dot(east_north_up(51.4769, 0.0).z_axis);
         assert!(
-            (camera.sun.dot(camera.zenith) - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-9,
-            "45 degrees above the horizon"
+            (up.asin().to_degrees() - LOWEST_SUN_DEGREES).abs() < 1e-6,
+            "held at the floor, got {}",
+            up.asin().to_degrees()
         );
-        assert!(
-            camera.sun.y < 0.0 && camera.sun.z > 0.0,
-            "west (-Y) and north (+Z) at the origin, got {}",
-            camera.sun
-        );
+        let north = camera.sun.dot(east_north_up(51.4769, 0.0).y_axis);
+        assert!(north > 0.0, "still from the north at midnight, got {north}");
+    }
+
+    fn level(latitude: f64, longitude: f64) -> Pose {
+        Pose {
+            latitude,
+            longitude,
+            height: 0.0,
+            heading: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov: 60.0,
+        }
     }
 
     #[test]
