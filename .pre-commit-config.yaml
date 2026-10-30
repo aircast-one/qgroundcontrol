@@ -3,6 +3,9 @@
 # Run: pre-commit run --all-files
 # Update: pre-commit autoupdate
 
+default_language_version:
+  node: 24.22.2
+
 repos:
   # Basic file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
