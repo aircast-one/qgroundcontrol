@@ -21,16 +21,31 @@ pub fn get(url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Vec
 }
 
 #[cfg(not(target_family = "wasm"))]
-pub fn stream(url: &str, timeout: Duration) -> Result<(Option<u64>, impl std::io::Read), String> {
-    let body = AGENT
-        .get(url)
+pub fn stream(
+    url: &str,
+    headers: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<(u16, Option<String>, impl std::io::Read + use<>), String> {
+    let answer = headers
+        .iter()
+        .fold(AGENT.get(url), |asked, (name, value)| {
+            asked.header(*name, *value)
+        })
         .config()
         .timeout_global(Some(timeout))
         .build()
         .call()
-        .map_err(|e| e.to_string())?
-        .into_body();
-    Ok((body.content_length(), body.into_with_config().reader()))
+        .map_err(|e| e.to_string())?;
+    let range = answer
+        .headers()
+        .get("content-range")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    Ok((
+        answer.status().as_u16(),
+        range,
+        answer.into_body().into_with_config().reader(),
+    ))
 }
 
 #[cfg(not(target_family = "wasm"))]

@@ -12,7 +12,7 @@ const TAG_PREFIX: &str = "aircast-v";
 const NATIVE_PREFIX: &str = "AircastQGCNative-";
 const ANDROID_PREFIX: &str = "AircastAndroid-";
 const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
-const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const FIRST_CHECK_AFTER: Duration = Duration::from_secs(15);
 pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 pub const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(60 * 60);
@@ -22,6 +22,11 @@ const SNOOZED_KEY: &str = "AppUpdate/snoozed";
 const DOWNLOAD_DIR: &str = "Updates";
 const CHUNK: usize = 64 * 1024;
 const CANCELLED: &str = "cancelled";
+const RETRY_DELAYS: [Duration; 3] = [
+    Duration::from_secs(2),
+    Duration::from_secs(5),
+    Duration::from_secs(15),
+];
 pub const CHANGED: &str = "core.appUpdate@changed";
 pub const DEPS: &[&str] = &[CHANGED, "vehicles.activeVehicleAvailable"];
 
@@ -203,8 +208,8 @@ pub fn expected_digest(checksum_file: &str) -> Option<String> {
         .map(str::to_ascii_lowercase)
 }
 
-pub fn digest_matches(expected: &str, digest: &[u8]) -> bool {
-    crate::signingkeys::to_hex(digest) == expected.to_ascii_lowercase()
+pub fn digest_matches(expected: &str, hex: &str) -> bool {
+    hex.eq_ignore_ascii_case(expected)
 }
 
 pub fn effective_snooze(stored: Option<&str>, latest: Option<&semver::Version>) -> String {
@@ -333,7 +338,9 @@ pub fn download() -> Result<(), String> {
     let dir =
         download_dir().ok_or_else(|| "No save folder is set up to download into.".to_string())?;
     held.phase = Phase::Downloading;
-    held.progress = 0.0;
+    held.progress = std::fs::metadata(partial_of(&dir, &asset)).map_or(0.0, |m| {
+        (m.len() as f64 / asset.size.max(1) as f64).min(0.99)
+    });
     held.file.clear();
     held.error.clear();
     drop(held);
@@ -376,59 +383,173 @@ fn fetch_asset(_asset: Asset, _dir: PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Continuation {
+    Append,
+    Restart,
+}
+
+fn range_start(content_range: &str) -> Option<u64> {
+    content_range
+        .strip_prefix("bytes ")?
+        .split('-')
+        .next()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+pub fn continuation(
+    status: u16,
+    content_range: Option<&str>,
+    have: u64,
+) -> Result<Continuation, String> {
+    match status {
+        206 if content_range.and_then(range_start) == Some(have) => Ok(Continuation::Append),
+        206 => Err(format!(
+            "The download server resumed at the wrong place ({}).",
+            content_range.unwrap_or("no Content-Range")
+        )),
+        200 => Ok(Continuation::Restart),
+        other => Err(format!("The download server answered {other}.")),
+    }
+}
+
+fn partial_of(dir: &std::path::Path, asset: &Asset) -> PathBuf {
+    dir.join(format!("{}.part", asset.name))
+}
+
+fn interrupted(reason: impl std::fmt::Display) -> String {
+    format!("The download was interrupted ({reason}). Try again.")
+}
+
+fn transfer_once<R: std::io::Read>(
+    partial: &std::path::Path,
+    fetch: &impl Fn(u64) -> Result<(u16, Option<String>, R), String>,
+    progress: &impl Fn(u64),
+    cancelled: &impl Fn() -> bool,
+) -> Result<(), String> {
+    use std::io::Write;
+
+    let have = std::fs::metadata(partial).map_or(0, |m| m.len());
+    let (status, range, mut body) = fetch(have).map_err(interrupted)?;
+    let append = continuation(status, range.as_deref(), have)? == Continuation::Append;
+    log::info!(
+        "App update download of {} {} at byte {have}: HTTP {status} {}",
+        partial.display(),
+        if append { "resumes" } else { "starts over" },
+        range.as_deref().unwrap_or("")
+    );
+    let mut out = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(append)
+        .truncate(!append)
+        .open(partial)
+        .map_err(|e| format!("{}: {e}", partial.display()))?;
+    let mut buffer = vec![0u8; CHUNK];
+    let mut written = if append { have } else { 0 };
+    loop {
+        if cancelled() {
+            return Err(CANCELLED.to_string());
+        }
+        let n = body.read(&mut buffer).map_err(interrupted)?;
+        if n == 0 {
+            return out.flush().map_err(|e| e.to_string());
+        }
+        out.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
+        written += n as u64;
+        progress(written);
+    }
+}
+
+pub fn fetch_resuming<R: std::io::Read>(
+    partial: &std::path::Path,
+    fetch: impl Fn(u64) -> Result<(u16, Option<String>, R), String>,
+    pause: impl Fn(Duration),
+    progress: impl Fn(u64),
+    cancelled: impl Fn() -> bool,
+) -> Result<(), String> {
+    use std::ops::ControlFlow::{Break, Continue};
+
+    let length = || std::fs::metadata(partial).map_or(0, |m| m.len());
+    std::iter::repeat(())
+        .try_fold(0usize, |stalls, ()| {
+            let before = length();
+            match transfer_once(partial, &fetch, &progress, &cancelled) {
+                Ok(()) => Break(Ok(())),
+                Err(reason) if reason == CANCELLED || cancelled() => {
+                    Break(Err(CANCELLED.to_string()))
+                }
+                Err(reason) => {
+                    log::warn!("App update download stopped at byte {}: {reason}", length());
+                    let stalls = if length() > before { 0 } else { stalls + 1 };
+                    match stalls.checked_sub(1).map(|index| RETRY_DELAYS.get(index)) {
+                        None => Continue(0),
+                        Some(Some(wait)) => {
+                            pause(*wait);
+                            Continue(stalls)
+                        }
+                        Some(None) => Break(Err(reason)),
+                    }
+                }
+            }
+        })
+        .break_value()
+        .unwrap_or_else(|| Err(interrupted("no answer")))
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn pause_unless_cancelled(wait: Duration) {
+    let step = Duration::from_millis(100);
+    (0..wait.as_millis() / step.as_millis())
+        .take_while(|_| !CANCEL.load(Ordering::SeqCst))
+        .for_each(|_| std::thread::sleep(step));
+}
+
 #[cfg(not(target_family = "wasm"))]
 fn download_verified(asset: &Asset, dir: &std::path::Path) -> Result<PathBuf, String> {
-    use sha2::{Digest, Sha256};
-    use std::io::{Read, Write};
-
     let expected = crate::http::get_text(&asset.checksum_url, FETCH_TIMEOUT)
         .ok()
         .as_deref()
         .and_then(expected_digest)
         .ok_or_else(|| format!("{}.sha256 could not be read.", asset.name))?;
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let partial = dir.join(format!("{}.part", asset.name));
+    let partial = partial_of(dir, asset);
     let target = dir.join(&asset.name);
-    let streamed = (|| {
-        let interrupted = |e: String| format!("The download was interrupted ({e}). Try again.");
-        let (length, mut body) =
-            crate::http::stream(&asset.url, DOWNLOAD_TIMEOUT).map_err(interrupted)?;
-        let total = length.unwrap_or(asset.size).max(1) as f64;
-        let mut out = std::fs::File::create(&partial).map_err(|e| e.to_string())?;
-        let mut hash = Sha256::new();
-        let mut buffer = vec![0u8; CHUNK];
-        let mut written = 0u64;
-        loop {
-            if CANCEL.load(Ordering::SeqCst) {
-                return Err(CANCELLED.to_string());
-            }
-            let n = body
-                .read(&mut buffer)
-                .map_err(|e| interrupted(e.to_string()))?;
-            if n == 0 {
-                break;
-            }
-            out.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
-            hash.update(&buffer[..n]);
-            written += n as u64;
-            changing().progress = (written as f64 / total).min(0.99);
-        }
-        out.flush().map_err(|e| e.to_string())?;
-        digest_matches(&expected, &hash.finalize())
-            .then_some(())
-            .ok_or_else(|| {
-                format!(
-                    "{} did not match its published checksum, so it was discarded.",
-                    asset.name
-                )
-            })?;
-        std::fs::rename(&partial, &target).map_err(|e| e.to_string())?;
-        Ok(target)
-    })();
-    if streamed.is_err() {
+    let total = asset.size.max(1) as f64;
+    let fetched = fetch_resuming(
+        &partial,
+        |have| {
+            let range = format!("bytes={have}-");
+            let headers: &[(&str, &str)] = match have {
+                0 => &[],
+                _ => &[("Range", range.as_str())],
+            };
+            crate::http::stream(&asset.url, headers, ATTEMPT_TIMEOUT)
+        },
+        pause_unless_cancelled,
+        |written| changing().progress = (written as f64 / total).min(0.99),
+        || CANCEL.load(Ordering::SeqCst),
+    );
+    if fetched.as_ref().is_err_and(|reason| reason == CANCELLED) {
         let _ = std::fs::remove_file(&partial);
     }
-    streamed
+    fetched?;
+    let verified =
+        crate::cardimage::sha256_of(&partial, &|| false).map(|hex| digest_matches(&expected, &hex));
+    if verified != Ok(true) {
+        let _ = std::fs::remove_file(&partial);
+    }
+    match verified? {
+        true => std::fs::rename(&partial, &target)
+            .map(|_| target)
+            .map_err(|e| e.to_string()),
+        false => Err(format!(
+            "{} did not match its published checksum, so it was discarded.",
+            asset.name
+        )),
+    }
 }
 
 pub fn start(version: &str, announce: fn()) {
@@ -674,8 +795,11 @@ mod tests {
             hex.to_uppercase()
         );
         let expected = expected_digest(&file).unwrap();
-        assert!(digest_matches(&expected, &digest));
-        assert!(!digest_matches(&expected, &Sha256::digest(b"tampered")));
+        assert!(digest_matches(&expected, &hex));
+        assert!(!digest_matches(
+            &expected,
+            &crate::signingkeys::to_hex(&Sha256::digest(b"tampered"))
+        ));
         assert_eq!(expected_digest("not a digest"), None);
         assert_eq!(expected_digest(""), None);
     }
@@ -695,6 +819,208 @@ mod tests {
         );
         assert_eq!(effective_snooze(None, Some(&v22)), "");
         assert_eq!(effective_snooze(Some("garbage"), Some(&v22)), "");
+    }
+
+    struct Flaky {
+        data: Vec<u8>,
+        at: usize,
+        breaks_at: Option<usize>,
+    }
+
+    impl std::io::Read for Flaky {
+        fn read(&mut self, into: &mut [u8]) -> std::io::Result<usize> {
+            let end = self
+                .breaks_at
+                .map_or(self.data.len(), |at| at.min(self.data.len()));
+            match self.breaks_at.is_some_and(|at| self.at >= at) {
+                true => Err(std::io::Error::from(std::io::ErrorKind::ConnectionReset)),
+                false => {
+                    let n = into.len().min(end - self.at).min(100);
+                    into[..n].copy_from_slice(&self.data[self.at..self.at + n]);
+                    self.at += n;
+                    Ok(n)
+                }
+            }
+        }
+    }
+
+    fn payload() -> Vec<u8> {
+        (0..1000u32).map(|i| (i % 251) as u8).collect()
+    }
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("appupdate-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("AircastAndroid-v5.6.5-beta.22.apk.part")
+    }
+
+    type Answer = Result<(u16, Option<String>, Flaky), String>;
+
+    fn served(
+        partial: &std::path::Path,
+        answer: impl Fn(usize, u64) -> Answer,
+        cancel_after: Option<u64>,
+    ) -> (Result<(), String>, Vec<u64>, Vec<Duration>, Vec<u64>) {
+        let asked = std::cell::RefCell::new(Vec::new());
+        let paused = std::cell::RefCell::new(Vec::new());
+        let seen = std::cell::RefCell::new(Vec::new());
+        let outcome = fetch_resuming(
+            partial,
+            |have| {
+                asked.borrow_mut().push(have);
+                answer(asked.borrow().len(), have)
+            },
+            |wait| paused.borrow_mut().push(wait),
+            |written| seen.borrow_mut().push(written),
+            || cancel_after.is_some_and(|limit| seen.borrow().last().is_some_and(|w| *w >= limit)),
+        );
+        (
+            outcome,
+            asked.into_inner(),
+            paused
+                .into_inner()
+                .into_iter()
+                .filter(|w| !w.is_zero())
+                .collect(),
+            seen.into_inner(),
+        )
+    }
+
+    fn ranged(from: u64, breaks_at: Option<usize>) -> Answer {
+        Ok((
+            206,
+            Some(format!("bytes {from}-999/1000")),
+            Flaky {
+                data: payload(),
+                at: from as usize,
+                breaks_at,
+            },
+        ))
+    }
+
+    fn whole(breaks_at: Option<usize>) -> Answer {
+        Ok((
+            200,
+            None,
+            Flaky {
+                data: payload(),
+                at: 0,
+                breaks_at,
+            },
+        ))
+    }
+
+    #[test]
+    fn a_resume_asks_for_the_rest_and_appends_only_on_a_matching_206() {
+        assert_eq!(
+            continuation(206, Some("bytes 400-999/1000"), 400),
+            Ok(Continuation::Append)
+        );
+        assert_eq!(
+            continuation(200, None, 400),
+            Ok(Continuation::Restart),
+            "a server that ignores Range sends the whole file"
+        );
+        assert!(
+            continuation(206, Some("bytes 0-999/1000"), 400).is_err(),
+            "appending another offset would corrupt the file"
+        );
+        assert!(continuation(206, None, 400).is_err());
+        assert!(continuation(416, None, 400).is_err());
+        assert!(continuation(503, None, 0).is_err());
+    }
+
+    #[test]
+    fn a_dropped_transfer_resumes_where_the_file_ends_and_progress_never_goes_back() {
+        let partial = scratch("resume");
+        let (outcome, asked, paused, seen) = served(
+            &partial,
+            |call, have| match call {
+                1 => whole(Some(400)),
+                _ => ranged(have, None),
+            },
+            None,
+        );
+        assert_eq!(outcome, Ok(()));
+        assert_eq!(asked, vec![0, 400]);
+        assert!(
+            paused.is_empty(),
+            "bytes arrived, so the retry is immediate"
+        );
+        assert!(seen.windows(2).all(|pair| pair[0] <= pair[1]), "{seen:?}");
+        assert_eq!(seen.last(), Some(&1000));
+        assert_eq!(std::fs::read(&partial).unwrap(), payload());
+    }
+
+    #[test]
+    fn a_server_that_ignores_the_range_starts_the_file_over() {
+        let partial = scratch("restart");
+        let (outcome, asked, _, _) = served(
+            &partial,
+            |call, _| match call {
+                1 => whole(Some(700)),
+                _ => whole(None),
+            },
+            None,
+        );
+        assert_eq!(outcome, Ok(()));
+        assert_eq!(asked, vec![0, 700]);
+        assert_eq!(
+            std::fs::read(&partial).unwrap(),
+            payload(),
+            "truncated, not appended twice"
+        );
+    }
+
+    #[test]
+    fn retries_back_off_and_then_fail_keeping_what_arrived() {
+        let partial = scratch("gives-up");
+        let (outcome, asked, paused, _) = served(
+            &partial,
+            |call, have| match call {
+                1 => whole(Some(300)),
+                _ => Err(format!("unreachable at {have}")),
+            },
+            None,
+        );
+        assert_eq!(
+            outcome,
+            Err("The download was interrupted (unreachable at 300). Try again.".to_string())
+        );
+        assert_eq!(asked, vec![0, 300, 300, 300, 300]);
+        assert_eq!(paused, RETRY_DELAYS.to_vec());
+        assert_eq!(
+            std::fs::metadata(&partial).unwrap().len(),
+            300,
+            "Try again resumes from here"
+        );
+    }
+
+    #[test]
+    fn a_slow_link_that_keeps_dropping_still_finishes_while_bytes_arrive() {
+        let partial = scratch("slow");
+        let (outcome, asked, paused, _) = served(
+            &partial,
+            |call, have| match call {
+                1 => whole(Some(150)),
+                _ => ranged(have, Some(have as usize + 150)),
+            },
+            None,
+        );
+        assert_eq!(outcome, Ok(()));
+        assert_eq!(asked, vec![0, 150, 300, 450, 600, 750, 900]);
+        assert!(paused.is_empty());
+        assert_eq!(std::fs::read(&partial).unwrap(), payload());
+    }
+
+    #[test]
+    fn a_cancel_stops_without_retrying() {
+        let partial = scratch("cancel");
+        let (outcome, asked, paused, _) = served(&partial, |_, _| whole(None), Some(200));
+        assert_eq!(outcome, Err(CANCELLED.to_string()));
+        assert_eq!(asked, vec![0]);
+        assert!(paused.is_empty());
     }
 
     #[test]
