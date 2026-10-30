@@ -128,10 +128,10 @@ const DetectionSection = ({ detection }: { detection: DetectionSettings }) => (
   <DeviceSection title="Detection model">
     <StackedFact label="In use" value={detection.status.text} />
     {detection.unavailable ? (
-      <DeviceNotice notice={{ level: DeviceLevel.Warn, text: "Detection is unavailable — this device has no AI accelerator, so the models below can't run. Draw-a-box tracking still works on every camera." }} />
+      <DeviceNotice notice={{ level: DeviceLevel.Warn, text: "Detection is unavailable — this device has no AI accelerator, so .hef models can't run. Switch to an .onnx model to detect on the CPU. Draw-a-box tracking still works on every camera." }} />
     ) : null}
     {detection.models.length === 0 ? <DeviceText text="No models installed yet." /> : detection.models.map((model) => <ModelRow key={model.name} model={model} />)}
-    <DeviceDisclosure title="Add a model" summary="A .hef compiled for Hailo-8, with its class labels.">
+    <DeviceDisclosure title="Add a model" summary="A .hef for the Hailo-8 or an .onnx for the CPU, with its class labels.">
       <ModelUploadForm />
     </DeviceDisclosure>
   </DeviceSection>
@@ -184,7 +184,7 @@ const ModelUploadForm = () => {
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<DeviceRefusal | null>(null);
   const upload = () => {
-    if (hef === null) return setRefusal({ message: 'Choose a .hef model file.', field: '' });
+    if (hef === null) return setRefusal({ message: 'Choose a .hef or .onnx model file.', field: '' });
     setBusy(true);
     setRefusal(null);
     void uploadModel({ hef, labels, about, use }).then((outcome) => {
@@ -197,9 +197,9 @@ const ModelUploadForm = () => {
     <div className="flex flex-col gap-3 px-list py-2">
       <label className="grid gap-label">
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          Model (.hef, compiled for Hailo-8)
+          Model (.hef for the Hailo-8, .onnx for the CPU)
         </Text>
-        <input type="file" accept=".hef" aria-label="Model file" className={fileInput} onChange={(event) => setHef(event.target.files?.[0] ?? null)} />
+        <input type="file" accept=".hef,.onnx" aria-label="Model file" className={fileInput} onChange={(event) => setHef(event.target.files?.[0] ?? null)} />
       </label>
       <label className="grid gap-label">
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>

@@ -139,10 +139,10 @@ private fun DetectionSection(detection: DetectionSettings) {
     DeviceSection("Detection model") {
         StackedFact("In use", detection.status.text)
         if (detection.unavailable) {
-            DeviceNotice(DeviceBadge(DeviceLevel.Warn, "Detection is unavailable — this device has no AI accelerator, so the models below can't run. Draw-a-box tracking still works on every camera."))
+            DeviceNotice(DeviceBadge(DeviceLevel.Warn, "Detection is unavailable — this device has no AI accelerator, so .hef models can't run. Switch to an .onnx model to detect on the CPU. Draw-a-box tracking still works on every camera."))
         }
         if (detection.models.isEmpty()) DeviceText("No models installed yet.") else detection.models.map { model -> key(model.name) { ModelRow(model) } }
-        DeviceDisclosure("Add a model", summary = "A .hef compiled for Hailo-8, with its class labels.") { ModelUploadForm() }
+        DeviceDisclosure("Add a model", summary = "A .hef for the Hailo-8 or an .onnx for the CPU, with its class labels.") { ModelUploadForm() }
     }
 }
 
@@ -220,7 +220,7 @@ private fun ModelUploadForm() {
         }
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        FilePick("Model (.hef, compiled for Hailo-8)", "Model file", hef) { hef = it }
+        FilePick("Model (.hef for the Hailo-8, .onnx for the CPU)", "Model file", hef) { hef = it }
         FilePick("Class labels (.labels, one per line — optional). Without labels, boxes are named by class number.", "Class labels file", labels) { labels = it }
         OutlinedTextField(
             value = about,
@@ -235,7 +235,7 @@ private fun ModelUploadForm() {
             Text("Switch to this model after upload", style = MaterialTheme.typography.bodyMedium)
         }
         RefusalText(refusal)
-        FilledTonalButton(onClick = { hef?.let(upload) ?: run { refusal = DeviceRefusal("Choose a .hef model file.", "") } }, enabled = !busy) {
+        FilledTonalButton(onClick = { hef?.let(upload) ?: run { refusal = DeviceRefusal("Choose a .hef or .onnx model file.", "") } }, enabled = !busy) {
             Text(if (busy) "Uploading…" else "Upload model")
         }
     }
