@@ -21,6 +21,7 @@ export const SYNTHETIC_LABEL = 'Synthetic view';
 export const SYNTHETIC_SOURCE = 'Synthetic View';
 export const SYNTHETIC_AIM = 'syntheticView.aim';
 const TILT_SPAN_DEG = 90.0;
+const TILT_UP_DEG = 30.0;
 export const DEFAULT_TILT_DEG = -15.0;
 const CAMERA_FOV_DEG = 70.0;
 const SYNTHETIC_PAGE = `${import.meta.env.BASE_URL}assets/synthetic/index.html`;
@@ -72,7 +73,7 @@ export const verticalFov = (hFov: number, widthPx: number, heightPx: number): nu
   (2.0 * Math.atan(Math.tan((hFov * Math.PI) / 360.0) * (coerceAtLeast(heightPx, 1) / coerceAtLeast(widthPx, 1))) * 180.0) / Math.PI;
 
 export const syntheticTilt = (from: number, draggedPx: number, heightPx: number, vFov: number): number =>
-  coerceIn(from + (draggedPx / coerceAtLeast(heightPx, 1)) * vFov, -TILT_SPAN_DEG, 0.0);
+  coerceIn(from + (draggedPx / coerceAtLeast(heightPx, 1)) * vFov, -TILT_SPAN_DEG, TILT_UP_DEG);
 
 const mod = (value: number, divisor: number): number => ((value % divisor) + divisor) % divisor;
 

@@ -39,7 +39,8 @@ describe('SyntheticViewTest', () => {
   it('dragging the view down looks up and dragging up looks down, a full height being the vertical field of view', () => {
     expect(syntheticTilt(-15.0, -500, 1000, 40.0)).toBeCloseTo(-35.0, 9);
     expect(syntheticTilt(-15.0, 100, 1000, 40.0)).toBeCloseTo(-11.0, 9);
-    expect(syntheticTilt(-15.0, 900, 1000, 40.0)).toBeCloseTo(0.0, 9);
+    expect(syntheticTilt(-15.0, 900, 1000, 40.0), 'it looks above the horizon').toBeCloseTo(21.0, 9);
+    expect(syntheticTilt(-15.0, 2000, 1000, 40.0), 'as far up as the tilt slider reaches').toBeCloseTo(30.0, 9);
     expect(syntheticTilt(-15.0, -5000, 1000, 40.0)).toBeCloseTo(-90.0, 9);
   });
 

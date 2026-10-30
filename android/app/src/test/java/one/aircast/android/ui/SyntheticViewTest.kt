@@ -29,7 +29,8 @@ class SyntheticViewTest {
     fun `dragging the view down looks up and dragging up looks down, a full height being ninety degrees`() {
         assertEquals(-60.0, syntheticTilt(-15.0, draggedPx = -500f, heightPx = 1000), 1e-9)
         assertEquals(-6.0, syntheticTilt(-15.0, draggedPx = 100f, heightPx = 1000), 1e-9)
-        assertEquals(0.0, syntheticTilt(-15.0, draggedPx = 900f, heightPx = 1000), 1e-9)
+        assertEquals(12.0, syntheticTilt(-15.0, draggedPx = 300f, heightPx = 1000), 1e-9)
+        assertEquals(30.0, syntheticTilt(-15.0, draggedPx = 900f, heightPx = 1000), 1e-9)
         assertEquals(-90.0, syntheticTilt(-15.0, draggedPx = -2000f, heightPx = 1000), 1e-9)
     }
 

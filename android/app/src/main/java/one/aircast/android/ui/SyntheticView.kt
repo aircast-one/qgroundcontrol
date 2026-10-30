@@ -64,6 +64,7 @@ internal const val SYNTHETIC_LABEL = "Synthetic view"
 internal const val SYNTHETIC_SOURCE = "Synthetic View"
 internal const val SYNTHETIC_AIM = "syntheticView.aim"
 private const val TILT_SPAN_DEG = 90.0
+private const val TILT_UP_DEG = 30.0
 internal const val DEFAULT_TILT_DEG = -15.0
 private const val PAN_SPAN_DEG = 360.0
 private const val SYNTHETIC_PAGE = "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/synthetic/index.html"
@@ -108,7 +109,7 @@ internal fun syntheticPoseScript(view: JSONObject): String = "window.aircast && 
 internal fun syntheticOverlaysScript(view: JSONObject): String = "window.aircast && window.aircast.overlays($view)"
 
 internal fun syntheticTilt(from: Double, draggedPx: Float, heightPx: Int): Double =
-    (from + draggedPx.toDouble() / heightPx.coerceAtLeast(1) * TILT_SPAN_DEG).coerceIn(-TILT_SPAN_DEG, 0.0)
+    (from + draggedPx.toDouble() / heightPx.coerceAtLeast(1) * TILT_SPAN_DEG).coerceIn(-TILT_SPAN_DEG, TILT_UP_DEG)
 
 internal fun syntheticPan(from: Double, draggedPx: Float, widthPx: Int): Double =
     ((from + draggedPx.toDouble() / widthPx.coerceAtLeast(1) * PAN_SPAN_DEG + 180.0).mod(360.0)) - 180.0

@@ -13,6 +13,7 @@ private let SYNTHETIC_FOLDER = "/synthetic/"
 private let SYNTHETIC_TILES = "/synthetic/tiles"
 private let SYNTHETIC_CESIUM = "/synthetic/Cesium/"
 private let TILT_SPAN_DEG = 90.0
+private let TILT_UP_DEG = 30.0
 let DEFAULT_TILT_DEG = -15.0
 private let PAN_SPAN_DEG = 360.0
 private let PNG_SIGNATURE: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
@@ -62,7 +63,7 @@ func syntheticBundlePath(_ path: String) -> String? {
 }
 
 func syntheticTilt(_ from: Double, _ dragged: Double, _ height: Double) -> Double {
-    min(0, max(-TILT_SPAN_DEG, from + dragged / max(height, 1) * TILT_SPAN_DEG))
+    min(TILT_UP_DEG, max(-TILT_SPAN_DEG, from + dragged / max(height, 1) * TILT_SPAN_DEG))
 }
 
 func syntheticPan(_ from: Double, _ dragged: Double, _ width: Double) -> Double {
