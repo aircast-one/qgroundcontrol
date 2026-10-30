@@ -15,7 +15,7 @@ use super::tileset::{RETRY_AFTER, cutoff, frustum, kept};
 pub const TERRAIN: &str = "Terrarium";
 pub const BUILDINGS: &str = "Buildings";
 const TERRAIN_ZOOM: u32 = 15;
-const MAX_ZOOM: u32 = 19;
+const MAX_ZOOM: u32 = 20;
 const BORROWED_LEVELS: u32 = 3;
 const GRID: usize = 16;
 const TEXELS: f64 = 256.0;
@@ -891,12 +891,16 @@ impl OpenScene {
         else {
             return Some(Vec::new());
         };
+        let own = self.terrain(key, wanted, now);
+        let unimaged = key.z >= TERRAIN_ZOOM
+            && own.is_some()
+            && self.terrain.get(&key).is_some_and(|entry| !entry.imaged);
         let refine = key.z < MAX_ZOOM
+            && !unimaged
             && sight
                 .camera
                 .screen_space_error(key.width_m() / TEXELS, distance)
                 > MAX_TEXEL_PX * sight.detail;
-        let own = self.terrain(key, wanted, now);
         let below = refine.then(|| {
             key.children()
                 .iter()
@@ -1354,6 +1358,46 @@ mod tests {
         assert!(
             frames.last().unwrap().len() > frames[first_drawn].len(),
             "finer tiles replace the coarse one as they load"
+        );
+    }
+
+    #[test]
+    fn imagery_stops_refining_where_the_provider_has_no_finer_pictures() {
+        let mut scene = OpenScene::new();
+        let start = Instant::now();
+        let ground = 130.0 * 256.0 + 92.0 - 32_768.0;
+        let finest = (0..60u64)
+            .map(|frame| {
+                let now = start + Duration::from_millis(frame * 100);
+                let (_, wanted) = scene.select(
+                    &low_camera(0.0),
+                    "Bing Satellite",
+                    ground,
+                    -35.36213,
+                    149.16514,
+                    1.0,
+                    24,
+                    now,
+                );
+                let finest = wanted
+                    .iter()
+                    .filter_map(|want| match want {
+                        Want::Terrain { key, .. } => Some(key.z),
+                        _ => None,
+                    })
+                    .max();
+                wanted
+                    .into_iter()
+                    .map(|want| want.build(&Offline))
+                    .for_each(|built| scene.deliver(built, now));
+                finest
+            })
+            .flatten()
+            .max();
+        assert_eq!(
+            finest,
+            Some(TERRAIN_ZOOM),
+            "a tile that borrowed its picture never asks for children"
         );
     }
 
