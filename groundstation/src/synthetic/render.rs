@@ -422,7 +422,7 @@ fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     let reflected = sky_air(mirrored, 2).light;
     let lit = sunlight_reaching(f.seen, up);
     let glint = pow(max(dot(mirrored, scene.sun.xyz), 0.0), 600.0) * SUN * exp(-sun_depth(0.0)) * 0.5 * lit;
-    let body = colour.rgb * 0.35 * sky_air(up, 2).light;
+    let body = colour.rgb * (0.5 * sky_air(up, 2).light + 0.25 * SUN * exp(-sun_depth(0.0)) / PI * max(dot(up, scene.sun.xyz), 0.0) * lit);
     let shaded = mix(body, reflected, fresnel) + glint;
     return Frag(vec4<f32>(fogged(shaded * air.through + air.light, f.seen), 1.0), vec4<f32>(up, distance));
 }
@@ -1026,7 +1026,7 @@ fn cascade(camera: &Camera, near: f64, far: f64) -> Cascade {
         deep,
         split: far,
         texel,
-        bias: (0.5 * texel).max(0.5) / (deep - close),
+        bias: (1.5 * texel).max(0.5) / (deep - close),
     }
 }
 

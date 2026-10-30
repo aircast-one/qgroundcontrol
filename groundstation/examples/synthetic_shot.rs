@@ -56,7 +56,11 @@ fn main() {
             .or(drawn);
         std::thread::sleep(Duration::from_millis(100));
     }
-    drawn.expect("something to draw");
+    let last = drawn.expect("something to draw");
+    println!(
+        "pose {:?} home {:?} under {:?}",
+        last.pose, last.home_ground, last.under_ground
+    );
     let when = arg("--utc")
         .map(|utc| utc.parse().expect("an RFC 3339 time"))
         .unwrap_or_else(chrono::Utc::now);
