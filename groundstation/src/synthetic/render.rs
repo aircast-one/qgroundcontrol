@@ -31,6 +31,7 @@ const LAYERS: [Layer; 3] = [Layer::Opaque, Layer::Translucent, Layer::OnTop];
 
 const ANISOTROPY: u16 = 16;
 const BLOOM: bool = true;
+const GOD_RAYS: bool = true;
 const BLOOM_MIPS: usize = 5;
 const SSAO: bool = true;
 const SURFACE: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -219,12 +220,12 @@ fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
     return vec4<f32>(light * fade, mix(1.0, through, fade));
 }
 
-fn clouded_sky(direction: vec3<f32>, jitter: f32) -> vec3<f32> {
+fn clouded_sky(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
     let cover = clouds(direction, jitter);
     let clear = sky(direction);
-    if (cover.a >= 1.0) { return clear; }
+    if (cover.a >= 1.0) { return vec4<f32>(clear, 1.0); }
     let near = scatter(direction, CLOUD_BASE_M / max(dot(direction, scene.zenith.xyz), 0.015), 4);
-    return clear * cover.a + cover.rgb * near.through + near.light * (1.0 - cover.a);
+    return vec4<f32>(clear * cover.a + cover.rgb * near.through + near.light * (1.0 - cover.a), cover.a);
 }
 
 fn fog_amount(seen: vec3<f32>) -> f32 {
@@ -315,7 +316,8 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
     let direction = normalize(through.xyz / through.w);
     let up = dot(direction, scene.zenith.xyz);
     let reach = min(select(to_space(up), -2.0 * PLANET_M * up + 20000.0, up < 0.0), 60000.0);
-    return Frag(vec4<f32>(fogged(clouded_sky(direction, dither(f.position.xy)), direction * reach), 1.0), vec4<f32>(0.0));
+    let clouded = clouded_sky(direction, dither(f.position.xy));
+    return Frag(vec4<f32>(fogged(clouded.rgb, direction * reach), 1.0), vec4<f32>(0.0, 0.0, 0.0, clouded.a - 1.0));
 }
 ";
 const SHADOW_SHADER: &str = r"
@@ -345,6 +347,11 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> 
 
 const EXPOSURE = 0.36;
 const BLOOM = 0.06;
+const GOD_RAYS = 0.2;
+const RAY_SAMPLES = 40;
+const RAY_DECAY = 0.96;
+const RAY_REACH = 0.9;
+const RAY_SPREAD = 12.0;
 const BLOOM_THRESHOLD = 1.0 / EXPOSURE;
 const BLOOM_KNEE = 0.5;
 const AO_RADIUS = 6.0;
@@ -446,6 +453,29 @@ fn surface_at(uv: vec2<f32>) -> vec4<f32> {
         occlusion += select(0.0, range, seen < length(sample) - AO_BIAS);
     }
     return vec4<f32>(occlusion / f32(AO_SAMPLES));
+}
+
+@fragment fn fs_rays(f: Out) -> @location(0) vec4<f32> {
+    let clip = scene.project * vec4<f32>(scene.sun.xyz * 100000.0, 1.0);
+    if (clip.w <= 0.0) { return vec4<f32>(0.0); }
+    let sun_uv = vec2<f32>(clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5);
+    let outside = max(abs(sun_uv - 0.5) - 0.5, vec2<f32>(0.0));
+    let edge = 1.0 - smoothstep(0.0, 0.3, length(outside));
+    if (edge <= 0.0) { return vec4<f32>(0.0); }
+    let towards = (sun_uv - f.uv) * RAY_REACH / f32(RAY_SAMPLES);
+    var uv = f.uv + towards * noise(f.position.xy);
+    var weight = 1.0;
+    var total = vec3<f32>(0.0);
+    for (var i = 0; i < RAY_SAMPLES; i++) {
+        uv += towards;
+        if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) { break; }
+        let seen = textureSampleLevel(second, screen_sampler, uv, 0.0).w;
+        let sky = select(0.0, 1.0 + seen, seen <= 0.0);
+        let glow = pow(max(dot(ray(uv), scene.sun.xyz), 0.0), RAY_SPREAD);
+        total += textureSampleLevel(picture, screen_sampler, uv, 0.0).rgb * sky * glow * weight;
+        weight *= RAY_DECAY;
+    }
+    return vec4<f32>(total / f32(RAY_SAMPLES) * edge * GOD_RAYS / BLOOM, 1.0);
 }
 
 @fragment fn fs_blur(f: Out) -> @location(0) vec4<f32> {
@@ -720,6 +750,7 @@ pub struct Targets {
     down_binds: Vec<wgpu::BindGroup>,
     up_binds: Vec<wgpu::BindGroup>,
     post_bind: wgpu::BindGroup,
+    rays_bind: wgpu::BindGroup,
 }
 
 pub struct Renderer {
@@ -735,6 +766,7 @@ pub struct Renderer {
     up: wgpu::RenderPipeline,
     ssao: wgpu::RenderPipeline,
     blur: wgpu::RenderPipeline,
+    rays: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     screen_layout: wgpu::BindGroupLayout,
     shadow_layout: wgpu::BindGroupLayout,
@@ -1249,6 +1281,7 @@ impl Renderer {
         let up = screen("fs_up", HDR, Some(ADDITIVE));
         let ssao = screen("fs_ssao", OCCLUSION, None);
         let blur = screen("fs_blur", OCCLUSION, None);
+        let rays = screen("fs_rays", HDR, Some(ADDITIVE));
         let scene = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("synthetic scene"),
             size: SCENE_BYTES,
@@ -1300,6 +1333,7 @@ impl Renderer {
             up,
             ssao,
             blur,
+            rays,
             layout,
             screen_layout,
             shadow_layout,
@@ -1549,28 +1583,39 @@ impl Renderer {
                 &targets.blur_bind,
             );
         }
-        if !BLOOM {
-            return;
+        if BLOOM {
+            targets
+                .mips
+                .iter()
+                .zip(&targets.down_binds)
+                .enumerate()
+                .for_each(|(level, (mip, bind))| {
+                    let pipeline = if level == 0 {
+                        &self.prefilter
+                    } else {
+                        &self.down
+                    };
+                    self.screen(encoder, mip, clear, pipeline, bind);
+                });
+            targets
+                .mips
+                .iter()
+                .zip(&targets.up_binds)
+                .rev()
+                .for_each(|(mip, bind)| {
+                    self.screen(encoder, mip, wgpu::LoadOp::Load, &self.up, bind)
+                });
         }
-        targets
-            .mips
-            .iter()
-            .zip(&targets.down_binds)
-            .enumerate()
-            .for_each(|(level, (mip, bind))| {
-                let pipeline = if level == 0 {
-                    &self.prefilter
-                } else {
-                    &self.down
-                };
-                self.screen(encoder, mip, clear, pipeline, bind);
-            });
-        targets
-            .mips
-            .iter()
-            .zip(&targets.up_binds)
-            .rev()
-            .for_each(|(mip, bind)| self.screen(encoder, mip, wgpu::LoadOp::Load, &self.up, bind));
+        if GOD_RAYS {
+            let load = if BLOOM { wgpu::LoadOp::Load } else { clear };
+            self.screen(
+                encoder,
+                &targets.mips[0],
+                load,
+                &self.rays,
+                &targets.rays_bind,
+            );
+        }
     }
 
     pub fn warm(&mut self, arrived: Vec<Arc<Mesh>>, most: usize) -> usize {
@@ -1894,6 +1939,7 @@ impl Renderer {
         let post_bind = bind(&resolved, &mips[0], &blurred);
         let ssao_bind = bind(&surface, &surface, &surface);
         let blur_bind = bind(&occlusion, &surface, &surface);
+        let rays_bind = bind(&resolved, &surface, &surface);
         let shadow = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("synthetic shadow"),
             size: wgpu::Extent3d {
@@ -1953,6 +1999,7 @@ impl Renderer {
             down_binds,
             up_binds,
             post_bind,
+            rays_bind,
         }
     }
 
