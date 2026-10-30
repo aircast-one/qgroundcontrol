@@ -237,13 +237,25 @@ fn cloud_density(horizontal: vec2<f32>, height: f32, fineness: f32) -> f32 {
     return remap(body, erosion, 1.0);
 }
 
-fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
+fn slab_reach(up: f32, limit: f32) -> vec2<f32> {
+    let eye = scene.eye.w;
+    if (eye >= CLOUD_BASE_M && eye <= CLOUD_TOP_M) { return vec2<f32>(0.0, min(select((CLOUD_TOP_M - eye) / up, (CLOUD_BASE_M - eye) / up, up < 0.0), limit)); }
+    let edges = vec2<f32>(CLOUD_BASE_M - eye, CLOUD_TOP_M - eye) / up;
+    let span = vec2<f32>(min(edges.x, edges.y), max(edges.x, edges.y));
+    return vec2<f32>(span.x, min(span.y, limit));
+}
+
+fn clouds(direction: vec3<f32>, jitter: f32, limit: f32) -> vec4<f32> {
     let up = dot(direction, scene.zenith.xyz);
-    if (!CLOUDS || up < 0.08) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
-    let fade = smoothstep(0.08, 0.25, up);
-    let start = CLOUD_BASE_M / up;
-    let steps = select(CLOUD_STEPS, CLOUD_GRAZING_STEPS, up < 0.3);
-    let step = min(CLOUD_TOP_M / up - start, 18000.0) / f32(steps);
+    let inside = scene.eye.w >= CLOUD_BASE_M && scene.eye.w <= CLOUD_TOP_M;
+    let toward_slab = select(up, -up, scene.eye.w > CLOUD_TOP_M);
+    if (!CLOUDS || (!inside && toward_slab < 0.08) || abs(up) < 0.002) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    let fade = select(smoothstep(0.08, 0.25, toward_slab), 1.0, inside);
+    let reach = slab_reach(up, limit);
+    if (reach.y <= reach.x) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    let start = reach.x;
+    let steps = select(CLOUD_STEPS, CLOUD_GRAZING_STEPS, abs(up) < 0.3);
+    let step = min(reach.y - start, 18000.0) / f32(steps);
     let east = normalize(cross(scene.zenith.xyz, vec3<f32>(0.0, 0.0, 1.0)));
     let north = cross(scene.zenith.xyz, east);
     let sun_up = dot(scene.sun.xyz, scene.zenith.xyz);
@@ -260,13 +272,14 @@ fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
         let t = start + (f32(i) + jitter) * step;
         let fineness = 1.0 - smoothstep(6000.0, 15000.0, t);
         let p = direction * t;
-        let density = cloud_density(vec2<f32>(dot(scene.eye.xyz + p, east), dot(scene.eye.xyz + p, north)), up * t, fineness);
+        let height = scene.eye.w + up * t;
+        let density = cloud_density(vec2<f32>(dot(scene.eye.xyz + p, east), dot(scene.eye.xyz + p, north)), height, fineness);
         if (density <= 0.0) { continue; }
-        let rise = clamp((up * t - CLOUD_BASE_M) / (CLOUD_TOP_M - CLOUD_BASE_M), 0.0, 1.0);
+        let rise = clamp((height - CLOUD_BASE_M) / (CLOUD_TOP_M - CLOUD_BASE_M), 0.0, 1.0);
         var toward = 0.0;
         for (var j = 0; j < 2; j++) {
             let q = p + scene.sun.xyz * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M;
-            toward += cloud_density(vec2<f32>(dot(scene.eye.xyz + q, east), dot(scene.eye.xyz + q, north)), up * t + sun_up * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M, 0.0) * CLOUD_LIGHT_STEP_M;
+            toward += cloud_density(vec2<f32>(dot(scene.eye.xyz + q, east), dot(scene.eye.xyz + q, north)), height + sun_up * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M, 0.0) * CLOUD_LIGHT_STEP_M;
         }
         let beer = exp(-toward * CLOUD_EXTINCTION);
         let powder = 1.0 - exp(-toward * CLOUD_EXTINCTION * 2.0);
@@ -281,19 +294,22 @@ fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
     return vec4<f32>(light * fade, mix(1.0, through, fade));
 }
 
+fn clouded(colour: vec3<f32>, direction: vec3<f32>, jitter: f32, limit: f32) -> vec4<f32> {
+    let cover = clouds(direction, jitter, limit);
+    if (cover.a >= 1.0) { return vec4<f32>(colour, 1.0); }
+    let near = scatter(direction, max(slab_reach(dot(direction, scene.zenith.xyz), limit).x, 1.0), 4);
+    return vec4<f32>(colour * cover.a + cover.rgb * near.through + near.light * (1.0 - cover.a), cover.a);
+}
+
 fn clouded_sky(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
-    let cover = clouds(direction, jitter);
-    let clear = sky(direction);
-    if (cover.a >= 1.0) { return vec4<f32>(clear, 1.0); }
-    let near = scatter(direction, CLOUD_BASE_M / max(dot(direction, scene.zenith.xyz), 0.015), 4);
-    return vec4<f32>(clear * cover.a + cover.rgb * near.through + near.light * (1.0 - cover.a), cover.a);
+    return clouded(sky(direction), direction, jitter, 1e9);
 }
 
 fn fog_amount(seen: vec3<f32>) -> f32 {
     if (!FOG) { return 0.0; }
     let climb = dot(seen, scene.zenith.xyz);
     let along = select(FOG_HEIGHT_M * (1.0 - exp(-climb / FOG_HEIGHT_M)) / climb, 1.0, abs(climb) < 1.0);
-    return 1.0 - exp(-FOG_DENSITY * length(seen) * along);
+    return 1.0 - exp(-FOG_DENSITY * exp(-scene.eye.w / FOG_HEIGHT_M) * length(seen) * along);
 }
 
 fn fog_colour(direction: vec3<f32>) -> vec3<f32> {
@@ -359,7 +375,9 @@ fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     let air = scatter(f.seen / distance, distance, 4);
     let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
     let lit = sunlight_reaching(f.seen, normal);
-    return Frag(vec4<f32>(fogged(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, f.seen), colour.a), vec4<f32>(normal, distance));
+    let shaded = fogged(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, f.seen);
+    if (scene.eye.w > CLOUD_BASE_M) { return Frag(vec4<f32>(clouded(shaded, f.seen / distance, dither(f.position.xy), distance).rgb, colour.a), vec4<f32>(normal, distance)); }
+    return Frag(vec4<f32>(shaded, colour.a), vec4<f32>(normal, distance));
 }
 
 @fragment fn fs(f: Out) -> Frag {
@@ -386,8 +404,8 @@ fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     let direction = normalize(through.xyz / through.w);
     let up = dot(direction, scene.zenith.xyz);
     let reach = min(select(to_space(up), -2.0 * PLANET_M * up + 20000.0, up < 0.0), 60000.0);
-    let clouded = clouded_sky(direction, dither(f.position.xy));
-    return Frag(vec4<f32>(fogged(clouded.rgb, direction * reach), 1.0), vec4<f32>(0.0, 0.0, 0.0, clouded.a - 1.0));
+    let covered = clouded_sky(direction, dither(f.position.xy));
+    return Frag(vec4<f32>(fogged(covered.rgb, direction * reach), 1.0), vec4<f32>(0.0, 0.0, 0.0, covered.a - 1.0));
 }
 
 @fragment fn fs_water(f: Out) -> Frag {
@@ -1937,7 +1955,13 @@ impl Renderer {
                             0.0,
                         ]
                     }))
-                    .chain(direction(camera.eye))
+                    .chain(
+                        camera
+                            .eye
+                            .as_vec3()
+                            .extend(camera.above_ground as f32)
+                            .to_array(),
+                    )
                     .chain(previous.as_mat4().to_cols_array())
                     .chain(temporal),
             ),

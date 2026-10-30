@@ -57,6 +57,7 @@ pub struct Camera {
     pub fovy: f64,
     pub aspect: f64,
     pub height_px: f64,
+    pub above_ground: f64,
 }
 
 impl Camera {
@@ -89,6 +90,7 @@ impl Camera {
             fovy: 2.0 * ((pose.fov.to_radians() / 2.0).tan() / aspect).atan(),
             aspect,
             height_px: f64::from(height_px),
+            above_ground: 0.0,
         }
     }
 

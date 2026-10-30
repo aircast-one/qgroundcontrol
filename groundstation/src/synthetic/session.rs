@@ -488,7 +488,14 @@ impl Frame {
         height: u32,
         when: DateTime<Utc>,
     ) -> (Camera, Vec<Arc<Mesh>>) {
-        let camera = Camera::at(&self.aimed(overlays, Instant::now()), width, height, when);
+        let pose = self.aimed(overlays, Instant::now());
+        let camera = Camera {
+            above_ground: self
+                .under_ground
+                .or(self.home_ground)
+                .map_or(0.0, |ground| (pose.height - ground).max(0.0)),
+            ..Camera::at(&pose, width, height, when)
+        };
         let marks = overlays
             .zip(self.home_ground)
             .map(|(overlays, ground)| {
