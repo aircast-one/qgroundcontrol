@@ -23,6 +23,7 @@ void openFileImportDialog(const QString& destPath, std::function<void(const QStr
 using SafeAreaHandler = std::function<void(int left, int top, int right, int bottom)>;
 void setSafeAreaHandler(SafeAreaHandler handler);
 bool isEmbeddedHost();
+QString packageVersionName();
 qreal systemFontScale();
 QColor systemColor(const QString& resourceName);
 void setSystemBarAppearance(bool lightBars);

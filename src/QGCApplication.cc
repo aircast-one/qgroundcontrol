@@ -75,6 +75,9 @@
 #ifndef QGC_NO_SERIAL_LINK
 #include "SerialLink.h"
 #endif
+#ifdef Q_OS_ANDROID
+#include "AndroidInterface.h"
+#endif
 
 QGC_LOGGING_CATEGORY(QGCApplicationLog, "API.QGCApplication")
 QGC_LOGGING_CATEGORY(QGCAppMessageLog, "API.QGCApplication.AppMessage")
@@ -165,6 +168,12 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
     qgc_core_qt_host_present();
     qgc_core_set_application_name(QCoreApplication::applicationName().toUtf8().constData());
     qgc_core_settings_open(settings.fileName().toUtf8().constData());
+#ifdef Q_OS_ANDROID
+    const QString coreVersion = _embeddedHost ? AndroidInterface::packageVersionName() : applicationVersion();
+#else
+    const QString coreVersion = applicationVersion();
+#endif
+    qgc_core_set_application_version(coreVersion.toUtf8().constData());
 
     if (fClearCache) {
         QDir dir(ParameterManager::parameterCacheDir());

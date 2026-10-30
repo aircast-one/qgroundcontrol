@@ -28,6 +28,7 @@ bool qgc_core_owns_vehicle(void);
 void qgc_core_set_map_cache_path(const char *path);
 bool qgc_core_post_notice(const char *kind, const char *title, const char *text);
 void qgc_core_set_application_name(const char *name);
+void qgc_core_set_application_version(const char *version);
 void qgc_core_qt_host_present(void);
 void qgc_core_gcs_position_source(const char *token);
 void qgc_core_gcs_position_update(double latitude, double longitude, double altitude, double horizontal_accuracy_m, double vertical_accuracy_m, double direction_deg, double direction_accuracy_deg);

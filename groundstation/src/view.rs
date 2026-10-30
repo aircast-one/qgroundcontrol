@@ -926,7 +926,7 @@ pub const VIEWS: &[View] = &[
     },
     View {
         path: "view.appUpdate",
-        deps: &[],
+        deps: crate::appupdate::DEPS,
         compute: crate::appupdate::view,
     },
     View {

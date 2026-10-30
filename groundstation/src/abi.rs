@@ -165,6 +165,19 @@ pub unsafe extern "C" fn qgc_core_set_application_name(name: *const c_char) {
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_set_application_version(version: *const c_char) {
+    let version = text(version);
+    crate::mavlinklog::set_application_version(&version);
+    crate::appupdate::start(&version, announce_app_update);
+}
+
+fn announce_app_update() {
+    CORE.on_event(crate::appupdate::CHANGED, "null")
+        .iter()
+        .for_each(|(path, json)| announce(path, json));
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_links_start() {
     LazyLock::force(&CORE);
     install_hub_sink();

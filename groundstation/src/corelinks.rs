@@ -713,10 +713,6 @@ pub fn listed() -> Vec<Entry> {
     listed_with(known(), &live())
 }
 
-pub fn any_live() -> bool {
-    !live().is_empty()
-}
-
 fn state_of(name: &str, live: &[(crate::transport::LinkId, LinkConfig)]) -> State {
     let link = live
         .iter()

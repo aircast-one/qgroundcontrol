@@ -166,6 +166,11 @@ void QGCCoreCTest::_viewMessagesReachTheHeadThroughTheRustCore()
     QVERIFY(!first.value(QStringLiteral("text")).toString().contains(QLatin1Char('<')));
 }
 
+void QGCCoreCTest::_appUpdateStartsWithTheApplicationVersion()
+{
+    QCOMPARE(take(qgc_bridge_get("view.appUpdate")).value(QStringLiteral("current")).toString(), QCoreApplication::applicationVersion());
+}
+
 void QGCCoreCTest::_viewPathsAreReadOnlyAtTheCAbi()
 {
     QCOMPARE(take(qgc_bridge_set("view.messages", "{\"value\":1}")).value(QStringLiteral("ok")).toBool(true), false);

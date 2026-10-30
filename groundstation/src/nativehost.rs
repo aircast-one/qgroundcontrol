@@ -243,10 +243,9 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     crate::hostdevice::adopt(chosen.device.as_deref());
     crate::telemetrylog::recover_lost();
     if let Some(version) = &chosen.application_version {
-        crate::mavlinklog::set_application_version(version);
+        unsafe { crate::abi::qgc_core_set_application_version(text(version).as_ptr()) };
     }
     crate::mavlinklog::configure_hub();
-    crate::appupdate::start(chosen.application_version.as_deref());
     if let Some(cache) = &chosen.map_cache {
         unsafe { crate::abi::qgc_core_set_map_cache_path(text(cache).as_ptr()) };
     }

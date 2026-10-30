@@ -16,12 +16,14 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 pub const FIRST_CHECK_AFTER: Duration = Duration::from_secs(15);
 pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 pub const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(60 * 60);
-const TICK: Duration = Duration::from_secs(5);
+const TICK: Duration = Duration::from_millis(250);
 const AUTO_CHECK_KEY: &str = "AppUpdate/autoCheck";
 const SNOOZED_KEY: &str = "AppUpdate/snoozed";
 const DOWNLOAD_DIR: &str = "Updates";
 const CHUNK: usize = 64 * 1024;
 const CANCELLED: &str = "cancelled";
+pub const CHANGED: &str = "core.appUpdate@changed";
+pub const DEPS: &[&str] = &[CHANGED, "vehicles.activeVehicleAvailable"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Phase {
@@ -76,14 +78,48 @@ struct State {
     error: String,
     checked_at: String,
     last_check: Option<(Instant, bool)>,
-    notified: Option<semver::Version>,
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| Mutex::new(State::default()));
 static CANCEL: AtomicBool = AtomicBool::new(false);
+static DIRTY: AtomicBool = AtomicBool::new(false);
+static POLLING: std::sync::Once = std::sync::Once::new();
 
 fn state() -> MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+struct Changing(MutexGuard<'static, State>);
+
+impl std::ops::Deref for Changing {
+    type Target = State;
+    fn deref(&self) -> &State {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Changing {
+    fn deref_mut(&mut self) -> &mut State {
+        &mut self.0
+    }
+}
+
+impl Drop for Changing {
+    fn drop(&mut self) {
+        DIRTY.store(true, Ordering::SeqCst);
+    }
+}
+
+fn changing() -> Changing {
+    Changing(state())
+}
+
+fn take_changed() -> bool {
+    DIRTY.swap(false, Ordering::SeqCst)
+}
+
+fn vehicle_connected() -> bool {
+    !crate::hub::lock().vehicle_ids().is_empty()
 }
 
 pub fn parsed(version: &str) -> Option<semver::Version> {
@@ -109,6 +145,7 @@ pub fn asset_pattern(os: &str, arch: &str) -> Option<(&'static str, &'static str
 
 fn host_pattern() -> Option<(&'static str, &'static str)> {
     asset_pattern(std::env::consts::OS, std::env::consts::ARCH)
+        .filter(|_| !crate::qthost::present() || cfg!(target_os = "android"))
 }
 
 fn asset_of(assets: &[Value], (prefix, suffix): (&str, &str)) -> Option<Asset> {
@@ -192,10 +229,6 @@ pub fn due(now: Instant, started: Instant, last_check: Option<(Instant, bool)>) 
     }
 }
 
-pub fn notice_text(application: &str, version: &semver::Version) -> String {
-    format!("{application} {version} is available")
-}
-
 fn auto_check() -> bool {
     crate::settingsstore::stored_text(AUTO_CHECK_KEY).is_none_or(|text| text != "false")
 }
@@ -213,7 +246,7 @@ fn fetches() -> bool {
 }
 
 fn settle(found: Result<Option<Release>, String>) {
-    let mut held = state();
+    let mut held = changing();
     held.checked_at = now_text();
     held.last_check = Some((Instant::now(), found.is_err()));
     match found {
@@ -227,25 +260,13 @@ fn settle(found: Result<Option<Release>, String>) {
         }
         Ok(Some(release)) => {
             held.phase = Phase::Available;
-            let stored = crate::settingsstore::stored_text(SNOOZED_KEY);
-            let fresh = held.notified.as_ref() != Some(&release.version)
-                && effective_snooze(stored.as_deref(), Some(&release.version)).is_empty();
-            if fresh {
-                let application = crate::noticeboard::application_name();
-                crate::noticeboard::post(
-                    crate::noticeboard::MESSAGE,
-                    &application,
-                    &notice_text(&application, &release.version),
-                );
-                held.notified = Some(release.version.clone());
-            }
             held.latest = Some(release);
         }
     }
 }
 
 pub fn check() -> Result<(), String> {
-    let mut held = state();
+    let mut held = changing();
     if matches!(held.phase, Phase::Checking | Phase::Downloading) {
         return Err("A check or download is already running.".to_string());
     }
@@ -283,6 +304,7 @@ fn fetch_releases(
     crate::background::spawn("app-update-check", move || {
         settle(
             crate::http::get_text(RELEASES_URL, FETCH_TIMEOUT)
+                .map_err(|e| format!("GitHub could not be reached to check for updates ({e})."))
                 .and_then(|body| newest(&body, &current, Some(pattern))),
         );
     })
@@ -296,7 +318,7 @@ fn fetch_releases(_current: semver::Version, _pattern: (&str, &str)) -> Result<(
 }
 
 pub fn download() -> Result<(), String> {
-    let mut held = state();
+    let mut held = changing();
     if matches!(held.phase, Phase::Checking | Phase::Downloading) {
         return Err("A check or download is already running.".to_string());
     }
@@ -320,7 +342,7 @@ pub fn download() -> Result<(), String> {
 }
 
 fn finished(outcome: Result<PathBuf, String>) {
-    let mut held = state();
+    let mut held = changing();
     match outcome {
         Ok(file) => {
             held.phase = Phase::Ready;
@@ -368,7 +390,9 @@ fn download_verified(asset: &Asset, dir: &std::path::Path) -> Result<PathBuf, St
     let partial = dir.join(format!("{}.part", asset.name));
     let target = dir.join(&asset.name);
     let streamed = (|| {
-        let (length, mut body) = crate::http::stream(&asset.url, DOWNLOAD_TIMEOUT)?;
+        let interrupted = |e: String| format!("The download was interrupted ({e}). Try again.");
+        let (length, mut body) =
+            crate::http::stream(&asset.url, DOWNLOAD_TIMEOUT).map_err(interrupted)?;
         let total = length.unwrap_or(asset.size).max(1) as f64;
         let mut out = std::fs::File::create(&partial).map_err(|e| e.to_string())?;
         let mut hash = Sha256::new();
@@ -378,14 +402,16 @@ fn download_verified(asset: &Asset, dir: &std::path::Path) -> Result<PathBuf, St
             if CANCEL.load(Ordering::SeqCst) {
                 return Err(CANCELLED.to_string());
             }
-            let n = body.read(&mut buffer).map_err(|e| e.to_string())?;
+            let n = body
+                .read(&mut buffer)
+                .map_err(|e| interrupted(e.to_string()))?;
             if n == 0 {
                 break;
             }
             out.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
             hash.update(&buffer[..n]);
             written += n as u64;
-            state().progress = (written as f64 / total).min(0.99);
+            changing().progress = (written as f64 / total).min(0.99);
         }
         out.flush().map_err(|e| e.to_string())?;
         digest_matches(&expected, &hash.finalize())
@@ -405,19 +431,23 @@ fn download_verified(asset: &Asset, dir: &std::path::Path) -> Result<PathBuf, St
     streamed
 }
 
-#[cfg(not(target_family = "wasm"))]
-pub fn start(version: Option<&str>) {
+pub fn start(version: &str, announce: fn()) {
     {
-        let mut held = state();
-        held.current = version.unwrap_or_default().trim().to_string();
-        held.started = Some(Instant::now());
+        let mut held = changing();
+        held.current = version.trim().to_string();
+        held.started.get_or_insert_with(Instant::now);
     }
-    if let Some(dir) = download_dir() {
-        let _ = std::fs::remove_dir_all(dir);
-    }
-    let _ = crate::background::poll("app-update", TICK, || {
-        tick();
-        false
+    POLLING.call_once(|| {
+        if let Some(dir) = download_dir() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        let _ = crate::background::poll("app-update", TICK, move || {
+            if take_changed() {
+                announce();
+            }
+            tick();
+            false
+        });
     });
 }
 
@@ -433,12 +463,13 @@ fn tick() {
             .started
             .is_some_and(|started| due(Instant::now(), started, held.last_check));
     drop(held);
-    if wanted && auto_check() && !crate::corelinks::any_live() {
+    if wanted && auto_check() && !vehicle_connected() {
         let _ = check();
     }
 }
 
 pub fn view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
+    let can_install = !vehicle_connected();
     let held = state();
     let latest = held.latest.as_ref();
     let asset = latest.and_then(|release| release.asset.as_ref());
@@ -463,7 +494,7 @@ pub fn view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
             crate::settingsstore::stored_text(SNOOZED_KEY).as_deref(),
             latest.map(|r| &r.version),
         ),
-        "canInstall": !crate::corelinks::any_live(),
+        "canInstall": can_install,
     })
 }
 
@@ -486,11 +517,12 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "appUpdate.setAutoCheck" => answer(match given.first().and_then(Value::as_bool) {
             Some(on) => {
                 crate::settingsstore::written(AUTO_CHECK_KEY, if on { "true" } else { "false" });
+                drop(changing());
                 Ok(())
             }
             None => Err("appUpdate.setAutoCheck takes true or false".to_string()),
         }),
-        "appUpdate.snooze" => answer(match state().latest.as_ref() {
+        "appUpdate.snooze" => answer(match changing().latest.as_ref() {
             Some(release) => {
                 crate::settingsstore::written(SNOOZED_KEY, &release.version.to_string());
                 Ok(())
@@ -687,9 +719,5 @@ mod tests {
             started,
             Some((checked, true))
         ));
-        assert_eq!(
-            notice_text("Aircast QGC", &parsed("5.6.5-beta.22").unwrap()),
-            "Aircast QGC 5.6.5-beta.22 is available"
-        );
     }
 }

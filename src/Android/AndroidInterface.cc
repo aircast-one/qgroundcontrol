@@ -339,6 +339,25 @@ bool isEmbeddedHost()
     return context.isValid() && qtActivityClass && !env->IsInstanceOf(context.object(), qtActivityClass);
 }
 
+QString packageVersionName()
+{
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return QString();
+    }
+    const QJniObject manager = context.callObjectMethod("getPackageManager", "()Landroid/content/pm/PackageManager;");
+    const QJniObject name = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
+    if (QJniEnvironment().checkAndClearExceptions() || !manager.isValid() || !name.isValid()) {
+        return QString();
+    }
+    const QJniObject info = manager.callObjectMethod("getPackageInfo", "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;", name.object<jstring>(), jint(0));
+    if (QJniEnvironment().checkAndClearExceptions() || !info.isValid()) {
+        qCWarning(AndroidInterfaceLog) << "PackageInfo unavailable; the package version is unknown";
+        return QString();
+    }
+    return info.getObjectField<jstring>("versionName").toString();
+}
+
 qreal systemFontScale()
 {
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
