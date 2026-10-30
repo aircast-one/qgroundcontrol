@@ -925,6 +925,11 @@ pub const VIEWS: &[View] = &[
         compute: packetradio::packet_radio_view,
     },
     View {
+        path: "view.appUpdate",
+        deps: &[],
+        compute: crate::appupdate::view,
+    },
+    View {
         path: "view.firmwareUpgrade",
         deps: &[],
         compute: crate::firmwareflash::view,
@@ -1363,6 +1368,7 @@ mod deps_cover_reads {
         ("altitudeedit", include_str!("altitudeedit.rs")),
         ("altitudemodes", include_str!("altitudemodes.rs")),
         ("apmmeta", include_str!("apmmeta.rs")),
+        ("appupdate", include_str!("appupdate.rs")),
         ("autoconnect", include_str!("autoconnect.rs")),
         ("autodrop", include_str!("autodrop.rs")),
         ("autointercept", include_str!("autointercept.rs")),

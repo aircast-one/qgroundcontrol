@@ -21,6 +21,19 @@ pub fn get(url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Vec
 }
 
 #[cfg(not(target_family = "wasm"))]
+pub fn stream(url: &str, timeout: Duration) -> Result<(Option<u64>, impl std::io::Read), String> {
+    let body = AGENT
+        .get(url)
+        .config()
+        .timeout_global(Some(timeout))
+        .build()
+        .call()
+        .map_err(|e| e.to_string())?
+        .into_body();
+    Ok((body.content_length(), body.into_with_config().reader()))
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub fn post(
     url: &str,
     content_type: &str,

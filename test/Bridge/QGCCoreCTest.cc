@@ -1493,7 +1493,7 @@ QJsonValue mergeShapes(const QJsonValue &a, const QJsonValue &b)
 constexpr int kMockStatusTextCount = 9;
 
 const char *const kViewPaths[] = {
-    "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
+    "view.messages", "view.appUpdate", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
     "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.missionItems", "view.vehicles", "view.label(altitudeRelative)", "view.instruments", "view.instrumentGroups", "view.vibration",
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.control(settings.appSettings.qLocaleLanguage)", "view.links", "view.linkForm(udp,,14550)",

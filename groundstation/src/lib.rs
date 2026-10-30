@@ -21,6 +21,7 @@ pub mod apmservos;
 pub mod apmsubframe;
 pub mod apmsubmotors;
 pub mod applog;
+pub mod appupdate;
 pub mod ashtechbase;
 pub mod attitude;
 pub mod autoconnect;

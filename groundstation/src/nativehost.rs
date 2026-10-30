@@ -246,6 +246,7 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
         crate::mavlinklog::set_application_version(version);
     }
     crate::mavlinklog::configure_hub();
+    crate::appupdate::start(chosen.application_version.as_deref());
     if let Some(cache) = &chosen.map_cache {
         unsafe { crate::abi::qgc_core_set_map_cache_path(text(cache).as_ptr()) };
     }

@@ -3738,6 +3738,9 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(done) = crate::firmwareflash::invoke(path, args) {
             return done.to_string();
         }
+        if let Some(done) = crate::appupdate::invoke(path, args) {
+            return done.to_string();
+        }
         if let Some(done) = (path == "packetRadio.refreshAdapters")
             .then(crate::wfbhost::refresh)
             .flatten()
