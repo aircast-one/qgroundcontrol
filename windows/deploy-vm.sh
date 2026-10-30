@@ -18,5 +18,6 @@ ssh "${opts[@]}" winvm 'cmd /c "if not exist C:\aircast-head\AircastQGC mkdir C:
 [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "winvm is not answering" >&2; exit 69; }
 (cd "$proj" && scp "${opts[@]}" -rq !(bin|obj|runtime) "winvm:$stage/") 2>&1 | quiet
 scp "${opts[@]}" -q "$here/tools/buildrun.ps1" 'winvm:C:/Temp/buildrun.ps1' 2>&1 | quiet
-ssh "${opts[@]}" winvm 'powershell -ExecutionPolicy Bypass -NoProfile -File C:\Temp\buildrun.ps1' 2>&1 | quiet
+# shellcheck disable=SC2029
+ssh "${opts[@]}" winvm "powershell -ExecutionPolicy Bypass -NoProfile -File C:\Temp\buildrun.ps1 $*" 2>&1 | quiet
 exit "${PIPESTATUS[0]}"

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using AircastQGC.Controls;
@@ -165,7 +164,7 @@ internal static class SettingsBodies
             SettingsCatalog.MavlinkGroup => new LinkStatusPanel(),
             _ => null,
         },
-        Bottom = _ => page.Title == SettingsCatalog.General ? new ResetAllSettingsRow() : null,
+        Bottom = _ => page.Title == SettingsCatalog.General ? FormLook.Stack(0, new AppUpdatePanel(), new ResetAllSettingsRow()) : null,
     };
 
     internal static UIElement? Units(FormView form, FormSection section)
@@ -212,9 +211,7 @@ internal static class SettingsBodies
 
     private static UIElement About(IReadOnlyList<HelpLink> links)
     {
-        var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0]
-            ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
-        var shown = $"Aircast {version} {RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant()}";
+        var shown = $"Aircast {AppUpdates.Version} {RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant()}";
         var versionRow = new Button
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,

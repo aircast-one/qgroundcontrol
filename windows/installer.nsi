@@ -111,6 +111,9 @@ Section "${DISPLAY}" SecApp
     WriteRegDWORD HKCU "${UNINSTALL_KEY}" "EstimatedSize" $0
     WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
     WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
+    ${If} ${Silent}
+        Exec '"$INSTDIR\${EXE}"'
+    ${EndIf}
 SectionEnd
 
 Section "Desktop shortcut" SecDesktop

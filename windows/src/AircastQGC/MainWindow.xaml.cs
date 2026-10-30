@@ -300,6 +300,7 @@ public sealed partial class MainWindow : Window
         PagePlaceholder.Visibility = Shown(page != NavPane.Fly && hosted == null);
         PageTitle.Text = page;
         Notices.OnFly = page == NavPane.Fly;
+        PageNotices.Visibility = Shown(!fly && page != NavPane.Settings);
     }
 
     private UIElement? HostedPage(string page)

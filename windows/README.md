@@ -87,6 +87,10 @@ release tag; it can also be run by hand (`gh workflow run windows-native.yml -f 
   (only the build-config plugins), `gstreamer\libexec`. `VideoNative` puts `gstreamer\bin` first on `PATH`, points the
   plugin path and scanner there and keeps its own registry in `%LOCALAPPDATA%\AircastQGC`. Without the DLLs video is off
   and the app still runs. The first start scans the plugins (about 10 s on the VM); later starts use the registry.
+- `build-app.ps1 -Version 5.6.5-beta.21` (and `deploy-vm.sh -Version …`) stamps the assembly; the head passes it to the core
+  as `--app-version`, which drives the in-app update check against the GitHub releases. A build without it reports `dev`
+  and never checks. The update installs the downloaded `-setup.exe /S`, which relaunches the app; a copy running outside
+  the per-user install folder (the portable zip) is only pointed at the release page.
 - `deploy-vm.sh` never rebuilds the native DLLs: it keeps the stage's `runtime\`. Run `build-video.ps1` (or `build-app.ps1`)
   after changing `QGCVideoC.cc` or the GStreamer pin.
 - The app passes `--save-path Documents\Aircast QGC` (as iOS does); without it the core finds no save folder on Windows

@@ -50,6 +50,7 @@
                         Spacing="{StaticResource SpaceSm}">
                 <controls:HeadingTape x:Name="Tape" HorizontalAlignment="Center" />
                 <controls:TrafficBanner HorizontalAlignment="Center" />
+                <controls:AppUpdateBanner HorizontalAlignment="Center" />
                 <StackPanel x:Name="Overlays" Spacing="{StaticResource SpaceSm}">
                     <controls:ControlRequestPrompt HorizontalAlignment="Center" />
                     <controls:LayoutSlot Key="missionProgress" Label="Mission progress" HorizontalAlignment="Center">
@@ -191,6 +192,10 @@
         </Grid>
 
         <controls:LogReplayBar Grid.Row="2" Grid.Column="1" />
+
+        <Grid x:Name="PageNotices" Grid.Row="1" Grid.Column="1" Visibility="Collapsed">
+            <controls:AppUpdateBanner Margin="16,16,16,24" HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+        </Grid>
 
         <controls:NoticeLayer x:Name="Notices" Grid.Row="1" Grid.Column="1" />
 

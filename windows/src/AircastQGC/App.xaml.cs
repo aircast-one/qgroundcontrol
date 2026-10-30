@@ -41,7 +41,7 @@ public partial class App : Application
                 .Where(arg => !arg.StartsWith(DeepLinks.Scheme + ":", StringComparison.OrdinalIgnoreCase));
             CoreHost.Start(["AircastQGC", .. given, "--save-path", SavePath,
                 "--settings", Path.Combine(AppData, "Aircast QGC.ini"), "--map-cache", Path.Combine(MapCache, "qgcMapCache.db"),
-                "--position-source", GcsLocation.SourceToken]);
+                "--position-source", GcsLocation.SourceToken, "--app-version", AppUpdates.Version]);
             if (link is not null) DeepLinks.Handle(link);
             GcsLocation.Start();
             VideoDriver.Start();
@@ -51,6 +51,7 @@ public partial class App : Application
                 VideoDriver.Stop();
                 GcsLocation.Stop();
                 CoreHost.Shutdown();
+                AppUpdates.RunPending();
             };
             _window.Activate();
         }
@@ -60,6 +61,8 @@ public partial class App : Application
             throw;
         }
     }
+
+    public static void Quit() => ((App)Current)._window?.Close();
 
     private void Arrived(string link)
     {

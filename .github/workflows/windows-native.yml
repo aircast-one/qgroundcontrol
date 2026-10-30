@@ -86,7 +86,7 @@ jobs:
           GST_ROOT: ${{ steps.gst.outputs.root }}
         run: |
           $stage = Join-Path $env:RUNNER_TEMP "aircast-head\AircastQGC"
-          ./windows/build-app.ps1 -Arch $env:ARCH -Stage $stage -GstRoot $env:GST_ROOT
+          ./windows/build-app.ps1 -Arch $env:ARCH -Stage $stage -GstRoot $env:GST_ROOT -Version ($env:SHORT.TrimStart('v'))
           "dir=$(Join-Path $stage "bin\Release\net9.0-windows10.0.22621.0\win-$env:ARCH")" >> $env:GITHUB_OUTPUT
 
       - name: Boot test

@@ -4,6 +4,7 @@ param(
   [ValidateSet("arm64", "x64")] [string]$Arch = "arm64",
   [string]$Stage = "C:\aircast-head\AircastQGC",
   [string]$GstRoot = "",
+  [string]$Version = "",
   [int]$Jobs = 4
 )
 $ErrorActionPreference = "Stop"
@@ -26,7 +27,8 @@ $video = @{ Arch = $Arch; OutDir = (Join-Path $Stage "runtime") } + $(if ($GstRo
 "=== dotnet build head ==="
 Push-Location $Stage
 try {
-  dotnet build (Join-Path $Stage "AircastQGC.csproj") -c $Config -r $rid --self-contained
+  [string[]]$props = if ($Version) { @("-p:Version=$Version") } else { @() }
+  dotnet build (Join-Path $Stage "AircastQGC.csproj") -c $Config -r $rid --self-contained @props
   if ($LASTEXITCODE -ne 0) { throw "dotnet build failed ($LASTEXITCODE)" }
 } finally { Pop-Location }
 
