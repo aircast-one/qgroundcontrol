@@ -19,7 +19,8 @@ public sealed partial class NavPane : UserControl
     private const double CompactWidth = 48;
 
     private string _selectedPage = Fly;
-    private bool _isPaneOpen = true;
+    private bool _listPaneOpen = true;
+    private bool _mapPaneOpen;
 
     public NavPane()
     {
@@ -45,13 +46,16 @@ public sealed partial class NavPane : UserControl
 
     public bool IsPaneOpen
     {
-        get => _isPaneOpen;
+        get => OnMap ? _mapPaneOpen : _listPaneOpen;
         set
         {
-            _isPaneOpen = value;
+            if (OnMap) _mapPaneOpen = value;
+            else _listPaneOpen = value;
             Render();
         }
     }
+
+    private bool OnMap => _selectedPage == Plan;
 
     public bool CanGoBack
     {
@@ -77,8 +81,8 @@ public sealed partial class NavPane : UserControl
 
     private void Render()
     {
-        Root.Width = _isPaneOpen ? OpenWidth : CompactWidth;
-        Array.ForEach(Items, item => Paint(item, item.Tag as string == _selectedPage, _isPaneOpen));
+        Root.Width = IsPaneOpen ? OpenWidth : CompactWidth;
+        Array.ForEach(Items, item => Paint(item, item.Tag as string == _selectedPage, IsPaneOpen));
     }
 
     private static void Paint(Button item, bool selected, bool open)

@@ -15,7 +15,6 @@ internal sealed class ItemEditor : UserControl
     private const string RawEditNote = "Provides advanced access to all commands/parameters. Be very careful!";
     private const string RawEditStuck = "You have made changes to the mission item which cannot be shown in Simple Mode";
     private const string ItemContext = "item";
-    private const string MissionContext = "mission";
     private const int MixedFrame = 0;
     private const int RelativeFrame = 1;
     private const double AltitudeStep = 1;
@@ -108,7 +107,7 @@ internal sealed class ItemEditor : UserControl
         return PlanFacts.Stepper("Speed", MapUiJson.Number(section["value"]), MapUiJson.Text(section["units"]), SpeedStep,
             specified ? null : "Mission speed",
             wanted => Wrote(PlanCalls.Queued(() => Refusal(specify, true) ?? Refusal(path, wanted))),
-            auto);
+            auto, suggested: !specified);
     }
 
     private FrameworkElement? AltitudeMode(PlanItem item, int? globalFrame)
@@ -118,7 +117,7 @@ internal sealed class ItemEditor : UserControl
         var offers = MapUiJson.Objects(view["modes"]).Where(offer => (int)(MapUiJson.Number(offer["raw"]) ?? -1) != MixedFrame).ToList();
         var live = (globalFrame == null || globalFrame == MixedFrame) && offers.Count(offer => MapUiJson.Flag(offer["enabled"])) > 1;
         if (offers.Count == 0) return PlanFacts.Pair(PlanFacts.Text("Altitude mode"), PlanFacts.Note(item.FrameText.Length > 0 ? item.FrameText : "Frame"));
-        var picker = OfferBox(offers, live, raw => Wrote(PlanCalls.Refused(() => PlanCalls.SetAltitudeMode(_index, raw))));
+        var picker = PlanFacts.Offers(offers, live, raw => Wrote(PlanCalls.Refused(() => PlanCalls.SetAltitudeMode(_index, raw))));
         var notes = live
             ? offers.Where(offer => !MapUiJson.Flag(offer["current"]) && !MapUiJson.Flag(offer["enabled"]) && MapUiJson.Text(offer["reason"]).Length > 0)
                 .Select(offer => (UIElement)PlanFacts.Note($"{MapUiJson.Text(offer["title"])}: {MapUiJson.Text(offer["reason"])}"))
@@ -126,26 +125,6 @@ internal sealed class ItemEditor : UserControl
         var panel = new StackPanel { Spacing = 4, Children = { PlanFacts.Pair(PlanFacts.Text("Altitude mode"), picker) } };
         notes.ToList().ForEach(panel.Children.Add);
         return panel;
-    }
-
-    private static ComboBox OfferBox(IReadOnlyList<JsonObject> offers, bool live, Action<int> pick)
-    {
-        var box = new ComboBox { MinWidth = 180, IsEnabled = live };
-        offers.Select(offer => new ComboBoxItem
-        {
-            Content = MapUiJson.SentenceCase(MapUiJson.Text(offer["title"])),
-            IsEnabled = MapUiJson.Flag(offer["enabled"]) || MapUiJson.Flag(offer["current"]),
-            Tag = (int)(MapUiJson.Number(offer["raw"]) ?? -1),
-        }).ToList().ForEach(box.Items.Add);
-        var help = string.Join("\n", offers.Select(offer => MapUiJson.Text(offer["help"])).Where(text => text.Length > 0));
-        ToolTipService.SetToolTip(box, help.Length > 0 ? help : null);
-        var current = offers.ToList().FindIndex(offer => MapUiJson.Flag(offer["current"]));
-        box.SelectedIndex = current;
-        box.SelectionChanged += (_, _) =>
-        {
-            if (box.SelectedIndex != current && box.SelectedItem is ComboBoxItem { Tag: int raw }) pick(raw);
-        };
-        return box;
     }
 
     private UIElement AdvancedToggle()
@@ -319,15 +298,8 @@ internal sealed class ItemEditor : UserControl
         return button;
     }
 
-    private IEnumerable<UIElement> MissionFrame()
-    {
-        if (_status().GlobalFrame is not int current) return [];
-        var offers = MapUiJson.Objects(PlanCalls.Read($"view.altitudeModes({MissionContext},{current})")["modes"]).ToList();
-        var live = offers.Count(offer => MapUiJson.Flag(offer["enabled"])) > 1;
-        return offers.Count == 0
-            ? []
-            : [PlanFacts.Pair(PlanFacts.Text("Altitude frame"), OfferBox(offers, live, raw => Wrote(Write(PlanCalls.GlobalAltitudeMode, raw))))];
-    }
+    private IEnumerable<UIElement> MissionFrame() =>
+        PlanFacts.AltitudeFrame(_status().GlobalFrame, raw => Wrote(Write(PlanCalls.GlobalAltitudeMode, raw)));
 
     private IEnumerable<UIElement> VehicleRows()
     {

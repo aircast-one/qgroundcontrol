@@ -350,7 +350,7 @@ internal static class PlanRules
     internal const string NotReadySeal = "?";
     internal const string Uploaded = "Uploaded";
     internal const string NoGeofence = "No geofence – keep the vehicle inside a boundary, or out of an area.";
-    internal const string NoRally = "No rally points – alternate landing points for Return to Launch. Tap the map to place one.";
+    internal const string NoRally = "No rally points – alternate landing points for Return to Launch. Click the map to place one.";
     internal const string GeofenceRefused = "Not supported – this vehicle does not support geofence.";
     internal const string RallyRefused = "Not supported – this vehicle does not support rally points.";
     internal const string FarFromAircraftText = "The aircraft is not where this route begins. Move the route so it starts at the aircraft, or upload it as it is.";
@@ -392,7 +392,7 @@ internal static class PlanRules
     internal static string ReplaceWarning(int count) => $"Your unsaved plan here ({ItemCountText(count)}) will be replaced.";
 
     internal static string PlanTitle(string? file) =>
-        string.IsNullOrWhiteSpace(file) ? "Untitled Plan" : Path.GetFileNameWithoutExtension(file) is { Length: > 0 } name ? name : Path.GetFileName(file);
+        string.IsNullOrWhiteSpace(file) ? "New plan" : Path.GetFileNameWithoutExtension(file) is { Length: > 0 } name ? name : Path.GetFileName(file);
 
     internal static string UploadLabel(PlanStatus status) => status switch
     {

@@ -80,6 +80,7 @@ public sealed partial class PlanPage : UserControl
         _canvas = new PlanCanvas(Overlay, Map);
         _dialogs = new PlanDialogs(this);
         Map.PlanMode = true;
+        Map.ScaleInCorner = true;
         Map.MapTapped += (latitude, longitude, point) => Settled(() => OnMapTapped(latitude, longitude, point));
         Map.ViewChanged += (_, _) =>
         {

@@ -16,7 +16,7 @@ public sealed partial class PlanPage
 {
     private const double ChipSize = 36;
     private const double RowMarkerSize = 36;
-    private const double RailWidth = 52;
+    private const double RailWidth = 60;
 
     private static Brush Token(string key) => (Brush)Application.Current.Resources[key];
 
@@ -85,7 +85,7 @@ public sealed partial class PlanPage
                 if (PlanRules.LayerOf(_selected) != layer.Item1) _selected = null;
                 _editable = EditableFor(_selected);
                 Render();
-            }, chosen: _layer == layer.Item1, labelled: true));
+            }, chosen: _layer == layer.Item1));
         var tools = _layer switch
         {
             PlanLayer.Mission => MissionTools(),
@@ -110,12 +110,13 @@ public sealed partial class PlanPage
             enabled: PlaceAt() != null);
         var pattern = RailButton("", "Pattern", () => PickPattern(patterns), enabled: patterns.Count > 0);
         var takeoff = PlanRules.Offered(_kinds, "takeoff") && PlanRules.TakeoffMissing(_items)
-            ? RailButton("", "Takeoff", () => AddMissionItem("takeoff", "Adding a takeoff", PlaceAt(), PlanRules.BeforeTheRest, _panelOpen), enabled: Addable("takeoff"))
+            ? RailButton("", "Takeoff", () => AddMissionItem("takeoff", "Adding a takeoff", PlaceAt(), PlanRules.BeforeTheRest, _panelOpen), enabled: Addable("takeoff"))
             : null;
-        var land = RailButton("", PlanRules.KindLabel(_kinds, "land"), () => AddMissionItem("land", "Adding a landing", PlaceAt(), PlanRules.InsertAfter(_selected, _items), _panelOpen),
+        var landLabel = PlanRules.KindLabel(_kinds, "land");
+        var land = RailButton(landLabel == "Return" ? "" : "", landLabel, () => AddMissionItem("land", "Adding a landing", PlaceAt(), PlanRules.InsertAfter(_selected, _items), _panelOpen),
             enabled: ItemCount > 0);
         var drop = PlanRules.Offered(_kinds, "drop")
-            ? RailButton("", "Drop", () => AddMissionItem("drop", "Adding a drop", PlaceAt(), PlanRules.InsertAfter(_selected, _items), _panelOpen), enabled: ItemCount > 0 && Addable("drop"))
+            ? RailButton("", "Drop", () => AddMissionItem("drop", "Adding a drop", PlaceAt(), PlanRules.InsertAfter(_selected, _items), _panelOpen), enabled: ItemCount > 0 && Addable("drop"))
             : null;
         return new UIElement?[] { waypoint, pattern, takeoff, land, drop }.OfType<UIElement>();
     }
@@ -158,15 +159,15 @@ public sealed partial class PlanPage
         AddMissionItem(chosen.Id, $"Adding {chosen.Label.ToLowerInvariant()}", PlaceAt(), PlanRules.InsertAfter(_selected, _items), _panelOpen);
     }
 
-    private Button RailButton(string glyph, string label, Action click, bool enabled = true, bool chosen = false, bool labelled = false)
+    private Button RailButton(string glyph, string label, Action click, bool enabled = true, bool chosen = false)
     {
         var content = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         content.Children.Add(new FontIcon { Glyph = glyph, FontSize = 18 });
-        if (labelled) content.Children.Add(new TextBlock { Text = label, FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.Clip });
+        content.Children.Add(new TextBlock { Text = label, FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.Clip });
         var button = new Button
         {
             Width = RailWidth - 8,
-            Height = labelled ? RailWidth : RailWidth - 8,
+            Height = RailWidth - 8,
             Padding = new Thickness(0),
             Content = content,
             IsEnabled = enabled,
@@ -201,7 +202,7 @@ public sealed partial class PlanPage
                 ? PlanRules.TerrainConflictHere
                 : chosenItem.Complex && PlanRules.Detail(chosenItem) is { Length: > 0 } detail
                     ? detail
-                    : !_panelOpen ? $"Tap the map to add after #{chosenItem.Sequence}" : PlanRules.AltitudeWithFrame(chosenItem) ?? string.Empty;
+                    : !_panelOpen ? $"Click the map to add after #{chosenItem.Sequence}" : PlanRules.AltitudeWithFrame(chosenItem) ?? string.Empty;
             SelectionDetail.Foreground = Token(conflict ? "CriticalBrush" : "TextSecondaryBrush");
         }
         else if (_selected != null)
@@ -215,6 +216,7 @@ public sealed partial class PlanPage
         EmptyState.Visibility = Shown(_selected == null && missionLayer && ItemCount == 0);
         HomeHint.Visibility = Shown(!_status.HomeSet);
         EmptyDownloadButton.Visibility = Shown(!_status.Offline);
+        EmptyOpenButton.IsEnabled = _status.CanOpen;
         TemplatesButton.IsEnabled = _status.CanNewPlan;
         LayerTitle.Visibility = Shown(_selected == null && !missionLayer);
         LayerTitle.Text = _layer == PlanLayer.Fence ? "Fence" : "Rally";
@@ -481,7 +483,7 @@ public sealed partial class PlanPage
             CircleHit c => ($"c{c.Index}", $"{_fences.Circles.FirstOrDefault(circle => circle.Index == c.Index)}"),
             RallyHit r => ($"r{r.Index}", $"{_fences.Rally.FirstOrDefault(point => point.Index == r.Index)}"),
             BreachHit => ("b", $"{_fences.Breach}"),
-            null => ($"route{_layer}", _status.Defaults.ToJsonString()),
+            null => ($"route{_layer}", $"{_status.Defaults.ToJsonString()}|{_status.GlobalFrame}|{_status.ContainsItems}"),
             _ => (string.Empty, string.Empty),
         };
     }
@@ -659,6 +661,7 @@ public sealed partial class PlanPage
             panel.Children.Add(PlanFacts.Stepper("Altitude", MapUiJson.Number(altitude["value"]) ?? PlanRules.TypedNumber(MapUiJson.Text(altitude["valueString"])),
                 MapUiJson.Text(altitude["units"]), 1, "New waypoints use this",
                 wanted => RouteWrite(() => PlanCalls.Set(path, wanted))));
+        PlanFacts.AltitudeFrame(_status.GlobalFrame, raw => RouteWrite(() => PlanCalls.Set(PlanCalls.GlobalAltitudeMode, raw))).ToList().ForEach(panel.Children.Add);
         if (defaults["flightSpeed"] is JsonObject speed && MapUiJson.Flag(speed["available"]))
         {
             var specified = MapUiJson.Flag(speed["specified"]);
@@ -667,7 +670,7 @@ public sealed partial class PlanPage
             var auto = specified ? PlanFacts.Action("Auto", () => RouteWrite(() => PlanCalls.Set(specify, false))) : null;
             panel.Children.Add(PlanFacts.Stepper("Speed", MapUiJson.Number(speed["value"]), MapUiJson.Text(speed["units"]), 0.5,
                 specified ? null : "Vehicle default",
-                wanted => RouteWrite(() => PlanCalls.Set(specify, true) is { Ok: false } refused ? refused : PlanCalls.Set(speedPath, wanted)), auto));
+                wanted => RouteWrite(() => PlanCalls.Set(specify, true) is { Ok: false } refused ? refused : PlanCalls.Set(speedPath, wanted)), auto, suggested: !specified));
         }
         if (panel.Children.Count == 0) return null;
         panel.Children.Insert(0, PlanFacts.Heading("Route"));

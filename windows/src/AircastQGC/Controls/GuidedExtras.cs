@@ -82,7 +82,7 @@ internal sealed record MissionIdentity(string Title, string Facts, string? Warni
                     null);
 
     public static string PlanTitle(string file) =>
-        System.IO.Path.GetFileNameWithoutExtension(file.Trim()) is { Length: > 0 } name ? name : "Untitled Plan";
+        System.IO.Path.GetFileNameWithoutExtension(file.Trim()) is { Length: > 0 } name ? name : "New plan";
 
     private static string Row(JsonObject summary, string label) =>
         MapUiJson.Objects(summary["rows"]).FirstOrDefault(row => MapUiJson.Text(row["label"]) == label) is { } row

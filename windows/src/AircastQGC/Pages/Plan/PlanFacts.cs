@@ -202,13 +202,14 @@ internal static class PlanFacts
         return units.Length == 0 || kind == "text" ? box : Row(box, Note(units));
     }
 
-    internal static FrameworkElement Stepper(string label, double? value, string units, double step, string? note, Action<double> set, Button? trailing = null)
+    internal static FrameworkElement Stepper(string label, double? value, string units, double step, string? note, Action<double> set, Button? trailing = null, bool suggested = false)
     {
         var shown = value is double current ? current.ToString("0.##", CultureInfo.InvariantCulture) : string.Empty;
-        var box = Entry(shown, typed =>
+        var box = Entry(suggested ? string.Empty : shown, typed =>
         {
             if (PlanRules.TypedNumber(typed) is double wanted) set(wanted);
         }, 80);
+        box.PlaceholderText = suggested ? shown : string.Empty;
         var minus = new Button { Content = "−", MinWidth = 32, IsEnabled = value != null };
         var plus = new Button { Content = "+", MinWidth = 32, IsEnabled = value != null };
         minus.Click += (_, _) => set(Math.Max(0, (value ?? 0) - step));
@@ -221,4 +222,32 @@ internal static class PlanFacts
     }
 
     internal static IReadOnlyList<JsonObject> Fields(JsonObject view) => MapUiJson.Objects(view["fields"]);
+
+    internal static IEnumerable<UIElement> AltitudeFrame(int? frame, Action<int> pick)
+    {
+        if (frame is not int current) return [];
+        var offers = MapUiJson.Objects(PlanCalls.Read($"view.altitudeModes(mission,{current})")["modes"]).ToList();
+        var live = offers.Count(offer => MapUiJson.Flag(offer["enabled"])) > 1;
+        return offers.Count == 0 ? [] : [Pair(Text("Altitude frame"), Offers(offers, live, pick))];
+    }
+
+    internal static ComboBox Offers(IReadOnlyList<JsonObject> offers, bool live, Action<int> pick)
+    {
+        var box = new ComboBox { MinWidth = 180, IsEnabled = live };
+        offers.Select(offer => new ComboBoxItem
+        {
+            Content = MapUiJson.SentenceCase(MapUiJson.Text(offer["title"])),
+            IsEnabled = MapUiJson.Flag(offer["enabled"]) || MapUiJson.Flag(offer["current"]),
+            Tag = (int)(MapUiJson.Number(offer["raw"]) ?? -1),
+        }).ToList().ForEach(box.Items.Add);
+        var help = string.Join("\n", offers.Select(offer => MapUiJson.Text(offer["help"])).Where(text => text.Length > 0));
+        ToolTipService.SetToolTip(box, help.Length > 0 ? help : null);
+        var current = offers.ToList().FindIndex(offer => MapUiJson.Flag(offer["current"]));
+        box.SelectedIndex = current;
+        box.SelectionChanged += (_, _) =>
+        {
+            if (box.SelectedIndex != current && box.SelectedItem is ComboBoxItem { Tag: int raw }) pick(raw);
+        };
+        return box;
+    }
 }

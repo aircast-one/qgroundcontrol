@@ -28,7 +28,7 @@ public sealed partial class PlanPage
     private const string MissionItemsView = "view.missionItems";
     private const string BlankTemplate = "Blank mission";
     private const string DefaultName = "mission";
-    private const string Untitled = "Untitled Plan";
+    private const string Untitled = "New plan";
     private const string PlanExtension = ".plan";
     private const string KmlExtension = ".kml";
     private const string FlightSpeedUsed = "The mission flight speed is used instead";
