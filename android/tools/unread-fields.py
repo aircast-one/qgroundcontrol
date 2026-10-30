@@ -5,8 +5,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TREES = [ROOT / "android/app/src/main", ROOT / "android/map/src/main"]
 
-KNOWN = ("canPhoto", 1)
-KNOWN_CLASS = ("Instrument", ["label", "reading"])
+KNOWN = ("capturesPhotos", 1)
+KNOWN_CLASS = ("Instrument", ["label", "reading", "id", "value", "units", "raw", "defaultIcon"])
 
 ACCEPTED = {
     "InspectorMessage.compId": "MEASURED and already inside the title. inspector.rs folds it in as "

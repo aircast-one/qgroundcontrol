@@ -5,32 +5,58 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GROUPS = ROOT / "groundstation/src/settingsgroups.rs"
 PAGES = ROOT / "groundstation/src/settings.rs"
-HEAD = ROOT / "android/app/src/main/java/one/aircast/android/ui/SettingsScreen.kt"
+HEAD_TREE = ROOT / "android/app/src/main/java"
+HEAD = HEAD_TREE / "one/aircast/android/ui/SettingsScreen.kt"
+SHOWN_WITHOUT_SECTIONS = ("shows_links", "shows_about", "shows_console", "shows_px4_logs", "shows_video_sources")
 
 
 def core_groups():
-    return re.findall(r'Group \{ name: "([^"]+)"', GROUPS.read_text())
+    return re.findall(r'Group \{\s*name: "([^"]+)"', GROUPS.read_text())
+
+
+def core_constants(text):
+    return dict(re.findall(r'^(?:pub )?const (\w+): &str = "([^"]*)";', text, re.M))
 
 
 def core_pages():
     text = PAGES.read_text()
+    constants = core_constants(text)
     table = text[text.index("const PAGES:"):text.index("const HIDDEN:")]
-    return [
-        (title, re.findall(r'\("[^"]*", "(\w+)"\)', sections))
-        for title, sections in re.findall(r'Page \{ title: "([^"]+)", sections: &\[([^\]]*)\]', table)
-    ]
+    unlisted = re.search(r"const UNLISTED: &\[&str\] = &\[([^\]]*)\]", text).group(1)
+    hidden = {constants.get(name.strip(), name.strip().strip('"')) for name in unlisted.split(",") if name.strip()}
+    pages = []
+    for body in re.split(r"\n    Page \{", table)[1:]:
+        title = re.search(r'title: (?:"([^"]+)"|(\w+)),', body)
+        name = title.group(1) or constants[title.group(2)]
+        sections = re.search(r"sections: &\[(.*?)\],\n", body, re.S).group(1)
+        groups = re.findall(r'\("[^"]*",\s*"(\w+)"\)', sections)
+        shown = any(re.search(rf"{flag}: true", body) for flag in SHOWN_WITHOUT_SECTIONS)
+        pages.append((name, groups, shown, name in hidden))
+    return pages
 
 
-def head_set(name):
+def head_constants():
+    return dict(
+        found
+        for path in HEAD_TREE.rglob("*.kt")
+        for found in re.findall(r'^internal const val (\w+) = "([^"]*)"', path.read_text(), re.M)
+    )
+
+
+def head_block(name, opener):
     text = HEAD.read_text()
-    block = text[text.index(f"internal val {name} = mapOf("):]
-    return set(re.findall(r'^    "([^"]+)" to', block[:block.index("\n)")], re.M))
+    block = text[text.index(f"internal val {name} = {opener}("):]
+    return block[:block.index(")\n")] if opener == "setOf" else block[:block.index("\n)")]
 
 
-def head_notes():
-    text = HEAD.read_text()
-    block = text[text.index("internal val PAGE_NOTES = mapOf("):]
-    return set(re.findall(r'^    "([^"]+)" to', block[:block.index("\n)")], re.M))
+def head_keys(name, constants):
+    found = re.findall(r'^    (?:"([^"]+)"|(\w+)) to', head_block(name, "mapOf"), re.M)
+    return {literal or constants.get(constant, constant) for literal, constant in found}
+
+
+def head_members(name, constants):
+    members = head_block(name, "setOf").split("(", 1)[1]
+    return {constants.get(member.strip(), member.strip().strip('"')) for member in members.split(",") if member.strip()}
 
 
 def stem(name):
@@ -39,15 +65,14 @@ def stem(name):
     return name[:keep].lower() + name[keep:]
 
 
-# The head draws every page and every section view.settings serves, so what a group needs to be
-# reachable is a page that carries it. What it needs to be DELIBERATELY absent is an entry in one
-# of the head's two exclusion tables, each of which states its reason beside the name.
 def main():
-    skipped_pages, skipped_sections, notes = (
-        head_set("PAGES_WITHOUT_A_SCREEN"), head_set("SECTIONS_WITHOUT_A_SCREEN"), head_notes())
+    constants = head_constants()
+    skipped_pages = head_keys("PAGES_WITHOUT_A_SCREEN", constants)
+    looks = head_keys("PAGE_LOOKS", constants)
+    drawn_by_head = head_members("SECTIONS_DRAWN_BY_THE_HEAD", constants)
     pages = core_pages()
     carried = {}
-    for title, groups in pages:
+    for title, groups, _, _ in pages:
         for group in groups:
             carried.setdefault(group, []).append(title)
 
@@ -57,15 +82,16 @@ def main():
         where = carried.get(key) or carried.get(stem(name))
         if where is None:
             unexplained.append(f"{name} is served but no page in settings.rs carries it")
-        elif key in skipped_sections or all(title in skipped_pages for title in where):
+        elif all(title in skipped_pages for title in where):
             absent.append(name)
 
-    offered = [title for title, groups in pages
-               if title not in skipped_pages and any(g not in skipped_sections for g in groups)]
-    unexplained += [f"page {title} has no line in PAGE_NOTES" for title in offered if title not in notes]
+    offered = [title for title, groups, shown, unlisted in pages
+               if not unlisted and title not in skipped_pages and (groups or shown)]
+    unexplained += [f"page {title} has no entry in PAGE_LOOKS" for title in offered if title not in looks]
 
-    stale = [f"section {name}" for name in skipped_sections if name not in carried]
-    stale += [f"page {title}" for title in skipped_pages if title not in {t for t, _ in pages}]
+    stale = [f"section {name} in SECTIONS_DRAWN_BY_THE_HEAD" for name in drawn_by_head if name not in carried]
+    stale += [f"page {title} in PAGES_WITHOUT_A_SCREEN" for title in skipped_pages
+              if title not in {t for t, _, _, _ in pages}]
 
     for name in absent:
         print(f"  {name:24} left out with a reason")
