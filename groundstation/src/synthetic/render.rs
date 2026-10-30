@@ -85,7 +85,7 @@ const CLOUD_COVER = 0.38;
 const CLOUD_SCALE = 1.0 / 3500.0;
 const CLOUD_STEPS = 16;
 const CLOUD_GRAZING_STEPS = 28;
-const CLOUD_EXTINCTION = 0.006;
+const CLOUD_EXTINCTION = 0.014;
 const CLOUD_ALBEDO = 0.92;
 const CLOUD_DRIFT = vec2<f32>(5.0, 2.0);
 const CLOUD_LIGHT_STEP_M = 220.0;
@@ -149,25 +149,60 @@ fn hash(p: vec2<f32>) -> f32 {
     return fract((q.x + q.y) * q.z);
 }
 
-fn value_noise(p: vec2<f32>) -> f32 {
+fn gradient(cell: vec2<f32>) -> vec2<f32> {
+    let angle = hash(cell) * 6.2831853;
+    return vec2<f32>(cos(angle), sin(angle));
+}
+
+fn perlin(p: vec2<f32>) -> f32 {
+    let cell = floor(p);
+    let f = fract(p);
+    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    let a = dot(gradient(cell), f);
+    let b = dot(gradient(cell + vec2<f32>(1.0, 0.0)), f - vec2<f32>(1.0, 0.0));
+    let c = dot(gradient(cell + vec2<f32>(0.0, 1.0)), f - vec2<f32>(0.0, 1.0));
+    let d = dot(gradient(cell + vec2<f32>(1.0, 1.0)), f - vec2<f32>(1.0, 1.0));
+    return 0.5 + 0.7 * mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+fn worley(p: vec2<f32>) -> f32 {
+    let cell = floor(p);
+    let f = fract(p);
+    var nearest = 4.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let offset = vec2<f32>(f32(x), f32(y));
+            let point = offset + vec2<f32>(hash(cell + offset), hash(cell + offset + 71.3)) - f;
+            nearest = min(nearest, dot(point, point));
+        }
+    }
+    return 1.0 - sqrt(nearest);
+}
+
+fn worley_fbm(p: vec2<f32>) -> f32 {
+    return worley(p) * 0.625 + worley(p * 2.0 + 11.0) * 0.25 + worley(p * 4.0 + 23.0) * 0.125;
+}
+
+fn value3(p: vec3<f32>) -> f32 {
     let cell = floor(p);
     let f = fract(p);
     let u = f * f * (3.0 - 2.0 * f);
-    let low = mix(hash(cell), hash(cell + vec2<f32>(1.0, 0.0)), u.x);
-    let high = mix(hash(cell + vec2<f32>(0.0, 1.0)), hash(cell + vec2<f32>(1.0, 1.0)), u.x);
-    return mix(low, high, u.y);
+    let a = mix(hash(cell.xy + cell.z * 57.0), hash(cell.xy + vec2<f32>(1.0, 0.0) + cell.z * 57.0), u.x);
+    let b = mix(hash(cell.xy + vec2<f32>(0.0, 1.0) + cell.z * 57.0), hash(cell.xy + vec2<f32>(1.0, 1.0) + cell.z * 57.0), u.x);
+    let c = mix(hash(cell.xy + (cell.z + 1.0) * 57.0), hash(cell.xy + vec2<f32>(1.0, 0.0) + (cell.z + 1.0) * 57.0), u.x);
+    let d = mix(hash(cell.xy + vec2<f32>(0.0, 1.0) + (cell.z + 1.0) * 57.0), hash(cell.xy + vec2<f32>(1.0, 1.0) + (cell.z + 1.0) * 57.0), u.x);
+    return mix(mix(a, b, u.y), mix(c, d, u.y), u.z);
 }
 
-fn fbm(p: vec2<f32>, octaves: i32) -> f32 {
-    var total = 0.0;
-    var amplitude = 0.5;
-    var at = p;
-    for (var i = 0; i < octaves; i++) {
-        total += amplitude * value_noise(at);
-        at = at * 2.03 + 17.1;
-        amplitude *= 0.5;
-    }
-    return total;
+fn billow3(p: vec3<f32>) -> f32 {
+    let coarse = 1.0 - abs(2.0 * value3(p) - 1.0);
+    let medium = 1.0 - abs(2.0 * value3(p * 2.0 + 11.0) - 1.0);
+    let fine = 1.0 - abs(2.0 * value3(p * 4.0 + 23.0) - 1.0);
+    return coarse * 0.625 + medium * 0.25 + fine * 0.125;
+}
+
+fn remap(value: f32, low: f32, high: f32) -> f32 {
+    return clamp((value - low) / (high - low), 0.0, 1.0);
 }
 
 fn dither(pixel: vec2<f32>) -> f32 {
@@ -178,13 +213,22 @@ fn henyey_greenstein(cosine: f32, g: f32) -> f32 {
     return (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosine, 1.5));
 }
 
-fn cloud_density(horizontal: vec2<f32>, height: f32, octaves: i32, fineness: f32) -> f32 {
-    let shape = fbm(horizontal * CLOUD_SCALE + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE, octaves);
-    let rise = (height - CLOUD_BASE_M) / (CLOUD_TOP_M - CLOUD_BASE_M);
-    let profile = smoothstep(0.0, 0.12, rise) * (1.0 - smoothstep(0.55, 1.0, rise));
-    let detail = fbm(horizontal * CLOUD_SCALE * 6.0 + vec2<f32>(3.7, 1.3) + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE * 1.4, octaves);
-    let body = clamp((shape - (1.0 - CLOUD_COVER)) / CLOUD_COVER * 6.0 - rise * 0.8 - detail * 0.8 * fineness, 0.0, 1.0);
-    return body * profile;
+fn cloud_body(horizontal: vec2<f32>, rise: f32) -> f32 {
+    let p = horizontal * CLOUD_SCALE + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE;
+    let shape = perlin(p) * 0.625 + perlin(p * 2.0 + 13.0) * 0.25 + perlin(p * 4.0 + 29.0) * 0.125;
+    let puff = worley_fbm(p * 1.5 + 5.0);
+    let base = remap(shape, puff - 1.0, 1.0);
+    let profile = smoothstep(0.0, 0.08, rise) * (1.0 - smoothstep(0.55, 1.0, rise));
+    return remap(base * profile, 1.0 - CLOUD_COVER, 1.4 - CLOUD_COVER);
+}
+
+fn cloud_density(horizontal: vec2<f32>, height: f32, fineness: f32) -> f32 {
+    let rise = clamp((height - CLOUD_BASE_M) / (CLOUD_TOP_M - CLOUD_BASE_M), 0.0, 1.0);
+    let body = cloud_body(horizontal, rise);
+    if (body <= 0.0) { return body; }
+    let p = horizontal * CLOUD_SCALE * 9.0 + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE * 1.4 + vec2<f32>(3.7, 1.3);
+    let erosion = billow3(vec3<f32>(p, rise * 2.5)) * mix(0.35, 0.75, rise) * mix(0.6, 1.0, fineness);
+    return remap(body, erosion, 1.0);
 }
 
 fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
@@ -198,25 +242,31 @@ fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
     let north = cross(scene.zenith.xyz, east);
     let sun_up = dot(scene.sun.xyz, scene.zenith.xyz);
     let sunlight = SUN * exp(-sun_depth(CLOUD_BASE_M));
-    let ambient = sky_air(scene.zenith.xyz, 2).light * 0.8;
+    let overhead = sky_air(scene.zenith.xyz, 2).light;
+    let level = direction - scene.zenith.xyz * up;
+    let sideways = sky_air(normalize(level + scene.zenith.xyz * 0.05), 2).light;
     let cosine = dot(direction, scene.sun.xyz);
-    let phase = 4.0 * PI * (0.6 * henyey_greenstein(cosine, 0.4) + 0.4 * henyey_greenstein(cosine, -0.15));
+    let phase = 4.0 * PI * (0.5 * henyey_greenstein(cosine, 0.4) + 0.3 * henyey_greenstein(cosine, -0.15) + 0.2 * henyey_greenstein(cosine, 0.9));
+    let facing = clamp(0.5 - 0.5 * cosine, 0.0, 1.0);
     var through = 1.0;
     var light = vec3<f32>(0.0);
     for (var i = 0; i < steps; i++) {
-        let t = start + (f32(i) + 0.25 + 0.5 * jitter) * step;
+        let t = start + (f32(i) + jitter) * step;
         let fineness = 1.0 - smoothstep(6000.0, 15000.0, t);
         let p = direction * t;
-        let density = cloud_density(vec2<f32>(dot(scene.eye.xyz + p, east), dot(scene.eye.xyz + p, north)), up * t, 4, fineness);
+        let density = cloud_density(vec2<f32>(dot(scene.eye.xyz + p, east), dot(scene.eye.xyz + p, north)), up * t, fineness);
         if (density <= 0.0) { continue; }
+        let rise = clamp((up * t - CLOUD_BASE_M) / (CLOUD_TOP_M - CLOUD_BASE_M), 0.0, 1.0);
         var toward = 0.0;
         for (var j = 0; j < 2; j++) {
             let q = p + scene.sun.xyz * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M;
-            toward += cloud_density(vec2<f32>(dot(scene.eye.xyz + q, east), dot(scene.eye.xyz + q, north)), up * t + sun_up * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M, 3, fineness) * CLOUD_LIGHT_STEP_M;
+            toward += cloud_density(vec2<f32>(dot(scene.eye.xyz + q, east), dot(scene.eye.xyz + q, north)), up * t + sun_up * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M, 0.0) * CLOUD_LIGHT_STEP_M;
         }
         let beer = exp(-toward * CLOUD_EXTINCTION);
         let powder = 1.0 - exp(-toward * CLOUD_EXTINCTION * 2.0);
-        let lit = sunlight * CLOUD_ALBEDO / PI * 0.6 * phase * beer * mix(0.5, 1.0, powder) + ambient * CLOUD_ALBEDO;
+        let energy = beer * mix(1.0, powder, facing);
+        let ambient = mix(sideways * 0.45, overhead, rise);
+        let lit = sunlight * CLOUD_ALBEDO / PI * 0.8 * phase * energy + ambient * CLOUD_ALBEDO;
         let transmit = exp(-density * CLOUD_EXTINCTION * step);
         light += through * (1.0 - transmit) * lit;
         through *= transmit;
