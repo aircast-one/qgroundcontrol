@@ -22,7 +22,7 @@ const INDEX_BYTES: u64 = 4;
 const ARENA_VERTICES: u32 = 1 << 19;
 const ARENA_INDICES: u32 = 1 << 21;
 const DRAW_BYTES: u64 = 128;
-const SCENE_BYTES: u64 = 160;
+const SCENE_BYTES: u64 = 400;
 const SAMPLES: u32 = 4;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
@@ -34,11 +34,21 @@ const BLOOM_MIPS: usize = 5;
 const SSAO: bool = true;
 const SURFACE: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const OCCLUSION: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
+const SHADOWS: bool = true;
+const SHADOW_SIZE: u32 = 2048;
+const CASCADES: usize = 3;
+const CASCADE_FAR_M: [f64; CASCADES] = [300.0, 2000.0, 10000.0];
+const CASTER_REACH_M: f64 = 10000.0;
+const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
+    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3];
+const DRAW_ATTRIBUTES: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, 10 => Float32x4];
 const SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var picture: texture_2d<f32>;
 @group(1) @binding(1) var tile_sampler: sampler;
+@group(2) @binding(0) var shadow: texture_depth_2d_array;
+@group(2) @binding(1) var shadow_sampler: sampler_comparison;
 struct In { @location(0) position: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) normal: vec3<f32> };
 struct Placed {
     @location(3) mvp0: vec4<f32>, @location(4) mvp1: vec4<f32>, @location(5) mvp2: vec4<f32>, @location(6) mvp3: vec4<f32>,
@@ -59,6 +69,7 @@ const SUN = vec3<f32>(20.0, 19.4, 18.4);
 const GROUND_ALBEDO = vec3<f32>(0.24, 0.21, 0.17);
 const AMBIENT_SKY = vec3<f32>(0.2, 0.36, 0.72);
 const MULTIPLE_SCATTERING = 6.0;
+const BAKED_SHADE = 0.6;
 const PI = 3.14159265;
 
 struct Air { light: vec3<f32>, through: vec3<f32> };
@@ -115,15 +126,42 @@ fn facing(normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
     return select(normalize(normal), -normalize(normal), dot(normal, seen) > 0.0);
 }
 
-fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
+fn shadowed(cascade: i32, position: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let detail = scene.cascades[cascade];
+    let lifted = position + normal * detail.y * 1.5;
+    let seen = scene.light[cascade] * vec4<f32>(lifted, 1.0);
+    let uv = seen.xy * vec2<f32>(0.5, -0.5) + 0.5;
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || seen.z > 1.0) { return 1.0; }
+    let texel = 1.0 / vec2<f32>(textureDimensions(shadow));
+    var reached = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            reached += textureSampleCompareLevel(shadow, shadow_sampler, uv + vec2<f32>(f32(x), f32(y)) * texel, cascade, seen.z - detail.z);
+        }
+    }
+    return reached / 9.0;
+}
+
+fn sunlight_reaching(position: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let distance = length(position);
+    if (distance >= scene.cascades[2].x) { return 1.0; }
+    let cascade = select(select(0, 1, distance >= scene.cascades[0].x), 2, distance >= scene.cascades[1].x);
+    let near = shadowed(cascade, position, normal);
+    let edge = scene.cascades[cascade].x;
+    let fade = smoothstep(edge * 0.85, edge, distance);
+    if (fade <= 0.0 || cascade == 2) { return near; }
+    return mix(near, shadowed(cascade + 1, position, normal), fade);
+}
+
+fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> vec3<f32> {
     let sunlight = SUN * exp(-sun_depth(0.0)) / PI;
-    if (dot(normal, normal) < 0.25) { return colour * (sunlight * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0) + sky_air(scene.zenith.xyz, 2).light); }
+    if (dot(normal, normal) < 0.25) { return colour * (sunlight * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0) + sky_air(scene.zenith.xyz, 2).light) * mix(BAKED_SHADE, 1.0, lit); }
     let outward = facing(normal, seen);
     let up = dot(outward, scene.zenith.xyz);
     let sideways = normalize(seen - scene.zenith.xyz * dot(seen, scene.zenith.xyz));
     let skylight = mix(sky_air(sideways, 2).light, sky_air(scene.zenith.xyz, 2).light, 0.5 + 0.5 * up);
     let bounce = GROUND_ALBEDO * sunlight * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0) * (0.5 - 0.5 * up);
-    return colour * (sunlight * max(dot(outward, scene.sun.xyz), 0.0) + skylight + bounce);
+    return colour * (sunlight * max(dot(outward, scene.sun.xyz), 0.0) * lit + skylight + bounce);
 }
 
 @vertex fn vs(v: In, placed: Placed) -> Out {
@@ -137,7 +175,8 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
     let distance = max(length(f.seen), 1.0);
     let air = scatter(f.seen / distance, distance, 4);
     let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
-    return Frag(vec4<f32>(sunlit(colour.rgb, f.normal, f.seen) * air.through + air.light, colour.a), vec4<f32>(normal, distance));
+    let lit = sunlight_reaching(f.seen, normal);
+    return Frag(vec4<f32>(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, colour.a), vec4<f32>(normal, distance));
 }
 
 @fragment fn fs_plain(f: Out) -> @location(0) vec4<f32> {
@@ -153,6 +192,22 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
     let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
     return Frag(vec4<f32>(sky(normalize(through.xyz / through.w)), 1.0), vec4<f32>(0.0));
 }
+";
+const SHADOW_SHADER: &str = r"
+struct Cascade { light: mat4x4<f32> };
+@group(0) @binding(0) var<uniform> cascade: Cascade;
+struct In { @location(0) position: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) normal: vec3<f32> };
+struct Placed {
+    @location(3) mvp0: vec4<f32>, @location(4) mvp1: vec4<f32>, @location(5) mvp2: vec4<f32>, @location(6) mvp3: vec4<f32>,
+    @location(7) model0: vec4<f32>, @location(8) model1: vec4<f32>, @location(9) model2: vec4<f32>, @location(10) model3: vec4<f32>,
+};
+
+@vertex fn vs(v: In, placed: Placed) -> @builtin(position) vec4<f32> {
+    let model = mat4x4<f32>(placed.model0, placed.model1, placed.model2, placed.model3);
+    return cascade.light * model * vec4<f32>(v.position, 1.0);
+}
+
+@fragment fn fs() {}
 ";
 const POST_SHADER: &str = r"
 struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
@@ -525,6 +580,8 @@ fn draw_slots(needed: usize) -> usize {
 }
 
 pub struct Targets {
+    shadow_layers: Vec<wgpu::TextureView>,
+    shadow_bind: wgpu::BindGroup,
     samples: wgpu::TextureView,
     depth: wgpu::TextureView,
     resolved: wgpu::TextureView,
@@ -545,6 +602,7 @@ pub struct Renderer {
     queue: wgpu::Queue,
     pipelines: [wgpu::RenderPipeline; 3],
     backfill: wgpu::RenderPipeline,
+    shadow: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     prefilter: wgpu::RenderPipeline,
@@ -554,6 +612,9 @@ pub struct Renderer {
     blur: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     screen_layout: wgpu::BindGroupLayout,
+    shadow_layout: wgpu::BindGroupLayout,
+    shadow_sampler: wgpu::Sampler,
+    cascades: Vec<(wgpu::Buffer, wgpu::BindGroup)>,
     draws: Option<Draws>,
     scene: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
@@ -590,6 +651,143 @@ fn depth_state(write: bool, compare: wgpu::CompareFunction) -> wgpu::DepthStenci
         stencil: Default::default(),
         bias: Default::default(),
     }
+}
+
+fn vertex_buffers() -> [Option<wgpu::VertexBufferLayout<'static>>; 2] {
+    [
+        Some(wgpu::VertexBufferLayout {
+            array_stride: VERTEX_BYTES,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &VERTEX_ATTRIBUTES,
+        }),
+        Some(wgpu::VertexBufferLayout {
+            array_stride: DRAW_BYTES,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &DRAW_ATTRIBUTES,
+        }),
+    ]
+}
+
+struct Cascade {
+    light: glam::DMat4,
+    view: glam::DMat4,
+    low: glam::DVec2,
+    high: glam::DVec2,
+    close: f64,
+    deep: f64,
+    split: f64,
+    texel: f64,
+    bias: f64,
+}
+
+fn cascade(camera: &Camera, near: f64, far: f64) -> Cascade {
+    let tan_h = (camera.fovy / 2.0).tan();
+    let tan_w = tan_h * camera.aspect;
+    let along = (0.5 * (near + far) * (1.0 + tan_h * tan_h + tan_w * tan_w)).min(far);
+    let corner =
+        |depth: f64| glam::DVec3::new(depth * tan_w, depth * tan_h, depth - along).length();
+    let radius = corner(near).max(corner(far));
+    let side = if camera.sun.dot(camera.zenith).abs() > 0.99 {
+        camera.forward
+    } else {
+        camera.zenith
+    };
+    let view = glam::dcamera::rh::view::look_to_mat4(glam::DVec3::ZERO, -camera.sun, side);
+    let texel = 2.0 * radius / f64::from(SHADOW_SIZE);
+    let at = view.transform_point3(camera.forward * along);
+    let snapped = (at.truncate() / texel).round() * texel;
+    let (low, high) = (snapped - radius, snapped + radius);
+    let (close, deep) = (-at.z - radius - CASTER_REACH_M, -at.z + radius);
+    let light =
+        glam::dcamera::rh::proj::directx::orthographic(low.x, high.x, low.y, high.y, close, deep)
+            * view;
+    Cascade {
+        light,
+        view,
+        low,
+        high,
+        close,
+        deep,
+        split: far,
+        texel,
+        bias: (0.5 * texel).max(0.5) / (deep - close),
+    }
+}
+
+fn cascades(camera: &Camera) -> Vec<Cascade> {
+    CASCADE_FAR_M
+        .iter()
+        .scan(0.0, |near, far| {
+            let fitted = cascade(camera, *near, *far);
+            *near = *far;
+            Some(fitted)
+        })
+        .collect()
+}
+
+fn casts(cascade: &Cascade, model: glam::DMat4, mesh: &Mesh) -> bool {
+    let to_light = cascade.view * model;
+    let (low, high) = (0..8)
+        .map(|corner| {
+            let pick = |axis: usize| {
+                f64::from(if corner >> axis & 1 == 0 {
+                    mesh.low[axis]
+                } else {
+                    mesh.high[axis]
+                })
+            };
+            to_light.transform_point3(glam::DVec3::new(pick(0), pick(1), pick(2)))
+        })
+        .fold((glam::DVec3::MAX, glam::DVec3::MIN), |(low, high), p| {
+            (low.min(p), high.max(p))
+        });
+    low.x <= cascade.high.x
+        && high.x >= cascade.low.x
+        && low.y <= cascade.high.y
+        && high.y >= cascade.low.y
+        && -high.z <= cascade.deep
+        && -low.z >= cascade.close
+}
+
+fn shadow_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("synthetic shadow"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs"),
+            compilation_options: Default::default(),
+            buffers: &vertex_buffers(),
+        },
+        primitive: wgpu::PrimitiveState {
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: Default::default(),
+            bias: wgpu::DepthBiasState {
+                constant: 2,
+                slope_scale: 2.0,
+                clamp: 0.0,
+            },
+        }),
+        multisample: multisample(1),
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs"),
+            compilation_options: Default::default(),
+            targets: &[],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 fn multisample(count: u32) -> wgpu::MultisampleState {
@@ -645,23 +843,23 @@ fn pipeline(
             module: shader,
             entry_point: Some("vs"),
             compilation_options: Default::default(),
-            buffers: &[
-                Some(wgpu::VertexBufferLayout { array_stride: VERTEX_BYTES, step_mode: wgpu::VertexStepMode::Vertex, attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3] }),
-                Some(wgpu::VertexBufferLayout {
-                    array_stride: DRAW_BYTES,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &wgpu::vertex_attr_array![3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, 10 => Float32x4],
-                }),
-            ],
+            buffers: &vertex_buffers(),
         },
-        primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+        primitive: wgpu::PrimitiveState {
+            cull_mode: None,
+            ..Default::default()
+        },
         depth_stencil: (layer != Layer::OnTop).then(|| depth_state(depth_write, compare)),
         multisample: multisample(if layer == Layer::OnTop { 1 } else { SAMPLES }),
         fragment: Some(wgpu::FragmentState {
             module: shader,
             entry_point: Some(fragment),
             compilation_options: Default::default(),
-            targets: if layer == Layer::OnTop { &targets[..1] } else { &targets },
+            targets: if layer == Layer::OnTop {
+                &targets[..1]
+            } else {
+                &targets
+            },
         }),
         multiview_mask: None,
         cache: None,
@@ -813,11 +1011,71 @@ impl Renderer {
                 },
             ],
         });
+        let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("synthetic shadow"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
+            ],
+        });
+        let cascade_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("synthetic cascade"),
+            entries: &[uniform(0, wgpu::ShaderStages::VERTEX)],
+        });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("synthetic"),
+            bind_group_layouts: &[Some(&scene_layout), Some(&layout), Some(&shadow_layout)],
+            immediate_size: 0,
+        });
+        let plain_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("synthetic plain"),
             bind_group_layouts: &[Some(&scene_layout), Some(&layout)],
             immediate_size: 0,
         });
+        let shadow_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("synthetic shadow"),
+                bind_group_layouts: &[Some(&cascade_layout), Some(&layout)],
+                immediate_size: 0,
+            });
+        let shadow_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("synthetic shadow"),
+            source: wgpu::ShaderSource::Wgsl(SHADOW_SHADER.into()),
+        });
+        let shadow = shadow_pipeline(&device, &shadow_pipeline_layout, &shadow_shader);
+        let cascades = (0..CASCADES)
+            .map(|_| {
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("synthetic cascade"),
+                    size: 64,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("synthetic cascade"),
+                    layout: &cascade_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: buffer.as_entire_binding(),
+                    }],
+                });
+                (buffer, bind)
+            })
+            .collect();
         let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("synthetic sky"),
             bind_group_layouts: &[Some(&scene_layout)],
@@ -847,8 +1105,12 @@ impl Renderer {
             immediate_size: 0,
         });
         let pipelines = LAYERS.map(|layer| {
-            let color = if layer == Layer::OnTop { format } else { HDR };
-            pipeline(&device, &pipeline_layout, &shader, color, layer)
+            let (color, layout) = if layer == Layer::OnTop {
+                (format, &plain_layout)
+            } else {
+                (HDR, &pipeline_layout)
+            };
+            pipeline(&device, layout, &shader, color, layer)
         });
         let backfill = pipeline(&device, &pipeline_layout, &shader, HDR, Layer::Backfill);
         let sky = sky_pipeline(&device, &sky_layout, &shader, HDR);
@@ -891,11 +1153,20 @@ impl Renderer {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             ..Default::default()
         });
+        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            compare: Some(wgpu::CompareFunction::LessEqual),
+            ..Default::default()
+        });
         Self {
             device,
             queue,
             pipelines,
             backfill,
+            shadow,
             sky,
             post,
             prefilter,
@@ -905,6 +1176,9 @@ impl Renderer {
             blur,
             layout,
             screen_layout,
+            shadow_layout,
+            shadow_sampler,
+            cascades,
             draws: None,
             scene,
             scene_bind,
@@ -1252,18 +1526,22 @@ impl Renderer {
         let Some(draws) = self.draws.as_ref() else {
             return;
         };
-        let matrices: Vec<f32> = behind
+        let models: Vec<glam::DMat4> = behind
             .iter()
             .chain(&drawable)
-            .flat_map(|(mesh, _)| {
-                let model = camera.relative(mesh.to_ecef);
-                (view_projection * model)
+            .map(|(mesh, _)| camera.relative(mesh.to_ecef))
+            .collect();
+        let matrices: Vec<f32> = models
+            .iter()
+            .flat_map(|model| {
+                (view_projection * *model)
                     .as_mat4()
                     .to_cols_array()
                     .into_iter()
                     .chain(model.as_mat4().to_cols_array())
             })
             .collect();
+        let cascades = cascades(camera);
         if !matrices.is_empty() {
             self.queue
                 .write_buffer(&draws.buffer, 0, bytemuck::cast_slice(&matrices));
@@ -1281,10 +1559,65 @@ impl Renderer {
                     .into_iter()
                     .chain(view_projection.as_mat4().to_cols_array())
                     .chain(direction(camera.zenith))
-                    .chain(direction(camera.sun)),
+                    .chain(direction(camera.sun))
+                    .chain(
+                        cascades
+                            .iter()
+                            .flat_map(|cascade| cascade.light.as_mat4().to_cols_array()),
+                    )
+                    .chain(cascades.iter().flat_map(|cascade| {
+                        [
+                            if SHADOWS { cascade.split as f32 } else { 0.0 },
+                            cascade.texel as f32,
+                            cascade.bias as f32,
+                            0.0,
+                        ]
+                    })),
             ),
         );
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        cascades
+            .iter()
+            .zip(&targets.shadow_layers)
+            .zip(&self.cascades)
+            .filter(|_| SHADOWS)
+            .for_each(|((cascade, layer), (buffer, bind))| {
+                self.queue
+                    .write_buffer(buffer, 0, &bytes(cascade.light.as_mat4().to_cols_array()));
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("synthetic shadow"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: layer,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    ..Default::default()
+                });
+                pass.set_pipeline(&self.shadow);
+                pass.set_bind_group(0, bind, &[]);
+                pass.set_vertex_buffer(1, draws.buffer.slice(..));
+                let bound = Cell::new(None);
+                drawable
+                    .iter()
+                    .zip(&models[behind.len()..])
+                    .enumerate()
+                    .filter(|(_, ((mesh, _), model))| {
+                        mesh.layer == Layer::Opaque && casts(cascade, **model, mesh)
+                    })
+                    .for_each(|(slot, ((_, gpu), _))| {
+                        record(
+                            &mut pass,
+                            &self.arenas,
+                            &bound,
+                            gpu,
+                            placed(behind.len() + slot),
+                        )
+                    });
+            });
         let layer_draws =
             |pass: &mut wgpu::RenderPass, bound: &Cell<Option<usize>>, layer: Layer| {
                 drawable
@@ -1298,6 +1631,7 @@ impl Renderer {
         {
             let mut pass = Self::pass(&mut encoder, targets);
             pass.set_bind_group(0, &self.scene_bind, &[]);
+            pass.set_bind_group(2, &targets.shadow_bind, &[]);
             pass.set_pipeline(&self.sky);
             pass.draw(0..3, 0..1);
             pass.set_vertex_buffer(1, draws.buffer.slice(..));
@@ -1431,7 +1765,52 @@ impl Renderer {
         let post_bind = bind(&resolved, &mips[0], &blurred);
         let ssao_bind = bind(&surface, &surface, &surface);
         let blur_bind = bind(&occlusion, &surface, &surface);
+        let shadow = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("synthetic shadow"),
+            size: wgpu::Extent3d {
+                width: SHADOW_SIZE,
+                height: SHADOW_SIZE,
+                depth_or_array_layers: CASCADES as u32,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH,
+            usage: readable,
+            view_formats: &[],
+        });
+        let shadow_layers = (0..CASCADES as u32)
+            .map(|layer| {
+                shadow.create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: layer,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        let shadow_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("synthetic shadow"),
+            layout: &self.shadow_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&shadow.create_view(
+                        &wgpu::TextureViewDescriptor {
+                            dimension: Some(wgpu::TextureViewDimension::D2Array),
+                            ..Default::default()
+                        },
+                    )),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
+                },
+            ],
+        });
         Targets {
+            shadow_layers,
+            shadow_bind,
             samples: texture("synthetic samples", HDR, SAMPLES, transient),
             depth: texture("synthetic depth", DEPTH, SAMPLES, transient),
             resolved,
