@@ -4,6 +4,7 @@ use std::ops::Range;
 use std::sync::{Arc, Weak};
 
 use range_alloc::RangeAllocator;
+use web_time::Instant;
 
 use super::geo::Camera;
 use super::mesh::{Layer, Mesh, solid};
@@ -22,7 +23,7 @@ const INDEX_BYTES: u64 = 4;
 const ARENA_VERTICES: u32 = 1 << 19;
 const ARENA_INDICES: u32 = 1 << 21;
 const DRAW_BYTES: u64 = 128;
-const SCENE_BYTES: u64 = 400;
+const SCENE_BYTES: u64 = 416;
 const SAMPLES: u32 = 4;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
@@ -43,7 +44,7 @@ const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
     wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3];
 const DRAW_ATTRIBUTES: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, 10 => Float32x4];
 const SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var picture: texture_2d<f32>;
 @group(1) @binding(1) var tile_sampler: sampler;
@@ -71,6 +72,17 @@ const AMBIENT_SKY = vec3<f32>(0.2, 0.36, 0.72);
 const MULTIPLE_SCATTERING = 6.0;
 const BAKED_SHADE = 0.6;
 const PI = 3.14159265;
+const CLOUDS = true;
+const CLOUD_BASE_M = 1500.0;
+const CLOUD_TOP_M = 2400.0;
+const CLOUD_COVER = 0.38;
+const CLOUD_SCALE = 1.0 / 3500.0;
+const CLOUD_STEPS = 16;
+const CLOUD_GRAZING_STEPS = 28;
+const CLOUD_EXTINCTION = 0.006;
+const CLOUD_ALBEDO = 0.92;
+const CLOUD_DRIFT = vec2<f32>(5.0, 2.0);
+const CLOUD_LIGHT_STEP_M = 220.0;
 
 struct Air { light: vec3<f32>, through: vec3<f32> };
 
@@ -120,6 +132,95 @@ fn sky(direction: vec3<f32>) -> vec3<f32> {
     let air = sky_air(direction, 8);
     let disc = smoothstep(0.99990, 0.99997, dot(direction, scene.sun.xyz));
     return air.light + air.through * SUN * disc;
+}
+
+fn hash(p: vec2<f32>) -> f32 {
+    var q = fract(vec3<f32>(p.xyx) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    return fract((q.x + q.y) * q.z);
+}
+
+fn value_noise(p: vec2<f32>) -> f32 {
+    let cell = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let low = mix(hash(cell), hash(cell + vec2<f32>(1.0, 0.0)), u.x);
+    let high = mix(hash(cell + vec2<f32>(0.0, 1.0)), hash(cell + vec2<f32>(1.0, 1.0)), u.x);
+    return mix(low, high, u.y);
+}
+
+fn fbm(p: vec2<f32>, octaves: i32) -> f32 {
+    var total = 0.0;
+    var amplitude = 0.5;
+    var at = p;
+    for (var i = 0; i < octaves; i++) {
+        total += amplitude * value_noise(at);
+        at = at * 2.03 + 17.1;
+        amplitude *= 0.5;
+    }
+    return total;
+}
+
+fn dither(pixel: vec2<f32>) -> f32 {
+    return fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
+}
+
+fn henyey_greenstein(cosine: f32, g: f32) -> f32 {
+    return (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosine, 1.5));
+}
+
+fn cloud_density(horizontal: vec2<f32>, height: f32, octaves: i32) -> f32 {
+    let shape = fbm(horizontal * CLOUD_SCALE + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE, octaves);
+    let rise = (height - CLOUD_BASE_M) / (CLOUD_TOP_M - CLOUD_BASE_M);
+    let profile = smoothstep(0.0, 0.12, rise) * (1.0 - smoothstep(0.55, 1.0, rise));
+    let detail = fbm(horizontal * CLOUD_SCALE * 6.0 + vec2<f32>(3.7, 1.3) + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE * 1.4, octaves);
+    let body = clamp((shape - (1.0 - CLOUD_COVER)) / CLOUD_COVER * 6.0 - rise * 0.8 - detail * 0.8, 0.0, 1.0);
+    return body * profile;
+}
+
+fn clouds(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
+    let up = dot(direction, scene.zenith.xyz);
+    if (!CLOUDS || up < 0.02) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    let fade = smoothstep(0.02, 0.15, up);
+    let start = CLOUD_BASE_M / up;
+    let steps = select(CLOUD_STEPS, CLOUD_GRAZING_STEPS, up < 0.3);
+    let step = min(CLOUD_TOP_M / up - start, 18000.0) / f32(steps);
+    let east = normalize(cross(scene.zenith.xyz, vec3<f32>(0.0, 0.0, 1.0)));
+    let north = cross(scene.zenith.xyz, east);
+    let sun_up = dot(scene.sun.xyz, scene.zenith.xyz);
+    let sunlight = SUN * exp(-sun_depth(CLOUD_BASE_M));
+    let ambient = sky_air(scene.zenith.xyz, 2).light * 0.8;
+    let cosine = dot(direction, scene.sun.xyz);
+    let phase = 4.0 * PI * (0.6 * henyey_greenstein(cosine, 0.4) + 0.4 * henyey_greenstein(cosine, -0.15));
+    var through = 1.0;
+    var light = vec3<f32>(0.0);
+    for (var i = 0; i < steps; i++) {
+        let t = start + (f32(i) + jitter) * step;
+        let p = direction * t;
+        let density = cloud_density(vec2<f32>(dot(scene.eye.xyz + p, east), dot(scene.eye.xyz + p, north)), up * t, 4);
+        if (density <= 0.0) { continue; }
+        var toward = 0.0;
+        for (var j = 0; j < 2; j++) {
+            let q = p + scene.sun.xyz * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M;
+            toward += cloud_density(vec2<f32>(dot(scene.eye.xyz + q, east), dot(scene.eye.xyz + q, north)), up * t + sun_up * (f32(j) + 0.5) * CLOUD_LIGHT_STEP_M, 3) * CLOUD_LIGHT_STEP_M;
+        }
+        let beer = exp(-toward * CLOUD_EXTINCTION);
+        let powder = 1.0 - exp(-toward * CLOUD_EXTINCTION * 2.0);
+        let lit = sunlight * CLOUD_ALBEDO / PI * 0.6 * phase * beer * mix(0.5, 1.0, powder) + ambient * CLOUD_ALBEDO;
+        let transmit = exp(-density * CLOUD_EXTINCTION * step);
+        light += through * (1.0 - transmit) * lit;
+        through *= transmit;
+        if (through < 0.01) { break; }
+    }
+    return vec4<f32>(light * fade, mix(1.0, through, fade));
+}
+
+fn clouded_sky(direction: vec3<f32>, jitter: f32) -> vec3<f32> {
+    let cover = clouds(direction, jitter);
+    let clear = sky(direction);
+    if (cover.a >= 1.0) { return clear; }
+    let near = scatter(direction, CLOUD_BASE_M / max(dot(direction, scene.zenith.xyz), 0.015), 4);
+    return clear * cover.a + cover.rgb * near.through + near.light * (1.0 - cover.a);
 }
 
 fn facing(normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
@@ -190,7 +291,7 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
 
 @fragment fn fs_sky(f: SkyOut) -> Frag {
     let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
-    return Frag(vec4<f32>(sky(normalize(through.xyz / through.w)), 1.0), vec4<f32>(0.0));
+    return Frag(vec4<f32>(clouded_sky(normalize(through.xyz / through.w), dither(f.position.xy)), 1.0), vec4<f32>(0.0));
 }
 ";
 const SHADOW_SHADER: &str = r"
@@ -624,6 +725,7 @@ pub struct Renderer {
     arenas: Vec<Option<Arena<ArenaBuffers>>>,
     pub uploads: usize,
     to_upload: Vec<Weak<Mesh>>,
+    started: Instant,
 }
 
 fn uniform(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
@@ -1188,6 +1290,7 @@ impl Renderer {
             arenas: Vec::new(),
             uploads: 0,
             to_upload: Vec::new(),
+            started: Instant::now(),
         }
     }
 
@@ -1548,6 +1651,7 @@ impl Renderer {
         }
         let placed = |slot: usize| u32::try_from(slot).map_or(0..0, |slot| slot..slot + 1);
         let direction = |v: glam::DVec3| v.as_vec3().extend(0.0).to_array();
+        let elapsed = self.started.elapsed().as_secs_f32() % 86400.0;
         self.queue.write_buffer(
             &self.scene,
             0,
@@ -1558,7 +1662,7 @@ impl Renderer {
                     .to_cols_array()
                     .into_iter()
                     .chain(view_projection.as_mat4().to_cols_array())
-                    .chain(direction(camera.zenith))
+                    .chain(camera.zenith.as_vec3().extend(elapsed).to_array())
                     .chain(direction(camera.sun))
                     .chain(
                         cascades
@@ -1572,7 +1676,8 @@ impl Renderer {
                             cascade.bias as f32,
                             0.0,
                         ]
-                    })),
+                    }))
+                    .chain(direction(camera.eye)),
             ),
         );
         let mut encoder = self.device.create_command_encoder(&Default::default());
