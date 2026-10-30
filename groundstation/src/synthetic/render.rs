@@ -27,7 +27,13 @@ const SCENE_BYTES: u64 = 496;
 const SAMPLES: u32 = 4;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
-const LAYERS: [Layer; 3] = [Layer::Opaque, Layer::Translucent, Layer::OnTop];
+const LAYERS: [Layer; 5] = [
+    Layer::Opaque,
+    Layer::Cutout,
+    Layer::Water,
+    Layer::Translucent,
+    Layer::OnTop,
+];
 
 const ANISOTROPY: u16 = 16;
 const BLOOM: bool = true;
@@ -348,13 +354,22 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
     return Out(mvp * vec4<f32>(v.position, 1.0), v.uv, (model * vec4<f32>(v.position, 1.0)).xyz, (model * vec4<f32>(v.normal, 0.0)).xyz);
 }
 
-@fragment fn fs(f: Out) -> Frag {
-    let colour = textureSample(picture, tile_sampler, f.uv);
+fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     let distance = max(length(f.seen), 1.0);
     let air = scatter(f.seen / distance, distance, 4);
     let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
     let lit = sunlight_reaching(f.seen, normal);
     return Frag(vec4<f32>(fogged(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, f.seen), colour.a), vec4<f32>(normal, distance));
+}
+
+@fragment fn fs(f: Out) -> Frag {
+    return lit_surface(textureSample(picture, tile_sampler, f.uv), f);
+}
+
+@fragment fn fs_cutout(f: Out) -> Frag {
+    let colour = textureSample(picture, tile_sampler, f.uv);
+    if (colour.a < 0.5) { discard; }
+    return lit_surface(colour, f);
 }
 
 @fragment fn fs_plain(f: Out) -> @location(0) vec4<f32> {
@@ -374,22 +389,46 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
     let clouded = clouded_sky(direction, dither(f.position.xy));
     return Frag(vec4<f32>(fogged(clouded.rgb, direction * reach), 1.0), vec4<f32>(0.0, 0.0, 0.0, clouded.a - 1.0));
 }
+
+@fragment fn fs_water(f: Out) -> Frag {
+    let colour = textureSample(picture, tile_sampler, f.uv);
+    let distance = max(length(f.seen), 1.0);
+    let seen = f.seen / distance;
+    let air = scatter(seen, distance, 4);
+    let up = scene.zenith.xyz;
+    let grazing = 1.0 - max(dot(-seen, up), 0.0);
+    let fresnel = 0.02 + 0.98 * pow(grazing, 5.0);
+    let mirrored = reflect(seen, up);
+    let reflected = sky_air(mirrored, 2).light;
+    let lit = sunlight_reaching(f.seen, up);
+    let glint = pow(max(dot(mirrored, scene.sun.xyz), 0.0), 600.0) * SUN * exp(-sun_depth(0.0)) * 0.5 * lit;
+    let body = colour.rgb * 0.35 * sky_air(up, 2).light;
+    let shaded = mix(body, reflected, fresnel) + glint;
+    return Frag(vec4<f32>(fogged(shaded * air.through + air.light, f.seen), 1.0), vec4<f32>(up, distance));
+}
 ";
 const SHADOW_SHADER: &str = r"
 struct Cascade { light: mat4x4<f32> };
 @group(0) @binding(0) var<uniform> cascade: Cascade;
+@group(1) @binding(0) var picture: texture_2d<f32>;
+@group(1) @binding(1) var tile_sampler: sampler;
 struct In { @location(0) position: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) normal: vec3<f32> };
 struct Placed {
     @location(3) mvp0: vec4<f32>, @location(4) mvp1: vec4<f32>, @location(5) mvp2: vec4<f32>, @location(6) mvp3: vec4<f32>,
     @location(7) model0: vec4<f32>, @location(8) model1: vec4<f32>, @location(9) model2: vec4<f32>, @location(10) model3: vec4<f32>,
 };
+struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
 
-@vertex fn vs(v: In, placed: Placed) -> @builtin(position) vec4<f32> {
+@vertex fn vs(v: In, placed: Placed) -> Out {
     let model = mat4x4<f32>(placed.model0, placed.model1, placed.model2, placed.model3);
-    return cascade.light * model * vec4<f32>(v.position, 1.0);
+    return Out(cascade.light * model * vec4<f32>(v.position, 1.0), v.uv);
 }
 
 @fragment fn fs() {}
+
+@fragment fn fs_cutout(f: Out) {
+    if (textureSample(picture, tile_sampler, f.uv).a < 0.5) { discard; }
+}
 ";
 const POST_SHADER: &str = r"
 struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
@@ -834,9 +873,10 @@ pub struct Targets {
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipelines: [wgpu::RenderPipeline; 3],
+    pipelines: [wgpu::RenderPipeline; 5],
     backfill: wgpu::RenderPipeline,
     shadow: wgpu::RenderPipeline,
+    shadow_cutout: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     shown: wgpu::RenderPipeline,
@@ -1009,6 +1049,7 @@ fn shadow_pipeline(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
     shader: &wgpu::ShaderModule,
+    fragment: &str,
 ) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("synthetic shadow"),
@@ -1037,7 +1078,7 @@ fn shadow_pipeline(
         multisample: multisample(1),
         fragment: Some(wgpu::FragmentState {
             module: shader,
-            entry_point: Some("fs"),
+            entry_point: Some(fragment),
             compilation_options: Default::default(),
             targets: &[],
         }),
@@ -1063,6 +1104,8 @@ fn pipeline(
     let (depth_write, compare, blend, fragment) = match layer {
         Layer::Backfill => (false, wgpu::CompareFunction::Always, None, "fs"),
         Layer::Opaque => (true, wgpu::CompareFunction::Greater, None, "fs"),
+        Layer::Cutout => (true, wgpu::CompareFunction::Greater, None, "fs_cutout"),
+        Layer::Water => (true, wgpu::CompareFunction::Greater, None, "fs_water"),
         Layer::Translucent => (
             false,
             wgpu::CompareFunction::Greater,
@@ -1312,7 +1355,13 @@ impl Renderer {
             label: Some("synthetic shadow"),
             source: wgpu::ShaderSource::Wgsl(SHADOW_SHADER.into()),
         });
-        let shadow = shadow_pipeline(&device, &shadow_pipeline_layout, &shadow_shader);
+        let shadow = shadow_pipeline(&device, &shadow_pipeline_layout, &shadow_shader, "fs");
+        let shadow_cutout = shadow_pipeline(
+            &device,
+            &shadow_pipeline_layout,
+            &shadow_shader,
+            "fs_cutout",
+        );
         let cascades = (0..CASCADES)
             .map(|_| {
                 let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -1426,6 +1475,7 @@ impl Renderer {
             pipelines,
             backfill,
             shadow,
+            shadow_cutout,
             sky,
             post,
             shown,
@@ -1914,26 +1964,33 @@ impl Renderer {
                     }),
                     ..Default::default()
                 });
-                pass.set_pipeline(&self.shadow);
                 pass.set_bind_group(0, bind, &[]);
                 pass.set_vertex_buffer(1, draws.buffer.slice(..));
                 let bound = Cell::new(None);
-                drawable
-                    .iter()
-                    .zip(&models[behind.len()..])
-                    .enumerate()
-                    .filter(|(_, ((mesh, _), model))| {
-                        mesh.layer == Layer::Opaque && casts(cascade, **model, mesh)
-                    })
-                    .for_each(|(slot, ((_, gpu), _))| {
-                        record(
-                            &mut pass,
-                            &self.arenas,
-                            &bound,
-                            gpu,
-                            placed(behind.len() + slot),
-                        )
-                    });
+                [
+                    (Layer::Opaque, &self.shadow),
+                    (Layer::Cutout, &self.shadow_cutout),
+                ]
+                .into_iter()
+                .for_each(|(layer, pipeline)| {
+                    pass.set_pipeline(pipeline);
+                    drawable
+                        .iter()
+                        .zip(&models[behind.len()..])
+                        .enumerate()
+                        .filter(|(_, ((mesh, _), model))| {
+                            mesh.layer == layer && casts(cascade, **model, mesh)
+                        })
+                        .for_each(|(slot, ((_, gpu), _))| {
+                            record(
+                                &mut pass,
+                                &self.arenas,
+                                &bound,
+                                gpu,
+                                placed(behind.len() + slot),
+                            )
+                        });
+                });
             });
         let layer_draws =
             |pass: &mut wgpu::RenderPass, bound: &Cell<Option<usize>>, layer: Layer| {

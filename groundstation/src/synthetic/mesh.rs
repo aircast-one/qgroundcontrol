@@ -9,6 +9,8 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 pub enum Layer {
     Backfill,
     Opaque,
+    Cutout,
+    Water,
     Translucent,
     OnTop,
 }

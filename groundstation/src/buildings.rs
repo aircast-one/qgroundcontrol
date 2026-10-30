@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use geo_types::{Geometry, LineString, Polygon};
 use mvt_reader::Reader;
 use mvt_reader::feature::{Feature, Value as Property};
+use mvt_reader::layer::Layer;
 use serde_json::{Value, json};
 
 const LAYER: &str = "building";
@@ -102,16 +103,54 @@ fn readable<T>(raw: &[u8], read: Result<T, impl std::fmt::Display>) -> Option<T>
     .ok()
 }
 
+fn text(feature: &Feature, name: &str) -> Option<String> {
+    match feature.properties.as_ref()?.get(name)? {
+        Property::String(value) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn rings(polygon: &Polygon<f32>) -> Option<Vec<Vec<i32>>> {
+    let outline = Some(ring(polygon.exterior())).filter(|outline| enclosing(outline))?;
+    Some(
+        std::iter::once(outline)
+            .chain(
+                polygon
+                    .interiors()
+                    .iter()
+                    .map(ring)
+                    .filter(|hole| enclosing(hole)),
+            )
+            .collect(),
+    )
+}
+
+fn features(raw: &[u8], reader: &Reader, layers: &[Layer], name: &str) -> Vec<Feature> {
+    layers
+        .iter()
+        .find(|layer| layer.name == name)
+        .and_then(|layer| readable(raw, reader.get_features(layer.layer_index)))
+        .unwrap_or_default()
+}
+
+fn areas(found: &[Feature], keep: impl Fn(&Feature) -> bool) -> Vec<Vec<Vec<i32>>> {
+    found
+        .iter()
+        .filter(|feature| keep(feature))
+        .flat_map(|feature| polygons(&feature.geometry).into_iter().filter_map(rings))
+        .collect()
+}
+
+fn class_in(feature: &Feature, classes: &[&str]) -> bool {
+    text(feature, "class").is_some_and(|class| classes.contains(&class.as_str()))
+}
+
 pub fn tile_json(raw: &[u8]) -> Option<Vec<u8>> {
     let reader = readable(raw, Reader::new(raw.to_vec()))?;
     let layers = readable(raw, reader.get_layer_metadata())?;
     let found = layers.iter().find(|layer| layer.name == LAYER);
     let extent = found.map_or(DEFAULT_EXTENT, |layer| layer.extent);
-    let features = match found {
-        Some(layer) => readable(raw, reader.get_features(layer.layer_index))?,
-        None => Vec::new(),
-    };
-    let buildings: Vec<Value> = features
+    let buildings: Vec<Value> = features(raw, &reader, &layers, LAYER)
         .iter()
         .filter(|feature| !hidden(feature))
         .flat_map(|feature| {
@@ -120,7 +159,23 @@ pub fn tile_json(raw: &[u8]) -> Option<Vec<u8>> {
                 .filter_map(move |polygon| building(feature, polygon))
         })
         .collect();
-    serde_json::to_vec(&json!({ "extent": extent, "buildings": buildings })).ok()
+    let woods = areas(&features(raw, &reader, &layers, "landcover"), |feature| {
+        class_in(feature, &["wood"])
+    });
+    let parks = areas(&features(raw, &reader, &layers, "park"), |feature| {
+        class_in(feature, &["park"])
+    });
+    let water = areas(&features(raw, &reader, &layers, "water"), |feature| {
+        text(feature, "intermittent").is_none_or(|value| value != "1")
+    });
+    serde_json::to_vec(&json!({
+        "extent": extent,
+        "buildings": buildings,
+        "woods": woods,
+        "parks": parks,
+        "water": water,
+    }))
+    .ok()
 }
 
 #[cfg(test)]
@@ -171,6 +226,32 @@ mod tests {
                     % 2
                     == 0)),
             "rings are flat x,y pairs"
+        );
+    }
+
+    #[test]
+    fn a_lake_shore_tile_serves_its_woods_parks_and_water_as_rings() {
+        let raw = std::fs::read(format!(
+            "{}/../test/Bridge/fixtures/openfreemap-14-8581-5738-zurich-lake-shore.pbf",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .expect("a recorded Zurich lake shore tile");
+        let shown = served(&raw);
+        let count = |name: &str| shown[name].as_array().expect(name).len();
+        assert_eq!(
+            (count("woods"), count("parks"), count("water")),
+            (13, 0, 19)
+        );
+        assert!(
+            ["woods", "parks", "water"].iter().all(|name| shown[name]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|area| area.as_array().unwrap().iter().all(|ring| {
+                    let flat = ring.as_array().unwrap();
+                    flat.len() >= 6 && flat.len() % 2 == 0
+                }))),
+            "every area is rings of flat x,y pairs with at least three corners"
         );
     }
 

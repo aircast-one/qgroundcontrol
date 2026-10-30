@@ -41,6 +41,24 @@ const SAMPLED_CORNERS: usize = 15;
 const ROOF_PICTURE_ZOOM: u32 = 16;
 const ROOF_LIFT: f32 = 1.5;
 const BOUNDS_BLOCK: usize = 16;
+const TREE_SPACING_M: f64 = 15.0;
+const PARK_TREE_SPACING_M: f64 = 30.0;
+const MAX_TREES: usize = 4000;
+const TREE_HEIGHT_M: (f64, f64) = (6.0, 12.0);
+const TREE_WIDTH: f64 = 0.7;
+const TREE_GROWTH: f64 = 2.0;
+const TREE_SPRITE: u32 = 64;
+const TREE_KINDS: u32 = 4;
+const TREE_GREENS: [[f32; 3]; 4] = [
+    [34.0, 70.0, 28.0],
+    [48.0, 86.0, 32.0],
+    [40.0, 78.0, 42.0],
+    [62.0, 94.0, 36.0],
+];
+const TRUNK: [u8; 4] = [74, 52, 34, 255];
+const WATER: [u8; 4] = [52, 78, 96, 255];
+const WATER_LIFT_M: f64 = 1.0;
+const WATER_SAMPLES: u32 = 12;
 const NO_HEIGHTS: (f32, f32) = (f32::MAX, f32::MIN);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -269,7 +287,7 @@ pub enum Built {
         zoom: u32,
         mesh: Result<(Mesh, bool), String>,
     },
-    Houses(TileKey, Result<Option<Mesh>, String>),
+    Houses(TileKey, Result<Vec<Mesh>, String>),
 }
 
 impl Want {
@@ -322,7 +340,7 @@ impl Want {
             } => Built::Houses(
                 key,
                 fetcher.map(BUILDINGS, key.z, key.x, key.y).map(|json| {
-                    building_mesh(key, &json, Some(&patch), &|under| {
+                    place_meshes(key, &json, Some(&patch), &|under| {
                         picture(fetcher, &imagery, under).map(|(picture, _)| picture)
                     })
                 }),
@@ -424,7 +442,7 @@ struct TerrainEntry {
 }
 
 struct HouseEntry {
-    mesh: Option<Arc<Mesh>>,
+    meshes: Vec<Arc<Mesh>>,
     loaded: bool,
     asked: Option<Instant>,
     used: Instant,
@@ -593,10 +611,12 @@ fn roof_colour(
     key: TileKey,
     pictures: &HashMap<TileKey, Option<image::RgbaImage>>,
     outline: &[(f64, f64)],
+    fallback: [u8; 4],
+    lift: f32,
 ) -> [u8; 4] {
     let (sub, du, dv) = under(key, outline);
     let Some(Some(picture)) = pictures.get(&sub) else {
-        return ROOF;
+        return fallback;
     };
     let scale = f64::from(1u32 << (sub.z - key.z));
     let (width, height) = picture.dimensions();
@@ -611,7 +631,7 @@ fn roof_colour(
     std::array::from_fn(|channel| {
         let mean =
             samples.iter().map(|s| f32::from(s[channel])).sum::<f32>() / samples.len() as f32;
-        (if channel == 3 { mean } else { mean * ROOF_LIFT }).min(255.0) as u8
+        (if channel == 3 { mean } else { mean * lift }).min(255.0) as u8
     })
 }
 
@@ -708,39 +728,338 @@ fn roof(rings: &[Vec<DVec3>], height: f64, uv: [f32; 2]) -> Part {
     }
 }
 
-fn building_mesh(
+fn extent_of(tile: &serde_json::Value) -> f64 {
+    tile.get("extent")
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or(DEFAULT_EXTENT)
+}
+
+fn rings_of(rings: &serde_json::Value, extent: f64) -> Vec<Vec<(f64, f64)>> {
+    rings
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_array)
+        .map(|flat| {
+            flat.chunks_exact(2)
+                .filter_map(|p| Some((p[0].as_f64()? / extent, p[1].as_f64()? / extent)))
+                .collect()
+        })
+        .collect()
+}
+
+fn areas_of(tile: &serde_json::Value, name: &str) -> Vec<Vec<Vec<(f64, f64)>>> {
+    let extent = extent_of(tile);
+    tile.get(name)
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|area| rings_of(area, extent))
+        .filter(|rings| rings.first().is_some_and(|ring| ring.len() >= 3))
+        .collect()
+}
+
+struct Placement {
+    to_ecef: DMat4,
+    to_local: DMat3,
+    origin: DVec3,
+    key: TileKey,
+}
+
+impl Placement {
+    fn new(key: TileKey) -> Self {
+        let (to_ecef, to_local, origin) = frame_at(key.latitude(0.5), key.longitude(0.5));
+        Self {
+            to_ecef,
+            to_local,
+            origin,
+            key,
+        }
+    }
+
+    fn flat_at(&self, u: f64, v: f64) -> DVec3 {
+        self.to_local * (ecef(self.key.latitude(v), self.key.longitude(u), 0.0) - self.origin)
+    }
+}
+
+fn place_meshes(
     key: TileKey,
     json: &[u8],
     patch: Option<&Patch>,
     pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
-) -> Option<Mesh> {
-    let tile: serde_json::Value = serde_json::from_slice(json).ok()?;
-    let extent = tile
-        .get("extent")
-        .and_then(serde_json::Value::as_f64)
-        .unwrap_or(DEFAULT_EXTENT);
-    let ground = |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at(u, v));
-    let (to_ecef, to_local, origin) = frame_at(key.latitude(0.5), key.longitude(0.5));
-    let flat_at = |u: f64, v: f64| -> DVec3 {
-        to_local * (ecef(key.latitude(v), key.longitude(u), 0.0) - origin)
+) -> Vec<Mesh> {
+    serde_json::from_slice::<serde_json::Value>(json)
+        .ok()
+        .map(|tile| {
+            [
+                building_mesh(key, &tile, patch, pictures),
+                tree_mesh(key, &tile, patch),
+                water_mesh(key, &tile, patch, pictures),
+            ]
+            .into_iter()
+            .flatten()
+            .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn mixed(a: u64, b: u64) -> u64 {
+    let z = (a ^ b.rotate_left(32)).wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    let z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+fn unit(seed: u64) -> f64 {
+    (seed >> 11) as f64 / (1u64 << 53) as f64
+}
+
+fn inside(ring: &[(f64, f64)], (u, v): (f64, f64)) -> bool {
+    ring.iter()
+        .zip(ring.iter().cycle().skip(1))
+        .filter(|((au, av), (bu, bv))| {
+            (av > &v) != (bv > &v) && u < (bu - au) * (v - av) / (bv - av) + au
+        })
+        .count()
+        % 2
+        == 1
+}
+
+fn within(area: &[Vec<(f64, f64)>], point: (f64, f64)) -> bool {
+    inside(&area[0], point) && !area[1..].iter().any(|hole| inside(hole, point))
+}
+
+fn extent_area(ring: &[(f64, f64)]) -> f64 {
+    ring.iter()
+        .zip(ring.iter().cycle().skip(1))
+        .map(|((au, av), (bu, bv))| au * bv - bu * av)
+        .sum::<f64>()
+        .abs()
+        / 2.0
+}
+
+fn tile_box(ring: &[(f64, f64)]) -> ((f64, f64), (f64, f64)) {
+    ring.iter()
+        .fold(((1.0, 1.0), (0.0, 0.0)), |((lu, lv), (hu, hv)), &(u, v)| {
+            (
+                (lu.min(u).max(0.0), lv.min(v).max(0.0)),
+                (hu.max(u).min(1.0), hv.max(v).min(1.0)),
+            )
+        })
+}
+
+type Grove = (Vec<Vec<(f64, f64)>>, f64);
+
+fn scatter(key: TileKey, groves: &[Grove]) -> (Vec<(f64, f64, u64)>, f64) {
+    let width = key.width_m();
+    let expected: f64 = groves
+        .iter()
+        .map(|(area, spacing)| extent_area(&area[0]) * width * width / (spacing * spacing))
+        .sum();
+    let thinning = (expected / MAX_TREES as f64).sqrt().max(1.0);
+    let salt = mixed(u64::from(key.x) << 32 | u64::from(key.y), u64::from(key.z));
+    let placed = groves
+        .iter()
+        .flat_map(|(area, spacing)| {
+            let step = spacing * thinning / width;
+            let ((lu, lv), (hu, hv)) = tile_box(&area[0]);
+            let cells = move |low: f64, high: f64| {
+                (low / step).floor() as i64..=(high / step).floor() as i64
+            };
+            cells(lv, hv)
+                .flat_map(move |row| cells(lu, hu).map(move |column| (column, row)))
+                .map(move |(column, row)| {
+                    let seed = mixed(salt, (column as u64) << 32 ^ row as u64);
+                    (
+                        (column as f64 + unit(seed)) * step,
+                        (row as f64 + unit(mixed(seed, 1))) * step,
+                        seed,
+                    )
+                })
+                .filter(move |&(u, v, _)| {
+                    (lu..=hu).contains(&u) && (lv..=hv).contains(&v) && within(area, (u, v))
+                })
+        })
+        .take(MAX_TREES)
+        .collect();
+    (placed, thinning)
+}
+
+fn tree_sprites() -> image::RgbaImage {
+    let size = TREE_SPRITE as f64;
+    image::RgbaImage::from_fn(TREE_SPRITE * TREE_KINDS, TREE_SPRITE, |x, y| {
+        let kind = (x / TREE_SPRITE) as usize;
+        let (lx, ly) = (f64::from(x % TREE_SPRITE), f64::from(y));
+        let (dx, dy) = (
+            (lx - size / 2.0) / (size * 0.36),
+            (ly - size * 0.38) / (size * 0.36),
+        );
+        let roundness = dx * dx + dy * dy;
+        let noise = unit(mixed(u64::from(x), u64::from(y)));
+        let crown = roundness < 1.0 - 0.45 * noise;
+        let trunk = (lx - size / 2.0).abs() < size * 0.05 && ly > size * 0.55;
+        let green = TREE_GREENS[kind];
+        let shade = (0.55 + 0.45 * (1.0 - roundness).max(0.0) + 0.15 * (noise - 0.5)) as f32;
+        let pixel = if crown {
+            [
+                (green[0] * shade) as u8,
+                (green[1] * shade) as u8,
+                (green[2] * shade) as u8,
+                255,
+            ]
+        } else if trunk {
+            TRUNK
+        } else {
+            [0, 0, 0, 0]
+        };
+        image::Rgba(pixel)
+    })
+}
+
+fn tree(at: DVec3, height: f64, kind: u32) -> Part {
+    let half = height * TREE_WIDTH / 2.0;
+    let (u0, u1) = (
+        kind as f32 / TREE_KINDS as f32,
+        (kind + 1) as f32 / TREE_KINDS as f32,
+    );
+    let quad = |a: DVec3, b: DVec3| Part {
+        positions: vec![
+            a.as_vec3().to_array(),
+            b.as_vec3().to_array(),
+            (b + DVec3::Z * height).as_vec3().to_array(),
+            (a + DVec3::Z * height).as_vec3().to_array(),
+        ],
+        uvs: vec![[u0, 1.0], [u1, 1.0], [u1, 0.0], [u0, 0.0]],
+        normals: vec![[0.0, 0.0, 1.0]; 4],
+        indices: vec![0, 1, 2, 0, 2, 3],
     };
+    joined(
+        [
+            quad(at - DVec3::X * half, at + DVec3::X * half),
+            quad(at - DVec3::Y * half, at + DVec3::Y * half),
+        ]
+        .into_iter(),
+    )
+}
+
+fn tree_mesh(key: TileKey, tile: &serde_json::Value, patch: Option<&Patch>) -> Option<Mesh> {
+    let groves: Vec<Grove> = areas_of(tile, "woods")
+        .into_iter()
+        .map(|area| (area, TREE_SPACING_M))
+        .chain(
+            areas_of(tile, "parks")
+                .into_iter()
+                .map(|area| (area, PARK_TREE_SPACING_M)),
+        )
+        .collect();
+    let placement = Placement::new(key);
+    let ground = |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at(u, v));
+    let (placed, thinning) = scatter(key, &groves);
+    let growth = thinning.sqrt().min(TREE_GROWTH);
+    let whole = joined(placed.into_iter().map(|(u, v, seed)| {
+        let height =
+            (TREE_HEIGHT_M.0 + (TREE_HEIGHT_M.1 - TREE_HEIGHT_M.0) * unit(mixed(seed, 2))) * growth;
+        tree(
+            placement.flat_at(u, v) + DVec3::Z * ground(u, v),
+            height,
+            (mixed(seed, 3) % u64::from(TREE_KINDS)) as u32,
+        )
+    }));
+    (!whole.indices.is_empty()).then(|| {
+        Mesh::new(
+            placement.to_ecef,
+            whole.positions,
+            whole.uvs,
+            whole.indices,
+            tree_sprites(),
+            Layer::Cutout,
+        )
+        .with_normals(whole.normals)
+    })
+}
+
+fn median(mut heights: Vec<f64>) -> f64 {
+    heights.sort_by(f64::total_cmp);
+    heights.get(heights.len() / 2).copied().unwrap_or(0.0)
+}
+
+fn water_level(area: &[Vec<(f64, f64)>], ground: &dyn Fn(f64, f64) -> f64) -> f64 {
+    let ((lu, lv), (hu, hv)) = tile_box(&area[0]);
+    let steps = 0..WATER_SAMPLES;
+    let inside: Vec<f64> = steps
+        .clone()
+        .flat_map(|row| steps.clone().map(move |column| (column, row)))
+        .map(|(column, row)| {
+            (
+                lu + (hu - lu) * (f64::from(column) + 0.5) / f64::from(WATER_SAMPLES),
+                lv + (hv - lv) * (f64::from(row) + 0.5) / f64::from(WATER_SAMPLES),
+            )
+        })
+        .filter(|&point| within(area, point))
+        .map(|(u, v)| ground(u, v))
+        .collect();
+    let shore = || area[0].iter().map(|&(u, v)| ground(u, v)).collect();
+    median(if inside.is_empty() { shore() } else { inside }) + WATER_LIFT_M
+}
+
+fn water_mesh(
+    key: TileKey,
+    tile: &serde_json::Value,
+    patch: Option<&Patch>,
+    pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
+) -> Option<Mesh> {
+    let lakes = areas_of(tile, "water");
+    let placement = Placement::new(key);
+    let ground = |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at(u, v));
+    let fetched: HashMap<TileKey, Option<image::RgbaImage>> = lakes
+        .iter()
+        .map(|area| under(key, &area[0]).0)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .map(|sub| (sub, pictures(sub)))
+        .collect();
+    let colours: Vec<[u8; 4]> = lakes
+        .iter()
+        .map(|area| roof_colour(key, &fetched, &area[0], WATER, 1.0))
+        .collect();
+    let whole = joined(lakes.iter().enumerate().map(|(index, area)| {
+        let level = water_level(area, &ground);
+        let placed: Vec<Vec<DVec3>> = area
+            .iter()
+            .map(|ring| ring.iter().map(|&(u, v)| placement.flat_at(u, v)).collect())
+            .collect();
+        roof(&placed, level, palette_uv(index, lakes.len()))
+    }));
+    (!whole.indices.is_empty()).then(|| {
+        Mesh::new(
+            placement.to_ecef,
+            whole.positions,
+            whole.uvs,
+            whole.indices,
+            palette(&colours),
+            Layer::Water,
+        )
+        .with_normals(whole.normals)
+    })
+}
+
+fn building_mesh(
+    key: TileKey,
+    tile: &serde_json::Value,
+    patch: Option<&Patch>,
+    pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
+) -> Option<Mesh> {
+    let extent = extent_of(tile);
+    let ground = |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at(u, v));
+    let placement = Placement::new(key);
+    let flat_at = |u: f64, v: f64| placement.flat_at(u, v);
     let footprints: Vec<Footprint> = tile
         .get("buildings")
         .and_then(serde_json::Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|building| {
-            let rings: Vec<Vec<(f64, f64)>> = building
-                .get("rings")?
-                .as_array()?
-                .iter()
-                .filter_map(serde_json::Value::as_array)
-                .map(|flat| {
-                    flat.chunks_exact(2)
-                        .filter_map(|p| Some((p[0].as_f64()? / extent, p[1].as_f64()? / extent)))
-                        .collect()
-                })
-                .collect();
+            let rings = rings_of(building.get("rings")?, extent);
             rings.first().filter(|ring| ring.len() >= 3)?;
             let top = building.get("height").and_then(serde_json::Value::as_f64)?;
             let base = building
@@ -761,7 +1080,7 @@ fn building_mesh(
     let colours: Vec<[u8; 4]> = footprints
         .iter()
         .flat_map(|footprint| {
-            let roof = roof_colour(key, &fetched, &footprint.rings[0]);
+            let roof = roof_colour(key, &fetched, &footprint.rings[0], ROOF, ROOF_LIFT);
             [roof, wall_colour(roof, &footprint.rings[0])]
         })
         .collect();
@@ -794,7 +1113,7 @@ fn building_mesh(
     let whole = joined(parts);
     (!whole.indices.is_empty()).then(|| {
         Mesh::new(
-            to_ecef,
+            placement.to_ecef,
             whole.positions,
             whole.uvs,
             whole.indices,
@@ -842,11 +1161,11 @@ impl OpenScene {
                 );
             }
             Built::Terrain { .. } => {}
-            Built::Houses(key, Ok(mesh)) => {
+            Built::Houses(key, Ok(meshes)) => {
                 self.houses.insert(
                     key,
                     HouseEntry {
-                        mesh: mesh.map(Arc::new),
+                        meshes: meshes.into_iter().map(Arc::new).collect(),
                         loaded: true,
                         asked: None,
                         used: now,
@@ -885,7 +1204,7 @@ impl OpenScene {
                     .entry(*key)
                     .and_modify(|entry| entry.asked = Some(now))
                     .or_insert(HouseEntry {
-                        mesh: None,
+                        meshes: Vec::new(),
                         loaded: false,
                         asked: Some(now),
                         used: now,
@@ -944,7 +1263,7 @@ impl OpenScene {
         let houses: Vec<Arc<Mesh>> = self
             .houses
             .values()
-            .filter_map(|entry| entry.mesh.clone())
+            .flat_map(|entry| entry.meshes.iter().cloned())
             .collect();
         let roof = ground::height_at(&houses, latitude, longitude);
         (
@@ -1038,10 +1357,10 @@ impl OpenScene {
         below.flatten().or_else(|| own.map(|mesh| vec![mesh]))
     }
 
-    fn house(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Option<Arc<Mesh>> {
+    fn house(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Vec<Arc<Mesh>> {
         let (loaded, idle) = {
             let entry = self.houses.entry(key).or_insert(HouseEntry {
-                mesh: None,
+                meshes: Vec::new(),
                 loaded: false,
                 asked: None,
                 used: now,
@@ -1064,7 +1383,10 @@ impl OpenScene {
                 patch,
             });
         }
-        self.houses.get(&key).and_then(|entry| entry.mesh.clone())
+        self.houses
+            .get(&key)
+            .map(|entry| entry.meshes.clone())
+            .unwrap_or_default()
     }
 
     fn houses_around(
@@ -1088,7 +1410,7 @@ impl OpenScene {
             .collect();
         around
             .into_iter()
-            .filter_map(|key| self.house(key, wanted, now))
+            .flat_map(|key| self.house(key, wanted, now))
             .collect()
     }
 
@@ -1100,7 +1422,7 @@ impl OpenScene {
             + self
                 .houses
                 .values()
-                .filter(|entry| entry.mesh.is_some())
+                .filter(|entry| !entry.meshes.is_empty())
                 .count()
     }
 
@@ -1709,6 +2031,65 @@ mod tests {
     }
 
     #[test]
+    fn trees_scatter_the_same_way_every_time_and_only_inside_the_wood() {
+        let key = TileKey {
+            z: BUILDING_ZOOM,
+            x: 8581,
+            y: 5738,
+        };
+        let wood = vec![
+            vec![(0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)],
+            vec![(0.2, 0.2), (0.3, 0.2), (0.3, 0.3), (0.2, 0.3)],
+        ];
+        let (once, _) = scatter(key, &[(wood.clone(), TREE_SPACING_M)]);
+        let (again, _) = scatter(key, &[(wood.clone(), TREE_SPACING_M)]);
+        assert_eq!(once, again, "the same tile grows the same forest");
+        let expected =
+            0.4 * 0.4 * key.width_m() * key.width_m() / (TREE_SPACING_M * TREE_SPACING_M);
+        assert!(
+            (once.len() as f64) > expected * 0.8 && (once.len() as f64) < expected * 1.0,
+            "{} trees for {expected:.0} cells, minus the clearing",
+            once.len()
+        );
+        assert!(
+            once.iter().all(|&(u, v, _)| within(&wood, (u, v))),
+            "every tree stands in the wood and none in the clearing"
+        );
+        let whole_tile = vec![vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]];
+        let (forest, thinning) = scatter(key, &[(whole_tile, TREE_SPACING_M)]);
+        let forest = forest.len();
+        assert!(thinning > 1.5, "thinned {thinning}");
+        assert!(
+            (MAX_TREES * 95 / 100..=MAX_TREES).contains(&forest),
+            "a tile of solid forest is thinned to the cap, not cut off: {forest}"
+        );
+    }
+
+    #[test]
+    fn a_lake_shore_tile_grows_trees_and_lays_water_beside_its_houses() {
+        let raw = std::fs::read(format!(
+            "{}/../test/Bridge/fixtures/openfreemap-14-8581-5738-zurich-lake-shore.pbf",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        let json = crate::buildings::tile_json(&raw).unwrap();
+        let key = TileKey {
+            z: BUILDING_ZOOM,
+            x: 8581,
+            y: 5738,
+        };
+        let meshes = place_meshes(key, &json, None, &|_| None);
+        let layers: Vec<Layer> = meshes.iter().map(|mesh| mesh.layer).collect();
+        assert_eq!(layers, vec![Layer::Opaque, Layer::Cutout, Layer::Water]);
+        let trees = meshes[1].positions.len() / 8;
+        assert!((1..=MAX_TREES).contains(&trees), "{trees} trees");
+        assert!(
+            meshes[2].normals.iter().all(|n| *n == [0.0, 0.0, 1.0]),
+            "water lies flat"
+        );
+    }
+
+    #[test]
     fn standing_inside_a_building_footprint_puts_the_ground_on_its_roof() {
         let mut scene = OpenScene::new();
         let now = Instant::now();
@@ -1733,17 +2114,11 @@ mod tests {
             span: 1.0,
         };
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 3000, 1000, 3000, 3000, 1000, 3000]], "height": 9.0 }] });
-        let house = building_mesh(
-            key,
-            &serde_json::to_vec(&json).unwrap(),
-            Some(&patch),
-            &|_| None,
-        )
-        .expect("a building");
+        let house = building_mesh(key, &json, Some(&patch), &|_| None).expect("a building");
         scene.houses.insert(
             key,
             HouseEntry {
-                mesh: Some(Arc::new(house)),
+                meshes: vec![Arc::new(house)],
                 loaded: true,
                 asked: None,
                 used: now,
@@ -1774,7 +2149,7 @@ mod tests {
             y: 9903,
         };
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 1100, 1000, 1100, 1100, 1000, 1100]], "height": 9.0 }] });
-        let mesh = building_mesh(key, &serde_json::to_vec(&json).unwrap(), None, &|under| {
+        let mesh = building_mesh(key, &json, None, &|under| {
             (under.z == ROOF_PICTURE_ZOOM).then(|| solid([120, 40, 40, 255]))
         })
         .expect("a building");
@@ -1807,7 +2182,7 @@ mod tests {
                 x: 14980,
                 y: 9903,
             },
-            &serde_json::to_vec(&json).unwrap(),
+            &json,
             None,
             &|_| None,
         )
@@ -1862,7 +2237,7 @@ mod tests {
                 x: 14980,
                 y: 9903,
             },
-            &serde_json::to_vec(&json).unwrap(),
+            &json,
             None,
             &|_| None,
         )
