@@ -48,16 +48,67 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>,
 struct SkyOut { @builtin(position) position: vec4<f32>, @location(0) screen: vec2<f32> };
 struct Frag { @location(0) colour: vec4<f32>, @location(1) surface: vec4<f32> };
 
-const ZENITH = vec3<f32>(0.06, 0.18, 0.5);
-const HORIZON = vec3<f32>(0.5, 0.62, 0.78);
-const SUNLIGHT = vec3<f32>(1.0, 0.9, 0.72);
-const HAZE_M = 25000.0;
-const AMBIENT = 0.3;
+const PLANET_M = 6371000.0;
+const ATMOSPHERE_M = 6471000.0;
+const RAYLEIGH_H = 8000.0;
+const MIE_H = 1200.0;
+const RAYLEIGH = vec3<f32>(5.8e-6, 13.5e-6, 33.1e-6);
+const MIE = 21e-6;
+const MIE_G = 0.76;
+const SUN = vec3<f32>(20.0, 19.4, 18.4);
+const GROUND_ALBEDO = vec3<f32>(0.24, 0.21, 0.17);
+const AMBIENT_SKY = vec3<f32>(0.2, 0.36, 0.72);
+const MULTIPLE_SCATTERING = 6.0;
+const PI = 3.14159265;
+
+struct Air { light: vec3<f32>, through: vec3<f32> };
+
+fn path_height(along: f32, up: f32) -> f32 {
+    let rise = along * along + 2.0 * PLANET_M * along * up;
+    return rise / (sqrt(PLANET_M * PLANET_M + rise) + PLANET_M);
+}
+
+fn to_space(up: f32) -> f32 {
+    return -PLANET_M * up + sqrt(PLANET_M * PLANET_M * up * up + ATMOSPHERE_M * ATMOSPHERE_M - PLANET_M * PLANET_M);
+}
+
+fn sun_depth(height: f32) -> vec3<f32> {
+    let toward = max(dot(scene.sun.xyz, scene.zenith.xyz), 0.03);
+    return (RAYLEIGH * RAYLEIGH_H * exp(-height / RAYLEIGH_H) + vec3<f32>(MIE * 1.1 * MIE_H * exp(-height / MIE_H))) / toward;
+}
+
+fn scatter(direction: vec3<f32>, length: f32, samples: i32) -> Air {
+    let up = dot(direction, scene.zenith.xyz);
+    let toward_sun = dot(direction, scene.sun.xyz);
+    let rayleigh_phase = 3.0 / (16.0 * PI) * (1.0 + toward_sun * toward_sun);
+    let mie_phase = 3.0 / (8.0 * PI) * (1.0 - MIE_G * MIE_G) * (1.0 + toward_sun * toward_sun) / ((2.0 + MIE_G * MIE_G) * pow(1.0 + MIE_G * MIE_G - 2.0 * MIE_G * toward_sun, 1.5));
+    var depth = vec3<f32>(0.0);
+    var light = vec3<f32>(0.0);
+    for (var i = 0; i < samples; i++) {
+        let fraction = (f32(i) + 0.5) / f32(samples);
+        let step = 2.0 * fraction * length / f32(samples);
+        let height = max(path_height(fraction * fraction * length, up), 0.0);
+        let rayleigh_density = exp(-height / RAYLEIGH_H) * step;
+        let mie_density = exp(-height / MIE_H) * step;
+        let segment = RAYLEIGH * rayleigh_density + vec3<f32>(MIE * 1.1 * mie_density);
+        let through = exp(-(depth + 0.5 * segment + sun_depth(height)));
+        depth += segment;
+        light += through * (RAYLEIGH * rayleigh_phase * rayleigh_density + vec3<f32>(MIE * mie_phase * mie_density));
+    }
+    light = light * SUN + AMBIENT_SKY * (1.0 - exp(-depth * MULTIPLE_SCATTERING));
+    return Air(light, exp(-depth));
+}
+
+fn sky_air(direction: vec3<f32>, samples: i32) -> Air {
+    let up = dot(direction, scene.zenith.xyz);
+    let length = select(to_space(up), -2.0 * PLANET_M * up + 20000.0, up < 0.0);
+    return scatter(direction, length, samples);
+}
 
 fn sky(direction: vec3<f32>) -> vec3<f32> {
-    let above = pow(clamp(dot(direction, scene.zenith.xyz), 0.0, 1.0), 0.4);
-    let glow = pow(max(dot(direction, scene.sun.xyz), 0.0), 16.0) * 0.3;
-    return mix(HORIZON, ZENITH, above) + SUNLIGHT * glow;
+    let air = sky_air(direction, 8);
+    let disc = smoothstep(0.99990, 0.99997, dot(direction, scene.sun.xyz));
+    return air.light + air.through * SUN * disc;
 }
 
 fn facing(normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
@@ -65,11 +116,14 @@ fn facing(normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
 }
 
 fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
-    if (dot(normal, normal) < 0.25) { return colour; }
+    let sunlight = SUN * exp(-sun_depth(0.0)) / PI;
+    if (dot(normal, normal) < 0.25) { return colour * (sunlight * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0) + sky_air(scene.zenith.xyz, 2).light); }
     let outward = facing(normal, seen);
-    let level = AMBIENT + (1.0 - AMBIENT) * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0);
-    let skylight = AMBIENT * (0.5 + 0.5 * max(dot(outward, scene.zenith.xyz), 0.0));
-    return colour * (skylight + (1.0 - AMBIENT) * max(dot(outward, scene.sun.xyz), 0.0)) / level;
+    let up = dot(outward, scene.zenith.xyz);
+    let sideways = normalize(seen - scene.zenith.xyz * dot(seen, scene.zenith.xyz));
+    let skylight = mix(sky_air(sideways, 2).light, sky_air(scene.zenith.xyz, 2).light, 0.5 + 0.5 * up);
+    let bounce = GROUND_ALBEDO * sunlight * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0) * (0.5 - 0.5 * up);
+    return colour * (sunlight * max(dot(outward, scene.sun.xyz), 0.0) + skylight + bounce);
 }
 
 @vertex fn vs(v: In, placed: Placed) -> Out {
@@ -81,9 +135,9 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
 @fragment fn fs(f: Out) -> Frag {
     let colour = textureSample(picture, tile_sampler, f.uv);
     let distance = max(length(f.seen), 1.0);
-    let haze = 1.0 - exp(-distance / HAZE_M);
+    let air = scatter(f.seen / distance, distance, 4);
     let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
-    return Frag(vec4<f32>(mix(sunlit(colour.rgb, f.normal, f.seen), sky(f.seen / distance), haze), colour.a), vec4<f32>(normal, distance));
+    return Frag(vec4<f32>(sunlit(colour.rgb, f.normal, f.seen) * air.through + air.light, colour.a), vec4<f32>(normal, distance));
 }
 
 @fragment fn fs_plain(f: Out) -> @location(0) vec4<f32> {
@@ -109,9 +163,9 @@ struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, 
 @group(1) @binding(3) var third: texture_2d<f32>;
 struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
 
-const EXPOSURE = 1.3;
+const EXPOSURE = 0.36;
 const BLOOM = 0.06;
-const BLOOM_THRESHOLD = 1.0;
+const BLOOM_THRESHOLD = 1.0 / EXPOSURE;
 const BLOOM_KNEE = 0.5;
 const AO_RADIUS = 6.0;
 const AO_BIAS = 0.05;
