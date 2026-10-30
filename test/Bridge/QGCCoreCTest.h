@@ -12,6 +12,7 @@ private slots:
 
     void _viewMessagesReachTheHeadThroughTheRustCore();
     void _viewPathsAreReadOnlyAtTheCAbi();
+    void _aReadFromAnotherThreadIsServedByTheQtThread();
     void _viewFieldsProjectAndNameTheUnknown();
     void _clientsWatchIndependently();
     void _planViewFollowsTheVehicle();

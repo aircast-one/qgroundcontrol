@@ -901,7 +901,7 @@ QString jsonToString(const QJsonObject &json)
 
 bool applicationIsRunning()
 {
-    return QCoreApplication::instance() != nullptr;
+    return QCoreApplication::instance() != nullptr && !QCoreApplication::startingUp();
 }
 
 QString applicationNotRunning()

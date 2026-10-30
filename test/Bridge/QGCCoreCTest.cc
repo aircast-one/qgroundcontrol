@@ -63,6 +63,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <thread>
 
 namespace
 {
@@ -171,6 +172,19 @@ void QGCCoreCTest::_viewPathsAreReadOnlyAtTheCAbi()
     QCOMPARE(take(qgc_bridge_invoke("view.messages", "[]")).value(QStringLiteral("ok")).toBool(true), false);
     QCOMPARE(take(qgc_bridge_get("view.nothing")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
     QCOMPARE(take(qgc_bridge_get("settings.unitsSettings")).value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
+}
+
+void QGCCoreCTest::_aReadFromAnotherThreadIsServedByTheQtThread()
+{
+    std::atomic<bool> answered{false};
+    QJsonObject answer;
+    std::thread reader([&] {
+        answer = takeQt(qgc_qt_get("settings.unitsSettings"));
+        answered = true;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(answered.load(), 5000);
+    reader.join();
+    QCOMPARE(answer.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
 }
 
 void QGCCoreCTest::_viewFieldsProjectAndNameTheUnknown()

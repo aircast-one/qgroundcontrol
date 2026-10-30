@@ -38,29 +38,22 @@ QString onQtThread(Fn body)
 
 char *qgc_qt_get(const char *path)
 {
-    const QString copied = QString::fromUtf8(path);
-    return duplicate(onQtThread([&] { return QGCBridgeCore::get(copied); }));
+    return duplicate(QGCBridgeCore::get(QString::fromUtf8(path)));
 }
 
 char *qgc_qt_get_fields(const char *path, const char *fields_csv)
 {
-    const QString copiedPath = QString::fromUtf8(path);
-    const QString copiedFields = QString::fromUtf8(fields_csv);
-    return duplicate(onQtThread([&] { return QGCBridgeCore::getFields(copiedPath, copiedFields); }));
+    return duplicate(QGCBridgeCore::getFields(QString::fromUtf8(path), QString::fromUtf8(fields_csv)));
 }
 
 char *qgc_qt_set(const char *path, const char *value_json)
 {
-    const QString copiedPath = QString::fromUtf8(path);
-    const QString copiedValue = QString::fromUtf8(value_json);
-    return duplicate(onQtThread([&] { return QGCBridgeCore::set(copiedPath, copiedValue); }));
+    return duplicate(QGCBridgeCore::set(QString::fromUtf8(path), QString::fromUtf8(value_json)));
 }
 
 char *qgc_qt_invoke(const char *path, const char *args_json)
 {
-    const QString copiedPath = QString::fromUtf8(path);
-    const QString copiedArgs = QString::fromUtf8(args_json);
-    return duplicate(onQtThread([&] { return QGCBridgeCore::invoke(copiedPath, copiedArgs); }));
+    return duplicate(QGCBridgeCore::invoke(QString::fromUtf8(path), QString::fromUtf8(args_json)));
 }
 
 namespace
