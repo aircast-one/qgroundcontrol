@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using AircastQGC.Controls;
 using AircastQGC.Core;
 using AircastQGC.Forms;
@@ -62,12 +63,15 @@ internal sealed class AppUpdatePanel : UserControl
 
     private Grid Offer(AppUpdate update)
     {
-        var detail = update.Phase == AppUpdate.Ready && !update.CanInstall ? AppUpdates.DisconnectFirst : update.Size;
-        var left = FormLook.Stack(2, FormLook.Text(update.Title), FormLook.Caption(detail, update.Phase == AppUpdate.Ready && !update.CanInstall ? "CautionBrush" : "TextSecondaryBrush"));
+        var blocked = update.Phase == AppUpdate.Ready && !update.CanInstall;
+        var detail = blocked ? AppUpdates.DisconnectFirst
+            : update.WasSkipped ? string.Join(" · ", new[] { "Skipped", update.Size }.Where(part => part.Length > 0))
+            : update.Size;
+        var left = FormLook.Stack(2, FormLook.Text(update.Title), FormLook.Caption(detail, blocked ? "CautionBrush" : "TextSecondaryBrush"));
         var below = update.Phase == AppUpdate.Downloading
             ? new ProgressBar { Minimum = 0, Maximum = 1, Value = update.Progress, HorizontalAlignment = HorizontalAlignment.Stretch }
             : null;
-        return FormLook.Row(left, Action(update), below);
+        return FormLook.Row(left, FormLook.Line(8, update.CanSkip ? FormLook.Button("Skip this version", () => Run("appUpdate.skip")) : null, Action(update)), below);
     }
 
     private Button Action(AppUpdate update)
@@ -76,11 +80,16 @@ internal sealed class AppUpdatePanel : UserControl
         var button = update.Phase switch
         {
             AppUpdate.Downloading => FormLook.Button("Cancel", () => Run("appUpdate.cancel")),
-            AppUpdate.Ready => FormLook.Button("Install", () => AppUpdates.Install(update.File), ButtonLook.Accent),
-            _ => FormLook.Button("Download", () => Run("appUpdate.download"), ButtonLook.Accent),
+            AppUpdate.Ready => FormLook.Button("Install", () => _ = AppUpdates.Install(XamlRoot, update), ButtonLook.Accent),
+            _ => FormLook.Button("Download", () => Download(update), ButtonLook.Accent),
         };
         button.IsEnabled = update.Phase != AppUpdate.Ready || update.CanInstall;
         return button;
+    }
+
+    private async void Download(AppUpdate update)
+    {
+        if (await AppUpdates.MayDownload(XamlRoot, update)) Run("appUpdate.download");
     }
 
     private Grid Notes(AppUpdate update)

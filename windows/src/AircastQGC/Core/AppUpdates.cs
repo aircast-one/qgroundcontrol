@@ -7,8 +7,11 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AircastQGC.Controls;
+using AircastQGC.Forms;
 using AircastQGC.Pages.Analyze;
+using Microsoft.UI.Xaml;
 using Microsoft.Win32;
+using Windows.Networking.Connectivity;
 
 namespace AircastQGC.Core;
 
@@ -25,7 +28,9 @@ internal sealed record AppUpdate(
     string Error,
     string CheckedAt,
     bool AutoCheck,
-    bool Snoozed,
+    string Skipped,
+    bool Later,
+    string UpdatedFrom,
     bool CanInstall)
 {
     internal const string Available = "available";
@@ -47,12 +52,22 @@ internal sealed record AppUpdate(
         MapUiJson.Text(view["error"]),
         MapUiJson.Text(view["checkedAt"]),
         MapUiJson.Flag(view["autoCheck"], true),
-        MapUiJson.Text(view["snoozed"]).Length > 0,
+        MapUiJson.Text(view["skipped"]),
+        MapUiJson.Flag(view["later"]),
+        MapUiJson.Text(view["updatedFrom"]),
         MapUiJson.Flag(view["canInstall"]));
 
     internal bool Offered => Phase is Available or Downloading or Ready;
 
     internal bool Busy => Phase is Checking or Downloading;
+
+    internal bool WasSkipped => Skipped.Length > 0 && Skipped == Latest;
+
+    internal bool PutOff => Later || WasSkipped;
+
+    internal bool CanSkip => (Phase is Available or Ready) && !WasSkipped;
+
+    internal bool JustUpdated => UpdatedFrom.Length > 0;
 
     internal string Title => Phase switch
     {
@@ -64,6 +79,18 @@ internal sealed record AppUpdate(
     internal string ChannelName => Channel == "beta" ? "Beta" : "Stable";
 
     internal string Size => SizeBytes <= 0 ? "" : $"{SizeBytes / 1048576.0:0} MB";
+
+    internal string UpdateLabel => Size.Length > 0 ? $"Update ({Size})" : "Update";
+
+    internal string MeteredQuestion => Size.Length > 0
+        ? $"This update is {Size} and this connection is metered. Download now?"
+        : "This connection is metered. Download the update now?";
+
+    internal string Installing => $"Installing {AppUpdates.Application} {Latest}. It reopens in about 15 seconds.";
+
+    internal string Updated => $"Updated to {AppUpdates.Application} {Current}";
+
+    internal string WhatsNew => AppUpdates.ReleasePage + Current;
 
     internal string Checked => DateTime.TryParse(CheckedAt, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var at)
         ? $"Last checked {at.ToLocalTime():g}"
@@ -81,6 +108,9 @@ internal static class AppUpdates
     internal const string Application = "Aircast QGC";
     internal const string DisconnectFirst = "Disconnect from the vehicle first";
     internal const string PortableNote = "This copy runs outside its installer folder, so the portable zip is updated by hand.";
+    internal const string ReleasePage = "https://github.com/aircast-one/qgroundcontrol/releases/tag/aircast-v";
+
+    private static readonly TimeSpan InstallNotice = TimeSpan.FromSeconds(2);
 
     private const string UninstallKey = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\AircastQGCNative";
 
@@ -96,9 +126,20 @@ internal static class AppUpdates
     internal static Task<string?> Invoke(string path, params object?[] args) =>
         Task.Run(() => Ui.Refusal(Bridge.Invoke(path, Forms.FormJson.Args(args)), Application));
 
-    internal static void Install(string file)
+    internal static bool Metered() =>
+        NetworkInformation.GetInternetConnectionProfile()?.GetConnectionCost() is { } cost
+        && (cost.NetworkCostType != NetworkCostType.Unrestricted || cost.Roaming || cost.OverDataLimit || cost.ApproachingDataLimit);
+
+    internal static async Task<bool> MayDownload(XamlRoot? root, AppUpdate update) =>
+        !Metered() || await FormLook.Confirm(root, "Metered connection", update.MeteredQuestion, "Download", "Not now");
+
+    internal static async Task Install(XamlRoot? root, AppUpdate update)
     {
-        _pending = file;
+        _pending = update.File;
+        var notice = root is null ? null : FormLook.Dialog(root, "Installing update", FormLook.Text(update.Installing, "FontSizeBody", "TextSecondaryBrush"), null, "");
+        if (notice is not null) _ = FormLook.Show(notice);
+        await Task.Delay(InstallNotice);
+        notice?.Hide();
         App.Quit();
     }
 
