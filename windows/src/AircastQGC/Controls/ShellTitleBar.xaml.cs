@@ -173,9 +173,12 @@ public sealed partial class ShellTitleBar : UserControl
         Subtitle.Text = !connected ? "Connect a vehicle to fly" : !alarming ? "" : stateText.Length == 0 ? "Vehicle state unknown" : stateText;
         Subtitle.Foreground = Token(alarming ? "CriticalBrush" : "TextTertiaryBrush");
 
-        var (linkText, linkTone) = Link(connected, Flag(state, "contactLost"), View(VehicleLinksPath));
+        var links = (View(VehicleLinksPath)["links"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
+        var (linkText, linkTone) = Link(connected, Flag(state, "contactLost"), links);
+        var linkNames = links.Select(link => Text(link, "name")).Where(name => name.Length > 0).ToList();
         LinkText.Text = linkText;
         Paint(LinkPill, LinkIcon, linkTone);
+        ToolTipService.SetToolTip(LinkPill, linkNames.Count == 0 ? "Connections" : string.Join("\n", linkNames));
 
         Readings.Visibility = Shown(connected);
         Readings.Opacity = Text(state, "staleNotice").Length == 0 ? 1 : StaleOpacity;
@@ -205,17 +208,15 @@ public sealed partial class ShellTitleBar : UserControl
         AutomationProperties.SetHelpText(ArmedPill, verdict is null ? "" : $"Disarmed. {verdict.Text}");
     }
 
-    private static (string Label, StatusTone Level) Link(bool connected, bool? contactLost, JsonObject view)
+    private static (string Label, StatusTone Level) Link(bool connected, bool? contactLost, IReadOnlyList<JsonObject> links)
     {
         if (!connected) return ("No vehicle", StatusTone.Muted);
         if (contactLost == true) return ("Contact lost", StatusTone.Critical);
-        var links = (view["links"] as JsonArray)?.OfType<JsonObject>().ToList() ?? new List<JsonObject>();
         var silent = links.Count(link => Flag(link, "commLost") == true);
         var heard = contactLost == false ? StatusTone.Good : StatusTone.Muted;
-        var single = links.Count == 1 ? Text(links[0], "name") : "";
         return links.Count switch
         {
-            < 2 => (single.Length == 0 ? "Connected" : single, heard),
+            < 2 => ("Connected", heard),
             _ when silent == 0 => ($"{links.Count} links", heard),
             _ when silent == links.Count => ("No link heard", StatusTone.Critical),
             _ => (silent == 1 ? "1 link lost" : $"{silent} links lost", StatusTone.Caution),

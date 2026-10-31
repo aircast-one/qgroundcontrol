@@ -22,7 +22,7 @@ internal sealed record LayoutState(
     ImmutableHashSet<string> Hidden,
     ImmutableDictionary<string, Point> Offsets)
 {
-    public static readonly LayoutState Empty = new([], [], ImmutableDictionary<string, Point>.Empty);
+    public static readonly LayoutState Default = new([], [StatusKeys.Gimbal], ImmutableDictionary<string, Point>.Empty);
 
     public JsonObject ToJson() => new()
     {
@@ -31,7 +31,7 @@ internal sealed record LayoutState(
         ["offsets"] = new JsonObject(Offsets.Select(p => KeyValuePair.Create(p.Key, (JsonNode?)new JsonArray(p.Value.X, p.Value.Y)))),
     };
 
-    public static LayoutState FromJson(JsonObject? json) => json is null ? Empty : new(
+    public static LayoutState FromJson(JsonObject? json) => json is null ? Default : new(
         Strings(json["order"]).ToImmutableList(),
         Strings(json["hidden"]).ToImmutableHashSet(),
         (json["offsets"] as JsonObject ?? [])
@@ -94,7 +94,7 @@ internal static class OverlayLayout
 
     public static void SaveOffset(string key, Point offset) => Save(_state with { Offsets = _state.Offsets.SetItem(key, offset) });
 
-    public static void Reset() => Save(LayoutState.Empty);
+    public static void Reset() => Save(LayoutState.Default);
 
     public static IReadOnlyList<string> Ordered(IReadOnlyList<string> available, IReadOnlyList<string> order) =>
         order.Where(available.Contains).Concat(available.Where(key => !order.Contains(key))).ToList();
@@ -135,11 +135,11 @@ internal static class OverlayLayout
     {
         try
         {
-            return File.Exists(StorePath) ? LayoutState.FromJson(JsonNode.Parse(File.ReadAllText(StorePath)) as JsonObject) : LayoutState.Empty;
+            return File.Exists(StorePath) ? LayoutState.FromJson(JsonNode.Parse(File.ReadAllText(StorePath)) as JsonObject) : LayoutState.Default;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
         {
-            return LayoutState.Empty;
+            return LayoutState.Default;
         }
     }
 }

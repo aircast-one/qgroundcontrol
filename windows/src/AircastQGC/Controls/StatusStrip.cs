@@ -275,13 +275,12 @@ public sealed class StatusStrip : UserControl
 
         var packs = BatteryModel.Packs(View(BatteryPath));
         var headline = BatteryHeadline.Parse(View(BatteryPath));
-        var extras = packs.Count == 0 ? [] : new[] { headline?.TimeLeft ?? "", BatteryModel.TotalCurrent(View(BatteryPath)) ?? "" }.Where(t => t.Length > 0);
         Show(_battery, fly.Connected && packs.Count > 0,
             string.Join("  ", packs.Select(p => FormText.Spaced(p.Text, BatteryModel.CountText(p.Packs)))),
             BatteryModel.Worst(packs),
-            string.Join("  ", extras));
+            packs.Count == 0 ? "" : headline?.TimeLeft ?? "");
 
-        Show(_flightTime, fly.Connected, StatusText.FlightTime(_flownSeconds), StatusTone.Normal);
+        Show(_flightTime, fly.Connected && (fly.Armed || _flownSeconds > 0), StatusText.FlightTime(_flownSeconds), StatusTone.Normal);
 
         var gps = GpsStatus.Parse(View(GpsPath));
         Show(_gps, fly.Connected && gps is not null, gps?.CellText ?? "", gps?.Tone ?? StatusTone.Normal);
