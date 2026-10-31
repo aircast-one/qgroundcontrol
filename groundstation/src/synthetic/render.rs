@@ -8,6 +8,7 @@ use web_time::Instant;
 
 use super::geo::Camera;
 use super::mesh::{Layer, Mesh, solid};
+use super::noise;
 
 const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -24,7 +25,6 @@ const ARENA_VERTICES: u32 = 1 << 19;
 const ARENA_INDICES: u32 = 1 << 21;
 const DRAW_BYTES: u64 = 128;
 const SCENE_BYTES: u64 = 496;
-const SAMPLES: u32 = 4;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
 const LAYERS: [Layer; 5] = [
@@ -38,7 +38,6 @@ const LAYERS: [Layer; 5] = [
 const ANISOTROPY: u16 = 16;
 const BLOOM: bool = true;
 const GOD_RAYS: bool = true;
-const BLOOM_MIPS: usize = 5;
 const SSAO: bool = true;
 const SURFACE: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const OCCLUSION: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
@@ -48,10 +47,55 @@ const MOTION_BLUR: bool = true;
 const HISTORY: f32 = 0.9;
 const SHUTTER: f32 = 0.5;
 const JITTERS: usize = 8;
-const SHADOW_SIZE: u32 = 2048;
 const CASCADES: usize = 3;
 const CASCADE_FAR_M: [f64; CASCADES] = [300.0, 2000.0, 10000.0];
 const CASTER_REACH_M: f64 = 10000.0;
+const NO_CLOUD_MAP: u32 = u32::BITS - 1;
+const SKY_LIGHT_WIDTH: u32 = 64;
+
+#[derive(Clone, Copy)]
+struct Quality {
+    low: bool,
+    cloud_shrink: u32,
+    samples: u32,
+    shadow_size: u32,
+    bloom_mips: usize,
+}
+
+const HIGH: Quality = Quality {
+    low: false,
+    cloud_shrink: NO_CLOUD_MAP,
+    samples: 4,
+    shadow_size: 2048,
+    bloom_mips: 5,
+};
+
+const LOW: Quality = Quality {
+    low: true,
+    cloud_shrink: 2,
+    samples: 1,
+    shadow_size: 1024,
+    bloom_mips: 3,
+};
+
+fn quality(info: &wgpu::AdapterInfo) -> Quality {
+    let phone = cfg!(any(target_os = "android", target_os = "ios"));
+    if phone || info.backend == wgpu::Backend::Gl || info.device_type == wgpu::DeviceType::Cpu {
+        LOW
+    } else {
+        HIGH
+    }
+}
+
+fn scene_shader(quality: Quality) -> String {
+    format!(
+        "const LOW_TIER = {};\nconst SHAPE_PERIOD = {:.1};\nconst DETAIL_PERIOD = {:.1};\nconst SKY_LIGHT_WIDTH = {:.1};\n{SHADER}",
+        quality.low,
+        noise::SHAPE_PERIOD as f64,
+        noise::DETAIL_PERIOD as f64,
+        f64::from(SKY_LIGHT_WIDTH)
+    )
+}
 const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
     wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3];
 const DRAW_ATTRIBUTES: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, 10 => Float32x4];
@@ -62,6 +106,13 @@ struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, 
 @group(1) @binding(1) var tile_sampler: sampler;
 @group(2) @binding(0) var shadow: texture_depth_2d_array;
 @group(2) @binding(1) var shadow_sampler: sampler_comparison;
+@group(2) @binding(2) var cloud_map: texture_2d<f32>;
+@group(2) @binding(3) var cloud_map_sampler: sampler;
+@group(2) @binding(4) var sky_map: texture_2d<f32>;
+@group(3) @binding(0) var cloud_shape: texture_2d<f32>;
+@group(3) @binding(1) var cloud_detail: texture_3d<f32>;
+@group(3) @binding(2) var noise_sampler: sampler;
+@group(3) @binding(3) var sky_light: texture_2d<f32>;
 struct In { @location(0) position: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) normal: vec3<f32> };
 struct Placed {
     @location(3) mvp0: vec4<f32>, @location(4) mvp1: vec4<f32>, @location(5) mvp2: vec4<f32>, @location(6) mvp3: vec4<f32>,
@@ -70,6 +121,7 @@ struct Placed {
 struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) seen: vec3<f32>, @location(2) normal: vec3<f32> };
 struct SkyOut { @builtin(position) position: vec4<f32>, @location(0) screen: vec2<f32> };
 struct Frag { @location(0) colour: vec4<f32>, @location(1) surface: vec4<f32> };
+struct CloudOut { @location(0) cover: vec4<f32>, @location(1) sky: vec4<f32> };
 
 const PLANET_M = 6371000.0;
 const ATMOSPHERE_M = 6471000.0;
@@ -95,6 +147,7 @@ const CLOUD_EXTINCTION = 0.014;
 const CLOUD_ALBEDO = 0.92;
 const CLOUD_DRIFT = vec2<f32>(5.0, 2.0);
 const CLOUD_LIGHT_STEP_M = 220.0;
+const AERIAL_SAMPLES = select(4, 2, LOW_TIER);
 const FOG = true;
 const FOG_DENSITY = 0.00006;
 const FOG_HEIGHT_M = 400.0;
@@ -219,11 +272,20 @@ fn henyey_greenstein(cosine: f32, g: f32) -> f32 {
     return (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosine, 1.5));
 }
 
+fn cloud_noise(p: vec2<f32>) -> vec2<f32> {
+    if (LOW_TIER) { return textureSampleLevel(cloud_shape, noise_sampler, p / SHAPE_PERIOD, 0.0).rg; }
+    return vec2<f32>(perlin(p) * 0.625 + perlin(p * 2.0 + 13.0) * 0.25 + perlin(p * 4.0 + 29.0) * 0.125, worley_fbm(p * 1.5 + 5.0));
+}
+
+fn cloud_erosion(p: vec2<f32>, rise: f32) -> f32 {
+    if (LOW_TIER) { return textureSampleLevel(cloud_detail, noise_sampler, vec3<f32>(p / DETAIL_PERIOD, rise), 0.0).r; }
+    return billow3(vec3<f32>(p, rise * 2.5));
+}
+
 fn cloud_body(horizontal: vec2<f32>, rise: f32) -> f32 {
     let p = horizontal * CLOUD_SCALE + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE;
-    let shape = perlin(p) * 0.625 + perlin(p * 2.0 + 13.0) * 0.25 + perlin(p * 4.0 + 29.0) * 0.125;
-    let puff = worley_fbm(p * 1.5 + 5.0);
-    let base = remap(shape, puff - 1.0, 1.0);
+    let noise = cloud_noise(p);
+    let base = remap(noise.x, noise.y - 1.0, 1.0);
     let profile = smoothstep(0.0, 0.08, rise) * (1.0 - smoothstep(0.55, 1.0, rise));
     return remap(base * profile, 1.0 - CLOUD_COVER, 1.4 - CLOUD_COVER);
 }
@@ -233,7 +295,7 @@ fn cloud_density(horizontal: vec2<f32>, height: f32, fineness: f32) -> f32 {
     let body = cloud_body(horizontal, rise);
     if (body <= 0.0) { return body; }
     let p = horizontal * CLOUD_SCALE * 9.0 + CLOUD_DRIFT * scene.zenith.w * CLOUD_SCALE * 1.4 + vec2<f32>(3.7, 1.3);
-    let erosion = billow3(vec3<f32>(p, rise * 2.5)) * mix(0.35, 0.75, rise) * mix(0.6, 1.0, fineness);
+    let erosion = cloud_erosion(p, rise) * mix(0.35, 0.75, rise) * mix(0.6, 1.0, fineness);
     return remap(body, erosion, 1.0);
 }
 
@@ -294,15 +356,20 @@ fn clouds(direction: vec3<f32>, jitter: f32, limit: f32) -> vec4<f32> {
     return vec4<f32>(light * fade, mix(1.0, through, fade));
 }
 
-fn clouded(colour: vec3<f32>, direction: vec3<f32>, jitter: f32, limit: f32) -> vec4<f32> {
+fn cloud_light(direction: vec3<f32>, jitter: f32, limit: f32) -> vec4<f32> {
     let cover = clouds(direction, jitter, limit);
-    if (cover.a >= 1.0) { return vec4<f32>(colour, 1.0); }
+    if (cover.a >= 1.0) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
     let near = scatter(direction, max(slab_reach(dot(direction, scene.zenith.xyz), limit).x, 1.0), 4);
-    return vec4<f32>(colour * cover.a + cover.rgb * near.through + near.light * (1.0 - cover.a), cover.a);
+    return vec4<f32>(cover.rgb * near.through + near.light * (1.0 - cover.a), cover.a);
 }
 
-fn clouded_sky(direction: vec3<f32>, jitter: f32) -> vec4<f32> {
-    return clouded(sky(direction), direction, jitter, 1e9);
+fn screen_uv(screen: vec2<f32>) -> vec2<f32> {
+    return screen * vec2<f32>(0.5, -0.5) + 0.5;
+}
+
+fn cloud_seen(screen: vec2<f32>, direction: vec3<f32>, pixel: vec2<f32>, limit: f32) -> vec4<f32> {
+    if (LOW_TIER) { return textureSampleLevel(cloud_map, cloud_map_sampler, screen_uv(screen), 0.0); }
+    return cloud_light(direction, dither(pixel), limit);
 }
 
 fn fog_amount(seen: vec3<f32>) -> f32 {
@@ -312,7 +379,38 @@ fn fog_amount(seen: vec3<f32>) -> f32 {
     return 1.0 - exp(-FOG_DENSITY * exp(-scene.eye.w / FOG_HEIGHT_M) * length(seen) * along);
 }
 
+fn level_frame() -> mat2x3<f32> {
+    let east = normalize(cross(scene.zenith.xyz, vec3<f32>(0.0, 0.0, 1.0)));
+    return mat2x3<f32>(east, cross(scene.zenith.xyz, east));
+}
+
+fn sky_light_at(direction: vec3<f32>, row: f32) -> vec3<f32> {
+    let frame = level_frame();
+    let around = atan2(dot(direction, frame[1]), dot(direction, frame[0])) / (2.0 * PI) + 0.5;
+    return textureSampleLevel(sky_light, noise_sampler, vec2<f32>(around, (row + 0.5) / 3.0), 0.0).rgb;
+}
+
+fn overhead_light() -> vec3<f32> {
+    if (LOW_TIER) { return sky_light_at(scene.zenith.xyz, 2.0); }
+    return sky_air(scene.zenith.xyz, 2).light;
+}
+
+fn sideways_light(sideways: vec3<f32>) -> vec3<f32> {
+    if (LOW_TIER) { return sky_light_at(sideways, 1.0); }
+    return sky_air(sideways, 2).light;
+}
+
+@fragment fn fs_sky_light(f: SkyOut) -> @location(0) vec4<f32> {
+    let frame = level_frame();
+    let angle = (f.position.x / SKY_LIGHT_WIDTH - 0.5) * 2.0 * PI;
+    let level = frame[0] * cos(angle) + frame[1] * sin(angle);
+    if (f.position.y < 1.0) { return vec4<f32>(sky_air(normalize(level + scene.zenith.xyz * 0.02), 4).light, 1.0); }
+    if (f.position.y < 2.0) { return vec4<f32>(sky_air(normalize(level + scene.zenith.xyz * 0.001), 2).light, 1.0); }
+    return vec4<f32>(sky_air(scene.zenith.xyz, 2).light, 1.0);
+}
+
 fn fog_colour(direction: vec3<f32>) -> vec3<f32> {
+    if (LOW_TIER) { return sky_light_at(direction, 0.0); }
     let level = direction - scene.zenith.xyz * dot(direction, scene.zenith.xyz);
     let horizon = select(level, vec3<f32>(0.0), dot(level, level) < 1e-6);
     return sky_air(normalize(horizon + scene.zenith.xyz * 0.02), 4).light;
@@ -336,12 +434,13 @@ fn shadowed(cascade: i32, position: vec3<f32>, normal: vec3<f32>) -> f32 {
     if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || seen.z > 1.0) { return 1.0; }
     let texel = 1.0 / vec2<f32>(textureDimensions(shadow));
     var reached = 0.0;
-    for (var y = -1; y <= 1; y++) {
-        for (var x = -1; x <= 1; x++) {
+    let reach = select(1, 0, LOW_TIER);
+    for (var y = -reach; y <= reach; y++) {
+        for (var x = -reach; x <= reach; x++) {
             reached += textureSampleCompareLevel(shadow, shadow_sampler, uv + vec2<f32>(f32(x), f32(y)) * texel, cascade, seen.z - detail.z * (1.0 + slope));
         }
     }
-    return reached / 9.0;
+    return reached / f32((2 * reach + 1) * (2 * reach + 1));
 }
 
 fn sunlight_reaching(position: vec3<f32>, normal: vec3<f32>) -> f32 {
@@ -357,11 +456,11 @@ fn sunlight_reaching(position: vec3<f32>, normal: vec3<f32>) -> f32 {
 
 fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> vec3<f32> {
     let sunlight = SUN * exp(-sun_depth(0.0)) / PI;
-    if (dot(normal, normal) < 0.25) { return colour * (sunlight * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0) + sky_air(scene.zenith.xyz, 2).light) * mix(BAKED_SHADE, 1.0, lit); }
+    if (dot(normal, normal) < 0.25) { return colour * (sunlight * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0) + overhead_light()) * mix(BAKED_SHADE, 1.0, lit); }
     let outward = facing(normal, seen);
     let up = dot(outward, scene.zenith.xyz);
     let sideways = normalize(seen - scene.zenith.xyz * dot(seen, scene.zenith.xyz));
-    let skylight = mix(sky_air(sideways, 2).light, sky_air(scene.zenith.xyz, 2).light, 0.5 + 0.5 * up);
+    let skylight = mix(sideways_light(sideways), overhead_light(), 0.5 + 0.5 * up);
     let bounce = GROUND_ALBEDO * sunlight * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0) * (0.5 - 0.5 * up);
     return colour * (sunlight * max(dot(outward, scene.sun.xyz), 0.0) * lit + skylight + bounce);
 }
@@ -374,11 +473,15 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
 
 fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     let distance = max(length(f.seen), 1.0);
-    let air = scatter(f.seen / distance, distance, 4);
+    let air = scatter(f.seen / distance, distance, AERIAL_SAMPLES);
     let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
     let lit = sunlight_reaching(f.seen, normal);
     let shaded = fogged(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, f.seen);
-    if (scene.eye.w > CLOUD_BASE_M) { return Frag(vec4<f32>(clouded(shaded, f.seen / distance, dither(f.position.xy), distance).rgb, colour.a), vec4<f32>(normal, distance)); }
+    if (scene.eye.w > CLOUD_BASE_M) {
+        let clip = scene.project * vec4<f32>(f.seen, 1.0);
+        let cover = cloud_seen(clip.xy / clip.w, f.seen / distance, f.position.xy, distance);
+        return Frag(vec4<f32>(shaded * cover.a + cover.rgb, colour.a), vec4<f32>(normal, distance));
+    }
     return Frag(vec4<f32>(shaded, colour.a), vec4<f32>(normal, distance));
 }
 
@@ -401,13 +504,29 @@ fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     return SkyOut(vec4<f32>(corner, 0.0, 1.0), corner);
 }
 
-@fragment fn fs_sky(f: SkyOut) -> Frag {
-    let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
-    let direction = normalize(through.xyz / through.w);
+fn sky_seen(direction: vec3<f32>, cover: vec4<f32>) -> vec3<f32> {
     let up = dot(direction, scene.zenith.xyz);
     let reach = min(select(to_space(up), -2.0 * PLANET_M * up + 20000.0, up < 0.0), 60000.0);
-    let covered = clouded_sky(direction, dither(f.position.xy));
-    return Frag(vec4<f32>(fogged(covered.rgb, direction * reach), 1.0), vec4<f32>(0.0, 0.0, 0.0, covered.a - 1.0));
+    return fogged(sky(direction) * cover.a + cover.rgb, direction * reach);
+}
+
+@fragment fn fs_sky(f: SkyOut) -> Frag {
+    if (LOW_TIER) {
+        let uv = screen_uv(f.screen);
+        let cover = textureSampleLevel(cloud_map, cloud_map_sampler, uv, 0.0).a;
+        return Frag(vec4<f32>(textureSampleLevel(sky_map, cloud_map_sampler, uv, 0.0).rgb, 1.0), vec4<f32>(0.0, 0.0, 0.0, cover - 1.0));
+    }
+    let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
+    let direction = normalize(through.xyz / through.w);
+    let cover = cloud_light(direction, dither(f.position.xy), 1e9);
+    return Frag(vec4<f32>(sky_seen(direction, cover), 1.0), vec4<f32>(0.0, 0.0, 0.0, cover.a - 1.0));
+}
+
+@fragment fn fs_clouds(f: SkyOut) -> CloudOut {
+    let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
+    let direction = normalize(through.xyz / through.w);
+    let cover = cloud_light(direction, dither(f.position.xy), 1e9);
+    return CloudOut(cover, vec4<f32>(sky_seen(direction, cover), 1.0));
 }
 
 @fragment fn fs_water(f: Out) -> Frag {
@@ -422,7 +541,7 @@ fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     let reflected = sky_air(mirrored, 2).light;
     let lit = sunlight_reaching(f.seen, up);
     let glint = pow(max(dot(mirrored, scene.sun.xyz), 0.0), 600.0) * SUN * exp(-sun_depth(0.0)) * 0.5 * lit;
-    let body = colour.rgb * (0.5 * sky_air(up, 2).light + 0.25 * SUN * exp(-sun_depth(0.0)) / PI * max(dot(up, scene.sun.xyz), 0.0) * lit);
+    let body = colour.rgb * (0.5 * overhead_light() + 0.25 * SUN * exp(-sun_depth(0.0)) / PI * max(dot(up, scene.sun.xyz), 0.0) * lit);
     let shaded = mix(body, reflected, fresnel) + glint;
     return Frag(vec4<f32>(fogged(shaded * air.through + air.light, f.seen), 1.0), vec4<f32>(up, distance));
 }
@@ -462,8 +581,8 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> 
 const EXPOSURE = 0.36;
 const BLOOM = 0.06;
 const GOD_RAYS = 0.2;
-const RAY_SAMPLES = 40;
-const RAY_DECAY = 0.96;
+const RAY_SAMPLES = select(40, 20, LOW_TIER);
+const RAY_DECAY = select(0.96, 0.96 * 0.96, LOW_TIER);
 const RAY_REACH = 0.9;
 const RAY_SPREAD = 12.0;
 const BLOOM_THRESHOLD = 1.0 / EXPOSURE;
@@ -471,7 +590,8 @@ const BLOOM_KNEE = 0.5;
 const AO_RADIUS = 6.0;
 const AO_BIAS = 0.05;
 const AO_STRENGTH = 1.5;
-const AO_SAMPLES = 12;
+const AO_SAMPLES = select(12, 6, LOW_TIER);
+const AO_STRIDE = select(1, 2, LOW_TIER);
 const KERNEL = array<vec3<f32>, 12>(
     vec3<f32>(-0.088, 0.007, 0.047), vec3<f32>(-0.022, 0.102, 0.020), vec3<f32>(-0.061, -0.103, 0.036), vec3<f32>(0.060, -0.055, 0.133),
     vec3<f32>(-0.038, -0.098, 0.170), vec3<f32>(-0.164, 0.048, 0.191), vec3<f32>(-0.314, -0.010, 0.083), vec3<f32>(-0.178, 0.187, 0.314),
@@ -555,7 +675,7 @@ fn surface_at(uv: vec2<f32>) -> vec4<f32> {
     var kernel = KERNEL;
     var occlusion = 0.0;
     for (var i = 0; i < AO_SAMPLES; i++) {
-        let k = kernel[i];
+        let k = kernel[i * AO_STRIDE];
         let sample = position + (tangent * k.x + bitangent * k.y + normal * k.z) * AO_RADIUS;
         let clip = scene.project * vec4<f32>(sample, 1.0);
         if (clip.w <= 0.0) { continue; }
@@ -868,10 +988,11 @@ fn draw_slots(needed: usize) -> usize {
 pub struct Targets {
     shadow_layers: Vec<wgpu::TextureView>,
     shadow_bind: wgpu::BindGroup,
-    samples: wgpu::TextureView,
+    cloud_map: wgpu::TextureView,
+    sky_map: wgpu::TextureView,
+    samples: Option<(wgpu::TextureView, wgpu::TextureView)>,
     depth: wgpu::TextureView,
     resolved: wgpu::TextureView,
-    surface_samples: wgpu::TextureView,
     surface: wgpu::TextureView,
     occlusion: wgpu::TextureView,
     blurred: wgpu::TextureView,
@@ -907,6 +1028,11 @@ pub struct Renderer {
     ssao: wgpu::RenderPipeline,
     blur: wgpu::RenderPipeline,
     rays: wgpu::RenderPipeline,
+    clouds: wgpu::RenderPipeline,
+    noise_bind: wgpu::BindGroup,
+    quality: Quality,
+    sky_light: wgpu::TextureView,
+    sky_light_pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     screen_layout: wgpu::BindGroupLayout,
     shadow_layout: wgpu::BindGroupLayout,
@@ -996,7 +1122,7 @@ struct Cascade {
     bias: f64,
 }
 
-fn cascade(camera: &Camera, near: f64, far: f64) -> Cascade {
+fn cascade(camera: &Camera, near: f64, far: f64, size: u32) -> Cascade {
     let tan_h = (camera.fovy / 2.0).tan();
     let tan_w = tan_h * camera.aspect;
     let along = (0.5 * (near + far) * (1.0 + tan_h * tan_h + tan_w * tan_w)).min(far);
@@ -1009,7 +1135,7 @@ fn cascade(camera: &Camera, near: f64, far: f64) -> Cascade {
         camera.zenith
     };
     let view = glam::dcamera::rh::view::look_to_mat4(glam::DVec3::ZERO, -camera.sun, side);
-    let texel = 2.0 * radius / f64::from(SHADOW_SIZE);
+    let texel = 2.0 * radius / f64::from(size);
     let at = view.transform_point3(camera.forward * along);
     let snapped = (at.truncate() / texel).round() * texel;
     let (low, high) = (snapped - radius, snapped + radius);
@@ -1030,11 +1156,11 @@ fn cascade(camera: &Camera, near: f64, far: f64) -> Cascade {
     }
 }
 
-fn cascades(camera: &Camera) -> Vec<Cascade> {
+fn cascades(camera: &Camera, size: u32) -> Vec<Cascade> {
     CASCADE_FAR_M
         .iter()
         .scan(0.0, |near, far| {
-            let fitted = cascade(camera, *near, *far);
+            let fitted = cascade(camera, *near, *far, size);
             *near = *far;
             Some(fitted)
         })
@@ -1120,6 +1246,7 @@ fn pipeline(
     shader: &wgpu::ShaderModule,
     color: wgpu::TextureFormat,
     layer: Layer,
+    samples: u32,
 ) -> wgpu::RenderPipeline {
     let (depth_write, compare, blend, fragment) = match layer {
         Layer::Backfill => (false, wgpu::CompareFunction::Always, None, "fs"),
@@ -1169,7 +1296,7 @@ fn pipeline(
             ..Default::default()
         },
         depth_stencil: (layer != Layer::OnTop).then(|| depth_state(depth_write, compare)),
-        multisample: multisample(if layer == Layer::OnTop { 1 } else { SAMPLES }),
+        multisample: multisample(if layer == Layer::OnTop { 1 } else { samples }),
         fragment: Some(wgpu::FragmentState {
             module: shader,
             entry_point: Some(fragment),
@@ -1190,6 +1317,7 @@ fn sky_pipeline(
     layout: &wgpu::PipelineLayout,
     shader: &wgpu::ShaderModule,
     color: wgpu::TextureFormat,
+    samples: u32,
 ) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("synthetic sky"),
@@ -1202,7 +1330,7 @@ fn sky_pipeline(
         },
         primitive: Default::default(),
         depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Always)),
-        multisample: multisample(SAMPLES),
+        multisample: multisample(samples),
         fragment: Some(wgpu::FragmentState {
             module: shader,
             entry_point: Some("fs_sky"),
@@ -1219,6 +1347,41 @@ fn sky_pipeline(
                     write_mask: wgpu::ColorWrites::ALL,
                 }),
             ],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+fn sky_pass_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    entry: &str,
+    outputs: usize,
+) -> wgpu::RenderPipeline {
+    let target = Some(wgpu::ColorTargetState {
+        format: HDR,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(entry),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_sky"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        primitive: Default::default(),
+        depth_stencil: None,
+        multisample: multisample(1),
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some(entry),
+            compilation_options: Default::default(),
+            targets: &vec![target; outputs],
         }),
         multiview_mask: None,
         cache: None,
@@ -1257,6 +1420,140 @@ fn screen_pipeline(
         }),
         multiview_mask: None,
         cache: None,
+    })
+}
+
+fn filtering(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        count: None,
+    }
+}
+
+fn noise_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    size: wgpu::Extent3d,
+    format: wgpu::TextureFormat,
+    texel_bytes: u32,
+    bytes: &[u8],
+) -> wgpu::TextureView {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("synthetic cloud noise"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: if size.depth_or_array_layers > 1 {
+            wgpu::TextureDimension::D3
+        } else {
+            wgpu::TextureDimension::D2
+        },
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        texture.as_image_copy(),
+        bytes,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(size.width * texel_bytes),
+            rows_per_image: Some(size.height),
+        },
+        size,
+    );
+    texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(if size.depth_or_array_layers > 1 {
+            wgpu::TextureViewDimension::D3
+        } else {
+            wgpu::TextureViewDimension::D2
+        }),
+        ..Default::default()
+    })
+}
+
+fn noise_bind(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    quality: Quality,
+    sky_light: &wgpu::TextureView,
+) -> wgpu::BindGroup {
+    let extent = |side: u32, depth: u32| wgpu::Extent3d {
+        width: side,
+        height: side,
+        depth_or_array_layers: depth,
+    };
+    let (shape, detail) = if quality.low {
+        (
+            noise_texture(
+                device,
+                queue,
+                extent(noise::SHAPE_SIZE, 1),
+                wgpu::TextureFormat::Rgba8Unorm,
+                4,
+                &noise::cloud_shape(),
+            ),
+            noise_texture(
+                device,
+                queue,
+                extent(noise::DETAIL_SIZE, noise::DETAIL_DEPTH),
+                wgpu::TextureFormat::R8Unorm,
+                1,
+                &noise::cloud_detail(),
+            ),
+        )
+    } else {
+        (
+            noise_texture(
+                device,
+                queue,
+                extent(1, 1),
+                wgpu::TextureFormat::Rgba8Unorm,
+                4,
+                &[0; 4],
+            ),
+            noise_texture(
+                device,
+                queue,
+                extent(1, 2),
+                wgpu::TextureFormat::R8Unorm,
+                1,
+                &[0; 2],
+            ),
+        )
+    };
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        ..Default::default()
+    });
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("synthetic cloud noise"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&shape),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&detail),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::TextureView(sky_light),
+            },
+        ],
     })
 }
 
@@ -1301,9 +1598,10 @@ impl Renderer {
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
     ) -> Self {
+        let quality = quality(&device.adapter_info());
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("synthetic"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+            source: wgpu::ShaderSource::Wgsl(scene_shader(quality).into()),
         });
         let scene_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("synthetic scene"),
@@ -1349,6 +1647,27 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                     count: None,
                 },
+                sampled(2),
+                filtering(3),
+                sampled(4),
+            ],
+        });
+        let noise_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("synthetic cloud noise"),
+            entries: &[
+                sampled(0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D3,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                filtering(2),
+                sampled(3),
             ],
         });
         let cascade_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1357,7 +1676,12 @@ impl Renderer {
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("synthetic"),
-            bind_group_layouts: &[Some(&scene_layout), Some(&layout), Some(&shadow_layout)],
+            bind_group_layouts: &[
+                Some(&scene_layout),
+                Some(&layout),
+                Some(&shadow_layout),
+                Some(&noise_layout),
+            ],
             immediate_size: 0,
         });
         let plain_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1403,12 +1727,24 @@ impl Renderer {
             .collect();
         let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("synthetic sky"),
-            bind_group_layouts: &[Some(&scene_layout)],
+            bind_group_layouts: &[
+                Some(&scene_layout),
+                None,
+                Some(&shadow_layout),
+                Some(&noise_layout),
+            ],
+            immediate_size: 0,
+        });
+        let clouds_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("synthetic clouds"),
+            bind_group_layouts: &[Some(&scene_layout), None, None, Some(&noise_layout)],
             immediate_size: 0,
         });
         let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("synthetic post"),
-            source: wgpu::ShaderSource::Wgsl(POST_SHADER.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                format!("const LOW_TIER = {};\n{POST_SHADER}", quality.low).into(),
+            ),
         });
         let screen_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("synthetic screen"),
@@ -1435,13 +1771,21 @@ impl Renderer {
             } else {
                 (HDR, &pipeline_layout)
             };
-            pipeline(&device, layout, &shader, color, layer)
+            pipeline(&device, layout, &shader, color, layer, quality.samples)
         });
-        let backfill = pipeline(&device, &pipeline_layout, &shader, HDR, Layer::Backfill);
-        let sky = sky_pipeline(&device, &sky_layout, &shader, HDR);
+        let backfill = pipeline(
+            &device,
+            &pipeline_layout,
+            &shader,
+            HDR,
+            Layer::Backfill,
+            quality.samples,
+        );
+        let sky = sky_pipeline(&device, &sky_layout, &shader, HDR, quality.samples);
         let screen = |entry: &str, color: wgpu::TextureFormat, blend: Option<wgpu::BlendState>| {
             screen_pipeline(&device, &post_layout, &post_shader, entry, color, blend)
         };
+        let clouds = sky_pass_pipeline(&device, &clouds_layout, &shader, "fs_clouds", 2);
         let post = screen("fs", format, None);
         let shown = screen("fs_shown", HDR, None);
         let taa = screen("fs_taa", HDR, None);
@@ -1489,6 +1833,31 @@ impl Renderer {
             compare: Some(wgpu::CompareFunction::LessEqual),
             ..Default::default()
         });
+        let sky_light = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("synthetic sky light"),
+                size: wgpu::Extent3d {
+                    width: SKY_LIGHT_WIDTH,
+                    height: 3,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: HDR,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
+        let noise_bind = noise_bind(&device, &queue, &noise_layout, quality, &sky_light);
+        let sky_light_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("synthetic sky light"),
+            bind_group_layouts: &[Some(&scene_layout)],
+            immediate_size: 0,
+        });
+        let sky_light_pipeline =
+            sky_pass_pipeline(&device, &sky_light_layout, &shader, "fs_sky_light", 1);
         Self {
             device,
             queue,
@@ -1506,6 +1875,11 @@ impl Renderer {
             ssao,
             blur,
             rays,
+            clouds,
+            noise_bind,
+            quality,
+            sky_light,
+            sky_light_pipeline,
             layout,
             screen_layout,
             shadow_layout,
@@ -1647,28 +2021,40 @@ impl Renderer {
         self.resident.len()
     }
 
-    fn pass<'a>(encoder: &'a mut wgpu::CommandEncoder, targets: &Targets) -> wgpu::RenderPass<'a> {
+    fn pass<'a>(
+        encoder: &'a mut wgpu::CommandEncoder,
+        targets: &'a Targets,
+    ) -> wgpu::RenderPass<'a> {
+        let attach = |resolved: &'a wgpu::TextureView,
+                      samples: Option<&'a wgpu::TextureView>,
+                      clear: wgpu::Color| {
+            Some(wgpu::RenderPassColorAttachment {
+                view: samples.unwrap_or(resolved),
+                depth_slice: None,
+                resolve_target: samples.map(|_| resolved),
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(clear),
+                    store: if samples.is_some() {
+                        wgpu::StoreOp::Discard
+                    } else {
+                        wgpu::StoreOp::Store
+                    },
+                },
+            })
+        };
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("synthetic"),
             color_attachments: &[
-                Some(wgpu::RenderPassColorAttachment {
-                    view: &targets.samples,
-                    depth_slice: None,
-                    resolve_target: Some(&targets.resolved),
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(SKY),
-                        store: wgpu::StoreOp::Discard,
-                    },
-                }),
-                Some(wgpu::RenderPassColorAttachment {
-                    view: &targets.surface_samples,
-                    depth_slice: None,
-                    resolve_target: Some(&targets.surface),
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Discard,
-                    },
-                }),
+                attach(
+                    &targets.resolved,
+                    targets.samples.as_ref().map(|(colour, _)| colour),
+                    SKY,
+                ),
+                attach(
+                    &targets.surface,
+                    targets.samples.as_ref().map(|(_, surface)| surface),
+                    wgpu::Color::TRANSPARENT,
+                ),
             ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &targets.depth,
@@ -1924,7 +2310,7 @@ impl Renderer {
                     .chain(model.as_mat4().to_cols_array())
             })
             .collect();
-        let cascades = cascades(camera);
+        let cascades = cascades(camera, self.quality.shadow_size);
         if !matrices.is_empty() {
             self.queue
                 .write_buffer(&draws.buffer, 0, bytemuck::cast_slice(&matrices));
@@ -2028,10 +2414,52 @@ impl Renderer {
                         record(pass, &self.arenas, bound, gpu, placed(behind.len() + slot))
                     });
             };
+        if self.quality.low {
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("synthetic sky light"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.sky_light,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    ..Default::default()
+                });
+                pass.set_pipeline(&self.sky_light_pipeline);
+                pass.set_bind_group(0, &self.scene_bind, &[]);
+                pass.draw(0..3, 0..1);
+            }
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("synthetic clouds"),
+                color_attachments: &[&targets.cloud_map, &targets.sky_map].map(|view| {
+                    Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })
+                }),
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.clouds);
+            pass.set_bind_group(0, &self.scene_bind, &[]);
+            pass.set_bind_group(3, &self.noise_bind, &[]);
+            pass.draw(0..3, 0..1);
+        }
         {
             let mut pass = Self::pass(&mut encoder, targets);
             pass.set_bind_group(0, &self.scene_bind, &[]);
             pass.set_bind_group(2, &targets.shadow_bind, &[]);
+            pass.set_bind_group(3, &self.noise_bind, &[]);
             pass.set_pipeline(&self.sky);
             pass.draw(0..3, 0..1);
             pass.set_vertex_buffer(1, draws.buffer.slice(..));
@@ -2128,10 +2556,18 @@ impl Renderer {
         let readable =
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
         let resolved = texture("synthetic resolved", HDR, 1, readable);
-        let mips: Vec<wgpu::TextureView> = (0..BLOOM_MIPS)
+        let mips: Vec<wgpu::TextureView> = (0..self.quality.bloom_mips)
             .map(|level| sized("synthetic bloom", HDR, 1, readable, level as u32 + 1))
             .collect();
         let surface = texture("synthetic surface", SURFACE, 1, readable);
+        let cloud_map = sized(
+            "synthetic clouds",
+            HDR,
+            1,
+            readable,
+            self.quality.cloud_shrink,
+        );
+        let sky_map = sized("synthetic sky", HDR, 1, readable, self.quality.cloud_shrink);
         let occlusion = sized("synthetic occlusion", OCCLUSION, 1, readable, 1);
         let blurred = sized("synthetic occlusion", OCCLUSION, 1, readable, 1);
         let bind =
@@ -2161,7 +2597,7 @@ impl Renderer {
             };
         let down_binds = std::iter::once(&resolved)
             .chain(&mips)
-            .take(BLOOM_MIPS)
+            .take(self.quality.bloom_mips)
             .map(|source| bind(source, source, source))
             .collect();
         let up_binds = mips
@@ -2189,8 +2625,8 @@ impl Renderer {
         let shadow = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("synthetic shadow"),
             size: wgpu::Extent3d {
-                width: SHADOW_SIZE,
-                height: SHADOW_SIZE,
+                width: self.quality.shadow_size,
+                height: self.quality.shadow_size,
                 depth_or_array_layers: CASCADES as u32,
             },
             mip_level_count: 1,
@@ -2227,15 +2663,38 @@ impl Renderer {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&cloud_map),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.post_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&sky_map),
+                },
             ],
         });
         Targets {
             shadow_layers,
             shadow_bind,
-            samples: texture("synthetic samples", HDR, SAMPLES, transient),
-            depth: texture("synthetic depth", DEPTH, SAMPLES, transient),
+            cloud_map,
+            sky_map,
+            samples: (self.quality.samples > 1).then(|| {
+                (
+                    texture("synthetic samples", HDR, self.quality.samples, transient),
+                    texture(
+                        "synthetic surface samples",
+                        SURFACE,
+                        self.quality.samples,
+                        transient,
+                    ),
+                )
+            }),
+            depth: texture("synthetic depth", DEPTH, self.quality.samples, transient),
             resolved,
-            surface_samples: texture("synthetic surface samples", SURFACE, SAMPLES, transient),
             surface,
             occlusion,
             blurred,
