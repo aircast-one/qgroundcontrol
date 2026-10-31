@@ -10,6 +10,8 @@ using AircastQGC.Controls;
 using AircastQGC.Forms;
 using AircastQGC.Pages.Analyze;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.Win32;
 using Windows.Networking.Connectivity;
 
@@ -86,7 +88,7 @@ internal sealed record AppUpdate(
         ? $"This update is {Size} and this connection is metered. Download now?"
         : "This connection is metered. Download the update now?";
 
-    internal string Installing => $"Installing {AppUpdates.Application} {Latest}. It reopens in about 15 seconds.";
+    internal string Installing => $"Installing {AppUpdates.Application} {Latest}";
 
     internal string Updated => $"Updated to {AppUpdates.Application} {Current}";
 
@@ -109,6 +111,7 @@ internal static class AppUpdates
     internal const string DisconnectFirst = "Disconnect from the vehicle first";
     internal const string PortableNote = "This copy runs outside its installer folder, so the portable zip is updated by hand.";
     internal const string ReleasePage = "https://github.com/aircast-one/qgroundcontrol/releases/tag/aircast-v";
+    internal const string Reopens = "Aircast closes now and reopens in about 30 seconds.";
 
     private static readonly TimeSpan InstallNotice = TimeSpan.FromSeconds(2);
 
@@ -136,11 +139,35 @@ internal static class AppUpdates
     internal static async Task Install(XamlRoot? root, AppUpdate update)
     {
         _pending = update.File;
-        var notice = root is null ? null : FormLook.Dialog(root, "Installing update", FormLook.Text(update.Installing, "FontSizeBody", "TextSecondaryBrush"), null, "");
-        if (notice is not null) _ = FormLook.Show(notice);
+        var notice = root is null ? null : Notice(root, update);
         await Task.Delay(InstallNotice);
-        notice?.Hide();
+        if (notice is not null) notice.IsOpen = false;
         App.Quit();
+    }
+
+    private static Popup Notice(XamlRoot root, AppUpdate update)
+    {
+        var card = new Border
+        {
+            RequestedTheme = (root.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
+            Background = FormLook.Brush("CardBrush"),
+            BorderBrush = FormLook.Brush("CardStrokeBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = FormLook.Radius("RadiusOverlay"),
+            Padding = new Thickness(24, 20, 24, 20),
+            MaxWidth = 560,
+            Child = FormLook.Stack(8,
+                FormLook.Text(update.Installing, "FontSizeBodyLarge", "TextPrimaryBrush", true),
+                FormLook.Text(Reopens, "FontSizeBody", "TextSecondaryBrush")),
+        };
+        var popup = new Popup { XamlRoot = root, Child = card };
+        card.SizeChanged += (_, _) =>
+        {
+            popup.HorizontalOffset = (root.Size.Width - card.ActualWidth) / 2;
+            popup.VerticalOffset = (root.Size.Height - card.ActualHeight) / 2;
+        };
+        popup.IsOpen = true;
+        return popup;
     }
 
     internal static void RunPending()
