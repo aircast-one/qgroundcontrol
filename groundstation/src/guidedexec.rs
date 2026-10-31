@@ -3,8 +3,14 @@ use serde_json::{Value, json};
 
 pub const MODE_TRIES: u32 = 3;
 pub const MODE_WAIT_MS: u64 = 1300;
-pub const ARM_WAIT_MS: u64 = 1500;
+const ARM_ANSWER_WAIT_MS: u64 = 3000;
+const ARMED_AFTER_ACK_WAIT_MS: u64 = 2500;
+const LATE_ARM_WATCH_MS: u64 = 10_000;
 pub const ACCEPT_WAIT_MS: u64 = 10_000;
+const LIVE_STEP_MS: u64 = 250;
+pub const LATE_ARM_DISARMED: &str = "The aircraft armed only after the app had stopped waiting for it, so the app disarmed it. Check the link and try again.";
+pub const LATE_ARM_FLYING: &str =
+    "The aircraft armed only after the app had stopped waiting for it, and it is flying.";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Emit {
@@ -31,12 +37,14 @@ pub enum Emit {
         longitude: f64,
         altitude_relative: f64,
     },
+    Tell(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Observed {
     pub flight_mode: String,
     pub armed: bool,
+    pub flying: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -50,6 +58,7 @@ enum Wait {
     },
     Armed {
         since_ms: u64,
+        accepted: bool,
     },
     Accepted {
         command: u16,
@@ -68,6 +77,23 @@ pub enum State {
 }
 
 #[derive(Debug, Default)]
+struct Clock {
+    last_ms: Option<u64>,
+    live_ms: u64,
+}
+
+impl Clock {
+    fn read(&mut self, now_ms: u64) -> u64 {
+        let seen = self.live_ms;
+        self.live_ms += self
+            .last_ms
+            .map_or(0, |last| now_ms.saturating_sub(last).min(LIVE_STEP_MS));
+        self.last_ms = Some(now_ms);
+        seen
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Executor {
     steps: Vec<Step>,
     at: usize,
@@ -76,6 +102,8 @@ pub struct Executor {
     label: String,
     acked: Option<(u16, bool)>,
     failures: Option<(String, String)>,
+    clock: Clock,
+    late_arm_until: Option<u64>,
 }
 
 fn label(step: &Step) -> String {
@@ -88,6 +116,25 @@ fn label(step: &Step) -> String {
         Step::SkipIfNoDelta => String::new(),
         Step::AwaitAccepted { command, .. } => format!("Waiting for command {command}"),
         Step::FailWith { .. } => String::new(),
+    }
+}
+
+fn arm_emit(arm: bool, show_error: bool) -> Emit {
+    match guidedcmd::arm(arm, false) {
+        Step::Command {
+            command,
+            params,
+            command_int,
+            frame,
+            ..
+        } => Emit::Command {
+            command,
+            params,
+            command_int,
+            frame,
+            show_error,
+        },
+        _ => unreachable!(),
     }
 }
 
@@ -139,7 +186,11 @@ impl Executor {
     }
 
     pub fn on_command_result(&mut self, command: u16, accepted: bool) {
-        if matches!(self.wait, Wait::Accepted { command: waited, .. } if waited == command) {
+        let arming = command == guidedcmd::CMD_COMPONENT_ARM_DISARM
+            && (matches!(self.wait, Wait::Armed { .. }) || self.late_arm_until.is_some());
+        if arming
+            || matches!(self.wait, Wait::Accepted { command: waited, .. } if waited == command)
+        {
             self.acked = Some((command, accepted));
         }
         if let Wait::Mode {
@@ -179,8 +230,45 @@ impl Executor {
         self.wait = Wait::None;
     }
 
+    fn arm_failure(&self) -> String {
+        self.failures.as_ref().map_or_else(
+            || "Unable to arm vehicle.".to_string(),
+            |(_, text)| text.clone(),
+        )
+    }
+
+    fn late_arm(&mut self, observed: &Observed, live_ms: u64) -> Vec<Emit> {
+        let Some(until) = self.late_arm_until else {
+            return Vec::new();
+        };
+        let acked = matches!(
+            self.acked.take(),
+            Some((guidedcmd::CMD_COMPONENT_ARM_DISARM, true))
+        );
+        if live_ms > until {
+            self.late_arm_until = None;
+            return Vec::new();
+        }
+        if !observed.armed && !acked {
+            return Vec::new();
+        }
+        self.late_arm_until = None;
+        let told = if observed.flying {
+            LATE_ARM_FLYING
+        } else {
+            LATE_ARM_DISARMED
+        };
+        self.state = State::Failed(told.to_string());
+        (!observed.flying)
+            .then(|| arm_emit(false, true))
+            .into_iter()
+            .chain([Emit::Tell(told.to_string())])
+            .collect()
+    }
+
     pub fn advance(&mut self, observed: &Observed, now_ms: u64) -> Vec<Emit> {
-        let mut out = Vec::new();
+        let live_ms = self.clock.read(now_ms);
+        let mut out = self.late_arm(observed, live_ms);
         while self.running() {
             match self.wait.clone() {
                 Wait::Mode {
@@ -192,7 +280,7 @@ impl Executor {
                         self.at += 1;
                         continue;
                     }
-                    if now_ms.saturating_sub(since_ms) < MODE_WAIT_MS {
+                    if live_ms.saturating_sub(since_ms) < MODE_WAIT_MS {
                         return out;
                     }
                     let resend = self.steps.get(self.at).and_then(mode_emit);
@@ -200,7 +288,7 @@ impl Executor {
                         (true, Some(emit)) => {
                             out.push(emit);
                             self.wait = Wait::Mode {
-                                since_ms: now_ms,
+                                since_ms: live_ms,
                                 tries: tries + 1,
                                 answered: false,
                             };
@@ -237,22 +325,37 @@ impl Executor {
                             continue;
                         }
                         Some((acked, false)) if acked == command => refused(self),
-                        _ if now_ms.saturating_sub(since_ms) >= ACCEPT_WAIT_MS => refused(self),
+                        _ if live_ms.saturating_sub(since_ms) >= ACCEPT_WAIT_MS => refused(self),
                         _ => {}
                     }
                     return out;
                 }
-                Wait::Armed { since_ms } => {
+                Wait::Armed { since_ms, accepted } => {
                     if observed.armed {
                         self.wait = Wait::None;
                         self.at += 1;
                         continue;
                     }
-                    if now_ms.saturating_sub(since_ms) >= ARM_WAIT_MS {
-                        self.fail(self.failures.as_ref().map_or_else(
-                            || "Unable to arm vehicle.".to_string(),
-                            |(_, text)| text.clone(),
-                        ));
+                    let window = if accepted {
+                        ARMED_AFTER_ACK_WAIT_MS
+                    } else {
+                        ARM_ANSWER_WAIT_MS
+                    };
+                    match self.acked.take() {
+                        Some((guidedcmd::CMD_COMPONENT_ARM_DISARM, false)) => {
+                            self.fail(self.arm_failure())
+                        }
+                        Some((guidedcmd::CMD_COMPONENT_ARM_DISARM, true)) if !accepted => {
+                            self.wait = Wait::Armed {
+                                since_ms: live_ms,
+                                accepted: true,
+                            }
+                        }
+                        _ if live_ms.saturating_sub(since_ms) >= window => {
+                            self.fail(self.arm_failure());
+                            self.late_arm_until = Some(live_ms + LATE_ARM_WATCH_MS);
+                        }
+                        _ => {}
                     }
                     return out;
                 }
@@ -273,40 +376,33 @@ impl Executor {
                 Step::SetMode { .. } => {
                     out.extend(mode_emit(&step));
                     self.wait = Wait::Mode {
-                        since_ms: now_ms,
+                        since_ms: live_ms,
                         tries: 1,
                         answered: false,
                     };
                 }
                 Step::WaitForMode(_) => {
                     self.wait = Wait::Mode {
-                        since_ms: now_ms,
+                        since_ms: live_ms,
                         tries: MODE_TRIES,
                         answered: true,
                     }
                 }
                 Step::Arm | Step::WaitArmed if observed.armed => self.at += 1,
                 Step::Arm => {
-                    out.push(match guidedcmd::arm(true, false) {
-                        Step::Command {
-                            command,
-                            params,
-                            command_int,
-                            frame,
-                            ..
-                        } => Emit::Command {
-                            command,
-                            params,
-                            command_int,
-                            frame,
-                            show_error: false,
-                        },
-                        _ => unreachable!(),
-                    });
+                    out.push(arm_emit(true, false));
                     self.at += 1;
-                    self.wait = Wait::Armed { since_ms: now_ms };
+                    self.wait = Wait::Armed {
+                        since_ms: live_ms,
+                        accepted: false,
+                    };
                 }
-                Step::WaitArmed => self.wait = Wait::Armed { since_ms: now_ms },
+                Step::WaitArmed => {
+                    self.wait = Wait::Armed {
+                        since_ms: live_ms,
+                        accepted: false,
+                    }
+                }
                 Step::Command {
                     command,
                     params,
@@ -355,7 +451,7 @@ impl Executor {
                 Step::AwaitAccepted { command, failure } => {
                     self.wait = Wait::Accepted {
                         command,
-                        since_ms: now_ms,
+                        since_ms: live_ms,
                         failure,
                     }
                 }
@@ -414,6 +510,40 @@ mod tests {
         Observed {
             flight_mode: mode.into(),
             armed,
+            flying: false,
+        }
+    }
+
+    fn ticks(executor: &mut Executor, seen: &Observed, from_ms: u64, to_ms: u64) -> Vec<Emit> {
+        (from_ms..=to_ms)
+            .step_by(100)
+            .flat_map(|at| executor.advance(seen, at))
+            .collect()
+    }
+
+    fn arming_in_guided() -> Executor {
+        let mut executor = Executor::default();
+        let plan = steps(guidedcmd::takeoff(
+            &VehicleState {
+                flight_mode: "Guided".into(),
+                ..copter()
+            },
+            10.0,
+        ));
+        assert_eq!(
+            commands(&executor.start(plan, &observed("Guided", false), 0)),
+            vec![CMD_COMPONENT_ARM_DISARM]
+        );
+        executor
+    }
+
+    fn disarm() -> Emit {
+        Emit::Command {
+            command: CMD_COMPONENT_ARM_DISARM,
+            params: [0.0; 7],
+            command_int: false,
+            frame: guidedcmd::FRAME_GLOBAL,
+            show_error: true,
         }
     }
 
@@ -459,20 +589,23 @@ mod tests {
     fn the_mode_change_is_retried_three_times_then_fails_as_the_qt_head_does() {
         let mut executor = Executor::default();
         let plan = steps(guidedcmd::rtl(&copter(), false));
-        assert_eq!(executor.start(plan, &observed("Loiter", true), 0).len(), 1);
-        assert!(executor.advance(&observed("Loiter", true), 1299).is_empty());
+        let loiter = observed("Loiter", true);
+        assert_eq!(executor.start(plan, &loiter, 0).len(), 1);
+        assert!(ticks(&mut executor, &loiter, 100, 1_300).is_empty());
         assert_eq!(
-            executor.advance(&observed("Loiter", true), 1300).len(),
+            ticks(&mut executor, &loiter, 1_400, 1_400).len(),
             1,
             "second try"
         );
+        assert!(ticks(&mut executor, &loiter, 1_500, 2_600).is_empty());
         assert_eq!(
-            executor.advance(&observed("Loiter", true), 2600).len(),
+            ticks(&mut executor, &loiter, 2_700, 2_700).len(),
             1,
             "third try"
         );
-        assert!(executor.advance(&observed("Loiter", true), 3899).is_empty());
-        assert!(executor.advance(&observed("Loiter", true), 3900).is_empty());
+        assert!(ticks(&mut executor, &loiter, 2_800, 3_900).is_empty());
+        assert_eq!(executor.snapshot()["state"], "running");
+        assert!(ticks(&mut executor, &loiter, 4_000, 4_000).is_empty());
         assert_eq!(executor.snapshot()["state"], "failed");
         assert_eq!(
             executor.snapshot()["reason"],
@@ -510,34 +643,158 @@ mod tests {
     }
 
     #[test]
-    fn arming_is_sent_once_and_gives_up_after_the_heartbeat_window() {
-        let mut executor = Executor::default();
-        let plan = steps(guidedcmd::takeoff(
-            &VehicleState {
-                flight_mode: "Guided".into(),
-                ..copter()
-            },
-            10.0,
-        ));
-        let first = executor.start(plan, &observed("Guided", false), 0);
-        assert_eq!(
-            commands(&first),
-            vec![CMD_COMPONENT_ARM_DISARM],
-            "the mode already matches, so arming is the first thing sent"
-        );
-        assert!(
-            executor
-                .advance(&observed("Guided", false), 1499)
-                .is_empty()
-        );
-        assert!(
-            executor
-                .advance(&observed("Guided", false), 1500)
-                .is_empty()
-        );
+    fn an_arm_nobody_answers_is_sent_once_and_gives_up_after_the_answer_window() {
+        let mut executor = arming_in_guided();
+        let guided = observed("Guided", false);
+        assert!(ticks(&mut executor, &guided, 100, 3_000).is_empty());
+        assert_eq!(executor.snapshot()["state"], "running");
+        assert!(ticks(&mut executor, &guided, 3_100, 3_100).is_empty());
         assert_eq!(
             executor.snapshot(),
             json!({ "state": "failed", "reason": "Unable to takeoff: Vehicle failed to arm.", "step": 4, "steps": 6, "label": "Arming" })
+        );
+    }
+
+    #[test]
+    fn a_stalled_core_does_not_spend_the_arm_window_and_reads_what_arrived_before_deciding() {
+        let mut executor = arming_in_guided();
+        let guided = observed("Guided", false);
+        assert!(ticks(&mut executor, &guided, 100, 1_000).is_empty());
+        assert!(
+            executor.advance(&guided, 3_500).is_empty(),
+            "two and a half seconds of a blocked worker count as one tick"
+        );
+        assert_eq!(executor.snapshot()["state"], "running");
+        assert_eq!(
+            commands(&executor.advance(&observed("Guided", true), 3_600)),
+            vec![CMD_NAV_TAKEOFF],
+            "the heartbeat that arrived during the stall is read before the window is judged"
+        );
+
+        let mut late = arming_in_guided();
+        assert!(ticks(&mut late, &guided, 100, 2_900).is_empty());
+        assert!(
+            late.advance(&guided, 6_000).is_empty(),
+            "a stall at the very end of the window still leaves one tick to read the link"
+        );
+        assert_eq!(late.snapshot()["state"], "running");
+        assert_eq!(
+            commands(&late.advance(&observed("Guided", true), 6_100)),
+            vec![CMD_NAV_TAKEOFF]
+        );
+    }
+
+    #[test]
+    fn an_accepted_arm_waits_for_its_heartbeat_over_a_slow_link() {
+        let mut executor = arming_in_guided();
+        let guided = observed("Guided", false);
+        assert!(ticks(&mut executor, &guided, 100, 1_200).is_empty());
+        executor.on_command_result(CMD_COMPONENT_ARM_DISARM, true);
+        assert!(ticks(&mut executor, &guided, 1_300, 3_600).is_empty());
+        assert_eq!(
+            executor.snapshot()["state"],
+            "running",
+            "past the unanswered window, but the vehicle said it armed"
+        );
+        assert_eq!(
+            commands(&executor.advance(&observed("Guided", true), 3_700)),
+            vec![CMD_NAV_TAKEOFF]
+        );
+
+        let mut silent = arming_in_guided();
+        assert!(ticks(&mut silent, &guided, 100, 1_200).is_empty());
+        silent.on_command_result(CMD_COMPONENT_ARM_DISARM, true);
+        assert!(ticks(&mut silent, &guided, 1_300, 3_700).is_empty());
+        assert_eq!(silent.snapshot()["state"], "running");
+        assert!(ticks(&mut silent, &guided, 3_800, 3_800).is_empty());
+        assert_eq!(
+            silent.snapshot()["reason"],
+            "Unable to takeoff: Vehicle failed to arm.",
+            "two and a half seconds after the ack with no armed heartbeat is a failure"
+        );
+    }
+
+    #[test]
+    fn a_refused_arm_fails_at_once_and_a_later_arm_is_left_alone() {
+        let mut executor = arming_in_guided();
+        let guided = observed("Guided", false);
+        assert!(ticks(&mut executor, &guided, 100, 300).is_empty());
+        executor.on_command_result(CMD_COMPONENT_ARM_DISARM, false);
+        assert!(ticks(&mut executor, &guided, 400, 400).is_empty());
+        assert_eq!(
+            executor.snapshot()["reason"],
+            "Unable to takeoff: Vehicle failed to arm."
+        );
+        assert!(
+            ticks(&mut executor, &observed("Guided", true), 500, 5_000).is_empty(),
+            "the vehicle refused this arm, so arming afterwards came from somewhere else"
+        );
+    }
+
+    #[test]
+    fn an_arm_that_lands_after_the_failure_is_disarmed_on_the_ground_once() {
+        let mut executor = arming_in_guided();
+        let guided = observed("Guided", false);
+        assert!(ticks(&mut executor, &guided, 100, 3_100).is_empty());
+        assert_eq!(executor.snapshot()["state"], "failed");
+        assert_eq!(
+            ticks(&mut executor, &observed("Guided", true), 3_200, 6_000),
+            vec![disarm(), Emit::Tell(LATE_ARM_DISARMED.into())],
+            "a normal disarm, never the forced one, and the pilot hears why"
+        );
+        assert_eq!(executor.snapshot()["reason"], LATE_ARM_DISARMED);
+
+        let mut acked = arming_in_guided();
+        assert!(ticks(&mut acked, &guided, 100, 3_100).is_empty());
+        acked.on_command_result(CMD_COMPONENT_ARM_DISARM, true);
+        assert_eq!(
+            ticks(&mut acked, &guided, 3_200, 3_200),
+            vec![disarm(), Emit::Tell(LATE_ARM_DISARMED.into())],
+            "the late ack says this arm went through before any heartbeat shows it"
+        );
+    }
+
+    #[test]
+    fn an_arm_that_lands_after_the_failure_in_the_air_is_reported_and_never_disarmed() {
+        let mut executor = arming_in_guided();
+        assert!(ticks(&mut executor, &observed("Guided", false), 100, 3_100).is_empty());
+        let flying = Observed {
+            flying: true,
+            ..observed("Guided", true)
+        };
+        assert_eq!(
+            ticks(&mut executor, &flying, 3_200, 6_000),
+            vec![Emit::Tell(LATE_ARM_FLYING.into())]
+        );
+    }
+
+    #[test]
+    fn an_arm_long_after_the_failure_or_after_a_new_command_is_not_taken_for_this_one() {
+        let mut executor = arming_in_guided();
+        let guided = observed("Guided", false);
+        assert!(ticks(&mut executor, &guided, 100, 3_100).is_empty());
+        assert!(ticks(&mut executor, &guided, 3_200, 13_200).is_empty());
+        assert!(
+            ticks(&mut executor, &observed("Guided", true), 13_300, 14_000).is_empty(),
+            "ten seconds on, an arm is the pilot's own"
+        );
+
+        let mut replaced = arming_in_guided();
+        assert!(ticks(&mut replaced, &guided, 100, 3_100).is_empty());
+        replaced.start(
+            steps(guidedcmd::rtl(&copter(), false)),
+            &observed("Guided", false),
+            3_200,
+        );
+        assert!(
+            commands(&ticks(
+                &mut replaced,
+                &observed("Guided", true),
+                3_300,
+                4_000
+            ))
+            .iter()
+            .all(|command| *command != CMD_COMPONENT_ARM_DISARM)
         );
     }
 
@@ -549,9 +806,7 @@ mod tests {
             &observed("Loiter", false),
             0,
         );
-        executor.advance(&observed("Loiter", false), 1300);
-        executor.advance(&observed("Loiter", false), 2600);
-        executor.advance(&observed("Loiter", false), 3900);
+        ticks(&mut executor, &observed("Loiter", false), 100, 4_000);
         assert_eq!(
             executor.snapshot()["reason"],
             "Unable to start mission: Vehicle failed to change to Guided mode."
@@ -562,7 +817,7 @@ mod tests {
             &observed("Guided", false),
             0,
         );
-        arming.advance(&observed("Guided", false), 1500);
+        ticks(&mut arming, &observed("Guided", false), 100, 3_100);
         assert_eq!(
             arming.snapshot()["reason"],
             "Unable to start mission: Vehicle failed to arm."

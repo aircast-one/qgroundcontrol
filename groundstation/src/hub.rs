@@ -2655,6 +2655,7 @@ impl Vehicle {
         Observed {
             flight_mode: self.flight_mode(),
             armed: self.armed(),
+            flying: self.flying,
         }
     }
 
@@ -4774,6 +4775,12 @@ impl Vehicle {
                     })
                     .into_iter()
                     .collect(),
+                Emit::Tell(text) => {
+                    self.pending_notices
+                        .push((crate::noticeboard::MESSAGE, text.clone()));
+                    self.note(text);
+                    Vec::new()
+                }
                 Emit::GuidedMissionItem {
                     latitude,
                     longitude,
@@ -14641,6 +14648,96 @@ mod tests {
         assert!(
             !quiet(&hub),
             "a PreArm line older than the window is not blamed, but the refusal is still told"
+        );
+    }
+
+    #[test]
+    fn an_arm_that_lands_after_the_takeoff_gave_up_is_disarmed_on_the_ground_and_told() {
+        use mavlink::dialects::ardupilotmega::{GLOBAL_POSITION_INT_DATA, MavCmd, MavState};
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let arm_commands = |sent: &[(LinkId, Vec<u8>)]| -> Vec<(f32, f32)> {
+            sent.iter()
+                .filter_map(|(_, bytes)| match decode(bytes) {
+                    MavMessage::COMMAND_LONG(c)
+                        if c.command == MavCmd::MAV_CMD_COMPONENT_ARM_DISARM =>
+                    {
+                        Some((c.param1, c.param2))
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let gave_up = |status: MavState| {
+            let mut hub = Hub::default();
+            connect_copter(&mut hub, &autopilot);
+            let position = MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA {
+                lat: 474000000,
+                lon: 85000000,
+                alt: 500_000,
+                ..Default::default()
+            });
+            hub.on_frame(origin(4), &autopilot, &position, 1_100_000, 1100);
+            hub.guided(
+                None,
+                &json!({ "action": "takeoff", "altitude": 10.0 }),
+                1_100,
+            )
+            .unwrap();
+            let sent = hub.on_frame(
+                origin(4),
+                &autopilot,
+                &copter_heartbeat(4, false),
+                2_000_000,
+                2000,
+            );
+            assert_eq!(arm_commands(&sent), [(1.0, 0.0)]);
+            let quiet: Vec<(LinkId, Vec<u8>)> =
+                (21..=50).flat_map(|tenth| hub.tick(tenth * 100)).collect();
+            assert!(arm_commands(&quiet).is_empty(), "the arm is sent once");
+            assert_eq!(
+                hub.guided_snapshot(None)["guided"]["reason"],
+                "Unable to takeoff: Vehicle failed to arm."
+            );
+            let mut armed = copter_heartbeat(4, true);
+            if let MavMessage::HEARTBEAT(h) = &mut armed {
+                h.system_status = status;
+            }
+            let after = hub.on_frame(origin(4), &autopilot, &armed, 5_100_000, 5100);
+            let told: Vec<(&str, String)> = hub
+                .active()
+                .unwrap()
+                .pending_notices
+                .iter()
+                .filter(|(_, text)| text.contains("stopped waiting"))
+                .cloned()
+                .collect();
+            (arm_commands(&after), told)
+        };
+        assert_eq!(
+            gave_up(MavState::MAV_STATE_STANDBY),
+            (
+                vec![(0.0, 0.0)],
+                vec![(
+                    crate::noticeboard::MESSAGE,
+                    crate::guidedexec::LATE_ARM_DISARMED.to_string()
+                )]
+            ),
+            "a normal disarm the autopilot itself refuses in the air, and the pilot is told"
+        );
+        assert_eq!(
+            gave_up(MavState::MAV_STATE_ACTIVE),
+            (
+                Vec::new(),
+                vec![(
+                    crate::noticeboard::MESSAGE,
+                    crate::guidedexec::LATE_ARM_FLYING.to_string()
+                )]
+            ),
+            "a copter that reports itself flying is never disarmed"
         );
     }
 
