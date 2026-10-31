@@ -11,6 +11,10 @@ const RELEASES_URL: &str =
 const TAG_PREFIX: &str = "aircast-v";
 const NATIVE_PREFIX: &str = "AircastQGCNative-";
 const ANDROID_PREFIX: &str = "AircastAndroid-";
+const WINDOWS_X64_INSTALLER: (&str, &str) = (NATIVE_PREFIX, "-windows-x64-setup.exe");
+const WINDOWS_ARM64_INSTALLER: (&str, &str) = (NATIVE_PREFIX, "-windows-arm64-setup.exe");
+const ANDROID_INSTALLER: (&str, &str) = (ANDROID_PREFIX, ".apk");
+const MACOS_INSTALLER: (&str, &str) = (NATIVE_PREFIX, ".dmg");
 const LOOKUP_TIMEOUT: Duration = Duration::from_secs(30);
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const FIRST_CHECK_AFTER: Duration = Duration::from_secs(15);
@@ -18,7 +22,8 @@ pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 pub const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(60 * 60);
 const POLL_EVERY: Duration = Duration::from_millis(250);
 const AUTO_CHECK_KEY: &str = "AppUpdate/autoCheck";
-const SNOOZED_KEY: &str = "AppUpdate/snoozed";
+const SKIPPED_VERSION_KEY: &str = "AppUpdate/skipped";
+const LAST_RUN_VERSION_KEY: &str = "AppUpdate/lastVersion";
 const DOWNLOAD_DIR: &str = "Updates";
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 const CANCELLED_MESSAGE: &str = "cancelled";
@@ -83,6 +88,17 @@ struct State {
     error: String,
     checked_at: String,
     last_check: Option<(Instant, bool)>,
+    later: bool,
+    updated_from: String,
+}
+
+impl State {
+    fn begin(&mut self, version: &str, last_run: Option<&str>, now: Instant) {
+        self.current = version.trim().to_string();
+        self.started = Some(now);
+        self.later = false;
+        self.updated_from = updated_from(last_run, &self.current);
+    }
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| Mutex::new(State::default()));
@@ -140,10 +156,10 @@ pub fn channel(current: &semver::Version) -> &'static str {
 
 pub fn asset_pattern(os: &str, arch: &str) -> Option<(&'static str, &'static str)> {
     match (os, arch) {
-        ("windows", "x86_64") => Some((NATIVE_PREFIX, "-windows-x64-setup.exe")),
-        ("windows", "aarch64") => Some((NATIVE_PREFIX, "-windows-arm64-setup.exe")),
-        ("android", _) => Some((ANDROID_PREFIX, ".apk")),
-        ("macos", _) => Some((NATIVE_PREFIX, ".dmg")),
+        ("windows", "x86_64") => Some(WINDOWS_X64_INSTALLER),
+        ("windows", "aarch64") => Some(WINDOWS_ARM64_INSTALLER),
+        ("android", _) => Some(ANDROID_INSTALLER),
+        ("macos", _) => Some(MACOS_INSTALLER),
         _ => None,
     }
 }
@@ -225,12 +241,77 @@ pub fn digest_matches(expected: &str, hex: &str) -> bool {
     hex.eq_ignore_ascii_case(expected)
 }
 
-pub fn effective_snooze(stored: Option<&str>, latest: Option<&semver::Version>) -> String {
-    let snoozed = stored.and_then(parsed);
-    match (snoozed, latest) {
-        (Some(snoozed), Some(latest)) if *latest > snoozed => String::new(),
-        (Some(snoozed), _) => snoozed.to_string(),
+pub fn effective_skip(stored: Option<&str>, latest: Option<&semver::Version>) -> String {
+    let skipped = stored.and_then(parsed);
+    match (skipped, latest) {
+        (Some(skipped), Some(latest)) if *latest > skipped => String::new(),
+        (Some(skipped), _) => skipped.to_string(),
         (None, _) => String::new(),
+    }
+}
+
+pub fn updated_from(last_run: Option<&str>, current: &str) -> String {
+    last_run
+        .and_then(parsed)
+        .zip(parsed(current))
+        .filter(|(last, current)| last < current)
+        .map(|(last, _)| last.to_string())
+        .unwrap_or_default()
+}
+
+pub fn installer_version(file_name: &str) -> Option<semver::Version> {
+    let name = file_name.strip_suffix(".part").unwrap_or(file_name);
+    [
+        WINDOWS_X64_INSTALLER,
+        WINDOWS_ARM64_INSTALLER,
+        ANDROID_INSTALLER,
+        MACOS_INSTALLER,
+    ]
+    .iter()
+    .find_map(|(prefix, suffix)| parsed(name.strip_prefix(prefix)?.strip_suffix(suffix)?))
+}
+
+pub fn outdated_download(file_name: &str, current: &str) -> bool {
+    match parsed(current) {
+        Some(current) => installer_version(file_name).is_none_or(|version| version <= current),
+        None => true,
+    }
+}
+
+fn prune_downloads(dir: &std::path::Path, current: &str) {
+    let names: Vec<std::ffi::OsString> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .map(|e| e.file_name())
+                .collect()
+        })
+        .unwrap_or_default();
+    names
+        .iter()
+        .filter(|name| outdated_download(&name.to_string_lossy(), current))
+        .for_each(|name| {
+            let path = dir.join(name);
+            let _ = std::fs::remove_file(&path).or_else(|_| std::fs::remove_dir_all(&path));
+        });
+}
+
+pub fn verified_installer(
+    dir: &std::path::Path,
+    asset: &Asset,
+    expected: Option<&str>,
+) -> Option<PathBuf> {
+    let file = dir.join(&asset.name);
+    file.is_file().then_some(())?;
+    let expected = expected?;
+    let verified = crate::cardimage::sha256_of(&file, &|| false)
+        .is_ok_and(|hex| digest_matches(expected, &hex));
+    match verified {
+        true => Some(file),
+        false => {
+            let _ = std::fs::remove_file(&file);
+            None
+        }
     }
 }
 
@@ -263,24 +344,52 @@ fn fetches() -> bool {
     !cfg!(test) && std::env::var_os("QGC_CORE_OFFLINE").is_none()
 }
 
-fn settle(found: Result<Option<Release>, String>) {
-    let mut held = changing();
-    held.checked_at = now_text();
-    held.last_check = Some((Instant::now(), found.is_err()));
-    match found {
-        Err(error) => {
-            held.phase = Phase::Failed;
-            held.error = error;
-        }
-        Ok(None) => {
-            held.phase = Phase::UpToDate;
-            held.latest = None;
-        }
-        Ok(Some(release)) => {
-            held.phase = Phase::Available;
-            held.latest = Some(release);
+impl State {
+    fn settle(
+        &mut self,
+        found: Result<Option<Release>, String>,
+        downloaded: Option<PathBuf>,
+        now: Instant,
+    ) {
+        self.checked_at = now_text();
+        self.last_check = Some((now, found.is_err()));
+        match (found, downloaded) {
+            (Err(error), _) => {
+                self.phase = Phase::Failed;
+                self.error = error;
+            }
+            (Ok(None), _) => {
+                self.phase = Phase::UpToDate;
+                self.latest = None;
+            }
+            (Ok(Some(release)), Some(file)) => {
+                self.phase = Phase::Ready;
+                self.progress = 1.0;
+                self.file = file.to_string_lossy().into_owned();
+                self.latest = Some(release);
+            }
+            (Ok(Some(release)), None) => {
+                self.phase = Phase::Available;
+                self.latest = Some(release);
+            }
         }
     }
+}
+
+fn settle(found: Result<Option<Release>, String>, downloaded: Option<PathBuf>) {
+    changing().settle(found, downloaded, Instant::now());
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn downloaded_already(found: &Result<Option<Release>, String>) -> Option<PathBuf> {
+    let asset = found.as_ref().ok()?.as_ref()?.asset.as_ref()?;
+    let dir = download_dir()?;
+    dir.join(&asset.name).is_file().then_some(())?;
+    let expected = crate::http::get_text(&asset.checksum_url, LOOKUP_TIMEOUT)
+        .ok()
+        .as_deref()
+        .and_then(expected_digest);
+    verified_installer(&dir, asset, expected.as_deref())
 }
 
 pub fn check() -> Result<(), String> {
@@ -308,7 +417,7 @@ pub fn check() -> Result<(), String> {
     held.phase = Phase::Checking;
     drop(held);
     if !fetches() {
-        settle(Ok(None));
+        settle(Ok(None), None);
         return Ok(());
     }
     fetch_releases(current, pattern)
@@ -320,18 +429,18 @@ fn fetch_releases(
     pattern: (&'static str, &'static str),
 ) -> Result<(), String> {
     crate::background::spawn("app-update-check", move || {
-        settle(
-            crate::http::get_text(RELEASES_URL, LOOKUP_TIMEOUT)
-                .map_err(|e| format!("GitHub could not be reached to check for updates ({e})."))
-                .and_then(|body| newest(&body, &current, Some(pattern))),
-        );
+        let found = crate::http::get_text(RELEASES_URL, LOOKUP_TIMEOUT)
+            .map_err(|e| format!("GitHub could not be reached to check for updates ({e})."))
+            .and_then(|body| newest(&body, &current, Some(pattern)));
+        let downloaded = downloaded_already(&found);
+        settle(found, downloaded);
     })
     .map_err(|e| e.to_string())
 }
 
 #[cfg(target_family = "wasm")]
 fn fetch_releases(_current: semver::Version, _pattern: (&str, &str)) -> Result<(), String> {
-    settle(Ok(None));
+    settle(Ok(None), None);
     Ok(())
 }
 
@@ -569,14 +678,14 @@ fn download_verified(asset: &Asset, dir: &std::path::Path) -> Result<PathBuf, St
 }
 
 pub fn start(version: &str, announce: fn()) {
-    {
-        let mut held = changing();
-        held.current = version.trim().to_string();
-        held.started.get_or_insert_with(Instant::now);
-    }
     POLLING.call_once(|| {
+        let last_run = crate::settingsstore::stored_text(LAST_RUN_VERSION_KEY);
+        changing().begin(version, last_run.as_deref(), Instant::now());
+        if parsed(version).is_some() {
+            crate::settingsstore::written(LAST_RUN_VERSION_KEY, version.trim());
+        }
         if let Some(dir) = download_dir() {
-            let _ = std::fs::remove_dir_all(dir);
+            prune_downloads(&dir, version);
         }
         let _ = crate::background::poll("app-update", POLL_EVERY, move || {
             if take_changed() {
@@ -627,10 +736,12 @@ pub fn view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
         "error": held.error,
         "checkedAt": held.checked_at,
         "autoCheck": auto_check(),
-        "snoozed": effective_snooze(
-            crate::settingsstore::stored_text(SNOOZED_KEY).as_deref(),
+        "skipped": effective_skip(
+            crate::settingsstore::stored_text(SKIPPED_VERSION_KEY).as_deref(),
             latest.map(|r| &r.version),
         ),
+        "later": held.later,
+        "updatedFrom": held.updated_from,
         "canInstall": can_install,
     })
 }
@@ -659,13 +770,21 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             }
             None => Err("appUpdate.setAutoCheck takes true or false".to_string()),
         }),
-        "appUpdate.snooze" => answer(match changing().latest.as_ref() {
+        "appUpdate.skip" => answer(match changing().latest.as_ref() {
             Some(release) => {
-                crate::settingsstore::written(SNOOZED_KEY, &release.version.to_string());
+                crate::settingsstore::written(SKIPPED_VERSION_KEY, &release.version.to_string());
                 Ok(())
             }
-            None => Err("There is no update to snooze.".to_string()),
+            None => Err("There is no update to skip.".to_string()),
         }),
+        "appUpdate.later" => {
+            changing().later = true;
+            answer(Ok(()))
+        }
+        "appUpdate.dismissUpdated" => {
+            changing().updated_from.clear();
+            answer(Ok(()))
+        }
         _ => return None,
     })
 }
@@ -839,21 +958,158 @@ mod tests {
         assert_eq!(expected_digest(""), None);
     }
 
+    fn folder(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("appupdate-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn android_asset(version: &str) -> Asset {
+        let name = format!("AircastAndroid-v{version}.apk");
+        Asset {
+            url: format!("https://dl/{name}"),
+            checksum_url: format!("https://dl/{name}.sha256"),
+            size: 15,
+            name,
+        }
+    }
+
     #[test]
-    fn a_snooze_hides_that_version_until_a_newer_one_appears() {
+    fn a_restart_keeps_newer_downloads_and_drops_what_is_already_installed() {
+        let current = "5.6.5-beta.21";
+        assert!(!outdated_download(
+            "AircastAndroid-v5.6.5-beta.22.apk",
+            current
+        ));
+        assert!(!outdated_download(
+            "AircastAndroid-v5.6.5-beta.22.apk.part",
+            current
+        ));
+        assert!(!outdated_download("AircastQGCNative-v5.6.6.dmg", current));
+        assert!(!outdated_download(
+            "AircastQGCNative-v5.6.5-beta.22-windows-arm64-setup.exe",
+            current
+        ));
+        assert!(
+            outdated_download("AircastAndroid-v5.6.5-beta.21.apk", current),
+            "the version now running"
+        );
+        assert!(outdated_download(
+            "AircastQGCNative-v5.6.5-beta.20-windows-x64-setup.exe.part",
+            current
+        ));
+        assert!(outdated_download("notes.txt", current));
+        assert!(
+            outdated_download(
+                "AircastAndroid-v5.6.5-beta.22.apk",
+                "aircast-v5.6.5-beta.21-3-gc21767c98d"
+            ),
+            "a dev build has no update to keep a download for"
+        );
+        let dir = folder("prune");
+        [
+            "AircastAndroid-v5.6.5-beta.20.apk",
+            "AircastAndroid-v5.6.5-beta.21.apk.part",
+            "AircastAndroid-v5.6.5-beta.22.apk",
+            "AircastAndroid-v5.6.5-beta.23.apk.part",
+            "stray.tmp",
+        ]
+        .iter()
+        .for_each(|name| std::fs::write(dir.join(name), b"x").unwrap());
+        prune_downloads(&dir, current);
+        let kept: std::collections::BTreeSet<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                "AircastAndroid-v5.6.5-beta.22.apk".to_string(),
+                "AircastAndroid-v5.6.5-beta.23.apk.part".to_string()
+            ]
+            .into_iter()
+            .collect()
+        );
+    }
+
+    #[test]
+    fn a_verified_download_of_the_latest_goes_straight_to_ready() {
+        use sha2::{Digest, Sha256};
+        let dir = folder("ready");
+        let asset = android_asset("5.6.5-beta.22");
+        std::fs::write(dir.join(&asset.name), b"installer bytes").unwrap();
+        let hex = crate::signingkeys::to_hex(&Sha256::digest(b"installer bytes"));
+        assert_eq!(
+            verified_installer(&dir, &asset, None),
+            None,
+            "unverifiable now"
+        );
+        assert!(
+            dir.join(&asset.name).is_file(),
+            "kept for the next check to verify"
+        );
+        let found = verified_installer(&dir, &asset, Some(&hex));
+        assert_eq!(found, Some(dir.join(&asset.name)));
+        let mut state = State::default();
+        let release = Release {
+            version: parsed("5.6.5-beta.22").unwrap(),
+            notes: String::new(),
+            url: String::new(),
+            asset: Some(asset.clone()),
+        };
+        state.settle(Ok(Some(release.clone())), found, Instant::now());
+        assert_eq!(state.phase, Phase::Ready);
+        assert_eq!(state.progress, 1.0);
+        assert_eq!(state.file, dir.join(&asset.name).to_string_lossy());
+        state.settle(Ok(Some(release)), None, Instant::now());
+        assert_eq!(state.phase, Phase::Available);
+        let tampered = crate::signingkeys::to_hex(&Sha256::digest(b"other bytes"));
+        assert_eq!(verified_installer(&dir, &asset, Some(&tampered)), None);
+        assert!(
+            !dir.join(&asset.name).exists(),
+            "a file that fails its checksum is deleted"
+        );
+        assert_eq!(verified_installer(&dir, &asset, Some(&hex)), None);
+    }
+
+    #[test]
+    fn later_lasts_until_the_next_start_and_an_upgrade_is_reported_once_per_run() {
+        let now = Instant::now();
+        let mut state = State {
+            later: true,
+            ..State::default()
+        };
+        state.begin("5.6.5-beta.22", Some("5.6.5-beta.21"), now);
+        assert!(
+            !state.later,
+            "Later only hides the offer for the run it was pressed in"
+        );
+        assert_eq!(state.updated_from, "5.6.5-beta.21");
+        assert_eq!(state.current, "5.6.5-beta.22");
+        assert_eq!(updated_from(None, "5.6.5-beta.22"), "", "first run ever");
+        assert_eq!(updated_from(Some("5.6.5-beta.22"), "5.6.5-beta.22"), "");
+        assert_eq!(updated_from(Some("5.6.6"), "5.6.5"), "", "a downgrade");
+        assert_eq!(updated_from(Some("garbage"), "5.6.5"), "");
+        assert_eq!(
+            updated_from(Some("5.6.4"), "aircast-v5.6.5-beta.21-3-gc21767c98d"),
+            ""
+        );
+        assert_eq!(updated_from(Some("5.6.4"), "5.6.5"), "5.6.4");
+    }
+
+    #[test]
+    fn a_skip_hides_that_version_until_a_newer_one_appears() {
         let v22 = parsed("5.6.5-beta.22").unwrap();
         let v23 = parsed("5.6.5-beta.23").unwrap();
         assert_eq!(
-            effective_snooze(Some("5.6.5-beta.22"), Some(&v22)),
+            effective_skip(Some("5.6.5-beta.22"), Some(&v22)),
             "5.6.5-beta.22"
         );
-        assert_eq!(effective_snooze(Some("5.6.5-beta.22"), Some(&v23)), "");
-        assert_eq!(
-            effective_snooze(Some("5.6.5-beta.22"), None),
-            "5.6.5-beta.22"
-        );
-        assert_eq!(effective_snooze(None, Some(&v22)), "");
-        assert_eq!(effective_snooze(Some("garbage"), Some(&v22)), "");
+        assert_eq!(effective_skip(Some("5.6.5-beta.22"), Some(&v23)), "");
+        assert_eq!(effective_skip(Some("5.6.5-beta.22"), None), "5.6.5-beta.22");
+        assert_eq!(effective_skip(None, Some(&v22)), "");
+        assert_eq!(effective_skip(Some("garbage"), Some(&v22)), "");
     }
 
     struct Flaky {
