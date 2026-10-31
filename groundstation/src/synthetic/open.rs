@@ -47,14 +47,17 @@ const TREE_SPLIT_M: [f64; 2] = [600.0, 250.0];
 const TREE_NEAR_ZOOM: u32 = 18;
 const FAR_KEEP: f64 = 0.5;
 const FAR_SPREAD: f64 = 1.35;
-const TREE_BRIGHTEST: f32 = 110.0;
-const TREE_DARKEST: f32 = 40.0;
+const TREE_BRIGHTEST: f32 = 120.0;
+const TREE_DARKEST: f32 = 65.0;
 const CANOPY_SAMPLE_M: f64 = 4.0;
 const HOME_CLEARING_M: f64 = 25.0;
-const TREE_LIFT: f32 = 1.5;
-const TREE_SATURATION: f32 = 1.35;
+const TREE_LIFT: f32 = 1.85;
+const TREE_SATURATION: f32 = 0.95;
+const TREE_CHROMA: f32 = 0.45;
+const FOREST_GREEN: [f32; 3] = [0.8, 1.0, 0.9];
+const FOREST_PULL: f32 = 0.4;
 const TREE_VARIETY: f32 = 0.08;
-const SHADES: [f32; 4] = [1.18, 1.0, 0.88, 0.66];
+const SHADES: [f32; 4] = [1.1, 1.0, 0.92, 0.8];
 const CONIFER_TINT: [f32; 3] = [0.86, 0.95, 1.0];
 const HIGHLAND_M: f64 = 800.0;
 const HIGHLAND_CONIFERS: f64 = 0.1;
@@ -1074,6 +1077,20 @@ fn canopy(
     (luma(mean) <= stand.brightest).then_some(mean)
 }
 
+fn forest_green(mean: [f32; 3]) -> [f32; 3] {
+    let grey = luma(mean);
+    let scale = grey / luma(FOREST_GREEN);
+    let pulled: [f32; 3] = std::array::from_fn(|channel| {
+        let own = grey + (mean[channel] - grey) * TREE_SATURATION;
+        own + (FOREST_GREEN[channel] * scale - own) * FOREST_PULL
+    });
+    let chroma = pulled.iter().fold(0.0_f32, |widest, channel| {
+        widest.max((channel - grey).abs())
+    });
+    let kept = (TREE_CHROMA * grey / chroma.max(f32::EPSILON)).min(1.0);
+    pulled.map(|channel| grey + (channel - grey) * kept)
+}
+
 fn luma(colour: [f32; 3]) -> f32 {
     0.299 * colour[0] + 0.587 * colour[1] + 0.114 * colour[2]
 }
@@ -1331,13 +1348,9 @@ fn tree_mesh(
             let conifer = unit(mixed(seed, 3)) < conifers;
             let tint = if conifer { CONIFER_TINT } else { [1.0; 3] };
             let variety = 1.0 + TREE_VARIETY * (2.0 * unit(mixed(seed, 6)) as f32 - 1.0);
-            let grey = luma(mean);
-            let colour: [f32; 3] = std::array::from_fn(|channel| {
-                (grey + (mean[channel] - grey) * TREE_SATURATION)
-                    * TREE_LIFT
-                    * variety
-                    * tint[channel]
-            });
+            let green = forest_green(mean);
+            let colour: [f32; 3] =
+                std::array::from_fn(|channel| green[channel] * TREE_LIFT * variety * tint[channel]);
             let dimmed = (luma(colour).clamp(TREE_DARKEST, TREE_BRIGHTEST)) / luma(colour).max(1.0);
             Some(Tree {
                 at: placement.flat_at(u, v) + DVec3::Z * ground,
