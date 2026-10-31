@@ -27,7 +27,6 @@ public sealed partial class ShellTitleBar : UserControl
     private const double StripFloor = 200;
     private const double DragFloor = 64;
     private const double VerdictFloor = 80;
-    private const double VerdictCap = 240;
 
     private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath, WarningsPath };
     private static readonly string[] KnownStates = { "notConnected", "contactLost", "flying", "landing", "armed", "disarmed" };
@@ -125,7 +124,7 @@ public sealed partial class ShellTitleBar : UserControl
             ? Lead.Margin.Left + Lead.ActualWidth + MoreButton.ActualWidth + RightGroup.Spacing + DragFloor
             : DragArea.Padding.Left + DragArea.Padding.Right + LogoWidth + DragArea.ColumnSpacing + SubtitleRoom;
         var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - Fixed.ActualWidth - brand;
-        ArmedText.MaxWidth = Math.Clamp(room + ArmedText.ActualWidth - Strip.Needed, VerdictFloor, VerdictCap);
+        ArmedText.MaxWidth = Math.Max(VerdictFloor, room + ArmedText.ActualWidth - Strip.Needed);
         var titled = !_onFly && room - title >= StripFloor;
         AppTitle.Visibility = Shown(titled);
         Strip.MaxWidth = Math.Max(0, room - (titled ? title : 0));
@@ -171,7 +170,7 @@ public sealed partial class ShellTitleBar : UserControl
         var stateText = Text(state, "stateText");
         var alarming = connected && (token == "contactLost" || !KnownStates.Contains(token));
 
-        Subtitle.Text = !connected ? "Connect a vehicle to fly" : stateText.Length == 0 ? "Vehicle state unknown" : stateText;
+        Subtitle.Text = !connected ? "Connect a vehicle to fly" : !alarming ? "" : stateText.Length == 0 ? "Vehicle state unknown" : stateText;
         Subtitle.Foreground = Token(alarming ? "CriticalBrush" : "TextTertiaryBrush");
 
         var (linkText, linkTone) = Link(connected, Flag(state, "contactLost"), View(VehicleLinksPath));
