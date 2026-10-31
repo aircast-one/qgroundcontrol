@@ -228,6 +228,17 @@ hosted('an app served elsewhere moves to the https address the device names, so 
   await Promise.all([app.waitForEvent('load'), app.getByRole('button', { name: 'Disconnect' }).click()]);
 });
 
+test('a pilot looking for the RTSP and telemetry links finds them by search and from the Transmission tab', async ({ device }) => {
+  await device.getByRole('button', { name: 'Settings', exact: true }).click();
+  await device.getByRole('textbox', { name: 'Search settings' }).fill('rtsp');
+  await device.getByRole('button', { name: /^Ground station links/ }).click();
+  await expect(device.getByText('rtsp://e2e-device:8554/e2e')).toBeVisible();
+  await expect(device.getByText('e2e-device:14550')).toBeVisible();
+  await device.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await device.getByRole('button', { name: /^Ground station links.*RTSP video, MAVLink telemetry/ }).click();
+  await expect(device.getByText('rtsp://e2e-device:8554/e2e')).toBeVisible();
+});
+
 base('a page the device served over http flies from there, even when the device names an https address', async ({ page }) => {
   await page.goto(`http://${UPGRADING}/`);
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });

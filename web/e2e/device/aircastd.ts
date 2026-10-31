@@ -128,7 +128,7 @@ const AIRCRAFT = {
     { label: 'Telemetry', value: 'connected', level: 0 },
   ],
   pages: [
-    { title: 'Ground station links', href: '/connect', icon: 'qr-code' },
+    { title: 'Ground station links', href: '/connect', icon: 'qr-code', summary: 'RTSP video, MAVLink telemetry' },
     { title: 'Connection', href: '/network', icon: 'network', summary: 'Wi-Fi' },
   ],
   health: { memory: '120 MB of 415 MB', charts: [{ label: 'CPU', values: [3, 5, 4], max: 100, value: '4%', level: 3 }] },
@@ -140,6 +140,18 @@ const TELEMETRY = {
   endpoints: [{ proto: 'UDP', label: 'MAVLink', url: 'e2e-device:14550', hint: 'QGroundControl: Application Settings → Comm Links → Add → Type UDP.' }],
   settings: { endpoints: 'udps:0.0.0.0:14550', baud: '115200' },
   schemes: [],
+};
+
+const CONNECT = {
+  choices: [{ value: 'all', label: 'Show all', hides: [] }],
+  cameras: [
+    {
+      name: 'e2e',
+      status: { level: 0, text: 'live' },
+      targets: [{ proto: 'RTSP', label: 'QGroundControl, Mission Planner or VLC · RTSP', url: 'rtsp://e2e-device:8554/e2e', hint: 'QGroundControl: Application Settings → Video → Source "RTSP Video Stream" → paste.', qr: true, alternatives: [] }],
+    },
+  ],
+  telemetry: { status: { level: 0, text: 'connected' }, targets: [{ proto: 'UDP', label: 'MAVLink · UDP', url: 'e2e-device:14550', hint: 'QGroundControl: Application Settings → Comm Links → Add → Type UDP.', qr: false, alternatives: [] }] },
 };
 
 const FLIGHTS = {
@@ -158,7 +170,7 @@ const FLIGHTS = {
   ],
 };
 
-const VIEWS = { aircraft: AIRCRAFT, telemetry: TELEMETRY, flights: FLIGHTS };
+const VIEWS = { aircraft: AIRCRAFT, telemetry: TELEMETRY, flights: FLIGHTS, connect: CONNECT };
 
 const app = (request: IncomingMessage, response: ServerResponse) => {
   const path = (request.url ?? '/').replace(/^\/fly(?=\/)/, '');
@@ -185,7 +197,7 @@ const device = (named: { origin: string }, secure: boolean) => (request: Incomin
       json(response, 200, scenes.get(placed[1]));
     });
   }
-  const view = /^\/api\/views\/(aircraft|telemetry|flights)(\/events)?$/.exec(url.pathname);
+  const view = /^\/api\/views\/(aircraft|telemetry|flights|connect)(\/events)?$/.exec(url.pathname);
   if (view !== null && view[2] === undefined) return json(response, 200, VIEWS[view[1] as keyof typeof VIEWS]);
   if (view !== null) {
     response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });

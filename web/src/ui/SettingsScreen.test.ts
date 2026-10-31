@@ -43,6 +43,7 @@ import {
   matchesIn,
   pageLook,
   pageMatches,
+  devicePageMatches,
   pageTitle,
   sectionsIn,
   RADIO_ON_USB_BLOCK,
@@ -340,6 +341,15 @@ describe('SettingsViewTest', () => {
     expect(pageMatches(telemetry, 'mav')).toBe(true);
     expect(pageMatches(telemetry, 'offline')).toBe(false);
     expect(pageMatches(telemetry, ' ')).toBe(false);
+  });
+
+  it('device pages match on what their summary names, so rtsp and telemetry find the ground station links', () => {
+    const links = { title: 'Ground station links', href: '/connect', icon: 'qr-code', summary: 'RTSP video, MAVLink telemetry', needs: false };
+    expect(devicePageMatches(links, 'RTSP')).toBe(true);
+    expect(devicePageMatches(links, 'telemetry')).toBe(true);
+    expect(devicePageMatches(links, 'ground station')).toBe(true);
+    expect(devicePageMatches(links, 'recordings')).toBe(false);
+    expect(devicePageMatches(links, ' ')).toBe(false);
   });
 
   it('about lists the privacy policy after the support links', () => {

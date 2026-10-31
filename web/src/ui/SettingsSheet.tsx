@@ -195,6 +195,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
             <SettingsScreen
               key={current && page !== null ? `page:${page}` : 'none'}
               group={shown}
+              shown={current}
               everyPage={everyPage}
               open={current ? openPage : null}
               onOpen={setOpenPage}

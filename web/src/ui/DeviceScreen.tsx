@@ -26,7 +26,7 @@ const PageColumn = ({ wide = false, children }: { wide?: boolean; children: Reac
   </div>
 );
 
-export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOpen: (href: string) => void; onClose: () => void }) => {
+export const DeviceTab = ({ shown = true, open, onOpen, onClose }: { shown?: boolean; open: string | null; onOpen: (href: string) => void; onClose: () => void }) => {
   const reading = useDeviceReading();
   const status = useDeviceStatus();
   const served = useValue(deviceServed);
@@ -35,10 +35,10 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
   const desktop = useDesktopLayout();
   const [stack, setStack] = useKeyedState<readonly string[]>([open], () => (open === null ? [] : [open]));
   useEffect(() => {
-    if (requested === null) return;
+    if (requested === null || !shown) return;
     deviceRequested.value = null;
     onOpen(requested);
-  }, [requested]);
+  }, [requested, shown]);
   const current = stack.at(-1) ?? null;
   const back = () => (stack.length > 1 ? setStack(stack.slice(0, -1)) : onClose());
   const opened = current === null ? null : devicePath(current);

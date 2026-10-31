@@ -14,12 +14,13 @@ import type { DrawableName } from '@/res/drawables';
 import { aircast, md, withAlpha } from '@/theme/Colors';
 import { AboutPage, qgcVersion } from '@/ui/AboutPage';
 import { useAdvancedUiShown } from '@/ui/AdvancedUi';
-import { LocalAppNavigation } from '@/ui/AppNavigation';
+import { type AppNavigationState, LocalAppNavigation } from '@/ui/AppNavigation';
 import { CAMERAS_VIEW, VIDEO_SOURCES_PAGE, camerasGlance, camerasReading } from '@/ui/Cameras';
 import { CamerasEditor } from '@/ui/CamerasEditor';
 import { DeviceTab } from '@/ui/DeviceScreen';
 import { DETAIL_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
+import { type DevicePage, devicePageIcon, deviceRequested, useDeviceStatus } from '@/ui/DeviceStatus';
 import { FLASHER_PAGE, FlasherScreen } from '@/ui/FlasherScreen';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GCS_LOCATION_BLOCK, GcsPositionStatus, REMOTE_ID_GROUP } from '@/ui/GcsPositionStatus';
@@ -339,12 +340,32 @@ const TabSetupRows = ({ group, onOpenSetup }: { group: SettingsGroup; onOpenSetu
   );
 };
 
+export const GROUND_STATION_LINKS = '/connect';
+
+const SHOWS_GROUND_STATION_LINKS: readonly SettingsGroup[] = [SettingsGroup.Camera, SettingsGroup.Transmission];
+
+export const devicePageMatches = (page: DevicePage, needle: string): boolean => {
+  const wanted = needle.trim().toLowerCase();
+  return wanted !== '' && `${page.title} ${page.summary}`.toLowerCase().includes(wanted);
+};
+
+const openDevicePage = (navigation: AppNavigationState, href: string): void => {
+  deviceRequested.value = href;
+  navigation.settingsPage.value = DEVICE_PAGE;
+};
+
+const DevicePageRow = ({ page }: { page: DevicePage }) => {
+  const navigation = useContext(LocalAppNavigation);
+  return <SetupRow title={page.title} status={page.summary} icon={devicePageIcon(page.icon)} onClick={() => openDevicePage(navigation, page.href)} />;
+};
+
 const AircraftSetupRow = ({ onOpenSetup }: { onOpenSetup: (component: string | null) => void }) => (
   <SetupRow title={AIRCRAFT_SETUP} status="" icon="ic_build" onClick={() => onOpenSetup(null)} />
 );
 
 export const SettingsScreen = ({
   group,
+  shown = true,
   everyPage,
   open,
   onOpen,
@@ -354,6 +375,7 @@ export const SettingsScreen = ({
   onOpenSetup = () => undefined,
 }: {
   group: SettingsGroup;
+  shown?: boolean;
   everyPage: readonly SettingsPageEntry[];
   open: string | null;
   onOpen: (title: string) => void;
@@ -371,7 +393,7 @@ export const SettingsScreen = ({
         <div className={`flex h-full w-full ${desktop ? 'justify-start' : 'justify-center'} ${className ?? ''}`}>
           <div className="h-full w-full" style={desktop && group === SettingsGroup.Device ? undefined : { maxWidth: DETAIL_PANE_MAX_WIDTH }}>
             {group === SettingsGroup.Device ? (
-              <DeviceTab open={open} onOpen={onOpen} onClose={onClose} />
+              <DeviceTab shown={shown} open={open} onOpen={onOpen} onClose={onClose} />
             ) : current === null ? (
               <SettingsTab group={group} everyPage={everyPage} className="h-full w-full" onOpenSetup={onOpenSetup} onOpen={onOpen} />
             ) : (
@@ -418,8 +440,10 @@ const SettingsTab = ({
     drawnInline(page) ? <InlinePage key={page.title} page={page} group={group} /> : <PageEntryRow key={page.title} page={page} linksJson={linksJson} onOpen={onOpen} />;
   const folded = pages.filter(drawnInline);
   const shown = pages.filter((page) => !drawnInline(page));
+  const groundStationLinks = useDeviceStatus()?.pages.find((page) => page.href === GROUND_STATION_LINKS) ?? null;
   return (
     <div className={`overflow-y-auto ${className}`}>
+      {groundStationLinks !== null && SHOWS_GROUND_STATION_LINKS.includes(group) ? <DevicePageRow page={groundStationLinks} /> : null}
       {group === SettingsGroup.General ? (
         <>
           <AircraftSetupRow onOpenSetup={onOpenSetup} />
@@ -526,7 +550,8 @@ export const SettingsSearch = ({
   });
 
   const pageHits = pages.filter((page) => pageMatches(page, query));
-  const nothing = hits.length === 0 && pageHits.length === 0 && setupHits.length === 0 && pilotHits.length === 0;
+  const deviceHits = (useDeviceStatus()?.pages ?? []).filter((page) => devicePageMatches(page, query));
+  const nothing = hits.length === 0 && pageHits.length === 0 && setupHits.length === 0 && pilotHits.length === 0 && deviceHits.length === 0;
   const desktop = useDesktopLayout();
 
   return (
@@ -547,6 +572,10 @@ export const SettingsSearch = ({
             {setupHits.length > 0 ? <SectionHeader text={AIRCRAFT_SETUP} /> : null}
             {setupHits.map((component) => (
               <SetupRow key={`setup${component.name}`} title={sentenceCase(component.name)} icon={setupIcon(component.known, component.className)} onClick={() => onOpenSetup(component.name)} />
+            ))}
+            {deviceHits.length > 0 ? <SectionHeader text={SettingsGroup.Device.title} /> : null}
+            {deviceHits.map((page) => (
+              <DevicePageRow key={`device${page.href}`} page={page} />
             ))}
             {pageHits.length > 0 ? <SectionHeader text="Pages" /> : null}
             {pageHits.map((entry) => (
