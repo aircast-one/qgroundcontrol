@@ -65,6 +65,7 @@ const FASTEST_TURN_DEG_S: f64 = 720.0;
 static AIM: Mutex<(f64, f64)> = Mutex::new(DEFAULT_AIM);
 static CHANGED: AtomicBool = AtomicBool::new(false);
 static DRAW: Mutex<&'static str> = Mutex::new(DRAW_LOADING);
+static SOFTWARE_ADAPTER: AtomicBool = AtomicBool::new(false);
 const DRAW_LOADING: &str = "loading";
 static GROUND: Mutex<Option<(f64, u64)>> = Mutex::new(None);
 pub type Terrain = Arc<dyn Fn(f64, f64) -> Option<f64> + Send + Sync>;
@@ -139,6 +140,16 @@ pub fn set_draw(state: &'static str) {
 
 fn drawn() -> &'static str {
     *DRAW.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn set_software(software: bool) {
+    if SOFTWARE_ADAPTER.swap(software, Ordering::SeqCst) != software {
+        CHANGED.store(true, Ordering::SeqCst);
+    }
+}
+
+fn software() -> bool {
+    SOFTWARE_ADAPTER.load(Ordering::SeqCst)
 }
 
 pub fn owns(path: &str) -> bool {
@@ -298,7 +309,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         .zip(raw(backend, "vehicle.altitudeRelative"));
     let Some((((latitude, longitude), (home_latitude, home_longitude)), above_home)) = placed
     else {
-        return json!({ "kind": "object", "class": "SyntheticView", "available": false, "native": native(), "draw": drawn() });
+        return json!({ "kind": "object", "class": "SyntheticView", "available": false, "native": native(), "draw": drawn(), "software": software() });
     };
     let device = gimbal_aim(gimbals);
     let locked = device
@@ -373,6 +384,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "roundTripMs": crate::linkhealth::recent_round_trip_ms(),
         "native": native(),
         "draw": drawn(),
+        "software": software(),
         "bottles": backend.value_fields("vehicle", "bottles").get("bottles").cloned().unwrap_or_else(|| json!([])),
         "beam": beam((latitude, longitude), above_home, heading, pitch, CAMERA_FOV_DEG).iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
     })
@@ -844,6 +856,7 @@ mod tests {
     fn a_flying_drone_is_placed_above_home_and_looks_ahead() {
         let view = synthetic(&flying(&[]), &no_gimbal(), DEFAULT_AIM);
         assert_eq!(view["available"], true);
+        assert_eq!(view["software"], false);
         assert_eq!(
             (
                 view["latitude"].as_f64(),

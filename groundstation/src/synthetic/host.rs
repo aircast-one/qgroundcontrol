@@ -26,6 +26,7 @@ pub trait Feed: Send + Sync {
     fn token(&self) -> String;
     fn sticks(&self) -> Vec<crate::virtualjoystick::StickSample>;
     fn report(&self, draw: Draw);
+    fn software(&self, software: bool);
     fn ground(&self, above_home: Option<f64>);
     fn terrain(&self, terrain: Option<crate::synthview::Terrain>);
 }
@@ -287,6 +288,7 @@ struct Gpu {
     device: wgpu::Device,
     format: wgpu::TextureFormat,
     renderer: Renderer,
+    software: bool,
 }
 
 impl Gpu {
@@ -315,6 +317,15 @@ impl Gpu {
             .or_else(|| capabilities.formats.first().copied())
             .ok_or("the window offers no colour format")?;
         let renderer = Renderer::with_device(device.clone(), queue, format);
+        let info = adapter.get_info();
+        let software = info.device_type == wgpu::DeviceType::Cpu;
+        log::info!(
+            target: "synthetic",
+            "event=adapter name=\"{}\" backend={:?} device_type={:?} software={software}",
+            info.name,
+            info.backend,
+            info.device_type,
+        );
         Ok((
             Self {
                 instance,
@@ -322,6 +333,7 @@ impl Gpu {
                 device,
                 format,
                 renderer,
+                software,
             },
             surface,
         ))
@@ -633,8 +645,11 @@ fn show(
     let mut overlays = Throttled::new(OVERLAYS_EVERY, None::<Overlays>);
     let mut summary = Summary::new(Instant::now());
     let mut framed = false;
+    let mut owed = false;
+    let mut last_paint: Option<Instant> = None;
     let mut draw = Draw::Loading;
     feed.report(draw);
+    feed.software(gpu.software);
     while !shown.is_empty() {
         let now = Instant::now();
         shown.iter_mut().for_each(|surface| surface.fit(&gpu));
@@ -679,12 +694,18 @@ fn show(
             || frame.as_ref().is_some_and(|frame| frame.changed)
             || frame.is_some() != framed;
         framed = frame.is_some();
+        let wanted = redraw || owed;
+        let due = super::pace::paint_due(gpu.software, last_paint, now);
+        owed = wanted && !due;
         let painting = Instant::now();
         let painted: Vec<Result<bool, String>> = shown
             .iter_mut()
-            .filter(|surface| redraw || !surface.drawn)
+            .filter(|surface| (wanted && due) || !surface.drawn)
             .map(|surface| surface.paint(&mut gpu, frame.as_ref(), overlays.value.as_ref()))
             .collect();
+        if !painted.is_empty() {
+            last_paint = Some(now);
+        }
         summary
             .paint_ms
             .extend((!painted.is_empty()).then(|| millis(painting.elapsed())));

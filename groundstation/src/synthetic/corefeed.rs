@@ -27,6 +27,10 @@ impl Feed for CoreFeed {
         crate::synthview::set_draw(draw.name());
     }
 
+    fn software(&self, software: bool) {
+        crate::synthview::set_software(software);
+    }
+
     fn ground(&self, above_home: Option<f64>) {
         crate::synthview::set_ground(above_home);
     }
