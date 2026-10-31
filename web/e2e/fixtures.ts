@@ -44,6 +44,7 @@ export const flightMode = (page: Page): Locator => page.getByRole('button', { na
 export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: new RegExp(`^${label.replace('.', '\\.')}-?[\\d.]+(m|m/s|ft|ft/s)$`) });
 
 export const slideAcross = async (page: Page, target: Locator) => {
+  await expect(target).toBeEnabled();
   await target.hover();
   const box = await target.boundingBox();
   if (box === null) throw new Error('slide target is not on screen');
