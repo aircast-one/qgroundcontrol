@@ -586,19 +586,18 @@ fn sky_toward(direction: vec3<f32>) -> vec3<f32> {
 }
 
 @fragment fn fs_water(f: Out) -> Frag {
-    let colour = textureSample(picture, tile_sampler, f.uv);
     let distance = max(length(f.seen), 1.0);
     let seen = f.seen / distance;
     let air = scatter(seen, distance, AERIAL_SAMPLES);
     let up = scene.zenith.xyz;
-    let lit = sunlight_reaching(f.seen, up);
     let surface = rippled(f.seen, distance);
     let mirrored = reflect(seen, surface.xyz);
     let skyward = normalize(mirrored + up * (max(0.02 - dot(mirrored, up), 0.0) + CALM_LIFT * surface.w));
-    let fresnel = pow(1.0 - max(dot(-seen, surface.xyz), 0.0), 5.0) * mix(1.0, CALM_FRESNEL, surface.w);
-    let glint = pow(max(dot(skyward, scene.sun.xyz), 0.0), 900.0) * SUN * exp(-sun_depth(0.0)) * lit;
-    let shaded = mix(sunlit(colour.rgb, up, f.seen, lit), sky_toward(skyward), fresnel) + glint;
-    return Frag(vec4<f32>(fogged(shaded * air.through + air.light, f.seen), 1.0), vec4<f32>(up, distance));
+    let fresnel = (0.02 + 0.98 * pow(1.0 - max(dot(-seen, surface.xyz), 0.0), 5.0)) * mix(1.0, CALM_FRESNEL, surface.w);
+    let glint = pow(max(dot(skyward, scene.sun.xyz), 0.0), 900.0) * SUN * exp(-sun_depth(0.0)) * sunlight_reaching(f.seen, up);
+    let haze = fog_amount(f.seen);
+    let reflected = mix(sky_toward(skyward) * air.through + air.light, fog_colour(seen), haze);
+    return Frag(vec4<f32>(reflected * fresnel + glint * air.through * (1.0 - haze), fresnel), vec4<f32>(up, distance));
 }
 
 const WALL_TAG = 2.0;
@@ -1388,7 +1387,12 @@ fn pipeline(
     let (depth_write, compare, blend, fragment) = match layer {
         Layer::Backfill => (false, wgpu::CompareFunction::Always, None, "fs"),
         Layer::Opaque | Layer::Foliage => (true, wgpu::CompareFunction::Greater, None, "fs"),
-        Layer::Water => (true, wgpu::CompareFunction::Greater, None, "fs_water"),
+        Layer::Water => (
+            true,
+            wgpu::CompareFunction::Greater,
+            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+            "fs_water",
+        ),
         Layer::Building => (true, wgpu::CompareFunction::Greater, None, "fs_building"),
         Layer::Translucent => (
             false,
