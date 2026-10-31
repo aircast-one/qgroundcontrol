@@ -22,8 +22,6 @@ public sealed partial class ShellTitleBar : UserControl
     private const string ArmedGlyph = "";
     private const string DisarmedGlyph = "";
     private const double StaleOpacity = 0.45;
-    private const double LogoWidth = 20;
-    private const double SubtitleRoom = 96;
     private const double StripFloor = 200;
     private const double DragFloor = 64;
     private const double VerdictFloor = 80;
@@ -91,9 +89,7 @@ public sealed partial class ShellTitleBar : UserControl
         set
         {
             _onFly = value;
-            var (from, to) = value ? (Fixed, Lead) : (Lead, Fixed);
-            if (from.Children.Remove(Readings)) to.Children.Add(Readings);
-            Lead.Visibility = Shown(value);
+            MenuButton.Visibility = Shown(value);
             MoreButton.Visibility = Shown(value);
             Logo.Visibility = Shown(!value);
             Subtitle.Visibility = Shown(!value);
@@ -120,12 +116,10 @@ public sealed partial class ShellTitleBar : UserControl
         var probe = new TextBlock { Text = AppTitle.Text, FontFamily = AppTitle.FontFamily, FontSize = AppTitle.FontSize };
         probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var title = probe.DesiredSize.Width + DragArea.ColumnSpacing;
-        var brand = _onFly
-            ? Lead.Margin.Left + Lead.ActualWidth + MoreButton.ActualWidth + RightGroup.Spacing + DragFloor
-            : DragArea.Padding.Left + DragArea.Padding.Right + LogoWidth + DragArea.ColumnSpacing + SubtitleRoom;
+        var brand = Lead.Margin.Left + Lead.ActualWidth + MoreButton.ActualWidth + RightGroup.Spacing + DragArea.Padding.Left + DragArea.Padding.Right + DragFloor;
         var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - Fixed.ActualWidth - brand;
         ArmedText.MaxWidth = Math.Max(VerdictFloor, room + ArmedText.ActualWidth - Strip.Needed);
-        var titled = !_onFly && room - title >= StripFloor;
+        var titled = !_onFly && Readings.Visibility != Visibility.Visible && room - title >= StripFloor;
         AppTitle.Visibility = Shown(titled);
         Strip.MaxWidth = Math.Max(0, room - (titled ? title : 0));
     }

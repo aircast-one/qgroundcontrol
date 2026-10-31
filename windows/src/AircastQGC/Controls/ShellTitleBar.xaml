@@ -91,9 +91,9 @@
             <ColumnDefinition x:Name="CaptionColumn" Width="138" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel x:Name="Lead" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0"
-                    Visibility="Collapsed">
+        <StackPanel x:Name="Lead" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
             <Button x:Name="MenuButton" Style="{StaticResource FlyRoundButton}" Content="&#xE700;" Margin="0,0,4,0"
+                    Visibility="Collapsed"
                     AutomationProperties.Name="Menu" ToolTipService.ToolTip="Menu">
                 <Button.Flyout>
                     <MenuFlyout x:Name="PageMenu" Placement="BottomEdgeAlignedLeft">
@@ -132,20 +132,48 @@
                     </MenuFlyout>
                 </Button.Flyout>
             </Button>
+
+            <Border x:Name="Logo" Width="20" Height="20" Margin="8,0,8,0" VerticalAlignment="Center"
+                    CornerRadius="{StaticResource RadiusControl}" Background="{ThemeResource AccentBrush}">
+                <FontIcon Glyph="&#xE709;" FontSize="12" Foreground="{ThemeResource AccentOnBrush}" />
+            </Border>
+
+            <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="4">
+                <local:VehiclePickerButton x:Name="VehicleSwitch" />
+
+                <local:OperatorControlButton />
+
+                <local:VtolStateCell />
+
+                <Button x:Name="ModePill" Style="{StaticResource PillButton}" Click="OnModeClick"
+                        AutomationProperties.Name="Flight mode" ToolTipService.ToolTip="Flight mode">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE709;" Style="{StaticResource PillIcon}" Foreground="{ThemeResource AccentBrush}" />
+                        <TextBlock x:Name="ModeText" Style="{StaticResource PillText}" />
+                        <FontIcon x:Name="ModeChevron" Glyph="&#xE70D;" FontSize="10"
+                                  Foreground="{ThemeResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                        <ProgressRing x:Name="ModePending" Width="12" Height="12" MinWidth="12" MinHeight="12"
+                                      IsActive="False" Visibility="Collapsed" Foreground="{ThemeResource AccentBrush}" />
+                    </StackPanel>
+                </Button>
+
+                <Button x:Name="ArmedPill" Style="{StaticResource PillButton}" Click="OnStatusClick"
+                        AutomationProperties.Name="Vehicle status" ToolTipService.ToolTip="Vehicle status">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon x:Name="ArmedIcon" Glyph="&#xE72E;" Style="{StaticResource PillIcon}" />
+                        <TextBlock x:Name="ArmedText" Style="{StaticResource PillText}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </StackPanel>
 
         <Grid x:Name="DragArea" Grid.Column="1" Background="Transparent" Padding="16,0,8,0" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border x:Name="Logo" Width="20" Height="20" VerticalAlignment="Center"
-                    CornerRadius="{StaticResource RadiusControl}" Background="{ThemeResource AccentBrush}">
-                <FontIcon Glyph="&#xE709;" FontSize="12" Foreground="{ThemeResource AccentOnBrush}" />
-            </Border>
-            <TextBlock x:Name="AppTitle" Grid.Column="1" Text="Aircast QGC" Style="{StaticResource TitleText}" />
-            <TextBlock x:Name="Subtitle" Grid.Column="2" Style="{StaticResource SubtitleText}" />
+            <TextBlock x:Name="AppTitle" Text="Aircast QGC" Style="{StaticResource TitleText}" />
+            <TextBlock x:Name="Subtitle" Grid.Column="1" Style="{StaticResource SubtitleText}" />
         </Grid>
 
         <StackPanel x:Name="RightGroup" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,8,0">
@@ -157,34 +185,6 @@
                         <TextBlock x:Name="LinkText" Style="{StaticResource PillText}" />
                     </StackPanel>
                 </Button>
-
-                <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="4">
-                    <local:VehiclePickerButton x:Name="VehicleSwitch" />
-
-                    <local:OperatorControlButton />
-
-                    <local:VtolStateCell />
-
-                    <Button x:Name="ModePill" Style="{StaticResource PillButton}" Click="OnModeClick"
-                            AutomationProperties.Name="Flight mode" ToolTipService.ToolTip="Flight mode">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon Glyph="&#xE709;" Style="{StaticResource PillIcon}" Foreground="{ThemeResource AccentBrush}" />
-                            <TextBlock x:Name="ModeText" Style="{StaticResource PillText}" />
-                            <FontIcon x:Name="ModeChevron" Glyph="&#xE70D;" FontSize="10"
-                                      Foreground="{ThemeResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                            <ProgressRing x:Name="ModePending" Width="12" Height="12" MinWidth="12" MinHeight="12"
-                                          IsActive="False" Visibility="Collapsed" Foreground="{ThemeResource AccentBrush}" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button x:Name="ArmedPill" Style="{StaticResource PillButton}" Click="OnStatusClick"
-                            AutomationProperties.Name="Vehicle status" ToolTipService.ToolTip="Vehicle status">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon x:Name="ArmedIcon" Glyph="&#xE72E;" Style="{StaticResource PillIcon}" />
-                            <TextBlock x:Name="ArmedText" Style="{StaticResource PillText}" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
             </StackPanel>
 
             <local:StatusStrip x:Name="Strip" />
