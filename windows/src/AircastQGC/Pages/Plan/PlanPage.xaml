@@ -85,7 +85,7 @@
         <Border x:Name="SidePanel" Grid.Row="1" Background="{ThemeResource GlassBrush}"
                 BorderBrush="{ThemeResource CardStrokeBrush}" BorderThickness="0,1,1,0">
             <ScrollViewer x:Name="PanelScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
-                <StackPanel Padding="16" Spacing="{StaticResource SpaceMd}">
+                <StackPanel Padding="16" Spacing="{StaticResource SpaceLg}">
                     <Grid x:Name="StripRow" ColumnSpacing="{StaticResource SpaceSm}" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -138,14 +138,14 @@
         </Border>
 
         <Grid x:Name="MapArea" Grid.Row="1" Grid.Column="1">
-            <Grid VerticalAlignment="Top" Margin="8" ColumnSpacing="{StaticResource SpaceSm}">
+            <Grid VerticalAlignment="Top" Margin="16,16,16,0" ColumnSpacing="{StaticResource SpaceSm}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Border Style="{StaticResource FloatingCard}" Padding="16,6" MinHeight="40" HorizontalAlignment="Left">
+                <Border Style="{StaticResource FloatingCard}" Padding="12,0" Height="40" HorizontalAlignment="Left">
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock x:Name="PlanTitle" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                    Foreground="{ThemeResource TextPrimaryBrush}" />
@@ -217,11 +217,11 @@
                 </Button>
             </Grid>
 
-            <Border Style="{StaticResource Rail}" HorizontalAlignment="Left" Margin="8,64,0,8">
+            <Border Style="{StaticResource Rail}" HorizontalAlignment="Left" Margin="16,64,0,16">
                 <StackPanel x:Name="RailItems" Spacing="2" />
             </Border>
 
-            <Border Style="{StaticResource Rail}" HorizontalAlignment="Right" Margin="0,64,8,8">
+            <Border Style="{StaticResource Rail}" HorizontalAlignment="Right" Margin="0,64,16,16">
                 <StackPanel Spacing="2">
                     <Button x:Name="UndoButton" Style="{StaticResource RailIcon}" Content="&#xE7A7;" Click="OnUndo"
                             ToolTipService.ToolTip="Undo" AutomationProperties.Name="Undo" />
@@ -246,7 +246,7 @@
                 </StackPanel>
             </Border>
 
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="72,64,72,8"
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="92,64,92,16"
                         MaxWidth="520" Spacing="{StaticResource SpaceSm}">
                 <Border x:Name="BusyCard" Style="{StaticResource FloatingCard}" Padding="16,10" Visibility="Collapsed">
                     <TextBlock x:Name="BusyText" TextWrapping="Wrap" Foreground="{ThemeResource TextPrimaryBrush}" />

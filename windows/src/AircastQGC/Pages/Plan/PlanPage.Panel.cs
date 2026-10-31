@@ -656,7 +656,7 @@ public sealed partial class PlanPage
     private UIElement? RouteSettings()
     {
         var defaults = _status.Defaults;
-        var panel = new StackPanel { Spacing = 10 };
+        var panel = new StackPanel { Spacing = 8 };
         if (defaults["altitude"] is JsonObject altitude && MapUiJson.Text(altitude["path"]) is { Length: > 0 } path)
             panel.Children.Add(PlanFacts.Stepper("Altitude", MapUiJson.Number(altitude["value"]) ?? PlanRules.TypedNumber(MapUiJson.Text(altitude["valueString"])),
                 MapUiJson.Text(altitude["units"]), 1, "New waypoints use this",
