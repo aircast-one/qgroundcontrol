@@ -53,6 +53,7 @@ public sealed partial class SyntheticView : UserControl
     private const string FailedNote = "3D view failed to start";
     private const string RecenterGlyph = "";
     private const double RenderScale = 0.75;
+    private const double SoftwarePixels = 640 * 360;
     private const long GimbalEveryMs = 50;
     private const long AimSettlesMs = 1000;
     private static readonly TimeSpan CheckEvery = TimeSpan.FromMilliseconds(500);
@@ -158,8 +159,10 @@ public sealed partial class SyntheticView : UserControl
         _check.Tick += (_, _) => Sync();
         Live.Watch(this, View, view =>
         {
+            var software = Software;
             _view = view;
-            Sync();
+            if (Software != software) Fit();
+            else Sync();
         });
         Live.Watch(this, GimbalView, view => _gimbalAt = GimbalAt(view));
         Live.Watch(this, CameraList.View, TakeCameras);
@@ -203,6 +206,8 @@ public sealed partial class SyntheticView : UserControl
 
     private bool Native => VideoJson.Flag(_view, "native");
 
+    private bool Software => VideoJson.Flag(_view, "software");
+
     private bool Free => Available && !VideoJson.Flag(_view, "locksOnTarget") && (_syntheticChosen || !VideoJson.Flag(_view, "gimbalAimed"));
 
     private bool CanAim => _aimable && Free;
@@ -243,7 +248,9 @@ public sealed partial class SyntheticView : UserControl
     private void Fit()
     {
         var (width, height) = (_root.ActualWidth, _root.ActualHeight);
-        var scale = RenderScale * (XamlRoot?.RasterizationScale ?? 1);
+        var scale = Software
+            ? Math.Min(1, Math.Sqrt(SoftwarePixels / Math.Max(width * height, 1)))
+            : RenderScale * (XamlRoot?.RasterizationScale ?? 1);
         _stage.Clip = new RectangleGeometry { Rect = new Rect(0, 0, Math.Max(width, 0), Math.Max(height, 0)) };
         _panel.Width = Math.Max(1, Math.Round(width * scale));
         _panel.Height = Math.Max(1, Math.Round(height * scale));
