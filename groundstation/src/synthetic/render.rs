@@ -28,8 +28,9 @@ const DRAW_BYTES: u64 = 128;
 const SCENE_BYTES: u64 = 496;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
-const LAYERS: [Layer; 5] = [
+const LAYERS: [Layer; 6] = [
     Layer::Opaque,
+    Layer::Building,
     Layer::Foliage,
     Layer::Water,
     Layer::Translucent,
@@ -564,6 +565,96 @@ fn sky_seen(direction: vec3<f32>, cover: vec4<f32>) -> vec3<f32> {
     let shaded = mix(body, reflected, fresnel) + glint;
     return Frag(vec4<f32>(fogged(shaded * air.through + air.light, f.seen), 1.0), vec4<f32>(up, distance));
 }
+
+const WALL_TAG = 2.0;
+const NIGHT_FROM = 0.21;
+const NIGHT_AT = 0.141;
+const WINDOW_LIGHT = vec3<f32>(5.0, 3.3, 1.6);
+const LIT_WINDOWS = 0.45;
+const GLASS = vec3<f32>(0.05, 0.055, 0.06);
+const GLASS_SHEEN = 0.14;
+
+struct BuildingOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) seen: vec3<f32>, @location(2) normal: vec3<f32>, @location(3) @interpolate(flat) wall: f32, @location(4) @interpolate(flat) style: vec4<f32>, @location(5) @interpolate(flat) colour: vec3<f32> };
+
+@vertex fn vs_building(v: In, placed: Placed) -> BuildingOut {
+    let mvp = mat4x4<f32>(placed.mvp0, placed.mvp1, placed.mvp2, placed.mvp3);
+    let model = mat4x4<f32>(placed.model0, placed.model1, placed.model2, placed.model3);
+    let tagged = v.normal.z > WALL_TAG - 0.5;
+    let normal = select(v.normal, vec3<f32>(v.normal.xy, 0.0), tagged);
+    let wall = select(-1.0, v.normal.z - WALL_TAG, tagged);
+    let index = floor(wall);
+    let style = vec4<f32>(hash(vec2<f32>(index, 1.0)), hash(vec2<f32>(index, 2.0)), hash(vec2<f32>(index, 3.0)), hash(vec2<f32>(index, 4.0)));
+    let width = textureDimensions(picture).x;
+    let slot = u32(max(index, 0.0));
+    let colour = select(textureSampleLevel(picture, tile_sampler, v.uv, 0.0), textureLoad(picture, vec2<u32>(slot % width, slot / width), 0), tagged).rgb;
+    return BuildingOut(mvp * vec4<f32>(v.position, 1.0), v.uv, (model * vec4<f32>(v.position, 1.0)).xyz, (model * vec4<f32>(normal, 0.0)).xyz, wall, style, colour);
+}
+
+fn band(x: f32, low: f32, high: f32, blur: f32) -> f32 {
+    return smoothstep(low - blur, low + blur, x) * (1.0 - smoothstep(high - blur, high + blur, x));
+}
+
+fn reflected_light(direction: vec3<f32>) -> vec3<f32> {
+    let up = dot(direction, scene.zenith.xyz);
+    if (LOW_TIER) { return mix(GROUND_ALBEDO, AMBIENT_SKY, smoothstep(-0.05, 0.05, up)); }
+    let ground = GROUND_ALBEDO * (overhead_light() + SUN * exp(-sun_depth(0.0)) / PI * max(dot(scene.zenith.xyz, scene.sun.xyz), 0.0));
+    return mix(ground, sky_air(normalize(direction + scene.zenith.xyz * max(0.02 - up, 0.0)), 2).light, smoothstep(-0.05, 0.05, up));
+}
+
+struct Window { glass: f32, framed: f32, ledge: f32, fade: f32, bay: vec2<f32>, index: i32 };
+
+fn window(f: BuildingOut, blur: vec2<f32>) -> Window {
+    let index = i32(floor(f.wall));
+    let style = f.style;
+    let bay = vec2<f32>(floor(f.uv.x), floor(f.uv.y));
+    let at = fract(f.uv);
+    let ground_floor = fract(f.wall) > 0.25 && bay.y < 0.5;
+    let pane = select(mix(0.34, 0.5, style.x), 0.84, ground_floor);
+    let sill = select(mix(0.36, 0.42, style.y), 0.1, ground_floor);
+    let head = select(mix(0.78, 0.86, style.z), 0.86, ground_floor);
+    let windowed = select(1.0, 0.0, f.uv.x < -0.5 || f.uv.y < 0.0);
+    if (LOW_TIER && max(blur.x, blur.y) > 0.6) { return Window(pane * (head - sill) * windowed, 0.0, 0.0, 1.0, bay, index); }
+    let fade = smoothstep(0.25, 0.6, max(blur.x, blur.y));
+    let sharp = band(at.x, 0.5 - pane * 0.5, 0.5 + pane * 0.5, blur.x) * band(at.y, sill, head, blur.y);
+    let glass = mix(sharp, pane * (head - sill), fade) * windowed;
+    if (LOW_TIER) { return Window(glass, 0.0, 0.0, fade, bay, index); }
+    let rim = 0.045;
+    let framed = band(at.x, 0.5 - pane * 0.5 - rim, 0.5 + pane * 0.5 + rim, blur.x) * band(at.y, sill - rim, head + rim, blur.y) * windowed * (1.0 - fade);
+    let ledge = band(at.y, -0.03, 0.035, blur.y) * step(0.5, style.w) * (1.0 - fade) * select(1.0, 0.0, f.uv.y < 0.0);
+    return Window(glass, framed, ledge, fade, bay, index);
+}
+
+fn facade_albedo(f: BuildingOut, blur: vec2<f32>) -> vec3<f32> {
+    let pane = window(f, blur);
+    let wall = f.colour;
+    let frame_colour = select(wall * 0.55, vec3<f32>(0.82, 0.8, 0.76), f.style.w < 0.4);
+    let glass = select(GLASS, GLASS + AMBIENT_SKY * GLASS_SHEEN * 0.6, LOW_TIER);
+    return mix(mix(wall, frame_colour, max(pane.framed - pane.glass, 0.0)) * (1.0 - 0.3 * pane.ledge), glass, pane.glass);
+}
+
+fn facade_glow(f: BuildingOut, blur: vec2<f32>) -> vec3<f32> {
+    let pane = window(f, blur);
+    let normal = facing(f.normal, f.seen);
+    let view = normalize(f.seen);
+    let fresnel = GLASS_SHEEN + (1.0 - GLASS_SHEEN) * pow(1.0 - max(dot(-view, normal), 0.0), 5.0);
+    let night = smoothstep(NIGHT_FROM, NIGHT_AT, dot(scene.sun.xyz, scene.zenith.xyz));
+    let seed = f32(pane.index);
+    let lit = step(hash(pane.bay + vec2<f32>(seed * 7.31, seed * 3.17)), LIT_WINDOWS) * (0.6 + 0.8 * hash(pane.bay.yx + seed));
+    let inside = WINDOW_LIGHT * night * mix(lit, LIT_WINDOWS, pane.fade);
+    return pane.glass * (reflected_light(reflect(view, normal)) * fresnel + inside) * (1.0 - fog_amount(f.seen));
+}
+
+@fragment fn fs_building(f: BuildingOut) -> Frag {
+    let blur = max(fwidth(f.uv), vec2<f32>(0.002));
+    let wall = f.wall >= 0.0;
+    var albedo = f.colour;
+    if (wall) { albedo = facade_albedo(f, blur); }
+    let shaded = lit_surface(vec4<f32>(albedo, 1.0), Out(f.position, f.uv, f.seen, f.normal));
+    var glow = vec3<f32>(0.0);
+    let dark = smoothstep(NIGHT_FROM, NIGHT_AT, dot(scene.sun.xyz, scene.zenith.xyz)) > 0.0;
+    if (wall && (!LOW_TIER || dark)) { glow = facade_glow(f, blur); }
+    return Frag(vec4<f32>(shaded.colour.rgb + glow, 1.0), shaded.surface);
+}
 ";
 const SHADOW_SHADER: &str = r"
 struct Cascade { light: mat4x4<f32> };
@@ -1026,7 +1117,7 @@ pub struct Targets {
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipelines: [wgpu::RenderPipeline; 5],
+    pipelines: [wgpu::RenderPipeline; LAYERS.len()],
     backfill: wgpu::RenderPipeline,
     shadow: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
@@ -1262,6 +1353,7 @@ fn pipeline(
         Layer::Backfill => (false, wgpu::CompareFunction::Always, None, "fs"),
         Layer::Opaque | Layer::Foliage => (true, wgpu::CompareFunction::Greater, None, "fs"),
         Layer::Water => (true, wgpu::CompareFunction::Greater, None, "fs_water"),
+        Layer::Building => (true, wgpu::CompareFunction::Greater, None, "fs_building"),
         Layer::Translucent => (
             false,
             wgpu::CompareFunction::Greater,
@@ -1296,7 +1388,11 @@ fn pipeline(
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module: shader,
-            entry_point: Some("vs"),
+            entry_point: Some(if layer == Layer::Building {
+                "vs_building"
+            } else {
+                "vs"
+            }),
             compilation_options: Default::default(),
             buffers: &vertex_buffers(),
         },
@@ -1621,7 +1717,7 @@ impl Renderer {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
@@ -1631,7 +1727,7 @@ impl Renderer {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
@@ -2281,7 +2377,7 @@ impl Renderer {
         let arena_of = |mesh: &Mesh, gpu: &GpuMesh| {
             gpu.place
                 .as_ref()
-                .filter(|_| mesh.layer == Layer::Opaque)
+                .filter(|_| matches!(mesh.layer, Layer::Opaque | Layer::Building))
                 .map_or(0, |place| place.arena)
         };
         let drawable: Vec<(&Arc<Mesh>, &GpuMesh)> = meshes
@@ -2395,7 +2491,8 @@ impl Renderer {
                     .zip(&models[behind.len()..])
                     .enumerate()
                     .filter(|(_, ((mesh, _), model))| {
-                        (mesh.layer == Layer::Opaque || (foliage && mesh.layer == Layer::Foliage))
+                        (matches!(mesh.layer, Layer::Opaque | Layer::Building)
+                            || (foliage && mesh.layer == Layer::Foliage))
                             && casts(cascade, **model, mesh)
                     })
                     .for_each(|(slot, ((_, gpu), _))| {

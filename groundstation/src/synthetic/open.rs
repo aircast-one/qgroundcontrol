@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use web_time::Instant;
 
+use ::geo::{Area, MinimumRotatedRect};
 use glam::{DMat3, DMat4, DVec3, DVec4};
 
 use super::fetch::Fetcher;
@@ -40,6 +41,42 @@ const PALETTE_WIDTH: u32 = 64;
 const SAMPLED_CORNERS: usize = 15;
 const ROOF_PICTURE_ZOOM: u32 = 16;
 const ROOF_LIFT: f32 = 1.5;
+const WALL_TAG: f32 = 2.0;
+const SHOP_TAG: f32 = 0.5;
+const BLANK: f32 = -1.0;
+const PARAPET_M: f64 = 1.0;
+const PARAPET_FROM_M: f64 = 6.0;
+const OVERHANG_M: f64 = 0.4;
+const HOUSE_AREA_M2: (f64, f64) = (12.0, 300.0);
+const HOUSE_MAX_HEIGHT_M: f64 = 15.0;
+const TILED_MAX_AREA_M2: f64 = 2500.0;
+const TILED_MAX_HEIGHT_M: f64 = 30.0;
+const TILE_RED_OVER_GREEN: f32 = 1.08;
+const TILE_RED_OVER_BLUE: f32 = 1.25;
+const MAX_RIDGE_M: f64 = 7.0;
+const HOUSE_MIN_FILL: f64 = 0.85;
+const GABLE_ASPECT: f64 = 1.3;
+const PITCH_DEGREES: (f64, f64) = (30.0, 40.0);
+const STOREY_M: (f64, f64) = (3.0, 3.5);
+const BAY_M: (f64, f64) = (2.6, 3.8);
+const SHOP_FROM_STOREYS: f64 = 3.0;
+const SHOP_SHARE: f64 = 0.6;
+const ROOFTOP_FROM_M2: f64 = 600.0;
+const ROOFTOP_EVERY_M2: f64 = 500.0;
+const MAX_ROOFTOPS: usize = 6;
+const ROOFTOP_SIZE_M: (f64, f64) = (2.0, 4.5);
+const ROOFTOP_HEIGHT_M: (f64, f64) = (1.2, 3.0);
+const FACADE_TONE_WEIGHT: f32 = 0.75;
+const FACADE_TONES: [[f32; 3]; 8] = [
+    [226.0, 218.0, 200.0],
+    [236.0, 232.0, 222.0],
+    [196.0, 190.0, 178.0],
+    [176.0, 172.0, 166.0],
+    [204.0, 178.0, 140.0],
+    [214.0, 186.0, 160.0],
+    [158.0, 98.0, 74.0],
+    [118.0, 122.0, 126.0],
+];
 const BOUNDS_BLOCK: usize = 16;
 const TREE_ZOOM: u32 = 16;
 const TREE_NEAR_ZOOM: u32 = 18;
@@ -786,7 +823,7 @@ fn roof_colour(
 }
 
 fn wall_colour(roof: [u8; 4], outline: &[(f64, f64)]) -> [u8; 4] {
-    let seed = outline[0].0.to_bits() ^ outline[0].1.to_bits().rotate_left(17);
+    let seed = seed_of(outline);
     let variety = 1.0 + WALL_VARIETY * ((seed % 1000) as f32 / 500.0 - 1.0);
     let grey = (f32::from(roof[0]) + f32::from(roof[1]) + f32::from(roof[2])) / 3.0;
     let shade = |channel: u8| {
@@ -796,11 +833,141 @@ fn wall_colour(roof: [u8; 4], outline: &[(f64, f64)]) -> [u8; 4] {
     [shade(roof[0]), shade(roof[1]), shade(roof[2]), 255]
 }
 
+fn osm_colour(text: &str) -> Option<[u8; 4]> {
+    let digits: Vec<u8> = text
+        .strip_prefix('#')?
+        .chars()
+        .map(|c| c.to_digit(16).map(|d| d as u8))
+        .collect::<Option<_>>()?;
+    let channels: Vec<u8> = match digits.len() {
+        3 => digits.iter().map(|d| d * 17).collect(),
+        6 => digits
+            .chunks(2)
+            .map(|pair| pair[0] * 16 + pair[1])
+            .collect(),
+        _ => return None,
+    };
+    Some([channels[0], channels[1], channels[2], 255])
+}
+
+fn seed_of(outline: &[(f64, f64)]) -> u64 {
+    outline[0].0.to_bits() ^ outline[0].1.to_bits().rotate_left(17)
+}
+
+fn span((low, high): (f64, f64), seed: u64) -> f64 {
+    low + (high - low) * unit(seed)
+}
+
+fn facade_colour(osm: Option<[u8; 4]>, imaged: [u8; 4], seed: u64) -> [u8; 4] {
+    osm.unwrap_or_else(|| {
+        let tone = FACADE_TONES[(mixed(seed, 11) % FACADE_TONES.len() as u64) as usize];
+        let variety = 1.0 + WALL_VARIETY * (unit(mixed(seed, 12)) as f32 * 2.0 - 1.0);
+        let [r, g, b]: [u8; 3] = std::array::from_fn(|channel| {
+            ((tone[channel] * FACADE_TONE_WEIGHT
+                + f32::from(imaged[channel]) * (1.0 - FACADE_TONE_WEIGHT))
+                * variety)
+                .clamp(0.0, 255.0) as u8
+        });
+        [r, g, b, 255]
+    })
+}
+
 #[derive(Default)]
 struct Footprint {
     rings: Vec<Vec<(f64, f64)>>,
     base: f64,
     top: f64,
+    colour: Option<[u8; 4]>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Rectangle {
+    centre: DVec3,
+    along: DVec3,
+    across: DVec3,
+    length: f64,
+    width: f64,
+}
+
+impl Rectangle {
+    fn at(&self, along: f64, across: f64, height: f64) -> [f32; 3] {
+        (self.centre + self.along * along + self.across * across + DVec3::Z * height)
+            .as_vec3()
+            .to_array()
+    }
+}
+
+#[derive(Debug)]
+enum Roof {
+    Flat,
+    Gable(Rectangle),
+    Hip(Rectangle),
+}
+
+struct Facade {
+    base: f64,
+    storey: f64,
+    bay: f64,
+    tag: f32,
+}
+
+fn polygon_of(placed: &[Vec<DVec3>]) -> ::geo::Polygon<f64> {
+    let line = |ring: &Vec<DVec3>| {
+        ::geo::LineString::from(ring.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>())
+    };
+    ::geo::Polygon::new(line(&placed[0]), placed[1..].iter().map(line).collect())
+}
+
+fn bounding(outline: &[DVec3]) -> Option<Rectangle> {
+    let corners: Vec<DVec3> = polygon_of(&[outline.to_vec()])
+        .minimum_rotated_rect()?
+        .exterior()
+        .points()
+        .take(4)
+        .map(|p| DVec3::new(p.x(), p.y(), 0.0))
+        .collect();
+    let [a, b, c, _] = corners[..] else {
+        return None;
+    };
+    let (first, second) = (b - a, c - b);
+    let long = if first.length() >= second.length() {
+        first
+    } else {
+        second
+    };
+    let along = long.normalize_or_zero();
+    Some(Rectangle {
+        centre: (a + c) / 2.0,
+        along,
+        across: DVec3::new(-along.y, along.x, 0.0),
+        length: first.length().max(second.length()),
+        width: first.length().min(second.length()),
+    })
+    .filter(|rectangle| rectangle.width > 1.0)
+}
+
+fn tiled(roof: [u8; 4]) -> bool {
+    let [r, g, b, _] = roof.map(f32::from);
+    r >= g * TILE_RED_OVER_GREEN && r >= b * TILE_RED_OVER_BLUE
+}
+
+fn roof_for(placed: &[Vec<DVec3>], base: f64, top: f64, colour: [u8; 4]) -> Roof {
+    let area = polygon_of(placed).unsigned_area();
+    let solid = placed.len() == 1 && base < 0.5;
+    let house =
+        top - base <= HOUSE_MAX_HEIGHT_M && (HOUSE_AREA_M2.0..=HOUSE_AREA_M2.1).contains(&area);
+    let block = tiled(colour) && top - base <= TILED_MAX_HEIGHT_M && area <= TILED_MAX_AREA_M2;
+    match (solid && (house || block))
+        .then(|| bounding(&placed[0]))
+        .flatten()
+        .filter(|rectangle| area / (rectangle.length * rectangle.width) >= HOUSE_MIN_FILL)
+    {
+        Some(rectangle) if rectangle.length >= rectangle.width * GABLE_ASPECT => {
+            Roof::Gable(rectangle)
+        }
+        Some(rectangle) => Roof::Hip(rectangle),
+        None => Roof::Flat,
+    }
 }
 
 struct Part {
@@ -876,6 +1043,200 @@ fn roof(rings: &[Vec<DVec3>], height: f64, uv: [f32; 2]) -> Part {
         normals: vec![[0.0, 0.0, 1.0]; flat.len()],
         indices: triangles,
     }
+}
+
+fn facade_wall(a: DVec3, b: DVec3, low: f64, high: f64, facade: &Facade) -> Part {
+    let up = |p: DVec3, h: f64| (p + DVec3::Z * h).as_vec3().to_array();
+    let along = b - a;
+    let bays = (along.length() / facade.bay).round();
+    let across = |at: f64| {
+        if bays >= 1.0 {
+            (at * bays) as f32
+        } else {
+            BLANK
+        }
+    };
+    let storeys = |h: f64| ((h - facade.base) / facade.storey) as f32;
+    let outward = DVec3::new(-along.y, along.x, 0.0).normalize_or_zero();
+    Part {
+        positions: vec![up(a, low), up(b, low), up(b, high), up(a, high)],
+        uvs: vec![
+            [across(0.0), storeys(low)],
+            [across(1.0), storeys(low)],
+            [across(1.0), storeys(high)],
+            [across(0.0), storeys(high)],
+        ],
+        normals: vec![[outward.x as f32, outward.y as f32, facade.tag]; 4],
+        indices: vec![0, 1, 2, 0, 2, 3],
+    }
+}
+
+fn slab(corners: &[[f32; 3]], normal: DVec3, uv: [f32; 2]) -> Part {
+    Part {
+        positions: corners.to_vec(),
+        uvs: vec![uv; corners.len()],
+        normals: vec![normal.as_vec3().to_array(); corners.len()],
+        indices: (1..corners.len() as u32 - 1)
+            .flat_map(|i| [0, i, i + 1])
+            .collect(),
+    }
+}
+
+fn pitched(
+    rectangle: &Rectangle,
+    eave: f64,
+    pitch: f64,
+    hipped: bool,
+    uv: [f32; 2],
+    tag: f32,
+) -> Part {
+    let pitch = pitch.min((MAX_RIDGE_M * 2.0 / rectangle.width).atan());
+    let rise = pitch.tan();
+    let ridge = eave + rise * rectangle.width / 2.0;
+    let low = eave - rise * OVERHANG_M;
+    let (long, wide) = (
+        rectangle.length / 2.0 + OVERHANG_M,
+        rectangle.width / 2.0 + OVERHANG_M,
+    );
+    let inset = if hipped {
+        (rectangle.length - rectangle.width) / 2.0
+    } else {
+        long
+    };
+    let sloped = |toward: DVec3| toward * pitch.sin() + DVec3::Z * pitch.cos();
+    let at = |along: f64, across: f64, height: f64| rectangle.at(along, across, height);
+    let sides = [1.0, -1.0].map(|s| {
+        slab(
+            &[
+                at(-s * long, s * wide, low),
+                at(s * long, s * wide, low),
+                at(s * inset, 0.0, ridge),
+                at(-s * inset, 0.0, ridge),
+            ],
+            sloped(rectangle.across * s),
+            uv,
+        )
+    });
+    let ends = [1.0, -1.0].map(|s| {
+        if hipped {
+            slab(
+                &[
+                    at(s * long, s * wide, low),
+                    at(s * long, -s * wide, low),
+                    at(s * inset, 0.0, ridge),
+                ],
+                sloped(rectangle.along * s),
+                uv,
+            )
+        } else {
+            let (end, half) = (s * rectangle.length / 2.0, rectangle.width / 2.0);
+            let outward = rectangle.along * s;
+            Part {
+                normals: vec![[outward.x as f32, outward.y as f32, tag]; 3],
+                uvs: vec![[BLANK, 0.0]; 3],
+                ..slab(
+                    &[
+                        at(end, s * half, eave),
+                        at(end, -s * half, eave),
+                        at(end, 0.0, ridge),
+                    ],
+                    outward,
+                    uv,
+                )
+            }
+        }
+    });
+    joined(sides.into_iter().chain(ends))
+}
+
+fn rooftops(placed: &[Vec<DVec3>], level: f64, seed: u64, uv: [f32; 2]) -> Vec<Part> {
+    let area = polygon_of(placed).unsigned_area();
+    let count = ((area / ROOFTOP_EVERY_M2) as usize).min(MAX_ROOFTOPS);
+    let Some(rectangle) = bounding(&placed[0]).filter(|_| area >= ROOFTOP_FROM_M2) else {
+        return Vec::new();
+    };
+    let rings: Vec<Vec<(f64, f64)>> = placed
+        .iter()
+        .map(|ring| ring.iter().map(|p| (p.x, p.y)).collect())
+        .collect();
+    (0..(MAX_ROOFTOPS * 4) as u64)
+        .map(|candidate| {
+            let pick = |salt: u64| unit(mixed(seed, candidate * 8 + salt));
+            let half = span(ROOFTOP_SIZE_M, mixed(seed, candidate * 8 + 3)) / 2.0;
+            let centre = rectangle.centre
+                + rectangle.along * (pick(1) - 0.5) * (rectangle.length - 2.0 * half).max(0.0)
+                + rectangle.across * (pick(2) - 0.5) * (rectangle.width - 2.0 * half).max(0.0);
+            let corners: Vec<DVec3> = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+                .iter()
+                .map(|(a, b)| centre + rectangle.along * a * half + rectangle.across * b * half)
+                .collect();
+            (
+                corners,
+                span(ROOFTOP_HEIGHT_M, mixed(seed, candidate * 8 + 4)),
+            )
+        })
+        .filter(|(corners, _)| corners.iter().all(|p| within(&rings, (p.x, p.y))))
+        .take(count)
+        .map(|(corners, height)| {
+            joined(
+                (0..4)
+                    .map(|i| wall(corners[i], corners[(i + 1) % 4], level, level + height, uv))
+                    .chain(std::iter::once(roof(
+                        std::slice::from_ref(&corners),
+                        level + height,
+                        uv,
+                    ))),
+            )
+        })
+        .collect()
+}
+
+fn house(
+    placed: &[Vec<DVec3>],
+    floor: f64,
+    footprint: &Footprint,
+    roof_colour: [u8; 4],
+    uv: [f32; 2],
+    wall: usize,
+) -> Part {
+    let seed = seed_of(&footprint.rings[0]);
+    let (low, eave) = (floor + footprint.base, floor + footprint.top);
+    let shape = roof_for(placed, footprint.base, footprint.top, roof_colour);
+    let parapet = if matches!(shape, Roof::Flat) && footprint.top - footprint.base >= PARAPET_FROM_M
+    {
+        PARAPET_M
+    } else {
+        0.0
+    };
+    let walled = footprint.top - footprint.base - parapet;
+    let storeys = (walled / span(STOREY_M, mixed(seed, 1))).round().max(1.0);
+    let shop = storeys >= SHOP_FROM_STOREYS && unit(mixed(seed, 2)) < SHOP_SHARE;
+    let tag = WALL_TAG + wall as f32 + if shop { SHOP_TAG } else { 0.0 };
+    let facade = Facade {
+        base: low,
+        storey: walled / storeys,
+        bay: span(BAY_M, mixed(seed, 3)),
+        tag,
+    };
+    let walls = placed.iter().flat_map(|ring| {
+        let facade = &facade;
+        (0..ring.len())
+            .map(move |i| facade_wall(ring[i], ring[(i + 1) % ring.len()], low, eave, facade))
+    });
+    let pitch = span(PITCH_DEGREES, mixed(seed, 4)).to_radians();
+    let top = match shape {
+        Roof::Flat => joined(
+            std::iter::once(roof(placed, eave - parapet, uv)).chain(rooftops(
+                placed,
+                eave - parapet,
+                seed,
+                uv,
+            )),
+        ),
+        Roof::Gable(rectangle) => pitched(&rectangle, eave, pitch, false, uv, tag),
+        Roof::Hip(rectangle) => pitched(&rectangle, eave, pitch, true, uv, tag),
+    };
+    joined(walls.chain(std::iter::once(top)))
 }
 
 fn extent_of(tile: &serde_json::Value) -> f64 {
@@ -1495,7 +1856,16 @@ fn building_mesh(
                 .get("base")
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0);
-            Some(Footprint { rings, base, top })
+            let colour = building
+                .get("colour")
+                .and_then(serde_json::Value::as_str)
+                .and_then(osm_colour);
+            Some(Footprint {
+                rings,
+                base,
+                top,
+                colour,
+            })
         })
         .collect();
     let slots = footprints.len() * 2;
@@ -1510,35 +1880,32 @@ fn building_mesh(
         .iter()
         .flat_map(|footprint| {
             let roof = roof_colour(key, &fetched, &footprint.rings[0], ROOF, ROOF_LIFT);
-            [roof, wall_colour(roof, &footprint.rings[0])]
+            [
+                roof,
+                facade_colour(
+                    footprint.colour,
+                    wall_colour(roof, &footprint.rings[0]),
+                    seed_of(&footprint.rings[0]),
+                ),
+            ]
         })
         .collect();
-    let parts = footprints
-        .iter()
-        .enumerate()
-        .map(|(index, Footprint { rings, base, top })| {
-            let floor = ground(rings[0][0].0, rings[0][0].1);
-            let (roof_uv, wall_uv) = (
-                palette_uv(index * 2, slots),
-                palette_uv(index * 2 + 1, slots),
-            );
-            let placed: Vec<Vec<DVec3>> = rings
-                .iter()
-                .map(|ring| ring.iter().map(|&(u, v)| flat_at(u, v)).collect())
-                .collect();
-            let walls = placed.iter().flat_map(|ring| {
-                (0..ring.len()).map(move |i| {
-                    wall(
-                        ring[i],
-                        ring[(i + 1) % ring.len()],
-                        floor + base,
-                        floor + top,
-                        wall_uv,
-                    )
-                })
-            });
-            joined(walls.chain(std::iter::once(roof(&placed, floor + top, roof_uv))))
-        });
+    let parts = footprints.iter().enumerate().map(|(index, footprint)| {
+        let floor = ground(footprint.rings[0][0].0, footprint.rings[0][0].1);
+        let placed: Vec<Vec<DVec3>> = footprint
+            .rings
+            .iter()
+            .map(|ring| ring.iter().map(|&(u, v)| flat_at(u, v)).collect())
+            .collect();
+        house(
+            &placed,
+            floor,
+            footprint,
+            colours[index * 2],
+            palette_uv(index * 2, slots),
+            index * 2 + 1,
+        )
+    });
     let whole = joined(parts);
     (!whole.indices.is_empty()).then(|| {
         Mesh::new(
@@ -1547,7 +1914,7 @@ fn building_mesh(
             whole.uvs,
             whole.indices,
             palette(&colours),
-            Layer::Opaque,
+            Layer::Building,
         )
         .with_normals(whole.normals)
     })
@@ -2034,6 +2401,146 @@ impl OpenScene {
 mod tests {
     use super::*;
     use crate::synthetic::geo::Pose;
+
+    const GREY: [u8; 4] = [120, 120, 118, 255];
+    const TILES: [u8; 4] = [160, 104, 82, 255];
+
+    fn box_ring(length: f64, width: f64, turn: f64) -> Vec<DVec3> {
+        let (along, across) = (
+            DVec3::new(turn.cos(), turn.sin(), 0.0),
+            DVec3::new(-turn.sin(), turn.cos(), 0.0),
+        );
+        [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+            .iter()
+            .map(|(a, b)| along * a * length / 2.0 + across * b * width / 2.0)
+            .collect()
+    }
+
+    #[test]
+    fn houses_get_pitched_roofs_and_blocks_only_when_their_roof_looks_tiled() {
+        let gable = |ring: Vec<DVec3>, top: f64, colour| roof_for(&[ring], 0.0, top, colour);
+        let Roof::Gable(long) = gable(box_ring(16.0, 8.0, 0.4), 6.0, GREY) else {
+            panic!("an elongated house is gabled");
+        };
+        assert!(
+            (long
+                .along
+                .dot(DVec3::new(0.4f64.cos(), 0.4f64.sin(), 0.0))
+                .abs()
+                - 1.0)
+                .abs()
+                < 1e-6
+        );
+        assert!(matches!(
+            gable(box_ring(10.0, 10.0, 0.0), 6.0, GREY),
+            Roof::Hip(_)
+        ));
+        assert!(matches!(
+            gable(box_ring(40.0, 40.0, 0.0), 12.0, GREY),
+            Roof::Flat
+        ));
+        assert!(matches!(
+            gable(box_ring(40.0, 40.0, 0.0), 12.0, TILES),
+            Roof::Hip(_)
+        ));
+        assert!(matches!(
+            gable(box_ring(10.0, 10.0, 0.0), 20.0, GREY),
+            Roof::Flat
+        ));
+        let l_shape = vec![
+            DVec3::new(0.0, 0.0, 0.0),
+            DVec3::new(14.0, 0.0, 0.0),
+            DVec3::new(14.0, 4.0, 0.0),
+            DVec3::new(4.0, 4.0, 0.0),
+            DVec3::new(4.0, 14.0, 0.0),
+            DVec3::new(0.0, 14.0, 0.0),
+        ];
+        assert!(matches!(gable(l_shape, 6.0, GREY), Roof::Flat));
+        let courtyard = [box_ring(20.0, 12.0, 0.0), box_ring(4.0, 4.0, 0.0)];
+        assert!(matches!(roof_for(&courtyard, 0.0, 6.0, TILES), Roof::Flat));
+    }
+
+    fn rectangle(length: f64, width: f64) -> Rectangle {
+        bounding(&box_ring(length, width, 0.3)).expect("a rectangle bounds itself")
+    }
+
+    #[test]
+    fn a_gable_closes_on_one_ridge_along_the_long_axis_above_the_walls() {
+        let (eave, pitch) = (6.0, 35f64.to_radians());
+        let roof = pitched(&rectangle(16.0, 8.0), eave, pitch, false, [0.0; 2], 9.0);
+        let ridge = eave + pitch.tan() * 4.0;
+        let top: Vec<DVec3> = roof
+            .positions
+            .iter()
+            .map(|p| DVec3::new(f64::from(p[0]), f64::from(p[1]), f64::from(p[2])))
+            .filter(|p| (p.z - ridge).abs() < 1e-3)
+            .collect();
+        let line = (top[0] - top[1]).normalize();
+        assert!((line.dot(DVec3::new(0.3f64.cos(), 0.3f64.sin(), 0.0)).abs() - 1.0).abs() < 1e-4);
+        let distinct = |points: &[DVec3]| {
+            points.iter().fold(Vec::<DVec3>::new(), |seen, p| {
+                if seen.iter().any(|q| (*q - *p).length() < 1e-3) {
+                    seen
+                } else {
+                    [seen, vec![*p]].concat()
+                }
+            })
+        };
+        assert_eq!(
+            distinct(&top).len(),
+            4,
+            "both slopes and both gables meet on one ridge"
+        );
+        assert!(
+            roof.positions
+                .iter()
+                .all(|p| f64::from(p[2]) >= eave - pitch.tan() * OVERHANG_M - 1e-3)
+        );
+        let gables = roof.normals.iter().filter(|n| n[2] == 9.0).count();
+        assert_eq!(gables, 6, "two gable triangles carry the wall tag");
+    }
+
+    #[test]
+    fn a_hip_roof_has_a_ridge_shorter_by_the_width_and_every_slope_faces_up() {
+        let (eave, pitch) = (6.0, 35f64.to_radians());
+        let roof = pitched(&rectangle(16.0, 8.0), eave, pitch, true, [0.0; 2], 9.0);
+        let ridge = eave + pitch.tan() * 4.0;
+        let top: Vec<DVec3> = roof
+            .positions
+            .iter()
+            .map(|p| DVec3::new(f64::from(p[0]), f64::from(p[1]), f64::from(p[2])))
+            .filter(|p| (p.z - ridge).abs() < 1e-3)
+            .collect();
+        let longest = top
+            .iter()
+            .flat_map(|a| top.iter().map(move |b| (*a - *b).length()))
+            .fold(0.0, f64::max);
+        assert!((longest - 8.0).abs() < 1e-3);
+        assert!(roof.normals.iter().all(|n| n[2] > 0.5 && n[2] <= 1.0));
+    }
+
+    #[test]
+    fn facades_fit_whole_bays_to_each_wall_and_blank_the_short_ones() {
+        let facade = Facade {
+            base: 2.0,
+            storey: 3.0,
+            bay: 3.0,
+            tag: WALL_TAG + 7.5,
+        };
+        let long = facade_wall(DVec3::ZERO, DVec3::new(10.0, 0.0, 0.0), 2.0, 11.0, &facade);
+        assert_eq!(long.uvs[1][0], 3.0);
+        assert_eq!(long.uvs[2][1], 3.0);
+        assert!(long.normals.iter().all(|n| n[2] == WALL_TAG + 7.5));
+        let short = facade_wall(DVec3::ZERO, DVec3::new(1.2, 0.0, 0.0), 2.0, 11.0, &facade);
+        assert!(short.uvs.iter().all(|uv| uv[0] == BLANK));
+    }
+
+    #[test]
+    fn osm_colours_read_both_hex_forms() {
+        assert_eq!(osm_colour("#eca"), Some([238, 204, 170, 255]));
+        assert_eq!(osm_colour("#b7b1a6"), Some([183, 177, 166, 255]));
+        assert_eq!(osm_colour("brick"), None);
+    }
 
     struct Offline;
 
@@ -2654,7 +3161,7 @@ mod tests {
         };
         let (meshes, groves) = place_meshes(parent, &json, None, &|_| None);
         let layers: Vec<Layer> = meshes.iter().map(|mesh| mesh.layer).collect();
-        assert_eq!(layers, vec![Layer::Opaque, Layer::Water]);
+        assert_eq!(layers, vec![Layer::Building, Layer::Water]);
         assert!(
             meshes[1].normals.iter().all(|n| *n == [0.0, 0.0, 1.0]),
             "water lies flat"
@@ -2773,8 +3280,8 @@ mod tests {
         };
         let roof = ground(&mut scene, 0.5);
         assert!(
-            (roof - 613.0).abs() < 0.1,
-            "on the roof, 9 m above the 604 m street, got {roof}"
+            (roof - 612.0).abs() < 0.1,
+            "on the roof inside its 1 m parapet, 8 m above the 604 m street, got {roof}"
         );
         assert!(
             (ground(&mut scene, 0.1) - 604.0).abs() < 0.1,
@@ -2783,7 +3290,7 @@ mod tests {
     }
 
     #[test]
-    fn a_building_takes_its_roof_from_the_picture_under_it_and_darker_walls() {
+    fn a_building_takes_its_roof_from_the_picture_under_it_and_its_walls_from_a_facade_tone() {
         let key = TileKey {
             z: 14,
             x: 14980,
@@ -2798,24 +3305,37 @@ mod tests {
         let roof = palette.get_pixel(0, 0).0;
         let wall = palette.get_pixel(1, 0).0;
         assert_eq!(roof, [180, 60, 60, 255]);
+        let distance = |a: [f32; 3], b: [u8; 4]| {
+            (0..3)
+                .map(|c| (a[c] - f32::from(b[c])).powi(2))
+                .sum::<f32>()
+        };
+        let roof_like = [180.0, 60.0, 60.0];
         assert!(
-            wall[0] < roof[0] && wall[0] > roof[0] / 2,
-            "wall {wall:?} is a darker roof {roof:?}"
+            FACADE_TONES
+                .iter()
+                .any(|tone| distance(*tone, wall) < distance(roof_like, wall)),
+            "wall {wall:?} is a facade tone, not the roof {roof:?}"
+        );
+        let (walls, roofs): (Vec<usize>, Vec<usize>) =
+            (0..mesh.normals.len()).partition(|&i| mesh.normals[i][2] > WALL_TAG - 0.5);
+        assert!(
+            walls
+                .iter()
+                .all(|&i| (mesh.normals[i][2] - WALL_TAG).floor() == 1.0),
+            "every wall points at the wall colour"
         );
         assert!(
-            wall[1] > roof[1] / 2,
-            "walls are greyer than the roof: {wall:?}"
+            roofs.iter().all(|&i| {
+                let uv = mesh.uvs[i];
+                [(uv[0] * PALETTE_WIDTH as f32) as u32, uv[1] as u32] == [0, 0]
+            }),
+            "every roof face points at the roof colour"
         );
-        let uvs: std::collections::HashSet<[u32; 2]> = mesh
-            .uvs
-            .iter()
-            .map(|uv| [(uv[0] * PALETTE_WIDTH as f32) as u32, (uv[1] * 1.0) as u32])
-            .collect();
-        assert_eq!(uvs, [[0, 0], [1, 0]].into_iter().collect());
     }
 
     #[test]
-    fn a_square_building_gets_four_walls_and_a_two_triangle_roof() {
+    fn a_square_block_gets_four_facades_a_parapet_roof_and_rooftop_units() {
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 1100, 1000, 1100, 1100, 1000, 1100]], "height": 9.0, "base": 0.0 }] });
         let mesh = building_mesh(
             TileKey {
@@ -2828,11 +3348,22 @@ mod tests {
             &|_| None,
         )
         .expect("a building");
-        assert_eq!(mesh.indices.len(), 4 * 6 + 2 * 3);
+        let units = (mesh.indices.len() - (4 * 6 + 2 * 3)) / 30;
+        assert!((1..=MAX_ROOFTOPS).contains(&units));
+        assert_eq!(mesh.indices.len(), 4 * 6 + 2 * 3 + units * 30);
+        let top = mesh.positions[..16]
+            .iter()
+            .map(|p| p[2])
+            .fold(f32::MIN, f32::max);
         assert!(
-            (mesh.high[2] - 9.0).abs() < 0.5,
-            "the roof sits at the building's height, got {}",
-            mesh.high[2]
+            (top - 9.0).abs() < 0.5,
+            "the walls reach the building's height, got {top}"
+        );
+        assert!(
+            mesh.positions[16..20]
+                .iter()
+                .all(|p| (p[2] - 8.0).abs() < 0.5),
+            "the roof sits a parapet below the wall tops"
         );
         assert!(
             mesh.indices
@@ -2856,11 +3387,11 @@ mod tests {
             facing
                 .iter()
                 .zip(&middles)
-                .all(|(n, m)| n[0] * m[0] + n[1] * m[1] > 0.0 && n[2] == 0.0),
+                .all(|(n, m)| n[0] * m[0] + n[1] * m[1] > 0.0 && n[2] > WALL_TAG - 0.5),
             "each wall faces away from the middle of the building: {facing:?}"
         );
         assert!(
-            mesh.normals[16..].iter().all(|n| *n == [0.0, 0.0, 1.0]),
+            mesh.normals[16..20].iter().all(|n| *n == [0.0, 0.0, 1.0]),
             "the roof faces up"
         );
     }

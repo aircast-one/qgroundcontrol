@@ -23,7 +23,7 @@ required-features = ["synthetic"]
 [features]
 native-host = []
 jni-host = ["native-host", "dep:jni"]
-synthetic = ["dep:wgpu", "dep:glam", "dep:pollster", "dep:earcut", "dep:http-cache-semantics", "dep:http", "dep:bytemuck", "dep:range-alloc"]
+synthetic = ["dep:wgpu", "dep:glam", "dep:pollster", "dep:earcut", "dep:geo", "dep:http-cache-semantics", "dep:http", "dep:bytemuck", "dep:range-alloc"]
 
 [dependencies]
 mavlink = { version = "0.18", default-features = false, features = ["dialect-ardupilotmega", "std", "mav2-message-signing", "mav2-message-extensions"] }
@@ -68,6 +68,7 @@ wgpu = { version = "30.0.1", optional = true }
 glam = { version = "0.34.1", optional = true }
 pollster = { version = "1.0.1", optional = true }
 earcut = { version = "0.4.11", optional = true }
+geo = { version = "0.33.1", default-features = false, optional = true }
 http-cache-semantics = { version = "3.0.0", optional = true }
 http = { version = "1.5.0", optional = true }
 bytemuck = { version = "1.25.2", optional = true }
