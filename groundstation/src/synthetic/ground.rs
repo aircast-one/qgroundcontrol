@@ -3,7 +3,7 @@ use std::sync::Arc;
 use glam::{DVec3, Vec3};
 
 use super::geo::{east_north_up, ecef};
-use super::mesh::Mesh;
+use super::mesh::{Layer, Mesh};
 
 const PROBE_HEIGHT_M: f64 = 10_000.0;
 const EARTHLY_M: std::ops::RangeInclusive<f64> = -1_000.0..=9_000.0;
@@ -75,6 +75,7 @@ pub fn height_at(meshes: &[Arc<Mesh>], latitude: f64, longitude: f64) -> Option<
     let down = -east_north_up(latitude, longitude).z_axis;
     meshes
         .iter()
+        .filter(|mesh| mesh.layer != Layer::Foliage)
         .filter_map(|mesh| distance_along(mesh, origin, down))
         .min_by(f64::total_cmp)
         .map(|metres| PROBE_HEIGHT_M - metres)
@@ -84,7 +85,6 @@ pub fn height_at(meshes: &[Arc<Mesh>], latitude: f64, longitude: f64) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::synthetic::mesh::Layer;
     use glam::{DMat3, DMat4};
 
     #[test]

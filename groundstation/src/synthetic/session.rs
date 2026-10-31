@@ -340,6 +340,7 @@ fn work(job: Job, fetcher: &dyn Fetcher) -> Done {
             let error = match &built {
                 Built::Heights(_, Err(error))
                 | Built::Houses(_, Err(error))
+                | Built::Trees(_, Err(error))
                 | Built::Terrain {
                     mesh: Err(error), ..
                 } => Some(format!("{what}: {error}")),
@@ -1338,6 +1339,9 @@ impl Session {
                             .height
                             .or(fallback.home.height)
                             .unwrap_or(0.0);
+                        fallback
+                            .scene
+                            .clear_home(target.home_latitude, target.home_longitude);
                         fallback.scene.select(
                             camera,
                             &target.imagery,
@@ -1393,6 +1397,7 @@ impl Session {
                 )
             }
             Source::Open(scene) => {
+                scene.clear_home(target.home_latitude, target.home_longitude);
                 let (meshes, wanted) = scene.select(
                     camera,
                     &target.imagery,

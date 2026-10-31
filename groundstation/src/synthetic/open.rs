@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::f64::consts::{FRAC_1_SQRT_2, PI};
+use std::f64::consts::{FRAC_1_SQRT_2, PI, TAU};
 use std::sync::Arc;
 use std::time::Duration;
 use web_time::Instant;
@@ -41,21 +41,88 @@ const SAMPLED_CORNERS: usize = 15;
 const ROOF_PICTURE_ZOOM: u32 = 16;
 const ROOF_LIFT: f32 = 1.5;
 const BOUNDS_BLOCK: usize = 16;
-const TREE_SPACING_M: f64 = 15.0;
-const PARK_TREE_SPACING_M: f64 = 30.0;
-const MAX_TREES: usize = 4000;
-const TREE_HEIGHT_M: (f64, f64) = (6.0, 12.0);
-const TREE_WIDTH: f64 = 0.7;
-const TREE_GROWTH: f64 = 2.0;
-const TREE_SPRITE: u32 = 64;
-const TREE_KINDS: u32 = 4;
-const TREE_GREENS: [[f32; 3]; 4] = [
-    [34.0, 70.0, 28.0],
-    [48.0, 86.0, 32.0],
-    [40.0, 78.0, 42.0],
-    [62.0, 94.0, 36.0],
+const TREE_ZOOM: u32 = 16;
+const TREE_REACH_M: f64 = 1_000.0;
+const TREE_SPLIT_M: [f64; 2] = [600.0, 250.0];
+const TREE_NEAR_ZOOM: u32 = 18;
+const FAR_KEEP: f64 = 0.5;
+const FAR_SPREAD: f64 = 1.35;
+const TREE_BRIGHTEST: f32 = 110.0;
+const TREE_DARKEST: f32 = 40.0;
+const CANOPY_SAMPLE_M: f64 = 4.0;
+const HOME_CLEARING_M: f64 = 25.0;
+const TREE_LIFT: f32 = 1.5;
+const TREE_SATURATION: f32 = 1.35;
+const TREE_VARIETY: f32 = 0.08;
+const SHADES: [f32; 4] = [1.18, 1.0, 0.88, 0.66];
+const CONIFER_TINT: [f32; 3] = [0.86, 0.95, 1.0];
+const HIGHLAND_M: f64 = 800.0;
+const HIGHLAND_CONIFERS: f64 = 0.1;
+const BROADLEAF_SHORTER: f64 = 0.85;
+const CROWN_LUMPS: f64 = 0.12;
+const CROWN_BOTTOM: f64 = 0.32;
+const FOLIAGE_LIFT: f64 = 0.6;
+const TRUNK_RADIUS: f64 = 0.034;
+const TRUNK: [u8; 4] = [74, 58, 44, 255];
+const NEAR_LOBES: [(f64, f64, f64, f64); 3] = [
+    (0.0, 0.0, 0.3, 0.66),
+    (0.0, 0.4, -0.15, 0.64),
+    (0.5, 0.4, -0.15, 0.64),
 ];
-const TRUNK: [u8; 4] = [74, 52, 34, 255];
+const FAR_LOBES: [(f64, f64, f64, f64); 1] = [(0.0, 0.0, 0.0, 1.0)];
+const NEAR_TIERS: [(f64, f64, f64); 3] = [(0.08, 0.6, 1.0), (0.36, 0.82, 0.74), (0.6, 1.0, 0.48)];
+const FAR_TIERS: [(f64, f64, f64); 2] = [(0.08, 0.72, 1.0), (0.45, 1.0, 0.62)];
+const NEAR_SIDES: u32 = 7;
+const FAR_SIDES: u32 = 5;
+const FOREST: Stand = Stand {
+    spacing_m: 7.0,
+    heights_m: (18.0, 30.0),
+    conifers: 0.3,
+    brightest: 140.0,
+};
+const PARK: Stand = Stand {
+    spacing_m: 22.0,
+    heights_m: (10.0, 18.0),
+    conifers: 0.2,
+    brightest: 105.0,
+};
+const GOLDEN: f64 = 1.618_033_988_749_895;
+const ICOSAHEDRON: [[f64; 3]; 12] = [
+    [-1.0, GOLDEN, 0.0],
+    [1.0, GOLDEN, 0.0],
+    [-1.0, -GOLDEN, 0.0],
+    [1.0, -GOLDEN, 0.0],
+    [0.0, -1.0, GOLDEN],
+    [0.0, 1.0, GOLDEN],
+    [0.0, -1.0, -GOLDEN],
+    [0.0, 1.0, -GOLDEN],
+    [GOLDEN, 0.0, -1.0],
+    [GOLDEN, 0.0, 1.0],
+    [-GOLDEN, 0.0, -1.0],
+    [-GOLDEN, 0.0, 1.0],
+];
+const ICOSAHEDRON_FACES: [[u32; 3]; 20] = [
+    [0, 11, 5],
+    [0, 5, 1],
+    [0, 1, 7],
+    [0, 7, 10],
+    [0, 10, 11],
+    [1, 5, 9],
+    [5, 11, 4],
+    [11, 10, 2],
+    [10, 7, 6],
+    [7, 1, 8],
+    [3, 9, 4],
+    [3, 4, 2],
+    [3, 2, 6],
+    [3, 6, 8],
+    [3, 8, 9],
+    [4, 9, 5],
+    [2, 4, 11],
+    [6, 2, 10],
+    [8, 6, 7],
+    [9, 8, 1],
+];
 const WATER: [u8; 4] = [52, 78, 96, 255];
 const WATER_LIFT_M: f64 = 1.0;
 const WATER_SAMPLES: u32 = 12;
@@ -277,6 +344,13 @@ pub enum Want {
         imagery: String,
         patch: Patch,
     },
+    Trees {
+        key: TileKey,
+        imagery: String,
+        patch: Patch,
+        groves: Arc<Vec<Grove>>,
+        home: Option<(f64, f64)>,
+    },
 }
 
 pub enum Built {
@@ -287,7 +361,8 @@ pub enum Built {
         zoom: u32,
         mesh: Result<(Mesh, bool), String>,
     },
-    Houses(TileKey, Result<Vec<Mesh>, String>),
+    Houses(TileKey, Result<(Vec<Mesh>, Vec<Grove>), String>),
+    Trees(TileKey, Result<Vec<Mesh>, String>),
 }
 
 impl Want {
@@ -305,6 +380,7 @@ impl Want {
                 mesh: Err(reason.to_string()),
             },
             Want::Houses { key, .. } => Built::Houses(*key, Err(reason.to_string())),
+            Want::Trees { key, .. } => Built::Trees(*key, Err(reason.to_string())),
         }
     }
 
@@ -345,6 +421,22 @@ impl Want {
                     })
                 }),
             ),
+            Want::Trees {
+                key,
+                imagery,
+                patch,
+                groves,
+                home,
+            } => Built::Trees(
+                key,
+                picture(fetcher, &imagery, key)
+                    .map(|(picture, _)| {
+                        tree_mesh(key, &groves, &patch, &picture, home)
+                            .into_iter()
+                            .collect()
+                    })
+                    .ok_or_else(|| "no imagery".to_string()),
+            ),
         }
     }
 
@@ -353,6 +445,12 @@ impl Want {
             Want::Terrain { key, .. } => (key.z, 0, key.x, key.y),
             Want::Heights(key) => (key.z, 1, key.x, key.y),
             Want::Houses { key, .. } => (key.z, 2, key.x, key.y),
+            Want::Trees { key, .. } => (
+                BUILDING_ZOOM,
+                3 + (TREE_NEAR_ZOOM - key.z) as u8,
+                key.x,
+                key.y,
+            ),
         }
     }
 
@@ -361,6 +459,7 @@ impl Want {
             Want::Heights(key) => (TERRAIN.to_string(), key),
             Want::Terrain { key, imagery, .. } => (imagery.clone(), key),
             Want::Houses { key, .. } => (BUILDINGS.to_string(), key),
+            Want::Trees { key, .. } => ("Trees".to_string(), key),
         };
         format!("{kind} {}/{}/{}", key.z, key.x, key.y)
     }
@@ -443,9 +542,40 @@ struct TerrainEntry {
 
 struct HouseEntry {
     meshes: Vec<Arc<Mesh>>,
+    groves: Arc<Vec<Grove>>,
     loaded: bool,
     asked: Option<Instant>,
     used: Instant,
+}
+
+impl HouseEntry {
+    fn empty(asked: Option<Instant>, now: Instant) -> Self {
+        Self {
+            meshes: Vec::new(),
+            groves: Arc::default(),
+            loaded: false,
+            asked,
+            used: now,
+        }
+    }
+
+    fn loaded(meshes: Vec<Mesh>, groves: Vec<Grove>, now: Instant) -> Self {
+        Self {
+            meshes: meshes.into_iter().map(Arc::new).collect(),
+            groves: Arc::new(groves),
+            loaded: true,
+            asked: None,
+            used: now,
+        }
+    }
+
+    fn ask(entries: &mut HashMap<TileKey, HouseEntry>, key: TileKey, now: Instant) {
+        entries
+            .entry(key)
+            .and_modify(|entry| entry.asked = Some(now))
+            .or_insert_with(|| HouseEntry::empty(Some(now), now))
+            .used = now;
+    }
 }
 
 struct Sight<'a> {
@@ -460,6 +590,8 @@ pub struct OpenScene {
     heights: Store<Heights>,
     terrain: HashMap<TileKey, TerrainEntry>,
     houses: HashMap<TileKey, HouseEntry>,
+    trees: HashMap<TileKey, HouseEntry>,
+    home: Option<(f64, f64)>,
 }
 
 fn frame_at(latitude: f64, longitude: f64) -> (DMat4, DMat3, DVec3) {
@@ -787,18 +919,28 @@ fn place_meshes(
     json: &[u8],
     patch: Option<&Patch>,
     pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
-) -> Vec<Mesh> {
+) -> (Vec<Mesh>, Vec<Grove>) {
     serde_json::from_slice::<serde_json::Value>(json)
         .ok()
         .map(|tile| {
-            [
-                building_mesh(key, &tile, patch, pictures),
-                tree_mesh(key, &tile, patch),
-                water_mesh(key, &tile, patch, pictures),
-            ]
-            .into_iter()
-            .flatten()
-            .collect()
+            (
+                [
+                    building_mesh(key, &tile, patch, pictures),
+                    water_mesh(key, &tile, patch, pictures),
+                ]
+                .into_iter()
+                .flatten()
+                .collect(),
+                areas_of(&tile, "woods")
+                    .into_iter()
+                    .map(|area| (area, &FOREST))
+                    .chain(
+                        areas_of(&tile, "parks")
+                            .into_iter()
+                            .map(|area| (area, &PARK)),
+                    )
+                    .collect(),
+            )
         })
         .unwrap_or_default()
 }
@@ -829,15 +971,6 @@ fn within(area: &[Vec<(f64, f64)>], point: (f64, f64)) -> bool {
     inside(&area[0], point) && !area[1..].iter().any(|hole| inside(hole, point))
 }
 
-fn extent_area(ring: &[(f64, f64)]) -> f64 {
-    ring.iter()
-        .zip(ring.iter().cycle().skip(1))
-        .map(|((au, av), (bu, bv))| au * bv - bu * av)
-        .sum::<f64>()
-        .abs()
-        / 2.0
-}
-
 fn tile_box(ring: &[(f64, f64)]) -> ((f64, f64), (f64, f64)) {
     ring.iter()
         .fold(((1.0, 1.0), (0.0, 0.0)), |((lu, lv), (hu, hv)), &(u, v)| {
@@ -848,27 +981,59 @@ fn tile_box(ring: &[(f64, f64)]) -> ((f64, f64), (f64, f64)) {
         })
 }
 
-type Grove = (Vec<Vec<(f64, f64)>>, f64);
+pub struct Stand {
+    spacing_m: f64,
+    heights_m: (f64, f64),
+    conifers: f64,
+    brightest: f32,
+}
 
-fn scatter(key: TileKey, groves: &[Grove]) -> (Vec<(f64, f64, u64)>, f64) {
-    let width = key.width_m();
-    let expected: f64 = groves
+pub type Grove = (Vec<Vec<(f64, f64)>>, &'static Stand);
+
+struct Tree {
+    at: DVec3,
+    height: f64,
+    spread: f64,
+    conifer: bool,
+    seed: u64,
+    colour: [f32; 3],
+}
+
+fn scatter(key: TileKey, groves: &[Grove]) -> Vec<(f64, f64, u64, &'static Stand)> {
+    let (grid, gu, gv, gspan) = key.ancestor(TREE_ZOOM);
+    let (_, du, dv, span) = grid.ancestor(BUILDING_ZOOM);
+    let width = grid.width_m();
+    let salt = mixed(
+        u64::from(grid.x) << 32 | u64::from(grid.y),
+        u64::from(grid.z),
+    );
+    let mine = move |u: f64, v: f64| (gu..gu + gspan).contains(&u) && (gv..gv + gspan).contains(&v);
+    groves
         .iter()
-        .map(|(area, spacing)| extent_area(&area[0]) * width * width / (spacing * spacing))
-        .sum();
-    let thinning = (expected / MAX_TREES as f64).sqrt().max(1.0);
-    let salt = mixed(u64::from(key.x) << 32 | u64::from(key.y), u64::from(key.z));
-    let placed = groves
-        .iter()
-        .flat_map(|(area, spacing)| {
-            let step = spacing * thinning / width;
-            let ((lu, lv), (hu, hv)) = tile_box(&area[0]);
-            let cells = move |low: f64, high: f64| {
-                (low / step).floor() as i64..=(high / step).floor() as i64
-            };
+        .map(|(area, stand)| {
+            let local: Vec<Vec<(f64, f64)>> = area
+                .iter()
+                .map(|ring| {
+                    ring.iter()
+                        .map(|&(u, v)| ((u - du) / span, (v - dv) / span))
+                        .collect()
+                })
+                .collect();
+            let ((lu, lv), (hu, hv)) = tile_box(&local[0]);
+            let reach = (
+                (lu.max(gu), lv.max(gv)),
+                (hu.min(gu + gspan), hv.min(gv + gspan)),
+            );
+            (local, reach, *stand)
+        })
+        .filter(|(_, ((lu, lv), (hu, hv)), _)| lu < hu && lv < hv)
+        .flat_map(|(local, ((lu, lv), (hu, hv)), stand)| {
+            let step = stand.spacing_m / width;
+            let cells =
+                |low: f64, high: f64| (low / step).floor() as i64..=(high / step).floor() as i64;
             cells(lv, hv)
-                .flat_map(move |row| cells(lu, hu).map(move |column| (column, row)))
-                .map(move |(column, row)| {
+                .flat_map(|row| cells(lu, hu).map(move |column| (column, row)))
+                .map(|(column, row)| {
                     let seed = mixed(salt, (column as u64) << 32 ^ row as u64);
                     (
                         (column as f64 + unit(seed)) * step,
@@ -876,94 +1041,329 @@ fn scatter(key: TileKey, groves: &[Grove]) -> (Vec<(f64, f64, u64)>, f64) {
                         seed,
                     )
                 })
-                .filter(move |&(u, v, _)| {
-                    (lu..=hu).contains(&u) && (lv..=hv).contains(&v) && within(area, (u, v))
-                })
+                .filter(|&(u, v, _)| mine(u, v) && within(&local, (u, v)))
+                .map(|(u, v, seed)| ((u - gu) / gspan, (v - gv) / gspan, seed, stand))
+                .collect::<Vec<_>>()
         })
-        .take(MAX_TREES)
-        .collect();
-    (placed, thinning)
+        .collect()
 }
 
-fn tree_sprites() -> image::RgbaImage {
-    let size = TREE_SPRITE as f64;
-    image::RgbaImage::from_fn(TREE_SPRITE * TREE_KINDS, TREE_SPRITE, |x, y| {
-        let kind = (x / TREE_SPRITE) as usize;
-        let (lx, ly) = (f64::from(x % TREE_SPRITE), f64::from(y));
-        let (dx, dy) = (
-            (lx - size / 2.0) / (size * 0.36),
-            (ly - size * 0.38) / (size * 0.36),
-        );
-        let roundness = dx * dx + dy * dy;
-        let noise = unit(mixed(u64::from(x), u64::from(y)));
-        let crown = roundness < 1.0 - 0.45 * noise;
-        let trunk = (lx - size / 2.0).abs() < size * 0.05 && ly > size * 0.55;
-        let green = TREE_GREENS[kind];
-        let shade = (0.55 + 0.45 * (1.0 - roundness).max(0.0) + 0.15 * (noise - 0.5)) as f32;
-        let pixel = if crown {
-            [
-                (green[0] * shade) as u8,
-                (green[1] * shade) as u8,
-                (green[2] * shade) as u8,
-                255,
-            ]
-        } else if trunk {
-            TRUNK
-        } else {
-            [0, 0, 0, 0]
-        };
-        image::Rgba(pixel)
+fn canopy(
+    picture: &image::RgbaImage,
+    (u, v): (f64, f64),
+    reach: f64,
+    stand: &Stand,
+) -> Option<[f32; 3]> {
+    let (width, height) = picture.dimensions();
+    let pixel =
+        |at: f64, size: u32| ((at * f64::from(size)) as i64).clamp(0, i64::from(size) - 1) as u32;
+    let samples: Vec<[u8; 4]> = (-2..=2)
+        .flat_map(|dy| (-2..=2).map(move |dx| (dx, dy)))
+        .map(|(dx, dy)| {
+            picture
+                .get_pixel(
+                    pixel(u + f64::from(dx) * reach / 2.0, width),
+                    pixel(v + f64::from(dy) * reach / 2.0, height),
+                )
+                .0
+        })
+        .collect();
+    let mean: [f32; 3] = std::array::from_fn(|channel| {
+        samples.iter().map(|s| f32::from(s[channel])).sum::<f32>() / samples.len() as f32
+    });
+    (luma(mean) <= stand.brightest).then_some(mean)
+}
+
+fn luma(colour: [f32; 3]) -> f32 {
+    0.299 * colour[0] + 0.587 * colour[1] + 0.114 * colour[2]
+}
+
+fn shaded(colour: [f32; 3]) -> [[u8; 4]; 4] {
+    SHADES.map(|shade| {
+        let [r, g, b] = colour.map(|channel| (channel * shade).clamp(0.0, 255.0) as u8);
+        [r, g, b, 255]
     })
 }
 
-fn tree(at: DVec3, height: f64, kind: u32) -> Part {
-    let half = height * TREE_WIDTH / 2.0;
-    let (u0, u1) = (
-        kind as f32 / TREE_KINDS as f32,
-        (kind + 1) as f32 / TREE_KINDS as f32,
-    );
-    let quad = |a: DVec3, b: DVec3| Part {
-        positions: vec![
-            a.as_vec3().to_array(),
-            b.as_vec3().to_array(),
-            (b + DVec3::Z * height).as_vec3().to_array(),
-            (a + DVec3::Z * height).as_vec3().to_array(),
-        ],
-        uvs: vec![[u0, 1.0], [u1, 1.0], [u1, 0.0], [u0, 0.0]],
-        normals: vec![[0.0, 0.0, 1.0]; 4],
-        indices: vec![0, 1, 2, 0, 2, 3],
-    };
+fn shaded_palette(blocks: &[[[u8; 4]; 4]]) -> image::RgbaImage {
+    let across = PALETTE_WIDTH / 2;
+    let rows = 2 * (blocks.len() as u32).div_ceil(across).max(1);
+    image::RgbaImage::from_fn(PALETTE_WIDTH, rows, |x, y| {
+        image::Rgba(
+            blocks
+                .get(((y / 2) * across + x / 2) as usize)
+                .map_or(ROOF, |block| block[((y % 2) * 2 + x % 2) as usize]),
+        )
+    })
+}
+
+fn shade_uv(block: usize, corner: usize, blocks: usize) -> [f32; 2] {
+    let across = (PALETTE_WIDTH / 2) as usize;
+    let rows = 2 * blocks.div_ceil(across).max(1);
+    [
+        ((block % across) * 2 + corner % 2) as f32 / PALETTE_WIDTH as f32
+            + 0.5 / PALETTE_WIDTH as f32,
+        ((block / across) * 2 + corner / 2) as f32 / rows as f32 + 0.5 / rows as f32,
+    ]
+}
+
+fn corner_at(rise: f64, seed: u64) -> usize {
+    if rise > 0.62 {
+        0
+    } else if rise < 0.3 {
+        3
+    } else {
+        1 + (seed & 1) as usize
+    }
+}
+
+fn trunk(at: DVec3, radius: f64, top: f64, uv: [f32; 2]) -> Part {
+    let around: Vec<DVec3> = (0..3)
+        .map(|side| {
+            let angle = f64::from(side) * TAU / 3.0;
+            DVec3::new(angle.cos(), angle.sin(), 0.0)
+        })
+        .collect();
+    Part {
+        positions: around
+            .iter()
+            .map(|d| at + *d * radius)
+            .chain(
+                around
+                    .iter()
+                    .map(|d| at + *d * radius * 0.7 + DVec3::Z * top),
+            )
+            .map(|p| p.as_vec3().to_array())
+            .collect(),
+        uvs: vec![uv; 6],
+        normals: around
+            .iter()
+            .chain(around.iter())
+            .map(|d| d.as_vec3().to_array())
+            .collect(),
+        indices: (0..3u32)
+            .flat_map(|side| {
+                let next = (side + 1) % 3;
+                [side, next, 3 + next, side, 3 + next, 3 + side]
+            })
+            .collect(),
+    }
+}
+
+fn lobe(centre: DVec3, radii: DVec3, seed: u64, shade: &dyn Fn(f64, u64) -> [f32; 2]) -> Part {
+    let turn = DMat3::from_rotation_z(unit(seed) * TAU);
+    let directions = ICOSAHEDRON.map(|corner| turn * DVec3::from_array(corner).normalize());
+    let positions: Vec<DVec3> = directions
+        .iter()
+        .zip(0u64..)
+        .map(|(direction, corner)| {
+            let lump = 1.0 + CROWN_LUMPS * (2.0 * unit(mixed(seed, 10 + corner)) - 1.0);
+            centre + *direction * radii * lump
+        })
+        .collect();
+    Part {
+        uvs: positions
+            .iter()
+            .zip(0u64..)
+            .map(|(p, corner)| shade(p.z, mixed(seed, corner)))
+            .collect(),
+        positions: positions.iter().map(|p| p.as_vec3().to_array()).collect(),
+        normals: directions
+            .iter()
+            .map(|direction| {
+                (*direction + DVec3::Z * FOLIAGE_LIFT)
+                    .normalize()
+                    .as_vec3()
+                    .to_array()
+            })
+            .collect(),
+        indices: ICOSAHEDRON_FACES.iter().flatten().copied().collect(),
+    }
+}
+
+fn broadleaf(
+    tree: &Tree,
+    lobes: &[(f64, f64, f64, f64)],
+    near: bool,
+    uv: &dyn Fn(usize) -> [f32; 2],
+) -> Part {
+    let height = tree.height * BROADLEAF_SHORTER;
+    let turn = unit(mixed(tree.seed, 4)) * TAU;
+    let width = height * (0.48 + 0.14 * unit(mixed(tree.seed, 5))) * tree.spread;
+    let (bottom, top) = (tree.at.z + height * CROWN_BOTTOM, tree.at.z + height);
+    let centre = tree.at.with_z((bottom + top) / 2.0);
+    let radii = DVec3::new(width / 2.0, width / 2.0, (top - bottom) / 2.0);
+    let shade = |z: f64, seed: u64| uv(corner_at((z - bottom) / (top - bottom), seed));
+    let crown = lobes
+        .iter()
+        .zip(0u64..)
+        .map(|(&(around, reach, rise, size), index)| {
+            let angle = turn + around * TAU;
+            let offset = DVec3::new(
+                angle.cos() * reach * radii.x,
+                angle.sin() * reach * radii.y,
+                rise * radii.z,
+            );
+            lobe(
+                centre + offset,
+                radii * size,
+                mixed(tree.seed, 30 + index),
+                &shade,
+            )
+        });
+    joined(crown.chain(near.then(|| {
+        trunk(
+            tree.at,
+            height * TRUNK_RADIUS,
+            height * (CROWN_BOTTOM + (1.0 - CROWN_BOTTOM) * 0.25),
+            uv(4),
+        )
+    })))
+}
+
+fn cone(
+    at: DVec3,
+    (base, apex): (f64, f64),
+    (radius, sides): (f64, u32),
+    seed: u64,
+    ring_corner: &dyn Fn(u32) -> usize,
+    uv: &dyn Fn(usize) -> [f32; 2],
+) -> Part {
+    let turn = unit(seed) * TAU;
+    let rise = apex - base;
+    let ring: Vec<(DVec3, DVec3)> = (0..sides)
+        .map(|side| {
+            let angle = turn + f64::from(side) * TAU / f64::from(sides);
+            let outward = DVec3::new(angle.cos(), angle.sin(), 0.0);
+            let reach =
+                radius * (1.0 + CROWN_LUMPS * (2.0 * unit(mixed(seed, u64::from(side))) - 1.0));
+            (
+                at + outward * reach + DVec3::Z * base,
+                (outward * rise + DVec3::Z * reach).normalize(),
+            )
+        })
+        .collect();
+    Part {
+        positions: ring
+            .iter()
+            .map(|(p, _)| *p)
+            .chain(std::iter::once(at + DVec3::Z * apex))
+            .map(|p| p.as_vec3().to_array())
+            .collect(),
+        uvs: (0..sides)
+            .map(|side| uv(ring_corner(side)))
+            .chain(std::iter::once(uv(0)))
+            .collect(),
+        normals: ring
+            .iter()
+            .map(|(_, n)| *n)
+            .chain(std::iter::once(DVec3::Z))
+            .map(|n| n.as_vec3().to_array())
+            .collect(),
+        indices: (0..sides)
+            .flat_map(|side| [side, (side + 1) % sides, sides])
+            .collect(),
+    }
+}
+
+fn conifer(
+    tree: &Tree,
+    tiers: &[(f64, f64, f64)],
+    sides: u32,
+    uv: &dyn Fn(usize) -> [f32; 2],
+) -> Part {
+    let radius = tree.height * (0.17 + 0.05 * unit(mixed(tree.seed, 5))) * tree.spread;
     joined(
-        [
-            quad(at - DVec3::X * half, at + DVec3::X * half),
-            quad(at - DVec3::Y * half, at + DVec3::Y * half),
-        ]
-        .into_iter(),
+        tiers
+            .iter()
+            .zip(0u64..)
+            .map(|(&(base, apex, scale), tier)| {
+                cone(
+                    tree.at,
+                    (tree.height * base, tree.height * apex),
+                    (radius * scale, sides),
+                    mixed(tree.seed, 20 + tier),
+                    &|side| {
+                        if tier == 0 {
+                            3
+                        } else {
+                            1 + (side % 2) as usize
+                        }
+                    },
+                    uv,
+                )
+            }),
     )
 }
 
-fn tree_mesh(key: TileKey, tile: &serde_json::Value, patch: Option<&Patch>) -> Option<Mesh> {
-    let groves: Vec<Grove> = areas_of(tile, "woods")
-        .into_iter()
-        .map(|area| (area, TREE_SPACING_M))
-        .chain(
-            areas_of(tile, "parks")
-                .into_iter()
-                .map(|area| (area, PARK_TREE_SPACING_M)),
-        )
-        .collect();
+fn tree_mesh(
+    key: TileKey,
+    groves: &[Grove],
+    patch: &Patch,
+    picture: &image::RgbaImage,
+    home: Option<(f64, f64)>,
+) -> Option<Mesh> {
+    let near = key.z >= TREE_NEAR_ZOOM;
+    let far = key.z == TREE_ZOOM;
     let placement = Placement::new(key);
-    let ground = |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at(u, v));
-    let (placed, thinning) = scatter(key, &groves);
-    let growth = thinning.sqrt().min(TREE_GROWTH);
-    let whole = joined(placed.into_iter().map(|(u, v, seed)| {
-        let height =
-            (TREE_HEIGHT_M.0 + (TREE_HEIGHT_M.1 - TREE_HEIGHT_M.0) * unit(mixed(seed, 2))) * growth;
-        tree(
-            placement.flat_at(u, v) + DVec3::Z * ground(u, v),
-            height,
-            (mixed(seed, 3) % u64::from(TREE_KINDS)) as u32,
+    let home = home.map(|(latitude, longitude)| {
+        let (tile, u, v) = TileKey::containing(latitude, longitude, key.z);
+        placement.flat_at(
+            f64::from(tile.x) - f64::from(key.x) + u,
+            f64::from(tile.y) - f64::from(key.y) + v,
         )
+    });
+    let trees: Vec<Tree> = scatter(key, groves)
+        .into_iter()
+        .filter(|&(.., seed, _)| !far || unit(mixed(seed, 7)) < FAR_KEEP)
+        .filter(|&(u, v, ..)| {
+            home.is_none_or(|home| (placement.flat_at(u, v) - home).length() > HOME_CLEARING_M)
+        })
+        .filter_map(|(u, v, seed, stand)| {
+            let mean = canopy(picture, (u, v), CANOPY_SAMPLE_M / key.width_m(), stand)?;
+            let ground = patch.at(u, v);
+            let conifers = stand.conifers
+                + if ground > HIGHLAND_M {
+                    HIGHLAND_CONIFERS
+                } else {
+                    0.0
+                };
+            let conifer = unit(mixed(seed, 3)) < conifers;
+            let tint = if conifer { CONIFER_TINT } else { [1.0; 3] };
+            let variety = 1.0 + TREE_VARIETY * (2.0 * unit(mixed(seed, 6)) as f32 - 1.0);
+            let grey = luma(mean);
+            let colour: [f32; 3] = std::array::from_fn(|channel| {
+                (grey + (mean[channel] - grey) * TREE_SATURATION)
+                    * TREE_LIFT
+                    * variety
+                    * tint[channel]
+            });
+            let dimmed = (luma(colour).clamp(TREE_DARKEST, TREE_BRIGHTEST)) / luma(colour).max(1.0);
+            Some(Tree {
+                at: placement.flat_at(u, v) + DVec3::Z * ground,
+                height: stand.heights_m.0
+                    + (stand.heights_m.1 - stand.heights_m.0) * unit(mixed(seed, 2)),
+                spread: if far { FAR_SPREAD } else { 1.0 },
+                conifer,
+                seed,
+                colour: colour.map(|channel| channel * dimmed),
+            })
+        })
+        .collect();
+    let blocks: Vec<[[u8; 4]; 4]> = std::iter::once([TRUNK; 4])
+        .chain(trees.iter().map(|tree| shaded(tree.colour)))
+        .collect();
+    let whole = joined(trees.iter().zip(1..).map(|(tree, block)| {
+        let uv = |corner: usize| match corner {
+            4 => shade_uv(0, 0, blocks.len()),
+            _ => shade_uv(block, corner, blocks.len()),
+        };
+        match (tree.conifer, near) {
+            (true, true) => conifer(tree, &NEAR_TIERS, NEAR_SIDES, &uv),
+            (true, false) => conifer(tree, &FAR_TIERS, FAR_SIDES, &uv),
+            (false, true) => broadleaf(tree, &NEAR_LOBES, true, &uv),
+            (false, false) => broadleaf(tree, &FAR_LOBES, false, &uv),
+        }
     }));
     (!whole.indices.is_empty()).then(|| {
         Mesh::new(
@@ -971,8 +1371,8 @@ fn tree_mesh(key: TileKey, tile: &serde_json::Value, patch: Option<&Patch>) -> O
             whole.positions,
             whole.uvs,
             whole.indices,
-            tree_sprites(),
-            Layer::Cutout,
+            shaded_palette(&blocks),
+            Layer::Foliage,
         )
         .with_normals(whole.normals)
     })
@@ -1137,6 +1537,15 @@ impl OpenScene {
             heights: Store::new(),
             terrain: HashMap::new(),
             houses: HashMap::new(),
+            trees: HashMap::new(),
+            home: None,
+        }
+    }
+
+    pub fn clear_home(&mut self, latitude: f64, longitude: f64) {
+        if self.home != Some((latitude, longitude)) {
+            self.home = Some((latitude, longitude));
+            self.trees.clear();
         }
     }
 
@@ -1161,18 +1570,15 @@ impl OpenScene {
                 );
             }
             Built::Terrain { .. } => {}
-            Built::Houses(key, Ok(meshes)) => {
-                self.houses.insert(
-                    key,
-                    HouseEntry {
-                        meshes: meshes.into_iter().map(Arc::new).collect(),
-                        loaded: true,
-                        asked: None,
-                        used: now,
-                    },
-                );
+            Built::Houses(key, Ok((meshes, groves))) => {
+                self.houses
+                    .insert(key, HouseEntry::loaded(meshes, groves, now));
             }
-            Built::Houses(..) => {}
+            Built::Trees(key, Ok(meshes)) => {
+                self.trees
+                    .insert(key, HouseEntry::loaded(meshes, Vec::new(), now));
+            }
+            Built::Houses(..) | Built::Trees(..) => {}
         }
     }
 
@@ -1199,18 +1605,8 @@ impl OpenScene {
                     })
                     .used = now
             }
-            Want::Houses { key, .. } => {
-                self.houses
-                    .entry(*key)
-                    .and_modify(|entry| entry.asked = Some(now))
-                    .or_insert(HouseEntry {
-                        meshes: Vec::new(),
-                        loaded: false,
-                        asked: Some(now),
-                        used: now,
-                    })
-                    .used = now
-            }
+            Want::Houses { key, .. } => HouseEntry::ask(&mut self.houses, *key, now),
+            Want::Trees { key, .. } => HouseEntry::ask(&mut self.trees, *key, now),
         });
         chosen
     }
@@ -1357,14 +1753,18 @@ impl OpenScene {
         below.flatten().or_else(|| own.map(|mesh| vec![mesh]))
     }
 
-    fn house(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Vec<Arc<Mesh>> {
+    fn placed(
+        &mut self,
+        key: TileKey,
+        entries: fn(&mut OpenScene) -> &mut HashMap<TileKey, HouseEntry>,
+        want: impl FnOnce(Patch) -> Want,
+        wanted: &mut Vec<Want>,
+        now: Instant,
+    ) -> Vec<Arc<Mesh>> {
         let (loaded, idle) = {
-            let entry = self.houses.entry(key).or_insert(HouseEntry {
-                meshes: Vec::new(),
-                loaded: false,
-                asked: None,
-                used: now,
-            });
+            let entry = entries(self)
+                .entry(key)
+                .or_insert_with(|| HouseEntry::empty(None, now));
             entry.used = now;
             (
                 entry.loaded,
@@ -1375,18 +1775,101 @@ impl OpenScene {
         };
         if !loaded
             && idle
-            && let Some(patch) = self.patch(key, wanted, now)
+            && let Some(patch) = self
+                .patch(key, wanted, now)
+                .filter(|patch| patch.zoom == key.z.min(TERRAIN_ZOOM))
         {
-            wanted.push(Want::Houses {
-                key,
-                imagery: self.imagery.clone(),
-                patch,
-            });
+            wanted.push(want(patch));
         }
-        self.houses
+        entries(self)
             .get(&key)
             .map(|entry| entry.meshes.clone())
             .unwrap_or_default()
+    }
+
+    fn house(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Vec<Arc<Mesh>> {
+        let imagery = self.imagery.clone();
+        self.placed(
+            key,
+            |scene| &mut scene.houses,
+            |patch| Want::Houses {
+                key,
+                imagery,
+                patch,
+            },
+            wanted,
+            now,
+        )
+    }
+
+    fn tree(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Vec<Arc<Mesh>> {
+        let (parent, ..) = key.ancestor(BUILDING_ZOOM);
+        let Some(groves) = self
+            .houses
+            .get(&parent)
+            .filter(|entry| entry.loaded && !entry.groves.is_empty())
+            .map(|entry| entry.groves.clone())
+        else {
+            return Vec::new();
+        };
+        let (imagery, home) = (self.imagery.clone(), self.home);
+        self.placed(
+            key,
+            |scene| &mut scene.trees,
+            |patch| Want::Trees {
+                key,
+                imagery,
+                patch,
+                groves,
+                home,
+            },
+            wanted,
+            now,
+        )
+    }
+
+    fn trees_around(
+        &mut self,
+        latitude: f64,
+        longitude: f64,
+        wanted: &mut Vec<Want>,
+        now: Instant,
+    ) -> Vec<Arc<Mesh>> {
+        let gap_m = |key: TileKey| {
+            let (eye, u, v) = TileKey::containing(latitude, longitude, key.z);
+            let gap = |low: f64, at: f64| (low - at).max(at - low - 1.0).max(0.0);
+            gap(f64::from(key.x) - f64::from(eye.x), u)
+                .hypot(gap(f64::from(key.y) - f64::from(eye.y), v))
+                * key.width_m()
+        };
+        fn split(key: TileKey, gap_m: &dyn Fn(TileKey) -> f64) -> Vec<TileKey> {
+            if key.z < TREE_NEAR_ZOOM && gap_m(key) <= TREE_SPLIT_M[(key.z - TREE_ZOOM) as usize] {
+                key.children()
+                    .into_iter()
+                    .flat_map(|child| split(child, gap_m))
+                    .collect()
+            } else {
+                vec![key]
+            }
+        }
+        let (centre, ..) = TileKey::containing(latitude, longitude, TREE_ZOOM);
+        let span = (TREE_REACH_M / centre.width_m()).ceil() as i64;
+        let around: Vec<TileKey> = (-span..=span)
+            .flat_map(|dy| (-span..=span).map(move |dx| (dx, dy)))
+            .filter_map(|(dx, dy)| {
+                Some(TileKey {
+                    z: TREE_ZOOM,
+                    x: u32::try_from(i64::from(centre.x) + dx).ok()?,
+                    y: u32::try_from(i64::from(centre.y) + dy).ok()?,
+                })
+            })
+            .filter(|&key| gap_m(key) <= TREE_REACH_M)
+            .flat_map(|key| split(key, &gap_m))
+            .collect();
+        around
+            .into_iter()
+            .flat_map(|key| self.tree(key, wanted, now))
+            .collect()
     }
 
     fn houses_around(
@@ -1422,6 +1905,7 @@ impl OpenScene {
             + self
                 .houses
                 .values()
+                .chain(self.trees.values())
                 .filter(|entry| !entry.meshes.is_empty())
                 .count()
     }
@@ -1487,7 +1971,9 @@ impl OpenScene {
             .unwrap_or_default();
         let houses = houses_at
             .map(|(latitude, longitude)| {
-                self.houses_around(latitude, longitude, &mut candidates, now)
+                let houses = self.houses_around(latitude, longitude, &mut candidates, now);
+                let trees = self.trees_around(latitude, longitude, &mut candidates, now);
+                houses.into_iter().chain(trees).collect::<Vec<_>>()
             })
             .unwrap_or_default();
         let wanted = self.issue(candidates, budget, now);
@@ -1502,6 +1988,8 @@ impl OpenScene {
                 .retain(|_, entry| kept(entry.used, at, now) || awaited(entry.asked, now))
         });
         self.houses
+            .retain(|_, entry| now.duration_since(entry.used) < KEEP_HOUSES_FOR);
+        self.trees
             .retain(|_, entry| now.duration_since(entry.used) < KEEP_HOUSES_FOR);
         self.heights.trim(now, KEEP_DATA_FOR, MAX_HEIGHT_TILES);
         (ground_meshes.into_iter().chain(houses).collect(), wanted)
@@ -2030,62 +2518,155 @@ mod tests {
         );
     }
 
+    fn flat_patch() -> Patch {
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::RgbImage::from_pixel(2, 2, image::Rgb([130, 92, 0]))
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        Patch {
+            heights: Arc::new(Heights::from_terrarium(&png.into_inner()).unwrap()),
+            zoom: TERRAIN_ZOOM,
+            du: 0.0,
+            dv: 0.0,
+            span: 1.0,
+        }
+    }
+
     #[test]
     fn trees_scatter_the_same_way_every_time_and_only_inside_the_wood() {
         let key = TileKey {
-            z: BUILDING_ZOOM,
-            x: 8581,
-            y: 5738,
+            z: TREE_ZOOM,
+            x: 8581 * 4 + 1,
+            y: 5738 * 4 + 2,
         };
-        let wood = vec![
-            vec![(0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)],
-            vec![(0.2, 0.2), (0.3, 0.2), (0.3, 0.3), (0.2, 0.3)],
-        ];
-        let (once, _) = scatter(key, &[(wood.clone(), TREE_SPACING_M)]);
-        let (again, _) = scatter(key, &[(wood.clone(), TREE_SPACING_M)]);
-        assert_eq!(once, again, "the same tile grows the same forest");
-        let expected =
-            0.4 * 0.4 * key.width_m() * key.width_m() / (TREE_SPACING_M * TREE_SPACING_M);
+        let wood: Grove = (
+            vec![
+                vec![(0.25, 0.5), (0.5, 0.5), (0.5, 0.75), (0.25, 0.75)],
+                vec![(0.3, 0.55), (0.35, 0.55), (0.35, 0.6), (0.3, 0.6)],
+            ],
+            &FOREST,
+        );
+        let once = scatter(key, std::slice::from_ref(&wood));
+        let again = scatter(key, std::slice::from_ref(&wood));
+        let spots = |trees: &[(f64, f64, u64, &Stand)]| {
+            trees
+                .iter()
+                .map(|&(u, v, seed, _)| (u, v, seed))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            spots(&once),
+            spots(&again),
+            "the same tile grows the same forest"
+        );
+        let expected = 0.96 * (key.width_m() / FOREST.spacing_m).powi(2);
         assert!(
-            (once.len() as f64) > expected * 0.8 && (once.len() as f64) < expected * 1.0,
-            "{} trees for {expected:.0} cells, minus the clearing",
+            (expected * 0.92..expected * 1.05).contains(&(once.len() as f64)),
+            "{} trees for {expected:.0} cells of forest, minus the clearing",
             once.len()
         );
         assert!(
-            once.iter().all(|&(u, v, _)| within(&wood, (u, v))),
-            "every tree stands in the wood and none in the clearing"
+            once.iter().all(|&(u, v, ..)| {
+                (0.0..1.0).contains(&u)
+                    && (0.0..1.0).contains(&v)
+                    && !((0.2..0.4).contains(&u) && (0.2..0.4).contains(&v))
+            }),
+            "every tree stands in this tile and none in the clearing"
         );
-        let whole_tile = vec![vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]];
-        let (forest, thinning) = scatter(key, &[(whole_tile, TREE_SPACING_M)]);
-        let forest = forest.len();
-        assert!(thinning > 1.5, "thinned {thinning}");
+        let quarters: Vec<(f64, f64, u64)> = key
+            .children()
+            .iter()
+            .flat_map(|&quarter| {
+                let (_, du, dv, span) = quarter.ancestor(TREE_ZOOM);
+                scatter(quarter, std::slice::from_ref(&wood))
+                    .into_iter()
+                    .map(move |(u, v, seed, _)| (du + u * span, dv + v * span, seed))
+            })
+            .collect();
+        let sorted = |mut trees: Vec<(f64, f64, u64)>| {
+            trees.sort_by_key(|&(.., seed)| seed);
+            trees
+        };
+        let (near, far) = (sorted(quarters), sorted(spots(&once)));
         assert!(
-            (MAX_TREES * 95 / 100..=MAX_TREES).contains(&forest),
-            "a tile of solid forest is thinned to the cap, not cut off: {forest}"
+            near.len() == far.len()
+                && near.iter().zip(&far).all(|(a, b)| {
+                    a.2 == b.2 && (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9
+                }),
+            "the near quarters grow exactly the far tile's trees"
+        );
+        let next_door = TileKey {
+            x: key.x + 1,
+            ..key
+        };
+        assert!(
+            scatter(next_door, &[wood]).is_empty(),
+            "the wood ends at the tile edge"
         );
     }
 
     #[test]
-    fn a_lake_shore_tile_grows_trees_and_lays_water_beside_its_houses() {
+    fn a_wood_grows_crowns_on_the_ground_coloured_like_the_canopy_and_none_on_a_road() {
         let raw = std::fs::read(format!(
             "{}/../test/Bridge/fixtures/openfreemap-14-8581-5738-zurich-lake-shore.pbf",
             env!("CARGO_MANIFEST_DIR")
         ))
         .unwrap();
         let json = crate::buildings::tile_json(&raw).unwrap();
-        let key = TileKey {
+        let parent = TileKey {
             z: BUILDING_ZOOM,
             x: 8581,
             y: 5738,
         };
-        let meshes = place_meshes(key, &json, None, &|_| None);
+        let (meshes, groves) = place_meshes(parent, &json, None, &|_| None);
         let layers: Vec<Layer> = meshes.iter().map(|mesh| mesh.layer).collect();
-        assert_eq!(layers, vec![Layer::Opaque, Layer::Cutout, Layer::Water]);
-        let trees = meshes[1].positions.len() / 8;
-        assert!((1..=MAX_TREES).contains(&trees), "{trees} trees");
+        assert_eq!(layers, vec![Layer::Opaque, Layer::Water]);
         assert!(
-            meshes[2].normals.iter().all(|n| *n == [0.0, 0.0, 1.0]),
+            meshes[1].normals.iter().all(|n| *n == [0.0, 0.0, 1.0]),
             "water lies flat"
+        );
+        assert!(!groves.is_empty(), "the shore has woods and parks");
+        let children: Vec<TileKey> = parent
+            .children()
+            .into_iter()
+            .flat_map(|child| child.children())
+            .collect();
+        let canopy = image::RgbaImage::from_pixel(8, 8, image::Rgba([40, 70, 30, 255]));
+        let grown: Vec<Mesh> = children
+            .iter()
+            .flat_map(|&key| {
+                std::iter::once(key).chain(key.children().into_iter().flat_map(TileKey::children))
+            })
+            .filter_map(|key| tree_mesh(key, &groves, &flat_patch(), &canopy, None))
+            .collect();
+        assert!(!grown.is_empty(), "some of the shore is wooded");
+        assert!(grown.iter().all(|mesh| mesh.layer == Layer::Foliage));
+        let (low, high) = grown
+            .iter()
+            .fold((f32::MAX, f32::MIN), |(low, high), mesh| {
+                (low.min(mesh.low[2]), high.max(mesh.high[2]))
+            });
+        assert!(
+            (603.9..604.1).contains(&low) && high < 604.0 + 30.0 * (1.0 + CROWN_LUMPS) as f32,
+            "trees stand on the 604 m ground and grow no taller than 30 m: {low}..{high}"
+        );
+        let wooded = children
+            .iter()
+            .copied()
+            .find(|&key| tree_mesh(key, &groves, &flat_patch(), &canopy, None).is_some())
+            .expect("a wooded tile");
+        let home = (wooded.latitude(0.5), wooded.longitude(0.5));
+        let cleared = tree_mesh(wooded, &groves, &flat_patch(), &canopy, Some(home));
+        assert!(
+            cleared.is_none_or(|mesh| { mesh.positions.iter().all(|p| p[0].hypot(p[1]) > 10.0) }),
+            "no crown reaches over the spot the aircraft took off from"
+        );
+        let road = image::RgbaImage::from_pixel(8, 8, image::Rgba([170, 170, 165, 255]));
+        assert!(
+            children
+                .iter()
+                .all(|&key| tree_mesh(key, &groves, &flat_patch(), &road, None).is_none()),
+            "nothing grows where the picture shows a road"
         );
     }
 
@@ -2115,15 +2696,9 @@ mod tests {
         };
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 3000, 1000, 3000, 3000, 1000, 3000]], "height": 9.0 }] });
         let house = building_mesh(key, &json, Some(&patch), &|_| None).expect("a building");
-        scene.houses.insert(
-            key,
-            HouseEntry {
-                meshes: vec![Arc::new(house)],
-                loaded: true,
-                asked: None,
-                used: now,
-            },
-        );
+        scene
+            .houses
+            .insert(key, HouseEntry::loaded(vec![house], Vec::new(), now));
         let ground = |scene: &mut OpenScene, u: f64| {
             scene
                 .ground(key.latitude(u), key.longitude(u), 8, now)
