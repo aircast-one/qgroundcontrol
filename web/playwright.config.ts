@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const port = Number(process.env.E2E_PORT ?? 8800);
 const WT_ORIGIN = 'localhost:18443';
+const PLAIN_DEVICE_HOST = 'aircast-device.test';
 const WT_CERT_SPKI = 'Cm4S0tfKFG+7Z629ilyBsCcsJONuTgfn2fhtM4zirXU=';
 
 export default defineConfig({
@@ -18,7 +19,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
     viewport: { width: 1280, height: 800 },
     ignoreHTTPSErrors: true,
-    launchOptions: { args: [`--origin-to-force-quic-on=${WT_ORIGIN}`, `--ignore-certificate-errors-spki-list=${WT_CERT_SPKI}`] },
+    launchOptions: { args: [`--origin-to-force-quic-on=${WT_ORIGIN}`, `--ignore-certificate-errors-spki-list=${WT_CERT_SPKI}`, `--host-resolver-rules=MAP ${PLAIN_DEVICE_HOST} 127.0.0.1`] },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], channel: 'chromium', viewport: { width: 1280, height: 800 } } }],
   webServer: [

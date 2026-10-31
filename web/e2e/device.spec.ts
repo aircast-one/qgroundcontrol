@@ -5,6 +5,7 @@ const DEVICE = 'http://localhost:18780';
 const SILENT = 'http://localhost:18788';
 const UPGRADING = 'localhost:18786';
 const SECURE = 'localhost:18785';
+const PLAIN_UPGRADING = 'http://aircast-device.test:18786';
 const SBS1 = 30003;
 const UPLOADS = 18782;
 
@@ -232,6 +233,18 @@ base('a page the device served over http flies from there, even when the device 
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   expect(new URL(page.url()).origin).toBe(`http://${UPGRADING}`);
+});
+
+base('a page the device served over plain http, where Chrome hides USB, opens on the https name the device holds a certificate for when asked', async ({ page }) => {
+  await page.goto(`${PLAIN_UPGRADING}/`);
+  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
+  await expect(page.getByRole('button', { name: 'Allow a USB port' })).toHaveCount(0);
+  await Promise.all([page.waitForURL(`https://${SECURE}/**`), page.getByRole('button', { name: 'Open over https' }).click()]);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
+  await expect(page.getByRole('button', { name: 'Allow a USB port' })).toBeVisible();
 });
 
 base('a page the device served stays on http when its https name never answers, as it must once the cloud is gone', async ({ page }) => {
