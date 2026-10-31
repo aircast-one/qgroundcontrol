@@ -6090,7 +6090,7 @@ checkTheInspectorSaysWhichSilenceItIsIn()
 checkTheAutoInterceptPillIsTheCoresView()
 
 
-let assertionFloor = 2335
+let assertionFloor = 2383
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -9996,19 +9996,21 @@ func checkAGamepadReadsAsTheAndroidHeadReportsIt() {
 func checkAppUpdatePhasesDrawTheirControls() {
     func view(_ phase: String, _ extra: [String: Any] = [:]) -> AppUpdate {
         let served: [String: Any] = [
-            "class": "AppUpdate", "current": "5.6.5-beta.20", "channel": "beta", "phase": phase,
-            "latest": "5.6.5-beta.21", "releaseUrl": "https://example.invalid/r",
-            "assetName": "AircastQGCNative-v5.6.5-beta.21.dmg", "sizeBytes": 215_769_056 as NSNumber,
+            "class": "AppUpdate", "current": "5.6.5-beta.21", "channel": "beta", "phase": phase,
+            "latest": "5.6.5-beta.22", "releaseUrl": "https://example.invalid/r",
+            "assetName": "AircastQGCNative-v5.6.5-beta.22.dmg", "sizeBytes": 215_769_056 as NSNumber,
             "progress": 0.42 as NSNumber, "file": "", "error": "", "checkedAt": "2026-10-31T00:12:00Z",
-            "autoCheck": true as NSNumber, "snoozed": "", "canInstall": true as NSNumber,
+            "autoCheck": true as NSNumber, "skipped": "", "later": false as NSNumber,
+            "updatedFrom": "", "canInstall": true as NSNumber,
         ]
         return AppUpdate(served.merging(extra) { $1 })
     }
 
     let idle = AppUpdate.none
-    expect(idle.phase == .idle && !idle.offered && !idle.bannerShown && idle.offerAction == nil,
+    expect(idle.phase == .idle && !idle.offered && !idle.bannerShown && idle.offerActions.isEmpty,
            "an updater that has not started offers nothing and draws no banner")
-    expect(idle.autoCheck, "automatic checks read as on until the core says otherwise")
+    expect(idle.autoCheck && !idle.later && !idle.updatedShown,
+           "automatic checks read as on, and nothing is deferred or announced, until the core says so")
     expect(idle.checkedText, "Not checked yet", "a view with no checkedAt says it never checked")
     expect(AppUpdate(["phase": "rewinding"]).phase == .idle, "an unknown phase reads as idle")
 
@@ -10019,36 +10021,49 @@ func checkAppUpdatePhasesDrawTheirControls() {
     let upToDate = view("upToDate")
     expect(upToDate.caption.hasPrefix("Beta channel \u{00B7} Up to date \u{00B7} Last checked "),
            "an up-to-date check names the channel, the verdict and when it ran")
-    expect(upToDate.enabled(.check) && upToDate.offerAction == nil && !upToDate.bannerShown,
+    expect(upToDate.enabled(.check) && upToDate.offerActions.isEmpty && !upToDate.bannerShown,
            "and offers only another check")
 
     let available = view("available")
     expect(available.bannerShown, "an available release shows the banner while no vehicle is in")
-    expect(available.title, "Aircast QGC 5.6.5-beta.21 is available", "the banner names the release")
-    expect(available.bannerActions == [.update, .snooze], "the banner offers Update and Later")
-    expect(available.bannerActions.map(available.label).joined(separator: ", "), "Update, Later",
-           "in the operator's words")
-    expect(available.offerAction == .download && available.label(.download) == "Download (206 MB)",
-           "Settings offers the download with its size")
+    expect(available.title, "Aircast QGC 5.6.5-beta.22 is available", "the banner names the release")
+    expect(available.bannerActions == [.update, .later], "the banner offers Update and Later")
+    expect(available.bannerActions.map(available.label).joined(separator: ", "), "Update (206 MB), Later",
+           "and Update says how much it downloads")
+    expect(available.offerActions == [.download, .skip], "Settings offers the download and a skip")
+    expect(available.offerActions.map(available.label).joined(separator: ", "),
+           "Download (206 MB), Skip this version", "in the operator's words")
     expect(available.offerDetail.isEmpty, "and says the size once, on the button")
     expect(!view("available", ["canInstall": false as NSNumber]).bannerShown,
            "the banner hides while a vehicle is connected")
-    expect(!view("available", ["snoozed": "5.6.5-beta.21"]).bannerShown,
-           "and once the operator said Later to this release")
+    expect(!view("available", ["later": true as NSNumber]).bannerShown,
+           "and for the rest of the run once the operator said Later")
+
+    let skipped = view("available", ["skipped": "5.6.5-beta.22"])
+    expect(!skipped.bannerShown && skipped.isSkipped, "a skipped version draws no banner")
+    expect(skipped.offerActions == [.download] && skipped.offerDetail == AppUpdate.skippedNote,
+           "while Settings still offers it and says it was skipped")
+    expect(view("available", ["skipped": "5.6.5-beta.21"]).bannerShown,
+           "a skip of an older version never hides a newer one")
 
     let downloading = view("downloading")
-    expect(downloading.title, "Downloading Aircast QGC 5.6.5-beta.21… 42%", "a download counts up")
-    expect(downloading.bannerActions == [.cancel] && downloading.offerAction == .cancel,
+    expect(downloading.title, "Downloading Aircast QGC 5.6.5-beta.22… 42%", "a download counts up")
+    expect(downloading.bannerActions == [.cancel] && downloading.offerActions == [.cancel],
            "and can be cancelled from either place")
     expect(!downloading.enabled(.check), "no check runs over a download")
 
-    let ready = view("ready", ["file": "/tmp/Updates/AircastQGCNative-v5.6.5-beta.21.dmg",
+    let ready = view("ready", ["file": "/tmp/Updates/AircastQGCNative-v5.6.5-beta.22.dmg",
                                "progress": 1 as NSNumber])
-    expect(ready.offerAction == .openInstaller && ready.enabled(.openInstaller),
+    expect(ready.offerActions == [.openInstaller, .skip] && ready.enabled(.openInstaller),
            "a verified download opens the installer")
     expect(ready.bannerActions.map(ready.label).joined(separator: ", "), "Open installer, Later",
            "the banner offers to open it too")
     expect(ready.offerDetail.isEmpty && ready.installRefusal == nil, "with nothing in the way")
+    let install = ready.prompt(for: .openInstaller, from: .fly, expensive: false, constrained: false)
+    expect(install?.message ?? "", AppUpdate.replaceInstructions,
+           "opening the installer first says what to drag and that the app quits")
+    expect([install?.confirm ?? "", install?.decline ?? ""].joined(separator: ", "),
+           "Open installer and quit, Cancel", "and lets the operator back out")
     let connected = view("ready", ["file": ready.file, "canInstall": false as NSNumber])
     expect(!connected.enabled(.openInstaller) && !connected.bannerShown,
            "but never while a vehicle is connected")
@@ -10056,15 +10071,44 @@ func checkAppUpdatePhasesDrawTheirControls() {
     expect(!view("ready").enabled(.openInstaller), "a ready view with no file opens nothing")
 
     let failed = view("failed", ["error": "The download was interrupted (reset). Try again."])
-    expect(failed.retry == .download && !failed.bannerShown && failed.offerAction == nil,
+    expect(failed.retry == .download && !failed.bannerShown && failed.offerActions.isEmpty,
            "a failed download retries the download and draws no banner")
     expect(view("failed", ["assetName": ""]).retry == .check, "a failed check retries the check")
 
+    expect(available.meteredQuestion(expensive: false, constrained: false) == nil,
+           "an unmetered path downloads without asking")
+    expect(available.meteredQuestion(expensive: true, constrained: false) ?? "",
+           "This update is 206 MB and this connection is metered. Download now?",
+           "an expensive path asks first, with the size")
+    expect(available.meteredQuestion(expensive: false, constrained: true) != nil,
+           "and so does Low Data Mode")
+    expect(view("available", ["sizeBytes": 0 as NSNumber]).meteredQuestion(expensive: true, constrained: true) ?? "",
+           "This connection is metered. Download the update now?", "an unknown size still asks")
+    let metered = available.prompt(for: .update, from: .fly, expensive: true, constrained: false)
+    expect(metered?.action == .update && metered?.place == .fly
+               && [metered?.confirm ?? "", metered?.decline ?? ""] == ["Download", "Not now"],
+           "the banner's Update asks before a metered download")
+    expect(available.prompt(for: .download, from: .settings, expensive: false, constrained: false) == nil
+               && available.prompt(for: .later, from: .fly, expensive: true, constrained: true) == nil,
+           "nothing else asks")
+
+    let upgraded = view("upToDate", ["updatedFrom": "5.6.5-beta.20", "releaseUrl": ""])
+    expect(upgraded.updatedShown && upgraded.updatedTitle == "Updated to Aircast QGC 5.6.5-beta.21",
+           "the first run after an upgrade says what it now runs")
+    expect(upgraded.whatsNewUrl,
+           "https://github.com/aircast-one/qgroundcontrol/releases/tag/aircast-v5.6.5-beta.21",
+           "and What's new opens the release that was installed")
+    expect(view("available", ["updatedFrom": "5.6.5-beta.20"]).whatsNewUrl == upgraded.whatsNewUrl,
+           "not the newer release being offered")
+
     expect(AppUpdate.Action.update.path == "appUpdate.download" && AppUpdate.Action.openInstaller.path == nil,
            "Update downloads through the core and opening the installer is the head's own")
+    expect([AppUpdate.Action.later, .skip, .dismissUpdated].map { $0.path ?? "" }
+               == ["appUpdate.later", "appUpdate.skip", "appUpdate.dismissUpdated"],
+           "Later, Skip and Dismiss are the core's to remember")
     expect(AppUpdate.refusal(["ok": true as NSNumber]) == nil, "an accepted invoke is no refusal")
-    expect(AppUpdate.refusal(["ok": false as NSNumber, "reason": "There is no update to snooze."]) ?? "",
-           "There is no update to snooze.", "a refused invoke carries the core's sentence")
+    expect(AppUpdate.refusal(["ok": false as NSNumber, "reason": "There is no update to skip."]) ?? "",
+           "There is no update to skip.", "a refused invoke carries the core's sentence")
     expect(AppUpdate.refusal([:]) ?? "", AppUpdate.unanswered, "and silence is still a refusal")
 
     let notes = view("available", ["notes": "## Fixes\r\n\n- **bridge:** no `deadlock`\n- see [the log](https://x.invalid)\n"])

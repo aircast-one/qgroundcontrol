@@ -1,72 +1,10 @@
 #!/usr/bin/env python3
-"""A field the core ADDS is invisible to every other instrument here.
-
-view-fields.py asks whether a key this head DECODES still exists. That direction catches a
-removal and cannot catch an addition, so every served-field change that mattered on 2026-09-12
-was found by reading a peer's commit or by being told: flightLoop and layers (a structure scan
-drew no route), confidence (every detection lost its percentage), rangeText, spinsPropeller.
-
-An earlier attempt compared a model's keys against every quoted literal in the core module that
-serves the view. It failed its control: "conf" is a literal in detections.rs because the core
-READS that name from upstream on the very line it renames it, so the checker could not tell a key
-the core SERVES from one it CONSUMES.
-
-The contract has no such confusion. test/Bridge/fixtures/view-shapes.json records only what was
-SERVED, and its _observed list carries every view.path.field ever seen. This reads that.
-
-WHAT IT CANNOT SEE, and the exclusion is structural rather than a bug to fix later: a field inside
-an ARRAY element. view.detections records boxes as ["empty"], so x, y, w, h, label, confidence and
-target are pinned nowhere, which is exactly why the conf rename was invisible. The recorder cannot
-synthesise a detection box because the feed is an external SSE stream. Control: of six fields found
-the hard way, this reports five and misses confidence for that reason.
-
-It matches a field by NAME across all of macos/Sources rather than per view, so a name this head
-reads for one view counts as read for every view. That UNDER-reports and never invents.
-
-MEASURED, so the obvious fix is not attempted again: 146 of the 730 distinct field names in the
-contract appear under more than one view root, so that blind hemisphere is a fifth of the object,
-and it has cost something real -- altitudeMetres was served on view.missionItems and unread there
-while AdsbModel read a field of the same name from view.adsbTraffic, which is how a launch
-position came to be written from the core's fallback altitude (c5daab20c). Scoping the match to
-the model head_models.MODELS names for that view root WAS then measured against the whole
-contract and reports 223 fields, nearly all of them envelope keys -- class, kind, available,
-canUndo -- that a STORE file decodes rather than the model. Models and stores split the decoding
-between them, and MODELS maps a view to its model alone, so the strict version is a detector at a
-bad ratio. It is not built. The under-reporting stays until something maps a view to every file
-that reads it.
-
-Two limits compound: this reports only fields ADDED since SINCE, so a name-collision from before
-that line is invisible on both counts.
-
-The MIRROR of this tool -- a head reading a key nothing serves -- has no cheap detector either,
-and two designs were measured and rejected rather than guessed at. It is not hypothetical: 0a3b35375
-migrated onto a valueMeters that existed only in a peer's uncommitted tree, and the head read nil
-for an hour. (1) head-reads.txt cannot carry it: head-reads.py intersects the head's names with the
-contract's _observed before writing, so a read of an unserved name is silently DROPPED from the
-artefact rather than reported -- checked, the name is absent from that file at both 0a3b35375 and
-its revert. (2) Comparing the head's dictionary-subscript keys against the contract at HEAD reports
-104 of 459, essentially all legitimate: raw Qt fact keys this head still decodes (minString,
-enumStrings, maxIsDefaultForType), write-payload keys (lat, lon, breachReturnPoint), probe argument
-keys, Info.plist keys, and the array-element fields the contract records as ["empty"]. valueMeters
-would have sat in that list indistinguishable from minString. What separates the two is WHICH path
-the dictionary came from, which is the per-view scoping rejected above.
-
-So the guard that contains this class is not a sweep: it is that a write fed by a served number
-must REFUSE rather than default. See addBreachReturn, where ?? 0 turned a nil metric altitude into
-sea level, and MissionItem.launchAltitudeMetres.
-
-Usage: python3 tools/macos/served-unread.py
-"""
 import json
 import pathlib
 import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-# The head to check, so this answers the same question of Android as of macOS. There is no
-# tools/android/, and sixteen of the seventeen instruments here hardcode macos/Sources -- which is
-# why every fine-grained finding in the plan is a macOS finding and Android's had to be derived by
-# hand. Android is the head with MORE to measure: 53 raw reads against macOS's 25.
 HEADS = {
     "macos": ((ROOT / "macos/Sources",), "*.swift"),
     "android": ((ROOT / "android/app/src/main", ROOT / "android/map-spike/src/main"), "*.kt"),
@@ -78,21 +16,12 @@ SOURCES, SUFFIX = HEADS[HEAD]
 TREES = " or ".join(str(root.relative_to(ROOT)) for root in SOURCES)
 CONTRACT = ROOT / "test/Bridge/fixtures/view-shapes.json"
 
-# The last contract this head has reconciled. Move it forward when the additions
-# since it have each been read or accepted -- never to silence a hit.
 SINCE = "a1e1d6c7b"
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from head_models import MODELS  # noqa: E402
 
 
-# Every field the core serves that this head does not read, and why that is right. A view the head
-# does not read AT ALL is not listed here -- view-fields.py already carries a reason for each of
-# those, and repeating them would be two tables to keep true instead of one.
-# An acceptance is a statement about ONE head: "this head draws the text variant instead" is
-# true here and false next door. Kept shared, a reason written for one head silences a real
-# finding for the other - which is what happened to distanceToVehicle, accepted from
-# Android's position while macOS drew neither it nor the text beside it.
 ACCEPTED_BY_HEAD = {
     "android": {
         "wholeNumbersOnly": "MEASURED. It is served on view.plan.defaults, which this head draws"
@@ -185,6 +114,10 @@ ACCEPTED_BY_HEAD = {
             "draws, in a fixed unit the panel never shows",
         "distanceToVehicleUnits": "See distanceToVehicle - the unit name behind the text this head "
             "draws, already inside it",
+        "assetUrl": "the installer's download address on view.appUpdate. The core downloads and "
+            "verifies the installer itself through appUpdate.download and hands this head the "
+            "finished file, so the head never fetches anything from it. What the operator is "
+            "shown is releaseUrl, the release page, through Release notes",
     },
 }
 
@@ -202,12 +135,6 @@ ACCEPTED = {
 ACCEPTED = {**ACCEPTED, **ACCEPTED_BY_HEAD[HEAD]}
 
 
-# Whether a view is drawn at all is MEASURED per head rather than read from view-fields.py's
-# UNDRAWN table, which states the macOS head's reasons and was silencing this question for both.
-# view.adsbTraffic is the case that proves it: that table calls it not built, which is true there
-# and false here - TrafficView.kt has drawn it since 2026-09-13 - so every field of it this head
-# failed to read was being excused by another head's reason. Same shape as the acceptance table
-# split earlier: one table cannot answer a question whose answer differs between the two trees.
 def views_named_here():
     text = "\n".join(
         path.read_text(errors="replace")
@@ -259,14 +186,6 @@ if before is None:
           file=sys.stderr)
     sys.exit(1)
 
-# BOTH sides come from git, and the working copy is never read. Four sessions share this checkout,
-# so the fixture on disk routinely holds a re-recording somebody has not committed -- and this tool
-# compared that against a committed revision, which makes every in-flight field look newly served.
-# It reported six such fields in one run, three of them (parametersReason, parametersText,
-# wholeNumbersOnly) naming nothing that exists in any commit. Two heads would then have migrated
-# onto them, which is exactly what 0a3b35375 cost an hour for.
-# The question this tool asks is "what does the core serve", and in a shared checkout the only
-# honest answer is what has landed.
 latest = contract_at("HEAD")
 if latest is None:
     print("  CANNOT READ the contract at HEAD, which is the only version this compares against",
@@ -277,18 +196,10 @@ now, then = observed_fields(latest), observed_fields(before)
 added = sorted((field, sorted(views)) for field, views in now.items()
                if field not in then and field not in used and field not in ACCEPTED)
 
-# Against every served field, not only the ones in views this head draws: a field that moved
-# into a view this head does not draw is still served, and calling it gone would delete a
-# reason that is about to be needed again.
 served_anywhere = observed_fields(drawn_only=False)
 stale = [f"{field!r} is accepted and the core no longer serves it"
          for field in sorted(ACCEPTED) if field not in served_anywhere]
 
-# The other way an acceptance rots, and the one the NOT SERVED check cannot see: the field is
-# still served AND this head now reads it. The reason has been answered by the work rather than
-# by the core, so the entry excuses nothing -- until somebody deletes the read, when it silences
-# exactly the signal it was written to make explicit. An acceptance that is doing no work is not
-# harmless; it is a guard pre-disarmed for a defect nobody has written yet.
 answered = [f"{field!r} is accepted as undrawn and this head now reads it"
             for field in sorted(ACCEPTED) if field in used]
 

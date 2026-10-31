@@ -138,6 +138,7 @@ customName
 dangerLevel
 decimalPlaces
 decimals
+decline
 decoding
 default
 defaultValue
@@ -275,6 +276,7 @@ lastError
 lastKnownLatitude
 lastKnownLongitude
 lat
+later
 latest
 latitude
 left
@@ -493,9 +495,9 @@ silentText
 simple
 sizeBytes
 skipEnabled
+skipped
 slider
 slot
-snoozed
 snrUnit
 source
 sourceSize
@@ -561,6 +563,7 @@ units
 unknownTerrain
 unread
 up
+updatedFrom
 url
 usable
 valid

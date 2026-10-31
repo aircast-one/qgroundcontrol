@@ -1100,12 +1100,16 @@ struct FlyView: View {
                 if let intercept = guided.intercept, intercept.visible {
                     interceptBanner(intercept)
                 }
+                if updates.update.updatedShown {
+                    AppUpdatedBanner(store: updates)
+                }
                 if updates.update.bannerShown {
                     AppUpdateBanner(store: updates)
                 }
             }
             .padding(.top, Overlay.unit)
             .padding(.trailing, FlyPanel.width + Overlay.unit * 2)
+            .appUpdatePrompt(updates, at: .fly)
             .transition(.opacity)
 
             FlyPanel(fly: fly, video: video, notices: notices)
