@@ -190,6 +190,11 @@ pub extern "C" fn qgc_core_qt_host_present() {
     crate::qthost::declare();
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_native_ui_present() {
+    crate::qthost::declare_native_ui();
+}
+
 fn announce_notices() {
     if crate::noticeboard::take_changed() {
         CORE.on_event(crate::noticeboard::NOTICES_CHANGED, "null")

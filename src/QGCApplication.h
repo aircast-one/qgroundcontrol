@@ -63,6 +63,7 @@ public:
     bool runningUnitTests() const { return _runningUnitTests; }
     bool simpleBootTest() const { return _simpleBootTest; }
     bool embeddedHost() const { return _embeddedHost; }
+    static QString releaseVersion(const QString &described);
     void showVehicleConfig();
     bool bootTestPassed() const { return _bootTestPassed; }
 

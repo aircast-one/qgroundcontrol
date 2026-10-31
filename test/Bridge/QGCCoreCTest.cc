@@ -168,7 +168,15 @@ void QGCCoreCTest::_viewMessagesReachTheHeadThroughTheRustCore()
 
 void QGCCoreCTest::_appUpdateStartsWithTheApplicationVersion()
 {
-    QCOMPARE(take(qgc_bridge_get("view.appUpdate")).value(QStringLiteral("current")).toString(), QCoreApplication::applicationVersion());
+    QCOMPARE(take(qgc_bridge_get("view.appUpdate")).value(QStringLiteral("current")).toString(), QGCApplication::releaseVersion(QCoreApplication::applicationVersion()));
+}
+
+void QGCCoreCTest::_onlyAReleaseTagIsAVersionTheUpdaterCompares()
+{
+    QCOMPARE(QGCApplication::releaseVersion(QStringLiteral("aircast-v5.6.5-beta.21")), QStringLiteral("5.6.5-beta.21"));
+    QCOMPARE(QGCApplication::releaseVersion(QStringLiteral("aircast-v5.6.4")), QStringLiteral("5.6.4"));
+    QCOMPARE(QGCApplication::releaseVersion(QStringLiteral("aircast-v5.6.5-beta.21-3-gc21767c98d")), QStringLiteral("aircast-v5.6.5-beta.21-3-gc21767c98d"));
+    QCOMPARE(QGCApplication::releaseVersion(QStringLiteral("v0.0.0")), QStringLiteral("v0.0.0"));
 }
 
 void QGCCoreCTest::_viewPathsAreReadOnlyAtTheCAbi()

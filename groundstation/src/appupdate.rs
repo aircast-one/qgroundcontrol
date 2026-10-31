@@ -148,9 +148,22 @@ pub fn asset_pattern(os: &str, arch: &str) -> Option<(&'static str, &'static str
     }
 }
 
+pub fn host_asset_pattern(
+    os: &str,
+    arch: &str,
+    qt_hosted: bool,
+    native_ui: bool,
+) -> Option<(&'static str, &'static str)> {
+    asset_pattern(os, arch).filter(|_| !qt_hosted || native_ui)
+}
+
 fn host_pattern() -> Option<(&'static str, &'static str)> {
-    asset_pattern(std::env::consts::OS, std::env::consts::ARCH)
-        .filter(|_| !crate::qthost::present() || cfg!(target_os = "android"))
+    host_asset_pattern(
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        crate::qthost::present(),
+        crate::qthost::native_ui(),
+    )
 }
 
 fn asset_of(assets: &[Value], (prefix, suffix): (&str, &str)) -> Option<Asset> {
@@ -780,6 +793,25 @@ mod tests {
             "AircastAndroid-v5.6.5-beta.22.apk"
         );
         assert_eq!(on("android", "aarch64").unwrap().size, 1234);
+        assert_eq!(
+            host_asset_pattern("macos", "aarch64", true, true),
+            Some((NATIVE_PREFIX, ".dmg")),
+            "the shipped AircastQGCNative.app is Qt hosting the Swift head"
+        );
+        assert_eq!(
+            host_asset_pattern("macos", "aarch64", true, false),
+            None,
+            "the classic Qt desktop app is never offered the native installer"
+        );
+        assert_eq!(
+            host_asset_pattern("android", "aarch64", true, true),
+            Some((ANDROID_PREFIX, ".apk"))
+        );
+        assert_eq!(host_asset_pattern("android", "aarch64", true, false), None);
+        assert_eq!(
+            host_asset_pattern("windows", "aarch64", false, false),
+            Some((NATIVE_PREFIX, "-windows-arm64-setup.exe"))
+        );
         assert_eq!(asset_pattern("linux", "x86_64"), None);
         assert_eq!(asset_pattern("ios", "aarch64"), None);
         assert_eq!(asset_pattern("unknown", "wasm32"), None);

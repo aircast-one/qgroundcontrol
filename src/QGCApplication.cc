@@ -169,10 +169,13 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
     qgc_core_set_application_name(QCoreApplication::applicationName().toUtf8().constData());
     qgc_core_settings_open(settings.fileName().toUtf8().constData());
 #ifdef Q_OS_ANDROID
-    const QString coreVersion = _embeddedHost ? AndroidInterface::packageVersionName() : applicationVersion();
+    const QString coreVersion = _embeddedHost ? AndroidInterface::packageVersionName() : releaseVersion(applicationVersion());
 #else
-    const QString coreVersion = applicationVersion();
+    const QString coreVersion = releaseVersion(applicationVersion());
 #endif
+    if (_embeddedHost) {
+        qgc_core_native_ui_present();
+    }
     qgc_core_set_application_version(coreVersion.toUtf8().constData());
 
     if (fClearCache) {
@@ -263,6 +266,13 @@ void QGCApplication::setLanguage()
 }
 
 QGCApplication::~QGCApplication() {}
+
+QString QGCApplication::releaseVersion(const QString &described)
+{
+    static const QString tagPrefix = QStringLiteral("aircast-v");
+    static const QRegularExpression commitsSinceTag(QStringLiteral("-\\d+-g[0-9a-f]+$"));
+    return described.startsWith(tagPrefix) && !described.contains(commitsSinceTag) ? described.mid(tagPrefix.size()) : described;
+}
 
 void QGCApplication::init()
 {

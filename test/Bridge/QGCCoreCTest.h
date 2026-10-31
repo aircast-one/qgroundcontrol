@@ -12,6 +12,7 @@ private slots:
 
     void _viewMessagesReachTheHeadThroughTheRustCore();
     void _appUpdateStartsWithTheApplicationVersion();
+    void _onlyAReleaseTagIsAVersionTheUpdaterCompares();
     void _viewPathsAreReadOnlyAtTheCAbi();
     void _aReadFromAnotherThreadIsServedByTheQtThread();
     void _viewFieldsProjectAndNameTheUnknown();
