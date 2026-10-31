@@ -36,11 +36,13 @@ import org.json.JSONObject
 @Composable
 internal fun DeviceTelemetryScreen(props: DeviceScreenProps) {
     val view = deviceView("telemetry", ::parseTelemetry) ?: return FootNote("Waiting for the device to answer…")
-    DeviceSection("Ground station", view.status) {
+    DeviceSection("Status", view.status) {
         view.notices.map { notice -> key(notice.text) { DeviceNotice(notice) } }
+        view.cloud?.let { CloudPath(it) }
+    }
+    DeviceSection("Connect another ground station") {
         EndpointRows(view.endpoints)
         view.endpointNotice?.let { DeviceNotice(it) }
-        view.cloud?.let { CloudPath(it) }
     }
     DeviceSection("MAVLink settings") {
         key(view.settings) { MavlinkEditor(view) }

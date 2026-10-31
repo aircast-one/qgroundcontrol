@@ -42,24 +42,28 @@ export const TelemetryScreen = (_: DeviceScreenProps) => {
   return (
     <DeviceColumns
       left={
-        <DeviceSection title="Ground station" badge={view.status}>
-          {view.notices.map((notice) => (
-            <DeviceNotice key={notice.text} notice={notice} />
-          ))}
-          <EndpointRows endpoints={view.endpoints} />
-          {view.endpointNotice !== null ? <DeviceNotice notice={view.endpointNotice} /> : null}
-          {view.cloud !== null ? (
-            <div className="px-list py-2" role="group" aria-label="Cloud path">
-              <div className="flex items-center justify-between gap-3">
-                <Text typography="bodyLarge">Cloud path</Text>
-                <DeviceBadgeText badge={view.cloud.status} />
+        <>
+          <DeviceSection title="Status" badge={view.status}>
+            {view.notices.map((notice) => (
+              <DeviceNotice key={notice.text} notice={notice} />
+            ))}
+            {view.cloud !== null ? (
+              <div className="px-list py-2" role="group" aria-label="Cloud path">
+                <div className="flex items-center justify-between gap-3">
+                  <Text typography="bodyLarge">Cloud path</Text>
+                  <DeviceBadgeText badge={view.cloud.status} />
+                </div>
+                <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+                  {view.cloud.text}
+                </Text>
               </div>
-              <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-                {view.cloud.text}
-              </Text>
-            </div>
-          ) : null}
-        </DeviceSection>
+            ) : null}
+          </DeviceSection>
+          <DeviceSection title="Connect another ground station">
+            <EndpointRows endpoints={view.endpoints} />
+            {view.endpointNotice !== null ? <DeviceNotice notice={view.endpointNotice} /> : null}
+          </DeviceSection>
+        </>
       }
       right={
         <>
