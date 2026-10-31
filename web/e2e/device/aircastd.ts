@@ -142,7 +142,23 @@ const TELEMETRY = {
   schemes: [],
 };
 
-const VIEWS = { aircraft: AIRCRAFT, telemetry: TELEMETRY };
+const FLIGHTS = {
+  flights: [
+    {
+      id: '20261029-205600',
+      title: 'Thu 29 Oct, 20:56',
+      summary: "Lasted 23h58m56s · didn't fly · 18:42 Uplink lost",
+      badge: { level: 1, text: '2 events' },
+      open: true,
+      sections: [{ title: '', span: '', videos: [], lines: [{ index: 0, clock: '21:28:43', text: 'siyi stopped sending video', level: 1, alert: true, repeats: 'repeated ×31 until 21:33:43' }] }],
+      csv: '/api/flights/20261029-205600.csv',
+      json: '/api/flights/20261029-205600.json',
+    },
+    { id: '20261029-205000', title: 'Thu 29 Oct, 20:50', summary: "Lasted 6m6s · didn't fly", badge: { level: 3, text: 'nothing to report' }, sections: [], csv: '/api/flights/20261029-205000.csv', json: '/api/flights/20261029-205000.json' },
+  ],
+};
+
+const VIEWS = { aircraft: AIRCRAFT, telemetry: TELEMETRY, flights: FLIGHTS };
 
 const app = (request: IncomingMessage, response: ServerResponse) => {
   const path = (request.url ?? '/').replace(/^\/fly(?=\/)/, '');
@@ -169,7 +185,7 @@ const device = (named: { origin: string }, secure: boolean) => (request: Incomin
       json(response, 200, scenes.get(placed[1]));
     });
   }
-  const view = /^\/api\/views\/(aircraft|telemetry)(\/events)?$/.exec(url.pathname);
+  const view = /^\/api\/views\/(aircraft|telemetry|flights)(\/events)?$/.exec(url.pathname);
   if (view !== null && view[2] === undefined) return json(response, 200, VIEWS[view[1] as keyof typeof VIEWS]);
   if (view !== null) {
     response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });

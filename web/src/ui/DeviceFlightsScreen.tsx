@@ -62,12 +62,12 @@ export const FlightsScreen = ({ query }: DeviceScreenProps) => {
   );
 };
 
-const FlightHeader = ({ flight, open, icon, onClick }: { flight: FlightEntry; open: boolean; icon: string; onClick: () => void }) => (
+const FlightHeader = ({ flight, open, onClick }: { flight: FlightEntry; open: boolean; onClick: () => void }) => (
   <button
     type="button"
     aria-expanded={open}
     onClick={onClick}
-    className={`flex min-h-16 w-full items-center gap-3 px-list py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)] ${open && icon === 'chevron_right' ? 'bg-surface-container-high' : ''}`}
+    className="flex min-h-16 w-full items-center gap-3 px-list py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
   >
     <span className="flex min-w-0 flex-1 flex-col">
       <Text typography="bodyLarge">{flight.title}</Text>
@@ -78,7 +78,7 @@ const FlightHeader = ({ flight, open, icon, onClick }: { flight: FlightEntry; op
       ) : null}
     </span>
     <DeviceBadgeText badge={flight.badge} />
-    <MaterialIcon name={icon} style={{ color: muted }} />
+    <MaterialIcon name={open ? 'expand_less' : 'expand_more'} style={{ color: muted }} />
   </button>
 );
 
@@ -89,8 +89,8 @@ const FlightRow = ({ flight, linked }: { flight: FlightEntry; linked: boolean })
   useEffect(() => void (linked ? anchor.current?.scrollIntoView({ block: 'start' }) : undefined), []);
   return (
     <section ref={anchor} aria-label={flight.title} className="border-b border-outline-variant">
-      <FlightHeader flight={flight} open={open} icon={open ? 'expand_less' : 'expand_more'} onClick={() => setOpen(!open)} />
-      {open ? <FlightBody flight={flight} active={active} onActive={setActive} /> : null}
+      <FlightHeader flight={flight} open={open} onClick={() => setOpen(!open)} />
+      {open ? <FlightBody flight={flight} active={active} onActive={setActive} actions /> : null}
     </section>
   );
 };
@@ -106,17 +106,33 @@ const FlightsSplit = ({ flights, linked }: { flights: readonly FlightEntry[]; li
     setActive(null);
   };
   return (
-    <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-x-6">
-      <div className="flex min-w-0 flex-col">
+    <div className="grid grid-cols-[minmax(320px,2fr)_minmax(0,3fr)] items-start gap-6 px-list pb-4">
+      <div role="list" aria-label="Runs" className="flex min-w-0 flex-col overflow-hidden rounded-shape-md bg-surface-container-low py-1">
         {flights.map((flight) => (
-          <div key={flight.id} ref={flight.id === shown?.id ? picked : undefined} className="border-b border-outline-variant">
-            <FlightHeader flight={flight} open={flight.id === shown?.id} icon="chevron_right" onClick={() => pick(flight.id)} />
+          <div role="listitem" key={flight.id} ref={flight.id === shown?.id ? picked : undefined}>
+            <FlightPick flight={flight} chosen={flight.id === shown?.id} onPick={() => pick(flight.id)} />
           </div>
         ))}
       </div>
       {shown !== undefined ? (
-        <section aria-label={shown.title} className="sticky top-0 max-h-[calc(100dvh-8rem)] min-w-0 overflow-y-auto rounded-shape-md bg-surface-container-low pt-2">
-          <FlightBody key={shown.id} flight={shown} active={active} onActive={setActive} />
+        <section aria-label={shown.title} className="sticky top-0 flex max-h-[calc(100dvh-8rem)] min-w-0 flex-col overflow-hidden rounded-shape-md bg-surface-container-low">
+          <div className="flex items-start gap-4 border-b border-outline-variant px-5 py-4">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Text typography="titleLarge">{shown.title}</Text>
+                <DeviceBadgeText badge={shown.badge} />
+              </div>
+              {shown.summary !== '' ? (
+                <Text typography="bodyMedium" color={muted}>
+                  {shown.summary}
+                </Text>
+              ) : null}
+            </div>
+            <FlightActions flight={shown} compact />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pt-2">
+            <FlightBody key={shown.id} flight={shown} active={active} onActive={setActive} actions={false} />
+          </div>
         </section>
       ) : (
         <div className="grid min-h-40 place-items-center rounded-shape-md bg-surface-container-low px-list">
@@ -129,7 +145,28 @@ const FlightsSplit = ({ flights, linked }: { flights: readonly FlightEntry[]; li
   );
 };
 
-const FlightBody = ({ flight, active, onActive }: { flight: FlightEntry; active: number | null; onActive: (index: number | null) => void }) => {
+const FlightPick = ({ flight, chosen, onPick }: { flight: FlightEntry; chosen: boolean; onPick: () => void }) => (
+  <button
+    type="button"
+    aria-current={chosen ? 'true' : undefined}
+    onClick={onPick}
+    className={`flex w-full items-center gap-3 border-l-[3px] px-4 py-2.5 text-left ${chosen ? 'border-primary bg-secondary-container' : 'border-transparent hover:bg-surface-container-high'}`}
+  >
+    <span className="flex min-w-0 flex-1 flex-col">
+      <Text typography="titleSmall">{flight.title}</Text>
+      {flight.summary !== '' ? (
+        <span title={flight.summary} className="min-w-0">
+          <Text typography="bodySmall" color={muted} maxLines={1} ellipsis className="block">
+            {flight.summary}
+          </Text>
+        </span>
+      ) : null}
+    </span>
+    <DeviceBadgeText badge={flight.badge} />
+  </button>
+);
+
+const FlightBody = ({ flight, active, onActive, actions }: { flight: FlightEntry; active: number | null; onActive: (index: number | null) => void; actions: boolean }) => {
   const [alertsOnly, setAlertsOnly] = useState(false);
   const body = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => void Array.from(body.current?.querySelectorAll('li') ?? []).at(-1)?.scrollIntoView({ block: 'end' }), []);
@@ -150,7 +187,7 @@ const FlightBody = ({ flight, active, onActive }: { flight: FlightEntry; active:
       )}
       {flight.trace !== null ? <FlightLanes trace={flight.trace} active={active} /> : null}
       {flight.dropped !== '' ? <DeviceNotice notice={{ level: DeviceLevel.Warn, text: flight.dropped }} /> : null}
-      <FlightFiles flight={flight} />
+      <FlightFiles flight={flight} actions={actions} />
     </div>
   );
 };
@@ -452,7 +489,7 @@ const LaneChart = ({ lane, plot, last }: { lane: ChartLane; plot: Plot; last: bo
   );
 };
 
-const FlightFiles = ({ flight }: { flight: FlightEntry }) => {
+const FlightActions = ({ flight, compact = false }: { flight: FlightEntry; compact?: boolean }) => {
   const notice = useContext(LocalChangeNotice);
   const copyLink = () =>
     void copyToClipboard(flightLink(location.origin + location.pathname, flight.id)).then(
@@ -460,21 +497,27 @@ const FlightFiles = ({ flight }: { flight: FlightEntry }) => {
       () => notice.show('Could not copy — select the text instead', null),
     );
   return (
-    <div className="mt-3 flex flex-col gap-2 border-t border-outline-variant px-list pt-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <LinkButton href={deviceUrl(flight.csv)} look="outlined" download>
-          Samples as CSV
-        </LinkButton>
-        <LinkButton href={deviceUrl(flight.json)} look="text" download>Everything as JSON</LinkButton>
-        <TextButton onClick={copyLink}>
-          <MaterialIcon name="link" size={18} />
-          Copy link to this flight
-        </TextButton>
-      </div>
-      <Text typography="bodySmall" color={muted}>
-        The CSV is one row per sample — every lane above and more besides: signal and radio, the aircraft's height, distance, battery and satellites, video per camera, viewers, what was dropped, and the box's own load and memory. The JSON adds every line
-        above.
-      </Text>
+    <div className={`flex items-center gap-2 ${compact ? 'shrink-0' : 'flex-wrap'}`}>
+      <LinkButton href={deviceUrl(flight.csv)} look="outlined" download title="Samples as CSV">
+        {compact ? 'CSV' : 'Samples as CSV'}
+      </LinkButton>
+      <LinkButton href={deviceUrl(flight.json)} look="text" download title="Everything as JSON">
+        {compact ? 'JSON' : 'Everything as JSON'}
+      </LinkButton>
+      <TextButton onClick={copyLink}>
+        <MaterialIcon name="link" size={18} />
+        {compact ? 'Copy link' : 'Copy link to this flight'}
+      </TextButton>
     </div>
   );
 };
+
+const FlightFiles = ({ flight, actions }: { flight: FlightEntry; actions: boolean }) => (
+  <div className="mt-3 flex flex-col gap-2 border-t border-outline-variant px-list pt-3">
+    {actions ? <FlightActions flight={flight} /> : null}
+    <Text typography="bodySmall" color={muted}>
+      The CSV is one row per sample — every lane above and more besides: signal and radio, the aircraft's height, distance, battery and satellites, video per camera, viewers, what was dropped, and the box's own load and memory. The JSON adds every line
+      above.
+    </Text>
+  </div>
+);

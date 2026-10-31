@@ -156,6 +156,20 @@ test('on a desktop the device home is a dashboard, with device health beside the
   expect(right!.y).toBeLessThan(left!.y + left!.height);
 });
 
+test('on a desktop the flight log lists the runs beside the chosen run, with its files at hand', async ({ device }) => {
+  await device.getByRole('button', { name: 'e2e-device: No camera yet' }).click();
+  await device.getByRole('button', { name: /^Flight log/ }).click();
+  const runs = device.getByRole('list', { name: 'Runs' });
+  const chosen = device.getByRole('region', { name: 'Thu 29 Oct, 20:56' });
+  await expect(chosen.getByText('siyi stopped sending video')).toBeVisible();
+  await expect(chosen.getByRole('link', { name: 'CSV' })).toBeVisible();
+  const [list, detail] = await Promise.all([runs.boundingBox(), chosen.boundingBox()]);
+  expect(detail!.x).toBeGreaterThanOrEqual(list!.x + list!.width);
+  await runs.getByRole('button', { name: /^Thu 29 Oct, 20:50/ }).click();
+  await expect(device.getByRole('region', { name: 'Thu 29 Oct, 20:50' }).getByText('Nothing worth recording')).toBeVisible();
+  await expect(runs.getByRole('button', { name: /^Thu 29 Oct, 20:50/ })).toHaveAttribute('aria-current', 'true');
+});
+
 test('a device page offers its synthetic view on every visit, even after it was removed', async ({ device }) => {
   const offered = async () => {
     await device.getByRole('button', { name: /^Cameras, showing/ }).click();

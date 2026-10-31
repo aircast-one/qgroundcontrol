@@ -9,13 +9,14 @@ import { useOsdBackdrop } from '@/ui/Osd';
 import { useFlyIsPortrait } from '@/ui/FlyShell';
 import { MaterialIcon } from '@/res/Icon';
 import { FootNote, OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
-import { type DeviceHealth, type DeviceStatus, type DeviceUplink, deviceNeedsAttention, devicePageIcon, deviceRequested, useDeviceStatus } from '@/ui/DeviceStatus';
+import { Drawable } from '@/res/Icon';
+import { type DeviceCheck, type DeviceHealth, type DevicePage, type DeviceStatus, type DeviceUplink, deviceNeedsAttention, devicePageIcon, deviceRequested, useDeviceStatus } from '@/ui/DeviceStatus';
 import { useDeviceReading } from '@/ui/DeviceView';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
 import { DeviceChart, DeviceFact, DeviceNotice, DeviceSection, DeviceText, levelColor } from '@/ui/DeviceKit';
-import { DASHBOARD_MAX_WIDTH, DETAIL_PANE_MAX_WIDTH } from '@/ui/DesktopLayout';
+import { DASHBOARD_MAX_WIDTH, DETAIL_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 
 const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ? SetupState.Done : SetupState.NeedsAttention);
 
@@ -31,6 +32,7 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
   const served = useValue(deviceServed);
   const hosted = served ? null : <HostedDevice host={reading.host} />;
   const requested = useValue(deviceRequested);
+  const desktop = useDesktopLayout();
   const [stack, setStack] = useKeyedState<readonly string[]>([open], () => (open === null ? [] : [open]));
   useEffect(() => {
     if (requested === null) return;
@@ -70,6 +72,7 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
         </div>
       </PageColumn>
     );
+  if (desktop) return <DesktopHome status={status} hosted={hosted} onOpen={onOpen} />;
   return (
     <div className="@container h-full w-full overflow-y-auto">
       <div style={{ maxWidth: DASHBOARD_MAX_WIDTH }}>
@@ -126,6 +129,117 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
     </div>
   );
 };
+
+const TILE = 'rounded-shape-md bg-surface-container-low text-left';
+const PRESSABLE = 'hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-[var(--md-primary)]';
+
+const flightLogCheck = (status: DeviceStatus): DeviceCheck => ({
+  label: 'Flight log',
+  value: status.events !== '' ? status.events : 'All runs',
+  level: status.eventsAlert ? DeviceLevel.Warn : DeviceLevel.Neutral,
+  href: '/flights',
+  action: '',
+});
+
+const DesktopPanel = ({ title, children }: { title: string; children: ReactNode }) => (
+  <section aria-label={title} className="flex flex-col gap-2">
+    <Text typography="labelLarge" color={md('onSurfaceVariant')}>
+      {title}
+    </Text>
+    {children}
+  </section>
+);
+
+const CheckTile = ({ check, onOpen }: { check: DeviceCheck; onOpen: (href: string) => void }) => {
+  const content = (
+    <>
+      <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block">
+        {check.label}
+      </Text>
+      <Text typography="titleMedium" color={check.level === DeviceLevel.Neutral ? md('onSurface') : levelColor(check.level)} className="block break-words">
+        {check.value}
+      </Text>
+    </>
+  );
+  return check.href !== '' ? (
+    <button type="button" onClick={() => onOpen(check.href)} className={`${TILE} ${PRESSABLE} min-w-[150px] flex-auto px-4 py-3`}>
+      {content}
+    </button>
+  ) : (
+    <div className={`${TILE} min-w-[150px] flex-auto px-4 py-3`}>
+      {content}
+    </div>
+  );
+};
+
+const PageCard = ({ page, onOpen }: { page: DevicePage; onOpen: (href: string) => void }) => (
+  <button type="button" onClick={() => onOpen(page.href)} className={`${TILE} ${PRESSABLE} flex min-w-0 items-center gap-3 p-3`}>
+    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-container-highest">
+      <Drawable name={devicePageIcon(page.icon)} size={22} />
+    </span>
+    <span className="flex min-w-0 flex-col">
+      <Text typography="titleSmall">{page.title}</Text>
+      {page.summary !== '' ? (
+        <Text typography="bodySmall" color={page.needs ? levelColor(DeviceLevel.Warn) : md('onSurfaceVariant')} maxLines={1} ellipsis>
+          {page.summary}
+        </Text>
+      ) : null}
+    </span>
+  </button>
+);
+
+const DesktopHome = ({ status, hosted, onOpen }: { status: DeviceStatus; hosted: ReactNode; onOpen: (href: string) => void }) => (
+  <div className="h-full w-full overflow-y-auto">
+    <div className="flex flex-col gap-6 px-list py-4" style={{ maxWidth: DASHBOARD_MAX_WIDTH }}>
+      <div className={`${TILE} flex items-center gap-4 px-5 py-4`}>
+        <span className="size-3 shrink-0 rounded-full" style={{ background: levelColor(status.level) }} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <Text typography="titleLarge" color={levelColor(status.level)}>
+            {status.headline}
+          </Text>
+          {status.detail !== '' ? (
+            <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+              {status.detail}
+            </Text>
+          ) : null}
+        </div>
+        {status.setup !== null ? <TextButton onClick={() => status.setup !== null && onOpen(status.setup.href)}>{status.setup.label}</TextButton> : null}
+        {status.action !== null ? <FilledTonalButton onClick={() => status.action !== null && onOpen(status.action.href)}>{status.action.label}</FilledTonalButton> : null}
+      </div>
+      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start gap-6">
+        <div className="flex min-w-0 flex-col gap-6">
+          <DesktopPanel title="Before you fly">
+            <div className="flex flex-wrap gap-3">
+              {[...status.checks, flightLogCheck(status)].map((check) => (
+                <CheckTile key={check.label} check={check} onOpen={onOpen} />
+              ))}
+            </div>
+          </DesktopPanel>
+          <DesktopPanel title={status.name !== '' ? status.name : 'Device'}>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+              {status.pages.map((page) => (
+                <PageCard key={page.href} page={page} onOpen={onOpen} />
+              ))}
+            </div>
+          </DesktopPanel>
+          {hosted}
+        </div>
+        <div className="flex min-w-0 flex-col gap-4">
+          {status.link !== null ? (
+            <div className={`${TILE} pb-2`}>
+              <UplinkSection link={status.link} />
+            </div>
+          ) : null}
+          {status.health !== null ? (
+            <div className={`${TILE} pb-2`}>
+              <HealthSection health={status.health} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 const ConnectDevice = () => {
   const [address, setAddress] = useState('');

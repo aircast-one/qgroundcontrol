@@ -530,10 +530,14 @@ export const DeviceChart = ({ chart }: { chart: DeviceChartView }) => (
         {chart.value}
       </Text>
     </div>
-    <svg viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} preserveAspectRatio="none" className="h-10 min-w-0 flex-1" role="img" aria-label={`${chart.label} history`}>
-      <polyline points={chartPoints(chart.values, chart.max, CHART_WIDTH, CHART_HEIGHT)} fill="none" stroke={chart.level === DeviceLevel.Neutral ? md('primary') : levelColor(chart.level)} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-    </svg>
+    <DeviceSparkline chart={chart} className="h-10 min-w-0 flex-1" />
   </div>
+);
+
+export const DeviceSparkline = ({ chart, className }: { chart: DeviceChartView; className: string }) => (
+  <svg viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} preserveAspectRatio="none" className={className} role="img" aria-label={`${chart.label} history`}>
+    <polyline points={chartPoints(chart.values, chart.max, CHART_WIDTH, CHART_HEIGHT)} fill="none" stroke={chart.level === DeviceLevel.Neutral ? md('primary') : levelColor(chart.level)} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+  </svg>
 );
 
 export const DeviceDisclosure = ({
