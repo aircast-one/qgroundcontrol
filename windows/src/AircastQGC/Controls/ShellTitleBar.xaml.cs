@@ -103,6 +103,11 @@ public sealed partial class ShellTitleBar : UserControl
         }
     }
 
+    public bool OverContent
+    {
+        set => Bar.Background = value ? Token("GlassBrush") : new SolidColorBrush(Colors.Transparent);
+    }
+
     public string PendingMode
     {
         get => _pendingMode;

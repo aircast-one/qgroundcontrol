@@ -297,6 +297,7 @@ public sealed partial class MainWindow : Window
         Theme.Appearance.OverVideo(fly || underTitle);
         Grid.SetRow(PageHost, underTitle ? 0 : 1);
         Grid.SetRowSpan(PageHost, underTitle ? 2 : 1);
+        Shell.OverContent = underTitle;
         FlyContent.Visibility = Shown(fly);
         FlyChrome.Visibility = Shown(fly);
         PageHost.Content = hosted;

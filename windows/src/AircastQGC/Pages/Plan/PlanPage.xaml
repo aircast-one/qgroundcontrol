@@ -79,11 +79,8 @@
 
         <Canvas x:Name="Overlay" Grid.RowSpan="2" Grid.ColumnSpan="2" />
 
-        <Border Grid.RowSpan="2" Grid.ColumnSpan="2" Height="{StaticResource SizeFlyScrim}" VerticalAlignment="Top"
-                IsHitTestVisible="False" Background="{ThemeResource FlyScrimBrush}" />
-
         <Border x:Name="SidePanel" Grid.Row="1" Background="{ThemeResource GlassBrush}"
-                BorderBrush="{ThemeResource CardStrokeBrush}" BorderThickness="0,1,1,0">
+                BorderBrush="{ThemeResource CardStrokeBrush}" BorderThickness="0,0,1,0">
             <ScrollViewer x:Name="PanelScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
                 <StackPanel Padding="16" Spacing="{StaticResource SpaceLg}">
                     <Grid x:Name="StripRow" ColumnSpacing="{StaticResource SpaceSm}" Visibility="Collapsed">
