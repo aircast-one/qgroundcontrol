@@ -242,7 +242,7 @@ internal sealed class StatusRow
             .ToList();
         var worst = tucked.Select(_tone).OrderByDescending(Rank).DefaultIfEmpty(StatusTone.Normal).First();
         var flagged = tucked.Where(cell => Rank(_tone(cell)) > 0).OrderByDescending(cell => Rank(_tone(cell))).Select(Label).ToList();
-        _more.Background = StatusLook.Fill(worst);
+        StatusLook.Dress(_more, worst);
         _moreIcon.Foreground = Rank(worst) > 0 ? StatusLook.Tint(worst) : Ui.Token("TextSecondaryBrush");
         _moreText.Text = flagged.Count switch
         {

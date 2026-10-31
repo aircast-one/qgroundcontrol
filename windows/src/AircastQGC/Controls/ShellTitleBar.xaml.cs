@@ -226,7 +226,7 @@ public sealed partial class ShellTitleBar : UserControl
     private static void Paint(Control pill, FontIcon icon, StatusTone tone)
     {
         icon.Foreground = StatusLook.Tint(tone);
-        pill.Background = StatusLook.Fill(tone);
+        StatusLook.Dress(pill, tone);
     }
 
     private static Brush Token(string key) =>

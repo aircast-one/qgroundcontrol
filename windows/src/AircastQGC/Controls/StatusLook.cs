@@ -97,12 +97,14 @@ internal static class StatusLook
 
     public static Brush Ink(StatusTone tone) => tone == StatusTone.Normal ? Ui.Token("TextPrimaryBrush") : Tint(tone);
 
-    public static Brush Fill(StatusTone tone) => Ui.Token(tone switch
+    public static void Dress(Control control, StatusTone tone)
     {
-        StatusTone.Caution => "CautionBgBrush",
-        StatusTone.Critical => "CriticalBgBrush",
-        _ => "ChipBrush",
-    });
+        var alert = tone is StatusTone.Caution or StatusTone.Critical;
+        control.Background = alert ? Ui.Token(tone == StatusTone.Critical ? "CriticalBgBrush" : "CautionBgBrush") : Bare;
+        control.BorderBrush = alert ? Ui.Token("ControlStrokeBrush") : Bare;
+    }
+
+    private static readonly SolidColorBrush Bare = new(Microsoft.UI.Colors.Transparent);
 
     public static StatusPill Pill(string name, string glyph)
     {
@@ -139,7 +141,7 @@ internal static class StatusLook
         pill.Icon.Foreground = Tint(tone == StatusTone.Normal ? StatusTone.Muted : tone);
         pill.Label.Foreground = Ui.Token("TextPrimaryBrush");
         pill.Extra.Foreground = Ui.Token("TextPrimaryBrush");
-        pill.Button.Background = Fill(tone);
+        Dress(pill.Button, tone);
         AutomationProperties.SetHelpText(pill.Button, string.Join("  ", new[] { text, extra }.Where(part => part.Length > 0)));
     }
 
