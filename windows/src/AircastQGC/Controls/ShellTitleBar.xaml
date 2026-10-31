@@ -202,11 +202,6 @@
                     <local:StatusStrip x:Name="Strip" />
                 </StackPanel>
             </Border>
-
-            <Button x:Name="MoreButton" Style="{StaticResource FlyRoundButton}" Content="&#xE712;" Click="OnMore"
-                    Foreground="{ThemeResource TextPrimaryBrush}" Background="Transparent"
-                    Width="32" Height="32" CornerRadius="16"
-                    Visibility="Collapsed" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings" />
         </StackPanel>
     </Grid>
 </UserControl>

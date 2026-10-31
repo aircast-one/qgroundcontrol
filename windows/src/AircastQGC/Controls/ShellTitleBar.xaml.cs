@@ -43,7 +43,6 @@ public sealed partial class ShellTitleBar : UserControl
         Bar.SizeChanged += (_, _) => Fit();
         Readout.SizeChanged += (_, _) => Fit();
         Lead.SizeChanged += (_, _) => Fit();
-        MoreButton.SizeChanged += (_, _) => Fit();
         Strip.NeedChanged += Fit;
         PageMenu.Opening += (_, _) => PageMenu.Items.OfType<RadioMenuFlyoutItem>().ToList()
             .ForEach(item => item.IsChecked = item.Tag as string == CurrentPage);
@@ -95,7 +94,6 @@ public sealed partial class ShellTitleBar : UserControl
             _onFly = value;
             Lead.Margin = new Thickness(value ? FlyGutter : NavGutter, 0, 0, 0);
             MenuButton.Flyout = value ? PageMenu : null;
-            MoreButton.Visibility = Shown(value);
             Subtitle.Visibility = Shown(!value);
             VehicleSwitch.Named = value;
             Render();
@@ -125,7 +123,7 @@ public sealed partial class ShellTitleBar : UserControl
         var probe = new TextBlock { Text = AppTitle.Text, FontFamily = AppTitle.FontFamily, FontSize = AppTitle.FontSize };
         probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var title = probe.DesiredSize.Width + DragArea.ColumnSpacing;
-        var brand = Lead.Margin.Left + Lead.ActualWidth + MoreButton.ActualWidth + RightGroup.Spacing + DragArea.Padding.Left + DragArea.Padding.Right + DragFloor;
+        var brand = Lead.Margin.Left + Lead.ActualWidth + RightGroup.Spacing + DragArea.Padding.Left + DragArea.Padding.Right + DragFloor;
         var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - (Readout.ActualWidth - Strip.ActualWidth) - brand;
         ArmedText.MaxWidth = Math.Max(VerdictFloor, room + ArmedText.ActualWidth - Strip.Needed);
         var titled = !_onFly && Readings.Visibility != Visibility.Visible && room - title >= StripFloor;
@@ -165,8 +163,6 @@ public sealed partial class ShellTitleBar : UserControl
     {
         if (!_onFly) PaneToggleRequested?.Invoke(this, EventArgs.Empty);
     }
-
-    private void OnMore(object sender, RoutedEventArgs e) => PageRequested?.Invoke(this, NavPane.Settings);
 
     private JsonObject View(string path) => _views.TryGetValue(path, out var view) ? view : new JsonObject();
 
