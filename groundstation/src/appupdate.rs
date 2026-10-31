@@ -11,24 +11,24 @@ const RELEASES_URL: &str =
 const TAG_PREFIX: &str = "aircast-v";
 const NATIVE_PREFIX: &str = "AircastQGCNative-";
 const ANDROID_PREFIX: &str = "AircastAndroid-";
-const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
+const LOOKUP_TIMEOUT: Duration = Duration::from_secs(30);
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const FIRST_CHECK_AFTER: Duration = Duration::from_secs(15);
 pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 pub const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(60 * 60);
-const TICK: Duration = Duration::from_millis(250);
+const POLL_EVERY: Duration = Duration::from_millis(250);
 const AUTO_CHECK_KEY: &str = "AppUpdate/autoCheck";
 const SNOOZED_KEY: &str = "AppUpdate/snoozed";
 const DOWNLOAD_DIR: &str = "Updates";
-const CHUNK: usize = 64 * 1024;
-const CANCELLED: &str = "cancelled";
+const READ_CHUNK_BYTES: usize = 64 * 1024;
+const CANCELLED_MESSAGE: &str = "cancelled";
 const RETRY_DELAYS: [Duration; 3] = [
     Duration::from_secs(2),
     Duration::from_secs(5),
     Duration::from_secs(15),
 ];
-pub const CHANGED: &str = "core.appUpdate@changed";
-pub const DEPS: &[&str] = &[CHANGED, "vehicles.activeVehicleAvailable"];
+pub const APP_UPDATE_CHANGED: &str = "core.appUpdate@changed";
+pub const DEPS: &[&str] = &[APP_UPDATE_CHANGED, "vehicles.activeVehicleAvailable"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Phase {
@@ -321,7 +321,7 @@ fn fetch_releases(
 ) -> Result<(), String> {
     crate::background::spawn("app-update-check", move || {
         settle(
-            crate::http::get_text(RELEASES_URL, FETCH_TIMEOUT)
+            crate::http::get_text(RELEASES_URL, LOOKUP_TIMEOUT)
                 .map_err(|e| format!("GitHub could not be reached to check for updates ({e})."))
                 .and_then(|body| newest(&body, &current, Some(pattern))),
         );
@@ -369,7 +369,7 @@ fn finished(outcome: Result<PathBuf, String>) {
             held.progress = 1.0;
             held.file = file.to_string_lossy().into_owned();
         }
-        Err(reason) if reason == CANCELLED => {
+        Err(reason) if reason == CANCELLED_MESSAGE => {
             held.phase = Phase::Available;
             held.progress = 0.0;
         }
@@ -460,11 +460,11 @@ fn transfer_once<R: std::io::Read>(
         .truncate(!append)
         .open(partial)
         .map_err(|e| format!("{}: {e}", partial.display()))?;
-    let mut buffer = vec![0u8; CHUNK];
+    let mut buffer = vec![0u8; READ_CHUNK_BYTES];
     let mut written = if append { have } else { 0 };
     loop {
         if cancelled() {
-            return Err(CANCELLED.to_string());
+            return Err(CANCELLED_MESSAGE.to_string());
         }
         let n = body.read(&mut buffer).map_err(interrupted)?;
         if n == 0 {
@@ -491,8 +491,8 @@ pub fn fetch_resuming<R: std::io::Read>(
             let before = length();
             match transfer_once(partial, &fetch, &progress, &cancelled) {
                 Ok(()) => Break(Ok(())),
-                Err(reason) if reason == CANCELLED || cancelled() => {
-                    Break(Err(CANCELLED.to_string()))
+                Err(reason) if reason == CANCELLED_MESSAGE || cancelled() => {
+                    Break(Err(CANCELLED_MESSAGE.to_string()))
                 }
                 Err(reason) => {
                     log::warn!("App update download stopped at byte {}: {reason}", length());
@@ -522,7 +522,7 @@ fn pause_unless_cancelled(wait: Duration) {
 
 #[cfg(not(target_family = "wasm"))]
 fn download_verified(asset: &Asset, dir: &std::path::Path) -> Result<PathBuf, String> {
-    let expected = crate::http::get_text(&asset.checksum_url, FETCH_TIMEOUT)
+    let expected = crate::http::get_text(&asset.checksum_url, LOOKUP_TIMEOUT)
         .ok()
         .as_deref()
         .and_then(expected_digest)
@@ -545,7 +545,10 @@ fn download_verified(asset: &Asset, dir: &std::path::Path) -> Result<PathBuf, St
         |written| changing().progress = (written as f64 / total).min(0.99),
         || CANCEL.load(Ordering::SeqCst),
     );
-    if fetched.as_ref().is_err_and(|reason| reason == CANCELLED) {
+    if fetched
+        .as_ref()
+        .is_err_and(|reason| reason == CANCELLED_MESSAGE)
+    {
         let _ = std::fs::remove_file(&partial);
     }
     fetched?;
@@ -575,7 +578,7 @@ pub fn start(version: &str, announce: fn()) {
         if let Some(dir) = download_dir() {
             let _ = std::fs::remove_dir_all(dir);
         }
-        let _ = crate::background::poll("app-update", TICK, move || {
+        let _ = crate::background::poll("app-update", POLL_EVERY, move || {
             if take_changed() {
                 announce();
             }
@@ -1050,7 +1053,7 @@ mod tests {
     fn a_cancel_stops_without_retrying() {
         let partial = scratch("cancel");
         let (outcome, asked, paused, _) = served(&partial, |_, _| whole(None), Some(200));
-        assert_eq!(outcome, Err(CANCELLED.to_string()));
+        assert_eq!(outcome, Err(CANCELLED_MESSAGE.to_string()));
         assert_eq!(asked, vec![0]);
         assert!(paused.is_empty());
     }

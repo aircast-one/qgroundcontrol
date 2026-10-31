@@ -172,7 +172,7 @@ pub unsafe extern "C" fn qgc_core_set_application_version(version: *const c_char
 }
 
 fn announce_app_update() {
-    CORE.on_event(crate::appupdate::CHANGED, "null")
+    CORE.on_event(crate::appupdate::APP_UPDATE_CHANGED, "null")
         .iter()
         .for_each(|(path, json)| announce(path, json));
 }
