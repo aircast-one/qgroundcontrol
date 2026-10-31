@@ -8,6 +8,7 @@ import { sentenceCase } from '@/map/SentenceCase';
 import { type DrawableName } from '@/res/drawables';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
+import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { LocalSettingsList } from '@/ui/SettingsScreen';
 
 export type SetupState = { readonly name: 'NeedsAttention' | 'Done' | 'Neutral' | 'Unavailable'; readonly ordinal: number };
@@ -38,11 +39,17 @@ const SECTION_IMAGES = {
 export const sectionImageAsset = (image: string): string =>
   Object.entries(SECTION_IMAGES).find(([path]) => path.endsWith(`/${image}`))?.[1] ?? '';
 
+export const SETTINGS_CARD = 'empty:hidden desktop:mx-list desktop:mb-2 desktop:overflow-hidden desktop:rounded-shape-md desktop:bg-surface-container-low desktop:[&>*+*]:border-t desktop:[&>*+*]:border-outline-variant';
+
+export const SettingsCard = ({ children }: { children: ReactNode }) => <div className={SETTINGS_CARD}>{children}</div>;
+
 export const SectionHeader = ({ text, image = '' }: { text: string; image?: string }) => {
   const band = useContext(LocalSettingsList);
+  const desktop = useDesktopLayout();
   const asset = sectionImageAsset(image);
+  const heading = band && desktop;
   return (
-    <div className={`flex items-center gap-3 ${band ? 'mt-3 w-full bg-surface-container-high px-list py-2.5' : 'px-list pt-5 pb-2'}`}>
+    <div className={`flex items-center gap-3 ${heading ? 'px-list pt-6 pb-2' : band ? 'mt-3 w-full bg-surface-container-high px-list py-2.5' : 'px-list pt-5 pb-2'}`}>
       {image.trim() !== '' ? (
         <span
           aria-hidden
@@ -50,7 +57,7 @@ export const SectionHeader = ({ text, image = '' }: { text: string; image?: stri
           style={asset ? { backgroundColor: md('onSurface'), maskImage: `url("${asset}")`, maskSize: 'contain', maskRepeat: 'no-repeat', maskPosition: 'center' } : undefined}
         />
       ) : null}
-      <Text typography="labelLarge" color={md('onSurfaceVariant')}>
+      <Text typography={heading ? 'titleSmall' : 'labelLarge'} color={heading ? md('onSurface') : md('onSurfaceVariant')}>
         {text}
       </Text>
     </div>

@@ -57,7 +57,7 @@ const OpenOverHttps = () => {
     window.location.assign(securePage(window.location.href, await trustedOrigin()));
   };
   return (
-    <div>
+    <div className="px-1 py-1">
       <TextButton enabled={!opening} onClick={() => void open()}>
         Open over https
       </TextButton>
@@ -69,7 +69,7 @@ export const UsbAccess = () => {
   const blocked = usbBlocked(serialAvailable(), window.isSecureContext, window.location.href);
   if (blocked === null) {
     return (
-      <div>
+      <div className="px-1 py-1">
         <TextButton onClick={() => void requestSerialPort().catch(() => undefined)}>Allow a USB port</TextButton>
       </div>
     );
@@ -77,7 +77,7 @@ export const UsbAccess = () => {
   return (
     <>
       {blocked.secureUrl === null ? null : <OpenOverHttps />}
-      <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block select-text">
+      <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-4 pt-1 pb-3 select-text">
         {blocked.note}
       </Text>
     </>

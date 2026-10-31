@@ -10,7 +10,7 @@ import { CALIBRATION, type CalibrationRoutine, type CalibrationState, calibratio
 import { useHasVehicle } from '@/ui/FlyState';
 import { parameterFact, parameterPath } from '@/ui/ParametersScreen';
 import { factNumber } from '@/ui/Px4TuningScreen';
-import { SectionHeader, SetupRow } from '@/ui/SetupRow';
+import { SectionHeader, SettingsCard, SetupRow } from '@/ui/SetupRow';
 import { SETUP, parametersReady } from '@/ui/SetupView';
 import { CONNECTIONS_PAGE, FactRow, SettingsGroup, SettingsGroupEntries, sentenceCase } from '@/ui/SettingsScreen';
 
@@ -103,9 +103,11 @@ const ReportedPilotSettings = ({ settings, setup }: { settings: readonly PilotSe
       {[...groupBy(shown, (it) => it.setting.section)].map(([section, rows]) => (
         <Fragment key={section}>
           <SectionHeader text={section} />
-          {rows.map((row) => (
-            <PilotFactRow key={row.fact.name} shown={row.fact} setting={row.setting} />
-          ))}
+          <SettingsCard>
+            {rows.map((row) => (
+              <PilotFactRow key={row.fact.name} shown={row.fact} setting={row.setting} />
+            ))}
+          </SettingsCard>
         </Fragment>
       ))}
     </>
@@ -132,9 +134,11 @@ const OfflinePilotSettings = ({ settings, note, offersLink }: { settings: readon
       {[...pilotSections(settings)].map(([section, rows]) => (
         <Fragment key={section}>
           <SectionHeader text={section} />
-          {rows.map((setting) => (
-            <OfflineRow key={setting.label} label={setting.label} hint={setting.hint} />
-          ))}
+          <SettingsCard>
+            {rows.map((setting) => (
+              <OfflineRow key={setting.label} label={setting.label} hint={setting.hint} />
+            ))}
+          </SettingsCard>
         </Fragment>
       ))}
     </>
@@ -180,9 +184,11 @@ export const SensorChecks = ({ onCalibrate }: { onCalibrate: () => void }) => {
     return (
       <>
         <SectionHeader text={SENSORS_SECTION} />
-        {OFFLINE_SENSORS.map((sensor) => (
-          <OfflineRow key={sensor} label={sensor} hint={null} />
-        ))}
+        <SettingsCard>
+          {OFFLINE_SENSORS.map((sensor) => (
+            <OfflineRow key={sensor} label={sensor} hint={null} />
+          ))}
+        </SettingsCard>
       </>
     );
   }
@@ -191,22 +197,24 @@ export const SensorChecks = ({ onCalibrate }: { onCalibrate: () => void }) => {
   return (
     <>
       <SectionHeader text={SENSORS_SECTION} />
-      {checks.map((routine) => (
-        <div key={routine.id} className="flex min-h-14 w-full items-center gap-2 pr-1 pl-4">
-          <Text typography="bodyLarge" fontWeight={500} className="flex-1">
-            {sentenceCase(routine.title)}
-          </Text>
-          <Text typography="bodyMedium" color={sensorHealthy(routine) ? md('onSurfaceVariant') : md('error')}>
-            {sensorHealthy(routine) ? 'Normal' : routine.status.trim() === '' ? 'Not checked' : routine.status}
-          </Text>
-          {!sensorHealthy(routine) ? (
-            <TextButton onClick={onCalibrate} enabled={routine.enabled}>
-              Calibrate
-            </TextButton>
-          ) : null}
-        </div>
-      ))}
-      <SetupRow title="Calibrate sensors" status="" onClick={onCalibrate} />
+      <SettingsCard>
+        {checks.map((routine) => (
+          <div key={routine.id} className="flex min-h-14 w-full items-center gap-2 pr-1 pl-4">
+            <Text typography="bodyLarge" fontWeight={500} className="flex-1">
+              {sentenceCase(routine.title)}
+            </Text>
+            <Text typography="bodyMedium" color={sensorHealthy(routine) ? md('onSurfaceVariant') : md('error')}>
+              {sensorHealthy(routine) ? 'Normal' : routine.status.trim() === '' ? 'Not checked' : routine.status}
+            </Text>
+            {!sensorHealthy(routine) ? (
+              <TextButton onClick={onCalibrate} enabled={routine.enabled}>
+                Calibrate
+              </TextButton>
+            ) : null}
+          </div>
+        ))}
+        <SetupRow title="Calibrate sensors" status="" onClick={onCalibrate} />
+      </SettingsCard>
     </>
   );
 };

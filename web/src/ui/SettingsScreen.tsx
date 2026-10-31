@@ -18,7 +18,7 @@ import { type AppNavigationState, LocalAppNavigation } from '@/ui/AppNavigation'
 import { CAMERAS_VIEW, VIDEO_SOURCES_PAGE, camerasGlance, camerasReading } from '@/ui/Cameras';
 import { CamerasEditor } from '@/ui/CamerasEditor';
 import { DeviceTab } from '@/ui/DeviceScreen';
-import { DETAIL_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
+import { DETAIL_PANE_MAX_WIDTH, SETTINGS_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { type DevicePage, devicePageIcon, deviceRequested, useDeviceStatus } from '@/ui/DeviceStatus';
 import { FLASHER_PAGE, FlasherScreen } from '@/ui/FlasherScreen';
@@ -37,7 +37,7 @@ import { ValueDetailsSheet } from '@/ui/ParameterLinks';
 import { Px4LogTransferPage } from '@/ui/Px4LogTransfer';
 import { RcControlsEditor } from '@/ui/RcControlsEditor';
 import { FLIGHT_MODES_PAGE, SAFETY_SETUP_PAGE, SENSORS } from '@/ui/SetupPages';
-import { AdvancedToggle, FootNote, LocalPageHeading, type PageHeading, SectionHeader, SetupRow } from '@/ui/SetupRow';
+import { AdvancedToggle, FootNote, LocalPageHeading, type PageHeading, SectionHeader, SettingsCard, SetupRow } from '@/ui/SetupRow';
 import { SETUP_PARAMETERS_PAGE, type SetupComponent, setupComponents, setupIcon, setupMatches } from '@/ui/SetupScreen';
 import { SETUP } from '@/ui/SetupView';
 import { MAVLINK_GROUP, SIGNING_AFTER_BLOCK, SigningKeysSection } from '@/ui/SigningKeysSection';
@@ -391,7 +391,7 @@ export const SettingsScreen = ({
     <LocalPageHeading.Provider value={heading}>
       <LocalSettingsList.Provider value>
         <div className={`flex h-full w-full ${desktop ? 'justify-start' : 'justify-center'} ${className ?? ''}`}>
-          <div className="h-full w-full" style={desktop && group === SettingsGroup.Device ? undefined : { maxWidth: DETAIL_PANE_MAX_WIDTH }}>
+          <div className="h-full w-full" style={desktop && group === SettingsGroup.Device ? undefined : { maxWidth: desktop ? SETTINGS_PANE_MAX_WIDTH : DETAIL_PANE_MAX_WIDTH }}>
             {group === SettingsGroup.Device ? (
               <DeviceTab shown={shown} open={open} onOpen={onOpen} onClose={onClose} />
             ) : current === null ? (
@@ -418,6 +418,14 @@ const PageEntryRow = ({ page, linksJson, onOpen }: { page: SettingsPageEntry; li
   );
 };
 
+export type PageRun = { inline: boolean; pages: readonly SettingsPageEntry[] };
+
+export const pageRuns = (pages: readonly SettingsPageEntry[], inline: (page: SettingsPageEntry) => boolean): readonly PageRun[] =>
+  pages.reduce<readonly PageRun[]>((runs, page) => {
+    const last = runs.at(-1);
+    return last !== undefined && last.inline === inline(page) ? [...runs.slice(0, -1), { ...last, pages: [...last.pages, page] }] : [...runs, { inline: inline(page), pages: [page] }];
+  }, []);
+
 const SettingsTab = ({
   group,
   everyPage,
@@ -441,28 +449,37 @@ const SettingsTab = ({
   const folded = pages.filter(drawnInline);
   const shown = pages.filter((page) => !drawnInline(page));
   const groundStationLinks = useDeviceStatus()?.pages.find((page) => page.href === GROUND_STATION_LINKS) ?? null;
+  const linksRow = groundStationLinks !== null && SHOWS_GROUND_STATION_LINKS.includes(group);
   return (
     <div className={`overflow-y-auto ${className}`}>
-      {groundStationLinks !== null && SHOWS_GROUND_STATION_LINKS.includes(group) ? <DevicePageRow page={groundStationLinks} /> : null}
-      {group === SettingsGroup.General ? (
-        <>
-          <AircraftSetupRow onOpenSetup={onOpenSetup} />
-          <SetupRow title={FLASHER_PAGE} status="Set up an SD card for a new drone" icon="ic_usb" onClick={() => onOpen(FLASHER_PAGE)} />
-        </>
+      {linksRow || group === SettingsGroup.General ? (
+        <SettingsCard>
+          {linksRow ? <DevicePageRow page={groundStationLinks} /> : null}
+          {group === SettingsGroup.General ? (
+            <>
+              <AircraftSetupRow onOpenSetup={onOpenSetup} />
+              <SetupRow title={FLASHER_PAGE} status="Set up an SD card for a new drone" icon="ic_usb" onClick={() => onOpen(FLASHER_PAGE)} />
+            </>
+          ) : null}
+        </SettingsCard>
       ) : null}
       <PilotSettings group={group} />
       {group === SettingsGroup.Safety ? <SensorChecks onCalibrate={() => onOpenSetup(SENSORS)} /> : null}
       {foldsInline ? (
         <>
-          {shown.map(pageEntry)}
-          <TabSetupRows group={group} onOpenSetup={onOpenSetup} />
+          <SettingsCard>
+            {shown.map(pageEntry)}
+            <TabSetupRows group={group} onOpenSetup={onOpenSetup} />
+          </SettingsCard>
           {folded.length > 0 ? <AdvancedToggle open={advancedOpen} label={ADVANCED_SAFETY} onToggle={() => setAdvancedOpen(!advancedOpen)} /> : null}
           {advancedOpen ? folded.map(pageEntry) : null}
         </>
       ) : (
         <>
-          {pages.map(pageEntry)}
-          <TabSetupRows group={group} onOpenSetup={onOpenSetup} />
+          {pageRuns(pages, drawnInline).map((run) => (run.inline ? <Fragment key={run.pages[0]?.title}>{run.pages.map(pageEntry)}</Fragment> : <SettingsCard key={run.pages[0]?.title}>{run.pages.map(pageEntry)}</SettingsCard>))}
+          <SettingsCard>
+            <TabSetupRows group={group} onOpenSetup={onOpenSetup} />
+          </SettingsCard>
         </>
       )}
     </div>
@@ -556,7 +573,7 @@ export const SettingsSearch = ({
 
   return (
     <div className={`flex h-full w-full ${desktop ? 'justify-start' : 'justify-center'} ${className ?? ''}`}>
-      <div className="h-full w-full overflow-y-auto" style={{ maxWidth: DETAIL_PANE_MAX_WIDTH }}>
+      <div className="h-full w-full overflow-y-auto" style={{ maxWidth: desktop ? SETTINGS_PANE_MAX_WIDTH : DETAIL_PANE_MAX_WIDTH }}>
         {!searching ? null : nothing ? (
           <>
             <FootNote text={`No settings match “${query.trim()}”.`} />
@@ -661,7 +678,9 @@ const SettingsControls = ({
             if (block.title === ADVANCED_BLOCK) {
               return (
                 <AdvancedBlock key={index} blockKey={`${section.group}#${block.title}`}>
-                  <FactRuns facts={block.facts} onWrite={onWrite} />
+                  <SettingsCard>
+                    <FactRuns facts={block.facts} onWrite={onWrite} />
+                  </SettingsCard>
                 </AdvancedBlock>
               );
             }
@@ -669,11 +688,13 @@ const SettingsControls = ({
             return (
               <Fragment key={index}>
                 {blockHeadings && notBlank(heading) ? <SectionHeader text={sentenceCase(heading)} /> : null}
-                <FactRuns facts={block.facts} onWrite={onWrite} />
-                {page.showsNtrip && block.title === NTRIP_MOUNTPOINT_BLOCK ? <NtripMountpointBrowser onWrite={onWrite} /> : null}
-                {section.group === REMOTE_ID_GROUP && block.title === GCS_LOCATION_BLOCK ? <GcsPositionStatus /> : null}
-                {section.group === MAVLINK_GROUP && block.title === SIGNING_AFTER_BLOCK ? <SigningKeysSection /> : null}
-                {block.title === USB_RADIO_BLOCK ? <UsbAccess /> : null}
+                <SettingsCard>
+                  <FactRuns facts={block.facts} onWrite={onWrite} />
+                  {page.showsNtrip && block.title === NTRIP_MOUNTPOINT_BLOCK ? <NtripMountpointBrowser onWrite={onWrite} /> : null}
+                  {section.group === REMOTE_ID_GROUP && block.title === GCS_LOCATION_BLOCK ? <GcsPositionStatus /> : null}
+                  {section.group === MAVLINK_GROUP && block.title === SIGNING_AFTER_BLOCK ? <SigningKeysSection /> : null}
+                  {block.title === USB_RADIO_BLOCK ? <UsbAccess /> : null}
+                </SettingsCard>
               </Fragment>
             );
           })}
