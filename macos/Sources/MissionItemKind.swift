@@ -21,6 +21,7 @@ struct MissionItemKind: Identifiable, Equatable {
         case "takeoff": return "arrow.up.right"
         case "land": return "arrow.down.right"
         case "roi": return "eye"
+        case "drop": return "shippingbox"
         case "survey": return "square.grid.3x3"
         case "corridor": return "road.lanes"
         case "structure": return "building.2"
@@ -53,10 +54,6 @@ struct MissionKinds: Equatable {
 
     var offersAny: Bool { all.contains { $0.enabled } }
 
-    // Finding a just-placed pattern by its COMMAND compares the core's translated commandName
-    // against the fixed English complexName, so outside en_US the item is never found: createPlan
-    // reported a plan it had just built as having failed, and skipped seeding the pattern's shape.
-    // kind is the core's own id and reads the same in every locale.
     static func placed(_ kind: MissionItemKind, among items: [MissionItem]) -> MissionItem? {
         items.first { $0.kind == kind.id }
     }
@@ -82,8 +79,6 @@ struct MissionKinds: Equatable {
 
     var shapeImportable: [MissionItemKind] { all.filter { !$0.simple } }
 
-    // QGC has complex items the catalogue does not name — a Landing Pattern is one —
-    // so a plan can carry a pattern the core cannot describe, and it still has to draw.
     func title(forPattern name: String) -> String {
         byComplexName(name)?.title ?? name
     }
@@ -97,11 +92,6 @@ struct MissionKinds: Equatable {
             ?? "Click the map to place a \(name.lowercased())."
     }
 
-    // Keyed on the item's kind, never on its name. Every complex item's commandName is tr(),
-    // so matching it against the catalogue's complexName -- a fixed English string -- found
-    // nothing in any other locale and the survey area and corridor line were simply not drawn.
-    // The item is passed rather than a string so the choice of field is pinned by a test; the
-    // call site that made it lives in a window file, which the checks do not compile.
     func areaProperty(of item: MissionItem) -> String? {
         geometryProperty(of: item, shaped: "area")
     }
@@ -114,7 +104,6 @@ struct MissionKinds: Equatable {
         byId(item.kind).flatMap { $0.geometry == shaped ? $0.geometryProperty : nil }
     }
 
-    // A pattern the catalogue does not name is not one the core refused, so it stays offered.
     func offers(pattern name: String) -> Bool {
         byComplexName(name)?.enabled ?? true
     }
@@ -126,9 +115,6 @@ struct MissionKinds: Equatable {
     static let refusedWithoutReason = "That item cannot go here."
 }
 
-// What mission.insert answered. The core knows whether it holds a kind and whether the plan will
-// take it now; a head that decides from its own polled catalogue is guessing with a stale copy,
-// and QGC has item types the catalogue does not list at all.
 enum InsertOutcome: Equatable {
     case inserted
     case insertDirectly(String)
@@ -138,8 +124,6 @@ enum InsertOutcome: Equatable {
         if (answer["ok"] as? NSNumber)?.boolValue == true {
             self = .inserted
         } else if let name = answer["unknown"] as? String {
-            // lookup() fails before the core touches the controller, so nothing was inserted and
-            // nothing needs undoing -- the item simply goes in the way it always did.
             self = .insertDirectly(name)
         } else {
             self = .refused((answer["reason"] as? String) ?? MissionKinds.refusedWithoutReason)
