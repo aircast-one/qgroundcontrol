@@ -55,7 +55,7 @@ internal static class SettingsBodies
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         Content = new Grid
         {
-            Padding = new Thickness(32, 0, 32, 32),
+            Padding = new Thickness(24, 0, 24, 24),
             ColumnDefinitions = { new ColumnDefinition { MaxWidth = DetailMaxWidth } },
             Children = { content },
         },

@@ -71,6 +71,7 @@ internal static class PlanFacts
     internal static StackPanel Row(params UIElement[] children)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        children.OfType<FrameworkElement>().ToList().ForEach(child => child.VerticalAlignment = VerticalAlignment.Center);
         children.ToList().ForEach(row.Children.Add);
         return row;
     }

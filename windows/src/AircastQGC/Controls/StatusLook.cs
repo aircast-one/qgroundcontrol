@@ -125,7 +125,7 @@ internal static class StatusLook
         {
             Height = PillHeight,
             MinWidth = 0,
-            Padding = new Thickness(10, 0, 10, 0),
+            Padding = new Thickness(12, 0, 12, 0),
             CornerRadius = new CornerRadius(PillHeight / 2),
             BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,

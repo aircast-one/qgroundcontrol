@@ -25,6 +25,8 @@ public sealed partial class ShellTitleBar : UserControl
     private const double StripFloor = 200;
     private const double DragFloor = 64;
     private const double VerdictFloor = 80;
+    private const double FlyGutter = 16;
+    private const double NavGutter = 8;
 
     private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath, WarningsPath };
     private static readonly string[] KnownStates = { "notConnected", "contactLost", "flying", "landing", "armed", "disarmed" };
@@ -91,6 +93,7 @@ public sealed partial class ShellTitleBar : UserControl
         set
         {
             _onFly = value;
+            Lead.Margin = new Thickness(value ? FlyGutter : NavGutter, 0, 0, 0);
             MenuButton.Flyout = value ? PageMenu : null;
             MoreButton.Visibility = Shown(value);
             Subtitle.Visibility = Shown(!value);

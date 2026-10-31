@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -23,8 +24,14 @@ internal sealed partial class FormRows(FormView host)
     public static bool Dangerous(string label) => DangerousChoice().IsMatch(label);
 
     public UIElement Row(FormControl c, FormBlock block) => FormLook.Stack(0,
-        FormLook.Margined(Body(c, block), new Thickness(c.Indent ? 24 : 0, 0, 0, 0)),
+        Indented(Body(c, block), c.Indent),
         c.Calculator is { } calculator && host.HasCalculator ? CalculatorRow(c, calculator) : null);
+
+    public static UIElement Labels(IEnumerable<FormControl> run) =>
+        FormLook.Fill(new StackPanel { Padding = new Thickness(16, 12, 16, 12), Spacing = 4 }, run.Select(c => Indented(LabelText(c), c.Indent)));
+
+    private static FrameworkElement Indented(FrameworkElement body, bool indent) =>
+        indent ? FormLook.Margined(body, new Thickness(body.Margin.Left + 24, body.Margin.Top, body.Margin.Right, body.Margin.Bottom)) : body;
 
     private FrameworkElement Body(FormControl c, FormBlock block) => c switch
     {
@@ -228,11 +235,12 @@ internal sealed partial class FormRows(FormView host)
         return FormLook.Row(left, FormLook.Text(c.ShownValue, "FontSizeBody", "TextSecondaryBrush"));
     }
 
-    private static FrameworkElement LabelRow(FormControl c)
+    private static FrameworkElement LabelRow(FormControl c) => FormLook.Margined(LabelText(c), new Thickness(16, 12, 16, 12));
+
+    private static TextBlock LabelText(FormControl c)
     {
         var label = FormLook.Text(c.Title, c.SmallFont ? "FontSizeCaption" : "FontSizeBody", c.Warning ? "CriticalBrush" : "TextSecondaryBrush");
         label.Opacity = c.Enabled ? 1 : 0.38;
-        label.Margin = new Thickness(16, 8, 16, 8);
         return label;
     }
 
@@ -245,7 +253,7 @@ internal sealed partial class FormRows(FormView host)
             else Commit(c, refusal, () => FormWrites.Press(c), () => { });
         }), c);
         button.IsEnabled = c.Enabled;
-        return FormLook.Margined(FormLook.Stack(4, button, refusal), new Thickness(16, 8, 16, 8));
+        return FormLook.Margined(FormLook.Stack(4, button, refusal), new Thickness(16, 12, 16, 12));
     }
 
     private UIElement CalculatorRow(FormControl c, JsonObject calculator) => FormLook.Row(
@@ -254,7 +262,12 @@ internal sealed partial class FormRows(FormView host)
             FormLook.Caption($"Measure the {MapUiJson.Text(calculator["measure"])} with a meter")),
         FormLook.Button("Calibrate", () => host.RequestCalculator(c, calculator)));
 
-    private static TextBlock Units(FormControl c) => FormLook.Text(c.UnitsShown, "FontSizeBody", "TextSecondaryBrush");
+    private static TextBlock Units(FormControl c)
+    {
+        var units = FormLook.Text(c.UnitsShown, "FontSizeBody", "TextSecondaryBrush");
+        units.VerticalAlignment = VerticalAlignment.Center;
+        return units;
+    }
 
     private static bool Same(double a, double b) => Math.Abs(a - b) <= 1e-9 * Math.Max(1, Math.Abs(a));
 

@@ -36,7 +36,7 @@
 
         <Style x:Key="PillButton" TargetType="Button">
             <Setter Property="Height" Value="28" />
-            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Padding" Value="12,0" />
             <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Background" Value="{ThemeResource ChipBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeBrush}" />
@@ -99,8 +99,8 @@
             <ColumnDefinition x:Name="CaptionColumn" Width="138" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel x:Name="Lead" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="8,0,0,0">
-            <Button x:Name="MenuButton" Style="{StaticResource FlyRoundButton}" Content="&#xE700;" Margin="0,0,8,0"
+        <StackPanel x:Name="Lead" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Margin="8,0,0,0">
+            <Button x:Name="MenuButton" Style="{StaticResource FlyRoundButton}" Content="&#xE700;" Margin="0,0,4,0"
                     Width="32" Height="32" CornerRadius="16"
                     Click="OnMenu" AutomationProperties.Name="Menu" ToolTipService.ToolTip="Menu">
                 <Button.Flyout>
@@ -146,7 +146,7 @@
                 <FontIcon Glyph="&#xE709;" FontSize="12" Foreground="{ThemeResource AccentOnBrush}" />
             </Border>
 
-            <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="8">
+            <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="12">
                 <local:VehiclePickerButton x:Name="VehicleSwitch" />
 
                 <local:OperatorControlButton />
@@ -165,7 +165,7 @@
                     </StackPanel>
                 </Button>
 
-                <Button x:Name="ArmedPill" Style="{StaticResource PillButton}" Height="32" CornerRadius="16" Padding="12,0" Click="OnStatusClick"
+                <Button x:Name="ArmedPill" Style="{StaticResource PillButton}" Height="32" CornerRadius="16" Padding="16,0" Click="OnStatusClick"
                         AutomationProperties.Name="Vehicle status" ToolTipService.ToolTip="Vehicle status">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon x:Name="ArmedIcon" Glyph="&#xE72E;" Style="{StaticResource PillIcon}" />
@@ -184,8 +184,8 @@
             <TextBlock x:Name="Subtitle" Grid.Column="1" Style="{StaticResource SubtitleText}" />
         </Grid>
 
-        <StackPanel x:Name="RightGroup" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,8,0">
-            <Border x:Name="Readout" Height="32" Padding="2,0" CornerRadius="16" VerticalAlignment="Center"
+        <StackPanel x:Name="RightGroup" Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Margin="0,0,16,0">
+            <Border x:Name="Readout" Height="32" Padding="4,0" CornerRadius="16" VerticalAlignment="Center"
                     Background="{ThemeResource ChipBrush}" BorderBrush="{ThemeResource ControlStrokeBrush}" BorderThickness="1">
                 <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                     <StackPanel x:Name="Fixed" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">

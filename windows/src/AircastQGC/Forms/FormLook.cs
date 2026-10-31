@@ -46,7 +46,7 @@ internal static class FormLook
 
     public static TextBlock Caption(string text, string brush = "TextSecondaryBrush") => Text(text, "FontSizeCaption", brush);
 
-    public static TextBlock Heading(string text) => Margined(Text(text, "FontSizeBody", "TextPrimaryBrush", true), new Thickness(0, 20, 0, 8));
+    public static TextBlock Heading(string text) => Margined(Text(text, "FontSizeBody", "TextPrimaryBrush", true), new Thickness(0, 24, 0, 8));
 
     public static TextBlock Footnote(string text) => Margined(Caption(text), new Thickness(4, 8, 4, 8));
 
@@ -109,7 +109,7 @@ internal static class FormLook
     {
         var grid = new Grid
         {
-            Padding = new Thickness(16, 10, 16, 10),
+            Padding = new Thickness(16, 12, 16, 12),
             MinHeight = RowMinHeight,
             ColumnSpacing = 16,
             RowSpacing = 8,

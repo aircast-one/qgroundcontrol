@@ -46,7 +46,7 @@
         </Grid>
 
         <Grid x:Name="FlyChrome" Grid.Row="1" Grid.ColumnSpan="2">
-            <StackPanel x:Name="TopArea" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16,4,16,16"
+            <StackPanel x:Name="TopArea" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16"
                         Spacing="{StaticResource SpaceSm}">
                 <controls:HeadingTape x:Name="Tape" HorizontalAlignment="Center" />
                 <controls:TrafficBanner HorizontalAlignment="Center" />

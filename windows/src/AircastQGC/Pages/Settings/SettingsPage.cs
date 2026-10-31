@@ -26,7 +26,7 @@ public sealed class SettingsPage : UserControl
 
     private readonly StackPanel _list = new() { Spacing = 2 };
     private readonly ContentControl _listHost = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, IsTabStop = false };
-    private readonly TextBox _search = new() { PlaceholderText = "Search settings", Margin = new Thickness(16, 16, 16, 8) };
+    private readonly TextBox _search = new() { PlaceholderText = "Search settings", Margin = new Thickness(8, 16, 8, 8) };
     private readonly ContentControl _detail = new()
     {
         HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -115,7 +115,7 @@ public sealed class SettingsPage : UserControl
         var detail = new Grid
         {
             RowDefinitions = { new RowDefinition { Height = GridLength.Auto }, new RowDefinition() },
-            Children = { FormLook.Margined(FormLook.Line(8, _back, _title), new Thickness(24, 20, 32, 12)), _detail },
+            Children = { FormLook.Margined(FormLook.Line(8, _back, _title), new Thickness(24, 24, 24, 12)), _detail },
         };
         Grid.SetColumn(detail, 1);
         return new Grid
@@ -135,7 +135,7 @@ public sealed class SettingsPage : UserControl
         if (wanted is null)
         {
             RenderList();
-            _detail.Content = FormLook.Margined(FormLook.Footnote("The settings tree is empty — the core is not answering."), new Thickness(32, 0, 32, 0));
+            _detail.Content = FormLook.Margined(FormLook.Footnote("The settings tree is empty — the core is not answering."), new Thickness(24, 0, 24, 0));
             return;
         }
         if (wanted != _open || _stack.IsEmpty) Show(wanted);

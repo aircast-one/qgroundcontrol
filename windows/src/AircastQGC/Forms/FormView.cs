@@ -106,8 +106,14 @@ public sealed class FormView : UserControl
 
     public UIElement BlockCard(FormBlock block) => FormLook.Stack(4,
         FormLook.Caption(block.SharedRebootNote ?? "", "CautionBrush"),
-        FormLook.Card(block.Controls.Select(c => new FormRows(this).Row(c, block))),
+        FormLook.Card(Runs(block.Controls).Select(run => run.Count > 1 ? FormRows.Labels(run) : new FormRows(this).Row(run[0], block))),
         FormLook.Caption(block.SharedInertNote ?? "", "TextTertiaryBrush"));
+
+    private static IEnumerable<ImmutableList<FormControl>> Runs(IEnumerable<FormControl> controls) =>
+        controls.Aggregate(ImmutableList<ImmutableList<FormControl>>.Empty, (runs, c) =>
+            c.IsLabel && runs.LastOrDefault() is { } last && last[^1].IsLabel
+                ? runs.SetItem(runs.Count - 1, last.Add(c))
+                : runs.Add(ImmutableList.Create(c)));
 
     internal void Track(string key, Control control) => _focusable = _focusable.SetItem(key, control);
 
@@ -173,7 +179,7 @@ public sealed class FormView : UserControl
         var title = FormLook.Text(text, "FontSizeBody", "TextPrimaryBrush", true);
         title.VerticalAlignment = VerticalAlignment.Center;
         var picture = AssetImages.Svg(AssetImages.SetupSections, image, 24, AssetImages.Hex("TextPrimaryBrush"), 48);
-        return FormLook.Margined(FormLook.Lead(12, picture, title), new Thickness(0, 20, 0, 8));
+        return FormLook.Margined(FormLook.Lead(12, picture, title), new Thickness(0, 24, 0, 8));
     }
 
     private string BlockHeading(FormSection section, FormBlock block) =>
@@ -191,7 +197,7 @@ public sealed class FormView : UserControl
             IsExpanded = _openAdvanced.Contains(key),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Margin = new Thickness(0, 20, 0, 0),
+            Margin = new Thickness(0, 24, 0, 0),
         };
         expander.Expanding += (_, _) => _openAdvanced = _openAdvanced.Add(key);
         expander.Collapsed += (_, _) => _openAdvanced = _openAdvanced.Remove(key);

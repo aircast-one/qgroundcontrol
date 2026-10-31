@@ -66,13 +66,13 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Grid x:Name="DetailHeader" ColumnSpacing="8" Margin="24,20,24,12">
+                <Grid x:Name="DetailHeader" Margin="24,24,24,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Button x:Name="BackButton"
-                            Width="36" Height="36" Padding="0"
+                            Width="36" Height="36" Padding="0" Margin="0,0,8,0"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource IconFontFamily}" FontSize="16"
                             Content="&#xE72B;"
