@@ -1,34 +1,4 @@
 #!/usr/bin/env python3
-"""A comparison against a string QGC wraps in tr() breaks in every non-English build.
-
-Six instances appeared in one session, the third written an hour after the first was fixed, so
-knowing the rule is demonstrably not enough. This is the check. The shape came from the core
-session: intersect the literals this head COMPARES against with the literals QGC TRANSLATES.
-
-WHAT IT CANNOT SEE, and the exclusion is the larger half: a join between two VARIABLES whose
-origin is translated. The armed gate ($0.name == page) and createPlan ($0.command == complex)
-are both that shape and neither carries a literal. Control: of six known instances this reports
-one and misses four; the sixth is the core's. So a clean run is NOT evidence of no join.
-
-NOT every tr() literal is translated, and the exception is load-bearing: a tr() in a STATIC
-initialiser runs before installTranslator, so it is frozen at source text in every locale. The
-Android session established this for CorridorScanComplexItem::name (fd277b067), which is why
-comparing against it is safe. This check cannot tell the two apart and will flag such a
-comparison; the answer is to record it here with where the tr() is evaluated, not to remove it.
-This cuts BOTH ways and a hit must be read twice: which vocabulary does each side come from, and
-when is it evaluated. The Sensors hit was filed as real on the first reading and is not - the
-core's PAGES table is English constants it owns, never passed through tr().
-
-OUTSTANDING is empty as of f304fe27d and the mechanism stays: a hit that is REAL but not fixable
-here is recorded there and printed on every run, rather than filed away where nobody sees it.
-
-Precision on this head is about half -- "true", "false", "Mission" and "Rally" all collide with
-some tr() literal by accident. Those are listed with a reason. A hit that is REAL but not yet
-fixable is listed separately and still printed, because the reason it stays is a missing field
-somewhere else, not a decision that it is fine.
-
-Usage: python3 tools/macos/translated-join.py
-"""
 import pathlib
 import re
 import sys
@@ -54,6 +24,9 @@ COINCIDENCE = {
         "one of these page ids, which is the variable-to-variable shape this check cannot see at "
         "all. Reading the hit without reading which vocabulary each side came from is how it got "
         "filed wrong",
+    ("SettingsWindow.swift", "General"): "a settings page title from the core's own PAGES table "
+        "in settings.rs, the same English constants as 'Sensors' that never pass through tr(). "
+        "The Updates section is drawn on that page",
 }
 
 OUTSTANDING = {}
@@ -69,11 +42,6 @@ def translated():
 
 def compared():
     swift = sorted((ROOT / "macos/Sources").glob("*.swift"))
-    # With an empty Sources directory this printed "STALE <file> no longer compares against <text>;
-    # drop the entry" for EVERY accepted entry, beside a summary reading "0 hits, 0 unexplained".
-    # An instruction to delete correct data, and the reassuring half of the same run agreeing with
-    # it. Guard the input: an empty side means this could not read, not that the head stopped
-    # comparing.
     if not swift:
         print(f"  REFUSING to judge: no *.swift under {ROOT / 'macos/Sources'}. Every accepted "
               f"entry would otherwise be reported stale with an instruction to delete it.",

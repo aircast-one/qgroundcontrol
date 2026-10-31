@@ -1,12 +1,6 @@
-"""Which Swift model decodes which view, shared by the two checkers that need it.
-
-view-fields.py asks whether every key a model reads is one the core still emits.
-null-fallbacks.py asks what a model does with the keys the core emits as null. Both
-need the same map, and a map written twice is one a new model gets added to once.
-"""
-
 MODELS = {
     "AltitudeModeOffer": "view.altitudeModes",
+    "AppUpdate": "view.appUpdate",
     "Detections": "view.detections",
     "EditablePolygon": "view.polygon(plan.missionController.visualItems.4.surveyAreaPolygon)",
     "GuidedRange": ["view.guidedAltitude(30)", "view.guidedTakeoff(10)",
@@ -54,12 +48,6 @@ MODELS = {
     "MapScaleBar": "view.mapScale(120)",
     "ModeSlot": "view.modeSlots",
     "ModeSlots": "view.modeSlots",
-    # Both decode a SUB-dictionary of view.plan rather than its top level, which the checker
-    # tolerates because it compares key names against the whole of plan.rs rather than against a
-    # nesting. So this catches a key the core DROPS and would not catch one it MOVES between
-    # levels -- weaker than the check a top-level model gets, and worth more than the nothing
-    # view.plan had, which was nothing because MODELS is keyed by type and Mission.swift decodes
-    # the rest of this view in place.
     "PlanReadiness": "view.plan",
     "PlanUpload": "view.plan",
     "PreflightCheck": "view.preflight",

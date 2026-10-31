@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var links: LinksStore
     @ObservedObject var packetRadio: PacketRadioStore
     @ObservedObject var video: VideoStore
+    @ObservedObject var updates: AppUpdateStore
 
     var body: some View {
         HStack(spacing: 0) {
@@ -74,6 +75,9 @@ struct SettingsView: View {
                             }
                         }
                     }
+                }
+                if showsUpdates {
+                    AppUpdateSection(store: updates)
                 }
             }
         }
@@ -150,6 +154,10 @@ struct SettingsView: View {
             }
         }
         .onAppear(perform: video.loadSources)
+    }
+
+    private var showsUpdates: Bool {
+        store.search.trimmingCharacters(in: .whitespaces).isEmpty && store.selected == "General"
     }
 
     private var showsAbout: Bool {
@@ -304,6 +312,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private let links = LinksStore()
     private let packetRadio = PacketRadioStore()
     private let video = VideoStore.shared
+    private let updates = AppUpdateStore.shared
 
     override init() {
         super.init()
@@ -332,7 +341,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         window.title = "Settings"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: SettingsView(store: store, links: links, packetRadio: packetRadio, video: video))
+        window.contentView = NSHostingView(rootView: SettingsView(store: store, links: links, packetRadio: packetRadio, video: video, updates: updates))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

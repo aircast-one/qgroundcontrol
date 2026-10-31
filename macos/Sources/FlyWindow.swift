@@ -4,6 +4,8 @@ import QGCVideoC
 import SwiftUI
 
 struct FlyPanel: View {
+    static let width: CGFloat = 300
+
     @ObservedObject var fly: FlyStore
     @ObservedObject var video: VideoStore
     @ObservedObject var notices: HostNoticeStore
@@ -98,7 +100,7 @@ struct FlyPanel: View {
               }
               .padding(Overlay.gutter)
             }
-            .frame(width: 300)
+            .frame(width: FlyPanel.width)
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .sheet(isPresented: $fly.showingChecklist) { checklistSheet }
@@ -951,6 +953,7 @@ struct FlyView: View {
     @ObservedObject var video: VideoStore
     @ObservedObject var mapClick: MapClickStore
     @ObservedObject var notices: HostNoticeStore
+    @ObservedObject var updates: AppUpdateStore
 
     @State private var clickMenuSize = CGSize.zero
 
@@ -1097,8 +1100,12 @@ struct FlyView: View {
                 if let intercept = guided.intercept, intercept.visible {
                     interceptBanner(intercept)
                 }
+                if updates.update.bannerShown {
+                    AppUpdateBanner(store: updates)
+                }
             }
             .padding(.top, Overlay.unit)
+            .padding(.trailing, FlyPanel.width + Overlay.unit * 2)
             .transition(.opacity)
 
             FlyPanel(fly: fly, video: video, notices: notices)
@@ -1170,6 +1177,7 @@ struct FlyView: View {
             instruments.refresh()
             guided.startWatching()
             notices.startWatching()
+            updates.startWatching()
             video.useNativeRendering()
             video.startWatching()
             mapClick.start()
@@ -1204,6 +1212,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     private let video = VideoStore.shared
     private let mapClick = MapClickStore()
     private let notices = HostNoticeStore()
+    private let updates = AppUpdateStore.shared
     private var window: NSWindow?
 
     override init() {
@@ -1216,6 +1225,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(mapClick)
         NativeProbe.register(video)
         NativeProbe.register(notices)
+        NativeProbe.register(updates)
     }
 
     @objc func showFromMenu() {
@@ -1237,7 +1247,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, fenceRally: fenceRally, instruments: instruments, guided: guided, video: video, mapClick: mapClick, notices: notices))
+        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, fenceRally: fenceRally, instruments: instruments, guided: guided, video: video, mapClick: mapClick, notices: notices, updates: updates))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

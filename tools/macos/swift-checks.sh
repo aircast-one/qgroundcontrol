@@ -1,17 +1,8 @@
 #!/bin/zsh
-# Pure-logic checks for the Swift that needs no app, bridge or AppKit.
-#
-# Deliberately not a CMake target: a Swift executable target that shares sources with
-# QGCNativeUI makes swiftc collide on swiftmodule temp paths
-# (cannotResolveTempPath), and compiling three files directly is cheaper than
-# working around it.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="${TMPDIR:-/tmp}/qgc-swift-checks"
 
-# The compile list below is written by hand, so a new model file is not checked until someone
-# remembers to add it - and nothing says so, which is the same silence as a test that never runs.
-# Every *Model*.swift must appear in it; anything else is a deliberate inclusion.
 missing=()
 for model in "$root"/macos/Sources/*Model*.swift; do
     grep -q "/${model:t}\"" "$0" || missing+=("${model:t}")
@@ -22,33 +13,21 @@ if (( ${#missing[@]} )); then
     exit 1
 fi
 
-# systems.0 is whichever vehicle connected first. MAVLinkInspectorController::setMessageInterval
-# acts on _activeSystem, which setActiveSystem(int) can point anywhere, so with two vehicles a
-# head reading systems.0 shows one aircraft's messages while a rate change lands on another's.
-# The core guards its own DEPS the same way; this guards the head's paths.
 if grep -rn "mavlinkInspector\.systems\.0" "$root"/macos/Sources/*.swift; then
     print -u2 "the inspector must follow activeSystem, not systems.0 - see the lines above"
     exit 1
 fi
 
-# A probe action argument called "id" is unreachable: the request is /native/probe?id=<probe>,
-# so the server reads that one and the action gets the probe's name where it wanted a number.
-# It fails with a plausible error rather than obviously, which is how the notices dismiss action
-# shipped never once having run.
 if grep -rn 'args\["id"\]' "$root"/macos/Sources/*.swift; then
     print -u2 "a probe action argument named id collides with the probe selector - rename it"
     exit 1
 fi
 
-# textFieldFacts, comboboxFacts and the geoTag property names are interpolated into bridge
-# paths and the core never names any of them, so nothing else checks their spelling.
 "$root/tools/macos/interpolated-names.py" || exit 1
 
-# SetupPage.bespoke has to name exactly what the content switch draws.
 "$root/tools/macos/head-lists.py" || exit 1
 "$root/tools/macos/unpinned-rules.py" || exit 1
 
-# Combine exists only on Apple platforms, so a Linux toolchain gets the two names it provides.
 shims=()
 [[ "$(uname)" == Darwin ]] || shims=("$root/tools/macos/linux-shims.swift")
 
@@ -133,6 +112,7 @@ swiftc -Onone -o "$out" "${shims[@]}" \
     "$root/macos/Sources/VehicleComponentModel.swift" \
     "$root/macos/Sources/LogEntryModel.swift" \
     "$root/macos/Sources/HostNoticeModel.swift" \
+    "$root/macos/Sources/AppUpdateModel.swift" \
     "$root/macos/Sources/MavlinkConsoleModel.swift" \
     "$root/macos/Sources/ModeSlotsModel.swift" \
     "$root/macos/Sources/MissionSummaryModel.swift" \

@@ -119,6 +119,8 @@ add_library(QGCNativeUI STATIC
     Sources/GuidedValueModel.swift
     Sources/GuidedActions.swift
     Sources/HostNotices.swift
+    Sources/AppUpdateModel.swift
+    Sources/AppUpdates.swift
     Sources/MavlinkConsoleStore.swift
     Sources/ModeSlotsStore.swift
     Sources/Frame.swift
@@ -161,10 +163,6 @@ set_target_properties(QGCNativeUI PROPERTIES
     AUTORCC OFF
 )
 
-# CMake does not pass the deployment target or architecture to swiftc, so the Swift
-# objects claim the host OS and the linker warns that they outrun the app's 12.0
-# floor. One -target per architecture is all swiftc accepts, so a universal build
-# needs one Swift library per arch lipo'd together - not wired up yet.
 if(CMAKE_OSX_ARCHITECTURES)
     set(QGC_SWIFT_ARCH ${CMAKE_OSX_ARCHITECTURES})
 else()
@@ -183,9 +181,6 @@ target_compile_options(QGCNativeUI PRIVATE
     "$<$<COMPILE_LANGUAGE:Swift>:SHELL:-Xcc -I${QGC_BRIDGE_DIR}>"
 )
 
-# Targeting the app's deployment floor makes swiftc emit back-deployment shims
-# (libswiftCompatibility*). The Swift driver would find them; clang++ drives this
-# link, so point it at the toolchain's static Swift libraries.
 execute_process(
     COMMAND xcrun --find swiftc
     OUTPUT_VARIABLE QGC_SWIFTC_PATH

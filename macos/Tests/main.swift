@@ -3028,6 +3028,7 @@ func checkMissionItemKinds() {
     expect(MissionSeed([:]) == nil, "and a kind with no geometry seeds nothing at all")
 
     checkHostNotices()
+    checkAppUpdatePhasesDrawTheirControls()
     checkBlockedItems()
     checkBridgeWatchers()
     checkRemoveOutcome()
@@ -9990,4 +9991,83 @@ func checkAGamepadReadsAsTheAndroidHeadReportsIt() {
     expect(GamepadLayout.hatBits(x: 1, y: -1) == (GamepadLayout.hatRight | GamepadLayout.hatDown),
            "a diagonal sets both bits")
     expect(GamepadLayout.hatBits(x: 0.2, y: -0.3) == 0, "inside the threshold is centred")
+}
+
+func checkAppUpdatePhasesDrawTheirControls() {
+    func view(_ phase: String, _ extra: [String: Any] = [:]) -> AppUpdate {
+        let served: [String: Any] = [
+            "class": "AppUpdate", "current": "5.6.5-beta.20", "channel": "beta", "phase": phase,
+            "latest": "5.6.5-beta.21", "releaseUrl": "https://example.invalid/r",
+            "assetName": "AircastQGCNative-v5.6.5-beta.21.dmg", "sizeBytes": 215_769_056 as NSNumber,
+            "progress": 0.42 as NSNumber, "file": "", "error": "", "checkedAt": "2026-10-31T00:12:00Z",
+            "autoCheck": true as NSNumber, "snoozed": "", "canInstall": true as NSNumber,
+        ]
+        return AppUpdate(served.merging(extra) { $1 })
+    }
+
+    let idle = AppUpdate.none
+    expect(idle.phase == .idle && !idle.offered && !idle.bannerShown && idle.offerAction == nil,
+           "an updater that has not started offers nothing and draws no banner")
+    expect(idle.autoCheck, "automatic checks read as on until the core says otherwise")
+    expect(idle.checkedText, "Not checked yet", "a view with no checkedAt says it never checked")
+    expect(AppUpdate(["phase": "rewinding"]).phase == .idle, "an unknown phase reads as idle")
+
+    let checking = view("checking")
+    expect(checking.label(.check), "Checking…", "the check button says it is checking")
+    expect(!checking.enabled(.check) && !checking.bannerShown, "and cannot be pressed again")
+
+    let upToDate = view("upToDate")
+    expect(upToDate.caption.hasPrefix("Beta channel \u{00B7} Up to date \u{00B7} Last checked "),
+           "an up-to-date check names the channel, the verdict and when it ran")
+    expect(upToDate.enabled(.check) && upToDate.offerAction == nil && !upToDate.bannerShown,
+           "and offers only another check")
+
+    let available = view("available")
+    expect(available.bannerShown, "an available release shows the banner while no vehicle is in")
+    expect(available.title, "Aircast QGC 5.6.5-beta.21 is available", "the banner names the release")
+    expect(available.bannerActions == [.update, .snooze], "the banner offers Update and Later")
+    expect(available.bannerActions.map(available.label).joined(separator: ", "), "Update, Later",
+           "in the operator's words")
+    expect(available.offerAction == .download && available.label(.download) == "Download (206 MB)",
+           "Settings offers the download with its size")
+    expect(available.offerDetail.isEmpty, "and says the size once, on the button")
+    expect(!view("available", ["canInstall": false as NSNumber]).bannerShown,
+           "the banner hides while a vehicle is connected")
+    expect(!view("available", ["snoozed": "5.6.5-beta.21"]).bannerShown,
+           "and once the operator said Later to this release")
+
+    let downloading = view("downloading")
+    expect(downloading.title, "Downloading Aircast QGC 5.6.5-beta.21… 42%", "a download counts up")
+    expect(downloading.bannerActions == [.cancel] && downloading.offerAction == .cancel,
+           "and can be cancelled from either place")
+    expect(!downloading.enabled(.check), "no check runs over a download")
+
+    let ready = view("ready", ["file": "/tmp/Updates/AircastQGCNative-v5.6.5-beta.21.dmg",
+                               "progress": 1 as NSNumber])
+    expect(ready.offerAction == .openInstaller && ready.enabled(.openInstaller),
+           "a verified download opens the installer")
+    expect(ready.bannerActions.map(ready.label).joined(separator: ", "), "Open installer, Later",
+           "the banner offers to open it too")
+    expect(ready.offerDetail.isEmpty && ready.installRefusal == nil, "with nothing in the way")
+    let connected = view("ready", ["file": ready.file, "canInstall": false as NSNumber])
+    expect(!connected.enabled(.openInstaller) && !connected.bannerShown,
+           "but never while a vehicle is connected")
+    expect(connected.offerDetail, AppUpdate.disconnectFirst, "and says why")
+    expect(!view("ready").enabled(.openInstaller), "a ready view with no file opens nothing")
+
+    let failed = view("failed", ["error": "The download was interrupted (reset). Try again."])
+    expect(failed.retry == .download && !failed.bannerShown && failed.offerAction == nil,
+           "a failed download retries the download and draws no banner")
+    expect(view("failed", ["assetName": ""]).retry == .check, "a failed check retries the check")
+
+    expect(AppUpdate.Action.update.path == "appUpdate.download" && AppUpdate.Action.openInstaller.path == nil,
+           "Update downloads through the core and opening the installer is the head's own")
+    expect(AppUpdate.refusal(["ok": true as NSNumber]) == nil, "an accepted invoke is no refusal")
+    expect(AppUpdate.refusal(["ok": false as NSNumber, "reason": "There is no update to snooze."]) ?? "",
+           "There is no update to snooze.", "a refused invoke carries the core's sentence")
+    expect(AppUpdate.refusal([:]) ?? "", AppUpdate.unanswered, "and silence is still a refusal")
+
+    let notes = view("available", ["notes": "## Fixes\r\n\n- **bridge:** no `deadlock`\n- see [the log](https://x.invalid)\n"])
+    expect(notes.plainNotes, "Fixes\n• bridge: no deadlock\n• see the log",
+           "release notes lose their markdown and keep their bullets")
 }

@@ -1,3 +1,4 @@
+accept
 accepted
 accuracy
 action
@@ -9,6 +10,7 @@ addFence
 addRally
 adjustInvokable
 advanced
+again
 airframe
 alertUnknown
 alerting
@@ -25,6 +27,7 @@ altitudeRange
 altitudeText
 altitudeUnits
 ambiguous
+answered
 antennaRssi
 antennaScore
 antennaSnr
@@ -33,6 +36,8 @@ apmFirmware
 areaText
 armed
 armingBlocker
+assetName
+autoCheck
 autoConnect
 available
 awaitingTerrain
@@ -61,6 +66,7 @@ canCancel
 canChangeMode
 canDownload
 canErase
+canInstall
 canPhoto
 canProceed
 canRecord
@@ -73,6 +79,7 @@ canStart
 canStopPhoto
 canUndo
 cancelEnabled
+capable
 caption
 capturing
 carriesValue
@@ -83,8 +90,9 @@ centreText
 changedFromDefault
 channel
 channelCount
-channels
+checkedAt
 checking
+checklist
 choice
 choices
 class
@@ -140,6 +148,7 @@ destination
 destructive
 detail
 detailText
+details
 device
 dirty
 disabledReason
@@ -174,6 +183,7 @@ extraSeconds
 failed
 fault
 fenceSupported
+field
 file
 filename
 firmware
@@ -211,6 +221,7 @@ hasModes
 hasZoom
 haveSignal
 heading
+headingDegrees
 headline
 healthy
 heardVehicle
@@ -222,6 +233,7 @@ highestText
 highlight
 hint
 holderSystemId
+holding
 home
 horizontalAccuracy
 host
@@ -262,7 +274,10 @@ last
 lastError
 lastKnownLatitude
 lastKnownLongitude
+lat
+latest
 latitude
+left
 legs
 level
 link
@@ -284,6 +299,7 @@ loiterClockwise
 loiterRadiusMetres
 loiterRadiusText
 loiterToAltitude
+lon
 longDescription
 longitude
 lowest
@@ -321,6 +337,7 @@ movable
 msSinceUpdate
 multiRotor
 multipleSources
+n
 name
 nativePipeline
 nativeRecording
@@ -334,6 +351,7 @@ nextEnabled
 nextText
 notReady
 note
+notes
 offer
 offered
 offline
@@ -342,8 +360,10 @@ openable
 option
 orbiting
 order
+origin
 overlay
 ownPositionKnown
+owner
 packetLoss
 packetLossUnit
 packs
@@ -358,13 +378,17 @@ pathSuffix
 pattern
 pause
 pausesFirst
+payload
 pending
 percent
 percentText
 phase
 photo
 photoMode
+pickPath
+picking
 pipPipeline
+pipeline
 pitch
 placementHint
 plan
@@ -409,6 +433,7 @@ rect
 refusal
 refused
 relative
+releaseUrl
 removeInvokable
 repeat
 report
@@ -421,6 +446,7 @@ requestingList
 required
 resumeFromSequence
 retry
+returning
 reversed
 ring
 roi
@@ -448,6 +474,7 @@ sending
 sends
 sentence
 sequence
+session
 severity
 shape
 shapeNoun
@@ -464,9 +491,11 @@ showsVideoSources
 silentReason
 silentText
 simple
+sizeBytes
 skipEnabled
 slider
 slot
+snoozed
 snrUnit
 source
 sourceSize
@@ -517,12 +546,14 @@ time
 title
 to
 token
+tone
 tooFast
 total
 track
 tracking
 transition
 transmitterMode
+trying
 type
 typeLabel
 unit
@@ -545,6 +576,7 @@ velocity
 verdict
 version
 video
+view
 visible
 voltage
 voltageText
@@ -560,4 +592,5 @@ wouldSend
 x
 y
 z
+zoom
 zoomLevel
