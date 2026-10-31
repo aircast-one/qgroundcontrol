@@ -1,3 +1,5 @@
+import { mutableStateOf } from '@/kotlin/State';
+
 const SETTINGS_KEY = 'aircast.settings';
 const WEB_SERIAL_PREFIX = 'webserial-';
 
@@ -6,7 +8,7 @@ type SerialOp =
   | { op: 'open'; id: number; name: string; baud: number; dataBits: number; stopBits: number; parity: number }
   | { op: 'write'; id: number; bytes: Uint8Array }
   | { op: 'close'; id: number };
-type Message = { ready: true } | { event: { path: string; json: string } } | { serial: SerialOp } | { settings: string } | Reply;
+type Message = { ready: true } | { loading: number } | { event: { path: string; json: string } } | { serial: SerialOp } | { settings: string } | Reply;
 
 type EventListener = (path: string, json: string) => void;
 
@@ -17,6 +19,8 @@ const serialPorts = new Map<string, SerialPort>();
 const serialSessions = new Map<number, { port: SerialPort; writer: Promise<WritableStreamDefaultWriter<Uint8Array> | null>; reader: ReadableStreamDefaultReader<Uint8Array> | null }>();
 
 const connection: { worker: Worker | null; ready: Promise<Worker> | null } = { worker: null, ready: null };
+
+export const coreLoaded = mutableStateOf(0);
 
 const RELOADED_KEY = 'aircast.reloadedForBuild';
 const RELOAD_GAP_MS = 60_000;
@@ -43,6 +47,7 @@ const connect = (): Promise<Worker> => {
         worker.onerror = null;
         return resolve(worker);
       }
+      if ('loading' in data) return void (coreLoaded.value = data.loading);
       if ('event' in data) return eventListeners.forEach((listener) => listener(data.event.path, data.event.json));
       if ('serial' in data) return void serialOp(data.serial);
       if ('settings' in data) return store(data.settings);

@@ -30,6 +30,16 @@ test('the page says it is loading until the flight core arrives, then opens the 
   await expect(page.getByRole('progressbar', { name: 'Loading Aircast' })).toHaveCount(0);
 });
 
+test('the loading screen counts the core download', async ({ page }) => {
+  const network = await page.context().newCDPSession(page);
+  await network.send('Network.enable');
+  await network.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: 4_000_000, uploadThroughput: -1 });
+  await page.goto(APP);
+  await expect(page.getByText(/^Loading Aircast… \d+%$/)).toBeVisible({ timeout: 30_000 });
+  await network.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  await expect(page.getByRole('heading', { name: 'Welcome to Aircast' })).toBeVisible();
+});
+
 test('fly screen shows no vehicle until one connects', async ({ app }) => {
   await expect(app.getByRole('button', { name: /Not connected|No vehicle/ })).toBeVisible();
 });

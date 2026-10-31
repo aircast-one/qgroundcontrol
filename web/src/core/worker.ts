@@ -12,7 +12,28 @@ type Scope = {
 const scope = self as unknown as Scope;
 const owned = (bytes: Uint8Array) => [bytes.buffer as ArrayBuffer];
 
-await init();
+const CORE_BYTES = Number(import.meta.env.CORE_BYTES);
+
+const reportingProgress = (response: Response): Response => {
+  const read = { bytes: 0, percent: 0 };
+  const counter = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      read.bytes += chunk.byteLength;
+      const percent = Math.min(Math.floor((read.bytes / CORE_BYTES) * 100), 100);
+      if (percent !== read.percent) scope.postMessage({ loading: percent });
+      read.percent = percent;
+      controller.enqueue(chunk);
+    },
+  });
+  return new Response(response.body?.pipeThrough(counter), { headers: { 'Content-Type': 'application/wasm' } });
+};
+
+const coreModule = async (): Promise<Response> => {
+  const response = await fetch(new URL('./pkg/groundstation_bg.wasm', import.meta.url));
+  return response.ok && CORE_BYTES > 0 ? reportingProgress(response) : response;
+};
+
+await init({ module_or_path: coreModule() });
 core.onEvent((path: string, json: string) => scope.postMessage({ event: { path, json } }));
 core.setSerialHost({
   open: (id: number, name: string, baud: number, dataBits: number, stopBits: number, parity: number) => {
