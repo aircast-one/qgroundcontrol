@@ -65,6 +65,14 @@ test('on a desktop Fly stays full screen with no rail, and the map inset is a re
   await expect.poll(async () => (await vehicle.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(320);
 });
 
+test('the menu takes the app full screen and back, for a browser whose F11 does nothing', async ({ app }) => {
+  const fullScreen = () => app.evaluate(() => document.fullscreenElement !== null);
+  await openMenu(app, 'Full screen');
+  await expect.poll(fullScreen).toBe(true);
+  await openMenu(app, 'Exit full screen');
+  await expect.poll(fullScreen).toBe(false);
+});
+
 test('menu opens the settings sheet with its tabs', async ({ app }) => {
   await openMenu(app, 'Settings');
   const tabs = app.getByRole('tablist');

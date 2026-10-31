@@ -11,6 +11,7 @@ import { NavigationBar, NavigationBarItem, NavigationRail, NavigationRailItem, t
 import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { md } from '@/theme/Colors';
+import { browserFullScreenSupported, toggleBrowserFullScreen, useBrowserFullScreen } from '@/app/BrowserFullScreen';
 import { DEBUG_UI_ACTION, DebugUi, DebugUiReceiver } from '@/app/DebugUi';
 import { GamepadInput } from '@/app/GamepadInput';
 import { SpeechOut } from '@/app/SpeechOut';
@@ -484,6 +485,7 @@ export const AircastShell = () => {
   useBackHandler(fullScreen, () => setVideoFullScreen(false));
 
   const settingsOpen = useValue(navigation.settingsOpen);
+  const browserFullScreen = useBrowserFullScreen();
   const tabs = visibleTabs(useAdvancedUiShown());
   const [resumeDismissed, setResumeDismissed] = useState<number | null>(null);
   const onFly = tab === Tab.Fly;
@@ -503,7 +505,13 @@ export const AircastShell = () => {
 
   const flyStatus = (
     <>
-      <FlyTabMenu destinations={[...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })), { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings }]} />
+      <FlyTabMenu
+        destinations={[
+          ...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })),
+          { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings },
+          ...(browserFullScreenSupported() ? [{ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen' as const, current: false, onSelect: () => void toggleBrowserFullScreen().catch(() => undefined) }] : []),
+        ]}
+      />
       <div className="flex min-w-0 flex-1 items-center justify-start">
         <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false} className="min-w-0">
           <VehicleStateChip />
