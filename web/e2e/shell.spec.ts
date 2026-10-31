@@ -1,4 +1,4 @@
-import { expect, openApp, openMenu, test } from './fixtures';
+import { APP, expect, openApp, openMenu, test } from './fixtures';
 
 test('first run sets units once and stays dismissed', async ({ page }) => {
   await openApp(page, { firstRun: false });
@@ -14,6 +14,20 @@ test('first run sets units once and stays dismissed', async ({ page }) => {
   await page.reload();
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Welcome to Aircast' })).toBeHidden();
+});
+
+test('the page says it is loading until the flight core arrives, then opens the app', async ({ page }) => {
+  const core = Promise.withResolvers<void>();
+  await page.route('**/groundstation_bg*.wasm', async (route) => {
+    await core.promise;
+    await route.continue();
+  });
+  await page.goto(APP);
+  await expect(page.getByRole('progressbar', { name: 'Loading Aircast' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Menu' })).toHaveCount(0);
+  core.resolve();
+  await expect(page.getByRole('heading', { name: 'Welcome to Aircast' })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Loading Aircast' })).toHaveCount(0);
 });
 
 test('fly screen shows no vehicle until one connects', async ({ app }) => {

@@ -62,6 +62,8 @@ export const callTransferring = <T = unknown>(name: string, transfer: Transferab
 
 export const call = <T = unknown>(name: string, ...args: unknown[]): Promise<T> => callTransferring<T>(name, [], ...args);
 
+export const coreReady = (): Promise<unknown> => connect();
+
 export const onCoreEvent = (listener: EventListener): (() => void) => {
   eventListeners.add(listener);
   return () => eventListeners.delete(listener);
