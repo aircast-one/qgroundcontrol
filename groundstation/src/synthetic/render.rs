@@ -284,7 +284,7 @@ fn remap(value: f32, low: f32, high: f32) -> f32 {
 }
 
 fn dither(pixel: vec2<f32>) -> f32 {
-    return fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
+    return fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))) + scene.sun.w * 0.618034);
 }
 
 fn henyey_greenstein(cosine: f32, g: f32) -> f32 {
@@ -2420,8 +2420,12 @@ impl Renderer {
                 .write_buffer(&draws.buffer, 0, bytemuck::cast_slice(&matrices));
         }
         let placed = |slot: usize| u32::try_from(slot).map_or(0..0, |slot| slot..slot + 1);
-        let direction = |v: glam::DVec3| v.as_vec3().extend(0.0).to_array();
         let elapsed = self.started.elapsed().as_secs_f32() % 86400.0;
+        let dither_phase = if TAA {
+            (targets.frame.get() % JITTERS) as f32
+        } else {
+            0.0
+        };
         self.queue.write_buffer(
             &self.scene,
             0,
@@ -2433,7 +2437,7 @@ impl Renderer {
                     .into_iter()
                     .chain(view_projection.as_mat4().to_cols_array())
                     .chain(camera.zenith.as_vec3().extend(elapsed).to_array())
-                    .chain(direction(camera.sun))
+                    .chain(camera.sun.as_vec3().extend(dither_phase).to_array())
                     .chain(
                         cascades
                             .iter()
