@@ -8,6 +8,7 @@ pub mod ground;
 pub(crate) mod host;
 pub mod httpcache;
 pub mod mesh;
+pub mod noise;
 pub mod open;
 pub mod overlay;
 pub mod predict;
