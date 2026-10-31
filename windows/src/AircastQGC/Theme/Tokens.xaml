@@ -60,11 +60,12 @@
             <SolidColorBrush x:Key="Viewer3DRearArmBrush" Color="#ECEFF1" />
             <SolidColorBrush x:Key="Viewer3DRotorBrush" Color="#37474F" />
             <SolidColorBrush x:Key="Viewer3DHubBrush" Color="#90A4AE" />
-            <AcrylicBrush x:Key="ChipBrush" TintColor="#202020" TintOpacity="0.5" TintLuminosityOpacity="0.8" FallbackColor="#2C2C2C" />
+            <AcrylicBrush x:Key="ChipBrush" TintColor="#101010" TintOpacity="0.5" TintLuminosityOpacity="0.45" FallbackColor="#B31C1C1C" />
+            <AcrylicBrush x:Key="GlassBrush" TintColor="#0C0C0C" TintOpacity="0.6" TintLuminosityOpacity="0.55" FallbackColor="#D91A1A1A" />
             <SolidColorBrush x:Key="OsdTextBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="OsdLabelBrush" Color="#BFFFFFFF" />
             <SolidColorBrush x:Key="OsdBackdropBrush" Color="#59000000" />
-            <AcrylicBrush x:Key="ChipHoverBrush" TintColor="#2D2D2D" TintOpacity="0.5" TintLuminosityOpacity="0.85" FallbackColor="#323232" />
+            <AcrylicBrush x:Key="ChipHoverBrush" TintColor="#2A2A2A" TintOpacity="0.55" TintLuminosityOpacity="0.55" FallbackColor="#D92E2E2E" />
             <AcrylicBrush x:Key="StopBrush" TintColor="#C42B1C" TintOpacity="0.75" TintLuminosityOpacity="0.85" FallbackColor="#A72618" />
             <AcrylicBrush x:Key="StopHoverBrush" TintColor="#D13438" TintOpacity="0.85" TintLuminosityOpacity="0.9" FallbackColor="#C42B1C" />
             <SolidColorBrush x:Key="StopOnBrush" Color="#FFFFFF" />
@@ -130,6 +131,7 @@
             <SolidColorBrush x:Key="Viewer3DRotorBrush" Color="#37474F" />
             <SolidColorBrush x:Key="Viewer3DHubBrush" Color="#90A4AE" />
             <AcrylicBrush x:Key="ChipBrush" TintColor="#FCFCFC" TintOpacity="0.5" TintLuminosityOpacity="0.85" FallbackColor="#F9F9F9" />
+            <AcrylicBrush x:Key="GlassBrush" TintColor="#FFFFFF" TintOpacity="0.6" TintLuminosityOpacity="0.75" FallbackColor="#E6F9F9F9" />
             <SolidColorBrush x:Key="OsdTextBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="OsdLabelBrush" Color="#BFFFFFFF" />
             <SolidColorBrush x:Key="OsdBackdropBrush" Color="#59000000" />

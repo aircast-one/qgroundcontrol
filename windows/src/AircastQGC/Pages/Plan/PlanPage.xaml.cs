@@ -305,7 +305,7 @@ public sealed partial class PlanPage : UserControl
 
     private Geo? MapCentre() =>
         double.IsFinite(Map.Latitude) && double.IsFinite(Map.Longitude) && (Map.Latitude != 0 || Map.Longitude != 0)
-            ? new Geo(Map.Latitude, Map.Longitude)
+            ? Map.ActualWidth > SidePanel.ActualWidth ? Map.GeoOf(new Point((SidePanel.ActualWidth + Map.ActualWidth) / 2, (TitleRoom.ActualHeight + Map.ActualHeight) / 2)) : new Geo(Map.Latitude, Map.Longitude)
             : null;
 
     private Geo? PlaceAt() => MapCentre() ?? PlanCalls.VehiclePosition();
@@ -314,10 +314,10 @@ public sealed partial class PlanPage : UserControl
     {
         var width = Map.ActualWidth;
         var height = Map.ActualHeight;
-        if (width <= ClearInset * 2 || height <= ClearInset * 2) return [];
-        var left = ClearInset;
+        var left = SidePanel.ActualWidth + ClearInset;
         var right = width - ClearInset;
-        var top = ClearInset;
+        var top = TitleRoom.ActualHeight + ClearInset;
+        if (right <= left || height - 8 <= top) return [];
         var bottom = height - 8;
         return new[] { new Point(left, top), new Point(right, top), new Point(right, bottom), new Point(left, bottom) }
             .Select(Map.GeoOf)
@@ -445,8 +445,8 @@ public sealed partial class PlanPage : UserControl
         var world = listed.Select(World).ToList();
         var (minX, maxX) = (world.Min(p => p.X), world.Max(p => p.X));
         var (minY, maxY) = (world.Min(p => p.Y), world.Max(p => p.Y));
-        var width = Math.Max(Map.ActualWidth - FitPadding * 2, 64);
-        var height = Math.Max(Map.ActualHeight - FitPadding * 2, 64);
+        var width = Math.Max(Map.ActualWidth - SidePanel.ActualWidth - FitPadding * 2, 64);
+        var height = Math.Max(Map.ActualHeight - TitleRoom.ActualHeight - FitPadding * 2, 64);
         var zoom = Math.Log2(Math.Min(width / Math.Max(maxX - minX, 1e-9), height / Math.Max(maxY - minY, 1e-9)));
         var centre = Unworld((minX + maxX) / 2, (minY + maxY) / 2);
         Recentre(centre, Math.Clamp(zoom, 2, FieldZoom + 2));
@@ -455,7 +455,10 @@ public sealed partial class PlanPage : UserControl
     private void Recentre(Geo at, double? zoom = null)
     {
         Follow(false);
-        Map.CenterOn(at.Latitude, at.Longitude, zoom);
+        var scale = Math.Pow(2, zoom ?? Map.Zoom);
+        var world = World(at);
+        var centre = Unworld(world.X - SidePanel.ActualWidth / 2 / scale, world.Y - TitleRoom.ActualHeight / 2 / scale);
+        Map.CenterOn(centre.Latitude, centre.Longitude, zoom);
     }
 
     private void Follow(bool on)

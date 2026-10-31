@@ -24,7 +24,7 @@
         </Style>
 
         <Style x:Key="FloatingCard" TargetType="Border">
-            <Setter Property="Background" Value="{ThemeResource CardBrush}" />
+            <Setter Property="Background" Value="{ThemeResource GlassBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="{StaticResource RadiusOverlay}" />
@@ -64,12 +64,26 @@
     </UserControl.Resources>
 
     <Grid Background="{ThemeResource BgBaseBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="380" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Border Background="{ThemeResource LayerBrush}" BorderBrush="{ThemeResource DividerBrush}" BorderThickness="0,0,1,0">
+        <Border x:Name="TitleRoom" Grid.ColumnSpan="2" Height="{StaticResource SizeTitlebar}" />
+
+        <controls:MapView x:Name="Map" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+
+        <Canvas x:Name="Overlay" Grid.RowSpan="2" Grid.ColumnSpan="2" />
+
+        <Border Grid.RowSpan="2" Grid.ColumnSpan="2" Height="{StaticResource SizeFlyScrim}" VerticalAlignment="Top"
+                IsHitTestVisible="False" Background="{ThemeResource FlyScrimBrush}" />
+
+        <Border x:Name="SidePanel" Grid.Row="1" Background="{ThemeResource GlassBrush}"
+                BorderBrush="{ThemeResource CardStrokeBrush}" BorderThickness="0,1,1,0">
             <ScrollViewer x:Name="PanelScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
                 <StackPanel Padding="16" Spacing="{StaticResource SpaceMd}">
                     <Grid x:Name="StripRow" ColumnSpacing="{StaticResource SpaceSm}" Visibility="Collapsed">
@@ -123,11 +137,7 @@
             </ScrollViewer>
         </Border>
 
-        <Grid x:Name="MapArea" Grid.Column="1">
-            <controls:MapView x:Name="Map" />
-
-            <Canvas x:Name="Overlay" />
-
+        <Grid x:Name="MapArea" Grid.Row="1" Grid.Column="1">
             <Grid VerticalAlignment="Top" Margin="8" ColumnSpacing="{StaticResource SpaceSm}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -160,7 +170,7 @@
                 <Button x:Name="MenuButton" Grid.Column="2"
                         Width="40" Height="40" CornerRadius="20" Padding="0"
                         FontFamily="{StaticResource IconFontFamily}" Content="&#xE712;"
-                        Background="{ThemeResource CardBrush}" BorderBrush="{ThemeResource CardStrokeBrush}"
+                        Background="{ThemeResource GlassBrush}" BorderBrush="{ThemeResource CardStrokeBrush}"
                         ToolTipService.ToolTip="Plan menu" AutomationProperties.Name="Plan menu">
                     <Button.Flyout>
                         <MenuFlyout x:Name="PlanMenu" Placement="BottomEdgeAlignedRight" Opening="OnMenuOpening"

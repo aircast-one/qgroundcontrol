@@ -292,8 +292,11 @@ public sealed partial class MainWindow : Window
         Shell.CurrentPage = page;
         Shell.CanGoBack = !_history.IsEmpty;
         Shell.OnFly = fly;
-        Theme.Appearance.OverVideo(fly);
         var hosted = fly ? null : HostedPage(page);
+        var underTitle = hosted is Pages.Plan.PlanPage;
+        Theme.Appearance.OverVideo(fly || underTitle);
+        Grid.SetRow(PageHost, underTitle ? 0 : 1);
+        Grid.SetRowSpan(PageHost, underTitle ? 2 : 1);
         FlyContent.Visibility = Shown(fly);
         FlyChrome.Visibility = Shown(fly);
         PageHost.Content = hosted;
