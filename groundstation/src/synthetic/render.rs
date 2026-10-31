@@ -729,6 +729,7 @@ const AO_RADIUS = 6.0;
 const AO_BIAS = 0.05;
 const AO_STRENGTH = 1.5;
 const AO_SAMPLES = 12;
+const AO_FADE_M = vec2<f32>(1000.0, 2000.0);
 const KERNEL = array<vec3<f32>, 12>(
     vec3<f32>(-0.088, 0.007, 0.047), vec3<f32>(-0.022, 0.102, 0.020), vec3<f32>(-0.061, -0.103, 0.036), vec3<f32>(0.060, -0.055, 0.133),
     vec3<f32>(-0.038, -0.098, 0.170), vec3<f32>(-0.164, 0.048, 0.191), vec3<f32>(-0.314, -0.010, 0.083), vec3<f32>(-0.178, 0.187, 0.314),
@@ -802,7 +803,7 @@ fn surface_at(uv: vec2<f32>) -> vec4<f32> {
 @fragment fn fs_ssao(f: Out) -> @location(0) vec4<f32> {
     let surface = surface_at(f.uv);
     let depth = surface.w;
-    if (depth <= 0.0 || dot(surface.xyz, surface.xyz) < 0.25) { return vec4<f32>(0.0); }
+    if (depth <= 0.0 || depth >= AO_FADE_M.y || dot(surface.xyz, surface.xyz) < 0.25) { return vec4<f32>(0.0); }
     let normal = normalize(surface.xyz);
     let position = ray(f.uv) * depth;
     let angle = noise(f.position.xy) * 6.2831853;
@@ -822,7 +823,7 @@ fn surface_at(uv: vec2<f32>) -> vec4<f32> {
         let range = smoothstep(0.0, 1.0, AO_RADIUS / abs(depth - seen));
         occlusion += select(0.0, range, seen < length(sample) - AO_BIAS);
     }
-    return vec4<f32>(occlusion / f32(AO_SAMPLES));
+    return vec4<f32>(occlusion / f32(AO_SAMPLES) * (1.0 - smoothstep(AO_FADE_M.x, AO_FADE_M.y, depth)));
 }
 
 @fragment fn fs_rays(f: Out) -> @location(0) vec4<f32> {
