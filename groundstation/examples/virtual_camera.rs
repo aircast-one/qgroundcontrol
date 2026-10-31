@@ -50,6 +50,7 @@ fn main() {
     let mut session = Session::new(&arg("--token").unwrap_or_default(), Arc::new(Network))
         .expect("fetch workers");
     let mut renderer = Renderer::new().expect("a GPU adapter");
+    let targets = renderer.targets(width, height);
     let out = std::io::stdout();
     std::io::stdin()
         .lock()
@@ -67,7 +68,7 @@ fn main() {
             let picture = drawn(&mut session, &target, width, height, settle).and_then(|frame| {
                 let (camera, meshes) = frame.view(overlays.as_ref(), width, height);
                 renderer
-                    .picture(&camera, &frame.backfill, &meshes, width, height)
+                    .picture(&camera, &frame.backfill, &meshes, &targets, width, height)
                     .ok()
             });
             let rgb: Vec<u8> = picture.map_or_else(
