@@ -7,9 +7,9 @@ use range_alloc::RangeAllocator;
 use web_time::Instant;
 
 use super::geo::Camera;
-use super::mesh::{Layer, Mesh, solid};
+use super::mesh::{Layer, Mesh, mip_chain, solid};
 use super::noise;
-use super::open::Woods;
+use super::open::{Detail, Woods};
 
 const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -53,6 +53,8 @@ const CASTER_REACH_M: f64 = 10000.0;
 const ANCHOR_PERIOD_M: f64 = 65536.0;
 const NO_CLOUD_MAP: u32 = u32::BITS - 1;
 const SKY_LIGHT_WIDTH: u32 = 64;
+const FACADE_COLOUR: &[u8] = include_bytes!("facades/colour.jpg");
+const FACADE_MASK: &[u8] = include_bytes!("facades/mask.png");
 
 #[derive(Clone, Copy)]
 struct Quality {
@@ -62,10 +64,11 @@ struct Quality {
     shadow_size: u32,
     bloom: bool,
     god_rays: bool,
-    woods: Woods,
+    detail: Detail,
     render_scale: f64,
     foliage_cascades: usize,
     ssao: bool,
+    facade_shrink: u32,
 }
 
 const HIGH: Quality = Quality {
@@ -75,10 +78,11 @@ const HIGH: Quality = Quality {
     shadow_size: 2048,
     bloom: true,
     god_rays: true,
-    woods: Woods::FULL,
+    detail: Detail::FULL,
     render_scale: 1.0,
     foliage_cascades: CASCADES,
     ssao: true,
+    facade_shrink: 1,
 };
 
 const LOW: Quality = Quality {
@@ -88,14 +92,19 @@ const LOW: Quality = Quality {
     shadow_size: 1024,
     bloom: false,
     god_rays: false,
-    woods: Woods {
-        reach_m: 600.0,
-        split_m: [350.0, 150.0],
-        far_keep: 0.3,
+    detail: Detail {
+        woods: Woods {
+            reach_m: 600.0,
+            split_m: [350.0, 150.0],
+            far_keep: 0.3,
+        },
+        building_reach_m: 1_000.0,
+        roof_sharper: 0,
     },
     render_scale: 0.75,
     foliage_cascades: 1,
     ssao: false,
+    facade_shrink: 2,
 };
 
 fn quality(info: &wgpu::AdapterInfo) -> Quality {
@@ -133,6 +142,8 @@ struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, 
 @group(3) @binding(1) var cloud_detail: texture_3d<f32>;
 @group(3) @binding(2) var noise_sampler: sampler;
 @group(3) @binding(3) var sky_light: texture_2d<f32>;
+@group(3) @binding(4) var facades: texture_2d_array<f32>;
+@group(3) @binding(5) var facade_sampler: sampler;
 struct In { @location(0) position: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) normal: vec3<f32> };
 struct Placed {
     @location(3) mvp0: vec4<f32>, @location(4) mvp1: vec4<f32>, @location(5) mvp2: vec4<f32>, @location(6) mvp3: vec4<f32>,
@@ -601,27 +612,41 @@ fn sky_toward(direction: vec3<f32>) -> vec3<f32> {
 }
 
 const WALL_TAG = 2.0;
+const SHADE_LEVELS = 31.0;
 const NIGHT_FROM = 0.21;
 const NIGHT_AT = 0.141;
 const WINDOW_LIGHT = vec3<f32>(5.0, 3.3, 1.6);
 const LIT_WINDOWS = 0.45;
-const GLASS = vec3<f32>(0.05, 0.055, 0.06);
-const GLASS_SHEEN = 0.14;
+const GLASS_SHEEN = 0.22;
+const GLASS_DARK = 0.7;
+const SURROUND = 0.06;
+const CORNICE = 0.05;
+const MATERIAL_SIZE_M = array<f32, 5>(2.5, 2.0, 2.4, 2.4, 2.2);
+const MATERIAL_MEAN = array<vec3<f32>, 7>(
+    vec3<f32>(0.515, 0.521, 0.492), vec3<f32>(0.687, 0.662, 0.639), vec3<f32>(0.311, 0.199, 0.144),
+    vec3<f32>(0.241, 0.241, 0.238), vec3<f32>(0.482, 0.482, 0.482), vec3<f32>(0.495, 0.397, 0.254),
+    vec3<f32>(0.067, 0.081, 0.094));
+const TINTED = array<f32, 7>(1.0, 1.0, 0.2, 0.75, 0.6, 0.35, 0.0);
+const OFFICE = 5;
+const GLASS_WALL = 6;
+const WINDOW_SHEET = 7;
+const SHEET_CELLS = 4.0;
+const CURTAIN_CELLS = vec2<f32>(16.0, 10.0);
+const SHOP_CELLS = 2.0;
+const ROOF_LIFT = 1.3;
 
-struct BuildingOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) seen: vec3<f32>, @location(2) normal: vec3<f32>, @location(3) @interpolate(flat) wall: f32, @location(4) @interpolate(flat) style: vec4<f32>, @location(5) @interpolate(flat) colour: vec3<f32> };
+struct BuildingOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) seen: vec3<f32>, @location(2) normal: vec3<f32>, @location(3) @interpolate(flat) look: vec4<f32>, @location(4) @interpolate(flat) colour: vec3<f32> };
 
 @vertex fn vs_building(v: In, placed: Placed) -> BuildingOut {
     let mvp = mat4x4<f32>(placed.mvp0, placed.mvp1, placed.mvp2, placed.mvp3);
     let model = mat4x4<f32>(placed.model0, placed.model1, placed.model2, placed.model3);
     let tagged = v.normal.z > WALL_TAG - 0.5;
     let normal = select(v.normal, vec3<f32>(v.normal.xy, 0.0), tagged);
-    let wall = select(-1.0, v.normal.z - WALL_TAG, tagged);
-    let index = floor(wall);
-    let style = vec4<f32>(hash(vec2<f32>(index, 1.0)), hash(vec2<f32>(index, 2.0)), hash(vec2<f32>(index, 3.0)), hash(vec2<f32>(index, 4.0)));
-    let width = textureDimensions(picture).x;
-    let slot = u32(max(index, 0.0));
-    let colour = select(textureSampleLevel(picture, tile_sampler, v.uv, 0.0), textureLoad(picture, vec2<u32>(slot % width, slot / width), 0), tagged).rgb;
-    return BuildingOut(mvp * vec4<f32>(v.position, 1.0), v.uv, (model * vec4<f32>(v.position, 1.0)).xyz, (model * vec4<f32>(normal, 0.0)).xyz, wall, style, colour);
+    let packed = u32(max(v.normal.z - WALL_TAG, 0.0) + 0.5);
+    let shade = vec3<u32>(packed, packed >> 5u, packed >> 10u) & vec3<u32>(31u);
+    let colour = pow(vec3<f32>(shade) / SHADE_LEVELS, vec3<f32>(2.2));
+    let look = vec4<f32>(f32((packed >> 15u) & 7u), f32((packed >> 18u) & 1u), f32((packed >> 19u) & 15u), select(0.0, 1.0, tagged));
+    return BuildingOut(mvp * vec4<f32>(v.position, 1.0), v.uv, (model * vec4<f32>(v.position, 1.0)).xyz, (model * vec4<f32>(normal, 0.0)).xyz, look, colour);
 }
 
 fn band(x: f32, low: f32, high: f32, blur: f32) -> f32 {
@@ -635,58 +660,102 @@ fn reflected_light(direction: vec3<f32>) -> vec3<f32> {
     return mix(ground, sky_air(normalize(direction + scene.zenith.xyz * max(0.02 - up, 0.0)), 2).light, smoothstep(-0.05, 0.05, up));
 }
 
-struct Window { glass: f32, framed: f32, ledge: f32, fade: f32, bay: vec2<f32>, index: i32 };
+fn wall_metres(f: BuildingOut) -> vec2<f32> {
+    let up = scene.zenith.xyz;
+    let outward = normalize(f.normal - up * dot(f.normal, up) + vec3<f32>(1e-6));
+    let at = f.seen + scene.anchor.xyz;
+    return vec2<f32>(dot(at, cross(up, outward)), -dot(at, up));
+}
 
-fn window(f: BuildingOut, blur: vec2<f32>) -> Window {
-    let index = i32(floor(f.wall));
-    let style = f.style;
-    let bay = vec2<f32>(floor(f.uv.x), floor(f.uv.y));
+struct Facade { albedo: vec3<f32>, glass: f32, cell: vec2<f32> };
+struct Slopes { metres_dx: vec2<f32>, metres_dy: vec2<f32>, uv_dx: vec2<f32>, uv_dy: vec2<f32>, blur: vec2<f32> };
+
+fn facade(f: BuildingOut, metres: vec2<f32>, slopes: Slopes) -> Facade {
+    let material = i32(f.look.x);
+    let seed = f.look.z + dot(f.colour, vec3<f32>(97.0, 57.0, 31.0));
+    var sizes = MATERIAL_SIZE_M;
+    var means = MATERIAL_MEAN;
+    var tinted = TINTED;
+    let windowed = f.uv.x > -0.5 && f.uv.y >= 0.0;
+    let on_grid = select(0.0, 1.0, windowed);
+    let cell = floor(f.uv);
     let at = fract(f.uv);
-    let ground_floor = fract(f.wall) > 0.25 && bay.y < 0.5;
-    let pane = select(mix(0.34, 0.5, style.x), 0.84, ground_floor);
-    let sill = select(mix(0.36, 0.42, style.y), 0.1, ground_floor);
-    let head = select(mix(0.78, 0.86, style.z), 0.86, ground_floor);
-    let windowed = select(1.0, 0.0, f.uv.x < -0.5 || f.uv.y < 0.0);
-    if (LOW_TIER && max(blur.x, blur.y) > 0.6) { return Window(pane * (head - sill) * windowed, 0.0, 0.0, 1.0, bay, index); }
-    let fade = smoothstep(0.25, 0.6, max(blur.x, blur.y));
-    let sharp = band(at.x, 0.5 - pane * 0.5, 0.5 + pane * 0.5, blur.x) * band(at.y, sill, head, blur.y);
-    let glass = mix(sharp, pane * (head - sill), fade) * windowed;
-    if (LOW_TIER) { return Window(glass, 0.0, 0.0, fade, bay, index); }
-    let rim = 0.045;
-    let framed = band(at.x, 0.5 - pane * 0.5 - rim, 0.5 + pane * 0.5 + rim, blur.x) * band(at.y, sill - rim, head + rim, blur.y) * windowed * (1.0 - fade);
-    let ledge = band(at.y, -0.03, 0.035, blur.y) * step(0.5, style.w) * (1.0 - fade) * select(1.0, 0.0, f.uv.y < 0.0);
-    return Window(glass, framed, ledge, fade, bay, index);
+    let blur = slopes.blur;
+    let style = vec4<f32>(hash(vec2<f32>(seed, 1.0)), hash(vec2<f32>(seed, 2.0)), hash(vec2<f32>(seed, 3.0)), hash(vec2<f32>(seed, 4.0)));
+    let tint = mix(vec3<f32>(1.0), f.colour / means[material], tinted[material]);
+    if (material >= OFFICE) {
+        let across = select(1.0 / vec2<f32>(1.6, 3.4), vec2<f32>(SHOP_CELLS, -1.0), windowed) / CURTAIN_CELLS;
+        let start = select(metres, f.uv, windowed);
+        let curtain = textureSampleGrad(facades, facade_sampler, start * across, material, select(slopes.metres_dx, slopes.uv_dx, windowed) * across, select(slopes.metres_dy, slopes.uv_dy, windowed) * across);
+        return Facade(curtain.rgb * tint, smoothstep(0.7, 0.95, curtain.a), cell);
+    }
+    let size = sizes[min(material, 4)];
+    let plain = textureSampleGrad(facades, facade_sampler, metres / size, material, slopes.metres_dx / size, slopes.metres_dy / size);
+    let pane = mix(0.4, 0.54, style.x);
+    let sill = mix(0.24, 0.32, style.y);
+    let head = mix(0.78, 0.86, style.z);
+    let inside = band(at.x, 0.5 - pane * 0.5, 0.5 + pane * 0.5, blur.x) * band(at.y, sill, head, blur.y) * on_grid;
+    let surround = band(at.x, 0.5 - pane * 0.5 - SURROUND, 0.5 + pane * 0.5 + SURROUND, blur.x) * band(at.y, sill - SURROUND * 1.5, head + SURROUND, blur.y) * on_grid * step(0.45, fract(style.w * 7.0));
+    let cornice = (1.0 - smoothstep(CORNICE, CORNICE + blur.y, at.y)) * on_grid * step(0.55, fract(style.x * 5.0));
+    let plinth = select(1.0, 0.78, windowed && cell.y < 0.5 && fract(style.z * 3.0) > 0.4);
+    let wall = plain.rgb * tint * (1.0 + 0.3 * surround) * (1.0 - 0.3 * cornice) * plinth;
+    var albedo = wall;
+    var glass = 0.0;
+    if (f.look.y > 0.5 && windowed && cell.y < 0.5) {
+        let across = vec2<f32>(SHOP_CELLS, -1.0) / CURTAIN_CELLS;
+        let shop = textureSampleGrad(facades, facade_sampler, vec2<f32>(f.uv.x * SHOP_CELLS, 1.0 - at.y) / CURTAIN_CELLS, GLASS_WALL, slopes.uv_dx * across, slopes.uv_dy * across);
+        let display = band(at.y, 0.06, 0.82, blur.y);
+        albedo = mix(wall, shop.rgb, display);
+        glass = display * smoothstep(0.7, 0.95, shop.a);
+    } else if (inside > 0.0 && (!LOW_TIER || max(blur.x, blur.y) < 0.35)) {
+        let decal = vec2<f32>((at.x - 0.5) / pane + 0.5, (head - at.y) / (head - sill));
+        let stretch = vec2<f32>(1.0 / pane, -1.0 / (head - sill)) / SHEET_CELLS;
+        let pick = floor(hash(cell + vec2<f32>(seed * 7.31, seed * 3.17)) * SHEET_CELLS * SHEET_CELLS);
+        let sheet_at = (vec2<f32>(pick % SHEET_CELLS, floor(pick / SHEET_CELLS)) + clamp(decal, vec2<f32>(0.02), vec2<f32>(0.98))) / SHEET_CELLS;
+        let window = textureSampleGrad(facades, facade_sampler, sheet_at, WINDOW_SHEET + select(0, 1, style.w > 0.5), slopes.uv_dx * stretch, slopes.uv_dy * stretch);
+        let frame_tint = select(vec3<f32>(0.92, 0.9, 0.86), vec3<f32>(0.28, 0.26, 0.24), style.y > 0.7);
+        let glass_of = smoothstep(0.7, 0.95, window.a);
+        let interior = GLASS_DARK * (0.6 + 0.8 * hash(cell * 1.7 + seed));
+        albedo = mix(wall, mix(window.rgb * frame_tint * 1.6, window.rgb * interior, glass_of), inside);
+        glass = inside * glass_of;
+    }
+    if (!LOW_TIER) {
+        let grime = 0.86 + 0.14 * value3(vec3<f32>(metres * 0.21, seed));
+        let below = band(at.x, 0.5 - pane * 0.5, 0.5 + pane * 0.5, blur.x) * (1.0 - smoothstep(sill - 0.25, sill, at.y)) * on_grid;
+        let streak = 1.0 - 0.22 * below * value3(vec3<f32>(metres.x * 4.0, metres.y * 0.4, seed + 9.0));
+        let footing = mix(0.72, 1.0, smoothstep(0.0, 0.4, f.uv.y + 1.0 - on_grid));
+        albedo *= mix(1.0, grime * streak * footing, 1.0 - glass);
+    }
+    return Facade(albedo, glass, cell);
 }
 
-fn facade_albedo(f: BuildingOut, blur: vec2<f32>) -> vec3<f32> {
-    let pane = window(f, blur);
-    let wall = f.colour;
-    let frame_colour = select(wall * 0.55, vec3<f32>(0.82, 0.8, 0.76), f.style.w < 0.4);
-    let glass = select(GLASS, GLASS + AMBIENT_SKY * GLASS_SHEEN * 0.6, LOW_TIER);
-    return mix(mix(wall, frame_colour, max(pane.framed - pane.glass, 0.0)) * (1.0 - 0.3 * pane.ledge), glass, pane.glass);
-}
-
-fn facade_glow(f: BuildingOut, blur: vec2<f32>) -> vec3<f32> {
-    let pane = window(f, blur);
+fn facade_glow(f: BuildingOut, glass: f32, cell: vec2<f32>) -> vec3<f32> {
     let normal = facing(f.normal, f.seen);
     let view = normalize(f.seen);
     let fresnel = GLASS_SHEEN + (1.0 - GLASS_SHEEN) * pow(1.0 - max(dot(-view, normal), 0.0), 5.0);
     let night = smoothstep(NIGHT_FROM, NIGHT_AT, dot(scene.sun.xyz, scene.zenith.xyz));
-    let seed = f32(pane.index);
-    let lit = step(hash(pane.bay + vec2<f32>(seed * 7.31, seed * 3.17)), LIT_WINDOWS) * (0.6 + 0.8 * hash(pane.bay.yx + seed));
-    let inside = WINDOW_LIGHT * night * mix(lit, LIT_WINDOWS, pane.fade);
-    return pane.glass * (reflected_light(reflect(view, normal)) * fresnel + inside) * (1.0 - fog_amount(f.seen));
+    let seed = f.look.z + dot(f.colour, vec3<f32>(97.0, 57.0, 31.0));
+    let lit = step(hash(cell + vec2<f32>(seed * 7.31, seed * 3.17) + 0.5), LIT_WINDOWS) * (0.6 + 0.8 * hash(cell.yx + seed));
+    return glass * (reflected_light(reflect(view, normal)) * fresnel + WINDOW_LIGHT * night * lit) * (1.0 - fog_amount(f.seen));
 }
 
 @fragment fn fs_building(f: BuildingOut) -> Frag {
-    let blur = max(fwidth(f.uv), vec2<f32>(0.002));
-    let wall = f.wall >= 0.0;
-    var albedo = f.colour;
-    if (wall) { albedo = facade_albedo(f, blur); }
+    let metres = wall_metres(f);
+    let slopes = Slopes(dpdx(metres), dpdy(metres), dpdx(f.uv), dpdy(f.uv), max(fwidth(f.uv), vec2<f32>(0.002)));
+    var albedo: vec3<f32>;
+    var glass = 0.0;
+    var cell = vec2<f32>(0.0);
+    if (f.look.w > 0.5) {
+        let wall = facade(f, metres, slopes);
+        albedo = wall.albedo;
+        glass = wall.glass;
+        cell = wall.cell;
+    } else {
+        albedo = textureSampleGrad(picture, tile_sampler, f.uv, slopes.uv_dx, slopes.uv_dy).rgb * ROOF_LIFT;
+    }
     let shaded = lit_surface(vec4<f32>(albedo, 1.0), Out(f.position, f.uv, f.seen, f.normal));
     var glow = vec3<f32>(0.0);
-    let dark = smoothstep(NIGHT_FROM, NIGHT_AT, dot(scene.sun.xyz, scene.zenith.xyz)) > 0.0;
-    if (wall && (!LOW_TIER || dark)) { glow = facade_glow(f, blur); }
+    if (glass > 0.0) { glow = facade_glow(f, glass, cell); }
     return Frag(vec4<f32>(shaded.colour.rgb + glow, 1.0), shaded.surface);
 }
 ";
@@ -1619,6 +1688,84 @@ fn noise_texture(
     })
 }
 
+fn facade_layers(shrink: u32) -> Vec<Vec<image::RgbaImage>> {
+    let decode = |bytes: &[u8]| image::load_from_memory(bytes).map(|found| found.to_rgba8());
+    let (Ok(colour), Ok(mask)) = (decode(FACADE_COLOUR), decode(FACADE_MASK)) else {
+        return vec![vec![solid(MISSING_TEXTURE)]];
+    };
+    let side = colour.width();
+    (0..colour.height() / side)
+        .map(|layer| {
+            let top = layer * side;
+            let combined = image::RgbaImage::from_fn(side, side, |x, y| {
+                let [r, g, b, _] = colour.get_pixel(x, top + y).0;
+                image::Rgba([r, g, b, mask.get_pixel(x, top + y).0[0]])
+            });
+            mip_chain(image::imageops::resize(
+                &combined,
+                side / shrink,
+                side / shrink,
+                image::imageops::FilterType::Triangle,
+            ))
+        })
+        .collect()
+}
+
+fn facade_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    quality: Quality,
+) -> wgpu::TextureView {
+    let layers = facade_layers(quality.facade_shrink);
+    let (width, height) = layers[0][0].dimensions();
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("synthetic facades"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: layers.len() as u32,
+        },
+        mip_level_count: layers[0].len() as u32,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: COLOR,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    layers.iter().enumerate().for_each(|(layer, levels)| {
+        levels.iter().enumerate().for_each(|(level, image)| {
+            let (w, h) = image.dimensions();
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: level as u32,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer as u32,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                image.as_raw(),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * w),
+                    rows_per_image: Some(h),
+                },
+                wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        })
+    });
+    texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        ..Default::default()
+    })
+}
+
 fn noise_bind(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -1697,6 +1844,26 @@ fn noise_bind(
             wgpu::BindGroupEntry {
                 binding: 3,
                 resource: wgpu::BindingResource::TextureView(sky_light),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: wgpu::BindingResource::TextureView(&facade_texture(
+                    device, queue, quality,
+                )),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: wgpu::BindingResource::Sampler(&device.create_sampler(
+                    &wgpu::SamplerDescriptor {
+                        mag_filter: wgpu::FilterMode::Linear,
+                        min_filter: wgpu::FilterMode::Linear,
+                        mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                        address_mode_u: wgpu::AddressMode::Repeat,
+                        address_mode_v: wgpu::AddressMode::Repeat,
+                        anisotropy_clamp: ANISOTROPY,
+                        ..Default::default()
+                    },
+                )),
             },
         ],
     })
@@ -1813,6 +1980,17 @@ impl Renderer {
                 },
                 filtering(2),
                 sampled(3),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                filtering(5),
             ],
         });
         let cascade_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -2153,8 +2331,8 @@ impl Renderer {
         GpuMesh { place, bind }
     }
 
-    pub fn woods(&self) -> Woods {
-        self.quality.woods
+    pub fn detail(&self) -> Detail {
+        self.quality.detail
     }
 
     pub fn resident(&self) -> usize {

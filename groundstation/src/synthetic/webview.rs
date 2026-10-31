@@ -6,7 +6,7 @@ use wasm_bindgen::closure::Closure;
 use web_time::Instant;
 
 use super::fetch::Network;
-use super::open::Woods;
+use super::open::Detail;
 use super::overlay::Overlays;
 use super::render::{Renderer, Targets};
 use super::session::{Frame, Session, Target};
@@ -148,8 +148,8 @@ fn token() -> String {
         .unwrap_or_default()
 }
 
-fn start_session(token: &str, woods: Woods) -> Option<Session> {
-    Session::new(token, Arc::new(Network), woods)
+fn start_session(token: &str, detail: Detail) -> Option<Session> {
+    Session::new(token, Arc::new(Network), detail)
         .inspect_err(|error| log::error!(target: "synthetic", "event=session_failed source={} reason=\"{error}\"", if token.is_empty() { "open" } else { "google" }))
         .ok()
 }
@@ -439,7 +439,7 @@ impl World {
         if rekeyed {
             self.session = start_session(
                 self.token.value.as_deref().unwrap_or_default(),
-                self.gpu.renderer.woods(),
+                self.gpu.renderer.detail(),
             );
         }
         let restyled = self.overlays.refresh(now, || {

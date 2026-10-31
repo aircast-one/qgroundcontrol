@@ -4,8 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use web_time::Instant;
 
-use ::geo::{Area, MinimumRotatedRect};
-use glam::{DMat3, DMat4, DVec3, DVec4};
+use ::geo::algorithm::buffer::{BufferStyle, LineJoin};
+use ::geo::{Area, Buffer, MinimumRotatedRect};
+use glam::{DMat2, DMat3, DMat4, DVec3, DVec4};
 
 use super::fetch::Fetcher;
 use super::geo::{Camera, east_north_up, ecef};
@@ -25,7 +26,12 @@ const UNKNOWN_RELIEF_M: f64 = 2_000.0;
 const KNOWN_RELIEF_MARGIN_M: f64 = 50.0;
 const REACH_M: f64 = 60_000.0;
 const BUILDING_ZOOM: u32 = 14;
-const BUILDING_REACH_M: f64 = 1_500.0;
+const BUILDING_BAND_ZOOM: u32 = 15;
+const BUILDING_NEAR_ZOOM: u32 = 17;
+const BUILDING_SPLIT_M: [f64; 2] = [600.0, 200.0];
+const MOSAIC_MAX_PX: u32 = 1024;
+const IMAGERY_PX: u32 = 256;
+const ROOF_MARGIN_M: f64 = 2.0;
 const DEFAULT_EXTENT: f64 = 4096.0;
 const KEEP_TERRAIN_FOR: Duration = Duration::from_secs(20);
 const KEEP_HOUSES_FOR: Duration = Duration::from_secs(60);
@@ -39,10 +45,14 @@ const WALL_GREY: f32 = 0.3;
 const WALL_VARIETY: f32 = 0.08;
 const PALETTE_WIDTH: u32 = 64;
 const SAMPLED_CORNERS: usize = 15;
-const ROOF_PICTURE_ZOOM: u32 = 16;
 const ROOF_LIFT: f32 = 1.5;
 const WALL_TAG: f32 = 2.0;
-const SHOP_TAG: f32 = 0.5;
+const SHADE_BITS: u32 = 5;
+const TOWER_M: f64 = 40.0;
+const OFFICE_M: f64 = 25.0;
+const OFFICE_AREA_M2: f64 = 1500.0;
+const BLOCK_AREA_M2: f64 = 2500.0;
+const BRICK_RED: f32 = 1.3;
 const BLANK: f32 = -1.0;
 const PARAPET_M: f64 = 1.0;
 const PARAPET_FROM_M: f64 = 6.0;
@@ -54,6 +64,10 @@ const TILED_MAX_HEIGHT_M: f64 = 30.0;
 const TILE_RED_OVER_GREEN: f32 = 1.08;
 const TILE_RED_OVER_BLUE: f32 = 1.25;
 const MAX_RIDGE_M: f64 = 7.0;
+const SLOPE_INSET_M: f64 = 5.0;
+const SLOPED_FROM_M2: f64 = 150.0;
+const SLOPED_TOP_M2: f64 = 20.0;
+const MITER_ANGLE: f64 = 0.3;
 const HOUSE_MIN_FILL: f64 = 0.85;
 const GABLE_ASPECT: f64 = 1.3;
 const PITCH_DEGREES: (f64, f64) = (30.0, 40.0);
@@ -93,6 +107,21 @@ impl Woods {
         reach_m: 1_000.0,
         split_m: [600.0, 250.0],
         far_keep: 0.5,
+    };
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Detail {
+    pub woods: Woods,
+    pub building_reach_m: f64,
+    pub roof_sharper: u32,
+}
+
+impl Detail {
+    pub const FULL: Detail = Detail {
+        woods: Woods::FULL,
+        building_reach_m: 1_500.0,
+        roof_sharper: 1,
     };
 }
 const FAR_SPREAD: f64 = 1.35;
@@ -392,8 +421,14 @@ pub enum Want {
     },
     Houses {
         key: TileKey,
+        patch: Patch,
+    },
+    Buildings {
+        key: TileKey,
         imagery: String,
         patch: Patch,
+        footprints: Arc<Vec<Footprint>>,
+        sharper: u32,
     },
     Trees {
         key: TileKey,
@@ -413,7 +448,8 @@ pub enum Built {
         zoom: u32,
         mesh: Result<(Mesh, bool), String>,
     },
-    Houses(TileKey, Result<(Vec<Mesh>, Vec<Grove>), String>),
+    Houses(TileKey, Result<HouseTile, String>),
+    Buildings(TileKey, Result<Vec<Mesh>, String>),
     Trees(TileKey, Result<Vec<Mesh>, String>),
 }
 
@@ -432,6 +468,7 @@ impl Want {
                 mesh: Err(reason.to_string()),
             },
             Want::Houses { key, .. } => Built::Houses(*key, Err(reason.to_string())),
+            Want::Buildings { key, .. } => Built::Buildings(*key, Err(reason.to_string())),
             Want::Trees { key, .. } => Built::Trees(*key, Err(reason.to_string())),
         }
     }
@@ -461,17 +498,27 @@ impl Want {
                     )),
                 }
             }
-            Want::Houses {
+            Want::Houses { key, patch } => Built::Houses(
+                key,
+                fetcher
+                    .map(BUILDINGS, key.z, key.x, key.y)
+                    .map(|json| place_meshes(key, &json, Some(&patch))),
+            ),
+            Want::Buildings {
                 key,
                 imagery,
                 patch,
-            } => Built::Houses(
+                footprints,
+                sharper,
+            } => Built::Buildings(
                 key,
-                fetcher.map(BUILDINGS, key.z, key.x, key.y).map(|json| {
-                    place_meshes(key, &json, Some(&patch), &|under| {
+                Ok(
+                    building_mesh(key, &footprints, Some(&patch), sharper, &|under| {
                         picture(fetcher, &imagery, under).map(|(picture, _)| picture)
                     })
-                }),
+                    .into_iter()
+                    .collect(),
+                ),
             ),
             Want::Trees {
                 key,
@@ -498,9 +545,15 @@ impl Want {
             Want::Terrain { key, .. } => (key.z, 0, key.x, key.y),
             Want::Heights(key) => (key.z, 1, key.x, key.y),
             Want::Houses { key, .. } => (key.z, 2, key.x, key.y),
+            Want::Buildings { key, .. } => (
+                BUILDING_ZOOM,
+                3 + (BUILDING_NEAR_ZOOM - key.z) as u8,
+                key.x,
+                key.y,
+            ),
             Want::Trees { key, .. } => (
                 BUILDING_ZOOM,
-                3 + (TREE_NEAR_ZOOM - key.z) as u8,
+                6 + (TREE_NEAR_ZOOM - key.z) as u8,
                 key.x,
                 key.y,
             ),
@@ -512,6 +565,7 @@ impl Want {
             Want::Heights(key) => (TERRAIN.to_string(), key),
             Want::Terrain { key, imagery, .. } => (imagery.clone(), key),
             Want::Houses { key, .. } => (BUILDINGS.to_string(), key),
+            Want::Buildings { key, .. } => ("Roofs".to_string(), key),
             Want::Trees { key, .. } => ("Trees".to_string(), key),
         };
         format!("{kind} {}/{}/{}", key.z, key.x, key.y)
@@ -596,6 +650,7 @@ struct TerrainEntry {
 struct HouseEntry {
     meshes: Vec<Arc<Mesh>>,
     groves: Arc<Vec<Grove>>,
+    footprints: Arc<Vec<Footprint>>,
     loaded: bool,
     asked: Option<Instant>,
     used: Instant,
@@ -606,16 +661,23 @@ impl HouseEntry {
         Self {
             meshes: Vec::new(),
             groves: Arc::default(),
+            footprints: Arc::default(),
             loaded: false,
             asked,
             used: now,
         }
     }
 
-    fn loaded(meshes: Vec<Mesh>, groves: Vec<Grove>, now: Instant) -> Self {
+    fn loaded(
+        meshes: Vec<Mesh>,
+        groves: Vec<Grove>,
+        footprints: Vec<Footprint>,
+        now: Instant,
+    ) -> Self {
         Self {
             meshes: meshes.into_iter().map(Arc::new).collect(),
             groves: Arc::new(groves),
+            footprints: Arc::new(footprints),
             loaded: true,
             asked: None,
             used: now,
@@ -639,11 +701,12 @@ struct Sight<'a> {
 }
 
 pub struct OpenScene {
-    woods: Woods,
+    detail: Detail,
     imagery: String,
     heights: Store<Heights>,
     terrain: HashMap<TileKey, TerrainEntry>,
     houses: HashMap<TileKey, HouseEntry>,
+    buildings: HashMap<TileKey, HouseEntry>,
     trees: HashMap<TileKey, HouseEntry>,
     home: Option<(f64, f64)>,
 }
@@ -748,26 +811,6 @@ fn terrain_mesh(key: TileKey, patch: Option<&Patch>, picture: Option<image::Rgba
     .with_normals(normals)
 }
 
-fn palette(colours: &[[u8; 4]]) -> image::RgbaImage {
-    let rows = (colours.len() as u32).div_ceil(PALETTE_WIDTH).max(1);
-    image::RgbaImage::from_fn(PALETTE_WIDTH, rows, |x, y| {
-        image::Rgba(
-            colours
-                .get((y * PALETTE_WIDTH + x) as usize)
-                .copied()
-                .unwrap_or(ROOF),
-        )
-    })
-}
-
-fn palette_uv(index: usize, count: usize) -> [f32; 2] {
-    let rows = (count as u32).div_ceil(PALETTE_WIDTH).max(1);
-    [
-        (index as u32 % PALETTE_WIDTH) as f32 / PALETTE_WIDTH as f32 + 0.5 / PALETTE_WIDTH as f32,
-        (index as u32 / PALETTE_WIDTH) as f32 / rows as f32 + 0.5 / rows as f32,
-    ]
-}
-
 fn centre_of(outline: &[(f64, f64)]) -> (f64, f64) {
     let count = outline.len() as f64;
     outline
@@ -775,50 +818,109 @@ fn centre_of(outline: &[(f64, f64)]) -> (f64, f64) {
         .fold((0.0, 0.0), |(u, v), p| (u + p.0 / count, v + p.1 / count))
 }
 
-fn under(key: TileKey, outline: &[(f64, f64)]) -> (TileKey, f64, f64) {
-    let scale = f64::from(1u32 << ROOF_PICTURE_ZOOM.saturating_sub(key.z));
-    let (u, v) = centre_of(outline);
-    let (du, dv) = (
-        (u * scale).floor().clamp(0.0, scale - 1.0),
-        (v * scale).floor().clamp(0.0, scale - 1.0),
-    );
-    (
-        TileKey {
-            z: key.z.max(ROOF_PICTURE_ZOOM),
-            x: key.x * scale as u32 + du as u32,
-            y: key.y * scale as u32 + dv as u32,
-        },
-        du,
-        dv,
-    )
+struct Mosaic {
+    picture: image::RgbaImage,
+    low: (f64, f64),
+    high: (f64, f64),
 }
 
-fn roof_colour(
-    key: TileKey,
-    pictures: &HashMap<TileKey, Option<image::RgbaImage>>,
-    outline: &[(f64, f64)],
-    fallback: [u8; 4],
-    lift: f32,
-) -> [u8; 4] {
-    let (sub, du, dv) = under(key, outline);
-    let Some(Some(picture)) = pictures.get(&sub) else {
-        return fallback;
-    };
-    let scale = f64::from(1u32 << (sub.z - key.z));
-    let (width, height) = picture.dimensions();
-    let samples: Vec<[u8; 4]> = std::iter::once(centre_of(outline))
-        .chain(outline.iter().copied().take(SAMPLED_CORNERS))
-        .map(|(u, v)| {
-            let x = (((u * scale - du).clamp(0.0, 1.0) * f64::from(width)) as u32).min(width - 1);
-            let y = (((v * scale - dv).clamp(0.0, 1.0) * f64::from(height)) as u32).min(height - 1);
-            picture.get_pixel(x, y).0
+impl Mosaic {
+    fn stitched(
+        parent: TileKey,
+        zoom: u32,
+        low: (f64, f64),
+        high: (f64, f64),
+        pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
+    ) -> Self {
+        let scale = f64::from(1u32 << zoom.saturating_sub(parent.z)) * f64::from(IMAGERY_PX);
+        let pixel = |origin: u32, at: f64| (f64::from(origin) + at) * scale;
+        let (left, top) = (
+            pixel(parent.x, low.0).floor() as u32,
+            pixel(parent.y, low.1).floor() as u32,
+        );
+        let (right, bottom) = (
+            (pixel(parent.x, high.0).ceil() as u32).max(left + 1),
+            (pixel(parent.y, high.1).ceil() as u32).max(top + 1),
+        );
+        let (first_x, first_y) = (left / IMAGERY_PX, top / IMAGERY_PX);
+        let (last_x, last_y) = ((right - 1) / IMAGERY_PX, (bottom - 1) / IMAGERY_PX);
+        let canvas = (first_y..=last_y)
+            .flat_map(|y| (first_x..=last_x).map(move |x| (x, y)))
+            .fold(
+                image::RgbaImage::from_pixel(
+                    (last_x - first_x + 1) * IMAGERY_PX,
+                    (last_y - first_y + 1) * IMAGERY_PX,
+                    image::Rgba(UNIMAGED),
+                ),
+                |mut canvas, (x, y)| {
+                    if let Some(found) = pictures(TileKey { z: zoom, x, y }) {
+                        let fitted = image::imageops::resize(
+                            &found,
+                            IMAGERY_PX,
+                            IMAGERY_PX,
+                            image::imageops::FilterType::Triangle,
+                        );
+                        image::imageops::replace(
+                            &mut canvas,
+                            &fitted,
+                            i64::from((x - first_x) * IMAGERY_PX),
+                            i64::from((y - first_y) * IMAGERY_PX),
+                        );
+                    }
+                    canvas
+                },
+            );
+        let cropped = image::imageops::crop_imm(
+            &canvas,
+            left - first_x * IMAGERY_PX,
+            top - first_y * IMAGERY_PX,
+            right - left,
+            bottom - top,
+        )
+        .to_image();
+        let shrink =
+            (f64::from((right - left).max(bottom - top)) / f64::from(MOSAIC_MAX_PX)).max(1.0);
+        let picture = if shrink > 1.0 {
+            image::imageops::resize(
+                &cropped,
+                (f64::from(right - left) / shrink).round().max(1.0) as u32,
+                (f64::from(bottom - top) / shrink).round().max(1.0) as u32,
+                image::imageops::FilterType::Triangle,
+            )
+        } else {
+            cropped
+        };
+        let back = |origin: u32, at: u32| f64::from(at) / scale - f64::from(origin);
+        Self {
+            picture,
+            low: (back(parent.x, left), back(parent.y, top)),
+            high: (back(parent.x, right), back(parent.y, bottom)),
+        }
+    }
+
+    fn at(&self, (u, v): (f64, f64)) -> [u8; 4] {
+        let (width, height) = self.picture.dimensions();
+        let place = |t: f64, low: f64, high: f64, size: u32| {
+            (((t - low) / (high - low)).clamp(0.0, 1.0) * f64::from(size)) as u32
+        };
+        self.picture
+            .get_pixel(
+                place(u, self.low.0, self.high.0, width).min(width - 1),
+                place(v, self.low.1, self.high.1, height).min(height - 1),
+            )
+            .0
+    }
+
+    fn roof_colour(&self, outline: &[(f64, f64)]) -> [u8; 4] {
+        let samples: Vec<[u8; 4]> = std::iter::once(centre_of(outline))
+            .chain(outline.iter().copied().take(SAMPLED_CORNERS))
+            .map(|point| self.at(point))
+            .collect();
+        std::array::from_fn(|channel| {
+            (samples.iter().map(|s| f32::from(s[channel])).sum::<f32>() / samples.len() as f32)
+                as u8
         })
-        .collect();
-    std::array::from_fn(|channel| {
-        let mean =
-            samples.iter().map(|s| f32::from(s[channel])).sum::<f32>() / samples.len() as f32;
-        (if channel == 3 { mean } else { mean * lift }).min(255.0) as u8
-    })
+    }
 }
 
 fn wall_colour(roof: [u8; 4], outline: &[(f64, f64)]) -> [u8; 4] {
@@ -872,7 +974,7 @@ fn facade_colour(osm: Option<[u8; 4]>, imaged: [u8; 4], seed: u64) -> [u8; 4] {
 }
 
 #[derive(Default)]
-struct Footprint {
+pub struct Footprint {
     rings: Vec<Vec<(f64, f64)>>,
     base: f64,
     top: f64,
@@ -899,6 +1001,7 @@ impl Rectangle {
 #[derive(Debug)]
 enum Roof {
     Flat,
+    Sloped,
     Gable(Rectangle),
     Hip(Rectangle),
 }
@@ -965,8 +1068,99 @@ fn roof_for(placed: &[Vec<DVec3>], base: f64, top: f64, colour: [u8; 4]) -> Roof
             Roof::Gable(rectangle)
         }
         Some(rectangle) => Roof::Hip(rectangle),
+        None if tiled(colour) && top - base <= TILED_MAX_HEIGHT_M && area >= SLOPED_FROM_M2 => {
+            Roof::Sloped
+        }
         None => Roof::Flat,
     }
+}
+
+fn faceted(triangles: impl Iterator<Item = [DVec3; 3]>) -> Part {
+    let faces: Vec<([DVec3; 3], [f32; 3])> = triangles
+        .map(|[a, b, c]| {
+            let normal = (b - a).cross(c - a).normalize_or_zero();
+            let upward = if normal.z < 0.0 { -normal } else { normal };
+            ([a, b, c], upward.as_vec3().to_array())
+        })
+        .filter(|(_, normal)| normal != &[0.0; 3])
+        .collect();
+    Part {
+        positions: faces
+            .iter()
+            .flat_map(|(corners, _)| corners.map(|p| p.as_vec3().to_array()))
+            .collect(),
+        uvs: vec![[0.0; 2]; faces.len() * 3],
+        normals: faces.iter().flat_map(|(_, normal)| [*normal; 3]).collect(),
+        indices: (0..faces.len() as u32 * 3).collect(),
+    }
+}
+
+fn band(outer: &[DVec3], holes: &[Vec<DVec3>]) -> Part {
+    let points: Vec<DVec3> = outer
+        .iter()
+        .chain(holes.iter().flatten())
+        .copied()
+        .collect();
+    let starts: Vec<u32> = holes
+        .iter()
+        .scan(outer.len() as u32, |at, hole| {
+            let start = *at;
+            *at += hole.len() as u32;
+            Some(start)
+        })
+        .collect();
+    let mut triangles: Vec<u32> = Vec::new();
+    earcut::Earcut::<f64>::new().earcut(points.iter().map(|p| [p.x, p.y]), &starts, &mut triangles);
+    faceted(
+        triangles
+            .chunks_exact(3)
+            .map(|t| t.iter().map(|&i| points[i as usize]).collect::<Vec<_>>())
+            .map(|t| [t[0], t[1], t[2]]),
+    )
+}
+
+fn sloped(placed: &[Vec<DVec3>], eave: f64, seed: u64) -> Option<Part> {
+    let footprint = polygon_of(placed);
+    let inner = footprint.buffer_with_style(
+        BufferStyle::new(-SLOPE_INSET_M).line_join(LineJoin::Miter(MITER_ANGLE)),
+    );
+    (inner.unsigned_area() >= SLOPED_TOP_M2).then_some(())?;
+    let ridge = eave + SLOPE_INSET_M * span(PITCH_DEGREES, mixed(seed, 4)).to_radians().tan();
+    let at = |line: &::geo::LineString<f64>, height: f64| -> Vec<DVec3> {
+        let points: Vec<DVec3> = line
+            .points()
+            .map(|p| DVec3::new(p.x(), p.y(), height))
+            .collect();
+        points[..points.len().saturating_sub(1)].to_vec()
+    };
+    let tops: Vec<Vec<DVec3>> = inner
+        .iter()
+        .map(|part| at(part.exterior(), ridge))
+        .collect();
+    let outer = band(&at(footprint.exterior(), eave), &tops);
+    let courtyards = inner.iter().flat_map(|part| part.interiors()).map(|grown| {
+        let walls: Vec<Vec<DVec3>> = footprint
+            .interiors()
+            .iter()
+            .filter(|hole| hole.points().next().is_some_and(|p| within_ring(grown, p)))
+            .map(|hole| at(hole, eave))
+            .collect();
+        band(&at(grown, ridge), &walls)
+    });
+    let flats = inner.iter().map(|part| {
+        let rings: Vec<Vec<DVec3>> = std::iter::once(at(part.exterior(), ridge))
+            .chain(part.interiors().iter().map(|hole| at(hole, ridge)))
+            .collect();
+        roof(&rings, 0.0, [0.0; 2])
+    });
+    Some(joined(
+        std::iter::once(outer).chain(courtyards).chain(flats),
+    ))
+}
+
+fn within_ring(ring: &::geo::LineString<f64>, point: ::geo::Point<f64>) -> bool {
+    let flat: Vec<(f64, f64)> = ring.points().map(|p| (p.x(), p.y())).collect();
+    inside(&flat, (point.x(), point.y()))
 }
 
 struct Part {
@@ -1004,7 +1198,7 @@ fn joined(parts: impl Iterator<Item = Part>) -> Part {
     }
 }
 
-fn wall(a: DVec3, b: DVec3, low: f64, high: f64, uv: [f32; 2]) -> Part {
+fn wall(a: DVec3, b: DVec3, low: f64, high: f64) -> Part {
     let up = |p: DVec3, h: f64| (p + DVec3::Z * h).as_vec3().to_array();
     let along = b - a;
     let outward = DVec3::new(-along.y, along.x, 0.0)
@@ -1013,7 +1207,7 @@ fn wall(a: DVec3, b: DVec3, low: f64, high: f64, uv: [f32; 2]) -> Part {
         .to_array();
     Part {
         positions: vec![up(a, low), up(b, low), up(b, high), up(a, high)],
-        uvs: vec![uv; 4],
+        uvs: vec![[0.0; 2]; 4],
         normals: vec![outward; 4],
         indices: vec![0, 1, 2, 0, 2, 3],
     }
@@ -1070,10 +1264,10 @@ fn facade_wall(a: DVec3, b: DVec3, low: f64, high: f64, facade: &Facade) -> Part
     }
 }
 
-fn slab(corners: &[[f32; 3]], normal: DVec3, uv: [f32; 2]) -> Part {
+fn slab(corners: &[[f32; 3]], normal: DVec3) -> Part {
     Part {
         positions: corners.to_vec(),
-        uvs: vec![uv; corners.len()],
+        uvs: vec![[0.0; 2]; corners.len()],
         normals: vec![normal.as_vec3().to_array(); corners.len()],
         indices: (1..corners.len() as u32 - 1)
             .flat_map(|i| [0, i, i + 1])
@@ -1081,14 +1275,7 @@ fn slab(corners: &[[f32; 3]], normal: DVec3, uv: [f32; 2]) -> Part {
     }
 }
 
-fn pitched(
-    rectangle: &Rectangle,
-    eave: f64,
-    pitch: f64,
-    hipped: bool,
-    uv: [f32; 2],
-    tag: f32,
-) -> Part {
+fn pitched(rectangle: &Rectangle, eave: f64, pitch: f64, hipped: bool, tag: f32) -> Part {
     let pitch = pitch.min((MAX_RIDGE_M * 2.0 / rectangle.width).atan());
     let rise = pitch.tan();
     let ridge = eave + rise * rectangle.width / 2.0;
@@ -1113,7 +1300,6 @@ fn pitched(
                 at(-s * inset, 0.0, ridge),
             ],
             sloped(rectangle.across * s),
-            uv,
         )
     });
     let ends = [1.0, -1.0].map(|s| {
@@ -1125,7 +1311,6 @@ fn pitched(
                     at(s * inset, 0.0, ridge),
                 ],
                 sloped(rectangle.along * s),
-                uv,
             )
         } else {
             let (end, half) = (s * rectangle.length / 2.0, rectangle.width / 2.0);
@@ -1140,7 +1325,6 @@ fn pitched(
                         at(end, 0.0, ridge),
                     ],
                     outward,
-                    uv,
                 )
             }
         }
@@ -1148,7 +1332,7 @@ fn pitched(
     joined(sides.into_iter().chain(ends))
 }
 
-fn rooftops(placed: &[Vec<DVec3>], level: f64, seed: u64, uv: [f32; 2]) -> Vec<Part> {
+fn rooftops(placed: &[Vec<DVec3>], level: f64, seed: u64) -> Vec<Part> {
     let area = polygon_of(placed).unsigned_area();
     let count = ((area / ROOFTOP_EVERY_M2) as usize).min(MAX_ROOFTOPS);
     let Some(rectangle) = bounding(&placed[0]).filter(|_| area >= ROOFTOP_FROM_M2) else {
@@ -1179,15 +1363,87 @@ fn rooftops(placed: &[Vec<DVec3>], level: f64, seed: u64, uv: [f32; 2]) -> Vec<P
         .map(|(corners, height)| {
             joined(
                 (0..4)
-                    .map(|i| wall(corners[i], corners[(i + 1) % 4], level, level + height, uv))
+                    .map(|i| wall(corners[i], corners[(i + 1) % 4], level, level + height))
                     .chain(std::iter::once(roof(
                         std::slice::from_ref(&corners),
                         level + height,
-                        uv,
+                        [0.0; 2],
                     ))),
             )
         })
         .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Material {
+    Plaster,
+    Render,
+    Brick,
+    Stone,
+    Concrete,
+    Office,
+    Glass,
+}
+
+fn material_for(height: f64, area: f64, osm: Option<[u8; 4]>, seed: u64) -> Material {
+    let roll = unit(mixed(seed, 21));
+    let pick = |weights: &[(Material, f64)]| {
+        weights
+            .iter()
+            .scan(0.0, |total, &(material, weight)| {
+                *total += weight;
+                Some((material, *total))
+            })
+            .find(|&(_, total)| roll < total)
+            .map_or(weights[weights.len() - 1].0, |(material, _)| material)
+    };
+    let brick_red = osm.is_some_and(|[r, g, b, _]| {
+        f32::from(r) > f32::from(g) * BRICK_RED && f32::from(r) > f32::from(b) * BRICK_RED
+    });
+    if brick_red {
+        Material::Brick
+    } else if height >= TOWER_M {
+        pick(&[(Material::Glass, 0.5), (Material::Office, 0.5)])
+    } else if height >= OFFICE_M && area >= OFFICE_AREA_M2 {
+        pick(&[
+            (Material::Office, 0.5),
+            (Material::Glass, 0.2),
+            (Material::Concrete, 0.3),
+        ])
+    } else if area >= BLOCK_AREA_M2 {
+        pick(&[
+            (Material::Plaster, 0.35),
+            (Material::Concrete, 0.25),
+            (Material::Office, 0.2),
+            (Material::Stone, 0.2),
+        ])
+    } else if area <= HOUSE_AREA_M2.1 && height <= HOUSE_MAX_HEIGHT_M {
+        pick(&[
+            (Material::Plaster, 0.45),
+            (Material::Render, 0.35),
+            (Material::Brick, 0.1),
+            (Material::Stone, 0.1),
+        ])
+    } else {
+        pick(&[
+            (Material::Plaster, 0.4),
+            (Material::Render, 0.25),
+            (Material::Stone, 0.15),
+            (Material::Brick, 0.1),
+            (Material::Concrete, 0.1),
+        ])
+    }
+}
+
+fn wall_tag(colour: [u8; 4], material: Material, shop: bool, seed: u64) -> f32 {
+    let shade = |channel: u8| u32::from(channel) >> (8 - SHADE_BITS);
+    let packed = shade(colour[0])
+        | shade(colour[1]) << SHADE_BITS
+        | shade(colour[2]) << (2 * SHADE_BITS)
+        | (material as u32) << (3 * SHADE_BITS)
+        | u32::from(shop) << (3 * SHADE_BITS + 3)
+        | ((seed & 15) as u32) << (3 * SHADE_BITS + 4);
+    WALL_TAG + packed as f32
 }
 
 fn house(
@@ -1195,12 +1451,12 @@ fn house(
     floor: f64,
     footprint: &Footprint,
     roof_colour: [u8; 4],
-    uv: [f32; 2],
-    wall: usize,
+    wall_colour: [u8; 4],
 ) -> Part {
     let seed = seed_of(&footprint.rings[0]);
     let (low, eave) = (floor + footprint.base, floor + footprint.top);
     let shape = roof_for(placed, footprint.base, footprint.top, roof_colour);
+    let area = polygon_of(placed).unsigned_area();
     let parapet = if matches!(shape, Roof::Flat) && footprint.top - footprint.base >= PARAPET_FROM_M
     {
         PARAPET_M
@@ -1210,7 +1466,8 @@ fn house(
     let walled = footprint.top - footprint.base - parapet;
     let storeys = (walled / span(STOREY_M, mixed(seed, 1))).round().max(1.0);
     let shop = storeys >= SHOP_FROM_STOREYS && unit(mixed(seed, 2)) < SHOP_SHARE;
-    let tag = WALL_TAG + wall as f32 + if shop { SHOP_TAG } else { 0.0 };
+    let material = material_for(footprint.top - footprint.base, area, footprint.colour, seed);
+    let tag = wall_tag(wall_colour, material, shop, seed);
     let facade = Facade {
         base: low,
         storey: walled / storeys,
@@ -1225,15 +1482,15 @@ fn house(
     let pitch = span(PITCH_DEGREES, mixed(seed, 4)).to_radians();
     let top = match shape {
         Roof::Flat => joined(
-            std::iter::once(roof(placed, eave - parapet, uv)).chain(rooftops(
+            std::iter::once(roof(placed, eave - parapet, [0.0; 2])).chain(rooftops(
                 placed,
                 eave - parapet,
                 seed,
-                uv,
             )),
         ),
-        Roof::Gable(rectangle) => pitched(&rectangle, eave, pitch, false, uv, tag),
-        Roof::Hip(rectangle) => pitched(&rectangle, eave, pitch, true, uv, tag),
+        Roof::Sloped => sloped(placed, eave, seed).unwrap_or_else(|| roof(placed, eave, [0.0; 2])),
+        Roof::Gable(rectangle) => pitched(&rectangle, eave, pitch, false, tag),
+        Roof::Hip(rectangle) => pitched(&rectangle, eave, pitch, true, tag),
     };
     joined(walls.chain(std::iter::once(top)))
 }
@@ -1292,23 +1549,12 @@ impl Placement {
     }
 }
 
-fn place_meshes(
-    key: TileKey,
-    json: &[u8],
-    patch: Option<&Patch>,
-    pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
-) -> (Vec<Mesh>, Vec<Grove>) {
+fn place_meshes(key: TileKey, json: &[u8], patch: Option<&Patch>) -> HouseTile {
     serde_json::from_slice::<serde_json::Value>(json)
         .ok()
         .map(|tile| {
             (
-                [
-                    building_mesh(key, &tile, patch, pictures),
-                    water_mesh(key, &tile, patch),
-                ]
-                .into_iter()
-                .flatten()
-                .collect(),
+                water_mesh(key, &tile, patch).into_iter().collect(),
                 areas_of(&tile, "woods")
                     .into_iter()
                     .map(|area| (area, &FOREST))
@@ -1318,6 +1564,7 @@ fn place_meshes(
                             .map(|area| (area, &PARK)),
                     )
                     .collect(),
+                footprints_of(&tile),
             )
         })
         .unwrap_or_default()
@@ -1367,6 +1614,7 @@ pub struct Stand {
 }
 
 pub type Grove = (Vec<Vec<(f64, f64)>>, &'static Stand);
+pub type HouseTile = (Vec<Mesh>, Vec<Grove>, Vec<Footprint>);
 
 struct Tree {
     at: DVec3,
@@ -1816,107 +2064,198 @@ fn water_mesh(key: TileKey, tile: &serde_json::Value, patch: Option<&Patch>) -> 
     })
 }
 
-fn building_mesh(
-    key: TileKey,
-    tile: &serde_json::Value,
-    patch: Option<&Patch>,
-    pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
-) -> Option<Mesh> {
+fn footprints_of(tile: &serde_json::Value) -> Vec<Footprint> {
     let extent = extent_of(tile);
-    let ground = |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at(u, v));
-    let placement = Placement::new(key);
-    let flat_at = |u: f64, v: f64| placement.flat_at(u, v);
-    let footprints: Vec<Footprint> = tile
-        .get("buildings")
+    tile.get("buildings")
         .and_then(serde_json::Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|building| {
             let rings = rings_of(building.get("rings")?, extent);
             rings.first().filter(|ring| ring.len() >= 3)?;
-            let top = building.get("height").and_then(serde_json::Value::as_f64)?;
-            let base = building
-                .get("base")
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0);
-            let colour = building
-                .get("colour")
-                .and_then(serde_json::Value::as_str)
-                .and_then(osm_colour);
             Some(Footprint {
                 rings,
-                base,
-                top,
-                colour,
+                base: building
+                    .get("base")
+                    .and_then(serde_json::Value::as_f64)
+                    .unwrap_or(0.0),
+                top: building.get("height").and_then(serde_json::Value::as_f64)?,
+                colour: building
+                    .get("colour")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(osm_colour),
             })
         })
-        .collect();
-    let slots = footprints.len() * 2;
-    let fetched: HashMap<TileKey, Option<image::RgbaImage>> = footprints
+        .collect()
+}
+
+fn building_mesh(
+    key: TileKey,
+    footprints: &[Footprint],
+    patch: Option<&Patch>,
+    sharper: u32,
+    pictures: &dyn Fn(TileKey) -> Option<image::RgbaImage>,
+) -> Option<Mesh> {
+    let (parent, du, dv, span) = key.ancestor(BUILDING_ZOOM);
+    let inside = |t: f64, low: f64| (low..low + span).contains(&t);
+    let chosen: Vec<&Footprint> = footprints
         .iter()
-        .map(|footprint| under(key, &footprint.rings[0]).0)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .map(|sub| (sub, pictures(sub)))
-        .collect();
-    let colours: Vec<[u8; 4]> = footprints
-        .iter()
-        .flat_map(|footprint| {
-            let roof = roof_colour(key, &fetched, &footprint.rings[0], ROOF, ROOF_LIFT);
-            [
-                roof,
-                facade_colour(
-                    footprint.colour,
-                    wall_colour(roof, &footprint.rings[0]),
-                    seed_of(&footprint.rings[0]),
-                ),
-            ]
+        .filter(|footprint| {
+            let (u, v) = centre_of(&footprint.rings[0]);
+            inside(u, du) && inside(v, dv)
         })
         .collect();
-    let parts = footprints.iter().enumerate().map(|(index, footprint)| {
-        let floor = ground(footprint.rings[0][0].0, footprint.rings[0][0].1);
+    let margin = ROOF_MARGIN_M / parent.width_m();
+    let (low, high) = chosen
+        .iter()
+        .flat_map(|footprint| footprint.rings.iter().flatten())
+        .fold(
+            ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN)),
+            |(low, high), &(u, v)| ((low.0.min(u), low.1.min(v)), (high.0.max(u), high.1.max(v))),
+        );
+    (!chosen.is_empty()).then_some(())?;
+    let mosaic = Mosaic::stitched(
+        parent,
+        key.z + sharper,
+        (low.0 - margin, low.1 - margin),
+        (high.0 + margin, high.1 + margin),
+        pictures,
+    );
+    let ground =
+        |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at((u - du) / span, (v - dv) / span));
+    let placement = Placement::new(parent);
+    let parts = chosen.iter().map(|footprint| {
         let placed: Vec<Vec<DVec3>> = footprint
             .rings
             .iter()
-            .map(|ring| ring.iter().map(|&(u, v)| flat_at(u, v)).collect())
+            .map(|ring| ring.iter().map(|&(u, v)| placement.flat_at(u, v)).collect())
             .collect();
+        let roof = mosaic.roof_colour(&footprint.rings[0]);
+        let seed = seed_of(&footprint.rings[0]);
         house(
             &placed,
-            floor,
+            ground(footprint.rings[0][0].0, footprint.rings[0][0].1),
             footprint,
-            colours[index * 2],
-            palette_uv(index * 2, slots),
-            index * 2 + 1,
+            roof,
+            facade_colour(
+                footprint.colour,
+                wall_colour(lifted(roof), &footprint.rings[0]),
+                seed,
+            ),
         )
     });
     let whole = joined(parts);
-    (!whole.indices.is_empty()).then(|| {
+    let project = projection(&placement, mosaic.low, mosaic.high);
+    let uvs = whole
+        .positions
+        .iter()
+        .zip(&whole.normals)
+        .zip(&whole.uvs)
+        .map(|((position, normal), uv)| {
+            if normal[2] > WALL_TAG - 0.5 {
+                *uv
+            } else {
+                project(DVec3::from_array(position.map(f64::from)))
+            }
+        })
+        .collect();
+    Some(
         Mesh::new(
             placement.to_ecef,
             whole.positions,
-            whole.uvs,
+            uvs,
             whole.indices,
-            palette(&colours),
+            mosaic.picture,
             Layer::Building,
         )
-        .with_normals(whole.normals)
-    })
+        .with_normals(whole.normals),
+    )
+}
+
+fn projection(
+    placement: &Placement,
+    low: (f64, f64),
+    high: (f64, f64),
+) -> impl Fn(DVec3) -> [f32; 2] + use<> {
+    let origin = placement.flat_at(low.0, low.1).truncate();
+    let across = DMat2::from_cols(
+        placement.flat_at(high.0, low.1).truncate() - origin,
+        placement.flat_at(low.0, high.1).truncate() - origin,
+    )
+    .inverse();
+    move |position: DVec3| {
+        (across * (position.truncate() - origin))
+            .as_vec2()
+            .to_array()
+    }
+}
+
+fn lifted(colour: [u8; 4]) -> [u8; 4] {
+    colour.map(|channel| (f32::from(channel) * ROOF_LIFT).min(255.0) as u8)
+}
+
+fn bands(
+    latitude: f64,
+    longitude: f64,
+    base: u32,
+    near: u32,
+    reach_m: f64,
+    split_m: [f64; 2],
+) -> Vec<TileKey> {
+    let gap_m = |key: TileKey| {
+        let (eye, u, v) = TileKey::containing(latitude, longitude, key.z);
+        let gap = |low: f64, at: f64| (low - at).max(at - low - 1.0).max(0.0);
+        gap(f64::from(key.x) - f64::from(eye.x), u)
+            .hypot(gap(f64::from(key.y) - f64::from(eye.y), v))
+            * key.width_m()
+    };
+    fn split(
+        key: TileKey,
+        base: u32,
+        near: u32,
+        gap_m: &dyn Fn(TileKey) -> f64,
+        split_m: [f64; 2],
+    ) -> Vec<TileKey> {
+        if key.z < near && gap_m(key) <= split_m[(key.z - base) as usize] {
+            key.children()
+                .into_iter()
+                .flat_map(|child| split(child, base, near, gap_m, split_m))
+                .collect()
+        } else {
+            vec![key]
+        }
+    }
+    let (centre, ..) = TileKey::containing(latitude, longitude, base);
+    let span = (reach_m / centre.width_m()).ceil() as i64;
+    (-span..=span)
+        .flat_map(|dy| (-span..=span).map(move |dx| (dx, dy)))
+        .filter_map(|(dx, dy)| {
+            Some(TileKey {
+                z: base,
+                x: u32::try_from(i64::from(centre.x) + dx).ok()?,
+                y: u32::try_from(i64::from(centre.y) + dy).ok()?,
+            })
+        })
+        .filter(|&key| gap_m(key) <= reach_m)
+        .flat_map(|key| split(key, base, near, &gap_m, split_m))
+        .collect()
 }
 
 impl Default for OpenScene {
     fn default() -> Self {
-        Self::new(Woods::FULL)
+        Self::new(Detail::FULL)
     }
 }
 
 impl OpenScene {
-    pub fn new(woods: Woods) -> Self {
+    pub fn new(detail: Detail) -> Self {
         Self {
-            woods,
+            detail,
             imagery: String::new(),
             heights: Store::new(),
             terrain: HashMap::new(),
             houses: HashMap::new(),
+            buildings: HashMap::new(),
             trees: HashMap::new(),
             home: None,
         }
@@ -1950,15 +2289,19 @@ impl OpenScene {
                 );
             }
             Built::Terrain { .. } => {}
-            Built::Houses(key, Ok((meshes, groves))) => {
+            Built::Houses(key, Ok((meshes, groves, footprints))) => {
                 self.houses
-                    .insert(key, HouseEntry::loaded(meshes, groves, now));
+                    .insert(key, HouseEntry::loaded(meshes, groves, footprints, now));
+            }
+            Built::Buildings(key, Ok(meshes)) => {
+                self.buildings
+                    .insert(key, HouseEntry::loaded(meshes, Vec::new(), Vec::new(), now));
             }
             Built::Trees(key, Ok(meshes)) => {
                 self.trees
-                    .insert(key, HouseEntry::loaded(meshes, Vec::new(), now));
+                    .insert(key, HouseEntry::loaded(meshes, Vec::new(), Vec::new(), now));
             }
-            Built::Houses(..) | Built::Trees(..) => {}
+            Built::Houses(..) | Built::Buildings(..) | Built::Trees(..) => {}
         }
     }
 
@@ -1986,6 +2329,7 @@ impl OpenScene {
                     .used = now
             }
             Want::Houses { key, .. } => HouseEntry::ask(&mut self.houses, *key, now),
+            Want::Buildings { key, .. } => HouseEntry::ask(&mut self.buildings, *key, now),
             Want::Trees { key, .. } => HouseEntry::ask(&mut self.trees, *key, now),
         });
         chosen
@@ -2039,6 +2383,7 @@ impl OpenScene {
         let houses: Vec<Arc<Mesh>> = self
             .houses
             .values()
+            .chain(self.buildings.values())
             .flat_map(|entry| entry.meshes.iter().cloned())
             .collect();
         let roof = ground::height_at(&houses, latitude, longitude);
@@ -2168,18 +2513,62 @@ impl OpenScene {
     }
 
     fn house(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Vec<Arc<Mesh>> {
-        let imagery = self.imagery.clone();
         self.placed(
             key,
             |scene| &mut scene.houses,
-            |patch| Want::Houses {
-                key,
-                imagery,
-                patch,
-            },
+            |patch| Want::Houses { key, patch },
             wanted,
             now,
         )
+    }
+
+    fn building(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Vec<Arc<Mesh>> {
+        let (parent, ..) = key.ancestor(BUILDING_ZOOM);
+        let Some(footprints) = self
+            .houses
+            .get(&parent)
+            .filter(|entry| entry.loaded && !entry.footprints.is_empty())
+            .map(|entry| entry.footprints.clone())
+        else {
+            return Vec::new();
+        };
+        let (imagery, sharper) = (self.imagery.clone(), self.detail.roof_sharper);
+        let meshes = self.placed(
+            key,
+            |scene| &mut scene.buildings,
+            |patch| Want::Buildings {
+                key,
+                imagery,
+                patch,
+                footprints,
+                sharper,
+            },
+            wanted,
+            now,
+        );
+        if self.buildings.get(&key).is_some_and(|entry| entry.loaded) {
+            return meshes;
+        }
+        let coarser = (BUILDING_BAND_ZOOM..key.z)
+            .rev()
+            .map(|zoom| key.ancestor(zoom).0);
+        let stand_in = coarser
+            .map(|other| vec![other])
+            .chain(std::iter::once(key.children().to_vec()))
+            .find(|keys| {
+                keys.iter()
+                    .all(|other| self.buildings.get(other).is_some_and(|entry| entry.loaded))
+            })
+            .unwrap_or_default();
+        stand_in
+            .iter()
+            .filter_map(|other| {
+                let entry = self.buildings.get_mut(other)?;
+                entry.used = now;
+                Some(entry.meshes.clone())
+            })
+            .flatten()
+            .collect()
     }
 
     fn tree(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Vec<Arc<Mesh>> {
@@ -2192,7 +2581,8 @@ impl OpenScene {
         else {
             return Vec::new();
         };
-        let (imagery, home, far_keep) = (self.imagery.clone(), self.home, self.woods.far_keep);
+        let (imagery, home, far_keep) =
+            (self.imagery.clone(), self.home, self.detail.woods.far_keep);
         self.placed(
             key,
             |scene| &mut scene.trees,
@@ -2216,43 +2606,44 @@ impl OpenScene {
         wanted: &mut Vec<Want>,
         now: Instant,
     ) -> Vec<Arc<Mesh>> {
-        let gap_m = |key: TileKey| {
-            let (eye, u, v) = TileKey::containing(latitude, longitude, key.z);
-            let gap = |low: f64, at: f64| (low - at).max(at - low - 1.0).max(0.0);
-            gap(f64::from(key.x) - f64::from(eye.x), u)
-                .hypot(gap(f64::from(key.y) - f64::from(eye.y), v))
-                * key.width_m()
-        };
-        fn split(key: TileKey, gap_m: &dyn Fn(TileKey) -> f64, split_m: [f64; 2]) -> Vec<TileKey> {
-            if key.z < TREE_NEAR_ZOOM && gap_m(key) <= split_m[(key.z - TREE_ZOOM) as usize] {
-                key.children()
-                    .into_iter()
-                    .flat_map(|child| split(child, gap_m, split_m))
-                    .collect()
-            } else {
-                vec![key]
-            }
-        }
-        let (centre, ..) = TileKey::containing(latitude, longitude, TREE_ZOOM);
         let Woods {
             reach_m, split_m, ..
-        } = self.woods;
-        let span = (reach_m / centre.width_m()).ceil() as i64;
-        let around: Vec<TileKey> = (-span..=span)
-            .flat_map(|dy| (-span..=span).map(move |dx| (dx, dy)))
-            .filter_map(|(dx, dy)| {
-                Some(TileKey {
-                    z: TREE_ZOOM,
-                    x: u32::try_from(i64::from(centre.x) + dx).ok()?,
-                    y: u32::try_from(i64::from(centre.y) + dy).ok()?,
-                })
-            })
-            .filter(|&key| gap_m(key) <= reach_m)
-            .flat_map(|key| split(key, &gap_m, split_m))
-            .collect();
-        around
+        } = self.detail.woods;
+        bands(
+            latitude,
+            longitude,
+            TREE_ZOOM,
+            TREE_NEAR_ZOOM,
+            reach_m,
+            split_m,
+        )
+        .into_iter()
+        .flat_map(|key| self.tree(key, wanted, now))
+        .collect()
+    }
+
+    fn buildings_around(
+        &mut self,
+        latitude: f64,
+        longitude: f64,
+        wanted: &mut Vec<Want>,
+        now: Instant,
+    ) -> Vec<Arc<Mesh>> {
+        let meshes: Vec<Arc<Mesh>> = bands(
+            latitude,
+            longitude,
+            BUILDING_BAND_ZOOM,
+            BUILDING_NEAR_ZOOM,
+            self.detail.building_reach_m,
+            BUILDING_SPLIT_M,
+        )
+        .into_iter()
+        .flat_map(|key| self.building(key, wanted, now))
+        .collect();
+        let mut seen = HashSet::new();
+        meshes
             .into_iter()
-            .flat_map(|key| self.tree(key, wanted, now))
+            .filter(|mesh| seen.insert(mesh.id))
             .collect()
     }
 
@@ -2264,7 +2655,7 @@ impl OpenScene {
         now: Instant,
     ) -> Vec<Arc<Mesh>> {
         let (center, _, _) = TileKey::containing(latitude, longitude, BUILDING_ZOOM);
-        let span = (BUILDING_REACH_M / center.width_m()).ceil() as i64;
+        let span = (self.detail.building_reach_m / center.width_m()).ceil() as i64;
         let around: Vec<TileKey> = (-span..=span)
             .flat_map(|dy| (-span..=span).map(move |dx| (dx, dy)))
             .filter_map(|(dx, dy)| {
@@ -2289,6 +2680,7 @@ impl OpenScene {
             + self
                 .houses
                 .values()
+                .chain(self.buildings.values())
                 .chain(self.trees.values())
                 .filter(|entry| !entry.meshes.is_empty())
                 .count()
@@ -2356,8 +2748,13 @@ impl OpenScene {
         let houses = houses_at
             .map(|(latitude, longitude)| {
                 let houses = self.houses_around(latitude, longitude, &mut candidates, now);
+                let buildings = self.buildings_around(latitude, longitude, &mut candidates, now);
                 let trees = self.trees_around(latitude, longitude, &mut candidates, now);
-                houses.into_iter().chain(trees).collect::<Vec<_>>()
+                houses
+                    .into_iter()
+                    .chain(buildings)
+                    .chain(trees)
+                    .collect::<Vec<_>>()
             })
             .unwrap_or_default();
         let wanted = self.issue(candidates, budget, now);
@@ -2372,6 +2769,8 @@ impl OpenScene {
                 .retain(|_, entry| kept(entry.used, at, now) || awaited(entry.asked, now))
         });
         self.houses
+            .retain(|_, entry| now.duration_since(entry.used) < KEEP_HOUSES_FOR);
+        self.buildings
             .retain(|_, entry| now.duration_since(entry.used) < KEEP_HOUSES_FOR);
         self.trees
             .retain(|_, entry| now.duration_since(entry.used) < KEEP_HOUSES_FOR);
@@ -2400,7 +2799,7 @@ mod tests {
     }
 
     #[test]
-    fn houses_get_pitched_roofs_and_blocks_only_when_their_roof_looks_tiled() {
+    fn houses_get_pitched_roofs_and_other_blocks_slope_only_when_their_roof_looks_tiled() {
         let gable = |ring: Vec<DVec3>, top: f64, colour| roof_for(&[ring], 0.0, top, colour);
         let Roof::Gable(long) = gable(box_ring(16.0, 8.0, 0.4), 6.0, GREY) else {
             panic!("an elongated house is gabled");
@@ -2440,7 +2839,11 @@ mod tests {
         ];
         assert!(matches!(gable(l_shape, 6.0, GREY), Roof::Flat));
         let courtyard = [box_ring(20.0, 12.0, 0.0), box_ring(4.0, 4.0, 0.0)];
-        assert!(matches!(roof_for(&courtyard, 0.0, 6.0, TILES), Roof::Flat));
+        assert!(matches!(
+            roof_for(&courtyard, 0.0, 6.0, TILES),
+            Roof::Sloped
+        ));
+        assert!(matches!(roof_for(&courtyard, 0.0, 6.0, GREY), Roof::Flat));
     }
 
     fn rectangle(length: f64, width: f64) -> Rectangle {
@@ -2450,7 +2853,7 @@ mod tests {
     #[test]
     fn a_gable_closes_on_one_ridge_along_the_long_axis_above_the_walls() {
         let (eave, pitch) = (6.0, 35f64.to_radians());
-        let roof = pitched(&rectangle(16.0, 8.0), eave, pitch, false, [0.0; 2], 9.0);
+        let roof = pitched(&rectangle(16.0, 8.0), eave, pitch, false, 9.0);
         let ridge = eave + pitch.tan() * 4.0;
         let top: Vec<DVec3> = roof
             .positions
@@ -2486,7 +2889,7 @@ mod tests {
     #[test]
     fn a_hip_roof_has_a_ridge_shorter_by_the_width_and_every_slope_faces_up() {
         let (eave, pitch) = (6.0, 35f64.to_radians());
-        let roof = pitched(&rectangle(16.0, 8.0), eave, pitch, true, [0.0; 2], 9.0);
+        let roof = pitched(&rectangle(16.0, 8.0), eave, pitch, true, 9.0);
         let ridge = eave + pitch.tan() * 4.0;
         let top: Vec<DVec3> = roof
             .positions
@@ -3142,12 +3545,16 @@ mod tests {
             x: 8581,
             y: 5738,
         };
-        let (meshes, groves) = place_meshes(parent, &json, None, &|_| None);
+        let (meshes, groves, footprints) = place_meshes(parent, &json, None);
         let layers: Vec<Layer> = meshes.iter().map(|mesh| mesh.layer).collect();
-        assert_eq!(layers, vec![Layer::Building, Layer::Water]);
+        assert_eq!(layers, vec![Layer::Water]);
         assert!(
-            meshes[1].normals.iter().all(|n| *n == [0.0, 0.0, 1.0]),
+            meshes[0].normals.iter().all(|n| *n == [0.0, 0.0, 1.0]),
             "water lies flat"
+        );
+        assert!(
+            footprints.len() > 1000,
+            "the shore's houses wait for their band tiles"
         );
         assert!(!groves.is_empty(), "the shore has woods and parks");
         let children: Vec<TileKey> = parent
@@ -3251,10 +3658,18 @@ mod tests {
             span: 1.0,
         };
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 3000, 1000, 3000, 3000, 1000, 3000]], "height": 9.0 }] });
-        let house = building_mesh(key, &json, Some(&patch), &|_| None).expect("a building");
-        scene
-            .houses
-            .insert(key, HouseEntry::loaded(vec![house], Vec::new(), now));
+        let house = building_mesh(
+            key,
+            &footprints_of(&json),
+            Some(&patch),
+            Detail::FULL.roof_sharper,
+            &|_| None,
+        )
+        .expect("a building");
+        scene.buildings.insert(
+            key,
+            HouseEntry::loaded(vec![house], Vec::new(), Vec::new(), now),
+        );
         let ground = |scene: &mut OpenScene, u: f64| {
             scene
                 .ground(key.latitude(u), key.longitude(u), 8, now)
@@ -3272,48 +3687,242 @@ mod tests {
         );
     }
 
+    fn unpacked(tag: f32) -> ([u8; 3], u32, bool, u32) {
+        let packed = (tag - WALL_TAG).round() as u32;
+        let shade = |at: u32| ((packed >> at) & 31) as u8;
+        (
+            [shade(0), shade(5), shade(10)],
+            (packed >> 15) & 7,
+            (packed >> 18) & 1 == 1,
+            (packed >> 19) & 15,
+        )
+    }
+
     #[test]
-    fn a_building_takes_its_roof_from_the_picture_under_it_and_its_walls_from_a_facade_tone() {
+    fn a_wall_tag_carries_its_colour_material_shop_and_seed_through_a_float() {
+        let tag = wall_tag([255, 128, 8, 255], Material::Glass, true, 0xFFFF_FFFF);
+        assert_eq!(
+            unpacked(tag),
+            ([31, 16, 1], Material::Glass as u32, true, 15)
+        );
+        assert!(tag < 16_777_216.0, "every tag is an exact f32 integer");
+        assert_eq!(
+            unpacked(wall_tag([0, 0, 0, 255], Material::Plaster, false, 0)),
+            ([0, 0, 0], 0, false, 0)
+        );
+    }
+
+    #[test]
+    fn towers_get_curtain_walls_brick_red_tags_get_brick_and_houses_never_glass() {
+        let seeds = 0..200u64;
+        assert!(seeds.clone().all(|seed| matches!(
+            material_for(60.0, 900.0, None, seed),
+            Material::Glass | Material::Office
+        )));
+        assert!(seeds.clone().all(|seed| material_for(
+            12.0,
+            400.0,
+            Some([170, 70, 50, 255]),
+            seed
+        ) == Material::Brick));
+        let houses: HashSet<Material> = seeds
+            .map(|seed| material_for(8.0, 120.0, None, seed))
+            .collect();
+        assert!(!houses.contains(&Material::Glass) && !houses.contains(&Material::Office));
+        assert!(houses.len() >= 3, "houses vary: {houses:?}");
+    }
+
+    #[test]
+    fn a_roof_point_projects_onto_the_photo_where_the_picture_shows_it() {
+        let key = TileKey {
+            z: 17,
+            x: 68647,
+            y: 45911,
+        };
+        let (parent, du, dv, span) = key.ancestor(BUILDING_ZOOM);
+        let placement = Placement::new(parent);
+        let (low, high) = ((du, dv), (du + span, dv + span));
+        let project = projection(&placement, low, high);
+        [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (0.37, 0.81), (1.0, 1.0)]
+            .iter()
+            .for_each(|&(s, t)| {
+                let uv = project(placement.flat_at(du + s * span, dv + t * span));
+                assert!(
+                    (f64::from(uv[0]) - s).abs() < 1e-3 && (f64::from(uv[1]) - t).abs() < 1e-3,
+                    "({s}, {t}) projected to {uv:?}"
+                );
+            });
+    }
+
+    #[test]
+    fn roofs_carry_the_photo_under_them_and_walls_their_packed_facade() {
         let key = TileKey {
             z: 14,
             x: 14980,
             y: 9903,
         };
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 1100, 1000, 1100, 1100, 1000, 1100]], "height": 9.0 }] });
-        let mesh = building_mesh(key, &json, None, &|under| {
-            (under.z == ROOF_PICTURE_ZOOM).then(|| solid([120, 40, 40, 255]))
-        })
+        let mesh = building_mesh(
+            key,
+            &footprints_of(&json),
+            None,
+            Detail::FULL.roof_sharper,
+            &|under| {
+                (under.z == key.z + Detail::FULL.roof_sharper).then(|| solid([120, 40, 40, 255]))
+            },
+        )
         .expect("a building");
-        let palette = mesh.take_texture().expect("palette")[0].clone();
-        let roof = palette.get_pixel(0, 0).0;
-        let wall = palette.get_pixel(1, 0).0;
-        assert_eq!(roof, [180, 60, 60, 255]);
-        let distance = |a: [f32; 3], b: [u8; 4]| {
-            (0..3)
-                .map(|c| (a[c] - f32::from(b[c])).powi(2))
-                .sum::<f32>()
-        };
-        let roof_like = [180.0, 60.0, 60.0];
+        let photo = mesh.take_texture().expect("the photo")[0].clone();
+        assert!(photo.pixels().all(|pixel| pixel.0 == [120, 40, 40, 255]));
         assert!(
-            FACADE_TONES
-                .iter()
-                .any(|tone| distance(*tone, wall) < distance(roof_like, wall)),
-            "wall {wall:?} is a facade tone, not the roof {roof:?}"
+            photo.width() < 64,
+            "only the roof's patch of photo, {}",
+            photo.width()
         );
         let (walls, roofs): (Vec<usize>, Vec<usize>) =
             (0..mesh.normals.len()).partition(|&i| mesh.normals[i][2] > WALL_TAG - 0.5);
+        assert!(!walls.is_empty() && !roofs.is_empty());
+        assert!(
+            roofs
+                .iter()
+                .all(|&i| mesh.uvs[i].iter().all(|t| (-0.01..=1.01).contains(t))),
+            "every roof vertex lands on its photo"
+        );
+        let (colour, material, ..) = unpacked(mesh.normals[walls[0]][2]);
         assert!(
             walls
                 .iter()
-                .all(|&i| (mesh.normals[i][2] - WALL_TAG).floor() == 1.0),
-            "every wall points at the wall colour"
+                .all(|&i| mesh.normals[i][2] == mesh.normals[walls[0]][2])
+        );
+        assert!(material <= Material::Glass as u32);
+        let distance = |tone: &[f32; 3]| {
+            (0..3)
+                .map(|c| (tone[c] - f32::from(colour[c]) * 255.0 / 31.0).powi(2))
+                .sum::<f32>()
+        };
+        assert!(
+            FACADE_TONES.iter().map(distance).fold(f32::MAX, f32::min) < 60.0_f32.powi(2),
+            "walls take a facade tone, not the red roof: {colour:?}"
+        );
+    }
+
+    #[test]
+    fn a_tiled_courtyard_block_gets_a_roof_sloping_up_from_every_eave() {
+        let square = |half: f64| {
+            vec![
+                DVec3::new(-half, -half, 0.0),
+                DVec3::new(half, -half, 0.0),
+                DVec3::new(half, half, 0.0),
+                DVec3::new(-half, half, 0.0),
+            ]
+        };
+        let placed = vec![square(30.0), square(10.0).into_iter().rev().collect()];
+        assert!(matches!(
+            roof_for(&placed, 0.0, 18.0, [150, 80, 60, 255]),
+            Roof::Sloped
+        ));
+        let roof = sloped(&placed, 18.0, 7).expect("room for a sloped roof");
+        let heights: Vec<f32> = roof.positions.iter().map(|p| p[2]).collect();
+        let top = heights.iter().copied().fold(f32::MIN, f32::max);
+        assert!(heights.iter().all(|&h| (17.99..=top + 0.01).contains(&h)));
+        assert!((top - 18.0 - (SLOPE_INSET_M * 40f64.to_radians().tan()) as f32).abs() < 1.5);
+        assert!(
+            roof.normals.iter().all(|n| n[2] > 0.0),
+            "every face looks up"
+        );
+        let within = |p: &[f32; 3], half: f32| p[0].abs() < half && p[1].abs() < half;
+        assert!(
+            roof.positions
+                .iter()
+                .any(|p| within(p, 30.1) && !within(p, 24.9)),
+            "the slope starts at the outer eave"
         );
         assert!(
-            roofs.iter().all(|&i| {
-                let uv = mesh.uvs[i];
-                [(uv[0] * PALETTE_WIDTH as f32) as u32, uv[1] as u32] == [0, 0]
-            }),
-            "every roof face points at the roof colour"
+            !roof
+                .indices
+                .chunks(3)
+                .any(|t| t.iter().all(|&i| within(&roof.positions[i as usize], 9.9))),
+            "nothing roofs over the courtyard"
+        );
+    }
+
+    #[test]
+    fn a_house_on_a_band_tile_stands_on_the_ground_under_it_not_elsewhere_in_the_tile() {
+        let parent = TileKey {
+            z: BUILDING_ZOOM,
+            x: 8583,
+            y: 5739,
+        };
+        let band = parent.children()[3];
+        let slope = Patch {
+            heights: Arc::new(Heights::new(2, vec![0.0, 0.0, 100.0, 100.0])),
+            zoom: band.z,
+            du: 0.0,
+            dv: 0.0,
+            span: 1.0,
+        };
+        let footprint = Footprint {
+            rings: vec![vec![
+                (0.55, 0.9),
+                (0.551, 0.9),
+                (0.551, 0.901),
+                (0.55, 0.901),
+            ]],
+            top: 6.0,
+            ..Footprint::default()
+        };
+        let mesh = building_mesh(
+            band,
+            &[footprint],
+            Some(&slope),
+            Detail::FULL.roof_sharper,
+            &|_| None,
+        )
+        .expect("a house");
+        let floor = mesh.positions.iter().map(|p| p[2]).fold(f32::MAX, f32::min);
+        assert!(
+            (floor - 80.0).abs() < 1.0,
+            "the slope is 80 m up where the house stands, got {floor}"
+        );
+    }
+
+    #[test]
+    fn a_band_tile_still_building_borrows_its_loaded_parent() {
+        let mut scene = OpenScene::default();
+        let now = Instant::now();
+        let parent = TileKey {
+            z: 16,
+            x: 34323,
+            y: 22955,
+        };
+        let child = parent.children()[3];
+        let (z14, ..) = parent.ancestor(BUILDING_ZOOM);
+        let footprint = Footprint {
+            rings: vec![vec![(0.5, 0.5), (0.51, 0.5), (0.51, 0.51)]],
+            top: 9.0,
+            ..Footprint::default()
+        };
+        scene.houses.insert(
+            z14,
+            HouseEntry::loaded(Vec::new(), Vec::new(), vec![footprint], now),
+        );
+        let stand_in = Mesh::new(
+            DMat4::IDENTITY,
+            vec![[0.0; 3]],
+            vec![[0.0; 2]],
+            vec![0],
+            solid([0; 4]),
+            Layer::Building,
+        );
+        let id = stand_in.id;
+        scene.buildings.insert(
+            parent,
+            HouseEntry::loaded(vec![stand_in], Vec::new(), Vec::new(), now),
+        );
+        let drawn = scene.building(child, &mut Vec::new(), now);
+        assert_eq!(
+            drawn.iter().map(|mesh| mesh.id).collect::<Vec<_>>(),
+            vec![id]
         );
     }
 
@@ -3326,8 +3935,9 @@ mod tests {
                 x: 14980,
                 y: 9903,
             },
-            &json,
+            &footprints_of(&json),
             None,
+            Detail::FULL.roof_sharper,
             &|_| None,
         )
         .expect("a building");
@@ -3392,8 +4002,9 @@ mod tests {
                 x: 14980,
                 y: 9903,
             },
-            &json,
+            &footprints_of(&json),
             None,
+            Detail::FULL.roof_sharper,
             &|_| None,
         )
         .expect("buildings");

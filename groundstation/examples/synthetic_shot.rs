@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use groundstation::synthetic::fetch::Network;
-use groundstation::synthetic::open::Woods;
+use groundstation::synthetic::open::Detail;
 use groundstation::synthetic::render::Renderer;
 use groundstation::synthetic::session::{Session, Target};
 
@@ -47,7 +47,7 @@ fn main() {
         locked: false,
     };
     groundstation::terrainservice::set_cache_path(arg("--cache").map(std::path::PathBuf::from));
-    let mut session = Session::new(&token, Arc::new(Network), Woods::FULL).expect("fetch workers");
+    let mut session = Session::new(&token, Arc::new(Network), Detail::FULL).expect("fetch workers");
     let started = Instant::now();
     let seconds = Duration::from_secs_f64(number("--seconds", 40.0));
     let mut drawn = None;

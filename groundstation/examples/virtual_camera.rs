@@ -51,7 +51,7 @@ fn main() {
     let mut session = Session::new(
         &arg("--token").unwrap_or_default(),
         Arc::new(Network),
-        renderer.woods(),
+        renderer.detail(),
     )
     .expect("fetch workers");
     let targets = renderer.targets(width, height);
