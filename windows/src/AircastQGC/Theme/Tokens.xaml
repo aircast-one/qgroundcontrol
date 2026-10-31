@@ -151,6 +151,10 @@
     <FontFamily x:Key="IconFontFamily">Segoe Fluent Icons,Segoe MDL2 Assets</FontFamily>
 
     <Color x:Key="OsdShadowColor">#99000000</Color>
+    <RadialGradientBrush x:Key="OsdHaloBrush">
+        <GradientStop Color="#66000000" Offset="0" />
+        <GradientStop Color="#00000000" Offset="1" />
+    </RadialGradientBrush>
 
     <x:Double x:Key="FontSizeCaption">12</x:Double>
     <x:Double x:Key="FontSizeBody">14</x:Double>

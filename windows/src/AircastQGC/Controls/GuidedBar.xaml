@@ -6,33 +6,20 @@
     FontFamily="{ThemeResource AppFontFamily}">
 
     <UserControl.Resources>
-        <StaticResource x:Key="ButtonBackground" ResourceKey="ChipBrush" />
-        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="ChipHoverBrush" />
-        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleSelectedBrush" />
-        <StaticResource x:Key="ButtonBackgroundDisabled" ResourceKey="ChipBrush" />
-        <StaticResource x:Key="ButtonForeground" ResourceKey="TextPrimaryBrush" />
-        <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="TextPrimaryBrush" />
-        <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="TextPrimaryBrush" />
-        <StaticResource x:Key="ButtonForegroundDisabled" ResourceKey="TextDisabledBrush" />
-        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="ControlStrokeBrush" />
-        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="ControlStrokeBrush" />
-        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="ControlStrokeBrush" />
-        <StaticResource x:Key="ButtonBorderBrushDisabled" ResourceKey="ControlStrokeBrush" />
-
         <Style x:Key="RailIcon" TargetType="FontIcon">
             <Setter Property="FontFamily" Value="{StaticResource IconFontFamily}" />
-            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontSize" Value="24" />
         </Style>
 
         <Style x:Key="RailIconPrimary" TargetType="FontIcon" BasedOn="{StaticResource RailIcon}">
-            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontSize" Value="32" />
         </Style>
 
         <Style x:Key="HomeMark" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="Margin" Value="3,5,0,0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="4,7,0,0" />
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
@@ -47,11 +34,6 @@
             <Setter Property="MaxLines" Value="1" />
         </Style>
 
-        <Style x:Key="RailPrimaryButton" TargetType="Button" BasedOn="{StaticResource FlyRailButton}">
-            <Setter Property="Background" Value="{ThemeResource AccentBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource AccentBrush}" />
-            <Setter Property="Foreground" Value="{ThemeResource AccentOnBrush}" />
-        </Style>
     </UserControl.Resources>
 
     <StackPanel
@@ -121,18 +103,6 @@
                     Foreground="{ThemeResource CriticalBrush}"
                     ToolTipService.Placement="Right"
                     Click="StopButton_Click">
-                    <Button.Resources>
-                        <StaticResource x:Key="ButtonBackground" ResourceKey="ChipBrush" />
-                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="ChipHoverBrush" />
-                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="CriticalBgBrush" />
-                        <StaticResource x:Key="ButtonBackgroundDisabled" ResourceKey="ChipBrush" />
-                        <StaticResource x:Key="ButtonForeground" ResourceKey="CriticalBrush" />
-                        <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="CriticalBrush" />
-                        <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="CriticalBrush" />
-                        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="CriticalBrush" />
-                        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="CriticalBrush" />
-                        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="CriticalBrush" />
-                    </Button.Resources>
                     <FontIcon Glyph="&#xE7BA;" Style="{StaticResource RailIcon}" />
                 </Button>
                 <ProgressRing

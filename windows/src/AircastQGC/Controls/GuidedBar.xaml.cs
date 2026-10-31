@@ -215,13 +215,12 @@ public sealed partial class GuidedBar : UserControl
         var returning = id == Return;
         var button = new Button
         {
-            Style = Styled(primary ? "RailPrimaryButton" : "FlyRailButton"),
+            Style = Styled("FlyRailButton"),
             HorizontalAlignment = HorizontalAlignment.Center,
             IsEnabled = ready,
             Opacity = blocked ? BlockedOpacity : 1,
             Content = returning ? HomeIcon(glyph) : new FontIcon { Glyph = glyph, Style = Styled(primary ? "RailIconPrimary" : "RailIcon") },
         };
-        if (primary) PreflightLook.Accent(button);
         if (returning) Shortcut(button);
         ToolTipService.SetToolTip(button, Tip(returning ? $"{title} ({ReturnShortcut})" : title, explanation));
         ToolTipService.SetPlacement(button, PlacementMode.Right);

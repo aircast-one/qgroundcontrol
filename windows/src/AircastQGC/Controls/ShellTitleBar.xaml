@@ -101,6 +101,7 @@
 
         <StackPanel x:Name="Lead" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Margin="8,0,0,0">
             <Button x:Name="MenuButton" Style="{StaticResource FlyRoundButton}" Content="&#xE700;" Margin="0,0,4,0"
+                    Foreground="{ThemeResource TextPrimaryBrush}" Background="Transparent"
                     Width="32" Height="32" CornerRadius="16"
                     Click="OnMenu" AutomationProperties.Name="Menu" ToolTipService.ToolTip="Menu">
                 <Button.Flyout>
@@ -203,6 +204,7 @@
             </Border>
 
             <Button x:Name="MoreButton" Style="{StaticResource FlyRoundButton}" Content="&#xE712;" Click="OnMore"
+                    Foreground="{ThemeResource TextPrimaryBrush}" Background="Transparent"
                     Width="32" Height="32" CornerRadius="16"
                     Visibility="Collapsed" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings" />
         </StackPanel>
