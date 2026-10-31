@@ -13,6 +13,7 @@ public static class BridgeWatch
     private static readonly Dictionary<string, string[]> Clients = new();
     private static readonly Dictionary<string, Action<JsonObject>> Handlers = new();
     private static readonly Dictionary<string, int> Counts = new();
+    private static readonly Dictionary<string, (JsonObject View, List<Action<JsonObject>> Called)> Pending = new();
 
     private static CoreEventHandler? _handler;
     private static bool _installed;
@@ -68,9 +69,29 @@ public static class BridgeWatch
         if (called.Count == 0 || string.IsNullOrEmpty(json)) return;
         if (JsonNode.Parse(json) is not JsonObject view) return;
 
-        void Fire() => called.ForEach(h => h(view));
         var ui = _ui;
-        if (ui != null && !ui.HasThreadAccess) ui.TryEnqueue(Fire);
-        else Fire();
+        if (ui == null || ui.HasThreadAccess)
+        {
+            called.ForEach(h => h(view));
+            return;
+        }
+        bool queued;
+        lock (Gate)
+        {
+            queued = Pending.ContainsKey(path);
+            Pending[path] = (view, called);
+        }
+        if (queued || ui.TryEnqueue(() => Flush(path))) return;
+        lock (Gate) Pending.Remove(path);
+    }
+
+    private static void Flush(string path)
+    {
+        (JsonObject View, List<Action<JsonObject>> Called) latest;
+        lock (Gate)
+        {
+            if (!Pending.Remove(path, out latest)) return;
+        }
+        latest.Called.ForEach(h => h(latest.View));
     }
 }

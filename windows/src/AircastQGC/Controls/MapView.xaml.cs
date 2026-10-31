@@ -105,6 +105,7 @@ public sealed partial class MapView : UserControl
     private Geo? _home;
     private double? _heading;
     private bool _keepCentered;
+    private object? _rendered;
     private bool _framed;
     private DateTime? _pannedAt;
     private Point? _dragFrom;
@@ -280,20 +281,24 @@ public sealed partial class MapView : UserControl
             _cells.Keys.ToList().ForEach(Drop);
         }
 
-        var vehicle = Read("vehicle");
-        var live = Text(vehicle["kind"]) == "object";
+        var vehicle = ReadFields("vehicle", "coordinate", "homePosition");
+        var live = vehicle["coordinate"] is not null;
         _vehicle = live ? Usable(vehicle["coordinate"]) : null;
         _home = live ? Usable(vehicle["homePosition"]) : null;
-        _heading = live ? Heading(vehicle["facts"]) : null;
+        _heading = live ? Number(Read("vehicle.heading")["value"]) : null;
         _keepCentered = Flag(Read(FollowSetting)["value"]);
         _fleet.Operator(Read(MapFleet.GcsPositionPath), ToScreen);
 
         Track();
+        var state = (_mapType, _vehicle, _home, _heading, _keepCentered, _center, _zoom, Surface.ActualWidth, Surface.ActualHeight);
+        if (Equals(state, _rendered)) return;
+        _rendered = state;
         Render();
     }
 
     private void RefreshPlan()
     {
+        if (Live.Hidden(this)) return;
         _missionLayer.Draw(MissionDrawing(MapOverlayJson.Mission(Read(FlyMissionPath))), ToScreen);
         _fenceLayer.Draw(FenceDrawing(MapOverlayJson.Fences(Read(FlyFencesPath))), ToScreen);
         _scaleAcross = double.NaN;
@@ -755,6 +760,12 @@ public sealed partial class MapView : UserControl
 
     private static int Mod(int value, int count) => (value % count + count) % count;
 
+    private static JsonObject ReadFields(string path, params string[] fields)
+    {
+        try { return Bridge.GetFields(path, fields); }
+        catch (Exception) { return new JsonObject(); }
+    }
+
     private static JsonObject Read(string path)
     {
         try { return Bridge.Group(path); }
@@ -783,12 +794,6 @@ public sealed partial class MapView : UserControl
         && Math.Abs(longitude) <= 180
             ? new Geo(latitude, longitude)
             : null;
-
-    private static double? Heading(JsonNode? facts) =>
-        (facts as JsonArray)?.OfType<JsonObject>()
-            .Where(fact => Text(fact["name"]) == "heading")
-            .Select(fact => Number(fact["value"]))
-            .FirstOrDefault();
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
