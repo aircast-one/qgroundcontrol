@@ -89,10 +89,6 @@
                     AutomationProperties.Name="Back" ToolTipService.ToolTip="Back">
                 <FontIcon Glyph="&#xE72B;" FontSize="16" />
             </Button>
-            <Button x:Name="ToggleButton" Style="{StaticResource PaneIconButton}" Click="OnToggle"
-                    AutomationProperties.Name="Navigation" ToolTipService.ToolTip="Navigation">
-                <FontIcon Glyph="&#xE700;" FontSize="16" />
-            </Button>
 
             <Button x:Name="FlyItem" Tag="Fly" Style="{StaticResource PaneButton}" Click="OnNavigate"
                     AutomationProperties.Name="Fly" ToolTipService.ToolTip="Fly">

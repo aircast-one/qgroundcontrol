@@ -71,6 +71,7 @@ public sealed partial class MainWindow : Window
         Nav.BackRequested += (_, _) => GoBack();
         Shell.PageRequested += (_, page) => Go(page);
         Shell.BackRequested += (_, _) => GoBack();
+        Shell.PaneToggleRequested += (_, _) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
         Notices.NavigateRequested += (_, page) => Go(page);
 
         NoVehicle.VehiclePresenceChanged += (_, present) => ShowVehicleOverlays(present);

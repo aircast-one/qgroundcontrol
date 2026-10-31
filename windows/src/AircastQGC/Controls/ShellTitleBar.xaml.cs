@@ -39,7 +39,7 @@ public sealed partial class ShellTitleBar : UserControl
         InitializeComponent();
         Loaded += (_, _) => Start();
         Bar.SizeChanged += (_, _) => Fit();
-        Fixed.SizeChanged += (_, _) => Fit();
+        Readout.SizeChanged += (_, _) => Fit();
         Lead.SizeChanged += (_, _) => Fit();
         MoreButton.SizeChanged += (_, _) => Fit();
         Strip.NeedChanged += Fit;
@@ -54,6 +54,8 @@ public sealed partial class ShellTitleBar : UserControl
     public event EventHandler<string>? PageRequested;
 
     public event EventHandler? BackRequested;
+
+    public event EventHandler? PaneToggleRequested;
 
     public FrameworkElement DragRegion => DragArea;
 
@@ -89,9 +91,8 @@ public sealed partial class ShellTitleBar : UserControl
         set
         {
             _onFly = value;
-            MenuButton.Visibility = Shown(value);
+            MenuButton.Flyout = value ? PageMenu : null;
             MoreButton.Visibility = Shown(value);
-            Logo.Visibility = Shown(!value);
             Subtitle.Visibility = Shown(!value);
             VehicleSwitch.Named = value;
             Render();
@@ -117,7 +118,7 @@ public sealed partial class ShellTitleBar : UserControl
         probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var title = probe.DesiredSize.Width + DragArea.ColumnSpacing;
         var brand = Lead.Margin.Left + Lead.ActualWidth + MoreButton.ActualWidth + RightGroup.Spacing + DragArea.Padding.Left + DragArea.Padding.Right + DragFloor;
-        var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - Fixed.ActualWidth - brand;
+        var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - (Readout.ActualWidth - Strip.ActualWidth) - brand;
         ArmedText.MaxWidth = Math.Max(VerdictFloor, room + ArmedText.ActualWidth - Strip.Needed);
         var titled = !_onFly && Readings.Visibility != Visibility.Visible && room - title >= StripFloor;
         AppTitle.Visibility = Shown(titled);
@@ -152,6 +153,11 @@ public sealed partial class ShellTitleBar : UserControl
 
     private void OnBack(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
 
+    private void OnMenu(object sender, RoutedEventArgs e)
+    {
+        if (!_onFly) PaneToggleRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     private void OnMore(object sender, RoutedEventArgs e) => PageRequested?.Invoke(this, NavPane.Settings);
 
     private JsonObject View(string path) => _views.TryGetValue(path, out var view) ? view : new JsonObject();
@@ -166,12 +172,15 @@ public sealed partial class ShellTitleBar : UserControl
 
         Subtitle.Text = !connected ? "Connect a vehicle to fly" : !alarming ? "" : stateText.Length == 0 ? "Vehicle state unknown" : stateText;
         Subtitle.Foreground = Token(alarming ? "CriticalBrush" : "TextTertiaryBrush");
+        Logo.Visibility = Shown(!_onFly && !connected);
 
         var links = (View(VehicleLinksPath)["links"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
         var (linkText, linkTone) = Link(connected, Flag(state, "contactLost"), links);
         var linkNames = links.Select(link => Text(link, "name")).Where(name => name.Length > 0).ToList();
         LinkText.Text = linkText;
-        Paint(LinkPill, LinkIcon, linkTone);
+        LinkIcon.Foreground = StatusLook.Tint(linkTone);
+        LinkText.Foreground = StatusLook.CellInk(linkTone);
+        StatusLook.Dress(LinkPill, linkTone);
         ToolTipService.SetToolTip(LinkPill, linkNames.Count == 0 ? "Connections" : string.Join("\n", linkNames));
 
         Readings.Visibility = Shown(connected);
@@ -197,7 +206,9 @@ public sealed partial class ShellTitleBar : UserControl
             { Tone: StatusTone.Good } => ReadyGlyph,
             _ => NotReadyGlyph,
         };
-        Paint(ArmedPill, ArmedIcon, verdict?.Tone ?? (armed ? StatusTone.Critical : StatusTone.Muted));
+        var verdictTone = verdict?.Tone ?? (armed ? StatusTone.Critical : StatusTone.Muted);
+        ArmedIcon.Foreground = StatusLook.Tint(verdictTone);
+        ArmedText.Foreground = StatusLook.Ink(verdictTone);
         ToolTipService.SetToolTip(ArmedPill, verdict is null ? "Vehicle status" : string.Join("\n", new[] { $"Disarmed · {verdict.Text}", verdict.Detail }.Where(line => line.Length > 0)));
         AutomationProperties.SetHelpText(ArmedPill, verdict is null ? "" : $"Disarmed. {verdict.Text}");
     }
@@ -215,12 +226,6 @@ public sealed partial class ShellTitleBar : UserControl
             _ when silent == links.Count => ("No link heard", StatusTone.Critical),
             _ => (silent == 1 ? "1 link lost" : $"{silent} links lost", StatusTone.Caution),
         };
-    }
-
-    private static void Paint(Control pill, FontIcon icon, StatusTone tone)
-    {
-        icon.Foreground = StatusLook.Tint(tone);
-        StatusLook.Dress(pill, tone);
     }
 
     private static Brush Token(string key) =>

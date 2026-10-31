@@ -81,6 +81,14 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="TitleButton" TargetType="Button" BasedOn="{StaticResource PillButton}">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
     </UserControl.Resources>
 
     <Grid x:Name="Bar" Background="Transparent">
@@ -93,8 +101,7 @@
 
         <StackPanel x:Name="Lead" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
             <Button x:Name="MenuButton" Style="{StaticResource FlyRoundButton}" Content="&#xE700;" Margin="0,0,4,0"
-                    Visibility="Collapsed"
-                    AutomationProperties.Name="Menu" ToolTipService.ToolTip="Menu">
+                    Click="OnMenu" AutomationProperties.Name="Menu" ToolTipService.ToolTip="Menu">
                 <Button.Flyout>
                     <MenuFlyout x:Name="PageMenu" Placement="BottomEdgeAlignedLeft">
                         <MenuFlyoutItem x:Name="BackItem" Text="Back" Click="OnBack">
@@ -133,7 +140,7 @@
                 </Button.Flyout>
             </Button>
 
-            <Border x:Name="Logo" Width="20" Height="20" Margin="8,0,8,0" VerticalAlignment="Center"
+            <Border x:Name="Logo" Width="20" Height="20" Margin="4,0,4,0" VerticalAlignment="Center"
                     CornerRadius="{StaticResource RadiusControl}" Background="{ThemeResource AccentBrush}">
                 <FontIcon Glyph="&#xE709;" FontSize="12" Foreground="{ThemeResource AccentOnBrush}" />
             </Border>
@@ -145,12 +152,12 @@
 
                 <local:VtolStateCell />
 
-                <Button x:Name="ModePill" Style="{StaticResource PillButton}" Click="OnModeClick"
+                <Button x:Name="ModePill" Style="{StaticResource TitleButton}" Click="OnModeClick"
                         AutomationProperties.Name="Flight mode" ToolTipService.ToolTip="Flight mode">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE709;" Style="{StaticResource PillIcon}" Foreground="{ThemeResource AccentBrush}" />
-                        <TextBlock x:Name="ModeText" Style="{StaticResource PillText}" />
-                        <FontIcon x:Name="ModeChevron" Glyph="&#xE70D;" FontSize="10"
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE709;" FontSize="16" VerticalAlignment="Center" Foreground="{ThemeResource AccentBrush}" />
+                        <TextBlock x:Name="ModeText" Style="{StaticResource PillText}" FontSize="{ThemeResource FontSizeBodyLarge}" FontWeight="SemiBold" />
+                        <FontIcon x:Name="ModeChevron" Glyph="&#xE70D;" FontSize="12"
                                   Foreground="{ThemeResource TextSecondaryBrush}" VerticalAlignment="Center" />
                         <ProgressRing x:Name="ModePending" Width="12" Height="12" MinWidth="12" MinHeight="12"
                                       IsActive="False" Visibility="Collapsed" Foreground="{ThemeResource AccentBrush}" />
@@ -177,17 +184,22 @@
         </Grid>
 
         <StackPanel x:Name="RightGroup" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,8,0">
-            <StackPanel x:Name="Fixed" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                <Button x:Name="LinkPill" Style="{StaticResource PillButton}" Click="OnLinkClick"
-                        AutomationProperties.Name="Connections" ToolTipService.ToolTip="Connections">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon x:Name="LinkIcon" Glyph="&#xE71B;" Style="{StaticResource PillIcon}" />
-                        <TextBlock x:Name="LinkText" Style="{StaticResource PillText}" />
+            <Border x:Name="Readout" Height="32" Padding="2,0" CornerRadius="16" VerticalAlignment="Center"
+                    Background="{ThemeResource ChipBrush}" BorderBrush="{ThemeResource ControlStrokeBrush}" BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                    <StackPanel x:Name="Fixed" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <Button x:Name="LinkPill" Style="{StaticResource PillButton}" Click="OnLinkClick"
+                                AutomationProperties.Name="Connections" ToolTipService.ToolTip="Connections">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon x:Name="LinkIcon" Glyph="&#xE71B;" Style="{StaticResource PillIcon}" />
+                                <TextBlock x:Name="LinkText" Style="{StaticResource PillText}" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
-                </Button>
-            </StackPanel>
 
-            <local:StatusStrip x:Name="Strip" />
+                    <local:StatusStrip x:Name="Strip" />
+                </StackPanel>
+            </Border>
 
             <Button x:Name="MoreButton" Style="{StaticResource FlyRoundButton}" Content="&#xE712;" Click="OnMore"
                     Visibility="Collapsed" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings" />

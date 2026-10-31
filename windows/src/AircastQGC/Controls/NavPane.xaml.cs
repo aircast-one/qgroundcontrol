@@ -32,8 +32,6 @@ public sealed partial class NavPane : UserControl
 
     public event EventHandler? BackRequested;
 
-    public event EventHandler<bool>? PaneToggled;
-
     public string SelectedPage
     {
         get => _selectedPage;
@@ -72,12 +70,6 @@ public sealed partial class NavPane : UserControl
     }
 
     private void OnBack(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
-
-    private void OnToggle(object sender, RoutedEventArgs e)
-    {
-        IsPaneOpen = !IsPaneOpen;
-        PaneToggled?.Invoke(this, IsPaneOpen);
-    }
 
     private void Render()
     {
