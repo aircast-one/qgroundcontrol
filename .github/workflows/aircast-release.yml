@@ -282,7 +282,9 @@ jobs:
         working-directory: ${{ github.workspace }}/android
         env:
           AIRCAST_QGC_AAR: ${{ runner.temp }}/build/android-build/AircastQGC.aar
-          AIRCAST_KEYSTORE: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' && format('{0}/play-upload.keystore', runner.temp) || (secrets.ANDROID_KEYSTORE_BASE64 != '' && env.QT_ANDROID_KEYSTORE_PATH || '') }}
+          AIRCAST_KEYSTORE: >-
+            ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' && format('{0}/play-upload.keystore', runner.temp)
+            || (secrets.ANDROID_KEYSTORE_BASE64 != '' && env.QT_ANDROID_KEYSTORE_PATH || '') }}
           AIRCAST_KEYSTORE_PASSWORD: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' && secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD || secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
           AIRCAST_KEY_ALIAS: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' && 'aircast-upload' || env.QT_ANDROID_KEYSTORE_ALIAS }}
           AIRCAST_VERSION_CODE: ${{ github.run_number }}
@@ -314,7 +316,9 @@ jobs:
           package_name: one.aircast.app
           artifact: out/AircastAndroidCore-${{ needs.setup.outputs.short_version }}.aab
           service_account_json_file: ${{ steps.play_auth.outputs.credentials_file_path }}
-          track: ${{ needs.setup.outputs.is_production == 'true' && (vars.PLAY_PRODUCTION_TRACK || 'production') || (needs.setup.outputs.environment == 'beta' && (vars.PLAY_BETA_TRACK || 'alpha') || 'internal') }}
+          track: >-
+            ${{ needs.setup.outputs.is_production == 'true' && (vars.PLAY_PRODUCTION_TRACK || 'production')
+            || (needs.setup.outputs.environment == 'beta' && (vars.PLAY_BETA_TRACK || 'alpha') || 'internal') }}
           status: completed
 
       - uses: actions/upload-artifact@v7
@@ -685,6 +689,9 @@ jobs:
         run: |
           set -euo pipefail
           create-dmg --volname "AircastQGC Native" --filesystem APFS \
+            --window-size 600 360 --icon-size 100 \
+            --icon "AircastQGCNative.app" 160 170 --hide-extension "AircastQGCNative.app" \
+            --app-drop-link 440 170 \
             AircastQGCNative.dmg staging-native/
 
       - name: Collect DMG
@@ -1175,7 +1182,20 @@ jobs:
           fi
 
   notify:
-    needs: [setup, build-android, build-android-core, build-ios, build-macos, build-macos-native, build-windows, build-windows-arm64, build-windows-native, build-linux, build-web, publish, cleanup-old-releases]
+    needs:
+      - setup
+      - build-android
+      - build-android-core
+      - build-ios
+      - build-macos
+      - build-macos-native
+      - build-windows
+      - build-windows-arm64
+      - build-windows-native
+      - build-linux
+      - build-web
+      - publish
+      - cleanup-old-releases
     if: always()
     runs-on: ubuntu-latest
     steps:
