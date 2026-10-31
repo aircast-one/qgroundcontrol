@@ -47,9 +47,13 @@ fn drawn(
 fn main() {
     let (width, height) = (size("--width", 1280), size("--height", 720));
     groundstation::terrainservice::set_cache_path(arg("--cache").map(std::path::PathBuf::from));
-    let mut session = Session::new(&arg("--token").unwrap_or_default(), Arc::new(Network))
-        .expect("fetch workers");
     let mut renderer = Renderer::new().expect("a GPU adapter");
+    let mut session = Session::new(
+        &arg("--token").unwrap_or_default(),
+        Arc::new(Network),
+        renderer.woods(),
+    )
+    .expect("fetch workers");
     let targets = renderer.targets(width, height);
     let out = std::io::stdout();
     std::io::stdin()

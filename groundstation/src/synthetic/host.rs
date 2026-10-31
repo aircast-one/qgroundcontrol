@@ -5,6 +5,7 @@ use std::time::Duration;
 use web_time::Instant;
 
 use super::fetch::Network;
+use super::open::Woods;
 use super::overlay::Overlays;
 use super::render::{Renderer, Targets};
 use super::session::{Frame, Session, Stats, Target};
@@ -575,8 +576,8 @@ fn millis(spent: Duration) -> u64 {
     u64::try_from(spent.as_millis()).unwrap_or(u64::MAX)
 }
 
-fn start_session(token: &str) -> Option<Session> {
-    Session::new(token, Arc::new(Network))
+fn start_session(token: &str, woods: Woods) -> Option<Session> {
+    Session::new(token, Arc::new(Network), woods)
         .inspect_err(|error| log::error!(target: "synthetic", "event=session_failed source={} reason=\"{error}\"", if token.is_empty() { "open" } else { "google" }))
         .ok()
 }
@@ -639,7 +640,10 @@ fn show(
         shown.iter_mut().for_each(|surface| surface.fit(&gpu));
         let rekeyed = token.refresh(now, || Some(feed.token()));
         if rekeyed {
-            session = start_session(token.value.as_deref().unwrap_or_default());
+            session = start_session(
+                token.value.as_deref().unwrap_or_default(),
+                gpu.renderer.woods(),
+            );
         }
         let restyled = overlays.refresh(now, || {
             feed.overlays().as_ref().and_then(Overlays::from_view)

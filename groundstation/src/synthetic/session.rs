@@ -13,7 +13,7 @@ use glam::{DQuat, DVec3, EulerRot};
 use super::geo::{Camera, Pose};
 use super::ground;
 use super::mesh::Mesh;
-use super::open::{Built, OpenScene, Want};
+use super::open::{Built, OpenScene, Want, Woods};
 use super::overlay::{self, Bottle, Overlays, Spot, Tracked};
 use super::predict::{self, Gain, Lag, Predicted, Step};
 use super::tileset::{self, GOOGLE_ROOT, ION_GOOGLE_ASSET, Parsed, Request, Selection, Tileset};
@@ -996,7 +996,7 @@ pub fn camera_height(target: &Target, home_ground: Option<f64>, under_ground: Op
 }
 
 impl Session {
-    pub fn new(token: &str, fetcher: Arc<dyn Fetcher>) -> Result<Self, String> {
+    pub fn new(token: &str, fetcher: Arc<dyn Fetcher>, woods: Woods) -> Result<Self, String> {
         let tally = Arc::new(Tally::default());
         let mut pool = workers(WORKERS, "synthetic-fetch", fetcher.clone(), tally.clone())?;
         let google = !token.is_empty();
@@ -1006,11 +1006,11 @@ impl Session {
         let source = if google {
             Source::Google(None)
         } else {
-            Source::Open(OpenScene::new())
+            Source::Open(OpenScene::new(woods))
         };
         let fallback = match google {
             true => Some(Fallback {
-                scene: OpenScene::new(),
+                scene: OpenScene::new(woods),
                 pool: workers(
                     STAND_IN_WORKERS,
                     "synthetic-stand-in",
@@ -1968,7 +1968,7 @@ mod tests {
 
     #[test]
     fn the_reading_age_follows_telemetry_not_the_pilots_tilt() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let reading = target("Bing Satellite");
         let start = Instant::now();
         let at = |ms: u64| start + Duration::from_millis(ms);
@@ -2216,7 +2216,7 @@ mod tests {
 
     #[test]
     fn after_a_jump_the_next_frame_is_drawn_at_the_asked_pose_not_part_way_there() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let start = Instant::now();
         let at = |ms: u64| start + Duration::from_millis(ms);
         let aimed = |pitch: f64| Target {
@@ -2244,7 +2244,7 @@ mod tests {
 
     #[test]
     fn a_frame_reports_how_long_after_the_touch_it_was_drawn() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let start = Instant::now();
         let at = |ms: u64| start + Duration::from_millis(ms);
         let touched = [StickSample {
@@ -2306,7 +2306,7 @@ mod tests {
 
     #[test]
     fn a_steady_turn_is_drawn_where_the_drone_points_now_not_where_it_pointed() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let start = Instant::now();
         let errors: Vec<f64> = (0u64..120)
             .map(|tick| {
@@ -2370,7 +2370,7 @@ mod tests {
 
     #[test]
     fn a_moving_drone_keeps_the_view_moving_between_its_position_readings() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let flying = Target {
             north_speed: 10.0,
             ..target("Bing Satellite")
@@ -2399,7 +2399,7 @@ mod tests {
 
     #[test]
     fn the_pilots_own_aim_is_drawn_at_once_while_telemetry_is_still_eased_in() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let start = Instant::now();
         let at = |ms: u64| start + Duration::from_millis(ms);
         let still = target("Bing Satellite");
@@ -2486,7 +2486,7 @@ mod tests {
 
     #[test]
     fn an_open_session_loads_offline_terrain_draws_it_and_then_stops_asking() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let frame =
             settle(&mut session, &target("Bing Satellite"), Instant::now()).expect("terrain drawn");
         assert!(!frame.ground.is_empty());
@@ -2507,7 +2507,7 @@ mod tests {
 
     #[test]
     fn a_frame_draws_the_dropped_bottles_and_knows_the_ground_under_the_drone() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let bottle = |above_home: f64, landed: bool| Bottle {
             latitude: -35.36213,
             longitude: 149.16514,
@@ -2546,7 +2546,7 @@ mod tests {
 
     #[test]
     fn a_still_view_stops_asking_for_redraws_once_its_tiles_are_in() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let still = target("Bing Satellite");
         let start = Instant::now();
         settle(&mut session, &still, start).expect("terrain drawn");
@@ -2608,7 +2608,7 @@ mod tests {
 
     #[test]
     fn with_a_token_the_open_scene_stands_in_until_google_answers() {
-        let mut session = Session::new("eyJtoken", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("eyJtoken", Arc::new(Fake), Woods::FULL).expect("workers");
         let frame = settle(&mut session, &target("Bing Satellite"), Instant::now())
             .expect("open terrain drawn while Google's root is unreachable");
         assert!(!frame.ground.is_empty());
@@ -2626,7 +2626,7 @@ mod tests {
 
     #[test]
     fn an_unanswered_google_root_is_asked_for_again_instead_of_leaving_the_stand_in_forever() {
-        let mut session = Session::new("eyJtoken", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("eyJtoken", Arc::new(Fake), Woods::FULL).expect("workers");
         let (start, deadline) = (Instant::now(), Instant::now() + Duration::from_secs(10));
         let retried = (0u64..)
             .take_while(|_| Instant::now() < deadline)
@@ -2656,7 +2656,7 @@ mod tests {
 
     #[test]
     fn a_provider_that_crashes_its_worker_is_reported_and_frees_the_budget() {
-        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let mut session = Session::new("", Arc::new(Fake), Woods::FULL).expect("workers");
         let (start, deadline) = (Instant::now(), Instant::now() + Duration::from_secs(10));
         let settled = (0u64..)
             .take_while(|_| Instant::now() < deadline)

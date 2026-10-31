@@ -42,10 +42,22 @@ const ROOF_PICTURE_ZOOM: u32 = 16;
 const ROOF_LIFT: f32 = 1.5;
 const BOUNDS_BLOCK: usize = 16;
 const TREE_ZOOM: u32 = 16;
-const TREE_REACH_M: f64 = 1_000.0;
-const TREE_SPLIT_M: [f64; 2] = [600.0, 250.0];
 const TREE_NEAR_ZOOM: u32 = 18;
-const FAR_KEEP: f64 = 0.5;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Woods {
+    pub reach_m: f64,
+    pub split_m: [f64; 2],
+    pub far_keep: f64,
+}
+
+impl Woods {
+    pub const FULL: Woods = Woods {
+        reach_m: 1_000.0,
+        split_m: [600.0, 250.0],
+        far_keep: 0.5,
+    };
+}
 const FAR_SPREAD: f64 = 1.35;
 const TREE_BRIGHTEST: f32 = 120.0;
 const TREE_DARKEST: f32 = 65.0;
@@ -353,6 +365,7 @@ pub enum Want {
         patch: Patch,
         groves: Arc<Vec<Grove>>,
         home: Option<(f64, f64)>,
+        far_keep: f64,
     },
 }
 
@@ -430,11 +443,12 @@ impl Want {
                 patch,
                 groves,
                 home,
+                far_keep,
             } => Built::Trees(
                 key,
                 picture(fetcher, &imagery, key)
                     .map(|(picture, _)| {
-                        tree_mesh(key, &groves, &patch, &picture, home)
+                        tree_mesh(key, &groves, &patch, &picture, home, far_keep)
                             .into_iter()
                             .collect()
                     })
@@ -589,6 +603,7 @@ struct Sight<'a> {
 }
 
 pub struct OpenScene {
+    woods: Woods,
     imagery: String,
     heights: Store<Heights>,
     terrain: HashMap<TileKey, TerrainEntry>,
@@ -1319,6 +1334,7 @@ fn tree_mesh(
     patch: &Patch,
     picture: &image::RgbaImage,
     home: Option<(f64, f64)>,
+    far_keep: f64,
 ) -> Option<Mesh> {
     let near = key.z >= TREE_NEAR_ZOOM;
     let far = key.z == TREE_ZOOM;
@@ -1332,7 +1348,7 @@ fn tree_mesh(
     });
     let trees: Vec<Tree> = scatter(key, groves)
         .into_iter()
-        .filter(|&(.., seed, _)| !far || unit(mixed(seed, 7)) < FAR_KEEP)
+        .filter(|&(.., seed, _)| !far || unit(mixed(seed, 7)) < far_keep)
         .filter(|&(u, v, ..)| {
             home.is_none_or(|home| (placement.flat_at(u, v) - home).length() > HOME_CLEARING_M)
         })
@@ -1539,13 +1555,14 @@ fn building_mesh(
 
 impl Default for OpenScene {
     fn default() -> Self {
-        Self::new()
+        Self::new(Woods::FULL)
     }
 }
 
 impl OpenScene {
-    pub fn new() -> Self {
+    pub fn new(woods: Woods) -> Self {
         Self {
+            woods,
             imagery: String::new(),
             heights: Store::new(),
             terrain: HashMap::new(),
@@ -1825,7 +1842,7 @@ impl OpenScene {
         else {
             return Vec::new();
         };
-        let (imagery, home) = (self.imagery.clone(), self.home);
+        let (imagery, home, far_keep) = (self.imagery.clone(), self.home, self.woods.far_keep);
         self.placed(
             key,
             |scene| &mut scene.trees,
@@ -1835,6 +1852,7 @@ impl OpenScene {
                 patch,
                 groves,
                 home,
+                far_keep,
             },
             wanted,
             now,
@@ -1855,18 +1873,21 @@ impl OpenScene {
                 .hypot(gap(f64::from(key.y) - f64::from(eye.y), v))
                 * key.width_m()
         };
-        fn split(key: TileKey, gap_m: &dyn Fn(TileKey) -> f64) -> Vec<TileKey> {
-            if key.z < TREE_NEAR_ZOOM && gap_m(key) <= TREE_SPLIT_M[(key.z - TREE_ZOOM) as usize] {
+        fn split(key: TileKey, gap_m: &dyn Fn(TileKey) -> f64, split_m: [f64; 2]) -> Vec<TileKey> {
+            if key.z < TREE_NEAR_ZOOM && gap_m(key) <= split_m[(key.z - TREE_ZOOM) as usize] {
                 key.children()
                     .into_iter()
-                    .flat_map(|child| split(child, gap_m))
+                    .flat_map(|child| split(child, gap_m, split_m))
                     .collect()
             } else {
                 vec![key]
             }
         }
         let (centre, ..) = TileKey::containing(latitude, longitude, TREE_ZOOM);
-        let span = (TREE_REACH_M / centre.width_m()).ceil() as i64;
+        let Woods {
+            reach_m, split_m, ..
+        } = self.woods;
+        let span = (reach_m / centre.width_m()).ceil() as i64;
         let around: Vec<TileKey> = (-span..=span)
             .flat_map(|dy| (-span..=span).map(move |dx| (dx, dy)))
             .filter_map(|(dx, dy)| {
@@ -1876,8 +1897,8 @@ impl OpenScene {
                     y: u32::try_from(i64::from(centre.y) + dy).ok()?,
                 })
             })
-            .filter(|&key| gap_m(key) <= TREE_REACH_M)
-            .flat_map(|key| split(key, &gap_m))
+            .filter(|&key| gap_m(key) <= reach_m)
+            .flat_map(|key| split(key, &gap_m, split_m))
             .collect();
         around
             .into_iter()
@@ -2144,7 +2165,7 @@ mod tests {
 
     #[test]
     fn a_full_turn_keeps_tile_memory_bounded_without_dropping_what_the_frame_uses() {
-        let mut scene = OpenScene::new();
+        let mut scene = OpenScene::default();
         let begun = Instant::now();
         turn_once_round(&mut scene, 1.0, begun);
         let last = begun + Duration::from_millis(179 * 45);
@@ -2186,8 +2207,8 @@ mod tests {
 
     #[test]
     fn a_fast_turn_asks_for_far_fewer_fine_tiles() {
-        let still = turn_once_round(&mut OpenScene::new(), 1.0, Instant::now());
-        let turning = turn_once_round(&mut OpenScene::new(), 3.0, Instant::now());
+        let still = turn_once_round(&mut OpenScene::default(), 1.0, Instant::now());
+        let turning = turn_once_round(&mut OpenScene::default(), 3.0, Instant::now());
         assert!(
             turning * 2 < still,
             "coarser detail while turning asked for {turning} tiles against {still}"
@@ -2297,7 +2318,7 @@ mod tests {
 
     #[test]
     fn the_coarse_world_draws_first_then_finer_tiles_take_over_even_without_imagery() {
-        let mut scene = OpenScene::new();
+        let mut scene = OpenScene::default();
         let frames = run(&mut scene, &camera(), 40, Instant::now());
         let first_drawn = frames
             .iter()
@@ -2315,7 +2336,7 @@ mod tests {
 
     #[test]
     fn imagery_stops_refining_where_the_provider_has_no_finer_pictures() {
-        let mut scene = OpenScene::new();
+        let mut scene = OpenScene::default();
         let start = Instant::now();
         let ground = 130.0 * 256.0 + 92.0 - 32_768.0;
         let finest = (0..60u64)
@@ -2355,7 +2376,7 @@ mod tests {
 
     #[test]
     fn coarse_tiles_are_asked_for_first_so_a_far_sibling_is_never_starved_by_near_detail() {
-        let mut scene = OpenScene::new();
+        let mut scene = OpenScene::default();
         let patch = Patch {
             heights: Arc::new(Heights::new(1, vec![0.0])),
             zoom: 9,
@@ -2384,7 +2405,7 @@ mod tests {
 
     #[test]
     fn a_missing_fine_height_tile_falls_back_to_a_coarser_one_instead_of_sea_level() {
-        let mut scene = OpenScene::new();
+        let mut scene = OpenScene::default();
         let now = Instant::now();
         let coarse = TileKey {
             z: 10,
@@ -2650,7 +2671,16 @@ mod tests {
             .flat_map(|&key| {
                 std::iter::once(key).chain(key.children().into_iter().flat_map(TileKey::children))
             })
-            .filter_map(|key| tree_mesh(key, &groves, &flat_patch(), &canopy, None))
+            .filter_map(|key| {
+                tree_mesh(
+                    key,
+                    &groves,
+                    &flat_patch(),
+                    &canopy,
+                    None,
+                    Woods::FULL.far_keep,
+                )
+            })
             .collect();
         assert!(!grown.is_empty(), "some of the shore is wooded");
         assert!(grown.iter().all(|mesh| mesh.layer == Layer::Foliage));
@@ -2666,26 +2696,49 @@ mod tests {
         let wooded = children
             .iter()
             .copied()
-            .find(|&key| tree_mesh(key, &groves, &flat_patch(), &canopy, None).is_some())
+            .find(|&key| {
+                tree_mesh(
+                    key,
+                    &groves,
+                    &flat_patch(),
+                    &canopy,
+                    None,
+                    Woods::FULL.far_keep,
+                )
+                .is_some()
+            })
             .expect("a wooded tile");
         let home = (wooded.latitude(0.5), wooded.longitude(0.5));
-        let cleared = tree_mesh(wooded, &groves, &flat_patch(), &canopy, Some(home));
+        let cleared = tree_mesh(
+            wooded,
+            &groves,
+            &flat_patch(),
+            &canopy,
+            Some(home),
+            Woods::FULL.far_keep,
+        );
         assert!(
             cleared.is_none_or(|mesh| { mesh.positions.iter().all(|p| p[0].hypot(p[1]) > 10.0) }),
             "no crown reaches over the spot the aircraft took off from"
         );
         let road = image::RgbaImage::from_pixel(8, 8, image::Rgba([170, 170, 165, 255]));
         assert!(
-            children
-                .iter()
-                .all(|&key| tree_mesh(key, &groves, &flat_patch(), &road, None).is_none()),
+            children.iter().all(|&key| tree_mesh(
+                key,
+                &groves,
+                &flat_patch(),
+                &road,
+                None,
+                Woods::FULL.far_keep
+            )
+            .is_none()),
             "nothing grows where the picture shows a road"
         );
     }
 
     #[test]
     fn standing_inside_a_building_footprint_puts_the_ground_on_its_roof() {
-        let mut scene = OpenScene::new();
+        let mut scene = OpenScene::default();
         let now = Instant::now();
         let key = TileKey {
             z: BUILDING_ZOOM,

@@ -9,6 +9,7 @@ use web_time::Instant;
 use super::geo::Camera;
 use super::mesh::{Layer, Mesh, solid};
 use super::noise;
+use super::open::Woods;
 
 const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -36,9 +37,7 @@ const LAYERS: [Layer; 5] = [
 ];
 
 const ANISOTROPY: u16 = 16;
-const BLOOM: bool = true;
-const GOD_RAYS: bool = true;
-const SSAO: bool = true;
+const BLOOM_MIPS: usize = 5;
 const SURFACE: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const OCCLUSION: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const SHADOWS: bool = true;
@@ -59,7 +58,12 @@ struct Quality {
     cloud_shrink: u32,
     samples: u32,
     shadow_size: u32,
-    bloom_mips: usize,
+    bloom: bool,
+    god_rays: bool,
+    woods: Woods,
+    render_scale: f64,
+    foliage_cascades: usize,
+    ssao: bool,
 }
 
 const HIGH: Quality = Quality {
@@ -67,7 +71,12 @@ const HIGH: Quality = Quality {
     cloud_shrink: NO_CLOUD_MAP,
     samples: 4,
     shadow_size: 2048,
-    bloom_mips: 5,
+    bloom: true,
+    god_rays: true,
+    woods: Woods::FULL,
+    render_scale: 1.0,
+    foliage_cascades: CASCADES,
+    ssao: true,
 };
 
 const LOW: Quality = Quality {
@@ -75,7 +84,16 @@ const LOW: Quality = Quality {
     cloud_shrink: 2,
     samples: 1,
     shadow_size: 1024,
-    bloom_mips: 3,
+    bloom: false,
+    god_rays: false,
+    woods: Woods {
+        reach_m: 600.0,
+        split_m: [350.0, 150.0],
+        far_keep: 0.3,
+    },
+    render_scale: 0.75,
+    foliage_cascades: 1,
+    ssao: false,
 };
 
 fn quality(info: &wgpu::AdapterInfo) -> Quality {
@@ -367,8 +385,16 @@ fn screen_uv(screen: vec2<f32>) -> vec2<f32> {
     return screen * vec2<f32>(0.5, -0.5) + 0.5;
 }
 
+fn soft(map: texture_2d<f32>, uv: vec2<f32>) -> vec4<f32> {
+    let half = 0.5 / vec2<f32>(textureDimensions(map));
+    return 0.25 * (textureSampleLevel(map, cloud_map_sampler, uv + half * vec2<f32>(-1.0, -1.0), 0.0)
+        + textureSampleLevel(map, cloud_map_sampler, uv + half * vec2<f32>(1.0, -1.0), 0.0)
+        + textureSampleLevel(map, cloud_map_sampler, uv + half * vec2<f32>(-1.0, 1.0), 0.0)
+        + textureSampleLevel(map, cloud_map_sampler, uv + half * vec2<f32>(1.0, 1.0), 0.0));
+}
+
 fn cloud_seen(screen: vec2<f32>, direction: vec3<f32>, pixel: vec2<f32>, limit: f32) -> vec4<f32> {
-    if (LOW_TIER) { return textureSampleLevel(cloud_map, cloud_map_sampler, screen_uv(screen), 0.0); }
+    if (LOW_TIER) { return soft(cloud_map, screen_uv(screen)); }
     return cloud_light(direction, dither(pixel), limit);
 }
 
@@ -507,8 +533,7 @@ fn sky_seen(direction: vec3<f32>, cover: vec4<f32>) -> vec3<f32> {
 @fragment fn fs_sky(f: SkyOut) -> Frag {
     if (LOW_TIER) {
         let uv = screen_uv(f.screen);
-        let cover = textureSampleLevel(cloud_map, cloud_map_sampler, uv, 0.0).a;
-        return Frag(vec4<f32>(textureSampleLevel(sky_map, cloud_map_sampler, uv, 0.0).rgb, 1.0), vec4<f32>(0.0, 0.0, 0.0, cover - 1.0));
+        return Frag(vec4<f32>(soft(sky_map, uv).rgb, 1.0), vec4<f32>(0.0, 0.0, 0.0, soft(cloud_map, uv).a - 1.0));
     }
     let through = scene.unproject * vec4<f32>(f.screen, 0.5, 1.0);
     let direction = normalize(through.xyz / through.w);
@@ -568,8 +593,8 @@ struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> 
 const EXPOSURE = 0.36;
 const BLOOM = 0.06;
 const GOD_RAYS = 0.2;
-const RAY_SAMPLES = select(40, 20, LOW_TIER);
-const RAY_DECAY = select(0.96, 0.96 * 0.96, LOW_TIER);
+const RAY_SAMPLES = 40;
+const RAY_DECAY = 0.96;
 const RAY_REACH = 0.9;
 const RAY_SPREAD = 12.0;
 const BLOOM_THRESHOLD = 1.0 / EXPOSURE;
@@ -577,8 +602,7 @@ const BLOOM_KNEE = 0.5;
 const AO_RADIUS = 6.0;
 const AO_BIAS = 0.05;
 const AO_STRENGTH = 1.5;
-const AO_SAMPLES = select(12, 6, LOW_TIER);
-const AO_STRIDE = select(1, 2, LOW_TIER);
+const AO_SAMPLES = 12;
 const KERNEL = array<vec3<f32>, 12>(
     vec3<f32>(-0.088, 0.007, 0.047), vec3<f32>(-0.022, 0.102, 0.020), vec3<f32>(-0.061, -0.103, 0.036), vec3<f32>(0.060, -0.055, 0.133),
     vec3<f32>(-0.038, -0.098, 0.170), vec3<f32>(-0.164, 0.048, 0.191), vec3<f32>(-0.314, -0.010, 0.083), vec3<f32>(-0.178, 0.187, 0.314),
@@ -662,7 +686,7 @@ fn surface_at(uv: vec2<f32>) -> vec4<f32> {
     var kernel = KERNEL;
     var occlusion = 0.0;
     for (var i = 0; i < AO_SAMPLES; i++) {
-        let k = kernel[i * AO_STRIDE];
+        let k = kernel[i];
         let sample = position + (tangent * k.x + bitangent * k.y + normal * k.z) * AO_RADIUS;
         let clip = scene.project * vec4<f32>(sample, 1.0);
         if (clip.w <= 0.0) { continue; }
@@ -996,6 +1020,7 @@ pub struct Targets {
     tonemapped: wgpu::TextureView,
     frame: Cell<usize>,
     previous: Cell<Option<(glam::DMat4, glam::DVec3)>>,
+    height_px: u32,
 }
 
 pub struct Renderer {
@@ -1058,9 +1083,9 @@ fn halton(index: usize, base: usize) -> f64 {
         .sum()
 }
 
-fn jitter(frame: usize, camera: &Camera) -> glam::DVec2 {
+fn jitter(frame: usize, camera: &Camera, height_px: u32) -> glam::DVec2 {
     let index = frame % JITTERS + 1;
-    let height = camera.height_px.max(1.0);
+    let height = f64::from(height_px.max(1));
     glam::DVec2::new(
         (halton(index, 2) - 0.5) * 2.0 / (camera.aspect * height),
         (halton(index, 3) - 0.5) * 2.0 / height,
@@ -1720,9 +1745,7 @@ impl Renderer {
         });
         let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("synthetic post"),
-            source: wgpu::ShaderSource::Wgsl(
-                format!("const LOW_TIER = {};\n{POST_SHADER}", quality.low).into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(POST_SHADER.into()),
         });
         let screen_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("synthetic screen"),
@@ -1994,6 +2017,10 @@ impl Renderer {
         GpuMesh { place, bind }
     }
 
+    pub fn woods(&self) -> Woods {
+        self.quality.woods
+    }
+
     pub fn resident(&self) -> usize {
         self.resident.len()
     }
@@ -2121,7 +2148,7 @@ impl Renderer {
 
     fn effects(&self, encoder: &mut wgpu::CommandEncoder, targets: &Targets) {
         let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
-        if SSAO {
+        if self.quality.ssao {
             self.screen(
                 encoder,
                 &targets.occlusion,
@@ -2137,7 +2164,7 @@ impl Renderer {
                 &targets.blur_bind,
             );
         }
-        if BLOOM {
+        if self.quality.bloom {
             targets
                 .mips
                 .iter()
@@ -2160,8 +2187,12 @@ impl Renderer {
                     self.screen(encoder, mip, wgpu::LoadOp::Load, &self.up, bind)
                 });
         }
-        if GOD_RAYS {
-            let load = if BLOOM { wgpu::LoadOp::Load } else { clear };
+        if self.quality.god_rays {
+            let load = if self.quality.bloom {
+                wgpu::LoadOp::Load
+            } else {
+                clear
+            };
             self.screen(
                 encoder,
                 &targets.mips[0],
@@ -2222,7 +2253,7 @@ impl Renderer {
         close_empty(&mut self.arenas);
         let steady = camera.projection() * camera.view();
         let offset = if TAA {
-            jitter(targets.frame.get(), camera)
+            jitter(targets.frame.get(), camera, targets.height_px)
         } else {
             glam::DVec2::ZERO
         };
@@ -2336,8 +2367,10 @@ impl Renderer {
             .iter()
             .zip(&targets.shadow_layers)
             .zip(&self.cascades)
+            .enumerate()
             .filter(|_| SHADOWS)
-            .for_each(|((cascade, layer), (buffer, bind))| {
+            .for_each(|(index, ((cascade, layer), (buffer, bind)))| {
+                let foliage = index < self.quality.foliage_cascades;
                 self.queue
                     .write_buffer(buffer, 0, &bytes(cascade.light.as_mat4().to_cols_array()));
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -2362,7 +2395,7 @@ impl Renderer {
                     .zip(&models[behind.len()..])
                     .enumerate()
                     .filter(|(_, ((mesh, _), model))| {
-                        matches!(mesh.layer, Layer::Opaque | Layer::Foliage)
+                        (mesh.layer == Layer::Opaque || (foliage && mesh.layer == Layer::Foliage))
                             && casts(cascade, **model, mesh)
                     })
                     .for_each(|(slot, ((_, gpu), _))| {
@@ -2494,6 +2527,9 @@ impl Renderer {
     }
 
     pub fn targets(&self, width: u32, height: u32) -> Targets {
+        let inner =
+            |side: u32| ((f64::from(side) * self.quality.render_scale).round() as u32).max(1);
+        let (width, height) = (inner(width), inner(height));
         let sized = |label: &str,
                      format: wgpu::TextureFormat,
                      sample_count: u32,
@@ -2527,7 +2563,7 @@ impl Renderer {
         let readable =
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
         let resolved = texture("synthetic resolved", HDR, 1, readable);
-        let mips: Vec<wgpu::TextureView> = (0..self.quality.bloom_mips)
+        let mips: Vec<wgpu::TextureView> = (0..BLOOM_MIPS)
             .map(|level| sized("synthetic bloom", HDR, 1, readable, level as u32 + 1))
             .collect();
         let surface = texture("synthetic surface", SURFACE, 1, readable);
@@ -2568,7 +2604,7 @@ impl Renderer {
             };
         let down_binds = std::iter::once(&resolved)
             .chain(&mips)
-            .take(self.quality.bloom_mips)
+            .take(BLOOM_MIPS)
             .map(|source| bind(source, source, source))
             .collect();
         let up_binds = mips
@@ -2682,6 +2718,7 @@ impl Renderer {
             tonemapped,
             frame: Cell::new(0),
             previous: Cell::new(None),
+            height_px: height,
         }
     }
 
