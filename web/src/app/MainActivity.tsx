@@ -505,7 +505,7 @@ export const AircastShell = () => {
     <>
       <FlyTabMenu destinations={[...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })), { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings }]} />
       <div className="flex min-w-0 flex-1 items-center justify-start">
-        <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false}>
+        <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false} className="min-w-0">
           <VehicleStateChip />
         </LayoutWidget>
       </div>

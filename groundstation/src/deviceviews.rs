@@ -177,7 +177,11 @@ pub fn address(typed: &str) -> Option<String> {
         .map(|url| url.origin().ascii_serialization())
 }
 
-fn host_of(origin: &str) -> String {
+pub fn paired_host() -> String {
+    host_of(&lock().origin())
+}
+
+pub fn host_of(origin: &str) -> String {
     Url::parse(origin)
         .ok()
         .and_then(|url| {

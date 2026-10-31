@@ -18,6 +18,7 @@ export const TCP_VEHICLE_PORT = 18784;
 export const DEVICE_TLS_PORT = 18785;
 export const UPGRADING_PORT = 18786;
 export const OFFLINE_PORT = 18787;
+export const SILENT_PORT = 18788;
 const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
 const VITE = Number(process.env.E2E_PORT ?? 8800);
 const HOME = { lat: 47.3977, lon: 8.5456 };
@@ -133,6 +134,16 @@ const AIRCRAFT = {
   health: { memory: '120 MB of 415 MB', charts: [{ label: 'CPU', values: [3, 5, 4], max: 100, value: '4%', level: 3 }] },
 };
 
+const TELEMETRY = {
+  status: { level: 1, text: 'no aircraft' },
+  notices: [{ level: 3, text: 'No flight controller is attached. Plug the controller in and power it on.' }],
+  endpoints: [{ proto: 'UDP', label: 'MAVLink', url: 'e2e-device:14550', hint: 'QGroundControl: Application Settings → Comm Links → Add → Type UDP.' }],
+  settings: { endpoints: 'udps:0.0.0.0:14550', baud: '115200' },
+  schemes: [],
+};
+
+const VIEWS = { aircraft: AIRCRAFT, telemetry: TELEMETRY };
+
 const app = (request: IncomingMessage, response: ServerResponse) => {
   const path = (request.url ?? '/').replace(/^\/fly(?=\/)/, '');
   const upstream = forward({ host: 'localhost', port: VITE, path, method: request.method, headers: { ...request.headers, host: `localhost:${VITE}` } }, (answer) => {
@@ -158,10 +169,11 @@ const device = (named: { origin: string }, secure: boolean) => (request: Incomin
       json(response, 200, scenes.get(placed[1]));
     });
   }
-  if (url.pathname === '/api/views/aircraft') return json(response, 200, AIRCRAFT);
-  if (url.pathname === '/api/views/aircraft/events') {
+  const view = /^\/api\/views\/(aircraft|telemetry)(\/events)?$/.exec(url.pathname);
+  if (view !== null && view[2] === undefined) return json(response, 200, VIEWS[view[1] as keyof typeof VIEWS]);
+  if (view !== null) {
     response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
-    return void response.write(`data: ${JSON.stringify(AIRCRAFT)}\n\n`);
+    return void response.write(`data: ${JSON.stringify(VIEWS[view[1] as keyof typeof VIEWS])}\n\n`);
   }
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });
   if (url.pathname.startsWith('/fly/files/') || url.pathname === '/fly/files') return void files(request, response, url);
@@ -181,6 +193,7 @@ const http = createServer(device({ origin: '' }, false));
 const upgrading = createServer(device({ origin: SECURE_ORIGIN }, false));
 const https = createSecureServer(certificate(), device({ origin: SECURE_ORIGIN }, true));
 const offline = createServer(device({ origin: 'https://10.255.255.1' }, false));
+const silent = createServer(device({ origin: '' }, false));
 
 const pipeTcp = (socket: WebSocket, address: string) => {
   const [host, port] = [address.slice(0, address.lastIndexOf(':')).replace(/^\[|\]$/g, ''), Number(address.slice(address.lastIndexOf(':') + 1))];
@@ -222,6 +235,7 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
   }
   if (url.pathname === '/fly/mavlink') {
     return mavlink.handleUpgrade(request, socket, head, (ws) => {
+      if (request.headers.host?.endsWith(`:${SILENT_PORT}`)) return;
       const state = { tick: 0 };
       const timer = setInterval(() => {
         tickFrames(state.tick, HOME).map((frame) => ws.send(Buffer.from(frame)));
@@ -242,7 +256,7 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
   upstream.on('error', () => socket.destroy());
   socket.on('error', () => upstream.destroy());
 };
-[http, upgrading, https, offline].forEach((server) => server.on('upgrade', upgrade));
+[http, upgrading, https, offline, silent].forEach((server) => server.on('upgrade', upgrade));
 
 const sbs1 = (icao: string, lat: number, lon: number): string =>
   ['MSG', '3', '1', '1', icao, '1', '', '', '', '', '', '4000', '', '', String(lat), String(lon), '', '', '', '', '', '0'].join(',') + '\r\n';
@@ -292,3 +306,4 @@ http.listen(DEVICE_PORT);
 upgrading.listen(UPGRADING_PORT);
 https.listen(DEVICE_TLS_PORT);
 offline.listen(OFFLINE_PORT);
+silent.listen(SILENT_PORT);

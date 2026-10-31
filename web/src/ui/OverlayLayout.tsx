@@ -275,7 +275,7 @@ export const LayoutDragArea = ({ widgetKey, className }: { widgetKey: string; cl
 
 const BADGE = 'absolute end-0 top-0 grid place-items-center';
 
-export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, children }: { widgetKey: string; movable?: boolean; hideable?: boolean; children?: ReactNode }) => {
+export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, className, children }: { widgetKey: string; movable?: boolean; hideable?: boolean; className?: string; children?: ReactNode }) => {
   const layout = useContext(LocalFlyScreenState).layout;
   const editing = useValue(layout.editing);
   const hidden = useValue(layout.hidden).has(widgetKey);
@@ -298,7 +298,7 @@ export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, child
   if (hidden && !editing) return null;
   const [x, y] = movable ? (offsets.get(placedKey) ?? [0, 0]) : [0, 0];
   return (
-    <div ref={movable ? kept : undefined} style={{ translate: `${x}px ${y}px` }} {...hold}>
+    <div ref={movable ? kept : undefined} className={className} style={{ translate: `${x}px ${y}px` }} {...hold}>
       <div ref={avoided ? avoidedRef : undefined} className="relative" style={jiggle}>
         <div
           ref={sized}

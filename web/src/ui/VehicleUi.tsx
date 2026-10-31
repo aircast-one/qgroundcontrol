@@ -54,7 +54,7 @@ import { ValueDisplay, ValueDisplayDialog, ValueLabel, displayColour, readDispla
 import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapClickUnits } from './MapClickMenu';
 import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
-import { OFFLINE_SHEET, openAddLink } from './OfflineStatusSheet';
+import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
 import { ParameterForm } from './ParameterForm';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
 import { PreflightChecklist, PreflightChecklistReset, useRememberPreflightChecklist } from './PreflightChecklistGate';
@@ -733,6 +733,7 @@ const OFFLINE_DECK = (): readonly DeckEntry[] => [
 const OfflineDeck = ({ className }: { className?: string }) => {
   const navigation = useContext(LocalAppNavigation);
   const flyScreen = useContext(LocalFlyScreenState);
+  const onDevice = offlineStatus(useQgcPath(OFFLINE_STATUS_VIEW))?.onDevice === true;
   return (
     <div className={`flex gap-[10px] p-4 ${className ?? ''}`}>
       {OFFLINE_DECK().map((entry) => (
@@ -748,7 +749,15 @@ const OfflineDeck = ({ className }: { className?: string }) => {
           />
         </div>
       ))}
-      <DeckButton entry={DeckEntry({ id: 'addLink', label: 'Add a link', icon: 'ic_link', enabled: true, onClick: () => openAddLink(navigation) })} primary className="min-w-0 flex-1" />
+      <DeckButton
+        entry={
+          onDevice
+            ? DeckEntry({ id: 'checkDevice', label: CHECK_DEVICE, icon: 'ic_developer_board', enabled: true, onClick: openDeviceTelemetry })
+            : DeckEntry({ id: 'addLink', label: 'Add a link', icon: 'ic_link', enabled: true, onClick: () => openAddLink(navigation) })
+        }
+        primary
+        className="min-w-0 flex-1"
+      />
     </div>
   );
 };

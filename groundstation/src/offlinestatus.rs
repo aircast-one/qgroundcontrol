@@ -48,6 +48,8 @@ pub struct Offline {
     pub busy: bool,
     pub no_links: bool,
     pub edit_address: bool,
+    pub on_device: bool,
+    pub no_autopilot: bool,
 }
 
 pub fn offline(
@@ -57,9 +59,8 @@ pub fn offline(
 ) -> Offline {
     let configured: Vec<&Value> = links.iter().filter(|l| l["dynamic"] != true).collect();
     let no_links = configured.is_empty();
-    let connecting = configured
-        .iter()
-        .find(|l| l["connected"] == true)
+    let connected = configured.iter().find(|l| l["connected"] == true);
+    let connecting = connected
         .and_then(|l| l["name"].as_str())
         .unwrap_or("")
         .to_string();
@@ -72,19 +73,26 @@ pub fn offline(
         .to_string();
     let edit_address = failed.is_some_and(|l| l["errorRemedy"] == "editAddress");
     let stalled = stalled_for(&connecting);
+    let on_device = connected.is_some_and(|l| l["device"] == true);
+    let no_autopilot = stalled && on_device;
     let watching = !watched.is_empty();
     let watched_links = watched.join(", ");
-    let title = match (connecting.is_empty(), failed_name.is_empty()) {
-        (false, _) => "Connecting…",
-        (true, false) => "Connection Failed",
-        (true, true) => "Not Connected",
+    let title = match (no_autopilot, connecting.is_empty(), failed_name.is_empty()) {
+        (true, _, _) => "No Flight Controller",
+        (false, false, _) => "Connecting…",
+        (false, true, false) => "Connection Failed",
+        (false, true, true) => "Not Connected",
     };
-    let main_status = match (connecting.is_empty(), failed_name.is_empty()) {
-        (false, _) => "Connecting…",
-        (true, false) => "Can't Connect",
-        (true, true) => "Not Connected",
+    let main_status = match (no_autopilot, connecting.is_empty(), failed_name.is_empty()) {
+        (true, _, _) => "No Flight Controller",
+        (false, false, _) => "Connecting…",
+        (false, true, false) => "Can't Connect",
+        (false, true, true) => "Not Connected",
     };
     let footnote = match () {
+        _ if no_autopilot => format!(
+            "{connecting} hears no flight controller. Check it is plugged in and powered on."
+        ),
         _ if !connecting.is_empty() && stalled => format!(
             "No telemetry from {connecting} yet. Check the port is the drone's MAVLink port."
         ),
@@ -106,18 +114,38 @@ pub fn offline(
         busy: (!connecting.is_empty() && !stalled) || (no_links && watching),
         no_links,
         edit_address,
+        on_device,
+        no_autopilot,
+    }
+}
+
+fn on_device(link: Value, device: &str) -> Value {
+    let reaches = link["type"] == "websocket"
+        && !device.is_empty()
+        && link["summary"]
+            .as_str()
+            .is_some_and(|url| crate::deviceviews::host_of(url) == device);
+    match link {
+        Value::Object(fields) => Value::Object(
+            fields
+                .into_iter()
+                .chain([("device".to_string(), json!(reaches))])
+                .collect(),
+        ),
+        other => other,
     }
 }
 
 pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = backend.value("links.linkConfigurations");
+    let device = crate::deviceviews::paired_host();
     let links: Vec<Value> = model
         .get("elements")
         .and_then(Value::as_array)
         .map(|e| {
             e.iter()
                 .enumerate()
-                .map(|(i, el)| crate::links::link_json(i, el))
+                .map(|(i, el)| on_device(crate::links::link_json(i, el), &device))
                 .collect()
         })
         .unwrap_or_default();
@@ -142,6 +170,7 @@ pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "busy": shown.busy,
         "noLinks": shown.no_links,
         "editAddress": shown.edit_address,
+        "onDevice": shown.on_device,
         "links": links.iter().filter(|l| l["dynamic"] != true).map(|l| {
             let error = l["lastError"].as_str().unwrap_or("");
             let summary = l["summary"].as_str().unwrap_or("");
@@ -226,6 +255,68 @@ mod tests {
         assert!(
             dynamic.no_links,
             "auto-connect links are not the operator's links"
+        );
+    }
+
+    #[test]
+    fn a_device_that_hears_no_flight_controller_says_so_instead_of_blaming_the_port() {
+        let device = json!({ "name": "Aircast zero3w", "dynamic": false, "connected": true, "device": true });
+        let waiting = offline(std::slice::from_ref(&device), &["USB"], |_| false);
+        assert_eq!(
+            (
+                waiting.title.as_str(),
+                waiting.on_device,
+                waiting.no_autopilot,
+                waiting.busy
+            ),
+            ("Connecting…", true, false, true)
+        );
+        let silent = offline(&[device], &["USB"], |_| true);
+        assert_eq!(
+            (
+                silent.title.as_str(),
+                silent.main_status.as_str(),
+                silent.busy
+            ),
+            ("No Flight Controller", "No Flight Controller", false)
+        );
+        assert!(silent.no_autopilot);
+        assert_eq!(
+            silent.footnote,
+            "Aircast zero3w hears no flight controller. Check it is plugged in and powered on."
+        );
+        let radio = offline(&[link("Drone", true, "", "")], &["USB"], |_| true);
+        assert!(
+            !radio.on_device && !radio.no_autopilot,
+            "only the device's own link speaks for the device"
+        );
+    }
+
+    #[test]
+    fn only_a_websocket_to_the_paired_device_is_the_devices_link() {
+        let socket = |url: &str| json!({ "type": "websocket", "summary": url });
+        assert_eq!(
+            on_device(socket("ws://zero3w/fly/mavlink"), "zero3w")["device"],
+            true
+        );
+        assert_eq!(
+            on_device(socket("wss://localhost:8813/mavlink"), "localhost:8813")["device"],
+            true
+        );
+        assert_eq!(
+            on_device(socket("ws://falcon/fly/mavlink"), "zero3w")["device"],
+            false
+        );
+        assert_eq!(
+            on_device(socket("ws://zero3w/fly/mavlink"), "")["device"],
+            false
+        );
+        assert_eq!(
+            on_device(
+                json!({ "type": "udp", "summary": "zero3w:14550" }),
+                "zero3w"
+            )["device"],
+            false
         );
     }
 

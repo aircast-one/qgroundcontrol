@@ -2,6 +2,7 @@ import { expect, test as base, type Page } from '@playwright/test';
 import { flyNow, openMenu, test as hosted } from './fixtures';
 
 const DEVICE = 'http://localhost:18780';
+const SILENT = 'http://localhost:18788';
 const UPGRADING = 'localhost:18786';
 const SECURE = 'localhost:18785';
 const SBS1 = 30003;
@@ -226,4 +227,25 @@ base('a page the device served stays on http when its https name never answers, 
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   expect(new URL(page.url()).origin).toBe('http://localhost:18787');
   expect(Date.now() - started).toBeLessThan(30_000);
+});
+
+base('a device that hears no flight controller says so and opens its telemetry page', async ({ page }) => {
+  await page.goto(`${SILENT}/`);
+  const status = page.getByRole('button', { name: /^No flight controller/ });
+  await expect(status).toBeVisible({ timeout: 60_000 });
+  await status.click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByText('Aircast e2e-device hears no flight controller. Check it is plugged in and powered on.')).toBeVisible();
+  await expect(sheet.getByText('New drone? Flash an Aircast card')).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Check device telemetry' }).click();
+  const fc = page.getByRole('region', { name: 'Status' });
+  await expect(fc.getByText('No flight controller is attached. Plug the controller in and power it on.')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Connect another ground station' }).getByText('e2e-device:14550')).toBeVisible();
+});
+
+base('on a phone the device page offers to check the device, not to add a link', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${SILENT}/`);
+  await expect(page.getByRole('button', { name: 'Check device' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Add a link' })).toHaveCount(0);
 });

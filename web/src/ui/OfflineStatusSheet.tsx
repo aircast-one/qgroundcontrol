@@ -7,6 +7,7 @@ import { Button, CircularProgressIndicator, HorizontalDivider, ListItem, Text } 
 import { AircastSheet } from '@/map/AircastSheet';
 import { md } from '@/theme/Colors';
 import { type AppNavigationState, LocalAppNavigation } from './AppNavigation';
+import { deviceRequested } from './DeviceStatus';
 import { useRememberLookingHint } from './ConnectingCard';
 import { FLASHER_PAGE } from './FlasherScreen';
 
@@ -17,7 +18,7 @@ const OFFLINE_POLL_MS = 1000;
 
 export type OfflineLink = { index: number; text: string; description: string; retry: boolean; failed: boolean; connected: boolean };
 
-export type OfflineStatus = { title: string; footnote: string; busy: boolean; noLinks: boolean; editAddress: boolean; links: readonly OfflineLink[] };
+export type OfflineStatus = { title: string; footnote: string; busy: boolean; noLinks: boolean; editAddress: boolean; onDevice: boolean; links: readonly OfflineLink[] };
 
 export const offlineStatus = (view: Json | null): OfflineStatus | null =>
   view !== null && has(view, 'title')
@@ -27,6 +28,7 @@ export const offlineStatus = (view: Json | null): OfflineStatus | null =>
         busy: optBoolean(view, 'busy'),
         noLinks: optBoolean(view, 'noLinks'),
         editAddress: optBoolean(view, 'editAddress'),
+        onDevice: optBoolean(view, 'onDevice'),
         links: jsonObjects(optJSONArray(view, 'links')).map((link) => ({
           index: optInt(link, 'index'),
           text: optString(link, 'text'),
@@ -39,6 +41,12 @@ export const offlineStatus = (view: Json | null): OfflineStatus | null =>
     : null;
 
 export const OFFLINE_SHEET = 'offline';
+
+export const CHECK_DEVICE = 'Check device';
+
+export const openDeviceTelemetry = (): void => {
+  deviceRequested.value = '/telemetry';
+};
 
 export const openAddLink = (navigation: AppNavigationState): void => {
   navigation.addLinkRequested.value = true;
@@ -62,9 +70,11 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
           <Text typography="titleMedium" className="px-sheet">
             {status.title}
           </Text>
-          <Text typography="bodyMedium" className="px-sheet">
-            {hint}
-          </Text>
+          {status.onDevice ? null : (
+            <Text typography="bodyMedium" className="px-sheet">
+              {hint}
+            </Text>
+          )}
           {status.editAddress ? (
             <button type="button" className="flex items-center gap-2 px-sheet text-left" onClick={() => openConnectionSettings(navigation, onDismiss)}>
               <Footnote status={status} />
@@ -74,6 +84,19 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
               <Footnote status={status} />
             </div>
           )}
+          {status.onDevice ? (
+            <div className="w-full px-sheet py-2">
+              <Button
+                className="w-full"
+                onClick={() => {
+                  openDeviceTelemetry();
+                  onDismiss();
+                }}
+              >
+                {`${CHECK_DEVICE} telemetry`}
+              </Button>
+            </div>
+          ) : null}
           {status.noLinks ? (
             <div className="w-full px-sheet py-2">
               <Button
@@ -96,19 +119,21 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
                   {link.description}
                 </span>
               }
-              trailingContent={link.connected ? <CircularProgressIndicator size={16} strokeWidth={2} /> : link.retry ? <Text typography="labelMedium">Retry</Text> : null}
+              trailingContent={link.connected && status.busy ? <CircularProgressIndicator size={16} strokeWidth={2} /> : link.retry ? <Text typography="labelMedium">Retry</Text> : null}
               onClick={() => void (link.connected ? LinkCommands.disconnect(link.index) : LinkCommands.connect(`@${OFFLINE_LINKS_PATH}.${link.index}`))}
             />
           ))}
           <HorizontalDivider />
           <ListItem headlineContent="Connection settings" onClick={() => openConnectionSettings(navigation, onDismiss)} />
-          <ListItem
-            headlineContent="New drone? Flash an Aircast card"
-            onClick={() => {
-              navigation.settingsPage.value = FLASHER_PAGE;
-              onDismiss();
-            }}
-          />
+          {status.onDevice ? null : (
+            <ListItem
+              headlineContent="New drone? Flash an Aircast card"
+              onClick={() => {
+                navigation.settingsPage.value = FLASHER_PAGE;
+                onDismiss();
+              }}
+            />
+          )}
         </div>
       ) : null}
     </AircastSheet>

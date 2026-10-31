@@ -9561,6 +9561,7 @@
         "view.offlineStatus.links[].text",
         "view.offlineStatus.mainStatus",
         "view.offlineStatus.noLinks",
+        "view.offlineStatus.onDevice",
         "view.offlineStatus.title",
         "view.operatorControl.available",
         "view.operatorControl.class",
@@ -14620,6 +14621,7 @@
         ],
         "mainStatus": "string",
         "noLinks": "bool",
+        "onDevice": "bool",
         "title": "string"
     },
     "view.operatorControl": {
