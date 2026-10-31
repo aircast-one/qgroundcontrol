@@ -616,12 +616,27 @@ fn changing() -> Changing {
 
 static PATH: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
 static SAVING: Mutex<()> = Mutex::new(());
+static HOST_WRITER: std::sync::OnceLock<fn(&str, &str)> = std::sync::OnceLock::new();
+const HOST_PERSISTED_GROUPS: &[&str] = &["AppUpdate/"];
+
+pub fn persist_through_host(writer: fn(&str, &str)) {
+    let _ = HOST_WRITER.set(writer);
+}
+
+fn host_persisted(key: &str) -> bool {
+    HOST_PERSISTED_GROUPS
+        .iter()
+        .any(|group| key.starts_with(group))
+}
 
 pub fn written(key: &str, text: &str) {
     if let Some(values) = changing().as_mut() {
         values.insert(key.to_string(), Setting::Text(text.to_string()));
     }
     persist();
+    if let Some(write) = HOST_WRITER.get().filter(|_| host_persisted(key)) {
+        write(key, text);
+    }
 }
 
 pub fn forgotten(key: &str) {
@@ -1621,6 +1636,29 @@ impl<B: Backend> Backend for Owner<B> {
 
 #[cfg(test)]
 mod tests {
+    static HANDED_TO_HOST: std::sync::Mutex<Vec<(String, String)>> =
+        std::sync::Mutex::new(Vec::new());
+
+    fn record(key: &str, text: &str) {
+        HANDED_TO_HOST
+            .lock()
+            .unwrap()
+            .push((key.to_string(), text.to_string()));
+    }
+
+    #[test]
+    fn under_a_qt_host_only_the_updater_s_own_keys_are_handed_to_qsettings() {
+        super::persist_through_host(record);
+        super::written("AppUpdate/skipped", "5.6.5-beta.22");
+        super::written("Video/streamEnabled", "true");
+        super::written("AppUpdatedNotAGroup/x", "1");
+        assert_eq!(
+            *HANDED_TO_HOST.lock().unwrap(),
+            vec![("AppUpdate/skipped".to_string(), "5.6.5-beta.22".to_string())],
+            "Qt owns every other group it persists itself, and a synchronous hop to its thread from an arbitrary writer can deadlock"
+        );
+    }
+
     #[test]
     fn writes_made_together_are_validated_followed_up_and_read_back_together() {
         let writes = [

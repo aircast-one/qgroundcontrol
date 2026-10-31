@@ -171,6 +171,14 @@ void QGCCoreCTest::_appUpdateStartsWithTheApplicationVersion()
     QCOMPARE(take(qgc_bridge_get("view.appUpdate")).value(QStringLiteral("current")).toString(), QGCApplication::releaseVersion(QCoreApplication::applicationVersion()));
 }
 
+void QGCCoreCTest::_whatTheUpdaterRemembersIsSavedByQSettings()
+{
+    const auto restore = qScopeGuard([] { (void) take(qgc_bridge_invoke("appUpdate.setAutoCheck", "[true]")); });
+    QVERIFY(take(qgc_bridge_invoke("appUpdate.setAutoCheck", "[false]")).value(QStringLiteral("ok")).toBool(false));
+    QCOMPARE(QSettings().value(QStringLiteral("AppUpdate/autoCheck")).toString(), QStringLiteral("false"));
+    QCOMPARE(take(qgc_bridge_get("view.appUpdate")).value(QStringLiteral("autoCheck")).toBool(true), false);
+}
+
 void QGCCoreCTest::_onlyAReleaseTagIsAVersionTheUpdaterCompares()
 {
     QCOMPARE(QGCApplication::releaseVersion(QStringLiteral("aircast-v5.6.5-beta.21")), QStringLiteral("5.6.5-beta.21"));

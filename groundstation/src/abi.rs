@@ -188,6 +188,16 @@ pub extern "C" fn qgc_core_links_start() {
 #[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_qt_host_present() {
     crate::qthost::declare();
+    crate::settingsstore::persist_through_host(remember_in_qt);
+}
+
+fn remember_in_qt(key: &str, text: &str) {
+    unsafe {
+        qgc_qt_remember_setting(
+            c(key).as_ptr(),
+            c(&serde_json::Value::from(text).to_string()).as_ptr(),
+        )
+    }
 }
 
 #[unsafe(no_mangle)]

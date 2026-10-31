@@ -770,13 +770,20 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             }
             None => Err("appUpdate.setAutoCheck takes true or false".to_string()),
         }),
-        "appUpdate.skip" => answer(match changing().latest.as_ref() {
-            Some(release) => {
-                crate::settingsstore::written(SKIPPED_VERSION_KEY, &release.version.to_string());
-                Ok(())
-            }
-            None => Err("There is no update to skip.".to_string()),
-        }),
+        "appUpdate.skip" => {
+            let latest = state()
+                .latest
+                .as_ref()
+                .map(|release| release.version.to_string());
+            answer(match latest {
+                Some(version) => {
+                    crate::settingsstore::written(SKIPPED_VERSION_KEY, &version);
+                    drop(changing());
+                    Ok(())
+                }
+                None => Err("There is no update to skip.".to_string()),
+            })
+        }
         "appUpdate.later" => {
             changing().later = true;
             answer(Ok(()))
