@@ -777,8 +777,11 @@ fn centre_of(outline: &[(f64, f64)]) -> (f64, f64) {
 }
 
 fn under(key: TileKey, outline: &[(f64, f64)]) -> (TileKey, f64, f64) {
+    under_at(key, centre_of(outline))
+}
+
+fn under_at(key: TileKey, (u, v): (f64, f64)) -> (TileKey, f64, f64) {
     let scale = f64::from(1u32 << ROOF_PICTURE_ZOOM.saturating_sub(key.z));
-    let (u, v) = centre_of(outline);
     let (du, dv) = (
         (u * scale).floor().clamp(0.0, scale - 1.0),
         (v * scale).floor().clamp(0.0, scale - 1.0),
@@ -1773,10 +1776,10 @@ fn median(mut heights: Vec<f64>) -> f64 {
     heights.get(heights.len() / 2).copied().unwrap_or(0.0)
 }
 
-fn water_level(area: &[Vec<(f64, f64)>], ground: &dyn Fn(f64, f64) -> f64) -> f64 {
+fn interior(area: &[Vec<(f64, f64)>]) -> Vec<(f64, f64)> {
     let ((lu, lv), (hu, hv)) = tile_box(&area[0]);
     let steps = 0..WATER_SAMPLES;
-    let inside: Vec<f64> = steps
+    steps
         .clone()
         .flat_map(|row| steps.clone().map(move |column| (column, row)))
         .map(|(column, row)| {
@@ -1786,10 +1789,46 @@ fn water_level(area: &[Vec<(f64, f64)>], ground: &dyn Fn(f64, f64) -> f64) -> f6
             )
         })
         .filter(|&point| within(area, point))
+        .collect()
+}
+
+fn water_level(area: &[Vec<(f64, f64)>], ground: &dyn Fn(f64, f64) -> f64) -> f64 {
+    let inside: Vec<f64> = interior(area)
+        .into_iter()
         .map(|(u, v)| ground(u, v))
         .collect();
     let shore = || area[0].iter().map(|&(u, v)| ground(u, v)).collect();
     median(if inside.is_empty() { shore() } else { inside }) + WATER_LIFT_M
+}
+
+fn water_colour(
+    key: TileKey,
+    pictures: &HashMap<TileKey, Option<image::RgbaImage>>,
+    area: &[Vec<(f64, f64)>],
+) -> [u8; 4] {
+    let scale = f64::from(1u32 << ROOF_PICTURE_ZOOM.saturating_sub(key.z));
+    let samples: Vec<[u8; 4]> = interior(area)
+        .into_iter()
+        .filter_map(|(u, v)| {
+            let (sub, du, dv) = under_at(key, (u, v));
+            let picture = pictures.get(&sub)?.as_ref()?;
+            let (width, height) = picture.dimensions();
+            let x = (((u * scale - du).clamp(0.0, 1.0) * f64::from(width)) as u32).min(width - 1);
+            let y = (((v * scale - dv).clamp(0.0, 1.0) * f64::from(height)) as u32).min(height - 1);
+            Some(picture.get_pixel(x, y).0)
+        })
+        .collect();
+    if samples.is_empty() {
+        return roof_colour(key, pictures, &area[0], WATER, 1.0);
+    }
+    std::array::from_fn(|channel| {
+        median(
+            samples
+                .iter()
+                .map(|sample| f64::from(sample[channel]))
+                .collect(),
+        ) as u8
+    })
 }
 
 fn water_mesh(
@@ -1803,14 +1842,20 @@ fn water_mesh(
     let ground = |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at(u, v));
     let fetched: HashMap<TileKey, Option<image::RgbaImage>> = lakes
         .iter()
-        .map(|area| under(key, &area[0]).0)
+        .flat_map(|area| {
+            std::iter::once(under(key, &area[0]).0).chain(
+                interior(area)
+                    .into_iter()
+                    .map(|point| under_at(key, point).0),
+            )
+        })
         .collect::<HashSet<_>>()
         .into_iter()
         .map(|sub| (sub, pictures(sub)))
         .collect();
     let colours: Vec<[u8; 4]> = lakes
         .iter()
-        .map(|area| roof_colour(key, &fetched, &area[0], WATER, 1.0))
+        .map(|area| water_colour(key, &fetched, area))
         .collect();
     let whole = joined(lakes.iter().enumerate().map(|(index, area)| {
         let level = water_level(area, &ground);

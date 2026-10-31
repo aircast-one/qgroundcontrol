@@ -25,7 +25,7 @@ const INDEX_BYTES: u64 = 4;
 const ARENA_VERTICES: u32 = 1 << 19;
 const ARENA_INDICES: u32 = 1 << 21;
 const DRAW_BYTES: u64 = 128;
-const SCENE_BYTES: u64 = 496;
+const SCENE_BYTES: u64 = 512;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
 const LAYERS: [Layer; 6] = [
@@ -50,6 +50,7 @@ const JITTERS: usize = 8;
 const CASCADES: usize = 3;
 const CASCADE_FAR_M: [f64; CASCADES] = [300.0, 2000.0, 10000.0];
 const CASTER_REACH_M: f64 = 10000.0;
+const ANCHOR_PERIOD_M: f64 = 65536.0;
 const NO_CLOUD_MAP: u32 = u32::BITS - 1;
 const SKY_LIGHT_WIDTH: u32 = 64;
 
@@ -119,7 +120,7 @@ const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
     wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3];
 const DRAW_ATTRIBUTES: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, 10 => Float32x4];
 const SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, anchor: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var picture: texture_2d<f32>;
 @group(1) @binding(1) var tile_sampler: sampler;
@@ -549,20 +550,54 @@ fn sky_seen(direction: vec3<f32>, cover: vec4<f32>) -> vec3<f32> {
     return CloudOut(cover, vec4<f32>(sky_seen(direction, cover), 1.0));
 }
 
+const RIPPLES = array<vec4<f32>, 3>(
+    vec4<f32>(28.0, 0.05, 0.6, 0.3),
+    vec4<f32>(9.0, 0.06, -0.4, 0.5),
+    vec4<f32>(3.0, 0.05, 0.3, -0.2),
+);
+const RIPPLE_STEP = 0.25;
+const CALM_LIFT = 0.12;
+const CALM_FRESNEL = 0.6;
+
+fn rippled(seen: vec3<f32>, distance: f32) -> vec4<f32> {
+    let frame = level_frame();
+    let at = seen + scene.anchor.xyz;
+    var octaves = RIPPLES;
+    var slope = vec2<f32>(0.0);
+    var shown = 0.0;
+    for (var i = 0; i < 3; i++) {
+        let octave = octaves[i];
+        let fade = 1.0 - smoothstep(octave.x * 25.0, octave.x * 100.0, distance);
+        if (fade <= 0.0) { continue; }
+        let p = (at - (frame[0] * octave.z + frame[1] * octave.w) * scene.zenith.w) / octave.x;
+        let height = value3(p);
+        let east = value3(p + frame[0] * RIPPLE_STEP) - height;
+        let north = value3(p + frame[1] * RIPPLE_STEP) - height;
+        slope += vec2<f32>(east, north) / RIPPLE_STEP * octave.y * fade;
+        shown += fade;
+    }
+    let normal = normalize(scene.zenith.xyz - frame[0] * slope.x - frame[1] * slope.y);
+    return vec4<f32>(normal, 1.0 - shown / 3.0);
+}
+
+fn sky_toward(direction: vec3<f32>) -> vec3<f32> {
+    if (LOW_TIER) { return mix(sky_light_at(direction, 0.0), overhead_light(), sqrt(max(dot(direction, scene.zenith.xyz), 0.0))); }
+    return sky_air(direction, 2).light;
+}
+
 @fragment fn fs_water(f: Out) -> Frag {
     let colour = textureSample(picture, tile_sampler, f.uv);
     let distance = max(length(f.seen), 1.0);
     let seen = f.seen / distance;
-    let air = scatter(seen, distance, 4);
+    let air = scatter(seen, distance, AERIAL_SAMPLES);
     let up = scene.zenith.xyz;
-    let grazing = 1.0 - max(dot(-seen, up), 0.0);
-    let fresnel = 0.02 + 0.98 * pow(grazing, 5.0);
-    let mirrored = reflect(seen, up);
-    let reflected = sky_air(mirrored, 2).light;
     let lit = sunlight_reaching(f.seen, up);
-    let glint = pow(max(dot(mirrored, scene.sun.xyz), 0.0), 600.0) * SUN * exp(-sun_depth(0.0)) * 0.5 * lit;
-    let body = colour.rgb * (0.5 * overhead_light() + 0.25 * SUN * exp(-sun_depth(0.0)) / PI * max(dot(up, scene.sun.xyz), 0.0) * lit);
-    let shaded = mix(body, reflected, fresnel) + glint;
+    let surface = rippled(f.seen, distance);
+    let mirrored = reflect(seen, surface.xyz);
+    let skyward = normalize(mirrored + up * (max(0.02 - dot(mirrored, up), 0.0) + CALM_LIFT * surface.w));
+    let fresnel = pow(1.0 - max(dot(-seen, surface.xyz), 0.0), 5.0) * mix(1.0, CALM_FRESNEL, surface.w);
+    let glint = pow(max(dot(skyward, scene.sun.xyz), 0.0), 900.0) * SUN * exp(-sun_depth(0.0)) * lit;
+    let shaded = mix(sunlit(colour.rgb, up, f.seen, lit), sky_toward(skyward), fresnel) + glint;
     return Frag(vec4<f32>(fogged(shaded * air.through + air.light, f.seen), 1.0), vec4<f32>(up, distance));
 }
 
@@ -673,7 +708,7 @@ struct Placed {
 @fragment fn fs() {}
 ";
 const POST_SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, anchor: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var screen_sampler: sampler;
 @group(1) @binding(1) var picture: texture_2d<f32>;
@@ -2456,6 +2491,14 @@ impl Renderer {
                             .eye
                             .as_vec3()
                             .extend(camera.above_ground as f32)
+                            .to_array(),
+                    )
+                    .chain(
+                        camera
+                            .eye
+                            .rem_euclid(glam::DVec3::splat(ANCHOR_PERIOD_M))
+                            .as_vec3()
+                            .extend(ANCHOR_PERIOD_M as f32)
                             .to_array(),
                     )
                     .chain(previous.as_mat4().to_cols_array())
