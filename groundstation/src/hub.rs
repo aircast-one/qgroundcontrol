@@ -2656,6 +2656,7 @@ impl Vehicle {
             flight_mode: self.flight_mode(),
             armed: self.armed(),
             flying: self.flying,
+            round_trip_ms: self.commands.round_trip_ms,
         }
     }
 
@@ -4781,6 +4782,23 @@ impl Vehicle {
                     self.note(text);
                     Vec::new()
                 }
+                Emit::ArmRefused { unanswered } => self.handle(
+                    vec![Out::ArmRefused {
+                        arming: true,
+                        unanswered,
+                    }],
+                    now_ms,
+                ),
+                Emit::ModeRefused {
+                    custom_mode,
+                    unanswered,
+                } => self.handle(
+                    vec![Out::ModeRefused {
+                        custom_mode,
+                        unanswered,
+                    }],
+                    now_ms,
+                ),
                 Emit::GuidedMissionItem {
                     latitude,
                     longitude,
@@ -6783,7 +6801,9 @@ impl Vehicle {
             .or_insert(0) += 1;
         let from = (header.system_id, header.component_id);
         self.link_health
-            .observe(message, from == (self.id, self.component), now_ms);
+            .observe(message, from == (self.id, self.component), now_ms)
+            .into_iter()
+            .for_each(|round_trip_ms| self.commands.heard_round_trip(round_trip_ms));
         if let MavMessage::HEARTBEAT(h) = message
             && header.system_id == self.id
         {
@@ -12356,7 +12376,9 @@ mod tests {
             20_000,
         )
         .unwrap();
-        hub.tick(20_000 + crate::mavcmd::ACK_TIMEOUT_MS + 1);
+        (1..=20).for_each(|tenth| {
+            hub.tick(20_000 + tenth * 100);
+        });
         assert_eq!(
             outcome(&hub),
             Some(crate::guided::GripperOutcome::Unanswered),
@@ -12941,7 +12963,9 @@ mod tests {
             30_000,
         )
         .unwrap();
-        hub.tick(30_000 + crate::mavcmd::ACK_TIMEOUT_MS + 1);
+        (1..=20).for_each(|tenth| {
+            hub.tick(30_000 + tenth * 100);
+        });
         assert_eq!(
             hub.active().unwrap().gripper.map(|g| g.outcome),
             Some(crate::guided::GripperOutcome::Unanswered)
@@ -14648,6 +14672,105 @@ mod tests {
         assert!(
             !quiet(&hub),
             "a PreArm line older than the window is not blamed, but the refusal is still told"
+        );
+    }
+
+    #[test]
+    fn a_takeoff_that_fails_tells_the_pilot_once_in_plain_words() {
+        use mavlink::dialects::ardupilotmega::{
+            COMMAND_ACK_DATA, GLOBAL_POSITION_INT_DATA, MavCmd, MavResult, MavSeverity,
+            STATUSTEXT_DATA,
+        };
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let refused_arm = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+            command: MavCmd::MAV_CMD_COMPONENT_ARM_DISARM,
+            result: MavResult::MAV_RESULT_FAILED,
+            ..Default::default()
+        });
+        let said = |text: &str| {
+            MavMessage::STATUSTEXT(STATUSTEXT_DATA {
+                severity: MavSeverity::MAV_SEVERITY_CRITICAL,
+                text: mavout::chars(text),
+                ..Default::default()
+            })
+        };
+        let takeoff = |answers: &[(u64, MavMessage)], mode: u32| {
+            let mut hub = Hub::default();
+            connect_copter(&mut hub, &autopilot);
+            let position = MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA {
+                lat: 474000000,
+                lon: 85000000,
+                alt: 500_000,
+                ..Default::default()
+            });
+            hub.on_frame(origin(4), &autopilot, &position, 1_100_000, 1100);
+            let before = hub.active().unwrap().pending_notices.len();
+            hub.guided(
+                None,
+                &json!({ "action": "takeoff", "altitude": 10.0 }),
+                1_100,
+            )
+            .unwrap();
+            hub.on_frame(
+                origin(4),
+                &autopilot,
+                &copter_heartbeat(mode, false),
+                1_150_000,
+                1150,
+            );
+            (12..=120u64).for_each(|tenth| {
+                answers
+                    .iter()
+                    .filter(|(at, _)| *at == tenth * 100)
+                    .for_each(|(at, message)| {
+                        hub.on_frame(origin(4), &autopilot, message, at * 1000, *at);
+                    });
+                hub.tick(tenth * 100);
+            });
+            assert_eq!(hub.guided_snapshot(None)["guided"]["state"], "failed");
+            hub.active().unwrap().pending_notices[before..]
+                .iter()
+                .filter(|(kind, text)| !crate::noticeboard::silenced(kind, text))
+                .map(|(_, text)| text.clone())
+                .collect::<Vec<String>>()
+        };
+        assert_eq!(
+            takeoff(
+                &[
+                    (1_300, said("Arm: Throttle too high")),
+                    (1_300, refused_arm.clone())
+                ],
+                4
+            ),
+            ["Can't arm: throttle too high."],
+            "the vehicle's own reason, once, not a second line saying the takeoff failed"
+        );
+        assert_eq!(
+            takeoff(
+                &[
+                    (1_300, refused_arm),
+                    (
+                        1_400,
+                        said("PreArm: Battery 1 below minimum arming voltage")
+                    )
+                ],
+                4
+            ),
+            ["Can't arm: battery 1 below minimum arming voltage."],
+            "a reason that only comes after the refusal is waited for"
+        );
+        assert_eq!(
+            takeoff(&[], 4),
+            ["The aircraft didn't answer the arm command. Check the link and try again."]
+        );
+        assert_eq!(
+            takeoff(&[], 5),
+            ["The aircraft didn't answer the switch to Guided. Check the link and try again."],
+            "a copter that never leaves Loiter is told once, not once per try"
         );
     }
 
@@ -18809,8 +18932,8 @@ mod tests {
         });
         let started = hub.on_frame(origin(4), &apm, &cancel_acked, 0, 2_100);
         assert!(started.iter().any(|(_, b)| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_START_MAG_CAL)));
-        (1..=4u64).for_each(|step| {
-            hub.tick(2_100 + step * crate::mavcmd::ACK_TIMEOUT_MS + 1);
+        (1..=50u64).for_each(|tenth| {
+            hub.tick(2_100 + tenth * 100);
         });
         let calibration = hub.calibration_snapshot(Some(1))["calibration"].clone();
         assert_eq!(

@@ -156,7 +156,7 @@ pub fn set_application_name(name: &str) {
         .unwrap_or_else(PoisonError::into_inner) = name.to_string();
 }
 
-fn silenced(kind: &str, text: &str) -> bool {
+pub fn silenced(kind: &str, text: &str) -> bool {
     kind == VEHICLE_ERROR
         && (text.starts_with("PreArm")
             || text

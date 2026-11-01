@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, openApp, test } from './fixtures';
 import { lastAnswer, plugInR2d2Radio, setRadioChannels, setRadioStreaming } from './r2d2';
-import { type Sitl, startSitl } from './sitl';
+import { type Sitl, connectSitl, startSitl } from './sitl';
 
 const ROLL = 0;
 const THROTTLE = 2;
@@ -27,15 +27,6 @@ const running = (): Sitl => {
 
 const channel = (index: number) => () => running().heard.rc[index] ?? 0;
 
-const connectSitl = async (page: Page) => {
-  await page.getByRole('button', { name: /How to connect/ }).click();
-  await page.getByRole('button', { name: 'Add link…' }).click();
-  await page.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
-  await page.getByRole('textbox', { name: 'WebSocket address' }).fill(running().ws);
-  await page.getByRole('textbox', { name: 'WebSocket address' }).locator('xpath=following::button[normalize-space()="Connect"][1]').click();
-  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 120_000 });
-};
-
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
 const DETECTED_RADIO = 'EdgeTX radio (webserial-0)';
 
@@ -59,7 +50,7 @@ test('a radio streaming the script is found by what it sends, offered once, and 
   await expect(page.getByText(RADIO_FOUND), 'the auto-connect link that opened the radio as an ArduPilot board hears its lines instead of MAVLink').toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Use', exact: true }).click();
 
-  await connectSitl(page);
+  await connectSitl(page, running().ws);
   await page.getByRole('button', { name: 'All status' }).click();
   await expect(indicator(page, 'Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');

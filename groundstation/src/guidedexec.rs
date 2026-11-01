@@ -1,4 +1,5 @@
 use crate::guidedcmd::{self, Step};
+use crate::liveclock::LiveClock;
 use serde_json::{Value, json};
 
 pub const MODE_TRIES: u32 = 3;
@@ -7,7 +8,7 @@ const ARM_ANSWER_WAIT_MS: u64 = 3000;
 const ARMED_AFTER_ACK_WAIT_MS: u64 = 2500;
 const LATE_ARM_WATCH_MS: u64 = 10_000;
 pub const ACCEPT_WAIT_MS: u64 = 10_000;
-const LIVE_STEP_MS: u64 = 250;
+pub const ARM_UNCONFIRMED: &str = "The aircraft accepted the arm command but never reported itself armed. Check the link and try again.";
 pub const LATE_ARM_DISARMED: &str = "The aircraft armed only after the app had stopped waiting for it, so the app disarmed it. Check the link and try again.";
 pub const LATE_ARM_FLYING: &str =
     "The aircraft armed only after the app had stopped waiting for it, and it is flying.";
@@ -37,6 +38,13 @@ pub enum Emit {
         longitude: f64,
         altitude_relative: f64,
     },
+    ArmRefused {
+        unanswered: bool,
+    },
+    ModeRefused {
+        custom_mode: u32,
+        unanswered: bool,
+    },
     Tell(String),
 }
 
@@ -45,6 +53,7 @@ pub struct Observed {
     pub flight_mode: String,
     pub armed: bool,
     pub flying: bool,
+    pub round_trip_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -77,23 +86,6 @@ pub enum State {
 }
 
 #[derive(Debug, Default)]
-struct Clock {
-    last_ms: Option<u64>,
-    live_ms: u64,
-}
-
-impl Clock {
-    fn read(&mut self, now_ms: u64) -> u64 {
-        let seen = self.live_ms;
-        self.live_ms += self
-            .last_ms
-            .map_or(0, |last| now_ms.saturating_sub(last).min(LIVE_STEP_MS));
-        self.last_ms = Some(now_ms);
-        seen
-    }
-}
-
-#[derive(Debug, Default)]
 pub struct Executor {
     steps: Vec<Step>,
     at: usize,
@@ -102,8 +94,13 @@ pub struct Executor {
     label: String,
     acked: Option<(u16, bool)>,
     failures: Option<(String, String)>,
-    clock: Clock,
+    clock: LiveClock,
     late_arm_until: Option<u64>,
+    told: Option<Emit>,
+}
+
+fn patience(wait_ms: u64, round_trips: u64, observed: &Observed) -> u64 {
+    wait_ms + round_trips * observed.round_trip_ms
 }
 
 fn label(step: &Step) -> String {
@@ -159,7 +156,7 @@ fn mode_emit(step: &Step) -> Option<Emit> {
                 ],
                 command_int: false,
                 frame: guidedcmd::FRAME_GLOBAL,
-                show_error: true,
+                show_error: false,
             }
         } else {
             Emit::SetMode {
@@ -209,11 +206,8 @@ impl Executor {
                     }
                 }
                 false => {
-                    let mode = match self.steps.get(self.at) {
-                        Some(Step::SetMode { mode, .. } | Step::WaitForMode(mode)) => mode.clone(),
-                        _ => String::new(),
-                    };
-                    self.fail(format!("Unable to change to {mode} mode."));
+                    let told = self.mode_refused(false);
+                    self.fail(format!("Unable to change to {} mode.", self.mode()), told);
                 }
             }
         }
@@ -225,9 +219,39 @@ impl Executor {
         self.label = String::new();
     }
 
-    fn fail(&mut self, reason: String) {
+    fn fail(&mut self, reason: String, told: Emit) {
         self.state = State::Failed(reason);
         self.wait = Wait::None;
+        self.told = Some(told);
+    }
+
+    fn mode(&self) -> String {
+        match self.steps.get(self.at) {
+            Some(Step::SetMode { mode, .. } | Step::WaitForMode(mode)) => mode.clone(),
+            _ => String::new(),
+        }
+    }
+
+    fn mode_refused(&self, unanswered: bool) -> Emit {
+        let mode = self.mode();
+        self.steps
+            .iter()
+            .find_map(|step| match step {
+                Step::SetMode {
+                    mode: asked,
+                    custom_mode,
+                    ..
+                } if *asked == mode => Some(Emit::ModeRefused {
+                    custom_mode: *custom_mode,
+                    unanswered,
+                }),
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                Emit::Tell(format!(
+                    "The aircraft didn't switch to {mode}. Check the link and try again."
+                ))
+            })
     }
 
     fn arm_failure(&self) -> String {
@@ -268,7 +292,12 @@ impl Executor {
 
     pub fn advance(&mut self, observed: &Observed, now_ms: u64) -> Vec<Emit> {
         let live_ms = self.clock.read(now_ms);
-        let mut out = self.late_arm(observed, live_ms);
+        let late = self.late_arm(observed, live_ms);
+        let stepped = self.step(observed, live_ms, late);
+        stepped.into_iter().chain(self.told.take()).collect()
+    }
+
+    fn step(&mut self, observed: &Observed, live_ms: u64, mut out: Vec<Emit>) -> Vec<Emit> {
         while self.running() {
             match self.wait.clone() {
                 Wait::Mode {
@@ -280,7 +309,7 @@ impl Executor {
                         self.at += 1;
                         continue;
                     }
-                    if live_ms.saturating_sub(since_ms) < MODE_WAIT_MS {
+                    if live_ms.saturating_sub(since_ms) < patience(MODE_WAIT_MS, 1, observed) {
                         return out;
                     }
                     let resend = self.steps.get(self.at).and_then(mode_emit);
@@ -294,16 +323,12 @@ impl Executor {
                             };
                         }
                         _ => {
-                            let mode = match self.steps.get(self.at) {
-                                Some(Step::SetMode { mode, .. } | Step::WaitForMode(mode)) => {
-                                    mode.clone()
-                                }
-                                _ => String::new(),
-                            };
-                            self.fail(self.failures.as_ref().map_or_else(
-                                || format!("Unable to change to {mode} mode."),
+                            let reason = self.failures.as_ref().map_or_else(
+                                || format!("Unable to change to {} mode.", self.mode()),
                                 |(text, _)| text.clone(),
-                            ));
+                            );
+                            let told = self.mode_refused(true);
+                            self.fail(reason, told);
                         }
                     }
                     return out;
@@ -315,7 +340,7 @@ impl Executor {
                 } => {
                     let failure = failure.clone();
                     let refused = |executor: &mut Self| match failure {
-                        Some(reason) => executor.fail(reason),
+                        Some(reason) => executor.fail(reason.clone(), Emit::Tell(reason)),
                         None => executor.finish(),
                     };
                     match self.acked.take() {
@@ -325,7 +350,11 @@ impl Executor {
                             continue;
                         }
                         Some((acked, false)) if acked == command => refused(self),
-                        _ if live_ms.saturating_sub(since_ms) >= ACCEPT_WAIT_MS => refused(self),
+                        _ if live_ms.saturating_sub(since_ms)
+                            >= patience(ACCEPT_WAIT_MS, 2, observed) =>
+                        {
+                            refused(self)
+                        }
                         _ => {}
                     }
                     return out;
@@ -336,14 +365,18 @@ impl Executor {
                         self.at += 1;
                         continue;
                     }
-                    let window = if accepted {
-                        ARMED_AFTER_ACK_WAIT_MS
-                    } else {
-                        ARM_ANSWER_WAIT_MS
-                    };
+                    let window = patience(
+                        if accepted {
+                            ARMED_AFTER_ACK_WAIT_MS
+                        } else {
+                            ARM_ANSWER_WAIT_MS
+                        },
+                        2,
+                        observed,
+                    );
                     match self.acked.take() {
                         Some((guidedcmd::CMD_COMPONENT_ARM_DISARM, false)) => {
-                            self.fail(self.arm_failure())
+                            self.fail(self.arm_failure(), Emit::ArmRefused { unanswered: false })
                         }
                         Some((guidedcmd::CMD_COMPONENT_ARM_DISARM, true)) if !accepted => {
                             self.wait = Wait::Armed {
@@ -352,8 +385,15 @@ impl Executor {
                             }
                         }
                         _ if live_ms.saturating_sub(since_ms) >= window => {
-                            self.fail(self.arm_failure());
-                            self.late_arm_until = Some(live_ms + LATE_ARM_WATCH_MS);
+                            self.fail(
+                                self.arm_failure(),
+                                match accepted {
+                                    true => Emit::Tell(ARM_UNCONFIRMED.into()),
+                                    false => Emit::ArmRefused { unanswered: true },
+                                },
+                            );
+                            self.late_arm_until =
+                                Some(live_ms + patience(LATE_ARM_WATCH_MS, 2, observed));
                         }
                         _ => {}
                     }
@@ -511,6 +551,7 @@ mod tests {
             flight_mode: mode.into(),
             armed,
             flying: false,
+            round_trip_ms: 0,
         }
     }
 
@@ -605,7 +646,14 @@ mod tests {
         );
         assert!(ticks(&mut executor, &loiter, 2_800, 3_900).is_empty());
         assert_eq!(executor.snapshot()["state"], "running");
-        assert!(ticks(&mut executor, &loiter, 4_000, 4_000).is_empty());
+        assert_eq!(
+            ticks(&mut executor, &loiter, 4_000, 6_000),
+            vec![Emit::ModeRefused {
+                custom_mode: 6,
+                unanswered: true
+            }],
+            "the pilot hears once that the aircraft never switched"
+        );
         assert_eq!(executor.snapshot()["state"], "failed");
         assert_eq!(
             executor.snapshot()["reason"],
@@ -619,8 +667,12 @@ mod tests {
         let plan = steps(guidedcmd::rtl(&copter(), false));
         assert_eq!(executor.start(plan, &observed("Loiter", true), 0).len(), 1);
         executor.on_command_result(guidedcmd::CMD_DO_SET_MODE, false);
-        assert!(
-            executor.advance(&observed("Loiter", true), 1300).is_empty(),
+        assert_eq!(
+            executor.advance(&observed("Loiter", true), 1300),
+            vec![Emit::ModeRefused {
+                custom_mode: 6,
+                unanswered: false
+            }],
             "a refusal is an answer; asking twice more only repeats it"
         );
         assert_eq!(
@@ -648,10 +700,56 @@ mod tests {
         let guided = observed("Guided", false);
         assert!(ticks(&mut executor, &guided, 100, 3_000).is_empty());
         assert_eq!(executor.snapshot()["state"], "running");
-        assert!(ticks(&mut executor, &guided, 3_100, 3_100).is_empty());
+        assert_eq!(
+            ticks(&mut executor, &guided, 3_100, 3_100),
+            vec![Emit::ArmRefused { unanswered: true }]
+        );
         assert_eq!(
             executor.snapshot(),
             json!({ "state": "failed", "reason": "Unable to takeoff: Vehicle failed to arm.", "step": 4, "steps": 6, "label": "Arming" })
+        );
+    }
+
+    #[test]
+    fn a_wait_on_the_vehicle_gets_the_round_trip_once_per_try_and_twice_when_there_is_one_try() {
+        let slow = |armed: bool| Observed {
+            round_trip_ms: 4_000,
+            ..observed("Guided", armed)
+        };
+        let mut executor = arming_in_guided();
+        assert!(
+            ticks(&mut executor, &slow(false), 100, 11_000).is_empty(),
+            "a link four seconds round trip is still answering inside eleven"
+        );
+        assert_eq!(
+            commands(&executor.advance(&slow(true), 11_100)),
+            vec![CMD_NAV_TAKEOFF]
+        );
+        let mut rtl = Executor::default();
+        rtl.start(
+            steps(guidedcmd::rtl(&copter(), false)),
+            &observed("Loiter", true),
+            0,
+        );
+        let loiter = Observed {
+            round_trip_ms: 4_000,
+            ..observed("Loiter", true)
+        };
+        assert!(
+            ticks(&mut rtl, &loiter, 100, 5_300).is_empty(),
+            "no second try while the first can still be on its way back"
+        );
+        assert_eq!(ticks(&mut rtl, &loiter, 5_400, 5_400).len(), 1);
+        assert!(ticks(&mut rtl, &loiter, 5_500, 10_600).is_empty());
+        assert_eq!(ticks(&mut rtl, &loiter, 10_700, 10_700).len(), 1);
+        assert!(ticks(&mut rtl, &loiter, 10_800, 15_900).is_empty());
+        assert_eq!(
+            ticks(&mut rtl, &loiter, 16_000, 16_000),
+            vec![Emit::ModeRefused {
+                custom_mode: 6,
+                unanswered: true
+            }],
+            "three tries each a round trip longer: a vehicle that never answers is told in sixteen seconds, not twenty-eight"
         );
     }
 
@@ -706,7 +804,10 @@ mod tests {
         silent.on_command_result(CMD_COMPONENT_ARM_DISARM, true);
         assert!(ticks(&mut silent, &guided, 1_300, 3_700).is_empty());
         assert_eq!(silent.snapshot()["state"], "running");
-        assert!(ticks(&mut silent, &guided, 3_800, 3_800).is_empty());
+        assert_eq!(
+            ticks(&mut silent, &guided, 3_800, 3_800),
+            vec![Emit::Tell(ARM_UNCONFIRMED.into())]
+        );
         assert_eq!(
             silent.snapshot()["reason"],
             "Unable to takeoff: Vehicle failed to arm.",
@@ -720,7 +821,11 @@ mod tests {
         let guided = observed("Guided", false);
         assert!(ticks(&mut executor, &guided, 100, 300).is_empty());
         executor.on_command_result(CMD_COMPONENT_ARM_DISARM, false);
-        assert!(ticks(&mut executor, &guided, 400, 400).is_empty());
+        assert_eq!(
+            ticks(&mut executor, &guided, 400, 400),
+            vec![Emit::ArmRefused { unanswered: false }],
+            "the hub waits for the vehicle's reason before it says why"
+        );
         assert_eq!(
             executor.snapshot()["reason"],
             "Unable to takeoff: Vehicle failed to arm."
@@ -735,7 +840,10 @@ mod tests {
     fn an_arm_that_lands_after_the_failure_is_disarmed_on_the_ground_once() {
         let mut executor = arming_in_guided();
         let guided = observed("Guided", false);
-        assert!(ticks(&mut executor, &guided, 100, 3_100).is_empty());
+        assert_eq!(
+            ticks(&mut executor, &guided, 100, 3_100),
+            vec![Emit::ArmRefused { unanswered: true }]
+        );
         assert_eq!(executor.snapshot()["state"], "failed");
         assert_eq!(
             ticks(&mut executor, &observed("Guided", true), 3_200, 6_000),
@@ -745,7 +853,7 @@ mod tests {
         assert_eq!(executor.snapshot()["reason"], LATE_ARM_DISARMED);
 
         let mut acked = arming_in_guided();
-        assert!(ticks(&mut acked, &guided, 100, 3_100).is_empty());
+        assert_eq!(ticks(&mut acked, &guided, 100, 3_100).len(), 1);
         acked.on_command_result(CMD_COMPONENT_ARM_DISARM, true);
         assert_eq!(
             ticks(&mut acked, &guided, 3_200, 3_200),
@@ -757,7 +865,10 @@ mod tests {
     #[test]
     fn an_arm_that_lands_after_the_failure_in_the_air_is_reported_and_never_disarmed() {
         let mut executor = arming_in_guided();
-        assert!(ticks(&mut executor, &observed("Guided", false), 100, 3_100).is_empty());
+        assert_eq!(
+            ticks(&mut executor, &observed("Guided", false), 100, 3_100).len(),
+            1
+        );
         let flying = Observed {
             flying: true,
             ..observed("Guided", true)
@@ -772,7 +883,7 @@ mod tests {
     fn an_arm_long_after_the_failure_or_after_a_new_command_is_not_taken_for_this_one() {
         let mut executor = arming_in_guided();
         let guided = observed("Guided", false);
-        assert!(ticks(&mut executor, &guided, 100, 3_100).is_empty());
+        assert_eq!(ticks(&mut executor, &guided, 100, 3_100).len(), 1);
         assert!(ticks(&mut executor, &guided, 3_200, 13_200).is_empty());
         assert!(
             ticks(&mut executor, &observed("Guided", true), 13_300, 14_000).is_empty(),
@@ -780,7 +891,7 @@ mod tests {
         );
 
         let mut replaced = arming_in_guided();
-        assert!(ticks(&mut replaced, &guided, 100, 3_100).is_empty());
+        assert_eq!(ticks(&mut replaced, &guided, 100, 3_100).len(), 1);
         replaced.start(
             steps(guidedcmd::rtl(&copter(), false)),
             &observed("Guided", false),
@@ -914,7 +1025,11 @@ mod tests {
         );
         assert_eq!(commands(&sent), vec![guidedcmd::CMD_DO_REPOSITION]);
         exec.on_command_result(guidedcmd::CMD_DO_REPOSITION, false);
-        assert!(exec.advance(&observed("Mission", false), 100).is_empty());
+        assert_eq!(
+            exec.advance(&observed("Mission", false), 100),
+            vec![Emit::Tell("Unable to pause vehicle.".into())],
+            "the reposition went out without its own error, so the plan tells the pilot"
+        );
         assert_eq!(
             exec.snapshot()["reason"],
             "Unable to pause vehicle.",

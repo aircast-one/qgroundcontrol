@@ -24,7 +24,7 @@ pub fn recent_round_trip_ms() -> Option<u64> {
     Some(RECENT_ROUND_TRIP_MS.load(Ordering::Relaxed)).filter(|ms| *ms > 0)
 }
 
-fn smoothed(previous: u64, latest: u64) -> u64 {
+pub fn smoothed(previous: u64, latest: u64) -> u64 {
     match previous {
         0 => latest.max(1),
         _ => ((previous * 3 + latest) / 4).max(1),
@@ -123,15 +123,24 @@ pub struct LinkHealth {
 }
 
 impl LinkHealth {
-    pub fn observe(&mut self, message: &MavMessage, from_autopilot: bool, now_ms: u64) {
+    pub fn observe(
+        &mut self,
+        message: &MavMessage,
+        from_autopilot: bool,
+        now_ms: u64,
+    ) -> Option<u64> {
         if !from_autopilot {
-            return;
+            return None;
         }
         match message {
             MavMessage::ATTITUDE(_) | MavMessage::ATTITUDE_QUATERNION(_) => {
-                self.attitude = self.attitude.noted(now_ms)
+                self.attitude = self.attitude.noted(now_ms);
+                None
             }
-            MavMessage::GLOBAL_POSITION_INT(_) => self.position = self.position.noted(now_ms),
+            MavMessage::GLOBAL_POSITION_INT(_) => {
+                self.position = self.position.noted(now_ms);
+                None
+            }
             MavMessage::TIMESYNC(sync)
                 if sync.tc1 != 0 && crate::mavout::for_us(sync.target_system) =>
             {
@@ -143,8 +152,9 @@ impl LinkHealth {
                     );
                 });
                 self.round_trips.extend(answered);
+                answered
             }
-            _ => {}
+            _ => None,
         }
     }
 
@@ -256,21 +266,39 @@ mod tests {
             health.report(0, 1, &route(3), sent).is_none(),
             "the first call opens the window"
         );
-        health.observe(&reply(ping_stamp(1_000), 255), true, 1_072);
-        health.observe(&reply(ping_stamp(2_000), 0), true, 2_090);
-        health.observe(&reply(ping_stamp(3_000), 7), true, 3_010);
-        health.observe(&reply(ping_stamp(4_000), 255), false, 4_010);
+        let measured = [
+            health.observe(&reply(ping_stamp(1_000), 255), true, 1_072),
+            health.observe(&reply(ping_stamp(2_000), 0), true, 2_090),
+            health.observe(&reply(ping_stamp(3_000), 7), true, 3_010),
+            health.observe(&reply(ping_stamp(4_000), 255), false, 4_010),
+        ];
+        assert_eq!(
+            measured,
+            [Some(72), Some(90), None, None],
+            "the round trip each answer measured, for the command queue to wait on"
+        );
         let attitude = MavMessage::ATTITUDE(ATTITUDE_DATA::default());
-        (0..200u64)
-            .for_each(|n| health.observe(&attitude, true, n * 50 + if n == 100 { 300 } else { 0 }));
-        (0..30u64).for_each(|n| {
-            health.observe(
-                &MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA::default()),
-                true,
-                n * 333,
-            )
-        });
-        health.observe(&attitude, false, 9_999);
+        assert!(
+            (0..200u64)
+                .filter_map(|n| health.observe(
+                    &attitude,
+                    true,
+                    n * 50 + if n == 100 { 300 } else { 0 }
+                ))
+                .next()
+                .is_none()
+        );
+        assert!(
+            (0..30u64)
+                .filter_map(|n| health.observe(
+                    &MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA::default()),
+                    true,
+                    n * 333,
+                ))
+                .next()
+                .is_none()
+        );
+        assert_eq!(health.observe(&attitude, false, 9_999), None);
         assert!(health.report(9_999, 1, &route(3), |_| 9).is_none());
         let report = health
             .report(10_000, 1, &route(3), |_| 10)

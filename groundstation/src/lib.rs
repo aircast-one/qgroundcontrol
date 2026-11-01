@@ -155,6 +155,7 @@ pub mod linkhealth;
 pub mod linkhost;
 pub mod linkremove;
 pub mod links;
+pub mod liveclock;
 pub mod logreplay;
 pub mod logs;
 pub mod mapclick;

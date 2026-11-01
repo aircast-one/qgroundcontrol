@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { connect, type Socket } from 'node:net';
+import { expect, type Page } from '@playwright/test';
 
 const IMAGE = 'ghcr.io/aircast-one/aircast-sitl:v0.0.12-95148b0';
 const WS_PORT = '8889/tcp';
@@ -71,4 +72,13 @@ export const startSitl = (): Sitl => {
       docker('rm', '-f', name);
     },
   };
+};
+
+export const connectSitl = async (page: Page, ws: string) => {
+  await page.getByRole('button', { name: /How to connect/ }).click();
+  await page.getByRole('button', { name: 'Add link…' }).click();
+  await page.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
+  await page.getByRole('textbox', { name: 'WebSocket address' }).fill(ws);
+  await page.getByRole('textbox', { name: 'WebSocket address' }).locator('xpath=following::button[normalize-space()="Connect"][1]').click();
+  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 120_000 });
 };

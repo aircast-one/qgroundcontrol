@@ -1467,6 +1467,7 @@ mod deps_cover_reads {
         ("linkconfig", include_str!("linkconfig.rs")),
         ("linkhost", include_str!("linkhost.rs")),
         ("links", include_str!("links.rs")),
+        ("liveclock", include_str!("liveclock.rs")),
         ("linkconnect", include_str!("linkconnect.rs")),
         ("landingpattern", include_str!("landingpattern.rs")),
         ("vehiclefacade", include_str!("vehiclefacade.rs")),

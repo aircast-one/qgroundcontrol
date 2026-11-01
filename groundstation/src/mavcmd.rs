@@ -1,3 +1,4 @@
+use crate::liveclock::LiveClock;
 use std::collections::BTreeMap;
 
 pub const COMP_ID_ALL: u8 = 0;
@@ -94,7 +95,6 @@ struct Entry {
     command: Command,
     tries: u32,
     max_tries: u32,
-    ack_timeout_ms: u64,
     sent_at_ms: u64,
 }
 
@@ -121,6 +121,8 @@ pub struct Commands {
     superseded: std::collections::BTreeSet<(u8, u16)>,
     pub px4: bool,
     pub high_latency: bool,
+    pub round_trip_ms: u64,
+    clock: LiveClock,
 }
 
 fn retries(command: u16) -> bool {
@@ -218,6 +220,18 @@ impl Commands {
         }
     }
 
+    pub fn heard_round_trip(&mut self, round_trip_ms: u64) {
+        self.round_trip_ms = crate::linkhealth::smoothed(self.round_trip_ms, round_trip_ms);
+    }
+
+    fn ack_timeout_ms(&self, max_tries: u32) -> u64 {
+        match (self.high_latency, max_tries) {
+            (true, _) => ACK_TIMEOUT_HIGH_LATENCY_MS,
+            (false, 1) => ACK_TIMEOUT_MS + 2 * self.round_trip_ms,
+            (false, _) => ACK_TIMEOUT_MS + self.round_trip_ms,
+        }
+    }
+
     pub fn pending(&self, component: u8, command: u16) -> bool {
         self.entries
             .iter()
@@ -287,25 +301,21 @@ impl Commands {
         } else {
             1
         };
-        let ack_timeout_ms = if self.high_latency {
-            ACK_TIMEOUT_HIGH_LATENCY_MS
-        } else {
-            ACK_TIMEOUT_MS
-        };
         self.entries.push(Entry {
             command,
             tries: 0,
             max_tries,
-            ack_timeout_ms,
-            sent_at_ms: now_ms,
+            sent_at_ms: 0,
         });
         let index = self.entries.len() - 1;
         self.transmit(index, now_ms)
     }
 
-    fn transmit(&mut self, index: usize, _now_ms: u64) -> Vec<Out> {
+    fn transmit(&mut self, index: usize, now_ms: u64) -> Vec<Out> {
+        let sent_at_ms = self.clock.at(now_ms);
         let entry = &mut self.entries[index];
         entry.tries += 1;
+        entry.sent_at_ms = sent_at_ms;
         if entry.tries > entry.max_tries {
             let entry = self.entries.remove(index);
             let c = entry.command;
@@ -354,10 +364,12 @@ impl Commands {
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<Out> {
+        let live_ms = self.clock.read(now_ms);
         let due: Vec<usize> = (0..self.entries.len())
             .rev()
             .filter(|i| {
-                now_ms.saturating_sub(self.entries[*i].sent_at_ms) > self.entries[*i].ack_timeout_ms
+                let entry = &self.entries[*i];
+                live_ms.saturating_sub(entry.sent_at_ms) > self.ack_timeout_ms(entry.max_tries)
             })
             .collect();
         let raw: Vec<Out> = due
@@ -370,7 +382,7 @@ impl Commands {
             .iter()
             .find(|(_, r)| {
                 r.wait_started_ms
-                    .is_some_and(|started| now_ms.saturating_sub(started) > MESSAGE_WAIT_MS)
+                    .is_some_and(|started| live_ms.saturating_sub(started) > MESSAGE_WAIT_MS)
             })
             .map(|(k, r)| (*k, r.tag));
         let timed_out = expired
@@ -400,12 +412,13 @@ impl Commands {
             return Vec::new();
         };
         if result == RESULT_IN_PROGRESS {
+            let heard_at_ms = self.clock.at(now_ms);
             let entry = if self.px4 && command == CMD_DO_AUTOTUNE_ENABLE {
                 self.entries.remove(index)
             } else {
                 let entry = &mut self.entries[index];
                 entry.max_tries = 1;
-                entry.sent_at_ms = now_ms;
+                entry.sent_at_ms = heard_at_ms;
                 entry.clone()
             };
             return vec![Out::Progress {
@@ -595,7 +608,7 @@ impl Commands {
                 now_ms,
             );
         }
-        request.wait_started_ms = Some(now_ms);
+        request.wait_started_ms = Some(self.clock.at(now_ms));
         Vec::new()
     }
 
@@ -680,9 +693,32 @@ impl Commands {
 mod tests {
     use super::*;
 
-    #[test]
-    fn each_retry_counts_up_its_confirmation_as_mav_command_queue_does() {
+    fn ticking() -> Commands {
         let mut commands = Commands::default();
+        commands.tick(0);
+        commands
+    }
+
+    fn ticks(commands: &mut Commands, from_ms: u64, to_ms: u64) -> Vec<Out> {
+        (from_ms..=to_ms)
+            .step_by(100)
+            .flat_map(|at| commands.tick(at))
+            .collect()
+    }
+
+    fn confirmations(outs: &[Out]) -> Vec<u8> {
+        outs.iter()
+            .filter_map(|o| match o {
+                Out::Send { confirmation, .. } => Some(*confirmation),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn each_retry_waits_a_full_ack_timeout_and_counts_up_its_confirmation_as_mav_command_queue_does()
+     {
+        let mut commands = ticking();
         let command = Command {
             component: 1,
             command: CMD_RUN_PREARM_CHECKS,
@@ -692,25 +728,133 @@ mod tests {
             show_error: false,
             tag: 0,
         };
-        let first = commands.send(command, 0);
-        let retries: Vec<Vec<Out>> = [ACK_TIMEOUT_MS + 1, ACK_TIMEOUT_MS + 501]
-            .iter()
-            .map(|at| commands.tick(*at))
-            .collect();
-        let confirmation = |outs: &[Out]| {
-            outs.iter().find_map(|o| match o {
-                Out::Send { confirmation, .. } => Some(*confirmation),
-                _ => None,
-            })
-        };
-        assert_eq!(
-            (
-                confirmation(&first),
-                confirmation(&retries[0]),
-                confirmation(&retries[1])
-            ),
-            (Some(0), Some(1), Some(2))
+        assert_eq!(confirmations(&commands.send(command, 0)), [0]);
+        assert!(ticks(&mut commands, 100, 1_300).is_empty());
+        assert_eq!(confirmations(&ticks(&mut commands, 1_400, 1_400)), [1]);
+        assert!(
+            ticks(&mut commands, 1_500, 2_700).is_empty(),
+            "a resend gets the whole timeout to be answered before the next"
         );
+        assert_eq!(confirmations(&ticks(&mut commands, 2_800, 2_800)), [2]);
+    }
+
+    #[test]
+    fn a_stall_before_an_ack_that_had_already_arrived_does_not_lose_it() {
+        let mut commands = ticking();
+        commands.send(arm(1), 0);
+        assert!(ticks(&mut commands, 100, 1_000).is_empty());
+        assert!(
+            commands.tick(4_000).is_empty(),
+            "three seconds of a blocked core count as one tick"
+        );
+        assert_eq!(
+            commands.on_ack(1, 400, RESULT_ACCEPTED, 4_000),
+            vec![Out::Result {
+                tag: 1,
+                component: 1,
+                command: 400,
+                result: RESULT_ACCEPTED,
+                failure: Failure::ResultOnly
+            }],
+            "the ack that waited out the stall is the answer, not a timeout"
+        );
+
+        let mut late = ticking();
+        late.send(arm(2), 0);
+        assert!(ticks(&mut late, 100, 1_200).is_empty());
+        assert!(
+            late.tick(5_000).is_empty(),
+            "a stall at the very end of the timeout still leaves a tick to read the link"
+        );
+        assert_eq!(late.on_ack(1, 400, RESULT_ACCEPTED, 5_000).len(), 1);
+    }
+
+    #[test]
+    fn a_slow_link_gets_twice_its_measured_round_trip_before_an_ack_is_missed() {
+        let mut commands = ticking();
+        commands.heard_round_trip(4_000);
+        commands.send(arm(3), 0);
+        assert!(
+            ticks(&mut commands, 100, 9_000).is_empty(),
+            "two seconds each way, so the ack can be four seconds out and more in a handover"
+        );
+        assert_eq!(
+            commands.on_ack(1, 400, RESULT_ACCEPTED, 9_000).len(),
+            1,
+            "a late ack on a slow link is still an answer"
+        );
+        commands.send(arm(4), 9_000);
+        assert!(ticks(&mut commands, 9_100, 18_300).is_empty());
+        assert_eq!(
+            ticks(&mut commands, 18_400, 18_400),
+            vec![
+                Out::Result {
+                    tag: 4,
+                    component: 1,
+                    command: 400,
+                    result: RESULT_FAILED,
+                    failure: Failure::NoResponse
+                },
+                Out::ArmRefused {
+                    arming: true,
+                    unanswered: true
+                }
+            ],
+            "with no answer at all the arm is still reported unanswered, after 1.2 s plus twice the round trip"
+        );
+        let mut retried = ticking();
+        retried.heard_round_trip(4_000);
+        retried.request_message(15, 1, 148, [0.0; 5], 0);
+        assert!(ticks(&mut retried, 100, 5_300).is_empty());
+        assert_eq!(
+            confirmations(&ticks(&mut retried, 5_400, 5_400)),
+            [1],
+            "a command that is retried gets one round trip per try, as its retries absorb the jitter"
+        );
+        let mut smoothed = Commands::default();
+        [1_000, 1_000, 3_000]
+            .iter()
+            .for_each(|ms| smoothed.heard_round_trip(*ms));
+        assert_eq!(
+            smoothed.round_trip_ms, 1_500,
+            "the round trip is smoothed as the link health smooths it"
+        );
+    }
+
+    #[test]
+    fn a_retried_command_whose_first_ack_arrives_after_the_resend_finishes_once() {
+        let mut commands = ticking();
+        commands.request_message(16, 1, 148, [0.0; 5], 0);
+        assert_eq!(
+            confirmations(&ticks(&mut commands, 100, 1_400)),
+            [1],
+            "resent once the timeout passed"
+        );
+        let first = commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 1_450);
+        assert!(
+            first
+                .iter()
+                .all(|o| !matches!(o, Out::Send { .. } | Out::RequestResult { .. })),
+            "the ack to the first try settles the command; the message is still awaited"
+        );
+        assert!(!commands.pending(1, CMD_REQUEST_MESSAGE));
+        assert!(
+            commands
+                .on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 1_500)
+                .is_empty(),
+            "the ack to the resend has nothing left to answer"
+        );
+        assert_eq!(
+            commands.on_message(1, 148, 1_550),
+            vec![Out::RequestResult {
+                tag: 16,
+                component: 1,
+                message_id: 148,
+                result: RESULT_ACCEPTED,
+                failure: RequestFailure::None
+            }]
+        );
+        assert!(ticks(&mut commands, 1_500, 6_000).is_empty());
     }
 
     fn arm(tag: u64) -> Command {
@@ -780,7 +924,7 @@ mod tests {
 
     #[test]
     fn a_plain_command_is_sent_once_and_its_ack_reports_the_result() {
-        let mut commands = Commands::default();
+        let mut commands = ticking();
         let sent = commands.send(arm(7), 0);
         assert!(matches!(
             sent.as_slice(),
@@ -818,8 +962,9 @@ mod tests {
         assert!(commands.on_ack(1, 400, 0, 10).is_empty());
         let unretried = commands.send(arm(8), 100);
         assert_eq!(unretried.len(), 1);
+        assert!(ticks(&mut commands, 100, 1_400).is_empty());
         assert_eq!(
-            commands.tick(100 + ACK_TIMEOUT_MS + 1),
+            ticks(&mut commands, 1_500, 1_500),
             vec![
                 Out::Result {
                     tag: 8,
@@ -881,22 +1026,18 @@ mod tests {
 
     #[test]
     fn a_retried_command_goes_out_three_times_then_fails_and_in_progress_stops_the_retries() {
-        let mut commands = Commands::default();
+        let mut commands = ticking();
         let check = Command {
             command: CMD_RUN_PREARM_CHECKS,
             show_error: false,
             ..arm(5)
         };
         assert_eq!(commands.send(check, 0).len(), 1);
-        assert!(commands.tick(ACK_TIMEOUT_MS).is_empty());
-        assert_eq!(commands.tick(ACK_TIMEOUT_MS + 1).len(), 1);
+        assert!(ticks(&mut commands, 100, 1_300).is_empty());
+        assert_eq!(ticks(&mut commands, 1_400, 2_700).len(), 1);
+        assert_eq!(ticks(&mut commands, 2_800, 4_100).len(), 1);
         assert_eq!(
-            commands.tick(ACK_TIMEOUT_MS + 501).len(),
-            1,
-            "retries follow the tick, the clock is not restarted"
-        );
-        assert_eq!(
-            commands.tick(ACK_TIMEOUT_MS + 1001),
+            ticks(&mut commands, 4_200, 4_200),
             vec![Out::Result {
                 tag: 5,
                 component: 1,
@@ -916,8 +1057,8 @@ mod tests {
             },
             0,
         );
-        assert!(slow.tick(ACK_TIMEOUT_MS + 1).is_empty());
-        let mut busy = Commands::default();
+        assert!(ticks(&mut slow, 0, 10_000).is_empty());
+        let mut busy = ticking();
         busy.send(
             Command {
                 command: CMD_RUN_PREARM_CHECKS,
@@ -934,15 +1075,15 @@ mod tests {
                 command: CMD_RUN_PREARM_CHECKS
             }]
         );
-        assert!(busy.tick(100 + ACK_TIMEOUT_MS - 1).is_empty());
+        assert!(ticks(&mut busy, 100, 1_400).is_empty());
         assert!(matches!(
-            busy.tick(100 + ACK_TIMEOUT_MS + 1).as_slice(),
+            ticks(&mut busy, 1_500, 1_500).as_slice(),
             [Out::Result {
                 failure: Failure::NoResponse,
                 ..
             }]
         ));
-        let mut apm = Commands::default();
+        let mut apm = ticking();
         apm.send(
             Command {
                 command: CMD_START_RX_PAIR,
@@ -952,7 +1093,7 @@ mod tests {
             0,
         );
         assert!(matches!(
-            apm.tick(ACK_TIMEOUT_MS + 1).as_slice(),
+            ticks(&mut apm, 100, 1_400).as_slice(),
             [Out::Result {
                 failure: Failure::NoResponse,
                 ..
@@ -975,7 +1116,7 @@ mod tests {
 
     #[test]
     fn a_requested_message_succeeds_after_the_ack_or_before_it_and_times_out_without_it() {
-        let mut commands = Commands::default();
+        let mut commands = ticking();
         let sent = commands.request_message(11, 1, 148, [0.0; 5], 0);
         assert!(
             matches!(sent.as_slice(), [Out::Send { command: CMD_REQUEST_MESSAGE, params, .. }] if params[0] == 148.0)
@@ -1043,9 +1184,9 @@ mod tests {
         assert!(commands.requests_idle());
         commands.request_message(13, 1, 148, [0.0; 5], 200);
         commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 205);
-        assert!(commands.tick(205 + MESSAGE_WAIT_MS).is_empty());
+        assert!(ticks(&mut commands, 100, 1_300).is_empty());
         assert_eq!(
-            commands.tick(205 + MESSAGE_WAIT_MS + 1),
+            ticks(&mut commands, 1_400, 1_400),
             vec![Out::RequestResult {
                 tag: 13,
                 component: 1,
@@ -1054,8 +1195,8 @@ mod tests {
                 failure: RequestFailure::MessageNotReceived
             }]
         );
-        commands.request_message(14, 1, 148, [0.0; 5], 300);
-        let denied = commands.on_ack(1, CMD_REQUEST_MESSAGE, 2, 305);
+        commands.request_message(14, 1, 148, [0.0; 5], 1_500);
+        let denied = commands.on_ack(1, CMD_REQUEST_MESSAGE, 2, 1_505);
         assert!(denied.contains(&Out::RequestResult {
             tag: 14,
             component: 1,
@@ -1063,11 +1204,9 @@ mod tests {
             result: 2,
             failure: RequestFailure::CommandError
         }));
-        let mut unanswered = Commands::default();
+        let mut unanswered = ticking();
         unanswered.request_message(17, 1, 148, [0.0; 5], 0);
-        let gave_up = (1..=3)
-            .flat_map(|n| unanswered.tick(ACK_TIMEOUT_MS + n))
-            .collect::<Vec<_>>();
+        let gave_up = ticks(&mut unanswered, 100, 4_200);
         assert!(gave_up.contains(&Out::RequestResult {
             tag: 17,
             component: 1,
