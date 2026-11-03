@@ -72,6 +72,8 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Aircast talks MAVLink and receives video from vehicles on your local network.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Aircast shows your position on the map and can send it to the vehicle for Follow Me and as the ground station location.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Aircast shows your position on the map and can send it to the vehicle for Follow Me and as the ground station location.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
