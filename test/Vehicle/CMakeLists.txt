@@ -32,6 +32,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         RcChannelOverrideTest.h
         MavCommandQueueReentrancyTest.cc
         MavCommandQueueReentrancyTest.h
+        MissingParameterNoticeTest.cc
+        MissingParameterNoticeTest.h
         MultiVehicleManagerTest.cc
         MultiVehicleManagerTest.h
         PX4ExternalFlightModesTest.cc
@@ -78,6 +80,7 @@ add_qgc_test(GimbalGroundProjectionTest LABELS Unit Vehicle)
 add_qgc_test(ArduCopterOrbitTest LABELS Unit Vehicle)
 add_qgc_test(MAVLinkLogManagerTest LABELS Integration Vehicle)
 add_qgc_test(MavCommandQueueReentrancyTest LABELS Integration Vehicle)
+add_qgc_test(MissingParameterNoticeTest LABELS Integration Vehicle)
 add_qgc_test(MultiVehicleManagerTest LABELS Integration Vehicle)
 add_qgc_test(PX4ExternalFlightModesTest LABELS Unit Vehicle)
 add_qgc_test(PX4HasGripperTest LABELS Integration Vehicle)

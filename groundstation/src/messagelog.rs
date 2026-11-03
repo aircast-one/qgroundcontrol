@@ -1,6 +1,8 @@
 use crate::statustext::{Kind, kind, severity_label};
 
 const SEVERITY_CRITICAL: u8 = 2;
+pub const SEVERITY_WARNING: u8 = 4;
+const AUTOPILOT_COMPONENT: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Logged {
@@ -57,6 +59,14 @@ impl MessageLog {
             text,
             dismissed: false,
         });
+    }
+
+    pub fn note(&mut self, severity: u8, text: &str) {
+        let html = escaped(text);
+        if self.items.iter().all(|logged| logged.text != html) {
+            let component = self.active.unwrap_or(AUTOPILOT_COMPONENT);
+            self.record_html(component, severity, html, clock_now());
+        }
     }
 
     pub fn count(&self) -> usize {
@@ -172,6 +182,19 @@ mod tests {
         assert_eq!((log.unread(), log.unread_type()), (1, "warning"));
         log.clear();
         assert_eq!(log.unread(), 0);
+    }
+
+    #[test]
+    fn a_note_from_the_ground_station_joins_the_log_once_as_the_autopilot_speaking() {
+        let mut log = MessageLog::default();
+        log.note(SEVERITY_WARNING, "Missing params: 1:COMPASS_DEV_ID3");
+        log.note(SEVERITY_WARNING, "Missing params: 1:COMPASS_DEV_ID3");
+        assert_eq!((log.count(), log.unread_type()), (1, "warning"));
+        log.record(1, 6, "Armed".into(), "t".into());
+        assert!(
+            !log.formatted().contains("COMP:"),
+            "the note does not make a single autopilot look like two components"
+        );
     }
 
     #[test]

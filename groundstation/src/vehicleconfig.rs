@@ -650,13 +650,7 @@ pub fn page_opened(backend: &dyn Backend, args: &str) -> Value {
                 .chain(missing_parameters(backend, &pages, px4)),
         ),
     };
-    if !missing.is_empty() {
-        crate::noticeboard::post(
-            crate::noticeboard::MESSAGE,
-            "",
-            &missing_parameters_text(&missing),
-        );
-    }
+    crate::connectnotices::report_missing_parameters(&missing);
     json!({ "ok": true })
 }
 
@@ -681,12 +675,8 @@ pub fn dialog_opened(backend: &dyn Backend, args: &str) -> Value {
         }
     };
     let missing = absent(backend, lookups);
-    if core && !missing.is_empty() {
-        crate::noticeboard::post(
-            crate::noticeboard::MESSAGE,
-            "",
-            &missing_parameters_text(&missing),
-        );
+    if core {
+        crate::connectnotices::report_missing_parameters(&missing);
     }
     json!({ "ok": true, "exists": missing.is_empty() })
 }
