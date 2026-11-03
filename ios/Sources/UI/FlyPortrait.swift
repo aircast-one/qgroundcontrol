@@ -11,12 +11,33 @@ private let PIP_BORDER_ALPHA = 0.5
 private let DECK_SCRIM_START = 0.4
 private let MAP_BUTTON_SIZE: CGFloat = 40
 private let MAP_ATTRIBUTION_CLEARANCE: CGFloat = 28
+private let PLACEHOLDER_ALPHA = 0.6
+private let PLACEHOLDER_ROW_GAP: CGFloat = 2
+private let PLACEHOLDER_SPEED_UNITS = ["ft/s", "m/s", "mph", "km/h", "kn"]
+private let HORIZONTAL_DISTANCE_UNITS = settingControl("settings.unitsSettings.horizontalDistanceUnits")
+private let VERTICAL_DISTANCE_UNITS = settingControl("settings.unitsSettings.verticalDistanceUnits")
+private let SPEED_UNITS_SETTING = settingControl("settings.unitsSettings.speedUnits")
 
 func portraitSplit(_ view: FlyView, _ hasVideo: Bool) -> Bool { view == .Video && hasVideo }
 
 func portraitShowsCamera(_ reading: VideoReading?) -> Bool {
     guard let reading else { return false }
     return reading.available || (!reading.streamEnabled && reading.sourceChosen)
+}
+
+struct PlaceholderUnits: Equatable {
+    let distance: String
+    let height: String
+    let speed: String
+}
+
+func placeholderUnits(_ distance: Int?, _ height: Int?, _ speed: Int?) -> PlaceholderUnits {
+    let speedIndex = speed ?? 1
+    return PlaceholderUnits(
+        distance: distance == 0 ? "ft" : "m",
+        height: height == 0 ? "ft" : "m",
+        speed: PLACEHOLDER_SPEED_UNITS.indices.contains(speedIndex) ? PLACEHOLDER_SPEED_UNITS[speedIndex] : "m/s"
+    )
 }
 
 func portraitVideoThumbnail(_ split: Bool, _ reading: VideoReading?) -> Bool { !split && reading?.available == true }
@@ -40,6 +61,7 @@ struct FlyPortrait: View {
     @CameraStepper private var cameras
     @GimbalDrags private var gimbalDrags
     @SyntheticAims private var syntheticAims
+    @HasVehicle private var hasVehicle
     @State private var chromeHeight: CGFloat = 0
     @State private var deckHeight: CGFloat = 0
     @State private var pipDrag = CGSize.zero
@@ -147,6 +169,12 @@ struct FlyPortrait: View {
                 if !decoding { FlyNoVideoMessage().osdShadow() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if !hasVehicle {
+                TelemetryPlaceholder()
+                    .osdShadow()
+                    .padding(.horizontal, Space.s3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Space.s2) {
                     LayoutWidget(key: "cameraSwitch", movable: false) { CameraSwitch(splitRoom: true) }
@@ -380,6 +408,42 @@ private struct VideoTab: View {
         .buttonStyle(.plain)
         .verticalSwipe(swipeDistance) { if $0 == showSwipe { onShow() } }
         .accessibilityLabel("Show the video")
+    }
+}
+
+private struct TelemetryPlaceholder: View {
+    @QgcValue(HORIZONTAL_DISTANCE_UNITS) private var distance
+    @QgcValue(VERTICAL_DISTANCE_UNITS) private var height
+    @QgcValue(SPEED_UNITS_SETTING) private var speed
+
+    var body: some View {
+        let units = placeholderUnits(distance.int, height.int, speed.int)
+        VStack(alignment: .leading, spacing: PLACEHOLDER_ROW_GAP) {
+            HStack(spacing: Space.s4) {
+                PlaceholderReading(label: "H.S", unit: units.speed, font: .labelLarge)
+                PlaceholderReading(label: "V.S", unit: units.speed, font: .labelLarge)
+            }
+            HStack(spacing: Space.s4) {
+                PlaceholderReading(label: "D", unit: units.distance, font: .titleLarge)
+                PlaceholderReading(label: "H", unit: units.height, font: .titleLarge)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct PlaceholderReading: View {
+    let label: String
+    let unit: String
+    let font: TypeScale
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s1) {
+            Text(label).font(.labelMedium).lineLimit(1)
+            Text("\u{2014} \(unit)").font(font).lineLimit(1)
+        }
+        .foregroundStyle(theme.aircast.outdoorForeground.opacity(PLACEHOLDER_ALPHA))
     }
 }
 
