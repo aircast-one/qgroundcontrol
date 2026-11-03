@@ -1,3 +1,4 @@
+import Foundation
 import os
 #if os(iOS)
 import UIKit

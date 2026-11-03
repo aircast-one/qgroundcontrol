@@ -307,7 +307,7 @@ private struct ScrollSettle: ViewModifier {
     let onMoving: (Bool) -> Void
 
     func body(content: Content) -> some View {
-        if #available(iOS 18, *) {
+        if #available(iOS 18, macOS 15, *) {
             content.onScrollPhaseChange { _, phase in onMoving(phase.isScrolling) }
         } else {
             content

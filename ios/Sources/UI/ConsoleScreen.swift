@@ -49,7 +49,7 @@ private struct ConsoleField: View {
     @State private var text = ""
 
     var body: some View {
-        if #available(iOS 18, *) {
+        if #available(iOS 18, macOS 15, *) {
             ConsoleSelectingField(field: field, onEdit: onEdit)
         } else {
             TextField(CONSOLE_PLACEHOLDER, text: $text, axis: .vertical)
@@ -59,7 +59,7 @@ private struct ConsoleField: View {
     }
 }
 
-@available(iOS 18, *)
+@available(iOS 18, macOS 15, *)
 private struct ConsoleSelectingField: View {
     let field: TextFieldValue
     let onEdit: (TextFieldValue) -> TextFieldValue

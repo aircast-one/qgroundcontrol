@@ -483,8 +483,9 @@ private struct Viewer3DMap: PlatformViewRepresentable {
                 let (x, y) = onScreen(map, label.at)
                 return PlacedLabel(id: index, at: CGPoint(x: CGFloat(x), y: CGFloat(y)), text: label.text)
             }
-            guard next != parent.placed else { return }
-            DispatchQueue.main.async { [parent] in parent.placed = next }
+            DispatchQueue.main.async { [parent] in
+                if next != parent.placed { parent.placed = next }
+            }
         }
     }
 }
