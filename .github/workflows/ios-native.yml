@@ -143,9 +143,13 @@ jobs:
         working-directory: ios
         run: |
           xcodegen generate
+          status=0
           xcodebuild -project Aircast.xcodeproj -scheme AircastMac -configuration Release \
-            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build \
-            | grep -E "error:|warning: unable|BUILD (SUCCEEDED|FAILED)" ; test "${PIPESTATUS[0]}" -eq 0
+            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/mac-build.log" 2>&1 || status=$?
+          grep -E "error:|warning: unable|BUILD (SUCCEEDED|FAILED)" "$RUNNER_TEMP/mac-build.log" || true
+          # A failed link names what is missing only on the lines after "Undefined symbols".
+          [ "$status" -eq 0 ] || grep -E -A40 "Undefined symbols|duplicate symbol|ld: (library|framework) not found" "$RUNNER_TEMP/mac-build.log" | head -200 || true
+          exit "$status"
 
       - name: Unit tests
         working-directory: ios
