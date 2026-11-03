@@ -50,9 +50,9 @@ public sealed partial class Viewer3DView : UserControl
     private const int MaxFetches = 8;
     private const VirtualKey PlusKey = (VirtualKey)187;
     private const VirtualKey MinusKey = (VirtualKey)189;
-    private const string Help = "Drag to orbit and tilt, right-drag to pan, scroll to zoom. Arrow keys orbit and tilt, plus and minus zoom, Home follows the vehicle.";
+    private const string Help = "Drag to pan, right-drag to orbit and tilt, scroll to zoom. Arrow keys orbit and tilt, plus and minus zoom, Home follows the vehicle.";
 
-    private sealed record Drag(uint Pointer, Point Start, Point Last, bool Pan, bool Moved);
+    private sealed record Drag(uint Pointer, Point Start, Point Last, bool Orbit, bool Moved);
 
     private readonly Image _image = new() { Stretch = Stretch.Fill, IsHitTestVisible = false };
     private readonly Canvas _labels = new() { IsHitTestVisible = false };
@@ -434,8 +434,8 @@ public sealed partial class Viewer3DView : UserControl
     {
         var point = e.GetCurrentPoint(this);
         var modified = (e.KeyModifiers & (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift)) != 0;
-        var pan = point.Properties.IsRightButtonPressed || point.Properties.IsMiddleButtonPressed || modified;
-        _drag = new Drag(e.Pointer.PointerId, point.Position, point.Position, pan, false);
+        var orbit = point.Properties.IsRightButtonPressed || point.Properties.IsMiddleButtonPressed || modified;
+        _drag = new Drag(e.Pointer.PointerId, point.Position, point.Position, orbit, false);
         CapturePointer(e.Pointer);
         Focus(FocusState.Pointer);
         e.Handled = true;
@@ -447,15 +447,15 @@ public sealed partial class Viewer3DView : UserControl
         var at = e.GetCurrentPoint(this).Position;
         var moved = drag.Moved || Math.Abs(at.X - drag.Start.X) + Math.Abs(at.Y - drag.Start.Y) > TapSlop;
         var (dx, dy) = ((float)(at.X - drag.Last.X), (float)(at.Y - drag.Last.Y));
-        if (moved && drag.Pan) Pan(dx, dy);
-        else if (moved) Move(camera => camera.Orbited(-dx * TurnPerPixel, -dy * LeanPerPixel));
+        if (moved && drag.Orbit) Move(camera => camera.Orbited(-dx * TurnPerPixel, -dy * LeanPerPixel));
+        else if (moved) Pan(dx, dy);
         _drag = drag with { Last = at, Moved = moved };
         e.Handled = true;
     }
 
     private void OnReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (_drag is { Moved: false, Pan: false } drag && drag.Pointer == e.Pointer.PointerId) Pick(drag.Start);
+        if (_drag is { Moved: false, Orbit: false } drag && drag.Pointer == e.Pointer.PointerId) Pick(drag.Start);
         _drag = null;
         ReleasePointerCapture(e.Pointer);
         e.Handled = true;
