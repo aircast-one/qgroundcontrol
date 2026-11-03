@@ -40,7 +40,7 @@ import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
-import { useRememberSyntheticAims, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
+import { useRememberSyntheticAims, useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
 import { TelemetryRow } from '@/ui/VehicleUi';
 import {
@@ -56,7 +56,7 @@ import {
   videoGestures,
   videoSwipe,
 } from '@/ui/VideoGestures';
-import { FlyNoVideoMessage, NO_VIDEO_PILL_HEIGHT, NO_VIDEO_PILL_WIDTH, centredRegion, messageRegion } from '@/ui/VideoSurface';
+import { FlyNoVideoMessage, NO_VIDEO_PILL_HEIGHT, NO_VIDEO_PILL_WIDTH, centredRegion, looksForAircraft, messageRegion } from '@/ui/VideoSurface';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
@@ -354,6 +354,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const deciding = useValue(shellState.guidedPanels) > 0;
   const obstacles = useValue(shellState.obstacles);
   const hasVehicle = useHasVehicle();
+  const syntheticChosen = useRememberSyntheticChosen();
   const [layers, setLayers] = useState(false);
   useEffect(() => setLayers(false), [view]);
 
@@ -388,7 +389,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
     return videoGestures(handlers);
   }, []);
   const videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding !== true;
-  const guideMessage = !hasVehicle && (view === FlyView.Map || videoMessage);
+  const guideMessage = !hasVehicle && (view === FlyView.Map || (videoMessage && looksForAircraft(hasVehicle, videoReading(videoJson), syntheticChosen)));
   const besideThumb = thumbShown ? thumb.width : 0;
   const showMap = () => onView(FlyView.Map);
   const showVideo = () => onView(FlyView.Video);
