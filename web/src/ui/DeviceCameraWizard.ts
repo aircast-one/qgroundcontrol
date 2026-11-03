@@ -50,6 +50,7 @@ export type WizardPort = {
   readonly status: string;
 };
 export type WizardMake = { readonly id: string; readonly label: string; readonly sub: string; readonly action: string };
+export type WizardCandidate = { readonly id: string; readonly iface: string; readonly label: string; readonly note: string; readonly action: string };
 export type WizardFound = { readonly n: number; readonly refusal: string; readonly camera: WizardCamera | null; readonly name: string };
 export type WizardApply = {
   readonly n: number;
@@ -68,9 +69,12 @@ export type DeviceWizard = {
   readonly adopt: WizardCamera | null;
   readonly note: string;
   readonly checklist: string;
+  readonly candidates: readonly WizardCandidate[];
   readonly cams: readonly WizardCamera[];
   readonly camHeading: string;
   readonly camsHint: string;
+  readonly strangers: readonly WizardCamera[];
+  readonly strangersHeading: string;
   readonly details: string;
   readonly todoHeading: string;
   readonly todo: readonly WizardPort[];
@@ -184,9 +188,18 @@ export const parseDeviceWizard = (json: Json | null): DeviceWizard => {
     adopt: parseWizardCamera(optJSONObject(json, 'adopt')),
     note: optText(json, 'note'),
     checklist: optText(json, 'checklist'),
+    candidates: jsonObjects(optJSONArray(json, 'candidates')).map((it) => ({
+      id: optText(it, 'id'),
+      iface: optText(it, 'iface'),
+      label: optText(it, 'label'),
+      note: optText(it, 'note'),
+      action: optText(it, 'action'),
+    })),
     cams: jsonObjects(optJSONArray(json, 'cams')).flatMap((it) => parseWizardCamera(it) ?? []),
     camHeading: optText(json, 'camHeading'),
     camsHint: optText(json, 'camsHint'),
+    strangers: jsonObjects(optJSONArray(json, 'strangers')).flatMap((it) => parseWizardCamera(it) ?? []),
+    strangersHeading: optText(json, 'strangersHeading'),
     details: optText(json, 'details'),
     todoHeading: optText(json, 'todoHeading'),
     todo: jsonObjects(optJSONArray(json, 'todo')).map(parseWizardPort),
@@ -256,7 +269,7 @@ export type PortAddress = { readonly port: string; readonly address: string };
 
 export const fixWizardPort = async (iface: string, address: string): Promise<void> => void (await Qgc.call(WIZARD_FIX_PORT, iface, address));
 
-export const setUpCameraMake = async (id: string): Promise<void> => void (await Qgc.call(WIZARD_TEMPLATE, id));
+export const setUpCameraMake = async (id: string, iface = ''): Promise<void> => void (await Qgc.call(WIZARD_TEMPLATE, id, iface));
 
 export const wizardNext = async (rtsp: string, name: string, dupAck: string): Promise<WizardNext | null> => parseWizardNext(optJSONObject(await Qgc.call(WIZARD_NEXT, rtsp, name, dupAck), 'result'));
 

@@ -2378,6 +2378,7 @@
         "view.deviceWizard.camHeading",
         "view.deviceWizard.cams.#",
         "view.deviceWizard.camsHint",
+        "view.deviceWizard.candidates.#",
         "view.deviceWizard.checklist",
         "view.deviceWizard.class",
         "view.deviceWizard.details",
@@ -2390,6 +2391,8 @@
         "view.deviceWizard.scanning",
         "view.deviceWizard.scans",
         "view.deviceWizard.session",
+        "view.deviceWizard.strangers.#",
+        "view.deviceWizard.strangersHeading",
         "view.deviceWizard.template.camera",
         "view.deviceWizard.template.n",
         "view.deviceWizard.template.name",
@@ -7721,6 +7724,7 @@
         "view.deviceWizard.camHeading",
         "view.deviceWizard.cams.#",
         "view.deviceWizard.camsHint",
+        "view.deviceWizard.candidates.#",
         "view.deviceWizard.checklist",
         "view.deviceWizard.class",
         "view.deviceWizard.details",
@@ -7733,6 +7737,8 @@
         "view.deviceWizard.scanning",
         "view.deviceWizard.scans",
         "view.deviceWizard.session",
+        "view.deviceWizard.strangers.#",
+        "view.deviceWizard.strangersHeading",
         "view.deviceWizard.template.camera",
         "view.deviceWizard.template.n",
         "view.deviceWizard.template.name",
@@ -12179,6 +12185,9 @@
             "empty"
         ],
         "camsHint": "string",
+        "candidates": [
+            "empty"
+        ],
         "checklist": "string",
         "class": "string",
         "details": "string",
@@ -12195,6 +12204,10 @@
         "scanning": "bool",
         "scans": "number",
         "session": "number",
+        "strangers": [
+            "empty"
+        ],
+        "strangersHeading": "string",
         "template": {
             "camera": "null",
             "n": "number",

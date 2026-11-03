@@ -108,6 +108,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
     var rtsp by remember { mutableStateOf(view.rtsp) }
     var name by remember { mutableStateOf(view.suggestedName) }
     var addressOpen by rememberSaveable { mutableStateOf(view.addressOpen) }
+    var makesOpen by rememberSaveable { mutableStateOf(false) }
     var namingOpen by rememberSaveable { mutableStateOf(false) }
     var techOpen by rememberSaveable { mutableStateOf(false) }
     var portOpen by rememberSaveable { mutableStateOf(false) }
@@ -262,6 +263,11 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
 
     fun input(port: WizardPort): PortInput = inputs[port.iface] ?: PortInput(port.open, port.suggest)
 
+    fun setUp(id: String, port: String) {
+        refusal = null
+        scope.launch { setUpCameraMake(id, port) }
+    }
+
     fun upload() {
         val chosen = file
         when {
@@ -304,39 +310,11 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                     Button(onClick = { scope.launch { advance(PI_CAMERA, name) } }) { Text(pi.action) }
                 }
             }
-            if (wizard.templates.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    wizard.templates.map { t ->
-                        key(t.id) {
-                            val idle = !wizard.templateBusy
-                            Row(
-                                Modifier.alpha(if (idle) 1f else 0.6f).boxed(
-                                    MaterialTheme.colorScheme.outlineVariant,
-                                    onClick = {
-                                        refusal = null
-                                        scope.launch { setUpCameraMake(t.id) }
-                                    },
-                                    enabled = idle,
-                                ),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(t.label, style = MaterialTheme.typography.bodyLarge)
-                                    Text(t.sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text(t.action, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    }
-                    if (wizard.templateNote.isNotEmpty()) DeviceHint(wizard.templateNote)
-                }
-            }
             if (view.lookingFor.isNotEmpty()) Text(view.lookingFor, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.aircast.warning)
             if (wizard.checklist.isEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!repairing(view)) DeviceHint("Plug the camera in and look for it.")
-                    LeadButton(scanLeads(rtsp, picked != null), onClick = { scope.launch { scanForCameras() } }, enabled = !wizard.scanning) {
+                    LeadButton(scanLeads(rtsp, picked != null || wizard.candidates.isNotEmpty()), onClick = { scope.launch { scanForCameras() } }, enabled = !wizard.scanning) {
                         Text(if (wizard.scanning) "Looking…" else "Scan for cameras")
                     }
                 }
@@ -354,31 +332,37 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                     }
                 }
             }
-            if (wizard.cams.isNotEmpty()) {
+            if (wizard.candidates.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(wizard.camHeading, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    wizard.cams.map { cam ->
-                        key("${cam.host} ${cam.url}") {
-                            val selected = picked == cam
-                            val primary = MaterialTheme.colorScheme.primary
+                    wizard.candidates.map { found ->
+                        key("${found.id} ${found.iface}") {
                             Row(
-                                Modifier.boxed(
-                                    if (selected) primary else MaterialTheme.colorScheme.outlineVariant,
-                                    onClick = { scope.launch { pick(cam) } },
-                                    fill = if (selected) primary.copy(alpha = 0.08f) else Color.Transparent,
-                                ),
+                                Modifier.boxed(MaterialTheme.colorScheme.primary),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(cam.host, style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace)
-                                    Text(cam.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(found.label, style = MaterialTheme.typography.bodyLarge)
+                                    Text(found.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Text(if (selected) "Selected" else cam.action, style = MaterialTheme.typography.labelLarge, color = primary)
+                                Button(onClick = { setUp(found.id, found.iface) }, enabled = !wizard.templateBusy) { Text(found.action) }
                             }
                         }
                     }
+                    if (wizard.templateNote.isNotEmpty()) DeviceHint(wizard.templateNote)
+                }
+            }
+            if (wizard.cams.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(wizard.camHeading, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    wizard.cams.map { cam -> key("${cam.host} ${cam.url}") { CameraRow(cam, picked == cam) { scope.launch { pick(cam) } } } }
                     if (wizard.camsHint.isNotEmpty()) DeviceHint(wizard.camsHint)
+                }
+            }
+            if (wizard.strangers.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(wizard.strangersHeading, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    wizard.strangers.map { cam -> key("${cam.host} ${cam.url}") { CameraRow(cam, picked == cam) { scope.launch { pick(cam) } } } }
                 }
             }
             if (wizard.details.isNotEmpty() && (!repairing(view) || wizard.todo.isNotEmpty())) {
@@ -397,6 +381,28 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                     DeviceHint("This camera asked for a sign-in. Enter the username and password set in the camera's own app.")
                     WizardField("Camera username", user, { credentials(it, pass) }, Modifier.focusRequester(userFocus))
                     SecretField("Camera password", pass, { credentials(user, it) })
+                }
+            }
+            if (wizard.templates.isNotEmpty()) {
+                Fold("I know my camera", makesOpen, { makesOpen = it }) {
+                    Text("Pick its make", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    wizard.templates.map { t ->
+                        key(t.id) {
+                            val idle = !wizard.templateBusy
+                            Row(
+                                Modifier.alpha(if (idle) 1f else 0.6f).boxed(MaterialTheme.colorScheme.outlineVariant, onClick = { setUp(t.id, "") }, enabled = idle),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(t.label, style = MaterialTheme.typography.bodyLarge)
+                                    Text(t.sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text(t.action, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                    if (wizard.templateNote.isNotEmpty() && wizard.candidates.isEmpty()) DeviceHint(wizard.templateNote)
                 }
             }
             if (locked) {
@@ -555,6 +561,22 @@ private fun StepNames(step: Int, skipsPort: Boolean) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CameraRow(cam: WizardCamera, selected: Boolean, onPick: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    Row(
+        Modifier.boxed(if (selected) primary else MaterialTheme.colorScheme.outlineVariant, onClick = onPick, fill = if (selected) primary.copy(alpha = 0.08f) else Color.Transparent),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(cam.host, style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace)
+            Text(cam.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(if (selected) "Selected" else cam.action, style = MaterialTheme.typography.labelLarge, color = primary)
     }
 }
 
