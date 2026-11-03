@@ -1,6 +1,11 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
+#if os(iOS)
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -13,12 +18,42 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         CoreHost.stop()
     }
 }
+#elseif os(macOS)
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Will-finish runs before SwiftUI builds the first window, as did-finish-launching does on iOS, so the core is up
+    // before any view reads it.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        QgcTileProtocol.install()
+        CoreHost.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated { CoreHost.stop() }
+    }
+
+    // One window holds the whole app, as the single scene does on iOS.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+#endif
 
 @main
 struct AircastApp: App {
+    #if os(iOS)
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    #elseif os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    #endif
 
     var body: some Scene {
+        #if os(macOS)
+        // The app drives one vehicle session, so it keeps to the one window rather than offering File > New Window.
+        mainWindow.commands { CommandGroup(replacing: .newItem) {} }
+        #else
+        mainWindow
+        #endif
+    }
+
+    private var mainWindow: some Scene {
         WindowGroup {
             MainActivity()
                 .onOpenURL { url in

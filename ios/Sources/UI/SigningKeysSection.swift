@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 import UniformTypeIdentifiers
 
 let MAVLINK_GROUP = "mavlinkSettings"
@@ -73,12 +77,29 @@ func canAddKey(_ name: String, _ raw: Bool, _ secret: String, _ minPassphrase: I
     !name.isEmpty && (raw ? isHexKey(secret) : secret.count >= minPassphrase)
 }
 
+#if os(iOS)
 private func copyForAWhile(_ hex: String) {
     UIPasteboard.general.setItems(
         [[UTType.plainText.identifier: hex]],
         options: [.expirationDate: Date().addingTimeInterval(Double(CLIPBOARD_WIPE_MS) / 1000), .localOnly: true]
     )
 }
+#elseif os(macOS)
+// The Mac pasteboard has no expiry, so the key is wiped after the same while unless something else was copied since.
+// Marked transient and concealed, so clipboard managers and Universal Clipboard leave it alone.
+private func copyForAWhile(_ hex: String) {
+    let board = NSPasteboard.general
+    board.clearContents()
+    board.setString(hex, forType: .string)
+    board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+    board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+    let copied = board.changeCount
+    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(CLIPBOARD_WIPE_MS)) {
+        guard NSPasteboard.general.changeCount == copied else { return }
+        NSPasteboard.general.clearContents()
+    }
+}
+#endif
 
 struct SigningKeysSection: View {
     @State private var revision = 0

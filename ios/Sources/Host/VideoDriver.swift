@@ -1,7 +1,9 @@
 import Foundation
 import os
 import QGCCore
+#if os(iOS)
 import UIKit
+#endif
 
 private let RECORDING_TASK = "aircast:recording"
 private let VIDEO_PREVIEWS = "video.previews"
@@ -136,6 +138,7 @@ enum VideoDriver {
     }
 }
 
+#if os(iOS)
 @MainActor
 private enum RecordingKeepAlive {
     static var task = UIBackgroundTaskIdentifier.invalid
@@ -155,3 +158,16 @@ private enum RecordingKeepAlive {
         task = .invalid
     }
 }
+#elseif os(macOS)
+// A Mac app is not suspended in the background; holding an activity keeps App Nap from throttling the recording.
+@MainActor
+private enum RecordingKeepAlive {
+    static func hold(_ recording: Bool) {
+        if recording {
+            MacActivity.begin(RECORDING_TASK, keepDisplayOn: false)
+        } else {
+            MacActivity.end(RECORDING_TASK)
+        }
+    }
+}
+#endif

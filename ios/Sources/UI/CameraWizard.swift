@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 import UniformTypeIdentifiers
 
 private let BOX_CORNER: CGFloat = 12
@@ -291,7 +293,7 @@ struct CameraWizard: View {
         .onChange(of: refusal) { _, now in
             guard let now else { return }
             withAnimation { scroll?.scrollTo(WIZARD_ERROR, anchor: .center) }
-            UIAccessibility.post(notification: .announcement, argument: now.text)
+            announceForAccessibility(now.text)
         }
         .onChange(of: signIn) { _, now in
             guard now.asked else { return }

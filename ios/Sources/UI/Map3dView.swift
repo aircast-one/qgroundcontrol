@@ -34,6 +34,7 @@ private func send(_ path: String, _ args: Double...) {
     offMainInOrder { _ = Qgc.invoke(path, arguments: args) }
 }
 
+#if os(iOS)
 private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
     private var twoFingered = false
 
@@ -88,11 +89,74 @@ private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
 
     @objc private func followed() { send(MAP3D_FOLLOW) }
 }
+#elseif os(macOS)
+// The Mac's pointer and trackpad stand in for touch: drag pans, right-drag or a two-finger trackpad scroll tilts,
+// pinch or the mouse wheel zooms, a trackpad rotate turns, and a double click follows the aircraft again.
+private let WHEEL_ZOOM_STEP = 1.1
 
-private struct Map3dGestures: UIViewRepresentable {
-    func makeUIView(context: Context) -> Map3dTouches { Map3dTouches(frame: .zero) }
+private final class Map3dTouches: NSView {
+    override var isFlipped: Bool { true }
 
-    func updateUIView(_ uiView: Map3dTouches, context: Context) {}
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        let pan = NSPanGestureRecognizer(target: self, action: #selector(panned(_:)))
+        let tilt = NSPanGestureRecognizer(target: self, action: #selector(tilted(_:)))
+        tilt.buttonMask = 0x2
+        let follow = NSClickGestureRecognizer(target: self, action: #selector(followed))
+        follow.numberOfClicksRequired = 2
+        let gestures: [NSGestureRecognizer] = [
+            pan,
+            tilt,
+            NSMagnificationGestureRecognizer(target: self, action: #selector(pinched(_:))),
+            NSRotationGestureRecognizer(target: self, action: #selector(turned(_:))),
+            follow,
+        ]
+        gestures.forEach { addGestureRecognizer($0) }
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func panned(_ pan: NSPanGestureRecognizer) {
+        guard pan.state == .changed else { return }
+        let moved = pan.translation(in: self)
+        pan.setTranslation(.zero, in: self)
+        if moved != .zero { send(MAP3D_PAN, moved.x, moved.y, bounds.width) }
+    }
+
+    @objc private func tilted(_ pan: NSPanGestureRecognizer) {
+        guard pan.state == .changed else { return }
+        let moved = pan.translation(in: self)
+        pan.setTranslation(.zero, in: self)
+        if moved.y != 0 { send(MAP3D_TILT, -moved.y, bounds.height) }
+    }
+
+    @objc private func pinched(_ pinch: NSMagnificationGestureRecognizer) {
+        guard pinch.state == .changed, pinch.magnification != 0 else { return }
+        send(MAP3D_ZOOM, 1 + pinch.magnification)
+        pinch.magnification = 0
+    }
+
+    // AppKit counts rotation anticlockwise and UIKit clockwise, so the sign flips to turn the same way as on iOS.
+    @objc private func turned(_ rotation: NSRotationGestureRecognizer) {
+        guard rotation.state == .changed, rotation.rotation != 0 else { return }
+        send(MAP3D_TURN, -rotation.rotation * 180 / .pi)
+        rotation.rotation = 0
+    }
+
+    @objc private func followed() { send(MAP3D_FOLLOW) }
+
+    override func scrollWheel(with event: NSEvent) {
+        if event.hasPreciseScrollingDeltas {
+            if event.scrollingDeltaY != 0 { send(MAP3D_TILT, -event.scrollingDeltaY, bounds.height) }
+        } else if event.scrollingDeltaY != 0 {
+            send(MAP3D_ZOOM, pow(WHEEL_ZOOM_STEP, Double(event.scrollingDeltaY)))
+        }
+    }
+}
+#endif
+
+private struct Map3dGestures: PlatformViewRepresentable {
+    func makePlatformView(context: Context) -> Map3dTouches { Map3dTouches(frame: .zero) }
 }
 
 private struct Compass: View {

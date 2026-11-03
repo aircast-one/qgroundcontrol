@@ -1,9 +1,12 @@
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 import WebKit
 import XCTest
 @testable import Aircast
 
-private let TERRARIUM_ZERO = UIColor(red: 128 / 255, green: 0, blue: 0, alpha: 1)
 private let RENDER_DEADLINE_S = 60.0
 
 private final class LoadWaiter: NSObject, WKNavigationDelegate {
@@ -12,6 +15,9 @@ private final class LoadWaiter: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finished.fulfill() }
 }
 
+#if os(iOS)
+private let TERRARIUM_ZERO = UIColor(red: 128 / 255, green: 0, blue: 0, alpha: 1)
+
 private func flatTerrainTile() -> Data {
     UIGraphicsImageRenderer(size: CGSize(width: 256, height: 256), format: { let format = UIGraphicsImageRendererFormat(); format.scale = 1; return format }())
         .pngData { context in
@@ -19,6 +25,30 @@ private func flatTerrainTile() -> Data {
             context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
         }
 }
+
+@MainActor
+private func hostView() -> UIView? {
+    UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first
+}
+#elseif os(macOS)
+// Drawn in sRGB with the colour given in sRGB, so the red byte stays exactly 128 (terrarium height zero).
+private func flatTerrainTile() -> Data {
+    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+          let zero = CGColor(colorSpace: space, components: [128 / 255, 0, 0, 1]),
+          let context = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return Data() }
+    context.setFillColor(zero)
+    context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
+    guard let image = context.makeImage() else { return Data() }
+    return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) ?? Data()
+}
+
+@MainActor
+private func hostView() -> NSView? {
+    let app = NSApplication.shared
+    return (app.keyWindow ?? app.mainWindow ?? app.windows.first)?.contentView
+}
+#endif
 
 @MainActor
 final class SyntheticPageTests: XCTestCase {
@@ -32,7 +62,7 @@ final class SyntheticPageTests: XCTestCase {
         let waiter = LoadWaiter(loaded)
         let web = syntheticWebView(waiter)
         web.frame = CGRect(x: 0, y: 0, width: 320, height: 180)
-        let window = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first)
+        let window = try XCTUnwrap(hostView())
         window.addSubview(web)
         defer { web.removeFromSuperview() }
         await fulfillment(of: [loaded], timeout: RENDER_DEADLINE_S)

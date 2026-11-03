@@ -26,7 +26,7 @@ func rgbaPixels(_ rgba: [UInt8], _ count: Int) -> [UInt8] {
     return Array(rgba.prefix(size)) + Array(repeating: 0, count: max(size - rgba.count, 0))
 }
 
-func bitmapOf(_ frame: FlowFrame) -> UIImage? {
+func bitmapOf(_ frame: FlowFrame) -> PlatformImage? {
     guard frame.width > 0, frame.height > 0 else { return nil }
     let data = Data(rgbaPixels(frame.rgba, frame.width * frame.height))
     guard let provider = CGDataProvider(data: data as CFData),
@@ -44,19 +44,19 @@ func bitmapOf(_ frame: FlowFrame) -> UIImage? {
               intent: .defaultIntent
           )
     else { return nil }
-    return UIImage(cgImage: image)
+    return PlatformImage(cgImage: image)
 }
 
 struct OpticalFlowScreen: View {
     @State private var index = -1
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
 
     var body: some View {
         VStack(spacing: Space.s3) {
             Text("Optical flow camera").font(.titleMedium)
             if let image {
                 GeometryReader { geometry in
-                    Image(uiImage: image)
+                    Image(platformImage: image)
                         .resizable()
                         .scaledToFit()
                         .frame(width: geometry.size.width / 2, height: geometry.size.width / 2 * 3 / 4)

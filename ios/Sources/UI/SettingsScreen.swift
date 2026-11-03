@@ -1,6 +1,8 @@
 import Combine
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 
 private let SETTINGS_VIEW = "view.settings"
 private let SEARCH_SETTLE_MS = 250
