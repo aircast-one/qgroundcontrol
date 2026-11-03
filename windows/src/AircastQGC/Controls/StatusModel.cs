@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace AircastQGC.Controls;
 
@@ -129,6 +130,7 @@ internal sealed record Readiness(string Text, string Detail, StatusTone Tone)
     private const string AllPassed = "All checks passed.";
     private const string SetupIncomplete = "Aircraft setup is not complete.";
     private const string PreArm = "PreArm:";
+    private static readonly Regex Listed = new("^(?<first>[^,]+)(?:, (?<rest>[^,]+))+ (?<state>turned off|not working)$");
 
     public static Readiness? Of(FlyStatus fly, JsonObject? warnings)
     {
@@ -147,7 +149,10 @@ internal sealed record Readiness(string Text, string Detail, StatusTone Tone)
     {
         var text = reason.Trim();
         var bare = text.StartsWith(PreArm, StringComparison.Ordinal) ? text[PreArm.Length..].TrimStart() : text;
-        return bare.Split(". ")[0].TrimEnd('.');
+        var sentence = bare.Split(". ")[0].TrimEnd('.');
+        return Listed.Match(sentence) is { Success: true } listed
+            ? $"{listed.Groups["first"]} +{listed.Groups["rest"].Captures.Count} {listed.Groups["state"]}"
+            : sentence;
     }
 
     private static string Join(params string[] parts) => string.Join(" · ", parts.Where(part => part.Length > 0));

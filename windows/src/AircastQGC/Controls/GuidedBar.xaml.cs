@@ -115,6 +115,8 @@ public sealed partial class GuidedBar : UserControl
         Present();
     }
 
+    public UIElement ChecklistToggle => ChecklistButton;
+
     public void ShowChecklist(bool shown, string tip)
     {
         ChecklistItem.Visibility = Seen(shown);

@@ -34,14 +34,13 @@ public sealed partial class GuidedConfirm : UserControl
 
     private readonly DispatcherTimer _settle = new() { Interval = ProbeSettle };
     private readonly Storyboard _hold = new();
-    private readonly DoubleAnimation _holdFill = new() { From = 0, To = 1 };
+    private readonly DoubleAnimation _holdSlide = new() { From = 0 };
 
     private GuidedAsk? _ask;
     private GuidedOffer? _pending;
     private GuidedRange? _range;
     private double? _grabbedAt;
     private IReadOnlyList<(GuidedPick Pick, Action<bool> Mark, UIElement View)> _picks = [];
-    private bool _pointered;
 
     public event EventHandler<GuidedOffer>? Sent;
     public event EventHandler<string>? Failed;
@@ -53,15 +52,10 @@ public sealed partial class GuidedConfirm : UserControl
     {
         InitializeComponent();
         _settle.Tick += (_, _) => Probe();
-        Storyboard.SetTarget(_holdFill, HoldScale);
-        Storyboard.SetTargetProperty(_holdFill, "ScaleX");
-        _hold.Children.Add(_holdFill);
+        Storyboard.SetTarget(_holdSlide, KnobShift);
+        Storyboard.SetTargetProperty(_holdSlide, "X");
+        _hold.Children.Add(_holdSlide);
         _hold.Completed += (_, _) => Confirm();
-        ConfirmButton.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => Hold()), true);
-        ConfirmButton.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => LetGo()), true);
-        ConfirmButton.AddHandler(PointerCanceledEvent, new PointerEventHandler((_, _) => LetGo()), true);
-        ConfirmButton.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => LetGo()), true);
-        ConfirmButton.AddHandler(PointerExitedEvent, new PointerEventHandler((_, _) => LetGo()), true);
         Unloaded += (_, _) =>
         {
             BridgeWatch.Stop(WatchClient);
@@ -128,12 +122,8 @@ public sealed partial class GuidedConfirm : UserControl
         AlternativeButton.Visibility = Seen(ask.Alternative != null);
         Knob.Style = Styled(ask.Destructive ? "KnobDestructiveStyle" : "KnobStyle");
         SlideText.Text = $"Slide to {Phrase(ask.Title)}";
-        ConfirmButton.Style = Styled(ask.Destructive ? "HoldButtonDestructive" : "HoldButton");
-        HoldFill.Background = ConfirmButton.Foreground;
-        ConfirmText.Text = $"Confirm {Phrase(ask.Title)}";
-        AutomationProperties.SetName(ConfirmButton, ConfirmText.Text);
-        ToolTipService.SetToolTip(ConfirmButton, $"{ConfirmText.Text}. Hold to confirm, or press Enter.");
-        _holdFill.Duration = ask.Destructive ? HoldToConfirmDestructive : HoldToConfirm;
+        AutomationProperties.SetName(Slide, SlideText.Text);
+        _holdSlide.Duration = ask.Destructive ? HoldToConfirmDestructive : HoldToConfirm;
         OptionCheck.Content = offer?.Option ?? "";
         OptionCheck.IsChecked = false;
         OptionCheck.Visibility = Seen(offer?.Option.Length > 0);
@@ -147,7 +137,7 @@ public sealed partial class GuidedConfirm : UserControl
         ReleaseHold();
         Root.Visibility = Visibility.Visible;
         BridgeWatch.Watch(WatchClient, ask.WatchPath.Length > 0 ? new[] { ask.WatchPath } : Array.Empty<string>(), OnWatched);
-        if (focus) DispatcherQueue.TryEnqueue(() => (ask.Destructive ? CancelButton : ConfirmButton).Focus(FocusState.Programmatic));
+        if (focus) DispatcherQueue.TryEnqueue(() => (ask.Destructive ? CancelButton : Slide).Focus(FocusState.Programmatic));
     }
 
     private static string Phrase(string title) =>
@@ -368,40 +358,37 @@ public sealed partial class GuidedConfirm : UserControl
     {
         Knob.IsHitTestVisible = sendable;
         SlideTrack.Opacity = sendable ? 1 : 0.4;
-        ConfirmButton.IsEnabled = sendable;
+        Slide.IsEnabled = sendable;
         if (!sendable) ReleaseHold();
     }
 
     private void Hold()
     {
-        _pointered = true;
-        if (ConfirmButton.IsEnabled && _ask != null) _hold.Begin();
-    }
-
-    private void LetGo()
-    {
-        ReleaseHold();
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => _pointered = false);
+        if (!Slide.IsEnabled || _ask == null || Travel <= 0) return;
+        _hold.Stop();
+        _holdSlide.To = Travel;
+        _hold.Begin();
     }
 
     private void ReleaseHold() => _hold.Stop();
 
-    private void ConfirmButton_Click(object sender, RoutedEventArgs e)
+    private static bool Confirms(VirtualKey key) => key is VirtualKey.Enter or VirtualKey.Space;
+
+    private void Slide_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (_pointered) _pointered = false;
-        else Confirm();
+        if (e.Key == VirtualKey.Escape) Cancel();
+        else if (Confirms(e.Key) && !e.KeyStatus.WasKeyDown) Hold();
+        e.Handled = e.Key == VirtualKey.Escape || Confirms(e.Key);
     }
 
-    private void ConfirmButton_PreviewKeyDown(object sender, KeyRoutedEventArgs e) => e.Handled = Key(e.Key, e.KeyStatus.WasKeyDown);
-
-    private void ConfirmButton_PreviewKeyUp(object sender, KeyRoutedEventArgs e) => e.Handled = e.Key is VirtualKey.Enter or VirtualKey.Space;
-
-    private bool Key(VirtualKey key, bool repeat)
+    private void Slide_KeyUp(object sender, KeyRoutedEventArgs e)
     {
-        if (key == VirtualKey.Escape) Cancel();
-        else if (key is VirtualKey.Enter or VirtualKey.Space && !repeat && ConfirmButton.IsEnabled) Confirm();
-        return key is VirtualKey.Escape or VirtualKey.Enter or VirtualKey.Space;
+        if (!Confirms(e.Key)) return;
+        ReleaseHold();
+        e.Handled = true;
     }
+
+    private void Slide_LostFocus(object sender, RoutedEventArgs e) => ReleaseHold();
 
     private void Step(int delta)
     {

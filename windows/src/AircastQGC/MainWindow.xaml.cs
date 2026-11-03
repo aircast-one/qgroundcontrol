@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.System;
 
 namespace AircastQGC;
@@ -69,8 +70,6 @@ public sealed partial class MainWindow : Window
 
         Nav.NavigationRequested += (_, page) => Go(page);
         Nav.BackRequested += (_, _) => GoBack();
-        Shell.PageRequested += (_, page) => Go(page);
-        Shell.BackRequested += (_, _) => GoBack();
         Shell.PaneToggleRequested += (_, _) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
         Notices.NavigateRequested += (_, page) => Go(page);
 
@@ -168,11 +167,14 @@ public sealed partial class MainWindow : Window
         FullScreenButton.Click += (_, _) => FullScreen(true);
         FlyContent.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.F11, () => true, () => FullScreen(!_fullScreen)));
-        FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.Escape, () => _fullScreen || OverlayLayout.Editing, () =>
+        FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.Escape, () => Nav.IsPaneOpen || Checklist.IsOpen || _fullScreen || OverlayLayout.Editing, () =>
         {
-            if (_fullScreen) FullScreen(false);
+            if (Nav.IsPaneOpen) Nav.IsPaneOpen = false;
+            else if (Checklist.IsOpen) Checklist.Hide();
+            else if (_fullScreen) FullScreen(false);
             else OverlayLayout.StopEditing();
         }));
+        Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) => LightDismiss(e.OriginalSource)), true);
         BottomLeft.SizeChanged += (_, _) => Clearances();
         LeftRail.SizeChanged += (_, _) => Clearances();
         TelemetryCard.SizeChanged += (_, _) => Clearances();
@@ -285,12 +287,10 @@ public sealed partial class MainWindow : Window
     {
         var fly = page == NavPane.Fly;
         if (!fly) FullScreen(false);
+        if (!fly && Checklist.IsOpen) Checklist.Hide();
         _page = page;
         Nav.SelectedPage = page;
         Nav.CanGoBack = !_history.IsEmpty;
-        Nav.Visibility = Shown(!fly);
-        Shell.CurrentPage = page;
-        Shell.CanGoBack = !_history.IsEmpty;
         Shell.OnFly = fly;
         var hosted = fly ? null : HostedPage(page);
         var underTitle = hosted is Pages.Plan.PlanPage;
@@ -505,6 +505,15 @@ public sealed partial class MainWindow : Window
     private void PaintChecklistButton() =>
         GuidedStrip.ShowChecklist(Checklist.HasVehicle && !GuidedStrip.OnFlyingDeck,
             Checklist.Ready ? "Pre-flight checklist · Ready" : $"Pre-flight checklist · {Checklist.Progress}");
+
+    private void LightDismiss(object source)
+    {
+        if (Checklist.IsOpen && !Within(source, Checklist) && !Within(source, GuidedStrip.ChecklistToggle)) Checklist.Hide();
+        if (_page == NavPane.Fly && Nav.IsPaneOpen && !Within(source, Nav) && !Within(source, Shell.MenuToggle)) Nav.IsPaneOpen = false;
+    }
+
+    private static bool Within(object? source, DependencyObject container) =>
+        source is DependencyObject node && (node == container || Within(VisualTreeHelper.GetParent(node), container));
 
     private static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
 }
