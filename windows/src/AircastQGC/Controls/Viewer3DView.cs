@@ -50,7 +50,7 @@ public sealed partial class Viewer3DView : UserControl
     private const int MaxFetches = 8;
     private const VirtualKey PlusKey = (VirtualKey)187;
     private const VirtualKey MinusKey = (VirtualKey)189;
-    private const string Help = "Drag to pan, right-drag to orbit and tilt, scroll to zoom. Arrow keys orbit and tilt, plus and minus zoom, Home follows the vehicle.";
+    private const string Help = "Drag to pan, pinch to zoom, twist two fingers to turn, drag two fingers up or down to tilt. With a mouse, right-drag turns and tilts and the wheel zooms. Arrow keys turn and tilt, plus and minus zoom, Home follows the vehicle.";
 
     private sealed record Drag(uint Pointer, Point Start, Point Last, bool Orbit, bool Moved);
 
@@ -85,6 +85,8 @@ public sealed partial class Viewer3DView : UserControl
     private bool _queued;
     private bool _live;
     private Drag? _drag;
+    private ImmutableSortedDictionary<uint, Vector2> _touches = ImmutableSortedDictionary<uint, Vector2>.Empty;
+    private bool _twoFingered;
 
     public Viewer3DView()
     {
@@ -118,8 +120,8 @@ public sealed partial class Viewer3DView : UserControl
         PointerPressed += OnPressed;
         PointerMoved += OnMoved;
         PointerReleased += OnReleased;
-        PointerCanceled += (_, _) => _drag = null;
-        PointerCaptureLost += (_, _) => _drag = null;
+        PointerCanceled += (_, e) => Lifted(e.Pointer.PointerId);
+        PointerCaptureLost += (_, e) => Lifted(e.Pointer.PointerId);
         PointerWheelChanged += OnWheel;
         SizeChanged += (_, _) => Invalidate();
         ActualThemeChanged += (_, _) =>
@@ -430,9 +432,29 @@ public sealed partial class Viewer3DView : UserControl
         Moved();
     }
 
+    private static (Vector2 A, Vector2 B)? Pair(ImmutableSortedDictionary<uint, Vector2> touches) =>
+        touches.Count >= 2 ? (touches.Values.First(), touches.Values.Skip(1).First()) : null;
+
+    private void Lifted(uint pointer)
+    {
+        _touches = _touches.Remove(pointer);
+        _twoFingered = _twoFingered && !_touches.IsEmpty;
+        _drag = _drag is { } drag && drag.Pointer == pointer ? null : _drag;
+    }
+
     private void OnPressed(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(this);
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+        {
+            _touches = _touches.SetItem(e.Pointer.PointerId, point.Position.ToVector2());
+            _twoFingered = _twoFingered || _touches.Count > 1;
+            CapturePointer(e.Pointer);
+            Focus(FocusState.Pointer);
+            e.Handled = true;
+            _drag = _twoFingered ? null : new Drag(e.Pointer.PointerId, point.Position, point.Position, false, false);
+            return;
+        }
         var modified = (e.KeyModifiers & (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift)) != 0;
         var orbit = point.Properties.IsRightButtonPressed || point.Properties.IsMiddleButtonPressed || modified;
         _drag = new Drag(e.Pointer.PointerId, point.Position, point.Position, orbit, false);
@@ -443,6 +465,18 @@ public sealed partial class Viewer3DView : UserControl
 
     private void OnMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (_twoFingered && _touches.ContainsKey(e.Pointer.PointerId))
+        {
+            var before = Pair(_touches);
+            _touches = _touches.SetItem(e.Pointer.PointerId, e.GetCurrentPoint(this).Position.ToVector2());
+            if (before is { } was && Pair(_touches) is { } now)
+            {
+                var pinch = Pinch3D.Between(was, now);
+                Move(camera => pinch.Applied(camera, LeanPerPixel));
+            }
+            e.Handled = true;
+            return;
+        }
         if (_drag is not { } drag || drag.Pointer != e.Pointer.PointerId) return;
         var at = e.GetCurrentPoint(this).Position;
         var moved = drag.Moved || Math.Abs(at.X - drag.Start.X) + Math.Abs(at.Y - drag.Start.Y) > TapSlop;
@@ -456,7 +490,7 @@ public sealed partial class Viewer3DView : UserControl
     private void OnReleased(object sender, PointerRoutedEventArgs e)
     {
         if (_drag is { Moved: false, Orbit: false } drag && drag.Pointer == e.Pointer.PointerId) Pick(drag.Start);
-        _drag = null;
+        Lifted(e.Pointer.PointerId);
         ReleasePointerCapture(e.Pointer);
         e.Handled = true;
     }
