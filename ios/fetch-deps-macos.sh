@@ -19,6 +19,13 @@ mkdir -p "$vendor" "$cache"
 
 "$here/fetch-deps.sh" --shared-only
 
+# The packet radio bridge (libs/wfb, built by the target's "Packet radio" step) links libusb and
+# libsodium through pkg-config, and is configured with CMake.
+command -v brew >/dev/null 2>&1 || { echo "fetch-deps-macos: needs Homebrew for libusb and libsodium" >&2; exit 1; }
+for formula in libusb libsodium pkg-config cmake; do
+    brew list --versions "$formula" >/dev/null 2>&1 || brew install "$formula"
+done
+
 if [ ! -f "$vendor/MapLibre-$MAPLIBRE_VERSION" ]; then
     command -v bazelisk >/dev/null 2>&1 || command -v bazel >/dev/null 2>&1 || {
         echo "fetch-deps-macos: building MapLibre for macOS needs bazelisk (brew install bazelisk)" >&2

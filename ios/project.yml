@@ -117,6 +117,9 @@ targets:
         type: folder
         buildPhase: resources
       - path: ../src/Bridge/QGCVideoC.cc
+      # The packet radio bridge registers itself with the core from a static initializer.
+      - path: ../src/Bridge/QGCWfbC.cc
+        compilerFlags: "-I$(QGC_ROOT)/libs/wfb -I$(QGC_ROOT)/libs/wfb/wifi -I$(QGC_ROOT)/libs/wfb/wifi/compat -I$(QGC_ROOT)/libs/wfb/devourer/src -I$(QGC_ROOT)/libs/wfb/devourer/hal -I/opt/homebrew/include -I/opt/homebrew/include/libusb-1.0"
     dependencies:
       - framework: Vendor/macos/MapLibre.xcframework
         embed: true
@@ -125,6 +128,14 @@ targets:
         basedOnDependencyAnalysis: false
         showEnvVars: false
         script: '"$SRCROOT/build-core.sh"'
+      - name: Packet radio
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        script: |
+          export PATH="/opt/homebrew/bin:$PATH"
+          cmake -S "$SRCROOT/../macos/wfb" -B "$SRCROOT/Vendor/macos/wfb-build" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+          cmake --build "$SRCROOT/Vendor/macos/wfb-build"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: one.aircast.mac
@@ -144,6 +155,9 @@ targets:
         OTHER_LDFLAGS: >-
           $(inherited)
           $(QGC_ROOT)/groundstation/target/aarch64-apple-darwin/release/libgroundstation.a
+          $(SRCROOT)/Vendor/macos/wfb-build/wfb/libwfblink.a
+          $(SRCROOT)/Vendor/macos/wfb-build/wfb/devourer/libdevourer.a
+          -L/opt/homebrew/lib -lusb-1.0 -lsodium -lpcap
           -framework GStreamer
           -lc++ -liconv -lresolv -lz
           -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox
