@@ -1,5 +1,9 @@
 import MapLibre
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 let ROI_GUIDED_VIEW = "view.guidedActions"
 private let ROI_SOURCE = "aircast-roi"
@@ -24,13 +28,13 @@ func installRoiLayer(_ style: MLNStyle) {
     let dot = MLNCircleStyleLayer(identifier: ROI_LAYER, source: source)
     dot.circleColor = styleConstant(mapColour(ROI_COLOUR))
     dot.circleRadius = styleConstant(10)
-    dot.circleStrokeColor = styleConstant(UIColor.white)
+    dot.circleStrokeColor = styleConstant(PlatformColor.white)
     dot.circleStrokeWidth = styleConstant(2)
     style.addLayer(dot)
     let label = MLNSymbolStyleLayer(identifier: ROI_LABEL_LAYER, source: source)
     label.text = styleConstant("ROI here")
     label.textFontSize = styleConstant(12)
-    label.textColor = styleConstant(UIColor.white)
+    label.textColor = styleConstant(PlatformColor.white)
     label.textOffset = styleOffset(0, 1.6)
     label.textAnchor = styleConstant("top")
     label.textAllowsOverlap = styleConstant(true)

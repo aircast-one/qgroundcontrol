@@ -1,5 +1,9 @@
 import MapLibre
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 let GOTO_MAP_CLICK_VIEW = "view.mapClick"
 private let GOTO_SOURCE = "aircast-goto"
@@ -92,7 +96,13 @@ func attachGotoRadiusDrag(_ map: MLNMapView, _ edits: FlyMapEdits, _ shown: @esc
     map.addGestureRecognizer(CircleGrabGesture(map: map, edits: edits, shown: shown))
 }
 
-private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRecognizerDelegate {
+#if os(iOS)
+private typealias CircleGrabBase = UILongPressGestureRecognizer
+#elseif os(macOS)
+private typealias CircleGrabBase = NSGestureRecognizer
+#endif
+
+private final class CircleGrabGesture: CircleGrabBase, MapGestureDelegate {
     private weak var map: MLNMapView?
     private let edits: FlyMapEdits
     private let shown: () -> GotoLocation?
@@ -104,22 +114,33 @@ private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRe
         self.edits = edits
         self.shown = shown
         super.init(target: nil, action: nil)
+        #if os(iOS)
         minimumPressDuration = 0
         allowableMovement = .greatestFiniteMagnitude
         delegate = self
         addTarget(self, action: #selector(tracked))
+        #elseif os(macOS)
+        delaysPrimaryMouseButtonEvents = false
+        delegate = self
+        #endif
     }
+
+    #if os(macOS)
+    required init?(coder: NSCoder) {
+        return nil
+    }
+    #endif
 
     private var dragging: Bool { [.GotoRadius, .OrbitRadius, .OrbitCentre].contains(grab) }
 
     private func pixels(_ dx: CGFloat, _ dy: CGFloat) -> (Float, Float) {
-        let scale = max(map?.contentScaleFactor ?? 1, 1)
+        let scale = max(map?.screenScale ?? 1, 1)
         return (Float(dx * scale), Float(dy * scale))
     }
 
     private func near(_ at: TrackPoint?, _ point: CGPoint) -> Bool {
         guard let at, let map else { return false }
-        let screen = map.convert(at.location, toPointTo: map)
+        let screen = map.screenPoint(at.location)
         let (dx, dy) = pixels(screen.x - point.x, screen.y - point.y)
         return withinHit(dx, dy)
     }
@@ -141,7 +162,7 @@ private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRe
 
     private func dragTo(_ point: CGPoint) {
         guard let map else { return }
-        let to = TrackPoint(map.convert(point, toCoordinateFrom: map))
+        let to = TrackPoint(map.screenCoordinate(point))
         let orbit = edits.orbit
         let edit = edits.gotoLoiter
         let goto = shown()
@@ -170,6 +191,7 @@ private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRe
         map?.isPitchEnabled = enabled
     }
 
+    #if os(iOS)
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard let map, state == .possible else { return false }
         grab = grabbed(touch.location(in: map))
@@ -178,8 +200,37 @@ private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRe
 
     @objc private func tracked() {
         guard let map else { return }
-        let at = location(in: map)
-        switch state {
+        track(location(in: map), state)
+    }
+    #elseif os(macOS)
+    // A mouse press on a handle or arrow drives the same began / changed / ended track the iOS long press reports.
+    override func mouseDown(with event: NSEvent) {
+        guard let map, state == .possible else { return }
+        let at = map.screenLocation(event)
+        grab = grabbed(at)
+        guard grab != .None else {
+            state = .failed
+            return
+        }
+        state = .began
+        track(at, .began)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let map, state == .began || state == .changed else { return }
+        state = .changed
+        track(map.screenLocation(event), .changed)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let map, state == .began || state == .changed else { return }
+        track(map.screenLocation(event), .ended)
+        state = .ended
+    }
+    #endif
+
+    private func track(_ at: CGPoint, _ phase: MapGestureRecognizer.State) {
+        switch phase {
         case .began:
             down = at
             if dragging { setMapGestures(false) }
@@ -187,7 +238,7 @@ private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRe
             if dragging { dragTo(at) }
         case .ended, .cancelled, .failed:
             let (dx, dy) = pixels(at.x - down.x, at.y - down.y)
-            if state == .ended && withinTap(dx, dy) { flip() }
+            if phase == .ended && withinTap(dx, dy) { flip() }
             if dragging { setMapGestures(true) }
             grab = .None
         default:
@@ -195,6 +246,10 @@ private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRe
         }
     }
 }
+
+#if os(macOS)
+extension CircleGrabGesture: MapExclusiveGesture {}
+#endif
 
 enum GotoBridge {
     static func read() -> GotoLocation? { gotoLocation(Qgc.get(GOTO_MAP_CLICK_VIEW)) }
@@ -231,13 +286,13 @@ func installGotoLayer(_ style: MLNStyle) {
     let dot = MLNCircleStyleLayer(identifier: GOTO_LAYER, source: target)
     dot.circleColor = styleConstant(mapColour(GOTO_COLOUR))
     dot.circleRadius = styleConstant(9)
-    dot.circleStrokeColor = styleConstant(UIColor.white)
+    dot.circleStrokeColor = styleConstant(PlatformColor.white)
     dot.circleStrokeWidth = styleConstant(2)
     style.addLayer(dot)
     let radiusText = MLNSymbolStyleLayer(identifier: GOTO_RADIUS_LAYER, source: radius)
     radiusText.text = styleGet(RADIUS_TEXT)
     radiusText.textFontSize = styleConstant(12)
-    radiusText.textColor = styleConstant(UIColor.black)
+    radiusText.textColor = styleConstant(PlatformColor.black)
     radiusText.textHaloColor = styleConstant(mapColour("#80FFFFFF"))
     radiusText.textHaloWidth = styleConstant(4)
     radiusText.textAnchor = styleConstant("bottom")
@@ -245,7 +300,7 @@ func installGotoLayer(_ style: MLNStyle) {
     radiusText.textIgnoresPlacement = styleConstant(true)
     style.addLayer(radiusText)
     let grip = MLNCircleStyleLayer(identifier: GOTO_HANDLE_LAYER, source: handle)
-    grip.circleColor = styleConstant(UIColor.white)
+    grip.circleColor = styleConstant(PlatformColor.white)
     grip.circleRadius = styleConstant(9)
     grip.circleStrokeColor = styleConstant(mapColour(GOTO_COLOUR))
     grip.circleStrokeWidth = styleConstant(3)
@@ -253,7 +308,7 @@ func installGotoLayer(_ style: MLNStyle) {
     let label = MLNSymbolStyleLayer(identifier: GOTO_LABEL_LAYER, source: target)
     label.text = styleConstant("Go here")
     label.textFontSize = styleConstant(12)
-    label.textColor = styleConstant(UIColor.white)
+    label.textColor = styleConstant(PlatformColor.white)
     label.textOffset = styleOffset(0, 1.6)
     label.textAnchor = styleConstant("top")
     label.textAllowsOverlap = styleConstant(true)
@@ -296,18 +351,18 @@ func installClickMarker(_ style: MLNStyle) {
     let shadow = MLNCircleStyleLayer(identifier: CLICK_MARKER_SHADOW_LAYER, source: source)
     shadow.circleRadius = styleConstant(CLICK_MARKER_RADIUS)
     shadow.circleOpacity = styleConstant(0)
-    shadow.circleStrokeColor = styleConstant(UIColor(white: 0, alpha: 0.6))
+    shadow.circleStrokeColor = styleConstant(PlatformColor(white: 0, alpha: 0.6))
     shadow.circleStrokeWidth = styleConstant(4)
     style.addLayer(shadow)
     let ring = MLNCircleStyleLayer(identifier: CLICK_MARKER_RING_LAYER, source: source)
     ring.circleRadius = styleConstant(CLICK_MARKER_RADIUS - 1)
     ring.circleOpacity = styleConstant(0)
-    ring.circleStrokeColor = styleConstant(UIColor.white)
+    ring.circleStrokeColor = styleConstant(PlatformColor.white)
     ring.circleStrokeWidth = styleConstant(2)
     style.addLayer(ring)
     let dot = MLNCircleStyleLayer(identifier: CLICK_MARKER_DOT_LAYER, source: source)
     dot.circleRadius = styleConstant(2)
-    dot.circleColor = styleConstant(UIColor.white)
+    dot.circleColor = styleConstant(PlatformColor.white)
     style.addLayer(dot)
 }
 

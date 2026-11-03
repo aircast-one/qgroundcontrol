@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 private let TERRAIN_COLOUR = Color(hex: 0x8D6E63)
 private let PLANNED_COLOUR = Color(hex: 0x4FC3F7)
@@ -101,7 +105,7 @@ func missionItemStatusShown(_ setting: JSON?) -> Bool {
 func elevationCredit(_ notice: String) -> String? { notice.isBlank ? nil : "Powered by \(notice)" }
 
 private let LABEL_SCALE = TypeScale.labelSmall
-private let LABEL_FONT = UIFont.systemFont(ofSize: LABEL_SCALE.size, weight: LABEL_SCALE.weight == .medium ? .medium : .regular)
+private let LABEL_FONT = PlatformFont.systemFont(ofSize: LABEL_SCALE.size, weight: LABEL_SCALE.weight == .medium ? .medium : .regular)
 
 private func measured(_ text: String) -> CGSize {
     (text as NSString).size(withAttributes: [.font: LABEL_FONT])
