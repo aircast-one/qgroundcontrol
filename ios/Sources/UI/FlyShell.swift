@@ -450,6 +450,9 @@ struct FlyScreen: View {
                                 .frame(maxWidth: .infinity)
                             BatteryReturnBar()
                             TrafficBanner()
+                            #if os(macOS)
+                            UpdateBanner()
+                            #endif
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: Space.s2) { keyRow() }
                             }
