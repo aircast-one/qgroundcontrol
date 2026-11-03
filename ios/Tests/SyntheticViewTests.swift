@@ -26,6 +26,13 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertEqual(map3dState(JSON.parse(#"{"heading":250,"following":false,"aircraft":true}"#)), Map3dState(heading: 250, following: false, aircraft: true))
     }
 
+    func testTheMapToggleNamesTheMapItSwitchesTo() {
+        XCTAssertEqual(map3dToggleText(false), "3D")
+        XCTAssertEqual(map3dToggleLabel(false), "Show the 3D map")
+        XCTAssertEqual(map3dToggleText(true), "2D")
+        XCTAssertEqual(map3dToggleLabel(true), "Show the flat map")
+    }
+
     func testThePageAsksForTilesBesideItselfAndTheCoreAnswersThem() {
         XCTAssertEqual(syntheticTilePath("/synthetic/tiles/Bing%20Satellite/15/29961/19829"), "/Bing%20Satellite/15/29961/19829")
         XCTAssertNil(syntheticTilePath("/synthetic/Cesium/Cesium.js"))
