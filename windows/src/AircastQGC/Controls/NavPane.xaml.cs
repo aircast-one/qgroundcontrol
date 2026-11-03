@@ -21,6 +21,7 @@ public sealed partial class NavPane : UserControl
     private string _selectedPage = Fly;
     private bool _listPaneOpen = true;
     private bool _mapPaneOpen;
+    private bool _flyPaneOpen;
 
     public NavPane()
     {
@@ -38,20 +39,24 @@ public sealed partial class NavPane : UserControl
         set
         {
             _selectedPage = value;
+            _flyPaneOpen = false;
             Render();
         }
     }
 
     public bool IsPaneOpen
     {
-        get => OnMap ? _mapPaneOpen : _listPaneOpen;
+        get => OnFly ? _flyPaneOpen : OnMap ? _mapPaneOpen : _listPaneOpen;
         set
         {
-            if (OnMap) _mapPaneOpen = value;
+            if (OnFly) _flyPaneOpen = value;
+            else if (OnMap) _mapPaneOpen = value;
             else _listPaneOpen = value;
             Render();
         }
     }
+
+    private bool OnFly => _selectedPage == Fly;
 
     private bool OnMap => _selectedPage == Plan;
 
@@ -66,6 +71,7 @@ public sealed partial class NavPane : UserControl
     private void OnNavigate(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string page }) return;
+        if (OnFly) IsPaneOpen = false;
         NavigationRequested?.Invoke(this, page);
     }
 
@@ -73,6 +79,8 @@ public sealed partial class NavPane : UserControl
 
     private void Render()
     {
+        Visibility = !OnFly || _flyPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        Root.Background = Token(OnFly ? "CardBrush" : "");
         Root.Width = IsPaneOpen ? OpenWidth : CompactWidth;
         Array.ForEach(Items, item => Paint(item, item.Tag as string == _selectedPage, IsPaneOpen));
     }

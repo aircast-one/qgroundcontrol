@@ -18,6 +18,7 @@ const RETRY: Duration = Duration::from_secs(1);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const SILENCE_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_EVENT_BYTES: usize = 1 << 20;
+const DETECTOR_LOST: &str = "the drone's detector stopped answering";
 
 fn follows() -> bool {
     cfg!(not(target_family = "wasm")) || crate::device::paired()
@@ -123,6 +124,7 @@ pub struct Feed {
     generation: u64,
     frame: Option<Frame>,
     error: Option<String>,
+    heard: bool,
     stale_announced: bool,
 }
 
@@ -222,6 +224,7 @@ impl Feed {
         self.generation += 1;
         self.frame = None;
         self.error = None;
+        self.heard = false;
         self.stale_announced = false;
         true
     }
@@ -232,6 +235,7 @@ impl Feed {
         }
         self.frame = Some(frame);
         self.error = None;
+        self.heard = true;
         self.stale_announced = false;
         true
     }
@@ -298,14 +302,15 @@ impl Feed {
         json!({
             "kind": "object",
             "class": "Detections",
-            "available": self.source.is_some(),
+            "available": self.source.is_some() && self.heard,
             "host": self.source.as_ref().map(|s| s.host.clone()),
             "camera": self.source.as_ref().map(|s| s.camera.clone()),
             "stale": stale,
             "ageMs": age_ms,
             "boxes": if stale { Vec::new() } else { self.frame.as_ref().map(|f| f.boxes.clone()).unwrap_or_default() },
             "track": if stale { Value::Null } else { self.frame.as_ref().map(|f| f.track.clone()).unwrap_or(Value::Null) },
-            "error": self.error,
+            "error": self.error.as_ref().filter(|_| self.heard).map(|_| DETECTOR_LOST),
+            "cause": self.error,
         })
     }
 }
@@ -649,11 +654,34 @@ mod tests {
             "a frame from a superseded stream is dropped"
         );
         assert!(feed.fail(generation, "connection refused".into()));
-        assert_eq!(feed.snapshot(7_000)["error"], "connection refused");
+        let lost = feed.snapshot(7_000);
+        assert_eq!(
+            (lost["error"].clone(), lost["cause"].clone()),
+            (json!(DETECTOR_LOST), json!("connection refused")),
+            "a detector that went quiet is told in plain words, the socket error kept for logs"
+        );
         assert!(feed.retarget(None));
         assert_eq!(
             feed.snapshot(7_000),
-            json!({ "kind": "object", "class": "Detections", "available": false, "host": null, "camera": null, "stale": true, "ageMs": null, "boxes": [], "track": null, "error": null })
+            json!({ "kind": "object", "class": "Detections", "available": false, "host": null, "camera": null, "stale": true, "ageMs": null, "boxes": [], "track": null, "error": null, "cause": null })
+        );
+    }
+
+    #[test]
+    fn a_camera_whose_host_has_no_detector_shows_no_detections_and_no_error() {
+        let mut feed = Feed::default();
+        assert!(feed.retarget(parse("rtsp://192.168.105.1:18554/e2e", None)));
+        let generation = feed.generation;
+        assert!(feed.fail(generation, "io: Connection refused".into()));
+        let quiet = feed.snapshot(1_000);
+        assert_eq!(
+            (
+                quiet["available"].clone(),
+                quiet["error"].clone(),
+                quiet["cause"].clone()
+            ),
+            (json!(false), json!(null), json!("io: Connection refused")),
+            "a plain RTSP camera never had a detector, so there is nothing to warn about"
         );
     }
 }

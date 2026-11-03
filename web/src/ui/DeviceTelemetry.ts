@@ -1,4 +1,4 @@
-import { type Json, isJson, jsonObjects, optBoolean, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import { type Json, isJson, jsonObjects, jsonStrings, optBoolean, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { type DeviceBadge, type DeviceOption, parseBadge, parseBadges, parseOptions } from '@/ui/DeviceKit';
 
@@ -25,8 +25,11 @@ export type GimbalSettings = {
   readonly models: readonly DeviceOption[];
 };
 
+export type TelemetryFix = { readonly title: string; readonly steps: readonly string[]; readonly waiting: string };
+
 export type TelemetryView = {
   readonly status: DeviceBadge;
+  readonly fix: TelemetryFix | null;
   readonly notices: readonly DeviceBadge[];
   readonly endpoints: readonly DeviceEndpoint[];
   readonly endpointNotice: DeviceBadge | null;
@@ -67,8 +70,10 @@ export const parseTelemetry = (json: unknown): TelemetryView | null => {
   if (!isJson(json) || !isJson(json.status)) return null;
   const cloud = optJSONObject(json, 'cloud');
   const settings = optJSONObject(json, 'settings');
+  const fix = optJSONObject(json, 'fix');
   return {
     status: parseBadge(json.status),
+    fix: fix === null ? null : { title: optText(fix, 'title'), steps: jsonStrings(optJSONArray(fix, 'steps')), waiting: optText(fix, 'waiting') },
     notices: parseBadges(json, 'notices'),
     endpoints: parseEndpointList(json, 'endpoints'),
     endpointNotice: isJson(json.endpointNotice) ? parseBadge(json.endpointNotice) : null,
