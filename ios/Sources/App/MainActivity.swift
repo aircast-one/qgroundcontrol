@@ -289,7 +289,7 @@ struct AircastShell: View {
                     .padding(.bottom, VIRTUAL_JOYSTICK_BOTTOM_MARGIN)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 if let point = mapClickAt {
-                    MapClickMenu(point: point) {
+                    MapClickMenu(point: point, only: picturePressed?.actions, warning: picturePressed?.warning) {
                         mapClickAt = nil
                         picturePressed = nil
                     }

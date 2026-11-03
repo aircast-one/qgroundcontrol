@@ -153,8 +153,14 @@ private struct RefusalText: View {
     }
 }
 
+func offeredClickActions(_ view: JSON?, _ only: [String]?) -> [MapClickAction] {
+    mapClickActions(view).filter { action in only.map { $0.contains(action.id) } ?? true }
+}
+
 struct MapClickMenu: View {
     let point: MapPoint
+    var only: [String]? = nil
+    var warning: String? = nil
     let onDismiss: () -> Void
     @QgcPath(MAP_CLICK_PATH) private var view
     @QgcPath("vehicle.coordinate") private var vehicleCoordinate
@@ -164,7 +170,7 @@ struct MapClickMenu: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        let actions = mapClickActions(view)
+        let actions = offeredClickActions(view, only)
         let defaults = orbitDefaults(view)
         ZStack {
             if view != nil && actions.isEmpty {
@@ -233,6 +239,13 @@ struct MapClickMenu: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                }
+                if let warning {
+                    Text(warning)
+                        .font(.bodyMedium)
+                        .foregroundStyle(theme.aircast.warning)
+                        .padding(.horizontal, Space.s5)
+                        .padding(.vertical, Space.s2)
                 }
             }
             RefusalText(text: refused)

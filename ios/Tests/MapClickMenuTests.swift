@@ -34,6 +34,12 @@ final class MapClickMenuTests: XCTestCase {
         XCTAssertEqual(orbitOpened(MapPoint(latitude: 47.4, longitude: 8.5), orbitDefaults(nil)).radiusMetres, MINIMUM_CIRCLE_RADIUS_METRES, accuracy: 0)
     }
 
+    func testAPressOnTheVideoOffersOnlyTheActionsTheCoreListsForAPicture() {
+        let view = JSON.parse(#"{"actions":[{"id":"GoTo","label":"Go to location"},{"id":"Orbit","label":"Orbit at location"},{"id":"Roi","label":"Look at this point"},{"id":"StopLooking","label":"Stop looking"},{"id":"SetHome","label":"Set home here"},{"id":"Heading","label":"Set Heading"}]}"#)
+        XCTAssertEqual(["GoTo", "Orbit", "Roi", "StopLooking"], offeredClickActions(view, ["GoTo", "Orbit", "Roi", "StopLooking"]).map(\.id))
+        XCTAssertEqual(6, offeredClickActions(view, nil).count)
+    }
+
     func testShowsThePointToSixPlacesAsQgcDoes() {
         XCTAssertEqual(coordinateLines(MapPoint(latitude: 47.397, longitude: 8.5451234)), ["Lat: 47.397000", "Lon: 8.545123"])
     }
