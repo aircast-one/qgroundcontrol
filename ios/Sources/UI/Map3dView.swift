@@ -156,6 +156,8 @@ private final class Map3dTouches: NSView {
 #endif
 
 private struct Map3dGestures: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
     func makePlatformView(context: Context) -> Map3dTouches { Map3dTouches(frame: .zero) }
 }
 

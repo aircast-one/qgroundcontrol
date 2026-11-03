@@ -26,7 +26,11 @@ typealias PlatformView = NSView
 // to them. The native view type (PlatformViewType, which is also UIViewType / NSViewType) is inferred from
 // makePlatformView's return type, and makeCoordinator() / Coordinator / Context are the usual representable ones:
 //
+// A wrapper with no coordinator must say so with `typealias Coordinator = Void`: Swift cannot infer
+// the representable's default Coordinator through this protocol.
+//
 //     struct Surface: PlatformViewRepresentable {
+//         typealias Coordinator = Void
 //         func makePlatformView(context: Context) -> MyView { MyView() }
 //         func updatePlatformView(_ view: MyView, context: Context) {}           // optional
 //         static func dismantlePlatformView(_ view: MyView, coordinator: ()) {}  // optional

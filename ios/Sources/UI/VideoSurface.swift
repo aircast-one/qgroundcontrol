@@ -455,6 +455,8 @@ private func copiedFrame(_ channel: Int32) -> CGImage? {
 }
 
 struct VideoChannelSurface: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
     let channel: Int
 
     func makePlatformView(context: Context) -> VideoChannelLayerView { VideoChannelLayerView(channel: channel) }

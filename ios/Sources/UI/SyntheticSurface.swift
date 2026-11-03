@@ -99,6 +99,8 @@ final class SyntheticLayerView: PlatformView {
 }
 
 struct SyntheticSurface: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
     var orbit = false
 
     func makePlatformView(context: Context) -> SyntheticLayerView { SyntheticLayerView(orbit: orbit) }

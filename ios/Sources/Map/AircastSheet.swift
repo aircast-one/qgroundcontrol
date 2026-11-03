@@ -87,6 +87,8 @@ private final class PassThroughView: NSView {
 #endif
 
 struct PresenterProbeView: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
     let probe: PresenterProbe
 
     func makePlatformView(context: Context) -> PlatformView {

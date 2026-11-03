@@ -909,6 +909,8 @@ func styleURL(_ mapStyle: String) -> URL? {
 }
 
 private struct VehicleMapView: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
     let model: VehicleMapModel
     let inputs: VehicleMapInputs
     let mapStyle: String
