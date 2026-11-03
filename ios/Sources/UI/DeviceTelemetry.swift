@@ -33,8 +33,15 @@ struct TelemetrySettings: Equatable, Hashable {
     let baud: String
 }
 
+struct TelemetryFix: Equatable, Hashable {
+    let title: String
+    let steps: [String]
+    let waiting: String
+}
+
 struct TelemetryView: Equatable {
     let status: DeviceBadge
+    let fix: TelemetryFix?
     let notices: [DeviceBadge]
     let endpoints: [DeviceEndpoint]
     let endpointNotice: DeviceBadge?
@@ -79,6 +86,7 @@ func parseTelemetry(_ json: JSON) -> TelemetryView? {
     let settings = json["settings"].objectOrNil
     return TelemetryView(
         status: parseBadge(status),
+        fix: json["fix"].objectOrNil.map { TelemetryFix(title: $0["title"].string, steps: $0["steps"].strings, waiting: $0["waiting"].string) },
         notices: parseBadges(json, "notices"),
         endpoints: parseEndpointList(json, "endpoints"),
         endpointNotice: json["endpointNotice"].objectOrNil.map { parseBadge($0) },

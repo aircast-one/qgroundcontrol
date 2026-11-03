@@ -7,6 +7,7 @@ struct DeviceTelemetryScreen: View {
     var body: some View {
         if let view = deviceView(reading, parseTelemetry) {
             DeviceSection(title: "Status", badge: view.status) {
+                if let fix = view.fix { FixSteps(fix: fix) }
                 ForEach(view.notices, id: \.text) { DeviceNotice(notice: $0) }
                 if let cloud = view.cloud { CloudPath(cloud: cloud) }
             }
@@ -21,6 +22,38 @@ struct DeviceTelemetryScreen: View {
         } else {
             FootNote(text: DEVICE_WAITING)
         }
+    }
+}
+
+private struct FixSteps: View {
+    let fix: TelemetryFix
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(fix.title).font(.titleMedium)
+            ForEach(Array(fix.steps.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .top, spacing: 12) {
+                    Text("\(index + 1)")
+                        .font(.labelMedium)
+                        .foregroundStyle(theme.colors.onPrimaryContainer)
+                        .frame(width: 24, height: 24)
+                        .background(theme.colors.primaryContainer, in: Circle())
+                    Text(step).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            if !fix.waiting.isEmpty {
+                HStack(spacing: 12) {
+                    ProgressView().controlSize(.small)
+                    Text(fix.waiting).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }
 

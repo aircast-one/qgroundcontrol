@@ -4,7 +4,8 @@ import XCTest
 final class DeviceTelemetryTests: XCTestCase {
     func testReadsTheTelemetryViewTheDeviceServes() {
         let view = parseTelemetry(JSON.parse("""
-            {"status":{"level":0,"text":"ready"},"notices":[{"level":3,"text":"No flight controller is attached."}],
+            {"status":{"level":0,"text":"ready"},"fix":{"title":"No flight controller found","steps":["Plug it in.","Power it on."],"waiting":"Looking for it."},
+            "notices":[{"level":3,"text":"The MAVLink proxy is down."}],
             "endpoints":[{"proto":"UDP","label":"MAVLink","url":"falcon:14550","down":true}],
             "cloud":{"status":{"level":0,"text":"Carrying"},"text":"Also carrying telemetry."},
             "settings":{"endpoints":"udps:0.0.0.0:14550","baud":"57600"},
@@ -19,6 +20,8 @@ final class DeviceTelemetryTests: XCTestCase {
         XCTAssertEqual(view?.settings, TelemetrySettings(endpoints: "udps:0.0.0.0:14550", baud: "57600"))
         XCTAssertEqual(view?.schemes[0]["value"].string, "udps")
         XCTAssertEqual(view?.gimbal?.vendors, [DeviceOption(value: "siyi", label: "SIYI")])
+        XCTAssertEqual(view?.fix, TelemetryFix(title: "No flight controller found", steps: ["Plug it in.", "Power it on."], waiting: "Looking for it."))
+        XCTAssertNil(parseTelemetry(JSON.parse(#"{"status":{"level":0,"text":"ready"}}"#))?.fix)
         XCTAssertNil(parseTelemetry(JSON.parse(#"{"endpoints":[]}"#)))
         let endpoint = DeviceEndpoint(proto: "UDP", label: "MAVLink", url: "falcon:14550", hint: "", note: "", appLink: "", down: false, primary: false)
         XCTAssertEqual(endpointLabel(endpoint), "UDP · MAVLink")
