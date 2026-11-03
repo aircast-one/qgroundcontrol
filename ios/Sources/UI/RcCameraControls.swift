@@ -314,6 +314,7 @@ struct RcCameraControls: View {
                     .buttonStyle(.text)
                 }
             }
+            if gimbal != nil { GimbalVideoMode() }
             if let gimbalRefused {
                 Text(gimbalRefused).font(.bodySmall).foregroundStyle(theme.colors.error)
             }
