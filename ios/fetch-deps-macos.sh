@@ -39,6 +39,28 @@ if [ ! -f "$vendor/MapLibre-$MAPLIBRE_VERSION" ]; then
     touch "$vendor/MapLibre-$MAPLIBRE_VERSION"
 fi
 
+# Bazel lays the macOS framework out shallow, the way iOS frameworks are, and Xcode will not embed a
+# shallow framework in a macOS app ("expected Versions/Current/Resources/Info.plist"). Move each slice
+# into the versioned layout macOS expects. Safe to run again on a framework that is already deep.
+for framework in "$vendor"/MapLibre.xcframework/*/MapLibre.framework; do
+    [ -f "$framework/Info.plist" ] || continue
+    version="$framework/Versions/A"
+    mkdir -p "$version/Resources"
+    for item in "$framework"/*; do
+        name=$(basename "$item")
+        case $name in
+            Versions) ;;
+            Info.plist) mv "$item" "$version/Resources/Info.plist" ;;
+            MapLibre|Headers|Modules) mv "$item" "$version/$name" ;;
+            *) mv "$item" "$version/Resources/$name" ;;
+        esac
+    done
+    ln -sfn A "$framework/Versions/Current"
+    for name in MapLibre Headers Modules Resources; do
+        [ -e "$version/$name" ] && ln -sfn "Versions/Current/$name" "$framework/$name"
+    done
+done
+
 gst_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["version"]["macos"])' "$config")
 gst_root=/Library/Frameworks/GStreamer.framework
 if [ ! -f "$gst_root/Versions/1.0/lib/pkgconfig/gstreamer-1.0.pc" ] || \

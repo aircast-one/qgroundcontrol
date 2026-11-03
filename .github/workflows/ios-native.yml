@@ -119,12 +119,19 @@ jobs:
           echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
           brew install bazelisk
 
+      # Keyed on the MapLibre version alone, so editing the script does not throw away a build
+      # that takes the better part of half an hour.
+      - name: MapLibre version
+        id: maplibre-version
+        run: echo "version=$(sed -n 's/^MAPLIBRE_VERSION=//p' ios/fetch-deps-macos.sh)" >> "$GITHUB_OUTPUT"
+
       - name: Restore MapLibre for macOS
         id: maplibre
         uses: actions/cache/restore@v5
         with:
           path: ios/Vendor/macos
-          key: maplibre-macos-${{ hashFiles('ios/fetch-deps-macos.sh') }}
+          key: maplibre-macos-${{ steps.maplibre-version.outputs.version }}
+          restore-keys: maplibre-macos-
 
       - name: Dependencies
         working-directory: ios
@@ -137,7 +144,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ios/Vendor/macos
-          key: maplibre-macos-${{ hashFiles('ios/fetch-deps-macos.sh') }}
+          key: maplibre-macos-${{ steps.maplibre-version.outputs.version }}
 
       - name: Build
         working-directory: ios
