@@ -70,4 +70,36 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertFalse(syntheticFree(JSON.parse(#"{"available":true,"aimable":false,"gimbalAimed":false,"locksOnTarget":true}"#), picked: true), "a target lock still holds the picked view")
         XCTAssertFalse(syntheticFree(JSON.parse(#"{"available":false}"#), picked: true))
     }
+
+    func testWithAGimbalAimingTheViewAFingerDragSteersTheGimbalWithoutOneItLooksAround() {
+        let gimballed = JSON.parse(#"{"available":true,"aimable":false,"gimbalAimed":true}"#)
+        XCTAssertEqual(syntheticDrag(gimballed, picked: false, aimable: true), .Gimbal, "the view follows the gimbal, so a drag has to move the gimbal or it does nothing")
+        XCTAssertEqual(syntheticDrag(JSON.parse(#"{"available":true,"aimable":true,"gimbalAimed":false}"#), picked: false, aimable: true), .Look, "free look keeps its own drag")
+        XCTAssertNil(syntheticDrag(gimballed, picked: false, aimable: false), "a thumbnail or second pane never takes the drag")
+        XCTAssertNil(syntheticDrag(JSON.parse(#"{"available":false,"aimable":false}"#), picked: false, aimable: true))
+        XCTAssertEqual(syntheticDrag(JSON.parse(#"{"available":true,"aimable":false,"locksOnTarget":true}"#), picked: false, aimable: true), .Gimbal, "a view locked on a tracked target is not the pilot's to aim")
+    }
+
+    func testPickingTheSyntheticViewHandsTheDragFromTheGimbalToTheView() {
+        let standingIn = JSON.parse(#"{"available":true,"aimable":false,"gimbalAimed":true,"locksOnTarget":false}"#)
+        XCTAssertEqual(syntheticDrag(standingIn, picked: true, aimable: true), .Look, "the gimbal belongs to the camera the pilot left, so the very next drag aims the view")
+        let pickedEarlier = JSON.parse(#"{"available":true,"aimable":true,"gimbalAimed":true,"locksOnTarget":false}"#)
+        XCTAssertEqual(syntheticDrag(pickedEarlier, picked: false, aimable: true), .Gimbal, "and switching back to the gimbal camera hands the drag back to the gimbal just as fast")
+        XCTAssertEqual(syntheticDrag(JSON.parse(#"{"available":true,"aimable":false,"gimbalAimed":false,"locksOnTarget":true}"#), picked: true, aimable: true), .Gimbal, "a target lock still holds the picked view")
+    }
+
+    func testADragStartsFromWhereTheActiveGimbalPoints() {
+        let view = JSON.parse(#"{"gimbals":[{"active":false,"pitch":-80.0,"bodyYaw":90.0},{"active":true,"pitch":-12.5,"bodyYaw":30.0}]}"#)
+        XCTAssertEqual(gimbalAim(view), GimbalPoint(tilt: -12.5, yaw: 30))
+        XCTAssertNil(gimbalAim(JSON.parse(#"{"gimbals":[{"active":true,"pitch":null,"bodyYaw":null}]}"#)), "a gimbal that has not reported its attitude gives no start")
+        XCTAssertNil(gimbalAim(nil))
+    }
+
+    func testASecondDragCarriesOnFromTheFirstInsteadOfSnappingBackToAStaleReport() {
+        let reported = GimbalPoint(tilt: -2, yaw: 0)
+        let sent = GimbalPoint(tilt: -20, yaw: 75)
+        XCTAssertEqual(gimbalDragStart(reported, sent, sentAgoMs: 300), sent, "the gimbal is still on its way to the last aim, so that is where the finger left it")
+        XCTAssertEqual(gimbalDragStart(reported, sent, sentAgoMs: 5000), reported, "long after, the gimbal's own report wins, in case something else moved it")
+        XCTAssertEqual(gimbalDragStart(nil, nil, sentAgoMs: 0), GimbalPoint(tilt: 0, yaw: 0))
+    }
 }
