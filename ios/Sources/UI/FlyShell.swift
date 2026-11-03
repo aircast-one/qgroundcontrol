@@ -446,6 +446,8 @@ struct FlyScreen: View {
                             HStack(spacing: Space.s2) { status() }
                                 .frame(maxWidth: .infinity, minHeight: STATUS_ROW_HEIGHT)
                                 .environment(\.LocalCompactStatus, true)
+                            HeadingTape()
+                                .frame(maxWidth: .infinity)
                             BatteryReturnBar()
                             TrafficBanner()
                             ScrollView(.horizontal, showsIndicators: false) {
