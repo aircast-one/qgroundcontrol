@@ -390,7 +390,7 @@ pub extern "C" fn qgc_map_tile_cancel(ticket: u64) {
     TILE_TICKETS.cancel(ticket);
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_synthetic_attach(
     layer: *mut c_void,
@@ -425,7 +425,7 @@ pub unsafe extern "C" fn qgc_synthetic_attach(
     }
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn qgc_synthetic_release(layer: *mut c_void) {
     #[cfg(native_synthetic)]

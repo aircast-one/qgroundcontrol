@@ -3,7 +3,7 @@ use std::ptr::NonNull;
 
 pub struct Window {
     handle: NonNull<c_void>,
-    #[cfg(any(target_os = "ios", target_os = "windows"))]
+    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
     size: (u32, u32),
 }
 
@@ -74,14 +74,14 @@ impl Drop for Window {
     }
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
     fn CFRetain(object: *const c_void) -> *const c_void;
     fn CFRelease(object: *const c_void);
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 impl Window {
     pub unsafe fn from_layer(layer: *mut c_void, size: (u32, u32)) -> Option<Self> {
         NonNull::new(layer).map(|handle| {
@@ -99,7 +99,7 @@ impl Window {
     }
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 impl Drop for Window {
     fn drop(&mut self) {
         unsafe { CFRelease(self.handle.as_ptr()) }
