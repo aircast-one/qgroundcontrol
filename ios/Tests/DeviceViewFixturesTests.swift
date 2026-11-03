@@ -26,4 +26,10 @@ final class DeviceViewFixturesTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(parseRecordings(try served("recordings"))).limit.options.isEmpty)
         XCTAssertEqual(parseDeviceSetup(try served("setup"))?.steps.first?.key, "network")
     }
+
+    // MARK: - Connection (DeviceNetwork)
+
+    func testTheConnectionPageReadsWhatAircastdServes() throws {
+        XCTAssertEqual(parseNetwork(try served("network"))?.uplink.title, "Wi-Fi (wlan0)")
+    }
 }
