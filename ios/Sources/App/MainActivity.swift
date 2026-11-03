@@ -355,6 +355,7 @@ struct AircastShell: View {
                     .modifier(TakesLeftoverWidth())
                 LayoutWidget(key: "vtolState", movable: false, hideable: false) { VtolStateCell() }
                 ControlRequestPrompt()
+                DeviceStatusChip()
                 LayoutWidget(key: "statusPill", movable: false, hideable: false) { StatusPill() }
                     .layoutPriority(1)
                 FlySettingsButton()
