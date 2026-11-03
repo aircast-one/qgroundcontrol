@@ -350,7 +350,14 @@ fn ardupilot_entries(vehicle: &Vehicle) -> Vec<Entry> {
             &param,
             |looked_up| {
                 let zeroed = |name: &str| looked_up(name).unwrap_or(0.0);
-                !crate::sensorcal::compass_setup_needed(&zeroed)
+                let fitted = |name: &str| match crate::sensorcal::OPTIONAL_COMPASS_IDS
+                    .contains(&name)
+                    && !exists(name)
+                {
+                    true => 0.0,
+                    false => zeroed(name),
+                };
+                !crate::sensorcal::compass_setup_needed(&fitted)
                     && !crate::sensorcal::accel_setup_needed(&zeroed)
             },
         )),
@@ -816,13 +823,31 @@ mod tests {
             [
                 "RC1_MIN",
                 "COMPASS_DEV_ID",
-                "COMPASS_DEV_ID2",
-                "COMPASS_DEV_ID3",
                 "INS_ACCOFFS_X",
                 "INS_ACCOFFS_Y",
                 "INS_ACCOFFS_Z"
             ],
-            "a missing RC1_MIN reads as 0, so Radio is complete and Sensors reads all three accel offsets: {looked_up:?}"
+            "a missing RC1_MIN reads as 0, so Radio is complete, Sensors skips the compass slots the firmware lacks and reads all three accel offsets: {looked_up:?}"
+        );
+        let two_compasses: &[(u8, &str, f64)] = &[
+            (1, "FRAME_CLASS", 1.0),
+            (1, "RCMAP_ROLL", 1.0),
+            (1, "RCMAP_PITCH", 2.0),
+            (1, "RCMAP_YAW", 4.0),
+            (1, "RCMAP_THROTTLE", 3.0),
+            (1, "COMPASS_DEV_ID", 97539.0),
+            (1, "COMPASS_USE", 1.0),
+            (1, "COMPASS_OFS_X", 12.0),
+            (1, "COMPASS_OFS_Y", -3.0),
+            (1, "COMPASS_OFS_Z", 40.0),
+            (1, "COMPASS_DEV_ID2", 0.0),
+            (1, "INS_ACCOFFS_X", 0.1),
+        ];
+        let looked_up = apm_lookups(two_compasses);
+        assert!(
+            looked_up.contains(&"COMPASS_DEV_ID2".to_string())
+                && !looked_up.contains(&"COMPASS_DEV_ID3".to_string()),
+            "a board with two compass slots is not missing a third: {looked_up:?}"
         );
     }
 

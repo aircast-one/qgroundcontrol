@@ -911,6 +911,8 @@ pub fn accel_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
         == 3
 }
 
+pub const OPTIONAL_COMPASS_IDS: [&str; 2] = ["COMPASS_DEV_ID2", "COMPASS_DEV_ID3"];
+
 pub fn compass_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
     [
         ("COMPASS_DEV_ID", "COMPASS_USE", "COMPASS_OFS"),
