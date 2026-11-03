@@ -7,9 +7,68 @@ private let HOLD_FILL_ALPHA = 0.35
 
 let GRIPPER_ACTIONS = ["release", "grab", "hold"]
 private let GRIPPER_CODES = ["release": 0, "grab": 1, "hold": 2]
+let PAYLOAD_STATE = "vehicle.gripper"
+private let PAYLOAD_STATUS_TICK_SECONDS = 1.0
+private let NO_PAYLOAD_COMMAND = "No payload command sent yet"
 
 func gripperOffers(_ extras: [GuidedOffer]) -> [GuidedOffer] {
     GRIPPER_ACTIONS.compactMap { id in extras.first { $0.id == id } }
+}
+
+struct PayloadStatus: Equatable {
+    let text: String
+    let warning: Bool
+}
+
+func agoText(_ atMs: Int64, _ nowMs: Int64) -> String {
+    let seconds = max((nowMs - atMs) / 1000, 0)
+    if seconds < 60 { return "\(seconds) s ago" }
+    let minutes = seconds / 60
+    return minutes < 60 ? "\(minutes) min ago" : "\(minutes / 60) h ago"
+}
+
+private func payloadVerbs(_ action: String) -> (verb: String, done: String) {
+    switch action {
+    case "release": (verb: "Drop", done: "Dropped")
+    case "grab": (verb: "Grab", done: "Grabbed")
+    default: (verb: "Hold", done: "Holding")
+    }
+}
+
+func payloadStatus(_ state: JSON?, _ nowMs: Int64) -> PayloadStatus? {
+    guard let state, state.object != nil else { return nil }
+    let action = state["action"].string
+    let bay = state["bay"].int(0)
+    let plain = payloadVerbs(action)
+    let verb = bay > 0 ? "\(plain.verb) bay \(bay)" : plain.verb
+    let done = bay > 0 ? "Bay \(bay) \(plain.done.lowercased())" : plain.done
+    let ago = agoText(state["atMs"].int64 ?? 0, nowMs)
+    switch state["outcome"].string {
+    case "sent": return PayloadStatus(text: "\(verb) sent, waiting for the aircraft", warning: false)
+    case "confirmed": return PayloadStatus(text: "\(done) \(ago)", warning: false)
+    case "refused": return PayloadStatus(text: "\(verb) refused by the flight controller \(ago)", warning: true)
+    case "unanswered":
+        let advice = action == "release" ? "It may have dropped, check before dropping again." : "Check the gripper before trying again."
+        return PayloadStatus(text: "\(verb) not confirmed \(ago). \(advice)", warning: true)
+    default: return nil
+    }
+}
+
+private struct PayloadStatusLine: View {
+    let refusal: String?
+    @QgcPath(PAYLOAD_STATE) private var stateJson
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: PAYLOAD_STATUS_TICK_SECONDS)) { context in
+            let nowMs = Int64(context.date.timeIntervalSince1970 * 1000)
+            let status = refusal.map { PayloadStatus(text: $0, warning: true) } ?? payloadStatus(stateJson?["value"], nowMs)
+            Text(status?.text ?? NO_PAYLOAD_COMMAND)
+                .font(.bodyMedium)
+                .foregroundStyle(status?.warning == true ? theme.colors.error : theme.colors.onSurfaceVariant)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 }
 
 struct HoldToConfirmButton: View {
@@ -84,12 +143,8 @@ struct GripperPanel: View {
 
     private func ready(_ id: String) -> Bool { offers.contains { $0.id == id && $0.ready } }
 
-    private func ask(_ call: @escaping @Sendable () -> String?, dismissing: Bool) {
-        Task {
-            let refused = await offMain(call)
-            refusal = refused
-            if refused == nil && dismissing { onDismiss() }
-        }
+    private func ask(_ call: @escaping @Sendable () -> String?) {
+        Task { refusal = await offMain(call) }
     }
 
     var body: some View {
@@ -104,9 +159,7 @@ struct GripperPanel: View {
                         PayloadFixButton(problem: problem) { refusal = $0 }
                     }
                 }
-                if let refusal {
-                    Text(refusal).font(.bodyMedium).foregroundStyle(theme.colors.error).frame(maxWidth: .infinity, alignment: .leading)
-                }
+                PayloadStatusLine(refusal: refusal)
                 if bays.multiBay {
                     ForEach(bays.numbers, id: \.self) { bay in
                         VStack(alignment: .leading, spacing: Space.s1) {
@@ -115,9 +168,9 @@ struct GripperPanel: View {
                             }
                             HStack(spacing: Space.s2) {
                                 HoldToConfirmButton(text: bays.dropText(bay), enabled: ready("release")) {
-                                    ask({ VehicleCommands.gripperRefusal(GRIPPER_CODES["release"] ?? 0, bay: bay) }, dismissing: false)
+                                    ask({ VehicleCommands.gripperRefusal(GRIPPER_CODES["release"] ?? 0, bay: bay) })
                                 }
-                                Button("Grab") { ask({ VehicleCommands.gripperRefusal(GRIPPER_CODES["grab"] ?? 1, bay: bay) }, dismissing: false) }
+                                Button("Grab") { ask({ VehicleCommands.gripperRefusal(GRIPPER_CODES["grab"] ?? 1, bay: bay) }) }
                                     .buttonStyle(.bordered)
                                     .disabled(!ready("grab"))
                             }
@@ -127,7 +180,7 @@ struct GripperPanel: View {
                     ForEach(offers, id: \.id) { offer in
                         HoldToConfirmButton(text: offer.title, enabled: offer.ready) {
                             let action = GRIPPER_CODES[offer.id] ?? 0
-                            ask({ VehicleCommands.gripperRefusal(action) }, dismissing: true)
+                            ask({ VehicleCommands.gripperRefusal(action) })
                         }
                     }
                 }
