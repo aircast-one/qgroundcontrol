@@ -10,9 +10,10 @@ import { sentenceCase } from '@/map/SentenceCase';
 import { Drawable } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { type AppNavigationState, LocalAppNavigation } from './AppNavigation';
-import { deviceRequested } from './DeviceStatus';
+import { deviceRequested, useDeviceStatus } from './DeviceStatus';
 import { LOOKING_TITLE, useRememberLookingHint } from './ConnectingCard';
 import { FLASHER_PAGE } from './FlasherScreen';
+import { openCameraSetup, useCameraMissing } from './NoVideoPanel';
 
 export const OFFLINE_STATUS_VIEW = 'view.offlineStatus';
 const OFFLINE_LINKS_PATH = 'links.linkConfigurations';
@@ -47,8 +48,10 @@ export const OFFLINE_SHEET = 'offline';
 
 export const CHECK_DEVICE = 'Check device';
 
+export const DEVICE_TELEMETRY = '/telemetry';
+
 export const openDeviceTelemetry = (): void => {
-  deviceRequested.value = '/telemetry';
+  deviceRequested.value = DEVICE_TELEMETRY;
 };
 
 export const openAddLink = (navigation: AppNavigationState): void => {
@@ -56,25 +59,36 @@ export const openAddLink = (navigation: AppNavigationState): void => {
   navigation.settingsPage.value = CONNECTIONS_SETTINGS_PAGE;
 };
 
-export type OfflineGuide = { title: string; text: string; onDevice: boolean };
+export type OfflineGuide = { title: string; text: string; onDevice: boolean; camera: boolean };
 
-export const offlineGuide = (status: OfflineStatus | null, hint: string): OfflineGuide => ({
-  title: status === null ? LOOKING_TITLE : sentenceCase(status.title),
-  text: status?.onDevice === true ? status.footnote : hint,
-  onDevice: status?.onDevice === true,
-});
+export const NO_CAMERA_GUIDE = { title: 'No camera yet', text: 'Add a camera and its picture shows here.' };
 
-export const OfflineGuideCard = () => {
+export const offlineGuide = (status: OfflineStatus | null, hint: string, noCamera = false): OfflineGuide =>
+  noCamera
+    ? { ...NO_CAMERA_GUIDE, onDevice: status?.onDevice === true, camera: true }
+    : {
+        title: status === null ? LOOKING_TITLE : sentenceCase(status.title),
+        text: status?.onDevice === true ? status.footnote : hint,
+        onDevice: status?.onDevice === true,
+        camera: false,
+      };
+
+export const OfflineGuideCard = ({ inVideo }: { inVideo: boolean }) => {
   const navigation = useContext(LocalAppNavigation);
   const hint = useRememberLookingHint();
   const json = useQgcPath(OFFLINE_STATUS_VIEW);
-  const guide = useMemo(() => offlineGuide(offlineStatus(json), hint), [json, hint]);
+  const noCamera = useCameraMissing() && inVideo;
+  const onDevice = useDeviceStatus() !== null;
+  const guide = useMemo(() => offlineGuide(offlineStatus(json), hint, noCamera), [json, hint, noCamera]);
+  const icon = guide.camera ? 'ic_videocam' : guide.onDevice ? 'ic_developer_board' : 'ic_link';
+  const label = guide.camera ? 'Add a camera' : guide.onDevice ? CHECK_DEVICE : 'Add a link';
+  const open = () => (guide.camera ? openCameraSetup(onDevice, navigation) : guide.onDevice ? openDeviceTelemetry() : openAddLink(navigation));
   return (
     <div className="flex size-full items-center justify-center p-4">
       <Surface shape="extraLarge" color={md('surfaceContainer')} contentColor={md('onSurface')} className="w-full max-w-[420px]">
         <div className="flex flex-col items-center gap-3 p-6">
           <div className="flex size-14 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
-            <Drawable name={guide.onDevice ? 'ic_developer_board' : 'ic_link'} size={28} />
+            <Drawable name={icon} size={28} />
           </div>
           <Text typography="titleLarge" textAlign="center">
             {guide.title}
@@ -82,7 +96,7 @@ export const OfflineGuideCard = () => {
           <Text typography="bodyMedium" textAlign="center" color={md('onSurfaceVariant')}>
             {guide.text}
           </Text>
-          <Button onClick={() => (guide.onDevice ? openDeviceTelemetry() : openAddLink(navigation))}>{guide.onDevice ? CHECK_DEVICE : 'Add a link'}</Button>
+          <Button onClick={open}>{label}</Button>
         </div>
       </Surface>
     </div>

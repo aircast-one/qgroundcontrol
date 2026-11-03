@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FlyWait, NoVideoAction, activeCameraStatus, elapsedText, flyWait, noVideoDetail, unavailableVideoState, videoSourcesButton, whileArmed } from '@/ui/NoVideoPanel';
+import { FlyWait, NoVideoAction, activeCameraStatus, cameraMissing, elapsedText, flyWait, noVideoDetail, unavailableVideoState, videoSourcesButton, whileArmed } from '@/ui/NoVideoPanel';
+import { parseDeviceStatus } from '@/ui/DeviceStatus';
 import { AppNavigationState } from '@/ui/AppNavigation';
 import { VIDEO_SOURCES_PAGE } from '@/ui/Cameras';
 import { Rect } from '@/ui/FlyShell';
@@ -20,6 +21,18 @@ describe('NoVideoPanelTest', () => {
     expect(looksForAircraft(false, { ...video, available: false })).toBe(true);
     expect(looksForAircraft(false, null)).toBe(true);
     expect(looksForAircraft(true, null)).toBe(false);
+  });
+
+  it('a camera is missing when the device says so, or off a device when none has an address and the synthetic view is not chosen', () => {
+    const addressed = { ...video, cameras: [{ slot: 0, status: '', configured: true }] };
+    const device = (level: number) => parseDeviceStatus({ headline: 'No camera yet', checks: [{ label: 'Camera', level, href: '/streaming' }] });
+    expect(cameraMissing(video, false, null)).toBe(true);
+    expect(cameraMissing(addressed, false, null)).toBe(false);
+    expect(cameraMissing(video, true, null)).toBe(false);
+    expect(cameraMissing(null, false, null)).toBe(false);
+    expect(cameraMissing(addressed, false, device(2))).toBe(true);
+    expect(cameraMissing(video, false, device(0))).toBe(false);
+    expect(cameraMissing(video, true, device(2))).toBe(true);
   });
 
   it('a stalled stream says why instead of how long', () => {

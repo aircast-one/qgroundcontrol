@@ -488,7 +488,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                   overlaysAboveBottom
                   message={
                     guideMessage ? (
-                      <OfflineGuideCard />
+                      <OfflineGuideCard inVideo={videoMessage} />
                     ) : videoMessage ? (
                       <div className={`size-full ${osdShadow()}`}>
                         <FlyNoVideoMessage />

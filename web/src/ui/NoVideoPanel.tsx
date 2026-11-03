@@ -11,10 +11,12 @@ import { type AppNavigationState, LocalAppNavigation } from '@/ui/AppNavigation'
 import { pageLook, pageTitle } from '@/ui/SettingsScreen';
 import { VIDEO_SOURCES_PAGE } from '@/ui/Cameras';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
+import { DeviceLevel } from '@/ui/DeviceLevel';
+import { type DeviceStatus, deviceRequested, useDeviceStatus } from '@/ui/DeviceStatus';
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
 import { useOsdBackdrop } from '@/ui/Osd';
 import { useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
-import type { VideoReading } from '@/ui/VideoView';
+import { VIDEO_VIEW, type VideoReading, videoReading } from '@/ui/VideoView';
 
 const PROLONGED_SECONDS = 8;
 const PANEL_MAX_WIDTH = 360;
@@ -84,6 +86,24 @@ export const videoSourcesButton = (navigation: AppNavigationState): NoVideoButto
     navigation.settingsPage.value = VIDEO_SOURCES_PAGE;
   },
 });
+
+const DEVICE_CAMERAS = '/streaming';
+
+export const deviceNeeds = (device: DeviceStatus, href: string): boolean => device.checks.some((check) => check.href === href && check.level !== DeviceLevel.Ready);
+
+export const cameraMissing = (video: VideoReading | null, syntheticChosen: boolean, device: DeviceStatus | null): boolean =>
+  device === null ? !syntheticChosen && video !== null && !video.cameras.some((it) => it.configured) : deviceNeeds(device, DEVICE_CAMERAS);
+
+export const useCameraMissing = (): boolean => {
+  const videoJson = useQgcPath(VIDEO_VIEW);
+  const video = useMemo(() => videoReading(videoJson), [videoJson]);
+  return cameraMissing(video, useRememberSyntheticChosen(), useDeviceStatus());
+};
+
+export const openCameraSetup = (onDevice: boolean, navigation: AppNavigationState): void => {
+  if (onDevice) deviceRequested.value = DEVICE_CAMERAS;
+  else videoSourcesButton(navigation).onClick();
+};
 
 const TURN_VIDEO_ON: NoVideoButton = { label: 'Turn video on', onClick: () => void VideoCommands.turnStreamOn() };
 
