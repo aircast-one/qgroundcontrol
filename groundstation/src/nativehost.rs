@@ -396,6 +396,7 @@ pub unsafe extern "C" fn qgc_synthetic_attach(
     layer: *mut c_void,
     width: c_int,
     height: c_int,
+    orbit: c_int,
 ) -> c_int {
     #[cfg(native_synthetic)]
     return match unsafe {
@@ -410,6 +411,7 @@ pub unsafe extern "C" fn qgc_synthetic_attach(
         Some(window) => c_int::from(crate::synthetic::host::attach(
             window,
             std::sync::Arc::new(crate::synthetic::corefeed::CoreFeed),
+            orbit != 0,
         )),
         None => {
             log::error!(target: "synthetic", "event=attach_failed reason=\"no layer\"");
@@ -418,7 +420,7 @@ pub unsafe extern "C" fn qgc_synthetic_attach(
     };
     #[cfg(not(native_synthetic))]
     {
-        let _ = (layer, width, height);
+        let _ = (layer, width, height, orbit);
         0
     }
 }
@@ -434,7 +436,12 @@ pub extern "C" fn qgc_synthetic_release(layer: *mut c_void) {
 
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
-pub extern "C" fn qgc_synthetic_attach(surface: *mut c_void, width: c_int, height: c_int) -> c_int {
+pub extern "C" fn qgc_synthetic_attach(
+    surface: *mut c_void,
+    width: c_int,
+    height: c_int,
+    orbit: c_int,
+) -> c_int {
     #[cfg(native_synthetic)]
     return match crate::synthetic::window::Window::from_composition_surface(
         surface,
@@ -443,6 +450,7 @@ pub extern "C" fn qgc_synthetic_attach(surface: *mut c_void, width: c_int, heigh
         Some(window) => c_int::from(crate::synthetic::host::attach(
             window,
             std::sync::Arc::new(crate::synthetic::corefeed::CoreFeed),
+            orbit != 0,
         )),
         None => {
             log::error!(target: "synthetic", "event=attach_failed reason=\"no composition surface\"");
@@ -451,7 +459,7 @@ pub extern "C" fn qgc_synthetic_attach(surface: *mut c_void, width: c_int, heigh
     };
     #[cfg(not(native_synthetic))]
     {
-        let _ = (surface, width, height);
+        let _ = (surface, width, height, orbit);
         0
     }
 }

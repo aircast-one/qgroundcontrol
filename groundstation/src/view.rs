@@ -320,6 +320,11 @@ pub const VIEWS: &[View] = &[
         compute: crate::synthview::synthetic_view,
     },
     View {
+        path: "view.map3d",
+        deps: crate::map3d::DEPS,
+        compute: crate::map3d::map3d_view,
+    },
+    View {
         path: "view.syntheticOverlays",
         deps: crate::synthview::OVERLAY_DEPS,
         compute: crate::synthview::overlays_view,
@@ -1477,6 +1482,7 @@ mod deps_cover_reads {
         ("usbradio", include_str!("usbradio.rs")),
         ("vehiclefact", include_str!("vehiclefact.rs")),
         ("linkremove", include_str!("linkremove.rs")),
+        ("map3d", include_str!("map3d.rs")),
         ("mapclick", include_str!("mapclick.rs")),
         ("missioncomplete", include_str!("missioncomplete.rs")),
         ("paramtools", include_str!("paramtools.rs")),

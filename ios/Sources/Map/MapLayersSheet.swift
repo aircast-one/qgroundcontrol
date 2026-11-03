@@ -4,11 +4,14 @@ private let CHIP_ICON_SIZE: CGFloat = 12
 private let CHIP_HEIGHT: CGFloat = 32
 private let MIN_TOUCH_TARGET: CGFloat = 48
 private let OBSTACLE_OVERLAY = "settings.flyViewSettings.showObstacleDistanceOverlay"
+private let MAP_3D_TITLE = "3D view"
+private let MAP_3D_DETAIL = "Terrain and buildings around the aircraft, and its height above the ground"
 
 struct MapLayersSheet: View {
     let onDismiss: () -> Void
     @State private var listed: MapTypes?
     @MapPath(OBSTACLE_OVERLAY) private var obstacleJson
+    @MapPath(SYNTHETIC_VIEW) private var syntheticJson
     @Environment(\.theme) private var theme
 
     private var obstacles: Bool { obstacleJson?["value"].bool == true }
@@ -28,26 +31,14 @@ struct MapLayersSheet: View {
                         MapTypeChip(type: type, selected: type == types?.current) { choose(type) }
                     }
                 }
-                Button {
+                if nativeChosen(syntheticJson) {
+                    let shown3d = Map3d.shared.shown
+                    LayerSwitch(title: MAP_3D_TITLE, detail: MAP_3D_DETAIL, checked: shown3d) { Map3d.shared.show(!shown3d) }
+                }
+                LayerSwitch(title: "Obstacle distance", detail: "Proximity sensor readings around the vehicle", checked: obstacles) {
                     let shown = !obstacles
                     offMain { _ = setOk(OBSTACLE_OVERLAY, shown) }
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Obstacle distance").font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                            Text("Proximity sensor readings around the vehicle")
-                                .font(.bodyMedium)
-                                .foregroundStyle(theme.colors.onSurfaceVariant)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        Toggle("", isOn: .constant(obstacles))
-                            .labelsHidden()
-                            .allowsHitTesting(false)
-                    }
-                    .padding(.vertical, Space.s2)
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, Space.s6)
             .padding(.bottom, Space.s8)
@@ -61,6 +52,34 @@ struct MapLayersSheet: View {
             _ = await offMain { setOk(path, type) }
             listed = listed.map { MapTypes(current: type, types: $0.types, path: $0.path) }
         }
+    }
+}
+
+private struct LayerSwitch: View {
+    let title: String
+    let detail: String
+    let checked: Bool
+    let onToggle: () -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
+                    Text(detail)
+                        .font(.bodyMedium)
+                        .foregroundStyle(theme.colors.onSurfaceVariant)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Toggle("", isOn: .constant(checked))
+                    .labelsHidden()
+                    .allowsHitTesting(false)
+            }
+            .padding(.vertical, Space.s2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

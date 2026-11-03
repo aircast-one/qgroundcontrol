@@ -26,6 +26,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
@@ -34,6 +35,9 @@ import org.mavlink.qgroundcontrol.QGCBridge
 fun MapLayersSheet(onDismiss: () -> Unit) {
     var listed by remember { mutableStateOf<MapTypes?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val syntheticJson by mapPath(SYNTHETIC_VIEW)
+    val offers3d = syntheticJson?.optBoolean("native") == true
     val obstacleJson by mapPath(OBSTACLE_OVERLAY)
     val obstacles = obstacleJson?.optBoolean("value") == true
     LaunchedEffect(Unit) {
@@ -60,20 +64,31 @@ fun MapLayersSheet(onDismiss: () -> Unit) {
                     )
                 }
             }
-            Row(
-                Modifier.fillMaxWidth().clickable {
-                    scope.launch { withContext(Dispatchers.Default) { setOk(OBSTACLE_OVERLAY, settingJson((!obstacles).toString())) } }
-                }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Obstacle distance", style = MaterialTheme.typography.bodyLarge)
-                    Text("Proximity sensor readings around the vehicle", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(checked = obstacles, onCheckedChange = null)
+            if (offers3d) {
+                LayerSwitch(MAP_3D_TITLE, MAP_3D_DETAIL, Map3d.isShown) { Map3d.show(context, !Map3d.isShown) }
+            }
+            LayerSwitch("Obstacle distance", "Proximity sensor readings around the vehicle", obstacles) {
+                scope.launch { withContext(Dispatchers.Default) { setOk(OBSTACLE_OVERLAY, settingJson((!obstacles).toString())) } }
             }
         }
     }
 }
 
+@Composable
+private fun LayerSwitch(title: String, detail: String, checked: Boolean, onToggle: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
 private const val OBSTACLE_OVERLAY = "settings.flyViewSettings.showObstacleDistanceOverlay"
+private const val SYNTHETIC_VIEW = "view.syntheticView"
+private const val MAP_3D_TITLE = "3D view"
+private const val MAP_3D_DETAIL = "Terrain and buildings around the aircraft, and its height above the ground"

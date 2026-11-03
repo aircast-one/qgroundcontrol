@@ -7,7 +7,7 @@ namespace AircastQGC.Core;
 internal static partial class NativeMethods
 {
     [LibraryImport(Lib)]
-    internal static partial int qgc_synthetic_attach(IntPtr surface, int width, int height);
+    internal static partial int qgc_synthetic_attach(IntPtr surface, int width, int height, int orbit);
 
     [LibraryImport(Lib)]
     internal static partial void qgc_synthetic_release(IntPtr surface);

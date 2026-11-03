@@ -23,6 +23,10 @@ impl Feed for CoreFeed {
         crate::virtualjoystick::sent_sticks()
     }
 
+    fn orbit(&self) -> crate::map3d::Orbit {
+        crate::map3d::orbit()
+    }
+
     fn report(&self, draw: Draw) {
         crate::synthview::set_draw(draw.name());
     }

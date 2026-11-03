@@ -17,6 +17,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.roll",
     "vehicle.customMode",
     "settings.flightMapSettings.mapProvider",
+    "settings.flightMapSettings.mapType",
     crate::gimbal::GIMBAL_CHANGED,
     crate::cameras::CAMERAS_PATH,
     crate::cameras::ACTIVE_PATH,
@@ -202,6 +203,16 @@ pub fn imagery(provider: &str) -> &'static str {
         .unwrap_or(FALLBACK_IMAGERY)
 }
 
+pub fn map_imagery(provider: &str, map_type: &str) -> String {
+    let chosen = format!("{provider} {map_type}");
+    match crate::maptypes::QGC_ORDER.contains(&chosen.as_str())
+        && !crate::maptypes::ELEVATION_PROVIDERS.contains(&chosen.as_str())
+    {
+        true => chosen,
+        false => imagery(provider).to_string(),
+    }
+}
+
 fn active_gimbal(gimbals: &Value) -> Option<Value> {
     let all = gimbals["gimbals"].as_array().cloned().unwrap_or_default();
     all.iter()
@@ -307,9 +318,14 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     let placed = point(backend, "vehicle.coordinate")
         .zip(point(backend, "vehicle.homePosition"))
         .zip(raw(backend, "vehicle.altitudeRelative"));
+    let provider = crate::read::value_string(
+        &backend.value("settings.flightMapSettings.mapProvider.rawValue"),
+    );
+    let map_type =
+        crate::read::value_string(&backend.value("settings.flightMapSettings.mapType.rawValue"));
     let Some((((latitude, longitude), (home_latitude, home_longitude)), above_home)) = placed
     else {
-        return json!({ "kind": "object", "class": "SyntheticView", "available": false, "native": native(), "draw": drawn(), "software": software() });
+        return json!({ "kind": "object", "class": "SyntheticView", "available": false, "native": native(), "draw": drawn(), "software": software(), "imagery": imagery(&provider), "mapImagery": map_imagery(&provider, &map_type) });
     };
     let device = gimbal_aim(gimbals);
     let locked = device
@@ -353,9 +369,6 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         true => (Some(pitch_rate), roll_rate),
         false => (free.then_some(0.0), 0.0),
     };
-    let provider = crate::read::value_string(
-        &backend.value("settings.flightMapSettings.mapProvider.rawValue"),
-    );
     json!({
         "kind": "object",
         "class": "SyntheticView",
@@ -366,6 +379,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "homeLatitude": home_latitude,
         "homeLongitude": home_longitude,
         "heading": heading,
+        "nose": nose(0.0),
         "pitch": pitch,
         "roll": roll,
         "aimable": free,
@@ -374,6 +388,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "tilt": if free { tilt } else { 0.0 },
         "fov": CAMERA_FOV_DEG,
         "imagery": imagery(&provider),
+        "mapImagery": map_imagery(&provider, &map_type),
         "northSpeed": reading("vehicle.localPosition.vx"),
         "eastSpeed": reading("vehicle.localPosition.vy"),
         "climbSpeed": -reading("vehicle.localPosition.vz"),

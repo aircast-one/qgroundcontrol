@@ -11,6 +11,21 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertNil(shownNote(.Drawn, nil, announced: false), "the synthetic view chosen as the camera says nothing")
     }
 
+    func testThe3dMapWaitsForAnAircraftUnlessItHoldsASpotThenSaysNothingOnceItHasDrawn() {
+        let following = map3dState(nil)
+        let holding = map3dState(JSON.parse(#"{"heading":0,"following":false,"aircraft":false}"#))
+        XCTAssertEqual(map3dNote(nil, following), LOOKING_TITLE)
+        XCTAssertEqual(map3dNote(JSON.parse(#"{"available":false,"native":true}"#), following), LOOKING_TITLE)
+        XCTAssertEqual(map3dNote(JSON.parse(#"{"available":false,"draw":"loading"}"#), holding), "Loading 3D view…")
+        XCTAssertEqual(map3dNote(JSON.parse(#"{"available":true,"draw":"loading"}"#), following), "Loading 3D view…")
+        XCTAssertNil(map3dNote(JSON.parse(#"{"available":true,"draw":"drawn"}"#), following))
+    }
+
+    func testThe3dMapStateFollowsTheAircraftUntilTheCoreSaysOtherwise() {
+        XCTAssertEqual(map3dState(nil), Map3dState(heading: 0, following: true, aircraft: false))
+        XCTAssertEqual(map3dState(JSON.parse(#"{"heading":250,"following":false,"aircraft":true}"#)), Map3dState(heading: 250, following: false, aircraft: true))
+    }
+
     func testThePageAsksForTilesBesideItselfAndTheCoreAnswersThem() {
         XCTAssertEqual(syntheticTilePath("/synthetic/tiles/Bing%20Satellite/15/29961/19829"), "/Bing%20Satellite/15/29961/19829")
         XCTAssertNil(syntheticTilePath("/synthetic/Cesium/Cesium.js"))

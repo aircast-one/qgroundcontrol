@@ -58,6 +58,7 @@ pub struct Camera {
     pub aspect: f64,
     pub height_px: f64,
     pub above_ground: f64,
+    pub map: bool,
 }
 
 impl Camera {
@@ -91,6 +92,7 @@ impl Camera {
             aspect,
             height_px: f64::from(height_px),
             above_ground: 0.0,
+            map: false,
         }
     }
 

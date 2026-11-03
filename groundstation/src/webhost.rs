@@ -57,7 +57,7 @@ pub fn set(path: &str, value: &str) -> String {
 pub fn invoke(path: &str, args: &str) -> String {
     let answer = taken(unsafe { crate::abi::qgc_core_invoke(c(path).as_ptr(), c(args).as_ptr()) });
     #[cfg(feature = "synthetic")]
-    if crate::synthview::owns(path) {
+    if crate::synthview::owns(path) || crate::map3d::owns(path) {
         crate::synthetic::webview::draw_now();
     }
     answer
@@ -350,8 +350,13 @@ pub async fn map_tile(map_type: String, x: i32, y: i32, zoom: i32) -> JsValue {
 
 #[cfg(feature = "synthetic")]
 #[wasm_bindgen(js_name = syntheticAttach)]
-pub fn synthetic_attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32) -> u32 {
-    crate::synthetic::webview::attach(canvas, width, height)
+pub fn synthetic_attach(
+    canvas: web_sys::OffscreenCanvas,
+    width: u32,
+    height: u32,
+    orbit: bool,
+) -> u32 {
+    crate::synthetic::webview::attach(canvas, width, height, orbit)
 }
 
 #[cfg(feature = "synthetic")]

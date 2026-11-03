@@ -158,6 +158,7 @@ pub mod links;
 pub mod liveclock;
 pub mod logreplay;
 pub mod logs;
+pub mod map3d;
 pub mod mapclick;
 pub mod mappolygon;
 pub mod mappolyline;

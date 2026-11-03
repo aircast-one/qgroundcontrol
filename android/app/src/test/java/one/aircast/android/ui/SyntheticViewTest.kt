@@ -19,6 +19,23 @@ class SyntheticViewTest {
     }
 
     @Test
+    fun `the 3d map waits for an aircraft unless it holds a spot, then says nothing once it has drawn`() {
+        val following = map3dState(null)
+        val holding = map3dState(JSONObject("""{"heading":0,"following":false,"aircraft":false}"""))
+        assertEquals(LOOKING_TITLE, map3dNote(null, following))
+        assertEquals(LOOKING_TITLE, map3dNote(JSONObject("""{"available":false,"native":true}"""), following))
+        assertEquals("Loading 3D view…", map3dNote(JSONObject("""{"available":false,"draw":"loading"}"""), holding))
+        assertEquals("Loading 3D view…", map3dNote(JSONObject("""{"available":true,"draw":"loading"}"""), following))
+        assertNull(map3dNote(JSONObject("""{"available":true,"draw":"drawn"}"""), following))
+    }
+
+    @Test
+    fun `the 3d map state follows the aircraft until the core says otherwise`() {
+        assertEquals(Map3dState(0.0, following = true, aircraft = false), map3dState(null))
+        assertEquals(Map3dState(250.0, following = false, aircraft = true), map3dState(JSONObject("""{"heading":250,"following":false,"aircraft":true}""")))
+    }
+
+    @Test
     fun `the view is drawn only when the core can place the camera`() {
         assertTrue(syntheticAvailable(JSONObject("""{"available":true,"latitude":1.0}""")))
         assertFalse(syntheticAvailable(JSONObject("""{"available":false}""")))

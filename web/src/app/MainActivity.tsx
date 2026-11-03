@@ -19,6 +19,7 @@ import { VehicleLinkKeeper } from '@/app/VehicleLinkService';
 import { LocalImmersive } from '@/map/AircastSheet';
 import { FlyMap, plainTaps } from '@/map/FlyMap';
 import { LocalFlyMapEdits } from '@/map/FlyMapEdits';
+import { useMap3dShown } from '@/map/Map3d';
 import { AircastTheme } from '@/map/Theme';
 import type { TrackPoint } from '@/map/VehicleMap';
 import { VEHICLES_VIEW, type VehicleChoices, VehicleBridge, activeChanged, handoverNotice, rememberedChoices, vehicleChoices } from '@/map/VehiclePicker';
@@ -48,6 +49,7 @@ import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog } from '@/ui/GimbalIndicator';
 import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners, showLatest } from '@/ui/HostNotices';
 import { LogReplayBar } from '@/ui/LogReplayBar';
+import { Map3dView } from '@/ui/Map3dView';
 import { MapClickMenu, MapHoldHint, type MapPoint, RoiSheet, SetWaypointSheet, mapHoldHintText } from '@/ui/MapClickMenu';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { MissionCompleteDialog } from '@/ui/MissionCompleteDialog';
@@ -63,7 +65,8 @@ import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
 import { SettingsGroup } from '@/ui/SettingsScreen';
 import { FlySettingsButton, SettingsSheet } from '@/ui/SettingsSheet';
 import { StatusPill, batteryPercentNow, flightTimeNow } from '@/ui/StatusStrip';
-import { useRememberSyntheticAvailable } from '@/ui/SyntheticView';
+import { nativeChosen } from '@/ui/SyntheticSurface';
+import { SYNTHETIC_VIEW, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
 import { TerrainDataWarning } from '@/ui/TerrainDataWarning';
 import { AppSnackbar, VehicleMessageBanner } from '@/ui/VehicleMessages';
 import { FlightActions } from '@/ui/VehicleUi';
@@ -286,7 +289,9 @@ export const AircastShell = () => {
   const [roiTapped, setRoiTapped] = useState<TrackPoint | null>(null);
   const mapInsets = useValue(flyScreen.mapInsets);
   const mapOrnamentEnd = useValue(flyScreen.mapOrnamentEnd);
-  const mapOwnsInsets = flyView === FlyView.Map || portrait;
+  const map3dChosen = useMap3dShown();
+  const nativeRenderer = useQgcDerived(SYNTHETIC_VIEW, nativeChosen);
+  const map3dShown = map3dChosen && nativeRenderer;
 
   const flightActions = (layout: FlyDeckLayout) => <FlightActions layout={layout} center={<CameraShutters />} />;
   const pressPicture = (press: PicturePress) => {
@@ -316,27 +321,31 @@ export const AircastShell = () => {
   );
   const flyMap = (modifier: ModifierProps) => (
     <div {...modifier}>
-      <FlyMap
-        className="size-full"
-        cameraBottomPx={0}
-        topInsetPx={mapOwnsInsets ? mapInsets.top : 0}
-        bottomInsetPx={mapOwnsInsets ? mapInsets.bottom : 0}
-        logoEndInsetPx={mapOwnsInsets ? Math.round(mapOrnamentEnd ?? MAP_LAYERS_CLEARANCE) : null}
-        pip={flyView === FlyView.Video && !portrait}
-        onMapClick={(latitude: number, longitude: number) => {
-          setMapHoldHint(MapHoldHint.Learned);
-          setMapClickAnchor(lastPointer.current);
-          setMapClickAt({ latitude, longitude });
-          setPicturePressed(null);
-        }}
-        onPlainTap={() => setMapHoldHint((hint: MapHoldHint) => (hint === MapHoldHint.Unseen && vehicleNow ? MapHoldHint.Due : hint))}
-        onMissionItemClick={(sequence: number) => setWaypointTapped(sequence)}
-        onRoiClick={(at: TrackPoint) => setRoiTapped(at)}
-        onTrafficClick={() => {
-          flyScreen.requestedSheet.value = TRAFFIC_SHEET;
-        }}
-        clickMarker={mapClickAt === null ? null : { latitude: mapClickAt.latitude, longitude: mapClickAt.longitude }}
-      />
+      {map3dShown && !mapPip ? (
+        <Map3dView className="size-full" bottomInsetPx={mapBottomInset} logoEndInsetPx={mapLogoEndInset} />
+      ) : (
+        <FlyMap
+          className="size-full"
+          cameraBottomPx={0}
+          topInsetPx={mapOwnsInsets ? mapInsets.top : 0}
+          bottomInsetPx={mapBottomInset}
+          logoEndInsetPx={mapLogoEndInset}
+          pip={mapPip}
+          onMapClick={(latitude: number, longitude: number) => {
+            setMapHoldHint(MapHoldHint.Learned);
+            setMapClickAnchor(lastPointer.current);
+            setMapClickAt({ latitude, longitude });
+            setPicturePressed(null);
+          }}
+          onPlainTap={() => setMapHoldHint((hint: MapHoldHint) => (hint === MapHoldHint.Unseen && vehicleNow ? MapHoldHint.Due : hint))}
+          onMissionItemClick={(sequence: number) => setWaypointTapped(sequence)}
+          onRoiClick={(at: TrackPoint) => setRoiTapped(at)}
+          onTrafficClick={() => {
+            flyScreen.requestedSheet.value = TRAFFIC_SHEET;
+          }}
+          clickMarker={mapClickAt === null ? null : { latitude: mapClickAt.latitude, longitude: mapClickAt.longitude }}
+        />
+      )}
     </div>
   );
   const flyCameraControlLayer = (
@@ -456,6 +465,10 @@ export const AircastShell = () => {
   const pictureNow = useQgcDerived(VIDEO_VIEW, videoDecodingOf);
   const syntheticOnScreen = useRememberSyntheticAvailable();
   const shownFlyView = flyViewShown(flyView, flyNow?.armed === true, noVideoSource && !syntheticOnScreen, !vehicleNow && noVideoSource && !pictureNow);
+  const mapPip = shownFlyView === FlyView.Video && !portrait;
+  const mapOwnsInsets = shownFlyView === FlyView.Map || portrait;
+  const mapBottomInset = mapOwnsInsets ? mapInsets.bottom : 0;
+  const mapLogoEndInset = mapOwnsInsets ? Math.round(mapOrnamentEnd ?? MAP_LAYERS_CLEARANCE) : null;
 
   const vehicles = useQgcPath(VEHICLES_VIEW);
   const lastVehicles = useRef<VehicleChoices | null>(null);

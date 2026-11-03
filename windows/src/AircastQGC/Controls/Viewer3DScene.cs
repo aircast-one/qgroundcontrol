@@ -101,6 +101,23 @@ internal readonly record struct Camera3D(Vector3 Target, float Bearing, float Ti
     public static float Focal(int height) => height / 2f / MathF.Tan(Radians(FieldOfView) / 2);
 }
 
+internal readonly record struct Pinch3D(float Scale, float Twist, float Rise)
+{
+    private static float Span(Vector2 a, Vector2 b) => Vector2.Distance(a, b);
+
+    private static float Angle(Vector2 a, Vector2 b) => MathF.Atan2(b.Y - a.Y, b.X - a.X) * 180 / MathF.PI;
+
+    private static float Wrapped(float degrees) => ((degrees + 180) % 360 + 360) % 360 - 180;
+
+    public static Pinch3D Between((Vector2 A, Vector2 B) before, (Vector2 A, Vector2 B) after) => new(
+        Span(before.A, before.B) > 0 ? Span(after.A, after.B) / Span(before.A, before.B) : 1,
+        Wrapped(Angle(after.A, after.B) - Angle(before.A, before.B)),
+        (before.A.Y + before.B.Y - after.A.Y - after.B.Y) / 2);
+
+    public Camera3D Applied(Camera3D camera, float leanPerPixel) =>
+        camera.Zoomed(1 / Scale).Orbited(-Twist, Rise * leanPerPixel);
+}
+
 internal static class Scene3DJson
 {
     private static LonLatAlt? Point(JsonNode? node) =>

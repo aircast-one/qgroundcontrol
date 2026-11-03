@@ -16,15 +16,15 @@ export const nativeDraw = (view: Json | null): SyntheticDraw => {
 };
 
 const surfaceHandoff = {
-  surfaceCreated: (canvas: HTMLCanvasElement, width: number, height: number): Promise<number> => {
+  surfaceCreated: (canvas: HTMLCanvasElement, width: number, height: number, orbit: boolean): Promise<number> => {
     const surface = canvas.transferControlToOffscreen();
-    return callTransferring<number>('syntheticAttach', [surface], surface, width, height);
+    return callTransferring<number>('syntheticAttach', [surface], surface, width, height, orbit);
   },
   surfaceChanged: (surface: Promise<number>, width: number, height: number) => void surface.then((key) => call('syntheticResize', key, width, height)),
   surfaceDestroyed: (surface: Promise<number>) => void surface.then((key) => call('syntheticRelease', key)),
 };
 
-export const SyntheticSurface = ({ className }: { className?: string }) => {
+export const SyntheticSurface = ({ className, orbit = false }: { className?: string; orbit?: boolean }) => {
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const view = host.current;
@@ -32,7 +32,7 @@ export const SyntheticSurface = ({ className }: { className?: string }) => {
     const canvas = document.createElement('canvas');
     canvas.className = 'block size-full bg-black';
     view.append(canvas);
-    const surface = surfaceHandoff.surfaceCreated(canvas, renderSize(canvas.clientWidth), renderSize(canvas.clientHeight));
+    const surface = surfaceHandoff.surfaceCreated(canvas, renderSize(canvas.clientWidth), renderSize(canvas.clientHeight), orbit);
     const observer = new ResizeObserver(() => {
       if (canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return;
       surfaceHandoff.surfaceChanged(surface, renderSize(canvas.clientWidth), renderSize(canvas.clientHeight));
@@ -43,6 +43,6 @@ export const SyntheticSurface = ({ className }: { className?: string }) => {
       surfaceHandoff.surfaceDestroyed(surface);
       canvas.remove();
     };
-  }, []);
+  }, [orbit]);
   return <div ref={host} className={className} />;
 };

@@ -9,7 +9,7 @@ use super::fetch::Network;
 use super::open::Detail;
 use super::overlay::Overlays;
 use super::render::{Renderer, Targets};
-use super::session::{Frame, Session, Target};
+use super::session::{Frame, Session, Target, Views};
 
 const TOKEN_EVERY: Duration = Duration::from_secs(1);
 const OVERLAYS_EVERY: Duration = Duration::from_millis(500);
@@ -21,6 +21,7 @@ const FAILED: &str = "failed";
 
 struct View {
     key: u32,
+    orbit: bool,
     canvas: web_sys::OffscreenCanvas,
     wanted: (u32, u32),
     surface: Option<wgpu::Surface<'static>>,
@@ -73,13 +74,14 @@ thread_local! {
     static WEB: RefCell<Web> = const { RefCell::new(Web { views: Vec::new(), start: Start::Idle, keys: 0, starts: 0, polling: false }) };
 }
 
-pub fn attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32) -> u32 {
+pub fn attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32, orbit: bool) -> u32 {
     WEB.with(|web| {
         let mut web = web.borrow_mut();
         web.keys += 1;
         let key = web.keys;
         web.views.push(View {
             key,
+            orbit,
             canvas,
             wanted: (width, height),
             surface: None,
@@ -358,12 +360,18 @@ impl View {
             format: Some(gpu.format),
             ..Default::default()
         });
-        let pictured = match frame {
-            Some(frame) => {
-                let (camera, meshes) = frame.view(overlays, self.size.0, self.size.1);
-                gpu.renderer
-                    .draw(&view, targets, &camera, &frame.backfill, &meshes);
-                !frame.ground.is_empty()
+        let painted =
+            frame.and_then(|frame| frame.painted(self.orbit, overlays, self.size.0, self.size.1));
+        let pictured = match painted {
+            Some(painted) => {
+                gpu.renderer.draw(
+                    &view,
+                    targets,
+                    &painted.camera,
+                    painted.backfill,
+                    &painted.meshes,
+                );
+                painted.pictured
             }
             None => {
                 gpu.renderer.clear(&view, targets);
@@ -447,20 +455,22 @@ impl World {
                 .as_ref()
                 .and_then(Overlays::from_view)
         });
+        let seen = Views::of(
+            &views
+                .iter()
+                .map(|view| (view.orbit, view.size))
+                .collect::<Vec<_>>(),
+            crate::map3d::orbit,
+        );
         let target = read("view.syntheticView")
             .as_ref()
-            .and_then(Target::from_view);
+            .and_then(|view| Target::seen(view, &seen));
         let sticks = crate::virtualjoystick::sent_sticks();
-        let largest = views
-            .iter()
-            .map(|view| view.size)
-            .max_by_key(|(width, height)| u64::from(*width) * u64::from(*height))
-            .unwrap_or_default();
         let mut frame = self
             .session
             .as_mut()
-            .filter(|_| largest.0 > 0 && largest.1 > 0)
-            .and_then(|session| session.frame(target.as_ref(), &sticks, largest.0, largest.1, now));
+            .filter(|_| seen.any())
+            .and_then(|session| session.frame_for(target.as_ref(), &sticks, seen, now));
         crate::synthview::set_ground(frame.as_ref().and_then(Frame::ground_above_home));
         if let Some((frame, session)) = frame.as_mut().zip(self.session.as_mut()) {
             session.warmed(
