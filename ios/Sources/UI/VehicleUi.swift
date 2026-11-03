@@ -456,6 +456,13 @@ final class FlightActionsState {
     }
 }
 
+let DISMISS_MISSION_PROMPT = "dismissMissionPrompt"
+
+func dismissesMissionPrompt(_ offerId: String?) -> Bool {
+    guard let offerId else { return false }
+    return !popupReplacesOpenConfirm(offerId) && AUTO_POPUP_ACTIONS.contains(offerId)
+}
+
 struct FlightActions<Center: View>: View {
     var layout: FlyDeckLayout = .Bottom
     @ViewBuilder var center: () -> Center
@@ -468,6 +475,7 @@ struct FlightActions<Center: View>: View {
     @QgcPath(PREFLIGHT) private var preflightJson
     @QgcPath(GUIDED_ACTIONS) private var actionsJson
     @QgcPath(AUTO_INTERCEPT) private var interceptJson
+    @QgcPath(ROUTE_RECORDER_VIEW) private var routeRecorderJson
     @QgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups")) private var automaticMissionPopups
     @State private var room: CGSize = .zero
     @State private var centre: CGFloat = 0
@@ -627,6 +635,9 @@ struct FlightActions<Center: View>: View {
             } else {
                 flyScreen.refusal = deckRequestRefusal(offers[armed ? "disarm" : "arm"])
             }
+        } else if asked == DISMISS_MISSION_PROMPT {
+            if dismissesMissionPrompt(actions.pending?.offerId) { actions.pending = nil }
+            if dismissesMissionPrompt(actions.popupDue?.id) { actions.popupDue = nil }
         } else if let entry = deckEntries.first(where: { $0.id == asked && $0.enabled }) {
             entry.onClick()
         } else if let offer = offers[asked], offer.ready, let action = guidedActionFor(offer) {
@@ -665,10 +676,14 @@ struct FlightActions<Center: View>: View {
             MoreTile(label: STOP_MOTORS, icon: .warning, enabled: true, warning: true, onClick: { actions.pending = emergencyStopAction(offer) })
         }].compactMap { $0 }
         let rest = deckRest.filter { $0.id != CHECKLIST }.map { MoreTile(label: $0.label, icon: $0.icon, enabled: $0.enabled, warning: $0.warning, onClick: $0.onClick) }
+        let route = routeTile(routeRecorder(routeRecorderJson)) { recording in
+            actions.scope.launch { flyScreen.refusal = await offMain { toggleRoute(recording) } }
+        }
         let fixed: [MoreTile] = [
             preflightOffered(preflightJson) ? MoreTile(label: "Checklist", icon: .checkCircle, enabled: checklistPast == nil, onClick: { checklist.open() }) : nil,
             loiter.map { offer in MoreTile(label: offer.title, icon: .myLocation, enabled: true, onClick: { actions.editingLoiter = offer }) },
             gripper.isEmpty ? nil : MoreTile(label: "Gripper", icon: .download, enabled: gripper.contains(where: \.ready), onClick: { actions.showGripper = true }),
+            route,
             MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
             armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
             intercept?.entry.map { entry in MoreTile(label: entry.label, icon: .search, enabled: true, onClick: { onIntercept(entry) }) },

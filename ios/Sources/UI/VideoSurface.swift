@@ -136,8 +136,13 @@ private func sidesAround(_ room: CGRect, _ obstacle: CGRect, _ gap: CGFloat) -> 
 struct VideoSurface: View {
     var expanded: Bool = false
     var fullScreen: Bool = false
+    var onGround: ((PicturePress) -> Void)? = nil
+    var onPictureTap: () -> Void = {}
+    var groundSpot: CGPoint? = nil
     @Environment(\.theme) private var theme
     @QgcPath(VIDEO_VIEW) private var videoJson
+    @QgcPath(GIMBAL_INDICATOR_PATH) private var gimbalJson
+    @State private var pressing: CGPoint?
     @QgcPath(CAMERA_VIEW) private var cameraJson
     @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
     @QgcBool(settingControl("settings.videoSettings.gridLines")) private var showGrid
@@ -166,6 +171,9 @@ struct VideoSurface: View {
     private func playing(_ video: VideoReading?) -> some View {
         let decoding = video?.decoding == true
         let aspect = videoAspect(video?.sourceSize, aspectSetting.double)
+        let holdDrives = onScreenGimbal(gimbalJson).map { $0.enabled && $0.clickAndDrag } == true
+        let holds = expanded && decoding && onGround != nil && !holdDrives
+        let hold = pictureHandlers(hasGimbal: gimbalJson?["shown"].bool == true)
         return GeometryReader { geometry in
             let shown = videoContentSize(geometry.size.width, geometry.size.height, aspect, fitMode.int ?? VIDEO_FIT_HEIGHT)
             ZStack {
@@ -180,9 +188,20 @@ struct VideoSurface: View {
                         DetectionOverlay()
                         TrackingBoxOverlay()
                         if expanded { VideoStatsPill() }
+                        if expanded { OrbitOutline() }
+                        HoldRing(at: holds ? pressing : nil)
+                        if let spot = groundSpot { PictureMark(spot: spot) }
                     }
                 }
                 .frame(width: shown.0, height: shown.1)
+                .contentShape(Rectangle())
+                .pictureHold(holds, hold)
+                if expanded && decoding {
+                    LookAtReticle()
+                    GimbalModeSwitch()
+                        .padding(Space.s2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                }
                 if !decoding && syntheticAvailable(syntheticJson) {
                     SyntheticView(aimable: expanded, standIn: expanded ? video?.standIn : nil)
                 } else if !decoding {
@@ -196,6 +215,20 @@ struct VideoSurface: View {
         .clipped()
         .contentShape(Rectangle())
         .modifier(PinchZoom(enabled: expanded && cameraReading(cameraJson)?.hasZoom == true))
+    }
+
+    private func pictureHandlers(hasGimbal: Bool) -> PictureHoldHandlers {
+        let onGround = onGround
+        return PictureHoldHandlers(
+            onPressing: { pressing = $0 },
+            onTap: onPictureTap,
+            onHeld: { at, size in
+                Task {
+                    let press = await offMain { groundAt(at, size, hasGimbal: hasGimbal) }
+                    onGround?(press)
+                }
+            }
+        )
     }
 }
 
