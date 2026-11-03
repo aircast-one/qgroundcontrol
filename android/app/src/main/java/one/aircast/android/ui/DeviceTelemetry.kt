@@ -36,8 +36,11 @@ internal data class TelemetryCloud(val status: DeviceBadge, val text: String)
 
 internal data class TelemetrySettings(val endpoints: String, val baud: String)
 
+internal data class TelemetryFix(val title: String, val steps: List<String>, val waiting: String)
+
 internal data class TelemetryView(
     val status: DeviceBadge,
+    val fix: TelemetryFix?,
     val notices: List<DeviceBadge>,
     val endpoints: List<DeviceEndpoint>,
     val endpointNotice: DeviceBadge?,
@@ -71,6 +74,10 @@ internal fun parseTelemetry(json: JSONObject): TelemetryView? =
         val settings = json.optJSONObject("settings")
         TelemetryView(
             status = parseBadge(status),
+            fix = json.optJSONObject("fix")?.let { fix ->
+                val steps = fix.optJSONArray("steps") ?: JSONArray()
+                TelemetryFix(fix.optText("title"), (0 until steps.length()).map { steps.optString(it) }, fix.optText("waiting"))
+            },
             notices = parseBadges(json, "notices"),
             endpoints = parseEndpointList(json, "endpoints"),
             endpointNotice = json.optJSONObject("endpointNotice")?.let(::parseBadge),

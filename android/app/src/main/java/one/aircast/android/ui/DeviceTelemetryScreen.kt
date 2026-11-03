@@ -1,14 +1,18 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +41,7 @@ import org.json.JSONObject
 internal fun DeviceTelemetryScreen(props: DeviceScreenProps) {
     val view = deviceView("telemetry", ::parseTelemetry) ?: return FootNote("Waiting for the device to answer…")
     DeviceSection("Status", view.status) {
+        view.fix?.let { FixSteps(it) }
         view.notices.map { notice -> key(notice.text) { DeviceNotice(notice) } }
         view.cloud?.let { CloudPath(it) }
     }
@@ -48,6 +53,30 @@ internal fun DeviceTelemetryScreen(props: DeviceScreenProps) {
         key(view.settings) { MavlinkEditor(view) }
     }
     view.gimbal?.let { GimbalSection(it) }
+}
+
+@Composable
+private fun FixSteps(fix: TelemetryFix) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(fix.title, style = MaterialTheme.typography.titleMedium)
+        fix.steps.mapIndexed { index, step ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(24.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+                    Text("${index + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Text(step, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            }
+        }
+        if (fix.waiting.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(fix.waiting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }
 
 @Composable

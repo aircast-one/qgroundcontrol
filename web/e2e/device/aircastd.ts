@@ -135,11 +135,16 @@ const AIRCRAFT = {
 };
 
 const TELEMETRY = {
-  status: { level: 1, text: 'no aircraft' },
-  notices: [{ level: 3, text: 'No flight controller is attached. Plug the controller in and power it on.' }],
+  status: { level: 1, text: 'no flight controller' },
+  fix: {
+    title: 'No flight controller found',
+    steps: ["Plug the flight controller's USB port into this device with a data cable. Wires on the Pi's pins aren't detected.", 'Power the flight controller on.'],
+    waiting: 'Looking for it — this page updates by itself.',
+  },
+  notices: [],
   endpoints: [{ proto: 'UDP', label: 'MAVLink', url: 'e2e-device:14550', hint: 'QGroundControl: Application Settings → Comm Links → Add → Type UDP.' }],
   settings: { endpoints: 'udps:0.0.0.0:14550', baud: '115200' },
-  schemes: [],
+  schemes: [{ value: 'udps', label: 'UDP · listen', host: '0.0.0.0', port: '14550', hostLabel: 'Listen address', placeholder: '0.0.0.0', hint: 'The device listens here and any ground station on the network can connect. This is the usual choice.' }],
 };
 
 const CONNECT = {

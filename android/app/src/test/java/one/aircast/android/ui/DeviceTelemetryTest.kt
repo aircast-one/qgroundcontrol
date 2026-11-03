@@ -11,7 +11,8 @@ class DeviceTelemetryTest {
     fun `reads the telemetry view the device serves`() {
         val view = parseTelemetry(
             JSONObject(
-                """{"status":{"level":0,"text":"ready"},"notices":[{"level":3,"text":"No flight controller is attached."}],
+                """{"status":{"level":0,"text":"ready"},"fix":{"title":"No flight controller found","steps":["Plug it in.","Power it on."],"waiting":"Looking for it."},
+                "notices":[{"level":3,"text":"The MAVLink proxy is down."}],
                 "endpoints":[{"proto":"UDP","label":"MAVLink","url":"falcon:14550","down":true}],
                 "cloud":{"status":{"level":0,"text":"Carrying"},"text":"Also carrying telemetry."},
                 "settings":{"endpoints":"udps:0.0.0.0:14550","baud":"57600"},
@@ -27,6 +28,8 @@ class DeviceTelemetryTest {
         assertEquals(TelemetrySettings("udps:0.0.0.0:14550", "57600"), view?.settings)
         assertEquals("udps", view?.schemes?.optJSONObject(0)?.optString("value"))
         assertEquals(listOf(DeviceOption("siyi", "SIYI")), view?.gimbal?.vendors)
+        assertEquals(TelemetryFix("No flight controller found", listOf("Plug it in.", "Power it on."), "Looking for it."), view?.fix)
+        assertNull(parseTelemetry(JSONObject("""{"status":{"level":0,"text":"ready"}}"""))?.fix)
         assertNull(parseTelemetry(JSONObject("""{"endpoints":[]}""")))
         val endpoint = DeviceEndpoint("UDP", "MAVLink", "falcon:14550", "", "", "", down = false, primary = false)
         assertEquals("UDP · MAVLink", endpointLabel(endpoint))

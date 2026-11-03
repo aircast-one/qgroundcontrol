@@ -277,7 +277,7 @@ base('a device that hears no flight controller says so and opens its telemetry p
   await expect(sheet.getByText('New drone? Flash an Aircast card')).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Check device telemetry' }).click();
   const fc = page.getByRole('region', { name: 'Status' });
-  await expect(fc.getByText('No flight controller is attached. Plug the controller in and power it on.')).toBeVisible();
+  await expect(fc.getByText("Plug the flight controller's USB port into this device with a data cable. Wires on the Pi's pins aren't detected.")).toBeVisible();
   await expect(page.getByRole('region', { name: 'Connect another ground station' }).getByText('e2e-device:14550')).toBeVisible();
 });
 
@@ -286,7 +286,7 @@ base('on a desktop the Fly screen says what the device is missing and opens its 
   await page.getByRole('button', { name: 'Map', exact: true }).click({ timeout: 60_000 });
   await expect(page.getByText('Aircast e2e-device hears no flight controller. Check it is plugged in and powered on.')).toBeVisible({ timeout: 60_000 });
   await page.getByRole('button', { name: 'Check device', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Status' }).getByText('No flight controller is attached. Plug the controller in and power it on.')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Status' }).getByRole('note', { name: 'No flight controller found' })).toBeVisible();
 });
 
 base('on a phone the device page offers to check the device, not to add a link', async ({ page }) => {
