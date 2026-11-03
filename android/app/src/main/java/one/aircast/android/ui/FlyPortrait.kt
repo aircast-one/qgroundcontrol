@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.Constraints
 import one.aircast.map.MAP_SCALE_CLEARANCE
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -508,11 +509,19 @@ private fun MapButtons(view: FlyView, split: Boolean, hasVideo: Boolean, onView:
     val viewer3dJson by qgcPath(VIEWER3D_VIEW)
     val enabled3d = viewer3dEnabled(viewer3dJson)
     LaunchedEffect(enabled3d, view) { flyViewAllowed(enabled3d, view).takeIf { it != view }?.let(onView) }
+    val synthetic by qgcPath(SYNTHETIC_VIEW)
+    val context = LocalContext.current
     var layers by remember { mutableStateOf(false) }
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2)) {
         if (split) MapButton(R.drawable.ic_fullscreen, "Enlarge the map") { onView(FlyView.Map) }
         if (!split && hasVideo && view == FlyView.ThreeD) MapButton(R.drawable.ic_videocam, "Show the camera above the map") { onView(FlyView.Video) }
         MapButton(R.drawable.ic_layers, "Map layers") { layers = true }
+        if (view != FlyView.ThreeD && nativeChosen(synthetic)) {
+            val shown = one.aircast.map.Map3d.isShown
+            MapButton(map3dToggleLabel(shown), { one.aircast.map.Map3d.show(context, !shown) }) {
+                Text(map3dToggleText(shown), Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.labelLarge)
+            }
+        }
         if (FlyView.ThreeD in flyViewsOffered(enabled3d, view)) {
             MapButton(if (view == FlyView.ThreeD) R.drawable.ic_map else R.drawable.ic_explore, if (view == FlyView.ThreeD) "Show the map" else "Show the 3D view") {
                 onView(if (view == FlyView.ThreeD) FlyView.Map else FlyView.ThreeD)
@@ -523,14 +532,18 @@ private fun MapButtons(view: FlyView, split: Boolean, hasVideo: Boolean, onView:
 }
 
 @Composable
-private fun MapButton(@DrawableRes icon: Int, label: String, onClick: () -> Unit) {
+private fun MapButton(@DrawableRes icon: Int, label: String, onClick: () -> Unit) =
+    MapButton(label, onClick) { Icon(painterResource(icon), null, Modifier.size(20.dp)) }
+
+@Composable
+private fun MapButton(label: String, onClick: () -> Unit, content: @Composable () -> Unit) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.size(MAP_BUTTON_SIZE),
+        modifier = Modifier.size(MAP_BUTTON_SIZE).semantics { contentDescription = label },
         shape = CircleShape,
         color = Color.Black.copy(alpha = MAP_BUTTON_SCRIM_ALPHA),
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
-        Box(contentAlignment = Alignment.Center) { Icon(painterResource(icon), label, Modifier.size(20.dp)) }
+        Box(contentAlignment = Alignment.Center) { content() }
     }
 }

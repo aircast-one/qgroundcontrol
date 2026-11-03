@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -10,6 +11,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -27,9 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
@@ -46,7 +49,9 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.AircastSpace
+import kotlinx.coroutines.delay
 import one.aircast.map.FlightMapPosition
+import one.aircast.map.Map3d
 import one.aircast.map.aircast
 import one.aircast.map.readCamera
 import org.json.JSONObject
@@ -65,6 +70,14 @@ private val CONTROL_SIZE = 40.dp
 private val CONTROL_ICON = 20.dp
 internal const val BACK_TO_AIRCRAFT = "Back to aircraft"
 private const val COMPASS_LABEL = "Compass. Drag to turn and tilt the view, tap to face north"
+internal const val MAP3D_HINT = "Drag to move · Two fingers to turn and tilt"
+private const val HINT_SHOWN_MS = 8_000L
+private const val NEEDLE_HALF_WIDTH = 0.22f
+private const val NEEDLE_REACH = 0.8f
+
+internal fun map3dToggleText(shown: Boolean): String = if (shown) "2D" else "3D"
+
+internal fun map3dToggleLabel(shown: Boolean): String = if (shown) "Show the flat map" else "Show the 3D map"
 
 internal data class Map3dState(val heading: Double, val following: Boolean, val aircraft: Boolean)
 
@@ -78,11 +91,12 @@ internal fun map3dNote(synthetic: JSONObject?, state: Map3dState): String? = whe
 
 private fun send(path: String, vararg args: Number) = offMainInOrder { Qgc.call(path, *args) }
 
-private fun Modifier.map3dGestures(): Modifier = pointerInput(Unit) {
+private fun Modifier.map3dGestures(onTouch: () -> Unit): Modifier = pointerInput(Unit) {
     detectTapGestures(onDoubleTap = { send(MAP3D_FOLLOW) })
 }.pointerInput(Unit) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
+        onTouch()
         var travelled = Offset.Zero
         var pinched = false
         do {
@@ -122,9 +136,26 @@ private fun Compass(heading: Double, view: IntSize) {
                 }
             },
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(painterResource(R.drawable.ic_navigation), null, Modifier.size(CONTROL_ICON).rotate(-heading.toFloat()))
+        val north = MaterialTheme.colorScheme.error
+        val south = MaterialTheme.aircast.outdoorForeground
+        Canvas(Modifier.size(CONTROL_ICON)) {
+            val (cx, cy, reach, half) = listOf(size.width / 2, size.height / 2, size.height / 2 * NEEDLE_REACH, size.width / 2 * NEEDLE_HALF_WIDTH)
+            rotate(-heading.toFloat()) {
+                drawPath(Path().apply { moveTo(cx, cy - reach); lineTo(cx + half, cy); lineTo(cx - half, cy); close() }, north)
+                drawPath(Path().apply { moveTo(cx, cy + reach); lineTo(cx + half, cy); lineTo(cx - half, cy); close() }, south)
+            }
         }
+    }
+}
+
+@Composable
+private fun Hint() {
+    Surface(
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = CONTROL_SCRIM_ALPHA),
+        contentColor = MaterialTheme.aircast.outdoorForeground,
+    ) {
+        Text(MAP3D_HINT, Modifier.padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2), style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -154,6 +185,14 @@ internal fun Map3dView(modifier: Modifier, bottomInsetPx: Int, logoEndInsetPx: I
     val map3dJson by qgcPath(MAP3D_VIEW)
     val state = map3dState(map3dJson)
     var size by remember { mutableStateOf(IntSize.Zero) }
+    var hinting by remember { mutableStateOf(!Map3d.hinted(context)) }
+    LaunchedEffect(hinting) {
+        if (hinting) {
+            Map3d.markHinted(context)
+            delay(HINT_SHOWN_MS)
+            hinting = false
+        }
+    }
     LaunchedEffect(Unit) {
         (FlightMapPosition.latest ?: readCamera(context)?.centre)
             ?.let { send(MAP3D_OPEN, it.latitude, it.longitude) }
@@ -165,7 +204,7 @@ internal fun Map3dView(modifier: Modifier, bottomInsetPx: Int, logoEndInsetPx: I
     }
     Box(modifier.background(Color.Black).onSizeChanged { size = it }) {
         OrbitSurface(Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().map3dGestures())
+        Box(Modifier.fillMaxSize().map3dGestures { hinting = false })
         map3dNote(synthetic, state)?.let { note ->
             Text(
                 note,
@@ -175,13 +214,19 @@ internal fun Map3dView(modifier: Modifier, bottomInsetPx: Int, logoEndInsetPx: I
                 textAlign = TextAlign.Center,
             )
         }
-        Row(
+        Column(
             Modifier.align(Alignment.BottomEnd).then(controlsAt),
-            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+            horizontalAlignment = Alignment.End,
         ) {
-            if (state.aircraft && !state.following) BackToAircraft()
-            Compass(state.heading, size)
+            if (hinting) Hint()
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (state.aircraft && !state.following) BackToAircraft()
+                Compass(state.heading, size)
+            }
         }
     }
 }
