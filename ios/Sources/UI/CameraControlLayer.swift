@@ -519,6 +519,7 @@ private struct CameraDetailsSheet: View {
                 if camera.hasZoom { CameraZoomSlider(zoomLevel: camera.zoomLevel) }
                 if camera.capturesPhotos { photoMode }
                 if let tracking { TrackingToggle(reading: tracking).padding(.horizontal, 12) }
+                LensSection()
                 if let thermal { thermalSection(thermal) }
                 if camera.hasVideoStream {
                     ForEach(Array(facts.enumerated()), id: \.offset) { _, entry in
