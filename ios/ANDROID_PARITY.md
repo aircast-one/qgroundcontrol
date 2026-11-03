@@ -11,7 +11,10 @@ file records what Android has that iOS deliberately does not, so a future gap ch
 2. Android-only core paths: every quoted `name.name` literal in the Android sources that the iOS sources
    never reference. This catches features hidden inside files both heads share.
 
-Re-run both after porting something; anything the two lists show that is not below is a gap.
+Re-run both after porting something; anything the two lists show that is not below is a gap. Three entries
+are expected and are not gaps: `QgcCalls.kt` (Kotlin's off-main helpers, which iOS has in `Bridge/Qgc.swift`),
+`cameraCalc.frontalOverlap`/`sideOverlap` (iOS shows both overlaps through its default case), and
+`mavlinkInspector.activeSystem.*` (unused constants on Android).
 
 ## Ported to iOS
 
@@ -47,5 +50,8 @@ Re-run both after porting something; anything the two lists show that is not bel
 
 - The Go to map preview does not hide a target the vehicle has already reached: the iOS `GotoLocation`
   carries no `arrived` state yet.
+- The phone's own camera as a video source does not play: the core builds it on `ahcsrc`, which only
+  Android's GStreamer has. `DeviceCameraHost` (camera permission and rotation) is ported, but it has no effect
+  until the core has an iOS camera source.
 - A double tap on the picture-hold reticle's Stop or on the gimbal mode switch can also count as a double tap
   on the video. Android keeps video gestures off on-screen controls with `videoControl()`, which iOS lacks.
