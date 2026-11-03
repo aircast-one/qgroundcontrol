@@ -167,11 +167,13 @@ struct MapClickMenu: View {
     @State private var confirming: MapClickAction?
     @State private var refused: String?
     @State private var scope = ViewScope()
+    @Environment(FlyMapEdits.self) private var mapEdits
     @Environment(\.theme) private var theme
 
     var body: some View {
         let actions = offeredClickActions(view, only)
         let defaults = orbitDefaults(view)
+        let previewing = confirming?.id == GOTO_ACTION
         ZStack {
             if view != nil && actions.isEmpty {
                 Color.clear
@@ -191,7 +193,15 @@ struct MapClickMenu: View {
             guard let pending = confirming, !offered.contains(where: { $0.id == pending.id }) else { return }
             if pending.id == ORBIT_ACTION { onDismiss() } else { confirming = nil }
         }
-        .onDisappear { scope.cancel() }
+        .onChange(of: Keys(previewing, point), initial: true) {
+            mapEdits.gotoPreview = previewing ? TrackPoint(latitude: point.latitude, longitude: point.longitude) : nil
+            mapEdits.gotoPreviewFrom = previewing ? geoOf(vehicleCoordinate).map { TrackPoint(latitude: $0.0, longitude: $0.1) } : nil
+        }
+        .onDisappear {
+            scope.cancel()
+            mapEdits.gotoPreview = nil
+            mapEdits.gotoPreviewFrom = nil
+        }
     }
 
     private func run(_ action: MapClickAction) {
