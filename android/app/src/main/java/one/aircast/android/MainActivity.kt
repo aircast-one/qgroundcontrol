@@ -353,6 +353,9 @@ fun AircastShell(hostView: android.view.View?) {
     val noVideoSource by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.VIDEO_VIEW) { json ->
         one.aircast.android.ui.videoReading(json)?.let { !it.available && !it.sourceChosen } == true
     }
+    val nativeRenderer by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.SYNTHETIC_VIEW) { json ->
+        one.aircast.android.ui.nativeChosen(json)
+    }
     val flyMap = remember {
         movableContentOf<Modifier> { mod ->
             val shown = one.aircast.android.ui.flyViewShown(flyView, armed = flyNow?.armed == true, noVideoSource = noVideoSource)
@@ -360,7 +363,7 @@ fun AircastShell(hostView: android.view.View?) {
             val ownsInsets = shown == one.aircast.android.ui.FlyView.Map || flyIsPortrait()
             val bottomInset = if (ownsInsets) flyScreen.mapInsets.bottom else 0
             val logoEndInset = with(androidx.compose.ui.platform.LocalDensity.current) { (flyScreen.mapOrnamentEnd ?: one.aircast.android.ui.MAP_LAYERS_CLEARANCE).roundToPx() }.takeIf { ownsInsets }
-            if (one.aircast.map.Map3d.isShown && !pip) {
+            if (one.aircast.map.Map3d.isShown && nativeRenderer && !pip) {
                 one.aircast.android.ui.Map3dView(mod, bottomInsetPx = bottomInset, logoEndInsetPx = logoEndInset)
             } else FlyMap(
                 modifier = mod,

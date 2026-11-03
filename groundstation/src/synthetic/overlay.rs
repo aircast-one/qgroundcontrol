@@ -1109,6 +1109,36 @@ mod tests {
     const SPOT: (f64, f64) = (-35.363, 149.165);
     const GROUND: f64 = 600.0;
 
+    #[test]
+    fn the_aircraft_shows_its_nose_a_drop_line_and_its_height_above_the_ground_in_metres() {
+        let camera = Camera::new(
+            &Pose {
+                latitude: SPOT.0 - 0.01,
+                longitude: SPOT.1,
+                height: GROUND + 400.0,
+                heading: 0.0,
+                pitch: -20.0,
+                roll: 0.0,
+                fov: 60.0,
+            },
+            1280,
+            720,
+        );
+        let at = (SPOT.0, SPOT.1, GROUND + 249.0);
+        let marked = aircraft(at, 90.0, Some(GROUND), &camera);
+        assert_eq!(marked.len(), 4, "drop line, nose, marker and label");
+        assert_eq!(
+            marked[3].indices.len(),
+            "249m".len() * 6,
+            "one quad per character of the height"
+        );
+        assert_eq!(
+            aircraft(at, 90.0, None, &camera).len(),
+            2,
+            "with the ground unknown there is no drop line and no height to give"
+        );
+    }
+
     fn looking_down_from(metres: f64) -> Camera {
         Camera::new(
             &Pose {

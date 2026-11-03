@@ -379,6 +379,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "homeLatitude": home_latitude,
         "homeLongitude": home_longitude,
         "heading": heading,
+        "nose": nose(0.0),
         "pitch": pitch,
         "roll": roll,
         "aimable": free,

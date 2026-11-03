@@ -65,7 +65,8 @@ import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
 import { SettingsGroup } from '@/ui/SettingsScreen';
 import { FlySettingsButton, SettingsSheet } from '@/ui/SettingsSheet';
 import { StatusPill, batteryPercentNow, flightTimeNow } from '@/ui/StatusStrip';
-import { useRememberSyntheticAvailable } from '@/ui/SyntheticView';
+import { nativeChosen } from '@/ui/SyntheticSurface';
+import { SYNTHETIC_VIEW, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
 import { TerrainDataWarning } from '@/ui/TerrainDataWarning';
 import { AppSnackbar, VehicleMessageBanner } from '@/ui/VehicleMessages';
 import { FlightActions } from '@/ui/VehicleUi';
@@ -288,7 +289,9 @@ export const AircastShell = () => {
   const [roiTapped, setRoiTapped] = useState<TrackPoint | null>(null);
   const mapInsets = useValue(flyScreen.mapInsets);
   const mapOrnamentEnd = useValue(flyScreen.mapOrnamentEnd);
-  const map3dShown = useMap3dShown();
+  const map3dChosen = useMap3dShown();
+  const nativeRenderer = useQgcDerived(SYNTHETIC_VIEW, nativeChosen);
+  const map3dShown = map3dChosen && nativeRenderer;
 
   const flightActions = (layout: FlyDeckLayout) => <FlightActions layout={layout} center={<CameraShutters />} />;
   const pressPicture = (press: PicturePress) => {

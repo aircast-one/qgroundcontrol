@@ -89,8 +89,10 @@ const Compass = ({ heading, view }: { heading: number; view: RefObject<HTMLDivEl
       dragged.current = true;
     },
     onDrag: (_at, moved) => {
-      send(MAP3D_TURN, mouseTurn(moved.x, view.current?.clientWidth ?? 0));
-      send(MAP3D_TILT, -moved.y, view.current?.clientHeight ?? 0);
+      const box = view.current;
+      if (box === null) return;
+      send(MAP3D_TURN, mouseTurn(moved.x, box.clientWidth));
+      send(MAP3D_TILT, -moved.y, box.clientHeight);
     },
   });
   return (
@@ -125,14 +127,14 @@ const BackToAircraft = () => (
   </Surface>
 );
 
-export const Map3dView = ({ className, bottomInsetPx = 0, logoEndInsetPx = null }: { className?: string; bottomInsetPx?: number; logoEndInsetPx?: number | null }) => {
+export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { className: string; bottomInsetPx: number; logoEndInsetPx: number | null }) => {
   const synthetic = useQgcPath(SYNTHETIC_VIEW);
   const state = map3dState(useQgcPath(MAP3D_VIEW));
   const note = map3dNote(synthetic, state);
   const view = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => send(MAP3D_OPEN, ...map3dOpenAt(FlightMapPosition.latest, readCamera())), []);
-  const press = useRef({ pointers: new Map() as ReadonlyMap<number, Offset>, from: Offset(0, 0), moving: false, twist: false, second: false, tapUpAt: -Infinity });
+  const press = useRef({ pointers: new Map() as ReadonlyMap<number, Offset>, from: Offset(0, 0), moving: false, twist: false, second: false, pinched: false, tapUpAt: -Infinity });
   useEffect(() => {
     const element = host.current;
     if (element === null) return undefined;
@@ -151,10 +153,12 @@ export const Map3dView = ({ className, bottomInsetPx = 0, logoEndInsetPx = null 
     if (now.pointers.size > 1) {
       now.moving = true;
       now.second = false;
+      now.pinched = true;
       return;
     }
     now.from = at;
     now.moving = false;
+    now.pinched = false;
     now.twist = event.pointerType === 'mouse' && (event.button === 2 || event.shiftKey);
     now.second = event.timeStamp - now.tapUpAt <= DOUBLE_TAP_TIMEOUT_MS;
   };
@@ -173,15 +177,16 @@ export const Map3dView = ({ className, bottomInsetPx = 0, logoEndInsetPx = null 
     const height = event.currentTarget.clientHeight;
     if (before !== null && after !== null) {
       const step = pinchStep(before, after);
-      send(MAP3D_ZOOM, step.scale);
-      send(MAP3D_TURN, step.turn);
-      send(MAP3D_TILT, step.up, height);
+      if (step.scale !== 1) send(MAP3D_ZOOM, step.scale);
+      if (step.turn !== 0) send(MAP3D_TURN, step.turn);
+      if (step.up !== 0) send(MAP3D_TILT, step.up, height);
       return;
     }
     const moved = minus(at, last);
+    if (now.pinched || (moved.x === 0 && moved.y === 0)) return;
     if (now.twist) {
-      send(MAP3D_TURN, mouseTurn(moved.x, width));
-      send(MAP3D_TILT, -moved.y, height);
+      if (moved.x !== 0) send(MAP3D_TURN, mouseTurn(moved.x, width));
+      if (moved.y !== 0) send(MAP3D_TILT, -moved.y, height);
       return;
     }
     send(MAP3D_PAN, moved.x, moved.y, width);
@@ -195,7 +200,7 @@ export const Map3dView = ({ className, bottomInsetPx = 0, logoEndInsetPx = null 
     now.tapUpAt = tapped && !now.second ? event.timeStamp : -Infinity;
   };
   return (
-    <div ref={view} className={`relative touch-none overflow-hidden bg-black select-none ${className ?? ''}`} onContextMenu={(event) => event.preventDefault()}>
+    <div ref={view} className={`relative touch-none overflow-hidden bg-black select-none ${className}`} onContextMenu={(event) => event.preventDefault()}>
       <SyntheticSurface className="absolute inset-0 size-full" orbit />
       <div
         ref={host}

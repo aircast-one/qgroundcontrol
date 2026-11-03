@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use groundstation::synthetic::fetch::Network;
 use groundstation::synthetic::open::Detail;
 use groundstation::synthetic::render::Renderer;
-use groundstation::synthetic::session::{Session, Target};
+use groundstation::synthetic::session::{Session, Target, Views};
 
 fn arg(name: &str) -> Option<String> {
     let args: Vec<String> = std::env::args().collect();
@@ -45,13 +45,18 @@ fn main() {
         round_trip: None,
         bottles: Vec::new(),
         locked: false,
-        orbit: arg("--orbit-range").map(|_| groundstation::map3d::Orbit {
-            heading: number("--orbit-heading", 0.0),
-            tilt: number("--orbit-tilt", groundstation::map3d::START.tilt),
-            range: number("--orbit-range", groundstation::map3d::START.range),
-            focus: None,
-        }),
+        nose: number("--heading", 200.0),
         aircraft: true,
+    };
+    let orbit = arg("--orbit-range").map(|_| groundstation::map3d::Orbit {
+        heading: number("--orbit-heading", 0.0),
+        tilt: number("--orbit-tilt", groundstation::map3d::START.tilt),
+        range: number("--orbit-range", groundstation::map3d::START.range),
+        focus: None,
+    });
+    let views = Views {
+        first_person: orbit.is_none().then_some((width, height)),
+        orbit: orbit.map(|orbit| (orbit, (width, height))),
     };
     groundstation::terrainservice::set_cache_path(arg("--cache").map(std::path::PathBuf::from));
     let mut session = Session::new(&token, Arc::new(Network), Detail::FULL).expect("fetch workers");
@@ -60,7 +65,7 @@ fn main() {
     let mut drawn = None;
     while started.elapsed() < seconds {
         drawn = session
-            .frame(Some(&target), &[], width, height, Instant::now())
+            .frame_for(Some(&target), &[], views, Instant::now())
             .or(drawn);
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -83,15 +88,27 @@ fn main() {
                 ..target.clone()
             };
             let frame = session
-                .frame(Some(&turned), &[], width, height, Instant::now())
+                .frame_for(Some(&turned), &[], views, Instant::now())
                 .expect("a frame to draw");
-            let (camera, meshes) = match target.orbit {
-                Some(_) => frame.orbit_view_at(None, width, height, when),
+            let (camera, meshes) = match orbit {
+                Some(_) => frame
+                    .orbit_view_at(None, width, height, when)
+                    .expect("an orbit picture"),
                 None => frame.view_at(None, width, height, when),
             };
             println!("{} meshes in frame {index}", meshes.len());
             renderer
-                .picture(&camera, &frame.backfill, &meshes, &targets, width, height)
+                .picture(
+                    &camera,
+                    frame
+                        .orbit
+                        .as_ref()
+                        .map_or(&frame.backfill, |picture| &picture.backfill),
+                    &meshes,
+                    &targets,
+                    width,
+                    height,
+                )
                 .expect("rendered picture")
         })
         .last()

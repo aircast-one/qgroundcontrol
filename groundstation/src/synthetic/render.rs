@@ -600,7 +600,7 @@ fn sky_toward(direction: vec3<f32>) -> vec3<f32> {
 @fragment fn fs_water(f: Out) -> Frag {
     let distance = max(length(f.seen), 1.0);
     let seen = f.seen / distance;
-    let air = scatter(seen, distance, AERIAL_SAMPLES);
+    let air = scatter(seen, distance * scene.air.y, AERIAL_SAMPLES);
     let up = scene.zenith.xyz;
     let surface = rippled(f.seen, distance);
     let mirrored = reflect(seen, surface.xyz);

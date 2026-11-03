@@ -9,7 +9,7 @@ use super::fetch::Network;
 use super::open::Detail;
 use super::overlay::Overlays;
 use super::render::{Renderer, Targets};
-use super::session::{Frame, Session, Target};
+use super::session::{Frame, Session, Target, Views};
 
 const TOKEN_EVERY: Duration = Duration::from_secs(1);
 const OVERLAYS_EVERY: Duration = Duration::from_millis(500);
@@ -360,15 +360,18 @@ impl View {
             format: Some(gpu.format),
             ..Default::default()
         });
-        let pictured = match frame {
-            Some(frame) => {
-                let (camera, meshes) = match self.orbit {
-                    true => frame.orbit_view(overlays, self.size.0, self.size.1),
-                    false => frame.view(overlays, self.size.0, self.size.1),
-                };
-                gpu.renderer
-                    .draw(&view, targets, &camera, &frame.backfill, &meshes);
-                !frame.ground.is_empty()
+        let painted =
+            frame.and_then(|frame| frame.painted(self.orbit, overlays, self.size.0, self.size.1));
+        let pictured = match painted {
+            Some(painted) => {
+                gpu.renderer.draw(
+                    &view,
+                    targets,
+                    &painted.camera,
+                    painted.backfill,
+                    &painted.meshes,
+                );
+                painted.pictured
             }
             None => {
                 gpu.renderer.clear(&view, targets);
@@ -452,21 +455,22 @@ impl World {
                 .as_ref()
                 .and_then(Overlays::from_view)
         });
-        let orbiting = views.iter().any(|view| view.orbit);
+        let seen = Views::of(
+            &views
+                .iter()
+                .map(|view| (view.orbit, view.size))
+                .collect::<Vec<_>>(),
+            crate::map3d::orbit,
+        );
         let target = read("view.syntheticView")
             .as_ref()
-            .and_then(|view| Target::seen(view, orbiting.then(crate::map3d::orbit)));
+            .and_then(|view| Target::seen(view, &seen));
         let sticks = crate::virtualjoystick::sent_sticks();
-        let largest = views
-            .iter()
-            .map(|view| view.size)
-            .max_by_key(|(width, height)| u64::from(*width) * u64::from(*height))
-            .unwrap_or_default();
         let mut frame = self
             .session
             .as_mut()
-            .filter(|_| largest.0 > 0 && largest.1 > 0)
-            .and_then(|session| session.frame(target.as_ref(), &sticks, largest.0, largest.1, now));
+            .filter(|_| seen.any())
+            .and_then(|session| session.frame_for(target.as_ref(), &sticks, seen, now));
         crate::synthview::set_ground(frame.as_ref().and_then(Frame::ground_above_home));
         if let Some((frame, session)) = frame.as_mut().zip(self.session.as_mut()) {
             session.warmed(

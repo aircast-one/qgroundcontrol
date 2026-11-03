@@ -78,7 +78,10 @@ pub fn aircraft(backend: &dyn Backend) -> Option<Aircraft> {
 }
 
 pub fn map3d_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let orbit = orbit();
+    view_of(orbit(), aircraft(backend).is_some())
+}
+
+fn view_of(orbit: Orbit, aircraft: bool) -> Value {
     json!({
         "kind": "object",
         "class": "Map3d",
@@ -86,7 +89,7 @@ pub fn map3d_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "tilt": orbit.tilt,
         "range": orbit.range,
         "following": orbit.focus.is_none(),
-        "aircraft": aircraft(backend).is_some(),
+        "aircraft": aircraft,
     })
 }
 
@@ -163,7 +166,9 @@ pub fn moved(orbit: Orbit, path: &str, given: &[f64], aircraft: Option<Aircraft>
             ..orbit
         }),
         (MAP3D_OPEN, []) => Some(opened(orbit, aircraft, None)),
-        (MAP3D_OPEN, [latitude, longitude]) => {
+        (MAP3D_OPEN, [latitude, longitude])
+            if (-90.0..=90.0).contains(latitude) && (-180.0..=180.0).contains(longitude) =>
+        {
             Some(opened(orbit, aircraft, Some((*latitude, *longitude))))
         }
         _ => None,
@@ -197,7 +202,9 @@ fn needs(path: &str) -> &'static str {
         MAP3D_TURN => "the twist in degrees, clockwise",
         MAP3D_TILT => "the drag up and the view height, in pixels",
         MAP3D_ZOOM => "the pinch scale, above 0",
-        MAP3D_OPEN => "nothing, or the latitude and longitude the 2D map was centred on",
+        MAP3D_OPEN => {
+            "nothing, or the latitude (-90 to 90) and longitude (-180 to 180) the 2D map was centred on"
+        }
         _ => "no arguments",
     }
 }
@@ -364,5 +371,32 @@ mod tests {
                 ..turned
             })
         );
+    }
+
+    #[test]
+    fn a_map_centre_off_the_globe_is_refused() {
+        assert_eq!(moved(START, MAP3D_OPEN, &[95.0, 7.9], None), None);
+        assert_eq!(moved(START, MAP3D_OPEN, &[46.5, 181.0], None), None);
+    }
+
+    #[test]
+    fn a_command_moves_the_shared_orbit_says_so_and_the_view_reports_it() {
+        let answer = run(MAP3D_OPEN, "[46.5, 7.9]", None);
+        assert_eq!(answer["ok"], true);
+        assert_eq!(orbit().focus, Some((46.5, 7.9)));
+        assert!(take_changed(), "a change is announced to the heads");
+        assert_eq!(run(MAP3D_OPEN, "[1.0, 2.0]", None)["ok"], true);
+        assert!(
+            !take_changed(),
+            "a command that changes nothing announces nothing"
+        );
+        assert_eq!(run(MAP3D_ZOOM, "[0]", None)["ok"], false);
+        let view = view_of(orbit(), true);
+        assert_eq!(
+            (view["following"].clone(), view["aircraft"].clone()),
+            (json!(false), json!(true))
+        );
+        assert_eq!(run(MAP3D_FOLLOW, "[]", None)["ok"], true);
+        assert_eq!(view_of(orbit(), false)["following"], true);
     }
 }

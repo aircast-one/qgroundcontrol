@@ -380,7 +380,7 @@ struct AircastShell: View {
         let pip = shownFlyView == .Video && !portrait
         let bottomInset = inset ? flyScreen.mapInsets.bottom : 0
         let logoEndInset = inset ? MAP_LAYERS_CLEARANCE : nil
-        if Map3d.shared.shown && !pip {
+        if Map3d.shared.shown && nativeChosen(syntheticJson) && !pip {
             Map3dView(bottomInsetPx: bottomInset, logoEndInsetPx: logoEndInset)
         } else {
             FlyMap(

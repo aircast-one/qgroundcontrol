@@ -8,7 +8,7 @@ use super::fetch::Network;
 use super::open::Detail;
 use super::overlay::Overlays;
 use super::render::{Renderer, Targets};
-use super::session::{Frame, Session, Stats, Target};
+use super::session::{Frame, Session, Stats, Target, Views};
 use super::window::Window;
 pub use crate::synthview::Draw;
 
@@ -218,6 +218,7 @@ struct Visit {
     attaches: u32,
     releases: u32,
     surfaces_peak: usize,
+    orbit_surfaces_peak: usize,
     painted: u64,
     slowest: Duration,
     paint_failures: usize,
@@ -234,6 +235,7 @@ impl Visit {
             attaches: 1,
             releases: 0,
             surfaces_peak: 1,
+            orbit_surfaces_peak: 0,
             painted: 0,
             slowest: Duration::ZERO,
             paint_failures: 0,
@@ -254,7 +256,7 @@ impl Visit {
         let (showing, handover) = handing_over(session);
         log::info!(
             target: "synthetic",
-            "event=view_shown source={source} showing={showing} handover_ms={handover} reused={} unseen_ms={} gpu_setup_ms={} first_picture_ms={} visible_ms={} attaches={} releases={} surfaces_peak={} painted={} slowest_paint_ms={} paint_failures={} tiles={tiles} in_flight={in_flight} resident={} uploads={} draw={} ended={}",
+            "event=view_shown source={source} showing={showing} handover_ms={handover} reused={} unseen_ms={} gpu_setup_ms={} first_picture_ms={} visible_ms={} attaches={} releases={} surfaces_peak={} orbit_surfaces_peak={} painted={} slowest_paint_ms={} paint_failures={} tiles={tiles} in_flight={in_flight} resident={} uploads={} draw={} ended={}",
             self.unseen.is_some(),
             self.unseen.map_or(0, |unseen| unseen.as_millis()),
             self.gpu_setup.as_millis(),
@@ -263,6 +265,7 @@ impl Visit {
             self.attaches,
             self.releases,
             self.surfaces_peak,
+            self.orbit_surfaces_peak,
             self.painted,
             self.slowest.as_millis(),
             self.paint_failures,
@@ -447,15 +450,18 @@ impl Shown {
         };
         let drawing = Instant::now();
         let view = texture.texture.create_view(&Default::default());
-        let pictured = match frame {
-            Some(frame) => {
-                let (camera, meshes) = match self.orbit {
-                    true => frame.orbit_view(overlays, self.size.0, self.size.1),
-                    false => frame.view(overlays, self.size.0, self.size.1),
-                };
-                gpu.renderer
-                    .draw(&view, targets, &camera, &frame.backfill, &meshes);
-                !frame.ground.is_empty()
+        let painted =
+            frame.and_then(|frame| frame.painted(self.orbit, overlays, self.size.0, self.size.1));
+        let pictured = match painted {
+            Some(painted) => {
+                gpu.renderer.draw(
+                    &view,
+                    targets,
+                    &painted.camera,
+                    painted.backfill,
+                    &painted.meshes,
+                );
+                painted.pictured
             }
             None => {
                 gpu.renderer.clear(&view, targets);
@@ -510,6 +516,8 @@ struct Summary {
     frame_ms: Vec<u64>,
     paint_ms: Vec<u64>,
     holes: Vec<u64>,
+    orbit: Option<crate::map3d::Orbit>,
+    resting: bool,
 }
 
 impl Summary {
@@ -525,11 +533,14 @@ impl Summary {
             frame_ms: Vec::new(),
             paint_ms: Vec::new(),
             holes: Vec::new(),
+            orbit: None,
+            resting: false,
         }
     }
 
     fn report(&self, session: Option<&mut Session>, gpu: &Gpu, shown: &mut [Shown], draw: Draw) {
         let surfaces = shown.len();
+        let orbit_surfaces = shown.iter().filter(|surface| surface.orbit).count();
         let acquire_slowest = shown
             .iter()
             .map(|surface| surface.acquire_slowest)
@@ -566,8 +577,15 @@ impl Summary {
         } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} pose_read_p50_ms={} pose_read_max_ms={} frame_p50_ms={} frame_max_ms={} paint_p50_ms={} holes_p50={} holes_max={} tile_wait_p50_ms={} tile_wait_p90_ms={} tile_wait_max_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} from_disk={from_disk} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} orbit_surfaces={orbit_surfaces} orbit_range_m={} orbit_tilt={} following={} resting={} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} pose_read_p50_ms={} pose_read_max_ms={} frame_p50_ms={} frame_max_ms={} paint_p50_ms={} holes_p50={} holes_max={} tile_wait_p50_ms={} tile_wait_p90_ms={} tile_wait_max_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} from_disk={from_disk} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
+            crate::stats::shown(self.orbit.map(|orbit| orbit.range.round() as u64)),
+            crate::stats::shown(self.orbit.map(|orbit| orbit.tilt.round() as u64)),
+            self.orbit.map_or("none", |orbit| match orbit.focus {
+                None => "true",
+                Some(_) => "false",
+            }),
+            self.resting,
             draw.name(),
             self.painted,
             self.idle,
@@ -677,25 +695,29 @@ fn show(
             feed.overlays().as_ref().and_then(Overlays::from_view)
         });
         let reading = Instant::now();
-        let orbiting = shown.iter().any(|surface| surface.orbit);
+        let views = Views::of(
+            &shown
+                .iter()
+                .map(|surface| (surface.orbit, surface.size))
+                .collect::<Vec<_>>(),
+            || feed.orbit(),
+        );
         let target = feed
             .pose()
             .as_ref()
-            .and_then(|view| Target::seen(view, orbiting.then(|| feed.orbit())));
+            .and_then(|view| Target::seen(view, &views));
         let sticks = feed.sticks();
         summary.pose_read_ms.push(millis(reading.elapsed()));
-        let largest = shown
-            .iter()
-            .map(|surface| surface.size)
-            .max_by_key(|(width, height)| u64::from(*width) * u64::from(*height))
-            .unwrap_or_default();
+        summary.orbit = views.orbit.map(|(orbit, _)| orbit);
+        summary.resting = target.as_ref().is_some_and(|target| !target.aircraft);
         let building = Instant::now();
-        let mut frame = session
-            .as_mut()
-            .filter(|_| largest.0 > 0 && largest.1 > 0)
-            .and_then(|session: &mut Session| {
-                session.frame(target.as_ref(), &sticks, largest.0, largest.1, now)
-            });
+        let mut frame =
+            session
+                .as_mut()
+                .filter(|_| views.any())
+                .and_then(|session: &mut Session| {
+                    session.frame_for(target.as_ref(), &sticks, views, now)
+                });
         summary.frame_ms.push(millis(building.elapsed()));
         feed.ground(frame.as_ref().and_then(Frame::ground_above_home));
         feed.terrain(frame.as_ref().and_then(Frame::terrain));
@@ -802,6 +824,9 @@ fn show(
             feed.report(draw);
         }
         visit.surfaces_peak = visit.surfaces_peak.max(shown.len());
+        visit.orbit_surfaces_peak = visit
+            .orbit_surfaces_peak
+            .max(shown.iter().filter(|surface| surface.orbit).count());
     }
     visit.report(session.as_ref(), &gpu, draw);
     feed.report(Draw::Loading);

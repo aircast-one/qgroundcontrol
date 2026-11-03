@@ -35,6 +35,8 @@ private func send(_ path: String, _ args: Double...) {
 }
 
 private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
+    private var twoFingered = false
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
@@ -60,24 +62,26 @@ private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func panned(_ pan: UIPanGestureRecognizer) {
+        if pan.state == .began { twoFingered = false }
         guard pan.state == .changed else { return }
         let moved = pan.translation(in: self)
         pan.setTranslation(.zero, in: self)
+        twoFingered = twoFingered || pan.numberOfTouches > 1
         if pan.numberOfTouches > 1 {
-            send(MAP3D_TILT, -moved.y, bounds.height)
-        } else {
+            if moved.y != 0 { send(MAP3D_TILT, -moved.y, bounds.height) }
+        } else if !twoFingered && moved != .zero {
             send(MAP3D_PAN, moved.x, moved.y, bounds.width)
         }
     }
 
     @objc private func pinched(_ pinch: UIPinchGestureRecognizer) {
-        guard pinch.state == .changed else { return }
+        guard pinch.state == .changed, pinch.scale != 1 else { return }
         send(MAP3D_ZOOM, pinch.scale)
         pinch.scale = 1
     }
 
     @objc private func turned(_ rotation: UIRotationGestureRecognizer) {
-        guard rotation.state == .changed else { return }
+        guard rotation.state == .changed, rotation.rotation != 0 else { return }
         send(MAP3D_TURN, rotation.rotation * 180 / .pi)
         rotation.rotation = 0
     }
@@ -144,8 +148,8 @@ private struct BackToAircraft: View {
 }
 
 struct Map3dView: View {
-    var bottomInsetPx: CGFloat = 0
-    var logoEndInsetPx: CGFloat? = nil
+    let bottomInsetPx: CGFloat
+    let logoEndInsetPx: CGFloat?
     @QgcPath(SYNTHETIC_VIEW) private var synthetic
     @QgcPath(MAP3D_VIEW) private var map3dJson
     @Environment(\.theme) private var theme

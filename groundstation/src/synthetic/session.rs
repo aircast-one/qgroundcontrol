@@ -82,7 +82,7 @@ pub struct Target {
     pub round_trip: Option<Duration>,
     pub bottles: Vec<Bottle>,
     pub locked: bool,
-    pub orbit: Option<Orbit>,
+    pub nose: f64,
     pub aircraft: bool,
 }
 
@@ -207,12 +207,12 @@ impl Target {
                 .get("locksOnTarget")
                 .and_then(serde_json::Value::as_bool)
                 == Some(true),
-            orbit: None,
+            nose: number("nose")?,
             aircraft: true,
         })
     }
 
-    pub fn resting(spot: (f64, f64), imagery: &str, orbit: Orbit) -> Self {
+    pub fn resting(spot: (f64, f64), imagery: &str) -> Self {
         Self {
             latitude: spot.0,
             longitude: spot.1,
@@ -235,24 +235,24 @@ impl Target {
             round_trip: None,
             bottles: Vec::new(),
             locked: false,
-            orbit: Some(orbit),
+            nose: 0.0,
             aircraft: false,
         }
     }
 
-    pub fn seen(view: &serde_json::Value, orbit: Option<Orbit>) -> Option<Self> {
+    pub fn seen(view: &serde_json::Value, views: &Views) -> Option<Self> {
         let map_imagery = view.get("mapImagery").and_then(serde_json::Value::as_str);
-        match (Self::from_view(view), orbit) {
-            (target, None) => target,
-            (Some(target), Some(orbit)) => Some(Self {
+        match (Self::from_view(view), views.orbit) {
+            (Some(target), Some(_)) if views.first_person.is_none() => Some(Self {
                 imagery: map_imagery.unwrap_or(&target.imagery).to_string(),
-                orbit: Some(orbit),
                 ..target
             }),
-            (None, Some(orbit)) => orbit
+            (Some(target), _) => Some(target),
+            (None, Some((orbit, _))) => orbit
                 .focus
                 .zip(map_imagery)
-                .map(|(spot, imagery)| Self::resting(spot, imagery, orbit)),
+                .map(|(spot, imagery)| Self::resting(spot, imagery)),
+            (None, None) => None,
         }
     }
 }
@@ -445,8 +445,46 @@ struct Fallback {
     pool: Pool<Job, Done>,
     home: Probe,
     under: Probe,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Views {
+    pub first_person: Option<(u32, u32)>,
+    pub orbit: Option<(Orbit, (u32, u32))>,
+}
+
+impl Views {
+    pub fn of(surfaces: &[(bool, (u32, u32))], orbit: impl FnOnce() -> Orbit) -> Self {
+        let largest = |wanted: bool| {
+            surfaces
+                .iter()
+                .filter(|(orbit, (width, height))| *orbit == wanted && *width > 0 && *height > 0)
+                .map(|(_, size)| *size)
+                .max_by_key(|(width, height)| u64::from(*width) * u64::from(*height))
+        };
+        Self {
+            first_person: largest(false),
+            orbit: largest(true).map(|size| (orbit(), size)),
+        }
+    }
+
+    pub fn any(&self) -> bool {
+        self.first_person.is_some() || self.orbit.is_some()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Viewpoint {
+    FirstPerson,
+    Orbit,
+}
+
+#[derive(Default)]
+struct Picks {
+    ground: Vec<Arc<Mesh>>,
+    backfill: Vec<Arc<Mesh>>,
     terrain: Vec<Arc<Mesh>>,
-    picked: Option<Instant>,
+    terrain_at: Option<Instant>,
 }
 
 impl Fallback {
@@ -500,14 +538,29 @@ pub struct Frame {
     pub locked: bool,
     pub reading_age: Duration,
     pub stick_to_frame: Option<Duration>,
-    pub eye: Option<Eye>,
+    pub orbit: Option<OrbitPicture>,
+    pub nose: f64,
     pub aircraft: bool,
+}
+
+pub struct OrbitPicture {
+    pub eye: Eye,
+    pub ground: Vec<Arc<Mesh>>,
+    pub backfill: Vec<Arc<Mesh>>,
+}
+
+pub struct Painted<'a> {
+    pub camera: Camera,
+    pub meshes: Vec<Arc<Mesh>>,
+    pub backfill: &'a [Arc<Mesh>],
+    pub pictured: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Eye {
     pub pose: Pose,
     pub ground: Option<f64>,
+    pub focus_ground: Option<f64>,
 }
 
 pub fn orbit_eye(
@@ -516,10 +569,10 @@ pub fn orbit_eye(
     aircraft_ground: Option<f64>,
     ground: &[Arc<Mesh>],
 ) -> Eye {
-    let focus_ground = orbit
+    let measured = orbit
         .focus
-        .and_then(|(latitude, longitude)| ground::height_at(ground, latitude, longitude))
-        .or(aircraft_ground);
+        .and_then(|(latitude, longitude)| ground::height_at(ground, latitude, longitude));
+    let focus_ground = measured.or(aircraft_ground);
     let focus = orbit.focus.map_or(
         (aircraft.latitude, aircraft.longitude, aircraft.height),
         |(latitude, longitude)| (latitude, longitude, focus_ground.unwrap_or(aircraft.height)),
@@ -546,6 +599,7 @@ pub fn orbit_eye(
             fov: crate::map3d::FOV_DEG,
         },
         ground: under,
+        focus_ground: measured,
     }
 }
 
@@ -598,7 +652,11 @@ impl Frame {
         let marks = overlays
             .zip(self.home_ground)
             .map(|(overlays, ground)| {
-                overlay::meshes(&self.on_ground(overlays, ground), ground, &camera)
+                overlay::meshes(
+                    &self.on_ground(overlays, ground, &self.ground),
+                    ground,
+                    &camera,
+                )
             })
             .unwrap_or_default();
         let bottles = self
@@ -620,7 +678,7 @@ impl Frame {
         overlays: Option<&Overlays>,
         width: u32,
         height: u32,
-    ) -> (Camera, Vec<Arc<Mesh>>) {
+    ) -> Option<(Camera, Vec<Arc<Mesh>>)> {
         self.orbit_view_at(overlays, width, height, Utc::now())
     }
 
@@ -630,15 +688,9 @@ impl Frame {
         width: u32,
         height: u32,
         when: DateTime<Utc>,
-    ) -> (Camera, Vec<Arc<Mesh>>) {
-        let eye = self.eye.unwrap_or_else(|| {
-            orbit_eye(
-                &crate::map3d::START,
-                &self.pose,
-                self.under_ground.or(self.home_ground),
-                &self.ground,
-            )
-        });
+    ) -> Option<(Camera, Vec<Arc<Mesh>>)> {
+        let picture = self.orbit.as_ref()?;
+        let eye = picture.eye;
         let camera = Camera {
             above_ground: eye
                 .ground
@@ -649,30 +701,64 @@ impl Frame {
         let marks = overlays
             .zip(self.home_ground)
             .map(|(overlays, ground)| {
-                overlay::meshes(&self.on_ground(overlays, ground), ground, &camera)
+                overlay::meshes(
+                    &self.on_ground(overlays, ground, &picture.ground),
+                    ground,
+                    &camera,
+                )
             })
             .unwrap_or_default();
         let aircraft = match self.aircraft {
             true => overlay::aircraft(
                 (self.pose.latitude, self.pose.longitude, self.pose.height),
-                self.pose.heading,
+                self.nose,
                 self.under_ground.or(self.home_ground),
                 &camera,
             ),
             false => Vec::new(),
         };
-        (
+        Some((
             camera,
-            self.ground
+            picture
+                .ground
                 .iter()
                 .cloned()
                 .chain(marks)
                 .chain(aircraft)
                 .collect(),
-        )
+        ))
     }
 
-    fn on_ground(&self, overlays: &Overlays, home_ground: f64) -> Overlays {
+    pub fn painted(
+        &self,
+        orbit: bool,
+        overlays: Option<&Overlays>,
+        width: u32,
+        height: u32,
+    ) -> Option<Painted<'_>> {
+        match orbit {
+            true => self.orbit.as_ref().and_then(|picture| {
+                self.orbit_view(overlays, width, height)
+                    .map(|(camera, meshes)| Painted {
+                        camera,
+                        meshes,
+                        backfill: &picture.backfill,
+                        pictured: !picture.ground.is_empty(),
+                    })
+            }),
+            false => self.aircraft.then(|| {
+                let (camera, meshes) = self.view(overlays, width, height);
+                Painted {
+                    camera,
+                    meshes,
+                    backfill: &self.backfill,
+                    pictured: !self.ground.is_empty(),
+                }
+            }),
+        }
+    }
+
+    fn on_ground(&self, overlays: &Overlays, home_ground: f64, ground: &[Arc<Mesh>]) -> Overlays {
         let now = Instant::now();
         Overlays {
             cars: overlays
@@ -680,7 +766,7 @@ impl Frame {
                 .iter()
                 .map(|car| {
                     let (latitude, longitude) = car.at(now);
-                    let above_home = super::ground::height_at(&self.ground, latitude, longitude)
+                    let above_home = super::ground::height_at(ground, latitude, longitude)
                         .map_or(car.spot.above_home, |height| height - home_ground);
                     Tracked {
                         spot: Spot {
@@ -697,7 +783,10 @@ impl Frame {
 
     pub fn terrain(&self) -> Option<crate::synthview::Terrain> {
         let home = self.home_ground?;
-        let meshes = self.ground.clone();
+        let meshes = match (self.ground.is_empty(), self.orbit.as_ref()) {
+            (true, Some(picture)) => picture.ground.clone(),
+            _ => self.ground.clone(),
+        };
         Some(Arc::new(move |lat, lon| {
             super::ground::height_at(&meshes, lat, lon).map(|height| height - home)
         }))
@@ -732,8 +821,10 @@ pub struct Session {
     height_since: Option<(f64, Instant)>,
     attitude_since: Option<((f64, f64, f64), Instant)>,
     spin: f64,
-    ground_meshes: Vec<Arc<Mesh>>,
-    backfill: Vec<Arc<Mesh>>,
+    first_person: Picks,
+    orbit: Picks,
+    views: Option<Views>,
+    focus_ground: Option<f64>,
     bottle_ground: Vec<((f64, f64), f64)>,
     bottles_probed: Option<Instant>,
     fallback: Option<Fallback>,
@@ -1174,8 +1265,6 @@ impl Session {
                 )?,
                 home: Probe::default(),
                 under: Probe::default(),
-                terrain: Vec::new(),
-                picked: None,
             }),
             false => None,
         };
@@ -1201,8 +1290,10 @@ impl Session {
             height_since: None,
             attitude_since: None,
             spin: 0.0,
-            ground_meshes: Vec::new(),
-            backfill: Vec::new(),
+            first_person: Picks::default(),
+            orbit: Picks::default(),
+            views: None,
+            focus_ground: None,
             bottle_ground: Vec::new(),
             bottles_probed: None,
             fallback,
@@ -1452,15 +1543,30 @@ impl Session {
         };
     }
 
+    fn picks(&mut self, viewpoint: Viewpoint) -> &mut Picks {
+        match viewpoint {
+            Viewpoint::FirstPerson => &mut self.first_person,
+            Viewpoint::Orbit => &mut self.orbit,
+        }
+    }
+
+    fn any_ground(&self) -> &[Arc<Mesh>] {
+        match self.first_person.ground.is_empty() {
+            true => &self.orbit.ground,
+            false => &self.first_person.ground,
+        }
+    }
+
     fn select(
         &mut self,
+        viewpoint: Viewpoint,
         pose: &Pose,
-        width: u32,
-        height: u32,
+        (width, height): (u32, u32),
         target: &Target,
         around: (f64, f64),
         now: Instant,
     ) -> bool {
+        let mut picks = std::mem::take(self.picks(viewpoint));
         let camera = &Camera::new(pose, width, height);
         let room = self.room().saturating_sub(PROBE_SLOTS);
         let detail = turn_detail(self.spin);
@@ -1470,11 +1576,11 @@ impl Session {
             Some(fallback) => {
                 let room = fallback.room();
                 let (meshes, wanted) = match handed_over {
-                    true if fallback
-                        .picked
+                    true if picks
+                        .terrain_at
                         .is_some_and(|at| now.duration_since(at) < TERRAIN_UNDER_EVERY) =>
                     {
-                        (fallback.terrain.clone(), Vec::new())
+                        (picks.terrain.clone(), Vec::new())
                     }
                     true => {
                         let (terrain, wanted) = fallback.scene.select_terrain(
@@ -1485,8 +1591,8 @@ impl Session {
                             room,
                             now,
                         );
-                        fallback.terrain = terrain.clone();
-                        fallback.picked = Some(now);
+                        picks.terrain = terrain.clone();
+                        picks.terrain_at = Some(now);
                         (terrain, wanted)
                     }
                     false => {
@@ -1518,6 +1624,7 @@ impl Session {
         let (meshes, jobs, coarsest, holes, backfill) = match &mut self.source {
             Source::Google(Some(tiles)) => {
                 let due = handed_over
+                    && viewpoint == Viewpoint::FirstPerson
                     && self
                         .surrounded
                         .is_none_or(|at| now.duration_since(at) >= SURROUND_EVERY);
@@ -1584,10 +1691,10 @@ impl Session {
         let changed = |now: &[Arc<Mesh>], before: &[Arc<Mesh>]| {
             now.len() != before.len() || now.iter().zip(before).any(|(a, b)| a.id != b.id)
         };
-        let different =
-            changed(&drawn, &self.ground_meshes) || changed(&underneath, &self.backfill);
-        self.backfill = underneath;
-        self.ground_meshes = drawn;
+        let different = changed(&drawn, &picks.ground) || changed(&underneath, &picks.backfill);
+        picks.backfill = underneath;
+        picks.ground = drawn;
+        *self.picks(viewpoint) = picks;
         self.selected = Some(now);
         self.stand_in(stand_in_jobs);
         self.send(jobs);
@@ -1611,7 +1718,7 @@ impl Session {
             .filter_map(|spot| {
                 ground_at(&self.bottle_ground, spot)
                     .filter(|_| !due)
-                    .or_else(|| ground::height_at(&self.ground_meshes, spot.0, spot.1))
+                    .or_else(|| ground::height_at(self.any_ground(), spot.0, spot.1))
                     .map(|height| (spot, height))
             })
             .collect();
@@ -1641,6 +1748,20 @@ impl Session {
         sticks: &[StickSample],
         width: u32,
         height: u32,
+        now: Instant,
+    ) -> Option<Frame> {
+        let views = Views {
+            first_person: Some((width, height)),
+            orbit: None,
+        };
+        self.frame_for(target, sticks, views, now)
+    }
+
+    pub fn frame_for(
+        &mut self,
+        target: Option<&Target>,
+        sticks: &[StickSample],
+        views: Views,
         now: Instant,
     ) -> Option<Frame> {
         let delivered = self.collect(now);
@@ -1749,32 +1870,50 @@ impl Session {
                 .map(|(before, elapsed)| spin_of(&before, &pose, elapsed)),
         );
         self.shown = Some(pose);
-        let fresh = self.seen.as_ref() != Some(target);
+        let fresh = self.seen.as_ref() != Some(target) || self.views != Some(views);
         self.seen = Some(target.clone());
+        self.views = Some(views);
+        let first_person = views.first_person.filter(|_| target.aircraft);
+        if first_person.is_none() {
+            self.first_person = Picks::default();
+        }
+        if views.orbit.is_none() {
+            self.orbit = Picks::default();
+        }
         let due = self
             .selected
             .is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
-        let eye = target.orbit.map(|orbit| {
-            orbit_eye(
-                &orbit,
-                &pose,
-                under_ground.or(home_ground),
-                &self.ground_meshes,
-            )
+        let eye = views.orbit.map(|(orbit, _)| {
+            let hint = match orbit.focus {
+                Some(_) => self.focus_ground.or(under_ground).or(home_ground),
+                None => under_ground.or(home_ground),
+            };
+            orbit_eye(&orbit, &pose, hint, &self.orbit.ground)
         });
-        let around = target
-            .orbit
-            .and_then(|orbit| orbit.focus)
-            .unwrap_or((pose.latitude, pose.longitude));
-        let reselected = (delivered > 0 || moving || fresh || due)
-            && self.select(
-                &eye.map_or(pose, |eye| eye.pose),
-                width,
-                height,
+        self.focus_ground = eye.and_then(|eye| eye.focus_ground).or(self.focus_ground);
+        let reselect = delivered > 0 || moving || fresh || due;
+        let orbit_changed = match (reselect, eye, views.orbit) {
+            (true, Some(eye), Some((orbit, size))) => self.select(
+                Viewpoint::Orbit,
+                &eye.pose,
+                size,
                 target,
-                around,
+                orbit.focus.unwrap_or((pose.latitude, pose.longitude)),
                 now,
-            );
+            ),
+            _ => false,
+        };
+        let first_person_changed = match (reselect, first_person) {
+            (true, Some(size)) => self.select(
+                Viewpoint::FirstPerson,
+                &pose,
+                size,
+                target,
+                (target.latitude, target.longitude),
+                now,
+            ),
+            _ => false,
+        };
         let warm = match &mut self.source {
             Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
@@ -1782,17 +1921,22 @@ impl Session {
         let bottles = self.grounded(&target.bottles, home_ground, now);
         Some(Frame {
             pose,
-            ground: self.ground_meshes.clone(),
-            backfill: self.backfill.clone(),
+            ground: self.first_person.ground.clone(),
+            backfill: self.first_person.backfill.clone(),
             warm,
             home_ground,
             under_ground,
             bottles,
-            changed: moving || fresh || reselected,
+            changed: moving || fresh || orbit_changed || first_person_changed,
             locked: target.locked,
             reading_age: now.saturating_duration_since(telemetry.1),
             stick_to_frame: touched.map(|at| now.saturating_duration_since(at)),
-            eye,
+            orbit: eye.map(|eye| OrbitPicture {
+                eye,
+                ground: self.orbit.ground.clone(),
+                backfill: self.orbit.backfill.clone(),
+            }),
+            nose: (pose.heading - wrapped(target.heading - target.nose)).rem_euclid(360.0),
             aircraft: target.aircraft,
         })
     }
@@ -1851,7 +1995,7 @@ mod tests {
             round_trip: None,
             bottles: Vec::new(),
             locked: false,
-            orbit: None,
+            nose: 90.0,
             aircraft: true,
         }
     }
@@ -1915,7 +2059,8 @@ mod tests {
             locked,
             reading_age: Duration::ZERO,
             stick_to_frame: None,
-            eye: None,
+            orbit: None,
+            nose: 90.0,
             aircraft: true,
         };
         let tracked = overlays.tracked.clone().unwrap();
@@ -2103,7 +2248,9 @@ mod tests {
             range: 400.0,
             focus: None,
         };
-        let Eye { pose: eye, ground } = orbit_eye(&orbit, &aircraft, None, &[]);
+        let Eye {
+            pose: eye, ground, ..
+        } = orbit_eye(&orbit, &aircraft, None, &[]);
         assert_eq!(ground, None);
         let level = crate::track::distance_m(
             (eye.latitude, eye.longitude),
@@ -2120,24 +2267,129 @@ mod tests {
     }
 
     #[test]
-    fn the_3d_map_drapes_the_chosen_map_and_with_no_aircraft_rests_on_the_held_spot() {
+    fn the_3d_map_drapes_the_chosen_map_only_when_no_first_person_view_shares_the_tiles() {
         let orbit = Orbit {
             focus: Some((46.5, 7.9)),
             ..crate::map3d::START
         };
+        let alone = Views {
+            first_person: None,
+            orbit: Some((orbit, (800, 600))),
+        };
+        let beside_first_person = Views {
+            first_person: Some((800, 600)),
+            ..alone
+        };
+        let flying = serde_json::json!({ "available": true, "latitude": -35.0, "longitude": 149.0, "aboveHome": 20.0, "homeLatitude": -35.1, "homeLongitude": 149.1, "heading": 90.0, "pitch": -15.0, "roll": 0.0, "fov": 70.0, "imagery": "Bing Satellite", "mapImagery": "Bing Road", "northSpeed": 0.0, "eastSpeed": 0.0, "climbSpeed": 0.0, "rollRate": 0.0, "nose": 90.0 });
+        let imagery = |views: &Views| Target::seen(&flying, views).map(|target| target.imagery);
+        assert_eq!(imagery(&alone).as_deref(), Some("Bing Road"));
+        assert_eq!(
+            imagery(&beside_first_person).as_deref(),
+            Some("Bing Satellite"),
+            "the first-person view keeps its photo imagery"
+        );
+    }
+
+    #[test]
+    fn with_no_aircraft_the_3d_map_rests_on_the_held_spot_and_draws_no_aircraft() {
+        let held = Orbit {
+            focus: Some((46.5, 7.9)),
+            ..crate::map3d::START
+        };
+        let views = |orbit: Orbit| Views {
+            first_person: Some((800, 600)),
+            orbit: Some((orbit, (800, 600))),
+        };
         let no_aircraft = serde_json::json!({ "available": false, "imagery": "Bing Satellite", "mapImagery": "Bing Hybrid" });
-        let resting = Target::seen(&no_aircraft, Some(orbit)).expect("a spot to look at");
+        let resting = Target::seen(&no_aircraft, &views(held)).expect("a spot to look at");
         assert_eq!(
             (resting.latitude, resting.longitude, resting.aircraft),
             (46.5, 7.9, false)
         );
         assert_eq!(resting.imagery, "Bing Hybrid");
-        assert_eq!(Target::seen(&no_aircraft, None), None);
         assert_eq!(
-            Target::seen(&no_aircraft, Some(crate::map3d::START)),
+            Target::seen(&no_aircraft, &views(crate::map3d::START)),
             None,
             "following an aircraft that isn't there shows nothing"
         );
+        assert_eq!(
+            Target::seen(
+                &no_aircraft,
+                &Views {
+                    first_person: Some((800, 600)),
+                    orbit: None
+                }
+            ),
+            None
+        );
+    }
+
+    fn orbit_frame(aircraft: bool) -> Frame {
+        let pose = Pose {
+            latitude: 47.397,
+            longitude: 8.5455,
+            height: 600.0,
+            heading: 0.0,
+            pitch: -15.0,
+            roll: 0.0,
+            fov: 70.0,
+        };
+        Frame {
+            pose,
+            ground: Vec::new(),
+            backfill: Vec::new(),
+            warm: Vec::new(),
+            home_ground: None,
+            under_ground: Some(500.0),
+            bottles: Vec::new(),
+            changed: false,
+            locked: false,
+            reading_age: Duration::ZERO,
+            stick_to_frame: None,
+            orbit: Some(OrbitPicture {
+                eye: orbit_eye(&crate::map3d::START, &pose, Some(500.0), &[]),
+                ground: Vec::new(),
+                backfill: Vec::new(),
+            }),
+            nose: 0.0,
+            aircraft,
+        }
+    }
+
+    #[test]
+    fn the_3d_map_marks_the_aircraft_only_when_there_is_one_and_the_first_person_view_needs_one() {
+        let marks = |frame: &Frame| {
+            frame
+                .painted(true, None, 1280, 720)
+                .map(|painted| painted.meshes.len())
+        };
+        assert_eq!(marks(&orbit_frame(true)), Some(4));
+        assert_eq!(marks(&orbit_frame(false)), Some(0));
+        assert!(
+            orbit_frame(false).painted(false, None, 1280, 720).is_none(),
+            "with no aircraft the first-person view has nothing to show"
+        );
+        let first_person_only = Frame {
+            orbit: None,
+            ..orbit_frame(true)
+        };
+        assert!(first_person_only.painted(true, None, 1280, 720).is_none());
+    }
+
+    #[test]
+    fn the_views_are_sized_by_their_largest_surface_of_each_kind() {
+        let views = Views::of(
+            &[
+                (false, (200, 100)),
+                (true, (1280, 720)),
+                (false, (640, 360)),
+                (true, (0, 0)),
+            ],
+            || crate::map3d::START,
+        );
+        assert_eq!(views.first_person, Some((640, 360)));
+        assert_eq!(views.orbit, Some((crate::map3d::START, (1280, 720))));
+        assert!(!Views::of(&[(true, (0, 0))], || crate::map3d::START).any());
     }
 
     #[test]
@@ -2157,7 +2409,9 @@ mod tests {
             range: 1000.0,
             focus: None,
         };
-        let Eye { pose: eye, ground } = orbit_eye(&low, &aircraft, Some(900.0), &[]);
+        let Eye {
+            pose: eye, ground, ..
+        } = orbit_eye(&low, &aircraft, Some(900.0), &[]);
         assert_eq!(
             ground,
             Some(900.0),
@@ -2202,7 +2456,7 @@ mod tests {
 
     #[test]
     fn the_view_reads_into_a_target_only_when_complete() {
-        let view = serde_json::json!({ "available": true, "latitude": -35.0, "longitude": 149.0, "aboveHome": 20.0, "homeLatitude": -35.1, "homeLongitude": 149.1, "heading": 90.0, "pitch": -15.0, "roll": 0.0, "fov": 70.0, "imagery": "Bing Satellite", "northSpeed": 3.0, "eastSpeed": -4.0, "climbSpeed": 1.0, "headingRate": 12.0, "pitchRate": null, "rollRate": 0.0 });
+        let view = serde_json::json!({ "available": true, "latitude": -35.0, "longitude": 149.0, "aboveHome": 20.0, "homeLatitude": -35.1, "homeLongitude": 149.1, "heading": 90.0, "pitch": -15.0, "roll": 0.0, "fov": 70.0, "imagery": "Bing Satellite", "northSpeed": 3.0, "eastSpeed": -4.0, "climbSpeed": 1.0, "headingRate": 12.0, "pitchRate": null, "rollRate": 0.0, "nose": 80.0 });
         assert_eq!(
             Target::from_view(&view).map(|t| (
                 t.above_home,

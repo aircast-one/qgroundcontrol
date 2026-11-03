@@ -84,19 +84,21 @@ private fun Modifier.map3dGestures(): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
         var travelled = Offset.Zero
+        var pinched = false
         do {
             val event = awaitPointerEvent()
             val fingers = event.changes.count { it.pressed }
             val pan = event.calculatePan()
             travelled += pan
-            if (fingers > 1 || travelled.getDistance() > viewConfiguration.touchSlop) {
-                if (fingers > 1) {
-                    send(MAP3D_ZOOM, event.calculateZoom())
-                    send(MAP3D_TURN, event.calculateRotation())
-                    send(MAP3D_TILT, -pan.y, size.height)
-                } else {
-                    send(MAP3D_PAN, pan.x, pan.y, size.width)
-                }
+            pinched = pinched || fingers > 1
+            if (fingers > 1) {
+                event.calculateZoom().takeIf { it != 1f }?.let { send(MAP3D_ZOOM, it) }
+                event.calculateRotation().takeIf { it != 0f }?.let { send(MAP3D_TURN, it) }
+                pan.y.takeIf { it != 0f }?.let { send(MAP3D_TILT, -it, size.height) }
+            } else if (!pinched && travelled.getDistance() > viewConfiguration.touchSlop && pan != Offset.Zero) {
+                send(MAP3D_PAN, pan.x, pan.y, size.width)
+            }
+            if (pinched || travelled.getDistance() > viewConfiguration.touchSlop) {
                 event.changes.filter { it.positionChanged() }.forEach { it.consume() }
             }
         } while (event.changes.any { it.pressed })
@@ -146,7 +148,7 @@ private fun BackToAircraft() {
 }
 
 @Composable
-internal fun Map3dView(modifier: Modifier = Modifier, bottomInsetPx: Int = 0, logoEndInsetPx: Int? = null) {
+internal fun Map3dView(modifier: Modifier, bottomInsetPx: Int, logoEndInsetPx: Int?) {
     val context = LocalContext.current
     val synthetic by qgcPath(SYNTHETIC_VIEW)
     val map3dJson by qgcPath(MAP3D_VIEW)

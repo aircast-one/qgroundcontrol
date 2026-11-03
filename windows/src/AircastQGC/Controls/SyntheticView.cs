@@ -291,7 +291,7 @@ public sealed partial class SyntheticView : UserControl
         _bindFailed = _surface == IntPtr.Zero;
         if (_bindFailed) return;
         _attached = size;
-        NativeMethods.qgc_synthetic_attach(_surface, size.Width, size.Height);
+        NativeMethods.qgc_synthetic_attach(_surface, size.Width, size.Height, 0);
     }
 
     private void Detach()
