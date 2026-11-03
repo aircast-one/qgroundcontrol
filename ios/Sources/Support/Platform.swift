@@ -33,7 +33,7 @@ typealias PlatformView = NSView
 //     }
 #if os(iOS)
 @MainActor
-protocol PlatformViewRepresentable: UIViewRepresentable {
+protocol PlatformViewRepresentable: UIViewRepresentable where UIViewType == PlatformViewType {
     associatedtype PlatformViewType: UIView
     func makePlatformView(context: UIViewRepresentableContext<Self>) -> PlatformViewType
     func updatePlatformView(_ view: PlatformViewType, context: UIViewRepresentableContext<Self>)
@@ -53,7 +53,7 @@ extension PlatformViewRepresentable {
 }
 #elseif os(macOS)
 @MainActor
-protocol PlatformViewRepresentable: NSViewRepresentable {
+protocol PlatformViewRepresentable: NSViewRepresentable where NSViewType == PlatformViewType {
     associatedtype PlatformViewType: NSView
     func makePlatformView(context: NSViewRepresentableContext<Self>) -> PlatformViewType
     func updatePlatformView(_ view: PlatformViewType, context: NSViewRepresentableContext<Self>)
