@@ -281,6 +281,14 @@ base('a device that hears no flight controller says so and opens its telemetry p
   await expect(page.getByRole('region', { name: 'Connect another ground station' }).getByText('e2e-device:14550')).toBeVisible();
 });
 
+base('on a desktop the Fly screen says what the device is missing and opens its telemetry page', async ({ page }) => {
+  await page.goto(`${SILENT}/`);
+  await page.getByRole('button', { name: 'Map', exact: true }).click({ timeout: 60_000 });
+  await expect(page.getByText('Aircast e2e-device hears no flight controller. Check it is plugged in and powered on.')).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Check device', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Status' }).getByText('No flight controller is attached. Plug the controller in and power it on.')).toBeVisible();
+});
+
 base('on a phone the device page offers to check the device, not to add a link', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${SILENT}/`);

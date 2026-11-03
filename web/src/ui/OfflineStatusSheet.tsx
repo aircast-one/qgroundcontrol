@@ -1,14 +1,17 @@
-import { useContext, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { LinkCommands } from '@/bridge/BridgeCommands';
 import { type Json, has, jsonObjects, optBoolean, optInt, optJSONArray, optString } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
+import { useQgcPath } from '@/bridge/QgcState';
 import { useTicker } from '@/kotlin/Compose';
-import { Button, CircularProgressIndicator, HorizontalDivider, ListItem, Text } from '@/m3';
+import { Button, CircularProgressIndicator, HorizontalDivider, ListItem, Surface, Text } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
+import { sentenceCase } from '@/map/SentenceCase';
+import { Drawable } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { type AppNavigationState, LocalAppNavigation } from './AppNavigation';
 import { deviceRequested } from './DeviceStatus';
-import { useRememberLookingHint } from './ConnectingCard';
+import { LOOKING_TITLE, useRememberLookingHint } from './ConnectingCard';
 import { FLASHER_PAGE } from './FlasherScreen';
 
 export const OFFLINE_STATUS_VIEW = 'view.offlineStatus';
@@ -51,6 +54,39 @@ export const openDeviceTelemetry = (): void => {
 export const openAddLink = (navigation: AppNavigationState): void => {
   navigation.addLinkRequested.value = true;
   navigation.settingsPage.value = CONNECTIONS_SETTINGS_PAGE;
+};
+
+export type OfflineGuide = { title: string; text: string; onDevice: boolean };
+
+export const offlineGuide = (status: OfflineStatus | null, hint: string): OfflineGuide => ({
+  title: status === null ? LOOKING_TITLE : sentenceCase(status.title),
+  text: status?.onDevice === true ? status.footnote : hint,
+  onDevice: status?.onDevice === true,
+});
+
+export const OfflineGuideCard = () => {
+  const navigation = useContext(LocalAppNavigation);
+  const hint = useRememberLookingHint();
+  const json = useQgcPath(OFFLINE_STATUS_VIEW);
+  const guide = useMemo(() => offlineGuide(offlineStatus(json), hint), [json, hint]);
+  return (
+    <div className="flex size-full items-center justify-center p-4">
+      <Surface shape="extraLarge" color={md('surfaceContainer')} contentColor={md('onSurface')} className="w-full max-w-[420px]">
+        <div className="flex flex-col items-center gap-3 p-6">
+          <div className="flex size-14 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+            <Drawable name={guide.onDevice ? 'ic_developer_board' : 'ic_link'} size={28} />
+          </div>
+          <Text typography="titleLarge" textAlign="center">
+            {guide.title}
+          </Text>
+          <Text typography="bodyMedium" textAlign="center" color={md('onSurfaceVariant')}>
+            {guide.text}
+          </Text>
+          <Button onClick={() => (guide.onDevice ? openDeviceTelemetry() : openAddLink(navigation))}>{guide.onDevice ? CHECK_DEVICE : 'Add a link'}</Button>
+        </div>
+      </Surface>
+    </div>
+  );
 };
 
 const openConnectionSettings = (navigation: AppNavigationState, onDismiss: () => void) => {
