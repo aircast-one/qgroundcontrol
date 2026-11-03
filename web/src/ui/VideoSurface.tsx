@@ -1,4 +1,4 @@
-import { type HTMLAttributes, type PointerEvent, useEffect, useMemo, useRef } from 'react';
+import { type HTMLAttributes, type PointerEvent, useContext, useEffect, useMemo, useRef } from 'react';
 import { VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
@@ -10,15 +10,20 @@ import { same } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
 import { ObstacleVideoOverlay } from '@/map/ObstacleOverlay';
 import { Drawable } from '@/res/Icon';
+import type { DrawableName } from '@/res/drawables';
 import { AircastSpace, Color, aircast, withAlpha } from '@/theme/Colors';
+import { type AppNavigationState, LocalAppNavigation } from '@/ui/AppNavigation';
 import { CAMERA_VIEW, cameraReading } from '@/ui/CameraControl';
 import { type CameraEntry, CameraStatus } from '@/ui/Cameras';
 import { CameraStatusDot, showCamera, useShownSecondCamera } from '@/ui/CameraSwitch';
 import { DetectionOverlay } from '@/ui/DetectionOverlay';
+import { type DeviceStatus, useDeviceStatus } from '@/ui/DeviceStatus';
+import { type FlyScreenState, LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { Rect, activate, useElementSize } from '@/ui/FlyShell';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GIMBAL_INDICATOR_PATH, GimbalModeSwitch, GimbalScreenControl, onScreenGimbal } from '@/ui/GimbalIndicator';
-import { LocalNoVideoSize, NoVideoPanel, NoVideoSize } from '@/ui/NoVideoPanel';
+import { LocalNoVideoSize, NoVideoPanel, NoVideoSize, deviceNeeds, openCameraSetup, useCameraMissing } from '@/ui/NoVideoPanel';
+import { DEVICE_TELEMETRY, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, type OfflineStatus, offlineStatus, openAddLink, openDeviceTelemetry } from '@/ui/OfflineStatusSheet';
 import { osdShadow } from '@/ui/Osd';
 import { type PicturePress, type PictureSpot, PictureMark, usePictureHold } from '@/ui/PictureHold';
 import { ProximityRadarOverlay } from '@/ui/ProximityRadar';
@@ -103,19 +108,51 @@ export const FlyNoVideoMessage = () => {
   );
 };
 
-export const awaitingAircraftText = (syntheticChosen: boolean): string =>
-  syntheticChosen ? 'Synthetic view starts when your aircraft connects' : 'Video starts when your aircraft connects';
+export type AwaitingStep = { readonly name: 'AddCamera' | 'SetUpTelemetry' | 'PlugIn'; readonly ordinal: number; readonly icon: DrawableName };
+
+export const AwaitingStep = {
+  AddCamera: { name: 'AddCamera', ordinal: 0, icon: 'ic_videocam' },
+  SetUpTelemetry: { name: 'SetUpTelemetry', ordinal: 1, icon: 'ic_link' },
+  PlugIn: { name: 'PlugIn', ordinal: 2, icon: 'ic_usb' },
+} as const satisfies Record<string, AwaitingStep>;
+
+export const awaitingStep = (noCamera: boolean, device: DeviceStatus | null, offline: OfflineStatus | null): AwaitingStep => {
+  const telemetryMissing = device === null ? offline?.noLinks === true && !offline.busy : deviceNeeds(device, DEVICE_TELEMETRY);
+  if (noCamera) return AwaitingStep.AddCamera;
+  return telemetryMissing ? AwaitingStep.SetUpTelemetry : AwaitingStep.PlugIn;
+};
+
+export const awaitingText = (step: AwaitingStep, syntheticChosen: boolean): string => {
+  if (step === AwaitingStep.AddCamera) return 'Add a camera to see video';
+  if (step === AwaitingStep.SetUpTelemetry) return 'Set up telemetry to connect your aircraft';
+  return syntheticChosen ? 'Plug in your aircraft to start the synthetic view' : 'Plug in your aircraft to start video';
+};
+
+const openAwaitingStep = (step: AwaitingStep, onDevice: boolean, navigation: AppNavigationState, flyScreen: FlyScreenState): void => {
+  if (step === AwaitingStep.PlugIn) flyScreen.requestedSheet.value = OFFLINE_SHEET;
+  else if (step === AwaitingStep.AddCamera) openCameraSetup(onDevice, navigation);
+  else if (onDevice) openDeviceTelemetry();
+  else openAddLink(navigation);
+};
 
 const AwaitingAircraftLine = ({ syntheticChosen }: { syntheticChosen: boolean }) => {
+  const device = useDeviceStatus();
+  const noCamera = useCameraMissing();
+  const offlineJson = useQgcPath(OFFLINE_STATUS_VIEW);
+  const offline = useMemo(() => offlineStatus(offlineJson), [offlineJson]);
+  const navigation = useContext(LocalAppNavigation);
+  const flyScreen = useContext(LocalFlyScreenState);
+  const step = awaitingStep(noCamera, device, offline);
   const tint = withAlpha(aircast('outdoorForeground'), AWAITING_ALPHA);
   return (
     <div className="flex size-full items-center justify-center px-4">
-      <div className="flex items-center gap-2">
-        <Drawable name="ic_videocam" size={18} className="shrink-0" style={{ color: tint }} />
-        <Text typography="bodyMedium" color={tint} textAlign="center">
-          {awaitingAircraftText(syntheticChosen)}
+      <button type="button" className="flex items-center gap-2 rounded-full px-3 py-2 hover:bg-white/10" onClick={() => openAwaitingStep(step, device !== null, navigation, flyScreen)}>
+        <Drawable name={step.icon} size={18} className="shrink-0" style={{ color: tint }} />
+        <Text typography="bodyMedium" color={tint} textAlign="center" className="underline underline-offset-4">
+          {awaitingText(step, syntheticChosen)}
         </Text>
-      </div>
+        <Drawable name="ic_chevron_right" size={18} className="shrink-0" style={{ color: tint }} />
+      </button>
     </div>
   );
 };

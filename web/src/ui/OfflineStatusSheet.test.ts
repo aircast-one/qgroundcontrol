@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { offlineStatus } from './OfflineStatusSheet';
+import { LOOKING_TITLE } from './ConnectingCard';
+import { NO_CAMERA_GUIDE, offlineGuide, offlineStatus } from './OfflineStatusSheet';
 
 describe('OfflineStatusTest', () => {
   it("the offline page reads the core's footnote and links", () => {
@@ -12,5 +13,14 @@ describe('OfflineStatusTest', () => {
     expect(status?.editAddress).toBe(true);
     expect(status?.links).toEqual([{ index: 2, text: 'Connect to Drone', description: 'TCP\nrefused', retry: true, failed: true, connected: false }]);
     expect(offlineStatus(parseJson('{}'))).toBeNull();
+  });
+
+  it('with no aircraft the Fly screen says what is wrong and what to do next', () => {
+    const device = offlineStatus(parseJson('{"title":"No Flight Controller","footnote":"pi4 hears no flight controller. Check it is plugged in and powered on.","onDevice":true}'));
+    expect(offlineGuide(device, 'Turn on the aircraft.')).toEqual({ title: 'No flight controller', text: 'pi4 hears no flight controller. Check it is plugged in and powered on.', onDevice: true, camera: false });
+    const phone = offlineStatus(parseJson('{"title":"Not Connected","footnote":"Tap a link to connect.","onDevice":false}'));
+    expect(offlineGuide(phone, 'Turn on the aircraft.')).toEqual({ title: 'Not connected', text: 'Turn on the aircraft.', onDevice: false, camera: false });
+    expect(offlineGuide(null, 'Turn on the aircraft.')).toEqual({ title: LOOKING_TITLE, text: 'Turn on the aircraft.', onDevice: false, camera: false });
+    expect(offlineGuide(device, 'Turn on the aircraft.', true)).toEqual({ ...NO_CAMERA_GUIDE, onDevice: true, camera: true });
   });
 });

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { PipGeometry, PlaceholderUnits, pipRoom, placeholderUnits, portraitShowsCamera, portraitVideoThumbnail } from './FlyPortrait';
 import { Offset, Rect, Size, rectCenter } from './FlyShell';
 import { PipCorner, VideoSwipe, cameraStep, growingSwipe, hidingSwipe, videoSwipe } from '@/ui/VideoGestures';
-import { awaitingAircraftText } from '@/ui/VideoSurface';
+import { parseDeviceStatus } from '@/ui/DeviceStatus';
+import { offlineStatus } from '@/ui/OfflineStatusSheet';
+import { AwaitingStep, awaitingStep, awaitingText } from '@/ui/VideoSurface';
 import type { VideoReading } from '@/ui/VideoView';
 
 const reading = (available: boolean, streamEnabled: boolean, sourceChosen: boolean): VideoReading => ({
@@ -79,8 +81,17 @@ describe('FlyPortraitTest', () => {
     expect(placeholderUnits(null, null, null)).toEqual(PlaceholderUnits({ distance: 'm', height: 'm', speed: 'm/s' }));
   });
 
-  it('the video area says what it will show once the aircraft connects', () => {
-    expect(awaitingAircraftText(true)).toBe('Synthetic view starts when your aircraft connects');
-    expect(awaitingAircraftText(false)).toBe('Video starts when your aircraft connects');
+  it('with no aircraft the video area offers the next step: a camera, then telemetry, then plugging in', () => {
+    const device = (camera: number, telemetry: number) =>
+      parseDeviceStatus({ headline: 'No camera yet', checks: [{ label: 'Camera', level: camera, href: '/streaming' }, { label: 'Telemetry', level: telemetry, href: '/telemetry' }] });
+    const offline = (noLinks: boolean, busy: boolean) => offlineStatus({ title: 'Not Connected', noLinks, busy });
+    expect(awaitingStep(true, null, offline(true, false))).toBe(AwaitingStep.AddCamera);
+    expect(awaitingStep(false, null, offline(true, false))).toBe(AwaitingStep.SetUpTelemetry);
+    expect(awaitingStep(false, null, offline(true, true))).toBe(AwaitingStep.PlugIn);
+    expect(awaitingStep(false, null, offline(false, false))).toBe(AwaitingStep.PlugIn);
+    expect(awaitingStep(true, device(2, 1), null)).toBe(AwaitingStep.AddCamera);
+    expect(awaitingStep(false, device(0, 1), null)).toBe(AwaitingStep.SetUpTelemetry);
+    expect(awaitingStep(false, device(0, 0), null)).toBe(AwaitingStep.PlugIn);
+    expect(awaitingText(AwaitingStep.PlugIn, true)).toBe('Plug in your aircraft to start the synthetic view');
   });
 });

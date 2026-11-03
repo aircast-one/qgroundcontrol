@@ -35,6 +35,7 @@ import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
+import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
@@ -387,6 +388,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
     return videoGestures(handlers);
   }, []);
   const videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding !== true;
+  const guideMessage = !hasVehicle && (view === FlyView.Map || videoMessage);
   const besideThumb = thumbShown ? thumb.width : 0;
   const showMap = () => onView(FlyView.Map);
   const showVideo = () => onView(FlyView.Video);
@@ -485,7 +487,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                   bottom={<div style={{ height: cornerRoom }} />}
                   overlaysAboveBottom
                   message={
-                    videoMessage ? (
+                    guideMessage ? (
+                      <OfflineGuideCard inVideo={videoMessage} />
+                    ) : videoMessage ? (
                       <div className={`size-full ${osdShadow()}`}>
                         <FlyNoVideoMessage />
                       </div>

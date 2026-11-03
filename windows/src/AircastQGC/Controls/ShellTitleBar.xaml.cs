@@ -44,21 +44,17 @@ public sealed partial class ShellTitleBar : UserControl
         Readout.SizeChanged += (_, _) => Fit();
         Lead.SizeChanged += (_, _) => Fit();
         Strip.NeedChanged += Fit;
-        PageMenu.Opening += (_, _) => PageMenu.Items.OfType<RadioMenuFlyoutItem>().ToList()
-            .ForEach(item => item.IsChecked = item.Tag as string == CurrentPage);
         Unloaded += (_, _) => Array.ForEach(Watched, path => BridgeWatch.Stop(Client(path)));
         Render();
     }
 
     public event EventHandler<FrameworkElement>? FlightModeRequested;
 
-    public event EventHandler<string>? PageRequested;
-
-    public event EventHandler? BackRequested;
-
     public event EventHandler? PaneToggleRequested;
 
     public FrameworkElement DragRegion => DragArea;
+
+    public UIElement MenuToggle => MenuButton;
 
     public FrameworkElement FlightModeAnchor => ModePill;
 
@@ -74,18 +70,6 @@ public sealed partial class ShellTitleBar : UserControl
         }
     }
 
-    public string CurrentPage { get; set; } = NavPane.Fly;
-
-    public bool CanGoBack
-    {
-        get => BackItem.Visibility == Visibility.Visible;
-        set
-        {
-            BackItem.Visibility = Shown(value);
-            BackSeparator.Visibility = Shown(value);
-        }
-    }
-
     public bool OnFly
     {
         get => _onFly;
@@ -93,7 +77,6 @@ public sealed partial class ShellTitleBar : UserControl
         {
             _onFly = value;
             Lead.Margin = new Thickness(value ? FlyGutter : NavGutter, 0, 0, 0);
-            MenuButton.Flyout = value ? PageMenu : null;
             Subtitle.Visibility = Shown(!value);
             VehicleSwitch.Named = value;
             Render();
@@ -152,17 +135,7 @@ public sealed partial class ShellTitleBar : UserControl
 
     private void OnStatusClick(object sender, RoutedEventArgs e) => _status.ShowAt(ArmedPill);
 
-    private void OnPage(object sender, RoutedEventArgs e)
-    {
-        if (sender is MenuFlyoutItem { Tag: string page }) PageRequested?.Invoke(this, page);
-    }
-
-    private void OnBack(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
-
-    private void OnMenu(object sender, RoutedEventArgs e)
-    {
-        if (!_onFly) PaneToggleRequested?.Invoke(this, EventArgs.Empty);
-    }
+    private void OnMenu(object sender, RoutedEventArgs e) => PaneToggleRequested?.Invoke(this, EventArgs.Empty);
 
     private JsonObject View(string path) => _views.TryGetValue(path, out var view) ? view : new JsonObject();
 

@@ -56,7 +56,7 @@ test('fly screen shows no vehicle until one connects', async ({ app }) => {
 test('with no aircraft and no video the Fly screen opens on the map, not an empty video pane', async ({ app }) => {
   const map = app.getByRole('region', { name: 'Map' });
   await expect.poll(async () => (await map.boundingBox())?.width ?? 0).toBeGreaterThan(1000);
-  await expect(app.getByText('Video starts when your aircraft connects')).toBeHidden();
+  await expect(app.getByRole('button', { name: 'Add a camera to see video' })).toBeHidden();
 });
 
 test('on a desktop Fly stays full screen with no rail, and the map inset is a real preview', async ({ vehicle }) => {

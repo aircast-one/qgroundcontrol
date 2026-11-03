@@ -103,44 +103,7 @@
             <Button x:Name="MenuButton" Style="{StaticResource FlyRoundButton}" Content="&#xE700;" Margin="0,0,4,0"
                     Foreground="{ThemeResource TextPrimaryBrush}" Background="Transparent"
                     Width="32" Height="32" CornerRadius="16"
-                    Click="OnMenu" AutomationProperties.Name="Menu" ToolTipService.ToolTip="Menu">
-                <Button.Flyout>
-                    <MenuFlyout x:Name="PageMenu" Placement="BottomEdgeAlignedLeft">
-                        <MenuFlyoutItem x:Name="BackItem" Text="Back" Click="OnBack">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE72B;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutSeparator x:Name="BackSeparator" />
-                        <RadioMenuFlyoutItem Text="Fly" Tag="Fly" GroupName="Pages" Click="OnPage">
-                            <RadioMenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE709;" />
-                            </RadioMenuFlyoutItem.Icon>
-                        </RadioMenuFlyoutItem>
-                        <RadioMenuFlyoutItem Text="Plan" Tag="Plan" GroupName="Pages" Click="OnPage">
-                            <RadioMenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE707;" />
-                            </RadioMenuFlyoutItem.Icon>
-                        </RadioMenuFlyoutItem>
-                        <RadioMenuFlyoutItem Text="Analyze" Tag="Analyze" GroupName="Pages" Click="OnPage">
-                            <RadioMenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE9D9;" />
-                            </RadioMenuFlyoutItem.Icon>
-                        </RadioMenuFlyoutItem>
-                        <RadioMenuFlyoutItem Text="Vehicle Setup" Tag="Vehicle Setup" GroupName="Pages" Click="OnPage">
-                            <RadioMenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE90F;" />
-                            </RadioMenuFlyoutItem.Icon>
-                        </RadioMenuFlyoutItem>
-                        <MenuFlyoutSeparator />
-                        <RadioMenuFlyoutItem Text="Settings" Tag="Settings" GroupName="Pages" Click="OnPage">
-                            <RadioMenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE713;" />
-                            </RadioMenuFlyoutItem.Icon>
-                        </RadioMenuFlyoutItem>
-                    </MenuFlyout>
-                </Button.Flyout>
-            </Button>
+                    Click="OnMenu" AutomationProperties.Name="Menu" ToolTipService.ToolTip="Menu" />
 
             <Border x:Name="Logo" Width="20" Height="20" VerticalAlignment="Center"
                     CornerRadius="{StaticResource RadiusControl}" Background="{ThemeResource AccentBrush}">

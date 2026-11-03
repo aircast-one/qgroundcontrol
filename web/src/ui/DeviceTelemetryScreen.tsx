@@ -1,5 +1,5 @@
 import { useProduceState } from '@/kotlin/Compose';
-import { FilledTonalButton, IconButton, OutlinedTextField, Text, TextButton } from '@/m3';
+import { CircularProgressIndicator, FilledTonalButton, IconButton, OutlinedTextField, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { useDeviceDraft } from '@/ui/DeviceDraft';
@@ -12,6 +12,7 @@ import {
   type EndpointRow,
   type EndpointRowView,
   type GimbalSettings,
+  type TelemetryFix,
   type TelemetryView,
   endpointEditor,
   parseTelemetry,
@@ -44,6 +45,7 @@ export const TelemetryScreen = (_: DeviceScreenProps) => {
       left={
         <>
           <DeviceSection title="Status" badge={view.status}>
+            {view.fix !== null ? <FixSteps fix={view.fix} /> : null}
             {view.notices.map((notice) => (
               <DeviceNotice key={notice.text} notice={notice} />
             ))}
@@ -76,6 +78,30 @@ export const TelemetryScreen = (_: DeviceScreenProps) => {
     />
   );
 };
+
+const FixSteps = ({ fix }: { fix: TelemetryFix }) => (
+  <div role="note" aria-label={fix.title} className="mx-list my-2 flex flex-col gap-3 rounded-shape-md bg-surface-container-high px-4 py-4">
+    <Text typography="titleMedium">{fix.title}</Text>
+    <ol className="flex flex-col gap-2">
+      {fix.steps.map((step, index) => (
+        <li key={step} className="flex gap-3">
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary-container text-label-medium text-on-primary-container">{index + 1}</span>
+          <Text typography="bodyMedium" className="min-w-0 flex-1">
+            {step}
+          </Text>
+        </li>
+      ))}
+    </ol>
+    {fix.waiting !== '' ? (
+      <div className="flex items-center gap-3" role="status">
+        <CircularProgressIndicator size={16} strokeWidth={2} />
+        <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+          {fix.waiting}
+        </Text>
+      </div>
+    ) : null}
+  </div>
+);
 
 const MavlinkEditor = ({ view }: { view: TelemetryView }) => {
   const stored = useProduceState<EndpointEditor | null>(null, [view.settings.endpoints], async (set) => set(await endpointEditor(view.schemes, null, view.settings.endpoints)));

@@ -293,7 +293,28 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
-const OPTIONAL_WHEN_OFF: &[&str] = &["Geofence", "Logging"];
+const OPTIONAL_WHEN_OFF: &[&str] = &[
+    "Rate Control",
+    "Attitude Control",
+    "Heading Control",
+    "Altitude Control",
+    "Position Control",
+    "Motor Outputs",
+    "Geofence",
+    "Logging",
+    "Terrain",
+    "Motors Reversed",
+    "Collision Avoidance",
+    "Proximity",
+    "Rangefinder",
+    "Optical Flow",
+    "Vision Positioning",
+    "External Positioning",
+    "Satellite Link",
+    "Gyro 2",
+    "Accelerometer 2",
+    "Magnetometer 2",
+];
 
 fn counts_against_readiness(name: &str, enabled: bool) -> bool {
     enabled || !OPTIONAL_WHEN_OFF.contains(&name)
@@ -796,6 +817,40 @@ mod tests {
         assert!(
             counts_against_readiness("Logging", true),
             "an enabled subsystem is still judged on its health"
+        );
+    }
+
+    #[test]
+    fn controllers_a_flight_mode_switches_off_are_not_a_readiness_caution() {
+        let stabilize = [
+            ("Gyro", true, true),
+            ("Accelerometer", true, true),
+            ("Magnetometer", true, true),
+            ("GPS", true, true),
+            ("Rate Control", true, true),
+            ("Attitude Control", true, true),
+            ("Altitude Control", false, true),
+            ("Position Control", false, true),
+            ("Motor Outputs", false, true),
+            ("Geofence", false, true),
+            ("Logging", false, true),
+        ];
+        let counted: Vec<(bool, bool)> = stabilize
+            .iter()
+            .filter(|(name, enabled, _)| counts_against_readiness(name, *enabled))
+            .map(|(_, enabled, healthy)| (*enabled, *healthy))
+            .collect();
+        assert!(
+            status_nominal(None, &counted),
+            "Stabilize switches off altitude and position control by design, so a healthy copter on the ground reads Ready to Fly"
+        );
+        assert!(
+            counts_against_readiness("Magnetometer", false),
+            "a switched-off compass still costs heading in position modes"
+        );
+        assert!(
+            !counts_against_readiness("Magnetometer 2", false),
+            "a second compass is often off on purpose"
         );
     }
 
