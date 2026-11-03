@@ -67,3 +67,17 @@ func paintedRect(_ surfaceWidth: Double, _ surfaceHeight: Double, _ source: Sour
     let height = Double(source.height) * scale
     return PaintedRect(left: (surfaceWidth - width) / 2, top: (surfaceHeight - height) / 2, width: width, height: height)
 }
+
+func videoPreviewPath(_ endpoint: String) -> String { "view.videoPreview(\(endpoint))" }
+
+struct VideoPreview: Equatable {
+    let channel: Int?
+    let playing: Bool
+    let trying: Bool
+    let text: String
+}
+
+func videoPreview(_ view: JSON?) -> VideoPreview? {
+    guard let view, view["class"].string == "VideoPreview" else { return nil }
+    return VideoPreview(channel: view["channel"].int, playing: view["playing"].bool, trying: view["trying"].bool, text: view["text"].string)
+}
