@@ -57,6 +57,7 @@ const SURROUND_EVERY: Duration = Duration::from_millis(500);
 const SURROUND_COARSER: f64 = 8.0;
 const SURROUND_SLOTS: usize = 4;
 const SURROUND_TURNS: [f64; 3] = [90.0, 180.0, 270.0];
+const EYE_PROBE_REUSE_M: f64 = 100.0;
 const EYE_CLEARANCE_M: f64 = 10.0;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -433,6 +434,19 @@ impl Probe {
             .filter(|_| self.at == Some((latitude, longitude)));
         self.at = Some((latitude, longitude));
     }
+
+    fn near(&mut self, latitude: f64, longitude: f64, metres: f64) -> bool {
+        let close = self
+            .at
+            .is_some_and(|at| crate::track::distance_m(at, (latitude, longitude)) <= metres);
+        if !close {
+            *self = Self {
+                at: Some((latitude, longitude)),
+                height: None,
+            };
+        }
+        close
+    }
 }
 
 enum Source {
@@ -567,6 +581,7 @@ pub fn orbit_eye(
     orbit: &Orbit,
     aircraft: &Pose,
     aircraft_ground: Option<f64>,
+    eye_ground: Option<f64>,
     ground: &[Arc<Mesh>],
 ) -> Eye {
     let measured = orbit
@@ -583,7 +598,9 @@ pub fn orbit_eye(
         orbit.range * back,
         (orbit.heading + 180.0).rem_euclid(360.0),
     );
-    let under = ground::height_at(ground, latitude, longitude).or(focus_ground);
+    let under = ground::height_at(ground, latitude, longitude)
+        .or(eye_ground)
+        .or(focus_ground);
     let height = under
         .map_or(f64::MIN, |under| under + EYE_CLEARANCE_M)
         .max(focus.2 + orbit.range * rise);
@@ -700,6 +717,7 @@ impl Frame {
         };
         let marks = overlays
             .zip(self.home_ground)
+            .filter(|_| self.aircraft)
             .map(|(overlays, ground)| {
                 overlay::meshes(
                     &self.on_ground(overlays, ground, &picture.ground),
@@ -825,6 +843,8 @@ pub struct Session {
     orbit: Picks,
     views: Option<Views>,
     focus_ground: Option<f64>,
+    eye_under: Probe,
+    eye_probed: Option<Instant>,
     bottle_ground: Vec<((f64, f64), f64)>,
     bottles_probed: Option<Instant>,
     fallback: Option<Fallback>,
@@ -1294,6 +1314,8 @@ impl Session {
             orbit: Picks::default(),
             views: None,
             focus_ground: None,
+            eye_under: Probe::default(),
+            eye_probed: None,
             bottle_ground: Vec::new(),
             bottles_probed: None,
             fallback,
@@ -1507,6 +1529,35 @@ impl Session {
         fallback.home.height = home.or(fallback.home.height);
         fallback.under.height = under.or(fallback.under.height);
         self.stand_in(home_wanted.into_iter().chain(under_wanted).collect());
+    }
+
+    fn probe_eye(&mut self, latitude: f64, longitude: f64, now: Instant) {
+        let kept = self.eye_under.near(latitude, longitude, EYE_PROBE_REUSE_M);
+        let due = self
+            .eye_probed
+            .is_none_or(|at| now.duration_since(at) >= PROBE_EVERY);
+        if (kept && self.eye_under.height.is_some()) || !due {
+            return;
+        }
+        self.eye_probed = Some(now);
+        let (latitude, longitude) = self.eye_under.at.unwrap_or((latitude, longitude));
+        let known = self.eye_under.height;
+        let handed_over = self.handed_over();
+        let stand_in = match self.fallback.as_mut().filter(|_| !handed_over) {
+            Some(fallback) => {
+                let room = fallback.room();
+                Some(fallback.scene.ground(latitude, longitude, room, now))
+            }
+            None => None,
+        };
+        self.eye_under.height = match (stand_in, matches!(self.source, Source::Open(_))) {
+            (Some((found, wanted)), _) => {
+                self.stand_in(wanted);
+                found.or(known)
+            }
+            (None, true) => self.open_ground(latitude, longitude, known, now),
+            (None, false) => self.google_ground(latitude, longitude, known, now),
+        };
     }
 
     fn probe(&mut self, target: &Target, now: Instant) {
@@ -1888,9 +1939,18 @@ impl Session {
                 Some(_) => self.focus_ground.or(under_ground).or(home_ground),
                 None => under_ground.or(home_ground),
             };
-            orbit_eye(&orbit, &pose, hint, &self.orbit.ground)
+            orbit_eye(
+                &orbit,
+                &pose,
+                hint,
+                self.eye_under.height,
+                &self.orbit.ground,
+            )
         });
         self.focus_ground = eye.and_then(|eye| eye.focus_ground).or(self.focus_ground);
+        if let Some(eye) = eye {
+            self.probe_eye(eye.pose.latitude, eye.pose.longitude, now);
+        }
         let reselect = delivered > 0 || moving || fresh || due;
         let orbit_changed = match (reselect, eye, views.orbit) {
             (true, Some(eye), Some((orbit, size))) => self.select(
@@ -2250,7 +2310,7 @@ mod tests {
         };
         let Eye {
             pose: eye, ground, ..
-        } = orbit_eye(&orbit, &aircraft, None, &[]);
+        } = orbit_eye(&orbit, &aircraft, None, None, &[]);
         assert_eq!(ground, None);
         let level = crate::track::distance_m(
             (eye.latitude, eye.longitude),
@@ -2347,7 +2407,7 @@ mod tests {
             reading_age: Duration::ZERO,
             stick_to_frame: None,
             orbit: Some(OrbitPicture {
-                eye: orbit_eye(&crate::map3d::START, &pose, Some(500.0), &[]),
+                eye: orbit_eye(&crate::map3d::START, &pose, Some(500.0), None, &[]),
                 ground: Vec::new(),
                 backfill: Vec::new(),
             }),
@@ -2393,6 +2453,45 @@ mod tests {
     }
 
     #[test]
+    fn the_3d_map_lifts_the_camera_over_a_ridge_measured_under_it() {
+        let aircraft = Pose {
+            latitude: 47.397,
+            longitude: 8.5455,
+            height: 600.0,
+            heading: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov: 70.0,
+        };
+        let low = Orbit {
+            heading: 0.0,
+            tilt: 10.0,
+            range: 1000.0,
+            focus: None,
+        };
+        let Eye {
+            pose: eye, ground, ..
+        } = orbit_eye(&low, &aircraft, Some(500.0), Some(1200.0), &[]);
+        assert_eq!(
+            ground,
+            Some(1200.0),
+            "the ridge under the camera wins over the ground at the focus"
+        );
+        assert_eq!(eye.height, 1200.0 + EYE_CLEARANCE_M);
+    }
+
+    #[test]
+    fn a_probe_keeps_its_height_while_its_spot_moves_less_than_the_reuse_distance() {
+        let mut probe = Probe::default();
+        assert!(!probe.near(47.397, 8.5455, EYE_PROBE_REUSE_M));
+        probe.height = Some(812.0);
+        assert!(probe.near(47.3971, 8.5455, EYE_PROBE_REUSE_M));
+        assert_eq!(probe.height, Some(812.0));
+        assert!(!probe.near(47.41, 8.5455, EYE_PROBE_REUSE_M));
+        assert_eq!(probe.height, None, "far away, the old height is no use");
+    }
+
+    #[test]
     fn the_3d_map_never_puts_the_camera_under_the_ground_it_knows_of() {
         let aircraft = Pose {
             latitude: 47.397,
@@ -2411,7 +2510,7 @@ mod tests {
         };
         let Eye {
             pose: eye, ground, ..
-        } = orbit_eye(&low, &aircraft, Some(900.0), &[]);
+        } = orbit_eye(&low, &aircraft, Some(900.0), None, &[]);
         assert_eq!(
             ground,
             Some(900.0),
