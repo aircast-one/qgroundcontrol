@@ -45,6 +45,12 @@ fn main() {
         round_trip: None,
         bottles: Vec::new(),
         locked: false,
+        orbit: arg("--orbit-range").map(|_| groundstation::map3d::Orbit {
+            heading: number("--orbit-heading", 0.0),
+            tilt: number("--orbit-tilt", groundstation::map3d::START.tilt),
+            range: number("--orbit-range", groundstation::map3d::START.range),
+            focus: None,
+        }),
     };
     groundstation::terrainservice::set_cache_path(arg("--cache").map(std::path::PathBuf::from));
     let mut session = Session::new(&token, Arc::new(Network), Detail::FULL).expect("fetch workers");
@@ -78,7 +84,10 @@ fn main() {
             let frame = session
                 .frame(Some(&turned), &[], width, height, Instant::now())
                 .expect("a frame to draw");
-            let (camera, meshes) = frame.view_at(None, width, height, when);
+            let (camera, meshes) = match target.orbit {
+                Some(_) => frame.orbit_view_at(None, width, height, when),
+                None => frame.view_at(None, width, height, when),
+            };
             println!("{} meshes in frame {index}", meshes.len());
             renderer
                 .picture(&camera, &frame.backfill, &meshes, &targets, width, height)

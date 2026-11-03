@@ -265,6 +265,7 @@ pub fn owns(path: &str) -> bool {
         || crate::offlinemaps::owns(path)
         || crate::flasher::owns(path)
         || crate::synthview::owns(path)
+        || crate::map3d::owns(path)
         || path == crate::virtualjoystick::JOYSTICK_VALUE
         || path == crate::plantemplates::CREATE_FROM_TEMPLATE
         || crate::plantransform::owns(path)
@@ -482,6 +483,9 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         _ if crate::offlinemaps::owns(path) => crate::offlinemaps::run(path, args),
         _ if crate::flasher::owns(path) => crate::flasher::run(path, args),
         _ if crate::synthview::owns(path) => crate::synthview::run(path, args),
+        _ if crate::map3d::owns(path) => {
+            crate::map3d::run(path, args, backend.point("vehicle.coordinate"))
+        }
         crate::virtualjoystick::JOYSTICK_VALUE => crate::virtualjoystick::send(backend, args),
         crate::plantemplates::CREATE_FROM_TEMPLATE => crate::plantemplates::create(backend, args),
         _ if crate::plantransform::owns(path) => crate::plantransform::run(backend, path, args),

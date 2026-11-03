@@ -21,6 +21,7 @@ const FAILED: &str = "failed";
 
 struct View {
     key: u32,
+    orbit: bool,
     canvas: web_sys::OffscreenCanvas,
     wanted: (u32, u32),
     surface: Option<wgpu::Surface<'static>>,
@@ -73,13 +74,14 @@ thread_local! {
     static WEB: RefCell<Web> = const { RefCell::new(Web { views: Vec::new(), start: Start::Idle, keys: 0, starts: 0, polling: false }) };
 }
 
-pub fn attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32) -> u32 {
+pub fn attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32, orbit: bool) -> u32 {
     WEB.with(|web| {
         let mut web = web.borrow_mut();
         web.keys += 1;
         let key = web.keys;
         web.views.push(View {
             key,
+            orbit,
             canvas,
             wanted: (width, height),
             surface: None,
@@ -360,7 +362,10 @@ impl View {
         });
         let pictured = match frame {
             Some(frame) => {
-                let (camera, meshes) = frame.view(overlays, self.size.0, self.size.1);
+                let (camera, meshes) = match self.orbit {
+                    true => frame.orbit_view(overlays, self.size.0, self.size.1),
+                    false => frame.view(overlays, self.size.0, self.size.1),
+                };
                 gpu.renderer
                     .draw(&view, targets, &camera, &frame.backfill, &meshes);
                 !frame.ground.is_empty()
@@ -447,9 +452,14 @@ impl World {
                 .as_ref()
                 .and_then(Overlays::from_view)
         });
+        let orbiting = views.iter().any(|view| view.orbit);
         let target = read("view.syntheticView")
             .as_ref()
-            .and_then(Target::from_view);
+            .and_then(Target::from_view)
+            .map(|target| Target {
+                orbit: orbiting.then(crate::map3d::orbit),
+                ..target
+            });
         let sticks = crate::virtualjoystick::sent_sticks();
         let largest = views
             .iter()

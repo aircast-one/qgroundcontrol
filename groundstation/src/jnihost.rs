@@ -643,6 +643,7 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_syntheticAttach
     env: JNIEnv,
     _class: JClass,
     surface: JObject,
+    orbit: jboolean,
 ) -> jboolean {
     #[cfg(native_synthetic)]
     return match unsafe {
@@ -651,6 +652,7 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_syntheticAttach
         Some(window) => jboolean::from(crate::synthetic::host::attach(
             window,
             std::sync::Arc::new(crate::synthetic::corefeed::CoreFeed),
+            orbit != 0,
         )),
         None => {
             log::error!(target: "synthetic", "event=attach_failed reason=\"the surface has no native window\"");
@@ -659,7 +661,7 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_syntheticAttach
     };
     #[cfg(not(native_synthetic))]
     {
-        let _ = (env, surface);
+        let _ = (env, surface, orbit);
         0
     }
 }

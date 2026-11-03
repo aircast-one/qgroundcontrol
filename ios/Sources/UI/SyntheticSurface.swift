@@ -14,10 +14,12 @@ func nativeDraw(_ view: JSON?) -> SyntheticDraw {
 
 final class SyntheticLayerView: UIView {
     private let metal = CAMetalLayer()
+    private let orbit: Bool
     private var attached: CGSize?
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    init(orbit: Bool) {
+        self.orbit = orbit
+        super.init(frame: .zero)
         backgroundColor = .black
         isUserInteractionEnabled = false
         layer.addSublayer(metal)
@@ -46,7 +48,7 @@ final class SyntheticLayerView: UIView {
         metal.frame = bounds
         metal.contentsScale = scale
         CATransaction.commit()
-        attached = qgc_synthetic_attach(handle, Int32(pixels.width), Int32(pixels.height)) != 0 ? pixels : nil
+        attached = qgc_synthetic_attach(handle, Int32(pixels.width), Int32(pixels.height), orbit ? 1 : 0) != 0 ? pixels : nil
     }
 
     func release() {
@@ -57,7 +59,9 @@ final class SyntheticLayerView: UIView {
 }
 
 struct SyntheticSurface: UIViewRepresentable {
-    func makeUIView(context: Context) -> SyntheticLayerView { SyntheticLayerView(frame: .zero) }
+    var orbit = false
+
+    func makeUIView(context: Context) -> SyntheticLayerView { SyntheticLayerView(orbit: orbit) }
 
     func updateUIView(_ uiView: SyntheticLayerView, context: Context) {}
 

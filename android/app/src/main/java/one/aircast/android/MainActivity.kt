@@ -164,6 +164,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
         QGCBridge.setHost(this)
         Qgc.start()
+        one.aircast.map.Map3d.load(this)
 
         acquireMulticastLock()
 
@@ -348,13 +349,16 @@ fun AircastShell(hostView: android.view.View?) {
     var roiTapped by remember { mutableStateOf<TrackPoint?>(null) }
     val flyMap = remember {
         movableContentOf<Modifier> { mod ->
-            FlyMap(
+            val pip = flyView == one.aircast.android.ui.FlyView.Video && !flyIsPortrait()
+            if (one.aircast.map.Map3d.isShown && !pip) {
+                one.aircast.android.ui.Map3dView(mod)
+            } else FlyMap(
                 modifier = mod,
                 cameraBottomPx = 0,
                 topInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait()) flyScreen.mapInsets.top else 0,
                 bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait()) flyScreen.mapInsets.bottom else 0,
                 logoEndInsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { (flyScreen.mapOrnamentEnd ?: one.aircast.android.ui.MAP_LAYERS_CLEARANCE).roundToPx() }.takeIf { flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait() },
-                pip = flyView == one.aircast.android.ui.FlyView.Video && !flyIsPortrait(),
+                pip = pip,
                 onMapClick = { lat, lon ->
                     mapHoldHint = MapHoldHint.Learned
                     openClickMenu(MapPoint(lat, lon), null)

@@ -25,6 +25,7 @@ pub trait Feed: Send + Sync {
     fn overlays(&self) -> Option<serde_json::Value>;
     fn token(&self) -> String;
     fn sticks(&self) -> Vec<crate::virtualjoystick::StickSample>;
+    fn orbit(&self) -> crate::map3d::Orbit;
     fn report(&self, draw: Draw);
     fn software(&self, software: bool);
     fn ground(&self, above_home: Option<f64>);
@@ -32,7 +33,7 @@ pub trait Feed: Send + Sync {
 }
 
 enum Command {
-    Attach(Window),
+    Attach(Window, bool),
     Release(usize, SyncSender<()>),
     Wake,
 }
@@ -48,7 +49,7 @@ fn running() -> MutexGuard<'static, Option<Running>> {
     RUNNING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-pub fn attach(window: Window, feed: Arc<dyn Feed>) -> bool {
+pub fn attach(window: Window, feed: Arc<dyn Feed>, orbit: bool) -> bool {
     let mut running = running();
     if running
         .as_ref()
@@ -66,9 +67,12 @@ pub fn attach(window: Window, feed: Arc<dyn Feed>) -> bool {
             }
         }
     }
-    running
-        .as_ref()
-        .is_some_and(|current| current.commands.send(Command::Attach(window)).is_ok())
+    running.as_ref().is_some_and(|current| {
+        current
+            .commands
+            .send(Command::Attach(window, orbit))
+            .is_ok()
+    })
 }
 
 pub fn wake() {
@@ -152,7 +156,9 @@ fn serve(commands: &Receiver<Command>, feed: &dyn Feed) {
             commands.recv().map_err(|_| RecvTimeoutError::Disconnected)
         };
         match next {
-            Ok(Command::Attach(window)) => kept = show(window, kept.take(), commands, feed),
+            Ok(Command::Attach(window, orbit)) => {
+                kept = show(window, orbit, kept.take(), commands, feed);
+            }
             Ok(Command::Release(_, done)) => acknowledge(&done),
             Ok(Command::Wake) => {}
             Err(RecvTimeoutError::Timeout) => {
@@ -237,7 +243,7 @@ impl Visit {
 
     fn note(&mut self, command: &Command) {
         match command {
-            Command::Attach(_) => self.attaches += 1,
+            Command::Attach(..) => self.attaches += 1,
             Command::Release(..) => self.releases += 1,
             Command::Wake => {}
         }
@@ -341,6 +347,7 @@ impl Gpu {
 }
 
 struct Shown {
+    orbit: bool,
     surface: wgpu::Surface<'static>,
     size: (u32, u32),
     targets: Option<Targets>,
@@ -352,8 +359,9 @@ struct Shown {
 }
 
 impl Shown {
-    fn new(window: Window, surface: wgpu::Surface<'static>) -> Self {
+    fn new(window: Window, surface: wgpu::Surface<'static>, orbit: bool) -> Self {
         Self {
+            orbit,
             surface,
             size: (0, 0),
             targets: None,
@@ -441,7 +449,10 @@ impl Shown {
         let view = texture.texture.create_view(&Default::default());
         let pictured = match frame {
             Some(frame) => {
-                let (camera, meshes) = frame.view(overlays, self.size.0, self.size.1);
+                let (camera, meshes) = match self.orbit {
+                    true => frame.orbit_view(overlays, self.size.0, self.size.1),
+                    false => frame.view(overlays, self.size.0, self.size.1),
+                };
                 gpu.renderer
                     .draw(&view, targets, &camera, &frame.backfill, &meshes);
                 !frame.ground.is_empty()
@@ -596,16 +607,17 @@ fn start_session(token: &str, detail: Detail) -> Option<Session> {
 
 fn apply(command: Command, shown: &mut Vec<Shown>, gpu: &Gpu) {
     match command {
-        Command::Attach(window) => match shown
+        Command::Attach(window, orbit) => match shown
             .iter_mut()
             .find(|existing| existing.window.key() == window.key())
         {
             Some(existing) => {
                 existing.window = window;
+                existing.orbit = orbit;
                 existing.drawn = false;
             }
             None => match surface_for(&gpu.instance, &window) {
-                Ok(surface) => shown.push(Shown::new(window, surface)),
+                Ok(surface) => shown.push(Shown::new(window, surface, orbit)),
                 Err(reason) => {
                     log::error!(target: "synthetic", "event=attach_failed window={:#x} reason=\"{reason}\"", window.key())
                 }
@@ -621,6 +633,7 @@ fn apply(command: Command, shown: &mut Vec<Shown>, gpu: &Gpu) {
 
 fn show(
     first: Window,
+    orbit: bool,
     kept: Option<Kept>,
     commands: &Receiver<Command>,
     feed: &dyn Feed,
@@ -641,7 +654,7 @@ fn show(
         }
     };
     let mut visit = Visit::new(opened, unseen);
-    let mut shown = vec![Shown::new(first, surface)];
+    let mut shown = vec![Shown::new(first, surface, orbit)];
     let mut overlays = Throttled::new(OVERLAYS_EVERY, None::<Overlays>);
     let mut summary = Summary::new(Instant::now());
     let mut framed = false;
@@ -664,7 +677,15 @@ fn show(
             feed.overlays().as_ref().and_then(Overlays::from_view)
         });
         let reading = Instant::now();
-        let target = feed.pose().as_ref().and_then(Target::from_view);
+        let orbiting = shown.iter().any(|surface| surface.orbit);
+        let target = feed
+            .pose()
+            .as_ref()
+            .and_then(Target::from_view)
+            .map(|target| Target {
+                orbit: orbiting.then(|| feed.orbit()),
+                ..target
+            });
         let sticks = feed.sticks();
         summary.pose_read_ms.push(millis(reading.elapsed()));
         let largest = shown

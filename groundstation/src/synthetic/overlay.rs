@@ -91,6 +91,11 @@ const IMPACT: [u8; 4] = [0xFF, 0xD6, 0x0A, 255];
 const IMPACT_PX: f64 = 32.0;
 const LEAD_PX: f64 = 22.0;
 const LEAD_LINE_PX: f64 = 2.0;
+const AIRCRAFT: [u8; 4] = [0xFF, 0x3D, 0x00, 255];
+const AIRCRAFT_PX: f64 = 22.0;
+const NOSE_PX: f64 = 34.0;
+const NOSE_LINE_PX: f64 = 4.0;
+const DROP_LINE_PX: f64 = 2.0;
 const CAR_PAINTS: [[u8; 4]; 4] = [
     [0xE6, 0xE7, 0xE8, 255],
     [0xA4, 0xA8, 0xAE, 255],
@@ -732,6 +737,61 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
     .into_iter()
     .flatten()
     .chain(cars(&overlays.cars, home_ground, now))
+    .collect()
+}
+
+pub fn aircraft(
+    at: (f64, f64, f64),
+    heading: f64,
+    ground: Option<f64>,
+    camera: &Camera,
+) -> Vec<Arc<Mesh>> {
+    let frame = Frame::at(at.0, at.1);
+    let body = ecef(at.0, at.1, at.2);
+    let unit = metres_per_px(camera, body);
+    let bearing = heading.to_radians();
+    let nose = body
+        + east_north_up(at.0, at.1)
+            * DVec3::new(bearing.sin(), bearing.cos(), 0.0)
+            * NOSE_PX
+            * unit;
+    let foot = ground.map(|height| ecef(at.0, at.1, height));
+    let above = ground.map(|height| format!("{:.0}", (at.2 - height).max(0.0)));
+    let over_marker = body + camera.up * AIRCRAFT_PX / 2.0 * unit;
+    [
+        quads(
+            &frame,
+            foot.map(|foot| (ribbon(camera, body, foot, DROP_LINE_PX), FULL_UV))
+                .into_iter(),
+            solid(AIRCRAFT),
+            Layer::Opaque,
+        ),
+        quads(
+            &frame,
+            std::iter::once((ribbon(camera, body, nose, NOSE_LINE_PX), FULL_UV)),
+            solid(AIRCRAFT),
+            Layer::OnTop,
+        ),
+        quads(
+            &frame,
+            std::iter::once((
+                billboard(camera, body, 0.0, AIRCRAFT_PX, AIRCRAFT_PX),
+                FULL_UV,
+            )),
+            disc(AIRCRAFT),
+            Layer::OnTop,
+        ),
+        quads(
+            &frame,
+            above
+                .iter()
+                .flat_map(|text| label(camera, over_marker, text)),
+            atlas(),
+            Layer::OnTop,
+        ),
+    ]
+    .into_iter()
+    .flatten()
     .collect()
 }
 

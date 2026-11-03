@@ -4,17 +4,20 @@ private let CHIP_ICON_SIZE: CGFloat = 12
 private let CHIP_HEIGHT: CGFloat = 32
 private let MIN_TOUCH_TARGET: CGFloat = 48
 private let OBSTACLE_OVERLAY = "settings.flyViewSettings.showObstacleDistanceOverlay"
+private let MAP_3D_LABEL = "3D"
 
 struct MapLayersSheet: View {
     let onDismiss: () -> Void
     @State private var listed: MapTypes?
     @MapPath(OBSTACLE_OVERLAY) private var obstacleJson
+    @MapPath(SYNTHETIC_VIEW) private var syntheticJson
     @Environment(\.theme) private var theme
 
     private var obstacles: Bool { obstacleJson?["value"].bool == true }
 
     var body: some View {
         let types = listed
+        let shown3d = Map3d.shared.shown
         AircastSheet(onDismissRequest: onDismiss) {
             VStack(alignment: .leading, spacing: Space.s3) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -25,7 +28,10 @@ struct MapLayersSheet: View {
                 }
                 PlanFlowRow(spacing: Space.s2, lineSpacing: 0) {
                     ForEach(types?.types ?? [], id: \.self) { type in
-                        MapTypeChip(type: type, selected: type == types?.current) { choose(type) }
+                        MapTypeChip(type: type, selected: !shown3d && type == types?.current) { choose(type) }
+                    }
+                    if nativeChosen(syntheticJson) {
+                        MapTypeChip(type: MAP_3D_LABEL, selected: shown3d) { Map3d.shared.show(true) }
                     }
                 }
                 Button {
@@ -57,6 +63,7 @@ struct MapLayersSheet: View {
 
     private func choose(_ type: String) {
         guard let path = listed?.path else { return }
+        Map3d.shared.show(false)
         Task {
             _ = await offMain { setOk(path, type) }
             listed = listed.map { MapTypes(current: type, types: $0.types, path: $0.path) }

@@ -375,20 +375,25 @@ struct AircastShell: View {
         }
     }
 
-    private var flyMap: some View {
+    @ViewBuilder private var flyMap: some View {
         let inset = flyView == .Map || portrait
-        return FlyMap(
-            cameraBottomPx: 0,
-            topInsetPx: inset ? flyScreen.mapInsets.top : 0,
-            bottomInsetPx: inset ? flyScreen.mapInsets.bottom : 0,
-            logoEndInsetPx: inset ? MAP_LAYERS_CLEARANCE : nil,
-            pip: flyView == .Video && !portrait,
-            onMapClick: { lat, lon in mapClickAt = MapPoint(latitude: lat, longitude: lon) },
-            onMissionItemClick: { waypointTapped = $0 },
-            onRoiClick: { roiTapped = $0 },
-            onTrafficClick: { flyScreen.requestedSheet = TRAFFIC_SHEET },
-            clickMarker: mapClickAt.map { TrackPoint(latitude: $0.latitude, longitude: $0.longitude) }
-        )
+        let pip = flyView == .Video && !portrait
+        if Map3d.shared.shown && !pip {
+            Map3dView()
+        } else {
+            FlyMap(
+                cameraBottomPx: 0,
+                topInsetPx: inset ? flyScreen.mapInsets.top : 0,
+                bottomInsetPx: inset ? flyScreen.mapInsets.bottom : 0,
+                logoEndInsetPx: inset ? MAP_LAYERS_CLEARANCE : nil,
+                pip: pip,
+                onMapClick: { lat, lon in mapClickAt = MapPoint(latitude: lat, longitude: lon) },
+                onMissionItemClick: { waypointTapped = $0 },
+                onRoiClick: { roiTapped = $0 },
+                onTrafficClick: { flyScreen.requestedSheet = TRAFFIC_SHEET },
+                clickMarker: mapClickAt.map { TrackPoint(latitude: $0.latitude, longitude: $0.longitude) }
+            )
+        }
     }
 
     private func flyRail(_ stacked: Bool, _ splitRoom: Bool) -> AnyView {

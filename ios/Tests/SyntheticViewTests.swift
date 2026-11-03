@@ -11,6 +11,13 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertNil(shownNote(.Drawn, nil, announced: false), "the synthetic view chosen as the camera says nothing")
     }
 
+    func testThe3dMapLooksForTheAircraftUntilItIsPlacedThenSaysHowTheDrawGoes() {
+        XCTAssertEqual(map3dNote(nil), LOOKING_TITLE)
+        XCTAssertEqual(map3dNote(JSON.parse(#"{"available":false,"draw":"drawn"}"#)), LOOKING_TITLE)
+        XCTAssertEqual(map3dNote(JSON.parse(#"{"available":true,"draw":"failed"}"#)), "3D view failed to start")
+        XCTAssertNil(map3dNote(JSON.parse(#"{"available":true,"draw":"drawn"}"#)))
+    }
+
     func testThePageAsksForTilesBesideItselfAndTheCoreAnswersThem() {
         XCTAssertEqual(syntheticTilePath("/synthetic/tiles/Bing%20Satellite/15/29961/19829"), "/Bing%20Satellite/15/29961/19829")
         XCTAssertNil(syntheticTilePath("/synthetic/Cesium/Cesium.js"))

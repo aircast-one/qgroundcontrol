@@ -19,6 +19,7 @@ import { VehicleLinkKeeper } from '@/app/VehicleLinkService';
 import { LocalImmersive } from '@/map/AircastSheet';
 import { FlyMap, plainTaps } from '@/map/FlyMap';
 import { LocalFlyMapEdits } from '@/map/FlyMapEdits';
+import { useMap3dShown } from '@/map/Map3d';
 import { AircastTheme } from '@/map/Theme';
 import type { TrackPoint } from '@/map/VehicleMap';
 import { VEHICLES_VIEW, type VehicleChoices, VehicleBridge, activeChanged, handoverNotice, rememberedChoices, vehicleChoices } from '@/map/VehiclePicker';
@@ -48,6 +49,7 @@ import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog } from '@/ui/GimbalIndicator';
 import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners, showLatest } from '@/ui/HostNotices';
 import { LogReplayBar } from '@/ui/LogReplayBar';
+import { Map3dView } from '@/ui/Map3dView';
 import { MapClickMenu, MapHoldHint, type MapPoint, RoiSheet, SetWaypointSheet, mapHoldHintText } from '@/ui/MapClickMenu';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { MissionCompleteDialog } from '@/ui/MissionCompleteDialog';
@@ -287,6 +289,8 @@ export const AircastShell = () => {
   const mapInsets = useValue(flyScreen.mapInsets);
   const mapOrnamentEnd = useValue(flyScreen.mapOrnamentEnd);
   const mapOwnsInsets = flyView === FlyView.Map || portrait;
+  const mapPip = flyView === FlyView.Video && !portrait;
+  const map3dShown = useMap3dShown();
 
   const flightActions = (layout: FlyDeckLayout) => <FlightActions layout={layout} center={<CameraShutters />} />;
   const pressPicture = (press: PicturePress) => {
@@ -316,27 +320,31 @@ export const AircastShell = () => {
   );
   const flyMap = (modifier: ModifierProps) => (
     <div {...modifier}>
-      <FlyMap
-        className="size-full"
-        cameraBottomPx={0}
-        topInsetPx={mapOwnsInsets ? mapInsets.top : 0}
-        bottomInsetPx={mapOwnsInsets ? mapInsets.bottom : 0}
-        logoEndInsetPx={mapOwnsInsets ? Math.round(mapOrnamentEnd ?? MAP_LAYERS_CLEARANCE) : null}
-        pip={flyView === FlyView.Video && !portrait}
-        onMapClick={(latitude: number, longitude: number) => {
-          setMapHoldHint(MapHoldHint.Learned);
-          setMapClickAnchor(lastPointer.current);
-          setMapClickAt({ latitude, longitude });
-          setPicturePressed(null);
-        }}
-        onPlainTap={() => setMapHoldHint((hint: MapHoldHint) => (hint === MapHoldHint.Unseen && vehicleNow ? MapHoldHint.Due : hint))}
-        onMissionItemClick={(sequence: number) => setWaypointTapped(sequence)}
-        onRoiClick={(at: TrackPoint) => setRoiTapped(at)}
-        onTrafficClick={() => {
-          flyScreen.requestedSheet.value = TRAFFIC_SHEET;
-        }}
-        clickMarker={mapClickAt === null ? null : { latitude: mapClickAt.latitude, longitude: mapClickAt.longitude }}
-      />
+      {map3dShown && !mapPip ? (
+        <Map3dView className="size-full" />
+      ) : (
+        <FlyMap
+          className="size-full"
+          cameraBottomPx={0}
+          topInsetPx={mapOwnsInsets ? mapInsets.top : 0}
+          bottomInsetPx={mapOwnsInsets ? mapInsets.bottom : 0}
+          logoEndInsetPx={mapOwnsInsets ? Math.round(mapOrnamentEnd ?? MAP_LAYERS_CLEARANCE) : null}
+          pip={mapPip}
+          onMapClick={(latitude: number, longitude: number) => {
+            setMapHoldHint(MapHoldHint.Learned);
+            setMapClickAnchor(lastPointer.current);
+            setMapClickAt({ latitude, longitude });
+            setPicturePressed(null);
+          }}
+          onPlainTap={() => setMapHoldHint((hint: MapHoldHint) => (hint === MapHoldHint.Unseen && vehicleNow ? MapHoldHint.Due : hint))}
+          onMissionItemClick={(sequence: number) => setWaypointTapped(sequence)}
+          onRoiClick={(at: TrackPoint) => setRoiTapped(at)}
+          onTrafficClick={() => {
+            flyScreen.requestedSheet.value = TRAFFIC_SHEET;
+          }}
+          clickMarker={mapClickAt === null ? null : { latitude: mapClickAt.latitude, longitude: mapClickAt.longitude }}
+        />
+      )}
     </div>
   );
   const flyCameraControlLayer = (

@@ -26,6 +26,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
@@ -34,6 +35,9 @@ import org.mavlink.qgroundcontrol.QGCBridge
 fun MapLayersSheet(onDismiss: () -> Unit) {
     var listed by remember { mutableStateOf<MapTypes?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val syntheticJson by mapPath(SYNTHETIC_VIEW)
+    val offers3d = syntheticJson?.optBoolean("native") == true
     val obstacleJson by mapPath(OBSTACLE_OVERLAY)
     val obstacles = obstacleJson?.optBoolean("value") == true
     LaunchedEffect(Unit) {
@@ -48,9 +52,10 @@ fun MapLayersSheet(onDismiss: () -> Unit) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listed?.types?.forEach { type ->
                     FilterChip(
-                        selected = type == listed?.current,
+                        selected = !Map3d.isShown && type == listed?.current,
                         onClick = {
                             val path = listed?.path ?: return@FilterChip
+                            Map3d.show(context, false)
                             scope.launch {
                                 withContext(Dispatchers.Default) { setOk(path, settingJson(JSONObject.quote(type))) }
                                 listed = listed?.copy(current = type)
@@ -58,6 +63,9 @@ fun MapLayersSheet(onDismiss: () -> Unit) {
                         },
                         label = { Text(type) },
                     )
+                }
+                if (offers3d) {
+                    FilterChip(selected = Map3d.isShown, onClick = { Map3d.show(context, true) }, label = { Text(MAP_3D_LABEL) })
                 }
             }
             Row(
@@ -77,3 +85,5 @@ fun MapLayersSheet(onDismiss: () -> Unit) {
 }
 
 private const val OBSTACLE_OVERLAY = "settings.flyViewSettings.showObstacleDistanceOverlay"
+private const val SYNTHETIC_VIEW = "view.syntheticView"
+private const val MAP_3D_LABEL = "3D"

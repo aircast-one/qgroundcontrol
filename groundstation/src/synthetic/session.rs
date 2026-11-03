@@ -17,6 +17,7 @@ use super::open::{Built, Detail, OpenScene, Want};
 use super::overlay::{self, Bottle, Overlays, Spot, Tracked};
 use super::predict::{self, Gain, Lag, Predicted, Step};
 use super::tileset::{self, GOOGLE_ROOT, ION_GOOGLE_ASSET, Parsed, Request, Selection, Tileset};
+use crate::map3d::Orbit;
 use crate::virtualjoystick::StickSample;
 use chrono::{DateTime, Utc};
 
@@ -56,6 +57,7 @@ const SURROUND_EVERY: Duration = Duration::from_millis(500);
 const SURROUND_COARSER: f64 = 8.0;
 const SURROUND_SLOTS: usize = 4;
 const SURROUND_TURNS: [f64; 3] = [90.0, 180.0, 270.0];
+const EYE_CLEARANCE_M: f64 = 10.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -80,6 +82,7 @@ pub struct Target {
     pub round_trip: Option<Duration>,
     pub bottles: Vec<Bottle>,
     pub locked: bool,
+    pub orbit: Option<Orbit>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -203,6 +206,7 @@ impl Target {
                 .get("locksOnTarget")
                 .and_then(serde_json::Value::as_bool)
                 == Some(true),
+            orbit: None,
         })
     }
 }
@@ -450,6 +454,52 @@ pub struct Frame {
     pub locked: bool,
     pub reading_age: Duration,
     pub stick_to_frame: Option<Duration>,
+    pub eye: Option<Eye>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Eye {
+    pub pose: Pose,
+    pub ground: Option<f64>,
+}
+
+pub fn orbit_eye(
+    orbit: &Orbit,
+    aircraft: &Pose,
+    aircraft_ground: Option<f64>,
+    ground: &[Arc<Mesh>],
+) -> Eye {
+    let focus_ground = orbit
+        .focus
+        .and_then(|(latitude, longitude)| ground::height_at(ground, latitude, longitude))
+        .or(aircraft_ground);
+    let focus = orbit.focus.map_or(
+        (aircraft.latitude, aircraft.longitude, aircraft.height),
+        |(latitude, longitude)| (latitude, longitude, focus_ground.unwrap_or(aircraft.height)),
+    );
+    let (rise, back) = orbit.tilt.to_radians().sin_cos();
+    let (latitude, longitude) = crate::surveygrid::at_distance_and_azimuth(
+        (focus.0, focus.1),
+        orbit.range * back,
+        (orbit.heading + 180.0).rem_euclid(360.0),
+    );
+    let under = ground::height_at(ground, latitude, longitude).or(focus_ground);
+    let height = under
+        .map_or(f64::MIN, |under| under + EYE_CLEARANCE_M)
+        .max(focus.2 + orbit.range * rise);
+    let (heading, pitch) = crate::synthview::aim_at((latitude, longitude, height), focus);
+    Eye {
+        pose: Pose {
+            latitude,
+            longitude,
+            height,
+            heading,
+            pitch,
+            roll: 0.0,
+            fov: crate::map3d::FOV_DEG,
+        },
+        ground: under,
+    }
 }
 
 impl Frame {
@@ -514,6 +564,59 @@ impl Frame {
                 .cloned()
                 .chain(marks)
                 .chain(bottles)
+                .collect(),
+        )
+    }
+
+    pub fn orbit_view(
+        &self,
+        overlays: Option<&Overlays>,
+        width: u32,
+        height: u32,
+    ) -> (Camera, Vec<Arc<Mesh>>) {
+        self.orbit_view_at(overlays, width, height, Utc::now())
+    }
+
+    pub fn orbit_view_at(
+        &self,
+        overlays: Option<&Overlays>,
+        width: u32,
+        height: u32,
+        when: DateTime<Utc>,
+    ) -> (Camera, Vec<Arc<Mesh>>) {
+        let eye = self.eye.unwrap_or_else(|| {
+            orbit_eye(
+                &crate::map3d::START,
+                &self.pose,
+                self.under_ground.or(self.home_ground),
+                &self.ground,
+            )
+        });
+        let camera = Camera {
+            above_ground: eye
+                .ground
+                .map_or(0.0, |under| (eye.pose.height - under).max(0.0)),
+            ..Camera::at(&eye.pose, width, height, when)
+        };
+        let marks = overlays
+            .zip(self.home_ground)
+            .map(|(overlays, ground)| {
+                overlay::meshes(&self.on_ground(overlays, ground), ground, &camera)
+            })
+            .unwrap_or_default();
+        let aircraft = overlay::aircraft(
+            (self.pose.latitude, self.pose.longitude, self.pose.height),
+            self.pose.heading,
+            self.under_ground.or(self.home_ground),
+            &camera,
+        );
+        (
+            camera,
+            self.ground
+                .iter()
+                .cloned()
+                .chain(marks)
+                .chain(aircraft)
                 .collect(),
         )
     }
@@ -1304,6 +1407,7 @@ impl Session {
         width: u32,
         height: u32,
         target: &Target,
+        around: (f64, f64),
         now: Instant,
     ) -> bool {
         let camera = &Camera::new(pose, width, height);
@@ -1347,8 +1451,8 @@ impl Session {
                             camera,
                             &target.imagery,
                             ground,
-                            target.latitude,
-                            target.longitude,
+                            around.0,
+                            around.1,
                             detail,
                             room,
                             now,
@@ -1403,8 +1507,8 @@ impl Session {
                     camera,
                     &target.imagery,
                     ground,
-                    target.latitude,
-                    target.longitude,
+                    around.0,
+                    around.1,
                     detail,
                     room,
                     now,
@@ -1599,8 +1703,27 @@ impl Session {
         let due = self
             .selected
             .is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
+        let eye = target.orbit.map(|orbit| {
+            orbit_eye(
+                &orbit,
+                &pose,
+                under_ground.or(home_ground),
+                &self.ground_meshes,
+            )
+        });
+        let around = target
+            .orbit
+            .and_then(|orbit| orbit.focus)
+            .unwrap_or((pose.latitude, pose.longitude));
         let reselected = (delivered > 0 || moving || fresh || due)
-            && self.select(&pose, width, height, target, now);
+            && self.select(
+                &eye.map_or(pose, |eye| eye.pose),
+                width,
+                height,
+                target,
+                around,
+                now,
+            );
         let warm = match &mut self.source {
             Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
@@ -1618,6 +1741,7 @@ impl Session {
             locked: target.locked,
             reading_age: now.saturating_duration_since(telemetry.1),
             stick_to_frame: touched.map(|at| now.saturating_duration_since(at)),
+            eye,
         })
     }
 }
@@ -1675,6 +1799,7 @@ mod tests {
             round_trip: None,
             bottles: Vec::new(),
             locked: false,
+            orbit: None,
         }
     }
 
@@ -1737,6 +1862,7 @@ mod tests {
             locked,
             reading_age: Duration::ZERO,
             stick_to_frame: None,
+            eye: None,
         };
         let tracked = overlays.tracked.clone().unwrap();
         let later = tracked.seen + Duration::from_millis(400);
@@ -1903,6 +2029,69 @@ mod tests {
         assert!(
             (midway - 355.0).rem_euclid(360.0) < 10.0,
             "from 355 to 5 is ten degrees through north, not 350 back round ({midway})"
+        );
+    }
+
+    #[test]
+    fn the_3d_map_looks_down_at_the_aircraft_from_behind_at_the_orbit_range() {
+        let aircraft = Pose {
+            latitude: 47.397,
+            longitude: 8.5455,
+            height: 600.0,
+            heading: 123.0,
+            pitch: -15.0,
+            roll: 4.0,
+            fov: 70.0,
+        };
+        let orbit = Orbit {
+            heading: 90.0,
+            tilt: 30.0,
+            range: 400.0,
+            focus: None,
+        };
+        let Eye { pose: eye, ground } = orbit_eye(&orbit, &aircraft, None, &[]);
+        assert_eq!(ground, None);
+        let level = crate::track::distance_m(
+            (eye.latitude, eye.longitude),
+            (aircraft.latitude, aircraft.longitude),
+        );
+        assert!((level / (400.0 * 30f64.to_radians().cos()) - 1.0).abs() < 0.01);
+        assert!((eye.height - (600.0 + 200.0)).abs() < 1e-6);
+        assert!(
+            eye.longitude < aircraft.longitude,
+            "looking east, it stands west"
+        );
+        assert!((eye.heading - 90.0).abs() < 0.1 && (eye.pitch + 30.0).abs() < 0.1);
+        assert_eq!((eye.roll, eye.fov), (0.0, crate::map3d::FOV_DEG));
+    }
+
+    #[test]
+    fn the_3d_map_never_puts_the_camera_under_the_ground_it_knows_of() {
+        let aircraft = Pose {
+            latitude: 47.397,
+            longitude: 8.5455,
+            height: 600.0,
+            heading: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov: 70.0,
+        };
+        let low = Orbit {
+            heading: 0.0,
+            tilt: 10.0,
+            range: 1000.0,
+            focus: None,
+        };
+        let Eye { pose: eye, ground } = orbit_eye(&low, &aircraft, Some(900.0), &[]);
+        assert_eq!(
+            ground,
+            Some(900.0),
+            "where the camera's own spot isn't loaded, the ground at the focus stands in"
+        );
+        assert_eq!(eye.height, 900.0 + EYE_CLEARANCE_M);
+        assert!(
+            eye.pitch < -10.0,
+            "lifted, it still looks down at the aircraft"
         );
     }
 
