@@ -455,11 +455,7 @@ impl World {
         let orbiting = views.iter().any(|view| view.orbit);
         let target = read("view.syntheticView")
             .as_ref()
-            .and_then(Target::from_view)
-            .map(|target| Target {
-                orbit: orbiting.then(crate::map3d::orbit),
-                ..target
-            });
+            .and_then(|view| Target::seen(view, orbiting.then(crate::map3d::orbit)));
         let sticks = crate::virtualjoystick::sent_sticks();
         let largest = views
             .iter()

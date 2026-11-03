@@ -347,17 +347,27 @@ fun AircastShell(hostView: android.view.View?) {
     var mapHoldHint by remember { mutableStateOf(MapHoldHint.Unseen) }
     var waypointTapped by remember { mutableStateOf<Int?>(null) }
     var roiTapped by remember { mutableStateOf<TrackPoint?>(null) }
+    val flyNow by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.FLY_STATE) { json ->
+        one.aircast.android.ui.flyState(json)?.let { ShellFly(it.connected, it.armed, it.state) }
+    }
+    val noVideoSource by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.VIDEO_VIEW) { json ->
+        one.aircast.android.ui.videoReading(json)?.let { !it.available && !it.sourceChosen } == true
+    }
     val flyMap = remember {
         movableContentOf<Modifier> { mod ->
-            val pip = flyView == one.aircast.android.ui.FlyView.Video && !flyIsPortrait()
+            val shown = one.aircast.android.ui.flyViewShown(flyView, armed = flyNow?.armed == true, noVideoSource = noVideoSource)
+            val pip = shown == one.aircast.android.ui.FlyView.Video && !flyIsPortrait()
+            val ownsInsets = shown == one.aircast.android.ui.FlyView.Map || flyIsPortrait()
+            val bottomInset = if (ownsInsets) flyScreen.mapInsets.bottom else 0
+            val logoEndInset = with(androidx.compose.ui.platform.LocalDensity.current) { (flyScreen.mapOrnamentEnd ?: one.aircast.android.ui.MAP_LAYERS_CLEARANCE).roundToPx() }.takeIf { ownsInsets }
             if (one.aircast.map.Map3d.isShown && !pip) {
-                one.aircast.android.ui.Map3dView(mod)
+                one.aircast.android.ui.Map3dView(mod, bottomInsetPx = bottomInset, logoEndInsetPx = logoEndInset)
             } else FlyMap(
                 modifier = mod,
                 cameraBottomPx = 0,
-                topInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait()) flyScreen.mapInsets.top else 0,
-                bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait()) flyScreen.mapInsets.bottom else 0,
-                logoEndInsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { (flyScreen.mapOrnamentEnd ?: one.aircast.android.ui.MAP_LAYERS_CLEARANCE).roundToPx() }.takeIf { flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait() },
+                topInsetPx = if (ownsInsets) flyScreen.mapInsets.top else 0,
+                bottomInsetPx = bottomInset,
+                logoEndInsetPx = logoEndInset,
                 pip = pip,
                 onMapClick = { lat, lon ->
                     mapHoldHint = MapHoldHint.Learned
@@ -434,9 +444,6 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
 
-    val flyNow by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.FLY_STATE) { json ->
-        one.aircast.android.ui.flyState(json)?.let { ShellFly(it.connected, it.armed, it.state) }
-    }
     var wasArmed by remember { mutableStateOf(false) }
     var flewWhileArmed by remember { mutableStateOf(false) }
     var armedBattery by remember { mutableStateOf<Int?>(null) }
@@ -459,9 +466,6 @@ fun AircastShell(hostView: android.view.View?) {
         }
         flewWhileArmed = armedNow && (flewWhileArmed || flyNow?.state == "flying" || flyNow?.state == "landing")
         wasArmed = armedNow
-    }
-    val noVideoSource by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.VIDEO_VIEW) { json ->
-        one.aircast.android.ui.videoReading(json)?.let { !it.available && !it.sourceChosen } == true
     }
     val shownFlyView = one.aircast.android.ui.flyViewShown(flyView, armed = flyNow?.armed == true, noVideoSource = noVideoSource)
 

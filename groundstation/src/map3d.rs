@@ -1,12 +1,23 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use serde_json::{Value, json};
+
+use crate::router::Backend;
 
 pub const MAP3D_PAN: &str = "map3d.pan";
 pub const MAP3D_TURN: &str = "map3d.turn";
 pub const MAP3D_TILT: &str = "map3d.tilt";
 pub const MAP3D_ZOOM: &str = "map3d.zoom";
 pub const MAP3D_FOLLOW: &str = "map3d.follow";
+pub const MAP3D_NORTH: &str = "map3d.north";
+pub const MAP3D_OPEN: &str = "map3d.open";
+pub const MAP3D_CHANGED: &str = "core.map3d@changed";
+pub const DEPS: &[&str] = &[
+    MAP3D_CHANGED,
+    "vehicles.activeVehicleAvailable",
+    "vehicle.coordinate",
+];
 
 pub const FOV_DEG: f64 = 60.0;
 const TILT_DEG: (f64, f64) = (10.0, 89.0);
@@ -22,6 +33,12 @@ pub struct Orbit {
     pub focus: Option<(f64, f64)>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Aircraft {
+    pub at: (f64, f64),
+    pub heading: f64,
+}
+
 pub const START: Orbit = Orbit {
     heading: 0.0,
     tilt: 35.0,
@@ -30,13 +47,47 @@ pub const START: Orbit = Orbit {
 };
 
 static ORBIT: Mutex<Orbit> = Mutex::new(START);
+static CHANGED: AtomicBool = AtomicBool::new(false);
 
 pub fn owns(path: &str) -> bool {
-    [MAP3D_PAN, MAP3D_TURN, MAP3D_TILT, MAP3D_ZOOM, MAP3D_FOLLOW].contains(&path)
+    [
+        MAP3D_PAN,
+        MAP3D_TURN,
+        MAP3D_TILT,
+        MAP3D_ZOOM,
+        MAP3D_FOLLOW,
+        MAP3D_NORTH,
+        MAP3D_OPEN,
+    ]
+    .contains(&path)
 }
 
 pub fn orbit() -> Orbit {
     *ORBIT.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn take_changed() -> bool {
+    CHANGED.swap(false, Ordering::SeqCst)
+}
+
+pub fn aircraft(backend: &dyn Backend) -> Option<Aircraft> {
+    backend.point("vehicle.coordinate").map(|at| Aircraft {
+        at,
+        heading: backend.raw("vehicle.heading").unwrap_or(0.0),
+    })
+}
+
+pub fn map3d_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let orbit = orbit();
+    json!({
+        "kind": "object",
+        "class": "Map3d",
+        "heading": orbit.heading,
+        "tilt": orbit.tilt,
+        "range": orbit.range,
+        "following": orbit.focus.is_none(),
+        "aircraft": aircraft(backend).is_some(),
+    })
 }
 
 fn view_width_m(range: f64) -> f64 {
@@ -80,16 +131,25 @@ pub fn zoomed(orbit: Orbit, scale: f64) -> Orbit {
     }
 }
 
-pub fn moved(
-    orbit: Orbit,
-    path: &str,
-    given: &[f64],
-    aircraft: Option<(f64, f64)>,
-) -> Option<Orbit> {
+pub fn opened(orbit: Orbit, aircraft: Option<Aircraft>, map_centre: Option<(f64, f64)>) -> Orbit {
+    match aircraft {
+        Some(aircraft) if orbit == START => Orbit {
+            heading: aircraft.heading.rem_euclid(360.0),
+            ..orbit
+        },
+        Some(_) => orbit,
+        None => Orbit {
+            focus: orbit.focus.or(map_centre),
+            ..orbit
+        },
+    }
+}
+
+pub fn moved(orbit: Orbit, path: &str, given: &[f64], aircraft: Option<Aircraft>) -> Option<Orbit> {
     match (path, given) {
         (MAP3D_PAN, [right, down, width]) => orbit
             .focus
-            .or(aircraft)
+            .or(aircraft.map(|aircraft| aircraft.at))
             .map(|from| panned(orbit, from, [*right, *down, *width])),
         (MAP3D_TURN, [clockwise]) => Some(turned(orbit, *clockwise)),
         (MAP3D_TILT, [up, height]) => Some(tilted(orbit, [*up, *height])),
@@ -98,11 +158,19 @@ pub fn moved(
             focus: None,
             ..orbit
         }),
+        (MAP3D_NORTH, []) => Some(Orbit {
+            heading: 0.0,
+            ..orbit
+        }),
+        (MAP3D_OPEN, []) => Some(opened(orbit, aircraft, None)),
+        (MAP3D_OPEN, [latitude, longitude]) => {
+            Some(opened(orbit, aircraft, Some((*latitude, *longitude))))
+        }
         _ => None,
     }
 }
 
-pub fn run(path: &str, args: &str, aircraft: Option<(f64, f64)>) -> Value {
+pub fn run(path: &str, args: &str, aircraft: Option<Aircraft>) -> Value {
     let given: Vec<f64> = serde_json::from_str::<Vec<f64>>(args)
         .unwrap_or_default()
         .into_iter()
@@ -111,6 +179,9 @@ pub fn run(path: &str, args: &str, aircraft: Option<(f64, f64)>) -> Value {
     let mut held = ORBIT.lock().unwrap_or_else(PoisonError::into_inner);
     match moved(*held, path, &given, aircraft) {
         Some(orbit) => {
+            if orbit != *held {
+                CHANGED.store(true, Ordering::SeqCst);
+            }
             *held = orbit;
             json!({ "ok": true, "heading": orbit.heading, "tilt": orbit.tilt, "range": orbit.range, "following": orbit.focus.is_none() })
         }
@@ -126,6 +197,7 @@ fn needs(path: &str) -> &'static str {
         MAP3D_TURN => "the twist in degrees, clockwise",
         MAP3D_TILT => "the drag up and the view height, in pixels",
         MAP3D_ZOOM => "the pinch scale, above 0",
+        MAP3D_OPEN => "nothing, or the latitude and longitude the 2D map was centred on",
         _ => "no arguments",
     }
 }
@@ -134,7 +206,10 @@ fn needs(path: &str) -> &'static str {
 mod tests {
     use super::*;
 
-    const AIRCRAFT: (f64, f64) = (47.397, 8.5455);
+    const AIRCRAFT: Aircraft = Aircraft {
+        at: (47.397, 8.5455),
+        heading: 120.0,
+    };
 
     fn metres(a: (f64, f64), b: (f64, f64)) -> f64 {
         crate::track::distance_m(a, b)
@@ -154,15 +229,15 @@ mod tests {
         let spot = dragged_left
             .focus
             .expect("a drag leaves the aircraft and holds a spot");
-        assert!((metres(spot, AIRCRAFT) - across / 2.0).abs() < 1.0);
+        assert!((metres(spot, AIRCRAFT.at) - across / 2.0).abs() < 1.0);
         assert!(
-            spot.1 > AIRCRAFT.1,
+            spot.1 > AIRCRAFT.at.1,
             "looking north, a drag to the left shows what lies east"
         );
 
         let dragged_down = moved(START, MAP3D_PAN, &[0.0, 100.0, width], Some(AIRCRAFT)).unwrap();
         assert!(
-            dragged_down.focus.unwrap().0 > AIRCRAFT.0,
+            dragged_down.focus.unwrap().0 > AIRCRAFT.at.0,
             "pulling the ground down brings what lies ahead into view"
         );
     }
@@ -170,10 +245,20 @@ mod tests {
     #[test]
     fn a_second_drag_carries_on_from_the_held_spot_not_from_the_aircraft() {
         let once = moved(START, MAP3D_PAN, &[-100.0, 0.0, 1000.0], Some(AIRCRAFT)).unwrap();
-        let twice = moved(once, MAP3D_PAN, &[-100.0, 0.0, 1000.0], Some((0.0, 0.0))).unwrap();
+        let twice = moved(
+            once,
+            MAP3D_PAN,
+            &[-100.0, 0.0, 1000.0],
+            Some(Aircraft {
+                at: (0.0, 0.0),
+                heading: 0.0,
+            }),
+        )
+        .unwrap();
         assert!(
-            (metres(twice.focus.unwrap(), AIRCRAFT) - 2.0 * metres(once.focus.unwrap(), AIRCRAFT))
-                .abs()
+            (metres(twice.focus.unwrap(), AIRCRAFT.at)
+                - 2.0 * metres(once.focus.unwrap(), AIRCRAFT.at))
+            .abs()
                 < 1.0
         );
     }
@@ -235,6 +320,48 @@ mod tests {
             Some(Orbit {
                 focus: None,
                 ..away
+            })
+        );
+    }
+
+    #[test]
+    fn opening_with_an_aircraft_first_looks_along_its_nose_then_keeps_the_pilots_angle() {
+        let opened = moved(START, MAP3D_OPEN, &[], Some(AIRCRAFT)).unwrap();
+        assert_eq!(opened.heading, AIRCRAFT.heading);
+        let turned_away = Orbit {
+            heading: 10.0,
+            ..opened
+        };
+        assert_eq!(
+            moved(turned_away, MAP3D_OPEN, &[], Some(AIRCRAFT)),
+            Some(turned_away),
+            "a view the pilot has turned is not turned back"
+        );
+    }
+
+    #[test]
+    fn opening_with_no_aircraft_looks_at_where_the_2d_map_was_and_keeps_a_spot_already_held() {
+        let opened = moved(START, MAP3D_OPEN, &[46.5, 7.9], None).unwrap();
+        assert_eq!(opened.focus, Some((46.5, 7.9)));
+        assert_eq!(
+            moved(opened, MAP3D_OPEN, &[1.0, 2.0], None).unwrap().focus,
+            Some((46.5, 7.9))
+        );
+        assert_eq!(moved(START, MAP3D_OPEN, &[], None), Some(START));
+    }
+
+    #[test]
+    fn north_turns_the_view_to_look_north_and_keeps_everything_else() {
+        let turned = Orbit {
+            heading: 250.0,
+            focus: Some((1.0, 2.0)),
+            ..START
+        };
+        assert_eq!(
+            moved(turned, MAP3D_NORTH, &[], None),
+            Some(Orbit {
+                heading: 0.0,
+                ..turned
             })
         );
     }

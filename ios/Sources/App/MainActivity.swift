@@ -376,16 +376,18 @@ struct AircastShell: View {
     }
 
     @ViewBuilder private var flyMap: some View {
-        let inset = flyView == .Map || portrait
-        let pip = flyView == .Video && !portrait
+        let inset = shownFlyView == .Map || portrait
+        let pip = shownFlyView == .Video && !portrait
+        let bottomInset = inset ? flyScreen.mapInsets.bottom : 0
+        let logoEndInset = inset ? MAP_LAYERS_CLEARANCE : nil
         if Map3d.shared.shown && !pip {
-            Map3dView()
+            Map3dView(bottomInsetPx: bottomInset, logoEndInsetPx: logoEndInset)
         } else {
             FlyMap(
                 cameraBottomPx: 0,
                 topInsetPx: inset ? flyScreen.mapInsets.top : 0,
-                bottomInsetPx: inset ? flyScreen.mapInsets.bottom : 0,
-                logoEndInsetPx: inset ? MAP_LAYERS_CLEARANCE : nil,
+                bottomInsetPx: bottomInset,
+                logoEndInsetPx: logoEndInset,
                 pip: pip,
                 onMapClick: { lat, lon in mapClickAt = MapPoint(latitude: lat, longitude: lon) },
                 onMissionItemClick: { waypointTapped = $0 },

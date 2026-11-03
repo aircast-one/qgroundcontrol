@@ -25,7 +25,8 @@ const INDEX_BYTES: u64 = 4;
 const ARENA_VERTICES: u32 = 1 << 19;
 const ARENA_INDICES: u32 = 1 << 21;
 const DRAW_BYTES: u64 = 128;
-const SCENE_BYTES: u64 = 512;
+const SCENE_BYTES: u64 = 528;
+const MAP_HAZE: f32 = 0.35;
 const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
 const LAYERS: [Layer; 6] = [
@@ -129,7 +130,7 @@ const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
     wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3];
 const DRAW_ATTRIBUTES: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, 10 => Float32x4];
 const SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, anchor: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, anchor: vec4<f32>, previous: mat4x4<f32>, air: vec4<f32>, temporal: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var picture: texture_2d<f32>;
 @group(1) @binding(1) var tile_sampler: sampler;
@@ -342,7 +343,7 @@ fn clouds(direction: vec3<f32>, jitter: f32, limit: f32) -> vec4<f32> {
     let up = dot(direction, scene.zenith.xyz);
     let inside = scene.eye.w >= CLOUD_BASE_M && scene.eye.w <= CLOUD_TOP_M;
     let toward_slab = select(up, -up, scene.eye.w > CLOUD_TOP_M);
-    if (!CLOUDS || (!inside && toward_slab < 0.08) || abs(up) < 0.002) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    if (!CLOUDS || scene.air.x < 0.5 || (!inside && toward_slab < 0.08) || abs(up) < 0.002) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
     let fade = select(smoothstep(0.08, 0.25, toward_slab), 1.0, inside);
     let reach = slab_reach(up, limit);
     if (reach.y <= reach.x) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
@@ -415,7 +416,7 @@ fn fog_amount(seen: vec3<f32>) -> f32 {
     if (!FOG) { return 0.0; }
     let climb = dot(seen, scene.zenith.xyz);
     let along = select(FOG_HEIGHT_M * (1.0 - exp(-climb / FOG_HEIGHT_M)) / climb, 1.0, abs(climb) < 1.0);
-    return 1.0 - exp(-FOG_DENSITY * exp(-scene.eye.w / FOG_HEIGHT_M) * length(seen) * along);
+    return 1.0 - exp(-FOG_DENSITY * scene.air.y * exp(-scene.eye.w / FOG_HEIGHT_M) * length(seen) * along);
 }
 
 fn level_frame() -> mat2x3<f32> {
@@ -512,7 +513,7 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
 
 fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     let distance = max(length(f.seen), 1.0);
-    let air = scatter(f.seen / distance, distance, AERIAL_SAMPLES);
+    let air = scatter(f.seen / distance, distance * scene.air.y, AERIAL_SAMPLES);
     let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
     let lit = sunlight_reaching(f.seen, normal);
     let shaded = fogged(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, f.seen);
@@ -776,7 +777,7 @@ struct Placed {
 @fragment fn fs() {}
 ";
 const POST_SHADER: &str = r"
-struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, anchor: vec4<f32>, previous: mat4x4<f32>, temporal: vec4<f32> };
+struct Scene { unproject: mat4x4<f32>, project: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32>, light: array<mat4x4<f32>, 3>, cascades: array<vec4<f32>, 3>, eye: vec4<f32>, anchor: vec4<f32>, previous: mat4x4<f32>, air: vec4<f32>, temporal: vec4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var screen_sampler: sampler;
 @group(1) @binding(1) var picture: texture_2d<f32>;
@@ -2685,6 +2686,10 @@ impl Renderer {
                             .to_array(),
                     )
                     .chain(previous.as_mat4().to_cols_array())
+                    .chain(match camera.map {
+                        true => [0.0, MAP_HAZE, 0.0, 0.0],
+                        false => [1.0, 1.0, 0.0, 0.0],
+                    })
                     .chain(temporal),
             ),
         );

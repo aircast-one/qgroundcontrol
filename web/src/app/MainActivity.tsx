@@ -288,8 +288,6 @@ export const AircastShell = () => {
   const [roiTapped, setRoiTapped] = useState<TrackPoint | null>(null);
   const mapInsets = useValue(flyScreen.mapInsets);
   const mapOrnamentEnd = useValue(flyScreen.mapOrnamentEnd);
-  const mapOwnsInsets = flyView === FlyView.Map || portrait;
-  const mapPip = flyView === FlyView.Video && !portrait;
   const map3dShown = useMap3dShown();
 
   const flightActions = (layout: FlyDeckLayout) => <FlightActions layout={layout} center={<CameraShutters />} />;
@@ -321,14 +319,14 @@ export const AircastShell = () => {
   const flyMap = (modifier: ModifierProps) => (
     <div {...modifier}>
       {map3dShown && !mapPip ? (
-        <Map3dView className="size-full" />
+        <Map3dView className="size-full" bottomInsetPx={mapBottomInset} logoEndInsetPx={mapLogoEndInset} />
       ) : (
         <FlyMap
           className="size-full"
           cameraBottomPx={0}
           topInsetPx={mapOwnsInsets ? mapInsets.top : 0}
-          bottomInsetPx={mapOwnsInsets ? mapInsets.bottom : 0}
-          logoEndInsetPx={mapOwnsInsets ? Math.round(mapOrnamentEnd ?? MAP_LAYERS_CLEARANCE) : null}
+          bottomInsetPx={mapBottomInset}
+          logoEndInsetPx={mapLogoEndInset}
           pip={mapPip}
           onMapClick={(latitude: number, longitude: number) => {
             setMapHoldHint(MapHoldHint.Learned);
@@ -464,6 +462,10 @@ export const AircastShell = () => {
   const pictureNow = useQgcDerived(VIDEO_VIEW, videoDecodingOf);
   const syntheticOnScreen = useRememberSyntheticAvailable();
   const shownFlyView = flyViewShown(flyView, flyNow?.armed === true, noVideoSource && !syntheticOnScreen, !vehicleNow && noVideoSource && !pictureNow);
+  const mapPip = shownFlyView === FlyView.Video && !portrait;
+  const mapOwnsInsets = shownFlyView === FlyView.Map || portrait;
+  const mapBottomInset = mapOwnsInsets ? mapInsets.bottom : 0;
+  const mapLogoEndInset = mapOwnsInsets ? Math.round(mapOrnamentEnd ?? MAP_LAYERS_CLEARANCE) : null;
 
   const vehicles = useQgcPath(VEHICLES_VIEW);
   const lastVehicles = useRef<VehicleChoices | null>(null);

@@ -1,16 +1,50 @@
 import { describe, expect, it } from 'vitest';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { Offset } from '@/ui/FlyShell';
-import { map3dNote, mouseTurn, pinchStep, wheelScale } from '@/ui/Map3dView';
+import { map3dControlsAt, map3dNote, map3dOpenAt, map3dState, mouseTurn, pinchStep, wheelScale } from '@/ui/Map3dView';
 import { SyntheticDraw } from '@/ui/SyntheticView';
 
 describe('Map3dNoteTest', () => {
-  it('the 3D map looks for the aircraft until it is placed, then tells how the drawing goes', () => {
-    expect(map3dNote(null)).toBe(LOOKING_TITLE);
-    expect(map3dNote({ available: false, draw: 'drawn' })).toBe(LOOKING_TITLE);
-    expect(map3dNote({ available: true, draw: 'loading' })).toBe(SyntheticDraw.Loading.note);
-    expect(map3dNote({ available: true, draw: 'failed' })).toBe(SyntheticDraw.Failed.note);
-    expect(map3dNote({ available: true, draw: 'drawn' })).toBeNull();
+  const following = map3dState({ following: true });
+  const resting = map3dState({ following: false });
+
+  it('the 3D map looks for the aircraft only while it follows one that is not placed', () => {
+    expect(map3dNote(null, following)).toBe(LOOKING_TITLE);
+    expect(map3dNote({ available: false, draw: 'drawn' }, following)).toBe(LOOKING_TITLE);
+    expect(map3dNote({ available: false, draw: 'drawn' }, resting)).toBeNull();
+    expect(map3dNote({ available: false, draw: 'loading' }, resting)).toBe(SyntheticDraw.Loading.note);
+  });
+
+  it('with the aircraft placed the 3D map tells how the drawing goes', () => {
+    expect(map3dNote({ available: true, draw: 'loading' }, following)).toBe(SyntheticDraw.Loading.note);
+    expect(map3dNote({ available: true, draw: 'failed' }, following)).toBe(SyntheticDraw.Failed.note);
+    expect(map3dNote({ available: true, draw: 'drawn' }, resting)).toBeNull();
+  });
+});
+
+describe('Map3dStateTest', () => {
+  it('the 3D map reads its bearing, whether it follows and whether an aircraft is placed', () => {
+    expect(map3dState({ heading: 90.5, tilt: 35, range: 500, following: false, aircraft: true })).toEqual({ heading: 90.5, following: false, aircraft: true });
+  });
+
+  it('before the core says anything the 3D map faces north and follows, with no aircraft', () => {
+    expect(map3dState(null)).toEqual({ heading: 0.0, following: true, aircraft: false });
+  });
+});
+
+describe('Map3dOpenTest', () => {
+  it('the 3D map opens where the 2D map last was, else where it was saved, else with nothing', () => {
+    const saved = { centre: { latitude: 47.0, longitude: 8.0 }, zoom: 15.0 };
+    expect(map3dOpenAt({ latitude: 47.4, longitude: 8.5 }, saved)).toEqual([47.4, 8.5]);
+    expect(map3dOpenAt(null, saved)).toEqual([47.0, 8.0]);
+    expect(map3dOpenAt(null, null)).toEqual([]);
+  });
+});
+
+describe('Map3dControlsTest', () => {
+  it('the 3D map controls sit where the fly map keeps its scale bar and logo', () => {
+    expect(map3dControlsAt(120, 64)).toEqual({ paddingRight: 64, paddingBottom: 132 });
+    expect(map3dControlsAt(120, null)).toEqual({ padding: 12 });
   });
 });
 

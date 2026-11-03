@@ -52,10 +52,9 @@ fun MapLayersSheet(onDismiss: () -> Unit) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listed?.types?.forEach { type ->
                     FilterChip(
-                        selected = !Map3d.isShown && type == listed?.current,
+                        selected = type == listed?.current,
                         onClick = {
                             val path = listed?.path ?: return@FilterChip
-                            Map3d.show(context, false)
                             scope.launch {
                                 withContext(Dispatchers.Default) { setOk(path, settingJson(JSONObject.quote(type))) }
                                 listed = listed?.copy(current = type)
@@ -64,26 +63,32 @@ fun MapLayersSheet(onDismiss: () -> Unit) {
                         label = { Text(type) },
                     )
                 }
-                if (offers3d) {
-                    FilterChip(selected = Map3d.isShown, onClick = { Map3d.show(context, true) }, label = { Text(MAP_3D_LABEL) })
-                }
             }
-            Row(
-                Modifier.fillMaxWidth().clickable {
-                    scope.launch { withContext(Dispatchers.Default) { setOk(OBSTACLE_OVERLAY, settingJson((!obstacles).toString())) } }
-                }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Obstacle distance", style = MaterialTheme.typography.bodyLarge)
-                    Text("Proximity sensor readings around the vehicle", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(checked = obstacles, onCheckedChange = null)
+            if (offers3d) {
+                LayerSwitch(MAP_3D_TITLE, MAP_3D_DETAIL, Map3d.isShown) { Map3d.show(context, !Map3d.isShown) }
+            }
+            LayerSwitch("Obstacle distance", "Proximity sensor readings around the vehicle", obstacles) {
+                scope.launch { withContext(Dispatchers.Default) { setOk(OBSTACLE_OVERLAY, settingJson((!obstacles).toString())) } }
             }
         }
     }
 }
 
+@Composable
+private fun LayerSwitch(title: String, detail: String, checked: Boolean, onToggle: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
 private const val OBSTACLE_OVERLAY = "settings.flyViewSettings.showObstacleDistanceOverlay"
 private const val SYNTHETIC_VIEW = "view.syntheticView"
-private const val MAP_3D_LABEL = "3D"
+private const val MAP_3D_TITLE = "3D view"
+private const val MAP_3D_DETAIL = "Terrain and buildings around the aircraft, and its height above the ground"

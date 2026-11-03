@@ -681,11 +681,7 @@ fn show(
         let target = feed
             .pose()
             .as_ref()
-            .and_then(Target::from_view)
-            .map(|target| Target {
-                orbit: orbiting.then(|| feed.orbit()),
-                ..target
-            });
+            .and_then(|view| Target::seen(view, orbiting.then(|| feed.orbit())));
         let sticks = feed.sticks();
         summary.pose_read_ms.push(millis(reading.elapsed()));
         let largest = shown

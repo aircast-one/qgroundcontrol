@@ -72,7 +72,6 @@ impl Bottle {
 const ROUTE_PX: f64 = 3.0;
 const MARK_PX: f64 = 14.0;
 const LABEL_PX: f64 = 18.0;
-const LABEL_RAISE_PX: f64 = 18.0;
 const WALL_FOOT_M: f64 = 100.0;
 const CIRCLE_STEPS: usize = 64;
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
@@ -93,6 +92,7 @@ const LEAD_PX: f64 = 22.0;
 const LEAD_LINE_PX: f64 = 2.0;
 const AIRCRAFT: [u8; 4] = [0xFF, 0x3D, 0x00, 255];
 const AIRCRAFT_PX: f64 = 22.0;
+const AIRCRAFT_LABEL_PX: f64 = 28.0;
 const NOSE_PX: f64 = 34.0;
 const NOSE_LINE_PX: f64 = 4.0;
 const DROP_LINE_PX: f64 = 2.0;
@@ -109,10 +109,10 @@ const GLASS_ROW: usize = CAR_PAINTS.len();
 const TYRE_ROW: usize = CAR_PAINTS.len() + 1;
 const BRACKET_TEXELS: u32 = 10;
 const BRACKET_THICKNESS: u32 = 3;
-const GLYPHS: &str = "0123456789H";
+const GLYPHS: &str = "0123456789Hm";
 const GLYPH_SCALE: u32 = 4;
 const GLYPH_CELL: (u32, u32) = (5, 7);
-const FONT: [[u8; 5]; 11] = [
+const FONT: [[u8; 5]; 12] = [
     [0b111, 0b101, 0b101, 0b101, 0b111],
     [0b010, 0b110, 0b010, 0b010, 0b111],
     [0b111, 0b001, 0b111, 0b100, 0b111],
@@ -124,6 +124,7 @@ const FONT: [[u8; 5]; 11] = [
     [0b111, 0b101, 0b111, 0b101, 0b111],
     [0b111, 0b101, 0b111, 0b001, 0b111],
     [0b101, 0b101, 0b111, 0b101, 0b101],
+    [0b000, 0b111, 0b111, 0b101, 0b101],
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -588,9 +589,14 @@ fn glyph_uv(character: char) -> Option<[[f32; 2]; 4]> {
     Some([[left, 1.0], [right, 1.0], [right, 0.0], [left, 0.0]])
 }
 
-fn label(camera: &Camera, at: DVec3, text: &str) -> Vec<([DVec3; 4], [[f32; 2]; 4])> {
+fn label(
+    camera: &Camera,
+    at: DVec3,
+    text: &str,
+    height_px: f64,
+) -> Vec<([DVec3; 4], [[f32; 2]; 4])> {
     let (cell_w, cell_h) = GLYPH_CELL;
-    let char_w = LABEL_PX * f64::from(cell_w) / f64::from(cell_h);
+    let char_w = height_px * f64::from(cell_w) / f64::from(cell_h);
     let right = camera.forward.cross(camera.up).normalize() * metres_per_px(camera, at);
     let start = -(text.chars().count() as f64 - 1.0) / 2.0 * char_w;
     text.chars()
@@ -598,10 +604,7 @@ fn label(camera: &Camera, at: DVec3, text: &str) -> Vec<([DVec3; 4], [[f32; 2]; 
         .filter_map(|(index, character)| {
             let uv = glyph_uv(character)?;
             let shifted = at + right * (start + index as f64 * char_w);
-            Some((
-                billboard(camera, shifted, LABEL_RAISE_PX, char_w, LABEL_PX),
-                uv,
-            ))
+            Some((billboard(camera, shifted, height_px, char_w, height_px), uv))
         })
         .collect()
 }
@@ -649,8 +652,11 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
     let labels = overlays
         .waypoints
         .iter()
-        .flat_map(|(s, text)| label(camera, lifted(s), text))
-        .chain(home.into_iter().flat_map(|at| label(camera, at, "H")));
+        .flat_map(|(s, text)| label(camera, lifted(s), text, LABEL_PX))
+        .chain(
+            home.into_iter()
+                .flat_map(|at| label(camera, at, "H", LABEL_PX)),
+        );
     let walls = |inclusion: bool| {
         let (low, high) = (home_ground - WALL_FOOT_M, home_ground + overlays.fence_top);
         overlays
@@ -756,7 +762,7 @@ pub fn aircraft(
             * NOSE_PX
             * unit;
     let foot = ground.map(|height| ecef(at.0, at.1, height));
-    let above = ground.map(|height| format!("{:.0}", (at.2 - height).max(0.0)));
+    let above = ground.map(|height| format!("{:.0}m", (at.2 - height).max(0.0)));
     let over_marker = body + camera.up * AIRCRAFT_PX / 2.0 * unit;
     [
         quads(
@@ -785,7 +791,7 @@ pub fn aircraft(
             &frame,
             above
                 .iter()
-                .flat_map(|text| label(camera, over_marker, text)),
+                .flat_map(|text| label(camera, over_marker, text, AIRCRAFT_LABEL_PX)),
             atlas(),
             Layer::OnTop,
         ),
@@ -1082,7 +1088,10 @@ mod tests {
     #[test]
     fn the_glyph_atlas_draws_digits_white_inside_a_black_outline() {
         let atlas = atlas();
-        assert_eq!(atlas.dimensions(), (5 * 11 * GLYPH_SCALE, 7 * GLYPH_SCALE));
+        assert_eq!(
+            atlas.dimensions(),
+            (5 * GLYPHS.len() as u32 * GLYPH_SCALE, 7 * GLYPH_SCALE)
+        );
         let pixel = |glyph: u32, column: u32, row: u32| {
             atlas
                 .get_pixel((glyph * 5 + column) * GLYPH_SCALE, row * GLYPH_SCALE)

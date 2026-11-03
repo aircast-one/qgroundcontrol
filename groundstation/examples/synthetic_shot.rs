@@ -51,6 +51,7 @@ fn main() {
             range: number("--orbit-range", groundstation::map3d::START.range),
             focus: None,
         }),
+        aircraft: true,
     };
     groundstation::terrainservice::set_cache_path(arg("--cache").map(std::path::PathBuf::from));
     let mut session = Session::new(&token, Arc::new(Network), Detail::FULL).expect("fetch workers");

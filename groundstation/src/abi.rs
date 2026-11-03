@@ -552,6 +552,11 @@ pub(crate) fn pump_once() {
                 .iter()
                 .for_each(|(path, json)| announce(path, json));
         }
+        if crate::map3d::take_changed() {
+            CORE.on_event(crate::map3d::MAP3D_CHANGED, "null")
+                .iter()
+                .for_each(|(path, json)| announce(path, json));
+        }
         if crate::lens::take_changed() {
             CORE.on_event(crate::lens::LENS_CHANGED, "null")
                 .iter()

@@ -83,6 +83,7 @@ pub struct Target {
     pub bottles: Vec<Bottle>,
     pub locked: bool,
     pub orbit: Option<Orbit>,
+    pub aircraft: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -207,7 +208,52 @@ impl Target {
                 .and_then(serde_json::Value::as_bool)
                 == Some(true),
             orbit: None,
+            aircraft: true,
         })
+    }
+
+    pub fn resting(spot: (f64, f64), imagery: &str, orbit: Orbit) -> Self {
+        Self {
+            latitude: spot.0,
+            longitude: spot.1,
+            above_home: 0.0,
+            home_latitude: spot.0,
+            home_longitude: spot.1,
+            heading: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov: crate::map3d::FOV_DEG,
+            aim: (0.0, 0.0),
+            imagery: imagery.to_string(),
+            north_speed: 0.0,
+            east_speed: 0.0,
+            climb_speed: 0.0,
+            heading_rate: None,
+            pitch_rate: None,
+            roll_rate: 0.0,
+            response: Response::default(),
+            round_trip: None,
+            bottles: Vec::new(),
+            locked: false,
+            orbit: Some(orbit),
+            aircraft: false,
+        }
+    }
+
+    pub fn seen(view: &serde_json::Value, orbit: Option<Orbit>) -> Option<Self> {
+        let map_imagery = view.get("mapImagery").and_then(serde_json::Value::as_str);
+        match (Self::from_view(view), orbit) {
+            (target, None) => target,
+            (Some(target), Some(orbit)) => Some(Self {
+                imagery: map_imagery.unwrap_or(&target.imagery).to_string(),
+                orbit: Some(orbit),
+                ..target
+            }),
+            (None, Some(orbit)) => orbit
+                .focus
+                .zip(map_imagery)
+                .map(|(spot, imagery)| Self::resting(spot, imagery, orbit)),
+        }
     }
 }
 
@@ -455,6 +501,7 @@ pub struct Frame {
     pub reading_age: Duration,
     pub stick_to_frame: Option<Duration>,
     pub eye: Option<Eye>,
+    pub aircraft: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -596,6 +643,7 @@ impl Frame {
             above_ground: eye
                 .ground
                 .map_or(0.0, |under| (eye.pose.height - under).max(0.0)),
+            map: true,
             ..Camera::at(&eye.pose, width, height, when)
         };
         let marks = overlays
@@ -604,12 +652,15 @@ impl Frame {
                 overlay::meshes(&self.on_ground(overlays, ground), ground, &camera)
             })
             .unwrap_or_default();
-        let aircraft = overlay::aircraft(
-            (self.pose.latitude, self.pose.longitude, self.pose.height),
-            self.pose.heading,
-            self.under_ground.or(self.home_ground),
-            &camera,
-        );
+        let aircraft = match self.aircraft {
+            true => overlay::aircraft(
+                (self.pose.latitude, self.pose.longitude, self.pose.height),
+                self.pose.heading,
+                self.under_ground.or(self.home_ground),
+                &camera,
+            ),
+            false => Vec::new(),
+        };
         (
             camera,
             self.ground
@@ -1742,6 +1793,7 @@ impl Session {
             reading_age: now.saturating_duration_since(telemetry.1),
             stick_to_frame: touched.map(|at| now.saturating_duration_since(at)),
             eye,
+            aircraft: target.aircraft,
         })
     }
 }
@@ -1800,6 +1852,7 @@ mod tests {
             bottles: Vec::new(),
             locked: false,
             orbit: None,
+            aircraft: true,
         }
     }
 
@@ -1863,6 +1916,7 @@ mod tests {
             reading_age: Duration::ZERO,
             stick_to_frame: None,
             eye: None,
+            aircraft: true,
         };
         let tracked = overlays.tracked.clone().unwrap();
         let later = tracked.seen + Duration::from_millis(400);
@@ -2063,6 +2117,27 @@ mod tests {
         );
         assert!((eye.heading - 90.0).abs() < 0.1 && (eye.pitch + 30.0).abs() < 0.1);
         assert_eq!((eye.roll, eye.fov), (0.0, crate::map3d::FOV_DEG));
+    }
+
+    #[test]
+    fn the_3d_map_drapes_the_chosen_map_and_with_no_aircraft_rests_on_the_held_spot() {
+        let orbit = Orbit {
+            focus: Some((46.5, 7.9)),
+            ..crate::map3d::START
+        };
+        let no_aircraft = serde_json::json!({ "available": false, "imagery": "Bing Satellite", "mapImagery": "Bing Hybrid" });
+        let resting = Target::seen(&no_aircraft, Some(orbit)).expect("a spot to look at");
+        assert_eq!(
+            (resting.latitude, resting.longitude, resting.aircraft),
+            (46.5, 7.9, false)
+        );
+        assert_eq!(resting.imagery, "Bing Hybrid");
+        assert_eq!(Target::seen(&no_aircraft, None), None);
+        assert_eq!(
+            Target::seen(&no_aircraft, Some(crate::map3d::START)),
+            None,
+            "following an aircraft that isn't there shows nothing"
+        );
     }
 
     #[test]

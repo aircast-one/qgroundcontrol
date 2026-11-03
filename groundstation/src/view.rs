@@ -320,6 +320,11 @@ pub const VIEWS: &[View] = &[
         compute: crate::synthview::synthetic_view,
     },
     View {
+        path: "view.map3d",
+        deps: crate::map3d::DEPS,
+        compute: crate::map3d::map3d_view,
+    },
+    View {
         path: "view.syntheticOverlays",
         deps: crate::synthview::OVERLAY_DEPS,
         compute: crate::synthview::overlays_view,

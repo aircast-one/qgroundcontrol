@@ -1,28 +1,51 @@
-import { type PointerEvent, useEffect, useRef } from 'react';
-import type { Json } from '@/bridge/Json';
+import { type CSSProperties, type PointerEvent, type RefObject, useEffect, useRef } from 'react';
+import { type Json, optBoolean, optDouble } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { coerceAtLeast } from '@/kotlin/Std';
-import { Text } from '@/m3';
-import { aircast } from '@/theme/Colors';
+import { Surface, Text } from '@/m3';
+import { type SavedCamera, readCamera } from '@/map/MapCamera';
+import { FlightMapPosition, type TrackPoint } from '@/map/VehicleMap';
+import { Drawable } from '@/res/Icon';
+import { AircastSpace, Color, aircast, withAlpha } from '@/theme/Colors';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { Offset, minus } from '@/ui/FlyShell';
 import { osdShadow } from '@/ui/Osd';
 import { SyntheticSurface, nativeDraw } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, syntheticAvailable } from '@/ui/SyntheticView';
-import { DOUBLE_TAP_TIMEOUT_MS, TOUCH_SLOP } from '@/ui/VideoGestures';
+import { DOUBLE_TAP_TIMEOUT_MS, TOUCH_SLOP, usePointerGestures } from '@/ui/VideoGestures';
 
+const MAP3D_VIEW = 'view.map3d';
 const MAP3D_PAN = 'map3d.pan';
 const MAP3D_TURN = 'map3d.turn';
 const MAP3D_TILT = 'map3d.tilt';
 const MAP3D_ZOOM = 'map3d.zoom';
 const MAP3D_FOLLOW = 'map3d.follow';
+const MAP3D_NORTH = 'map3d.north';
+const MAP3D_OPEN = 'map3d.open';
 const TURN_PER_VIEW_WIDTH_DEG = 180.0;
 const WHEEL_ZOOM_RATE = 1.0 / 450.0;
 const WHEEL_LINE_PX = 16.0;
 const DOM_DELTA_LINE = 1;
+const CONTROL_SCRIM_ALPHA = 0.55;
+const CONTROL_SIZE = 40;
+const CONTROL_ICON = 20;
+export const BACK_TO_AIRCRAFT = 'Back to aircraft';
+const COMPASS_LABEL = 'Compass. Drag to turn and tilt the view, tap to face north';
 
-export const map3dNote = (view: Json | null): string | null => (syntheticAvailable(view) ? nativeDraw(view).note : LOOKING_TITLE);
+export type Map3dState = { readonly heading: number; readonly following: boolean; readonly aircraft: boolean };
+
+export const map3dState = (view: Json | null): Map3dState => ({ heading: optDouble(view, 'heading', 0.0), following: optBoolean(view, 'following', true), aircraft: optBoolean(view, 'aircraft') });
+
+export const map3dNote = (synthetic: Json | null, state: Map3dState): string | null => (!syntheticAvailable(synthetic) && state.following ? LOOKING_TITLE : nativeDraw(synthetic).note);
+
+export const map3dOpenAt = (latest: TrackPoint | null, saved: SavedCamera | null): readonly number[] => {
+  const at = latest ?? saved?.centre ?? null;
+  return at === null ? [] : [at.latitude, at.longitude];
+};
+
+export const map3dControlsAt = (bottomInsetPx: number, logoEndInsetPx: number | null): CSSProperties =>
+  logoEndInsetPx === null ? { padding: AircastSpace.s3 } : { paddingRight: logoEndInsetPx, paddingBottom: bottomInsetPx + AircastSpace.s3 };
 
 export type Pair = readonly [Offset, Offset];
 
@@ -59,10 +82,56 @@ const capture = (element: Element, pointer: number) => {
   }
 };
 
-export const Map3dView = ({ className }: { className?: string }) => {
-  const view = useQgcPath(SYNTHETIC_VIEW);
-  const note = map3dNote(view);
+const Compass = ({ heading, view }: { heading: number; view: RefObject<HTMLDivElement | null> }) => {
+  const dragged = useRef(false);
+  const gestures = usePointerGestures({
+    onDragStart: () => {
+      dragged.current = true;
+    },
+    onDrag: (_at, moved) => {
+      send(MAP3D_TURN, mouseTurn(moved.x, view.current?.clientWidth ?? 0));
+      send(MAP3D_TILT, -moved.y, view.current?.clientHeight ?? 0);
+    },
+  });
+  return (
+    <button
+      type="button"
+      {...gestures}
+      onPointerDownCapture={() => {
+        dragged.current = false;
+      }}
+      onClick={() => (dragged.current ? undefined : send(MAP3D_NORTH))}
+      aria-label={COMPASS_LABEL}
+      title={COMPASS_LABEL}
+      className="grid touch-none place-items-center rounded-full"
+      style={{ width: CONTROL_SIZE, height: CONTROL_SIZE, background: withAlpha(Color.Black, CONTROL_SCRIM_ALPHA), color: aircast('outdoorForeground') }}
+    >
+      <Drawable name="ic_navigation" size={CONTROL_ICON} style={{ transform: `rotate(${-heading}deg)` }} />
+    </button>
+  );
+};
+
+const BackToAircraft = () => (
+  <Surface
+    onClick={() => send(MAP3D_FOLLOW)}
+    shape="full"
+    color={withAlpha(Color.Black, CONTROL_SCRIM_ALPHA)}
+    contentColor={aircast('outdoorForeground')}
+    className="inline-flex items-center"
+    style={{ gap: AircastSpace.s2, paddingInline: AircastSpace.s3, paddingBlock: AircastSpace.s2 }}
+  >
+    <Drawable name="ic_my_location" size={CONTROL_ICON} />
+    <Text typography="labelLarge">{BACK_TO_AIRCRAFT}</Text>
+  </Surface>
+);
+
+export const Map3dView = ({ className, bottomInsetPx = 0, logoEndInsetPx = null }: { className?: string; bottomInsetPx?: number; logoEndInsetPx?: number | null }) => {
+  const synthetic = useQgcPath(SYNTHETIC_VIEW);
+  const state = map3dState(useQgcPath(MAP3D_VIEW));
+  const note = map3dNote(synthetic, state);
+  const view = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
+  useEffect(() => send(MAP3D_OPEN, ...map3dOpenAt(FlightMapPosition.latest, readCamera())), []);
   const press = useRef({ pointers: new Map() as ReadonlyMap<number, Offset>, from: Offset(0, 0), moving: false, twist: false, second: false, tapUpAt: -Infinity });
   useEffect(() => {
     const element = host.current;
@@ -126,16 +195,16 @@ export const Map3dView = ({ className }: { className?: string }) => {
     now.tapUpAt = tapped && !now.second ? event.timeStamp : -Infinity;
   };
   return (
-    <div
-      ref={host}
-      className={`relative touch-none overflow-hidden bg-black select-none ${className ?? ''}`}
-      onPointerDown={down}
-      onPointerMove={move}
-      onPointerUp={(event) => up(event, false)}
-      onPointerCancel={(event) => up(event, true)}
-      onContextMenu={(event) => event.preventDefault()}
-    >
+    <div ref={view} className={`relative touch-none overflow-hidden bg-black select-none ${className ?? ''}`} onContextMenu={(event) => event.preventDefault()}>
       <SyntheticSurface className="absolute inset-0 size-full" orbit />
+      <div
+        ref={host}
+        className="absolute inset-0"
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={(event) => up(event, false)}
+        onPointerCancel={(event) => up(event, true)}
+      />
       {note === null ? null : (
         <div role="status" aria-label={note} className={`pointer-events-none absolute inset-0 flex items-center justify-center px-4 ${osdShadow()}`}>
           <Text typography="labelLarge" color={aircast('outdoorForeground')} textAlign="center" maxLines={2}>
@@ -143,6 +212,10 @@ export const Map3dView = ({ className }: { className?: string }) => {
           </Text>
         </div>
       )}
+      <div className="absolute right-0 bottom-0 flex items-center" style={{ gap: AircastSpace.s2, ...map3dControlsAt(bottomInsetPx, logoEndInsetPx) }}>
+        {state.aircraft && !state.following ? <BackToAircraft /> : null}
+        <Compass heading={state.heading} view={view} />
+      </div>
     </div>
   );
 };
