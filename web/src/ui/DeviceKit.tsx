@@ -1,13 +1,13 @@
 import { type ReactNode, useContext, useEffect, useState } from 'react';
 import { isJson, jsonObjects, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { copyToClipboard } from '@/kotlin/Platform';
-import { AlertDialog, BasicAlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, type KeyboardType, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
+import { AlertDialog, BasicAlertDialog, CircularProgressIndicator, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, type KeyboardType, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { type Fields, useDeviceDraft } from '@/ui/DeviceDraft';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
-import { type DeviceMethod, type DeviceRefusal, deviceCall, deviceQr } from '@/ui/DeviceView';
+import { type DeviceMethod, type DeviceRefusal, deviceCall, deviceQr, useDeviceReading } from '@/ui/DeviceView';
 import { LocalChangeNotice } from '@/ui/ValueRow';
 
 export type DeviceBadge = { readonly level: number; readonly text: string };
@@ -112,6 +112,20 @@ export const DeviceFact = ({ label, value, level = DeviceLevel.Neutral }: { labe
     </Text>
   </div>
 );
+
+export const askingText = (host: string): string => `Asking ${host === '' ? 'the device' : host}…`;
+
+export const DeviceWaiting = ({ page }: { page: string }) => {
+  const { host, problem } = useDeviceReading(page);
+  return (
+    <div role="status" className="flex w-full items-start gap-3 px-list py-6">
+      {problem === null ? <CircularProgressIndicator size={18} strokeWidth={2} /> : <MaterialIcon name="warning" size={18} style={{ color: levelColor(DeviceLevel.Warn) }} />}
+      <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+        {problem ?? askingText(host)}
+      </Text>
+    </div>
+  );
+};
 
 export const useCopy = (): ((text: string) => void) => {
   const notice = useContext(LocalChangeNotice);

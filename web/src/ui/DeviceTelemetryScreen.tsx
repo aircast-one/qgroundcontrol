@@ -3,7 +3,7 @@ import { CircularProgressIndicator, FilledTonalButton, IconButton, OutlinedTextF
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { useDeviceDraft } from '@/ui/DeviceDraft';
-import { CopyRow, DeviceBadgeText, DeviceColumns, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
+import { CopyRow, DeviceBadgeText, DeviceColumns, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceText, DeviceWaiting, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import {
@@ -18,7 +18,6 @@ import {
   parseTelemetry,
 } from '@/ui/DeviceTelemetry';
 import { useDeviceView } from '@/ui/DeviceView';
-import { FootNote } from '@/ui/SetupRow';
 
 export const endpointLabel = (endpoint: DeviceEndpoint): string => (endpoint.proto !== '' && !endpoint.label.startsWith(endpoint.proto) ? `${endpoint.proto} · ${endpoint.label}` : endpoint.label);
 
@@ -39,7 +38,7 @@ export const EndpointRows = ({ endpoints }: { endpoints: readonly DeviceEndpoint
 
 export const TelemetryScreen = (_: DeviceScreenProps) => {
   const view = useDeviceView('telemetry', parseTelemetry);
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="telemetry" />;
   return (
     <DeviceColumns
       left={

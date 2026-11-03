@@ -3,7 +3,7 @@ import { FilledTonalButton, IconButton, LinearProgressIndicator, OutlinedTextFie
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { useDeviceDraft } from '@/ui/DeviceDraft';
-import { ActionButton, type DeviceBadge, DeviceBadgeText, DeviceChart, DeviceColumns, DeviceDisclosure, DeviceFact, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceSwitchRow, DeviceText, type DeviceOption, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
+import { ActionButton, type DeviceBadge, DeviceBadgeText, DeviceChart, DeviceColumns, DeviceDisclosure, DeviceFact, DeviceForm, DeviceNotice, type DeviceOption, DeviceSection, DeviceSelect, DeviceSwitchRow, DeviceText, DeviceWaiting, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
 import { type ShapedField, ShapedForm } from '@/ui/DeviceKitForms';
 import {
   type DataCard,
@@ -38,7 +38,7 @@ import { FootNote } from '@/ui/SetupRow';
 
 export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('network', parseNetwork);
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="network" />;
   return (
     <DeviceColumns
       left={

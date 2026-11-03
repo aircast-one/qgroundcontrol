@@ -14,8 +14,10 @@ describe('DeviceViewTest', () => {
       host: 'falcon.local',
       answered: true,
       view: { headline: 'Ready' },
+      problem: null,
     });
-    expect(deviceReading({ origin: '', host: '', answered: false, view: null })).toEqual({ origin: '', host: '', answered: false, view: null });
+    expect(deviceReading({ origin: '', host: '', answered: false, view: null })).toEqual({ origin: '', host: '', answered: false, view: null, problem: null });
+    expect(deviceReading({ host: 'pi4', answered: false, view: null, problem: 'pi4 does not have this page yet.' }).problem).toBe('pi4 does not have this page yet.');
     expect(deviceReading(null).origin).toBe('');
   });
 

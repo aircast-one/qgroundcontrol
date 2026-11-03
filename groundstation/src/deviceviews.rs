@@ -38,7 +38,14 @@ const SECURE_ORIGIN: &str = "/api/tls";
 #[derive(Default)]
 struct Page {
     view: Value,
+    problem: Option<String>,
     following: bool,
+}
+
+enum Attempt {
+    Views(usize),
+    Status(u16),
+    Unreachable,
 }
 
 #[derive(Default)]
@@ -82,12 +89,22 @@ impl Feed {
     }
 
     fn receive(&mut self, generation: u64, page: &str, view: Value) {
+        if let Some(held) = self.pages.get_mut(page).filter(|held| {
+            self.generation == generation && (held.view != view || held.problem.is_some())
+        }) {
+            held.view = view;
+            held.problem = None;
+            self.dirty = true;
+        }
+    }
+
+    fn failed(&mut self, generation: u64, page: &str, problem: String) {
         if let Some(held) = self
             .pages
             .get_mut(page)
-            .filter(|held| self.generation == generation && held.view != view)
+            .filter(|held| self.generation == generation && held.problem.as_ref() != Some(&problem))
         {
-            held.view = view;
+            held.problem = Some(problem);
             self.dirty = true;
         }
     }
@@ -230,11 +247,32 @@ fn page_view(page: &str) -> Value {
     }
     let feed = lock();
     let origin = feed.origin();
-    let view = feed
-        .pages
-        .get(page)
-        .map_or(Value::Null, |held| held.view.clone());
-    json!({ "kind": "object", "class": "DeviceView", "page": page, "origin": origin, "host": host_of(&origin), "answered": !view.is_null(), "view": view })
+    let held = feed.pages.get(page);
+    let view = held.map_or(Value::Null, |held| held.view.clone());
+    let problem = held.and_then(|held| held.problem.clone());
+    json!({ "kind": "object", "class": "DeviceView", "page": page, "origin": origin, "host": host_of(&origin), "answered": !view.is_null(), "view": view, "problem": problem })
+}
+
+fn attempt_problem(origin: &str, attempt: &Attempt) -> Option<String> {
+    let host = host_of(origin);
+    match attempt {
+        Attempt::Views(0) => Some(format!("{host} answered, but not with this page.")),
+        Attempt::Views(_) => None,
+        Attempt::Status(404) => Some(format!(
+            "{host} does not have this page yet. Update its software, then come back."
+        )),
+        Attempt::Status(status) => Some(format!("{host} turned this page down ({status}).")),
+        Attempt::Unreachable => Some(unreachable(origin)),
+    }
+}
+
+fn attempted(origin: &str, generation: u64, page: &str, attempt: &Attempt) {
+    let mut feed = lock();
+    if let Some(problem) =
+        attempt_problem(origin, attempt).filter(|_| feed.wanted(generation, page))
+    {
+        feed.failed(generation, page, problem);
+    }
 }
 
 fn take_views(lines: impl Iterator<Item = String>, generation: u64, page: &str) -> usize {
@@ -256,7 +294,7 @@ fn follow(origin: String, generation: u64, page: String) {
     let url = events_url(&origin, &page);
     let wanted = || lock().wanted(generation, &page);
     while wanted() {
-        let heard = agent
+        let attempt = match agent
             .get(&url)
             .header("Accept", "text/event-stream")
             .call()
@@ -268,8 +306,13 @@ fn follow(origin: String, generation: u64, page: String) {
                     generation,
                     &page,
                 )
-            });
-        if !matches!(heard, Ok(views) if views > 0) {
+            }) {
+            Ok(views) => Attempt::Views(views),
+            Err(ureq::Error::StatusCode(status)) => Attempt::Status(status),
+            Err(_) => Attempt::Unreachable,
+        };
+        attempted(&origin, generation, &page, &attempt);
+        if !matches!(attempt, Attempt::Views(views) if views > 0) {
             std::thread::sleep(RECONNECT);
         }
     }
@@ -282,13 +325,22 @@ fn follow(origin: String, generation: u64, page: String) {
         let url = events_url(&origin, &page);
         let wanted = || lock().wanted(generation, &page);
         while wanted() {
-            let _ = crate::http::stream_lines(&url, MAX_VIEW_BYTES, |line| {
+            let mut views = 0;
+            let streamed = crate::http::stream_lines(&url, MAX_VIEW_BYTES, |line| {
                 if let Some(view) = event_view(line) {
+                    views += 1;
                     lock().receive(generation, &page, view);
                 }
                 wanted()
             })
             .await;
+            let attempt = match streamed {
+                Ok(_) => Attempt::Views(views),
+                Err(error) => {
+                    crate::http::stream_status(&error).map_or(Attempt::Unreachable, Attempt::Status)
+                }
+            };
+            attempted(&origin, generation, &page, &attempt);
             crate::background::pause(RECONNECT).await;
         }
         lock().stopped(generation, &page);
@@ -1067,6 +1119,56 @@ mod tests {
         );
         crate::device::unpair();
         run(DISCONNECT, "[]");
+    }
+
+    #[test]
+    fn a_page_the_device_cannot_send_says_why_until_it_arrives() {
+        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let origin = "http://pi4.local";
+        assert_eq!(
+            attempt_problem(origin, &Attempt::Status(404)).as_deref(),
+            Some("pi4.local does not have this page yet. Update its software, then come back.")
+        );
+        assert_eq!(
+            attempt_problem(origin, &Attempt::Status(500)).as_deref(),
+            Some("pi4.local turned this page down (500).")
+        );
+        assert_eq!(
+            attempt_problem(origin, &Attempt::Views(0)).as_deref(),
+            Some("pi4.local answered, but not with this page.")
+        );
+        assert_eq!(
+            attempt_problem(origin, &Attempt::Unreachable),
+            Some(unreachable(origin))
+        );
+        assert_eq!(attempt_problem(origin, &Attempt::Views(1)), None);
+        let generation = {
+            let mut feed = lock();
+            feed.retarget(origin);
+            feed.pages.insert(
+                "cameras".into(),
+                Page {
+                    following: true,
+                    ..Page::default()
+                },
+            );
+            feed.watched.insert("cameras".into());
+            feed.generation
+        };
+        attempted(origin, generation, "cameras", &Attempt::Status(404));
+        assert_eq!(
+            page_view("cameras")["problem"],
+            "pi4.local does not have this page yet. Update its software, then come back."
+        );
+        attempted(origin, generation - 1, "cameras", &Attempt::Unreachable);
+        assert_eq!(
+            page_view("cameras")["problem"],
+            "pi4.local does not have this page yet. Update its software, then come back.",
+            "an attempt from before the device changed is dropped"
+        );
+        lock().receive(generation, "cameras", json!({ "cameras": [] }));
+        assert_eq!(page_view("cameras")["problem"], Value::Null);
+        lock().retarget("");
     }
 
     #[test]

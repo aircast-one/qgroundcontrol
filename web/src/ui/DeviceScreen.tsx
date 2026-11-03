@@ -8,14 +8,14 @@ import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { useOsdBackdrop } from '@/ui/Osd';
 import { useFlyIsPortrait } from '@/ui/FlyShell';
 import { MaterialIcon } from '@/res/Icon';
-import { FootNote, OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
+import { OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
 import { Drawable } from '@/res/Icon';
 import { type DeviceCheck, type DeviceHealth, type DevicePage, type DeviceStatus, type DeviceUplink, deviceNeedsAttention, devicePageIcon, deviceRequested, useDeviceStatus } from '@/ui/DeviceStatus';
 import { useDeviceReading } from '@/ui/DeviceView';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
-import { DeviceChart, DeviceFact, DeviceNotice, DeviceSection, DeviceText, levelColor } from '@/ui/DeviceKit';
+import { DeviceChart, DeviceFact, DeviceNotice, DeviceSection, DeviceText, DeviceWaiting, levelColor } from '@/ui/DeviceKit';
 import { DASHBOARD_MAX_WIDTH, DETAIL_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 
 const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ? SetupState.Done : SetupState.NeedsAttention);
@@ -67,7 +67,7 @@ export const DeviceTab = ({ shown = true, open, onOpen, onClose }: { shown?: boo
     return (
       <PageColumn>
         <div className="h-full w-full overflow-y-auto">
-          <FootNote text="Waiting for the device to answer…" />
+          <DeviceWaiting page="aircraft" />
           {hosted}
         </div>
       </PageColumn>

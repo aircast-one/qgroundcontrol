@@ -379,6 +379,14 @@ pub async fn get_later(
 }
 
 #[cfg(target_family = "wasm")]
+const STREAM_STATUS: &str = "http status: ";
+
+#[cfg(target_family = "wasm")]
+pub fn stream_status(error: &str) -> Option<u16> {
+    error.strip_prefix(STREAM_STATUS)?.parse().ok()
+}
+
+#[cfg(target_family = "wasm")]
 pub async fn stream_lines(
     url: &str,
     limit: usize,
@@ -403,7 +411,7 @@ pub async fn stream_lines(
             .map_err(failed)?
             .unchecked_into();
     if !response.ok() {
-        return Err(format!("http status: {}", response.status()));
+        return Err(format!("{STREAM_STATUS}{}", response.status()));
     }
     let reader: web_sys::ReadableStreamDefaultReader = response
         .body()
