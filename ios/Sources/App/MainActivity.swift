@@ -225,6 +225,7 @@ struct AircastShell: View {
         .statusBarHidden(flyLandscape || fullScreen)
         .persistentSystemOverlays(flyLandscape || fullScreen ? .hidden : .automatic)
         .background { HostNoticeWatch(acknowledgedThrough: acknowledgedThrough, onNotices: noticesArrived) }
+        .background { DeviceCameraHost() }
         .aircastTheme(dark: darkBars)
         .windowStyle(paletteWindowStyle(systemPalette, darkBars))
         .onChange(of: tab) { _, now in if now != .Fly { flyScreen.layout.editing = false } }

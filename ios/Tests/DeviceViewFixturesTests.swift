@@ -32,4 +32,13 @@ final class DeviceViewFixturesTests: XCTestCase {
     func testTheConnectionPageReadsWhatAircastdServes() throws {
         XCTAssertEqual(parseNetwork(try served("network"))?.uplink.title, "Wi-Fi (wlan0)")
     }
+
+    // MARK: - Cameras (DeviceCameras, DeviceCameraWizard)
+
+    func testTheCamerasPageReadsWhatAircastdServes() throws {
+        let view = try XCTUnwrap(parseCameras(try served("cameras")))
+        XCTAssertEqual(view.cameras.first?.name, "cam2")
+        XCTAssertEqual(view.cameras.first?.wizard.name, "cam2")
+        XCTAssertTrue(view.add.isNew)
+    }
 }

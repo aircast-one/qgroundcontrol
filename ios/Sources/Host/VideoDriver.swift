@@ -4,11 +4,15 @@ import QGCCore
 import UIKit
 
 private let RECORDING_TASK = "aircast:recording"
+private let VIDEO_PREVIEWS = "video.previews"
 
 enum VideoDriver {
     private static let interval = 0.5
     private static let main = Int32(QGC_VIDEO_MAIN)
-    private static let channels: [Int32] = [main, Int32(QGC_VIDEO_PIP)]
+    private static let pip = Int32(QGC_VIDEO_PIP)
+    // Channels after the main and picture-in-picture ones play the camera previews the core hands out (view.videoPreview).
+    private static let firstPreview = pip + 1
+    private static let channels: [Int32] = Array(main..<Int32(QGC_VIDEO_CHANNELS))
     private static let queue = DispatchQueue(label: "one.aircast.video-driver")
     private static let log = Logger(subsystem: "one.aircast.app", category: "Video")
     private static var timer: DispatchSourceTimer?
@@ -57,14 +61,20 @@ enum VideoDriver {
 
     private static func step() {
         let view = Qgc.get(VIDEO_VIEW)
-        let wanted: [Int32: String?] = [
-            main: view["nativePipeline"].stringOrNil,
-            Int32(QGC_VIDEO_PIP): view["pipPipeline"].stringOrNil,
-        ]
+        let previews = Qgc.get(VIDEO_PREVIEWS)["value"]
+        let wanted: [Int32: String?] = Dictionary(uniqueKeysWithValues: channels.map { ($0, pipeline($0, view, previews)) })
         channels.forEach { stopChanged($0, wanted[$0] ?? nil) }
         channels.forEach { startWanted($0, wanted[$0] ?? nil) }
         record(view["nativeRecording"])
         channels.forEach(report)
+    }
+
+    private static func pipeline(_ channel: Int32, _ view: JSON, _ previews: JSON) -> String? {
+        switch channel {
+        case main: return view["nativePipeline"].stringOrNil
+        case pip: return view["pipPipeline"].stringOrNil
+        default: return previews[Int(channel - firstPreview)]["pipeline"].stringOrNil
+        }
     }
 
     private static func stopChanged(_ channel: Int32, _ wanted: String?) {

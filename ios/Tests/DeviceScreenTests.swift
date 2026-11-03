@@ -70,7 +70,7 @@ final class DeviceScreenTests: XCTestCase {
                 Range(match.range(at: 1), in: text).map { String(text[$0]) }
             }
         }
-        XCTAssertGreaterThan(opened.count, 3)
+        XCTAssertGreaterThan(opened.count, 5)
         XCTAssertEqual(opened.filter { !native($0) }, [])
     }
 
