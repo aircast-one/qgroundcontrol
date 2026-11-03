@@ -9,6 +9,29 @@ struct MapPoint: Equatable, Hashable {
 
 let ORBIT_ACTION = "Orbit"
 let GOTO_ACTION = "GoTo"
+let RETURN_HOME_INSTEAD = "Return home instead"
+
+struct GotoPreview: Equatable {
+    var distance: String
+    var height: String
+    var verdict: String
+    var pastReturnPoint: Bool
+}
+
+func gotoPreviewPath(_ point: MapPoint) -> String {
+    String(format: "view.gotoPreview(%.7f,%.7f)", point.latitude, point.longitude)
+}
+
+func gotoPreview(_ view: JSON?) -> GotoPreview? {
+    guard let view, view["available"].bool else { return nil }
+    return GotoPreview(distance: view["distanceText"].string, height: view["heightText"].string, verdict: view["verdict"].string, pastReturnPoint: view["pastReturnPoint"].bool)
+}
+
+func gotoPreviewLines(_ preview: GotoPreview?, _ fallback: String) -> [String] {
+    guard let preview else { return [fallback] }
+    let lines = [[preview.distance, preview.height].filter { !$0.isBlank }.joined(separator: " \u{00b7} "), preview.verdict].filter { !$0.isBlank }
+    return lines.isEmpty ? [fallback] : lines
+}
 
 private let COMPASS_POINTS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"]
 
@@ -174,16 +197,27 @@ struct MapClickMenu: View {
         }
     }
 
+    private func returnHome() {
+        scope.launch {
+            _ = await offMain { VehicleCommands.returnToLaunch(false) }
+            guard !Task.isCancelled else { return }
+            onDismiss()
+        }
+    }
+
     private func sheet(_ actions: [MapClickAction], _ defaults: OrbitDefaults) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if let pending = confirming {
                 let vehicleAt = geoOf(vehicleCoordinate).map { MapPoint(latitude: $0.0, longitude: $0.1) }
                 let away = pending.id == GOTO_ACTION ? vehicleAt.flatMap { goHereText($0, point, defaults.unit, defaults.metresPerUnit) } : nil
-                VStack(alignment: .leading, spacing: Space.s3) {
-                    Text(sentenceCase(pending.title)).font(.titleLarge)
-                    Text(away ?? pending.message).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                    HoldOrCancel(label: pending.title, onConfirm: { run(pending) }, onCancel: { confirming = nil })
-                }
+                MapClickConfirm(
+                    pending: pending,
+                    away: away,
+                    previewPath: pending.id == GOTO_ACTION ? gotoPreviewPath(point) : nil,
+                    onConfirm: { run(pending) },
+                    onCancel: { confirming = nil },
+                    onReturnHome: returnHome
+                )
                 .padding(.horizontal, Space.s5)
             } else {
                 ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
@@ -214,6 +248,49 @@ struct MapClickMenu: View {
         }
         .padding(.top, Space.s4)
         .padding(.bottom, Space.s6)
+    }
+}
+
+private struct MapClickConfirm: View {
+    let pending: MapClickAction
+    let away: String?
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+    let onReturnHome: () -> Void
+    @QgcPath private var previewJson: JSON?
+    @Environment(\.theme) private var theme
+
+    init(pending: MapClickAction, away: String?, previewPath: String?, onConfirm: @escaping () -> Void, onCancel: @escaping () -> Void, onReturnHome: @escaping () -> Void) {
+        self.pending = pending
+        self.away = away
+        self.onConfirm = onConfirm
+        self.onCancel = onCancel
+        self.onReturnHome = onReturnHome
+        _previewJson = QgcPath(previewPath)
+    }
+
+    var body: some View {
+        let preview = gotoPreview(previewJson)
+        let lines = preview.map { shown -> [String] in
+            var withAway = shown
+            withAway.distance = away ?? shown.distance
+            return gotoPreviewLines(withAway, pending.message)
+        } ?? [away ?? pending.message]
+        let warn = preview?.pastReturnPoint == true
+        VStack(alignment: .leading, spacing: Space.s3) {
+            Text(sentenceCase(pending.title)).font(.titleLarge)
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                Text(line).font(.bodyMedium)
+                    .foregroundStyle(warn && index == lines.count - 1 ? theme.aircast.warning : theme.colors.onSurfaceVariant)
+            }
+            if warn {
+                Button(action: onReturnHome) {
+                    Text(RETURN_HOME_INSTEAD).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.filled)
+            }
+            HoldOrCancel(label: pending.title, onConfirm: onConfirm, onCancel: onCancel)
+        }
     }
 }
 
