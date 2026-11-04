@@ -67,7 +67,6 @@ _PLATFORM_PATTERNS: dict[str, list[str]] = {
 _SETUP_PATTERNS: dict[str, list[str]] = {
     "linux": [r"^tools/setup/.*debian", r"^tools/setup/install_dependencies/"],
     "windows": [r"^tools/setup/.*windows"],
-    "macos": [r"^tools/setup/.*macos"],
     "android": [r"^tools/setup/"],
     "ios": [r"^tools/setup/.*ios", r"^tools/setup/.*macos"],
     "docker-linux": [r"^tools/setup/"],
@@ -179,7 +178,6 @@ _NON_PR_PASSTHROUGH_KEYS = (
     "should_build",
     "linux",
     "windows",
-    "macos",
     "android",
     "docker_linux",
     "docker_android",
@@ -191,7 +189,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--platform",
         nargs="+",
-        help="Platform(s) (linux, windows, macos, android, ios, docker-linux, docker-android)",
+        help="Platform(s) (linux, windows, android, ios, docker-linux, docker-android)",
     )
     parser.add_argument(
         "--non-pr-passthrough",

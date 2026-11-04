@@ -84,7 +84,6 @@ jobs:
           workflow-names: |
             Linux
             Windows
-            MacOS
             Android
           timeout-minutes: 170
           poll-interval-minutes: 5

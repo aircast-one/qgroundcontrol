@@ -69,7 +69,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--head-sha", required=True, help="Commit SHA to inspect")
     parser.add_argument(
         "--platform-workflows",
-        default="Linux,Windows,MacOS,Android",
+        default="Linux,Windows,Android",
         help="Comma-separated platform workflow names",
     )
     parser.add_argument(

@@ -8,7 +8,7 @@ inputs:
   workflows:
     description: Comma-separated workflow names to collect artifact sizes for
     required: false
-    default: Linux,Windows,MacOS,Android
+    default: Linux,Windows,Android
   event:
     description: Optional workflow event name to filter runs by
     required: false

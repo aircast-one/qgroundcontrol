@@ -9,7 +9,7 @@ Usage:
         --repo owner/repo \\
         --head-sha abc123 \\
         --output-dir artifacts \\
-        --workflows Linux,Windows,MacOS,Android \\
+        --workflows Linux,Windows,Android \\
         --artifact-prefixes coverage-report,test-results-
 """
 
@@ -152,8 +152,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--workflows",
-        default="Linux,Windows,MacOS,Android",
-        help="Comma-separated workflow names to download from (default: Linux,Windows,MacOS,Android)",
+        default="Linux,Windows,Android",
+        help="Comma-separated workflow names to download from (default: Linux,Windows,Android)",
     )
     parser.add_argument(
         "--event",

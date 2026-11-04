@@ -42,10 +42,6 @@ constexpr QLatin1StringView kOptNoWinAssertUI = QLatin1StringView("no-windows-as
 constexpr QLatin1StringView kOptSwrast = QLatin1StringView("swrast");
 #endif
 
-#ifdef Q_OS_MACOS
-constexpr QLatin1StringView kOptNativeWindow = QLatin1StringView("native-window");
-#endif
-
 }
 
 /// @brief Normalizes command-line arguments
@@ -196,13 +192,6 @@ CommandLineParseResult parseCommandLine()
         QString(kOptSwrast),
         QCoreApplication::translate("main", "Force software OpenGL."));
     (void) parser.addOption(swrastOpt);
-#endif
-
-#ifdef Q_OS_MACOS
-    const QCommandLineOption nativeWindowOpt(
-        QString(kOptNativeWindow),
-        QCoreApplication::translate("main", "Draw the native macOS interface instead of the Qt one."));
-    (void) parser.addOption(nativeWindowOpt);
 #endif
 
 #ifdef Q_OS_WIN

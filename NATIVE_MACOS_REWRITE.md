@@ -1,5 +1,14 @@
 # Native macOS Migration — Implementation Plan
 
+> **Retired (2026-11-04).** The Qt-hosted native head this plan describes — the Swift in
+> `macos/` compiled into the Qt process, entered through `--native-window` / `AppShell.run` —
+> has been removed, together with its Qt-side glue (`QGC_NATIVE_UI`, the `/native/*` debug routes,
+> `QGCLinksC`, `QGCNativeDebugC` and the C++ `QGCMapTileC.cc` in `src/Bridge`) and the Qt macOS CI
+> workflow. It was
+> replaced by the native macOS app in `ios/` (Xcode target `AircastMac`: the shared SwiftUI
+> sources over the Rust core, no Qt). The rest of this document is kept as history; paths under
+> `macos/` and most of `tools/macos/` no longer exist.
+
 > **Ordering decided: shared layer first.** The inventory below showed two thirds of the
 > QML trapped behind the final, safety-critical phase under a risk-ascending order. That
 > tail is unmanageable, so the reusable controls are converted first and later phases
