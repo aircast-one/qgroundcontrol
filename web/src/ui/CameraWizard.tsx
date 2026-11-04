@@ -202,7 +202,7 @@ export const CameraWizard = ({
   }, [wizard]);
 
   const restart = () => {
-    void restartWizard();
+    const reset = restartWizard();
     setRtsp('');
     setIp('');
     setTransport(view.transports[0]?.value ?? view.transport);
@@ -212,6 +212,7 @@ export const CameraWizard = ({
     setSignIn({ shown: false, asked: false });
     setEditRtsp(false);
     setStep(1);
+    return reset;
   };
 
   const credentials = (nextUser: string, nextPass: string) => {
@@ -489,7 +490,11 @@ export const CameraWizard = ({
             </Text>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <TextButton onClick={restart}>Start over</TextButton>
+            {wizard.apply.state === 'failed' ? (
+              <TextButton onClick={() => void restart().then(scanForCameras)}>Scan for cameras</TextButton>
+            ) : (
+              <TextButton onClick={restart}>Start over</TextButton>
+            )}
             {wizard.apply.state === 'failed' ? (
               <span className="flex flex-wrap gap-2">
                 <OutlinedButton onClick={() => setStep(2)}>Change settings</OutlinedButton>

@@ -236,8 +236,11 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
         }
     }
 
-    fun restart() {
-        scope.launch { restartWizard() }
+    fun restart(then: suspend () -> Unit = {}) {
+        scope.launch {
+            restartWizard()
+            then()
+        }
         rtsp = ""
         ip = ""
         transport = view.transports.firstOrNull()?.value ?: view.transport
@@ -501,7 +504,11 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 Text(wizard.apply.text.ifEmpty { "Applying…" }, style = MaterialTheme.typography.bodyLarge, color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { restart() }) { Text("Start over") }
+                if (failed) {
+                    TextButton(onClick = { restart { scanForCameras() } }) { Text("Scan for cameras") }
+                } else {
+                    TextButton(onClick = { restart() }) { Text("Start over") }
+                }
                 if (failed) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { step = 2 }) { Text("Change settings") }

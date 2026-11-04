@@ -216,8 +216,11 @@ struct CameraWizard: View {
         }
     }
 
-    private func restart() {
-        Task { await restartWizard() }
+    private func restart(then next: @escaping () async -> Void = {}) {
+        Task {
+            await restartWizard()
+            await next()
+        }
         rtsp = ""
         ip = ""
         transport = view.transports.first?.value ?? view.transport
@@ -537,7 +540,11 @@ struct CameraWizard: View {
         }
         .accessibilityElement(children: .combine)
         HStack(spacing: 8) {
-            Button("Start over") { restart() }.buttonStyle(.text)
+            if failed {
+                Button("Scan for cameras") { restart { await scanForCameras() } }.buttonStyle(.text)
+            } else {
+                Button("Start over") { restart() }.buttonStyle(.text)
+            }
             Spacer(minLength: 0)
             if failed {
                 Button("Change settings") { step = 2 }.buttonStyle(.bordered)
