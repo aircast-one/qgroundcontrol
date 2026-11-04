@@ -119,4 +119,12 @@ class MapClickMenuTest {
         assertEquals(listOf("Move the vehicle"), gotoPreviewLines(null, "Move the vehicle"))
         assertEquals("view.gotoPreview(47.3980000,8.5460000)", gotoPreviewPath(MapPoint(47.398, 8.546)))
     }
+
+    @Test
+    fun `a press on the 3D map opens the menu only where the core found ground`() {
+        assertEquals(MapPoint(-35.36, 149.16), pickedPoint(JSONObject("""{"ok":true,"latitude":-35.36,"longitude":149.16}""")))
+        assertEquals(null, pickedPoint(JSONObject("""{"ok":false,"reason":"There is no ground under that point."}""")))
+        assertEquals(null, pickedPoint(JSONObject("""{"ok":true}""")))
+        assertEquals(null, pickedPoint(null))
+    }
 }

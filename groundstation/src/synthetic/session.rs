@@ -1962,6 +1962,7 @@ impl Session {
         self.focus_ground = eye.and_then(|eye| eye.focus_ground).or(self.focus_ground);
         if let Some(eye) = eye {
             self.probe_eye(eye.pose.latitude, eye.pose.longitude, now);
+            super::pick::seen(eye.pose, &self.orbit.ground);
         }
         let reselect = delivered > 0 || moving || fresh || due;
         let orbit_changed = match (reselect, eye, framed) {

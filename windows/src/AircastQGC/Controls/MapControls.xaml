@@ -41,6 +41,17 @@
                             Opening="OnLayersOpening" />
             </Button.Flyout>
         </Button>
+        <Button x:Name="Map3dButton"
+                Style="{StaticResource FlyRailButton}"
+                HorizontalAlignment="Center"
+                FontFamily="{ThemeResource AppFontFamily}"
+                FontSize="{ThemeResource FontSizeBody}"
+                FontWeight="SemiBold"
+                Content="3D"
+                Click="OnMap3d"
+                Visibility="Collapsed"
+                ToolTipService.ToolTip="Show the 3D map"
+                AutomationProperties.Name="Show the 3D map" />
         <Button x:Name="ThreeDButton"
                 Style="{StaticResource FlyRailButton}"
                 HorizontalAlignment="Center"

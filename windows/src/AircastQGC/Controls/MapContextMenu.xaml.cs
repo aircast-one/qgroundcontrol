@@ -21,6 +21,7 @@ public sealed partial class MapContextMenu : UserControl
     private const string ReturnHomePath = "vehicle.guidedModeRTL";
     private const string ReturnHomeTitle = "Return home instead";
     private const string GoToKind = "GoTo";
+    private const string Look3dKind = "Look3d";
     private const string OrbitKind = "Orbit";
     private const string OrbitUnchosen = "Choose a height for the orbit.";
     private const double ClickGap = 18;
@@ -35,6 +36,7 @@ public sealed partial class MapContextMenu : UserControl
     public event EventHandler<GuidedAsk>? ConfirmRequested;
     public event EventHandler? OpenChanged;
     public event EventHandler<OrbitPreview?>? OrbitPreviewChanged;
+    public event EventHandler? Looked3d;
 
     public MapContextMenu()
     {
@@ -119,7 +121,9 @@ public sealed partial class MapContextMenu : UserControl
         if (e.ClickedItem is not MapClickAction action || Target is not { } at) return;
         if (!action.Confirm)
         {
-            Report(Execute(action.Path, at.Latitude, at.Longitude));
+            var refused = Execute(action.Path, at.Latitude, at.Longitude);
+            if (refused == null && action.Kind == Look3dKind) Looked3d?.Invoke(this, EventArgs.Empty);
+            Report(refused);
             return;
         }
         var ask = Ask(action, at.Latitude, at.Longitude);

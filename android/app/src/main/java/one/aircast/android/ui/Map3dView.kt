@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,7 +50,10 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.AircastSpace
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import one.aircast.map.FlightMapPosition
 import one.aircast.map.Map3d
 import one.aircast.map.aircast
@@ -64,6 +68,7 @@ private const val MAP3D_ZOOM = "map3d.zoom"
 private const val MAP3D_FOLLOW = "map3d.follow"
 private const val MAP3D_NORTH = "map3d.north"
 private const val MAP3D_OPEN = "map3d.open"
+private const val MAP3D_PICK = "map3d.pick"
 private const val TURN_PER_VIEW_WIDTH_DEG = 180f
 private const val CONTROL_SCRIM_ALPHA = 0.55f
 private val CONTROL_SIZE = 40.dp
@@ -79,6 +84,10 @@ internal fun map3dToggleText(shown: Boolean): String = if (shown) "2D" else "3D"
 
 internal fun map3dToggleLabel(shown: Boolean): String = if (shown) "Show the flat map" else "Show the 3D map"
 
+internal fun pickedPoint(answer: JSONObject?): MapPoint? =
+    answer?.takeIf { it.optBoolean("ok") }?.let { MapPoint(it.optDouble("latitude"), it.optDouble("longitude")) }
+        ?.takeIf { !it.latitude.isNaN() && !it.longitude.isNaN() }
+
 internal data class Map3dState(val heading: Double, val following: Boolean, val aircraft: Boolean)
 
 internal fun map3dState(view: JSONObject?): Map3dState =
@@ -91,8 +100,8 @@ internal fun map3dNote(synthetic: JSONObject?, state: Map3dState): String? = whe
 
 private fun send(path: String, vararg args: Number) = offMainInOrder { Qgc.call(path, *args) }
 
-private fun Modifier.map3dGestures(onTouch: () -> Unit): Modifier = pointerInput(Unit) {
-    detectTapGestures(onDoubleTap = { send(MAP3D_FOLLOW) })
+private fun Modifier.map3dGestures(onTouch: () -> Unit, onPress: (Offset, IntSize) -> Unit): Modifier = pointerInput(Unit) {
+    detectTapGestures(onDoubleTap = { send(MAP3D_FOLLOW) }, onLongPress = { onPress(it, size) })
 }.pointerInput(Unit) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
@@ -186,6 +195,8 @@ internal fun Map3dView(modifier: Modifier, bottomInsetPx: Int, logoEndInsetPx: I
     val state = map3dState(map3dJson)
     var size by remember { mutableStateOf(IntSize.Zero) }
     var hinting by remember { mutableStateOf(!Map3d.hinted(context)) }
+    var picked by remember { mutableStateOf<MapPoint?>(null) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(hinting) {
         if (hinting) {
             Map3d.markHinted(context)
@@ -204,7 +215,18 @@ internal fun Map3dView(modifier: Modifier, bottomInsetPx: Int, logoEndInsetPx: I
     }
     Box(modifier.background(Color.Black).onSizeChanged { size = it }) {
         OrbitSurface(Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().map3dGestures { hinting = false })
+        Box(
+            Modifier.fillMaxSize().map3dGestures(
+                onTouch = { hinting = false },
+                onPress = { at, area ->
+                    scope.launch {
+                        picked = withContext(Dispatchers.Default) {
+                            pickedPoint(Qgc.call(MAP3D_PICK, at.x, at.y, area.width, area.height))
+                        } ?: picked
+                    }
+                },
+            ),
+        )
         map3dNote(synthetic, state)?.let { note ->
             Text(
                 note,
@@ -228,5 +250,6 @@ internal fun Map3dView(modifier: Modifier, bottomInsetPx: Int, logoEndInsetPx: I
                 Compass(state.heading, size)
             }
         }
+        picked?.let { point -> MapClickMenu(point) { picked = null } }
     }
 }

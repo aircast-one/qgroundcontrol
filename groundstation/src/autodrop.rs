@@ -12,6 +12,20 @@ const LATENCY_RANGE_S: std::ops::RangeInclusive<f64> = 0.05..=1.0;
 const LATENCY_LEARNING: f64 = 0.5;
 
 pub const RELEASE_LATENCY_SETTING: &str = "settings.appSettings.autodropReleaseLatencyMs";
+pub const ENABLED_SETTING: &str = "settings.appSettings.autodropEnabled";
+pub const TURNED_OFF: &str = "Auto Intercept is off. Turn it on in Settings › General.";
+
+const ENABLED_RAW: &str = "settings.appSettings.autodropEnabled.rawValue";
+
+pub fn enabled() -> bool {
+    crate::settingsstore::raw_setting(ENABLED_SETTING)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn turned_on(backend: &dyn Backend) -> bool {
+    flag(&backend.value(ENABLED_RAW), "value")
+}
 
 pub fn calibrated_latency_s() -> f64 {
     crate::settingsstore::raw_setting(RELEASE_LATENCY_SETTING)
@@ -715,6 +729,9 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
             None => json!({ "ok": false, "reason": "this build has no core vehicle to stop" }),
         };
     }
+    if !turned_on(backend) {
+        return json!({ "ok": false, "reason": TURNED_OFF });
+    }
 
     let (bays, empty) = payload_of(backend);
     let Some((bay, _)) = next_bay(bays, &empty) else {
@@ -1127,6 +1144,7 @@ mod tests {
                 "vehicle.payloadSetup" => {
                     json!({"kind": "value", "value": {"empty": [0]}}).to_string()
                 }
+                ENABLED_RAW => json!({ "value": true }).to_string(),
                 _ => "{}".to_string(),
             }
         }
@@ -1140,6 +1158,38 @@ mod tests {
             "{}".to_string()
         }
         fn watch(&self, _paths: &[String]) {}
+    }
+
+    struct TurnedOff;
+    impl Backend for TurnedOff {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.id" => json!({ "value": 1 }).to_string(),
+                ENABLED_RAW => json!({ "value": false }).to_string(),
+                _ => "{}".to_string(),
+            }
+        }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String {
+            "{}".to_string()
+        }
+        fn set(&self, _path: &str, _value: &str) -> String {
+            "{}".to_string()
+        }
+        fn invoke(&self, _path: &str, _args: &str) -> String {
+            "{}".to_string()
+        }
+        fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn auto_intercept_never_starts_until_the_pilot_turns_it_on_but_can_always_be_stopped() {
+        assert_eq!(run(&TurnedOff, "[]")["reason"], TURNED_OFF);
+        assert_eq!(run(&TurnedOff, r#"["manual"]"#)["reason"], TURNED_OFF);
+        assert_ne!(
+            run(&TurnedOff, r#"["stop"]"#)["reason"],
+            TURNED_OFF,
+            "a stop is never refused for being off"
+        );
     }
 
     #[test]
@@ -1252,6 +1302,7 @@ mod tests {
     impl Backend for FakeBackend {
         fn get(&self, path: &str) -> String {
             match path {
+                ENABLED_RAW => json!({ "value": true }).to_string(),
                 "vehicle.id" => "{\"value\": 7}".to_string(),
                 "vehicle.coordinate" => "{\"latitude\": 47.0, \"longitude\": 8.0}".to_string(),
                 "vehicle.altitudeRelative" => "{\"rawValue\": 20.0}".to_string(),

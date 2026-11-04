@@ -319,10 +319,22 @@ export const AircastShell = () => {
       </div>
     </div>
   );
+  const openMapClick = (latitude: number, longitude: number) => {
+    setMapHoldHint(MapHoldHint.Learned);
+    setMapClickAnchor(lastPointer.current);
+    setMapClickAt({ latitude, longitude });
+    setPicturePressed(null);
+  };
   const flyMap = (modifier: ModifierProps) => (
     <div {...modifier}>
       {map3dShown && !mapPip ? (
-        <Map3dView className="size-full" bottomInsetPx={mapBottomInset} logoEndInsetPx={mapLogoEndInset} />
+        <Map3dView
+          className="size-full"
+          bottomInsetPx={mapBottomInset}
+          logoEndInsetPx={mapLogoEndInset}
+          onMapClick={openMapClick}
+          onRefused={(reason: string) => void snackbars.showSnackbar(reason)}
+        />
       ) : (
         <FlyMap
           className="size-full"
@@ -331,12 +343,7 @@ export const AircastShell = () => {
           bottomInsetPx={mapBottomInset}
           logoEndInsetPx={mapLogoEndInset}
           pip={mapPip}
-          onMapClick={(latitude: number, longitude: number) => {
-            setMapHoldHint(MapHoldHint.Learned);
-            setMapClickAnchor(lastPointer.current);
-            setMapClickAt({ latitude, longitude });
-            setPicturePressed(null);
-          }}
+          onMapClick={openMapClick}
           onPlainTap={() => setMapHoldHint((hint: MapHoldHint) => (hint === MapHoldHint.Unseen && vehicleNow ? MapHoldHint.Due : hint))}
           onMissionItemClick={(sequence: number) => setWaypointTapped(sequence)}
           onRoiClick={(at: TrackPoint) => setRoiTapped(at)}

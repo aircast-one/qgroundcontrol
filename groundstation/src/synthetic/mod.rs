@@ -12,6 +12,7 @@ pub mod noise;
 pub mod open;
 pub mod overlay;
 pub mod pace;
+pub mod pick;
 pub mod predict;
 pub mod render;
 pub mod session;

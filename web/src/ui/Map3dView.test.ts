@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
-import { Offset } from '@/ui/FlyShell';
-import { map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, wheelScale } from '@/ui/Map3dView';
+import { Offset, Rect } from '@/ui/FlyShell';
+import { map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dPickArgs, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, wheelScale } from '@/ui/Map3dView';
 import { SyntheticDraw } from '@/ui/SyntheticView';
 
 describe('Map3dNoteTest', () => {
@@ -90,5 +90,12 @@ describe('Map3dGesturesTest', () => {
     expect(wheelScale(100, 0)).toBeLessThan(1.0);
     expect(wheelScale(100, 0) * wheelScale(-100, 0)).toBeCloseTo(1.0);
     expect(wheelScale(1, 1)).toBeCloseTo(wheelScale(16, 0));
+  });
+});
+
+describe('Map3dPickTest', () => {
+  it('a press asks for the ground under it in the 3D view own pixels, with the view size', () => {
+    expect(map3dPickArgs(Offset(410, 320), Rect(10, 20, 810, 620))).toEqual([400, 300, 800, 600]);
+    expect(map3dPickArgs(Offset(0, 0), Rect(0, 0, 390, 844))).toEqual([0, 0, 390, 844]);
   });
 });

@@ -1,5 +1,5 @@
 import { type CSSProperties, type PointerEvent, type RefObject, useEffect, useRef, useState } from 'react';
-import { type Json, optBoolean, optDouble } from '@/bridge/Json';
+import { type Json, optBoolean, optDouble, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { coerceAtLeast } from '@/kotlin/Std';
@@ -10,11 +10,12 @@ import { FlightMapPosition, type TrackPoint } from '@/map/VehicleMap';
 import { Drawable } from '@/res/Icon';
 import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
-import { Offset, PASS_THROUGH, minus } from '@/ui/FlyShell';
+import { Offset, PASS_THROUGH, type Rect, minus } from '@/ui/FlyShell';
 import { osdShadow } from '@/ui/Osd';
+import { groundPoint } from '@/ui/PictureHold';
 import { SyntheticSurface, nativeDraw } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, syntheticAvailable } from '@/ui/SyntheticView';
-import { DOUBLE_TAP_TIMEOUT_MS, TOUCH_SLOP, usePointerGestures } from '@/ui/VideoGestures';
+import { DOUBLE_TAP_TIMEOUT_MS, LONG_PRESS_TIMEOUT_MS, TOUCH_SLOP, usePointerGestures } from '@/ui/VideoGestures';
 
 const MAP3D_VIEW = 'view.map3d';
 const MAP3D_PAN = 'map3d.pan';
@@ -24,6 +25,7 @@ const MAP3D_ZOOM = 'map3d.zoom';
 const MAP3D_FOLLOW = 'map3d.follow';
 const MAP3D_NORTH = 'map3d.north';
 const MAP3D_OPEN = 'map3d.open';
+const MAP3D_PICK = 'map3d.pick';
 const TURN_PER_VIEW_WIDTH_DEG = 180.0;
 const WHEEL_ZOOM_RATE = 1.0 / 450.0;
 const WHEEL_LINE_PX = 16.0;
@@ -39,6 +41,7 @@ const COARSE_POINTER = '(pointer: coarse)';
 const HINT_SHOWN_MS = 8_000;
 const NEEDLE_HALF_WIDTH = 0.22;
 const NEEDLE_REACH = 0.8;
+const SECONDARY_BUTTON = 2;
 const NORTH = -1;
 const SOUTH = 1;
 
@@ -61,6 +64,8 @@ export const map3dOpenAt = (latest: TrackPoint | null, saved: SavedCamera | null
 
 export const map3dControlsAt = (bottomInsetPx: number, logoEndInsetPx: number | null): CSSProperties =>
   logoEndInsetPx === null ? { padding: AircastSpace.s3 } : { paddingRight: logoEndInsetPx, paddingBottom: bottomInsetPx + AircastSpace.s3 };
+
+export const map3dPickArgs = (at: Offset, box: Rect): readonly number[] => [at.x - box.left, at.y - box.top, box.width, box.height];
 
 export type Pair = readonly [Offset, Offset];
 
@@ -162,7 +167,19 @@ const BackToAircraft = () => (
   </Surface>
 );
 
-export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { className: string; bottomInsetPx: number; logoEndInsetPx: number | null }) => {
+export const Map3dView = ({
+  className,
+  bottomInsetPx,
+  logoEndInsetPx,
+  onMapClick,
+  onRefused,
+}: {
+  className: string;
+  bottomInsetPx: number;
+  logoEndInsetPx: number | null;
+  onMapClick: (latitude: number, longitude: number) => void;
+  onRefused: (reason: string) => void;
+}) => {
   const synthetic = useQgcPath(SYNTHETIC_VIEW);
   const state = map3dState(useQgcPath(MAP3D_VIEW));
   const note = map3dNote(synthetic, state);
@@ -176,7 +193,17 @@ export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { classN
     const timer = setTimeout(() => setHinting(false), HINT_SHOWN_MS);
     return () => clearTimeout(timer);
   }, [hinting]);
-  const press = useRef({ pointers: new Map() as ReadonlyMap<number, Offset>, from: Offset(0, 0), moving: false, twist: false, second: false, pinched: false, tapUpAt: -Infinity });
+  const press = useRef({
+    pointers: new Map() as ReadonlyMap<number, Offset>,
+    from: Offset(0, 0),
+    moving: false,
+    twist: false,
+    second: false,
+    pinched: false,
+    tapUpAt: -Infinity,
+    held: false,
+    timer: undefined as ReturnType<typeof setTimeout> | undefined,
+  });
   useEffect(() => {
     const element = host.current;
     if (element === null) return undefined;
@@ -187,12 +214,20 @@ export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { classN
     element.addEventListener('wheel', zoom, { passive: false });
     return () => element.removeEventListener('wheel', zoom);
   }, []);
+  const pick = (element: Element, at: Offset) =>
+    void Qgc.call(MAP3D_PICK, ...map3dPickArgs(at, element.getBoundingClientRect())).then((answer) => {
+      const point = groundPoint(answer);
+      const reason = optText(answer, 'reason');
+      if (point !== null) onMapClick(point.latitude, point.longitude);
+      else if (reason.trim() !== '') onRefused(reason);
+    });
   const down = (event: PointerEvent<HTMLDivElement>) => {
     setHinting(false);
     const now = press.current;
     const at = Offset(event.clientX, event.clientY);
     capture(event.currentTarget, event.pointerId);
     now.pointers = new Map([...now.pointers, [event.pointerId, at]]);
+    clearTimeout(now.timer);
     if (now.pointers.size > 1) {
       now.moving = true;
       now.second = false;
@@ -202,15 +237,25 @@ export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { classN
     now.from = at;
     now.moving = false;
     now.pinched = false;
-    now.twist = event.pointerType === 'mouse' && (event.button === 2 || event.shiftKey);
+    now.twist = event.pointerType === 'mouse' && (event.button === SECONDARY_BUTTON || event.shiftKey);
     now.second = event.timeStamp - now.tapUpAt <= DOUBLE_TAP_TIMEOUT_MS;
+    now.held = false;
+    const element = event.currentTarget;
+    now.timer =
+      event.pointerType === 'mouse'
+        ? undefined
+        : setTimeout(() => {
+            now.held = true;
+            pick(element, at);
+          }, LONG_PRESS_TIMEOUT_MS);
   };
   const move = (event: PointerEvent<HTMLDivElement>) => {
     const now = press.current;
     const last = now.pointers.get(event.pointerId);
-    if (last === undefined) return;
+    if (last === undefined || now.held) return;
     const at = Offset(event.clientX, event.clientY);
     if (!now.moving && Math.hypot(at.x - now.from.x, at.y - now.from.y) <= TOUCH_SLOP) return;
+    clearTimeout(now.timer);
     const before = pairOf(now.pointers);
     now.moving = true;
     now.second = false;
@@ -237,8 +282,11 @@ export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { classN
   const up = (event: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
     const now = press.current;
     if (!now.pointers.has(event.pointerId)) return;
+    clearTimeout(now.timer);
     now.pointers = new Map([...now.pointers].filter(([pointer]) => pointer !== event.pointerId));
-    const tapped = now.pointers.size === 0 && !now.moving && !now.twist && !cancelled;
+    const still = now.pointers.size === 0 && !now.moving && !now.held && !cancelled;
+    const tapped = still && !now.twist;
+    if (still && event.pointerType === 'mouse' && event.button === SECONDARY_BUTTON) pick(event.currentTarget, now.from);
     if (tapped && now.second) send(MAP3D_FOLLOW);
     now.tapUpAt = tapped && !now.second ? event.timeStamp : -Infinity;
   };

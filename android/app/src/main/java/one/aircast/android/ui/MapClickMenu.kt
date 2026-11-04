@@ -56,6 +56,7 @@ internal data class MapPoint(val latitude: Double, val longitude: Double)
 internal const val ORBIT_ACTION = "Orbit"
 
 internal const val STOP_LOOKING_ACTION = "StopLooking"
+internal const val LOOK_3D_ACTION = "Look3d"
 
 internal const val RETURN_HOME_INSTEAD = "Return home instead"
 
@@ -186,6 +187,7 @@ internal fun MapClickMenu(point: MapPoint, only: List<String>? = null, warning: 
     }
     var refusal by remember(point) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val defaults = remember(view) { orbitDefaults(view) }
     val mapEdits = one.aircast.map.LocalFlyMapEdits.current
@@ -200,6 +202,7 @@ internal fun MapClickMenu(point: MapPoint, only: List<String>? = null, warning: 
     fun run(action: MapClickAction) {
         scope.launch {
             val refused = withContext(Dispatchers.Default) { send(action, point, null) }
+            if (refused == null && action.id == LOOK_3D_ACTION) one.aircast.map.Map3d.show(context, true)
             if (refused == null) onDismiss() else refusal = refused
         }
     }

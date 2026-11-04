@@ -28,6 +28,7 @@ public sealed record MapClickAction(string Kind, string Path, string Label, stri
         "Heading" => "",
         "EstimatorOrigin" => "",
         "StopLooking" => "\uE711",
+        "Look3d" => "\uF158",
         _ => string.Empty,
     };
 

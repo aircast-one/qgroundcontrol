@@ -875,28 +875,30 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
     let home = home_facts(v.facts.coordinate, v.home);
     let gcs = gcs_relation(v.facts.coordinate);
     let release = v.release_now();
-    let picked = release.and_then(|release| {
-        let tried = |source: crate::autodrop::TargetSource| {
-            v.target_for_autodrop(
-                source,
-                release.position,
-                release.altitude_agl_m,
-                crate::hub::now_ms(),
-            )
-            .map(|target| (source, target))
-        };
-        match &v.autodrop {
-            Some(crate::autodrop::State::Waiting { source, .. }) => tried(*source),
-            _ => crate::autodrop::start_order(
-                Some(v.id),
-                crate::devicetrack::locked()
-                    || v.camera_tracking_geo.is_some()
-                    || v.camera_tracking_image.is_some(),
-            )
-            .into_iter()
-            .find_map(tried),
-        }
-    });
+    let picked = release
+        .filter(|_| crate::autodrop::enabled() || v.autodrop.is_some())
+        .and_then(|release| {
+            let tried = |source: crate::autodrop::TargetSource| {
+                v.target_for_autodrop(
+                    source,
+                    release.position,
+                    release.altitude_agl_m,
+                    crate::hub::now_ms(),
+                )
+                .map(|target| (source, target))
+            };
+            match &v.autodrop {
+                Some(crate::autodrop::State::Waiting { source, .. }) => tried(*source),
+                _ => crate::autodrop::start_order(
+                    Some(v.id),
+                    crate::devicetrack::locked()
+                        || v.camera_tracking_geo.is_some()
+                        || v.camera_tracking_image.is_some(),
+                )
+                .into_iter()
+                .find_map(tried),
+            }
+        });
     let drop_target = picked.map(|(_, target)| target);
     let facts: Vec<(&'static str, Value)> = vec![
         ("rcRSSI", json!(v.rc_rssi.shown)),

@@ -277,8 +277,6 @@ struct FlyMap: View {
     }
 
     #if os(macOS)
-    // The right-click menu lists what the map-click sheet offers for the point, then the point itself. Nil until the
-    // offered actions have loaded, so the click falls back to opening the sheet.
     private func flyContextMenu(_ hit: MapHit?, _ point: MapPoint) -> [MapMenuEntry]? {
         let waypoint = onMissionItemClick == nil ? nil : flyMenuWaypoint(hit, state.plan.items)
         guard clickJson != nil || waypoint != nil else { return nil }
@@ -289,8 +287,6 @@ struct FlyMap: View {
         return commands + place
     }
 
-    // Anything the sheet would confirm (or, for an orbit, ask a radius and height for) opens the sheet at that step;
-    // only an action the sheet itself sends straight away is sent from the menu.
     private func chooseFromMenu(_ choice: FlyMenuChoice, _ point: MapPoint) {
         switch choice {
         case .SetWaypoint(let sequence):
@@ -303,6 +299,7 @@ struct FlyMap: View {
             let reopen = onMapClick
             Task { @MainActor in
                 let refusal = await offMain { sendMapClick(action, point) }
+                if refusal == nil && action.id == LOOK_3D_ACTION { Map3d.shared.show(true) }
                 guard let refusal else { return }
                 edits.clickRequest = MapClickRequest(point: point, actionId: action.id, refused: refusal)
                 reopen?(point.latitude, point.longitude)

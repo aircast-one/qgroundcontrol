@@ -26,6 +26,13 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertEqual(map3dState(JSON.parse(#"{"heading":250,"following":false,"aircraft":true}"#)), Map3dState(heading: 250, following: false, aircraft: true))
     }
 
+    func testAPressOnThe3dMapLandsOnTheGroundTheCoreFoundOrNowhere() {
+        XCTAssertEqual(pickedPoint(JSON.parse(#"{"ok":true,"latitude":46.5,"longitude":7.9}"#)), MapPoint(latitude: 46.5, longitude: 7.9))
+        XCTAssertNil(pickedPoint(JSON.parse(#"{"ok":false,"reason":"There is no ground under that point."}"#)))
+        XCTAssertNil(pickedPoint(JSON.parse(#"{"ok":true,"latitude":46.5}"#)))
+        XCTAssertNil(pickedPoint(nil))
+    }
+
     func testTheMapToggleNamesTheMapItSwitchesTo() {
         XCTAssertEqual(map3dToggleText(false), "3D")
         XCTAssertEqual(map3dToggleLabel(false), "Show the 3D map")
