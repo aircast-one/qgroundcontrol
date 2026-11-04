@@ -133,7 +133,7 @@ targets:
         showEnvVars: false
         script: |
           export PATH="/opt/homebrew/bin:$PATH"
-          cmake -S "$SRCROOT/../macos/wfb" -B "$SRCROOT/Vendor/macos/wfb-build" -DCMAKE_BUILD_TYPE=Release \
+          cmake -S "$SRCROOT/wfb" -B "$SRCROOT/Vendor/macos/wfb-build" -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
           cmake --build "$SRCROOT/Vendor/macos/wfb-build"
     settings:
