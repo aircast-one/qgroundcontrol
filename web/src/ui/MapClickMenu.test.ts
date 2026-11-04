@@ -21,6 +21,7 @@ import {
   signedLoiterRadius,
   waypointTarget,
   mapHoldHintText,
+  opensMap3d,
 } from './MapClickMenu';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -115,5 +116,13 @@ describe('MapClickMenuTest', () => {
   it('the map hint names the desktop gesture on a desktop and the touch gesture elsewhere', () => {
     expect(mapHoldHintText(true)).toBe('Right-click the map to fly there');
     expect(mapHoldHintText(false)).toBe('Press and hold the map to fly there');
+  });
+
+  it('only looking here in 3D also brings up the 3D map', () => {
+    const [look, goTo] = mapClickActions(
+      json('{"actions":[{"id":"Look3d","path":"map3d.look","label":"Look here in 3D","confirm":false},{"id":"GoTo","path":"vehicle.guidedModeGotoLocation","label":"Go to location"}]}'),
+    );
+    expect(opensMap3d(look!)).toBe(true);
+    expect(opensMap3d(goTo!)).toBe(false);
   });
 });

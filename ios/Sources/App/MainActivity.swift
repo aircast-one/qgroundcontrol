@@ -11,7 +11,6 @@ private let TAB_INDICATOR_WIDTH: CGFloat = 56
 private let TAB_INDICATOR_HEIGHT: CGFloat = 32
 private let noticeLog = Logger(subsystem: "one.aircast.app", category: "HostNotices")
 #if os(macOS)
-// The Mac shows the tabs in the window toolbar instead (MacShellChrome).
 private let SHELL_NAVIGATION_RAIL = false
 #else
 private let SHELL_NAVIGATION_RAIL = true
@@ -236,7 +235,6 @@ struct AircastShell: View {
         .windowStyle(paletteWindowStyle(systemPalette, darkBars))))
     }
 
-    // The Mac's menu bar, toolbar tabs and Esc; the shell itself on iOS.
     private func macChrome<Shell: View>(tabs: [Tab], _ shell: Shell) -> some View {
         #if os(macOS)
         return shell.macShellChrome(MacShellChrome(
@@ -256,8 +254,6 @@ struct AircastShell: View {
     }
 
     #if os(macOS)
-    // Picking a tab from the toolbar or the View menu also closes Settings, which covers the tabs; picking the tab
-    // already under Settings just uncovers it rather than also popping it back to its start.
     private func macSelectTab(_ entry: Tab) {
         if navigation.settingsOpen {
             if refuseNavigation() { return }
@@ -274,8 +270,6 @@ struct AircastShell: View {
         }
     }
 
-    // A flight action from the Vehicle menu goes to the Fly tab's deck as the vehicle status sheet's does
-    // (deckRequest), so it opens the deck's own confirmation or value slider and never commands the vehicle directly.
     private func macFlightAction(_ id: String) {
         guard showFlyForMenu() else { return }
         flyScreen.deckRequest = id
@@ -286,8 +280,6 @@ struct AircastShell: View {
         flyScreen.requestedSheet = FLIGHT_ACTIONS_SHEET
     }
 
-    // Only while connected: the deck that answers a request is only there then, and a request left waiting would
-    // be answered by whatever vehicle connects next.
     private func showFlyForMenu() -> Bool {
         guard flyNow?.connected == true else { return false }
         if (tab != .Fly || navigation.settingsOpen) && refuseNavigation() { return false }
@@ -298,8 +290,6 @@ struct AircastShell: View {
     }
     #endif
 
-    // Split out of body: with macOS's stand-ins for iOS-only modifiers, one chain this long
-    // runs past the type checker's time limit.
     private func shellEvents<Shell: View>(landscape: Bool, _ shell: Shell) -> some View {
         shell
         .onChange(of: tab) { _, now in if now != .Fly { flyScreen.layout.editing = false } }
@@ -507,7 +497,9 @@ struct AircastShell: View {
         let bottomInset = inset ? flyScreen.mapInsets.bottom : 0
         let logoEndInset = inset ? MAP_LAYERS_CLEARANCE : nil
         if Map3d.shared.shown && nativeChosen(syntheticJson) && !pip {
-            Map3dView(bottomInsetPx: bottomInset, logoEndInsetPx: logoEndInset)
+            Map3dView(bottomInsetPx: bottomInset, logoEndInsetPx: logoEndInset, onMapClick: mapClicked) { reason in
+                Task { await snackbars.showSnackbar(reason) }
+            }
         } else {
             FlyMap(
                 cameraBottomPx: 0,
@@ -515,16 +507,18 @@ struct AircastShell: View {
                 bottomInsetPx: bottomInset,
                 logoEndInsetPx: logoEndInset,
                 pip: pip,
-                onMapClick: { lat, lon in
-                    mapClickAt = MapPoint(latitude: lat, longitude: lon)
-                    picturePressed = nil
-                },
+                onMapClick: mapClicked,
                 onMissionItemClick: { waypointTapped = $0 },
                 onRoiClick: { roiTapped = $0 },
                 onTrafficClick: { flyScreen.requestedSheet = TRAFFIC_SHEET },
                 clickMarker: mapClickAt.map { TrackPoint(latitude: $0.latitude, longitude: $0.longitude) }
             )
         }
+    }
+
+    private func mapClicked(_ latitude: Double, _ longitude: Double) {
+        mapClickAt = MapPoint(latitude: latitude, longitude: longitude)
+        picturePressed = nil
     }
 
     private func flyRail(_ stacked: Bool, _ splitRoom: Bool) -> AnyView {

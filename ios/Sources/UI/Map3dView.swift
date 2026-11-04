@@ -8,6 +8,8 @@ private let MAP3D_ZOOM = "map3d.zoom"
 private let MAP3D_FOLLOW = "map3d.follow"
 private let MAP3D_NORTH = "map3d.north"
 private let MAP3D_OPEN = "map3d.open"
+private let MAP3D_PICK = "map3d.pick"
+private let MAP3D_SUBJECT = "The 3D map"
 private let TURN_PER_VIEW_WIDTH_DEG = 180.0
 private let CONTROL_SCRIM_ALPHA = 0.55
 private let CONTROL_SIZE: CGFloat = 40
@@ -22,6 +24,12 @@ private let NEEDLE_REACH: CGFloat = 0.8
 func map3dToggleText(_ shown: Bool) -> String { shown ? "2D" : "3D" }
 
 func map3dToggleLabel(_ shown: Bool) -> String { shown ? "Show the flat map" : "Show the 3D map" }
+
+func pickedPoint(_ answer: JSON?) -> MapPoint? {
+    guard let answer, answer["ok"].bool, let latitude = answer["latitude"].double, let longitude = answer["longitude"].double,
+          latitude.isFinite, longitude.isFinite else { return nil }
+    return MapPoint(latitude: latitude, longitude: longitude)
+}
 
 struct Map3dState: Equatable {
     let heading: Double
@@ -46,9 +54,11 @@ private func send(_ path: String, _ args: Double...) {
 private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
     private var twoFingered = false
     private let onTouch: () -> Void
+    private let onPress: (CGPoint, CGSize) -> Void
 
-    init(onTouch: @escaping () -> Void) {
+    init(onTouch: @escaping () -> Void, onPress: @escaping (CGPoint, CGSize) -> Void) {
         self.onTouch = onTouch
+        self.onPress = onPress
         super.init(frame: .zero)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
         pan.maximumNumberOfTouches = 2
@@ -59,6 +69,7 @@ private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
             UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:))),
             UIRotationGestureRecognizer(target: self, action: #selector(turned(_:))),
             follow,
+            UILongPressGestureRecognizer(target: self, action: #selector(pressed(_:))),
         ]
         gestures.forEach { gesture in
             gesture.delegate = self
@@ -103,18 +114,22 @@ private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func followed() { send(MAP3D_FOLLOW) }
+
+    @objc private func pressed(_ press: UILongPressGestureRecognizer) {
+        if press.state == .began { onPress(press.location(in: self), bounds.size) }
+    }
 }
 #elseif os(macOS)
-// The Mac's pointer and trackpad stand in for touch: drag pans, right-drag or a two-finger trackpad scroll tilts,
-// pinch or the mouse wheel zooms, a trackpad rotate turns, and a double click follows the aircraft again.
 private let WHEEL_ZOOM_STEP = 1.1
 
 private final class Map3dTouches: NSView {
     override var isFlipped: Bool { true }
     private let onTouch: () -> Void
+    private let onPress: (CGPoint, CGSize) -> Void
 
-    init(onTouch: @escaping () -> Void) {
+    init(onTouch: @escaping () -> Void, onPress: @escaping (CGPoint, CGSize) -> Void) {
         self.onTouch = onTouch
+        self.onPress = onPress
         super.init(frame: .zero)
         let pan = NSPanGestureRecognizer(target: self, action: #selector(panned(_:)))
         let tilt = NSPanGestureRecognizer(target: self, action: #selector(tilted(_:)))
@@ -127,6 +142,7 @@ private final class Map3dTouches: NSView {
             NSMagnificationGestureRecognizer(target: self, action: #selector(pinched(_:))),
             NSRotationGestureRecognizer(target: self, action: #selector(turned(_:))),
             follow,
+            mapPressRecognizer(self, #selector(pressed(_:))),
         ]
         gestures.forEach { addGestureRecognizer($0) }
     }
@@ -154,7 +170,6 @@ private final class Map3dTouches: NSView {
         pinch.magnification = 0
     }
 
-    // AppKit counts rotation anticlockwise and UIKit clockwise, so the sign flips to turn the same way as on iOS.
     @objc private func turned(_ rotation: NSRotationGestureRecognizer) {
         if rotation.state == .began { onTouch() }
         guard rotation.state == .changed, rotation.rotation != 0 else { return }
@@ -164,7 +179,10 @@ private final class Map3dTouches: NSView {
 
     @objc private func followed() { send(MAP3D_FOLLOW) }
 
-    // The first contact of any gesture, as touchesBegan is on iOS: it retires the first-time gesture hint.
+    @objc private func pressed(_ press: NSPressGestureRecognizer) {
+        if press.state == .began { onPress(press.location(in: self), bounds.size) }
+    }
+
     override func mouseDown(with event: NSEvent) {
         onTouch()
         super.mouseDown(with: event)
@@ -189,8 +207,9 @@ private final class Map3dTouches: NSView {
 private struct Map3dGestures: PlatformViewRepresentable {
     typealias Coordinator = Void
     let onTouch: () -> Void
+    let onPress: (CGPoint, CGSize) -> Void
 
-    func makePlatformView(context: Context) -> Map3dTouches { Map3dTouches(onTouch: onTouch) }
+    func makePlatformView(context: Context) -> Map3dTouches { Map3dTouches(onTouch: onTouch, onPress: onPress) }
 }
 
 private struct Compass: View {
@@ -270,6 +289,8 @@ private struct BackToAircraft: View {
 struct Map3dView: View {
     let bottomInsetPx: CGFloat
     let logoEndInsetPx: CGFloat?
+    let onMapClick: (Double, Double) -> Void
+    let onRefused: (String) -> Void
     @QgcPath(SYNTHETIC_VIEW) private var synthetic
     @QgcPath(MAP3D_VIEW) private var map3dJson
     @State private var hinting = !Map3d.shared.hinted
@@ -288,7 +309,7 @@ struct Map3dView: View {
                         .padding(Space.s4)
                         .osdShadow()
                 }
-                Map3dGestures { hinting = false }
+                Map3dGestures(onTouch: { hinting = false }, onPress: pick)
                 VStack(alignment: .trailing, spacing: Space.s2) {
                     if hinting { Hint() }
                     HStack(spacing: Space.s2) {
@@ -310,6 +331,17 @@ struct Map3dView: View {
         .onAppear {
             guard let centre = FlightMapPosition.latest ?? readCamera()?.centre else { return send(MAP3D_OPEN) }
             send(MAP3D_OPEN, centre.latitude, centre.longitude)
+        }
+    }
+
+    private func pick(_ at: CGPoint, _ size: CGSize) {
+        Task {
+            let answer = await offMain { Qgc.call(MAP3D_PICK, Double(at.x), Double(at.y), Double(size.width), Double(size.height)) }
+            if let point = pickedPoint(answer) {
+                onMapClick(point.latitude, point.longitude)
+            } else if let reason = refusal(answer, subject: MAP3D_SUBJECT) {
+                onRefused(reason)
+            }
         }
     }
 }

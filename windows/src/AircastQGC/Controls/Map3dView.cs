@@ -18,6 +18,8 @@ using Windows.Foundation;
 
 namespace AircastQGC.Controls;
 
+public sealed record Map3dPlace(double Latitude, double Longitude, Point At);
+
 internal static class Map3dLook
 {
     public const string Hint = "Drag to move · Right-drag, Shift-drag or two fingers to turn and tilt";
@@ -50,6 +52,7 @@ public sealed partial class Map3dView : UserControl
     private const string FollowCommand = "map3d.follow";
     private const string NorthCommand = "map3d.north";
     private const string OpenCommand = "map3d.open";
+    private const string PickCommand = "map3d.pick";
     private const string Drawn = "drawn";
     private const string Failed = "failed";
     private const string LoadingNote = "Loading 3D view…";
@@ -89,6 +92,7 @@ public sealed partial class Map3dView : UserControl
     private Drag? _compassDrag;
     private bool _wanted;
     private bool _showing;
+    private bool _dragged;
 
     public Map3dView()
     {
@@ -166,6 +170,7 @@ public sealed partial class Map3dView : UserControl
             FollowAircraft();
             e.Handled = true;
         };
+        _root.AddHandler(RightTappedEvent, new RightTappedEventHandler(OnRightTapped), true);
         Content = _root;
         Visibility = Visibility.Collapsed;
         AutomationProperties.SetName(this, "3D map");
@@ -194,6 +199,8 @@ public sealed partial class Map3dView : UserControl
     }
 
     public event EventHandler? OfferedChanged;
+
+    public event EventHandler<Map3dPlace>? PlaceRequested;
 
     public bool Offered => Native;
 
@@ -311,6 +318,7 @@ public sealed partial class Map3dView : UserControl
         var modified = (e.KeyModifiers & (Windows.System.VirtualKeyModifiers.Control | Windows.System.VirtualKeyModifiers.Shift)) != 0;
         var orbit = !touch && (point.Properties.IsRightButtonPressed || point.Properties.IsMiddleButtonPressed || modified);
         _drag = _twoFingered ? null : new Drag(e.Pointer.PointerId, point.Position, point.Position, orbit, false);
+        _dragged = _twoFingered;
         _root.CapturePointer(e.Pointer);
         e.Handled = true;
     }
@@ -332,6 +340,17 @@ public sealed partial class Map3dView : UserControl
         if (moved && drag.Orbit) Orbited(dx, dy);
         else if (moved) Send(PanCommand, dx, dy, Math.Max(_root.ActualWidth, 1));
         _drag = drag with { Last = at, Moved = moved };
+        _dragged = _dragged || moved;
+        e.Handled = true;
+    }
+
+    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (_dragged) return;
+        var at = e.GetPosition(_root);
+        var answer = Bridge.Invoke(PickCommand, new JsonArray(at.X, at.Y, Math.Max(_root.ActualWidth, 1), Math.Max(_root.ActualHeight, 1)));
+        if (VideoJson.Flag(answer, "ok") && VideoJson.Number(answer["latitude"]) is double latitude && VideoJson.Number(answer["longitude"]) is double longitude)
+            PlaceRequested?.Invoke(this, new Map3dPlace(latitude, longitude, at));
         e.Handled = true;
     }
 

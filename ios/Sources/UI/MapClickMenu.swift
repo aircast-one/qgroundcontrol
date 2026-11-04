@@ -9,6 +9,7 @@ struct MapPoint: Equatable, Hashable {
 
 let ORBIT_ACTION = "Orbit"
 let GOTO_ACTION = "GoTo"
+let LOOK_3D_ACTION = "Look3d"
 let RETURN_HOME_INSTEAD = "Return home instead"
 
 struct GotoPreview: Equatable {
@@ -126,11 +127,8 @@ private func send(_ action: MapClickAction, _ point: MapPoint, _ orbit: OrbitCho
     return Qgc.refusalOf(action.path, arguments: orbitArgs(point, orbit))
 }
 
-// An action the sheet must take further before it sends: a confirmation, or the orbit's radius and height.
 func opensClickSheet(_ action: MapClickAction) -> Bool { action.confirm || action.id == ORBIT_ACTION }
 
-// A choice made outside the sheet (the Mac's map context menu) for the sheet to carry on with at `point`: open
-// `actionId`'s confirmation or orbit step, or show why the vehicle refused an action that ran directly.
 struct MapClickRequest: Equatable {
     var point: MapPoint
     var actionId: String
@@ -152,7 +150,6 @@ func flyMenuChoices(_ actions: [MapClickAction], _ waypoint: Int?) -> [FlyMenuCh
     (waypoint.map { [FlyMenuChoice.SetWaypoint(sequence: $0)] } ?? []) + actions.map { FlyMenuChoice.Action($0) }
 }
 
-// A choice that opens a sheet ends in an ellipsis, as Mac menu items that ask for more do.
 func flyMenuTitle(_ choice: FlyMenuChoice) -> String {
     switch choice {
     case .SetWaypoint(let sequence): "Set current waypoint to \(waypointTarget(sequence))\u{2026}"
@@ -160,7 +157,6 @@ func flyMenuTitle(_ choice: FlyMenuChoice) -> String {
     }
 }
 
-// Sends an action that needs no confirmation the way the sheet's own buttons do, answering the refusal if any.
 func sendMapClick(_ action: MapClickAction, _ point: MapPoint) -> String? {
     guard !opensClickSheet(action) else { return "\(sentenceCase(action.title)) needs confirming first." }
     return send(action, point, nil)
@@ -256,8 +252,6 @@ struct MapClickMenu: View {
         }
     }
 
-    // Carries on with a context-menu choice for this point: its confirmation or orbit step (only ever an action
-    // that opens the sheet), or the refusal of one that ran directly. Waits for the offered actions to load.
     private func takeRequest() {
         guard let request = mapEdits.clickRequest, request.point == point else { return }
         if let refusal = request.refused {
@@ -277,6 +271,7 @@ struct MapClickMenu: View {
         scope.launch {
             let answer = await offMain { send(action, point, nil) }
             guard !Task.isCancelled else { return }
+            if answer == nil && action.id == LOOK_3D_ACTION { Map3d.shared.show(true) }
             if answer == nil { onDismiss() } else { refused = answer }
         }
     }

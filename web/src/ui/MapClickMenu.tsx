@@ -11,6 +11,7 @@ import { AircastSheet } from '@/map/AircastSheet';
 import { typedNumber } from '@/map/AltitudeEntry';
 import { LocalFlyMapEdits } from '@/map/FlyMapEdits';
 import { type LoiterEdit, loiterEditNumber } from '@/map/GotoMarker';
+import { Map3d } from '@/map/Map3d';
 import { MINIMUM_CIRCLE_RADIUS_METRES } from '@/map/MissionLayers';
 import { OrbitCircle } from '@/map/OrbitMarker';
 import { sentenceCase } from '@/map/SentenceCase';
@@ -29,6 +30,10 @@ export const MAP_CLICK_PATH = 'view.mapClick';
 export type MapPoint = { readonly latitude: number; readonly longitude: number };
 
 export const ORBIT_ACTION = 'Orbit';
+
+export const LOOK_3D_ACTION = 'Look3d';
+
+export const opensMap3d = (action: MapClickAction): boolean => action.id === LOOK_3D_ACTION;
 
 export const RETURN_HOME_INSTEAD = 'Return home instead';
 
@@ -173,8 +178,13 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   const previewJson = useQgcPath(previewing ? gotoPreviewPath(point) : MAP_CLICK_PATH);
   const preview = useMemo(() => (previewing ? gotoPreview(previewJson) : null), [previewJson, previewing]);
 
+  const ran = (action: MapClickAction) => {
+    if (opensMap3d(action)) Map3d.show(true);
+    onDismiss();
+  };
+
   const run = (action: MapClickAction) => {
-    void send(action, point, null).then((refused) => (refused === null ? onDismiss() : setRefusal(refused)));
+    void send(action, point, null).then((refused) => (refused === null ? ran(action) : setRefusal(refused)));
   };
 
   if (view === null || actions.length === 0) return null;

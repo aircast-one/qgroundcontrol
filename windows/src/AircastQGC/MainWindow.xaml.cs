@@ -113,6 +113,16 @@ public sealed partial class MainWindow : Window
             if (MapMenu.Target == null) Map.HideClickMarker();
         };
         MapMenu.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
+        MapMenu.Looked3d += (_, _) =>
+        {
+            if (_videoMain) SwapVideo(false);
+            ShowMap3d(true);
+        };
+        Map3d.PlaceRequested += (_, place) =>
+        {
+            DismissMissionPrompt();
+            MapMenu.Show(place.Latitude, place.Longitude, Map3d.TransformToVisual(MapMenu).TransformPoint(place.At));
+        };
         MapMenu.OrbitPreviewChanged += (_, circle) => Marks.PendingOrbit = circle;
         Map.VehicleTapped += id =>
         {

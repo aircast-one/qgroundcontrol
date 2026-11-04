@@ -18,15 +18,17 @@ export type PictureSpot = { readonly x: number; readonly y: number };
 
 export type PicturePress = { readonly spot: PictureSpot; readonly point: MapPoint | null; readonly actions: readonly string[]; readonly reason: string };
 
-export const picturePress = (spot: PictureSpot, answer: Json | null): PicturePress => {
+export const groundPoint = (answer: Json | null): MapPoint | null => {
   const point = optBoolean(answer, 'ok') ? { latitude: optDouble(answer, 'latitude'), longitude: optDouble(answer, 'longitude') } : null;
-  return {
-    spot,
-    point: point !== null && Number.isFinite(point.latitude) && Number.isFinite(point.longitude) ? point : null,
-    actions: jsonStrings(optJSONArray(answer, 'actions')),
-    reason: optText(answer, 'reason'),
-  };
+  return point !== null && Number.isFinite(point.latitude) && Number.isFinite(point.longitude) ? point : null;
 };
+
+export const picturePress = (spot: PictureSpot, answer: Json | null): PicturePress => ({
+  spot,
+  point: groundPoint(answer),
+  actions: jsonStrings(optJSONArray(answer, 'actions')),
+  reason: optText(answer, 'reason'),
+});
 
 const goToOffered = (view: Json | null): boolean => mapClickActions(view).some((it) => it.id === GOTO_ACTION);
 
