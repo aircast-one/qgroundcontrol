@@ -133,6 +133,10 @@ targets:
         showEnvVars: false
         script: |
           export PATH="/opt/homebrew/bin:$PATH"
+          # The app links libusb and libsodium statically (OTHER_LDFLAGS), so a packaged app needs no Homebrew.
+          for lib in /opt/homebrew/lib/libusb-1.0.a /opt/homebrew/lib/libsodium.a; do
+            [ -f "$lib" ] || { echo "error: $lib is missing; run ios/fetch-deps-macos.sh" >&2; exit 1; }
+          done
           cmake -S "$SRCROOT/wfb" -B "$SRCROOT/Vendor/macos/wfb-build" -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
           cmake --build "$SRCROOT/Vendor/macos/wfb-build"
@@ -150,20 +154,25 @@ targets:
         HEADER_SEARCH_PATHS: $(QGC_ROOT)/src/Bridge $(GSTREAMER_MACOS)/Headers
         GCC_PREPROCESSOR_DEFINITIONS: $(inherited) QGC_GST_STREAMING=1
         FRAMEWORK_SEARCH_PATHS: $(inherited) /Library/Frameworks
-        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/../Frameworks /Library/Frameworks
+        # A release finds GStreamer.framework inside the bundle, where ios/package-macos.sh embeds it.
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/../Frameworks
         ARCHS: arm64
         OTHER_LDFLAGS: >-
           $(inherited)
           $(QGC_ROOT)/groundstation/target/aarch64-apple-darwin/release/libgroundstation.a
           $(SRCROOT)/Vendor/macos/wfb-build/wfb/libwfblink.a
           $(SRCROOT)/Vendor/macos/wfb-build/wfb/devourer/libdevourer.a
-          -L/opt/homebrew/lib -lusb-1.0 -lsodium -lpcap
+          /opt/homebrew/lib/libusb-1.0.a /opt/homebrew/lib/libsodium.a -lobjc -lpcap
           -framework GStreamer
           -lc++ -liconv -lresolv -lz
           -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox
           -framework AudioToolbox -framework CoreAudio -framework QuartzCore -framework Metal
           -framework CoreLocation -framework Security -framework SystemConfiguration -framework IOKit
           -framework AppKit -framework CoreFoundation -framework Foundation
+      configs:
+        # Development builds run unpackaged, against the GStreamer.framework fetch-deps-macos.sh installs.
+        Debug:
+          LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/../Frameworks /Library/Frameworks
   AircastMacTests:
     type: bundle.unit-test
     platform: macOS

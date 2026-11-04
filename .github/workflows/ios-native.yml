@@ -152,11 +152,32 @@ jobs:
           xcodegen generate
           status=0
           xcodebuild -project Aircast.xcodeproj -scheme AircastMac -configuration Release \
-            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/mac-build.log" 2>&1 || status=$?
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath "$RUNNER_TEMP/mac-derived" \
+            CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/mac-build.log" 2>&1 || status=$?
           grep -E "error:|warning: unable|BUILD (SUCCEEDED|FAILED)" "$RUNNER_TEMP/mac-build.log" || true
           # A failed link names what is missing only on the lines after "Undefined symbols".
           [ "$status" -eq 0 ] || grep -E -A40 "Undefined symbols|duplicate symbol|ld: (library|framework) not found" "$RUNNER_TEMP/mac-build.log" | head -200 || true
           exit "$status"
+
+      # The release ships this DMG (aircast-release.yml), so check here that the packaged app carries everything
+      # it loads: package-macos.sh fails on any library or rpath outside the bundle and the OS.
+      - name: Package
+        run: ios/package-macos.sh "$RUNNER_TEMP/mac-derived/Build/Products/Release/Aircast.app" "$RUNNER_TEMP/Aircast.dmg"
+
+      - name: Check the packaged app
+        run: |
+          set -euo pipefail
+          mount="$RUNNER_TEMP/aircast-dmg"
+          mkdir -p "$mount"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$RUNNER_TEMP/Aircast.dmg"
+          trap 'hdiutil detach "$mount" -force || true' EXIT
+          app="$mount/Aircast.app"
+          test -x "$app/Contents/MacOS/Aircast"
+          test -L "$mount/Applications"
+          ios/package-macos.sh --verify "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          ls "$app/Contents/Frameworks/GStreamer.framework/Versions/1.0/lib/gstreamer-1.0"
+          du -sh "$app" "$RUNNER_TEMP/Aircast.dmg"
 
       - name: Unit tests
         working-directory: ios
