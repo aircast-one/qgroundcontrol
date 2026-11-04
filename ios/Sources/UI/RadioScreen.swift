@@ -35,70 +35,40 @@ private struct AttitudeRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(stick.title).font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading)
+                Text(stick.title).frame(maxWidth: .infinity, alignment: .leading)
                 Text(stickReading(stick))
-                    .font(.labelMedium)
-                    .foregroundStyle(stick.mapped ? theme.colors.onSurfaceVariant : theme.colors.error)
+                    .font(.subheadline)
+                    .foregroundStyle(stick.mapped ? Color.secondary : theme.colors.error)
             }
             if stick.mapped { PwmBar(fraction: stick.fraction) }
         }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
+        .padding(.vertical, 2)
     }
 }
 
+// The running calibration's section: the step to do, the stick diagram, and Skip / Cancel (Next is the page's
+// primary action in the navigation bar).
 private struct CalibrationStep: View {
     let cal: RadioCalibration
     let onAction: (String) -> Void
-    @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(calibrationStep(cal.statusText))
-                .font(.titleMedium)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, Space.s4)
-            if cal.running { StickDiagram(positions: cal.stickPositions, single: false) }
-            HStack(spacing: Space.s2) {
-                Button(cal.nextText.ifBlank("Next")) { onAction("nextButtonClicked") }
-                    .buttonStyle(.filled)
-                    .disabled(!cal.nextEnabled)
-                if cal.skipEnabled {
-                    Button("Skip") { onAction("skipButtonClicked") }.buttonStyle(.bordered)
-                }
-                Spacer(minLength: 0)
-                if cal.cancelEnabled {
-                    Button("Cancel") { onAction("cancelButtonClicked") }.buttonStyle(.text)
-                }
+        Section {
+            Text(calibrationStep(cal.statusText)).font(.headline)
+            if cal.running {
+                StickDiagram(positions: cal.stickPositions, single: false)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Space.s2)
             }
-            .frame(minHeight: Metrics.rowCompact)
+            if cal.skipEnabled {
+                Button("Skip") { onAction("skipButtonClicked") }
+            }
+            if cal.cancelEnabled {
+                Button("Cancel calibration") { onAction("cancelButtonClicked") }
+            }
+        } header: {
+            SectionHeader(text: "Calibration")
         }
-        .padding(Space.s4)
-        .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
-    }
-}
-
-private struct ModeRow: View {
-    let mode: Int
-    let centeredThrottle: Bool?
-    let onPick: (Int) -> Void
-    let onCentered: (Bool) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.s1) {
-            Text("Transmitter mode — which stick is the throttle").font(.bodySmall)
-            Picker("Transmitter mode", selection: Binding(get: { mode }, set: onPick)) {
-                ForEach(1...4, id: \.self) { Text("Mode \($0)").tag($0) }
-            }
-            .pickerStyle(.segmented)
-            if let centered = centeredThrottle {
-                Toggle("Centered throttle", isOn: Binding(get: { centered }, set: onCentered)).font(.bodyMedium)
-            }
-        }
-        .padding(.horizontal, Space.s5)
-        .padding(.vertical, Space.s1)
     }
 }
 
@@ -110,7 +80,14 @@ private struct ConfirmDialog: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        SetupDialog(title: prompt.title) {
+        SetupDialog(
+            title: prompt.title,
+            cancel: DialogButton(title: "Cancel", action: onDismiss),
+            primary: DialogButton(title: "OK") {
+                onConfirm(choice)
+                onDismiss()
+            }
+        ) {
             Text(prompt.body)
             ForEach(Array(prompt.choices.enumerated()), id: \.offset) { index, label in
                 Button { choice = index } label: {
@@ -124,93 +101,8 @@ private struct ConfirmDialog: View {
                 }
                 .buttonStyle(.plain)
             }
-        } buttons: {
-            Button("Cancel", action: onDismiss)
-            Button("Ok") {
-                onConfirm(choice)
-                onDismiss()
-            }
-            .buttonStyle(.filled)
         }
         .onChange(of: prompt, initial: true) { _, shown in choice = shown.choices.indices.last }
-    }
-}
-
-private struct AdditionalSetup: View {
-    let onInvoke: (String, Int?) -> Void
-    @State private var prompt: RadioPrompt?
-
-    var body: some View {
-        let shown = prompt
-        VStack(alignment: .leading, spacing: Space.s2) {
-            Divider()
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Space.s2) { buttons }
-                VStack(alignment: .leading, spacing: Space.s2) { buttons }
-            }
-        }
-        .padding(Space.s1)
-        .sheet(isPresented: presented($prompt)) {
-            if let asked = shown {
-                ConfirmDialog(prompt: asked, onDismiss: { prompt = nil }, onConfirm: { onInvoke(asked.action, $0) })
-            }
-        }
-    }
-
-    private var buttons: some View {
-        ForEach(RADIO_PROMPTS, id: \.action) { entry in
-            Button(entry.title) { prompt = entry }.buttonStyle(.bordered)
-        }
-    }
-}
-
-private struct CalibrationStart: View {
-    let view: RadioView
-    let onAction: (String) -> Void
-    let onMode: (Int) -> Void
-    let onCentered: (Bool) -> Void
-    let onInvoke: (String, Int?) -> Void
-    @State private var prompting = false
-    @State private var refusing = false
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ModeRow(mode: view.transmitterMode, centeredThrottle: view.joystickMode ? nil : view.centeredThrottle, onPick: onMode, onCentered: onCentered)
-            HStack(spacing: Space.s3) {
-                Button(view.calibration.nextText.ifBlank("Calibrate")) {
-                    if view.notReady != nil {
-                        refusing = true
-                    } else if view.startPrompt != nil {
-                        prompting = true
-                    } else {
-                        onAction("nextButtonClicked")
-                    }
-                }
-                .buttonStyle(.filled)
-                .disabled(!view.calibration.nextEnabled)
-                Text(view.summary).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-            }
-            .padding(.horizontal, Space.s1)
-            .padding(.vertical, Space.s2)
-            AdditionalSetup(onInvoke: onInvoke)
-        }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
-        .alert(view.startPrompt?.first ?? "", isPresented: Binding(get: { prompting && view.startPrompt != nil }, set: { if !$0 { prompting = false } })) {
-            Button("Ok") {
-                prompting = false
-                onAction("nextButtonClicked")
-            }
-            Button("Cancel", role: .cancel) { prompting = false }
-        } message: {
-            Text(view.startPrompt?.second ?? "")
-        }
-        .alert(view.notReady?.first ?? "", isPresented: Binding(get: { refusing && view.notReady != nil }, set: { if !$0 { refusing = false } })) {
-            Button("Ok") { refusing = false }
-        } message: {
-            Text(view.notReady?.second ?? "")
-        }
     }
 }
 
@@ -222,6 +114,17 @@ private func radioAction(_ action: String) {
     offMain { _ = Qgc.invoke(radioCalAction(action)) }
 }
 
+private func radioInvoke(_ action: String, _ choice: Int?) {
+    offMain {
+        let path = radioCalAction(action)
+        _ = choice.map { Qgc.invoke(path, $0) } ?? Qgc.invoke(path)
+    }
+}
+
+private let RADIO_MONITOR_NOTE = "Move each stick and switch \u{2014} every channel you use should move here. "
+    + "Calibration asks you to hold each stick at its extremes in turn and "
+    + "rewrites the mapping, so do it with the propellers off."
+
 private struct SwitchLoad: Equatable {
     let reads: Int
     let connected: Bool?
@@ -232,6 +135,10 @@ struct RadioScreen: View {
     @State private var switchReads = 0
     @State private var switches: [ParameterRows] = []
     @State private var reversedSeen = false
+    @State private var prompting = false
+    @State private var refusing = false
+    @State private var prompt: RadioPrompt?
+    @Environment(\.theme) private var theme
 
     var body: some View {
         let view = radioView(json)
@@ -252,53 +159,105 @@ struct RadioScreen: View {
         }
     }
 
+    // Calibrate: refused while the vehicle says it is not ready, asked first when it has a start prompt.
+    private func start(_ view: RadioView) {
+        if view.notReady != nil {
+            refusing = true
+        } else if view.startPrompt != nil {
+            prompting = true
+        } else {
+            radioAction("nextButtonClicked")
+        }
+    }
+
     private func screen(_ view: RadioView) -> some View {
         let reversed = view.calibration.throttleReversed
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                if view.channelCount == 0 {
-                    RadioNotice(text: "No transmitter signal. Turn the transmitter on and check the receiver is bound.")
+        let running = view.calibration.running
+        let asked = prompt
+        return NativeForm {
+            if view.channelCount == 0 {
+                Section {
+                    Text("No transmitter signal. Turn the transmitter on and check the receiver is bound.")
+                        .foregroundStyle(theme.aircast.warning)
                 }
-                if view.calibration.running {
-                    CalibrationStep(cal: view.calibration, onAction: radioAction)
-                } else {
-                    CalibrationStart(
-                        view: view,
-                        onAction: radioAction,
-                        onMode: { mode in offMain { _ = Qgc.set("\(RADIO_CAL).transmitterMode", mode) } },
-                        onCentered: { centered in offMain { _ = Qgc.set("\(RADIO_CAL).centeredThrottle", centered) } },
-                        onInvoke: { action, choice in
-                            offMain {
-                                let path = radioCalAction(action)
-                                _ = choice.map { Qgc.invoke(path, $0) } ?? Qgc.invoke(path)
-                            }
-                        }
-                    )
+            }
+            if running {
+                CalibrationStep(cal: view.calibration, onAction: radioAction)
+            } else {
+                Section {
+                    Picker("Transmitter mode", selection: Binding(get: { view.transmitterMode }, set: { mode in
+                        offMain { _ = Qgc.set("\(RADIO_CAL).transmitterMode", mode) }
+                    })) {
+                        ForEach(1...4, id: \.self) { Text("Mode \($0)").tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    if !view.joystickMode {
+                        Toggle("Centered throttle", isOn: Binding(get: { view.centeredThrottle }, set: { centered in
+                            offMain { _ = Qgc.set("\(RADIO_CAL).centeredThrottle", centered) }
+                        }))
+                    }
+                } header: {
+                    SectionHeader(text: "Transmitter mode")
+                } footer: {
+                    Text([view.summary, "The mode sets which stick is the throttle."].filter { !$0.isBlank }.joined(separator: "\n"))
                 }
-                SectionHeader(text: "Attitude controls")
+                Section {
+                    ForEach(RADIO_PROMPTS, id: \.action) { entry in
+                        Button(entry.title) { prompt = entry }
+                    }
+                } header: {
+                    SectionHeader(text: "Additional setup")
+                }
+            }
+            Section {
                 ForEach(view.sticks, id: \.title) { AttitudeRow(stick: $0) }
-                ForEach(switches, id: \.title) { section in
-                    SectionHeader(text: sentenceCase(section.title))
+            } header: {
+                SectionHeader(text: "Attitude controls")
+            }
+            ForEach(switches, id: \.title) { section in
+                Section {
                     ForEach(section.facts, id: \.path) { fact in
                         FactRow(fact: fact, onWrite: { switchReads += 1 })
                     }
+                } header: {
+                    SectionHeader(text: sentenceCase(section.title))
                 }
-                SectionHeader(text: "Raw channel monitor")
+            }
+            Section {
                 ForEach(view.channels, id: \.label) { channel in
                     HStack(spacing: Space.s3) {
                         Text(channel.label).font(.system(size: 12, design: .monospaced)).frame(width: 28, alignment: .leading)
                         PwmBar(fraction: channel.fraction)
                         Text(channel.valueText).font(.system(size: 12, design: .monospaced)).frame(width: 48, alignment: .leading)
                     }
-                    .padding(.horizontal, Space.s5)
-                    .padding(.vertical, 6)
                 }
-                FootNote(
-                    text: "Move each stick and switch \u{2014} every channel you use should move here. "
-                        + "Calibration asks you to hold each stick at its extremes in turn and "
-                        + "rewrites the mapping, so do it with the propellers off."
-                )
+            } header: {
+                SectionHeader(text: "Raw channel monitor")
+            } footer: {
+                Text(RADIO_MONITOR_NOTE)
             }
+        }
+        .pagePrimaryAction(view.calibration.nextText.ifBlank(running ? "Next" : "Calibrate"), enabled: view.calibration.nextEnabled) {
+            if running { radioAction("nextButtonClicked") } else { start(view) }
+        }
+        .sheet(isPresented: presented($prompt)) {
+            if let asked {
+                ConfirmDialog(prompt: asked, onDismiss: { prompt = nil }, onConfirm: { radioInvoke(asked.action, $0) })
+            }
+        }
+        .alert(view.startPrompt?.first ?? "", isPresented: Binding(get: { prompting && view.startPrompt != nil }, set: { if !$0 { prompting = false } })) {
+            Button("Ok") {
+                prompting = false
+                radioAction("nextButtonClicked")
+            }
+            Button("Cancel", role: .cancel) { prompting = false }
+        } message: {
+            Text(view.startPrompt?.second ?? "")
+        }
+        .alert(view.notReady?.first ?? "", isPresented: Binding(get: { refusing && view.notReady != nil }, set: { if !$0 { refusing = false } })) {
+            Button("Ok") { refusing = false }
+        } message: {
+            Text(view.notReady?.second ?? "")
         }
         .onChange(of: reversed, initial: true) { reversedSeen = false }
         .alert(THROTTLE_REVERSED_TITLE, isPresented: Binding(get: { reversed && !reversedSeen }, set: { if !$0 { reversedSeen = true } })) {

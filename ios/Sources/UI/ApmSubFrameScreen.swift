@@ -53,7 +53,9 @@ struct ApmSubFrameScreen: View {
             if let state = read {
                 screen(state)
             } else {
-                Text("This page is for an ArduSub vehicle.").padding(16)
+                NativeForm {
+                    Section { Text("This page is for an ArduSub vehicle.").foregroundStyle(Color.secondary) }
+                }
             }
         }
         .task(id: revision) {
@@ -80,14 +82,21 @@ struct ApmSubFrameScreen: View {
     }
 
     private func screen(_ state: SubFrames) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                if state.loading {
-                    Text("Loading the frame's default parameters…").font(.bodySmall)
+        NativeForm {
+            if state.loading || refusal != nil || !state.loadError.isBlank {
+                Section {
+                    if state.loading {
+                        HStack(spacing: Space.s3) {
+                            ProgressView()
+                            Text("Loading the frame's default parameters\u{2026}").foregroundStyle(Color.secondary)
+                        }
+                    }
+                    if let message = refusal ?? state.loadError.nonBlank {
+                        Text(message).foregroundStyle(theme.colors.error)
+                    }
                 }
-                if let message = refusal ?? state.loadError.nonBlank {
-                    Text(message).foregroundStyle(theme.colors.error)
-                }
+            }
+            Section {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
                     ForEach(state.frames, id: \.value) { frame in
                         SubFrameTile(frame: frame, chosen: frame.value == state.selected) {
@@ -95,8 +104,10 @@ struct ApmSubFrameScreen: View {
                         }
                     }
                 }
+                .padding(.vertical, Space.s1)
+            } header: {
+                SectionHeader(text: "Frame")
             }
-            .padding(12)
         }
     }
 
@@ -127,7 +138,7 @@ private struct SubFrameTile: View {
             }
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(chosen ? theme.colors.primaryContainer : theme.colors.surfaceVariant)
+            .background(chosen ? theme.colors.primaryContainer : theme.colors.surfaceVariant, in: RoundedRectangle(cornerRadius: Corner.medium))
         }
         .buttonStyle(.plain)
         .task(id: frame.value) {

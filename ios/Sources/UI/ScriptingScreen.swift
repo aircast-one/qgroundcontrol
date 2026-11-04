@@ -61,7 +61,6 @@ func scriptFileName(_ name: String) -> String? {
 }
 
 struct ScriptingScreen: View {
-    @Environment(\.theme) private var theme
     @State private var revision = 0
     @State private var read: Scripting?
     @State private var shownRefusal: ScriptRefusal?
@@ -121,43 +120,50 @@ struct ScriptingScreen: View {
     @ViewBuilder private var content: some View {
         if let page = read {
             if !page.available {
-                Text(page.unsupportedText).padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                NativeForm {
+                    Section { Text(page.unsupportedText).foregroundStyle(Color.secondary) }
+                }
             } else {
-                ScrollView { form(page) }
+                form(page)
             }
         }
     }
 
     private func form(_ page: Scripting) -> some View {
         let usable = page.enabled && !page.busy
-        return VStack(alignment: .leading, spacing: 4) {
-            if let enable = page.enable {
-                FactRow(fact: enable, title: "Enable scripting", onWrite: { revision += 1 })
+        return NativeForm {
+            Section {
+                if let enable = page.enable {
+                    FactRow(fact: enable, title: "Enable scripting", onWrite: { revision += 1 })
+                }
+            } footer: {
+                if !page.status.isBlank { Text(page.status) }
             }
-            VStack(alignment: .leading, spacing: 6) {
-                if !page.status.isBlank { Text(page.status).font(.bodyMedium) }
-                Button("Upload") { choosingUpload = true }
-                    .buttonStyle(.bordered)
-                    .disabled(!usable)
+            Section {
+                if page.scripts.isEmpty {
+                    Text("No scripts on the vehicle.").foregroundStyle(Color.secondary)
+                }
                 ForEach(page.scripts, id: \.self) { name in
-                    HStack {
-                        Text(name).font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: Space.s4) {
+                        Text(name).frame(maxWidth: .infinity, alignment: .leading)
                         Button("Download") { download(name) }.disabled(!usable)
-                        Button("Delete") { confirmDelete = name }.disabled(!usable)
+                        Button("Delete", role: .destructive) { confirmDelete = name }.disabled(!usable)
                     }
-                    .buttonStyle(.text)
                 }
-                if page.busy {
-                    HStack(spacing: 12) {
-                        Button("Cancel operation") { cancel() }.buttonStyle(.text)
+            } header: {
+                SectionHeader(text: "Scripts")
+            }
+            if page.busy {
+                Section {
+                    VStack(alignment: .leading, spacing: Space.s2) {
                         Text("Transferring... \(Int((page.progress * 100).rounded()))%")
+                        ProgressView(value: page.progress)
                     }
-                    ProgressView(value: page.progress)
+                    Button("Cancel operation") { cancel() }
                 }
             }
-            .padding(.horizontal, 20)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .pagePrimaryAction("Upload", enabled: usable) { choosingUpload = true }
     }
 
     private func discardDownload() {

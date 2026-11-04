@@ -132,7 +132,10 @@ struct JoystickScreen: View {
             Color.clear
             if let read = joystickPage(view) {
                 if read.names.isEmpty || read.active == nil {
-                    EmptyState(icon: .gamepad, title: "No joystick", text: "No joysticks or gamepads detected. Pair one over Bluetooth or plug it in over USB.")
+                    NativeForm {
+                        EmptyState(icon: .gamepad, title: "No joystick", text: "No joysticks or gamepads detected. Pair one over Bluetooth or plug it in over USB.")
+                            .listRowBackground(Color.clear)
+                    }
                 } else {
                     screen(read)
                 }
@@ -153,32 +156,34 @@ struct JoystickScreen: View {
         let setting = { (name: String) in read.settings.first { $0.name == name } }
         let additionalAxes = setting("additionalAxesFunction")
         let viaRc = additionalAxes == nil || additionalAxes?.value.numberOrNil.map { $0.rounded(.towardZero) } == 1
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
+        return NativeForm {
+            Section {
                 if read.names.count > 1 {
                     JoystickPicker(page: read) { act(JOYSTICK_SELECT, $0) }
                 }
-                HStack(spacing: 12) {
-                    Toggle("Enable", isOn: Binding(get: { read.enabled }, set: { act(JOYSTICK_ENABLE, $0) }))
-                        .fixedSize()
-                        .disabled(!read.vehicle)
-                    if !read.vehicle {
-                        Text("Not currently available").foregroundStyle(theme.colors.onSurfaceVariant)
-                    }
+                Toggle("Enable", isOn: Binding(get: { read.enabled }, set: { act(JOYSTICK_ENABLE, $0) }))
+                    .disabled(!read.vehicle)
+                LabeledContent("Calibration") {
+                    Text(read.calibrated ? "Calibrated" : "Requires calibration")
+                        .foregroundStyle(read.calibrated ? Color.secondary : theme.colors.error)
                 }
-                Text(read.calibrated ? "Calibrated" : "Requires calibration")
-                    .foregroundStyle(read.calibrated ? theme.colors.onSurface : theme.colors.error)
                 if let refusal {
                     Text(refusal).foregroundStyle(theme.colors.error)
                 }
+            } footer: {
+                if !read.vehicle { Text("Not currently available") }
+            }
 
-                if !read.armed {
-                    SectionHeader(text: "Calibration")
+            if !read.armed {
+                Section {
                     CalibrationPanel(page: read) { calibrate($0, read.enabled) }
                     TransmitterModeRow(mode: read.transmitterMode) { act(JOYSTICK_SETTING, "transmitterMode", $0) }
+                } header: {
+                    SectionHeader(text: "Calibration")
                 }
+            }
 
-                SectionHeader(text: "Axis monitor")
+            Section {
                 ForEach(read.axes, id: \.index) { axis in
                     HStack(spacing: 8) {
                         Text(axis.label).frame(width: 96, alignment: .leading)
@@ -186,9 +191,11 @@ struct JoystickScreen: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
+            } header: {
+                SectionHeader(text: "Axis monitor")
+            }
 
-                SectionHeader(text: "Buttons")
-                Text("Multiple buttons that have the same action must be pressed simultaneously to invoke the action.").font(.bodySmall)
+            Section {
                 ForEach(read.buttons, id: \.index) { button in
                     ButtonRow(
                         button: button,
@@ -198,38 +205,65 @@ struct JoystickScreen: View {
                         onRepeat: { act(JOYSTICK_BUTTON_REPEAT, button.index, $0) }
                     )
                 }
+            } header: {
+                SectionHeader(text: "Buttons")
+            } footer: {
+                Text("Multiple buttons that have the same action must be pressed simultaneously to invoke the action.")
+            }
 
-                SectionHeader(text: "Settings")
+            Section {
                 ForEach(BASIC_SETTINGS.compactMap(setting), id: \.name) { each in
                     SettingRow(setting: each) { act(JOYSTICK_SETTING, each.name, $0) }
                 }
-                if let standby = read.standbyText {
-                    Text(standby).font(.bodySmall)
-                }
-                Button("Advanced settings") { advanced.toggle() }.buttonStyle(.bordered)
-                if advanced {
+                AdvancedToggle(open: advanced, label: "Advanced settings") { advanced.toggle() }
+            } header: {
+                SectionHeader(text: "Settings")
+            } footer: {
+                if let standby = read.standbyText { Text(standby) }
+            }
+            if advanced {
+                Section {
                     ForEach(ADVANCED_SETTINGS.compactMap(setting), id: \.name) { each in
                         SettingRow(setting: each) { act(JOYSTICK_SETTING, each.name, $0) }
                     }
+                } header: {
+                    SectionHeader(text: "Advanced")
+                } footer: {
                     if setting("useDeadband")?.value == .bool(true) {
-                        Text("Deadband can be set during the first step of calibration by gently wiggling each axis. ").font(.bodySmall)
+                        Text("Deadband can be set during the first step of calibration by gently wiggling each axis. ")
                     }
-                    Text("MANUAL_CONTROL Extensions").font(.titleSmall)
+                }
+                Section {
                     ForEach(Array(zip(EXTENSION_SETTINGS.compactMap(setting), ["Pitch", "Roll"])), id: \.0.name) { each, label in
                         SettingRow(setting: relabeled(each, label)) { act(JOYSTICK_SETTING, each.name, $0) }
                     }
-                    Text("Additional axes").font(.titleSmall)
+                } header: {
+                    SectionHeader(text: "MANUAL_CONTROL Extensions")
+                }
+                Section {
                     if additionalAxes != nil {
-                        RadioChoiceRow(label: "Send using MANUAL_CONTROL", selected: !viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 0) }
-                        RadioChoiceRow(label: "Send using RC_CHANNELS_OVERRIDE", selected: viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 1) }
+                        Picker("Send using", selection: Binding(get: { viaRc }, set: { rc in
+                            if rc != viaRc { act(JOYSTICK_SETTING, "additionalAxesFunction", rc ? 1 : 0) }
+                        })) {
+                            Text("MANUAL_CONTROL").tag(false)
+                            Text("RC_CHANNELS_OVERRIDE").tag(true)
+                        }
                     }
                     ForEach(Array(ADDITIONAL_SETTINGS.compactMap(setting).enumerated()), id: \.element.name) { index, each in
                         SettingRow(setting: relabeled(each, viaRc ? "Channel \(index + 5)" : "Aux\(index + 1)")) { act(JOYSTICK_SETTING, each.name, $0) }
                     }
+                } header: {
+                    SectionHeader(text: "Additional axes")
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+        }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                if !read.armed {
+                    Button(read.calibration.nextText) { calibrate("next", read.enabled) }
+                        .disabled(!read.calibration.nextEnabled)
+                }
+            }
         }
     }
 
@@ -262,48 +296,53 @@ private struct ButtonRow: View {
 
     var body: some View {
         let canRepeat = actions.first { $0.action == button.action }?.canRepeat == true
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s3) {
             Text(String(button.index))
-                .font(.titleSmall)
-                .foregroundStyle(button.pressed ? theme.colors.primary : theme.colors.onSurface)
+                .fontWeight(.semibold)
+                .monospacedDigit()
+                .foregroundStyle(button.pressed ? theme.colors.primary : Color.primary)
                 .frame(width: 32, alignment: .leading)
             Menu {
                 ForEach(Array(actions.enumerated()), id: \.offset) { _, option in
                     Button(option.action) { onAction(option.action) }
                 }
             } label: {
-                Text(button.action).lineLimit(1).frame(maxWidth: .infinity)
+                Text(button.action).lineLimit(1)
             }
-            .buttonStyle(.bordered)
-            .frame(maxWidth: .infinity)
-            Toggle("", isOn: Binding(get: { button.repeat }, set: onRepeat))
-                .labelsHidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Toggle("Repeat", isOn: Binding(get: { button.repeat }, set: onRepeat))
+                .font(.subheadline)
+                .fixedSize()
                 .disabled(!(canRepeat && calibrated))
-            Text("Repeat").font(.bodySmall)
         }
     }
 }
 
+// The joystick calibration steps: the live sticks while calibrating, the step's instructions, One-Sided and Cancel
+// (Calibrate / Next is the page's primary action in the navigation bar).
 private struct CalibrationPanel: View {
     let page: JoystickPage
     let onStep: (String) -> Void
 
     var body: some View {
         let cal = page.calibration
-        VStack(alignment: .leading, spacing: 8) {
-            if cal.calibrating {
-                StickDiagram(positions: cal.stickPositions, single: cal.singleStick)
-            }
-            ForEach(Array(cal.status.lines.enumerated()), id: \.offset) { _, line in
-                Text(cal.status.bullets ? "• \(line)" : line).font(.bodyMedium)
-            }
-            HStack(spacing: 8) {
-                Button("Cancel") { onStep("cancel") }.buttonStyle(.bordered).disabled(!cal.cancelEnabled)
-                if cal.oneSidedVisible {
-                    Button("One-Sided") { onStep("oneSided") }.buttonStyle(.bordered)
+        if cal.calibrating {
+            StickDiagram(positions: cal.stickPositions, single: cal.singleStick)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Space.s2)
+        }
+        if !cal.status.lines.isEmpty {
+            VStack(alignment: .leading, spacing: Space.s1) {
+                ForEach(Array(cal.status.lines.enumerated()), id: \.offset) { _, line in
+                    Text(cal.status.bullets ? "\u{2022} \(line)" : line)
                 }
-                Button(cal.nextText) { onStep("next") }.buttonStyle(.filled).disabled(!cal.nextEnabled)
             }
+        }
+        if cal.oneSidedVisible {
+            Button("One-Sided") { onStep("oneSided") }
+        }
+        if cal.cancelEnabled {
+            Button("Cancel calibration") { onStep("cancel") }
         }
     }
 }
@@ -313,16 +352,10 @@ private struct TransmitterModeRow: View {
     let onPick: (Int) -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text("Mode").frame(maxWidth: .infinity, alignment: .leading)
-            Menu {
-                ForEach(1...4, id: \.self) { m in
-                    Button("Mode \(m)") { onPick(m) }
-                }
-            } label: {
-                Text("Mode \(mode)")
+        Picker("Mode", selection: Binding(get: { mode }, set: { picked in if picked != mode { onPick(picked) } })) {
+            ForEach(1...4, id: \.self) { m in
+                Text("Mode \(m)").tag(m)
             }
-            .buttonStyle(.bordered)
         }
     }
 }
@@ -332,14 +365,11 @@ private struct JoystickPicker: View {
     let onPick: (String) -> Void
 
     var body: some View {
-        Menu {
-            ForEach(Array(page.names.enumerated()), id: \.offset) { _, name in
-                Button(name) { onPick(name) }
+        Picker("Joystick", selection: Binding(get: { page.active ?? "" }, set: { picked in if picked != page.active { onPick(picked) } })) {
+            ForEach(page.names, id: \.self) { name in
+                Text(name).tag(name)
             }
-        } label: {
-            Text(page.active ?? "")
         }
-        .buttonStyle(.bordered)
     }
 }
 
@@ -364,22 +394,23 @@ private struct SettingField: View {
     @State private var typed = ""
 
     var body: some View {
-        HStack {
-            Text(setting.label).frame(maxWidth: .infinity, alignment: .leading)
-            if setting.type == "bool" {
-                Toggle("", isOn: Binding(get: { setting.value == .bool(true) }, set: { onChange($0) })).labelsHidden()
-            } else {
+        if setting.type == "bool" {
+            Toggle(setting.label, isOn: Binding(get: { setting.value == .bool(true) }, set: { onChange($0) }))
+        } else {
+            LabeledContent(setting.label) {
                 HStack(spacing: 4) {
-                    TextField("", text: $typed)
+                    TextField(setting.label, text: $typed)
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
                         .keyboardType(.numbersAndPunctuation)
                         .submitLabel(.done)
                         .onSubmit { if let number = Double(typed) { onChange(number) } }
-                    Text(setting.units)
+                    if !setting.units.isBlank {
+                        Text(setting.units).foregroundStyle(Color.secondary)
+                    }
                 }
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 140)
-                .onChange(of: setting.value, initial: true) { typed = setting.value.numberOrNil.map(JSON.format) ?? "" }
             }
+            .onChange(of: setting.value, initial: true) { typed = setting.value.numberOrNil.map(JSON.format) ?? "" }
         }
     }
 }

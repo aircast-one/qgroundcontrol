@@ -87,7 +87,9 @@ struct ApmFollowScreen: View {
                 if let follow = read {
                     screen(follow)
                 } else {
-                    Text("This vehicle has no follow me parameters.").padding(16)
+                    NativeForm {
+                        Section { Text("This vehicle has no follow me parameters.").foregroundStyle(Color.secondary) }
+                    }
                 }
             }
         }
@@ -105,18 +107,24 @@ struct ApmFollowScreen: View {
     }
 
     private func screen(_ follow: ApmFollow) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+        NativeForm {
+            Section {
                 Toggle("Enable follow me", isOn: Binding(get: { follow.enabled }, set: { act(APM_FOLLOW_ENABLE, $0) }))
                 if follow.waiting {
-                    Text("Waiting for Vehicle to update").font(.bodyMedium)
+                    HStack(spacing: Space.s3) {
+                        ProgressView()
+                        Text("Waiting for Vehicle to update").foregroundStyle(Color.secondary)
+                    }
                 }
-                if !follow.supported {
-                    Text(follow.unsupportedText).foregroundStyle(theme.colors.error).padding(.vertical, 8)
-                    Button("Reset to supported settings") { act(APM_FOLLOW_RESET) }.buttonStyle(.filled)
+            }
+            if !follow.supported {
+                Section {
+                    Text(follow.unsupportedText).foregroundStyle(theme.colors.error)
+                    Button("Reset to supported settings") { act(APM_FOLLOW_RESET) }
                 }
-                if follow.showSettings {
-                    SectionHeader(text: "Follow me settings")
+            }
+            if follow.showSettings {
+                Section {
                     if follow.leads.count > 1 {
                         Choice(label: "Follow", options: follow.leads.map(\.name), index: follow.leadIndex) { act(APM_FOLLOW_LEAD, follow.leads[$0].id) }
                     }
@@ -124,14 +132,19 @@ struct ApmFollowScreen: View {
                     if !follow.rover {
                         Choice(label: "Point vehicle", options: follow.pointOptions, index: follow.pointIndex) { act(APM_FOLLOW_POINT, $0) }
                     }
-                    if follow.positionIndex == 1 {
-                        Text("Vehicle offsets").font(.titleSmall).padding(.top, 12)
+                } header: {
+                    SectionHeader(text: "Follow me settings")
+                }
+                if follow.positionIndex == 1 {
+                    Section {
                         HStack(alignment: .bottom) {
                             OffsetGraphic(follow: follow) { act(APM_FOLLOW_OFFSETS, $0, follow.distance) }
                             if !follow.rover {
                                 HeightGraphic(heightText: follow.vertical.text(follow.height))
                             }
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Space.s1)
                         NumberEntry(label: "Angle", units: "deg", value: follow.angle) { act(APM_FOLLOW_OFFSETS, $0, follow.distance) }
                         NumberEntry(label: "Distance", units: follow.horizontal.name, value: follow.horizontal.shown(follow.distance)) {
                             act(APM_FOLLOW_OFFSETS, follow.angle, follow.horizontal.metres($0))
@@ -141,14 +154,16 @@ struct ApmFollowScreen: View {
                                 act(APM_FOLLOW_HEIGHT, follow.vertical.metres($0))
                             }
                         }
+                    } header: {
+                        SectionHeader(text: "Vehicle offsets")
                     }
                 }
-                if let refusal {
-                    Text(refusal).foregroundStyle(theme.colors.error).padding(.top, 8)
+            }
+            if let refusal {
+                Section {
+                    Text(refusal).foregroundStyle(theme.colors.error)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
         }
     }
 
@@ -167,18 +182,11 @@ private struct Choice: View {
     let onPick: (Int) -> Void
 
     var body: some View {
-        HStack {
-            Text(label).frame(maxWidth: .infinity, alignment: .leading)
-            Menu {
-                ForEach(Array(options.enumerated()), id: \.offset) { at, option in
-                    Button(option) { onPick(at) }
-                }
-            } label: {
-                Text(options.indices.contains(index) ? options[index] : "")
+        Picker(label, selection: Binding(get: { index }, set: { picked in if picked != index { onPick(picked) } })) {
+            ForEach(Array(options.enumerated()), id: \.offset) { at, option in
+                Text(option).tag(at)
             }
-            .buttonStyle(.bordered)
         }
-        .padding(.vertical, 4)
     }
 }
 
@@ -190,19 +198,17 @@ private struct NumberEntry: View {
     @State private var typed = ""
 
     var body: some View {
-        HStack {
-            Text(label).frame(maxWidth: .infinity, alignment: .leading)
+        LabeledContent(label) {
             HStack(spacing: 4) {
-                TextField("", text: $typed)
+                TextField(label, text: $typed)
+                    .labelsHidden()
+                    .multilineTextAlignment(.trailing)
                     .keyboardType(.numbersAndPunctuation)
                     .submitLabel(.done)
                     .onSubmit { if let number = Double(typed) { onDone(number) } }
-                Text(units)
+                Text(units).foregroundStyle(Color.secondary)
             }
-            .textFieldStyle(.roundedBorder)
-            .frame(maxWidth: .infinity)
         }
-        .padding(.vertical, 4)
         .onChange(of: value.isNaN ? nil : value, initial: true) { typed = oneDecimal(value) }
     }
 }
@@ -244,7 +250,7 @@ private struct OffsetGraphic: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Click in the graphic to change angle").font(.labelSmall).foregroundStyle(theme.colors.onSurfaceVariant)
+            Text("Tap the graphic to change the angle").font(.footnote).foregroundStyle(Color.secondary)
             ZStack {
                 Canvas { context, size in draw(context, size) }
                     .frame(width: OFFSET_GRAPHIC, height: OFFSET_GRAPHIC)

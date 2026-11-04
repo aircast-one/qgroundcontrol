@@ -58,7 +58,9 @@ struct ApmAirframeScreen: View {
             if let state = read {
                 screen(state)
             } else {
-                Text("This page is for an ArduPilot vehicle with a FRAME_CLASS parameter.").padding(16)
+                NativeForm {
+                    Section { Text("This page is for an ArduPilot vehicle with a FRAME_CLASS parameter.").foregroundStyle(Color.secondary) }
+                }
             }
         }
         .task(id: revision) {
@@ -71,26 +73,41 @@ struct ApmAirframeScreen: View {
 
     private func screen(_ state: ApmAirframe) -> some View {
         let chosen = state.classes.first { $0.chosen && $0.valid && !$0.types.isEmpty }
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(state.help)
-                    .font(.bodyMedium)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.large))
-                if let refusal {
+        return NativeForm {
+            if !state.help.isBlank {
+                Section {
+                    Text(state.help).font(.subheadline).foregroundStyle(Color.secondary)
+                }
+            }
+            if let refusal {
+                Section {
                     Text(refusal).foregroundStyle(theme.colors.error)
                 }
-                if let card = chosen {
-                    FrameTypeChips(types: card.types, frameType: state.frameType) { act(APM_AIRFRAME_PICK_TYPE, $0) }
+            }
+            if let card = chosen {
+                Section {
+                    Picker("Frame type", selection: Binding(get: { state.frameType ?? NO_FRAME_TYPE }, set: { picked in
+                        if picked != state.frameType && picked != NO_FRAME_TYPE { act(APM_AIRFRAME_PICK_TYPE, picked) }
+                    })) {
+                        if state.frameType == nil || !card.types.contains(where: { $0.value == state.frameType }) {
+                            Text("Not set").tag(NO_FRAME_TYPE)
+                        }
+                        ForEach(card.types, id: \.value) { type in
+                            Text(type.name).tag(type.value)
+                        }
+                    }
                 }
+            }
+            Section {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: FRAME_TILE_MIN), spacing: 8)], spacing: 8) {
                     ForEach(state.classes, id: \.value) { card in
                         FrameClassTile(card: card, invalidText: state.invalidText) { act(APM_AIRFRAME_PICK_CLASS, card.value) }
                     }
                 }
+                .padding(.vertical, Space.s1)
+            } header: {
+                SectionHeader(text: "Frame class")
             }
-            .padding(16)
         }
     }
 
@@ -103,6 +120,9 @@ struct ApmAirframeScreen: View {
 }
 
 private let FRAME_TILE_MIN: CGFloat = 104
+
+// The frame-type picker's entry while FRAME_TYPE holds no type this frame class offers.
+private let NO_FRAME_TYPE = Int.min
 
 private struct FrameClassTile: View {
     let card: FrameClassCard
@@ -146,23 +166,5 @@ private struct FrameClassTile: View {
             }
         }
         .buttonStyle(.plain)
-    }
-}
-
-private struct FrameTypeChips: View {
-    let types: [FrameTypeChoice]
-    let frameType: Int?
-    let onPick: (Int) -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Frame type").font(.labelLarge).foregroundStyle(theme.colors.onSurfaceVariant)
-            PlanFlowRow(spacing: 8) {
-                ForEach(types, id: \.value) { type in
-                    CameraChip(label: type.name, selected: type.value == frameType) { if type.value != frameType { onPick(type.value) } }
-                }
-            }
-        }
     }
 }

@@ -66,7 +66,9 @@ struct ApmSubMotorsScreen: View {
             if let state = read {
                 screen(state)
             } else {
-                Text("This page is for an ArduSub vehicle.").padding(16)
+                NativeForm {
+                    Section { Text("This page is for an ArduSub vehicle.").foregroundStyle(Color.secondary) }
+                }
             }
         }
         .task {
@@ -101,15 +103,26 @@ struct ApmSubMotorsScreen: View {
     }
 
     private func screen(_ state: SubMotors) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                if let frameDisplay {
+        NativeForm {
+            if let frameDisplay {
+                Section {
                     Image(platformImage: frameDisplay)
                         .resizable()
                         .scaledToFit()
                         .frame(maxWidth: .infinity, maxHeight: 240)
                         .accessibilityLabel("Frame")
                 }
+            }
+            Section {
+                Toggle(isOn: Binding(get: { state.armed }, set: { act("apmSubMotors.arm", $0) })) {
+                    Text(coolingDown ? "A 10 second coooldown is required before testing again, please stand by..." : "Slide this switch to arm the vehicle and enable the motor test (CAUTION!)")
+                        .foregroundStyle(theme.colors.error)
+                }
+                .disabled(coolingDown)
+            } footer: {
+                if !state.warning.isBlank { Text(state.warning) }
+            }
+            Section {
                 ForEach(Array(state.motors.enumerated()), id: \.offset) { index, motor in
                     HStack {
                         Text("\(motor.motor)").frame(width: 24, alignment: .leading)
@@ -123,7 +136,7 @@ struct ApmSubMotorsScreen: View {
                         )
                         .disabled(!testing)
                         .frame(maxWidth: .infinity)
-                        Toggle("", isOn: Binding(get: { motor.reversed }, set: { on in
+                        Toggle("Reverse motor \(motor.motor)", isOn: Binding(get: { motor.reversed }, set: { on in
                             sliders[index] = SUB_NEUTRAL
                             act("apmSubMotors.reverse", motor.motor, on)
                         }))
@@ -131,30 +144,29 @@ struct ApmSubMotorsScreen: View {
                         .disabled(!testing)
                     }
                 }
-                Text("Reverse motor direction").font(.bodySmall)
-                Text(state.warning).font(.bodySmall)
-                HStack(spacing: 8) {
-                    Toggle("", isOn: Binding(get: { state.armed }, set: { act("apmSubMotors.arm", $0) }))
-                        .labelsHidden()
-                        .disabled(coolingDown)
-                    Text(coolingDown ? "A 10 second coooldown is required before testing again, please stand by..." : "Slide this switch to arm the vehicle and enable the motor test (CAUTION!)")
-                        .foregroundStyle(theme.colors.error)
-                }
-                if state.offersAutoDetect {
-                    Text("Automatic motor direction detection").font(.titleMedium)
-                    Text(state.autoDetectHelp).font(.bodySmall)
+            } header: {
+                SectionHeader(text: "Motors")
+            } footer: {
+                Text("The switch beside each motor reverses its direction.")
+            }
+            if state.offersAutoDetect {
+                Section {
                     Button("Auto-Detect Directions") { act("apmSubMotors.autoDetect") }
-                        .buttonStyle(.filled)
                         .disabled(state.detecting)
                     if !state.detectionMessages.isBlank {
-                        Text(state.detectionMessages).font(.bodySmall)
+                        Text(state.detectionMessages).font(.footnote)
                     }
+                } header: {
+                    SectionHeader(text: "Automatic motor direction detection")
+                } footer: {
+                    if !state.autoDetectHelp.isBlank { Text(state.autoDetectHelp) }
                 }
-                if let refusal {
+            }
+            if let refusal {
+                Section {
                     Text(refusal).foregroundStyle(theme.colors.error)
                 }
             }
-            .padding(16)
         }
     }
 

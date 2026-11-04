@@ -48,27 +48,10 @@ struct PowerCalcDialog: View {
 
     var body: some View {
         let available = live?["readingAvailable"].bool == true
-        SetupDialog(title: sentenceCase(calculator.title)) {
-            Text(calculator.help).font(.bodySmall)
-            if !available && !calculator.noReading.isBlank {
-                Text(calculator.noReading).font(.bodySmall).foregroundStyle(theme.colors.error)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(calculator.measuredLabel).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                TextField(calculator.measuredLabel, text: $measured.decimalPoint)
-                    .keyboardType(.decimalPad)
-                    .textFieldStyle(.roundedBorder)
-            }
-            if available || calculator.noReading.isBlank {
-                Text("\(calculator.readingLabel) \(live?["readingText"].string ?? "")")
-            }
-            Text("\(calculator.paramLabel) \(live?["paramText"].string ?? "")")
-            if let refusal {
-                Text(refusal).font(.bodySmall).foregroundStyle(theme.colors.error)
-            }
-        } buttons: {
-            Button("Close", action: onDone)
-            Button(sentenceCase(calculator.button)) {
+        SetupDialog(
+            title: sentenceCase(calculator.title),
+            cancel: DialogButton(title: "Close", action: onDone),
+            primary: DialogButton(title: sentenceCase(calculator.button), enabled: available) {
                 let entered = measured
                 let shown = calculator
                 scope.launch {
@@ -77,8 +60,19 @@ struct PowerCalcDialog: View {
                     refusal = answer
                 }
             }
-            .buttonStyle(.filled)
-            .disabled(!available)
+        ) {
+            Text(calculator.help).font(.bodySmall)
+            if !available && !calculator.noReading.isBlank {
+                Text(calculator.noReading).font(.bodySmall).foregroundStyle(theme.colors.error)
+            }
+            FieldRow(label: calculator.measuredLabel, value: measured, keyboard: .decimalPad, onChange: { measured = $0.replacingOccurrences(of: ",", with: ".") })
+            if available || calculator.noReading.isBlank {
+                LabeledContent(calculator.readingLabel, value: live?["readingText"].string ?? "")
+            }
+            LabeledContent(calculator.paramLabel, value: live?["paramText"].string ?? "")
+            if let refusal {
+                Text(refusal).font(.bodySmall).foregroundStyle(theme.colors.error)
+            }
         }
         .task(id: calculator) {
             let path = powerCalcPath(calculator)

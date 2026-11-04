@@ -291,8 +291,6 @@ struct ParameterToolsMenu: View {
     }
 }
 
-private let REVIEW_LIST_MAX_HEIGHT: CGFloat = 360
-
 private struct ReviewDialog: View {
     let review: ParameterReview
     @Binding var chosen: Set<String>
@@ -302,7 +300,11 @@ private struct ReviewDialog: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        SetupDialog(title: "Load Parameters") {
+        SetupDialog(
+            title: "Load Parameters",
+            cancel: DialogButton(title: "Cancel", action: onCancel),
+            primary: sendableCount(review) > 0 ? DialogButton(title: "OK", enabled: !chosen.isEmpty, action: onApply) : nil
+        ) {
             ForEach(reviewWarnings(review), id: \.self) { Text($0).foregroundStyle(theme.aircast.warning) }
             Text(reviewSummary(review))
             if sendableCount(review) > 0 { Text(SEND_HINT) }
@@ -312,36 +314,22 @@ private struct ReviewDialog: View {
                     chosen = checkedAll(review, chosen, on)
                 })) { Text("Name").font(.labelLarge) }
             }
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Space.s1) {
-                    ForEach(review.rows, id: \.key) { row in
-                        Toggle(isOn: Binding(get: { chosen.contains(row.key) }, set: { on in
-                            chosen = on ? chosen.union([row.key]) : chosen.subtracting([row.key])
-                        })) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(review.multipleComponents ? "\(row.componentId): \(row.name)" : row.name).font(.bodyMedium)
-                                Text(diffLine(row)).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-                            }
-                        }
-                        .disabled(row.cannotSend)
+            ForEach(review.rows, id: \.key) { row in
+                Toggle(isOn: Binding(get: { chosen.contains(row.key) }, set: { on in
+                    chosen = on ? chosen.union([row.key]) : chosen.subtracting([row.key])
+                })) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(review.multipleComponents ? "\(row.componentId): \(row.name)" : row.name).font(.bodyMedium)
+                        Text(diffLine(row)).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
                     }
                 }
-                .padding(.horizontal, Space.s6)
+                .disabled(row.cannotSend)
             }
-            .frame(maxHeight: REVIEW_LIST_MAX_HEIGHT)
-            .padding(.horizontal, -Space.s6)
             if review.rows.contains(where: { $0.noVehicleValue && !$0.cannotSend }) {
                 Text(NEW_TO_VEHICLE_HINT).font(.bodySmall)
             }
             if review.rows.contains(where: \.cannotSend) {
                 Text(CANNOT_SEND_HINT).font(.bodySmall)
-            }
-        } buttons: {
-            Button("Cancel", action: onCancel)
-            if sendableCount(review) > 0 {
-                Button("Ok", action: onApply)
-                    .buttonStyle(.filled)
-                    .disabled(chosen.isEmpty)
             }
         }
     }

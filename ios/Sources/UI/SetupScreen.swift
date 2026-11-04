@@ -581,10 +581,7 @@ private struct ComponentPage: View {
         } else if let screen = nativePage?.screen, let shown = nativeScreen(screen) {
             shown
         } else if nativePage?.parameterSections == true {
-            VStack(spacing: 0) {
-                if open.known == "power" { PowerLiveCard() }
-                ParameterForm(page: open.name, section: section)
-            }
+            ParameterForm(page: open.name, section: section, header: open.known == "power" ? AnyView(PowerLiveCard()) : nil)
         } else {
             SetupNotice(text: "\(open.name) is set up on the desktop.")
         }

@@ -21,16 +21,15 @@ struct EscCalibrationDialog: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        SetupDialog(title: "ESC Calibration") {
-            Text(state?.highlight ?? "").bold().foregroundStyle(theme.colors.error)
-                + Text(state?.text ?? "Starting ESC calibration...")
-        } buttons: {
-            Button("OK") {
+        SetupDialog(
+            title: "ESC Calibration",
+            primary: DialogButton(title: "OK", enabled: state?.running == false) {
                 offMain { _ = SetupCommands.closeEscCalibration() }
                 onClose()
             }
-            .buttonStyle(.filled)
-            .disabled(state?.running != false)
+        ) {
+            Text(state?.highlight ?? "").bold().foregroundStyle(theme.colors.error)
+                + Text(state?.text ?? "Starting ESC calibration...")
         }
         .interactiveDismissDisabled()
         .task {

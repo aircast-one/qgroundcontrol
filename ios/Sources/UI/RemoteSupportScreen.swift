@@ -27,43 +27,36 @@ struct RemoteSupportScreen: View {
     @QgcPath("view.links") private var linksJson
     @QgcPath(settingControl(HOST_FACT)) private var json
     @State private var verdict: SupportHostVerdict?
-    @Environment(\.theme) private var theme
 
     private var forwarding: Bool { linksJson?["supportForwarding"].bool == true }
     private var host: Fact? { json.flatMap { $0["kind"].string == "object" ? factFromControl($0) : nil } }
     private var typed: String { host?.valueString ?? "" }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                EmptyState(
-                    icon: .link,
-                    title: forwarding ? "Forwarding to support" : "Not forwarding",
-                    text: "Sends live telemetry, including position, to an ArduPilot support engineer."
-                )
-                if let host {
+        NativeForm {
+            Section {
+                LabeledContent("Status", value: forwarding ? "Forwarding to support" : "Not forwarding")
+            } footer: {
+                Text("Sends live telemetry, including position, to an ArduPilot support engineer.")
+            }
+            if let host {
+                Section {
                     FactRow(fact: host)
-                    if !forwarding && verdict?.valid != true {
-                        Text(verdict.flatMap { $0.error.isBlank ? nil : $0.error } ?? "Enter the address your support engineer gave you first.")
-                            .font(.bodySmall)
-                            .foregroundStyle(theme.colors.onSurfaceVariant)
-                            .padding(.horizontal, 32)
-                    }
-                    HStack {
-                        Spacer()
-                        Button("Connect") { offMain { LinkCommands.createSupportForwarding() } }
-                            .buttonStyle(.filled)
-                            .disabled(forwarding || verdict?.valid != true)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                } footer: {
                     if forwarding {
-                        Text(FORWARDING_UNTIL_RESTART).font(.bodyMedium).padding(.horizontal, 16)
+                        Text(FORWARDING_UNTIL_RESTART)
+                    } else if verdict?.valid != true {
+                        Text(verdict.flatMap { $0.error.isBlank ? nil : $0.error } ?? "Enter the address your support engineer gave you first.")
                     }
-                } else {
-                    Text("Reading the support address.").font(.bodyMedium).padding(.horizontal, 16)
+                }
+            } else {
+                Section {
+                    Text("Reading the support address.").foregroundStyle(Color.secondary)
                 }
             }
+        }
+        .pagePrimaryAction("Connect", enabled: host != nil && !forwarding && verdict?.valid == true) {
+            offMain { LinkCommands.createSupportForwarding() }
         }
         .task(id: typed) {
             let asked = typed

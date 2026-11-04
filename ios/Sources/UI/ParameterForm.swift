@@ -111,12 +111,18 @@ func parameterFormWait(_ setup: JSON?) -> String? {
 
 let EMPTY_PAGE_TEXTS = ["Gimbal": "Gimbal settings are not available for this firmware version."]
 
+// A setup page's parameter sections. Pushed as a page (inside a host's nativePage) it is a NativeForm, a Section per
+// parameter group; placed inside another NativeForm it is one row with the groups stacked; in a fly-view sheet it
+// keeps its hand-laid-out column.
 struct ParameterForm: View {
     let page: String
     var highlighted: Set<String> = []
     var section: String? = nil
+    var header: AnyView? = nil
     var footer: AnyView? = nil
     @Environment(\.theme) private var theme
+    @Environment(\.LocalPageHeading) private var pageHost
+    @Environment(\.LocalNativeList) private var inForm
     @QgcPath(SETUP) private var setupJson
     @State private var rows: [ParameterRows] = []
     @State private var loaded = false
@@ -131,8 +137,20 @@ struct ParameterForm: View {
         let ready: Bool
     }
 
+    // The loading and the dialogs hang on one view. Inside a host's form that is a single row: modifiers on a group
+    // of Sections would run once per section.
     var body: some View {
-        content
+        if inForm {
+            Section { hosted(formColumn) }
+        } else if pageHost != nil {
+            hosted(NativeForm { nativeSections })
+        } else {
+            hosted(content)
+        }
+    }
+
+    private func hosted<Shown: View>(_ shown: Shown) -> some View {
+        shown
             .task(id: Load(page: page, section: section, reloads: reloads, ready: parameterFormWait(setupJson) == nil)) {
                 guard parameterFormWait(setupJson) == nil else { return }
                 let page = page, section = section, first = reloads == 0
@@ -150,6 +168,74 @@ struct ParameterForm: View {
             }
     }
 
+    // Inside another NativeForm: the groups stacked in one row, each under its small heading, the rows divided.
+    private var formColumn: some View {
+        VStack(alignment: .leading, spacing: Space.s3) {
+            header
+            if let waiting = parameterFormWait(setupJson) {
+                Text(waiting).foregroundStyle(Color.secondary)
+            } else if !loaded {
+                HStack(spacing: Space.s3) {
+                    ProgressView()
+                    Text(READING_PARAMETERS).foregroundStyle(Color.secondary)
+                }
+            } else if rows.isEmpty {
+                Text(EMPTY_PAGE_TEXTS[page] ?? "This vehicle exposes none of these parameters.").foregroundStyle(Color.secondary)
+            } else {
+                ForEach(rows, id: \.title) { section in
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        if !section.title.isBlank {
+                            Text(sentenceCase(section.title)).font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondary)
+                        }
+                        ForEach(section.facts) { fact in
+                            factRow(fact, section)
+                            Divider()
+                        }
+                        if !section.note.isBlank {
+                            Text(section.note).font(.footnote).foregroundStyle(Color.secondary)
+                        }
+                    }
+                }
+            }
+            footer
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private var nativeSections: some View {
+        if let header {
+            Section { header }
+        }
+        if let waiting = parameterFormWait(setupJson) {
+            Section { Text(waiting).foregroundStyle(Color.secondary) }
+        } else if !loaded {
+            Section {
+                HStack(spacing: Space.s3) {
+                    ProgressView()
+                    Text(READING_PARAMETERS).foregroundStyle(Color.secondary)
+                }
+            }
+        } else if rows.isEmpty {
+            EmptyState(icon: .tune, title: "Nothing to set here", text: EMPTY_PAGE_TEXTS[page] ?? "This vehicle exposes none of these parameters.")
+                .listRowBackground(Color.clear)
+        } else {
+            ForEach(rows, id: \.title) { section in
+                Section {
+                    ForEach(section.facts) { fact in
+                        factRow(fact, section)
+                    }
+                } header: {
+                    if !section.title.isBlank { SectionHeader(text: sentenceCase(section.title), image: section.image) }
+                } footer: {
+                    if !section.note.isBlank { Text(section.note) }
+                }
+            }
+        }
+        if let footer {
+            Section { footer }
+        }
+    }
+
     @ViewBuilder private var content: some View {
         if let waiting = parameterFormWait(setupJson) {
             Text(waiting).padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -159,6 +245,7 @@ struct ParameterForm: View {
             EmptyState(icon: .tune, title: "Nothing to set here", text: EMPTY_PAGE_TEXTS[page] ?? "This vehicle exposes none of these parameters.")
         } else {
             ScrollView {
+                header
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(rows, id: \.title) { section in
                         SectionHeader(text: sentenceCase(section.title), image: section.image)
@@ -181,53 +268,89 @@ struct ParameterForm: View {
     }
 
     @ViewBuilder private func factRow(_ fact: Fact, _ section: ParameterRows) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if fact.controlKind == DIALOG_CONTROL {
-                Button(fact.title) { calibratingEscs = true }
-                    .buttonStyle(.bordered)
-                    .disabled(!fact.enabled)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
-            } else if fact.controlKind == BUTTON_CONTROL {
-                Button(fact.title) {
-                    let path = fact.path
-                    Task { @MainActor in
-                        let _: Bool = await offMain { Qgc.set(path, true) }
-                        reloads += 1
-                    }
-                }
-                .buttonStyle(.bordered)
+        if fact.controlKind == DIALOG_CONTROL {
+            Button(fact.title) { calibratingEscs = true }
+                .modifier(RowActionLook(inForm: inForm || pageHost != nil))
                 .disabled(!fact.enabled)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-            } else if fact.controlKind == LABEL_CONTROL {
-                Text(fact.title)
-                    .font(fact.smallFont ? .bodySmall : .bodyMedium)
-                    .foregroundStyle((fact.warning ? theme.colors.error : theme.colors.onSurfaceVariant).opacity(fact.enabled ? 1 : DISABLED_ALPHA))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
-            } else if let slider = fact.slider {
-                FactSliderRow(fact: fact, slider: slider, onWrite: { reloads += 1 })
-            } else {
-                FactRow(fact: fact, titleColor: highlighted.contains(fact.name) ? theme.aircast.warning : nil, onWrite: { reloads += 1 })
-                if let calculator = section.calculators[fact.path] {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(sentenceCase(calculator.title)).font(.bodyLarge)
-                            Text("Measure the \(calculator.measure) with a meter").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        Button("Calibrate") { calculating = calculator }.buttonStyle(.bordered)
-                    }
-                    .padding(16)
-                    .background(theme.colors.surfaceContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                .rowPadding(horizontal: 20, vertical: 8)
+                .padding(.leading, fact.indent ? INDENT : 0)
+        } else if fact.controlKind == BUTTON_CONTROL {
+            Button(fact.title) {
+                let path = fact.path
+                Task { @MainActor in
+                    let _: Bool = await offMain { Qgc.set(path, true) }
+                    reloads += 1
                 }
             }
+            .modifier(RowActionLook(inForm: inForm || pageHost != nil))
+            .disabled(!fact.enabled)
+            .rowPadding(horizontal: 20, vertical: 8)
+            .padding(.leading, fact.indent ? INDENT : 0)
+        } else if fact.controlKind == LABEL_CONTROL {
+            Text(fact.title)
+                .font(fact.smallFont ? .bodySmall : .bodyMedium)
+                .foregroundStyle((fact.warning ? theme.colors.error : theme.colors.onSurfaceVariant).opacity(fact.enabled ? 1 : DISABLED_ALPHA))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .rowPadding(horizontal: 20, vertical: 8)
+                .padding(.leading, fact.indent ? INDENT : 0)
+        } else if let slider = fact.slider {
+            FactSliderRow(fact: fact, slider: slider, onWrite: { reloads += 1 })
+                .padding(.leading, fact.indent ? INDENT : 0)
+        } else {
+            FactRow(fact: fact, titleColor: highlighted.contains(fact.name) ? theme.aircast.warning : nil, onWrite: { reloads += 1 })
+                .padding(.leading, fact.indent ? INDENT : 0)
+            if let calculator = section.calculators[fact.path] {
+                CalculatorRow(calculator: calculator) { calculating = calculator }
+                    .padding(.leading, fact.indent ? INDENT : 0)
+            }
         }
-        .padding(.leading, fact.indent ? INDENT : 0)
+    }
+}
+
+// A content button: a tinted text row inside a form, a bordered button on a hand-laid-out page.
+private struct RowActionLook: ViewModifier {
+    let inForm: Bool
+
+    func body(content: Content) -> some View {
+        if inForm {
+            content
+        } else {
+            content.buttonStyle(.bordered)
+        }
+    }
+}
+
+// The row under a battery fact that opens its calculator: a native row in a form, a card on a hand-laid-out page.
+private struct CalculatorRow: View {
+    let calculator: PowerCalculator
+    let onOpen: () -> Void
+    @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
+
+    var body: some View {
+        if nativeList {
+            HStack(spacing: Space.s3) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sentenceCase(calculator.title))
+                    Text("Measure the \(calculator.measure) with a meter").font(.footnote).foregroundStyle(Color.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Calibrate", action: onOpen).buttonStyle(.bordered)
+            }
+        } else {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sentenceCase(calculator.title)).font(.bodyLarge)
+                    Text("Measure the \(calculator.measure) with a meter").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Calibrate", action: onOpen).buttonStyle(.bordered)
+            }
+            .padding(16)
+            .background(theme.colors.surfaceContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
     }
 }
 
@@ -292,8 +415,7 @@ private struct FactSliderRow: View {
                 Text(slider.hint).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: 16, vertical: 8)
         .onChange(of: held) { shown = nil }
         .onChange(of: fact.path) { shown = nil }
     }
