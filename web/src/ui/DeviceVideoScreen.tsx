@@ -1,13 +1,13 @@
-import { ActionButton, CopyRow, DeviceColumns, DeviceDisclosure, DeviceForm, DeviceSection, DeviceText, LinkButton } from '@/ui/DeviceKit';
+import { ActionButton, CopyRow, DeviceColumns, DeviceDisclosure, DeviceForm, DeviceSection, DeviceText, DeviceWaiting, LinkButton } from '@/ui/DeviceKit';
 import { ButtonRow, StatusLine, StepText } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { SHARING_OFF, SharingStage, type PublicSharing, type RadioSettings, parseVideo } from '@/ui/DeviceVideo';
 import { useDeviceView } from '@/ui/DeviceView';
-import { FootNote, SetupRow } from '@/ui/SetupRow';
+import { SetupRow } from '@/ui/SetupRow';
 
 export const VideoScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('video', parseVideo);
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="video" />;
   const sharing = (
     <>
       <SharingSection sharing={view.sharing} />

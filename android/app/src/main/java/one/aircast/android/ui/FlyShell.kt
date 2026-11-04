@@ -5,6 +5,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -285,15 +286,32 @@ internal fun FlyScreen(
         Box(Modifier.zIndex(1f).fillMaxSize().graphicsLayer { alpha = if (settingsOver) 0f else 1f }.windowInsetsPadding(WindowInsets.displayCutout)) {
         if (view == FlyView.Map) {
             var layers by remember { mutableStateOf(false) }
+            val syntheticJson by one.aircast.android.bridge.qgcPath(SYNTHETIC_VIEW)
+            val context = LocalContext.current
             Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = if (stickPad != null) AircastSpace.s3 else MAP_SCALE_CLEARANCE)) {
                 LayoutWidget("mapLayers", hideable = false) {
-                    Surface(
-                        onClick = { layers = true },
-                        modifier = Modifier.size(MAP_LAYERS_SIZE),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_layers), "Map layers") }
+                    Column(verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) {
+                        if (nativeChosen(syntheticJson)) {
+                            val shown = one.aircast.map.Map3d.isShown
+                            Surface(
+                                onClick = { one.aircast.map.Map3d.show(context, !shown) },
+                                modifier = Modifier.size(MAP_LAYERS_SIZE).semantics { contentDescription = map3dToggleLabel(shown) },
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(map3dToggleText(shown), Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                        }
+                        Surface(
+                            onClick = { layers = true },
+                            modifier = Modifier.size(MAP_LAYERS_SIZE),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_layers), "Map layers") }
+                        }
                     }
                 }
             }

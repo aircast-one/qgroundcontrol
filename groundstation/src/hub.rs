@@ -8770,6 +8770,12 @@ impl Hub {
         }
     }
 
+    pub fn note_on_active(&mut self, severity: u8, text: &str) {
+        if let Some(vehicle) = self.active.and_then(|id| self.vehicles.get_mut(&id)) {
+            vehicle.message_log.note(severity, text);
+        }
+    }
+
     pub fn clear_message_log(&mut self) {
         if let Some(vehicle) = self.active.and_then(|id| self.vehicles.get_mut(&id)) {
             vehicle.message_log.clear();

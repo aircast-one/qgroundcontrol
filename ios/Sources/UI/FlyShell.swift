@@ -151,6 +151,7 @@ struct FlyScreen: View {
     @Environment(AppNavigationState.self) private var navigation
     @QgcPath(VIDEO_VIEW) private var videoJson
     @QgcPath(FLY_STATE) private var flyJson
+    @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
     @HasVehicle private var hasVehicle
     @CameraStepper private var cameras
     @GimbalDrags private var gimbalDrags
@@ -419,21 +420,36 @@ struct FlyScreen: View {
         let videoMessage = panes.videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
         let videoPipOpen = hasVideo && pipExpanded
         let layersBottom = PIP_TOGGLE_SIZE + Space.s3 * 2
+        let toggle3d = nativeChosen(syntheticJson)
         let railFloor = mapIsPip ? miniHeight(mini) + Space.s3 + Space.s2
             : !videoIsPip ? 0
             : videoPipOpen ? MINIMAP_HEIGHT + Space.s3 + Space.s2
-            : layersBottom + MAP_LAYERS_BUTTON + Space.s2
+            : layersBottom + (MAP_LAYERS_BUTTON + Space.s2) * (toggle3d ? 2 : 1)
         ZStack(alignment: .topLeading) {
             if view == .Map {
                 LayoutWidget(key: "mapLayers", hideable: false) {
-                    Button { layers = true } label: {
-                        Image(.layers)
-                            .foregroundStyle(theme.colors.onSurface)
-                            .frame(width: MAP_LAYERS_BUTTON, height: MAP_LAYERS_BUTTON)
-                            .background(theme.colors.surfaceContainerHigh, in: Circle())
+                    VStack(spacing: Space.s2) {
+                        if toggle3d {
+                            let shown = Map3d.shared.shown
+                            Button { Map3d.shared.show(!shown) } label: {
+                                Text(map3dToggleText(shown))
+                                    .font(.labelLarge)
+                                    .foregroundStyle(theme.colors.onSurface)
+                                    .frame(width: MAP_LAYERS_BUTTON, height: MAP_LAYERS_BUTTON)
+                                    .background(theme.colors.surfaceContainerHigh, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(map3dToggleLabel(shown))
+                        }
+                        Button { layers = true } label: {
+                            Image(.layers)
+                                .foregroundStyle(theme.colors.onSurface)
+                                .frame(width: MAP_LAYERS_BUTTON, height: MAP_LAYERS_BUTTON)
+                                .background(theme.colors.surfaceContainerHigh, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Map layers")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Map layers")
                 }
                 .padding(.leading, videoPipOpen ? Space.s3 * 2 + MINIMAP_WIDTH : Space.s3)
                 .padding(.bottom, videoPipOpen ? Space.s3 + MINIMAP_HEIGHT - MAP_LAYERS_BUTTON : layersBottom)

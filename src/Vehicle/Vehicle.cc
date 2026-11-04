@@ -84,6 +84,8 @@
 #include "MockLink.h"
 #endif
 
+#include <algorithm>
+
 #include <QtCore/QDateTime>
 
 QGC_LOGGING_CATEGORY(VehicleLog, "Vehicle.Vehicle")
@@ -421,9 +423,6 @@ void Vehicle::_deleteGimbalController()
 {
     if (_gimbalController) {
         _gimbalController->disconnect();
-        // The gimbal controller registers itself as the callback context for its GIMBAL_MANAGER_INFORMATION
-        // requestMessage calls. Cancel any still-outstanding request so the coordinator never calls back
-        // into the freed controller.
         if (_reqMsgCoord) {
             _reqMsgCoord->cancelRequests(_gimbalController);
         }
@@ -3409,6 +3408,16 @@ void Vehicle::_createStatusTextHandler()
     (void) connect(m_statusTextHandler, &StatusTextHandler::newFormattedMessage, this, &Vehicle::newFormattedMessage);
     (void) connect(m_statusTextHandler, &StatusTextHandler::textMessageReceived, this, &Vehicle::_textMessageReceived);
     (void) connect(m_statusTextHandler, &StatusTextHandler::newErrorMessage, this, &Vehicle::_errorMessageReceived);
+}
+
+void Vehicle::addGroundStationWarning(const QString &text)
+{
+    const QString html = text.toHtmlEscaped();
+    const QList<StatusText*> &logged = m_statusTextHandler->messages();
+    if (std::any_of(logged.cbegin(), logged.cend(), [&html](const StatusText *message) { return message->getText() == html; })) {
+        return;
+    }
+    m_statusTextHandler->handleHTMLEscapedTextMessage(static_cast<MAV_COMPONENT>(defaultComponentId()), MAV_SEVERITY_WARNING, html, QString());
 }
 
 void Vehicle::_onStatusTextFromEvent(uint8_t compid, int severity, const QString &text, const QString &description)

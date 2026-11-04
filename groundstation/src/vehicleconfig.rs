@@ -650,13 +650,7 @@ pub fn page_opened(backend: &dyn Backend, args: &str) -> Value {
                 .chain(missing_parameters(backend, &pages, px4)),
         ),
     };
-    if !missing.is_empty() {
-        crate::noticeboard::post(
-            crate::noticeboard::MESSAGE,
-            "",
-            &missing_parameters_text(&missing),
-        );
-    }
+    crate::connectnotices::report_missing_parameters(&missing);
     json!({ "ok": true })
 }
 
@@ -681,12 +675,8 @@ pub fn dialog_opened(backend: &dyn Backend, args: &str) -> Value {
         }
     };
     let missing = absent(backend, lookups);
-    if core && !missing.is_empty() {
-        crate::noticeboard::post(
-            crate::noticeboard::MESSAGE,
-            "",
-            &missing_parameters_text(&missing),
-        );
+    if core {
+        crate::connectnotices::report_missing_parameters(&missing);
     }
     json!({ "ok": true, "exists": missing.is_empty() })
 }
@@ -779,20 +769,30 @@ const DEFAULT_COMPONENT: i64 = -1;
 
 const APM_SENSOR_PARAMS_LOOKUPS: &[&str] = &[
     "COMPASS_DEV_ID",
-    "COMPASS_DEV_ID2",
-    "COMPASS_DEV_ID3",
     "COMPASS_OFS_X",
     "COMPASS_OFS_Y",
     "COMPASS_OFS_Z",
-    "COMPASS_OFS2_X",
-    "COMPASS_OFS2_Y",
-    "COMPASS_OFS2_Z",
-    "COMPASS_OFS3_X",
-    "COMPASS_OFS3_Y",
-    "COMPASS_OFS3_Z",
     "COMPASS_DEC",
 ];
 const APM_SENSOR_GUARDED: &[(&str, &[&str])] = &[
+    (
+        "COMPASS_DEV_ID2",
+        &[
+            "COMPASS_DEV_ID2",
+            "COMPASS_OFS2_X",
+            "COMPASS_OFS2_Y",
+            "COMPASS_OFS2_Z",
+        ],
+    ),
+    (
+        "COMPASS_DEV_ID3",
+        &[
+            "COMPASS_DEV_ID3",
+            "COMPASS_OFS3_X",
+            "COMPASS_OFS3_Y",
+            "COMPASS_OFS3_Z",
+        ],
+    ),
     (
         "COMPASS_PRIO1_ID",
         &["COMPASS_PRIO2_ID", "COMPASS_PRIO3_ID"],
@@ -3901,5 +3901,13 @@ mod tests {
             !titles(&Fake::new(&params)).contains(&"Failsafe Actions".to_string()),
             "a copter keeps the fence page"
         );
+    }
+
+    #[test]
+    fn the_sensors_page_reads_only_the_compass_slots_the_firmware_has() {
+        let two_slots = apm_sensor_params_lookups(&|name| name != "COMPASS_DEV_ID3");
+        assert!(two_slots.contains(&"COMPASS_DEV_ID2") && two_slots.contains(&"COMPASS_OFS2_X"));
+        assert!(!two_slots.contains(&"COMPASS_DEV_ID3") && !two_slots.contains(&"COMPASS_OFS3_X"));
+        assert!(apm_sensor_params_lookups(&|_| false).contains(&"COMPASS_DEV_ID"));
     }
 }

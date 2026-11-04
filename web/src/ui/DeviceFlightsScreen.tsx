@@ -7,7 +7,7 @@ import { mutableStateOf, useValue } from '@/kotlin/State';
 import { FilterChip, OutlinedButton, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
-import { ConfirmDialog, DeviceBadgeText, DeviceNotice, DeviceText, LinkButton, QrImage, levelColor, useCopy } from '@/ui/DeviceKit';
+import { ConfirmDialog, DeviceBadgeText, DeviceNotice, DeviceText, DeviceWaiting, LinkButton, QrImage, levelColor, useCopy } from '@/ui/DeviceKit';
 import {
   type ChartLane,
   type FlightChart,
@@ -36,7 +36,6 @@ import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
-import { FootNote } from '@/ui/SetupRow';
 import { LocalChangeNotice } from '@/ui/ValueRow';
 
 const laneChoice = mutableStateOf<readonly string[] | null>(null);
@@ -46,7 +45,7 @@ const muted = md('onSurfaceVariant');
 export const FlightsScreen = ({ query }: DeviceScreenProps) => {
   const view = useDeviceView('flights', parseFlights);
   const desktop = useDesktopLayout();
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="flights" />;
   const linked = query.get('flight');
   return (
     <>

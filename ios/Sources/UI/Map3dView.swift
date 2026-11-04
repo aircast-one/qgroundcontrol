@@ -14,6 +14,14 @@ private let CONTROL_SIZE: CGFloat = 40
 private let CONTROL_ICON: CGFloat = 20
 private let BACK_TO_AIRCRAFT = "Back to aircraft"
 private let COMPASS_LABEL = "Compass. Drag to turn and tilt the view, tap to face north"
+private let MAP3D_HINT = "Drag to move · Two fingers to turn and tilt"
+private let HINT_SHOWN_MS = 8_000
+private let NEEDLE_HALF_WIDTH: CGFloat = 0.22
+private let NEEDLE_REACH: CGFloat = 0.8
+
+func map3dToggleText(_ shown: Bool) -> String { shown ? "2D" : "3D" }
+
+func map3dToggleLabel(_ shown: Bool) -> String { shown ? "Show the flat map" : "Show the 3D map" }
 
 struct Map3dState: Equatable {
     let heading: Double
@@ -37,9 +45,11 @@ private func send(_ path: String, _ args: Double...) {
 #if os(iOS)
 private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
     private var twoFingered = false
+    private let onTouch: () -> Void
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    init(onTouch: @escaping () -> Void) {
+        self.onTouch = onTouch
+        super.init(frame: .zero)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
         pan.maximumNumberOfTouches = 2
         let follow = UITapGestureRecognizer(target: self, action: #selector(followed))
@@ -57,6 +67,11 @@ private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        onTouch()
+        super.touchesBegan(touches, with: event)
+    }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         true
@@ -96,9 +111,11 @@ private let WHEEL_ZOOM_STEP = 1.1
 
 private final class Map3dTouches: NSView {
     override var isFlipped: Bool { true }
+    private let onTouch: () -> Void
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(onTouch: @escaping () -> Void) {
+        self.onTouch = onTouch
+        super.init(frame: .zero)
         let pan = NSPanGestureRecognizer(target: self, action: #selector(panned(_:)))
         let tilt = NSPanGestureRecognizer(target: self, action: #selector(tilted(_:)))
         tilt.buttonMask = 0x2
@@ -131,6 +148,7 @@ private final class Map3dTouches: NSView {
     }
 
     @objc private func pinched(_ pinch: NSMagnificationGestureRecognizer) {
+        if pinch.state == .began { onTouch() }
         guard pinch.state == .changed, pinch.magnification != 0 else { return }
         send(MAP3D_ZOOM, 1 + pinch.magnification)
         pinch.magnification = 0
@@ -138,6 +156,7 @@ private final class Map3dTouches: NSView {
 
     // AppKit counts rotation anticlockwise and UIKit clockwise, so the sign flips to turn the same way as on iOS.
     @objc private func turned(_ rotation: NSRotationGestureRecognizer) {
+        if rotation.state == .began { onTouch() }
         guard rotation.state == .changed, rotation.rotation != 0 else { return }
         send(MAP3D_TURN, -rotation.rotation * 180 / .pi)
         rotation.rotation = 0
@@ -145,7 +164,19 @@ private final class Map3dTouches: NSView {
 
     @objc private func followed() { send(MAP3D_FOLLOW) }
 
+    // The first contact of any gesture, as touchesBegan is on iOS: it retires the first-time gesture hint.
+    override func mouseDown(with event: NSEvent) {
+        onTouch()
+        super.mouseDown(with: event)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        onTouch()
+        super.rightMouseDown(with: event)
+    }
+
     override func scrollWheel(with event: NSEvent) {
+        onTouch()
         if event.hasPreciseScrollingDeltas {
             if event.scrollingDeltaY != 0 { send(MAP3D_TILT, -event.scrollingDeltaY, bounds.height) }
         } else if event.scrollingDeltaY != 0 {
@@ -157,8 +188,9 @@ private final class Map3dTouches: NSView {
 
 private struct Map3dGestures: PlatformViewRepresentable {
     typealias Coordinator = Void
+    let onTouch: () -> Void
 
-    func makePlatformView(context: Context) -> Map3dTouches { Map3dTouches(frame: .zero) }
+    func makePlatformView(context: Context) -> Map3dTouches { Map3dTouches(onTouch: onTouch) }
 }
 
 private struct Compass: View {
@@ -168,29 +200,51 @@ private struct Compass: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Image(.navigation)
-            .font(.system(size: CONTROL_ICON))
-            .rotationEffect(.degrees(-heading))
+        let north = theme.colors.error
+        let south = theme.aircast.outdoorForeground
+        Canvas { context, size in
+            let (cx, cy) = (size.width / 2, size.height / 2)
+            let (reach, half) = (cy * NEEDLE_REACH, cx * NEEDLE_HALF_WIDTH)
+            let needle = { (tip: CGFloat) in
+                Path { $0.addLines([CGPoint(x: cx, y: tip), CGPoint(x: cx + half, y: cy), CGPoint(x: cx - half, y: cy)]); $0.closeSubpath() }
+            }
+            context.fill(needle(cy - reach), with: .color(north))
+            context.fill(needle(cy + reach), with: .color(south))
+        }
+        .frame(width: CONTROL_ICON, height: CONTROL_ICON)
+        .rotationEffect(.degrees(-heading))
+        .frame(width: CONTROL_SIZE, height: CONTROL_SIZE)
+        .background(Color.black.opacity(CONTROL_SCRIM_ALPHA), in: Circle())
+        .contentShape(Circle())
+        .onTapGesture { send(MAP3D_NORTH) }
+        .gesture(
+            DragGesture()
+                .onChanged { drag in
+                    let dx = drag.translation.width - dragged.width
+                    let dy = drag.translation.height - dragged.height
+                    dragged = drag.translation
+                    send(MAP3D_TURN, dx / max(view.width, 1) * TURN_PER_VIEW_WIDTH_DEG)
+                    send(MAP3D_TILT, -dy, view.height)
+                }
+                .onEnded { _ in dragged = .zero }
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(COMPASS_LABEL)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { send(MAP3D_NORTH) }
+    }
+}
+
+private struct Hint: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Text(MAP3D_HINT)
+            .font(.labelLarge)
             .foregroundStyle(theme.aircast.outdoorForeground)
-            .frame(width: CONTROL_SIZE, height: CONTROL_SIZE)
-            .background(Color.black.opacity(CONTROL_SCRIM_ALPHA), in: Circle())
-            .contentShape(Circle())
-            .onTapGesture { send(MAP3D_NORTH) }
-            .gesture(
-                DragGesture()
-                    .onChanged { drag in
-                        let dx = drag.translation.width - dragged.width
-                        let dy = drag.translation.height - dragged.height
-                        dragged = drag.translation
-                        send(MAP3D_TURN, dx / max(view.width, 1) * TURN_PER_VIEW_WIDTH_DEG)
-                        send(MAP3D_TILT, -dy, view.height)
-                    }
-                    .onEnded { _ in dragged = .zero }
-            )
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(COMPASS_LABEL)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { send(MAP3D_NORTH) }
+            .padding(.horizontal, Space.s3)
+            .padding(.vertical, Space.s2)
+            .background(Color.black.opacity(CONTROL_SCRIM_ALPHA), in: Capsule())
     }
 }
 
@@ -218,6 +272,7 @@ struct Map3dView: View {
     let logoEndInsetPx: CGFloat?
     @QgcPath(SYNTHETIC_VIEW) private var synthetic
     @QgcPath(MAP3D_VIEW) private var map3dJson
+    @State private var hinting = !Map3d.shared.hinted
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -233,15 +288,24 @@ struct Map3dView: View {
                         .padding(Space.s4)
                         .osdShadow()
                 }
-                Map3dGestures()
-                HStack(spacing: Space.s2) {
-                    if state.aircraft && !state.following { BackToAircraft() }
-                    Compass(heading: state.heading, view: geometry.size)
+                Map3dGestures { hinting = false }
+                VStack(alignment: .trailing, spacing: Space.s2) {
+                    if hinting { Hint() }
+                    HStack(spacing: Space.s2) {
+                        if state.aircraft && !state.following { BackToAircraft() }
+                        Compass(heading: state.heading, view: geometry.size)
+                    }
                 }
                 .padding(logoEndInsetPx.map { EdgeInsets(top: 0, leading: 0, bottom: bottomInsetPx + Space.s3, trailing: $0) }
                     ?? EdgeInsets(top: Space.s3, leading: Space.s3, bottom: Space.s3, trailing: Space.s3))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
+        }
+        .task(id: hinting) {
+            guard hinting else { return }
+            Map3d.shared.markHinted()
+            try? await Task.sleep(for: .milliseconds(HINT_SHOWN_MS))
+            if !Task.isCancelled { hinting = false }
         }
         .onAppear {
             guard let centre = FlightMapPosition.latest ?? readCamera()?.centre else { return send(MAP3D_OPEN) }

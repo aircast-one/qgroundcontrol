@@ -471,9 +471,15 @@ void QGCApplication::_missingParamsDisplay()
     }
     _missingParams.clear();
 
-    showAppMessage(tr("Parameters are missing from firmware. You may be running a version of firmware which is not "
-                      "fully supported or your firmware has a bug in it. Missing params: %1")
-                       .arg(params));
+    const QString text = tr("Parameters are missing from firmware. You may be running a version of firmware which is not "
+                            "fully supported or your firmware has a bug in it. Missing params: %1")
+                             .arg(params);
+    Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!vehicle) {
+        qCDebug(QGCApplicationLog) << text;
+        return;
+    }
+    vehicle->addGroundStationWarning(text);
 }
 
 QObject* QGCApplication::_rootQmlObject()

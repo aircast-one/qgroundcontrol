@@ -1,9 +1,10 @@
 import { type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { settingControl, useQgcPath, useQgcValue } from '@/bridge/QgcState';
+import { settingControl, useQgcDerived, useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { Surface, Text, type Typography } from '@/m3';
 import { MAP_SCALE_CLEARANCE } from '@/map/FlyMap';
+import { Map3d, useMap3dShown } from '@/map/Map3d';
 import { MapLayersSheet } from '@/map/MapLayersSheet';
 import { Viewer3DPane } from '@/map/Viewer3D';
 import { Drawable } from '@/res/Icon';
@@ -39,9 +40,11 @@ import {
 } from '@/ui/FlyShell';
 import { useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, osdShadow } from '@/ui/Osd';
+import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
-import { useRememberSyntheticAims } from '@/ui/SyntheticView';
+import { nativeChosen } from '@/ui/SyntheticSurface';
+import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
 import { LocalDeckTelemetry, TelemetryRow } from '@/ui/VehicleUi';
 import {
@@ -488,6 +491,8 @@ const MapButtons = ({ view, split, hasVideo, onView }: { view: FlyView; split: b
     const allowed = flyViewAllowed(enabled3d, view);
     if (allowed !== view) latestOnView.current(allowed);
   }, [enabled3d, view]);
+  const native = useQgcDerived(SYNTHETIC_VIEW, nativeChosen);
+  const shown3d = useMap3dShown();
   const [layers, setLayers] = useState(false);
   const threeD = view === FlyView.ThreeD;
   return (
@@ -496,6 +501,11 @@ const MapButtons = ({ view, split, hasVideo, onView }: { view: FlyView; split: b
         {split ? <MapButton icon="ic_fullscreen" label="Enlarge the map" onClick={() => onView(FlyView.Map)} /> : null}
         {!split && hasVideo && threeD ? <MapButton icon="ic_videocam" label="Show the camera above the map" onClick={() => onView(FlyView.Video)} /> : null}
         <MapButton icon="ic_layers" label="Map layers" onClick={() => setLayers(true)} />
+        {!threeD && native ? (
+          <MapButtonSurface label={map3dToggleLabel(shown3d)} onClick={() => Map3d.show(!shown3d)}>
+            <Text typography="labelLarge">{map3dToggleText(shown3d)}</Text>
+          </MapButtonSurface>
+        ) : null}
         {flyViewsOffered(enabled3d, view).includes(FlyView.ThreeD) ? (
           <MapButton icon={threeD ? 'ic_map' : 'ic_explore'} label={threeD ? 'Show the map' : 'Show the 3D view'} onClick={() => onView(threeD ? FlyView.Map : FlyView.ThreeD)} />
         ) : null}
@@ -506,6 +516,12 @@ const MapButtons = ({ view, split, hasVideo, onView }: { view: FlyView; split: b
 };
 
 const MapButton = ({ icon, label, onClick }: { icon: DrawableName; label: string; onClick: () => void }) => (
+  <MapButtonSurface label={label} onClick={onClick}>
+    <Drawable name={icon} size={20} />
+  </MapButtonSurface>
+);
+
+const MapButtonSurface = ({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) => (
   <Surface
     onClick={onClick}
     shape="full"
@@ -515,6 +531,6 @@ const MapButton = ({ icon, label, onClick }: { icon: DrawableName; label: string
     className="grid place-items-center"
     style={{ width: MAP_BUTTON_SIZE, height: MAP_BUTTON_SIZE }}
   >
-    <Drawable name={icon} size={20} />
+    {children}
   </Surface>
 );

@@ -18,12 +18,13 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { type Json, has, optBoolean } from '@/bridge/Json';
-import { useQgcPath } from '@/bridge/QgcState';
+import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { getSharedPreferences } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
 import { coerceAtLeast, same } from '@/kotlin/Std';
 import { DropdownMenu, DropdownMenuItem, Surface, Text } from '@/m3';
+import { Map3d, useMap3dShown } from '@/map/Map3d';
 import { MapLayersSheet } from '@/map/MapLayersSheet';
 import { Viewer3DPane } from '@/map/Viewer3D';
 import { Drawable, MaterialIcon } from '@/res/Icon';
@@ -37,10 +38,12 @@ import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
-import { useRememberSyntheticAims, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
+import { nativeChosen } from '@/ui/SyntheticSurface';
+import { SYNTHETIC_VIEW, useRememberSyntheticAims, useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
 import { TelemetryRow } from '@/ui/VehicleUi';
 import {
@@ -56,7 +59,7 @@ import {
   videoGestures,
   videoSwipe,
 } from '@/ui/VideoGestures';
-import { FlyNoVideoMessage, NO_VIDEO_PILL_HEIGHT, NO_VIDEO_PILL_WIDTH, centredRegion, messageRegion } from '@/ui/VideoSurface';
+import { FlyNoVideoMessage, NO_VIDEO_PILL_HEIGHT, NO_VIDEO_PILL_WIDTH, centredRegion, looksForAircraft, messageRegion } from '@/ui/VideoSurface';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
@@ -354,6 +357,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const deciding = useValue(shellState.guidedPanels) > 0;
   const obstacles = useValue(shellState.obstacles);
   const hasVehicle = useHasVehicle();
+  const syntheticChosen = useRememberSyntheticChosen();
   const [layers, setLayers] = useState(false);
   useEffect(() => setLayers(false), [view]);
 
@@ -388,7 +392,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
     return videoGestures(handlers);
   }, []);
   const videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding !== true;
-  const guideMessage = !hasVehicle && (view === FlyView.Map || videoMessage);
+  const guideMessage = !hasVehicle && (view === FlyView.Map || (videoMessage && looksForAircraft(hasVehicle, videoReading(videoJson), syntheticChosen)));
   const besideThumb = thumbShown ? thumb.width : 0;
   const showMap = () => onView(FlyView.Map);
   const showVideo = () => onView(FlyView.Video);
@@ -445,17 +449,20 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               {view === FlyView.Map ? (
                 <div className="absolute end-0 bottom-0" style={{ marginInlineEnd: AircastSpace.s3, marginBottom: stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE }}>
                   <LayoutWidget widgetKey="mapLayers" hideable={false}>
-                    <Surface
-                      onClick={() => setLayers(true)}
-                      shape="full"
-                      color={md('surfaceContainerHigh')}
-                      contentColor={md('onSurface')}
-                      label="Map layers"
-                      className="grid place-items-center"
-                      style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
-                    >
-                      <Drawable name="ic_layers" />
-                    </Surface>
+                    <div className="flex flex-col gap-2">
+                      <Map3dToggle />
+                      <Surface
+                        onClick={() => setLayers(true)}
+                        shape="full"
+                        color={md('surfaceContainerHigh')}
+                        contentColor={md('onSurface')}
+                        label="Map layers"
+                        className="grid place-items-center"
+                        style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
+                      >
+                        <Drawable name="ic_layers" />
+                      </Surface>
+                    </div>
                   </LayoutWidget>
                 </div>
               ) : null}
@@ -597,6 +604,24 @@ export const MAP_LAYERS_CLEARANCE = MAP_LAYERS_SIZE + AircastSpace.s3 + AircastS
 const FLEET_CARD_MAX_WIDTH = 440;
 const FLEET_CARD_MAX_HEIGHT = 320;
 const FLEET_CARD_MIN_SCREEN_DP = 600;
+
+const Map3dToggle = () => {
+  const shown = useMap3dShown();
+  const offered = useQgcDerived(SYNTHETIC_VIEW, nativeChosen);
+  return offered ? (
+    <Surface
+      onClick={() => Map3d.show(!shown)}
+      shape="full"
+      color={md('surfaceContainerHigh')}
+      contentColor={md('onSurface')}
+      label={map3dToggleLabel(shown)}
+      className="grid place-items-center"
+      style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
+    >
+      <Text typography="labelLarge">{map3dToggleText(shown)}</Text>
+    </Surface>
+  ) : null;
+};
 
 export type MapInsets = { top: number; bottom: number };
 export const MapInsets = (fields: MapInsets): MapInsets => ({ ...fields });

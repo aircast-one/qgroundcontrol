@@ -49,9 +49,12 @@ describe('DeviceCameraWizardTest', () => {
       note: '',
       checklist: 'No camera answered — check it, then scan again',
       adopt: { host: '192.168.8.10', url: 'rtsp://192.168.8.10:554/stream1', needsAuth: false, pathFound: true, used: '', note: 'ready to use', action: 'Use' },
+      candidates: [{ id: 'siyi', iface: 'eth0', label: 'SIYI camera on Ethernet port (eth0)', note: 'Answered at 192.168.144.25', action: 'Use' }],
       cams: [],
       camHeading: '0 cameras',
       camsHint: '',
+      strangers: [{ host: '192.168.1.101', url: 'rtsp://192.168.1.101:8554', needsAuth: false, pathFound: false, used: '', note: 'answers on RTSP — add the stream path', action: 'Use' }],
+      strangersHeading: 'Other devices answering RTSP on your Wi-Fi',
       details: 'Details for a technician',
       todoHeading: 'Try this',
       todo: [
@@ -81,6 +84,9 @@ describe('DeviceCameraWizardTest', () => {
     expect(wizard.scans).toBe(2);
     expect(wizard.again).toBe(7);
     expect(wizard.adopt?.url).toBe('rtsp://192.168.8.10:554/stream1');
+    expect(wizard.candidates).toEqual([{ id: 'siyi', iface: 'eth0', label: 'SIYI camera on Ethernet port (eth0)', note: 'Answered at 192.168.144.25', action: 'Use' }]);
+    expect(wizard.strangers[0]?.host).toBe('192.168.1.101');
+    expect(wizard.strangersHeading).toBe('Other devices answering RTSP on your Wi-Fi');
     expect(wizard.todo[0]?.options[0]).toEqual({ cidr: '192.168.144.2/24', text: '192.168.144.2/24 · found 192.168.144.25' });
     expect(wizard.todo[0]?.busy).toBe(true);
     expect(wizard.rest[0]?.detail).toBe("this is the device's own uplink");

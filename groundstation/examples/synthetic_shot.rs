@@ -53,6 +53,8 @@ fn main() {
         tilt: number("--orbit-tilt", groundstation::map3d::START.tilt),
         range: number("--orbit-range", groundstation::map3d::START.range),
         focus: None,
+        resting: false,
+        framed: false,
     });
     let views = Views {
         first_person: orbit.is_none().then_some((width, height)),

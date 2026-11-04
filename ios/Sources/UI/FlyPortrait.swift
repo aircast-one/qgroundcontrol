@@ -484,6 +484,7 @@ private struct MapButtons: View {
     let hasVideo: Bool
     let onView: (FlyView) -> Void
     @QgcPath(VIEWER3D_VIEW) private var viewer3dJson
+    @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
     @State private var layers = false
 
     var body: some View {
@@ -496,6 +497,12 @@ private struct MapButtons: View {
                 MapButton(icon: .videocam, label: "Show the camera above the map") { onView(.Video) }
             }
             MapButton(icon: .layers, label: "Map layers") { layers = true }
+            if view != .ThreeD && nativeChosen(syntheticJson) {
+                let shown = Map3d.shared.shown
+                MapButton(label: map3dToggleLabel(shown), onClick: { Map3d.shared.show(!shown) }) {
+                    Text(map3dToggleText(shown)).font(.labelLarge)
+                }
+            }
             if flyViewsOffered(enabled3d, view).contains(.ThreeD) {
                 MapButton(icon: view == .ThreeD ? .map : .explore, label: view == .ThreeD ? "Show the map" : "Show the 3D view") {
                     onView(view == .ThreeD ? .Map : .ThreeD)
@@ -512,15 +519,15 @@ private struct MapButtons: View {
     }
 }
 
-private struct MapButton: View {
-    let icon: Icon
+private struct MapButton<Content: View>: View {
     let label: String
     let onClick: () -> Void
+    @ViewBuilder let content: () -> Content
     @Environment(\.theme) private var theme
 
     var body: some View {
         Button(action: onClick) {
-            Image(icon)
+            content()
                 .font(.system(size: 16))
                 .foregroundStyle(theme.aircast.outdoorForeground)
                 .frame(width: MAP_BUTTON_SIZE, height: MAP_BUTTON_SIZE)
@@ -528,5 +535,11 @@ private struct MapButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+}
+
+extension MapButton where Content == Image {
+    init(icon: Icon, label: String, onClick: @escaping () -> Void) {
+        self.init(label: label, onClick: onClick) { Image(icon) }
     }
 }

@@ -17,11 +17,10 @@ import {
   shownTargets,
   writeStored,
 } from '@/ui/DeviceConnect';
-import { CopyRow, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText } from '@/ui/DeviceKit';
+import { CopyRow, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, DeviceWaiting } from '@/ui/DeviceKit';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDeviceView } from '@/ui/DeviceView';
-import { FootNote } from '@/ui/SetupRow';
 
 const useReach = (url: string): Reach | null => {
   const [reach, setReach] = useState<Reach | null>(null);
@@ -101,7 +100,7 @@ const Subheading = ({ text }: { text: string }) => (
 export const ConnectScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('connect', parseConnect);
   const [saved, setSaved] = useState(() => readStored(GCS_KEY));
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="connect" />;
   const choice = chosenGcs(view.choices, saved);
   const pick = (value: string) => {
     writeStored(GCS_KEY, value);

@@ -292,12 +292,20 @@ jobs:
         run: |
           export AIRCAST_VERSION_NAME="${RELEASE_TAG#aircast-v}"
           ./gradlew --no-daemon :app:testCoreDebugUnitTest
-          ./gradlew --no-daemon -Paircast.coreApplicationId=one.aircast.app :app:bundleCoreRelease
+          ./gradlew --no-daemon -Paircast.coreApplicationId=one.aircast.app :app:bundleCoreRelease :app:assembleCoreRelease
 
-      - name: Collect the Rust core head bundle
+      - name: Collect the Rust core head bundle and APK
         env:
           SHORT: ${{ needs.setup.outputs.short_version }}
-        run: mkdir -p out && cp android/app/build/outputs/bundle/coreRelease/app-core-release.aab "out/AircastAndroidCore-${SHORT}.aab"
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/bundle/coreRelease/app-core-release.aab "out/AircastAndroidCore-${SHORT}.aab"
+          for f in android/app/build/outputs/apk/core/release/app-core-release*.apk; do
+            case "$f" in
+              *unsigned*) cp "$f" "out/AircastAndroidCore-${SHORT}-unsigned.apk" ;;
+              *)          cp "$f" "out/AircastAndroidCore-${SHORT}.apk" ;;
+            esac
+          done
 
       - name: Authenticate to Google Play
         id: play_auth
@@ -324,7 +332,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: qgc-android-core
-          path: out/*.aab
+          path: |
+            out/*.aab
+            out/*.apk
           if-no-files-found: error
 
   build-ios:
@@ -1113,6 +1123,7 @@ jobs:
             else
               scripts/release-notes.sh "$V"
             fi
+            printf '\n**Android:** AircastAndroidCore-%s.apk is the same app as Google Play, 3D map included. AircastAndroid-%s.apk is the Qt-host build. Both install as one.aircast.app, so uninstall one before switching to the other.\n' "$SHORT" "$SHORT"
           } > release-notes.md
           if gh release view "$V" -R "$REPO" >/dev/null 2>&1; then
             gh release upload "$V" -R "$REPO" --clobber assets/*

@@ -62,6 +62,7 @@ export const CameraWizard = ({
   const [rtsp, setRtsp] = useState(view.rtsp);
   const [name, setName] = useState(view.suggestedName);
   const address = useFold(view.addressOpen);
+  const makes = useFold(false);
   const naming = useFold(false);
   const tech = useFold(fixPort !== null);
   const portFold = useFold(false);
@@ -234,7 +235,12 @@ export const CameraWizard = ({
     onDone(cameraName);
   };
 
-  const Scan = scanLeads(rtsp, picked !== null) ? Button : OutlinedButton;
+  const setUp = (id: string, port: string) => {
+    setRefusal(null);
+    void setUpCameraMake(id, port);
+  };
+
+  const Scan = scanLeads(rtsp, picked !== null || wizard.candidates.length > 0) ? Button : OutlinedButton;
   const Next = continueLeads(rtsp) ? Button : OutlinedButton;
 
   return (
@@ -248,33 +254,6 @@ export const CameraWizard = ({
                 {view.piCamera.note}
               </Text>
               <Button onClick={() => void advance(PI_CAMERA, name)}>{view.piCamera.action}</Button>
-            </div>
-          ) : null}
-          {wizard.templates.length > 0 ? (
-            <div className="flex flex-col gap-2" role="group" aria-label="Camera makes">
-              {wizard.templates.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  disabled={wizard.templateBusy}
-                  onClick={() => {
-                    setRefusal(null);
-                    void setUpCameraMake(t.id);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-shape-md border border-outline-variant px-4 py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)] disabled:opacity-60"
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <Text typography="bodyLarge">{t.label}</Text>
-                    <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-                      {t.sub}
-                    </Text>
-                  </span>
-                  <Text typography="labelLarge" color={md('primary')}>
-                    {t.action}
-                  </Text>
-                </button>
-              ))}
-              {wizard.templateNote !== '' ? <Hint text={wizard.templateNote} /> : null}
             </div>
           ) : null}
           {view.lookingFor !== '' ? (
@@ -307,37 +286,43 @@ export const CameraWizard = ({
               </div>
             </div>
           ) : null}
+          {wizard.candidates.length > 0 ? (
+            <div className="flex flex-col gap-2" role="group" aria-label="Cameras found">
+              {wizard.candidates.map((found) => (
+                <div key={`${found.id} ${found.iface}`} className="flex flex-wrap items-center gap-3 rounded-shape-md border border-primary px-4 py-3">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <Text typography="bodyLarge">{found.label}</Text>
+                    <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+                      {found.note}
+                    </Text>
+                  </span>
+                  <Button enabled={!wizard.templateBusy} onClick={() => setUp(found.id, found.iface)}>
+                    {found.action}
+                  </Button>
+                </div>
+              ))}
+              {wizard.templateNote !== '' ? <Hint text={wizard.templateNote} /> : null}
+            </div>
+          ) : null}
           {wizard.cams.length > 0 ? (
             <div className="flex flex-col gap-2">
               <Text typography="labelLarge" color={md('onSurfaceVariant')}>
                 {wizard.camHeading}
               </Text>
-              {wizard.cams.map((cam) => {
-                const selected = sameCamera(picked, cam);
-                return (
-                  <button
-                    key={`${cam.host} ${cam.url}`}
-                    type="button"
-                    aria-pressed={selected}
-                    aria-label={`${cam.host} — ${cam.note}`}
-                    onClick={() => void pick(cam)}
-                    className={`flex w-full items-center gap-3 rounded-shape-md border px-4 py-3 text-left ${selected ? 'border-primary bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)]' : 'border-outline-variant hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]'}`}
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <Text typography="bodyLarge" monospace>
-                        {cam.host}
-                      </Text>
-                      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-                        {cam.note}
-                      </Text>
-                    </span>
-                    <Text typography="labelLarge" color={md('primary')}>
-                      {selected ? 'Selected' : cam.action}
-                    </Text>
-                  </button>
-                );
-              })}
+              {wizard.cams.map((cam) => (
+                <CameraRow key={`${cam.host} ${cam.url}`} cam={cam} selected={sameCamera(picked, cam)} onPick={() => void pick(cam)} />
+              ))}
               {wizard.camsHint !== '' ? <Hint text={wizard.camsHint} /> : null}
+            </div>
+          ) : null}
+          {wizard.strangers.length > 0 ? (
+            <div className="flex flex-col gap-2" role="group" aria-label={wizard.strangersHeading}>
+              <Text typography="labelLarge" color={md('onSurfaceVariant')}>
+                {wizard.strangersHeading}
+              </Text>
+              {wizard.strangers.map((cam) => (
+                <CameraRow key={`${cam.host} ${cam.url}`} cam={cam} selected={sameCamera(picked, cam)} onPick={() => void pick(cam)} />
+              ))}
             </div>
           ) : null}
           {wizard.details !== '' && (!repairing(view) || wizard.todo.length > 0) ? (
@@ -353,6 +338,35 @@ export const CameraWizard = ({
                 <OutlinedTextField label="Camera password" value={pass} keyboardType="password" onValueChange={(next) => credentials(user, next)} />
               </div>
             </div>
+          ) : null}
+          {wizard.templates.length > 0 ? (
+            <Fold title="I know my camera" {...makes}>
+              <div className="flex flex-col gap-2" role="group" aria-label="Camera makes">
+                <Text typography="labelLarge" color={md('onSurfaceVariant')}>
+                  Pick its make
+                </Text>
+                {wizard.templates.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={wizard.templateBusy}
+                    onClick={() => setUp(t.id, '')}
+                    className="flex w-full items-center gap-3 rounded-shape-md border border-outline-variant px-4 py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)] disabled:opacity-60"
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <Text typography="bodyLarge">{t.label}</Text>
+                      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+                        {t.sub}
+                      </Text>
+                    </span>
+                    <Text typography="labelLarge" color={md('primary')}>
+                      {t.action}
+                    </Text>
+                  </button>
+                ))}
+              </div>
+              {wizard.templateNote !== '' && wizard.candidates.length === 0 ? <Hint text={wizard.templateNote} /> : null}
+            </Fold>
           ) : null}
           {locked ? (
             <div className="flex min-w-0 items-baseline gap-2" role="group" aria-label="Stream">
@@ -506,6 +520,28 @@ const StepNames = ({ step, skipsPort }: { step: number; skipsPort: boolean }) =>
       </li>
     ))}
   </ol>
+);
+
+const CameraRow = ({ cam, selected, onPick }: { cam: WizardCamera; selected: boolean; onPick: () => void }) => (
+  <button
+    type="button"
+    aria-pressed={selected}
+    aria-label={`${cam.host} — ${cam.note}`}
+    onClick={onPick}
+    className={`flex w-full items-center gap-3 rounded-shape-md border px-4 py-3 text-left ${selected ? 'border-primary bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)]' : 'border-outline-variant hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]'}`}
+  >
+    <span className="flex min-w-0 flex-1 flex-col">
+      <Text typography="bodyLarge" monospace>
+        {cam.host}
+      </Text>
+      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+        {cam.note}
+      </Text>
+    </span>
+    <Text typography="labelLarge" color={md('primary')}>
+      {selected ? 'Selected' : cam.action}
+    </Text>
+  </button>
 );
 
 const PortRow = ({ label, detail }: { label: string; detail: string }) => (

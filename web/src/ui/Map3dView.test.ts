@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { Offset } from '@/ui/FlyShell';
-import { map3dControlsAt, map3dNote, map3dOpenAt, map3dState, mouseTurn, pinchStep, wheelScale } from '@/ui/Map3dView';
+import { map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, wheelScale } from '@/ui/Map3dView';
 import { SyntheticDraw } from '@/ui/SyntheticView';
 
 describe('Map3dNoteTest', () => {
@@ -45,6 +45,20 @@ describe('Map3dControlsTest', () => {
   it('the 3D map controls sit where the fly map keeps its scale bar and logo', () => {
     expect(map3dControlsAt(120, 64)).toEqual({ paddingRight: 64, paddingBottom: 132 });
     expect(map3dControlsAt(120, null)).toEqual({ padding: 12 });
+  });
+});
+
+describe('Map3dToggleTest', () => {
+  it('the toggle offers the map that is not on screen', () => {
+    expect([map3dToggleText(false), map3dToggleLabel(false)]).toEqual(['3D', 'Show the 3D map']);
+    expect([map3dToggleText(true), map3dToggleLabel(true)]).toEqual(['2D', 'Show the flat map']);
+  });
+});
+
+describe('Map3dHintTest', () => {
+  it('the hint names the gestures of the pointer in hand', () => {
+    expect(map3dHint(true)).toBe('Drag to move · Two fingers to turn and tilt');
+    expect(map3dHint(false)).toBe('Drag to move · Right-drag or Shift-drag to turn and tilt');
   });
 });
 
