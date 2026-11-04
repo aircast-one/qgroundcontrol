@@ -35,14 +35,59 @@ func mavlinkActions(_ view: JSON?) -> MavlinkActions? {
 
 func chosenFile(_ option: String) -> String { option == NO_ACTIONS_FILE ? "" : option }
 
+// Inside a NativeForm: a section of two menu rows (its heading the settings section's, as the head draws this
+// section's rows) with the folder note as its footer. The first row carries the read, the section's only rows.
 struct MavlinkActionsSection: View {
     let onWrite: () -> Void
+    var heading: String = ""
     @State private var revision = 0
     @State private var read: MavlinkActions?
     @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            native
+        } else {
+            handDrawn
+        }
+    }
+
+    @ViewBuilder private var native: some View {
+        let options = [NO_ACTIONS_FILE] + (read?.files ?? [])
+        Section {
+            ChoiceField(
+                label: "Fly view actions",
+                value: (read?.flyViewFile ?? "").ifBlank(NO_ACTIONS_FILE),
+                options: options,
+                enabled: read != nil && options.count > 1
+            ) { index in
+                if let actions = read, options.indices.contains(index) { choose(actions.flyViewPath, options[index]) }
+            }
+            .task(id: revision) { await reload() }
+            .onDisappear { scope.cancel() }
+            ChoiceField(
+                label: "Joystick actions",
+                value: (read?.joystickFile ?? "").ifBlank(NO_ACTIONS_FILE),
+                options: options,
+                enabled: read != nil && options.count > 1
+            ) { index in
+                if let actions = read, options.indices.contains(index) { choose(actions.joystickPath, options[index]) }
+            }
+        } header: {
+            if !heading.isBlank { SectionHeader(text: heading) }
+        } footer: {
+            if let note = read?.folderNote, !note.isBlank { Text(note) }
+        }
+    }
+
+    @MainActor private func reload() async {
+        let fresh = await offMain { mavlinkActions(Qgc.get(MAVLINK_ACTIONS_VIEW)) }
+        if !Task.isCancelled { read = fresh }
+    }
+
+    private var handDrawn: some View {
         ZStack(alignment: .topLeading) {
             if let actions = read {
                 let options = [NO_ACTIONS_FILE] + actions.files
@@ -58,10 +103,7 @@ struct MavlinkActionsSection: View {
                 .padding(.vertical, Space.s2)
             }
         }
-        .task(id: revision) {
-            let fresh = await offMain { mavlinkActions(Qgc.get(MAVLINK_ACTIONS_VIEW)) }
-            if !Task.isCancelled { read = fresh }
-        }
+        .task(id: revision) { await reload() }
         .onDisappear { scope.cancel() }
     }
 

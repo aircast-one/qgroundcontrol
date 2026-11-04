@@ -54,8 +54,56 @@ struct PacketRadioSection: View {
     let onWrite: () -> Void
     @State private var read: PacketRadioStatus?
     @State private var device = ""
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            native
+        } else {
+            handDrawn
+        }
+    }
+
+    // Inside a NativeForm: Status (whose row carries the poll), Link quality while the link is up, and Radio with
+    // the adapter as a menu row.
+    @ViewBuilder private var native: some View {
+        Section {
+            LabeledContent("Status", value: read?.statusText ?? "Unavailable")
+                .task { await poll() }
+        }
+        if let status = read, status.linkActive {
+            Section {
+                LabeledContent("Signal per antenna (0-126)", value: status.signal)
+                LabeledContent("Noise margin per antenna", value: status.noise)
+                LabeledContent("Link score (1000-2000)", value: status.linkScore)
+                LabeledContent("Packets lost (last second)", value: status.packetLoss)
+                LabeledContent("Video packets", value: status.videoPackets)
+            } header: {
+                SectionHeader(text: "Link quality")
+            }
+        }
+        Section {
+            let choices = packetRadioAdapterChoices(read)
+            ChoiceField(label: "Wi-Fi adapter", value: device.ifBlank(AUTOMATIC_ADAPTER), options: choices) { index in
+                if choices.indices.contains(index) { choose(packetRadioAdapterWrite(index, choices[index])) }
+            }
+        } header: {
+            SectionHeader(text: "Radio")
+        }
+    }
+
+    @MainActor private func poll() async {
+        _ = await offMain { Qgc.invoke(PACKET_RADIO_REFRESH) }
+        while !Task.isCancelled {
+            let next = await offMain { packetRadioStatus(Qgc.get(PACKET_RADIO_VIEW)) }
+            if next != read { read = next }
+            let configured = await offMain { Qgc.get(PACKET_RADIO_DEVICE)["value"].string }
+            if configured != device { device = configured }
+            try? await Task.sleep(for: .milliseconds(PACKET_RADIO_POLL_MS))
+        }
+    }
+
+    private var handDrawn: some View {
         VStack(alignment: .leading, spacing: 6) {
             PacketRadioLine(label: "Status", value: read?.statusText ?? "Unavailable")
             if let status = read, status.linkActive {
@@ -82,19 +130,10 @@ struct PacketRadioSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Space.s5)
         .padding(.vertical, Space.s2)
-        .task {
-            _ = await offMain { Qgc.invoke(PACKET_RADIO_REFRESH) }
-            while !Task.isCancelled {
-                let next = await offMain { packetRadioStatus(Qgc.get(PACKET_RADIO_VIEW)) }
-                if next != read { read = next }
-                let configured = await offMain { Qgc.get(PACKET_RADIO_DEVICE)["value"].string }
-                if configured != device { device = configured }
-                try? await Task.sleep(for: .milliseconds(PACKET_RADIO_POLL_MS))
-            }
-        }
+        .task { await poll() }
     }
 
-    private func choose(_ name: String) {
+    @MainActor private func choose(_ name: String) {
         Task {
             _ = await offMain { Qgc.set(PACKET_RADIO_DEVICE, name) }
             device = name

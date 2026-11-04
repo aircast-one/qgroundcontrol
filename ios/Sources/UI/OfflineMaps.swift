@@ -14,6 +14,7 @@ func renameWanted(_ current: String, _ typed: String) -> String? {
 }
 
 private let OFFLINE_POLL_MS = 1000
+private let NO_TILE_CACHE = "There is no map tile cache on this device."
 private let MIN_ZOOM_PATH = "settings.offlineMapsSettings.minZoomLevelDownload"
 private let MAX_ZOOM_PATH = "settings.offlineMapsSettings.maxZoomLevelDownload"
 private let DEFAULT_MIN_ZOOM = 13
@@ -138,6 +139,7 @@ private func act(_ path: String, _ args: Any?...) async -> String? {
 }
 
 struct OfflineMapsSection: View {
+    var heading: String = ""
     @State private var maps: OfflineMaps?
     @State private var polls = 0
     @State private var shown: OfflineSet?
@@ -145,17 +147,82 @@ struct OfflineMapsSection: View {
     @State private var refusal: String?
     @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let read = maps {
-                if !read.available {
-                    FootNote(text: read.reason.ifBlank("There is no map tile cache on this device."))
-                } else {
-                    sets(read)
+        if nativeList {
+            native
+        } else {
+            dialogs(
+                VStack(alignment: .leading, spacing: 0) {
+                    if let read = maps {
+                        if !read.available {
+                            FootNote(text: read.reason.ifBlank(NO_TILE_CACHE))
+                        } else {
+                            sets(read)
+                        }
+                    }
+                }
+            )
+        }
+    }
+
+    // Inside a NativeForm: a section with a row per tile set (opening its dialog) and Add new set — the row that is
+    // always there carries the poll and the dialogs — then import and export in a section of their own.
+    @ViewBuilder private var native: some View {
+        let available = maps?.available == true
+        Section {
+            if let read = maps, available {
+                ForEach(read.sets) { set in
+                    Button { shown = set } label: {
+                        HStack(spacing: Space.s2) {
+                            Text(set.name).foregroundStyle(Color.primary).frame(maxWidth: .infinity, alignment: .leading)
+                            if set.downloading { ProgressView().controlSize(.small) }
+                            if !set.rowText.isEmpty {
+                                Text(set.rowText).foregroundStyle(Color.secondary)
+                                Circle()
+                                    .fill(set.complete ? theme.aircast.success : theme.aircast.alert)
+                                    .frame(width: 8, height: 8)
+                                    .accessibilityHidden(true)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Color.secondary.opacity(0.6))
+                                .accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .listRowButton()
+                }
+            }
+            dialogs(
+                Group {
+                    if available {
+                        Button("Add new set…") { adding = true }
+                    } else {
+                        Text(maps.map { $0.reason.ifBlank(NO_TILE_CACHE) } ?? "Reading…").foregroundStyle(Color.secondary)
+                    }
+                }
+            )
+            if let refusal {
+                Text(refusal).foregroundStyle(theme.aircast.alert)
+            }
+        } header: {
+            if !heading.isBlank { SectionHeader(text: heading) }
+        }
+        if let read = maps, available {
+            Section {
+                TileSetTransfer(sets: read.sets) {
+                    refusal = $0
+                    polls += 1
                 }
             }
         }
+    }
+
+    // The poll and every dialog, on the one view that is always there.
+    @MainActor private func dialogs<Content: View>(_ content: Content) -> some View {
+        content
         .task(id: polls) {
             while !Task.isCancelled {
                 maps = await offMain { offlineMaps(Qgc.get(OFFLINE_MAPS_VIEW)) }
@@ -235,13 +302,9 @@ struct OfflineMapsSection: View {
 private struct InfoLine: View {
     let label: String
     let value: String
-    @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(alignment: .top, spacing: Space.s2) {
-            Text(label).foregroundStyle(theme.colors.onSurfaceVariant).frame(maxWidth: .infinity, alignment: .leading)
-            Text(value).frame(maxWidth: .infinity, alignment: .leading)
-        }
+        LabeledContent(label, value: value)
     }
 }
 
@@ -254,7 +317,6 @@ private struct OfflineSetDialog: View {
     @State private var typedName: String
     @State private var scope = ViewScope()
     @State private var probe = PresenterProbe()
-    @Environment(\.theme) private var theme
 
     init(set: OfflineSet, onDismiss: @escaping () -> Void, onRename: @escaping (String) -> Void, onAction: @escaping (String) -> Void) {
         self.set = set
@@ -266,29 +328,33 @@ private struct OfflineSetDialog: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            NativeForm {
                 Section {
                     if set.defaultSet {
-                        Text(set.subtitle).foregroundStyle(theme.colors.onSurfaceVariant)
-                        InfoLine(label: "Size:", value: set.sizeText)
-                        InfoLine(label: "Tile Count:", value: set.tileCountText)
+                        Text(set.subtitle).foregroundStyle(Color.secondary)
+                        InfoLine(label: "Size", value: set.sizeText)
+                        InfoLine(label: "Tile Count", value: set.tileCountText)
                     } else {
-                        TextField("Name", text: $typedName)
-                        Text(set.mapType).foregroundStyle(theme.colors.onSurfaceVariant)
-                        InfoLine(label: "Zoom Levels:", value: set.zoomText)
-                        InfoLine(label: "Total:", value: set.totalText)
-                        if set.uniqueCount > 0 { InfoLine(label: "Unique:", value: set.uniqueText) }
-                        if !set.complete { InfoLine(label: "Downloaded:", value: set.downloadedText) }
-                        if !set.complete && set.errorCount > 0 { InfoLine(label: "Error Count:", value: set.errorCountText) }
+                        FieldRow(label: "Name", value: typedName, autocapitalize: true, onChange: { typedName = $0 })
+                        InfoLine(label: "Map Type", value: set.mapType)
+                        InfoLine(label: "Zoom Levels", value: set.zoomText)
+                        InfoLine(label: "Total", value: set.totalText)
+                        if set.uniqueCount > 0 { InfoLine(label: "Unique", value: set.uniqueText) }
+                        if !set.complete { InfoLine(label: "Downloaded", value: set.downloadedText) }
+                        if !set.complete && set.errorCount > 0 { InfoLine(label: "Error Count", value: set.errorCountText) }
+                    }
+                }
+                if !set.defaultSet && (set.downloading || !set.complete) {
+                    Section {
+                        if !set.complete && !set.downloading {
+                            Button("Resume download") { onAction(OFFLINE_RESUME) }
+                        }
+                        if set.downloading {
+                            Button("Cancel download") { onAction(OFFLINE_CANCEL) }
+                        }
                     }
                 }
                 Section {
-                    if !set.defaultSet && !set.complete && !set.downloading {
-                        Button("Resume download") { onAction(OFFLINE_RESUME) }
-                    }
-                    if !set.defaultSet && set.downloading {
-                        Button("Cancel download") { onAction(OFFLINE_CANCEL) }
-                    }
                     Button("Delete", role: .destructive) { confirming = true }.disabled(!set.canDelete)
                 }
             }
@@ -300,7 +366,7 @@ private struct OfflineSetDialog: View {
                 }
                 if !set.defaultSet {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Ok") {
+                        Button("Done") {
                             renameWanted(set.name, typedName).map(onRename)
                             onDismiss()
                         }
@@ -310,6 +376,7 @@ private struct OfflineSetDialog: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .nativeSheetFrame()
         .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
         .onDisappear { scope.cancel() }
         .alert("Confirm delete", isPresented: $confirming) {
@@ -363,41 +430,49 @@ private struct OfflineSetEditor: View {
         let chosenName = name ?? ""
         let nameTaken = read?.takenNames.contains(chosenName.trimmed) == true
         let estimate = read?.estimate
-        VStack(spacing: 0) {
-            ZStack(alignment: .topLeading) {
-                if let mapType {
-                    VehicleMap(
-                        mapStyle: qgcRasterStyle(mapType),
-                        follow: false,
-                        operator: operatorFix?.point,
-                        operatorHeading: operatorFix?.heading ?? .nan,
-                        onViewChanged: { corners in region = offlineRegion(corners) },
-                        centreRequest: picks > 0 ? 2 + picks : operatorCentre != nil ? 2 : flightMap != nil ? 1 : 0,
-                        centreOn: picked ?? operatorCentre ?? flightMap?.centre,
-                        centreZoom: picked == nil && operatorCentre == nil ? flightMap?.zoom : nil
+        let downloadable = region != nil && mapType != nil && estimate != nil && estimate?.tooMany != true && !nameTaken && !chosenName.isBlank
+        NavigationStack {
+            VStack(spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    if let mapType {
+                        VehicleMap(
+                            mapStyle: qgcRasterStyle(mapType),
+                            follow: false,
+                            operator: operatorFix?.point,
+                            operatorHeading: operatorFix?.heading ?? .nan,
+                            onViewChanged: { corners in region = offlineRegion(corners) },
+                            centreRequest: picks > 0 ? 2 + picks : operatorCentre != nil ? 2 : flightMap != nil ? 1 : 0,
+                            centreOn: picked ?? operatorCentre ?? flightMap?.centre,
+                            centreZoom: picked == nil && operatorCentre == nil ? flightMap?.zoom : nil
+                        )
+                    } else {
+                        theme.colors.surfaceContainer
+                    }
+                    CenterMenu(
+                        launch: vehicleChoices(fleetJson).active?.home,
+                        myLocation: operatorFix?.point,
+                        onCentre: { point in
+                            picked = point
+                            picks += 1
+                        },
+                        launchLabel: "Home"
                     )
-                } else {
-                    theme.colors.surfaceContainer
+                    .padding(Space.s2)
                 }
-                CenterMenu(
-                    launch: vehicleChoices(fleetJson).active?.home,
-                    myLocation: operatorFix?.point,
-                    onCentre: { point in
-                        picked = point
-                        picks += 1
-                    },
-                    launchLabel: "Home"
-                )
-                .padding(Space.s2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                NativeForm {
+                    form(chosenName: chosenName, nameTaken: nameTaken, estimate: estimate)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            ScrollView {
-                form(chosenName: chosenName, nameTaken: nameTaken, estimate: estimate)
-                    .padding(Space.s4)
+            .navigationTitle("Add new set")
+            .navigationBarTitleDisplayMode(.inline)
+            .pageCancelAction(action: onDismiss)
+            .pagePrimaryAction("Download", enabled: downloadable) {
+                if let region, let mapType { onDownload(chosenName.trimmed, mapType, region, minZoom, maxZoom, fetchElevation) }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(theme.colors.surface)
+        .nativeSheetFrame()
         .task {
             let (type, low, high) = await offMain {
                 (currentMapType(), zoomSetting(MIN_ZOOM_PATH, DEFAULT_MIN_ZOOM), zoomSetting(MAX_ZOOM_PATH, DEFAULT_MAX_ZOOM))
@@ -424,57 +499,51 @@ private struct OfflineSetEditor: View {
         }
     }
 
+    @ViewBuilder
     private func form(chosenName: String, nameTaken: Bool, estimate: OfflineEstimate?) -> some View {
-        VStack(alignment: .leading, spacing: Space.s2) {
-            Text("Add new set").font(.titleMedium)
-            TextField("Name:", text: Binding(get: { chosenName }, set: { name = $0 }))
-                .textFieldStyle(.roundedBorder)
-                .overlay {
-                    if nameTaken { RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(theme.aircast.alert, lineWidth: 1) }
-                }
-            Menu {
+        Section {
+            FieldRow(
+                label: "Name",
+                value: chosenName,
+                error: nameTaken ? "Tile set with this name already exists" : nil,
+                autocapitalize: true,
+                onChange: { name = $0 }
+            )
+            Picker("Map type", selection: $mapType) {
                 ForEach(read?.mapList ?? [], id: \.self) { option in
-                    Button(option) { mapType = option }
+                    Text(option).tag(Optional(option))
                 }
-            } label: {
-                Text("Map type: \(mapType ?? "")")
             }
-            .buttonStyle(.bordered)
-            Text("Min/Max Zoom Levels")
+        }
+        Section {
+            LabeledContent("Min zoom", value: "\(minZoom)")
             Slider(
                 value: Binding(get: { zooms.lowerBound }, set: { low in zooms = low...max(low, zooms.upperBound) }),
                 in: SLIDER_MIN_ZOOM...SLIDER_MAX_ZOOM,
                 step: 1,
                 onEditingChanged: { editing in if !editing { storeZooms() } }
             )
+            .accessibilityLabel("Min zoom")
+            LabeledContent("Max zoom", value: "\(maxZoom)")
             Slider(
                 value: Binding(get: { zooms.upperBound }, set: { high in zooms = min(zooms.lowerBound, high)...high }),
                 in: SLIDER_MIN_ZOOM...SLIDER_MAX_ZOOM,
                 step: 1,
                 onEditingChanged: { editing in if !editing { storeZooms() } }
             )
-            HStack(spacing: Space.s4) {
-                Text("Min zoom: \(minZoom)")
-                Text("Max zoom: \(maxZoom)")
-            }
+            .accessibilityLabel("Max zoom")
             previews
+        } header: {
+            Text("Zoom levels")
+        }
+        Section {
             if let estimate {
-                InfoLine(label: "Tile Count:", value: estimate.tileCountText)
-                InfoLine(label: "Est Size:", value: estimate.tileSizeText)
+                InfoLine(label: "Tile Count", value: estimate.tileCountText)
+                InfoLine(label: "Est Size", value: estimate.tileSizeText)
                 if estimate.tooMany { Text("Too many tiles").foregroundStyle(theme.aircast.alert) }
             }
             Toggle("Fetch elevation data", isOn: $fetchElevation)
-            if nameTaken { Text("Tile set with this name already exists").foregroundStyle(theme.aircast.alert) }
-            HStack(spacing: Space.s2) {
-                Button("Download") {
-                    if let region, let mapType { onDownload(chosenName.trimmed, mapType, region, minZoom, maxZoom, fetchElevation) }
-                }
-                .buttonStyle(.filled)
-                .disabled(region == nil || mapType == nil || estimate == nil || estimate?.tooMany == true || nameTaken || chosenName.isBlank)
-                Button("Cancel", action: onDismiss).buttonStyle(.bordered)
-            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -501,7 +570,6 @@ private struct OfflineSetEditor: View {
             }
         } else {
             Button("Show zoom previews") { showPreview = true }
-                .buttonStyle(.bordered)
                 .disabled(previewAt == nil)
         }
     }

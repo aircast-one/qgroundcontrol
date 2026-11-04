@@ -57,11 +57,107 @@ struct AircastCloudFields: View {
     @State private var opened = ""
     @Environment(\.theme) private var theme
     @Environment(\.openURL) private var openURL
+    @Environment(\.LocalNativeList) private var nativeList
 
     private var pending: AccountState? { account.flatMap { $0.signingIn && !$0.verificationUrl.isBlank ? $0 : nil } }
     private var drones: [CloudDrone] { account.map { $0.signedIn ? $0.drones : [] } ?? [] }
 
     var body: some View {
+        if nativeList {
+            native
+        } else {
+            follows(handDrawn)
+        }
+    }
+
+    // Inside a NativeForm: rows of the section it sits in — the server field (which carries the account poll), the
+    // account's drones as a checked list, the device field and the account with Sign in or out.
+    @ViewBuilder private var native: some View {
+        follows(
+            FieldRow(
+                label: "Account server",
+                value: apiBase,
+                prompt: "https://api.aircast.one",
+                error: showErrors && !cloudApiBaseValid(apiBase) ? "Enter the account server address, starting with https://" : nil,
+                keyboard: .URL,
+                onChange: onApiBase
+            )
+        )
+        ForEach(drones, id: \.id) { drone in
+            Button { onDeviceId(drone.id) } label: {
+                HStack(spacing: Space.s3) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(drone.name).foregroundStyle(Color.primary)
+                        Text(drone.seen).font(.subheadline).foregroundStyle(Color.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if deviceId.trimmed == drone.id {
+                        Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(theme.colors.primary)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .listRowButton()
+            .accessibilityAddTraits(deviceId.trimmed == drone.id ? .isSelected : [])
+        }
+        if let state = account, state.signedIn, !state.dronesStatus.isBlank {
+            Text(state.dronesStatus).font(.footnote).foregroundStyle(Color.secondary)
+        }
+        FieldRow(
+            label: "Device",
+            value: deviceId,
+            error: showErrors && !cloudDeviceValid(deviceId) ? "Set up from the device to fill this in" : nil,
+            onChange: onDeviceId
+        )
+        if let state = account {
+            LabeledContent("Account") {
+                HStack(spacing: Space.s2) {
+                    Text(accountLine(state)).foregroundStyle(Color.secondary)
+                    accountButton(state)
+                }
+            }
+            if state.signingIn {
+                Text("Your browser opened \(state.verificationUrl) — approve code \(state.userCode) there.").font(.footnote)
+            }
+        }
+    }
+
+    @ViewBuilder private func accountButton(_ state: AccountState) -> some View {
+        if state.signedIn {
+            Button("Sign out") { offMain { AccountCommands.signOut() } }
+        } else if state.signingIn {
+            Button("Cancel") { offMain { AccountCommands.cancelSignIn() } }
+        } else {
+            Button("Sign in") {
+                let base = apiBase
+                offMain {
+                    AccountCommands.setApiBase(base)
+                    AccountCommands.signIn()
+                }
+            }
+        }
+    }
+
+    // The account poll, adopting the account's server and opening the sign-in page, on the view that is always there.
+    @MainActor private func follows<Content: View>(_ content: Content) -> some View {
+        content
+            .task {
+                while !Task.isCancelled {
+                    account = await offMain { accountState(Qgc.get(ACCOUNT)) }
+                    try? await Task.sleep(for: .milliseconds(ACCOUNT_POLL_MS))
+                }
+            }
+            .onChange(of: adoptedApiBase(apiBase, account)) { _, adopted in
+                if let adopted { onApiBase(adopted) }
+            }
+            .onChange(of: pending?.verificationUrl) { _, url in
+                guard let url, url != opened else { return }
+                opened = url
+                if let target = URL(string: url) { openURL(target) }
+            }
+    }
+
+    private var handDrawn: some View {
         VStack(alignment: .leading, spacing: 6) {
             CloudField(label: "Account server", placeholder: "https://api.aircast.one", value: apiBase, onChange: onApiBase)
                 .keyboardType(.URL)
@@ -114,20 +210,6 @@ struct AircastCloudFields: View {
                     Text("Your browser opened \(state.verificationUrl) — approve code \(state.userCode) there.").font(.bodySmall)
                 }
             }
-        }
-        .task {
-            while !Task.isCancelled {
-                account = await offMain { accountState(Qgc.get(ACCOUNT)) }
-                try? await Task.sleep(for: .milliseconds(ACCOUNT_POLL_MS))
-            }
-        }
-        .onChange(of: adoptedApiBase(apiBase, account)) { _, adopted in
-            if let adopted { onApiBase(adopted) }
-        }
-        .onChange(of: pending?.verificationUrl) { _, url in
-            guard let url, url != opened else { return }
-            opened = url
-            if let target = URL(string: url) { openURL(target) }
         }
     }
 }

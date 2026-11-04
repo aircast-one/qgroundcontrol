@@ -455,7 +455,7 @@ private struct SettingsTab: View {
             }
             #if os(macOS)
             if group == .General {
-                Section { UpdatesSection().legacyFormRow() }
+                UpdatesSection()
             }
             #endif
         }
@@ -686,11 +686,11 @@ private struct SettingsControls: View {
     var body: some View {
         if nativeList {
             if home && page.showsNtrip {
-                Section { NtripStatusSection(onWrite: onWrite).legacyFormRow() }
+                NtripStatusSection(onWrite: onWrite)
             }
             #if os(macOS)
             if home && page.showsPacketRadio {
-                Section { PacketRadioSection(onWrite: onWrite).legacyFormRow() }
+                PacketRadioSection(onWrite: onWrite)
             }
             #endif
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
@@ -731,12 +731,12 @@ private struct SettingsControls: View {
             let heading = blockHeading(page.title, section, block)
             Section {
                 FactRuns(facts: block.facts, onWrite: onWrite)
-                if page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK { NtripMountpointBrowser(onWrite: onWrite).legacyFormRow() }
-                if section.group == REMOTE_ID_GROUP && block.title == GCS_LOCATION_BLOCK { GcsPositionStatus().legacyFormRow() }
-                if section.group == MAVLINK_GROUP && block.title == SIGNING_AFTER_BLOCK { SigningKeysSection().legacyFormRow() }
+                if page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK { NtripMountpointBrowser(onWrite: onWrite) }
+                if section.group == REMOTE_ID_GROUP && block.title == GCS_LOCATION_BLOCK { GcsPositionStatus() }
             } header: {
                 if blockHeadings && !heading.isBlank { SectionHeader(text: sentenceCase(heading)) }
             }
+            if section.group == MAVLINK_GROUP && block.title == SIGNING_AFTER_BLOCK { SigningKeysSection() }
         }
     }
 
@@ -746,15 +746,11 @@ private struct SettingsControls: View {
         let heading = drawnByTheHead && blockHeadings ? section.blocks.first.map { blockHeading(page.title, section, $0) } ?? "" : ""
         if !section.note.isBlank && !GROUPS_WITH_A_HEAD_EDITOR.contains(section.group) { FootNote(text: section.note) }
         if [FLY_VIEW_GROUP, VIEWER_3D_GROUP, OFFLINE_MAPS_GROUP, MAVLINK_GROUP, MAVLINK_ACTIONS_GROUP].contains(section.group) {
-            Section {
-                if section.group == FLY_VIEW_GROUP { RcControlsEditor().legacyFormRow() }
-                if section.group == VIEWER_3D_GROUP { OsmFilePicker(onWrite: onWrite).legacyFormRow() }
-                if section.group == OFFLINE_MAPS_GROUP { OfflineMapsSection().legacyFormRow() }
-                if section.group == MAVLINK_GROUP { LinkStatusSection().legacyFormRow() }
-                if section.group == MAVLINK_ACTIONS_GROUP { MavlinkActionsSection(onWrite: onWrite).legacyFormRow() }
-            } header: {
-                if !heading.isBlank { SectionHeader(text: sentenceCase(heading)) }
-            }
+            if section.group == FLY_VIEW_GROUP { RcControlsEditor(heading: sentenceCase(heading)) }
+            if section.group == VIEWER_3D_GROUP { OsmFilePicker(onWrite: onWrite, heading: sentenceCase(heading)) }
+            if section.group == OFFLINE_MAPS_GROUP { OfflineMapsSection(heading: sentenceCase(heading)) }
+            if section.group == MAVLINK_GROUP { LinkStatusSection(heading: sentenceCase(heading)) }
+            if section.group == MAVLINK_ACTIONS_GROUP { MavlinkActionsSection(onWrite: onWrite, heading: sentenceCase(heading)) }
         }
     }
 

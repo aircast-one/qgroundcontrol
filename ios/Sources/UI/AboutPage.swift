@@ -1,5 +1,7 @@
 import SwiftUI
 
+// About as a native form: the version (tapping it shows or hides the advanced settings, as on Android) and the
+// support links, each opening in the browser.
 struct AboutPage: View {
     let links: [HelpLink]
     @QgcPath(ADVANCED_UI_PATH) private var advancedView
@@ -7,35 +9,37 @@ struct AboutPage: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s1) {
-            SectionHeader(text: "About")
-            HStack(spacing: Space.s4) {
-                Text("Aircast version").font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                Spacer()
-                Text(qgcVersion()).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-            }
-            .padding(.horizontal, Space.s4)
-            .frame(minHeight: Metrics.row)
-            .contentShape(Rectangle())
-            .onTapGesture { if advancedView != nil { toggleAdvancedUi(advancedUiShown(advancedView)) } }
-            SectionHeader(text: "Support")
-            ForEach(aboutLinks(links), id: \.url) { link in
-                Button {
-                    URL(string: link.url).map { openURL($0) }
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(link.name).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                        Text(link.host).font(.bodyMedium).foregroundStyle(theme.colors.primary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: Metrics.rowTall, alignment: .leading)
-                    .padding(.horizontal, Space.s4)
+        NativeForm {
+            Section {
+                LabeledContent("Aircast version", value: qgcVersion())
                     .contentShape(Rectangle())
-                    .macHover(cursor: true)
+                    .onTapGesture { if advancedView != nil { toggleAdvancedUi(advancedUiShown(advancedView)) } }
+            } header: {
+                SectionHeader(text: "About")
+            }
+            Section {
+                ForEach(aboutLinks(links), id: \.url) { link in
+                    Button {
+                        URL(string: link.url).map { openURL($0) }
+                    } label: {
+                        HStack(spacing: Space.s3) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(link.name).foregroundStyle(Color.primary)
+                                Text(link.host).font(.subheadline).foregroundStyle(Color.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            Image(systemName: "arrow.up.forward.square")
+                                .foregroundStyle(Color.secondary)
+                                .accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .listRowButton()
                 }
-                .buttonStyle(.plain)
+            } header: {
+                SectionHeader(text: "Support")
             }
         }
-        .padding(.vertical, Space.s2)
     }
 }
 

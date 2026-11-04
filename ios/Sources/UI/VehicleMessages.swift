@@ -245,6 +245,7 @@ private struct VehicleMessageLog: View {
     }
 }
 
+// What the vehicle has said, newest first, as a native list; Clear in the navigation bar.
 struct VehicleMessagesPage: View {
     @QgcPath(MESSAGES) private var messagesJson
 
@@ -254,20 +255,20 @@ struct VehicleMessagesPage: View {
             if lines.isEmpty {
                 EmptyState(icon: .description, title: "No messages", text: "The vehicle has not said anything yet.")
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(lines.enumerated()), id: \.offset) { _, message in
-                            MessageLine(level: message.level, time: message.time) {
-                                Text(message.text).font(.bodyMedium)
-                            }
-                        }
-                        HStack {
-                            Spacer()
-                            Button("Clear") { offMain { VehicleCommands.clearMessages() } }.buttonStyle(.text)
+                List {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { _, message in
+                        MessageLine(level: message.level, time: message.time) {
+                            Text(message.text).textSelection(.enabled)
                         }
                     }
-                    .padding(.horizontal, 16)
                 }
+                .environment(\.LocalNativeList, true)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Clear") { offMain { VehicleCommands.clearMessages() } }
+                    .disabled(lines.isEmpty)
             }
         }
         .onAppear { offMain { VehicleCommands.resetAllMessages() } }

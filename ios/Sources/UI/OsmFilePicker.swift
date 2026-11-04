@@ -50,12 +50,40 @@ private func keepOnly(_ path: String) {
 
 struct OsmFilePicker: View {
     let onWrite: () -> Void
+    var heading: String = ""
     @State private var refusal: String?
     @State private var picking = false
     @QgcBool(settingControl(OSM_ENABLED_SETTING)) private var enabled
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            // Inside a NativeForm: a section with the choose row, the refusal as its footer.
+            Section {
+                Button("Choose OpenStreetMap file…") { picking = true }
+                    .disabled(!enabled)
+                    .fileImporter(isPresented: $picking, allowedContentTypes: [.item], onCompletion: picked)
+            } header: {
+                if !heading.isBlank { SectionHeader(text: heading) }
+            } footer: {
+                if let refusal {
+                    Text(refusal).foregroundStyle(theme.colors.error)
+                }
+            }
+        } else {
+            handDrawn
+        }
+    }
+
+    private func picked(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let chosen): choose(chosen)
+        case .failure(let error): refusal = error.localizedDescription
+        }
+    }
+
+    private var handDrawn: some View {
         VStack(alignment: .leading, spacing: Space.s1) {
             Button("Choose OpenStreetMap file") { picking = true }
                 .buttonStyle(.bordered)
@@ -67,12 +95,7 @@ struct OsmFilePicker: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Space.s4)
         .padding(.vertical, Space.s2)
-        .fileImporter(isPresented: $picking, allowedContentTypes: [.item]) { result in
-            switch result {
-            case .success(let chosen): choose(chosen)
-            case .failure(let error): refusal = error.localizedDescription
-            }
-        }
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.item], onCompletion: picked)
     }
 
     private func choose(_ chosen: URL) {

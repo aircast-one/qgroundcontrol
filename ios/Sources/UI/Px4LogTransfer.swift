@@ -112,11 +112,7 @@ struct Px4LogTransferPage: View {
     @ViewBuilder private var content: some View {
         if let log = read {
             if !log.px4 {
-                Text(NO_PX4_VEHICLE)
-                    .font(.bodyMedium)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                EmptyState(icon: .description, title: MAVLINK_LOGGING_TITLE, text: NO_PX4_VEHICLE)
             } else {
                 page(log)
             }
@@ -153,26 +149,30 @@ struct Px4LogTransferPage: View {
         act(unsavedCalls(log) + [(path, args)])
     }
 
+    // The logging controls, the upload details and the saved files as sections of a native form; Delete, the
+    // destructive action, in a section of its own with its confirmation.
     private func page(_ log: MavlinkLog) -> some View {
         let editable = log.persistence
         let idle = logListIdle(log)
         let uploadedSelected = log.files.contains { selected.contains($0.name) && $0.uploaded }
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionHeader(text: "MAVLink 2.0 Logging")
-                FootNote(text: "PX4 Pro only")
-                HStack(spacing: 8) {
-                    Text("Logging").frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Start") { act("mavlinkLog.start") }
-                        .buttonStyle(.bordered)
-                        .disabled(!(!log.running && log.canStart && editable))
-                    Button("Stop") { act("mavlinkLog.stop") }
-                        .buttonStyle(.bordered)
-                        .disabled(!(log.running && editable))
+        return NativeForm {
+            Section {
+                LabeledContent("Logging") {
+                    HStack(spacing: Space.s3) {
+                        Button("Start") { act("mavlinkLog.start") }
+                            .disabled(!(!log.running && log.canStart && editable))
+                        Button("Stop") { act("mavlinkLog.stop") }
+                            .disabled(!(log.running && editable))
+                    }
                 }
                 LogFlag(label: "Start logging automatically", checked: log.settings["enableAutoStart"].bool, enabled: editable) { act("mavlinkLog.set", "enableAutoStart", $0) }
+            } header: {
+                SectionHeader(text: "MAVLink 2.0 Logging")
+            } footer: {
+                Text("PX4 Pro only")
+            }
 
-                SectionHeader(text: "Log Upload")
+            Section {
                 LogText(label: "Email Address", value: log.settings["emailAddress"].string, enabled: editable, onType: draft("emailAddress"), onSave: save("emailAddress"))
                 LogText(label: "Default Description", value: log.settings["description"].string, enabled: editable, onType: draft("description"), onSave: save("description"))
                 LogText(label: "Upload URL", value: log.settings["uploadURL"].string, enabled: editable, onType: draft("uploadURL"), onSave: save("uploadURL"))
@@ -185,74 +185,95 @@ struct Px4LogTransferPage: View {
                 LogFlag(label: "Delete logs after upload", checked: log.settings["deleteAfterUpload"].bool, enabled: editable && log.settings["enableAutoUpload"].bool) {
                     act("mavlinkLog.set", "deleteAfterUpload", $0)
                 }
+            } header: {
+                SectionHeader(text: "Log Upload")
+            }
 
-                SectionHeader(text: "Saved Log Files")
-                if log.files.isEmpty { Text("No log files").font(.bodySmall) }
+            Section {
+                if log.files.isEmpty {
+                    Text("No log files").foregroundStyle(Color.secondary)
+                }
                 ForEach(log.files, id: \.name) { file in
                     fileRow(log, file)
                 }
-                HStack(spacing: 4) {
-                    Button("Select All") { selected = Set(log.files.filter { !$0.writing }.map(\.name)) }.disabled(!idle)
-                    Button("Select None") { selected = [] }.disabled(!idle)
-                    Button("Delete…") {
-                        let chosen = selected.sorted().map { $0 as Any? }
-                        confirming = LogConfirm(title: "Delete Selected Log Files", question: "Delete the selected log files?") {
-                            act([("mavlinkLog.delete", chosen)])
-                            selected = []
+            } header: {
+                HStack {
+                    SectionHeader(text: "Saved Log Files")
+                    Spacer(minLength: 0)
+                    if !log.files.isEmpty {
+                        let all = Set(log.files.filter { !$0.writing }.map(\.name))
+                        Button(selected.isEmpty || selected != all ? "Select All" : "Select None") {
+                            selected = selected.isEmpty || selected != all ? all : []
                         }
-                    }
-                    .disabled(!(!selected.isEmpty && idle))
-                    if log.uploading {
-                        Button("Cancel Upload…") {
-                            confirming = LogConfirm(title: "Cancel Upload", question: "Cancel the upload in progress?") { act("mavlinkLog.cancelUpload") }
-                        }
-                    } else {
-                        Button("Upload…") {
-                            act(unsavedCalls(log))
-                            if uploadEmail(log.settings, drafts).isBlank {
-                                refused = "Please enter an email address before uploading MAVLink log files."
-                            } else {
-                                let chosen = selected.sorted().map { $0 as Any? }
-                                confirming = LogConfirm(title: "Upload Selected Log Files", question: "Upload the selected log files?") {
-                                    act([("mavlinkLog.upload", chosen)])
-                                    selected = []
-                                }
-                            }
-                        }
-                        .disabled(!(!selected.isEmpty && idle && !uploadedSelected))
+                        .disabled(!idle)
                     }
                 }
-                .buttonStyle(.text)
-                .font(.labelLarge)
+            } footer: {
                 if !log.message.isBlank {
-                    Text(log.message).font(.bodySmall).foregroundStyle(theme.colors.error)
+                    Text(log.message).foregroundStyle(theme.colors.error)
                 }
             }
-            .padding(.horizontal, 16)
+
+            Section {
+                if log.uploading {
+                    Button("Cancel Upload…") {
+                        confirming = LogConfirm(title: "Cancel Upload", question: "Cancel the upload in progress?") { act("mavlinkLog.cancelUpload") }
+                    }
+                } else {
+                    Button("Upload…") {
+                        act(unsavedCalls(log))
+                        if uploadEmail(log.settings, drafts).isBlank {
+                            refused = "Please enter an email address before uploading MAVLink log files."
+                        } else {
+                            let chosen = selected.sorted().map { $0 as Any? }
+                            confirming = LogConfirm(title: "Upload Selected Log Files", question: "Upload the selected log files?") {
+                                act([("mavlinkLog.upload", chosen)])
+                                selected = []
+                            }
+                        }
+                    }
+                    .disabled(!(!selected.isEmpty && idle && !uploadedSelected))
+                }
+            }
+
+            Section {
+                Button("Delete…", role: .destructive) {
+                    let chosen = selected.sorted().map { $0 as Any? }
+                    confirming = LogConfirm(title: "Delete Selected Log Files", question: "Delete the selected log files?") {
+                        act([("mavlinkLog.delete", chosen)])
+                        selected = []
+                    }
+                }
+                .disabled(!(!selected.isEmpty && idle))
+            }
         }
     }
 
     private func fileRow(_ log: MavlinkLog, _ file: LogFile) -> some View {
         let uploadingThis = log.uploading && log.uploadingFile == file.name
-        return HStack {
-            Toggle("", isOn: Binding(
-                get: { selected.contains(file.name) },
-                set: { selected = $0 ? selected.union([file.name]) : selected.subtracting([file.name]) }
-            ))
-            .labelsHidden()
-            .disabled(uploadingThis || file.writing)
-            Text(file.name)
-                .font(.bodySmall)
-                .foregroundStyle(file.writing ? theme.aircast.warning : theme.colors.onSurface)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if uploadingThis && !file.uploaded {
-                ProgressView(value: log.uploadProgress).frame(width: 96)
-            } else {
-                Text(file.uploaded ? "Uploaded" : logSizeText(file.size))
-                    .font(.bodySmall)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
+        let checked = selected.contains(file.name)
+        return Button {
+            selected = checked ? selected.subtracting([file.name]) : selected.union([file.name])
+        } label: {
+            HStack(spacing: Space.s3) {
+                Image(systemName: checked ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(checked ? theme.colors.primary : Color.secondary)
+                    .accessibilityHidden(true)
+                Text(file.name)
+                    .foregroundStyle(file.writing ? theme.aircast.warning : Color.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if uploadingThis && !file.uploaded {
+                    ProgressView(value: log.uploadProgress).frame(width: 96)
+                } else {
+                    Text(file.uploaded ? "Uploaded" : logSizeText(file.size)).foregroundStyle(Color.secondary)
+                }
             }
+            .contentShape(Rectangle())
         }
+        .listRowButton()
+        .disabled(uploadingThis || file.writing)
+        .accessibilityAddTraits(checked ? .isSelected : [])
     }
 }
 
@@ -279,18 +300,13 @@ private struct LogText: View {
 
     var body: some View {
         let shown = typed ?? value
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-            TextField(label, text: Binding(get: { shown }, set: { typed = $0 }))
-                .textFieldStyle(.roundedBorder)
-        }
-        .disabled(!enabled)
-        .onChange(of: value) { typed = nil }
-        .task(id: shown) {
-            onType(shown)
-            guard shown != value, (try? await Task.sleep(for: .milliseconds(TEXT_SAVE_DELAY_MS))) != nil else { return }
-            onSave(shown)
-        }
+        FieldRow(label: label, value: shown, enabled: enabled, onChange: { typed = $0 })
+            .onChange(of: value) { typed = nil }
+            .task(id: shown) {
+                onType(shown)
+                guard shown != value, (try? await Task.sleep(for: .milliseconds(TEXT_SAVE_DELAY_MS))) != nil else { return }
+                onSave(shown)
+            }
     }
 }
 
@@ -302,17 +318,13 @@ private struct LogChoice: View {
     let onPick: (String) -> Void
 
     var body: some View {
-        HStack {
-            Text(label).frame(maxWidth: .infinity, alignment: .leading)
-            Menu {
-                ForEach(choices, id: \.1) { shown, raw in
-                    Button(shown) { onPick(raw) }
-                }
-            } label: {
-                Text(choices.first { $0.1 == value }?.0 ?? choices.first?.0 ?? "")
-            }
-            .buttonStyle(.bordered)
-            .disabled(!enabled)
+        ChoiceField(
+            label: label,
+            value: choices.first { $0.1 == value }?.0 ?? choices.first?.0 ?? "",
+            options: choices.map { $0.0 },
+            enabled: enabled
+        ) { index in
+            if choices.indices.contains(index) { onPick(choices[index].1) }
         }
     }
 }

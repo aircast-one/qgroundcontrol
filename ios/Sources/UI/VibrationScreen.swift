@@ -230,58 +230,51 @@ private func partlyReported(_ view: JSON?) -> SilentState {
         : SilentState(title: "No vehicle connected", body: CONNECT_PROMPT)
 }
 
+// The reading as a native form: the bar graph (drawn, as no system control shows it) in a section of its own, the
+// verdict and the clipping counts as rows.
 private struct VibrationBody: View {
     let reading: VibrationReading
     @Environment(\.theme) private var theme
 
     var body: some View {
         let worst = worstSeverity(reading)
-        VStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(vibrationHeading(reading.units)).font(.titleSmall)
-                HStack(spacing: 0) {
-                    ScaleAxis(labels: scaleLabels(reading.scaleMaximum, reading.warningLevel, reading.dangerLevel))
-                    ForEach(Array(reading.axes.enumerated()), id: \.offset) { _, axis in
-                        VibrationBarGraphic(axis: axis)
+        NativeForm {
+            Section {
+                VStack(spacing: Space.s3) {
+                    HStack(spacing: 0) {
+                        ScaleAxis(labels: scaleLabels(reading.scaleMaximum, reading.warningLevel, reading.dangerLevel))
+                        ForEach(Array(reading.axes.enumerated()), id: \.offset) { _, axis in
+                            VibrationBarGraphic(axis: axis)
+                        }
+                    }
+                    .frame(height: VIBRATION_GRAPH_HEIGHT)
+                    HStack(spacing: 0) {
+                        Color.clear.frame(width: AXIS_WIDTH, height: 1)
+                        ForEach(Array(reading.axes.enumerated()), id: \.offset) { _, axis in
+                            VibrationReadout(axis: axis)
+                        }
                     }
                 }
-                .frame(maxHeight: .infinity)
-                HStack(spacing: 0) {
-                    Color.clear.frame(width: AXIS_WIDTH, height: 1)
-                    ForEach(Array(reading.axes.enumerated()), id: \.offset) { _, axis in
-                        VibrationReadout(axis: axis)
-                    }
-                }
+                .padding(.vertical, Space.s2)
+            } header: {
+                SectionHeader(text: vibrationHeading(reading.units))
+            } footer: {
                 Text(bandCaption(reading.warningLevel, reading.dangerLevel))
-                    .font(.bodySmall)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(theme.colors.surfaceContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
-
-            HStack(spacing: 12) {
-                Image(worst == "danger" ? .error : worst == "warning" ? .warning : .checkCircle)
-                Text(vibrationVerdict(reading)).font(.bodyMedium)
-                Spacer(minLength: 0)
-            }
-            .padding(16)
-            .foregroundStyle(worst == "danger" ? theme.colors.onErrorContainer : worst == "warning" ? theme.aircast.warning : theme.aircast.success)
-            .background(
-                worst == "danger" ? theme.colors.errorContainer : worst == "warning" ? theme.aircast.warningContainer : theme.aircast.successContainer,
-                in: RoundedRectangle(cornerRadius: Corner.medium)
-            )
-
-            HStack {
-                Text("Clipping events").font(.bodyLarge)
-                Spacer(minLength: 8)
-                Text(clipText(reading.clipCounts)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+            Section {
+                Label {
+                    Text(vibrationVerdict(reading))
+                } icon: {
+                    Image(worst == "danger" ? .error : worst == "warning" ? .warning : .checkCircle)
+                        .foregroundStyle(worst == "danger" ? theme.colors.error : worst == "warning" ? theme.aircast.warning : theme.aircast.success)
+                }
+                LabeledContent("Clipping events", value: clipText(reading.clipCounts))
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+private let VIBRATION_GRAPH_HEIGHT: CGFloat = 240
 
 func clipText(_ counts: [Int]) -> String {
     counts.enumerated().map { index, count in "Accel \(index + 1): \(count)" }.joined(separator: " \u{00b7} ")

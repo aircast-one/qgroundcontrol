@@ -48,6 +48,7 @@ let USB_FLASHING_UNAVAILABLE = "Flashing needs a USB connection"
 let USB_FLASHING_UNAVAILABLE_TEXT = "iOS does not let apps reach USB serial devices, so a board cannot be flashed from this device. "
     + "Flash it from Aircast on Android or from QGroundControl on a computer."
 
+// The latest releases as a native form, with why this device cannot flash a board as the first section's text.
 struct FirmwareScreen: View {
     @State private var releases: FirmwareReleases?
     @State private var advanced = false
@@ -55,30 +56,23 @@ struct FirmwareScreen: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: Space.s2) {
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    if let update = releases?.updateAvailable, !update.isBlank {
-                        Text(update).font(.bodyMedium).foregroundStyle(theme.aircast.warning)
-                    }
-                    Text(USB_FLASHING_UNAVAILABLE).font(.titleSmall)
-                    Text(USB_FLASHING_UNAVAILABLE_TEXT).font(.bodyMedium)
+        NativeForm {
+            Section {
+                if let update = releases?.updateAvailable, !update.isBlank {
+                    Text(update).foregroundStyle(theme.aircast.warning)
                 }
-                .padding(Space.s4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
-                .padding(.horizontal, Space.s4)
-                .padding(.vertical, Space.s2)
-                releaseRows
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Toggle("Advanced settings", isOn: $advanced).font(.bodyMedium)
-                    if bootloaderOffered(advanced, apmVehicle) {
-                        Button("Flash ChibiOS bootloader") { offMain { _ = Qgc.invoke(FLASH_BOOTLOADER) } }
-                            .buttonStyle(.bordered)
-                    }
+                VStack(alignment: .leading, spacing: Space.s1) {
+                    Text(USB_FLASHING_UNAVAILABLE).font(.headline)
+                    Text(USB_FLASHING_UNAVAILABLE_TEXT).font(.subheadline).foregroundStyle(Color.secondary)
                 }
-                .padding(.horizontal, Space.s4)
-                .padding(.vertical, Space.s3)
+                .padding(.vertical, Space.s1)
+            }
+            releaseRows
+            Section {
+                Toggle("Advanced settings", isOn: $advanced)
+                if bootloaderOffered(advanced, apmVehicle) {
+                    Button("Flash ChibiOS bootloader") { offMain { _ = Qgc.invoke(FLASH_BOOTLOADER) } }
+                }
             }
         }
         .task {
@@ -94,9 +88,17 @@ struct FirmwareScreen: View {
         let stable = releases?.px4StableVersion ?? ""
         let beta = releases?.px4BetaVersion ?? ""
         if !stable.isBlank || !beta.isBlank {
-            SectionHeader(text: "Latest PX4 releases")
-            ForEach(px4Releases(advanced), id: \.first) { source in
-                SetupRow(title: sourceLabel(source.first, source.second, stable, beta), subtitle: firmwareWarning(source.first) ?? "")
+            Section {
+                ForEach(px4Releases(advanced), id: \.first) { source in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(sourceLabel(source.first, source.second, stable, beta))
+                        if let warning = firmwareWarning(source.first) {
+                            Text(warning).font(.subheadline).foregroundStyle(theme.colors.error)
+                        }
+                    }
+                }
+            } header: {
+                SectionHeader(text: "Latest PX4 releases")
             }
         }
     }

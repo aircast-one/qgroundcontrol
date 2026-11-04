@@ -101,9 +101,13 @@ private func copyForAWhile(_ hex: String) {
 }
 #endif
 
+private let SIGNING_TITLE = "MAVLink 2 signing"
+private let SIGNING_SECURE_NOTE = "Signing keys should only be sent to the vehicle over secure links (e.g. USB)."
+
 struct SigningKeysSection: View {
     @State private var revision = 0
     @State private var read: SigningKeys?
+    @State private var loaded = false
     @State private var adding = false
     @State private var confirmDelete: String?
     @State private var exported: String?
@@ -112,57 +116,133 @@ struct SigningKeysSection: View {
     @State private var refused: String?
     @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let keys = read {
-                SectionHeader(text: "MAVLink 2 signing")
-                section(keys)
+        if nativeList {
+            native
+        } else {
+            prompts(
+                VStack(alignment: .leading, spacing: 0) {
+                    if let keys = read {
+                        SectionHeader(text: SIGNING_TITLE)
+                        section(keys)
+                    }
+                }
+            )
+        }
+    }
+
+    // Inside a NativeForm: a section of its own — the secure-link note (which carries the read and the dialogs),
+    // the active key, a row per key with Enable or Disable and its Export and Delete, and Add key.
+    @ViewBuilder private var native: some View {
+        if !loaded || read != nil {
+            Section {
+                prompts(Text(SIGNING_SECURE_NOTE).font(.footnote).foregroundStyle(Color.secondary))
+                if let keys = read {
+                    if keys.vehicle {
+                        LabeledContent("Active key", value: keys.activeKey)
+                    }
+                    ForEach(keys.keys, id: \.name) { key in
+                        nativeKeyRow(keys, key)
+                    }
+                    if keys.keys.isEmpty {
+                        Text("No keys configured").foregroundStyle(Color.secondary)
+                    }
+                    if let refused {
+                        Text(refused).foregroundStyle(theme.colors.error)
+                    }
+                    Button("Add key…") { adding = true }
+                }
+            } header: {
+                SectionHeader(text: SIGNING_TITLE)
             }
         }
-        .task(id: revision) {
-            read = await offMain { signingKeys(Qgc.get(SIGNING_KEYS_VIEW)) }
-            if read?.state == "enabling" || read?.state == "disabling" {
-                try? await Task.sleep(for: .milliseconds(SIGNING_POLL_MS))
-                if !Task.isCancelled { revision += 1 }
-            }
-        }
-        .alert("Send signing key", isPresented: presented($confirmEnable), presenting: confirmEnable) { name in
-            Button("OK") { change(SIGNING_ENABLE, name) }
-            Button("Cancel", role: .cancel) {}
-        } message: { name in
-            Text("This will transmit key '\(name)' to the vehicle over '\(read?.linkName ?? "")'. Only proceed if this link is secure (USB or trusted local network).")
-        }
-        .alert("Disable signing while armed?", isPresented: $armedWarning) {
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Vehicle is armed. ArduPilot will refuse to disable signing while armed and PX4 will not accept the disable packet without a valid signature. The disable attempt will likely time out and leave the link in an inconsistent state.\n\nDisarm the vehicle first.")
-        }
-        .alert("Delete signing key", isPresented: presented($confirmDelete), presenting: confirmDelete) { name in
-            Button("OK", role: .destructive) {
-                scope.launch {
-                    _ = await offMain { Qgc.invoke(SIGNING_REMOVE, name) }
-                    revision += 1
+    }
+
+    private func nativeKeyRow(_ keys: SigningKeys, _ key: SigningKeyRow) -> some View {
+        let buttons = keyButtons(keys, key)
+        return HStack(spacing: Space.s3) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(key.name)
+                if buttons.otherActive {
+                    Text("Another key is active").font(.subheadline).foregroundStyle(Color.secondary)
                 }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: { name in
-            Text("Are you sure you want to delete '\(name)'?\n\nIf a vehicle still has this key configured, you will no longer be able to communicate with it over a signed connection. Raw or generated keys cannot be recovered — Export the hex first if you may need it later.")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if buttons.enable {
+                Button(buttons.pending ? "Configuring…" : "Enable") { confirmEnable = key.name }
+                    .disabled(!keys.vehicle || buttons.pending)
+            }
+            if buttons.disable {
+                Button(buttons.pending ? "Disabling…" : "Disable") {
+                    if keys.armed { armedWarning = true } else { change(SIGNING_DISABLE) }
+                }
+                .disabled(buttons.pending)
+            }
+            if !key.inUse {
+                Menu {
+                    Button { export(key.name) } label: { Label("Export", systemImage: "square.and.arrow.up") }
+                    Button(role: .destructive) { confirmDelete = key.name } label: { Label("Delete…", systemImage: "trash") }
+                } label: {
+                    Image(systemName: "ellipsis.circle").accessibilityLabel("More for \(key.name)")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.borderless)
+                .fixedSize()
+            }
         }
-        .alert(exported.map { "Export key: \($0)" } ?? "", isPresented: presented($exported)) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Key copied to clipboard. Store it securely — it will be cleared from the clipboard in 30 seconds.")
+    }
+
+    @MainActor private func reload() async {
+        read = await offMain { signingKeys(Qgc.get(SIGNING_KEYS_VIEW)) }
+        loaded = true
+        if read?.state == "enabling" || read?.state == "disabling" {
+            try? await Task.sleep(for: .milliseconds(SIGNING_POLL_MS))
+            if !Task.isCancelled { revision += 1 }
         }
-        .queuedSheet(isPresented: $adding, onDismiss: { revision += 1 }) {
-            AddKeyDialog(minPassphrase: read?.minPassphraseLength ?? DEFAULT_MIN_PASSPHRASE) { adding = false }
-        }
-        .onDisappear { scope.cancel() }
+    }
+
+    // The read and every dialog, on the one view that is always there.
+    @MainActor private func prompts<Content: View>(_ content: Content) -> some View {
+        content
+            .task(id: revision) { await reload() }
+            .alert("Send signing key", isPresented: presented($confirmEnable), presenting: confirmEnable) { name in
+                Button("OK") { change(SIGNING_ENABLE, name) }
+                Button("Cancel", role: .cancel) {}
+            } message: { name in
+                Text("This will transmit key '\(name)' to the vehicle over '\(read?.linkName ?? "")'. Only proceed if this link is secure (USB or trusted local network).")
+            }
+            .alert("Disable signing while armed?", isPresented: $armedWarning) {
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Vehicle is armed. ArduPilot will refuse to disable signing while armed and PX4 will not accept the disable packet without a valid signature. The disable attempt will likely time out and leave the link in an inconsistent state.\n\nDisarm the vehicle first.")
+            }
+            .alert("Delete signing key", isPresented: presented($confirmDelete), presenting: confirmDelete) { name in
+                Button("OK", role: .destructive) {
+                    scope.launch {
+                        _ = await offMain { Qgc.invoke(SIGNING_REMOVE, name) }
+                        revision += 1
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { name in
+                Text("Are you sure you want to delete '\(name)'?\n\nIf a vehicle still has this key configured, you will no longer be able to communicate with it over a signed connection. Raw or generated keys cannot be recovered — Export the hex first if you may need it later.")
+            }
+            .alert(exported.map { "Export key: \($0)" } ?? "", isPresented: presented($exported)) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Key copied to clipboard. Store it securely — it will be cleared from the clipboard in 30 seconds.")
+            }
+            .queuedSheet(isPresented: $adding, onDismiss: { revision += 1 }) {
+                AddKeyDialog(minPassphrase: read?.minPassphraseLength ?? DEFAULT_MIN_PASSPHRASE) { adding = false }
+            }
+            .onDisappear { scope.cancel() }
     }
 
     private func section(_ keys: SigningKeys) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Signing keys should only be sent to the vehicle over secure links (e.g. USB).")
+            Text(SIGNING_SECURE_NOTE)
                 .font(.bodySmall)
                 .foregroundStyle(theme.colors.onSurfaceVariant)
             if keys.vehicle {
