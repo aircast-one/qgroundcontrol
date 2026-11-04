@@ -99,9 +99,9 @@ func analyzeNote(_ page: AnalyzePage, _ connected: Bool, _ vibration: String?) -
     connected && page == .Vibration ? vibration : nil
 }
 
+// The Analyze tools as a native list: a section per kind, each tool a row with its live status.
 private struct AnalyzePageList: View {
-    let onSelect: (AnalyzePage) -> Void
-    var selected: AnalyzePage? = nil
+    @Binding var selection: AnalyzePage?
     @Environment(\.theme) private var theme
     @HasVehicle private var connected
     @QgcPath(VIBRATION_VIEW) private var vibrationJson
@@ -115,45 +115,56 @@ private struct AnalyzePageList: View {
         let vibrationLevel = vibration.flatMap(worstSeverity)
         let unread = unreadCount(messagesJson)
         let messages = vehicleMessages(messagesJson)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Analyze").font(.headlineMedium)
-                    Text("Logs and tools for the connected vehicle")
-                        .font(.bodyMedium)
-                        .foregroundStyle(theme.colors.onSurfaceVariant)
-                }
-                .padding(EdgeInsets(top: 20, leading: 16, bottom: 8, trailing: 16))
-                ForEach(AnalyzeSection.allCases.filter { section in AnalyzePage.allCases.contains { $0.section == section } }, id: \.self) { section in
-                    SectionHeader(text: section.title)
+        List(selection: $selection) {
+            Text("Logs and tools for the connected vehicle")
+                .font(.subheadline)
+                .foregroundStyle(Color.secondary)
+                .listRowBackground(Color.clear)
+            ForEach(AnalyzeSection.allCases.filter { section in AnalyzePage.allCases.contains { $0.section == section } }, id: \.self) { section in
+                Section {
                     ForEach(AnalyzePage.allCases.filter { $0.section == section }, id: \.self) { page in
                         let (status, state) = analyzeStatus(page, unread, vibrationLevel)
-                        SetupRow(
-                            title: page.label,
-                            status: status,
-                            state: state,
-                            onClick: { onSelect(page) },
-                            icon: page.icon,
-                            subtitle: [analyzeSubtitle(page, messages, vibration: vibration, rate: rate), analyzeNote(page, connected, caveat)]
-                                .compactMap { $0 }
-                                .joined(separator: "\n"),
-                            selected: page == selected
-                        )
+                        let subtitle = [analyzeSubtitle(page, messages, vibration: vibration, rate: rate), analyzeNote(page, connected, caveat)]
+                            .compactMap { $0 }
+                            .joined(separator: "\n")
+                        NavigationLink(value: page) {
+                            NativeRowLabel(
+                                title: page.label,
+                                subtitle: subtitle.isBlank ? nil : Text(subtitle),
+                                status: status,
+                                statusColor: state == .Neutral ? nil : setupStateColor(state, theme),
+                                icon: page.icon,
+                                iconTint: state == .NeedsAttention ? theme.aircast.warning : nil,
+                                chevron: false
+                            )
+                        }
                     }
+                } header: {
+                    SectionHeader(text: section.title)
                 }
             }
         }
+        .environment(\.LocalNativeList, true)
+        .navigationTitle("Analyze")
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 
 private let TOAST_SHORT_MS = 2000
 
+// Analyze: a NavigationSplitView — the tools in the sidebar and the open tool as the detail on a wide screen; on a
+// phone it collapses to a list that pushes the tool with the system back and swipe-back. The selection is the
+// shell's analyzePage; leaving a tool while BlocksNavigation holds (a log download) is refused with a notice.
 struct AnalyzeScreen: View {
     let page: AnalyzePage?
     let onSelect: (AnalyzePage?) -> Void
     @Environment(AppNavigationState.self) private var navigation
     @Environment(\.theme) private var theme
     @State private var toast: String?
+
+    private var selection: Binding<AnalyzePage?> {
+        Binding(get: { page }, set: { next in if next != page { switchTo(next) } })
+    }
 
     private func switchTo(_ next: AnalyzePage?) {
         if page != nil, let refused = navigationRefusal(navigation.blockedReason, true) {
@@ -163,31 +174,16 @@ struct AnalyzeScreen: View {
         }
     }
 
-    private func leave() { switchTo(nil) }
-
     var body: some View {
-        GeometryReader { box in
-            let wide = box.size.width >= LIST_DETAIL_MIN_WIDTH
-            HStack(spacing: 0) {
-                if wide {
-                    AnalyzePageList(onSelect: { switchTo($0) }, selected: page)
-                        .frame(width: LIST_PANE_WIDTH)
-                        .background(theme.colors.surfaceContainerLow)
-                }
-                Group {
-                    if let page {
-                        AnalyzePageBody(page: page, leave: leave)
-                            .frame(maxWidth: wide ? DETAIL_PANE_MAX_WIDTH : .infinity)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if wide {
-                        EmptyState(icon: .analytics, title: "Analyze", text: "Choose a tool on the left.")
-                    } else {
-                        AnalyzePageList(onSelect: { onSelect($0) })
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .background(theme.colors.surface)
-                .environment(\.LocalTwoPane, wide)
+        NavigationSplitView {
+            AnalyzePageList(selection: selection)
+        } detail: {
+            if let page {
+                AnalyzePageBody(page: page)
+                    .id(page)
+                    .nativePage(page.label)
+            } else {
+                EmptyState(icon: .analytics, title: "Analyze", text: "Choose a tool on the left.")
             }
         }
         .overlay(alignment: .bottom) {
@@ -211,7 +207,6 @@ struct AnalyzeScreen: View {
 
 private struct AnalyzePageBody: View {
     let page: AnalyzePage
-    let leave: () -> Void
     @Environment(\.theme) private var theme
     @HasVehicle private var connected
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
@@ -219,18 +214,15 @@ private struct AnalyzePageBody: View {
     var body: some View {
         let gate = analyzeGate(page, connected)
         let reloadKey = page.requiresVehicle ? activeVehicleId(vehiclesJson) : nil
-        VStack(spacing: 0) {
-            PageTopBar(title: page.label, backLabel: "Back to Analyze", onBack: leave)
-            Group {
-                if let gate {
-                    EmptyState(icon: page.icon, title: gate, text: "")
-                } else {
-                    shown.id(reloadKey)
-                }
+        Group {
+            if let gate {
+                EmptyState(icon: page.icon, title: gate, text: "")
+            } else {
+                shown.id(reloadKey)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(theme.colors.surface)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(theme.colors.surface)
     }
 
     @ViewBuilder private var shown: some View {

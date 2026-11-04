@@ -20,8 +20,7 @@ struct ResetAllSettingsRow: View {
             }
             .buttonStyle(.bordered)
         }
-        .padding(.horizontal, Space.s5)
-        .padding(.vertical, Space.s3)
+        .rowPadding(horizontal: Space.s5, vertical: Space.s3)
         .task(id: reads) {
             pending = await offMain { resetPending(Qgc.get(CLEAR_SETTINGS_NEXT_BOOT)["value"]) }
         }

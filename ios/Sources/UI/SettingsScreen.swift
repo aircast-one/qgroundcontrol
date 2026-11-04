@@ -329,33 +329,37 @@ private struct AircraftSetupRow: View {
     }
 }
 
+// One settings tab, the root of its page in the Settings sheet's NavigationStack. Opening a page (or, on the
+// Device tab, a device page) pushes it onto that stack through onOpen.
 struct SettingsScreen: View {
     let group: SettingsGroup
     let everyPage: [SettingsPageEntry]
-    let open: String?
     let onOpen: (String) -> Void
-    let onClose: () -> Void
-    let heading: PageHeadingSlot
     var onOpenSetup: (String?) -> Void = { _ in }
 
     var body: some View {
-        let current = everyPage.first { $0.title == open }
         Group {
             if group == .Device {
-                DeviceTab(open: open, onOpen: onOpen, onClose: onClose)
-            } else if let current {
-                SettingsPageBody(page: current)
-                    .id(current.title)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                DeviceHomeScreen(onOpen: onOpen)
             } else {
                 SettingsTab(group: group, everyPage: everyPage, onOpenSetup: onOpenSetup, onOpen: onOpen)
                     .id(group)
             }
         }
-        .frame(maxWidth: DETAIL_PANE_MAX_WIDTH, maxHeight: .infinity, alignment: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .environment(\.LocalPageHeading, heading)
         .environment(\.LocalSettingsList, true)
+    }
+}
+
+// A settings page pushed from a tab or from search.
+struct SettingsPageScreen: View {
+    let page: SettingsPageEntry
+
+    var body: some View {
+        SettingsPageBody(page: page)
+            .id(page.title)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .environment(\.LocalSettingsList, true)
     }
 }
 
@@ -363,78 +367,130 @@ let LIST_DETAIL_MIN_WIDTH: CGFloat = 840
 let LIST_PANE_WIDTH: CGFloat = 380
 let DETAIL_PANE_MAX_WIDTH: CGFloat = 720
 
+// A tab's pages in order, with each run of pages that open on their own screen gathered into one section and each
+// page drawn inline on the tab kept apart.
+struct PageRun: Equatable, Identifiable {
+    let inline: Bool
+    let pages: [SettingsPageEntry]
+
+    var id: String { (inline ? "inline:" : "rows:") + (pages.first?.title ?? "") }
+}
+
+func pageRuns(_ pages: [SettingsPageEntry], inline: (SettingsPageEntry) -> Bool) -> [PageRun] {
+    pages.reduce(into: [PageRun]()) { runs, page in
+        let drawnInline = inline(page)
+        if let last = runs.last, !drawnInline, !last.inline {
+            runs[runs.count - 1] = PageRun(inline: false, pages: last.pages + [page])
+        } else {
+            runs.append(PageRun(inline: drawnInline, pages: [page]))
+        }
+    }
+}
+
+struct InlineLoad: Equatable {
+    let titles: [String]
+    let reloads: Int
+}
+
+private func readSections(_ titles: [String]) -> [String: [SettingsSectionRows]] {
+    Dictionary(titles.map { ($0, settingsSections(Qgc.get(settingsPagePath($0)))) }, uniquingKeysWith: { first, _ in first })
+}
+
 private struct SettingsTab: View {
     let group: SettingsGroup
     let everyPage: [SettingsPageEntry]
     let onOpenSetup: (String?) -> Void
     let onOpen: (String) -> Void
     @QgcPath("view.links") private var linksJson: JSON?
+    @QgcPath(SETUP) private var setupJson: JSON?
     @State private var advancedOpen = false
+    @State private var inlineSections: [String: [SettingsSectionRows]] = [:]
+    @State private var reloads = 0
+    @State private var pilotShown: [ShownPilotSetting] = []
 
     private func drawnInline(_ page: SettingsPageEntry) -> Bool {
         pageLook(page.title).inline || pageLook(page.title).group != group
     }
 
-    @ViewBuilder private func pageEntry(_ page: SettingsPageEntry) -> some View {
-        if drawnInline(page) {
-            InlinePage(page: page, group: group)
+    @ViewBuilder private func run(_ entry: PageRun) -> some View {
+        if entry.inline {
+            ForEach(entry.pages, id: \.title) { page in
+                InlinePage(page: page, group: group, sections: inlineSections[page.title]) { reloads += 1 }
+            }
         } else {
-            PageEntryRow(page: page, linksJson: linksJson, onOpen: onOpen)
+            Section {
+                ForEach(entry.pages, id: \.title) { PageEntryRow(page: $0, linksJson: linksJson, onOpen: onOpen) }
+            }
         }
     }
 
     var body: some View {
         let pages = tabPages(group, everyPage)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if group == .General { AircraftSetupRow(onOpenSetup: onOpenSetup) }
-                PilotSettings(group: group)
-                if group == .Safety { SensorChecks(onCalibrate: { onOpenSetup(SENSORS) }) }
-                if group == .Safety {
-                    let folded = pages.filter(drawnInline)
-                    ForEach(pages.filter { !drawnInline($0) }, id: \.title) { pageEntry($0) }
-                    TabSetupRows(group: group, onOpenSetup: onOpenSetup)
-                    if !folded.isEmpty {
-                        AdvancedToggle(open: advancedOpen, label: ADVANCED_SAFETY) { advancedOpen.toggle() }
-                    }
-                    if advancedOpen { ForEach(folded, id: \.title) { pageEntry($0) } }
-                } else {
-                    ForEach(pages, id: \.title) { pageEntry($0) }
+        let settings = pilotSettings(group)
+        NativeForm {
+            if group == .General {
+                Section { AircraftSetupRow(onOpenSetup: onOpenSetup) }
+            }
+            PilotSettingSections(settings: settings, shown: pilotShown)
+            if group == .Safety { SensorChecks(onCalibrate: { onOpenSetup(SENSORS) }) }
+            if group == .Safety {
+                let folded = pages.filter(drawnInline)
+                Section {
+                    ForEach(pages.filter { !drawnInline($0) }, id: \.title) { PageEntryRow(page: $0, linksJson: linksJson, onOpen: onOpen) }
                     TabSetupRows(group: group, onOpenSetup: onOpenSetup)
                 }
-                #if os(macOS)
-                if group == .General { UpdatesSection() }
-                #endif
+                if !folded.isEmpty {
+                    Section {
+                        AdvancedToggle(open: advancedOpen, label: ADVANCED_SAFETY) { advancedOpen.toggle() }
+                    }
+                }
+                if advancedOpen {
+                    ForEach(pageRuns(folded, inline: drawnInline)) { run($0) }
+                }
+            } else {
+                ForEach(pageRuns(pages, inline: drawnInline)) { run($0) }
+                if !tabSetupComponents(group, setupComponents(setupJson)).isEmpty {
+                    Section { TabSetupRows(group: group, onOpenSetup: onOpenSetup) }
+                }
             }
+            #if os(macOS)
+            if group == .General {
+                Section { UpdatesSection().legacyFormRow() }
+            }
+            #endif
+        }
+        .task(id: InlineLoad(titles: pages.filter(drawnInline).map(\.title), reloads: reloads)) {
+            let titles = pages.filter(drawnInline).map(\.title)
+            let read = await offMain { readSections(titles) }
+            guard !Task.isCancelled else { return }
+            inlineSections = read
+        }
+        .task(id: PilotShownKey(settings: settings, setup: setupJson)) {
+            let read = await loadPilotShown(settings)
+            guard !Task.isCancelled else { return }
+            pilotShown = read
         }
     }
 }
 
+// A page drawn on its tab rather than behind a row: its own sections, under the page's name unless the page is the
+// tab's home. The tab reads the sections (sections nil until then) so they can sit in the tab's form.
 private struct InlinePage: View {
     let page: SettingsPageEntry
     let group: SettingsGroup
-    @State private var sections: [SettingsSectionRows]? = nil
-    @State private var reloads = 0
-
-    private struct Load: Equatable {
-        let title: String
-        let reloads: Int
-    }
+    let sections: [SettingsSectionRows]?
+    let onWrite: () -> Void
 
     var body: some View {
         let shown = sections.map { sectionsIn(group, page.title, $0) } ?? []
         let home = pageLook(page.title).group == group
-        VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: 0).task(id: Load(title: page.title, reloads: reloads)) {
-                let title = page.title
-                sections = await offMain { settingsSections(Qgc.get(settingsPagePath(title))) }
+        if !shown.isEmpty {
+            if !(home && pageLook(page.title).tabHome) {
+                PageHeader(icon: pageLook(page.title).icon, title: home ? pageTitle(page.title) : borrowedTitle(shown))
             }
-            if !shown.isEmpty {
-                if !(home && pageLook(page.title).tabHome) {
-                    PageHeader(icon: pageLook(page.title).icon, title: home ? pageTitle(page.title) : borrowedTitle(shown))
-                }
-                SettingsControls(page: page, sections: shown, home: home, blockHeadings: home) { reloads += 1 }
-                if home && page.title == GENERAL_PAGE { ResetAllSettingsRow() }
+            SettingsControls(page: page, sections: shown, home: home, blockHeadings: home, onWrite: onWrite)
+            if home && page.title == GENERAL_PAGE {
+                Section { ResetAllSettingsRow() }
             }
         }
     }
@@ -444,18 +500,21 @@ func borrowedTitle(_ sections: [SettingsSectionRows]) -> String {
     sections.flatMap(\.blocks).map { sentenceCase($0.title) }.filter { !$0.isBlank }.distinct().joined(separator: " \u{00b7} ")
 }
 
+// The name of a page drawn inline on its tab: a heading above the page's sections, on the form's background.
 private struct PageHeader: View {
     let icon: Icon
     let title: String
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(icon).font(.system(size: 20)).foregroundStyle(theme.colors.primary).frame(width: 24, height: 24)
-            Text(title).font(.titleMedium)
+        Label {
+            Text(title).font(.headline).foregroundStyle(Color.primary)
+        } icon: {
+            Image(icon).foregroundStyle(theme.colors.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(EdgeInsets(top: 28, leading: 16, bottom: 4, trailing: 16))
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: Space.s5, leading: Space.s1, bottom: 0, trailing: Space.s1))
     }
 }
 
@@ -483,6 +542,7 @@ struct SettingsSearch: View {
     @AdvancedUiShown private var advanced
     @State private var pages: [SettingsPageEntry] = []
     @State private var hits: [SettingsSectionRows] = []
+    @State private var pilotShown: [ShownPilotSetting] = []
     @StateObject private var watch = PagesWatch()
 
     private struct Search: Equatable {
@@ -498,38 +558,54 @@ struct SettingsSearch: View {
         let pageHits = pages.filter { pageMatches($0, query) }
         let pagePaths = searching ? pages.map { settingsPagePath($0.title) } : []
         let searchesParameters = hasVehicle && advanced
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                if searching {
-                    if hits.isEmpty && pageHits.isEmpty && setupHits.isEmpty && pilotHits.isEmpty {
-                        FootNote(text: "No settings match \u{201c}\(query.trimmed)\u{201d}.")
-                    } else {
-                        if !pilotHits.isEmpty { PilotSettings(settings: pilotHits) }
-                        if !setupHits.isEmpty { SectionHeader(text: AIRCRAFT_SETUP) }
-                        ForEach(setupHits, id: \.name) { component in
-                            SetupRow(title: sentenceCase(component.name), onClick: { onOpenSetup(component.name) }, icon: setupIcon(component.known, className: component.className))
+        NativeForm {
+            if searching {
+                if hits.isEmpty && pageHits.isEmpty && setupHits.isEmpty && pilotHits.isEmpty {
+                    FootNote(text: "No settings match \u{201c}\(query.trimmed)\u{201d}.")
+                } else {
+                    if !pilotHits.isEmpty { PilotSettingSections(settings: pilotHits, shown: pilotShown) }
+                    if !setupHits.isEmpty {
+                        Section {
+                            ForEach(setupHits, id: \.name) { component in
+                                SetupRow(title: sentenceCase(component.name), onClick: { onOpenSetup(component.name) }, icon: setupIcon(component.known, className: component.className))
+                            }
+                        } header: {
+                            SectionHeader(text: AIRCRAFT_SETUP)
                         }
-                        if !pageHits.isEmpty { SectionHeader(text: "Pages") }
-                        ForEach(pageHits, id: \.title) { entry in
-                            SetupRow(title: pageTitle(entry.title), onClick: { onOpen(entry.title) }, icon: pageLook(entry.title).icon)
+                    }
+                    if !pageHits.isEmpty {
+                        Section {
+                            ForEach(pageHits, id: \.title) { entry in
+                                SetupRow(title: pageTitle(entry.title), onClick: { onOpen(entry.title) }, icon: pageLook(entry.title).icon)
+                            }
+                        } header: {
+                            SectionHeader(text: "Pages")
                         }
-                        ForEach(hits, id: \.title) { section in
-                            SectionHeader(text: shownBreadcrumb(section.title))
+                    }
+                    ForEach(hits, id: \.title) { section in
+                        Section {
                             ForEach(section.blocks.flatMap(\.facts)) { fact in
                                 FactRow(fact: fact)
                             }
+                        } header: {
+                            SectionHeader(text: shownBreadcrumb(section.title))
                         }
                     }
-                    if searchesParameters {
+                }
+                if searchesParameters {
+                    Section {
                         SetupRow(title: "Search parameters for \u{201c}\(query.trimmed)\u{201d}", status: "", onClick: searchParameters, icon: .search)
                     }
                 }
             }
-            .frame(maxWidth: DETAIL_PANE_MAX_WIDTH)
-            .frame(maxWidth: .infinity)
         }
         .task {
             pages = await offMain { settingsPages(Qgc.get(SETTINGS_VIEW)) }
+        }
+        .task(id: PilotShownKey(settings: pilotHits, setup: setupJson)) {
+            let read = await loadPilotShown(pilotHits)
+            guard !Task.isCancelled else { return }
+            pilotShown = read
         }
         .onChange(of: pagePaths, initial: true) { watch.follow(pagePaths) }
         .task(id: Search(query: query, pages: pages, served: watch.served)) {
@@ -586,31 +662,98 @@ private struct SettingsPageBody: View {
         } else if own.isEmpty {
             Text("No settings exposed here.").padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    SettingsControls(page: page, sections: own) { reloads += 1 }
-                    if page.title == GENERAL_PAGE { ResetAllSettingsRow() }
+            NativeForm {
+                SettingsControls(page: page, sections: own) { reloads += 1 }
+                if page.title == GENERAL_PAGE {
+                    Section { ResetAllSettingsRow() }
                 }
             }
         }
     }
 }
 
+// A page's settings. On a hand-laid-out page, headings and rows in a column; inside a NativeForm, a Section per
+// block under its heading, with the composite editors some sections carry (NTRIP, MAVLink, offline maps…) kept in
+// sections of their own as they still draw themselves.
 private struct SettingsControls: View {
     let page: SettingsPageEntry
     let sections: [SettingsSectionRows]
     var home: Bool = true
     var blockHeadings: Bool = true
     let onWrite: () -> Void
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if home && page.showsNtrip { NtripStatusSection(onWrite: onWrite) }
+        if nativeList {
+            if home && page.showsNtrip {
+                Section { NtripStatusSection(onWrite: onWrite).legacyFormRow() }
+            }
             #if os(macOS)
-            if home && page.showsPacketRadio { PacketRadioSection(onWrite: onWrite) }
+            if home && page.showsPacketRadio {
+                Section { PacketRadioSection(onWrite: onWrite).legacyFormRow() }
+            }
             #endif
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                sectionView(section)
+                nativeSection(section)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                if home && page.showsNtrip { NtripStatusSection(onWrite: onWrite) }
+                #if os(macOS)
+                if home && page.showsPacketRadio { PacketRadioSection(onWrite: onWrite) }
+                #endif
+                ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                    sectionView(section)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func nativeSection(_ section: SettingsSectionRows) -> some View {
+        if section.group == UNITS_GROUP {
+            Section {
+                UnitsSection()
+            } header: {
+                SectionHeader(text: section.title)
+            }
+        } else {
+            ForEach(Array(section.blocks.enumerated()), id: \.offset) { _, block in
+                nativeBlock(section, block)
+            }
+            if home { nativeExtras(section) }
+        }
+    }
+
+    @ViewBuilder private func nativeBlock(_ section: SettingsSectionRows, _ block: SettingsBlock) -> some View {
+        if block.title == ADVANCED_BLOCK {
+            AdvancedBlock(key: "\(section.group)#\(block.title)") { FactRuns(facts: block.facts, onWrite: onWrite) }
+        } else if !block.facts.isEmpty {
+            let heading = blockHeading(page.title, section, block)
+            Section {
+                FactRuns(facts: block.facts, onWrite: onWrite)
+                if page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK { NtripMountpointBrowser(onWrite: onWrite).legacyFormRow() }
+                if section.group == REMOTE_ID_GROUP && block.title == GCS_LOCATION_BLOCK { GcsPositionStatus().legacyFormRow() }
+                if section.group == MAVLINK_GROUP && block.title == SIGNING_AFTER_BLOCK { SigningKeysSection().legacyFormRow() }
+            } header: {
+                if blockHeadings && !heading.isBlank { SectionHeader(text: sentenceCase(heading)) }
+            }
+        }
+    }
+
+    // A section whose rows the head draws (MAVLink actions) keeps its heading above that editor.
+    @ViewBuilder private func nativeExtras(_ section: SettingsSectionRows) -> some View {
+        let drawnByTheHead = section.blocks.allSatisfy { $0.facts.isEmpty }
+        let heading = drawnByTheHead && blockHeadings ? section.blocks.first.map { blockHeading(page.title, section, $0) } ?? "" : ""
+        if !section.note.isBlank && !GROUPS_WITH_A_HEAD_EDITOR.contains(section.group) { FootNote(text: section.note) }
+        if [FLY_VIEW_GROUP, VIEWER_3D_GROUP, OFFLINE_MAPS_GROUP, MAVLINK_GROUP, MAVLINK_ACTIONS_GROUP].contains(section.group) {
+            Section {
+                if section.group == FLY_VIEW_GROUP { RcControlsEditor().legacyFormRow() }
+                if section.group == VIEWER_3D_GROUP { OsmFilePicker(onWrite: onWrite).legacyFormRow() }
+                if section.group == OFFLINE_MAPS_GROUP { OfflineMapsSection().legacyFormRow() }
+                if section.group == MAVLINK_GROUP { LinkStatusSection().legacyFormRow() }
+                if section.group == MAVLINK_ACTIONS_GROUP { MavlinkActionsSection(onWrite: onWrite).legacyFormRow() }
+            } header: {
+                if !heading.isBlank { SectionHeader(text: sentenceCase(heading)) }
             }
         }
     }
@@ -656,9 +799,24 @@ private struct AdvancedBlock<Content: View>: View {
     let key: String
     @ViewBuilder let content: () -> Content
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
     @State private var open = false
 
     var body: some View {
+        if nativeList {
+            Section {
+                DisclosureGroup(isExpanded: $open) {
+                    content()
+                } label: {
+                    Text(ADVANCED_BLOCK)
+                }
+            }
+        } else {
+            handDrawn
+        }
+    }
+
+    @ViewBuilder private var handDrawn: some View {
         Button { open.toggle() } label: {
             HStack {
                 Text(ADVANCED_BLOCK).font(.labelLarge).foregroundStyle(theme.colors.onSurfaceVariant).frame(maxWidth: .infinity, alignment: .leading)
@@ -682,7 +840,7 @@ struct FactRuns: View {
         let shared = sharedRebootNote(facts)
         let inert = blockInertNote(facts)
         if let shared {
-            Text(shared).font(.bodySmall).foregroundStyle(theme.aircast.warning).padding(.horizontal, 16).padding(.vertical, 4)
+            Text(shared).font(.bodySmall).foregroundStyle(theme.aircast.warning).rowPadding(horizontal: 16, vertical: 4)
         }
         ForEach(facts) { fact in
             FactRow(fact: fact, onWrite: onWrite)
@@ -690,7 +848,7 @@ struct FactRuns: View {
         .environment(\.LocalBlockRebootNote, shared)
         .environment(\.LocalRunInertNote, inert)
         if let inert {
-            Text(inert).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).padding(.horizontal, 16).padding(.vertical, 4)
+            Text(inert).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).rowPadding(horizontal: 16, vertical: 4)
         }
     }
 }
@@ -818,6 +976,7 @@ struct FactRow: View {
     @Environment(\.theme) private var theme
     @Environment(\.LocalSettingsList) private var settingsList
     @Environment(\.LocalRunInertNote) private var runInert
+    @Environment(\.LocalNativeList) private var nativeList
     @State private var refusal: String? = nil
     @State private var helpOpen = false
     @State private var editing = false
@@ -912,9 +1071,8 @@ struct FactRow: View {
                         Text(valueText(fact)).font(.bodyLarge).foregroundStyle(theme.colors.onSurfaceVariant)
                         Image(.chevronRight).foregroundStyle(theme.colors.onSurfaceVariant)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, minHeight: Metrics.row)
+                    .rowPadding(horizontal: 16, vertical: 10)
+                    .frame(maxWidth: .infinity, minHeight: nativeList ? nil : Metrics.row)
                     .contentShape(Rectangle())
                     .macHover()
                 }
@@ -968,7 +1126,7 @@ struct FactRow: View {
                 Text(refusal).font(.bodySmall).foregroundStyle(theme.colors.error).padding(.leading, 16).padding(.top, 4)
             }
         }
-        .padding(fieldModifier)
+        .rowPadding(fieldModifier)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -993,11 +1151,10 @@ struct FactRow: View {
                 if beside { Segments(fact: fact, write: write) }
                 if !segmented { CappedWidth(limit: TRAILING_MAX_WIDTH) { trailing } }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: Metrics.rowTall)
+            .rowPadding(horizontal: 16, vertical: 10)
+            .frame(maxWidth: .infinity, minHeight: nativeList ? nil : Metrics.rowTall)
             if segmented && !beside {
-                Segments(fact: fact, write: write).padding(EdgeInsets(top: 0, leading: 16, bottom: 10, trailing: 16))
+                Segments(fact: fact, write: write).rowPadding(EdgeInsets(top: 0, leading: 16, bottom: 10, trailing: 16))
             }
             if let refusal {
                 Text(refusal).font(.bodySmall).foregroundStyle(theme.colors.error).padding(.leading, 16).padding(.bottom, 8)
@@ -1203,9 +1360,23 @@ struct ChoiceField: View {
     let onPick: (Int) -> Void
     @Environment(\.theme) private var theme
     @Environment(\.LocalSettingsList) private var settingsList
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        if settingsList && label == nil {
+        if nativeList, let label {
+            // A form row: the label on the left, the choice as a menu on the right.
+            LabeledContent {
+                Menu { menuItems } label: {
+                    HStack(spacing: Space.s1) {
+                        Text(value).lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down").font(.footnote)
+                    }
+                }
+                .disabled(!enabled)
+            } label: {
+                Text(label)
+            }
+        } else if (settingsList || nativeList) && label == nil {
             SafeChoiceMenu(options: options, onPick: onPick) {
                 HStack(spacing: 0) {
                     Text(rowChoiceLabel(value))
@@ -1220,15 +1391,7 @@ struct ChoiceField: View {
             .disabled(!enabled)
         } else {
             Menu {
-                ForEach(optionRuns(options.count, groups)) { run in
-                    if run.group.isBlank {
-                        ForEach(run.indices, id: \.self) { index in Button(options[index]) { onPick(index) } }
-                    } else {
-                        Section(run.group) {
-                            ForEach(run.indices, id: \.self) { index in Button(options[index]) { onPick(index) } }
-                        }
-                    }
-                }
+                menuItems
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     if let label {
@@ -1246,6 +1409,20 @@ struct ChoiceField: View {
                 .contentShape(Rectangle())
             }
             .disabled(!enabled)
+        }
+    }
+}
+
+extension ChoiceField {
+    @ViewBuilder fileprivate var menuItems: some View {
+        ForEach(optionRuns(options.count, groups)) { run in
+            if run.group.isBlank {
+                ForEach(run.indices, id: \.self) { index in Button(options[index]) { onPick(index) } }
+            } else {
+                Section(run.group) {
+                    ForEach(run.indices, id: \.self) { index in Button(options[index]) { onPick(index) } }
+                }
+            }
         }
     }
 }
@@ -1342,6 +1519,7 @@ private struct FactTextField: View {
     var onTheRight: Bool = false
     @Environment(\.theme) private var theme
     @Environment(\.LocalBlockRebootNote) private var blockRebootNote
+    @Environment(\.LocalNativeList) private var nativeList
     @State private var editing: String? = nil
     @State private var rejection: String? = nil
     @State private var revealed = false
@@ -1423,15 +1601,18 @@ private struct FactTextField: View {
                     .fixedSize()
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.leading, 12)
-            .padding(.trailing, pending == nil ? 12 : 0)
+            .padding(.vertical, nativeList ? 0 : 12)
+            .padding(.leading, nativeList ? 0 : 12)
+            .padding(.trailing, pending == nil && !nativeList ? 12 : 0)
             .contentShape(Rectangle())
             .onTapGesture { if fact.enabled { focused = true } }
-            .overlay(
-                RoundedRectangle(cornerRadius: Corner.extraSmall)
-                    .stroke(rejection != nil ? theme.colors.error : focused ? theme.colors.primary : theme.colors.outline, lineWidth: focused ? 2 : 1)
-            )
+            .overlay {
+                // In a form the row is the field, as iOS draws one; elsewhere the outlined box.
+                if !nativeList {
+                    RoundedRectangle(cornerRadius: Corner.extraSmall)
+                        .stroke(rejection != nil ? theme.colors.error : focused ? theme.colors.primary : theme.colors.outline, lineWidth: focused ? 2 : 1)
+                }
+            }
             .opacity(fact.enabled ? 1 : DISABLED_ALPHA)
             if let rejection {
                 Text(rejection).font(.bodySmall).foregroundStyle(theme.colors.error).padding(.leading, 16).padding(.top, 4)

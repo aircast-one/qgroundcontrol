@@ -15,23 +15,38 @@ struct SectionHeader: View {
     var image: String = ""
     @Environment(\.theme) private var theme
     @Environment(\.LocalSettingsList) private var band
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        HStack(spacing: 12) {
-            if !image.isBlank {
-                Image(sectionImageAsset(image))
-                    .resizable()
-                    .renderingMode(.template)
-                    .scaledToFit()
-                    .foregroundStyle(theme.colors.onSurface)
-                    .frame(width: 48, height: 24)
+        if nativeList {
+            // Inside a NativeForm this is a Section's header: the list styles the text.
+            HStack(spacing: Space.s2) {
+                if !image.isBlank {
+                    Image(sectionImageAsset(image))
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 32, height: 16)
+                }
+                Text(text)
             }
-            Text(text).font(.labelLarge).foregroundStyle(theme.colors.onSurfaceVariant)
+        } else {
+            HStack(spacing: 12) {
+                if !image.isBlank {
+                    Image(sectionImageAsset(image))
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .foregroundStyle(theme.colors.onSurface)
+                        .frame(width: 48, height: 24)
+                }
+                Text(text).font(.labelLarge).foregroundStyle(theme.colors.onSurfaceVariant)
+            }
+            .padding(band ? EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16) : EdgeInsets(top: 20, leading: 16, bottom: 8, trailing: 16))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(band ? theme.colors.surfaceContainerHigh : .clear)
+            .padding(.top, band ? 12 : 0)
         }
-        .padding(band ? EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16) : EdgeInsets(top: 20, leading: 16, bottom: 8, trailing: 16))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(band ? theme.colors.surfaceContainerHigh : .clear)
-        .padding(.top, band ? 12 : 0)
     }
 }
 
@@ -49,12 +64,48 @@ struct SetupRow: View {
     var subtitle: String = ""
     var selected: Bool = false
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        if let onClick {
+        if nativeList {
+            nativeRow
+        } else if let onClick {
             Button(action: onClick) { row.macHover() }.buttonStyle(.plain)
         } else {
             row
+        }
+    }
+
+    // Inside a NativeForm: a native disclosure row, the list drawing its insets, highlight and separators.
+    @ViewBuilder private var nativeRow: some View {
+        let label = NativeRowLabel(
+            title: title,
+            subtitle: nativeSubtitle,
+            status: status,
+            statusColor: state == .NeedsAttention || state == .Done ? setupStateColor(state, theme) : nil,
+            icon: icon,
+            iconTint: state == .NeedsAttention ? theme.aircast.warning : nil,
+            dimmed: state == .Unavailable,
+            chevron: onClick != nil
+        )
+        if let onClick {
+            Button(action: onClick) { label }
+                .listRowButton()
+                .listRowBackground(selected ? Optional(theme.colors.secondaryContainer) : nil)
+        } else {
+            label
+        }
+    }
+
+    private var nativeSubtitle: Text? {
+        let parts = summaryGlanceParts(summary)
+        let glance = parts.isEmpty ? nil : glanceText(parts, theme.colors.error)
+        let lead = subtitle.isBlank ? nil : Text(subtitle)
+        switch (lead, glance) {
+        case (let lead?, let glance?): return lead + Text("\n") + glance
+        case (let lead?, nil): return lead
+        case (nil, let glance?): return glance
+        case (nil, nil): return nil
         }
     }
 
@@ -95,9 +146,11 @@ struct SetupRow: View {
     }
 }
 
+// A page's own heading, lent to the host that draws the navigation bar (nativePage): the title, and a back that
+// steps through the page's own sub-steps instead of leaving it (nil keeps the system back).
 struct PageHeading {
     let title: String
-    let back: () -> Void
+    let back: (() -> Void)?
     var owner: UUID? = nil
 }
 
@@ -110,6 +163,8 @@ extension EnvironmentValues {
     @Entry var LocalPageHeading: PageHeadingSlot? = nil
 }
 
+// Retitles the page it sits in and makes the navigation bar's back call onBack (a step back inside the page)
+// rather than leave the page. Needs a host page set up with nativePage(_:).
 struct OverridePageHeading: View {
     let title: String
     let onBack: () -> Void
@@ -128,39 +183,51 @@ struct AdvancedToggle: View {
     let open: Bool
     var label: String = "Advanced"
     let onToggle: () -> Void
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 4) {
-                Text(open ? "Hide \(label.lowercasedFirst)" : label)
-                Image(open ? .arrowUp : .arrowDropDown)
+        if nativeList {
+            // A row of its own in a NativeForm; the extra sections it reveals follow it.
+            Button(action: onToggle) {
+                HStack {
+                    Text(open ? "Hide \(label.lowercasedFirst)" : label)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                }
+                .contentShape(Rectangle())
             }
+            .accessibilityAddTraits(.isButton)
+        } else {
+            Button(action: onToggle) {
+                HStack(spacing: 4) {
+                    Text(open ? "Hide \(label.lowercasedFirst)" : label)
+                    Image(open ? .arrowUp : .arrowDropDown)
+                }
+            }
+            .buttonStyle(.text)
+            .padding(8)
         }
-        .buttonStyle(.text)
-        .padding(8)
     }
 }
 
+// Formerly a hand-drawn bar with a back arrow. The host's NavigationStack now draws the bar, its back button and
+// swipe-back; this only lends the page its title (through the host's nativePage). backLabel and onBack are kept
+// so existing call sites compile; the system back pops the page.
 struct PageTopBar: View {
     let title: String
     let backLabel: String
     let onBack: () -> Void
-    @Environment(\.LocalTwoPane) private var twoPane
+    @Environment(\.LocalPageHeading) private var host
+    @State private var owner = UUID()
 
     var body: some View {
-        HStack(spacing: 4) {
-            if twoPane {
-                Color.clear.frame(width: 12, height: 1)
-            } else {
-                Button(action: onBack) { Image(.arrowBack).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
-                    .accessibilityLabel(backLabel)
-                    .macTooltip(backLabel)
-            }
-            Text(title).font(.titleLarge).lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 4)
-        .frame(maxWidth: .infinity, minHeight: Metrics.rowTall)
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onChange(of: title, initial: true) { host?.value = PageHeading(title: title, back: nil, owner: owner) }
+            .onDisappear { if host?.value?.owner == owner { host?.value = nil } }
     }
 }
 
@@ -230,8 +297,17 @@ private func glanceText(_ parts: [SummaryLine], _ warn: Color) -> Text {
 struct FootNote: View {
     let text: String
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            FormNote(text: text)
+        } else {
+            note
+        }
+    }
+
+    private var note: some View {
         Text(text)
             .font(.bodySmall)
             .foregroundStyle(theme.colors.onSurfaceVariant)

@@ -4,15 +4,21 @@ func sheetDrilled(_ openPage: String?, _ setupOpen: Bool) -> Bool { openPage != 
 
 func openingGroup(_ requested: String?) -> SettingsGroup { requested.map { pageLook($0).group } ?? .General }
 
-private let STACKED_HEADER_WIDTH: CGFloat = 600
 private let SETTINGS_SHEET_LAYER: Double = 10
 private let SETTINGS_PANEL_ALPHA = 0.9
 
-private struct OpenPageKey: Hashable {
-    let group: SettingsGroup
-    let page: String?
-    let searching: Bool
-    let setupOpen: Bool
+#if os(iOS)
+private let SETTINGS_SEARCH_PLACEMENT = SearchFieldPlacement.navigationBarDrawer(displayMode: .always)
+#else
+private let SETTINGS_SEARCH_PLACEMENT = SearchFieldPlacement.automatic
+#endif
+
+// One page pushed above the tabs in the Settings NavigationStack: a settings page by title, aircraft setup, or a
+// device page by href (the Device tab's own stack).
+enum SettingsRoute: Hashable {
+    case Page(String)
+    case Setup
+    case Device(String)
 }
 
 @MainActor
@@ -31,6 +37,35 @@ private func shownOnOpen(_ page: String?, _ group: SettingsGroup) -> String? {
     page.flatMap { pageLook($0).group == group && !pageLook($0).inline ? $0 : nil }
 }
 
+// The stack a requested page opens: its page pushed above its tab, or nothing for a page the tab draws inline.
+func requestedRoutes(_ page: String?, _ group: SettingsGroup) -> [SettingsRoute] {
+    shownOnOpen(page, group).map { [.Page($0)] } ?? []
+}
+
+func setupShowing(_ path: [SettingsRoute]) -> Bool { path.contains(.Setup) }
+
+func deviceHrefs(_ path: [SettingsRoute]) -> [String] {
+    path.compactMap { route -> String? in
+        guard case .Device(let href) = route else { return nil }
+        return href
+    }
+}
+
+// The path with its device pages replaced by hrefs, in order, on top.
+func withDeviceHrefs(_ path: [SettingsRoute], _ hrefs: [String]) -> [SettingsRoute] {
+    path.filter { route in
+        guard case .Device = route else { return true }
+        return false
+    } + hrefs.map { SettingsRoute.Device($0) }
+}
+
+// Where an open from a tab goes: the Device tab opens device pages, every other tab settings pages.
+func tabRoute(_ group: SettingsGroup, _ opened: String) -> SettingsRoute { group == .Device ? .Device(opened) : .Page(opened) }
+
+// Settings: a NavigationStack over the tabs (General, Safety … Device) with search in the navigation bar. Every
+// drill-in — a page, aircraft setup and the pages inside it, a device page — is a push onto this one stack, so it
+// gets the system back button and swipe-back; deep links and programmatic opens (navigation.settingsPage,
+// openAircraft, addLinkRequested) set the stack.
 struct SettingsSheet: View {
     let requested: String?
     let onClose: () -> Void
@@ -40,19 +75,13 @@ struct SettingsSheet: View {
     @SettingsPages private var everyPage
     @State private var group: SettingsGroup
     @State private var pager: SettingsGroup?
-    @State private var setupOpen = false
-    @State private var setupFromTab = false
-    @State private var enteredForSetup = false
     @State private var page: String?
+    @State private var path: [SettingsRoute]
+    @State private var enteredForSetup = false
     @State private var query: String?
-    @State private var returnQuery: String?
-    @State private var openPage: String?
-    @State private var heading = PageHeadingSlot()
     @State private var snackbars: SnackbarHostState
     @State private var noticeScope: ViewScope
     @State private var notice: ChangeNotice
-    @State private var width: CGFloat = 0
-    @FocusState private var searching: Bool
 
     init(requested: String?, onClose: @escaping () -> Void) {
         self.requested = requested
@@ -61,7 +90,7 @@ struct SettingsSheet: View {
         _group = State(initialValue: opening)
         _pager = State(initialValue: opening)
         _page = State(initialValue: requested)
-        _openPage = State(initialValue: shownOnOpen(requested, opening))
+        _path = State(initialValue: requestedRoutes(requested, opening))
         let host = SnackbarHostState()
         let scope = ViewScope()
         _snackbars = State(initialValue: host)
@@ -69,60 +98,53 @@ struct SettingsSheet: View {
         _notice = State(initialValue: settingsChangeNotice(host, scope))
     }
 
-    private var initialPage: String? { page.flatMap { pageLook($0).group == group ? $0 : nil } }
-
-    private func backToSearch() {
-        query = returnQuery
-        returnQuery = nil
-        page = nil
+    private var searchText: Binding<String> {
+        Binding(get: { query ?? "" }, set: { typed in query = typed })
     }
 
-    private func closeSetup() {
-        if enteredForSetup {
-            onClose()
-        } else {
-            setupOpen = false
-            if returnQuery != nil { backToSearch() }
-        }
-    }
-
-    private func closePage() {
-        if returnQuery != nil && openPage == initialPage {
-            backToSearch()
-        } else {
-            openPage = nil
-        }
-    }
-
-    private func pageBack() {
-        if let back = heading.value?.back { back() } else { closePage() }
-    }
-
-    private func setupBack() {
-        if !setupFromTab, let back = heading.value?.back { back() } else { closeSetup() }
+    private var searching: Binding<Bool> {
+        Binding(get: { query != nil }, set: { shown in query = shown ? query ?? "" : nil })
     }
 
     private func openSetup(_ component: String?) {
         navigation.setupPage = component
-        setupFromTab = component != nil
-        setupOpen = true
-        returnQuery = query.flatMap { $0.isBlank ? nil : $0 }
-        query = nil
+        if let at = path.firstIndex(of: .Setup) {
+            path = Array(path[...at])
+        } else {
+            path.append(.Setup)
+        }
+    }
+
+    private func openFromSearch(_ title: String) {
+        if pageLook(title).inline {
+            group = pageLook(title).group
+            page = title
+            query = nil
+            path = []
+        } else {
+            path.append(.Page(title))
+        }
     }
 
     private func pickTab(_ entry: SettingsGroup) {
         group = entry
         page = nil
-        setupOpen = false
-        returnQuery = nil
+        path = []
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            content.frame(maxHeight: .infinity)
+        NavigationStack(path: $path) {
+            root
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done", action: onClose)
+                    }
+                }
+                .searchable(text: searchText, isPresented: searching, placement: SETTINGS_SEARCH_PLACEMENT, prompt: "Search settings")
+                .navigationDestination(for: SettingsRoute.self) { route in destination(route) }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .overlay(alignment: .bottom) {
             SnackbarHost(hostState: snackbars) { AppSnackbar(data: $0) }
         }
@@ -135,7 +157,12 @@ struct SettingsSheet: View {
                 .onTapGesture {}
         }
         .zIndex(SETTINGS_SHEET_LAYER)
-        .onChange(of: setupOpen) { _, open in if !open { enteredForSetup = false } }
+        .onChange(of: path) { before, now in
+            guard setupShowing(before) && !setupShowing(now) else { return }
+            let closes = enteredForSetup
+            enteredForSetup = false
+            if closes { onClose() }
+        }
         .onChange(of: navigation.aircraftRequested, initial: true) { before, asked in
             guard asked else { return }
             let openedForAircraft = before == asked
@@ -143,23 +170,20 @@ struct SettingsSheet: View {
                 group = .General
                 enteredForSetup = true
             }
-            setupFromTab = setupFromTab || !(navigation.setupPage ?? "").isEmpty
-            setupOpen = true
             query = nil
+            if path.first != .Setup { path = [.Setup] }
             navigation.aircraftRequested = false
         }
         .onChange(of: navigation.settingsPage, initial: true) { _, asked in
             guard let asked else { return }
+            enteredForSetup = false
             group = pageLook(asked).group
             page = asked
-            setupOpen = false
             query = nil
+            path = requestedRoutes(asked, pageLook(asked).group)
             navigation.settingsPage = nil
         }
-        .onChange(of: setupOpen ? nil : group, initial: true) { _, showing in navigation.settingsShowing = showing }
-        .onChange(of: OpenPageKey(group: group, page: page, searching: query != nil, setupOpen: setupOpen)) { _, key in
-            openPage = shownOnOpen(key.page, key.group)
-        }
+        .onChange(of: setupShowing(path) ? nil : group, initial: true) { _, showing in navigation.settingsShowing = showing }
         .onDisappear {
             navigation.settingsShowing = nil
             noticeScope.cancel()
@@ -167,96 +191,48 @@ struct SettingsSheet: View {
     }
 
     @ViewBuilder
-    private var header: some View {
-        let stacked = width < STACKED_HEADER_WIDTH
-        let drilled = sheetDrilled(openPage, setupOpen)
-        let tabsShown = query == nil && !drilled
-        let drilledTitle = query != nil ? nil
-            : setupOpen ? heading.value?.title ?? AIRCRAFT_SETUP
-            : openPage.map { heading.value?.title ?? pageTitle($0) }
-        let showTab: (SettingsGroup) -> Void = { entry in withAnimation { pager = entry } }
-        VStack(spacing: 0) {
-            HStack(spacing: Space.s2) {
-                if let typed = query {
-                    SearchPill(value: typed, onValueChange: { query = $0 }, placeholder: "Search settings")
-                        .focused($searching)
-                        .frame(maxWidth: .infinity)
-                        .onAppear { searching = true }
-                    Button("Cancel") { query = nil }.buttonStyle(.text)
-                } else {
-                    if let drilledTitle {
-                        Button(action: setupOpen ? setupBack : pageBack) { Image(.arrowBack).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Back")
-                            .macTooltip("Back")
-                        Text(drilledTitle)
-                            .font(.titleLarge)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if stacked {
-                        Text("Settings")
-                            .font(.titleLarge)
-                            .padding(.leading, Space.s2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        SheetTabs(selected: pager ?? group, edgePadding: 0, onPick: showTab).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Button { query = "" } label: { Image(.search).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Search settings")
-                        .macTooltip("Search settings")
-                }
-                Button(action: onClose) { Image(.close).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close settings")
-                    .macTooltip("Close settings")
-            }
-            .padding(.leading, drilledTitle != nil ? Space.s1 : Space.s3)
-            .padding(.trailing, Space.s3)
-            .padding(.top, Space.s1)
-            .padding(.bottom, tabsShown && !stacked ? 0 : Space.s1)
-            if stacked && tabsShown {
-                SheetTabs(selected: pager ?? group, edgePadding: Space.s2, onPick: showTab)
+    private var root: some View {
+        if let typed = query {
+            SettingsSearch(query: typed, onOpenSetup: openSetup, onOpen: openFromSearch)
+        } else {
+            VStack(spacing: 0) {
+                SheetTabs(selected: pager ?? group, edgePadding: Space.s2) { entry in withAnimation { pager = entry } }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                Divider()
+                SettingsPager(pager: $pager, group: group, swipeable: true, onSettled: pickTab) { shown in
+                    SettingsScreen(
+                        group: shown,
+                        everyPage: everyPage,
+                        onOpen: { opened in path.append(tabRoute(shown, opened)) },
+                        onOpenSetup: openSetup
+                    )
+                    .id(shown == group ? page : nil)
+                }
             }
-            if tabsShown { Divider() }
         }
     }
 
     @ViewBuilder
-    private var content: some View {
-        if query == nil && !setupOpen {
-            SettingsPager(pager: $pager, group: group, swipeable: openPage == nil, onSettled: pickTab) { shown in
-                let current = shown == group
-                SettingsScreen(
-                    group: shown,
-                    everyPage: everyPage,
-                    open: current ? openPage : nil,
-                    onOpen: { openPage = $0 },
-                    onClose: closePage,
-                    heading: heading,
-                    onOpenSetup: openSetup
-                )
-                .id(current ? page : nil)
-            }
-        } else {
+    private func destination(_ route: SettingsRoute) -> some View {
+        switch route {
+        case .Page(let title):
             Group {
-                if let typed = query {
-                    SettingsSearch(query: typed, onOpenSetup: openSetup) { title in
-                        group = pageLook(title).group
-                        page = title
-                        returnQuery = pageLook(title).inline ? nil : typed
-                        query = nil
-                        setupOpen = false
-                    }
+                if let entry = everyPage.first(where: { $0.title == title }) {
+                    SettingsPageScreen(page: entry)
                 } else {
-                    SetupScreen()
-                        .frame(maxHeight: .infinity)
-                        .environment(\.LocalPageHeading, heading)
+                    Text("Reading settings.").padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
-            .id(OpenPageKey(group: group, page: page, searching: query != nil, setupOpen: setupOpen))
+            .nativePage(pageTitle(title))
+        case .Setup:
+            SetupScreen().nativePage(AIRCRAFT_SETUP)
+        case .Device(let href):
+            DevicePageScreen(
+                href: href,
+                onOpen: { next in path.append(.Device(next)) },
+                onOpenFrom: { next, returnTo in path = withDeviceHrefs(path, deviceRoutesOpenedFrom(deviceHrefs(path), next, returnTo)) },
+                onClose: { if !path.isEmpty { path.removeLast() } }
+            )
         }
     }
 }

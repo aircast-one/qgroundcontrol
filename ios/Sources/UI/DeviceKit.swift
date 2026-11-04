@@ -78,8 +78,25 @@ struct DeviceSection<Content: View>: View {
     var badge: DeviceBadge? = nil
     @ViewBuilder let content: () -> Content
     @Environment(\.LocalSettingsList) private var band
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            Section {
+                content()
+            } header: {
+                HStack(spacing: Space.s2) {
+                    Text(title)
+                    Spacer(minLength: 0)
+                    if let badge { DeviceBadgeText(badge: badge).textCase(nil) }
+                }
+            }
+        } else {
+            handDrawn
+        }
+    }
+
+    private var handDrawn: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(text: title)
                 .overlay(alignment: .trailing) {
@@ -114,6 +131,7 @@ struct DeviceBadgeText: View {
 struct DeviceNotice: View {
     let notice: DeviceBadge
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -123,11 +141,9 @@ struct DeviceNotice: View {
                 .frame(width: 20, height: 20)
             Text(notice.text).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: 16, vertical: 12)
+        .background(nativeList ? Color.clear : theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
     }
 }
 
@@ -150,8 +166,7 @@ struct DeviceText: View {
                 .font(.bodyMedium)
                 .foregroundStyle(theme.colors.onSurfaceVariant)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, DEVICE_LIST_PADDING)
-                .padding(.vertical, 8)
+                .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
         }
     }
 }
@@ -161,8 +176,21 @@ struct DeviceFact: View {
     let value: String
     var level: Int = DeviceLevel.Neutral
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            LabeledContent(label) {
+                Text(value)
+                    .foregroundStyle(level == DeviceLevel.Neutral ? Color.secondary : deviceLevelColor(level, theme))
+                    .multilineTextAlignment(.trailing)
+            }
+        } else {
+            handDrawn
+        }
+    }
+
+    private var handDrawn: some View {
         HStack(spacing: 16) {
             Text(label).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
             Text(value)
@@ -212,8 +240,7 @@ struct CopyRow: View {
                 .accessibilityLabel("Copy \(label)")
                 .macTooltip("Copy \(label)")
         }
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
         .sheet(isPresented: $showingQr) { QrDialog(title: label, text: text) { showingQr = false } }
     }
 }
@@ -277,8 +304,7 @@ struct DeviceRefusalText: View {
                 .font(.bodySmall)
                 .foregroundStyle(theme.colors.error)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, DEVICE_LIST_PADDING)
-                .padding(.vertical, 4)
+                .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 4)
         }
     }
 }
@@ -348,6 +374,7 @@ struct ActionButton: View {
     var tonal: Bool = true
     var onDone: () -> Void = {}
     @Environment(\.LocalChangeNotice) private var notice
+    @Environment(\.LocalNativeList) private var nativeList
     @State private var action = DeviceActionState()
     @State private var asking = false
 
@@ -362,7 +389,7 @@ struct ActionButton: View {
                 .deviceButton(tonal ? .Tonal : .Text)
                 .disabled(action.busy)
             if let refusal = action.refusal, refusal.field.isEmpty {
-                DeviceRefusalText(refusal: refusal).padding(.horizontal, -DEVICE_LIST_PADDING)
+                DeviceRefusalText(refusal: refusal).padding(.horizontal, nativeList ? 0 : -DEVICE_LIST_PADDING)
             }
         }
         .deviceConfirm(confirm, isPresented: $asking) { go() }
@@ -413,8 +440,7 @@ struct DeviceSwitchRow: View {
                 .labelsHidden()
                 .disabled(!enabled || action.busy)
             }
-            .padding(.horizontal, DEVICE_LIST_PADDING)
-            .padding(.vertical, 12)
+            .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 12)
             DeviceRefusalText(refusal: action.refusal, field: action.refusal?.field ?? "")
         }
         .deviceConfirm(confirmOn, isPresented: $asking) { flip(true) }
@@ -442,9 +468,29 @@ struct DeviceTextField: View {
     var lines: Int = 1
     var onSubmit: () -> Void = {}
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
     @FocusState private var focused: Bool
 
     var body: some View {
+        if nativeList && lines <= 1 && !label.isEmpty {
+            // A native form row: the label on the left, the value typed on the right.
+            FieldRow(
+                label: label,
+                value: value,
+                prompt: placeholder,
+                error: isError ? supporting : nil,
+                hint: isError ? "" : supporting,
+                keyboard: uiKeyboard(keyboard),
+                autocapitalize: keyboard == .text,
+                onSubmit: onSubmit,
+                onChange: onValueChange
+            )
+        } else {
+            stacked
+        }
+    }
+
+    private var stacked: some View {
         VStack(alignment: .leading, spacing: 4) {
             if !label.isEmpty {
                 Text(label).font(.bodySmall).foregroundStyle(isError ? theme.colors.error : theme.colors.onSurfaceVariant)
@@ -458,12 +504,13 @@ struct DeviceTextField: View {
                 .submitLabel(.done)
                 .onSubmit(onSubmit)
                 .focused($focused)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Corner.extraSmall)
-                        .stroke(isError ? theme.colors.error : focused ? theme.colors.primary : theme.colors.outline, lineWidth: focused ? 2 : 1)
-                )
+                .rowPadding(horizontal: 12, vertical: 12)
+                .overlay {
+                    if !nativeList {
+                        RoundedRectangle(cornerRadius: Corner.extraSmall)
+                            .stroke(isError ? theme.colors.error : focused ? theme.colors.primary : theme.colors.outline, lineWidth: focused ? 2 : 1)
+                    }
+                }
             if !supporting.isEmpty {
                 Text(supporting).font(.bodySmall).foregroundStyle(isError ? theme.colors.error : theme.colors.onSurfaceVariant)
             }
@@ -480,6 +527,7 @@ struct SecretField: View {
     var isError: Bool = false
     var supportingText: String = ""
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
     @State private var revealed = false
 
     var body: some View {
@@ -498,8 +546,12 @@ struct SecretField: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             }
-            .padding(.trailing, 12)
-            .overlay(RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(isError ? theme.colors.error : theme.colors.outline))
+            .padding(.trailing, nativeList ? 0 : 12)
+            .overlay {
+                if !nativeList {
+                    RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(isError ? theme.colors.error : theme.colors.outline)
+                }
+            }
             if !supportingText.isEmpty {
                 Text(supportingText).font(.bodySmall).foregroundStyle(isError ? theme.colors.error : theme.colors.onSurfaceVariant)
             }
@@ -643,8 +695,7 @@ struct DeviceForm: View {
                 .disabled(action.busy)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
         .deviceConfirm(confirm, isPresented: $asking) { send() }
     }
 }
@@ -682,8 +733,7 @@ struct DeviceChart: View {
             .frame(height: 40)
             .accessibilityLabel("\(chart.label) history")
         }
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
     }
 }
 
@@ -717,8 +767,7 @@ struct DeviceDisclosure<Content: View>: View {
                     if let badge { DeviceBadgeText(badge: badge) }
                     Image(open ? .arrowUp : .arrowDropDown).foregroundStyle(theme.colors.onSurfaceVariant)
                 }
-                .padding(.horizontal, DEVICE_LIST_PADDING)
-                .padding(.vertical, 8)
+                .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
                 .frame(maxWidth: .infinity, minHeight: Metrics.row)
                 .contentShape(Rectangle())
                 .macHover()
@@ -745,7 +794,7 @@ struct StepText: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(EdgeInsets(top: 12, leading: DEVICE_LIST_PADDING, bottom: 4, trailing: DEVICE_LIST_PADDING))
+        .rowPadding(EdgeInsets(top: 12, leading: DEVICE_LIST_PADDING, bottom: 4, trailing: DEVICE_LIST_PADDING))
     }
 }
 
@@ -760,8 +809,7 @@ struct DeviceStatusLine: View {
                 .font(.bodyMedium)
                 .foregroundStyle(deviceLevelColor(level, theme))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, DEVICE_LIST_PADDING)
-                .padding(.vertical, 8)
+                .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
         }
     }
 }
@@ -772,8 +820,7 @@ struct DeviceButtonRow<Content: View>: View {
     var body: some View {
         PlanFlowRow(spacing: 8, lineSpacing: 8) { content() }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, DEVICE_LIST_PADDING)
-            .padding(.vertical, 8)
+            .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
     }
 }
 
@@ -812,8 +859,7 @@ struct StackedFact: View {
             Text(value).font(.bodyLarge)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
     }
 }
 
