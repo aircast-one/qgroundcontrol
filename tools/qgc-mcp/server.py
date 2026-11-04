@@ -38,8 +38,8 @@ DEVICE_API_PORT = 8777
 CORE = REPO / "groundstation"
 COREHOST = CORE / "target/debug/corehost"
 ACTUATOR_GUARD = "QGC_DEBUG_API_ALLOW_ACTUATORS"
-MACOS_PROJECT = REPO / "macos"
-MACOS_APP = REPO / "build-macos/dd/Build/Products/Debug/AircastCore.app/Contents/MacOS/AircastCore"
+MACOS_BUILD = REPO / "build-macos/mcp"
+MACOS_APP = MACOS_BUILD / "Build/Products/Debug/Aircast.app/Contents/MacOS/Aircast"
 IOS_PROJECT = REPO / "ios"
 IOS_BUILD = REPO / "build-ios/mcp"
 IOS_SIMULATOR = "Aircast MCP"
@@ -288,37 +288,41 @@ def stop_corehost() -> str:
 
 @mcp.tool()
 def run_app_macos(actuators: bool = False) -> str:
-    """Build and (re)start the Qt-free macOS app (Swift over the Rust core, Xcode target
-    AircastCore) on a free debug port and attach every tool to it. It keeps its own settings
-    ("Aircast QGC MCP"), so the operator's links and preferences are untouched. Needs
-    macos/Local.xcconfig, which one `just xcode` writes.
+    """Build and (re)start the native macOS app (Swift over the Rust core, Xcode target
+    AircastMac in ios/) on a free debug port and attach every tool to it. It keeps its own
+    settings ("Aircast QGC MCP"), so the operator's links and preferences are untouched.
 
     actuators=True lets write/invoke act on a real (non-mock) vehicle: SITL only, props off."""
-    if not (MACOS_PROJECT / "Local.xcconfig").exists():
-        return "macos/Local.xcconfig is missing; run `just xcode` once"
-    generated = subprocess.run(
-        ["xcodegen", "generate", "--quiet"],
-        cwd=MACOS_PROJECT,
-        env=os.environ | {"QGC_ROOT": str(REPO)},
-        capture_output=True,
-        text=True,
+    steps = [
+        ([str(IOS_PROJECT / "fetch-deps-macos.sh")], IOS_PROJECT),
+        (["xcodegen", "generate", "--quiet"], IOS_PROJECT),
+    ]
+    failed = next(
+        (
+            r
+            for r in (subprocess.run(a, cwd=c, capture_output=True, text=True) for a, c in steps)
+            if r.returncode
+        ),
+        None,
     )
-    if generated.returncode != 0:
-        return f"xcodegen failed:\n{_failed(generated)}"
+    if failed is not None:
+        return f"preparing the project failed:\n{_failed(failed)}"
     built = subprocess.run(
         [
             "xcodebuild",
             "-project",
-            "AircastQGC.xcodeproj",
+            "Aircast.xcodeproj",
             "-scheme",
-            "AircastCore",
+            "AircastMac",
             "-configuration",
             "Debug",
+            "-destination",
+            "platform=macOS,arch=arm64",
             "-derivedDataPath",
-            str(REPO / "build-macos/dd"),
+            str(MACOS_BUILD),
             "build",
         ],
-        cwd=MACOS_PROJECT,
+        cwd=IOS_PROJECT,
         capture_output=True,
         text=True,
         timeout=3600,
@@ -1295,21 +1299,16 @@ def bridge_stats() -> dict:
 
 
 @mcp.tool()
-def run_app(native_window: bool = False, actuators: bool = False) -> str:
+def run_app(actuators: bool = False) -> str:
     """(Re)start the desktop Qt app (build-aircast Release, else build-test Debug) with the
     debug API on a free port and attach every tool to it. Only the copy this tool started is
-    restarted; the operator's own app keeps running. native_window=True opens the native
-    macOS windows instead of the Qt ones.
+    restarted; the operator's own app keeps running.
 
     actuators=True lets write/invoke act on a real (non-mock) vehicle: SITL only, props off."""
     if not APP.exists():
         return f"no Qt app at {RELEASE_APP} or {TEST_APP}; build one first (just configure && just build)"
     port = _free_port()
-    argv = [
-        str(APP),
-        "--allow-multiple",
-        *(["--native-window"] if native_window else []),
-    ]
+    argv = [str(APP), "--allow-multiple"]
     env = _env(
         actuators,
         QGC_DEBUG_API_PORT=str(port),

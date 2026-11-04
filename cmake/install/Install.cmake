@@ -251,9 +251,6 @@ elseif(MACOS)
         FILES
             ${CMAKE_SOURCE_DIR}/src/Bridge/QGCEntry.h
             ${CMAKE_SOURCE_DIR}/src/Bridge/QGCBridgeC.h
-            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCLinksC.h
-            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCMapTileC.h
-            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCNativeDebugC.h
             ${CMAKE_SOURCE_DIR}/src/Bridge/QGCSpeechC.h
             ${CMAKE_SOURCE_DIR}/src/Bridge/QGCVideoC.h
             ${CMAKE_SOURCE_DIR}/src/Bridge/module.modulemap
