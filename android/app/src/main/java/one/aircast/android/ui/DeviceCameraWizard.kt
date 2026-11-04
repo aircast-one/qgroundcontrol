@@ -48,6 +48,8 @@ internal data class WizardPort(
 
 internal data class WizardMake(val id: String, val label: String, val sub: String, val action: String)
 
+internal data class WizardCandidate(val id: String, val iface: String, val label: String, val note: String, val action: String)
+
 internal data class WizardFound(val n: Int, val refusal: String, val camera: WizardCamera?, val name: String)
 
 internal data class WizardApply(val n: Int, val state: String, val text: String, val field: String, val url: String, val camera: String)
@@ -62,9 +64,12 @@ internal data class DeviceWizard(
     val adopt: WizardCamera?,
     val note: String,
     val checklist: String,
+    val candidates: List<WizardCandidate>,
     val cams: List<WizardCamera>,
     val camHeading: String,
     val camsHint: String,
+    val strangers: List<WizardCamera>,
+    val strangersHeading: String,
     val details: String,
     val todoHeading: String,
     val todo: List<WizardPort>,
@@ -151,9 +156,12 @@ internal fun parseDeviceWizard(json: JSONObject?): DeviceWizard {
         adopt = parseWizardCamera(json?.optJSONObject("adopt")),
         note = json?.optText("note").orEmpty(),
         checklist = json?.optText("checklist").orEmpty(),
+        candidates = json.deviceObjects("candidates").map { WizardCandidate(it.optText("id"), it.optText("iface"), it.optText("label"), it.optText("note"), it.optText("action")) },
         cams = json.deviceObjects("cams").mapNotNull(::parseWizardCamera),
         camHeading = json?.optText("camHeading").orEmpty(),
         camsHint = json?.optText("camsHint").orEmpty(),
+        strangers = json.deviceObjects("strangers").mapNotNull(::parseWizardCamera),
+        strangersHeading = json?.optText("strangersHeading").orEmpty(),
         details = json?.optText("details").orEmpty(),
         todoHeading = json?.optText("todoHeading").orEmpty(),
         todo = json.deviceObjects("todo").map(::parseWizardPort),
@@ -212,8 +220,8 @@ internal suspend fun fixWizardPort(iface: String, address: String) {
     wizardCall(WIZARD_FIX_PORT, iface, address)
 }
 
-internal suspend fun setUpCameraMake(id: String) {
-    wizardCall(WIZARD_TEMPLATE, id)
+internal suspend fun setUpCameraMake(id: String, iface: String = "") {
+    wizardCall(WIZARD_TEMPLATE, id, iface)
 }
 
 internal suspend fun wizardNext(rtsp: String, name: String, dupAck: String): WizardNext? = parseWizardNext(wizardResult(WIZARD_NEXT, rtsp, name, dupAck))

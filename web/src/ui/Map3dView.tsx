@@ -1,15 +1,16 @@
-import { type CSSProperties, type PointerEvent, type RefObject, useEffect, useRef } from 'react';
+import { type CSSProperties, type PointerEvent, type RefObject, useEffect, useRef, useState } from 'react';
 import { type Json, optBoolean, optDouble } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { coerceAtLeast } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
+import { Map3d } from '@/map/Map3d';
 import { type SavedCamera, readCamera } from '@/map/MapCamera';
 import { FlightMapPosition, type TrackPoint } from '@/map/VehicleMap';
 import { Drawable } from '@/res/Icon';
-import { AircastSpace, Color, aircast, withAlpha } from '@/theme/Colors';
+import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
-import { Offset, minus } from '@/ui/FlyShell';
+import { Offset, PASS_THROUGH, minus } from '@/ui/FlyShell';
 import { osdShadow } from '@/ui/Osd';
 import { SyntheticSurface, nativeDraw } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, syntheticAvailable } from '@/ui/SyntheticView';
@@ -32,6 +33,20 @@ const CONTROL_SIZE = 40;
 const CONTROL_ICON = 20;
 export const BACK_TO_AIRCRAFT = 'Back to aircraft';
 const COMPASS_LABEL = 'Compass. Drag to turn and tilt the view, tap to face north';
+const MAP3D_TOUCH_HINT = 'Drag to move · Two fingers to turn and tilt';
+const MAP3D_MOUSE_HINT = 'Drag to move · Right-drag or Shift-drag to turn and tilt';
+const COARSE_POINTER = '(pointer: coarse)';
+const HINT_SHOWN_MS = 8_000;
+const NEEDLE_HALF_WIDTH = 0.22;
+const NEEDLE_REACH = 0.8;
+const NORTH = -1;
+const SOUTH = 1;
+
+export const map3dToggleText = (shown: boolean): string => (shown ? '2D' : '3D');
+
+export const map3dToggleLabel = (shown: boolean): string => (shown ? 'Show the flat map' : 'Show the 3D map');
+
+export const map3dHint = (coarse: boolean): string => (coarse ? MAP3D_TOUCH_HINT : MAP3D_MOUSE_HINT);
 
 export type Map3dState = { readonly heading: number; readonly following: boolean; readonly aircraft: boolean };
 
@@ -74,6 +89,12 @@ const pairOf = (pointers: ReadonlyMap<number, Offset>): Pair | null => {
 
 const send = (path: string, ...args: number[]) => void Qgc.invoke(path, ...args);
 
+const needle = (direction: number): string => {
+  const centre = CONTROL_ICON / 2;
+  const half = centre * NEEDLE_HALF_WIDTH;
+  return `M ${centre} ${centre + centre * NEEDLE_REACH * direction} L ${centre + half} ${centre} L ${centre - half} ${centre} Z`;
+};
+
 const capture = (element: Element, pointer: number) => {
   try {
     element.setPointerCapture(pointer);
@@ -108,10 +129,24 @@ const Compass = ({ heading, view }: { heading: number; view: RefObject<HTMLDivEl
       className="grid touch-none place-items-center rounded-full"
       style={{ width: CONTROL_SIZE, height: CONTROL_SIZE, background: withAlpha(Color.Black, CONTROL_SCRIM_ALPHA), color: aircast('outdoorForeground') }}
     >
-      <Drawable name="ic_navigation" size={CONTROL_ICON} style={{ transform: `rotate(${-heading}deg)` }} />
+      <svg width={CONTROL_ICON} height={CONTROL_ICON} viewBox={`0 0 ${CONTROL_ICON} ${CONTROL_ICON}`} aria-hidden style={{ transform: `rotate(${-heading}deg)` }}>
+        <path d={needle(NORTH)} style={{ fill: md('error') }} />
+        <path d={needle(SOUTH)} style={{ fill: aircast('outdoorForeground') }} />
+      </svg>
     </button>
   );
 };
+
+const Hint = () => (
+  <Surface
+    shape="full"
+    color={withAlpha(Color.Black, CONTROL_SCRIM_ALPHA)}
+    contentColor={aircast('outdoorForeground')}
+    style={{ paddingInline: AircastSpace.s3, paddingBlock: AircastSpace.s2 }}
+  >
+    <Text typography="labelLarge">{map3dHint(window.matchMedia(COARSE_POINTER).matches)}</Text>
+  </Surface>
+);
 
 const BackToAircraft = () => (
   <Surface
@@ -133,7 +168,14 @@ export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { classN
   const note = map3dNote(synthetic, state);
   const view = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
+  const [hinting, setHinting] = useState(() => !Map3d.hinted());
   useEffect(() => send(MAP3D_OPEN, ...map3dOpenAt(FlightMapPosition.latest, readCamera())), []);
+  useEffect(() => {
+    if (!hinting) return undefined;
+    Map3d.markHinted();
+    const timer = setTimeout(() => setHinting(false), HINT_SHOWN_MS);
+    return () => clearTimeout(timer);
+  }, [hinting]);
   const press = useRef({ pointers: new Map() as ReadonlyMap<number, Offset>, from: Offset(0, 0), moving: false, twist: false, second: false, pinched: false, tapUpAt: -Infinity });
   useEffect(() => {
     const element = host.current;
@@ -146,6 +188,7 @@ export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { classN
     return () => element.removeEventListener('wheel', zoom);
   }, []);
   const down = (event: PointerEvent<HTMLDivElement>) => {
+    setHinting(false);
     const now = press.current;
     const at = Offset(event.clientX, event.clientY);
     capture(event.currentTarget, event.pointerId);
@@ -217,9 +260,12 @@ export const Map3dView = ({ className, bottomInsetPx, logoEndInsetPx }: { classN
           </Text>
         </div>
       )}
-      <div className="absolute right-0 bottom-0 flex items-center" style={{ gap: AircastSpace.s2, ...map3dControlsAt(bottomInsetPx, logoEndInsetPx) }}>
-        {state.aircraft && !state.following ? <BackToAircraft /> : null}
-        <Compass heading={state.heading} view={view} />
+      <div className={`absolute right-0 bottom-0 flex flex-col items-end ${PASS_THROUGH}`} style={{ gap: AircastSpace.s2, ...map3dControlsAt(bottomInsetPx, logoEndInsetPx) }}>
+        {hinting ? <Hint /> : null}
+        <div className="flex items-center" style={{ gap: AircastSpace.s2 }}>
+          {state.aircraft && !state.following ? <BackToAircraft /> : null}
+          <Compass heading={state.heading} view={view} />
+        </div>
       </div>
     </div>
   );

@@ -208,6 +208,7 @@ const device = (named: { origin: string }, secure: boolean) => (request: Incomin
     response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     return void response.write(`data: ${JSON.stringify(VIEWS[view[1] as keyof typeof VIEWS])}\n\n`);
   }
+  if (url.pathname.startsWith('/api/views/')) return json(response, 404, { error: 'no such page' });
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });
   if (url.pathname.startsWith('/fly/files/') || url.pathname === '/fly/files') return void files(request, response, url);
   if (url.pathname === '/fly/proxy') return void proxy(request, response);

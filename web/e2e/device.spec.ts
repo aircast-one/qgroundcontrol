@@ -289,6 +289,11 @@ base('on a desktop the Fly screen says what the device is missing and opens its 
   await expect(page.getByRole('region', { name: 'Status' }).getByRole('note', { name: 'No flight controller found' })).toBeVisible();
 });
 
+base('a device page the device does not have says so instead of waiting forever', async ({ page }) => {
+  await page.goto(`${DEVICE}/#device=/streaming`);
+  await expect(page.getByRole('status').filter({ hasText: 'does not have this page yet. Update its software, then come back.' })).toBeVisible({ timeout: 30_000 });
+});
+
 base('on a phone the device page offers to check the device, not to add a link', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${SILENT}/`);

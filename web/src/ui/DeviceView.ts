@@ -16,13 +16,14 @@ const UPLOAD_STAGE = '/cache/device-upload';
 
 export const deviceViewPath = (page: string): string => `view.device(${page})`;
 
-export type DeviceReading = { readonly origin: string; readonly host: string; readonly answered: boolean; readonly view: Json | null };
+export type DeviceReading = { readonly origin: string; readonly host: string; readonly answered: boolean; readonly view: Json | null; readonly problem: string | null };
 
 export const deviceReading = (json: Json | null): DeviceReading => ({
   origin: optText(json, 'origin'),
   host: optText(json, 'host'),
   answered: optBoolean(json, 'answered'),
   view: optJSONObject(json, 'view'),
+  problem: optText(json, 'problem') === '' ? null : optText(json, 'problem'),
 });
 
 export const useDeviceReading = (page: string = DEVICE_HOME): DeviceReading => {

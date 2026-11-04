@@ -588,8 +588,11 @@ pub fn orbit_eye(
         .focus
         .and_then(|(latitude, longitude)| ground::height_at(ground, latitude, longitude));
     let focus_ground = measured.or(aircraft_ground);
+    let drop_middle = aircraft_ground
+        .filter(|ground| *ground < aircraft.height)
+        .map_or(aircraft.height, |ground| (aircraft.height + ground) / 2.0);
     let focus = orbit.focus.map_or(
-        (aircraft.latitude, aircraft.longitude, aircraft.height),
+        (aircraft.latitude, aircraft.longitude, drop_middle),
         |(latitude, longitude)| (latitude, longitude, focus_ground.unwrap_or(aircraft.height)),
     );
     let (rise, back) = orbit.tilt.to_radians().sin_cos();
@@ -1934,7 +1937,16 @@ impl Session {
         let due = self
             .selected
             .is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
-        let eye = views.orbit.map(|(orbit, _)| {
+        let above_ground = under_ground
+            .map(|ground| pose.height - ground)
+            .filter(|_| target.aircraft);
+        let framed = views
+            .orbit
+            .map(|(orbit, size)| (orbit.around(target.aircraft).at_height(above_ground), size));
+        if let Some((orbit, _)) = framed {
+            crate::map3d::shown(orbit.range);
+        }
+        let eye = framed.map(|(orbit, _)| {
             let hint = match orbit.focus {
                 Some(_) => self.focus_ground.or(under_ground).or(home_ground),
                 None => under_ground.or(home_ground),
@@ -1952,7 +1964,7 @@ impl Session {
             self.probe_eye(eye.pose.latitude, eye.pose.longitude, now);
         }
         let reselect = delivered > 0 || moving || fresh || due;
-        let orbit_changed = match (reselect, eye, views.orbit) {
+        let orbit_changed = match (reselect, eye, framed) {
             (true, Some(eye), Some((orbit, size))) => self.select(
                 Viewpoint::Orbit,
                 &eye.pose,
@@ -2307,6 +2319,8 @@ mod tests {
             tilt: 30.0,
             range: 400.0,
             focus: None,
+            resting: false,
+            framed: false,
         };
         let Eye {
             pose: eye, ground, ..
@@ -2468,6 +2482,8 @@ mod tests {
             tilt: 10.0,
             range: 1000.0,
             focus: None,
+            resting: false,
+            framed: false,
         };
         let Eye {
             pose: eye, ground, ..
@@ -2507,6 +2523,8 @@ mod tests {
             tilt: 10.0,
             range: 1000.0,
             focus: None,
+            resting: false,
+            framed: false,
         };
         let Eye {
             pose: eye, ground, ..

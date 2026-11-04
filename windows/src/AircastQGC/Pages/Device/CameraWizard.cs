@@ -56,6 +56,7 @@ internal sealed class CameraWizardBox : UserControl
     private string _user = "";
     private string _pass = "";
     private bool _addressOpen;
+    private bool _makesOpen;
     private bool _namingOpen;
     private bool _techOpen;
     private bool _portOpen;
@@ -372,7 +373,10 @@ internal sealed class CameraWizardBox : UserControl
         var busy = DJ.Flag(_wizard, "templateBusy");
         var checklist = DJ.Text(_wizard, "checklist");
         var scanning = DJ.Flag(_wizard, "scanning");
+        var candidates = DJ.Objs(_wizard, "candidates");
         var cams = DJ.Objs(_wizard, "cams");
+        var strangers = DJ.Objs(_wizard, "strangers");
+        var templateNote = DJ.Text(_wizard, "templateNote");
         var details = DJ.Text(_wizard, "details");
         var lookingFor = DJ.Text(_view, "lookingFor");
         return new Node?[]
@@ -385,13 +389,11 @@ internal sealed class CameraWizardBox : UserControl
                 Child = FormLook.Row(FormLook.Text(DJ.Text(pi, "note")), FormLook.Button(DJ.Text(pi, "action"), async () => await Advance(PiCamera, _name), ButtonLook.Accent)),
             }),
         }
-        .Concat(templates.Select(template => (Node?)Make(template, busy)))
         .Concat(new Node?[]
         {
-            DJ.Text(_wizard, "templateNote") is { Length: > 0 } templateNote ? Kit.Hint(templateNote) : null,
             lookingFor.Length > 0 ? Kit.StatusLine(lookingFor, DeviceLevel.Warn) : null,
             checklist.Length == 0 ? Kit.Hint("Plug the camera in and look for it.") : null,
-            checklist.Length == 0 ? Kit.Buttons("scan", [Lead("scan", _rtsp.Trim().Length == 0 && _picked is null, scanning ? "Looking…" : "Scan for cameras",
+            checklist.Length == 0 ? Kit.Buttons("scan", [Lead("scan", _rtsp.Trim().Length == 0 && _picked is null && candidates.Count == 0, scanning ? "Looking…" : "Scan for cameras",
                 () => _ = DeviceLink.Invoke("deviceWizard.scan"), !scanning)]) : null,
             Kit.Hint(DJ.Text(_wizard, "note")),
             checklist.Length == 0 ? null : Kit.Group("checklist", [
@@ -399,34 +401,26 @@ internal sealed class CameraWizardBox : UserControl
                 .. CableChecks.Select(check => Kit.Text($"☐ {check}")),
                 Kit.Buttons("again", [Kit.Button("again", scanning ? "Looking…" : "Scan again", () => _ = DeviceLink.Invoke("deviceWizard.scan"), ButtonLook.Accent, !scanning)]),
             ]),
-            cams.Count == 0 ? null : Kit.Sub(DJ.Text(_wizard, "camHeading")),
         })
-        .Concat(cams.Select(cam =>
-        {
-            var selected = _picked is not null && DJ.Sig(_picked) == DJ.Sig(cam);
-            return (Node?)DeviceTree.Leaf($"cam:{DJ.Text(cam, "host")} {DJ.Text(cam, "url")}", DJ.Sig(cam, selected), () =>
-            {
-                var words = FormLook.Stack(2, Kit.MonoText(DJ.Text(cam, "host")), FormLook.Caption(DJ.Text(cam, "note")));
-                var button = FormLook.Stretched(new Grid
-                {
-                    Padding = new Thickness(16, 12, 16, 12),
-                    ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } },
-                    Children = { words, Right(FormLook.Text(selected ? "Selected" : DJ.Text(cam, "action"), "FontSizeBody", "AccentTextBrush", true)) },
-                }, DJ.Text(cam, "host"), async () => await Pick(cam));
-                button.BorderBrush = FormLook.Brush(selected ? "AccentBrush" : "ControlStrokeBrush");
-                button.BorderThickness = new Thickness(1);
-                button.CornerRadius = FormLook.Radius("RadiusOverlay");
-                return button;
-            });
-        }))
+        .Concat(candidates.Select(found => (Node?)Found(found, busy)))
+        .Append(candidates.Count == 0 ? null : Kit.Hint(templateNote))
+        .Append(cams.Count == 0 ? null : Kit.Sub(DJ.Text(_wizard, "camHeading")))
+        .Concat(cams.Select(CameraRow))
+        .Append(Kit.Hint(DJ.Text(_wizard, "camsHint")))
+        .Append(strangers.Count == 0 ? null : Kit.Sub(DJ.Text(_wizard, "strangersHeading")))
+        .Concat(strangers.Select(CameraRow))
         .Concat(new Node?[]
         {
-            Kit.Hint(DJ.Text(_wizard, "camsHint")),
             details.Length == 0 ? null : Fold("tech", details, _techOpen, open => { _techOpen = open; Paint(); }, ScanDetails),
             !_signInShown ? null : Kit.Group("sign-in", [
                 Kit.Hint("This camera asked for a sign-in. Enter the username and password set in the camera's own app."),
                 Field("user", "Camera username", _user, user => Credentials(user, _pass)),
                 Secret("pass", "Camera password", _pass, pass => Credentials(_user, pass)),
+            ]),
+            templates.Count == 0 ? null : Fold("makes", "I know my camera", _makesOpen, open => { _makesOpen = open; Paint(); }, () => [
+                Kit.Sub("Pick its make"),
+                .. templates.Select(template => (Node?)Make(template, busy)),
+                candidates.Count == 0 ? Kit.Hint(templateNote) : null,
             ]),
             Locked
                 ? DeviceTree.Leaf("locked", _base, () => FormLook.Row(
@@ -472,11 +466,7 @@ internal sealed class CameraWizardBox : UserControl
                     FormLook.Stack(2, FormLook.Text(DJ.Text(template, "label")), FormLook.Caption(DJ.Text(template, "sub"))),
                     Right(FormLook.Text(DJ.Text(template, "action"), "FontSizeBody", "AccentTextBrush", true)),
                 },
-            }, DJ.Text(template, "label"), () =>
-            {
-                _refusal = null;
-                _ = DeviceLink.Invoke("deviceWizard.template", DJ.Text(template, "id"));
-            });
+            }, DJ.Text(template, "label"), () => SetUp(DJ.Text(template, "id"), ""));
             button.IsEnabled = !busy;
             button.Opacity = busy ? 0.6 : 1;
             button.BorderBrush = FormLook.Brush("ControlStrokeBrush");
@@ -484,6 +474,46 @@ internal sealed class CameraWizardBox : UserControl
             button.CornerRadius = FormLook.Radius("RadiusOverlay");
             return button;
         });
+
+    private Node? CameraRow(JsonObject cam)
+    {
+        var selected = _picked is not null && DJ.Sig(_picked) == DJ.Sig(cam);
+        return DeviceTree.Leaf($"cam:{DJ.Text(cam, "host")} {DJ.Text(cam, "url")}", DJ.Sig(cam, selected), () =>
+        {
+            var words = FormLook.Stack(2, Kit.MonoText(DJ.Text(cam, "host")), FormLook.Caption(DJ.Text(cam, "note")));
+            var button = FormLook.Stretched(new Grid
+            {
+                Padding = new Thickness(16, 12, 16, 12),
+                ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } },
+                Children = { words, Right(FormLook.Text(selected ? "Selected" : DJ.Text(cam, "action"), "FontSizeBody", "AccentTextBrush", true)) },
+            }, DJ.Text(cam, "host"), async () => await Pick(cam));
+            button.BorderBrush = FormLook.Brush(selected ? "AccentBrush" : "ControlStrokeBrush");
+            button.BorderThickness = new Thickness(1);
+            button.CornerRadius = FormLook.Radius("RadiusOverlay");
+            return button;
+        });
+    }
+
+    private Node Found(JsonObject found, bool busy) =>
+        DeviceTree.Leaf($"found:{DJ.Text(found, "id")} {DJ.Text(found, "iface")}", DJ.Sig(found, busy), () =>
+        {
+            var use = FormLook.Button(DJ.Text(found, "action"), () => SetUp(DJ.Text(found, "id"), DJ.Text(found, "iface")), ButtonLook.Accent);
+            use.IsEnabled = !busy;
+            return new Border
+            {
+                BorderBrush = FormLook.Brush("AccentBrush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = FormLook.Radius("RadiusOverlay"),
+                Padding = new Thickness(16, 12, 16, 12),
+                Child = FormLook.Row(FormLook.Stack(2, FormLook.Text(DJ.Text(found, "label")), FormLook.Caption(DJ.Text(found, "note"))), use),
+            };
+        });
+
+    private void SetUp(string id, string iface)
+    {
+        _refusal = null;
+        _ = DeviceLink.Invoke("deviceWizard.template", id, iface);
+    }
 
     private static FrameworkElement Right(FrameworkElement element)
     {

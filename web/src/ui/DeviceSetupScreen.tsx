@@ -4,7 +4,7 @@ import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { CameraWizard } from '@/ui/CameraWizard';
-import { ActionButton, DeviceBadgeText, DeviceNotice, DeviceText, LinkButton } from '@/ui/DeviceKit';
+import { ActionButton, DeviceBadgeText, DeviceNotice, DeviceText, DeviceWaiting, LinkButton } from '@/ui/DeviceKit';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { TailscaleSection } from '@/ui/DeviceNetworkScreen';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
@@ -13,11 +13,11 @@ import { type DevicePage, devicePageIcon } from '@/ui/DeviceStatus';
 import { EndpointRows } from '@/ui/DeviceTelemetryScreen';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { WifiJoin } from '@/ui/DeviceWifiWizard';
-import { FootNote, SetupRow, SetupState } from '@/ui/SetupRow';
+import { SetupRow, SetupState } from '@/ui/SetupRow';
 
 export const SetupScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('setup', parseSetup);
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="setup" />;
   return <SetupWizard view={view} onOpen={onOpen} />;
 };
 

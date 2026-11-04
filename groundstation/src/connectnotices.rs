@@ -65,7 +65,7 @@ pub fn announce(backend: &dyn Backend) {
     if crate::qthost::present() {
         return;
     }
-    post_missing_parameters(&crate::vehiclefacade::setup_recheck_missing_parameters());
+    report_missing_names(&crate::vehiclefacade::setup_recheck_missing_parameters());
     let Some(announce) = crate::hub::lock().take_parameters_announce() else {
         return;
     };
@@ -83,16 +83,19 @@ pub fn announce(backend: &dyn Backend) {
         .for_each(|text| {
             crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, text);
         });
-    post_missing_parameters(&crate::vehiclefacade::setup_complete_missing_parameters());
+    report_missing_names(&crate::vehiclefacade::setup_complete_missing_parameters());
 }
 
-fn post_missing_parameters(names: &[String]) {
+fn report_missing_names(names: &[String]) {
     let missing: Vec<(i64, String)> = names.iter().map(|name| (-1, name.clone())).collect();
+    report_missing_parameters(&missing);
+}
+
+pub fn report_missing_parameters(missing: &[(i64, String)]) {
     if !missing.is_empty() {
-        crate::noticeboard::post(
-            crate::noticeboard::MESSAGE,
-            "",
-            &crate::vehicleconfig::missing_parameters_text(&missing),
+        crate::hub::lock().note_on_active(
+            crate::messagelog::SEVERITY_WARNING,
+            &crate::vehicleconfig::missing_parameters_text(missing),
         );
     }
 }

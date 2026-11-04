@@ -3,17 +3,16 @@ import { FilledTonalButton, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { useDeviceDraft } from '@/ui/DeviceDraft';
-import { ActionButton, CopyRow, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, LinkButton, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
+import { ActionButton, CopyRow, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, DeviceWaiting, LinkButton, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
 import { ButtonRow, StackedFact, StatusLine, TypedConfirmDialog } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { CloudStage, type CloudAccount, type DeviceSettingsView, type DeviceStat, SERVICES, type ServiceRow, type SoftwareNotice, type SoftwareStatus, parseDeviceSettings } from '@/ui/DeviceSettings';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
-import { FootNote } from '@/ui/SetupRow';
 
 export const DeviceSettingsScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('device', parseDeviceSettings);
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="device" />;
   return (
     <>
       <HealthLine view={view} onOpen={onOpen} />

@@ -42,7 +42,10 @@ class DeviceCameraWizardTest {
             JSONObject(
                 """{"session":3,"scanning":false,"scans":2,"again":7,"note":"","checklist":"No camera answered — check it, then scan again",
                 "adopt":{"host":"192.168.8.10","url":"rtsp://192.168.8.10:554/stream1","needsAuth":false,"pathFound":true,"used":"","note":"ready to use","action":"Use"},
+                "candidates":[{"id":"siyi","iface":"eth0","label":"SIYI camera on Ethernet port (eth0)","note":"Answered at 192.168.144.25","action":"Use"}],
                 "cams":[],"camHeading":"0 cameras","camsHint":"","details":"Details for a technician","todoHeading":"Try this",
+                "strangers":[{"host":"192.168.1.101","url":"rtsp://192.168.1.101:8554","needsAuth":false,"pathFound":false,"used":"","note":"answers on RTSP — add the stream path","action":"Use"}],
+                "strangersHeading":"Other devices answering RTSP on your Wi-Fi",
                 "todo":[{"iface":"eth0","label":"Ethernet port (eth0)","detail":"no address on this port","open":true,"suggest":"192.168.144.2/24","hint":"Prefilled.","go":"Set up eth0 and find the camera",
                   "options":[{"cidr":"192.168.144.2/24","text":"192.168.144.2/24 · found 192.168.144.25"}],"busy":true,"status":"Setting up eth0…"}],
                 "rest":[{"iface":"wlan0","label":"Wi-Fi (wlan0)","detail":"this is the device's own uplink"}],"restTitle":"Wi-Fi (wlan0) — nothing answered",
@@ -56,6 +59,9 @@ class DeviceCameraWizardTest {
         assertEquals(2, wizard.scans)
         assertEquals(7, wizard.again)
         assertEquals("rtsp://192.168.8.10:554/stream1", wizard.adopt?.url)
+        assertEquals(listOf(WizardCandidate("siyi", "eth0", "SIYI camera on Ethernet port (eth0)", "Answered at 192.168.144.25", "Use")), wizard.candidates)
+        assertEquals("192.168.1.101", wizard.strangers.first().host)
+        assertEquals("Other devices answering RTSP on your Wi-Fi", wizard.strangersHeading)
         assertEquals(WizardChip("192.168.144.2/24", "192.168.144.2/24 · found 192.168.144.25"), wizard.todo.first().options.first())
         assertTrue(wizard.todo.first().busy)
         assertEquals("this is the device's own uplink", wizard.rest.first().detail)

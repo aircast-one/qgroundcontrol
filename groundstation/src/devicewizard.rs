@@ -133,9 +133,19 @@ struct Scanned {
     found: bool,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct Candidate {
+    template: Template,
+    port: Port,
+    addr: String,
+    address: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Outcome {
     cams: Vec<Camera>,
+    strangers: Vec<Camera>,
+    candidates: Vec<Candidate>,
     ports: Vec<Port>,
     todo: Vec<Scanned>,
     rest: Vec<Scanned>,
@@ -215,8 +225,8 @@ fn ports_of(json: &Value) -> Vec<Port> {
         .collect()
 }
 
-fn cameras_of(json: &Value, wizard_name: &str) -> Vec<Camera> {
-    objects(json, "cameras")
+fn cameras_of(json: &Value, key: &'static str, wizard_name: &str) -> Vec<Camera> {
+    objects(json, key)
         .map(|it| Camera {
             host: text(it, "host"),
             url: text(it, "url"),
@@ -308,6 +318,10 @@ fn port_subnets(port: &Port) -> Vec<&str> {
     }
 }
 
+fn wired(port: &Port) -> bool {
+    !port.uplink && port.kind != "wi-fi"
+}
+
 fn port_reaches(port: &Port, host: &str) -> bool {
     !host.is_empty()
         && port_subnets(port)
@@ -343,7 +357,8 @@ fn subnet_name(subnets: &[Subnet], subnet: &str) -> String {
 }
 
 fn idle_on_camera_subnet(subnets: &[Subnet], port: &Port) -> bool {
-    !subnet_name(subnets, &port.subnet).is_empty()
+    wired(port)
+        && !subnet_name(subnets, &port.subnet).is_empty()
         && !port.neighbors.is_empty()
         && first_suggest(port).is_empty()
 }
@@ -429,7 +444,7 @@ fn port_label(port: &Port) -> String {
 }
 
 fn cable_label(port: &Port, host: &str) -> String {
-    match port_reaches(port, host) {
+    match wired(port) && port_reaches(port, host) {
         true => format!(
             "nothing answered at {host} on {} — the port is set right; check the cable goes to the camera, not a router or switch.",
             port.iface
@@ -465,7 +480,46 @@ fn port_detail(scanned: &Scanned, subnets: &[Subnet], source_host: &str) -> Stri
     }
 }
 
-fn scan_outcome(cams: Vec<Camera>, ports: Vec<Port>, source_host: &str) -> Outcome {
+fn stranger(cam: &Camera, ports: &[Port], templates: &[Template]) -> bool {
+    !cam.path_found
+        && cam.used.is_empty()
+        && !templates.iter().any(|template| template.host == cam.host)
+        && ports
+            .iter()
+            .any(|port| !wired(port) && port_reaches(port, &cam.host))
+}
+
+fn candidates_of(ports: &[Port], cams: &[Camera], templates: &[Template]) -> Vec<Candidate> {
+    ports
+        .iter()
+        .filter(|port| wired(port))
+        .flat_map(|port| {
+            port.neighbors.iter().filter_map(move |neighbor| {
+                templates
+                    .iter()
+                    .find(|template| template.host == neighbor.addr)
+                    .map(|template| Candidate {
+                        template: template.clone(),
+                        port: port.clone(),
+                        addr: neighbor.addr.clone(),
+                        address: neighbor.suggest.clone(),
+                    })
+            })
+        })
+        .filter(|candidate| !cams.iter().any(|cam| cam.host == candidate.addr))
+        .collect()
+}
+
+fn scan_outcome(
+    found: Vec<Camera>,
+    ports: Vec<Port>,
+    templates: &[Template],
+    source_host: &str,
+) -> Outcome {
+    let (strangers, cams): (Vec<Camera>, Vec<Camera>) = found
+        .into_iter()
+        .partition(|cam| stranger(cam, &ports, templates));
+    let candidates = candidates_of(&ports, &cams, templates);
     let fresh = cams.iter().any(|cam| cam.used.is_empty());
     let (todo, rest): (Vec<(Scanned, bool)>, Vec<(Scanned, bool)>) = ports
         .iter()
@@ -481,19 +535,85 @@ fn scan_outcome(cams: Vec<Camera>, ports: Vec<Port>, source_host: &str) -> Outco
             )
         })
         .partition(|(_, actionable)| *actionable);
-    let note = if !cams.is_empty() {
+    Outcome {
+        note: scan_note(&cams, &candidates, &ports).into(),
+        cams,
+        strangers,
+        candidates,
+        ports,
+        todo: todo.into_iter().map(|(scanned, _)| scanned).collect(),
+        rest: rest.into_iter().map(|(scanned, _)| scanned).collect(),
+    }
+}
+
+fn scan_note(cams: &[Camera], candidates: &[Candidate], ports: &[Port]) -> &'static str {
+    if !cams.is_empty() || !candidates.is_empty() {
         ""
     } else if !ports.is_empty() {
         "No camera answered."
     } else {
         "No camera port on this device — type the camera's address below."
-    };
+    }
+}
+
+fn listed_candidates(
+    json: &Value,
+    ports: &[Port],
+    templates: &[Template],
+) -> Option<Vec<Candidate>> {
+    json.get("candidates")
+        .and_then(Value::as_array)
+        .map(|listed| {
+            listed
+                .iter()
+                .filter_map(|it| {
+                    let template = templates
+                        .iter()
+                        .find(|template| template.id == text(it, "template"))?;
+                    let iface = text(it, "interface");
+                    Some(Candidate {
+                        template: template.clone(),
+                        port: ports
+                            .iter()
+                            .find(|port| port.iface == iface)
+                            .cloned()
+                            .unwrap_or_else(|| Port {
+                                label: text(it, "port"),
+                                iface,
+                                ..Port::default()
+                            }),
+                        addr: text(it, "host"),
+                        address: text(it, "address"),
+                    })
+                })
+                .collect()
+        })
+}
+
+fn outcome_of(result: &Value, wizard: &Wizard) -> Outcome {
+    let ports = ports_of(result);
+    let derived = scan_outcome(
+        cameras_of(result, "cameras", &wizard.name),
+        ports.clone(),
+        &wizard.templates,
+        &rtsp_host(&wizard.source),
+    );
+    let candidates = listed_candidates(result, &ports, &wizard.templates)
+        .unwrap_or_else(|| derived.candidates.clone());
     Outcome {
-        cams,
-        ports,
-        todo: todo.into_iter().map(|(scanned, _)| scanned).collect(),
-        rest: rest.into_iter().map(|(scanned, _)| scanned).collect(),
-        note: note.into(),
+        note: scan_note(&derived.cams, &candidates, &ports).into(),
+        strangers: cameras_of(result, "others", &wizard.name)
+            .into_iter()
+            .chain(derived.strangers.clone())
+            .collect(),
+        candidates,
+        ..derived
+    }
+}
+
+impl Outcome {
+    fn answered(&self) -> bool {
+        !self.cams.is_empty() || !self.candidates.is_empty()
     }
 }
 
@@ -621,7 +741,7 @@ fn template_ready_port<'a>(
         true => None,
         false => ports
             .iter()
-            .find(|port| port_has_subnet(port, &template.cidr)),
+            .find(|port| wired(port) && port_has_subnet(port, &template.cidr)),
     }
 }
 
@@ -642,6 +762,45 @@ fn template_action(busy: bool, ready: Option<&Port>) -> &'static str {
         (true, _) => "Setting up…",
         (false, Some(_)) => "Scan again",
         (false, None) => "Set up",
+    }
+}
+
+fn candidate_label(candidate: &Candidate) -> String {
+    format!(
+        "{} on {}",
+        candidate.template.label,
+        Some(&candidate.port.label)
+            .filter(|label| !label.is_empty())
+            .unwrap_or(&candidate.port.iface)
+    )
+}
+
+fn candidate_note(candidate: &Candidate) -> String {
+    match (
+        port_has_subnet(&candidate.port, &candidate.template.cidr),
+        candidate.address.is_empty(),
+    ) {
+        (true, _) => format!("Answered at {} — Use adds its video", candidate.addr),
+        (false, true) => format!(
+            "Answered at {} — another port already uses its subnet",
+            candidate.addr
+        ),
+        (false, false) => format!(
+            "Answered at {} — Use sets {} to {} and adds its video",
+            candidate.addr, candidate.port.iface, candidate.address
+        ),
+    }
+}
+
+fn strangers_heading(strangers: &[Camera], ports: &[Port]) -> &'static str {
+    let on_wifi = strangers.iter().any(|cam| {
+        ports
+            .iter()
+            .any(|port| port.kind == "wi-fi" && port_reaches(port, &cam.host))
+    });
+    match on_wifi {
+        true => "Other devices answering RTSP on your Wi-Fi",
+        false => "Other devices answering RTSP on your network",
     }
 }
 
@@ -1019,13 +1178,7 @@ async fn scan(device: &impl Device, id: u64, auto: bool) -> Option<Outcome> {
         held.fixing.clear();
     });
     let answer = device.ask("POST", SCAN_PATH, None).await;
-    let outcome = flag(&answer, "ok").then(|| {
-        scan_outcome(
-            cameras_of(&answer["result"], &wizard.name),
-            ports_of(&answer["result"]),
-            &rtsp_host(&wizard.source),
-        )
-    });
+    let outcome = flag(&answer, "ok").then(|| outcome_of(&answer["result"], &wizard));
     change(id, |held| {
         held.scanning = false;
         match &outcome {
@@ -1092,10 +1245,15 @@ fn template_note(id: u64, note: String) {
     change(id, |held| held.template_note = note);
 }
 
-async fn set_up_template(device: &impl Device, id: u64, template: Template) {
+async fn set_up_template(device: &impl Device, id: u64, template: Template, iface: String) {
     let fail = |refusal: String| template_done(id, refusal, None, String::new());
     let known = ports_now(device).await;
-    let Some(port) = template_port(&known, &template) else {
+    let Some(port) = known
+        .iter()
+        .find(|port| !iface.is_empty() && port.iface == iface)
+        .cloned()
+        .or_else(|| template_port(&known, &template))
+    else {
         return fail(format!(
             "This device has no Ethernet port to plug the {} into.",
             template.label
@@ -1292,15 +1450,11 @@ async fn apply(device: &impl Device, id: u64, job: u64, setup: Setup) {
 
 fn still_dark(held: &Session) -> bool {
     held.applying.state.is_empty()
-        && (held.scanning
-            || held
-                .outcome
-                .as_ref()
-                .is_some_and(|found| found.cams.is_empty()))
+        && (held.scanning || held.outcome.as_ref().is_some_and(|found| !found.answered()))
 }
 
 async fn rescan(device: &impl Device, id: u64) {
-    let found_one = |outcome: Option<Outcome>| outcome.is_none_or(|found| !found.cams.is_empty());
+    let found_one = |outcome: Option<Outcome>| outcome.is_none_or(|found| found.answered());
     if found_one(scan(device, id, false).await) {
         return;
     }
@@ -1364,15 +1518,15 @@ async fn fix_port_job(id: u64, iface: String, want: String) {
     fix_port(&Connected, id, iface, want).await;
 }
 
-async fn template_job(id: u64, template: Template) {
-    set_up_template(&Connected, id, template).await;
+async fn template_job(id: u64, template: Template, iface: String) {
+    set_up_template(&Connected, id, template, iface).await;
 }
 
 async fn apply_job(id: u64, job: u64, setup: Setup) {
     apply(&Connected, id, job, setup).await;
 }
 
-fn start_template(chosen: &str) -> Value {
+fn start_template(chosen: &str, iface: String) -> Value {
     let started = {
         let mut held = session();
         let template = held
@@ -1396,7 +1550,7 @@ fn start_template(chosen: &str) -> Value {
     match started {
         Err(reason) => json!({ "ok": false, "reason": reason }),
         Ok((id, template)) => {
-            launch(move || template_job(id, template));
+            launch(move || template_job(id, template, iface));
             json!({ "ok": true })
         }
     }
@@ -1502,7 +1656,7 @@ fn view_of(held: &Session) -> Value {
     let none = Outcome::default();
     let outcome = held.outcome.as_ref().unwrap_or(&none);
     let (cams, ports) = (&outcome.cams, &outcome.ports);
-    let quiet = cams.is_empty() && !ports.is_empty();
+    let quiet = !outcome.answered() && !ports.is_empty();
     let todo: Vec<Value> = outcome
         .todo
         .iter()
@@ -1559,9 +1713,18 @@ fn view_of(held: &Session) -> Value {
             true => Some(checklist_hint(ports, &wizard.subnets)).filter(|hint| !hint.is_empty()).unwrap_or_else(|| NO_ANSWER_CHECKLIST.into()),
             false => String::new(),
         },
+        "candidates": outcome.candidates.iter().map(|candidate| json!({
+            "id": candidate.template.id,
+            "iface": candidate.port.iface,
+            "label": candidate_label(candidate),
+            "note": candidate_note(candidate),
+            "action": if held.template_busy == candidate.template.id { "Setting up…" } else { "Use" },
+        })).collect::<Vec<_>>(),
         "cams": cams.iter().map(camera_json).collect::<Vec<_>>(),
         "camHeading": cam_heading(cams),
         "camsHint": if !cams.is_empty() && cams.iter().all(|cam| !cam.used.is_empty()) { ALL_ADDED } else { "" },
+        "strangers": outcome.strangers.iter().map(camera_json).collect::<Vec<_>>(),
+        "strangersHeading": strangers_heading(&outcome.strangers, ports),
         "details": if ports.is_empty() { "" } else if cams.is_empty() { "Details for a technician" } else { "Scan details" },
         "todoHeading": todo_heading(&outcome.todo, &wizard.subnets),
         "todo": todo,
@@ -1625,7 +1788,7 @@ pub fn run(path: &str, args: &str) -> Value {
             launch(move || fix_port_job(id, iface, want));
             json!({ "ok": true })
         }
-        WIZARD_TEMPLATE => start_template(&arg(0)),
+        WIZARD_TEMPLATE => start_template(&arg(0), arg(1)),
         WIZARD_NEXT => next(&arg(0), &arg(1), &arg(2)),
         WIZARD_FORM => form(&arg(0), &arg(1), &arg(2), &arg(3)),
         WIZARD_SIGN_IN => json!({ "ok": true, "result": cam_url(&arg(0), &arg(1), &arg(2)) }),
@@ -1720,6 +1883,29 @@ mod tests {
         }
     }
 
+    fn hikvision() -> Template {
+        Template {
+            id: "hikvision".into(),
+            label: "Hikvision camera".into(),
+            hint: "DS-2CD bullets and turrets — plugged into this device's Ethernet port".into(),
+            cidr: "192.168.1.2/24".into(),
+            host: "192.168.1.64".into(),
+            name: "hikvision".into(),
+            ..Template::default()
+        }
+    }
+
+    fn pi4_scan() -> Value {
+        json!({
+            "cameras": [{ "host": "192.168.1.101", "port": 8554, "pathFound": false }],
+            "ports": [
+                { "interface": "eth0", "label": "Ethernet port (eth0)", "type": "ethernet", "state": "searched", "subnet": "10.42.255.0/24", "checked": 253,
+                  "neighbors": [{ "addr": "192.168.144.25", "mac": "x", "suggest": "192.168.144.2/24" }] },
+                { "interface": "wlan0", "label": "Wi-Fi (wlan0)", "type": "wi-fi", "state": "searched", "subnet": "192.168.1.0/24", "checked": 253, "isUplink": true },
+            ],
+        })
+    }
+
     fn scanned(port: Port, found: bool) -> Scanned {
         Scanned { port, found }
     }
@@ -1763,7 +1949,12 @@ mod tests {
             state_label(port),
             "checked 506 addresses on 192.168.144.0/24, 192.168.2.0/24 — nothing answered"
         );
-        let outcome = scan_outcome(cameras_of(&found, "viewpro"), ports_of(&found), "");
+        let outcome = scan_outcome(
+            cameras_of(&found, "cameras", "viewpro"),
+            ports_of(&found),
+            &[],
+            "",
+        );
         assert!(
             outcome.todo.is_empty(),
             "the port that found the camera is not something to fix"
@@ -1786,7 +1977,7 @@ mod tests {
             "ports": [{ "interface": "eth1", "label": "Ethernet port (eth1)", "type": "ethernet", "state": "searched", "neighbors": [{ "addr": "192.168.144.25", "mac": "x", "suggest": "192.168.144.2/24" }] }],
         });
         assert_eq!(
-            cameras_of(&found, "cam2")
+            cameras_of(&found, "cameras", "cam2")
                 .iter()
                 .map(|it| it.used.as_str())
                 .collect::<Vec<_>>(),
@@ -1930,7 +2121,7 @@ mod tests {
             neighbors: vec![neighbor("192.168.1.3", "")],
             ..port()
         };
-        let outcome = scan_outcome(vec![], vec![idle.clone(), uplink()], "");
+        let outcome = scan_outcome(vec![], vec![idle.clone(), uplink()], &[], "");
         assert_eq!(todo_heading(&outcome.todo, &subnets()), "Check the cable");
         assert!(port_detail(&outcome.todo[0], &subnets(), "").contains("Plug the camera in here"));
         assert!(!fixer_open(&outcome, &subnets(), &idle));
@@ -1948,12 +2139,240 @@ mod tests {
     }
 
     #[test]
+    fn a_make_at_its_factory_address_on_a_wired_port_leads_and_a_wifi_rtsp_answer_steps_aside() {
+        let found = pi4_scan();
+        let outcome = scan_outcome(
+            cameras_of(&found, "cameras", ""),
+            ports_of(&found),
+            &[siyi(), hikvision()],
+            "",
+        );
+        assert!(
+            outcome.cams.is_empty(),
+            "an RTSP answer on the Wi-Fi with no stream path and no known make is not the camera"
+        );
+        assert_eq!(
+            outcome
+                .strangers
+                .iter()
+                .map(|cam| cam.host.as_str())
+                .collect::<Vec<_>>(),
+            vec!["192.168.1.101"]
+        );
+        let lead = &outcome.candidates[0];
+        assert_eq!(
+            (
+                outcome.candidates.len(),
+                lead.template.id.as_str(),
+                lead.port.iface.as_str()
+            ),
+            (1, "siyi", "eth0")
+        );
+        assert_eq!(candidate_label(lead), "SIYI camera on Ethernet port (eth0)");
+        assert_eq!(
+            candidate_note(lead),
+            "Answered at 192.168.144.25 — Use sets eth0 to 192.168.144.2/24 and adds its video"
+        );
+        assert_eq!(
+            strangers_heading(&outcome.strangers, &outcome.ports),
+            "Other devices answering RTSP on your Wi-Fi"
+        );
+        assert!(outcome.answered() && outcome.note.is_empty());
+        assert_eq!(adopted_camera(&outcome, true, ""), None);
+        assert_eq!(
+            ifaces(&outcome.todo),
+            vec!["eth0"],
+            "the wired port stays fixable by hand once nothing on the Wi-Fi poses as the camera"
+        );
+    }
+
+    #[test]
+    fn the_candidates_and_others_a_device_names_are_taken_as_it_names_them() {
+        let wizard = Wizard {
+            templates: vec![siyi(), hikvision()],
+            ..Wizard::default()
+        };
+        let named = json!({
+            "cameras": [],
+            "others": [{ "host": "192.168.1.101", "port": 8554, "pathFound": false }],
+            "candidates": [
+                { "interface": "eth0", "port": "Ethernet port (eth0)", "host": "192.168.144.25", "mac": "x", "template": "siyi", "label": "SIYI camera", "address": "192.168.144.2/24" },
+                { "interface": "eth1", "port": "Ethernet port (eth1)", "host": "192.168.1.64", "mac": "y", "template": "hikvision", "label": "Hikvision camera" },
+                { "interface": "eth0", "port": "Ethernet port (eth0)", "host": "192.168.2.119", "template": "viewpro", "label": "Viewpro camera", "address": "192.168.2.2/24" },
+            ],
+            "ports": pi4_scan()["ports"],
+        });
+        let outcome = outcome_of(&named, &wizard);
+        assert_eq!(
+            outcome
+                .candidates
+                .iter()
+                .map(|it| (it.template.id.as_str(), it.port.iface.as_str(), candidate_note(it)))
+                .collect::<Vec<_>>(),
+            vec![
+                ("siyi", "eth0", "Answered at 192.168.144.25 — Use sets eth0 to 192.168.144.2/24 and adds its video".to_string()),
+                ("hikvision", "eth1", "Answered at 192.168.1.64 — another port already uses its subnet".to_string()),
+            ],
+            "a make this wizard cannot set up is not offered"
+        );
+        assert_eq!(
+            candidate_label(&outcome.candidates[1]),
+            "Hikvision camera on Ethernet port (eth1)"
+        );
+        assert_eq!(
+            (
+                outcome.cams.len(),
+                outcome.strangers[0].host.as_str(),
+                outcome.note.as_str()
+            ),
+            (0, "192.168.1.101", "")
+        );
+        let none_named = json!({ "cameras": [], "candidates": [], "ports": pi4_scan()["ports"] });
+        assert!(
+            outcome_of(&none_named, &wizard).candidates.is_empty(),
+            "an empty list from the device is believed over the neighbours"
+        );
+        assert_eq!(
+            outcome_of(&pi4_scan(), &wizard).candidates[0].address,
+            "192.168.144.2/24",
+            "an older device's neighbours still name the camera"
+        );
+    }
+
+    #[test]
+    fn only_a_pathless_unknown_answer_on_the_uplink_network_is_set_aside() {
+        let every_camera_subnet = Port {
+            subnets: vec!["192.168.8.0/24".into(), "192.168.1.0/24".into()],
+            ..swept()
+        };
+        let ports = [every_camera_subnet, uplink()];
+        let sorted = |cam: Camera| {
+            let outcome = scan_outcome(vec![cam], ports.to_vec(), &[hikvision()], "");
+            (outcome.cams.len(), outcome.strangers.len())
+        };
+        let on_wifi = Camera {
+            host: "192.168.1.101".into(),
+            path_found: false,
+            ..cam()
+        };
+        assert_eq!(sorted(on_wifi.clone()), (0, 1));
+        assert_eq!(
+            sorted(Camera {
+                path_found: true,
+                ..on_wifi.clone()
+            }),
+            (1, 0),
+            "a stream path makes it a camera wherever it answers"
+        );
+        assert_eq!(
+            sorted(Camera {
+                host: "192.168.1.64".into(),
+                ..on_wifi.clone()
+            }),
+            (1, 0),
+            "a known make's factory address is a camera"
+        );
+        assert_eq!(
+            sorted(Camera {
+                used: "front".into(),
+                ..on_wifi
+            }),
+            (1, 0),
+            "a source already set up stays with the cameras"
+        );
+        assert_eq!(
+            sorted(Camera {
+                path_found: false,
+                ..cam()
+            }),
+            (1, 0),
+            "a pathless answer on a wired port is still the camera to finish"
+        );
+    }
+
+    #[test]
+    fn a_camera_port_on_every_camera_subnet_does_not_claim_the_wifi_hosts() {
+        let wizard = Wizard {
+            name: String::new(),
+            templates: vec![siyi(), hikvision()],
+            ..Wizard::default()
+        };
+        let scanned = json!({
+            "cameras": [
+                { "host": "192.168.1.101", "port": 8554, "url": "rtsp://192.168.1.101:8554", "pathFound": false },
+                { "host": "192.168.144.25", "port": 8554, "url": "rtsp://192.168.144.25:8554/main.264", "pathFound": true },
+            ],
+            "ports": [
+                { "interface": "eth0", "label": "Ethernet port (eth0)", "type": "ethernet", "state": "searched", "subnet": "192.168.8.0/24",
+                  "subnets": ["192.168.8.0/24", "192.168.1.0/24", "192.168.144.0/24", "10.42.255.0/24"], "checked": 2276 },
+                { "interface": "wlan0", "label": "Wi-Fi (wlan0)", "type": "wi-fi", "state": "searched", "subnet": "192.168.1.0/24", "checked": 252, "isUplink": true },
+            ],
+        });
+        let outcome = outcome_of(&scanned, &wizard);
+        assert_eq!(
+            (
+                outcome
+                    .cams
+                    .iter()
+                    .map(|cam| cam.host.as_str())
+                    .collect::<Vec<_>>(),
+                outcome
+                    .strangers
+                    .iter()
+                    .map(|cam| cam.host.as_str())
+                    .collect::<Vec<_>>(),
+            ),
+            (vec!["192.168.144.25"], vec!["192.168.1.101"])
+        );
+        assert_eq!(
+            adopted_camera(&outcome, true, "").map(|cam| cam.url),
+            Some("rtsp://192.168.144.25:8554/main.264".to_string()),
+            "the one real camera is picked for the pilot"
+        );
+    }
+
+    #[test]
+    fn a_wifi_port_is_never_told_to_check_its_cable() {
+        let wifi = uplink();
+        assert_eq!(
+            template_ready_port(&hikvision(), &[], std::slice::from_ref(&wifi)),
+            None
+        );
+        assert_eq!(
+            template_sub(&hikvision(), None),
+            hikvision().hint,
+            "the make keeps its plain hint"
+        );
+        assert_eq!(cable_label(&wifi, "192.168.1.101"), "");
+        assert_eq!(
+            cable_label(
+                &Port {
+                    uplink: false,
+                    ..wifi.clone()
+                },
+                "192.168.1.101"
+            ),
+            "",
+            "a Wi-Fi port that is not the uplink has no cable either"
+        );
+        assert!(!idle_on_camera_subnet(
+            &subnets(),
+            &Port {
+                subnet: "192.168.144.0/24".into(),
+                neighbors: vec![neighbor("192.168.144.1", "")],
+                uplink: false,
+                ..wifi
+            }
+        ));
+    }
+
+    #[test]
     fn scan_results_lead_with_the_port_that_has_a_next_step() {
         let blank = Port {
             state: "no-address".into(),
             ..port()
         };
-        let outcome = scan_outcome(vec![], vec![uplink(), blank.clone()], "");
+        let outcome = scan_outcome(vec![], vec![uplink(), blank.clone()], &[], "");
         assert_eq!(ifaces(&outcome.todo), vec!["eth0"]);
         assert_eq!(ifaces(&outcome.rest), vec!["wlan0"]);
         assert_eq!(todo_heading(&outcome.todo, &subnets()), "Try this");
@@ -1961,7 +2380,7 @@ mod tests {
         assert!(fixer_open(&outcome, &subnets(), &blank));
         assert_eq!(first_suggest(&blank), "");
         assert_eq!(
-            scan_outcome(vec![], vec![], "").note,
+            scan_outcome(vec![], vec![], &[], "").note,
             "No camera port on this device — type the camera's address below."
         );
     }
@@ -1978,6 +2397,7 @@ mod tests {
                     ..port()
                 },
             ],
+            &[],
             "",
         );
         assert!(outcome.todo.is_empty());
@@ -1990,7 +2410,8 @@ mod tests {
     #[test]
     fn only_one_fresh_camera_with_a_path_is_adopted_and_never_over_a_typed_address() {
         let adopted = |cams: Vec<Camera>, auto: bool, typed: &str| {
-            adopted_camera(&scan_outcome(cams, vec![swept()], ""), auto, typed).map(|it| it.host)
+            adopted_camera(&scan_outcome(cams, vec![swept()], &[], ""), auto, typed)
+                .map(|it| it.host)
         };
         assert_eq!(
             adopted(vec![cam()], true, "rtsp://192.168.144.25:8554/main.264"),
@@ -2077,7 +2498,7 @@ mod tests {
                 },
             ]
         );
-        let outcome = scan_outcome(vec![], vec![failed.clone()], "");
+        let outcome = scan_outcome(vec![], vec![failed.clone()], &[], "");
         assert!(fixer_open(&outcome, &subnets(), &failed));
         assert_eq!(first_suggest(&failed), "192.168.144.2/24");
         assert_eq!(
@@ -2398,6 +2819,88 @@ mod tests {
     }
 
     #[test]
+    fn the_view_offers_the_wired_camera_first_and_the_wifi_answer_apart() {
+        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let id = begin(Wizard {
+            templates: vec![siyi(), hikvision()],
+            ..wizard(true)
+        });
+        let device = scripted(vec![("POST /api/streams/scan", answered(pi4_scan()))]);
+        quietly(scan(&device, id, true));
+        let view = shown();
+        assert_eq!(
+            view["candidates"],
+            json!([{
+                "id": "siyi",
+                "iface": "eth0",
+                "label": "SIYI camera on Ethernet port (eth0)",
+                "note": "Answered at 192.168.144.25 — Use sets eth0 to 192.168.144.2/24 and adds its video",
+                "action": "Use",
+            }])
+        );
+        assert_eq!(view["cams"], json!([]));
+        assert_eq!(view["strangers"][0]["host"], "192.168.1.101");
+        assert_eq!(
+            view["strangersHeading"],
+            "Other devices answering RTSP on your Wi-Fi"
+        );
+        assert_eq!(
+            (view["note"].as_str(), view["checklist"].as_str()),
+            (Some(""), Some("")),
+            "a found camera is no empty scan"
+        );
+        assert!(
+            view["templates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|make| !make["sub"].as_str().unwrap().contains("cable")),
+            "{}",
+            view["templates"]
+        );
+        let dark = scripted(vec![("POST /api/streams/scan", answered(pi4_scan()))]);
+        quietly(rescan(&dark, id));
+        assert_eq!(
+            (dark.asked.borrow().len(), dark.paused.get()),
+            (1, 0),
+            "a camera to set up ends the wait for one to answer"
+        );
+    }
+
+    #[test]
+    fn using_a_found_camera_puts_its_own_port_on_the_make_subnet() {
+        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let id = begin(wizard(true));
+        let both = json!([
+            { "interface": "eth0", "type": "ethernet", "state": "searched", "subnet": "192.168.8.0/24" },
+            { "interface": "eth1", "type": "ethernet", "state": "searched", "subnet": "10.42.255.0/24" },
+        ]);
+        let device = scripted(vec![
+            ("GET /api/streams/scan/ports", ports_answer(both)),
+            ("POST /api/setup/camera/port", answered(json!({}))),
+            (
+                "GET /api/streams/scan/ports",
+                ports_answer(
+                    json!([{ "interface": "eth1", "type": "ethernet", "state": "searched", "subnet": "192.168.144.0/24" }]),
+                ),
+            ),
+            (
+                "POST /api/streams/scan",
+                answered(
+                    json!({ "cameras": [{ "host": "192.168.144.25", "url": "rtsp://192.168.144.25:8554/main.264", "pathFound": true }], "ports": [] }),
+                ),
+            ),
+            ("PUT /api/gimbal/config", answered(json!({}))),
+        ]);
+        quietly(set_up_template(&device, id, siyi(), "eth1".into()));
+        assert_eq!(
+            device.asked.borrow()[1],
+            r#"POST /api/setup/camera/port {"address":"192.168.144.2/24","interface":"eth1"}"#
+        );
+        assert_eq!(shown()["template"]["camera"]["host"], "192.168.144.25");
+    }
+
+    #[test]
     fn a_silent_scan_shows_the_checklist_instead_of_the_note() {
         let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
         let id = begin(wizard(true));
@@ -2555,7 +3058,7 @@ mod tests {
             ),
             ("PUT /api/gimbal/config", refused_with(json!({}))),
         ]);
-        quietly(set_up_template(&device, id, siyi()));
+        quietly(set_up_template(&device, id, siyi(), String::new()));
         let view = shown();
         assert_eq!(view["template"]["n"], 1);
         assert_eq!(view["template"]["refusal"], "");
@@ -2582,7 +3085,7 @@ mod tests {
                 { "interface": "eth0", "type": "ethernet", "state": "no-address" },
             ])),
         )]);
-        quietly(set_up_template(&held, id, siyi()));
+        quietly(set_up_template(&held, id, siyi(), String::new()));
         let view = shown();
         assert_eq!(view["template"]["n"], 2);
         assert!(
@@ -2592,7 +3095,12 @@ mod tests {
                 .starts_with("The Wi-Fi (wlan0) already uses 192.168.144.x")
         );
         assert_eq!(view["template"]["camera"], Value::Null);
-        quietly(set_up_template(&scripted(vec![]), id, siyi()));
+        quietly(set_up_template(
+            &scripted(vec![]),
+            id,
+            siyi(),
+            String::new(),
+        ));
         assert_eq!(
             shown()["template"]["refusal"],
             "This device has no Ethernet port to plug the SIYI camera into."
@@ -2706,7 +3214,7 @@ mod tests {
         assert_eq!(session().id, id);
         assert_eq!(shown()["apply"]["state"], "idle");
         change(id, |held| {
-            held.outcome = Some(scan_outcome(vec![], vec![swept()], ""))
+            held.outcome = Some(scan_outcome(vec![], vec![swept()], &[], ""))
         });
         assert_eq!(
             run(

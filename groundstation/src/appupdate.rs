@@ -11,9 +11,11 @@ const RELEASES_URL: &str =
 const TAG_PREFIX: &str = "aircast-v";
 const NATIVE_PREFIX: &str = "AircastQGCNative-";
 const ANDROID_PREFIX: &str = "AircastAndroid-";
+const ANDROID_CORE_PREFIX: &str = "AircastAndroidCore-";
 const WINDOWS_X64_INSTALLER: (&str, &str) = (NATIVE_PREFIX, "-windows-x64-setup.exe");
 const WINDOWS_ARM64_INSTALLER: (&str, &str) = (NATIVE_PREFIX, "-windows-arm64-setup.exe");
 const ANDROID_INSTALLER: (&str, &str) = (ANDROID_PREFIX, ".apk");
+const ANDROID_CORE_INSTALLER: (&str, &str) = (ANDROID_CORE_PREFIX, ".apk");
 const MACOS_INSTALLER: (&str, &str) = (NATIVE_PREFIX, ".dmg");
 const LOOKUP_TIMEOUT: Duration = Duration::from_secs(30);
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -170,7 +172,10 @@ pub fn host_asset_pattern(
     qt_hosted: bool,
     native_ui: bool,
 ) -> Option<(&'static str, &'static str)> {
-    asset_pattern(os, arch).filter(|_| !qt_hosted || native_ui)
+    match (os, qt_hosted) {
+        ("android", false) => Some(ANDROID_CORE_INSTALLER),
+        _ => asset_pattern(os, arch).filter(|_| !qt_hosted || native_ui),
+    }
 }
 
 fn host_pattern() -> Option<(&'static str, &'static str)> {
@@ -265,6 +270,7 @@ pub fn installer_version(file_name: &str) -> Option<semver::Version> {
         WINDOWS_X64_INSTALLER,
         WINDOWS_ARM64_INSTALLER,
         ANDROID_INSTALLER,
+        ANDROID_CORE_INSTALLER,
         MACOS_INSTALLER,
     ]
     .iter()
@@ -937,6 +943,15 @@ mod tests {
             Some((ANDROID_PREFIX, ".apk"))
         );
         assert_eq!(host_asset_pattern("android", "aarch64", true, false), None);
+        assert_eq!(
+            host_asset_pattern("android", "aarch64", false, false),
+            Some((ANDROID_CORE_PREFIX, ".apk")),
+            "the Rust-core app, the one on Google Play, updates to the Rust-core APK, never the Qt host's"
+        );
+        assert_eq!(
+            installer_version("AircastAndroidCore-v5.6.6-beta.1.apk"),
+            installer_version("AircastAndroid-v5.6.6-beta.1.apk")
+        );
         assert_eq!(
             host_asset_pattern("windows", "aarch64", false, false),
             Some((NATIVE_PREFIX, "-windows-arm64-setup.exe"))

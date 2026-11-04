@@ -5,14 +5,14 @@ import { md } from '@/theme/Colors';
 import { CameraWizard } from '@/ui/CameraWizard';
 import { type CameraCopy, type CameraView, type CamerasView, cameBack, camerasShown, liveness, parseCameras, portToAddress } from '@/ui/DeviceCameras';
 import { type PortAddress } from '@/ui/DeviceCameraWizard';
-import { DeviceBadgeText, DeviceChart, DeviceColumns, DeviceDisclosure, DeviceFact, DeviceNotice, DeviceSection, DeviceSwitchRow, LinkButton, QrDialog, levelColor, useCopy } from '@/ui/DeviceKit';
+import { DeviceBadgeText, DeviceChart, DeviceColumns, DeviceDisclosure, DeviceFact, DeviceNotice, DeviceSection, DeviceSwitchRow, DeviceWaiting, LinkButton, QrDialog, levelColor, useCopy } from '@/ui/DeviceKit';
 import { PreviewPlaceholder, WhepPreview } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { devicePageIcon } from '@/ui/DeviceStatus';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { TargetRow } from '@/ui/DeviceConnectScreen';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
-import { FootNote, SetupRow, SetupState } from '@/ui/SetupRow';
+import { SetupRow, SetupState } from '@/ui/SetupRow';
 import { LocalChangeNotice } from '@/ui/ValueRow';
 
 const useComebacks = (view: CamerasView | null) => {
@@ -34,7 +34,7 @@ export const CamerasScreen = ({ query, onOpen }: DeviceScreenProps) => {
   useEffect(() => {
     if (view?.cameras.length === 0) setAdding(true);
   }, [view]);
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="cameras" />;
   const shown = camerasShown(view.cameras, picked, adding);
   const pick = (name: string) => {
     setAdding(false);

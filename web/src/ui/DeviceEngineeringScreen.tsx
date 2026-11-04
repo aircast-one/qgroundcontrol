@@ -2,17 +2,16 @@ import { useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, RadioButton, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
 import { useDeviceDraft } from '@/ui/DeviceDraft';
-import { ActionButton, ConfirmDialog, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, SecretField, useDeviceAction } from '@/ui/DeviceKit';
+import { ActionButton, ConfirmDialog, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceSwitchRow, DeviceText, DeviceWaiting, LinkButton, RefusalText, SecretField, useDeviceAction } from '@/ui/DeviceKit';
 import { ButtonRow, StatusLine } from '@/ui/DeviceKitSettings';
 import { type DiagnosticsSettings, type EngineeringView, type PublishSignIn, modeNamed, parseEngineering, shownFields, signInBody, signInValues } from '@/ui/DeviceEngineering';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
-import { FootNote } from '@/ui/SetupRow';
 
 export const EngineeringScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('engineering', parseEngineering);
-  if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (view === null) return <DeviceWaiting page="engineering" />;
   return (
     <DeviceColumns
       left={
