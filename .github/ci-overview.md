@@ -4,7 +4,7 @@
 > conventions). This doc covers CI layout: workflows, composite actions, Python helpers, and
 > build-config.
 
-Platform workflows (`linux.yml`, `macos.yml`, `windows.yml`, `android.yml`, `ios.yml`) share logic
+Platform workflows (`linux.yml`, `windows.yml`, `android.yml`, `ios.yml`) share logic
 via composite actions and reusable workflows. Python helpers in `scripts/` are invoked by both.
 
 ## Contents
@@ -37,7 +37,7 @@ via composite actions and reusable workflows. Python helpers in `scripts/` are i
 
 | Workflow | Purpose |
 | --- | --- |
-| `linux.yml`, `macos.yml`, `windows.yml` | Desktop build + test |
+| `linux.yml`, `windows.yml` | Desktop build + test |
 | `android.yml`, `ios.yml` | Mobile builds |
 | `groundstation.yml` | `cargo test` for the Rust core on any `groundstation/` change |
 | `_detect-changes.yml` | Reusable: skip builds on unrelated PRs |
