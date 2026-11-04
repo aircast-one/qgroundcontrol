@@ -10,20 +10,29 @@ struct DeviceSetupScreen: View {
         if let view = deviceView(reading, { parseDeviceSetup($0) }) {
             SetupWizard(view: view, onOpen: props.onOpen)
         } else {
-            FootNote(text: DEVICE_WAITING)
+            NativeForm { FootNote(text: DEVICE_WAITING) }
         }
     }
 }
 
+private func setupPrimaryTitle(_ nav: SetupNav) -> String {
+    if nav.finish { return "Done" }
+    return nav.next == .Skip ? "Skip" : "Next"
+}
+
+// The setup wizard as a native form: the step trail and the step's heading lead, the step's own rows follow. The
+// navigation bar steps through it — its back goes to the previous step (OverridePageHeading), Next / Skip / Done
+// sit where a page's primary action does — and "Finish setup later" closes Settings.
 private struct SetupWizard: View {
     let view: DeviceSetupView
     let onOpen: (String) -> Void
     @Environment(AppNavigationState.self) private var navigation
     @Environment(\.LocalDeviceScroll) private var scroll
-    @Environment(\.theme) private var theme
+    @Environment(\.LocalChangeNotice) private var notice
     @State private var step: Int
     @State private var reconfiguring = false
     @State private var wizardStep = 1
+    @State private var finishing = DeviceActionState()
 
     init(view: DeviceSetupView, onOpen: @escaping (String) -> Void) {
         self.view = view
@@ -35,68 +44,86 @@ private struct SetupWizard: View {
 
     private func close() { navigation.settingsOpen = false }
 
+    private func finish() {
+        let notice = notice, finishing = finishing, navigation = navigation
+        Task { @MainActor in
+            if await finishing.run(DeviceRequest(method: .POST, path: "/api/setup/complete"), notice: notice) { navigation.settingsOpen = false }
+        }
+    }
+
+    private func primary(_ nav: SetupNav) {
+        if nav.finish {
+            finish()
+        } else if nav.next != nil {
+            go(step + 1)
+        }
+    }
+
     var body: some View {
         let total = view.steps.count
         let current = view.steps[clampStep(step, total) - 1]
         let wizardShown = view.camera.wizard.isNew || reconfiguring
         let nav = setupNav(step, total, cameraHoldsTheWizard(current.key, wizardShown, wizardStep))
-        StepTrail(steps: view.steps, step: step).id(SETUP_TOP)
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(current.title).font(.titleLarge).frame(maxWidth: .infinity, alignment: .leading).accessibilityAddTraits(.isHeader)
-                if let status = current.status { DeviceBadgeText(badge: status) }
+        NativeForm {
+            Section {
+                StepTrail(steps: view.steps, step: step).id(SETUP_TOP)
+                VStack(alignment: .leading, spacing: Space.s1) {
+                    HStack(alignment: .firstTextBaseline, spacing: Space.s3) {
+                        Text(current.title).font(.title3.weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading).accessibilityAddTraits(.isHeader)
+                        if let status = current.status { DeviceBadgeText(badge: status) }
+                    }
+                    if !current.lead.isEmpty {
+                        Text(current.lead).font(.subheadline).foregroundStyle(Color.secondary)
+                    }
+                }
+                .padding(.vertical, Space.s1)
             }
-            .padding(EdgeInsets(top: 20, leading: 16, bottom: 4, trailing: 16))
-            DeviceText(text: current.lead)
             switch current.key {
             case "network":
-                InternetStep(internet: view.internet, onOpen: onOpen)
+                Section { InternetStep(internet: view.internet, onOpen: onOpen) }
             case "tailscale":
                 TailscaleSection(tailscale: view.remote)
             case "camera":
-                CameraStep(
-                    camera: view.camera,
-                    wizardShown: wizardShown,
-                    onReconfigure: {
-                        wizardStep = 1
-                        reconfiguring = true
-                    },
-                    onStop: { reconfiguring = false },
-                    onWizardStep: { wizardStep = $0 },
-                    onOpen: onOpen
-                )
-            case "telemetry":
-                TelemetryStep(telemetry: view.telemetry)
-            case "done":
-                ForEach(view.checks, id: \.label) { check in
-                    SetupRow(
-                        title: check.label,
-                        status: check.status.text,
-                        state: check.status.level == DeviceLevel.Ready ? .Done : .Neutral,
-                        onClick: { go(check.step) }
+                Section {
+                    CameraStep(
+                        camera: view.camera,
+                        wizardShown: wizardShown,
+                        onReconfigure: {
+                            wizardStep = 1
+                            reconfiguring = true
+                        },
+                        onStop: { reconfiguring = false },
+                        onWizardStep: { wizardStep = $0 },
+                        onOpen: onOpen
                     )
+                }
+            case "telemetry":
+                Section { TelemetryStep(telemetry: view.telemetry) }
+            case "done":
+                Section {
+                    ForEach(view.checks, id: \.label) { check in
+                        SetupRow(
+                            title: check.label,
+                            status: check.status.text,
+                            state: check.status.level == DeviceLevel.Ready ? .Done : .Neutral,
+                            onClick: { go(check.step) }
+                        )
+                    }
                 }
             default:
                 EmptyView()
             }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(current.title)
-        HStack(alignment: .top, spacing: 8) {
-            if nav.back {
-                Button("← Back") { go(step - 1) }.buttonStyle(.bordered)
-            }
-            PlanFlowRow(spacing: 8, lineSpacing: 8, alignment: .center) {
-                if nav.later { Button("Finish setup later", action: close).buttonStyle(.text) }
-                if nav.next == .Next { Button("Next →") { go(step + 1) }.buttonStyle(.filled) }
-                if nav.next == .Skip { Button("Skip this step →") { go(step + 1) }.buttonStyle(.bordered) }
-                if nav.finish {
-                    ActionButton(label: "Go to the fly view", request: DeviceRequest(method: .POST, path: "/api/setup/complete"), onDone: close)
+            if nav.later || finishing.refusal != nil {
+                Section {
+                    if nav.later { Button("Finish setup later", action: close) }
+                    DeviceRefusalText(refusal: finishing.refusal)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(EdgeInsets(top: 16, leading: 16, bottom: 24, trailing: 16))
+        .background {
+            if nav.back { OverridePageHeading(title: DEVICE_SCREENS["/setup"]?.title ?? "", onBack: { go(step - 1) }) }
+        }
+        .pagePrimaryAction(setupPrimaryTitle(nav), enabled: nav.finish ? !finishing.busy : nav.next != nil) { primary(nav) }
         .onChange(of: step) { withAnimation { scroll?.scrollTo(SETUP_TOP, anchor: .top) } }
     }
 }
@@ -131,7 +158,7 @@ private struct StepTrail: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(EdgeInsets(top: 16, leading: 16, bottom: 0, trailing: 16))
+        .padding(.vertical, Space.s1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Setup steps")
     }

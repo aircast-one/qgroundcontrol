@@ -1,29 +1,39 @@
 import SwiftUI
 
-private let DEST_CORNER: CGFloat = 12
-
 struct DeviceCameraSetupScreen: View {
     let props: DeviceScreenProps
     @DeviceView("cameras") private var reading
+    @Environment(\.LocalDeviceScroll) private var scroll
 
     var body: some View {
         let view = deviceView(reading, parseCameras)
         let wanted = props.query["camera"] ?? ""
         let camera = view?.cameras.first(where: { $0.name == wanted })
-        if view == nil {
-            FootNote(text: DEVICE_WAITING)
-        } else if let camera {
-            CameraSetupParts(
-                camera: camera,
-                opened: openedSection(props.href),
-                onOpen: props.onOpen,
-                onOpenFrom: props.onOpenFrom,
-                onClose: props.onClose
-            )
-            .id(camera.name)
-        } else {
-            DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Neutral, text: "Pick a camera on the Cameras page to set it up."))
-            Button("Cameras →") { props.onOpen("/streaming") }.buttonStyle(.text).padding(.horizontal, 8)
+        NativeForm {
+            if view == nil {
+                FootNote(text: DEVICE_WAITING)
+            } else if let camera {
+                CameraSetupParts(
+                    camera: camera,
+                    opened: openedSection(props.href),
+                    onOpen: props.onOpen,
+                    onOpenFrom: props.onOpenFrom,
+                    onClose: props.onClose
+                )
+                .id(camera.name)
+            } else {
+                Section {
+                    DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Neutral, text: "Pick a camera on the Cameras page to set it up."))
+                    SetupRow(title: "Cameras", onClick: { props.onOpen("/streaming") })
+                }
+            }
+        }
+        // Opened on one part (…#detect): scroll to it once the camera is there.
+        .task(id: camera?.name) { @MainActor in
+            let section = openedSection(props.href)
+            guard camera != nil, !section.isEmpty else { return }
+            await Task.yield()
+            scroll?.scrollTo(section, anchor: .top)
         }
     }
 }
@@ -37,7 +47,7 @@ private struct SetupSub: View {
             .font(.labelLarge)
             .foregroundStyle(theme.colors.onSurfaceVariant)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(EdgeInsets(top: 12, leading: 16, bottom: 4, trailing: 16))
+            .rowPadding(EdgeInsets(top: 12, leading: 16, bottom: 4, trailing: 16))
     }
 }
 
@@ -47,15 +57,53 @@ private struct CameraSetupParts: View {
     let onOpen: (String) -> Void
     let onOpenFrom: (String, String) -> Void
     let onClose: () -> Void
-    @Environment(\.theme) private var theme
 
+    // Each part of the camera's setup is a section holding one disclosure row; Remove closes the page.
     var body: some View {
         let name = camera.name
         let setup = camera.setup
         let detectHere = cameraSectionHref(name, CameraSetupSection.Detect)
-        PartDisclosure(part: setup.watch.part, section: CameraSetupSection.Watch, opened: opened) {
-            WatchBody(camera: camera, onOpen: onOpen)
+        Section {
+            PartDisclosure(part: setup.watch.part, section: CameraSetupSection.Watch, opened: opened) {
+                WatchBody(camera: camera, onOpen: onOpen)
+            }
         }
+        Section { radioPart(name, setup) }
+        Section {
+            PartDisclosure(part: setup.servers.part, section: CameraSetupSection.Servers, opened: opened) {
+                ForEach(setup.servers.dests, id: \.kind) { dest in
+                    PartDisclosure(part: dest.part, section: "cam-dest-\(dest.kind)", opened: opened) {
+                        ServerBody(camera: camera, dest: dest, onOpen: onOpen)
+                    }
+                }
+            }
+        }
+        Section { sharesPart(name, setup) }
+        Section { detectPart(name, setup, detectHere) }
+        Section { recordPart(name, setup) }
+        if let gimbal = setup.gimbal {
+            Section {
+                PartDisclosure(part: gimbal.part, section: CameraSetupSection.Gimbal, opened: opened) {
+                    GimbalBody(name: name, owner: gimbal.owner)
+                }
+            }
+        }
+        Section {
+            DeviceDestructiveButton(
+                label: "Remove this camera",
+                request: DeviceRequest(method: .DELETE, path: "/api/streams/\(name)"),
+                success: "Camera \(name) removed.",
+                confirm: ActionConfirm(
+                    title: "Remove camera",
+                    text: "Remove camera \(name)? Its stream URLs stop working, and once no other camera uses its port the port returns to the rescue network.",
+                    confirm: "Remove"
+                ),
+                onDone: onClose
+            )
+        }
+    }
+
+    private func radioPart(_ name: String, _ setup: CameraSetup) -> some View {
         PartDisclosure(part: setup.radio.part, section: CameraSetupSection.Radio, opened: opened) {
             LinkedNoticeView(notice: setup.radio.notice, onOpen: onOpen)
             if setup.radio.form {
@@ -89,18 +137,9 @@ private struct CameraSetupParts: View {
                 }
             }
         }
-        PartDisclosure(part: setup.servers.part, section: CameraSetupSection.Servers, opened: opened) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(setup.servers.dests, id: \.kind) { dest in
-                    PartDisclosure(part: dest.part, section: "cam-dest-\(dest.kind)", opened: opened) {
-                        ServerBody(camera: camera, dest: dest, onOpen: onOpen)
-                    }
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: DEST_CORNER))
-            .overlay(RoundedRectangle(cornerRadius: DEST_CORNER).stroke(theme.colors.outlineVariant))
-            .padding(.horizontal, 16)
-        }
+    }
+
+    private func sharesPart(_ name: String, _ setup: CameraSetup) -> some View {
         PartDisclosure(part: setup.shares.part, section: CameraSetupSection.Shares, opened: opened) {
             ForEach(setup.shares.links, id: \.id) { ShareRow(link: $0) }
             DeviceForm(
@@ -117,6 +156,9 @@ private struct CameraSetupParts: View {
             )
             DeviceText(text: "A link stops working when it expires or when you turn it off. It is not a lock: anyone who can already reach this device on your network can watch the camera anyway.")
         }
+    }
+
+    private func detectPart(_ name: String, _ setup: CameraSetup, _ detectHere: String) -> some View {
         PartDisclosure(part: setup.detect.part, section: CameraSetupSection.Detect, opened: opened) {
             DeviceSwitchRow(
                 title: "Draw detection boxes for \(name)",
@@ -137,6 +179,9 @@ private struct CameraSetupParts: View {
                 LinkedNoticeView(notice: notice) { onOpenFrom($0, detectHere) }
             }
         }
+    }
+
+    private func recordPart(_ name: String, _ setup: CameraSetup) -> some View {
         PartDisclosure(part: setup.record.part, section: CameraSetupSection.Record, opened: opened) {
             DeviceSwitchRow(
                 title: "Record \(name) to disk",
@@ -157,27 +202,6 @@ private struct CameraSetupParts: View {
                 NoteLink(text: setup.record.usage, label: "Open recordings →", scale: .bodyMedium) { onOpen("/settings/recordings") }
             }
         }
-        if let gimbal = setup.gimbal {
-            PartDisclosure(part: gimbal.part, section: CameraSetupSection.Gimbal, opened: opened) {
-                GimbalBody(name: name, owner: gimbal.owner)
-            }
-        }
-        HStack {
-            Spacer(minLength: 0)
-            ActionButton(
-                label: "Remove this camera",
-                request: DeviceRequest(method: .DELETE, path: "/api/streams/\(name)"),
-                success: "Camera \(name) removed.",
-                confirm: ActionConfirm(
-                    title: "Remove camera",
-                    text: "Remove camera \(name)? Its stream URLs stop working, and once no other camera uses its port the port returns to the rescue network.",
-                    confirm: "Remove"
-                ),
-                tonal: false,
-                onDone: onClose
-            )
-        }
-        .padding(16)
     }
 }
 
@@ -337,7 +361,6 @@ private struct ServerBody: View {
 
 private struct CloudflareForm: View {
     let name: String
-    @Environment(\.theme) private var theme
     @Environment(\.LocalChangeNotice) private var notice
     @State private var action = DeviceActionState()
     @State private var app: String
@@ -365,45 +388,41 @@ private struct CloudflareForm: View {
     var body: some View {
         let urlRefusal = action.refusal.flatMap { $0.field == "url" ? $0 : nil }
         let secretRefusal = action.refusal.flatMap { $0.field == "secret" ? $0 : nil }
-        VStack(alignment: .leading, spacing: 12) {
-            PlanFlowRow(spacing: 8, lineSpacing: 8) {
-                Text("In the Cloudflare dashboard, open Realtime → SFU and create an app — it gives you the App ID and App secret.")
-                    .font(.bodySmall)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
-                LinkButton(href: "https://dash.cloudflare.com/", text: "Cloudflare dashboard", look: .Outlined, external: true)
-            }
-            DeviceTextField(
-                label: "App ID",
-                value: app,
-                onValueChange: { app = $0 },
-                placeholder: "Realtime → SFU → your app",
-                isError: urlRefusal != nil,
-                supporting: urlRefusal?.message ?? "",
-                keyboard: .uri
-            )
-            SecretField(
-                label: "App secret",
-                value: secret,
-                onValueChange: { secret = $0 },
-                placeholder: "Realtime app secret",
-                isError: secretRefusal != nil,
-                supportingText: secretRefusal?.message ?? ""
-            )
-            DeviceTextField(
-                label: "Track name",
-                value: track,
-                onValueChange: { track = $0 },
-                supporting: "Not from Cloudflare — a name you pick. Viewers subscribe to this stream by this name. The camera name works fine.",
-                keyboard: .uri
-            )
-            if urlRefusal == nil && secretRefusal == nil {
-                DeviceRefusalText(refusal: action.refusal, field: action.refusal?.field ?? "").padding(.horizontal, -DEVICE_LIST_PADDING)
-            }
-            Button("Save", action: save).buttonStyle(.bordered).disabled(action.busy)
+        // Rows of the Cloudflare destination: where the keys come from, the three fields, the refusal and Save.
+        VStack(alignment: .leading, spacing: Space.s2) {
+            Text("In the Cloudflare dashboard, open Realtime → SFU and create an app — it gives you the App ID and App secret.")
+                .font(.footnote)
+                .foregroundStyle(Color.secondary)
+            LinkButton(href: "https://dash.cloudflare.com/", text: "Cloudflare dashboard", look: .Outlined, external: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        DeviceTextField(
+            label: "App ID",
+            value: app,
+            onValueChange: { app = $0 },
+            placeholder: "Realtime → SFU → your app",
+            isError: urlRefusal != nil,
+            supporting: urlRefusal?.message ?? "",
+            keyboard: .uri
+        )
+        SecretField(
+            label: "App secret",
+            value: secret,
+            onValueChange: { secret = $0 },
+            placeholder: "Realtime app secret",
+            isError: secretRefusal != nil,
+            supportingText: secretRefusal?.message ?? ""
+        )
+        DeviceTextField(
+            label: "Track name",
+            value: track,
+            onValueChange: { track = $0 },
+            supporting: "Not from Cloudflare — a name you pick. Viewers subscribe to this stream by this name. The camera name works fine.",
+            keyboard: .uri
+        )
+        if urlRefusal == nil && secretRefusal == nil {
+            DeviceRefusalText(refusal: action.refusal, field: action.refusal?.field ?? "")
+        }
+        Button("Save", action: save).buttonStyle(.bordered).disabled(action.busy)
     }
 }
 
@@ -429,8 +448,7 @@ private struct ShareRow: View {
                 Text(link.dead).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .rowPadding(horizontal: 16, vertical: 8)
             .opacity(0.7)
         }
     }

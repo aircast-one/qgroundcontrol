@@ -5,26 +5,28 @@ struct DeviceNetworkScreen: View {
     @DeviceView("network") private var reading
 
     var body: some View {
-        if let view = deviceView(reading, parseNetwork) {
-            PrimaryUplinkSection(uplink: view.uplink, onOpen: props.onOpen)
-            if let modem = view.modem { ModemSection(modem: modem) }
-            StarlinkSection(starlink: view.starlink)
-            DeviceSection(title: "Wi-Fi", badge: view.wifi.status) {
-                NetSummary(text: view.wifi.summary)
-                if let joined = view.wifi.joined { DeviceNotice(notice: joined) }
-                WifiJoin(reopen: view.wifi.reopen)
+        NativeForm {
+            if let view = deviceView(reading, parseNetwork) {
+                PrimaryUplinkSection(uplink: view.uplink, onOpen: props.onOpen)
+                if let modem = view.modem { ModemSection(modem: modem) }
+                StarlinkSection(starlink: view.starlink)
+                DeviceSection(title: "Wi-Fi", badge: view.wifi.status) {
+                    NetSummary(text: view.wifi.summary)
+                    if let joined = view.wifi.joined { DeviceNotice(notice: joined) }
+                    WifiJoin(reopen: view.wifi.reopen)
+                }
+                InterfacesSection(interfaces: view.interfaces)
+                FootNote(text: "The device routes through the best uplink that reaches the internet and moves off one that stops — this is where you say what it may use.")
+                DataSection(data: view.data)
+                FootNote(text: "Mobile data is metered; the budget here is what keeps a flight from spending a month of it — set it before a SIM goes in.")
+                Group {
+                    TailscaleSection(tailscale: view.tailscale)
+                    RelaySection(relay: view.relay)
+                    FootNote(text: "Reaching this device from somewhere else — it is not needed to fly.")
+                }
+            } else {
+                FootNote(text: DEVICE_WAITING)
             }
-            InterfacesSection(interfaces: view.interfaces)
-            FootNote(text: "The device routes through the best uplink that reaches the internet and moves off one that stops — this is where you say what it may use.")
-            DataSection(data: view.data)
-            FootNote(text: "Mobile data is metered; the budget here is what keeps a flight from spending a month of it — set it before a SIM goes in.")
-            Group {
-                TailscaleSection(tailscale: view.tailscale)
-                RelaySection(relay: view.relay)
-                FootNote(text: "Reaching this device from somewhere else — it is not needed to fly.")
-            }
-        } else {
-            FootNote(text: DEVICE_WAITING)
         }
     }
 }
@@ -39,7 +41,7 @@ private struct NetSummary: View {
                 .font(.bodyMedium)
                 .foregroundStyle(theme.colors.onSurfaceVariant)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(EdgeInsets(top: 0, leading: DEVICE_LIST_PADDING, bottom: 4, trailing: DEVICE_LIST_PADDING))
+                .rowPadding(EdgeInsets(top: 0, leading: DEVICE_LIST_PADDING, bottom: 4, trailing: DEVICE_LIST_PADDING))
         }
     }
 }
@@ -65,7 +67,7 @@ private struct NetMono: View {
             .font(deviceMono(.bodySmall))
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(EdgeInsets(top: 0, leading: DEVICE_LIST_PADDING, bottom: 8, trailing: DEVICE_LIST_PADDING))
+            .rowPadding(EdgeInsets(top: 0, leading: DEVICE_LIST_PADDING, bottom: 8, trailing: DEVICE_LIST_PADDING))
     }
 }
 
@@ -75,7 +77,7 @@ private struct ProblemNotice: View {
     var body: some View {
         DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Blocked, text: problem.text))
         if !problem.detail.isEmpty {
-            DeviceDisclosure("Technical detail") { NetMono(text: problem.detail) }
+            DeviceGroup("Technical detail") { NetMono(text: problem.detail) }
         }
     }
 }
@@ -112,21 +114,13 @@ private struct PrimaryUplinkSection: View {
                     }
                 }
             }
-            .padding(.horizontal, DEVICE_LIST_PADDING)
-            .padding(.vertical, 8)
+            .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
             if !uplink.warning.isEmpty {
                 DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Warn, text: uplink.warning))
-                DeviceButtonRow {
-                    Button("Check the camera →") { onOpen("/streaming") }.buttonStyle(.text)
-                }
+                SetupRow(title: "Check the camera", onClick: { onOpen("/streaming") })
             }
             ForEach(uplink.failover, id: \.label) { row in
-                HStack(spacing: 16) {
-                    Text(row.label).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
-                    NetLeveled(badge: row.status)
-                }
-                .padding(.horizontal, DEVICE_LIST_PADDING)
-                .padding(.vertical, 6)
+                LabeledContent(row.label) { NetLeveled(badge: row.status) }
             }
             DeviceText(text: uplink.switchText)
             DeviceText(text: uplink.backup)
@@ -146,11 +140,10 @@ private struct ModemSection: View {
                 Text(modem.detail).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, DEVICE_LIST_PADDING)
-            .padding(.vertical, 8)
+            .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
             if let signal = modem.signal { DeviceChart(chart: signal) }
             ForEach(modem.facts, id: \.label) { DeviceFact(label: $0.label, value: $0.value) }
-            DeviceDisclosure("Text messages", summary: modem.messages.summary) {
+            DeviceGroup("Text messages", summary: modem.messages.summary) {
                 if modem.messages.items.isEmpty {
                     DeviceText(text: "Messages the operator sends to this SIM — package expiry, top-ups, portal codes — show up here.")
                 } else {
@@ -160,7 +153,7 @@ private struct ModemSection: View {
                 }
             }
             if let sim = modem.sim {
-                DeviceDisclosure("SIM & APN", summary: sim.summary) {
+                DeviceGroup("SIM & APN", summary: sim.summary) {
                     DeviceForm(
                         fields: [
                             DeviceField(name: "apn", label: "APN", value: sim.apn, placeholder: sim.placeholder),
@@ -198,8 +191,7 @@ private struct SmsRow: View {
             Text(message.text).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant).textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
     }
 }
 
@@ -214,7 +206,7 @@ private struct StarlinkSection: View {
             if !starlink.pollError.isEmpty { NetMono(text: starlink.pollError) }
             ForEach(starlink.facts, id: \.label) { DeviceFact(label: $0.label, value: $0.value) }
             if !starlink.firmware.isEmpty { DeviceFact(label: "Firmware", value: starlink.firmware) }
-            DeviceDisclosure("Dish address", initiallyOpen: starlink.address.open) {
+            DeviceGroup("Dish address", initiallyOpen: starlink.address.open) {
                 DeviceText(
                     text: "The network address of the Starlink dish. Leave the default unless the dish is reached at a different address on this device's network. Port 9200 is assumed if you leave it off."
                 )
@@ -276,8 +268,7 @@ private struct DemoDish: View {
         )
         if demo.on {
             DeviceSelect(label: "Condition", value: demo.condition, options: demo.conditions, onPick: pick, enabled: !action.busy)
-                .padding(.horizontal, DEVICE_LIST_PADDING)
-                .padding(.vertical, 8)
+                .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
             DeviceRefusalText(refusal: action.refusal, field: action.refusal?.field ?? "")
         }
     }
@@ -360,18 +351,17 @@ private struct InterfacesSection: View {
                     .font(.labelMedium)
                     .foregroundStyle(theme.colors.onSurfaceVariant)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(EdgeInsets(top: 12, leading: DEVICE_LIST_PADDING, bottom: 0, trailing: DEVICE_LIST_PADDING))
+                    .rowPadding(EdgeInsets(top: 12, leading: DEVICE_LIST_PADDING, bottom: 0, trailing: DEVICE_LIST_PADDING))
                 ForEach(interfaces.other, id: \.label) { usage in
                     VStack(alignment: .leading, spacing: 0) {
                         Text(usage.label).font(.bodyLarge)
                         Text("\(usage.month) · all-time \(usage.total)").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, DEVICE_LIST_PADDING)
-                    .padding(.vertical, 8)
+                    .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
                 }
             }
-            DeviceDisclosure("Add a connection", summary: "Create a new NetworkManager profile — ethernet, Wi-Fi or cellular.") {
+            DeviceGroup("Add a connection", summary: "Create a new NetworkManager profile — ethernet, Wi-Fi or cellular.") {
                 DeviceForm(
                     fields: addFields,
                     method: .POST,
@@ -396,7 +386,7 @@ private struct NetLinkRow: View {
 
     var body: some View {
         if let editor = link.editor {
-            DeviceDisclosure(link.name, summary: linkSummary(link)) {
+            DeviceGroup(link.name, summary: linkSummary(link)) {
                 DeviceForm(
                     fields: ipv4Fields(methods, editor.ipv4),
                     method: .PUT,
@@ -417,12 +407,11 @@ private struct NetLinkRow: View {
                             success: "\(link.name) deactivated.",
                             confirm: ActionConfirm(title: "Deactivate \(link.name)?", text: editor.deactivateConfirm, confirm: "Deactivate")
                         )
-                        ActionButton(
+                        DeviceDestructiveButton(
                             label: "Delete",
                             request: DeviceRequest(method: .DELETE, path: "/api/network/connections/\(editor.uuid)"),
                             success: "\(link.name) deleted.",
-                            confirm: ActionConfirm(title: "Delete \(link.name)?", text: editor.deleteConfirm, confirm: "Delete"),
-                            tonal: false
+                            confirm: ActionConfirm(title: "Delete \(link.name)?", text: editor.deleteConfirm, confirm: "Delete")
                         )
                     }
                 }
@@ -433,8 +422,7 @@ private struct NetLinkRow: View {
                 Text(linkSummary(link)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, DEVICE_LIST_PADDING)
-            .padding(.vertical, 8)
+            .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
         }
     }
 }
@@ -444,7 +432,7 @@ private struct SavedRow: View {
     let methods: [DeviceOption]
 
     var body: some View {
-        DeviceDisclosure(profile.name, summary: "\(profile.kind) · inactive") {
+        DeviceGroup(profile.name, summary: "\(profile.kind) · inactive") {
             RenameForm(uuid: profile.uuid, name: profile.name)
             DeviceForm(
                 fields: ipv4Fields(methods, profile.ipv4),
@@ -462,12 +450,11 @@ private struct SavedRow: View {
                     success: "\(profile.name) activated.",
                     confirm: ActionConfirm(title: "Activate \(profile.name)?", text: profile.activateConfirm, confirm: "Activate")
                 )
-                ActionButton(
+                DeviceDestructiveButton(
                     label: "Delete",
                     request: DeviceRequest(method: .DELETE, path: "/api/network/connections/\(profile.uuid)"),
                     success: "\(profile.name) deleted.",
-                    confirm: ActionConfirm(title: "Delete \(profile.name)?", text: profile.deleteConfirm, confirm: "Delete"),
-                    tonal: false
+                    confirm: ActionConfirm(title: "Delete \(profile.name)?", text: profile.deleteConfirm, confirm: "Delete")
                 )
             }
         }
@@ -485,7 +472,7 @@ private struct DataSection: View {
             } else {
                 DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Neutral, text: "No usage recorded yet — counters accumulate as data flows."))
             }
-            DeviceDisclosure("Data caps & warnings", summary: data.budget.summary) {
+            DeviceGroup("Data caps & warnings", summary: data.budget.summary) {
                 DeviceForm(
                     fields: [
                         DeviceField(name: "monthlyCapGB", label: "Monthly plan (GB)", value: data.budget.monthlyCapGB, placeholder: "e.g. 10 — blank for none"),
@@ -509,6 +496,7 @@ private func percentFraction(_ percent: Int) -> Double { min(max(Double(percent)
 private struct DataGaugeCard: View {
     let gauge: DataGauge
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         let muted = theme.colors.onSurfaceVariant
@@ -543,10 +531,10 @@ private struct DataGaugeCard: View {
                 }
             }
         }
-        .padding(16)
-        .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: 16, vertical: 16)
+        .background(nativeList ? Color.clear : theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
+        .padding(.vertical, nativeList ? Space.s1 : 0)
     }
 }
 
@@ -572,6 +560,7 @@ private struct BudgetMeterRow: View {
 struct TailscaleSection: View {
     let tailscale: TailscaleCard
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     private var hasActions: Bool { !tailscale.connect.isEmpty || tailscale.cancel || !tailscale.logOut.isEmpty }
 
@@ -588,11 +577,9 @@ struct TailscaleSection: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     DeviceBadgeText(badge: banner.status)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
-                .padding(.horizontal, DEVICE_LIST_PADDING)
-                .padding(.vertical, 8)
+                .rowPadding(horizontal: 16, vertical: 12)
+                .background(nativeList ? Color.clear : theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
+                .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
             }
             ForEach(tailscale.facts, id: \.label) { DeviceFact(label: $0.label, value: $0.value) }
             if !tailscale.addresses.isEmpty { DeviceFact(label: "This device's addresses", value: tailscale.addresses.joined(separator: ", ")) }
@@ -602,8 +589,7 @@ struct TailscaleSection: View {
                     Text(signIn.href).font(deviceMono(.bodySmall)).foregroundStyle(theme.colors.onSurfaceVariant).textSelection(.enabled)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, DEVICE_LIST_PADDING)
-                .padding(.vertical, 8)
+                .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
             }
             if hasActions {
                 DeviceButtonRow {
@@ -638,7 +624,7 @@ private struct ControlServer: View {
     let control: TailscaleControl
 
     var body: some View {
-        DeviceDisclosure(control.title, initiallyOpen: control.open) {
+        DeviceGroup(control.title, initiallyOpen: control.open) {
             DeviceForm(
                 fields: [
                     DeviceField(name: "controlServer", label: "Control server URL", value: control.server, placeholder: "https://headscale.example.com", keyboard: .uri),
@@ -658,7 +644,7 @@ private struct ControlServer: View {
             .id("\(control.server)|\(control.authKeySet)")
             if control.authKeySet {
                 DeviceButtonRow {
-                    ActionButton(
+                    DeviceDestructiveButton(
                         label: "Remove auth key",
                         request: DeviceRequest(method: .DELETE, path: "/api/tailscale/control/authkey"),
                         success: "Auth key removed.",
@@ -666,8 +652,7 @@ private struct ControlServer: View {
                             title: "Remove the auth key?",
                             text: "Remove the saved auth key? Switching will then need an interactive sign-in over the LAN.",
                             confirm: "Remove"
-                        ),
-                        tonal: false
+                        )
                     )
                 }
             }
@@ -722,7 +707,7 @@ private struct RelaySection: View {
             )
             if !relay.notice.text.isEmpty { DeviceNotice(notice: relay.notice) }
             IceEditor(servers: relay.servers).id(relay.servers)
-            DeviceDisclosure("Technical details") {
+            DeviceGroup("Technical details") {
                 DeviceText(
                     text: "Off (default) advertises the tailscale 100.x and LAN host candidates. On stops advertising the tailscale host candidate and routes WebRTC media through the configured STUN/TURN ICE servers over UDP, so symmetric-CGNAT sessions on cellular relay over UDP instead of falling back to Tailscale DERP (TCP). Same-LAN viewers still use the direct LAN candidate."
                 )
@@ -761,56 +746,58 @@ private struct IceEditor: View {
         }
     }
 
+    // Rows of the relay section: one per server (URL, username, password and a red minus), the add buttons, Save.
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Relay (TURN / STUN) servers").font(.bodyLarge)
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .bottom, spacing: 8) {
-                        DeviceTextField(
-                            label: "Server URL",
-                            value: row.url,
-                            onValueChange: { url in change(index, withChanges(row) { $0.url = url }) },
-                            placeholder: "turn:turn.example.com:443?transport=udp",
-                            keyboard: .uri
-                        )
-                        Button { remove(index) } label: { Image(.close).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Remove server")
-                            .macTooltip("Remove server")
-                    }
-                    // .password is the plain keyboard without autocapitalisation or autocorrect, which a username needs.
+        Text("Relay (TURN / STUN) servers").font(.headline)
+        ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+            VStack(alignment: .leading, spacing: Space.s2) {
+                HStack(spacing: Space.s2) {
                     DeviceTextField(
-                        label: "Username",
-                        value: row.username,
-                        onValueChange: { username in change(index, withChanges(row) { $0.username = username }) },
-                        placeholder: "username",
-                        keyboard: .password
+                        label: "Server URL",
+                        value: row.url,
+                        onValueChange: { url in change(index, withChanges(row) { $0.url = url }) },
+                        placeholder: "turn:turn.example.com:443?transport=udp",
+                        keyboard: .uri
                     )
-                    SecretField(
-                        label: "Password",
-                        value: row.password,
-                        onValueChange: { password in change(index, withChanges(row) { $0.password = password }) },
-                        placeholder: "password"
-                    )
+                    DeviceRemoveButton(label: "Remove server") { remove(index) }
                 }
-                .padding(12)
-                .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
+                // .password is the plain keyboard without autocapitalisation or autocorrect, which a username needs.
+                DeviceTextField(
+                    label: "Username",
+                    value: row.username,
+                    onValueChange: { username in change(index, withChanges(row) { $0.username = username }) },
+                    placeholder: "username",
+                    keyboard: .password
+                )
+                SecretField(
+                    label: "Password",
+                    value: row.password,
+                    onValueChange: { password in change(index, withChanges(row) { $0.password = password }) },
+                    placeholder: "password"
+                )
             }
-            HStack(spacing: 8) {
-                Button("+ Add server") { rows.append(IceServer()) }.buttonStyle(.text)
-                Button("+ Add Google STUN") { rows.append(IceServer(url: GOOGLE_STUN)) }.buttonStyle(.text)
+        }
+        HStack(spacing: Space.s4) {
+            Button {
+                rows.append(IceServer())
+            } label: {
+                Label("Add server", systemImage: "plus.circle.fill")
             }
-            if let refusal = action.refusal {
-                Text(refusal.message).font(.bodySmall).foregroundStyle(theme.colors.error)
+            Button {
+                rows.append(IceServer(url: GOOGLE_STUN))
+            } label: {
+                Label("Add Google STUN", systemImage: "plus.circle.fill")
             }
+        }
+        .buttonStyle(.borderless)
+        if let refusal = action.refusal {
+            Text(refusal.message).font(.footnote).foregroundStyle(theme.colors.error)
+        }
+        VStack(alignment: .leading, spacing: Space.s2) {
             Button("Save servers", action: save).buttonStyle(.bordered).disabled(action.busy)
             Text("A TURN server relays video when a direct connection isn't possible — use one on UDP, ideally port 443. STUN-only lines need no username or password.")
-                .font(.bodySmall)
-                .foregroundStyle(theme.colors.onSurfaceVariant)
+                .font(.footnote)
+                .foregroundStyle(Color.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
     }
 }

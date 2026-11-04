@@ -69,6 +69,7 @@ struct CameraWizard: View {
     @Environment(\.theme) private var theme
     @Environment(\.LocalChangeNotice) private var notice
     @Environment(\.LocalDeviceScroll) private var scroll
+    @Environment(\.LocalNativeList) private var nativeList
     @QgcPath(DEVICE_WIZARD) private var shown
     @FocusState private var userFocused: Bool
     @State private var step = 1
@@ -280,11 +281,16 @@ struct CameraWizard: View {
             if step == 3 { applying(wizard) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: 16, vertical: 8)
+        .padding(.vertical, nativeList ? Space.s2 : 0)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(view.isNew ? "New camera" : "Set up \(view.name)")
-        .task { session = await openWizard(view, scan) }
+        // The wizard is one form row, so its session hooks live on it; a list re-runs a row's task each time the row
+        // scrolls back into view, so the session opens only once.
+        .task {
+            guard session < 0 else { return }
+            session = await openWizard(view, scan)
+        }
         .task(id: FormInputs(rtsp: rtsp, iface: iface, ip: ip, current: currentAddress, scans: wizard.scans, scanning: wizard.scanning)) {
             form = await wizardForm(rtsp, iface, ip, currentAddress)
         }
@@ -385,7 +391,7 @@ struct CameraWizard: View {
             }
         }
         if !wizard.details.isEmpty && (!repairing(view) || !wizard.todo.isEmpty) {
-            Fold(title: wizard.details, open: techOpen, onToggle: { techOpen = $0 }) {
+            WizardFold(title: wizard.details, open: techOpen, onToggle: { techOpen = $0 }) {
                 ScanDetails(
                     wizard: wizard,
                     coverage: view.coverage,
@@ -422,7 +428,7 @@ struct CameraWizard: View {
                 .buttonStyle(.text)
             }
         } else {
-            Fold(title: "I know my camera's address", open: addressOpen, onToggle: { addressOpen = $0 }) {
+            WizardFold(title: "I know my camera's address", open: addressOpen, onToggle: { addressOpen = $0 }) {
                 WizardField(
                     label: "Camera RTSP URL",
                     value: rtsp,
@@ -436,7 +442,7 @@ struct CameraWizard: View {
         }
         if view.isNew {
             let shownName = name.trimmed.lowercased()
-            Fold(title: "Named \(shownName.ifEmpty("…")) — change", open: namingOpen, onToggle: { namingOpen = $0 }) {
+            WizardFold(title: "Named \(shownName.ifEmpty("…")) — change", open: namingOpen, onToggle: { namingOpen = $0 }) {
                 WizardField(
                     label: "Camera name",
                     value: name,
@@ -465,7 +471,7 @@ struct CameraWizard: View {
             }
         }
         if view.isNew {
-            Fold(title: "No camera? Use a video file", open: fileOpen, onToggle: { fileOpen = $0 }) {
+            WizardFold(title: "No camera? Use a video file", open: fileOpen, onToggle: { fileOpen = $0 }) {
                 DeviceHint(text: "Upload a video and the device loops it as a stream — a stand-in camera for trying out detection and the overlays.")
                 HStack(spacing: 8) {
                     Button("Choose a video file") { pickingFile = true }.buttonStyle(.bordered)
@@ -495,7 +501,7 @@ struct CameraWizard: View {
             }
         )
         DeviceHint(text: "Usually the Ethernet port your camera's cable connects to. Each port shows its own address — the camera has to be on that same subnet to be reachable.")
-        Fold(
+        WizardFold(
             title: "Port address & transport",
             open: portOpen,
             onToggle: { portOpen = $0 },
@@ -514,7 +520,7 @@ struct CameraWizard: View {
             DeviceHint(text: "Leave on Automatic; switch to TCP if the video stays black or choppy.")
         }
         HStack(spacing: 8) {
-            Button("← Back") { step = 1 }.buttonStyle(.bordered)
+            Button("Back") { step = 1 }.buttonStyle(.bordered)
             Spacer(minLength: 0)
             Button("Set up & verify") { applySetup(rtsp, cameraName, iface, ip, transport) }.buttonStyle(.filled)
         }
@@ -543,6 +549,35 @@ struct CameraWizard: View {
                 Button("Change settings") { step = 2 }.buttonStyle(.bordered)
                 Button("Try again") { applySetup(rtsp, cameraName, iface, ip, transport) }.buttonStyle(.filled)
             }
+        }
+    }
+}
+
+// A fold inside the wizard: a native DisclosureGroup in a NativeForm, the hand-drawn Fold elsewhere.
+private struct WizardFold<Content: View>: View {
+    let title: String
+    let open: Bool
+    let onToggle: (Bool) -> Void
+    var summary: String = ""
+    @ViewBuilder let content: () -> Content
+    @Environment(\.LocalNativeList) private var nativeList
+
+    var body: some View {
+        if nativeList {
+            DisclosureGroup(isExpanded: Binding(get: { open }, set: onToggle)) {
+                VStack(alignment: .leading, spacing: 12) { content() }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, Space.s2)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(Color.primary)
+                    if !summary.isEmpty {
+                        Text(summary).font(.footnote).foregroundStyle(Color.secondary)
+                    }
+                }
+            }
+        } else {
+            Fold(title: title, open: open, onToggle: onToggle, summary: summary, content: content)
         }
     }
 }
@@ -596,8 +631,28 @@ private struct WizardField: View {
     var supporting: String = ""
     var focus: FocusState<Bool>.Binding? = nil
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            // As FieldRow: the label left, the value typed on the right, the hint or error underneath.
+            VStack(alignment: .leading, spacing: Space.s1) {
+                LabeledContent {
+                    input.multilineTextAlignment(.trailing)
+                } label: {
+                    Text(label).foregroundStyle(isError ? theme.colors.error : Color.primary)
+                }
+                if !supporting.isEmpty {
+                    Text(supporting).font(.footnote).foregroundStyle(isError ? theme.colors.error : Color.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            outlined
+        }
+    }
+
+    private var outlined: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.bodySmall).foregroundStyle(isError ? theme.colors.error : theme.colors.onSurfaceVariant)
             input
@@ -693,7 +748,7 @@ private struct ScanDetails: View {
             }
         }
         if !wizard.rest.isEmpty && !wizard.todo.isEmpty {
-            Fold(title: wizard.restTitle, open: restOpen, onToggle: { restOpen = $0 }) { RestPorts(ports: wizard.rest) }
+            WizardFold(title: wizard.restTitle, open: restOpen, onToggle: { restOpen = $0 }) { RestPorts(ports: wizard.rest) }
         }
         if !wizard.rest.isEmpty && wizard.todo.isEmpty && !wizard.cams.isEmpty {
             RestPorts(ports: wizard.rest)
@@ -704,7 +759,7 @@ private struct ScanDetails: View {
             RestPorts(ports: wizard.rest)
         }
         if wizard.cams.isEmpty {
-            Fold(title: "What was checked?", open: checkedOpen, onToggle: { checkedOpen = $0 }) { DeviceHint(text: coverage) }
+            WizardFold(title: "What was checked?", open: checkedOpen, onToggle: { checkedOpen = $0 }) { DeviceHint(text: coverage) }
         }
     }
 }

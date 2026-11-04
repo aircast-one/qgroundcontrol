@@ -5,13 +5,17 @@ struct DeviceVideoScreen: View {
     @DeviceView("video") private var reading
 
     var body: some View {
-        if let view = deviceView(reading, parseVideo) {
-            if let radio = view.radio { RadioSection(radio: radio) }
-            SharingSection(sharing: view.sharing)
-            DeviceStatusLine(text: "These apply to every camera on this device. Which camera goes where is set on the camera itself.")
-            SetupRow(title: view.engineering.title, onClick: { props.onOpen(view.engineering.href) }, icon: .terminal, subtitle: view.engineering.summary)
-        } else {
-            FootNote(text: DEVICE_WAITING)
+        NativeForm {
+            if let view = deviceView(reading, parseVideo) {
+                if let radio = view.radio { RadioSection(radio: radio) }
+                SharingSection(sharing: view.sharing)
+                FootNote(text: "These apply to every camera on this device. Which camera goes where is set on the camera itself.")
+                Section {
+                    SetupRow(title: view.engineering.title, onClick: { props.onOpen(view.engineering.href) }, icon: .terminal, subtitle: view.engineering.summary)
+                }
+            } else {
+                FootNote(text: DEVICE_WAITING)
+            }
         }
     }
 }
@@ -43,7 +47,7 @@ private struct RadioSection: View {
                 note: "Restarts the radio."
             )
             .id("\(radio.channel)|\(radio.region)|\(radio.txPower)")
-            DeviceDisclosure("Technical details") { DeviceText(text: radio.details) }
+            DeviceGroup("Technical details") { DeviceText(text: radio.details) }
         }
     }
 }
@@ -57,14 +61,12 @@ private struct SharingSection: View {
             case SharingStage.Live:
                 DeviceText(text: "Public sharing is on. Every camera that publishes to Cloudflare shows a public share link — hand it to anyone, no login or VPN, and it survives the backend going down.")
                 CopyRow(label: "Bridge Worker", text: sharing.baseUrl)
-                DeviceButtonRow {
-                    ActionButton(
-                        label: "Turn off",
-                        request: DeviceRequest(method: .PUT, path: "/api/stream/cfbridge", body: deviceBody(SHARING_OFF)),
-                        success: "Public sharing turned off.",
-                        confirm: ActionConfirm(title: "Turn off public sharing?", text: "Turn off public sharing? Existing share links stop working.", confirm: "Turn off")
-                    )
-                }
+                DeviceDestructiveButton(
+                    label: "Turn off",
+                    request: DeviceRequest(method: .PUT, path: "/api/stream/cfbridge", body: deviceBody(SHARING_OFF)),
+                    success: "Public sharing turned off.",
+                    confirm: ActionConfirm(title: "Turn off public sharing?", text: "Turn off public sharing? Existing share links stop working.", confirm: "Turn off")
+                )
             case SharingStage.Deploy:
                 StepText(step: 1, title: "Deploy the bridge to your Cloudflare account", text: "One click — Cloudflare copies the bridge into your account and creates its storage. Sign in when asked.")
                 DeviceButtonRow { LinkButton(href: sharing.deployUrl, text: "Deploy to Cloudflare", external: true) }
@@ -81,15 +83,12 @@ private struct SharingSection: View {
                     success: "Public sharing is on.",
                     extra: ["signKey": sharing.signKey, "deviceToken": sharing.deviceToken]
                 )
-                DeviceButtonRow {
-                    ActionButton(
-                        label: "Start over",
-                        request: DeviceRequest(method: .PUT, path: "/api/stream/cfbridge", body: deviceBody(SHARING_OFF)),
-                        success: "Setup cleared.",
-                        confirm: ActionConfirm(title: "Start over?", text: "Discard the generated keys and start over?", confirm: "Discard"),
-                        tonal: false
-                    )
-                }
+                DeviceDestructiveButton(
+                    label: "Start over",
+                    request: DeviceRequest(method: .PUT, path: "/api/stream/cfbridge", body: deviceBody(SHARING_OFF)),
+                    success: "Setup cleared.",
+                    confirm: ActionConfirm(title: "Start over?", text: "Discard the generated keys and start over?", confirm: "Discard")
+                )
             default:
                 DeviceText(
                     text: "Give a camera that publishes to Cloudflare Realtime a public share link — anyone opens it in a browser, no login and no VPN, and it keeps working even if the cloud backend is down. " +

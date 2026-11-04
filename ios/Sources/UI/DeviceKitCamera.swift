@@ -90,22 +90,23 @@ struct PartDisclosure<Content: View>: View {
     let section: String
     let opened: String
     @ViewBuilder let content: () -> Content
-    @Environment(\.LocalDeviceScroll) private var scroll
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        DeviceDisclosure(part.title, summary: part.summary, badge: part.badge, initiallyOpen: part.open || opened == section) {
-            VStack(alignment: .leading, spacing: 0) { content() }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 8)
+        // In a NativeForm the part is a DisclosureGroup whose rows join the section; elsewhere the hand-drawn fold.
+        DeviceGroup(part.title, summary: part.summary, badge: part.badge, initiallyOpen: part.open || opened == section) {
+            if nativeList {
+                content()
+            } else {
+                VStack(alignment: .leading, spacing: 0) { content() }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 8)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(part.title)
+            }
         }
+        // The page scrolls to the opened part (a list only builds the rows on screen, so a row cannot do it itself).
         .id(section)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(part.title)
-        .task { @MainActor in
-            guard opened == section else { return }
-            await Task.yield()
-            scroll?.scrollTo(section, anchor: .top)
-        }
     }
 }
 
@@ -119,7 +120,7 @@ struct LinkedNoticeView: View {
             if let link = notice.link {
                 Button("\(link.label) →") { onOpen(link.href) }
                     .buttonStyle(.text)
-                    .padding(.horizontal, 8)
+                    .rowPadding(horizontal: 8)
             }
         }
     }
@@ -138,7 +139,6 @@ struct NoteLink: View {
             Button(label, action: onClick).buttonStyle(.text)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
     }
 }

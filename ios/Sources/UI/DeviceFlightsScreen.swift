@@ -5,6 +5,7 @@ private let FLIGHT_CHART_HEIGHT: CGFloat = 112
 struct DeviceFlightsScreen: View {
     let props: DeviceScreenProps
     @DeviceView("flights") private var reading
+    @Environment(\.LocalDeviceScroll) private var scroll
     @State private var lanes: [String]? = storedLanes()
 
     private func pickLanes(_ keys: [String]) {
@@ -13,17 +14,33 @@ struct DeviceFlightsScreen: View {
     }
 
     var body: some View {
-        if let view = deviceView(reading, parseFlights) {
-            DeviceText(text: "One entry per run of this device. None of it reaches you in the air — the ground station only gets the few lines worth interrupting a flight for.")
-            if view.flights.isEmpty {
-                DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Neutral, text: "No flights recorded yet. This device starts one every time it powers up."))
+        NativeForm {
+            if let view = deviceView(reading, parseFlights) {
+                FootNote(text: "One entry per run of this device. None of it reaches you in the air — the ground station only gets the few lines worth interrupting a flight for.")
+                if view.flights.isEmpty {
+                    Section {
+                        DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Neutral, text: "No flights recorded yet. This device starts one every time it powers up."))
+                    }
+                }
+                ForEach(view.flights, id: \.id) { flight in
+                    FlightRow(flight: flight, linked: props.query["flight"] == flight.id, lanes: lanes, onLanes: pickLanes)
+                }
+            } else {
+                FootNote(text: DEVICE_WAITING)
             }
-            ForEach(view.flights, id: \.id) { flight in
-                FlightRow(flight: flight, linked: props.query["flight"] == flight.id, lanes: lanes, onLanes: pickLanes)
-            }
-        } else {
-            FootNote(text: DEVICE_WAITING)
         }
+        // A link to one flight (?flight=…) opens it and scrolls to it once it is listed; the page does this because a
+        // list only builds the rows on screen.
+        .task(id: linkedListed) {
+            guard let linked = linkedListed else { return }
+            try? await Task.sleep(for: .milliseconds(100))
+            withAnimation { scroll?.scrollTo(linked, anchor: .top) }
+        }
+    }
+
+    private var linkedListed: String? {
+        guard let linked = props.query["flight"], deviceView(reading, parseFlights)?.flights.contains(where: { $0.id == linked }) == true else { return nil }
+        return linked
     }
 }
 
@@ -32,22 +49,15 @@ private struct FlightRow: View {
     let linked: Bool
     let lanes: [String]?
     let onLanes: ([String]) -> Void
-    @Environment(\.theme) private var theme
-    @Environment(\.LocalDeviceScroll) private var scroll
     @State private var active: Int?
 
+    // Each flight is its own section: a disclosure row whose lines, chart and files open beneath it.
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            DeviceDisclosure(flight.title, summary: flight.summary, badge: flight.badge, initiallyOpen: flight.open || linked) {
+        Section {
+            DeviceGroup(flight.title, summary: flight.summary, badge: flight.badge, initiallyOpen: flight.open || linked) {
                 FlightBody(flight: flight, active: active, onActive: { active = $0 }, lanes: lanes, onLanes: onLanes)
             }
-            Divider().overlay(theme.colors.outlineVariant)
-        }
-        .id(flight.id)
-        .task(id: linked) {
-            guard linked else { return }
-            try? await Task.sleep(for: .milliseconds(100))
-            withAnimation { scroll?.scrollTo(flight.id, anchor: .top) }
+            .id(flight.id)
         }
     }
 }
@@ -60,24 +70,24 @@ private struct FlightBody: View {
     let onLanes: ([String]) -> Void
     @State private var alertsOnly = false
 
+    // The rows under an open flight: the filter, one row per part of the run, the chart (drawn by hand), the files.
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if hasLines(flight) {
-                DeviceButtonRow {
-                    DeviceChip(label: "Everything", selected: !alertsOnly) { alertsOnly = false }
-                    DeviceChip(label: "Alerts only", selected: alertsOnly) { alertsOnly = true }
-                }
-                ForEach(Array(flight.sections.enumerated()), id: \.offset) { _, part in
-                    FlightPartRows(part: part, alertsOnly: alertsOnly, active: active, onActive: onActive)
-                }
-            } else {
-                DeviceText(text: "Nothing worth recording — the device had no faults to report.")
+        if hasLines(flight) {
+            Picker("Show", selection: $alertsOnly) {
+                Text("Everything").tag(false)
+                Text("Alerts only").tag(true)
             }
-            if let trace = flight.trace { FlightLanes(trace: trace, active: active, lanes: lanes, onLanes: onLanes) }
-            if !flight.dropped.isEmpty { DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Warn, text: flight.dropped)) }
-            FlightFiles(flight: flight)
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            ForEach(Array(flight.sections.enumerated()), id: \.offset) { _, part in
+                FlightPartRows(part: part, alertsOnly: alertsOnly, active: active, onActive: onActive)
+            }
+        } else {
+            DeviceText(text: "Nothing worth recording — the device had no faults to report.")
         }
-        .padding(.bottom, 16)
+        if let trace = flight.trace { FlightLanes(trace: trace, active: active, lanes: lanes, onLanes: onLanes) }
+        if !flight.dropped.isEmpty { DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Warn, text: flight.dropped)) }
+        FlightFiles(flight: flight)
     }
 }
 
@@ -97,7 +107,7 @@ private struct FlightPartRows: View {
                         Text(part.span).font(deviceMono(.labelSmall)).foregroundStyle(theme.colors.onSurfaceVariant)
                     }
                 }
-                .padding(EdgeInsets(top: 16, leading: 8, bottom: 4, trailing: 8))
+                .padding(EdgeInsets(top: 8, leading: 8, bottom: 4, trailing: 8))
             }
             ForEach(part.videos, id: \.camera) { SortieVideoLinks(video: $0) }
             ForEach(part.lines.filter { !alertsOnly || $0.alert }, id: \.index) { line in
@@ -105,7 +115,7 @@ private struct FlightPartRows: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
+        .rowPadding(horizontal: 8)
     }
 }
 
@@ -245,6 +255,7 @@ private struct FlightLanes: View {
     let lanes: [String]?
     let onLanes: ([String]) -> Void
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
     @State private var plot = LanePlot()
     @State private var chart: FlightChart?
 
@@ -262,7 +273,7 @@ private struct FlightLanes: View {
         let keys = laneKeys(lanes, drawn.lanes.filter(\.isDefault).map(\.key))
         let shown = drawn.lanes.filter { keys.contains($0.key) }
         return VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(theme.colors.outlineVariant)
+            if !nativeList { Divider().overlay(theme.colors.outlineVariant) }
             DeviceButtonRow {
                 ForEach(drawn.lanes, id: \.key) { lane in
                     LaneChip(lane: lane, selected: keys.contains(lane.key)) { onLanes(toggled(keys, lane.key)) }
@@ -287,9 +298,10 @@ private struct FlightLanes: View {
             )
             .font(.bodySmall)
             .foregroundStyle(theme.colors.onSurfaceVariant)
-            .padding(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
+            .padding(.top, 12)
+            .rowPadding(horizontal: 16)
         }
-        .padding(.top, 8)
+        .padding(.vertical, 8)
     }
 }
 
@@ -381,7 +393,8 @@ private struct LaneChart: View {
                 }
             }
         }
-        .padding(EdgeInsets(top: 16, leading: 16, bottom: 0, trailing: 16))
+        .padding(.top, 16)
+        .rowPadding(horizontal: 16)
     }
 
     private func canvas(_ sample: FlightChartSample?) -> some View {
@@ -432,11 +445,12 @@ private struct FlightFiles: View {
     @Environment(\.theme) private var theme
     @Environment(\.LocalChangeNotice) private var notice
     @Environment(\.LocalDeviceOrigin) private var origin
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         let link = flightLink(resolveDeviceUrl(origin, "/fly/"), flight.id)
         VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(theme.colors.outlineVariant)
+            if !nativeList { Divider().overlay(theme.colors.outlineVariant) }
             DeviceButtonRow {
                 LinkButton(href: resolveDeviceUrl(origin, flight.csv), text: "Samples as CSV", look: .Outlined)
                 LinkButton(href: resolveDeviceUrl(origin, flight.json), text: "Everything as JSON", look: .Text)
@@ -454,8 +468,8 @@ private struct FlightFiles: View {
             )
             .font(.bodySmall)
             .foregroundStyle(theme.colors.onSurfaceVariant)
-            .padding(.horizontal, 16)
+            .rowPadding(horizontal: 16)
         }
-        .padding(.top, 12)
+        .padding(.top, nativeList ? 4 : 12)
     }
 }

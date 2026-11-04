@@ -5,72 +5,70 @@ struct DeviceTelemetryScreen: View {
     @DeviceView("telemetry") private var reading
 
     var body: some View {
-        if let view = deviceView(reading, parseTelemetry) {
-            DeviceSection(title: "Status", badge: view.status) {
-                if let fix = view.fix { FixSteps(fix: fix) }
-                ForEach(view.notices, id: \.text) { DeviceNotice(notice: $0) }
-                if let cloud = view.cloud { CloudPath(cloud: cloud) }
+        NativeForm {
+            if let view = deviceView(reading, parseTelemetry) {
+                DeviceSection(title: "Status", badge: view.status) {
+                    if let fix = view.fix { FixSteps(fix: fix) }
+                    ForEach(view.notices, id: \.text) { DeviceNotice(notice: $0) }
+                    if let cloud = view.cloud { CloudPath(cloud: cloud) }
+                }
+                DeviceSection(title: "Connect another ground station") {
+                    EndpointRows(endpoints: view.endpoints)
+                    if let notice = view.endpointNotice { DeviceNotice(notice: notice) }
+                }
+                DeviceSection(title: "MAVLink settings") {
+                    MavlinkEditor(view: view).id(view.settings)
+                }
+                if let gimbal = view.gimbal { GimbalSection(gimbal: gimbal) }
+            } else {
+                FootNote(text: DEVICE_WAITING)
             }
-            DeviceSection(title: "Connect another ground station") {
-                EndpointRows(endpoints: view.endpoints)
-                if let notice = view.endpointNotice { DeviceNotice(notice: notice) }
-            }
-            DeviceSection(title: "MAVLink settings") {
-                MavlinkEditor(view: view).id(view.settings)
-            }
-            if let gimbal = view.gimbal { GimbalSection(gimbal: gimbal) }
-        } else {
-            FootNote(text: DEVICE_WAITING)
         }
     }
 }
 
+// What to do to get telemetry flowing: numbered steps, and what the device is waiting for.
 private struct FixSteps: View {
     let fix: TelemetryFix
     @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(fix.title).font(.titleMedium)
+        VStack(alignment: .leading, spacing: Space.s3) {
+            Text(fix.title).font(.headline)
             ForEach(Array(fix.steps.enumerated()), id: \.offset) { index, step in
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: Space.s3) {
                     Text("\(index + 1)")
-                        .font(.labelMedium)
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(theme.colors.onPrimaryContainer)
                         .frame(width: 24, height: 24)
                         .background(theme.colors.primaryContainer, in: Circle())
-                    Text(step).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(step).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             if !fix.waiting.isEmpty {
-                HStack(spacing: 12) {
+                HStack(spacing: Space.s3) {
                     ProgressView().controlSize(.small)
-                    Text(fix.waiting).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                    Text(fix.waiting).font(.footnote).foregroundStyle(Color.secondary)
                 }
             }
         }
-        .padding(16)
+        .padding(.vertical, Space.s1)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
     }
 }
 
 private struct CloudPath: View {
     let cloud: TelemetryCloud
-    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 12) {
-                Text("Cloud path").font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Space.s3) {
+                Text("Cloud path").frame(maxWidth: .infinity, alignment: .leading)
                 DeviceBadgeText(badge: cloud.status)
             }
-            Text(cloud.text).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+            Text(cloud.text).font(.subheadline).foregroundStyle(Color.secondary)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -100,32 +98,16 @@ private struct MavlinkEditor: View {
         }
     }
 
+    // Rows of the MAVLink section: the endpoint list (which also loads the editor), then the baud, the notes and Save.
     var body: some View {
-        Group {
-            if let editor {
-                form(editor)
+        let rows = editor.map { typed ?? $0.rows.map(\.row) }
+        endpointList(rows)
+            .task(id: typed) {
+                let loaded = await endpointEditor(view.schemes, typed, view.settings.endpoints)
+                if !Task.isCancelled { editor = loaded }
             }
-        }
-        .task(id: typed) {
-            let loaded = await endpointEditor(view.schemes, typed, view.settings.endpoints)
-            if !Task.isCancelled { editor = loaded }
-        }
-    }
-
-    private func form(_ editor: EndpointEditor) -> some View {
-        let rows = typed ?? editor.rows.map(\.row)
-        let baudRefused = action.refusal?.field == "baud"
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("Ground-station endpoints").font(.bodyLarge)
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                EndpointEditorRow(
-                    row: row,
-                    shown: editor.rows.indices.contains(index) ? editor.rows[index] : editor.blank,
-                    onChange: { next in typed = rows.enumerated().map { at, it in at == index ? next : it } },
-                    onRemove: { typed = rows.enumerated().filter { $0.offset != index }.map(\.element) }
-                )
-            }
-            Button("+ Add endpoint") { typed = rows + [editor.blank.row] }.buttonStyle(.text)
+        if let rows {
+            let baudRefused = action.refusal?.field == "baud"
             DeviceTextField(
                 label: "Serial baud",
                 value: baud,
@@ -136,15 +118,42 @@ private struct MavlinkEditor: View {
                     : "The baud only matters for a serial flight controller — USB autopilots ignore it, Betaflight ships at 115200.",
                 keyboard: .number
             )
-            Text("Takes effect on save — no reboot.").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
             if let refusal = action.refusal, !baudRefused {
-                Text(refusal.message).font(.bodySmall).foregroundStyle(theme.colors.error)
+                Text(refusal.message).font(.footnote).foregroundStyle(theme.colors.error)
             }
-            Button("Save") { save(rows) }.buttonStyle(.bordered).disabled(action.busy)
+            VStack(alignment: .leading, spacing: Space.s2) {
+                Button("Save") { save(rows) }.buttonStyle(.bordered).disabled(action.busy)
+                Text("Takes effect on save — no reboot.").font(.footnote).foregroundStyle(Color.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func endpointList(_ rows: [EndpointRow]?) -> some View {
+        VStack(alignment: .leading, spacing: Space.s3) {
+            Text("Ground-station endpoints").font(.headline)
+            if let editor, let rows {
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    if index > 0 { Divider() }
+                    EndpointEditorRow(
+                        row: row,
+                        shown: editor.rows.indices.contains(index) ? editor.rows[index] : editor.blank,
+                        onChange: { next in typed = rows.enumerated().map { at, it in at == index ? next : it } },
+                        onRemove: { typed = rows.enumerated().filter { $0.offset != index }.map(\.element) }
+                    )
+                }
+                Button {
+                    typed = rows + [editor.blank.row]
+                } label: {
+                    Label("Add endpoint", systemImage: "plus.circle.fill")
+                }
+                .buttonStyle(.borderless)
+            } else {
+                ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, Space.s1)
     }
 }
 
@@ -156,44 +165,37 @@ private struct EndpointEditorRow: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .bottom, spacing: 8) {
+        // One endpoint inside the MAVLink row, its fields drawn as the form's own label / value rows.
+        VStack(alignment: .leading, spacing: Space.s2) {
+            HStack(spacing: Space.s2) {
                 DeviceSelect(
                     label: "Connection type",
                     value: row.scheme,
                     options: shown.options.map { DeviceOption(value: $0.value, label: $0.label) },
                     onPick: { scheme in onChange(shown.options.first { $0.value == scheme }?.row ?? row) }
                 )
-                Button(action: onRemove) { Image(.close).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Remove endpoint")
-                    .macTooltip("Remove endpoint")
+                DeviceRemoveButton(label: "Remove endpoint", action: onRemove)
             }
-            HStack(alignment: .top, spacing: 8) {
-                DeviceTextField(
-                    label: shown.hostLabel,
-                    value: row.host,
-                    onValueChange: { host in onChange(withChanges(row) { $0.host = host }) },
-                    placeholder: shown.placeholder,
-                    keyboard: .uri
-                )
-                DeviceTextField(
-                    label: "Port",
-                    value: row.port,
-                    onValueChange: { port in onChange(withChanges(row) { $0.port = port }) },
-                    placeholder: "14550",
-                    keyboard: .number
-                )
-                .frame(width: 112)
-            }
+            DeviceTextField(
+                label: shown.hostLabel,
+                value: row.host,
+                onValueChange: { host in onChange(withChanges(row) { $0.host = host }) },
+                placeholder: shown.placeholder,
+                keyboard: .uri
+            )
+            DeviceTextField(
+                label: "Port",
+                value: row.port,
+                onValueChange: { port in onChange(withChanges(row) { $0.port = port }) },
+                placeholder: "14550",
+                keyboard: .number
+            )
             if !shown.problem.isEmpty {
-                Text(shown.problem).font(.bodySmall).foregroundStyle(theme.colors.error)
+                Text(shown.problem).font(.footnote).foregroundStyle(theme.colors.error)
             } else {
-                Text(shown.note).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text(shown.note).font(.footnote).foregroundStyle(Color.secondary)
             }
         }
-        .padding(12)
-        .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
     }
 }
 

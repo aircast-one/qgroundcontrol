@@ -61,7 +61,7 @@ struct WifiJoin: View {
     var initiallyOpen: Bool = false
 
     var body: some View {
-        DeviceDisclosure(
+        DeviceGroup(
             "Join a Wi-Fi network",
             summary: "Connect this device to your Wi-Fi. It leaves the recovery hotspot and rejoins on every boot.",
             initiallyOpen: initiallyOpen
@@ -124,60 +124,94 @@ private struct WifiWizard: View {
         if joining {
             WifiJoining(join: join, reopen: reopen, onBack: back)
         } else {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
-                    DeviceHint(text: "Pick a nearby network or type its name. Scanning is limited while the hotspot is on, so typing is usually fastest.")
-                    Button(scanning ? "Scanning…" : "Scan", action: scan)
-                        .buttonStyle(.bordered)
-                        .disabled(scanning)
-                }
-                if scanFailed { DeviceHint(text: "Scan failed — type your network name below.") }
-                if let found = networks {
-                    if found.isEmpty { DeviceHint(text: "No networks found — type your network name below.") }
-                    VStack(spacing: 6) {
-                        ForEach(found, id: \.ssid) { network in
-                            NetworkRow(network: network) { pick(network) }
-                        }
-                    }
-                }
-                // .password gives the plain keyboard without autocapitalisation or autocorrect, which an SSID needs.
-                DeviceTextField(
-                    label: "Network name (SSID)",
-                    value: ssid,
-                    onValueChange: { ssid = $0 },
-                    placeholder: "your Wi-Fi name",
-                    isError: problem?.field == "ssid",
-                    keyboard: .password,
-                    onSubmit: connect
-                )
-                SecretField(
-                    label: "Password",
-                    value: psk,
-                    onValueChange: { psk = $0 },
-                    isError: problem?.field == "psk",
-                    supportingText: "Leave blank for an open network."
-                )
-                if let problem {
-                    Text(problem.message).font(.bodyMedium).foregroundStyle(theme.colors.error)
-                }
-                HStack(spacing: 12) {
-                    DeviceHint(text: "Saved with autoconnect, ahead of the hotspot.")
-                    Button("Connect", action: connect).buttonStyle(.bordered)
+            // Rows inside the Join group: scan, the networks found (tap one to fill the name), name, password, Connect.
+            HStack(spacing: Space.s3) {
+                DeviceHint(text: "Pick a nearby network or type its name. Scanning is limited while the hotspot is on, so typing is usually fastest.")
+                Button(scanning ? "Scanning…" : "Scan", action: scan)
+                    .buttonStyle(.bordered)
+                    .disabled(scanning)
+            }
+            .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
+            if scanFailed { DeviceHint(text: "Scan failed — type your network name below.").rowPadding(horizontal: DEVICE_LIST_PADDING) }
+            if let found = networks {
+                if found.isEmpty { DeviceHint(text: "No networks found — type your network name below.").rowPadding(horizontal: DEVICE_LIST_PADDING) }
+                ForEach(found, id: \.ssid) { network in
+                    NetworkRow(network: network, picked: !ssid.isEmpty && ssid == network.ssid) { pick(network) }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, DEVICE_LIST_PADDING)
-            .padding(.vertical, 8)
+            // .password gives the plain keyboard without autocapitalisation or autocorrect, which an SSID needs.
+            DeviceTextField(
+                label: "Network name (SSID)",
+                value: ssid,
+                onValueChange: { ssid = $0 },
+                placeholder: "your Wi-Fi name",
+                isError: problem?.field == "ssid",
+                keyboard: .password,
+                onSubmit: connect
+            )
+            .rowPadding(horizontal: DEVICE_LIST_PADDING)
+            SecretField(
+                label: "Password",
+                value: psk,
+                onValueChange: { psk = $0 },
+                isError: problem?.field == "psk",
+                supportingText: "Leave blank for an open network."
+            )
+            .rowPadding(horizontal: DEVICE_LIST_PADDING)
+            if let problem {
+                Text(problem.message).font(.bodyMedium).foregroundStyle(theme.colors.error).rowPadding(horizontal: DEVICE_LIST_PADDING)
+            }
+            HStack(spacing: Space.s3) {
+                DeviceHint(text: "Saved with autoconnect, ahead of the hotspot.")
+                Button("Connect", action: connect).buttonStyle(.borderedProminent)
+            }
+            .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
         }
     }
 }
 
 private struct NetworkRow: View {
     let network: WifiNetwork
+    var picked: Bool = false
     let onPick: () -> Void
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            // A native row: the name (and whether it is the one in use), its signal and lock; a check on the picked one.
+            Button(action: onPick) {
+                HStack(spacing: Space.s3) {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(theme.colors.primary)
+                        .opacity(picked ? 1 : 0)
+                        .accessibilityHidden(!picked)
+                    HStack(spacing: Space.s2) {
+                        Text(network.ssid).foregroundStyle(Color.primary).lineLimit(1).truncationMode(.tail)
+                        if network.active {
+                            Text("connected").font(.footnote).foregroundStyle(theme.aircast.success)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("\(network.signal)%").font(.footnote).foregroundStyle(Color.secondary)
+                    if network.secured {
+                        Image(systemName: "lock.fill")
+                            .font(.footnote)
+                            .foregroundStyle(Color.secondary)
+                            .accessibilityLabel("secured")
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .listRowButton()
+            .accessibilityAddTraits(picked ? .isSelected : [])
+        } else {
+            outlined
+        }
+    }
+
+    private var outlined: some View {
         Button(action: onPick) {
             HStack(spacing: 12) {
                 HStack(spacing: 8) {
@@ -202,6 +236,7 @@ private struct NetworkRow: View {
             .macHover(RoundedRectangle(cornerRadius: Corner.medium))
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, DEVICE_LIST_PADDING)
     }
 }
 
@@ -210,34 +245,32 @@ private struct WifiJoining: View {
     let reopen: WifiReopen
     let onBack: () -> Void
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
+    // Rows while the device switches networks: what happened, how to reach it again (with the address to reconnect
+    // to), and Back to the form.
     var body: some View {
-        let muted = theme.colors.onSurfaceVariant
-        VStack(alignment: .leading, spacing: 12) {
-            Text(join.status).font(.bodyLarge)
-            if join.instructions {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("The recovery hotspot is turning off. To reach the device again:").font(.bodyMedium).foregroundStyle(muted)
-                    (Text("1. On your phone or laptop, join ") + Text(join.target).bold().foregroundStyle(theme.colors.onSurface) + Text("."))
-                        .font(.bodyMedium)
-                        .foregroundStyle(muted)
-                    Text("2. Reconnect this app to the device on that network.").font(.bodyMedium).foregroundStyle(muted)
-                    ReconnectDevice(host: reopen.host, onConnected: onBack).id(reopen.host)
-                    if !reopen.host.isEmpty {
-                        DeviceHint(text: "Doesn't connect? Find \(reopen.hostname) in your router's list of connected devices and use its address instead.")
-                    }
-                    DeviceHint(text: "The app reaches the device over the link that's going away, so it can't follow it on its own.")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
+        let muted = nativeList ? Color.secondary : theme.colors.onSurfaceVariant
+        Text(join.status).font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading).rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
+        if join.instructions {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("The recovery hotspot is turning off. To reach the device again:").font(.bodyMedium).foregroundStyle(muted)
+                (Text("1. On your phone or laptop, join ") + Text(join.target).bold().foregroundStyle(nativeList ? Color.primary : theme.colors.onSurface) + Text("."))
+                    .font(.bodyMedium)
+                    .foregroundStyle(muted)
+                Text("2. Reconnect this app to the device on that network.").font(.bodyMedium).foregroundStyle(muted)
             }
-            Button("← Back", action: onBack).buttonStyle(.bordered)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
+            ReconnectDevice(host: reopen.host, onConnected: onBack).id(reopen.host)
+            if !reopen.host.isEmpty {
+                DeviceHint(text: "Doesn't connect? Find \(reopen.hostname) in your router's list of connected devices and use its address instead.")
+                    .rowPadding(horizontal: DEVICE_LIST_PADDING)
+            }
+            DeviceHint(text: "The app reaches the device over the link that's going away, so it can't follow it on its own.")
+                .rowPadding(horizontal: DEVICE_LIST_PADDING)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DEVICE_LIST_PADDING)
-        .padding(.vertical, 8)
+        Button("Back", action: onBack).buttonStyle(.bordered).rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
     }
 }
 
@@ -274,8 +307,10 @@ private struct ReconnectDevice: View {
             keyboard: .uri,
             onSubmit: reconnect
         )
+        .rowPadding(horizontal: DEVICE_LIST_PADDING)
         Button("Reconnect", action: reconnect)
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderedProminent)
             .disabled(busy || address.isBlank)
+            .rowPadding(horizontal: DEVICE_LIST_PADDING)
     }
 }

@@ -197,12 +197,12 @@ private struct NativeDevicePage: View {
     let props: DeviceScreenProps
 
     var body: some View {
+        // Each page is its own NativeForm, which scrolls itself: a Form inside a ScrollView collapses to nothing.
+        // The reader stays so pages can scroll to a row (?flight=, #section) through LocalDeviceScroll.
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) { entry.screen(props) }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .environment(\.LocalDeviceScroll, proxy)
+            entry.screen(props)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .environment(\.LocalDeviceScroll, proxy)
         }
     }
 }
