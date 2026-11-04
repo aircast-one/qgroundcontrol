@@ -46,16 +46,28 @@ struct AircastApp: App {
 
     var body: some Scene {
         #if os(macOS)
-        // The app drives one vehicle session, so it keeps to the one window rather than offering File > New Window.
-        mainWindow.commands { CommandGroup(replacing: .newItem) {} }
+        // The app drives one vehicle session, so it keeps to the one window; the menu bar replaces File > New Window.
+        mainWindow
+            .defaultSize(width: MAC_WINDOW_DEFAULT_WIDTH, height: MAC_WINDOW_DEFAULT_HEIGHT)
+            .windowResizability(.contentMinSize)
+            .commands { MacMenuCommands() }
         #else
         mainWindow
         #endif
     }
 
+    private var windowContent: some View {
+        #if os(macOS)
+        // Never narrow enough for the Fly tab's controls to crowd, and never phone-shaped.
+        return MainActivity().frame(minWidth: MAC_WINDOW_MIN_WIDTH, minHeight: MAC_WINDOW_MIN_HEIGHT)
+        #else
+        return MainActivity()
+        #endif
+    }
+
     private var mainWindow: some Scene {
         WindowGroup {
-            MainActivity()
+            windowContent
                 .onOpenURL { url in
                     if url.isFileURL {
                         PlanInbox.shared.received = url
