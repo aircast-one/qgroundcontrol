@@ -4,7 +4,9 @@ import Foundation
 final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegate, @unchecked Sendable {
     private static let pollInterval = 0.5
     private static let maxTextQueue = 20
+    #if os(iOS)
     static let sessionOptions: AVAudioSession.CategoryOptions = [.mixWithOthers]
+    #endif
     private static var shared: SpeechOut?
 
     private let synthesizer = AVSpeechSynthesizer()
@@ -20,7 +22,9 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDeleg
         let speech = SpeechOut()
         shared = speech
         speech.synthesizer.delegate = speech
+        #if os(iOS)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: sessionOptions)
+        #endif
         let timer = DispatchSource.makeTimerSource(queue: speech.queue)
         timer.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
         timer.setEventHandler { [weak speech] in speech?.poll() }

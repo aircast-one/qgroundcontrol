@@ -88,7 +88,12 @@ private enum LinkHaptics {
 
     static func play(_ waveform: [Int64], lost: Bool) {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+            #if os(iOS)
             UINotificationFeedbackGenerator().notificationOccurred(lost ? .error : .success)
+            #elseif os(macOS)
+            // A Force Touch trackpad taps only while a finger rests on it; elsewhere this does nothing.
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            #endif
             return
         }
         let events = waveform.indices.filter { $0 % 2 == 1 }.map { index in

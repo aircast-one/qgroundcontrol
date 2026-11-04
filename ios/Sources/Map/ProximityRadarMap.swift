@@ -1,5 +1,9 @@
 import MapLibre
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 private let RADAR_SOURCE = "aircast-proximity-radar"
 private let RADAR_LAYER = "aircast-proximity-radar-layer"

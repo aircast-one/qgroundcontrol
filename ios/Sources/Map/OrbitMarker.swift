@@ -1,5 +1,9 @@
 import MapLibre
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 let ORBIT_VIEW = "view.orbit"
 private let ORBIT_SOURCE = "aircast-orbit"
@@ -86,16 +90,16 @@ func installOrbitLayer(_ style: MLNStyle) {
     let label = MLNSymbolStyleLayer(identifier: ORBIT_LABEL_LAYER, source: centre)
     label.text = styleConstant("Orbit")
     label.textFontSize = styleConstant(12)
-    label.textColor = styleConstant(UIColor.white)
+    label.textColor = styleConstant(PlatformColor.white)
     label.textOffset = styleOffset(0, 1.4)
     label.textAnchor = styleConstant("top")
     label.textAllowsOverlap = styleConstant(true)
     label.textIgnoresPlacement = styleConstant(true)
     style.addLayer(label)
     let handle = MLNCircleStyleLayer(identifier: ORBIT_HANDLE_LAYER, source: handles)
-    handle.circleColor = styleConstant(UIColor.white)
+    handle.circleColor = styleConstant(PlatformColor.white)
     handle.circleRadius = styleConstant(9)
-    handle.circleStrokeColor = styleConstant(UIColor.black)
+    handle.circleStrokeColor = styleConstant(PlatformColor.black)
     handle.circleStrokeWidth = styleConstant(2)
     style.addLayer(handle)
 }

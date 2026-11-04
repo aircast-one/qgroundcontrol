@@ -1,6 +1,8 @@
 import Combine
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 
 private let SETTINGS_VIEW = "view.settings"
 private let SEARCH_SETTLE_MS = 250
@@ -166,6 +168,7 @@ struct SettingsPageEntry: Equatable {
     var showsConsole: Bool = false
     var showsNtrip: Bool = false
     var showsPx4Logs: Bool = false
+    var showsPacketRadio: Bool = false
     var helpLinks: [HelpLink] = []
     var keywords: String = ""
 }
@@ -221,6 +224,7 @@ func settingsPages(_ view: JSON?) -> [SettingsPageEntry] {
             showsConsole: page["showsConsole"].bool,
             showsNtrip: page["showsNtrip"].bool,
             showsPx4Logs: page["showsPx4Logs"].bool,
+            showsPacketRadio: page["showsPacketRadio"].bool,
             helpLinks: page["helpLinks"].objects.map {
                 HelpLink(name: $0["name"].string, url: $0["url"].string, host: $0["host"].string)
             },
@@ -398,6 +402,9 @@ private struct SettingsTab: View {
                     ForEach(pages, id: \.title) { pageEntry($0) }
                     TabSetupRows(group: group, onOpenSetup: onOpenSetup)
                 }
+                #if os(macOS)
+                if group == .General { UpdatesSection() }
+                #endif
             }
         }
     }
@@ -599,6 +606,9 @@ private struct SettingsControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if home && page.showsNtrip { NtripStatusSection(onWrite: onWrite) }
+            #if os(macOS)
+            if home && page.showsPacketRadio { PacketRadioSection(onWrite: onWrite) }
+            #endif
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
                 sectionView(section)
             }

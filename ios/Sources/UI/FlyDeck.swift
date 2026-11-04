@@ -141,7 +141,7 @@ private struct HoldPress: ViewModifier {
                     }
             )
             .onDisappear(perform: release)
-            .sensoryFeedback(.impact(weight: .heavy), trigger: held)
+            .heavyImpactFeedback(trigger: held)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { onTap() }

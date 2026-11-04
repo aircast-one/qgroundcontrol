@@ -11,6 +11,9 @@ GSTREAMER_SHA256=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["
 CA_BUNDLE_DATE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["ca_bundle_date"])' "$config")
 CA_BUNDLE_SHA256=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["ca_bundle_sha256"])' "$config")
 
+shared_only=false
+[ "${1:-}" = --shared-only ] && shared_only=true
+
 vendor="$(cd "$(dirname "$0")" && pwd)/Vendor"
 cache="$HOME/.cache/aircast-ios"
 mkdir -p "$vendor" "$cache"
@@ -24,7 +27,7 @@ fetch() {
     fi
 }
 
-if [ ! -f "$vendor/MapLibre-$MAPLIBRE_VERSION" ]; then
+if ! $shared_only && [ ! -f "$vendor/MapLibre-$MAPLIBRE_VERSION" ]; then
     zip="$cache/MapLibre-$MAPLIBRE_VERSION.zip"
     fetch "https://github.com/maplibre/maplibre-native/releases/download/ios-v$MAPLIBRE_VERSION/MapLibre.dynamic.xcframework.zip" "$zip" "$MAPLIBRE_SHA256"
     rm -rf "$vendor/MapLibre.xcframework" "$vendor"/MapLibre-*
@@ -47,7 +50,7 @@ if [ ! -f "$vendor/Cesium-$CESIUM_VERSION" ]; then
 fi
 
 sdk="$HOME/Library/Developer/GStreamer/iPhone.sdk"
-if [ ! -f "$sdk/GStreamer-$GSTREAMER_VERSION" ]; then
+if ! $shared_only && [ ! -f "$sdk/GStreamer-$GSTREAMER_VERSION" ]; then
     pkg="$cache/gstreamer-ios-$GSTREAMER_VERSION.pkg"
     fetch "https://gstreamer.freedesktop.org/data/pkg/ios/$GSTREAMER_VERSION/gstreamer-1.0-devel-$GSTREAMER_VERSION-ios-universal.pkg" "$pkg" "$GSTREAMER_SHA256"
     expanded="$cache/gstreamer-ios-$GSTREAMER_VERSION"

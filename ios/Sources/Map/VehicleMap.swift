@@ -2,7 +2,11 @@ import CoreLocation
 import CryptoKit
 import MapLibre
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 private let VEHICLE_SOURCE = "aircast-vehicle"
 private let TAP_SLOP_DP: CGFloat = 24
@@ -164,23 +168,50 @@ func styleExpression(_ json: Any) -> NSExpression { NSExpression(mglJSONObject: 
 func styleGet(_ key: String) -> NSExpression { NSExpression(forKeyPath: key) }
 
 func styleOffset(_ dx: CGFloat, _ dy: CGFloat) -> NSExpression {
-    NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: dx, dy: dy)))
+    #if os(iOS)
+    return NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: dx, dy: dy)))
+    #elseif os(macOS)
+    // AppKit has no NSValue(cgVector:); MapLibre reads an offset as an NSValue holding a CGVector (64-bit CGFloat).
+    var vector = CGVector(dx: dx, dy: dy)
+    return NSExpression(forConstantValue: NSValue(bytes: &vector, objCType: "{CGVector=dd}"))
+    #endif
 }
 
-func mapColour(_ hex: String) -> UIColor {
+func mapColour(_ hex: String) -> PlatformColor {
     let digits = hex.removingPrefix("#")
     let value = UInt64(digits, radix: 16) ?? 0
     let channel = { (shift: UInt64) in CGFloat((value >> shift) & 0xFF) / 255 }
-    return UIColor(red: channel(16), green: channel(8), blue: channel(0), alpha: digits.count > 6 ? channel(24) : 1)
+    return PlatformColor(red: channel(16), green: channel(8), blue: channel(0), alpha: digits.count > 6 ? channel(24) : 1)
 }
 
-func mapIcon(_ pixels: CGFloat, _ draw: (CGContext) -> Void) -> UIImage {
+func mapIcon(_ pixels: CGFloat, _ draw: (CGContext) -> Void) -> PlatformImage {
+    #if os(iOS)
     let format = UIGraphicsImageRendererFormat()
     format.scale = 3
     return UIGraphicsImageRenderer(size: CGSize(width: pixels / 3, height: pixels / 3), format: format).image { rendered in
         rendered.cgContext.scaleBy(x: 1.0 / 3, y: 1.0 / 3)
         draw(rendered.cgContext)
     }
+    #elseif os(macOS)
+    // The same 3x bitmap, drawn in pixels with UIKit's top-left origin so the icon code reads the same on both.
+    let points = NSSize(width: pixels / 3, height: pixels / 3)
+    let side = Int(pixels.rounded(.up))
+    guard side > 0,
+          let context = CGContext(
+              data: nil,
+              width: side,
+              height: side,
+              bitsPerComponent: 8,
+              bytesPerRow: 0,
+              space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+          ) else { return NSImage(size: points) }
+    context.translateBy(x: 0, y: CGFloat(side))
+    context.scaleBy(x: 1, y: -1)
+    draw(context)
+    guard let image = context.makeImage() else { return NSImage(size: points) }
+    return NSImage(cgImage: image, size: points)
+    #endif
 }
 
 func vehicleFeatures(
@@ -499,7 +530,7 @@ private struct VehicleMapPlan: ViewModifier {
                 if let style { applyPip(style, map.pip) }
             }
             .onChange(of: Keys(model.mapReady, map.centreRequest), initial: true) {
-                model.centre(map.centreRequest, map.centreOn, map.centreZoom, map.centreMinZoom, UIEdgeInsets(top: map.topInsetPx, left: map.leftInsetPx, bottom: map.bottomInsetPx, right: 0))
+                model.centre(map.centreRequest, map.centreOn, map.centreZoom, map.centreMinZoom, PlatformEdgeInsets(top: map.topInsetPx, left: map.leftInsetPx, bottom: map.bottomInsetPx, right: 0))
             }
             .task(id: Keys(map.fitRequest, map.topInsetPx, map.leftInsetPx, map.bottomInsetPx)) {
                 guard map.fitRequest != 0, map.fitRequest != model.fittedRequest else { return }
@@ -511,7 +542,7 @@ private struct VehicleMapPlan: ViewModifier {
                     map.fitOnly ?? planPoints(map.missionItems, map.fencePolygons, map.fenceCircles, map.rallyPoints, map.surveys),
                     scene.latitude,
                     scene.longitude,
-                    UIEdgeInsets(top: settled.topInsetPx, left: settled.leftInsetPx, bottom: settled.bottomInsetPx, right: 0),
+                    PlatformEdgeInsets(top: settled.topInsetPx, left: settled.leftInsetPx, bottom: settled.bottomInsetPx, right: 0),
                     map.fitBottomShare,
                     map.onFitFailed
                 )
@@ -610,9 +641,11 @@ private let PAN_RECENTER_DELAY_MS = 10_000.0
 private let RECENTER_ANIMATION_MS = 1000.0
 private let CENTRE_INSET_FRACTION: CGFloat = 0.15
 
+#if os(iOS)
 private let gestureReasons: MLNCameraChangeReason = [
     .gesturePan, .gesturePinch, .gestureRotate, .gestureZoomIn, .gestureZoomOut, .gestureOneFingerZoom, .gestureTilt,
 ]
+#endif
 
 final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
     @Published fileprivate(set) var style: MLNStyle?
@@ -675,6 +708,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         generation += 1
     }
 
+    #if os(iOS)
     func mapView(_ mapView: MLNMapView, regionWillChangeWith reason: MLNCameraChangeReason, animated: Bool) {
         if !reason.isDisjoint(with: gestureReasons) { panning = true }
     }
@@ -684,10 +718,38 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
     }
 
     func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
+        regionChanged(mapView)
+    }
+    #elseif os(macOS)
+    // AppKit's MLNMapView reports no change reason; it asks this only for camera moves the user makes (drag, scroll,
+    // pinch, rotate, double-click), never for programmatic ones, and asks after the step has moved the camera, so
+    // each step defers tracking itself rather than waiting for a camera change that may not follow.
+    @objc(mapView:shouldChangeFromCamera:toCamera:)
+    func mapView(_ mapView: MLNMapView, shouldChangeFrom oldCamera: MLNMapCamera, to newCamera: MLNMapCamera) -> Bool {
+        deferTracking()
+        return true
+    }
+
+    @objc(mapViewCameraIsChanging:)
+    func mapViewCameraIsChanging(_ mapView: MLNMapView) {
+        camera.moves += 1
+    }
+
+    @objc(mapView:cameraDidChangeAnimated:)
+    func mapView(_ mapView: MLNMapView, cameraDidChangeAnimated animated: Bool) {
+        regionChanged(mapView)
+    }
+    #endif
+
+    private func regionChanged(_ mapView: MLNMapView) {
         camera.moves += 1
         reportCentre(mapView)
         guard panning else { return }
         panning = false
+        deferTracking()
+    }
+
+    private func deferTracking() {
         trackingResumesAt = Date().addingTimeInterval(PAN_RECENTER_DELAY_MS / 1000)
         resume?.cancel()
         resume = Task { @MainActor [weak self] in
@@ -704,7 +766,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         let bottom = max(mapView.bounds.height - inputs.bottomInsetPx, 0)
         let top = inputs.topInsetPx.clamped(to: 0...bottom)
         let seen = [CGPoint(x: left, y: top), CGPoint(x: right, y: top), CGPoint(x: right, y: bottom), CGPoint(x: left, y: bottom)]
-            .map { TrackPoint(mapView.convert($0, toCoordinateFrom: mapView)) }
+            .map { TrackPoint(mapView.screenCoordinate($0)) }
         inputs.onViewChanged(clearWindow(seen))
     }
 
@@ -712,6 +774,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         guard !gesturesAttached else { return }
         gesturesAttached = true
         if !inputs.editable && inputs.onMapClick != nil {
+            #if os(iOS)
             let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
             mapView.gestureRecognizers?
                 .compactMap { $0 as? UITapGestureRecognizer }
@@ -719,6 +782,11 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
                 .forEach(tap.require(toFail:))
             mapView.addGestureRecognizer(tap)
             mapView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:))))
+            #elseif os(macOS)
+            mapView.addGestureRecognizer(MapClickRecognizer(target: self, action: #selector(tapped(_:))))
+            mapView.addGestureRecognizer(mapPressRecognizer(self, #selector(longPressed(_:))))
+            mapView.addGestureRecognizer(secondaryClickRecognizer(self, #selector(secondaryClicked(_:))))
+            #endif
             if let edits = inputs.edits {
                 attachGotoRadiusDrag(mapView, edits) { [weak self] in self?.inputs.goto }
             }
@@ -740,14 +808,14 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         }
     }
 
-    @objc private func tapped(_ tap: UITapGestureRecognizer) {
+    @objc private func tapped(_ tap: MapGestureRecognizer) {
         guard tap.state == .ended, let mapView else { return }
-        let screen = tap.location(in: mapView)
+        let screen = mapView.screenLocation(tap)
         let near = CGRect(x: screen.x - TAP_SLOP_DP, y: screen.y - TAP_SLOP_DP, width: TAP_SLOP_DP * 2, height: TAP_SLOP_DP * 2)
-        if let trafficClick = inputs.onTrafficClick, !mapView.visibleFeatures(in: near, styleLayerIdentifiers: [TRAFFIC_LAYER]).isEmpty {
+        if let trafficClick = inputs.onTrafficClick, !mapView.screenFeatures(near, [TRAFFIC_LAYER]).isEmpty {
             return trafficClick()
         }
-        if let roi = inputs.roi, let roiClick = inputs.onRoiClick, !mapView.visibleFeatures(in: near, styleLayerIdentifiers: [ROI_LAYER]).isEmpty {
+        if let roi = inputs.roi, let roiClick = inputs.onRoiClick, !mapView.screenFeatures(near, [ROI_LAYER]).isEmpty {
             return roiClick(roi)
         }
         guard case .Waypoint(let index)? = hitTest(mapView, Float(screen.x), Float(screen.y)),
@@ -756,57 +824,73 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         itemClick(item.sequence)
     }
 
-    @objc private func longPressed(_ press: UILongPressGestureRecognizer) {
+    @objc private func longPressed(_ press: MapGestureRecognizer) {
         guard press.state == .began, let mapView else { return }
-        let at = mapView.convert(press.location(in: mapView), toCoordinateFrom: mapView)
+        let at = mapView.screenCoordinate(mapView.screenLocation(press))
         inputs.onMapClick?(at.latitude, at.longitude)
     }
+
+    #if os(macOS)
+    @objc private func secondaryClicked(_ click: MapGestureRecognizer) {
+        guard click.state == .ended, let mapView else { return }
+        let at = mapView.screenCoordinate(mapView.screenLocation(click))
+        inputs.onMapClick?(at.latitude, at.longitude)
+    }
+    #endif
 
     fileprivate func recenterOnVehicle(_ inputs: VehicleMapInputs) {
         let tracking = inputs.follow && isPlottable(inputs.latitude, inputs.longitude) && !panning && Date() >= trackingResumesAt
         guard tracking, let mapView else { return }
         let at = CLLocationCoordinate2D(latitude: inputs.latitude, longitude: inputs.longitude)
         let zoomed = mapView.zoomLevel > 1.0
-        let point = mapView.convert(at, toPointTo: mapView)
+        let point = mapView.screenPoint(at)
         let height = mapView.bounds.height
         let lift = clearAreaLift(inputs.topInsetPx, inputs.bottomInsetPx).clamped(to: -height / 4...height / 4)
-        let centred = zoomed && lift != 0 ? mapView.convert(CGPoint(x: point.x, y: point.y - lift), toCoordinateFrom: mapView) : at
+        let centred = zoomed && lift != 0 ? mapView.screenCoordinate(CGPoint(x: point.x, y: point.y - lift)) : at
         if inputs.keepCentered || !zoomed {
             mapView.setCenter(centred, zoomLevel: zoomed ? mapView.zoomLevel : DEFAULT_ZOOM, animated: false)
         } else if outsideCentreInset(point.x, point.y, mapView.bounds.width, height, inputs.topInsetPx, inputs.bottomInsetPx + inputs.cameraBottomPx) {
             let camera = withChanges(mapView.camera) { $0.centerCoordinate = centred }
+            #if os(iOS)
             mapView.setCamera(camera, withDuration: RECENTER_ANIMATION_MS / 1000, animationTimingFunction: nil)
+            #elseif os(macOS)
+            mapView.setCamera(camera, withDuration: RECENTER_ANIMATION_MS / 1000, animationTimingFunction: nil, completionHandler: nil)
+            #endif
         }
     }
 
-    fileprivate func centre(_ request: Int, _ centreOn: TrackPoint?, _ centreZoom: Double?, _ centreMinZoom: Double?, _ insets: UIEdgeInsets) {
+    fileprivate func centre(_ request: Int, _ centreOn: TrackPoint?, _ centreZoom: Double?, _ centreMinZoom: Double?, _ insets: PlatformEdgeInsets) {
         guard request != 0, let at = centreOn, isPlottable(at.latitude, at.longitude), let mapView else { return }
         if let centreZoom {
             mapView.setCenter(at.location, zoomLevel: centreZoom, animated: false)
         } else if let centreMinZoom, mapView.zoomLevel < centreMinZoom {
             mapView.setCenter(at.location, zoomLevel: centreMinZoom, animated: true)
         } else if mapView.zoomLevel > 1.0 {
-            let point = mapView.convert(at.location, toPointTo: mapView)
+            let point = mapView.screenPoint(at.location)
             let clear = CGPoint(x: point.x - insets.left / 2, y: point.y - clearAreaLift(insets.top, insets.bottom))
-            mapView.setCenter(mapView.convert(clear, toCoordinateFrom: mapView), animated: true)
+            mapView.setCenter(mapView.screenCoordinate(clear), animated: true)
         } else {
             mapView.setCenter(at.location, zoomLevel: DEFAULT_ZOOM, animated: true)
         }
     }
 
-    fileprivate func fit(_ points: [TrackPoint], _ latitude: Double, _ longitude: Double, _ insets: UIEdgeInsets, _ bottomShare: CGFloat, _ onFitFailed: () -> Void) {
+    fileprivate func fit(_ points: [TrackPoint], _ latitude: Double, _ longitude: Double, _ insets: PlatformEdgeInsets, _ bottomShare: CGFloat, _ onFitFailed: () -> Void) {
         guard let mapView else { return }
         guard let bounds = planBounds(fitPoints(points, latitude, longitude)) else { return onFitFailed() }
         if bounds.spanDegrees < MIN_FIT_SPAN_DEGREES {
             return mapView.setCenter(bounds.centre.location, zoomLevel: DEFAULT_ZOOM, animated: true)
         }
+        #if os(iOS)
         let padding = FIT_PADDING_PIXELS / max(mapView.traitCollection.displayScale, 1)
+        #elseif os(macOS)
+        let padding = FIT_PADDING_PIXELS / max(mapView.screenScale, 1)
+        #endif
         mapView.setVisibleCoordinateBounds(
             MLNCoordinateBounds(
                 sw: CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.west),
                 ne: CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.east >= bounds.west ? bounds.east : bounds.east + 360)
             ),
-            edgePadding: UIEdgeInsets(
+            edgePadding: PlatformEdgeInsets(
                 top: padding + insets.top,
                 left: padding + insets.left,
                 bottom: padding + insets.bottom + mapView.bounds.height * bottomShare,
@@ -824,7 +908,9 @@ func styleURL(_ mapStyle: String) -> URL? {
     return writtenStyleURL(mapStyle, "inline-\(digest)")
 }
 
-private struct VehicleMapView: UIViewRepresentable {
+private struct VehicleMapView: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
     let model: VehicleMapModel
     let inputs: VehicleMapInputs
     let mapStyle: String
@@ -835,20 +921,48 @@ private struct VehicleMapView: UIViewRepresentable {
     let logoEndInsetPx: CGFloat?
     let gestures: Bool
 
-    func makeUIView(context: Context) -> MLNMapView {
+    func makePlatformView(context: Context) -> MLNMapView {
         let view = MLNMapView(frame: .zero, styleURL: model.initialStyleURL(mapStyle))
+        #if os(iOS)
         view.automaticallyAdjustsContentInset = false
+        #elseif os(macOS)
+        view.automaticallyAdjustsContentInsets = false
+        // The app draws its own map controls; AppKit's zoom buttons and compass slider would sit under them.
+        view.zoomControls.isHidden = true
+        view.compass.isHidden = true
+        #endif
         model.inputs = inputs
         model.attach(view)
         return view
     }
 
-    func updateUIView(_ view: MLNMapView, context: Context) {
+    func updatePlatformView(_ view: MLNMapView, context: Context) {
         model.inputs = inputs
         model.applyStyle(mapStyle, view)
         view.logoView.isHidden = pip
+        #if os(iOS)
         view.attributionButton.isHidden = pip
-        let inset = UIEdgeInsets(top: 0, left: 0, bottom: cameraBottomPx, right: 0)
+        placeOrnaments(view)
+        #elseif os(macOS)
+        // AppKit's MLNMapView pins the logo and attribution to its lower-left corner and offers no margins to move them.
+        view.attributionView.isHidden = pip
+        let insets = view.contentInsets
+        if insets.top != 0 || insets.left != 0 || insets.bottom != cameraBottomPx || insets.right != 0 {
+            view.setContentInsets(NSEdgeInsets(top: 0, left: 0, bottom: cameraBottomPx, right: 0), animated: false, completionHandler: nil)
+        }
+        #endif
+        if model.appliedGestures != gestures {
+            model.appliedGestures = gestures
+            view.isScrollEnabled = gestures
+            view.isZoomEnabled = gestures
+            view.isRotateEnabled = gestures
+            view.isPitchEnabled = gestures
+        }
+    }
+
+    #if os(iOS)
+    private func placeOrnaments(_ view: MLNMapView) {
+        let inset = PlatformEdgeInsets(top: 0, left: 0, bottom: cameraBottomPx, right: 0)
         if view.contentInset != inset {
             view.setContentInset(inset, animated: false, completionHandler: nil)
         }
@@ -871,14 +985,8 @@ private struct VehicleMapView: UIViewRepresentable {
         view.attributionButton.constraints
             .filter { $0.firstAttribute == .width || $0.firstAttribute == .height }
             .forEach { $0.constant = MINIMUM_TOUCH_TARGET }
-        if model.appliedGestures != gestures {
-            model.appliedGestures = gestures
-            view.isScrollEnabled = gestures
-            view.isZoomEnabled = gestures
-            view.isRotateEnabled = gestures
-            view.isPitchEnabled = gestures
-        }
     }
+    #endif
 }
 
 private struct ObstacleMapOverlay: View {
@@ -893,9 +1001,9 @@ private struct ObstacleMapOverlay: View {
         if let overlay = obstacleOverlay(json) {
             Canvas { context, size in
                 guard let map = camera.mapView, isPlottable(latitude, longitude), !heading.isNaN else { return }
-                let vehicle = map.convert(TrackPoint(latitude: latitude, longitude: longitude).location, toPointTo: map)
-                let left = map.convert(.zero, toCoordinateFrom: map)
-                let right = map.convert(CGPoint(x: TRUE_SCALE_PROBE, y: 0), toCoordinateFrom: map)
+                let vehicle = map.screenPoint(TrackPoint(latitude: latitude, longitude: longitude).location)
+                let left = map.screenCoordinate(.zero)
+                let right = map.screenCoordinate(CGPoint(x: TRUE_SCALE_PROBE, y: 0))
                 let metresInProbe = CLLocation(latitude: left.latitude, longitude: left.longitude)
                     .distance(from: CLLocation(latitude: right.latitude, longitude: right.longitude))
                 let shape = mapOverlayShape(overlay, vehicle, size.height, metresInProbe, TRUE_SCALE_PROBE, heading, map.direction)
@@ -922,14 +1030,14 @@ private func installLayers(_ style: MLNStyle) {
         let dot = MLNCircleStyleLayer(identifier: HOME_LAYER, source: source)
         dot.circleColor = styleConstant(mapColour("#43A047"))
         dot.circleRadius = styleConstant(12)
-        dot.circleStrokeColor = styleConstant(UIColor.white)
+        dot.circleStrokeColor = styleConstant(PlatformColor.white)
         dot.circleStrokeWidth = styleConstant(2)
         style.addLayer(dot)
         let label = MLNSymbolStyleLayer(identifier: HOME_LABEL_LAYER, source: source)
         label.text = styleConstant("H")
         label.textFontNames = styleConstant(["Noto Sans Regular"])
         label.textFontSize = styleConstant(14)
-        label.textColor = styleConstant(UIColor.white)
+        label.textColor = styleConstant(PlatformColor.white)
         label.textAllowsOverlap = styleConstant(true)
         label.textIgnoresPlacement = styleConstant(true)
         style.addLayer(label)
@@ -968,7 +1076,7 @@ private func installVehicleLayer(_ style: MLNStyle) {
         "#E53935",
     ])
     dot.circleRadius = styleExpression(["case", ["get", ACTIVE_PROPERTY], 9, 6])
-    dot.circleStrokeColor = styleConstant(UIColor.white)
+    dot.circleStrokeColor = styleConstant(PlatformColor.white)
     dot.circleStrokeWidth = styleConstant(2)
     style.addLayer(dot)
     style.setImage(headingArrow(), forName: VEHICLE_ARROW_IMAGE)
@@ -984,8 +1092,8 @@ private func installVehicleLayer(_ style: MLNStyle) {
     let label = MLNSymbolStyleLayer(identifier: VEHICLE_LABEL_LAYER, source: source)
     label.text = styleGet(VEHICLE_LABEL_PROPERTY)
     label.textFontSize = styleConstant(11)
-    label.textColor = styleConstant(UIColor.white)
-    label.textHaloColor = styleConstant(UIColor.black)
+    label.textColor = styleConstant(PlatformColor.white)
+    label.textHaloColor = styleConstant(PlatformColor.black)
     label.textHaloWidth = styleConstant(1)
     label.textOffset = styleOffset(0, 1.6)
     label.textAnchor = styleConstant("top")
@@ -995,7 +1103,7 @@ private func installVehicleLayer(_ style: MLNStyle) {
     style.addLayer(label)
 }
 
-private func headingArrow() -> UIImage {
+private func headingArrow() -> PlatformImage {
     let size: CGFloat = 48
     return mapIcon(size) { context in
         let path = CGMutablePath()
@@ -1005,7 +1113,7 @@ private func headingArrow() -> UIImage {
         path.addLine(to: CGPoint(x: 8, y: size - 6))
         path.closeSubpath()
         context.addPath(path)
-        context.setStrokeColor(UIColor.white.cgColor)
+        context.setStrokeColor(PlatformColor.white.cgColor)
         context.setLineWidth(6)
         context.setLineJoin(.round)
         context.strokePath()

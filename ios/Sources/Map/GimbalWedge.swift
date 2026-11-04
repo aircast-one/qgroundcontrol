@@ -1,5 +1,9 @@
 import MapLibre
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 let GIMBAL_AZIMUTH_VIEW = "view.gimbalAzimuth"
 private let GIMBAL_SOURCE = "aircast-gimbal-azimuth"
@@ -41,7 +45,7 @@ func gimbalFeatures(_ latitude: Double, _ longitude: Double, _ gimbals: [GimbalA
     )
 }
 
-private func wedge() -> UIImage {
+private func wedge() -> PlatformImage {
     let size = WEDGE_SIZE_PX
     return mapIcon(size) { context in
         let path = CGMutablePath()
@@ -52,7 +56,7 @@ private func wedge() -> UIImage {
         path.closeSubpath()
         context.addPath(path)
         context.clip()
-        let colours = [UIColor(white: 1, alpha: 0).cgColor, UIColor(white: 1, alpha: 128.0 / 255).cgColor] as CFArray
+        let colours = [PlatformColor(white: 1, alpha: 0).cgColor, PlatformColor(white: 1, alpha: 128.0 / 255).cgColor] as CFArray
         guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colours, locations: [0, 1]) else { return }
         context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size), options: [])
     }

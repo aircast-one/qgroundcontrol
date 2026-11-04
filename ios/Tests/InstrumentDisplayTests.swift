@@ -1,4 +1,6 @@
+#if os(iOS)
 import UIKit
+#endif
 import XCTest
 @testable import Aircast
 
@@ -53,6 +55,6 @@ final class InstrumentDisplayTests: XCTestCase {
 
     func testEveryBundledIconIsListedAndLoads() {
         XCTAssertTrue(iconNames().contains("airplane.svg"))
-        XCTAssertNotNil(UIImage(named: "InstrumentValueIcons/airplane"))
+        XCTAssertNotNil(PlatformImage(named: "InstrumentValueIcons/airplane"))
     }
 }

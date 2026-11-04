@@ -90,3 +90,77 @@ jobs:
           xcodebuild -project Aircast.xcodeproj -scheme Aircast -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro' CODE_SIGNING_ALLOWED=NO test \
             | grep -E -A1 "error:|Test Case .* failed|Test Suite 'All tests' (passed|failed)|\*\* TEST (SUCCEEDED|FAILED)" ; test "${PIPESTATUS[0]}" -eq 0
+
+  mac:
+    runs-on: macos-26
+    # The first run builds MapLibre's macOS SDK from source (it publishes no macOS binaries);
+    # later runs restore it from the cache.
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Install XcodeGen and Bazelisk
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+          brew install bazelisk
+
+      # Keyed on the MapLibre version alone, so editing the script does not throw away a build
+      # that takes the better part of half an hour.
+      - name: MapLibre version
+        id: maplibre-version
+        run: echo "version=$(sed -n 's/^MAPLIBRE_VERSION=//p' ios/fetch-deps-macos.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore MapLibre for macOS
+        id: maplibre
+        uses: actions/cache/restore@v5
+        with:
+          path: ios/Vendor/macos
+          key: maplibre-macos-${{ steps.maplibre-version.outputs.version }}
+          restore-keys: maplibre-macos-
+
+      - name: Dependencies
+        working-directory: ios
+        run: ./fetch-deps-macos.sh
+
+      # Saved before the app builds, so an app that does not compile yet still keeps the
+      # MapLibre build it waited for.
+      - name: Save MapLibre for macOS
+        if: steps.maplibre.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ios/Vendor/macos
+          key: maplibre-macos-${{ steps.maplibre-version.outputs.version }}
+
+      - name: Build
+        working-directory: ios
+        run: |
+          xcodegen generate
+          status=0
+          xcodebuild -project Aircast.xcodeproj -scheme AircastMac -configuration Release \
+            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/mac-build.log" 2>&1 || status=$?
+          grep -E "error:|warning: unable|BUILD (SUCCEEDED|FAILED)" "$RUNNER_TEMP/mac-build.log" || true
+          # A failed link names what is missing only on the lines after "Undefined symbols".
+          [ "$status" -eq 0 ] || grep -E -A40 "Undefined symbols|duplicate symbol|ld: (library|framework) not found" "$RUNNER_TEMP/mac-build.log" | head -200 || true
+          exit "$status"
+
+      - name: Unit tests
+        working-directory: ios
+        run: |
+          xcodebuild -project Aircast.xcodeproj -scheme AircastMac -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test \
+            | grep -E -A1 "error:|Test Case .* failed|Test Suite 'All tests' (passed|failed)|\*\* TEST (SUCCEEDED|FAILED)" ; test "${PIPESTATUS[0]}" -eq 0

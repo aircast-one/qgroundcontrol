@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 
 let APM_SUB_MOTORS_SCREEN = "apmSubMotors"
 let APM_SUB_MOTORS_VIEW = "view.apmSubMotors"
@@ -53,7 +55,7 @@ struct ApmSubMotorsScreen: View {
     @State private var coolingDown = false
     @State private var lastIndex = 0
     @State private var sliders: [Int: Float] = [:]
-    @State private var frameDisplay: UIImage?
+    @State private var frameDisplay: PlatformImage?
 
     private var armed: Bool { read?.armed == true }
     private var testing: Bool { read?.canRunManualTest == true && shouldRunManualTest }
@@ -102,7 +104,7 @@ struct ApmSubMotorsScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 if let frameDisplay {
-                    Image(uiImage: frameDisplay)
+                    Image(platformImage: frameDisplay)
                         .resizable()
                         .scaledToFit()
                         .frame(maxWidth: .infinity, maxHeight: 240)

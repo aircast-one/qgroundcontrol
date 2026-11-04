@@ -1,5 +1,9 @@
 import MapLibre
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 let CROWDED_ITEMS = 40
 let CROWDED_RADIUS = 4.0
@@ -81,7 +85,7 @@ func installMissionLayers(_ style: MLNStyle) {
         legs.text = styleGet(LEG_LABEL_PROPERTY)
         legs.textFontNames = styleConstant(NOTO_SANS)
         legs.textFontSize = styleConstant(11)
-        legs.textColor = styleConstant(UIColor.white)
+        legs.textColor = styleConstant(PlatformColor.white)
         legs.textHaloColor = styleConstant(mapColour("#37474F"))
         legs.textHaloWidth = styleConstant(2)
         legs.textOffset = styleOffset(0, 1.2)
@@ -110,7 +114,7 @@ func installMissionLayers(_ style: MLNStyle) {
     labels.text = styleGet(WAYPOINT_LABEL_PROPERTY)
     labels.textFontNames = styleConstant(NOTO_SANS)
     labels.textFontSize = styleConstant(15)
-    labels.textColor = styleConstant(UIColor.white)
+    labels.textColor = styleConstant(PlatformColor.white)
     labels.textHaloColor = styleConstant(mapColour("#37474F"))
     labels.textHaloWidth = styleConstant(2.5)
     labels.textAllowsOverlap = styleConstant(false)
@@ -120,7 +124,7 @@ func installMissionLayers(_ style: MLNStyle) {
     sides.text = styleGet(WAYPOINT_SIDE_LABEL_PROPERTY)
     sides.textFontNames = styleConstant(NOTO_SANS)
     sides.textFontSize = styleConstant(13)
-    sides.textColor = styleConstant(UIColor.white)
+    sides.textColor = styleConstant(PlatformColor.white)
     sides.textHaloColor = styleConstant(mapColour("#37474F"))
     sides.textHaloWidth = styleConstant(2)
     sides.textAnchor = styleConstant("left")
@@ -357,7 +361,7 @@ func installFenceLayers(_ style: MLNStyle) {
         let source = geoJsonSource(GCS_SOURCE)
         style.addSource(source)
         let dot = MLNCircleStyleLayer(identifier: GCS_LAYER, source: source)
-        dot.circleColor = styleConstant(UIColor.white)
+        dot.circleColor = styleConstant(PlatformColor.white)
         dot.circleRadius = styleConstant(6)
         dot.circleStrokeColor = styleConstant(mapColour("#1976D2"))
         dot.circleStrokeWidth = styleConstant(3)
@@ -383,13 +387,13 @@ func installFenceLayers(_ style: MLNStyle) {
         let dot = MLNCircleStyleLayer(identifier: BREACH_LAYER, source: source)
         dot.circleColor = styleConstant(mapColour(KEEP_IN_COLOUR))
         dot.circleRadius = styleConstant(10)
-        dot.circleStrokeColor = styleConstant(UIColor.black)
+        dot.circleStrokeColor = styleConstant(PlatformColor.black)
         dot.circleStrokeWidth = styleConstant(2)
         style.addLayer(dot)
         let label = MLNSymbolStyleLayer(identifier: BREACH_LABEL_LAYER, source: source)
         label.text = styleConstant("B")
         label.textFontSize = styleConstant(12)
-        label.textColor = styleConstant(UIColor.black)
+        label.textColor = styleConstant(PlatformColor.black)
         label.textAllowsOverlap = styleConstant(true)
         label.textIgnoresPlacement = styleConstant(true)
         style.addLayer(label)
@@ -407,7 +411,7 @@ func installFenceLayers(_ style: MLNStyle) {
         let label = MLNSymbolStyleLayer(identifier: RALLY_LABEL_LAYER, source: source)
         label.text = styleConstant("R")
         label.textFontSize = styleConstant(12)
-        label.textColor = styleConstant(UIColor.black)
+        label.textColor = styleConstant(PlatformColor.black)
         label.textAllowsOverlap = styleConstant(true)
         label.textIgnoresPlacement = styleConstant(true)
         style.addLayer(label)
@@ -507,7 +511,7 @@ func installFenceHandleLayer(_ style: MLNStyle) {
     let source = geoJsonSource(FENCE_HANDLE_SOURCE)
     style.addSource(source)
     let handles = MLNCircleStyleLayer(identifier: FENCE_HANDLE_LAYER, source: source)
-    handles.circleColor = styleConstant(UIColor.white)
+    handles.circleColor = styleConstant(PlatformColor.white)
     handles.circleRadius = styleConstant(7)
     handles.circleStrokeColor = styleConstant(mapColour("#1565C0"))
     handles.circleStrokeWidth = styleConstant(3)
@@ -660,7 +664,7 @@ func installMidpointLayer(_ style: MLNStyle) {
     let midpoints = MLNCircleStyleLayer(identifier: MIDPOINT_LAYER, source: source)
     midpoints.circleColor = styleConstant(mapColour("#1565C0"))
     midpoints.circleRadius = styleConstant(5)
-    midpoints.circleStrokeColor = styleConstant(UIColor.white)
+    midpoints.circleStrokeColor = styleConstant(PlatformColor.white)
     midpoints.circleStrokeWidth = styleConstant(2)
     midpoints.circleOpacity = styleConstant(0.85)
     style.addLayer(midpoints)
@@ -698,8 +702,8 @@ func renderMidpoints(_ style: MLNStyle, _ polygons: [FencePolygon], _ surveys: [
 private func edgeLabelLayer(_ identifier: String, _ source: MLNSource) -> MLNSymbolStyleLayer {
     let labels = MLNSymbolStyleLayer(identifier: identifier, source: source)
     labels.text = styleGet(LANDING_LABEL_TEXT)
-    labels.textColor = styleConstant(UIColor.white)
-    labels.textHaloColor = styleConstant(UIColor.black)
+    labels.textColor = styleConstant(PlatformColor.white)
+    labels.textHaloColor = styleConstant(PlatformColor.black)
     labels.textHaloWidth = styleConstant(1.5)
     labels.textFontSize = styleConstant(12)
     labels.textAllowsOverlap = styleConstant(true)
@@ -727,7 +731,7 @@ func installLandingLayers(_ style: MLNStyle) {
             ["match", ["get", LANDING_SHAPE_KIND], LANDING_AREA_KIND, "#00FF00", "#FFA500"],
         ])
         area.fillOpacity = styleConstant(0.5)
-        area.fillOutlineColor = styleConstant(UIColor.black)
+        area.fillOutlineColor = styleConstant(PlatformColor.black)
         style.addLayer(area)
     }
     if style.source(withIdentifier: LANDING_LOITER_SOURCE) == nil {

@@ -204,7 +204,7 @@ struct AircastShell: View {
         let flyLandscape = onFly && landscape
         let tabs = visibleTabs(advanced)
         let systemPalette = paletteFollowsSystem(paletteControl)
-        HStack(spacing: 0) {
+        shellEvents(landscape: landscape, HStack(spacing: 0) {
             if landscape && !flyLandscape {
                 NavigationRail(tabs: tabs, tab: tab, settingsOpen: navigation.settingsOpen, onSelect: selectTab, onSettings: { navigation.settingsOpen = true })
             }
@@ -227,7 +227,13 @@ struct AircastShell: View {
         .background { HostNoticeWatch(acknowledgedThrough: acknowledgedThrough, onNotices: noticesArrived) }
         .background { DeviceCameraHost() }
         .aircastTheme(dark: darkBars)
-        .windowStyle(paletteWindowStyle(systemPalette, darkBars))
+        .windowStyle(paletteWindowStyle(systemPalette, darkBars)))
+    }
+
+    // Split out of body: with macOS's stand-ins for iOS-only modifiers, one chain this long
+    // runs past the type checker's time limit.
+    private func shellEvents<Shell: View>(landscape: Bool, _ shell: Shell) -> some View {
+        shell
         .onChange(of: tab) { _, now in if now != .Fly { flyScreen.layout.editing = false } }
         .onChange(of: navigation.setupPage, initial: true) { _, page in if page != nil { navigation.openAircraft() } }
         .onChange(of: navigation.settingsPage, initial: true) { _, page in if page != nil { navigation.settingsOpen = true } }

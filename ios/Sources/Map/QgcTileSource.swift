@@ -9,7 +9,11 @@ private let PNG_MAGIC: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
 private let TILE_PATH = #/^/([^/]+)/([0-9]+)/([0-9]+)/([0-9]+)$/#
 private let HTTP_OK = 200
 private let HTTP_NOT_FOUND = 404
+#if os(macOS)
+private let TILE_USER_AGENT = "Aircast/macOS"
+#else
 private let TILE_USER_AGENT = "Aircast/iOS"
+#endif
 
 struct TileAddress: Equatable {
     let mapType: String

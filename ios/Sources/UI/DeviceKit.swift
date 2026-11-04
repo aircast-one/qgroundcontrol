@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 import UniformTypeIdentifiers
 
 struct DeviceBadge: Equatable, Hashable {
@@ -175,7 +177,7 @@ struct DeviceFact: View {
 }
 
 func copyToClipboard(_ text: String, _ notice: ChangeNotice, _ message: String = "Copied") {
-    UIPasteboard.general.string = text
+    PlatformPasteboard.copy(text)
     notice.show(message, nil)
 }
 
@@ -218,7 +220,7 @@ struct QrDialog: View {
     let title: String
     let text: String
     let onDismiss: () -> Void
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -226,7 +228,7 @@ struct QrDialog: View {
             ZStack {
                 RoundedRectangle(cornerRadius: Corner.small).fill(Color.white)
                 if let image {
-                    Image(uiImage: image)
+                    Image(platformImage: image)
                         .interpolation(.none)
                         .resizable()
                         .scaledToFit()
@@ -240,7 +242,7 @@ struct QrDialog: View {
         }
         .padding(24)
         .presentationDetents([.medium, .large])
-        .task(id: text) { image = await deviceQr(text).flatMap { UIImage(data: $0) } }
+        .task(id: text) { image = await deviceQr(text).flatMap { PlatformImage(data: $0) } }
     }
 }
 

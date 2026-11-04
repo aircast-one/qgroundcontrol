@@ -9,7 +9,8 @@ fn native_synthetic() {
     println!("cargo:rustc-check-cfg=cfg(native_synthetic)");
     if feature("SYNTHETIC")
         && ((target == "android" && feature("JNI_HOST"))
-            || ((target == "ios" || target == "windows") && feature("NATIVE_HOST")))
+            || ((target == "ios" || target == "macos" || target == "windows")
+                && feature("NATIVE_HOST")))
     {
         println!("cargo:rustc-cfg=native_synthetic");
     }

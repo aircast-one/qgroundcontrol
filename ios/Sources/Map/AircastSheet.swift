@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 extension EnvironmentValues {
     @Entry var immersive = false
@@ -64,40 +68,66 @@ final class SheetStack {
 
 @MainActor
 final class PresenterProbe {
-    weak var view: UIView?
+    weak var view: PlatformView?
 
-    var controller: UIViewController? {
+    #if os(iOS)
+    var presenter: UIViewController? {
         view.flatMap { start in sequence(first: start as UIResponder) { $0.next }.lazy.compactMap { $0 as? UIViewController }.first }
     }
+    #elseif os(macOS)
+    // A Mac presents sheets and alerts on the window, so the window is what has to be free.
+    var presenter: NSWindow? { view?.window }
+    #endif
 }
 
-struct PresenterProbeView: UIViewRepresentable {
+#if os(macOS)
+private final class PassThroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+#endif
+
+struct PresenterProbeView: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
     let probe: PresenterProbe
 
-    func makeUIView(context: Context) -> UIView {
+    func makePlatformView(context: Context) -> PlatformView {
+        #if os(iOS)
         let view = UIView()
         view.isUserInteractionEnabled = false
         view.isAccessibilityElement = false
+        #elseif os(macOS)
+        let view: NSView = PassThroughView()
+        view.setAccessibilityElement(false)
+        #endif
         probe.view = view
         return view
     }
 
-    func updateUIView(_ view: UIView, context: Context) { probe.view = view }
+    func updatePlatformView(_ view: PlatformView, context: Context) { probe.view = view }
 }
 
 extension View {
     func invisibleAnchor() -> some View { frame(width: 0, height: 0).accessibilityHidden(true) }
 }
 
+#if os(iOS)
 @MainActor
 func presenterFree(_ controller: UIViewController?) -> Bool {
     guard let controller, controller.viewIfLoaded?.window != nil else { return false }
     return controller.presentedViewController == nil && !controller.isBeingPresented && !controller.isBeingDismissed
 }
+#elseif os(macOS)
+@MainActor
+func presenterFree(_ window: NSWindow?) -> Bool {
+    guard let window, window.isVisible else { return false }
+    return window.attachedSheet == nil
+}
+#endif
 
 @MainActor
 func presenterFreed(_ probe: PresenterProbe) async -> Bool {
-    while !Task.isCancelled, !presenterFree(probe.controller) {
+    while !Task.isCancelled, !presenterFree(probe.presenter) {
         try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
     }
     return !Task.isCancelled

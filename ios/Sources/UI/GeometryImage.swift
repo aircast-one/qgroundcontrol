@@ -119,7 +119,7 @@ struct GeometryImage: View {
 
 private func drawMotor(_ context: GraphicsContext, _ drawn: DrawnMotor, _ layout: GeometryLayout, _ ink: Color, _ highlight: Bool) {
     let fill = drawn.motor.counterClockwise ? COUNTER_CLOCKWISE : CLOCKWISE
-    let arrowColor = Color(uiColor: UIColor(fill).withAlphaComponent(1))
+    let arrowColor = Color(platformColor: PlatformColor(fill).withAlphaComponent(1))
     let radius = layout.rotorDiameter / 2
     context.fill(circle(drawn.center, radius), with: .color(fill))
     if highlight { context.fill(circle(drawn.textCenter, drawn.coax ? layout.fontSize / 2 : radius), with: .color(FRAME_ARROW)) }

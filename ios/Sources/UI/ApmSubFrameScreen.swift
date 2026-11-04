@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 
 let APM_SUB_FRAME_SCREEN = "apmSubFrame"
 let APM_SUB_FRAME_VIEW = "view.apmSubFrame"
@@ -32,10 +34,10 @@ func subFrames(_ view: JSON?) -> SubFrames? {
     )
 }
 
-func frameImage(_ value: Int) -> UIImage? {
+func frameImage(_ value: Int) -> PlatformImage? {
     let png = Qgc.get("view.apmSubFrameImage(\(value))")["png"].string
     guard !png.isBlank, let bytes = Data(base64Encoded: png, options: .ignoreUnknownCharacters) else { return nil }
-    return UIImage(data: bytes)
+    return PlatformImage(data: bytes)
 }
 
 struct ApmSubFrameScreen: View {
@@ -109,7 +111,7 @@ private struct SubFrameTile: View {
     let chosen: Bool
     let onPick: () -> Void
     @Environment(\.theme) private var theme
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
 
     var body: some View {
         Button(action: onPick) {
@@ -119,7 +121,7 @@ private struct SubFrameTile: View {
                     Color.clear
                         .aspectRatio(1.2, contentMode: .fit)
                         .frame(maxWidth: .infinity)
-                        .overlay { Image(uiImage: image).resizable().scaledToFit() }
+                        .overlay { Image(platformImage: image).resizable().scaledToFit() }
                         .accessibilityLabel(frame.name)
                 }
             }

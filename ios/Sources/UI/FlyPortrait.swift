@@ -241,6 +241,11 @@ struct FlyPortrait: View {
             TrafficBanner()
                 .padding(.horizontal, Space.s3)
                 .padding(.bottom, Space.s2)
+            #if os(macOS)
+            UpdateBanner()
+                .padding(.horizontal, Space.s3)
+                .padding(.bottom, Space.s2)
+            #endif
         }
         .background(TrafficSheetHost())
         .frame(width: width)

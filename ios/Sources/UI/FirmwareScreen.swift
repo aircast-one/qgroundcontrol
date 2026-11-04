@@ -42,6 +42,8 @@ func sourceLabel(_ source: String, _ label: String, _ stable: String, _ beta: St
     return label
 }
 
+// The Mac flashes boards over USB itself: its FirmwareScreen is in FirmwareFlashMac.swift.
+#if !os(macOS)
 let USB_FLASHING_UNAVAILABLE = "Flashing needs a USB connection"
 let USB_FLASHING_UNAVAILABLE_TEXT = "iOS does not let apps reach USB serial devices, so a board cannot be flashed from this device. "
     + "Flash it from Aircast on Android or from QGroundControl on a computer."
@@ -99,3 +101,4 @@ struct FirmwareScreen: View {
         }
     }
 }
+#endif

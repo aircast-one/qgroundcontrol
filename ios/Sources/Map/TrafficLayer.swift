@@ -1,5 +1,9 @@
 import MapLibre
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 let TRAFFIC_SOURCE = "traffic"
 let TRAFFIC_LAYER = "traffic-aircraft"
@@ -54,7 +58,7 @@ func trafficFeatures(_ marks: [TrafficMark]) -> FeatureCollection {
     })
 }
 
-private func aircraft(_ fill: UIColor) -> UIImage {
+private func aircraft(_ fill: PlatformColor) -> PlatformImage {
     mapIcon(AIRCRAFT_PX) { context in
         let s = AIRCRAFT_PX
         let path = CGMutablePath()
@@ -66,7 +70,7 @@ private func aircraft(_ fill: UIColor) -> UIImage {
         ])
         path.closeSubpath()
         context.addPath(path)
-        context.setStrokeColor(UIColor.black.cgColor)
+        context.setStrokeColor(PlatformColor.black.cgColor)
         context.setLineWidth(4)
         context.setLineJoin(.round)
         context.strokePath()
@@ -90,8 +94,8 @@ func installTrafficLayer(_ style: MLNStyle) {
     layer.iconIgnoresPlacement = styleConstant(true)
     layer.text = styleGet(LABEL)
     layer.textFontSize = styleConstant(11)
-    layer.textColor = styleConstant(UIColor.white)
-    layer.textHaloColor = styleConstant(UIColor.black)
+    layer.textColor = styleConstant(PlatformColor.white)
+    layer.textHaloColor = styleConstant(PlatformColor.black)
     layer.textHaloWidth = styleConstant(1.5)
     layer.textAnchor = styleConstant("top")
     layer.textOffset = styleOffset(0, 1.6)

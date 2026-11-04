@@ -1,5 +1,9 @@
 import MapLibre
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 private let TRANSECT_ARROW_SOURCE = "aircast-transect-arrows"
 private let TRANSECT_ARROW_LAYER = "aircast-transect-arrow-layer"
@@ -43,13 +47,13 @@ func transectMarks(_ points: [TrackPoint], _ turnaround: Bool, _ current: Bool) 
     return TransectMarks(arrows: arrows, stubs: stubs)
 }
 
-private func chevron() -> UIImage {
+private func chevron() -> PlatformImage {
     mapIcon(ARROW_SIZE_PX) { context in
         let half = ARROW_SIZE_PX / 2
         context.move(to: CGPoint(x: 0, y: half))
         context.addLine(to: CGPoint(x: half, y: 0))
         context.addLine(to: CGPoint(x: ARROW_SIZE_PX, y: half))
-        context.setStrokeColor(UIColor.white.cgColor)
+        context.setStrokeColor(PlatformColor.white.cgColor)
         context.setLineWidth(3)
         context.strokePath()
     }
@@ -66,14 +70,14 @@ func gimbalWedges(_ items: [MissionItem]) -> [TransectArrow] {
         .map { TransectArrow(at: TrackPoint(latitude: $0.latitude, longitude: $0.longitude), bearing: $0.heading + $0.gimbalYaw) }
 }
 
-private func wedge() -> UIImage {
+private func wedge() -> PlatformImage {
     mapIcon(GIMBAL_WEDGE_PX) { context in
         let centre = CGPoint(x: GIMBAL_WEDGE_PX / 2, y: GIMBAL_WEDGE_PX / 2)
         let start = (-90 - GIMBAL_WEDGE_SWEEP / 2) * .pi / 180
         context.move(to: centre)
         context.addArc(center: centre, radius: GIMBAL_WEDGE_PX / 2, startAngle: start, endAngle: start + GIMBAL_WEDGE_SWEEP * .pi / 180, clockwise: false)
         context.closePath()
-        context.setFillColor(UIColor(white: 1, alpha: 140.0 / 255).cgColor)
+        context.setFillColor(PlatformColor(white: 1, alpha: 140.0 / 255).cgColor)
         context.fillPath()
     }
 }
@@ -102,7 +106,7 @@ func installTransectMarks(_ style: MLNStyle) {
     let stubs = geoJsonSource(TRANSECT_STUB_SOURCE)
     style.addSource(stubs)
     let stubLine = MLNLineStyleLayer(identifier: TRANSECT_STUB_LAYER, source: stubs)
-    stubLine.lineColor = styleConstant(UIColor.white)
+    stubLine.lineColor = styleConstant(PlatformColor.white)
     stubLine.lineWidth = styleConstant(2)
     style.addLayer(stubLine)
     let arrows = geoJsonSource(TRANSECT_ARROW_SOURCE)

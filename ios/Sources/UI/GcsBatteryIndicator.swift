@@ -1,13 +1,25 @@
 import Combine
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import IOKit.ps
+#endif
 
 struct PhoneBattery: Equatable {
     let percent: Int
     let charging: Bool
 }
 
-func phoneBattery(_ level: Float, _ state: UIDevice.BatteryState) -> PhoneBattery? {
+#if os(iOS)
+typealias PlatformBatteryState = UIDevice.BatteryState
+#elseif os(macOS)
+enum PlatformBatteryState: Equatable {
+    case unknown, unplugged, charging, full
+}
+#endif
+
+func phoneBattery(_ level: Float, _ state: PlatformBatteryState) -> PhoneBattery? {
     guard level >= 0 else { return nil }
     return PhoneBattery(percent: Int((level * 100).rounded()), charging: [.charging, .full].contains(state))
 }
@@ -43,17 +55,29 @@ final class GcsBatteryMonitor: ObservableObject {
     private var changes: AnyCancellable?
 
     init() {
+        #if os(iOS)
         UIDevice.current.isBatteryMonitoringEnabled = true
         changes = NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)
             .merge(with: NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification))
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.refresh() }
+        #elseif os(macOS)
+        macPowerWatch()
+        changes = NotificationCenter.default.publisher(for: MAC_POWER_CHANGED)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refresh() }
+        #endif
         refresh()
     }
 
     private func refresh() {
+        #if os(iOS)
         let device = UIDevice.current
-        guard let current = phoneBattery(device.batteryLevel, device.batteryState), current != battery else { return }
+        let (level, state) = (device.batteryLevel, device.batteryState)
+        #elseif os(macOS)
+        let (level, state) = macBattery()
+        #endif
+        guard let current = phoneBattery(level, state), current != battery else { return }
         battery = current
         offMain { [weak self] in
             let read = gcsBatteryReading(Qgc.get(gcsBatteryPath(current)))
@@ -64,6 +88,39 @@ final class GcsBatteryMonitor: ObservableObject {
         }
     }
 }
+
+#if os(macOS)
+// A MacBook's internal battery, read from IOKit's power sources; a desktop Mac has none, so no reading, as on an
+// iOS device whose battery level is unknown.
+private let MAC_POWER_CHANGED = Notification.Name("one.aircast.app.macPowerChanged")
+
+private func macBattery() -> (Float, PlatformBatteryState) {
+    guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+          let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return (-1, .unknown) }
+    for source in sources {
+        guard let description = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
+              description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType,
+              let current = description[kIOPSCurrentCapacityKey] as? Int,
+              let capacity = description[kIOPSMaxCapacityKey] as? Int, capacity > 0 else { continue }
+        let plugged = description[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue
+        let charging = description[kIOPSIsChargingKey] as? Bool == true
+        let state: PlatformBatteryState = charging ? .charging : plugged ? .full : .unplugged
+        return (Float(current) / Float(capacity), state)
+    }
+    return (-1, .unknown)
+}
+
+private let macPowerSource: CFRunLoopSource? = {
+    let source = IOPSNotificationCreateRunLoopSource({ _ in
+        NotificationCenter.default.post(name: MAC_POWER_CHANGED, object: nil)
+    }, nil)?.takeRetainedValue()
+    if let source { CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode) }
+    return source
+}()
+
+// Installs the power-source watch once, on first use.
+private func macPowerWatch() { _ = macPowerSource }
+#endif
 
 @propertyWrapper
 struct GcsBattery: DynamicProperty {

@@ -179,9 +179,9 @@ func lifted(_ ground: (Float, Float), _ pixelsPerMetre: Double, _ tilt: Double, 
 
 private func onScreen(_ map: MLNMapView, _ at: Point3D) -> (Float, Float) {
     let across = radians(map.direction + 90)
-    let ground = map.convert(CLLocationCoordinate2D(latitude: at.lat, longitude: at.lon), toPointTo: map)
+    let ground = map.screenPoint(CLLocationCoordinate2D(latitude: at.lat, longitude: at.lon))
     let side = offset(at, sin(across), cos(across))
-    let beside = map.convert(CLLocationCoordinate2D(latitude: side.lat, longitude: side.lon), toPointTo: map)
+    let beside = map.screenPoint(CLLocationCoordinate2D(latitude: side.lat, longitude: side.lon))
     let pixelsPerMetre = hypot(Double(beside.x - ground.x), Double(beside.y - ground.y))
     return lifted((Float(ground.x), Float(ground.y)), pixelsPerMetre, Double(map.camera.pitch), at.alt)
 }
@@ -284,7 +284,7 @@ private func addSlabLayer(_ style: MLNStyle, _ source: String, _ layer: String) 
     let shapes = geoJsonSource(source)
     style.addSource(shapes)
     let slabs = MLNFillExtrusionStyleLayer(identifier: layer, source: shapes)
-    slabs.fillExtrusionColor = NSExpression(format: "CAST(colour, 'UIColor')")
+    slabs.fillExtrusionColor = NSExpression(format: "CAST(colour, '\(MAP_COLOR_CLASS)')")
     slabs.fillExtrusionBase = styleGet("base")
     slabs.fillExtrusionHeight = styleGet("top")
     style.addLayer(slabs)
@@ -356,7 +356,7 @@ private struct PathKey: Equatable {
 
 private let ORNAMENT_MARGIN: CGFloat = 8
 
-private struct Viewer3DMap: UIViewRepresentable {
+private struct Viewer3DMap: PlatformViewRepresentable {
     let sceneKey: JSON?
     let buildings: [Building3D]
     let pathKey: PathKey
@@ -372,12 +372,17 @@ private struct Viewer3DMap: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func makeUIView(context: Context) -> MLNMapView {
+    func makePlatformView(context: Context) -> MLNMapView {
         let view = MLNMapView(frame: .zero)
         view.delegate = context.coordinator
         view.isRotateEnabled = true
         view.isPitchEnabled = true
+        #if os(iOS)
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        #elseif os(macOS)
+        let tap = NSClickGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        tap.delaysPrimaryMouseButtonEvents = false
+        #endif
         tap.delegate = context.coordinator
         view.addGestureRecognizer(tap)
         offMain {
@@ -387,18 +392,20 @@ private struct Viewer3DMap: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ view: MLNMapView, context: Context) {
+    func updatePlatformView(_ view: MLNMapView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.apply(view)
+        #if os(iOS)
         let slack = max(0, (MINIMUM_TOUCH_TARGET - view.attributionButton.intrinsicContentSize.width) / 2)
         view.attributionButtonMargins = CGPoint(x: ORNAMENT_MARGIN - slack, y: ORNAMENT_MARGIN - slack)
         view.updateConstraintsIfNeeded()
         view.attributionButton.constraints
             .filter { $0.firstAttribute == .width || $0.firstAttribute == .height }
             .forEach { $0.constant = MINIMUM_TOUCH_TARGET }
+        #endif
     }
 
-    final class Coordinator: NSObject, MLNMapViewDelegate, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, MLNMapViewDelegate, MapGestureDelegate {
         var parent: Viewer3DMap
         private var style: MLNStyle?
         private var framedOn: CLLocationCoordinate2D?
@@ -418,17 +425,25 @@ private struct Viewer3DMap: UIViewRepresentable {
             apply(mapView)
         }
 
+        #if os(iOS)
         func mapViewRegionIsChanging(_ mapView: MLNMapView) { place(mapView) }
 
         func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) { place(mapView) }
+        #elseif os(macOS)
+        @objc(mapViewCameraIsChanging:)
+        func mapViewCameraIsChanging(_ mapView: MLNMapView) { place(mapView) }
 
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        @objc(mapView:cameraDidChangeAnimated:)
+        func mapView(_ mapView: MLNMapView, cameraDidChangeAnimated animated: Bool) { place(mapView) }
+        #endif
+
+        func gestureRecognizer(_ gestureRecognizer: MapGestureRecognizer, shouldRecognizeSimultaneouslyWith other: MapGestureRecognizer) -> Bool {
             true
         }
 
-        @objc func tapped(_ tap: UITapGestureRecognizer) {
+        @objc func tapped(_ tap: MapGestureRecognizer) {
             guard let map = tap.view as? MLNMapView else { return }
-            let point = tap.location(in: map)
+            let point = map.screenLocation(tap)
             let screen = parent.markers.map { marker in marker.at.map { onScreen(map, $0) } }
             parent.onTap(pickedMarker((Float(point.x), Float(point.y)), screen, MARKER_PICK_DP))
         }
@@ -468,8 +483,9 @@ private struct Viewer3DMap: UIViewRepresentable {
                 let (x, y) = onScreen(map, label.at)
                 return PlacedLabel(id: index, at: CGPoint(x: CGFloat(x), y: CGFloat(y)), text: label.text)
             }
-            guard next != parent.placed else { return }
-            DispatchQueue.main.async { [parent] in parent.placed = next }
+            DispatchQueue.main.async { [parent] in
+                if next != parent.placed { parent.placed = next }
+            }
         }
     }
 }

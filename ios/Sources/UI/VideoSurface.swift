@@ -1,6 +1,10 @@
 import QGCCore
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 let CAMERA_STEP_ZOOM = "vehicle.cameraManager.currentCameraInstance.stepZoom"
 
@@ -346,7 +350,9 @@ private final class FrameTicker: NSObject {
     @objc func tick() { view?.drawFrame() }
 }
 
-final class VideoChannelLayerView: UIView {
+// Shows one core video channel: decoded frames are copied off the core and set as the backing layer's contents on
+// every display refresh. The same on iOS (UIView) and macOS (layer-backed NSView, as the native macOS head does).
+final class VideoChannelLayerView: PlatformView {
     private let channel: Int32
     private var link: CADisplayLink?
     private var pipReported = false
@@ -356,15 +362,35 @@ final class VideoChannelLayerView: UIView {
     init(channel: Int) {
         self.channel = Int32(channel)
         super.init(frame: .zero)
+        #if os(iOS)
         backgroundColor = .black
         isUserInteractionEnabled = false
         layer.contentsGravity = .resizeAspect
+        #elseif os(macOS)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.contentsGravity = .resizeAspect
+        #endif
     }
 
     required init?(coder: NSCoder) { nil }
 
+    #if os(iOS)
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        windowChanged()
+    }
+    #elseif os(macOS)
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        windowChanged()
+    }
+
+    // Clicks and drags fall through to the SwiftUI gestures around the picture, as with isUserInteractionEnabled off.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    #endif
+
+    private func windowChanged() {
         let onScreen = window != nil
         if onScreen { start() } else { stop() }
         guard channel == Int32(PIP_VIDEO_CHANNEL), onScreen != pipReported else { return }
@@ -374,7 +400,11 @@ final class VideoChannelLayerView: UIView {
 
     private func start() {
         guard link == nil else { return }
+        #if os(iOS)
         let made = CADisplayLink(target: FrameTicker(self), selector: #selector(FrameTicker.tick))
+        #elseif os(macOS)
+        let made = displayLink(target: FrameTicker(self), selector: #selector(FrameTicker.tick))
+        #endif
         made.preferredFrameRateRange = CAFrameRateRange(minimum: 10, maximum: 30, preferred: 30)
         made.add(to: .main, forMode: .common)
         link = made
@@ -398,7 +428,11 @@ final class VideoChannelLayerView: UIView {
                 self.copying = false
                 guard let image else { return }
                 self.shownFrames = frames
+                #if os(iOS)
                 self.layer.contents = image
+                #elseif os(macOS)
+                self.layer?.contents = image
+                #endif
             }
         }
     }
@@ -420,14 +454,14 @@ private func copiedFrame(_ channel: Int32) -> CGImage? {
     return frame.image(bytes)
 }
 
-struct VideoChannelSurface: UIViewRepresentable {
+struct VideoChannelSurface: PlatformViewRepresentable {
+    typealias Coordinator = Void
+
     let channel: Int
 
-    func makeUIView(context: Context) -> VideoChannelLayerView { VideoChannelLayerView(channel: channel) }
+    func makePlatformView(context: Context) -> VideoChannelLayerView { VideoChannelLayerView(channel: channel) }
 
-    func updateUIView(_ uiView: VideoChannelLayerView, context: Context) {}
-
-    static func dismantleUIView(_ uiView: VideoChannelLayerView, coordinator: ()) { uiView.stop() }
+    static func dismantlePlatformView(_ view: VideoChannelLayerView, coordinator: ()) { view.stop() }
 }
 
 private let NO_VIDEO_FULL_HEIGHT: CGFloat = 230
