@@ -57,65 +57,54 @@ struct OfflineStatusSheet: View {
 
     var body: some View {
         let current = status
-        AircastSheet(onDismissRequest: onDismiss) {
-            if let shown = current {
-                VStack(alignment: .leading, spacing: Space.s1) {
-                    Text(shown.title).font(.titleMedium).padding(.horizontal, Space.s5)
-                    Text(LOOKING_HINT).font(.bodyMedium).padding(.horizontal, Space.s5)
-                    HStack(spacing: Space.s2) {
-                        if shown.busy { ProgressView().controlSize(.small) }
-                        Text(shown.footnote).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-                    }
-                    .padding(.horizontal, Space.s5)
-                    .contentShape(Rectangle())
-                    .onTapGesture { if shown.editAddress { openConnectionSettings(navigation, onDismiss) } }
-                    .accessibilityAddTraits(shown.editAddress ? .isButton : [])
-                    if shown.noLinks {
-                        Button {
-                            openAddLink(navigation)
-                            onDismiss()
-                        } label: {
-                            Text("Add link\u{2026}").frame(maxWidth: .infinity)
+        NativeDialogSheet(title: current?.title.nonBlank ?? "Not connected", onDismissRequest: onDismiss) {
+            NativeForm {
+                if let shown = current {
+                    Section {
+                        if shown.noLinks {
+                            Button("Add link\u{2026}") {
+                                openAddLink(navigation)
+                                onDismiss()
+                            }
                         }
-                        .buttonStyle(.filled)
-                        .padding(.horizontal, Space.s5)
-                        .padding(.vertical, Space.s2)
-                    }
-                    ForEach(shown.links, id: \.index) { link in
-                        Button {
-                            offMain {
-                                if link.connected {
-                                    LinkCommands.disconnect(link.index)
-                                } else {
-                                    LinkCommands.connect("@\(OFFLINE_LINKS_PATH).\(link.index)")
+                        ForEach(shown.links, id: \.index) { link in
+                            Button {
+                                offMain {
+                                    if link.connected {
+                                        LinkCommands.disconnect(link.index)
+                                    } else {
+                                        LinkCommands.connect("@\(OFFLINE_LINKS_PATH).\(link.index)")
+                                    }
+                                }
+                            } label: {
+                                NativeRowLabel(
+                                    title: link.text,
+                                    subtitle: link.description.isBlank
+                                        ? nil
+                                        : Text(link.description).foregroundStyle(link.failed ? theme.colors.error : Color.secondary),
+                                    status: link.retry && !link.connected ? "Retry" : "",
+                                    chevron: false
+                                )
+                                .overlay(alignment: .trailing) {
+                                    if link.connected { ProgressView().controlSize(.small) }
                                 }
                             }
-                        } label: {
-                            StatusListItem(
-                                headline: link.text,
-                                supporting: link.description,
-                                supportingColor: link.failed ? theme.colors.error : theme.colors.onSurfaceVariant
-                            ) {
-                                if link.connected {
-                                    ProgressView().controlSize(.small)
-                                } else if link.retry {
-                                    Text("Retry").font(.labelMedium)
-                                }
-                            }
-                            .contentShape(Rectangle())
+                            .listRowButton()
                         }
-                        .buttonStyle(.plain)
+                    } header: {
+                        Text(LOOKING_HINT).textCase(nil)
+                    } footer: {
+                        footnote(shown)
                     }
-                    Divider()
-                    Button { openConnectionSettings(navigation, onDismiss) } label: {
-                        StatusListItem(headline: "Connection settings") { EmptyView() }
-                            .contentShape(Rectangle())
+                    Section {
+                        Button { openConnectionSettings(navigation, onDismiss) } label: {
+                            NativeRowLabel(title: "Connection settings")
+                        }
+                        .listRowButton()
                     }
-                    .buttonStyle(.plain)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, Space.s6)
             }
+            .dialogButtons(primary: DialogButton(title: "Done", action: onDismiss))
         }
         .task {
             while !Task.isCancelled {
@@ -123,5 +112,16 @@ struct OfflineStatusSheet: View {
                 try? await Task.sleep(for: .milliseconds(OFFLINE_POLL_MS))
             }
         }
+    }
+
+    @ViewBuilder
+    private func footnote(_ shown: OfflineStatus) -> some View {
+        HStack(spacing: Space.s2) {
+            if shown.busy { ProgressView().controlSize(.small) }
+            Text(shown.footnote)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { if shown.editAddress { openConnectionSettings(navigation, onDismiss) } }
+        .accessibilityAddTraits(shown.editAddress ? .isButton : [])
     }
 }

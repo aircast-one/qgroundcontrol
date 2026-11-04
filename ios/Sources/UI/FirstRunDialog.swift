@@ -23,8 +23,6 @@ func firstRun(_ view: JSON?) -> FirstRun? {
     )
 }
 
-private let FIRST_RUN_WIDTH: CGFloat = 560
-
 let FIRST_RUN_SYSTEMS = ["Metric System", "Imperial System"]
 
 private let METERS = 1.0
@@ -52,23 +50,15 @@ private struct FirstRunUnits: View {
     var body: some View {
         let rows = firstRunUnitRows(unitFacts(page))
         let chosen = firstRunSystemIndex(horizontal)
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("System of units").font(.bodyLarge)
-                HStack(spacing: 8) {
-                    ForEach(Array(FIRST_RUN_SYSTEMS.enumerated()), id: \.offset) { index, label in
-                        CameraChip(label: label, selected: index == chosen) {
-                            let writes = firstRunSystemWrites(index == 0, rows)
-                            offMainInOrder { writes.forEach { path, value in Qgc.set(path, value) } }
-                        }
-                    }
-                }
+        Picker("System of units", selection: Binding<Int>(get: { chosen }, set: { index in
+            let writes = firstRunSystemWrites(index == 0, rows)
+            offMainInOrder { writes.forEach { path, value in Qgc.set(path, value) } }
+        })) {
+            ForEach(Array(FIRST_RUN_SYSTEMS.enumerated()), id: \.offset) { index, label in
+                Text(label).tag(index)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            FactRuns(facts: rows)
         }
+        FactRuns(facts: rows)
     }
 }
 
@@ -97,47 +87,44 @@ private struct FirstRunPage: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(spacing: 16) {
-                    Image(.flight)
-                        .font(.system(size: 40))
-                        .foregroundStyle(theme.colors.onPrimaryContainer)
-                        .frame(width: 96, height: 96)
-                        .background(theme.colors.primaryContainer, in: Circle())
-                    Text("Welcome to \(appName)").font(.headlineSmall).multilineTextAlignment(.center)
-                    Text(WELCOME_NOTE)
-                        .font(.bodyMedium)
-                        .foregroundStyle(theme.colors.onSurfaceVariant)
-                        .multilineTextAlignment(.center)
+        NavigationStack {
+            NativeForm {
+                Section {
+                    VStack(spacing: Space.s3) {
+                        Image(.flight)
+                            .font(.system(size: 40))
+                            .foregroundStyle(theme.colors.onPrimaryContainer)
+                            .frame(width: 96, height: 96)
+                            .background(theme.colors.primaryContainer, in: Circle())
+                            .accessibilityHidden(true)
+                        Text("Welcome to \(appName)").font(.title2.bold()).multilineTextAlignment(.center)
+                        Text(WELCOME_NOTE)
+                            .foregroundStyle(Color.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
                 }
-                .frame(maxWidth: .infinity)
-                SectionHeader(text: sentenceCase(prompt.unitsHeading))
-                Text(prompt.unitsDescription)
-                    .font(.bodyMedium)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
-                    .padding(.horizontal, 16)
-                FirstRunUnits()
+                Section {
+                    FirstRunUnits()
+                } header: {
+                    SectionHeader(text: sentenceCase(prompt.unitsHeading))
+                } footer: {
+                    if !prompt.unitsDescription.isBlank { Text(prompt.unitsDescription) }
+                }
                 if !prompt.preferences.isEmpty {
-                    SectionHeader(text: sentenceCase(prompt.vehicleHeading))
-                    Text(prompt.vehicleDescription)
-                        .font(.bodyMedium)
-                        .foregroundStyle(theme.colors.onSurfaceVariant)
-                        .padding(.horizontal, 16)
-                    ForEach(prompt.preferences) { fact in FactRow(fact: fact) }
+                    Section {
+                        ForEach(prompt.preferences) { fact in FactRow(fact: fact) }
+                    } header: {
+                        SectionHeader(text: sentenceCase(prompt.vehicleHeading))
+                    } footer: {
+                        if !prompt.vehicleDescription.isBlank { Text(prompt.vehicleDescription) }
+                    }
                 }
-                HStack {
-                    Spacer()
-                    Button("Continue", action: onClose).buttonStyle(.filled)
-                }
-                .padding(.horizontal, 16)
             }
-            .frame(maxWidth: FIRST_RUN_WIDTH)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 48)
-            .frame(maxWidth: .infinity)
+            .navigationTitle(prompt.title.ifBlank("Welcome"))
+            .navigationBarTitleDisplayMode(.inline)
+            .pagePrimaryAction("Continue", action: onClose)
         }
-        .clipped()
-        .background(theme.colors.surface.ignoresSafeArea())
     }
 }

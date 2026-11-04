@@ -58,76 +58,58 @@ struct MissionCompleteDialog: View {
 
     @ViewBuilder
     private func interrupted(_ notice: MissionComplete, at waypoint: Int) -> some View {
-        Text(notice.detail).font(.bodyMedium)
-        Button {
-            close(notice) { PlanCommands.resumeMission(waypoint) }
-        } label: {
-            Text(notice.resumeLabel.ifBlank("Resume mission from waypoint \(waypoint)")).frame(maxWidth: .infinity)
+        Section {
+            Button {
+                close(notice) { PlanCommands.resumeMission(waypoint) }
+            } label: {
+                Text(notice.resumeLabel.ifBlank("Resume mission from waypoint \(waypoint)")).fontWeight(.semibold)
+            }
+            Button("Leave plan on vehicle") { close(notice) }
+        } footer: {
+            if !notice.detail.isBlank { Text(notice.detail) }
         }
-        .buttonStyle(.filled)
-        Button { close(notice) } label: {
-            Text("Leave plan on vehicle").frame(maxWidth: .infinity)
+        Section {
+            Button("Remove plan from vehicle", role: .destructive) {
+                close(notice) { PlanCommands.removeAllFromVehicle() }
+            }
         }
-        .buttonStyle(.bordered)
-        Button {
-            close(notice) { PlanCommands.removeAllFromVehicle() }
-        } label: {
-            Text("Remove plan from vehicle").frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.text)
     }
 
     @ViewBuilder
     private func finished(_ notice: MissionComplete) -> some View {
-        if let images = imagesTakenText(notice.imagesTaken) {
-            Text(images).multilineTextAlignment(.center).frame(maxWidth: .infinity)
-        }
-        Button {
-            close(notice) { PlanCommands.removeAllFromVehicle() }
-        } label: {
-            Text("Remove plan from vehicle").frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.filled)
-        Button { close(notice) } label: {
-            Text("Leave plan on vehicle").frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        if let waypoint = notice.resumeFromWaypoint {
-            Divider()
-            Button {
-                close(notice) { PlanCommands.resumeMission(waypoint) }
-            } label: {
-                Text("Resume mission from waypoint \(waypoint)").frame(maxWidth: .infinity)
+        Section {
+            if let images = imagesTakenText(notice.imagesTaken) {
+                Text(images)
             }
-            .buttonStyle(.bordered)
-            Text("Resume Mission will rebuild the current mission from the last flown waypoint and upload it to the vehicle for the next flight.")
-                .font(.bodySmall)
+            Button("Remove plan from vehicle", role: .destructive) {
+                close(notice) { PlanCommands.removeAllFromVehicle() }
+            }
+            Button("Leave plan on vehicle") { close(notice) }
+        }
+        if let waypoint = notice.resumeFromWaypoint {
+            Section {
+                Button("Resume mission from waypoint \(waypoint)") {
+                    close(notice) { PlanCommands.resumeMission(waypoint) }
+                }
+            } footer: {
+                Text("Resume Mission will rebuild the current mission from the last flown waypoint and upload it to the vehicle for the next flight.")
+            }
         }
     }
 
     private func content(_ notice: MissionComplete) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.s3) {
-                Text(notice.title).font(.headlineSmall)
+        NativeDialogStack(title: notice.title) {
+            NativeForm {
                 if let waypoint = notice.resumeFromWaypoint, notice.interrupted {
                     interrupted(notice, at: waypoint)
                 } else {
                     finished(notice)
                 }
                 if notice.batteryWarning {
-                    Text(BATTERY_SWAP)
-                        .font(.bodySmall)
-                        .foregroundStyle(theme.aircast.warning)
-                }
-                HStack {
-                    Spacer()
-                    Button("Close") { close(notice) }.buttonStyle(.text)
+                    FormNote(text: BATTERY_SWAP, color: theme.aircast.warning)
                 }
             }
-            .padding(Space.s6)
+            .dialogButtons(cancel: DialogButton(title: "Close") { close(notice) })
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(theme.colors.surfaceContainerHigh)
     }
 }

@@ -87,16 +87,21 @@ struct ControlRequestDialog: View {
     }
 
     private func request(_ asked: IncomingControlRequest, _ state: ControlRequestState) -> some View {
-        VStack(alignment: .leading, spacing: Space.s4) {
-            Text("GCS \(asked.systemId) is requesting control").font(.headlineSmall)
-            VStack(alignment: .leading, spacing: Space.s2) {
-                Text("Ignoring automatically in \(secondsLeft(asked.remainingMs)) seconds").font(.bodyMedium)
-                ProgressView(value: asked.timeoutMs > 0 ? Double(asked.remainingMs) / Double(asked.timeoutMs) : 0)
+        NativeDialogStack(title: "Control request", detents: [.medium]) {
+            NativeForm {
+                Section {
+                    Text("GCS \(asked.systemId) is requesting control").font(.headline)
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        Text("Ignoring automatically in \(secondsLeft(asked.remainingMs)) seconds")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.secondary)
+                        ProgressView(value: asked.timeoutMs > 0 ? Double(asked.remainingMs) / Double(asked.timeoutMs) : 0)
+                    }
+                }
             }
-            HStack {
-                Spacer()
-                Button("Ignore") { state.ignored = asked.systemId }
-                Button("Allow takeover") {
+            .dialogButtons(
+                cancel: DialogButton(title: "Ignore") { state.ignored = asked.systemId },
+                primary: DialogButton(title: "Allow takeover") {
                     state.allowedFrom = asked.systemId
                     state.revertIgnored = false
                     offMain {
@@ -104,21 +109,7 @@ struct ControlRequestDialog: View {
                         Qgc.invoke(REVERT_ALLOW_TAKEOVER)
                     }
                 }
-            }
-            .buttonStyle(.text)
+            )
         }
-        .padding(Space.s6)
-        .modifier(FittedDetent())
-    }
-}
-
-private struct FittedDetent: ViewModifier {
-    @State private var height: CGFloat?
-
-    func body(content: Content) -> some View {
-        content
-            .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-            .presentationDetents(height.map { [.height($0)] } ?? [.medium])
     }
 }

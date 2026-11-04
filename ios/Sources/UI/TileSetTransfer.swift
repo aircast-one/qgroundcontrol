@@ -104,7 +104,7 @@ struct TileSetTransfer: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { choosingSets = false } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Ok") {
+                    Button("Export") {
                         choosingSets = false
                         startExport()
                     }
@@ -113,6 +113,7 @@ struct TileSetTransfer: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .nativeSheetFrame()
     }
 
     private func pickImport(_ mode: Bool) {
