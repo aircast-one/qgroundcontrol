@@ -631,7 +631,7 @@ private struct LinkHostField: View {
     let onChange: (String) -> Void
 
     var body: some View {
-        LinkTextField(label: "Host address", value: value, placeholder: "Example: 192.168.1.10", error: error, enabled: enabled, onChange: onChange)
+        LinkTextField(label: "Host address", value: value, placeholder: "Example: 192.168.1.10", error: error, enabled: enabled, keyboard: .URL, onChange: onChange)
     }
 }
 
