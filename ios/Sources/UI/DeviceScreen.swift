@@ -250,6 +250,7 @@ struct DeviceStatusChip: View {
             .buttonStyle(.plain)
             .foregroundStyle(theme.aircast.outdoorForeground)
             .accessibilityLabel("\(shown.name): \(shown.headline)")
+            .macTooltip("\(shown.name): \(shown.headline)")
         }
     }
 }

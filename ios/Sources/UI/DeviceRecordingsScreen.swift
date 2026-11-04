@@ -145,10 +145,11 @@ private struct SegmentRow: View {
             if !segment.open {
                 LinkButton(href: resolveDeviceUrl(origin, segment.url), text: "Download", look: .Text, icon: .download)
             }
-            Button { asking = true } label: { Image(.delete).frame(width: 48, height: 48).contentShape(Rectangle()) }
+            Button { asking = true } label: { Image(.delete).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                 .buttonStyle(.plain)
                 .disabled(action.busy)
                 .accessibilityLabel("Delete the recording from \(segment.started)")
+                .macTooltip("Delete the recording from \(segment.started)")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)

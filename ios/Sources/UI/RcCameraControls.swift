@@ -260,10 +260,11 @@ struct RcCameraControls: View {
             }
             if channels.light > 0 || gimbal != nil || rcGimbal {
                 Button { state.options = true } label: {
-                    Image(.tune).font(.system(size: 20)).frame(width: 48, height: 48).contentShape(Rectangle())
+                    Image(.tune).font(.system(size: 20)).frame(width: 48, height: 48).contentShape(Rectangle()).macHover(Circle(), tint: .white)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Gimbal options")
+                .macTooltip("Gimbal options")
             }
             if let gimbalRefused {
                 Text(gimbalRefused).font(.labelSmall).foregroundStyle(theme.colors.error)

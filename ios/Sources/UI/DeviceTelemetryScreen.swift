@@ -164,9 +164,10 @@ private struct EndpointEditorRow: View {
                     options: shown.options.map { DeviceOption(value: $0.value, label: $0.label) },
                     onPick: { scheme in onChange(shown.options.first { $0.value == scheme }?.row ?? row) }
                 )
-                Button(action: onRemove) { Image(.close).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                Button(action: onRemove) { Image(.close).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Remove endpoint")
+                    .macTooltip("Remove endpoint")
             }
             HStack(alignment: .top, spacing: 8) {
                 DeviceTextField(

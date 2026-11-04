@@ -71,7 +71,7 @@ private struct CalibrationStep: View {
                     Button("Cancel") { onAction("cancelButtonClicked") }.buttonStyle(.text)
                 }
             }
-            .frame(minHeight: 48)
+            .frame(minHeight: Metrics.rowCompact)
         }
         .padding(Space.s4)
         .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: Corner.medium))

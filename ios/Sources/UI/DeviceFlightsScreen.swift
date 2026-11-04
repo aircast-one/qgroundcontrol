@@ -194,9 +194,10 @@ private struct SortieShareRow: View {
             }
             if !render.url.isEmpty {
                 PlanFlowRow(spacing: 4, lineSpacing: 4) {
-                    Button { showingQr = true } label: { Image(.qrCode2).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                    Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Show the share link as a QR code")
+                        .macTooltip("Show the share link as a QR code")
                     LinkButton(href: render.url, text: "Open the share version", look: .Text, external: true)
                     Button("Copy link") { copyToClipboard(render.url, notice) }.buttonStyle(.text)
                 }

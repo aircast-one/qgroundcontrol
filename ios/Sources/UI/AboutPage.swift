@@ -15,7 +15,7 @@ struct AboutPage: View {
                 Text(qgcVersion()).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
             }
             .padding(.horizontal, Space.s4)
-            .frame(minHeight: 56)
+            .frame(minHeight: Metrics.row)
             .contentShape(Rectangle())
             .onTapGesture { if advancedView != nil { toggleAdvancedUi(advancedUiShown(advancedView)) } }
             SectionHeader(text: "Support")
@@ -27,9 +27,10 @@ struct AboutPage: View {
                         Text(link.name).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
                         Text(link.host).font(.bodyMedium).foregroundStyle(theme.colors.primary)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: Metrics.rowTall, alignment: .leading)
                     .padding(.horizontal, Space.s4)
                     .contentShape(Rectangle())
+                    .macHover(cursor: true)
                 }
                 .buttonStyle(.plain)
             }

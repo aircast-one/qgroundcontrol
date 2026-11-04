@@ -142,15 +142,17 @@ struct ConsoleScreen: View {
                 ForEach([("historyUp", "\u{2191}"), ("historyDown", "\u{2193}")], id: \.0) { step, arrow in
                     Button(arrow) { recall(step) }
                         .buttonStyle(.text)
-                        .frame(width: 40, height: 40)
+                        .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
+                        .macTooltip(step == "historyUp" ? "Previous command" : "Next command")
                 }
                 Button(action: send) {
                     Image(.send)
                         .foregroundStyle(theme.colors.onPrimaryContainer)
-                        .frame(width: 40, height: 40)
+                        .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
                         .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
                 }
                 .accessibilityLabel("Send")
+                .macTooltip("Send")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)

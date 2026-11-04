@@ -185,9 +185,10 @@ struct SettingsSheet: View {
                     Button("Cancel") { query = nil }.buttonStyle(.text)
                 } else {
                     if let drilledTitle {
-                        Button(action: setupOpen ? setupBack : pageBack) { Image(.arrowBack).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                        Button(action: setupOpen ? setupBack : pageBack) { Image(.arrowBack).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Back")
+                            .macTooltip("Back")
                         Text(drilledTitle)
                             .font(.titleLarge)
                             .lineLimit(1)
@@ -201,13 +202,15 @@ struct SettingsSheet: View {
                     } else {
                         SheetTabs(selected: pager ?? group, edgePadding: 0, onPick: showTab).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Button { query = "" } label: { Image(.search).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                    Button { query = "" } label: { Image(.search).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Search settings")
+                        .macTooltip("Search settings")
                 }
-                Button(action: onClose) { Image(.close).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                Button(action: onClose) { Image(.close).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Close settings")
+                    .macTooltip("Close settings")
             }
             .padding(.leading, drilledTitle != nil ? Space.s1 : Space.s3)
             .padding(.trailing, Space.s3)
@@ -332,7 +335,7 @@ private struct SheetTabs: View {
                                 .font(.titleSmall)
                                 .lineLimit(1)
                                 .foregroundStyle(entry == selected ? theme.colors.primary : theme.colors.onSurfaceVariant)
-                                .frame(height: 48)
+                                .frame(height: Metrics.rowCompact)
                                 .overlay(alignment: .bottom) {
                                     if entry == selected {
                                         UnevenRoundedRectangle(topLeadingRadius: 3, topTrailingRadius: 3)
@@ -370,8 +373,10 @@ struct FlySettingsButton: View {
                 .osdShadow()
                 .frame(width: 48, height: 48)
                 .contentShape(Rectangle())
+                .macHover(Circle(), tint: theme.aircast.outdoorForeground)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Settings")
+        .macTooltip("Settings")
     }
 }

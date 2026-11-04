@@ -112,7 +112,7 @@ private struct CameraTabs: View {
                                 Text(camera.status.text).font(.labelSmall).foregroundStyle(deviceLevelColor(camera.status.level, theme))
                             }
                             .padding(.horizontal, 16)
-                            .frame(minHeight: 48)
+                            .frame(minHeight: Metrics.rowCompact)
                             Rectangle().fill(selected ? theme.colors.primary : Color.clear).frame(height: 3)
                         }
                         .contentShape(Rectangle())
@@ -348,9 +348,10 @@ private struct CopyButton: View {
             }
             .buttonStyle(.bordered)
             if copy.qr {
-                Button { showingQr = true } label: { Image(.qrCode2).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show \(title) as a QR code")
+                    .macTooltip("Show \(title) as a QR code")
             }
         }
         .sheet(isPresented: $showingQr) { QrDialog(title: title, text: copy.text) { showingQr = false } }

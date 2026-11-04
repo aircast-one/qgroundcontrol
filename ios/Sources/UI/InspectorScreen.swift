@@ -129,7 +129,7 @@ private struct RatePicker: View {
                 }
             } label: {
                 Text(current.isBlank ? "Set Rate:" : "Rate: \(current)")
-                    .frame(minHeight: 48)
+                    .frame(minHeight: Metrics.rowCompact)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
@@ -218,7 +218,7 @@ private struct FieldList: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .frame(minHeight: 72)
+        .frame(minHeight: Metrics.rowLarge)
     }
 }
 

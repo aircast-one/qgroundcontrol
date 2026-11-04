@@ -321,6 +321,7 @@ struct VehicleMap: View {
     var collisionLegs: [(TrackPoint, TrackPoint)] = []
     var orbit: OrbitCircle? = nil
     var otherMissions: [OtherMission] = []
+    var onContextMenu: MapContextMenu? = nil
 
     @Environment(FlyMapEdits.self) private var mapEdits
     @MapViewFlag(FLY_STATE_VIEW, "contactLost") private var linkLost
@@ -434,7 +435,8 @@ private struct VehicleMapScene {
             canDrag: map.canDrag,
             onCentreChanged: map.onCentreChanged,
             onViewChanged: map.onViewChanged,
-            edits: mapEdits
+            edits: mapEdits,
+            contextMenu: map.onContextMenu
         )
     }
 
@@ -630,6 +632,7 @@ struct VehicleMapInputs {
     var onCentreChanged: (TrackPoint, Double) -> Void = { _, _ in }
     var onViewChanged: ([TrackPoint]) -> Void = { _ in }
     var edits: FlyMapEdits?
+    var contextMenu: MapContextMenu?
 }
 
 final class MapCamera: ObservableObject {
@@ -784,7 +787,10 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
             mapView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:))))
             #elseif os(macOS)
             mapView.addGestureRecognizer(MapClickRecognizer(target: self, action: #selector(tapped(_:))))
-            mapView.addGestureRecognizer(mapPressRecognizer(self, #selector(longPressed(_:))))
+            // A map with a context menu leaves click-and-hold to panning: the right-click menu is the Mac's way in.
+            if inputs.contextMenu == nil {
+                mapView.addGestureRecognizer(mapPressRecognizer(self, #selector(longPressed(_:))))
+            }
             mapView.addGestureRecognizer(secondaryClickRecognizer(self, #selector(secondaryClicked(_:))))
             #endif
             if let edits = inputs.edits {
@@ -803,13 +809,17 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
                 onBlankTap: { [weak self] latitude, longitude in
                     guard let self else { return }
                     if let blank = self.inputs.onBlankTap { blank(latitude, longitude) } else { self.inputs.onWaypointSelected(nil) }
-                }
+                },
+                contextMenu: { [weak self] hit, latitude, longitude in self?.inputs.contextMenu?(hit, latitude, longitude) }
             )
         }
     }
 
     @objc private func tapped(_ tap: MapGestureRecognizer) {
         guard tap.state == .ended, let mapView else { return }
+        #if os(macOS)
+        if (tap as? MapClickRecognizer)?.controlClick == true { return contextClicked(tap) }
+        #endif
         let screen = mapView.screenLocation(tap)
         let near = CGRect(x: screen.x - TAP_SLOP_DP, y: screen.y - TAP_SLOP_DP, width: TAP_SLOP_DP * 2, height: TAP_SLOP_DP * 2)
         if let trafficClick = inputs.onTrafficClick, !mapView.screenFeatures(near, [TRAFFIC_LAYER]).isEmpty {
@@ -832,9 +842,19 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
 
     #if os(macOS)
     @objc private func secondaryClicked(_ click: MapGestureRecognizer) {
-        guard click.state == .ended, let mapView else { return }
-        let at = mapView.screenCoordinate(mapView.screenLocation(click))
-        inputs.onMapClick?(at.latitude, at.longitude)
+        guard click.state == .ended else { return }
+        contextClicked(click)
+    }
+
+    private func contextClicked(_ click: MapGestureRecognizer) {
+        guard let mapView else { return }
+        let screen = mapView.screenLocation(click)
+        let at = mapView.screenCoordinate(screen)
+        guard let entries = inputs.contextMenu?(hitTest(mapView, Float(screen.x), Float(screen.y)), at.latitude, at.longitude) else {
+            inputs.onMapClick?(at.latitude, at.longitude)
+            return
+        }
+        showMapMenu(entries, mapView, click.location(in: mapView))
     }
     #endif
 

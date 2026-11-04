@@ -413,9 +413,10 @@ private struct TelemetryReadings: View {
             .accessibilityAddTraits(instrument.id.isBlank ? [] : .isButton)
         case .chooser:
             Button { flyScreen.choosingReadings = true } label: {
-                Image(.tune).foregroundStyle(theme.colors.onSurfaceVariant).frame(width: 48, height: 48)
+                Image(.tune).foregroundStyle(theme.colors.onSurfaceVariant).frame(width: Metrics.iconButton, height: Metrics.iconButton).macHover(Circle())
             }
             .accessibilityLabel("Readings")
+            .macTooltip("Readings")
         }
     }
 }
@@ -1140,8 +1141,9 @@ struct FlightModeMenu: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Space.s3)
-        .frame(minHeight: 48)
+        .frame(minHeight: Metrics.rowCompact)
         .background(mode.current ? theme.colors.secondaryContainer : Color.clear)
+        .macHover()
         .opacity(mode.hidden ? HIDDEN_MODE_ALPHA : 1)
         .opacity(modes.canSet ? 1 : DISABLED_ALPHA)
         .contentShape(Rectangle())
@@ -1153,9 +1155,10 @@ struct FlightModeMenu: View {
         Button(action: action) {
             HStack(spacing: Space.s3) { content() }
                 .padding(.horizontal, Space.s3)
-                .frame(minHeight: 48)
+                .frame(minHeight: Metrics.rowCompact)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
+                .macHover()
         }
         .buttonStyle(.plain)
     }
@@ -1197,8 +1200,9 @@ private struct InstrumentSheet: View {
                                     Spacer()
                                 }
                                 .padding(.horizontal, Space.s4)
-                                .frame(minHeight: 56)
+                                .frame(minHeight: Metrics.row)
                                 .contentShape(Rectangle())
+                                .macHover()
                                 .onTapGesture { onToggle(fact.path) }
                                 .accessibilityElement(children: .combine)
                                 .accessibilityAddTraits(chosen.contains(fact.path) ? [.isButton, .isSelected] : .isButton)

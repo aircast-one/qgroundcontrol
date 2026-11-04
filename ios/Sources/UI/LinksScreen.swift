@@ -326,7 +326,7 @@ private struct LinkIconBadge: View {
         Image(linkIcon(type))
             .font(.system(size: 18))
             .foregroundStyle(lit ? theme.aircast.success : theme.colors.onSecondaryContainer)
-            .frame(width: 40, height: 40)
+            .frame(width: Metrics.avatar, height: Metrics.avatar)
             .background(lit ? theme.aircast.successContainer : theme.colors.secondaryContainer, in: Circle())
     }
 }
@@ -351,7 +351,7 @@ private struct AutoLinkItem: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 72)
+        .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
     }
 }
 
@@ -416,8 +416,9 @@ private struct LinkRowItem: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 72)
+        .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
         .contentShape(Rectangle())
+        .macHover()
     }
 }
 
@@ -439,8 +440,9 @@ private struct AdvancedDisclosure: View {
                     .foregroundStyle(theme.colors.onSurfaceVariant)
                     .accessibilityLabel(open ? "Hide advanced options" : "Show advanced options")
             }
-            .frame(maxWidth: .infinity, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: Metrics.rowCompact)
             .contentShape(Rectangle())
+            .macHover()
         }
         .buttonStyle(.plain)
     }
@@ -680,7 +682,7 @@ private struct PageFrame<Content: View>: View {
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Button(action: onAction) { Text(action).frame(maxWidth: .infinity, minHeight: 52) }
+            Button(action: onAction) { Text(action).frame(maxWidth: .infinity, minHeight: Metrics.primaryButton) }
                 .buttonStyle(.filled)
                 .disabled(!actionEnabled)
                 .padding(16)
@@ -1371,7 +1373,7 @@ private struct ServerList: View {
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Remove \(server)")
                 }
-                .frame(minHeight: 48)
+                .frame(minHeight: Metrics.rowCompact)
             }
         }
     }

@@ -48,7 +48,7 @@ private struct MissionFrameMenu: View {
                 }
             } label: {
                 Text(picks.first(where: \.current)?.title ?? "Frame")
-                    .frame(minHeight: 48)
+                    .frame(minHeight: Metrics.rowCompact)
                     .contentShape(Rectangle())
             }
             .disabled(!missionFrameChoice(view))

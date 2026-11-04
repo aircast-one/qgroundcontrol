@@ -409,6 +409,7 @@ private struct VideoTab: View {
             .frame(height: VIDEO_TAB_HEIGHT)
             .foregroundStyle(theme.aircast.outdoorForeground)
             .background(Color.black.opacity(SCRIM_ALPHA), in: Capsule())
+            .macHover(Capsule(), tint: theme.aircast.outdoorForeground)
         }
         .buttonStyle(.plain)
         .verticalSwipe(swipeDistance) { if $0 == showSwipe { onShow() } }
@@ -532,9 +533,11 @@ private struct MapButton<Content: View>: View {
                 .foregroundStyle(theme.aircast.outdoorForeground)
                 .frame(width: MAP_BUTTON_SIZE, height: MAP_BUTTON_SIZE)
                 .background(Color.black.opacity(MAP_BUTTON_SCRIM_ALPHA), in: Circle())
+                .macHover(Circle(), tint: theme.aircast.outdoorForeground)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+        .macTooltip(label)
     }
 }
 

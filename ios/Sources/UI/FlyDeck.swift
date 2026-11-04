@@ -255,6 +255,7 @@ struct DeckButton: View {
         .frame(height: DECK_BUTTON_HEIGHT)
         .background(primary && entry.enabled ? theme.colors.primaryContainer : theme.colors.surfaceContainerHigh)
         .clipShape(RoundedRectangle(cornerRadius: Corner.large))
+        .macHover(RoundedRectangle(cornerRadius: Corner.large), tint: content, enabled: entry.enabled)
     }
 }
 
@@ -282,8 +283,10 @@ struct RailDeckButton: View {
             .foregroundStyle(theme.aircast.outdoorForeground)
             .frame(width: RAIL_BUTTON_SIZE, height: RAIL_BUTTON_SIZE)
             .clipShape(Circle())
+            .macHover(Circle(), tint: theme.aircast.outdoorForeground, enabled: entry.enabled)
             .opacity(entry.enabled ? 1 : DISABLED_ALPHA)
             .accessibilityLabel(entry.label)
+            .macTooltip(entry.label)
             if labelled {
                 Text(railLabel(entry.label))
                     .font(.labelSmall)
@@ -384,6 +387,7 @@ private struct MoreTiles<Footer: View>: View {
             .frame(height: MORE_TILE_HEIGHT)
             .foregroundStyle(tile.warning ? theme.colors.error : theme.colors.onSurface)
             .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.large))
+            .macHover(RoundedRectangle(cornerRadius: Corner.large))
             .opacity(tile.enabled ? 1 : DISABLED_ALPHA)
         }
         .buttonStyle(.plain)

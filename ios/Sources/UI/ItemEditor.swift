@@ -231,8 +231,9 @@ private struct ItemEditorContent: View {
                     }
                     .foregroundStyle(theme.colors.onSurface)
                     .padding(.horizontal, 12)
-                    .frame(minHeight: 48)
+                    .frame(minHeight: Metrics.rowCompact)
                     .contentShape(Rectangle())
+                    .macHover()
                 }
                 .buttonStyle(.plain)
             }
@@ -244,7 +245,7 @@ private struct ItemEditorContent: View {
                     .buttonStyle(.text)
                     .font(.labelLarge)
                     .foregroundStyle(theme.colors.error)
-                    .frame(minHeight: 40)
+                    .frame(minHeight: Metrics.rowDense)
                     .padding(.horizontal, 20)
             }
         }
@@ -393,7 +394,7 @@ private struct ItemEditorContent: View {
                     Button("Move to Previous Item") { moveTo(previous) }.disabled(previous == nil)
                     Button("Edit position…") { editingPosition = true }.disabled(positionStart == nil)
                 } label: {
-                    Text("Position").frame(minHeight: MINIMUM_TOUCH_TARGET).contentShape(Rectangle())
+                    Text("Position").frame(minHeight: Metrics.minTarget).contentShape(Rectangle())
                 }
             }
             if commandEditable(view) {
@@ -504,9 +505,10 @@ private struct ItemEditorContent: View {
                 Text(entry.value).font(.bodyMedium)
                 Image(.chevronRight)
             }
-            .frame(minHeight: 48)
+            .frame(minHeight: Metrics.rowCompact)
             .padding(.horizontal, Space.s5)
             .contentShape(Rectangle())
+            .macHover()
         }
         .buttonStyle(.plain)
     }

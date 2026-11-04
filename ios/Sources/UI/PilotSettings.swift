@@ -118,7 +118,7 @@ struct PilotSettings: View {
 let OFFLINE_PILOT_NOTE = "Connect the aircraft to see and change these."
 let LOADING_PILOT_NOTE = "Loading these from the aircraft\u{2026}"
 private let OFFLINE_VALUE = "\u{2014}"
-private let NOTE_ROW_MIN_HEIGHT: CGFloat = 48
+private let NOTE_ROW_MIN_HEIGHT: CGFloat = Metrics.rowCompact
 
 func pilotSections(_ settings: [PilotSetting]) -> [(key: String, value: [PilotSetting])] {
     groupedInOrder(settings) { $0.section }
@@ -176,7 +176,7 @@ private struct OfflineRow: View {
         }
         .padding(.horizontal, Space.s4)
         .padding(.vertical, Space.s2)
-        .frame(minHeight: 56)
+        .frame(minHeight: Metrics.row)
     }
 }
 
@@ -224,7 +224,7 @@ struct SensorChecks: View {
                         }
                         .padding(.leading, Space.s4)
                         .padding(.trailing, Space.s1)
-                        .frame(minHeight: 56)
+                        .frame(minHeight: Metrics.row)
                     }
                     SetupRow(title: "Calibrate sensors", status: "", onClick: onCalibrate)
                 }

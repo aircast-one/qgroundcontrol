@@ -178,7 +178,7 @@ struct ParameterToolsMenu: View {
                 }
             } label: {
                 Text("Tools")
-                    .frame(minWidth: MINIMUM_TOUCH_TARGET, minHeight: MINIMUM_TOUCH_TARGET)
+                    .frame(minWidth: Metrics.minTarget, minHeight: Metrics.minTarget)
                     .contentShape(Rectangle())
             }
             .alert(asking?.confirmTitle ?? "", isPresented: presented($asking), presenting: asking) { tool in

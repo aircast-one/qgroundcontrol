@@ -117,7 +117,7 @@ struct StatusListItem<Trailing: View>: View {
         }
         .padding(.horizontal, Space.s4)
         .padding(.vertical, Space.s2)
-        .frame(minHeight: 56)
+        .frame(minHeight: Metrics.row)
     }
 }
 
@@ -248,6 +248,7 @@ private struct VehicleStatusReadings: View {
                     .minimumTouchTarget()
                     .onTapGesture { allStatus = true }
                     .accessibilityLabel("All status")
+                    .macTooltip("All status")
                     .accessibilityAddTraits(.isButton)
                     .padding(.leading, STRIP_GAP)
                     .zIndex(-1)
