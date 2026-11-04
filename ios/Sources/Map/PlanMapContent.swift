@@ -150,6 +150,7 @@ struct PlanMapContent: View {
     @State private var uploadAsk: UploadGate?
     @State private var farAsk = false
     @State private var patternWanted: [MissionKind] = []
+    @State private var patternAt: TrackPoint?
     @State private var visible: [TrackPoint] = []
     @State private var importInto: ShapeTarget?
     @State private var importing = false
@@ -455,9 +456,116 @@ struct PlanMapContent: View {
             breachReturn: breach?.point,
             tracePoints: tracing?.1 ?? [],
             traceLine: tracing?.0.line == true,
-            collisionLegs: terrainHits
+            collisionLegs: terrainHits,
+            onContextMenu: mapContextMenu
         )
     }
+
+    private var mapContextMenu: MapContextMenu? {
+        #if os(macOS)
+        return { hit, latitude, longitude in planContextMenu(hit, TrackPoint(latitude: latitude, longitude: longitude)) }
+        #else
+        return nil
+        #endif
+    }
+
+    #if os(macOS)
+    private func menuOffer(_ hit: MapHit?) -> PlanMenuOffer {
+        let corner: Bool = switch hit {
+        case .FenceVertex(let polygon, _): cornerRemovable(fences.first { $0.index == polygon })
+        case .SurveyVertex(let item, _): surveyList.first { $0.index == item }?.editable?.canRemoveVertex == true
+        default: false
+        }
+        return PlanMenuOffer(
+            layer: layer,
+            tracing: tracing != nil,
+            kinds: insertable,
+            items: allItems,
+            itemCount: itemCount,
+            takeoffMissing: takeoffMissing(items),
+            homeSet: homeSet,
+            rally: support.rally,
+            fence: support.fence,
+            fenceRefused: support.fenceRefused,
+            breachSet: breach != nil,
+            cornerRemovable: corner
+        )
+    }
+
+    // The right-click menu offers what the selection panel and the rail offer for the hit, or for blank map.
+    private func planContextMenu(_ hit: MapHit?, _ at: TrackPoint) -> [MapMenuEntry] {
+        planMenuLines(hit, menuOffer(hit)).map { line -> MapMenuEntry in
+            let run: (() -> Void)? = line.choice.map { choice in { runMenuChoice(choice, at) } }
+            return MapMenuEntry(line.title, enabled: line.enabled, startsGroup: line.startsGroup, run: run)
+        }
+    }
+
+    private func runMenuChoice(_ choice: PlanMenuChoice, _ at: TrackPoint) {
+        switch choice {
+        case .Edit(.BreachReturn):
+            editingBreach = true
+        case .Edit(let hit):
+            if let owning = layerOf(hit) { layer = owning }
+            panelOpen = true
+            selected = hit
+        case .InsertWaypointAfter(let index):
+            if let between = insertAfterPoint(index, allItems) {
+                panelOpen = false
+                addMissionItem(KIND_WAYPOINT, "Adding a waypoint", between, insertAfter(.Waypoint(index: index), allItems))
+            } else {
+                // After the last item, the next click on the map adds there, as a selected item's strip says.
+                layer = .Mission
+                selected = .Waypoint(index: index)
+                panelOpen = false
+            }
+        case .DeleteItem(let index):
+            if let item = allItems.first(where: { $0.index == index }) { removeItem(item) }
+        case .RemoveVertex(.FenceVertex(let polygon, let vertex)):
+            onBridge("Removing corner") { FenceBridge.removeVertex(polygon, vertex) }
+            selected = nil
+        case .RemoveVertex(.SurveyVertex(let item, let vertex)):
+            if let shape = surveyList.first(where: { $0.index == item }) {
+                onBridge("Removing corner") { SurveyBridge.removeVertex(shape, vertex) }
+                selected = nil
+            }
+        case .RemoveVertex:
+            break
+        case .DeleteFence(let polygon):
+            onBridge { FenceBridge.deletePolygon(polygon) }
+            selected = nil
+        case .DeleteCircle(let index):
+            onBridge { FenceBridge.deleteCircle(index) }
+            selected = nil
+        case .DeleteRally(let index):
+            let count = rally.count
+            onBridge(then: { selected = rallyAfterRemove(index, count) }) { FenceBridge.removeRallyPoint(index) }
+        case .Split(let hit):
+            mapSelected(hit)
+        case .AddTracePoint:
+            mapAdd(at.latitude, at.longitude)
+        case .AddWaypoint:
+            panelOpen = false
+            addMissionItem(KIND_WAYPOINT, "Adding a waypoint", at, insertAfter(selected, allItems))
+        case .AddTakeoff:
+            addMissionItem(KIND_TAKEOFF, "Adding a takeoff", at, BEFORE_THE_REST)
+        case .AddLanding:
+            addMissionItem(KIND_LAND, "Adding a landing", at, insertAfter(selected, allItems))
+        case .AddDrop:
+            addMissionItem(KIND_DROP, "Adding a drop", at, insertAfter(selected, allItems))
+        case .AddPattern:
+            patternAt = at
+            patternWanted = scanPatterns(insertable)
+        case .AddRally:
+            addRallyAt(at.latitude, at.longitude)
+        case .AddPolygonFence:
+            addPolygonFence()
+        case .AddCircleFence:
+            addCircleFence()
+        case .SetBreachReturn:
+            onBridge("Setting breach return point") { FenceBridge.setBreachReturn(at) }
+        }
+    }
+    #endif
 
     private func mapAdd(_ lat: Double, _ lon: Double) {
         if let (target, points) = tracing {
@@ -554,7 +662,10 @@ struct PlanMapContent: View {
                 RailButton(icon: .add, label: "Waypoint", onClick: {
                     addMissionItem(KIND_WAYPOINT, "Adding a waypoint", placeAt(), insertAfter(selected, allItems))
                 }, enabled: placeAt() != nil)
-                RailButton(icon: .planGrid, label: "Pattern", onClick: { patternWanted = scanPatterns(insertable) }, enabled: !scanPatterns(insertable).isEmpty)
+                RailButton(icon: .planGrid, label: "Pattern", onClick: {
+                    patternAt = nil
+                    patternWanted = scanPatterns(insertable)
+                }, enabled: !scanPatterns(insertable).isEmpty)
                 if kindOffered(insertable, KIND_TAKEOFF) && takeoffMissing(items) {
                     RailButton(icon: .flightTakeoff, label: "Takeoff", onClick: {
                         addMissionItem(KIND_TAKEOFF, "Adding a takeoff", placeAt(), BEFORE_THE_REST)
@@ -1173,7 +1284,7 @@ struct PlanMapContent: View {
                     ForEach(patternWanted, id: \.id) { kind in
                         Button(kind.label) {
                             patternWanted = []
-                            addMissionItem(kind.id, "Adding \(kind.label.lowercased())", placeAt(), insertAfter(selected, allItems))
+                            addMissionItem(kind.id, "Adding \(kind.label.lowercased())", patternAt ?? placeAt(), insertAfter(selected, allItems))
                         }
                         .buttonStyle(.text)
                         .disabled(!addablePattern(kind))

@@ -125,13 +125,21 @@ final class MapClickRecognizer: NSClickGestureRecognizer {
         super.init(coder: coder)
     }
 
+    // A control-click is the one-button mouse's right-click; the map's click handler opens its context menu for it.
+    private(set) var controlClick = false
+
+    override func mouseDown(with event: NSEvent) {
+        controlClick = event.modifierFlags.contains(.control)
+        super.mouseDown(with: event)
+    }
+
     override func shouldRequireFailure(of otherGestureRecognizer: NSGestureRecognizer) -> Bool {
         guard let click = otherGestureRecognizer as? NSClickGestureRecognizer else { return false }
         return click.numberOfClicksRequired == 2 && click.buttonMask & PRIMARY_BUTTON != 0
     }
 }
 
-// A secondary (right / two-finger) click, which stands in for the iOS long press.
+// A secondary (right / two-finger) click: the map's context menu, or the iOS long press where a map has no menu.
 func secondaryClickRecognizer(_ target: Any, _ action: Selector) -> NSClickGestureRecognizer {
     let click = NSClickGestureRecognizer(target: target, action: action)
     click.buttonMask = SECONDARY_BUTTON

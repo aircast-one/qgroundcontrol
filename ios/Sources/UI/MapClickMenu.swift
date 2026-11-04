@@ -126,6 +126,47 @@ private func send(_ action: MapClickAction, _ point: MapPoint, _ orbit: OrbitCho
     return Qgc.refusalOf(action.path, arguments: orbitArgs(point, orbit))
 }
 
+// An action the sheet must take further before it sends: a confirmation, or the orbit's radius and height.
+func opensClickSheet(_ action: MapClickAction) -> Bool { action.confirm || action.id == ORBIT_ACTION }
+
+// A choice made outside the sheet (the Mac's map context menu) for the sheet to carry on with at `point`: open
+// `actionId`'s confirmation or orbit step, or show why the vehicle refused an action that ran directly.
+struct MapClickRequest: Equatable {
+    var point: MapPoint
+    var actionId: String
+    var refused: String? = nil
+}
+
+#if os(macOS)
+enum FlyMenuChoice: Equatable {
+    case SetWaypoint(sequence: Int)
+    case Action(MapClickAction)
+}
+
+func flyMenuWaypoint(_ hit: MapHit?, _ items: [MissionItem]) -> Int? {
+    guard case .Waypoint(let index)? = hit else { return nil }
+    return items.first { $0.index == index }?.sequence
+}
+
+func flyMenuChoices(_ actions: [MapClickAction], _ waypoint: Int?) -> [FlyMenuChoice] {
+    (waypoint.map { [FlyMenuChoice.SetWaypoint(sequence: $0)] } ?? []) + actions.map { FlyMenuChoice.Action($0) }
+}
+
+// A choice that opens a sheet ends in an ellipsis, as Mac menu items that ask for more do.
+func flyMenuTitle(_ choice: FlyMenuChoice) -> String {
+    switch choice {
+    case .SetWaypoint(let sequence): "Set current waypoint to \(waypointTarget(sequence))\u{2026}"
+    case .Action(let action): sentenceCase(action.label) + (opensClickSheet(action) ? "\u{2026}" : "")
+    }
+}
+
+// Sends an action that needs no confirmation the way the sheet's own buttons do, answering the refusal if any.
+func sendMapClick(_ action: MapClickAction, _ point: MapPoint) -> String? {
+    guard !opensClickSheet(action) else { return "\(sentenceCase(action.title)) needs confirming first." }
+    return send(action, point, nil)
+}
+#endif
+
 private struct RadiusField: View {
     let label: String
     let text: Binding<String>
@@ -157,6 +198,11 @@ func offeredClickActions(_ view: JSON?, _ only: [String]?) -> [MapClickAction] {
     mapClickActions(view).filter { action in only.map { $0.contains(action.id) } ?? true }
 }
 
+private struct ClickAt: Equatable {
+    var point: MapPoint
+    var request: MapClickRequest?
+}
+
 struct MapClickMenu: View {
     let point: MapPoint
     var only: [String]? = nil
@@ -185,13 +231,18 @@ struct MapClickMenu: View {
                 AircastSheet(onDismissRequest: { if confirming?.id != ORBIT_ACTION { onDismiss() } }) { sheet(actions, defaults) }
             }
         }
-        .onChange(of: point) {
-            confirming = nil
-            refused = nil
+        .onChange(of: ClickAt(point: point, request: mapEdits.clickRequest), initial: true) { old, new in
+            if old.point != new.point {
+                confirming = nil
+                refused = nil
+            }
+            takeRequest()
         }
         .onChange(of: actions) { _, offered in
-            guard let pending = confirming, !offered.contains(where: { $0.id == pending.id }) else { return }
-            if pending.id == ORBIT_ACTION { onDismiss() } else { confirming = nil }
+            if let pending = confirming, !offered.contains(where: { $0.id == pending.id }) {
+                if pending.id == ORBIT_ACTION { onDismiss() } else { confirming = nil }
+            }
+            takeRequest()
         }
         .onChange(of: Keys(previewing, point), initial: true) {
             mapEdits.gotoPreview = previewing ? TrackPoint(latitude: point.latitude, longitude: point.longitude) : nil
@@ -201,7 +252,24 @@ struct MapClickMenu: View {
             scope.cancel()
             mapEdits.gotoPreview = nil
             mapEdits.gotoPreviewFrom = nil
+            mapEdits.clickRequest = nil
         }
+    }
+
+    // Carries on with a context-menu choice for this point: its confirmation or orbit step (only ever an action
+    // that opens the sheet), or the refusal of one that ran directly. Waits for the offered actions to load.
+    private func takeRequest() {
+        guard let request = mapEdits.clickRequest, request.point == point else { return }
+        if let refusal = request.refused {
+            mapEdits.clickRequest = nil
+            confirming = nil
+            refused = refusal
+            return
+        }
+        guard view != nil else { return }
+        mapEdits.clickRequest = nil
+        refused = nil
+        confirming = offeredClickActions(view, only).first { $0.id == request.actionId && opensClickSheet($0) }
     }
 
     private func run(_ action: MapClickAction) {

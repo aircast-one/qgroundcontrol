@@ -126,7 +126,8 @@ func attachMissionEditing(
     onMoved: @escaping (MapHit, Double, Double) -> Void = { _, _, _ in },
     onDragging: @escaping (MapHit?) -> Void = { _ in },
     canDrag: @escaping (MapHit) -> Bool = { _ in true },
-    onBlankTap: ((Double, Double) -> Void)? = nil
+    onBlankTap: ((Double, Double) -> Void)? = nil,
+    contextMenu: @escaping MapContextMenu = { _, _, _ in nil }
 ) {
     #if os(iOS)
     mapView.gestureRecognizers?.filter { $0 is MissionEditingGesture }.forEach(mapView.removeGestureRecognizer)
@@ -144,7 +145,8 @@ func attachMissionEditing(
         onMoved: onMoved,
         onDragging: onDragging,
         canDrag: canDrag,
-        onBlankTap: onBlankTap ?? { _, _ in onSelected(nil) }
+        onBlankTap: onBlankTap ?? { _, _ in onSelected(nil) },
+        contextMenu: contextMenu
     )
     #if os(iOS)
     let longPress = UILongPressGestureRecognizer(target: editing, action: #selector(MissionEditingGesture.longPressed(_:)))
@@ -181,6 +183,7 @@ private final class MissionEditingGesture: MapGestureRecognizer, MapGestureDeleg
     private let onDragging: (MapHit?) -> Void
     private let canDrag: (MapHit) -> Bool
     private let onBlankTap: (Double, Double) -> Void
+    private let contextMenu: MapContextMenu
 
     private var dragging: MapHit?
     private var tapped: MapHit?
@@ -197,7 +200,8 @@ private final class MissionEditingGesture: MapGestureRecognizer, MapGestureDeleg
         onMoved: @escaping (MapHit, Double, Double) -> Void,
         onDragging: @escaping (MapHit?) -> Void,
         canDrag: @escaping (MapHit) -> Bool,
-        onBlankTap: @escaping (Double, Double) -> Void
+        onBlankTap: @escaping (Double, Double) -> Void,
+        contextMenu: @escaping MapContextMenu
     ) {
         self.map = map
         self.onAdd = onAdd
@@ -207,6 +211,7 @@ private final class MissionEditingGesture: MapGestureRecognizer, MapGestureDeleg
         self.onDragging = onDragging
         self.canDrag = canDrag
         self.onBlankTap = onBlankTap
+        self.contextMenu = contextMenu
         super.init(target: nil, action: nil)
         #if os(iOS)
         cancelsTouchesInView = false
@@ -240,14 +245,22 @@ private final class MissionEditingGesture: MapGestureRecognizer, MapGestureDeleg
     }
 
     #if os(macOS)
-    // A secondary click is the Mac's long press: it selects what it lands on, or adds a waypoint on blank map.
+    // A secondary click opens the map's context menu for what it lands on. Without a menu it is the Mac's long
+    // press: it selects what it lands on, or adds a waypoint on blank map.
     @objc func secondaryClicked(_ click: MapGestureRecognizer) {
         guard click.state == .ended, dragging == nil, let map else { return }
+        contextClicked(map, click)
+    }
+
+    private func contextClicked(_ map: MLNMapView, _ click: MapGestureRecognizer) {
         let at = map.screenLocation(click)
-        if let hit = hitTest(map, Float(at.x), Float(at.y)) {
+        let hit = hitTest(map, Float(at.x), Float(at.y))
+        let coordinate = map.screenCoordinate(at)
+        if let entries = contextMenu(hit, coordinate.latitude, coordinate.longitude) {
+            showMapMenu(entries, map, click.location(in: map))
+        } else if let hit {
             onSelected(hit)
         } else {
-            let coordinate = map.screenCoordinate(at)
             onAdd(coordinate.latitude, coordinate.longitude)
         }
     }
@@ -255,6 +268,9 @@ private final class MissionEditingGesture: MapGestureRecognizer, MapGestureDeleg
 
     @objc func clicked(_ click: MapGestureRecognizer) {
         guard click.state == .ended, !addedInGesture, let map else { return }
+        #if os(macOS)
+        if (click as? MapClickRecognizer)?.controlClick == true { return contextClicked(map, click) }
+        #endif
         let at = map.screenLocation(click)
         guard hitTest(map, Float(at.x), Float(at.y)) == nil else { return }
         let coordinate = map.screenCoordinate(at)
