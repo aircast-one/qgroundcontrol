@@ -80,6 +80,10 @@ struct MainActivity: View {
     }
 }
 
+private enum PictureHoldHint {
+    case Unseen, Due, Learned
+}
+
 private struct FlyArming: Equatable {
     let armed: Bool?
     let state: String?
@@ -118,6 +122,7 @@ struct AircastShell: View {
     @QgcPath(VIDEO_VIEW) private var videoJson
     @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
+    @QgcPath(MAP_CLICK_PATH) private var mapClickJson
     @State private var tab = Tab.Fly
     @State private var hadVehicle: Bool?
     @State private var analyzePage: AnalyzePage?
@@ -125,6 +130,8 @@ struct AircastShell: View {
     @State private var flyView = loadFlyView()
     @State private var videoFullScreen = false
     @State private var mapClickAt: MapPoint?
+    @State private var picturePressed: PicturePress?
+    @State private var pictureHoldHint = PictureHoldHint.Unseen
     @State private var waypointTapped: Int?
     @State private var roiTapped: TrackPoint?
     @State private var snackbars = SnackbarHostState()
@@ -153,6 +160,32 @@ struct AircastShell: View {
         guard let said = navigationRefusal(navigation.blockedReason, true) else { return false }
         Task { await snackbars.showSnackbar(said) }
         return true
+    }
+
+    private var pictureGoTo: Bool { mapClickActions(mapClickJson).contains { $0.id == GOTO_ACTION } }
+
+    private func pressPicture(_ press: PicturePress) {
+        pictureHoldHint = .Learned
+        guard let point = press.point else {
+            let host = snackbars
+            Task { await host.showSnackbar(press.reason) }
+            return
+        }
+        videoFullScreen = false
+        flyScreen.deckRequest = DISMISS_MISSION_PROMPT
+        mapClickAt = point
+        picturePressed = press
+    }
+
+    private func pictureTapped() {
+        if pictureGoTo && pictureHoldHint == .Unseen { pictureHoldHint = .Due }
+    }
+
+    private func pictureHintDue(_ hint: PictureHoldHint) {
+        guard hint == .Due else { return }
+        pictureHoldHint = .Learned
+        let host = snackbars
+        Task { await host.showSnackbar(PICTURE_HOLD_HINT) }
     }
 
     private func selectTab(_ entry: Tab) {
@@ -192,6 +225,7 @@ struct AircastShell: View {
         .statusBarHidden(flyLandscape || fullScreen)
         .persistentSystemOverlays(flyLandscape || fullScreen ? .hidden : .automatic)
         .background { HostNoticeWatch(acknowledgedThrough: acknowledgedThrough, onNotices: noticesArrived) }
+        .background { DeviceCameraHost() }
         .aircastTheme(dark: darkBars)
         .windowStyle(paletteWindowStyle(systemPalette, darkBars))
         .onChange(of: tab) { _, now in if now != .Fly { flyScreen.layout.editing = false } }
@@ -206,6 +240,7 @@ struct AircastShell: View {
             hadVehicle = now
         }
         .onChange(of: flyView) { _, now in saveFlyView(now) }
+        .onChange(of: pictureHoldHint) { _, now in pictureHintDue(now) }
         .onChange(of: PlanInbox.shared.received != nil, initial: true) { _, waiting in if waiting && tab != .Plan { selectTab(.Plan) } }
         .onChange(of: FlyArming(armed: flyNow?.armed, state: flyNow?.state), initial: true) { armingChanged() }
         .onChange(of: vehiclesJson, initial: true) { _, json in vehiclesChanged(json) }
@@ -255,7 +290,10 @@ struct AircastShell: View {
                     .padding(.bottom, VIRTUAL_JOYSTICK_BOTTOM_MARGIN)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 if let point = mapClickAt {
-                    MapClickMenu(point: point) { mapClickAt = nil }
+                    MapClickMenu(point: point, only: picturePressed?.actions, warning: picturePressed?.warning) {
+                        mapClickAt = nil
+                        picturePressed = nil
+                    }
                 }
                 if let sequence = waypointTapped {
                     SetWaypointSheet(sequence: sequence) { waypointTapped = nil }
@@ -297,9 +335,14 @@ struct AircastShell: View {
             }
         }
         .overlay(alignment: onFly ? .top : .bottom) {
-            SnackbarHost(hostState: snackbars) { AppSnackbar(data: $0) }
-                .frame(maxWidth: onFly ? FLY_NOTICE_MAX_WIDTH : nil)
-                .padding(.top, onFly ? FLY_NOTICE_TOP : 0)
+            VStack(spacing: Space.s2) {
+                if onFly {
+                    RouteSavedNotice(onOpenedInPlan: { selectTab(.Plan) })
+                }
+                SnackbarHost(hostState: snackbars) { AppSnackbar(data: $0) }
+            }
+            .frame(maxWidth: onFly ? FLY_NOTICE_MAX_WIDTH : nil)
+            .padding(.top, onFly ? FLY_NOTICE_TOP : 0)
         }
     }
 
@@ -313,6 +356,7 @@ struct AircastShell: View {
                     .modifier(TakesLeftoverWidth())
                 LayoutWidget(key: "vtolState", movable: false, hideable: false) { VtolStateCell() }
                 ControlRequestPrompt()
+                DeviceStatusChip()
                 LayoutWidget(key: "statusPill", movable: false, hideable: false) { StatusPill() }
                     .layoutPriority(1)
                 FlySettingsButton()
@@ -326,13 +370,21 @@ struct AircastShell: View {
                 LayoutWidget(key: "missionProgress") { MissionProgressCard() }
                 LayoutWidget(key: "obstacleReadout") { ObstacleReadout() }
                 LayoutWidget(key: "terrainData") { TerrainDataWarning() }
+                LayoutWidget(key: "routeRecording", hideable: false) { RouteRecordingPill() }
                 LayoutWidget(key: "orbit") { OrbitReadout() }
                 LayoutWidget(key: "followMe") { FollowMeReadout() }
                 LayoutWidget(key: "rcControls") { RcControlsLayer() }
             })
         }
+        let onGround: ((PicturePress) -> Void)? = pictureGoTo ? { press in pressPicture(press) } : nil
         let video: (Bool) -> AnyView = { expanded in
-            AnyView(VideoSurface(expanded: expanded, fullScreen: videoFullScreen))
+            AnyView(VideoSurface(
+                expanded: expanded,
+                fullScreen: videoFullScreen,
+                onGround: onGround,
+                onPictureTap: { pictureTapped() },
+                groundSpot: mapClickAt != nil ? picturePressed?.spot : nil
+            ))
         }
         let map: () -> AnyView = { AnyView(flyMap) }
         let actions: (FlyDeckLayout) -> AnyView = { layout in AnyView(FlightActions(layout: layout) { CameraShutters() }) }
@@ -389,7 +441,10 @@ struct AircastShell: View {
                 bottomInsetPx: bottomInset,
                 logoEndInsetPx: logoEndInset,
                 pip: pip,
-                onMapClick: { lat, lon in mapClickAt = MapPoint(latitude: lat, longitude: lon) },
+                onMapClick: { lat, lon in
+                    mapClickAt = MapPoint(latitude: lat, longitude: lon)
+                    picturePressed = nil
+                },
                 onMissionItemClick: { waypointTapped = $0 },
                 onRoiClick: { roiTapped = $0 },
                 onTrafficClick: { flyScreen.requestedSheet = TRAFFIC_SHEET },

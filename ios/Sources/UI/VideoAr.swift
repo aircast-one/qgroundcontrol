@@ -69,6 +69,18 @@ func arReading(_ view: JSON?) -> ArReading? {
     )
 }
 
+func outlineSpots(_ json: JSON?) -> [ArSpot?] {
+    json?["outline"].array.map(spot) ?? []
+}
+
+func orbitOutline(_ view: JSON?) -> [ArSpot?] { outlineSpots(view?["orbit"].objectOrNil) }
+
+func outlineLegs(_ points: [ArSpot?]) -> [ArLeg] {
+    zip(points, points.dropFirst()).compactMap { from, to in
+        from.flatMap { start in to.map { ArLeg(from: start, to: $0) } }
+    }
+}
+
 func arPoint(_ spot: ArSpot, _ size: CGSize) -> CGPoint {
     CGPoint(x: spot.x * size.width, y: size.height / 2 - spot.up * size.width)
 }

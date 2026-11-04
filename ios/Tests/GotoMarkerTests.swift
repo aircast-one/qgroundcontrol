@@ -37,4 +37,17 @@ final class GotoMarkerTests: XCTestCase {
         XCTAssertEqual(draggedGotoRadius(committed, committed.at), MINIMUM_CIRCLE_RADIUS_METRES, accuracy: 0)
         XCTAssertNil(gotoRadiusHandle(unringed))
     }
+
+    func testWhileConfirmingTheTargetShowsWithAPathFromTheAircraft() {
+        let target = TrackPoint(latitude: 47.398, longitude: 8.546)
+        let aircraft = TrackPoint(latitude: 47.397, longitude: 8.545)
+        XCTAssertEqual(previewGoto(nil, target), GotoLocation(at: target, loiterRadiusMetres: nil))
+        let committed = GotoLocation(at: TrackPoint(latitude: 47.4, longitude: 8.5), loiterRadiusMetres: 80.0)
+        XCTAssertEqual(previewGoto(committed, target)?.at, target, "the pending target replaces the committed one while confirming")
+        XCTAssertEqual(previewGoto(committed, nil), committed)
+        XCTAssertEqual(gotoPath(aircraft, target), [aircraft, target])
+        XCTAssertEqual(gotoPath(aircraft, nil), [])
+        XCTAssertEqual(gotoPath(TrackPoint(latitude: .nan, longitude: .nan), target), [], "no path from an aircraft without a position")
+        XCTAssertEqual(gotoPath(nil, target), [])
+    }
 }

@@ -71,6 +71,19 @@ final class VideoViewTests: XCTestCase {
         XCTAssertNil(videoReading(nil))
         XCTAssertNil(videoReading(JSON.parse(#"{"kind":"null"}"#)))
     }
+
+    func testAPreviewNamesTheChannelToHandItsSurfaceToOrNoneWhileTheCoreHasNoChannelForIt() {
+        XCTAssertEqual(videoPreviewPath("http://falcon/whep/cam2"), "view.videoPreview(http://falcon/whep/cam2)")
+        XCTAssertEqual(
+            videoPreview(JSON.parse(#"{"kind":"object","class":"VideoPreview","channel":3,"playing":false,"trying":true,"text":"Connecting…","pipeline":"whepsrc"}"#)),
+            VideoPreview(channel: 3, playing: false, trying: true, text: "Connecting…")
+        )
+        XCTAssertEqual(
+            videoPreview(JSON.parse(#"{"kind":"object","class":"VideoPreview","channel":null,"playing":false,"trying":false,"text":"Open the camera to watch it.","pipeline":null}"#)),
+            VideoPreview(channel: nil, playing: false, trying: false, text: "Open the camera to watch it.")
+        )
+        XCTAssertNil(videoPreview(JSON.parse(#"{"kind":"refused","reason":"view.videoPreview takes a WHEP address"}"#)))
+    }
 }
 
 final class VideoPanelVisibilityTests: XCTestCase {

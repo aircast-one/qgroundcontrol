@@ -3,6 +3,7 @@ import SwiftUI
 private let FLY_POLL_MS = 2000
 private let CAMERA_STORE = "fly-map-camera"
 private let CAMERA_KEY = "camera"
+private let PREVIEW_SHEET_SHARE: CGFloat = 0.75
 
 struct SavedCamera: Equatable {
     var centre: TrackPoint
@@ -18,6 +19,10 @@ func readCamera() -> SavedCamera? {
 
 private func writeCamera(_ camera: SavedCamera) {
     UserDefaults(suiteName: CAMERA_STORE)?.set("\(camera.centre.latitude),\(camera.centre.longitude),\(camera.zoom)", forKey: CAMERA_KEY)
+}
+
+func gotoPreviewFit(_ aircraft: TrackPoint?, _ preview: TrackPoint?) -> [TrackPoint]? {
+    preview.map { [aircraft, $0].compactMap { $0 } }
 }
 
 func centresOnOperator(_ alreadyCentred: Bool, _ operator: TrackPoint?, _ vehiclePlaced: Bool) -> Bool {
@@ -168,10 +173,12 @@ struct FlyMap: View {
     @MapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)") private var keepCentered
     @State private var style = FlyMapStyle.last
     @Environment(FlyScreenState.self) private var flyScreen
+    @Environment(FlyMapEdits.self) private var mapEdits
     private var state: FlyMapState { flyScreen.flyMap }
 
     var body: some View {
         let plan = state.plan
+        let pendingGoto = mapEdits.gotoPreview
         ZStack {
             VehicleMap(
                 mapStyle: style,
@@ -196,6 +203,8 @@ struct FlyMap: View {
                 cameraBottomPx: cameraBottomPx,
                 pip: pip,
                 fitRequest: state.fitRequest,
+                fitOnly: gotoPreviewFit(mapEdits.gotoPreviewFrom, pendingGoto),
+                fitBottomShare: pendingGoto == nil ? 0 : PREVIEW_SHEET_SHARE,
                 centreRequest: state.camera.centreRequest,
                 centreOn: state.camera.centreOn,
                 centreZoom: state.camera.centreZoom.map { pipZoom($0, pip) ?? $0 },
@@ -230,6 +239,9 @@ struct FlyMap: View {
         }
         .onDisappear { state.disappeared() }
         .onChange(of: Keys(pip, state.centre != nil)) { zoomForPip() }
+        .onChange(of: pendingGoto) { _, preview in
+            if preview != nil { state.fitRequest += 1 }
+        }
         .task(id: scenePhase != .background) {
             guard scenePhase != .background else { return }
             while !Task.isCancelled {

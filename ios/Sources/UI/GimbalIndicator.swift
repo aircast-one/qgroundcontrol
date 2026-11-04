@@ -248,6 +248,124 @@ func onScreenGimbal(_ view: JSON?) -> OnScreenGimbal? {
     return OnScreenGimbal(enabled: onScreen["enabled"].bool, clickAndDrag: onScreen["clickAndDrag"].bool)
 }
 
+private let ON_SCREEN_SETTING = "settings.gimbalControllerSettings.enableOnScreenControl"
+private let CLICK_AND_DRAG_SETTING = "settings.gimbalControllerSettings.clickAndDrag"
+private let MODE_SWITCH_GLYPH: CGFloat = 15
+private let VIDEO_SCRIM_ALPHA = 0.6
+private let APPROXIMATE_SCRIM_ALPHA = 0.55
+private let APPROXIMATE_TOP: CGFloat = 72
+
+enum VideoGimbalMode: CaseIterable, Equatable {
+    case Drag, Point, Hold
+
+    var label: String {
+        switch self {
+        case .Drag: "Drag to move"
+        case .Point: "Tap to point"
+        case .Hold: "Hold and drag"
+        }
+    }
+
+    var icon: Icon {
+        switch self {
+        case .Drag: .swapHoriz
+        case .Point: .planMyLocation
+        case .Hold: .gamepad
+        }
+    }
+
+    var hint: String {
+        switch self {
+        case .Drag: "The camera follows your drag on the video."
+        case .Point: "The camera turns to where you tap on the video."
+        case .Hold: "Press, then drag away from that spot; the further you drag, the faster the camera turns."
+        }
+    }
+
+    var onScreen: Bool { self != .Drag }
+
+    var clickAndDrag: Bool { self == .Hold }
+}
+
+func videoGimbalMode(_ control: OnScreenGimbal) -> VideoGimbalMode {
+    !control.enabled ? .Drag : control.clickAndDrag ? .Hold : .Point
+}
+
+func nextVideoGimbalMode(_ mode: VideoGimbalMode) -> VideoGimbalMode {
+    let modes = VideoGimbalMode.allCases
+    return modes[((modes.firstIndex(of: mode) ?? 0) + 1) % modes.count]
+}
+
+private func chooseVideoGimbalMode(_ mode: VideoGimbalMode) {
+    let onScreen = mode.onScreen
+    let clickAndDrag = mode.clickAndDrag
+    offMainInOrder {
+        Qgc.set(ON_SCREEN_SETTING, onScreen)
+        Qgc.set(CLICK_AND_DRAG_SETTING, clickAndDrag)
+    }
+}
+
+struct GimbalVideoMode: View {
+    @QgcPath(GIMBAL_INDICATOR_PATH) private var view
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        if let control = onScreenGimbal(view) {
+            let current = videoGimbalMode(control)
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text("On the video").font(.titleSmall)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Space.s2) {
+                        ForEach(VideoGimbalMode.allCases, id: \.self) { mode in
+                            CameraChip(label: mode.label, selected: current == mode) { chooseVideoGimbalMode(mode) }
+                        }
+                    }
+                }
+                Text(current.hint).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+struct GimbalModeSwitch: View {
+    @QgcPath(GIMBAL_INDICATOR_PATH) private var view
+
+    var body: some View {
+        if let control = onScreenGimbal(view) {
+            let current = videoGimbalMode(control)
+            let next = nextVideoGimbalMode(current)
+            Button { chooseVideoGimbalMode(next) } label: {
+                HStack(spacing: 6) {
+                    Image(current.icon).font(.system(size: MODE_SWITCH_GLYPH))
+                    Text(current.label).font(.labelMedium)
+                }
+                .foregroundStyle(Color.white)
+                .padding(.leading, Space.s2)
+                .padding(.trailing, Space.s3)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(VIDEO_SCRIM_ALPHA), in: Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .minimumTouchTarget()
+            .accessibilityLabel("Video gimbal mode, \(current.label)")
+            .accessibilityHint("Switch to \(next.label)")
+        }
+    }
+}
+
+private struct ApproximateAim: View {
+    var body: some View {
+        Text(APPROXIMATE_AIM)
+            .font(.labelMedium)
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(APPROXIMATE_SCRIM_ALPHA), in: RoundedRectangle(cornerRadius: Corner.small))
+            .allowsHitTesting(false)
+    }
+}
+
 func aimFraction(_ delta: CGFloat, _ width: CGFloat) -> CGFloat { delta / (max(width, 1) / 2) }
 
 private func sendDrag(_ pan: CGFloat, _ tilt: CGFloat, _ begin: Bool) {
@@ -264,6 +382,7 @@ private func sendOnScreen(_ pan: CGFloat, _ tilt: CGFloat, _ point: Bool) {
 
 struct GimbalScreenControl: View {
     @QgcPath(GIMBAL_INDICATOR_PATH) private var view
+    @QgcPath(LENS_VIEW) private var lensJson
 
     var body: some View {
         if let control = onScreenGimbal(view) {
@@ -271,6 +390,11 @@ struct GimbalScreenControl: View {
                 Color.clear
                     .contentShape(Rectangle())
                     .modifier(GimbalAim(control: control, size: geometry.size))
+            }
+            .overlay(alignment: .top) {
+                if control.enabled && !control.clickAndDrag && lensReading(lensJson)?.approximate == true {
+                    ApproximateAim().padding(.top, APPROXIMATE_TOP)
+                }
             }
         }
     }

@@ -265,6 +265,7 @@ struct VehicleMap: View {
     var pip: Bool = false
     var fitRequest: Int = 0
     var fitOnly: [TrackPoint]? = nil
+    var fitBottomShare: CGFloat = 0
     var onFitFailed: () -> Void = {}
     var centreRequest: Int = 0
     var centreOn: TrackPoint? = nil
@@ -341,6 +342,7 @@ struct VehicleMap: View {
 private struct VehicleMapScene {
     let shownGoto: GotoLocation?
     let gotoEditing: Bool
+    let previewPath: [TrackPoint]
     let lastSeen: String?
     let linkLost: Bool
     let fleetJson: JSON?
@@ -355,7 +357,7 @@ private struct VehicleMapScene {
     let inputs: VehicleMapInputs
 
     init(_ map: VehicleMap, lastSeen: String?, mapEdits: FlyMapEdits, fleetJson: JSON?, syntheticJson: JSON?, linkLost: Bool) {
-        let shownGoto = editedGoto(map.goto, mapEdits.gotoLoiter)
+        let shownGoto = editedGoto(previewGoto(map.goto, mapEdits.gotoPreview), mapEdits.gotoLoiter)
         let fleet = vehicleChoices(fleetJson).choices
         let flown = fleet.first(where: \.active)
         let latitude = flown?.latitude ?? .nan
@@ -363,6 +365,7 @@ private struct VehicleMapScene {
         let heading = flown?.heading ?? .nan
         self.shownGoto = shownGoto
         self.gotoEditing = mapEdits.gotoLoiter != nil && shownGoto?.loiterRadiusMetres != nil
+        self.previewPath = gotoPath(TrackPoint(latitude: latitude, longitude: longitude), mapEdits.gotoPreview)
         self.lastSeen = lastSeen
         self.linkLost = linkLost
         self.fleetJson = fleetJson
@@ -444,6 +447,9 @@ private struct VehicleMapOverlays: ViewModifier {
             .onChange(of: Keys(generation, scene.shownGoto, scene.gotoEditing), initial: true) {
                 if let style { renderGoto(style, scene.shownGoto, editing: scene.gotoEditing) }
             }
+            .onChange(of: Keys(generation, scene.previewPath), initial: true) {
+                if let style { renderGotoPath(style, scene.previewPath) }
+            }
             .onChange(of: Keys(generation, map.roi), initial: true) {
                 if let style { renderRoi(style, map.roi) }
             }
@@ -506,6 +512,7 @@ private struct VehicleMapPlan: ViewModifier {
                     scene.latitude,
                     scene.longitude,
                     UIEdgeInsets(top: settled.topInsetPx, left: settled.leftInsetPx, bottom: settled.bottomInsetPx, right: 0),
+                    map.fitBottomShare,
                     map.onFitFailed
                 )
             }
@@ -787,7 +794,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         }
     }
 
-    fileprivate func fit(_ points: [TrackPoint], _ latitude: Double, _ longitude: Double, _ insets: UIEdgeInsets, _ onFitFailed: () -> Void) {
+    fileprivate func fit(_ points: [TrackPoint], _ latitude: Double, _ longitude: Double, _ insets: UIEdgeInsets, _ bottomShare: CGFloat, _ onFitFailed: () -> Void) {
         guard let mapView else { return }
         guard let bounds = planBounds(fitPoints(points, latitude, longitude)) else { return onFitFailed() }
         if bounds.spanDegrees < MIN_FIT_SPAN_DEGREES {
@@ -802,7 +809,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
             edgePadding: UIEdgeInsets(
                 top: padding + insets.top,
                 left: padding + insets.left,
-                bottom: padding + insets.bottom,
+                bottom: padding + insets.bottom + mapView.bounds.height * bottomShare,
                 right: padding
             ),
             animated: true,

@@ -4,4 +4,6 @@ import SwiftUI
 final class FlyMapEdits {
     var orbit: OrbitCircle?
     var gotoLoiter: LoiterEdit?
+    var gotoPreview: TrackPoint?
+    var gotoPreviewFrom: TrackPoint?
 }

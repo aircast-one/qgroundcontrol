@@ -34,6 +34,12 @@ final class MapClickMenuTests: XCTestCase {
         XCTAssertEqual(orbitOpened(MapPoint(latitude: 47.4, longitude: 8.5), orbitDefaults(nil)).radiusMetres, MINIMUM_CIRCLE_RADIUS_METRES, accuracy: 0)
     }
 
+    func testAPressOnTheVideoOffersOnlyTheActionsTheCoreListsForAPicture() {
+        let view = JSON.parse(#"{"actions":[{"id":"GoTo","label":"Go to location"},{"id":"Orbit","label":"Orbit at location"},{"id":"Roi","label":"Look at this point"},{"id":"StopLooking","label":"Stop looking"},{"id":"SetHome","label":"Set home here"},{"id":"Heading","label":"Set Heading"}]}"#)
+        XCTAssertEqual(["GoTo", "Orbit", "Roi", "StopLooking"], offeredClickActions(view, ["GoTo", "Orbit", "Roi", "StopLooking"]).map(\.id))
+        XCTAssertEqual(6, offeredClickActions(view, nil).count)
+    }
+
     func testShowsThePointToSixPlacesAsQgcDoes() {
         XCTAssertEqual(coordinateLines(MapPoint(latitude: 47.397, longitude: 8.5451234)), ["Lat: 47.397000", "Lon: 8.545123"])
     }
@@ -81,5 +87,16 @@ final class MapClickMenuTests: XCTestCase {
         XCTAssertEqual(goHereText(from, MapPoint(latitude: 47.001, longitude: 8.0), "m", 1.0), "0 m north")
         XCTAssertEqual(goHereText(MapPoint(latitude: 47.0, longitude: 8.0), MapPoint(latitude: 47.0, longitude: .nan), "m", 1.0), "0 m north")
         XCTAssertEqual(goHereText(MapPoint(latitude: 47.0, longitude: 8.0), MapPoint(latitude: 47.001, longitude: 8.0), "m", .leastNonzeroMagnitude), "\(Int.max) m north")
+    }
+
+    func testTheGotoPreviewNamesHeightAndBatteryAndWarnsPastTheReturnPoint() {
+        let view = JSON.parse(#"{"available":true,"distanceText":"81 m","heightText":"at 20 m (current height)","verdict":"Past your return point. Return home instead?","pastReturnPoint":true}"#)
+        guard var preview = gotoPreview(view) else { return XCTFail("an available preview reads") }
+        XCTAssertTrue(preview.pastReturnPoint)
+        preview.distance = "81 m north-west"
+        XCTAssertEqual(gotoPreviewLines(preview, "Move the vehicle"), ["81 m north-west \u{00b7} at 20 m (current height)", "Past your return point. Return home instead?"])
+        XCTAssertEqual(gotoPreviewLines(nil, "Move the vehicle"), ["Move the vehicle"])
+        XCTAssertNil(gotoPreview(JSON.parse(#"{"available":false}"#)))
+        XCTAssertEqual(gotoPreviewPath(MapPoint(latitude: 47.398, longitude: 8.546)), "view.gotoPreview(47.3980000,8.5460000)")
     }
 }

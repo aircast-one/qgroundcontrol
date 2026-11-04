@@ -50,4 +50,10 @@ final class FlyPortraitTests: XCTestCase {
         XCTAssertEqual(pipRoom(false, false), 0)
         XCTAssertLessThan(pipRoom(true, true), pipRoom(true, false))
     }
+
+    func testEmptyTelemetryShowsTheUnitsThePilotChose() {
+        XCTAssertEqual(placeholderUnits(0, 0, 2), PlaceholderUnits(distance: "ft", height: "ft", speed: "mph"))
+        XCTAssertEqual(placeholderUnits(nil, nil, nil), PlaceholderUnits(distance: "m", height: "m", speed: "m/s"))
+        XCTAssertEqual(placeholderUnits(1, 1, 9).speed, "m/s", "an enum index the list does not know falls back to metres per second")
+    }
 }

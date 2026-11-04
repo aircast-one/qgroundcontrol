@@ -23,4 +23,12 @@ final class FlyMapFitTests: XCTestCase {
         XCTAssertEqual(otherMissions(view).map(\.linkStartToHome), [true, false])
         XCTAssertEqual(otherMissions(nil), [])
     }
+
+    func testAGotoPreviewFitsTheAircraftAndThePendingTarget() {
+        let target = TrackPoint(latitude: 47.398, longitude: 8.546)
+        let aircraft = TrackPoint(latitude: 47.397, longitude: 8.545)
+        XCTAssertEqual(gotoPreviewFit(aircraft, target), [aircraft, target])
+        XCTAssertEqual(gotoPreviewFit(nil, target), [target])
+        XCTAssertNil(gotoPreviewFit(aircraft, nil), "without a preview the map fits the plan as usual")
+    }
 }

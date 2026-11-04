@@ -44,6 +44,13 @@ func syntheticFree(_ view: JSON?, picked: Bool) -> Bool {
     syntheticAvailable(view) && view?["locksOnTarget"].bool != true && (picked || view?["gimbalAimed"].bool != true)
 }
 
+enum SyntheticDrag { case Look, Gimbal }
+
+func syntheticDrag(_ view: JSON?, picked: Bool, aimable: Bool) -> SyntheticDrag? {
+    guard aimable, syntheticAvailable(view) else { return nil }
+    return syntheticFree(view, picked: picked) ? .Look : .Gimbal
+}
+
 func syntheticAims(_ view: JSON?, _ cameras: CamerasReading?) -> Bool { syntheticChosen(cameras) && syntheticFree(view, picked: true) }
 
 func syntheticPoseScript(_ view: JSON) -> String { "window.aircast && window.aircast.pose(\(view.text))" }
@@ -238,18 +245,45 @@ private struct SyntheticNote: View {
     }
 }
 
+private let GIMBAL_STATE = "view.gimbal"
+private let GIMBAL_AIM_COMMAND = "gimbal.aim"
+private let GIMBAL_CENTER_COMMAND = "gimbal.center"
+private let GIMBAL_AIM_EVERY_MS: Int64 = 50
+private let GIMBAL_AIM_SETTLES_MS: Int64 = 1000
+
+struct GimbalPoint: Equatable {
+    var tilt: Double
+    var yaw: Double
+}
+
+func gimbalDragStart(_ reported: GimbalPoint?, _ sent: GimbalPoint?, sentAgoMs: Int64) -> GimbalPoint {
+    (sentAgoMs < GIMBAL_AIM_SETTLES_MS ? sent : nil) ?? reported ?? GimbalPoint(tilt: 0, yaw: 0)
+}
+
+func gimbalAim(_ view: JSON?) -> GimbalPoint? {
+    guard let gimbal = view?["gimbals"].objects.first(where: { $0["active"].bool && $0["pitch"].double != nil && $0["bodyYaw"].double != nil }),
+          let pitch = gimbal["pitch"].double, let yaw = gimbal["bodyYaw"].double else { return nil }
+    return GimbalPoint(tilt: pitch, yaw: yaw)
+}
+
 struct SyntheticView: View {
     var aimable = false
     var standIn: String?
     @QgcPath(SYNTHETIC_VIEW) private var view
     @QgcPath(SYNTHETIC_OVERLAYS) private var overlays
     @ShownCameras private var cameras
-    @State private var dragStart: (tilt: Double, pan: Double)?
+    @QgcPath(GIMBAL_STATE) private var gimbalJson
+    @State private var lookStart: (tilt: Double, pan: Double)?
     @State private var sent: (tilt: Double, pan: Double)?
+    @State private var gimbalStart: GimbalPoint?
+    @State private var lastAim: GimbalPoint?
+    @State private var lastAimAt: Int64 = 0
+    @State private var gimbalSentAt: Int64 = 0
 
-    private var canAim: Bool { aimable && syntheticFree(view, picked: syntheticChosen(cameras)) }
+    private var drag: SyntheticDrag? { syntheticDrag(view, picked: syntheticChosen(cameras), aimable: aimable) }
 
     var body: some View {
+        let drag = self.drag
         GeometryReader { geometry in
             ZStack {
                 if nativeChosen(view) {
@@ -260,19 +294,52 @@ struct SyntheticView: View {
                 }
             }
             .contentShape(Rectangle())
-            .gesture(aiming(geometry.size), including: canAim ? .all : .none)
-            .simultaneousGesture(TapGesture(count: 2).onEnded { if canAim { aim(DEFAULT_TILT_DEG, 0) } }, including: canAim ? .all : .none)
+            .gesture(aiming(geometry.size), including: drag != nil ? .all : .none)
+            .simultaneousGesture(TapGesture(count: 2).onEnded { recenter() }, including: drag != nil ? .all : .none)
         }
     }
 
     private func aiming(_ size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { drag in
-                let start = dragStart ?? sent ?? (view?["tilt"].double ?? DEFAULT_TILT_DEG, view?["pan"].double ?? 0)
-                dragStart = start
-                aim(syntheticTilt(start.tilt, drag.translation.height, size.height), syntheticPan(start.pan, drag.translation.width, size.width))
+                switch self.drag {
+                case .Look: look(drag.translation, size)
+                case .Gimbal: steerGimbal(drag.translation, size, finished: false)
+                case nil: break
+                }
             }
-            .onEnded { _ in dragStart = nil }
+            .onEnded { drag in
+                if self.drag == .Gimbal, gimbalStart != nil { steerGimbal(drag.translation, size, finished: true) }
+                lookStart = nil
+                gimbalStart = nil
+            }
+    }
+
+    private func recenter() {
+        switch drag {
+        case .Look: aim(DEFAULT_TILT_DEG, 0)
+        case .Gimbal: offMainInOrder { _ = gimbalRefusal(Qgc.call(GIMBAL_CENTER_COMMAND)) }
+        case nil: break
+        }
+    }
+
+    private func look(_ moved: CGSize, _ size: CGSize) {
+        let start = lookStart ?? sent ?? (view?["tilt"].double ?? DEFAULT_TILT_DEG, view?["pan"].double ?? 0)
+        lookStart = start
+        aim(syntheticTilt(start.tilt, moved.height, size.height), syntheticPan(start.pan, moved.width, size.width))
+    }
+
+    private func steerGimbal(_ moved: CGSize, _ size: CGSize, finished: Bool) {
+        let now = uptimeMillis()
+        let start = gimbalStart ?? gimbalDragStart(gimbalAim(gimbalJson), lastAim, sentAgoMs: now - lastAimAt)
+        gimbalStart = start
+        guard finished || now - gimbalSentAt >= GIMBAL_AIM_EVERY_MS else { return }
+        gimbalSentAt = now
+        let target = GimbalPoint(tilt: syntheticTilt(start.tilt, moved.height, size.height), yaw: syntheticPan(start.yaw, moved.width, size.width))
+        lastAim = target
+        lastAimAt = now
+        let tilt = target.tilt, yaw = target.yaw
+        offMainInOrder { _ = gimbalRefusal(Qgc.call(GIMBAL_AIM_COMMAND, tilt, yaw)) }
     }
 
     private func aim(_ tilt: Double, _ pan: Double) {

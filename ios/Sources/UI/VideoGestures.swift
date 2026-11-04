@@ -35,7 +35,7 @@ struct VideoGestureHandlers {
 }
 
 private let TOUCH_SLOP: CGFloat = 8
-private let LONG_PRESS_MS = 400
+let LONG_PRESS_MS = 400
 private let DOUBLE_TAP_MS = 300
 
 private enum PressPhase: Equatable {
@@ -114,7 +114,7 @@ private struct VideoGesturesModifier: ViewModifier {
         holdTimer = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(LONG_PRESS_MS))
             guard !Task.isCancelled, let held = press, held.phase == .pressing else { return }
-            press?.phase = handlers.onHold(held.start) ? .holding : .ignored
+            press?.phase = !PicturePressClaim.claimed && handlers.onHold(held.start) ? .holding : .ignored
         }
     }
 
@@ -144,9 +144,96 @@ private struct VideoGesturesModifier: ViewModifier {
     }
 }
 
+private enum PicturePressClaim {
+    nonisolated(unsafe) static var claimed = false
+}
+
+struct PictureHoldHandlers {
+    let onPressing: (CGPoint?) -> Void
+    let onTap: () -> Void
+    let onHeld: (CGPoint, CGSize) -> Void
+}
+
+private struct PictureHoldModifier: ViewModifier {
+    let enabled: Bool
+    let handlers: PictureHoldHandlers
+    @State private var size = CGSize.zero
+    @State private var phase: PressPhase?
+    @State private var holdTimer: Task<Void, Never>?
+    @GestureState private var touching = false
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .updating($touching) { _, touching, _ in touching = true }
+                    .onChanged(changed)
+                    .onEnded { _ in ended() },
+                including: enabled ? .all : .subviews
+            )
+            .simultaneousGesture(MagnifyGesture(minimumScaleDelta: 0).onChanged { _ in secondFinger() }, including: enabled ? .all : .subviews)
+            .onChange(of: touching) { _, now in if !now { lost() } }
+            .onChange(of: enabled) { _, now in if !now { lost() } }
+            .onDisappear(perform: lost)
+    }
+
+    private func stopPressing() {
+        holdTimer?.cancel()
+        holdTimer = nil
+        if phase == .pressing { handlers.onPressing(nil) }
+    }
+
+    private func lost() {
+        stopPressing()
+        phase = nil
+        PicturePressClaim.claimed = false
+    }
+
+    private func secondFinger() {
+        guard phase == .pressing else { return }
+        stopPressing()
+        phase = .ignored
+    }
+
+    private func changed(_ drag: DragGesture.Value) {
+        guard phase != nil else { return began(drag.startLocation) }
+        if phase == .pressing && hypot(drag.translation.width, drag.translation.height) > TOUCH_SLOP {
+            stopPressing()
+            phase = .ignored
+        }
+    }
+
+    private func began(_ at: CGPoint) {
+        phase = .pressing
+        PicturePressClaim.claimed = true
+        handlers.onPressing(at)
+        holdTimer = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(LONG_PRESS_MS))
+            guard !Task.isCancelled, phase == .pressing else { return }
+            holdTimer = nil
+            handlers.onPressing(nil)
+            phase = .holding
+            handlers.onHeld(at, size)
+        }
+    }
+
+    private func ended() {
+        let tapped = phase == .pressing
+        stopPressing()
+        phase = nil
+        PicturePressClaim.claimed = false
+        if tapped { handlers.onTap() }
+    }
+}
+
 extension View {
     func videoGestures(_ handlers: VideoGestureHandlers) -> some View {
         modifier(VideoGesturesModifier(handlers: handlers))
+    }
+
+    func pictureHold(_ enabled: Bool, _ handlers: PictureHoldHandlers) -> some View {
+        modifier(PictureHoldModifier(enabled: enabled, handlers: handlers))
     }
 
     func verticalSwipe(_ threshold: CGFloat, onSwipe: @escaping (VideoSwipe) -> Void) -> some View {

@@ -16,6 +16,19 @@ private let ARROW_BEARING = "bearing"
 private let GOTO_HANDLE_SOURCE = "aircast-goto-handle"
 private let GOTO_HANDLE_LAYER = "aircast-goto-handle-layer"
 private let GOTO_COLOUR = "#2E7D32"
+private let GOTO_PATH_SOURCE = "aircast-goto-path"
+private let GOTO_PATH_LAYER = "aircast-goto-path-layer"
+private let PATH_DASH = 2.0
+private let PATH_GAP = 1.5
+
+func previewGoto(_ confirmed: GotoLocation?, _ preview: TrackPoint?) -> GotoLocation? {
+    preview.map { GotoLocation(at: $0, loiterRadiusMetres: nil) } ?? confirmed
+}
+
+func gotoPath(_ from: TrackPoint?, _ preview: TrackPoint?) -> [TrackPoint] {
+    let path = [from.flatMap { isPlottable($0.latitude, $0.longitude) ? $0 : nil }, preview].compactMap { $0 }
+    return path.count == 2 ? path : []
+}
 
 struct GotoLocation: Equatable {
     var at: TrackPoint
@@ -194,7 +207,13 @@ func installGotoLayer(_ style: MLNStyle) {
     let radius = geoJsonSource(GOTO_RADIUS_SOURCE)
     let arrows = geoJsonSource(GOTO_ARROW_SOURCE)
     let handle = geoJsonSource(GOTO_HANDLE_SOURCE)
-    [target, ring, radius, arrows, handle].forEach(style.addSource)
+    let path = geoJsonSource(GOTO_PATH_SOURCE)
+    [target, ring, radius, arrows, handle, path].forEach(style.addSource)
+    let leg = MLNLineStyleLayer(identifier: GOTO_PATH_LAYER, source: path)
+    leg.lineColor = styleConstant(mapColour(GOTO_COLOUR))
+    leg.lineWidth = styleConstant(3)
+    leg.lineDashPattern = styleConstant([PATH_DASH, PATH_GAP])
+    style.addLayer(leg)
     let line = MLNLineStyleLayer(identifier: GOTO_RING_LAYER, source: ring)
     line.lineColor = styleConstant(mapColour(GOTO_COLOUR))
     line.lineWidth = styleConstant(2)
@@ -240,6 +259,10 @@ func installGotoLayer(_ style: MLNStyle) {
     label.textAllowsOverlap = styleConstant(true)
     label.textIgnoresPlacement = styleConstant(true)
     style.addLayer(label)
+}
+
+func renderGotoPath(_ style: MLNStyle, _ path: [TrackPoint]) {
+    style.setGeoJson(GOTO_PATH_SOURCE, featureCollection(path.count >= 2 ? [lineFeature(path)] : []))
 }
 
 func renderGoto(_ style: MLNStyle, _ location: GotoLocation?, editing: Bool = false) {

@@ -83,7 +83,7 @@ func activeLinksGlance(_ view: JSON?) -> String {
 func activeLinksText(_ count: Int) -> String { count > 0 ? "\(count) active" : "" }
 
 enum SettingsGroup: String, CaseIterable {
-    case General, Safety, Control, Camera, Transmission
+    case General, Safety, Control, Camera, Transmission, Device
 
     var title: String { rawValue }
 }
@@ -116,6 +116,7 @@ private let PAGE_LOOK_ORDER: [(String, PageLook)] = [
     ("App Logging", PageLook(group: .General, icon: .description)),
     ("Console", PageLook(group: .General, icon: .terminal)),
     ("About", PageLook(group: .General, icon: .help)),
+    (DEVICE_PAGE, PageLook(group: .Device, icon: .developerBoard, inline: true, tabHome: true)),
 ]
 
 let PAGE_LOOKS: [String: PageLook] = Dictionary(PAGE_LOOK_ORDER, uniquingKeysWith: { first, _ in first })
@@ -336,7 +337,9 @@ struct SettingsScreen: View {
     var body: some View {
         let current = everyPage.first { $0.title == open }
         Group {
-            if let current {
+            if group == .Device {
+                DeviceTab(open: open, onOpen: onOpen, onClose: onClose)
+            } else if let current {
                 SettingsPageBody(page: current)
                     .id(current.title)
                     .frame(maxHeight: .infinity, alignment: .top)
