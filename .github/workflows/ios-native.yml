@@ -95,7 +95,7 @@ jobs:
     runs-on: macos-26
     # The first run builds MapLibre's macOS SDK from source (it publishes no macOS binaries);
     # later runs restore it from the cache.
-    timeout-minutes: 120
+    timeout-minutes: 180
     defaults:
       run:
         shell: bash

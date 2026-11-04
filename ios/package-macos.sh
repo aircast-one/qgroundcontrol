@@ -42,6 +42,11 @@ retry() {
     return 1
 }
 
+# One line per phase with the time, so a stalled step shows where it stopped.
+step() {
+    echo "package-macos: $(date '+%H:%M:%S') $*"
+}
+
 is_macho() {
     [[ $(file -b "$1") == *Mach-O* ]]
 }
@@ -178,7 +183,10 @@ print("\n".join(plugins["common"] + plugins["apple"]))' "$config")"
 
 # The app is arm64 only; the framework is universal. Drop the other slices.
 thin_to_arm64() {
-    local app="$1" binary archs
+    local app="$1" binary archs list
+    # Listed up front: the loop writes .thin files beside the binaries, which a scan still running would pick up.
+    list="$(mktemp)"
+    macho_files "$app" >"$list"
     while IFS= read -r -d '' binary; do
         archs="$(lipo -archs "$binary" 2>/dev/null || true)"
         case " $archs " in
@@ -188,7 +196,8 @@ thin_to_arm64() {
         if [ -f "$binary.thin" ]; then
             mv "$binary.thin" "$binary"
         fi
-    done < <(macho_files "$app")
+    done <"$list"
+    rm -f "$list"
 }
 
 # Points anything that still names the system framework at the embedded copy, and drops rpaths into anywhere
@@ -288,10 +297,21 @@ make_dmg() {
     rm -rf "$contents"
     mkdir -p "$contents" "$(dirname "$dmg")"
     ditto "$app" "$contents/$(basename "$app")"
-    ln -s /Applications "$contents/Applications"
     rm -f "$dmg"
-    # hdiutil now and then fails with "Resource busy" on CI machines.
-    retry hdiutil create -volname Aircast -srcfolder "$contents" -fs HFS+ -format UDZO -ov "$dmg"
+    # The image is made from the app alone, then mounted to add the Applications link: hdiutil -srcfolder can follow
+    # a symlink to /Applications and copy everything installed there. hdiutil now and then fails with "Resource
+    # busy" on CI machines, hence the retries.
+    local writable mount
+    writable="$(dirname "$app")/aircast-rw.dmg"
+    rm -f "$writable"
+    retry hdiutil create -volname Aircast -srcfolder "$contents" -fs HFS+ -format UDRW -ov "$writable"
+    mount="$(mktemp -d)"
+    retry hdiutil attach "$writable" -nobrowse -noautoopen -mountpoint "$mount"
+    ln -s /Applications "$mount/Applications"
+    retry hdiutil detach "$mount"
+    rmdir "$mount" 2>/dev/null || true
+    retry hdiutil convert "$writable" -format UDZO -ov -o "$dmg"
+    rm -f "$writable"
     rm -rf "$contents"
     if [ "$identity" != "-" ]; then
         codesign --force --timestamp -s "$identity" "$dmg"
@@ -335,12 +355,18 @@ esac
 staging="$(mktemp -d "${TMPDIR:-/tmp}/aircast-package.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 app="$staging/$(basename "$source_app")"
+step "copying $(basename "$source_app")"
 ditto "$source_app" "$app"
 
+step "embedding GStreamer"
 embed_gstreamer "$app"
+step "thinning to arm64"
 thin_to_arm64 "$app"
+step "relinking"
 relink "$app"
+step "verifying"
 verify_bundle "$app"
+step "signing ($identity)"
 sign_bundle "$app" "$identity"
 
 if [ "$identity" != "-" ] && [ -n "${NOTARY_USER:-}" ] && [ -n "${NOTARY_TEAM:-}" ] && [ -n "${NOTARY_PASSWORD:-}" ]; then
@@ -349,5 +375,6 @@ elif [ "$identity" != "-" ]; then
     echo "package-macos: NOTARY_USER, NOTARY_TEAM or NOTARY_PASSWORD is not set, so the app is not notarized"
 fi
 
+step "making the disk image"
 make_dmg "$app" "$dmg" "$identity"
-echo "package-macos: wrote $dmg"
+step "wrote $dmg"
