@@ -85,24 +85,30 @@ allowed_reference() {
 # Fails when any Mach-O in the bundle loads a library, or searches an rpath, that is not inside the bundle or the OS
 # (Homebrew, /usr/local, /Library/Frameworks, a build machine's directories).
 verify_bundle() {
-    local app="$1" bad=0 count=0 binary dependency path
+    local app="$1" bad=0 count=0 binary dependency path list
+    # Captured with $(...) rather than read from nested < <(...): a process substitution per file inside a loop that
+    # itself reads one hung the CI runner for an hour with no output.
+    list="$(mktemp)"
+    macho_files "$app" >"$list"
     while IFS= read -r -d '' binary; do
         count=$((count + 1))
+        [ $((count % 250)) -ne 0 ] || step "checked $count files, now ${binary#"$app"/}"
         while IFS= read -r dependency; do
             [ -n "$dependency" ] || continue
             if ! allowed_reference "$dependency"; then
                 echo "::error::${binary#"$app"/} loads $dependency" >&2
                 bad=1
             fi
-        done < <(load_commands "$binary")
+        done <<<"$(load_commands "$binary")"
         while IFS= read -r path; do
             [ -n "$path" ] || continue
             if ! allowed_reference "$path"; then
                 echo "::error::${binary#"$app"/} searches rpath $path" >&2
                 bad=1
             fi
-        done < <(rpaths "$binary")
-    done < <(macho_files "$app")
+        done <<<"$(rpaths "$binary")"
+    done <"$list"
+    rm -f "$list"
     [ "$count" -gt 0 ] || die "no Mach-O files found in $app"
     [ "$bad" -eq 0 ] || die "$app loads code from outside the bundle and the OS"
     echo "package-macos: $count Mach-O files in $app load only from the bundle and the OS"
@@ -206,7 +212,9 @@ relink() {
     local app="$1" binary dependency dependencies path searched target replacement frameworks
     frameworks="$app/Contents/Frameworks"
     local system_roots=("/Library/Frameworks/GStreamer.framework/Versions/1.0" "/Library/Frameworks/GStreamer.framework/Versions/Current" "/Library/Frameworks/GStreamer.framework")
-    local root
+    local root list
+    list="$(mktemp)"
+    macho_files "$app" >"$list"
     while IFS= read -r -d '' binary; do
         dependencies="$(load_commands "$binary")"
         searched="$(rpaths "$binary")"
@@ -246,24 +254,28 @@ relink() {
                 install_name_tool -delete_rpath "$path" "$binary"
             done
         done <<<"$searched"
-    done < <(macho_files "$app")
+    done <"$list"
+    rm -f "$list"
 }
 
 # Inside out: loose Mach-O files, then each framework, then the app.
 sign_bundle() {
-    local app="$1" identity="$2" framework binary
+    local app="$1" identity="$2" framework binary list
     local flags=(--force --options runtime)
     if [ "$identity" = "-" ]; then
         flags=(--force)
     else
         flags+=(--timestamp)
     fi
+    list="$(mktemp)"
+    macho_files "$app" >"$list"
     while IFS= read -r -d '' binary; do
         case $binary in
             "$app/Contents/MacOS/"*) ;;
             *) codesign "${flags[@]}" -s "$identity" "$binary" ;;
         esac
-    done < <(macho_files "$app")
+    done <"$list"
+    rm -f "$list"
     for framework in "$app"/Contents/Frameworks/*.framework; do
         [ -d "$framework" ] || continue
         codesign "${flags[@]}" -s "$identity" "$framework"

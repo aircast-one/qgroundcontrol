@@ -162,6 +162,7 @@ jobs:
       # The release ships this DMG (aircast-release.yml), so check here that the packaged app carries everything
       # it loads: package-macos.sh fails on any library or rpath outside the bundle and the OS.
       - name: Package
+        timeout-minutes: 30
         run: ios/package-macos.sh "$RUNNER_TEMP/mac-derived/Build/Products/Release/Aircast.app" "$RUNNER_TEMP/Aircast.dmg"
 
       - name: Check the packaged app
