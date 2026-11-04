@@ -309,6 +309,7 @@ fn offers(backend: &dyn Backend) -> Vec<Offer> {
             .get("altitude")
             .and_then(Value::as_f64)
             .is_some_and(f64::is_finite);
+    let targeting = crate::autodrop::turned_on(backend);
     let orbit = flying
         && flag(&supports, "orbitMode")
         && home_known
@@ -322,9 +323,9 @@ fn offers(backend: &dyn Backend) -> Vec<Offer> {
         (true, Offer { id: "SetHome", path: "vehicle.doSetHome", label: "Set home here", title: "Set Home", message: "Set vehicle home as the specified location. This will affect Return to Home position", confirm: true }),
         (flying, Offer { id: "Heading", path: "vehicle.guidedModeChangeHeading", label: "Set Heading", title: "Change Heading", message: "Set the vehicle heading towards the specified location", confirm: true }),
         (!gps, Offer { id: "EstimatorOrigin", path: "vehicle.setEstimatorOrigin", label: "Set Estimator Origin", title: "Set Estimator Origin", message: "Make the specified location the estimator origin", confirm: true }),
-        (true, Offer { id: "MarkTarget", path: "vehicle.markTarget", label: "Mark as target", title: "Mark Target", message: "Mark the specified location as the manual target for Auto Intercept", confirm: false }),
-        (true, Offer { id: "DropZoneCorner", path: crate::dropzone::ADD_CORNER, label: "Add drop zone corner", title: "Drop Zone", message: "Add this point as a corner of the area Auto Intercept may drop into", confirm: false }),
-        (!crate::dropzone::corners().is_empty(), Offer { id: "DropZoneClear", path: crate::dropzone::CLEAR, label: "Clear drop zone", title: "Clear Drop Zone", message: "Remove every corner of the drop zone", confirm: true }),
+        (targeting, Offer { id: "MarkTarget", path: "vehicle.markTarget", label: "Mark as target", title: "Mark Target", message: "Mark the specified location as the manual target for Auto Intercept", confirm: false }),
+        (targeting, Offer { id: "DropZoneCorner", path: crate::dropzone::ADD_CORNER, label: "Add drop zone corner", title: "Drop Zone", message: "Add this point as a corner of the area Auto Intercept may drop into", confirm: false }),
+        (targeting && !crate::dropzone::corners().is_empty(), Offer { id: "DropZoneClear", path: crate::dropzone::CLEAR, label: "Clear drop zone", title: "Clear Drop Zone", message: "Remove every corner of the drop zone", confirm: true }),
     ]
     .into_iter()
     .filter_map(|(shown, offer)| shown.then_some(offer))
@@ -679,10 +680,14 @@ mod tests {
         confirm_in_guided: f64,
         orbit: bool,
         looking: bool,
+        targeting: bool,
     }
     impl Backend for Offered {
         fn get(&self, p: &str) -> String {
             match p {
+                "settings.appSettings.autodropEnabled.rawValue" => {
+                    json!({ "value": self.targeting }).to_string()
+                }
                 "settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue" => {
                     json!({ "value": self.confirm_in_guided }).to_string()
                 }
@@ -732,6 +737,7 @@ mod tests {
             confirm_in_guided: 0.0,
             orbit: false,
             looking: false,
+            targeting: true,
         };
         assert_eq!(
             labels(&flying),
@@ -751,6 +757,15 @@ mod tests {
             }),
             ["Set home here", "Mark as target", "Add drop zone corner"],
             "on the ground only home can be moved, but a target can always be marked"
+        );
+        assert_eq!(
+            labels(&Offered {
+                flying: false,
+                targeting: false,
+                ..flying
+            }),
+            ["Set home here"],
+            "with Auto Intercept off nothing in the menu marks a target or a drop zone"
         );
         assert_eq!(
             labels(&Offered {

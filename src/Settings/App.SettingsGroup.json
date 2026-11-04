@@ -431,6 +431,13 @@
             "label": "Detection latency in milliseconds"
         },
         {
+            "name": "autodropEnabled",
+            "shortDesc": "Auto Intercept: lets the app pick a target, offers Mark as target and drop zones, and runs intercepts. Off until you turn it on",
+            "type": "bool",
+            "default": false,
+            "label": "Auto Intercept"
+        },
+        {
             "name": "autodropReleaseLatencyMs",
             "shortDesc": "Milliseconds from Auto Intercept's drop command to the confirmed release, learned from every drop",
             "type": "uint32",

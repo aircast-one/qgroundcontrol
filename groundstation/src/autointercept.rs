@@ -235,9 +235,29 @@ pub fn deps() -> Vec<String> {
 
 pub fn view(backend: &dyn Backend, _args: &[String]) -> Value {
     let status = crate::autodrop::status_view(backend, &[]);
-    let target = backend.value("vehicle.autodropTarget")["value"].clone();
-    let tracking = crate::video::camera_view(backend, &[])["tracking"].clone();
-    shown(&status, &target, &tracking)
+    match crate::autodrop::turned_on(backend) || text(&status, "state") == "waiting" {
+        true => {
+            let target = backend.value("vehicle.autodropTarget")["value"].clone();
+            let tracking = crate::video::camera_view(backend, &[])["tracking"].clone();
+            shown(&status, &target, &tracking)
+        }
+        false => turned_off(),
+    }
+}
+
+pub fn turned_off() -> Value {
+    json!({
+        "kind": "object",
+        "class": "AutoIntercept",
+        "visible": false,
+        "tone": "info",
+        "headline": "",
+        "actions": [],
+        "entry": Value::Null,
+        "hint": Value::Null,
+        "picking": false,
+        "pickPath": PICK,
+    })
 }
 
 pub fn pick_another(backend: &dyn Backend) -> Value {

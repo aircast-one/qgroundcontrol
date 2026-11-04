@@ -1209,6 +1209,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
             ("AirLink", &["loginAirLink", "passAirLink"]),
             ("Ground station position", &["followTarget"]),
             ("Multiple vehicles", &["enableMultiVehiclePanel"]),
+            ("Auto Intercept", &["autodropEnabled"]),
             (
                 "Files",
                 &[
