@@ -12,6 +12,8 @@ pub const MAP3D_ZOOM: &str = "map3d.zoom";
 pub const MAP3D_FOLLOW: &str = "map3d.follow";
 pub const MAP3D_NORTH: &str = "map3d.north";
 pub const MAP3D_OPEN: &str = "map3d.open";
+pub const MAP3D_LOOK: &str = "map3d.look";
+pub const MAP3D_PICK: &str = "map3d.pick";
 pub const MAP3D_CHANGED: &str = "core.map3d@changed";
 pub const DEPS: &[&str] = &[
     MAP3D_CHANGED,
@@ -95,6 +97,8 @@ pub fn owns(path: &str) -> bool {
         MAP3D_FOLLOW,
         MAP3D_NORTH,
         MAP3D_OPEN,
+        MAP3D_LOOK,
+        MAP3D_PICK,
     ]
     .contains(&path)
 }
@@ -210,24 +214,56 @@ pub fn moved(orbit: Orbit, path: &str, given: &[f64], aircraft: Option<Aircraft>
             ..orbit
         }),
         (MAP3D_OPEN, []) => Some(opened(orbit, aircraft, None)),
-        (MAP3D_OPEN, [latitude, longitude])
-            if (-90.0..=90.0).contains(latitude) && (-180.0..=180.0).contains(longitude) =>
-        {
+        (MAP3D_OPEN, [latitude, longitude]) if on_globe(*latitude, *longitude) => {
             Some(opened(orbit, aircraft, Some((*latitude, *longitude))))
         }
+        (MAP3D_LOOK, [latitude, longitude]) if on_globe(*latitude, *longitude) => Some(Orbit {
+            focus: Some((*latitude, *longitude)),
+            resting: false,
+            framed: false,
+            ..orbit
+        }),
         _ => None,
     }
 }
 
-pub fn run(path: &str, args: &str, aircraft: Option<Aircraft>) -> Value {
-    let given: Vec<f64> = serde_json::from_str::<Vec<f64>>(args)
+fn on_globe(latitude: f64, longitude: f64) -> bool {
+    (-90.0..=90.0).contains(&latitude) && (-180.0..=180.0).contains(&longitude)
+}
+
+fn numbers(args: &str) -> Vec<f64> {
+    let parsed: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    crate::fenceedit::point(parsed.get(0))
+        .map(|(latitude, longitude)| vec![latitude, longitude])
+        .or_else(|| {
+            parsed
+                .as_array()
+                .and_then(|items| items.iter().map(Value::as_f64).collect::<Option<Vec<_>>>())
+        })
         .unwrap_or_default()
         .into_iter()
         .filter(|number| number.is_finite())
-        .collect();
+        .collect()
+}
+
+#[cfg(feature = "synthetic")]
+fn pick(given: &[f64]) -> Value {
+    crate::synthetic::pick::run(given)
+}
+
+#[cfg(not(feature = "synthetic"))]
+fn pick(_given: &[f64]) -> Value {
+    json!({ "ok": false, "reason": "This build has no 3D map." })
+}
+
+pub fn run(path: &str, args: &str, aircraft: Option<Aircraft>) -> Value {
+    let given = numbers(args);
+    if path == MAP3D_PICK {
+        return pick(&given);
+    }
     let mut held = ORBIT.lock().unwrap_or_else(PoisonError::into_inner);
     let from = match path {
-        MAP3D_PAN | MAP3D_ZOOM if held.framed => Orbit {
+        MAP3D_PAN | MAP3D_ZOOM | MAP3D_LOOK if held.framed => Orbit {
             range: shown_range().unwrap_or(held.range),
             ..*held
         },
@@ -256,6 +292,7 @@ fn needs(path: &str) -> &'static str {
         MAP3D_OPEN => {
             "nothing, or the latitude (-90 to 90) and longitude (-180 to 180) the 2D map was centred on"
         }
+        MAP3D_LOOK => "the latitude (-90 to 90) and longitude (-180 to 180) of the spot to look at",
         _ => "no arguments",
     }
 }
@@ -460,6 +497,29 @@ mod tests {
         assert_eq!(back.at_height(Some(60.0)).range, 240.0);
         let dragged = moved(START, MAP3D_PAN, &[0.0, 10.0, 1000.0], Some(AIRCRAFT)).unwrap();
         assert_eq!(dragged.at_height(Some(60.0)), dragged);
+    }
+
+    #[test]
+    fn look_here_holds_the_chosen_spot_at_the_distance_on_screen() {
+        let looked = moved(START, MAP3D_LOOK, &[46.5, 7.9], Some(AIRCRAFT)).unwrap();
+        assert_eq!(looked.focus, Some((46.5, 7.9)));
+        assert!(
+            !looked.resting && !looked.framed,
+            "a spot the pilot chose stays put when the aircraft moves"
+        );
+        assert_eq!(view_of(looked, true)["following"], false);
+        assert_eq!(moved(START, MAP3D_LOOK, &[91.0, 7.9], None), None);
+    }
+
+    #[test]
+    fn the_map_menu_passes_its_point_as_latitude_and_longitude_fields() {
+        assert_eq!(
+            numbers(r#"[{"latitude":46.5,"longitude":7.9}]"#),
+            vec![46.5, 7.9]
+        );
+        assert_eq!(numbers("[1, 2, 3]"), vec![1.0, 2.0, 3.0]);
+        assert_eq!(numbers(r#"[{"latitude":46.5}]"#), Vec::<f64>::new());
+        assert_eq!(numbers(r#"[1, "two"]"#), Vec::<f64>::new());
     }
 
     #[test]

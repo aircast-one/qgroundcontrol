@@ -70,14 +70,18 @@ fn distance_along(mesh: &Mesh, origin: DVec3, direction: DVec3) -> Option<f64> {
         .map(|t| t * scale)
 }
 
-pub fn height_at(meshes: &[Arc<Mesh>], latitude: f64, longitude: f64) -> Option<f64> {
-    let origin = ecef(latitude, longitude, PROBE_HEIGHT_M);
-    let down = -east_north_up(latitude, longitude).z_axis;
+pub fn nearest_hit(meshes: &[Arc<Mesh>], origin: DVec3, direction: DVec3) -> Option<f64> {
     meshes
         .iter()
         .filter(|mesh| mesh.layer != Layer::Foliage)
-        .filter_map(|mesh| distance_along(mesh, origin, down))
+        .filter_map(|mesh| distance_along(mesh, origin, direction))
         .min_by(f64::total_cmp)
+}
+
+pub fn height_at(meshes: &[Arc<Mesh>], latitude: f64, longitude: f64) -> Option<f64> {
+    let origin = ecef(latitude, longitude, PROBE_HEIGHT_M);
+    let down = -east_north_up(latitude, longitude).z_axis;
+    nearest_hit(meshes, origin, down)
         .map(|metres| PROBE_HEIGHT_M - metres)
         .filter(|height| EARTHLY_M.contains(height))
 }

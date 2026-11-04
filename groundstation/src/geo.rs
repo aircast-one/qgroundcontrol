@@ -57,7 +57,7 @@ fn ecef(lat: f64, lon: f64, alt: f64) -> (f64, f64, f64) {
     (x * cos_lam, x * sin_lam, z)
 }
 
-fn geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+pub fn geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
     let lon = y.atan2(x);
     let p = (x * x + y * y).sqrt();
     let mut lat = z.atan2(p * (1.0 - WGS84_E2));

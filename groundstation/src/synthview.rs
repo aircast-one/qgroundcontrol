@@ -496,7 +496,7 @@ pub fn response(backend: &dyn Backend, vehicle: &Value) -> Value {
     json!({ "yaw": yaw, "roll": tilt("RC1_DZ"), "pitch": tilt("RC2_DZ"), "forward": loiter("RC2_DZ"), "right": loiter("RC1_DZ"), "climb": climb, "rateMode": acro })
 }
 
-fn native() -> bool {
+pub fn native() -> bool {
     cfg!(any(
         native_synthetic,
         all(feature = "synthetic", target_family = "wasm")
