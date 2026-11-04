@@ -258,6 +258,43 @@ relink() {
     rm -f "$list"
 }
 
+# Copies every library a Mach-O loads from a package manager (Homebrew under /opt/homebrew or /usr/local) into
+# Contents/Frameworks and points the reference at the copy. MapLibre, built from source, links Homebrew's libjpeg,
+# libpng and libwebp this way. Repeats until the copies themselves load nothing from outside (libwebp loads
+# libsharpyuv).
+embed_external_dylibs() {
+    local app="$1" frameworks binary dependency name target changed list
+    frameworks="$app/Contents/Frameworks"
+    mkdir -p "$frameworks"
+    list="$(mktemp)"
+    changed=1
+    while [ "$changed" -eq 1 ]; do
+        changed=0
+        macho_files "$app" >"$list"
+        while IFS= read -r -d '' binary; do
+            while IFS= read -r dependency; do
+                case $dependency in
+                    /opt/homebrew/* | /usr/local/*) ;;
+                    *) continue ;;
+                esac
+                [ -f "$dependency" ] || die "${binary#"$app"/} loads $dependency, which this machine does not have"
+                name="$(basename "$dependency")"
+                target="$frameworks/$name"
+                if [ ! -f "$target" ]; then
+                    step "embedding $dependency"
+                    cp -L "$dependency" "$target"
+                    chmod u+w "$target"
+                    install_name_tool -id "@rpath/$name" "$target"
+                    changed=1
+                fi
+                install_name_tool -change "$dependency" \
+                    "@loader_path/$(relative_path "$(dirname "$binary")" "$target")" "$binary"
+            done <<<"$(load_commands "$binary")"
+        done <"$list"
+    done
+    rm -f "$list"
+}
+
 # Inside out: loose Mach-O files, then each framework, then the app.
 sign_bundle() {
     local app="$1" identity="$2" framework binary list
@@ -376,6 +413,7 @@ step "thinning to arm64"
 thin_to_arm64 "$app"
 step "relinking"
 relink "$app"
+embed_external_dylibs "$app"
 step "verifying"
 verify_bundle "$app"
 step "signing ($identity)"
