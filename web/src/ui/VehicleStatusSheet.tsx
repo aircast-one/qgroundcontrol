@@ -118,7 +118,7 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
         <TextButton onClick={() => open(SETUP_OVERVIEW_PAGE)} className="mx-3 self-start">
           {AIRCRAFT_SETUP}
         </TextButton>
-        <ParameterForm page={STATUS_SETTINGS_PAGE} className="max-h-[360px] overflow-auto" />
+        <ParameterForm page={STATUS_SETTINGS_PAGE} />
         {advanced
           ? [['Vehicle parameters', SETUP_PARAMETERS_PAGE] as const].map(([label, page]) => (
               <div key={page} className="flex w-full items-center px-sheet py-0.5">
@@ -152,7 +152,7 @@ const StatusMessages = () => {
         {messagesToggleText(shown)}
       </TextButton>
       {shown ? (
-        <div className="max-h-[320px] overflow-auto px-sheet">
+        <div className="px-sheet">
           {lines.map((message, at) => (
             <MessageLine key={at} level={message.level} time={message.time}>
               <Text typography="bodyMedium">{message.text}</Text>

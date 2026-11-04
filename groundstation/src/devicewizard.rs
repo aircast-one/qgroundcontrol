@@ -1121,11 +1121,34 @@ async fn read(device: &impl Device, path: &str) -> Option<Value> {
     flag(&answer, "ok").then(|| answer["result"].clone())
 }
 
-async fn ports_now(device: &impl Device) -> Vec<Port> {
+async fn read_ports(device: &impl Device) -> Option<Vec<Port>> {
     read(device, SCAN_PORTS_PATH)
         .await
         .map(|json| ports_of(&json))
-        .unwrap_or_default()
+}
+
+async fn ports_now(device: &impl Device) -> Vec<Port> {
+    read_ports(device).await.unwrap_or_default()
+}
+
+fn no_camera_port(ports: &[Port], template: &Template) -> String {
+    ports
+        .iter()
+        .find(|port| port.uplink && port.kind == "ethernet")
+        .map_or_else(
+            || {
+                format!(
+                    "This device has no Ethernet port to plug the {} into. Plug in a USB Ethernet adapter and try again.",
+                    template.label
+                )
+            },
+            |port| {
+                format!(
+                    "The {} carries this device's internet, so the {} cannot go on it. Plug the camera into a port of its own.",
+                    port.label, template.label
+                )
+            },
+        )
 }
 
 fn refusal_of(answer: &Value, fallback: &str) -> Option<String> {
@@ -1247,17 +1270,19 @@ fn template_note(id: u64, note: String) {
 
 async fn set_up_template(device: &impl Device, id: u64, template: Template, iface: String) {
     let fail = |refusal: String| template_done(id, refusal, None, String::new());
-    let known = ports_now(device).await;
+    let Some(known) = read_ports(device).await else {
+        return fail(
+            "Could not read this device's network ports. Update aircastd to v0.4.5 or newer, then try again."
+                .into(),
+        );
+    };
     let Some(port) = known
         .iter()
         .find(|port| !iface.is_empty() && port.iface == iface)
         .cloned()
         .or_else(|| template_port(&known, &template))
     else {
-        return fail(format!(
-            "This device has no Ethernet port to plug the {} into.",
-            template.label
-        ));
+        return fail(no_camera_port(&known, &template));
     };
     if !port_has_subnet(&port, &template.cidr) {
         if let Some(holder) = known
@@ -3101,9 +3126,46 @@ mod tests {
             siyi(),
             String::new(),
         ));
-        assert_eq!(
-            shown()["template"]["refusal"],
-            "This device has no Ethernet port to plug the SIYI camera into."
+        assert!(
+            shown()["template"]["refusal"]
+                .as_str()
+                .unwrap()
+                .starts_with("Could not read this device's network ports.")
+        );
+        quietly(set_up_template(
+            &scripted(vec![(
+                "GET /api/streams/scan/ports",
+                ports_answer(json!([
+                    { "interface": "wlan0", "type": "wi-fi", "isUplink": true, "label": "Wi-Fi (wlan0)" },
+                    { "interface": "usb0", "type": "ethernet", "isUplink": true, "label": "Ethernet port (usb0)" },
+                ])),
+            )]),
+            id,
+            siyi(),
+            String::new(),
+        ));
+        assert!(
+            shown()["template"]["refusal"]
+                .as_str()
+                .unwrap()
+                .starts_with("The Ethernet port (usb0) carries this device's internet")
+        );
+        quietly(set_up_template(
+            &scripted(vec![(
+                "GET /api/streams/scan/ports",
+                ports_answer(json!([
+                    { "interface": "wlan0", "type": "wi-fi", "isUplink": true, "label": "Wi-Fi (wlan0)" },
+                ])),
+            )]),
+            id,
+            siyi(),
+            String::new(),
+        ));
+        assert!(
+            shown()["template"]["refusal"]
+                .as_str()
+                .unwrap()
+                .starts_with("This device has no Ethernet port to plug the SIYI camera into.")
         );
     }
 

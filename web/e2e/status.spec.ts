@@ -12,6 +12,14 @@ test('the status sheet arms the aircraft without starting layout editing', async
   await expect(vehicle.getByRole('button', { name: /Change flight mode$/ }).first()).toContainText('Armed');
 });
 
+test('the status sheet scrolls as one page, with no scroll box nested inside it', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  const sheet = await vehicleStatus(app);
+  await expect(sheet.getByText('Failsafe options bitmask')).toBeVisible();
+  const nested = await sheet.evaluate((root) => [...root.querySelectorAll('*')].filter((it) => it.scrollHeight > it.clientHeight + 1 && ['auto', 'scroll'].includes(getComputedStyle(it).overflowY)).length);
+  expect(nested, 'the failsafe settings scroll inside the sheet instead of with it').toBe(0);
+});
+
 test('the status sheet lists sensor health and opens the message log', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
   await sheet.getByRole('button', { name: 'Show 1 more' }).click();
