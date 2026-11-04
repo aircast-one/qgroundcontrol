@@ -52,8 +52,6 @@ public sealed partial class SyntheticView : UserControl
     private const string LoadingNote = "Loading 3D view…";
     private const string FailedNote = "3D view failed to start";
     private const string RecenterGlyph = "";
-    private const double RenderScale = 0.75;
-    private const double SoftwarePixels = 640 * 360;
     private const long GimbalEveryMs = 50;
     private const long AimSettlesMs = 1000;
     private static readonly TimeSpan CheckEvery = TimeSpan.FromMilliseconds(500);
@@ -62,9 +60,7 @@ public sealed partial class SyntheticView : UserControl
     private sealed record Drag(uint Pointer, Point Start, Point Last, (double Tilt, double Pan) Aim, long SentAt, bool Gimbal);
 
     private readonly Grid _root = new();
-    private readonly Canvas _stage = new();
-    private readonly SwapChainPanel _panel = new();
-    private readonly ScaleTransform _scale = new();
+    private readonly SyntheticSurface _surface = new(orbit: false);
     private readonly ProgressRing _spinner = new() { Width = 16, Height = 16, MinWidth = 0, MinHeight = 0 };
     private readonly TextBlock _noteText = FormLook.Caption("", "TextPrimaryBrush");
     private readonly Border _note;
@@ -80,9 +76,6 @@ public sealed partial class SyntheticView : UserControl
     private (double Tilt, double Yaw)? _gimbalSent;
     private long _gimbalSentAt;
     private Drag? _drag;
-    private IntPtr _surface;
-    private (int Width, int Height) _attached;
-    private bool _bindFailed;
     private bool _syntheticChosen;
     private bool _painting;
     private bool _wanted;
@@ -92,8 +85,6 @@ public sealed partial class SyntheticView : UserControl
 
     public SyntheticView()
     {
-        _panel.RenderTransform = _scale;
-        _stage.Children.Add(_panel);
         _noteText.TextWrapping = TextWrapping.Wrap;
         _noteText.TextAlignment = TextAlignment.Center;
         _noteText.MaxLines = 2;
@@ -143,7 +134,7 @@ public sealed partial class SyntheticView : UserControl
             Visibility = Visibility.Collapsed,
             Children = { _tiltButton, _tiltSlider },
         };
-        _root.Children.Add(_stage);
+        _root.Children.Add(_surface.Stage);
         _root.Children.Add(_note);
         _root.SizeChanged += (_, _) => Fit();
         _root.PointerPressed += OnPressed;
@@ -218,11 +209,7 @@ public sealed partial class SyntheticView : UserControl
 
     private double Pan => VideoJson.Number(_view["pan"]) ?? 0;
 
-    private (int Width, int Height) SurfaceSize =>
-        _panel.Width >= 1 && _panel.Height >= 1 ? ((int)_panel.Width, (int)_panel.Height) : (0, 0);
-
-    private bool Attachable =>
-        IsLoaded && _showing && SurfaceSize.Width > 0 && SurfaceSize.Height > 0 && XamlRoot?.IsHostVisible == true && Lineage(this).All(e => e.Visibility == Visibility.Visible);
+    private bool Attachable => _showing && _surface.Sized && SyntheticSurface.OnScreen(this);
 
     private void Start()
     {
@@ -240,22 +227,14 @@ public sealed partial class SyntheticView : UserControl
         if (XamlRoot is { } root) root.Changed -= OnRootChanged;
         _check.Stop();
         EndDrag();
-        Detach();
+        _surface.Detach();
     }
 
     private void OnRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => Fit();
 
     private void Fit()
     {
-        var (width, height) = (_root.ActualWidth, _root.ActualHeight);
-        var scale = Software
-            ? Math.Min(1, Math.Sqrt(SoftwarePixels / Math.Max(width * height, 1)))
-            : RenderScale * (XamlRoot?.RasterizationScale ?? 1);
-        _stage.Clip = new RectangleGeometry { Rect = new Rect(0, 0, Math.Max(width, 0), Math.Max(height, 0)) };
-        _panel.Width = Math.Max(1, Math.Round(width * scale));
-        _panel.Height = Math.Max(1, Math.Round(height * scale));
-        _scale.ScaleX = width > 0 ? width / _panel.Width : 1;
-        _scale.ScaleY = height > 0 ? height / _panel.Height : 1;
+        _surface.Fit(_root.ActualWidth, _root.ActualHeight, Software, XamlRoot?.RasterizationScale ?? 1);
         Sync();
     }
 
@@ -264,10 +243,9 @@ public sealed partial class SyntheticView : UserControl
         var was = (_showing, _pictured);
         _showing = _wanted && Available && Native;
         Visibility = VideoJson.Shown(_showing);
-        if (Attachable) Attach();
-        else Detach();
-        _pictured = _showing && !_bindFailed && VideoJson.Text(_view, "draw") == Drawn;
-        _stage.Opacity = _pictured ? 1 : 0;
+        _surface.Hold(Attachable);
+        _pictured = _showing && !_surface.BindFailed && VideoJson.Text(_view, "draw") == Drawn;
+        _surface.Stage.Opacity = _pictured ? 1 : 0;
         if (was != (_showing, _pictured)) Changed?.Invoke(this, EventArgs.Empty);
         _root.Background = CanAim || SteersGimbal ? TakesInput : null;
         PaintNote();
@@ -283,31 +261,10 @@ public sealed partial class SyntheticView : UserControl
         if (changed) Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Attach()
-    {
-        var size = SurfaceSize;
-        if (_surface != IntPtr.Zero && size == _attached) return;
-        _surface = _surface != IntPtr.Zero ? _surface : CompositionSurface.Bind(_panel);
-        _bindFailed = _surface == IntPtr.Zero;
-        if (_bindFailed) return;
-        _attached = size;
-        NativeMethods.qgc_synthetic_attach(_surface, size.Width, size.Height, 0);
-    }
-
-    private void Detach()
-    {
-        if (_surface == IntPtr.Zero) return;
-        var surface = _surface;
-        _surface = IntPtr.Zero;
-        _attached = default;
-        NativeMethods.qgc_synthetic_release(surface);
-        CompositionSurface.Close(surface);
-    }
-
     private void PaintNote()
     {
         var draw = VideoJson.Text(_view, "draw");
-        var failed = _bindFailed || draw == Failed;
+        var failed = _surface.BindFailed || draw == Failed;
         var loading = !failed && draw != Drawn;
         var note = failed ? FailedNote : loading ? LoadingNote : null;
         _spinner.IsActive = loading && _showing;
@@ -401,7 +358,4 @@ public sealed partial class SyntheticView : UserControl
             .Where(g => g.Pitch is not null && g.Yaw is not null)
             .Select(g => ((double Pitch, double Yaw)?)(g.Pitch!.Value, g.Yaw!.Value))
             .FirstOrDefault();
-
-    private static IEnumerable<UIElement> Lineage(DependencyObject? from) =>
-        from is null ? [] : (from is UIElement element ? [element] : Array.Empty<UIElement>()).Concat(Lineage(VisualTreeHelper.GetParent(from)));
 }

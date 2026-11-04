@@ -30,6 +30,8 @@
 
             <controls:Viewer3DView x:Name="Viewer" />
 
+            <controls:Map3dView x:Name="Map3d" />
+
             <Button x:Name="PipFrame" Style="{StaticResource PipFrame}" Visibility="Collapsed"
                     AutomationProperties.Name="Show the map" ToolTipService.ToolTip="Show the map" />
 

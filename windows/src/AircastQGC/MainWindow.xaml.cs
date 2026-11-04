@@ -17,6 +17,7 @@ namespace AircastQGC;
 public sealed partial class MainWindow : Window
 {
     private const double TileMargin = 16;
+    private const double Map3dZoomStep = 1.25;
     private const int FullScreenLayer = 100;
     private const double LeftTop = 96;
     private const double BottomGap = 24;
@@ -34,6 +35,7 @@ public sealed partial class MainWindow : Window
     private ImmutableDictionary<string, UIElement> _pages = ImmutableDictionary<string, UIElement>.Empty;
     private bool _videoMain;
     private bool _threeD = FlyViewStore.LoadThreeD();
+    private bool _map3dShown = FlyViewStore.LoadMap3d();
     private bool _fullScreen;
     private AppWindowPresenter? _windowed;
     private long _swappedAt;
@@ -79,21 +81,27 @@ public sealed partial class MainWindow : Window
 
         MapButtons.ZoomInRequested += (_, _) =>
         {
-            if (_threeD) Viewer.ZoomIn();
+            if (Map3dShowing) Map3d.ZoomBy(Map3dZoomStep);
+            else if (_threeD) Viewer.ZoomIn();
             else Map.ZoomIn();
         };
         MapButtons.ZoomOutRequested += (_, _) =>
         {
-            if (_threeD) Viewer.ZoomOut();
+            if (Map3dShowing) Map3d.ZoomBy(1 / Map3dZoomStep);
+            else if (_threeD) Viewer.ZoomOut();
             else Map.ZoomOut();
         };
         MapButtons.CenterOnVehicleRequested += (_, _) =>
         {
-            if (_threeD) Viewer.FollowVehicle();
+            if (Map3dShowing) Map3d.FollowAircraft();
+            else if (_threeD) Viewer.FollowVehicle();
             else Map.CenterOnVehicle();
         };
         MapButtons.ThreeDRequested += (_, _) => ShowThreeD(!_threeD);
         Viewer.EnabledChanged += (_, _) => ShowThreeD(_threeD && Viewer.Enabled);
+        MapButtons.Map3dRequested += (_, _) => ShowMap3d(!_map3dShown);
+        Map3d.OfferedChanged += (_, _) => ShowMap3d(_map3dShown);
+        ShowMap3d(_map3dShown);
         Map.MapRightTapped += (latitude, longitude, at) =>
         {
             DismissMissionPrompt();
@@ -357,6 +365,7 @@ public sealed partial class MainWindow : Window
         Map.ScaleHidden = _videoMain;
         Map.ScaleMargin = new Thickness(TileMargin, TileMargin, TileMargin, _videoMain ? TileMargin : corner);
         MapCorner.Margin = new Thickness(TileMargin, TileMargin, TileMargin, corner + ScaleRoom);
+        Map3d.ControlsMargin = new Thickness(TileMargin, TileMargin, MapCorner.ActualWidth + TileMargin * 2, MapCorner.Margin.Bottom);
         LayoutBar.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
         var card = NoVehicle.Visibility == Visibility.Visible && NoVehicle.Content is FrameworkElement shown ? shown.ActualHeight : 0;
         CenterMessage.VerticalAlignment = card > 0 ? VerticalAlignment.Bottom : VerticalAlignment.Center;
@@ -414,6 +423,19 @@ public sealed partial class MainWindow : Window
         Tape.OverVideo = videoMain;
         PaintFullScreen();
         ShowThreeD(_threeD);
+        ShowMap3d(_map3dShown);
+    }
+
+    private bool Map3dShowing => Map3d.Visibility == Visibility.Visible;
+
+    private void ShowMap3d(bool on)
+    {
+        if (on != _map3dShown) FlyViewStore.SaveMap3d(on);
+        _map3dShown = on;
+        var wanted = on && !_videoMain;
+        if (wanted && !Map3d.Wanted) Map3d.Open(Map.Latitude, Map.Longitude);
+        Map3d.Wanted = wanted;
+        MapButtons.Map3d(Map3d.Offered, on);
     }
 
     private void ShowThreeD(bool on)

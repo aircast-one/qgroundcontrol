@@ -14,14 +14,29 @@ internal static class FlyViewStore
 
     private static readonly string HoldHintPath = Path.Combine(Path.GetDirectoryName(StorePath)!, "video-hold-hint-seen");
 
+    private static readonly string Map3dPath = Path.Combine(Path.GetDirectoryName(StorePath)!, "fly-map-3d");
+
+    private static readonly string Map3dHintPath = Path.Combine(Path.GetDirectoryName(StorePath)!, "fly-map-3d-hinted");
+
     public static bool LoadHoldHintSeen() => File.Exists(HoldHintPath);
 
-    public static void SaveHoldHintSeen()
+    public static void SaveHoldHintSeen() => Mark(HoldHintPath, true);
+
+    public static bool LoadMap3d() => File.Exists(Map3dPath);
+
+    public static void SaveMap3d(bool shown) => Mark(Map3dPath, shown);
+
+    public static bool LoadMap3dHinted() => File.Exists(Map3dHintPath);
+
+    public static void SaveMap3dHinted() => Mark(Map3dHintPath, true);
+
+    private static void Mark(string path, bool on)
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(HoldHintPath)!);
-            File.WriteAllText(HoldHintPath, "");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            if (on) File.WriteAllText(path, "");
+            else File.Delete(path);
         }
         catch (Exception e) when (InstrumentSelectionStore.Recoverable(e))
         {
