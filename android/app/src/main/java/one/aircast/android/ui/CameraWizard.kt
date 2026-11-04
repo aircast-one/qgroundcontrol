@@ -108,7 +108,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
     var rtsp by remember { mutableStateOf(view.rtsp) }
     var name by remember { mutableStateOf(view.suggestedName) }
     var addressOpen by rememberSaveable { mutableStateOf(view.addressOpen) }
-    var makesOpen by rememberSaveable { mutableStateOf(false) }
+    var makesOpen by rememberSaveable { mutableStateOf(true) }
     var namingOpen by rememberSaveable { mutableStateOf(false) }
     var techOpen by rememberSaveable { mutableStateOf(false) }
     var portOpen by rememberSaveable { mutableStateOf(false) }
