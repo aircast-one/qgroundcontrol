@@ -196,8 +196,9 @@ private struct ParameterRow: View {
         }
         .padding(.horizontal, Space.s4)
         .padding(.vertical, Space.s2)
-        .frame(maxWidth: .infinity, minHeight: 72)
+        .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
         .contentShape(Rectangle())
+        .macHover()
         .onTapGesture { forcing = true }
         .background {
             if forcing {

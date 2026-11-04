@@ -76,6 +76,7 @@ private struct PipToggle: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(expanded ? "Hide picture-in-picture" : "Show picture-in-picture")
+        .macTooltip(expanded ? "Hide picture-in-picture" : "Show picture-in-picture")
     }
 }
 
@@ -130,7 +131,7 @@ struct FlyIsPortrait: DynamicProperty {
 
     init() {}
 
-    var wrappedValue: Bool { root.height > root.width }
+    var wrappedValue: Bool { shellIsPortrait(root) }
 }
 
 struct FlyScreen: View {
@@ -364,6 +365,7 @@ struct FlyScreen: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show the compass")
+                    .macTooltip("Show the compass")
                     .frame(maxWidth: .infinity, alignment: .topTrailing)
                     LayoutPipEditor(key: MAP_PIP_KEY, shape: AnyShape(pipShape))
                 }
@@ -446,9 +448,11 @@ struct FlyScreen: View {
                                 .foregroundStyle(theme.colors.onSurface)
                                 .frame(width: MAP_LAYERS_BUTTON, height: MAP_LAYERS_BUTTON)
                                 .background(theme.colors.surfaceContainerHigh, in: Circle())
+                                .macHover(Circle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Map layers")
+                        .macTooltip("Map layers")
                     }
                 }
                 .padding(.leading, videoPipOpen ? Space.s3 * 2 + MINIMAP_WIDTH : Space.s3)
@@ -676,5 +680,6 @@ struct FlyTabMenu: View {
                 .background(osdBackdrop(Color.black.opacity(FLY_SCRIM_ALPHA), flyOsd), in: Circle())
         }
         .accessibilityLabel("Menu")
+        .macTooltip("Menu")
     }
 }

@@ -158,7 +158,7 @@ private struct LogRow: View {
                 Image(entry.selected ? .checkCircle : .description)
                     .font(.system(size: 20))
                     .foregroundStyle(entry.selected ? theme.colors.onPrimary : theme.colors.onSecondaryContainer)
-                    .frame(width: 40, height: 40)
+                    .frame(width: Metrics.avatar, height: Metrics.avatar)
                     .background(entry.selected ? theme.colors.primary : theme.colors.secondaryContainer, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Log \(entry.id)").font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
@@ -171,9 +171,10 @@ private struct LogRow: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 72)
+            .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
             .background(entry.selected ? theme.colors.secondaryContainer : .clear)
             .contentShape(Rectangle())
+            .macHover()
         }
         .buttonStyle(.plain)
         .disabled(!(enabled && entry.received))
@@ -334,8 +335,9 @@ struct LogDownloadScreen: View {
                     }
                     .foregroundStyle(theme.colors.onPrimaryContainer)
                     .padding(.horizontal, 20)
-                    .frame(height: 56)
+                    .frame(height: Metrics.floatingButton)
                     .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: Corner.large))
+                    .macHover(RoundedRectangle(cornerRadius: Corner.large))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Download (\(selectedCount))")

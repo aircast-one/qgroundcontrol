@@ -736,11 +736,13 @@ private struct FactTitle: View {
                     Image(.help)
                         .font(.system(size: 14))
                         .foregroundStyle(helpOpen ? theme.colors.primary : theme.colors.onSurfaceVariant)
-                        .frame(width: 40, height: 40)
+                        .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
                         .contentShape(Rectangle())
+                        .macHover(Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(helpOpen ? "Hide help" : "Help")
+                .macTooltip(helpOpen ? "Hide help" : "Help")
             }
         }
     }
@@ -912,8 +914,9 @@ struct FactRow: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .frame(maxWidth: .infinity, minHeight: Metrics.row)
                     .contentShape(Rectangle())
+                    .macHover()
                 }
                 .buttonStyle(.plain)
             }
@@ -992,7 +995,7 @@ struct FactRow: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: 64)
+            .frame(maxWidth: .infinity, minHeight: Metrics.rowTall)
             if segmented && !beside {
                 Segments(fact: fact, write: write).padding(EdgeInsets(top: 0, leading: 16, bottom: 10, trailing: 16))
             }
@@ -1211,7 +1214,7 @@ struct ChoiceField: View {
                         .lineLimit(1)
                     Image(.chevronRight).foregroundStyle(theme.colors.onSurfaceVariant)
                 }
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .trailing)
+                .frame(maxWidth: .infinity, minHeight: Metrics.rowCompact, alignment: .trailing)
                 .contentShape(Rectangle())
             }
             .disabled(!enabled)

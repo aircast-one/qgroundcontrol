@@ -146,11 +146,17 @@ struct FilledButtonStyle: PrimitiveButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        Button(role: configuration.role, action: configuration.trigger) {
+        let button = Button(role: configuration.role, action: configuration.trigger) {
             configuration.label.foregroundStyle(isEnabled ? theme.colors.onPrimary : theme.colors.onSurface.opacity(DISABLED_ALPHA))
         }
         .buttonStyle(.borderedProminent)
         .tint(theme.colors.primary)
+        // The Mac's regular prominent button is a 22pt pill; large is its primary-action size.
+        #if os(macOS)
+        return button.controlSize(.large)
+        #else
+        return button
+        #endif
     }
 }
 
@@ -162,8 +168,9 @@ struct TextButtonStyle: PrimitiveButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button(role: configuration.role, action: configuration.trigger) {
             configuration.label
-                .frame(minWidth: MINIMUM_TOUCH_TARGET, minHeight: MINIMUM_TOUCH_TARGET)
+                .frame(minWidth: Metrics.minTarget, minHeight: Metrics.minTarget)
                 .contentShape(Rectangle())
+                .macHover(RoundedRectangle(cornerRadius: Corner.small))
         }
         .buttonStyle(.borderless)
     }

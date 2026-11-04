@@ -239,7 +239,11 @@ private final class TopmostPrompter {
 #endif
 
 private let PROMPT_REPRESENT_MILLIS = 400
+#if os(macOS)
+private let PLAN_MENU_ROW_HEIGHT: CGFloat = Metrics.rowCompact
+#else
 private let PLAN_MENU_ROW_HEIGHT: CGFloat = 44
+#endif
 private let PLAN_MENU_MIN_WIDTH: CGFloat = 220
 private let PLAN_MENU_MAX_WIDTH: CGFloat = 280
 
@@ -287,6 +291,9 @@ struct PlanTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { dialogs }
         .modifier(PlanFileDialogs(files: files, onResult: { notice = $0 }))
+        #if os(macOS)
+        .planFileMenu(fileMenu)
+        #endif
         .onAppear { PlanUndoTracking.mounted(1) }
         .onDisappear {
             PlanUndoTracking.mounted(-1)
@@ -303,6 +310,22 @@ struct PlanTab: View {
             if !Task.isCancelled { notice = nil }
         }
     }
+
+    #if os(macOS)
+    // The File menu's Open / Save / Save As, run as the plan menu runs them.
+    private var fileMenu: PlanFileMenu {
+        let can = planActions(planStatus)
+        let dirty = planIsDirty(planStatus)
+        let files = files
+        return PlanFileMenu(
+            canOpen: can.open,
+            canSave: can.save,
+            open: { if dirty { pending = .Open } else { files.open() } },
+            save: { files.save() },
+            saveAs: { files.saveAs() }
+        )
+    }
+    #endif
 
     @ViewBuilder
     private var dialogs: some View {
@@ -424,12 +447,13 @@ struct PlanTab: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 primary(bar)
                 Button { menuOpen = true } label: {
-                    Image(.moreVert).frame(width: 40, height: 40).contentShape(Circle())
+                    Image(.moreVert).frame(width: 40, height: 40).contentShape(Circle()).macHover(Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.colors.onSurface)
                 .background(theme.colors.surfaceContainer.opacity(HEADER_ALPHA), in: Circle())
                 .accessibilityLabel("Plan menu")
+                .macTooltip("Plan menu")
                 .popover(isPresented: $menuOpen) {
                     ViewThatFits(in: .vertical) {
                         planMenu(history, can, dirty, containsItems)
@@ -520,6 +544,7 @@ struct PlanTab: View {
             .padding(.horizontal, Space.s3)
             .frame(maxWidth: .infinity, minHeight: PLAN_MENU_ROW_HEIGHT, alignment: .leading)
             .contentShape(Rectangle())
+            .macHover()
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -570,6 +595,7 @@ private struct PlanActionPill: View {
             }
             .background(container)
             .clipShape(Capsule())
+            .macHover(Capsule(), tint: content)
         }
         .buttonStyle(.plain)
         .fixedSize()

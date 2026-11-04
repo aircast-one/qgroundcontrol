@@ -5,7 +5,7 @@ private let CAMERA_LIST_SETTLE_MS = 2000
 private let CAMERA_CLASSIFY_SETTLE_MS = 300
 private let ROW_PAD_HORIZONTAL = Space.s4
 private let ROW_PAD_VERTICAL: CGFloat = 10
-private let ROW_MIN_HEIGHT: CGFloat = 64
+private let ROW_MIN_HEIGHT: CGFloat = Metrics.rowTall
 private let ROW_GAP: CGFloat = 14
 private let ROW_LINE_GAP: CGFloat = 2
 private let SHEET_PAD = Space.s6
@@ -142,10 +142,11 @@ struct CamerasEditor: View {
                 HStack {
                     Spacer()
                     Button { draft = CameraDraft(stored: nil, title: "", name: "", source: "", url: "") } label: {
-                        Image(.add).font(.system(size: 20)).frame(width: 48, height: 48).contentShape(Rectangle())
+                        Image(.add).font(.system(size: 20)).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle())
                     }
                     .disabled(!editable || busy)
                     .accessibilityLabel("Add a video source")
+                    .macTooltip("Add a video source")
                 }
                 .padding(.trailing, Space.s1)
                 .padding(.top, Space.s2)
@@ -270,7 +271,7 @@ private struct CameraRow: View {
         .frame(minHeight: ROW_MIN_HEIGHT)
         .contentShape(Rectangle())
         if let onEdit {
-            Button(action: onEdit) { row }.buttonStyle(.plain)
+            Button(action: onEdit) { row.macHover() }.buttonStyle(.plain)
         } else {
             row
         }

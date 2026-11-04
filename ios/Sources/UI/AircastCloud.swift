@@ -79,7 +79,7 @@ struct AircastCloudFields: View {
                                 Text(drone.seen).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
                             }
                         }
-                        .frame(minHeight: 48)
+                        .frame(minHeight: Metrics.rowCompact)
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(deviceId.trimmed == drone.id ? .isSelected : [])

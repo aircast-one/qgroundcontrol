@@ -52,7 +52,7 @@ struct SetupRow: View {
 
     var body: some View {
         if let onClick {
-            Button(action: onClick) { row }.buttonStyle(.plain)
+            Button(action: onClick) { row.macHover() }.buttonStyle(.plain)
         } else {
             row
         }
@@ -64,7 +64,7 @@ struct SetupRow: View {
                 Image(icon)
                     .font(.system(size: 18))
                     .foregroundStyle(state == .NeedsAttention ? theme.aircast.warning : theme.colors.onSecondaryContainer)
-                    .frame(width: 40, height: 40)
+                    .frame(width: Metrics.avatar, height: Metrics.avatar)
                     .background(state == .NeedsAttention ? theme.aircast.warningContainer : theme.colors.secondaryContainer, in: Circle())
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -89,7 +89,7 @@ struct SetupRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 72)
+        .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
         .background(selected ? theme.colors.surfaceContainerHighest : .clear)
         .contentShape(Rectangle())
     }
@@ -152,14 +152,15 @@ struct PageTopBar: View {
             if twoPane {
                 Color.clear.frame(width: 12, height: 1)
             } else {
-                Button(action: onBack) { Image(.arrowBack).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                Button(action: onBack) { Image(.arrowBack).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                     .accessibilityLabel(backLabel)
+                    .macTooltip(backLabel)
             }
             Text(title).font(.titleLarge).lineLimit(1)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 4)
-        .frame(maxWidth: .infinity, minHeight: 64)
+        .frame(maxWidth: .infinity, minHeight: Metrics.rowTall)
     }
 }
 
@@ -256,7 +257,7 @@ struct SearchPill: View {
                 .onSubmit(keyboardActions)
         }
         .padding(.horizontal, 16)
-        .frame(minHeight: 56)
+        .frame(minHeight: Metrics.row)
         .background(theme.colors.surfaceContainerHigh, in: Capsule())
         .padding(.horizontal, 16)
         .padding(.vertical, 8)

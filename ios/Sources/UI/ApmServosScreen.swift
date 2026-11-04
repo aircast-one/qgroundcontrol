@@ -187,7 +187,7 @@ private struct RepeatButton: View {
     var body: some View {
         Text(label)
             .font(.titleMedium)
-            .frame(width: 40, height: 40)
+            .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
             .background(theme.colors.secondaryContainer, in: RoundedRectangle(cornerRadius: Corner.small))
             .contentShape(Rectangle())
             .gesture(

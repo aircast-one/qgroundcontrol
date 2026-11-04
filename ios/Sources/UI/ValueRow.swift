@@ -413,7 +413,7 @@ private struct StepButton: View {
     var body: some View {
         Text(label)
             .font(.titleLarge)
-            .frame(width: 48, height: 48)
+            .frame(width: Metrics.stepper, height: Metrics.stepper)
             .background(theme.colors.secondaryContainer, in: Circle())
             .contentShape(Circle())
             .opacity(enabled ? 1 : DISABLED_SLIDER_ALPHA)

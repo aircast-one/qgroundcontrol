@@ -259,8 +259,9 @@ struct VehicleStateChip: View {
                     }
                     .foregroundStyle(theme.colors.primary)
                     .padding(.horizontal, Space.s4)
-                    .frame(minHeight: 56)
+                    .frame(minHeight: Metrics.row)
                     .contentShape(Rectangle())
+                    .macHover()
                     .onTapGesture {
                         picking = false
                         navigation.settingsPage = CONNECTIONS_PAGE
@@ -283,7 +284,7 @@ struct VehicleStateChip: View {
                             Text("Enable multi-vehicle panel").font(.bodyLarge)
                         }
                         .padding(.horizontal, Space.s4)
-                        .frame(minHeight: 56)
+                        .frame(minHeight: Metrics.row)
                     }
                     if !pick.disconnected && !pick.taken {
                         HStack {
@@ -458,8 +459,9 @@ private struct VehicleRows: View {
             .padding(.leading, Space.s4)
             .padding(.trailing, Space.s6)
             .padding(.vertical, Space.s2)
-            .frame(minHeight: 72)
+            .frame(minHeight: Metrics.rowLarge)
             .contentShape(Rectangle())
+            .macHover()
             .onTapGesture {
                 guard !choice.active else { return }
                 let id = choice.id

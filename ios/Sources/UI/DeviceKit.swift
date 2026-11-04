@@ -202,13 +202,15 @@ struct CopyRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if qr {
-                Button { showingQr = true } label: { Image(.qrCode2).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show \(label) as a QR code")
+                    .macTooltip("Show \(label) as a QR code")
             }
-            Button { copyToClipboard(text, notice) } label: { Image(.contentCopy).frame(width: 48, height: 48).contentShape(Rectangle()) }
+            Button { copyToClipboard(text, notice) } label: { Image(.contentCopy).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Copy \(label)")
+                .macTooltip("Copy \(label)")
         }
         .padding(.horizontal, DEVICE_LIST_PADDING)
         .padding(.vertical, 8)
@@ -717,8 +719,9 @@ struct DeviceDisclosure<Content: View>: View {
                 }
                 .padding(.horizontal, DEVICE_LIST_PADDING)
                 .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, minHeight: 56)
+                .frame(maxWidth: .infinity, minHeight: Metrics.row)
                 .contentShape(Rectangle())
+                .macHover()
             }
             .buttonStyle(.plain)
             .accessibilityLabel(open ? "Collapse \(title)" : "Expand \(title)")
@@ -836,8 +839,9 @@ struct Fold<Content: View>: View {
                     Image(open ? .arrowUp : .arrowDropDown).foregroundStyle(theme.colors.onSurfaceVariant)
                 }
                 .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, minHeight: 48)
+                .frame(maxWidth: .infinity, minHeight: Metrics.rowCompact)
                 .contentShape(Rectangle())
+                .macHover()
             }
             .buttonStyle(.plain)
             .accessibilityLabel(open ? "Collapse \(title)" : "Expand \(title)")

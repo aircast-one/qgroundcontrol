@@ -196,9 +196,10 @@ private struct NetworkRow: View {
                 }
             }
             .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: Metrics.rowCompact)
             .overlay(RoundedRectangle(cornerRadius: Corner.medium).stroke(theme.colors.outlineVariant))
             .contentShape(RoundedRectangle(cornerRadius: Corner.medium))
+            .macHover(RoundedRectangle(cornerRadius: Corner.medium))
         }
         .buttonStyle(.plain)
     }

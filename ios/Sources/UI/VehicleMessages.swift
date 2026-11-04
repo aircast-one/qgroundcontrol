@@ -147,10 +147,11 @@ struct VehicleMessageBanner: View {
             }
             .accessibilityHidden(true)
             Button { offMain { VehicleCommands.resetAllMessages() } } label: {
-                Image(.close).font(.system(size: 16)).frame(width: 32, height: 32).minimumTouchTarget()
+                Image(.close).font(.system(size: 16)).frame(width: 32, height: 32).minimumTouchTarget().macHover(Circle(), tint: content)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss messages")
+            .macTooltip("Dismiss messages")
         }
         .foregroundStyle(content)
         .padding(.horizontal, 12)
@@ -326,9 +327,10 @@ struct AppSnackbar: View {
                 Text(data.message)
                     .font(.labelLarge)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button { data.dismiss() } label: { Image(.close).frame(width: 40, height: 40).contentShape(Rectangle()) }
+                Button { data.dismiss() } label: { Image(.close).frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall).contentShape(Rectangle()).macHover(Circle(), tint: theme.colors.onErrorContainer) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Dismiss")
+                    .macTooltip("Dismiss")
             }
             .foregroundStyle(theme.colors.onErrorContainer)
             .padding(.leading, 16)

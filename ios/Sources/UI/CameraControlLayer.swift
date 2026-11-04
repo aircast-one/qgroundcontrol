@@ -160,10 +160,11 @@ struct CameraControlLayer: View {
 
     @ViewBuilder private func above(_ camera: CameraReading) -> some View {
         Button { state.details = true } label: {
-            Image(.settings).font(.system(size: 20)).frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle())
+            Image(.settings).font(.system(size: 20)).frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle()).macHover(Circle(), tint: .white)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Camera settings")
+        .macTooltip("Camera settings")
         if let label = zoomText(camera) {
             Button { state.details = true } label: {
                 Text(label)
@@ -190,11 +191,12 @@ struct CameraControlLayer: View {
                 let state = state
                 Task { state.refused = await offMain { Qgc.refusalOf(CAMERA_SET_MODE, mode) } }
             } label: {
-                Image(toVideo ? .videocam : .photoCamera).font(.system(size: 22)).osdShadow().frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle())
+                Image(toVideo ? .videocam : .photoCamera).font(.system(size: 22)).osdShadow().frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle()).macHover(Circle(), tint: .white)
             }
             .buttonStyle(.plain)
             .disabled(!(toVideo ? panel.selectVideoEnabled : panel.selectPhotoEnabled))
             .accessibilityLabel(toVideo ? "Switch to video" : "Switch to photo")
+            .macTooltip(toVideo ? "Switch to video" : "Switch to photo")
         }
         if let plan = lapsePlan(camera) {
             Text(plan).font(.labelSmall)
@@ -436,9 +438,10 @@ private struct SheetRadioRow: View {
                 Text(label).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
                 Spacer(minLength: 0)
             }
-            .frame(minHeight: 56)
+            .frame(minHeight: Metrics.row)
             .padding(.horizontal, 16)
             .contentShape(Rectangle())
+            .macHover()
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -609,7 +612,7 @@ private struct CameraDetailsSheet: View {
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(minHeight: 48)
+            .frame(minHeight: Metrics.rowCompact)
             if let reason = destructiveReasonFor(action) {
                 Text(reason).font(.labelSmall).foregroundStyle(theme.colors.onSurfaceVariant).padding(.horizontal, 20)
             }

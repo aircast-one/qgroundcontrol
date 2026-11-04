@@ -138,7 +138,7 @@ private struct ChartChoice: View {
             }
         } label: {
             Text("\(title): \(options.indices.contains(chosen) ? options[chosen] : "")")
-                .frame(minHeight: 48)
+                .frame(minHeight: Metrics.rowCompact)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)

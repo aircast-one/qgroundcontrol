@@ -774,9 +774,10 @@ private struct IceEditor: View {
                             placeholder: "turn:turn.example.com:443?transport=udp",
                             keyboard: .uri
                         )
-                        Button { remove(index) } label: { Image(.close).frame(width: 48, height: 48).contentShape(Rectangle()) }
+                        Button { remove(index) } label: { Image(.close).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Remove server")
+                            .macTooltip("Remove server")
                     }
                     // .password is the plain keyboard without autocapitalisation or autocorrect, which a username needs.
                     DeviceTextField(
