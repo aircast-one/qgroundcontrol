@@ -263,7 +263,7 @@ relink() {
 # libpng and libwebp this way. Repeats until the copies themselves load nothing from outside (libwebp loads
 # libsharpyuv).
 embed_external_dylibs() {
-    local app="$1" frameworks binary dependency name target changed list
+    local app="$1" frameworks binary dependency source name target changed list searched path root
     frameworks="$app/Contents/Frameworks"
     mkdir -p "$frameworks"
     list="$(mktemp)"
@@ -272,17 +272,31 @@ embed_external_dylibs() {
         changed=0
         macho_files "$app" >"$list"
         while IFS= read -r -d '' binary; do
+            # Rpaths into a package manager, which an @rpath reference may resolve through (Homebrew's libwebp finds
+            # libsharpyuv that way).
+            searched="$(rpaths "$binary" | grep -E '^(/opt/homebrew|/usr/local)/' || true)"
             while IFS= read -r dependency; do
+                [ -n "$dependency" ] || continue
+                source=""
                 case $dependency in
-                    /opt/homebrew/* | /usr/local/*) ;;
-                    *) continue ;;
+                    /opt/homebrew/* | /usr/local/*) source="$dependency" ;;
+                    @rpath/*)
+                        while IFS= read -r root; do
+                            [ -n "$root" ] || continue
+                            if [ -f "$root/${dependency#@rpath/}" ]; then
+                                source="$root/${dependency#@rpath/}"
+                                break
+                            fi
+                        done <<<"$searched"
+                        ;;
                 esac
-                [ -f "$dependency" ] || die "${binary#"$app"/} loads $dependency, which this machine does not have"
-                name="$(basename "$dependency")"
+                [ -n "$source" ] || continue
+                [ -f "$source" ] || die "${binary#"$app"/} loads $source, which this machine does not have"
+                name="$(basename "$source")"
                 target="$frameworks/$name"
                 if [ ! -f "$target" ]; then
-                    step "embedding $dependency"
-                    cp -L "$dependency" "$target"
+                    step "embedding $source"
+                    cp -L "$source" "$target"
                     chmod u+w "$target"
                     install_name_tool -id "@rpath/$name" "$target"
                     changed=1
@@ -290,6 +304,13 @@ embed_external_dylibs() {
                 install_name_tool -change "$dependency" \
                     "@loader_path/$(relative_path "$(dirname "$binary")" "$target")" "$binary"
             done <<<"$(load_commands "$binary")"
+            # Everything those rpaths served now loads from the bundle, so drop them (one copy at a time).
+            while IFS= read -r path; do
+                [ -n "$path" ] || continue
+                while grep -qxF "$path" <<<"$(rpaths "$binary")"; do
+                    install_name_tool -delete_rpath "$path" "$binary"
+                done
+            done <<<"$searched"
         done <"$list"
     done
     rm -f "$list"
