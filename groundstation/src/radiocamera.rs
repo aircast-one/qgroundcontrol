@@ -3,7 +3,9 @@ use std::sync::{Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
+pub const BAY: usize = 5;
 pub const DROP: usize = 11;
+const BAY_POSITIONS: f32 = 6.0;
 pub const PITCH: usize = 18;
 pub const YAW: usize = 20;
 pub const ZOOM: usize = 21;
@@ -28,7 +30,7 @@ pub enum Move {
     Zoom(f32),
     Picture(u8),
     NextPalette,
-    Drop,
+    Drop { bay: i64 },
 }
 
 #[derive(Debug, Default)]
@@ -46,6 +48,10 @@ fn read(line: &[u16], channel: usize) -> Option<u16> {
 fn between((low, high): (f32, f32), pwm: u16) -> f32 {
     let share = ((f32::from(pwm) - LOW_PWM) / SPAN_PWM).clamp(0.0, 1.0);
     low + share * (high - low)
+}
+
+fn bay(pwm: u16) -> i64 {
+    (between((0.0, BAY_POSITIONS - 1.0), pwm).round() as i64) + 1
 }
 
 fn position(pwm: u16) -> usize {
@@ -92,7 +98,9 @@ impl Sticks {
                     .is_some_and(|was| *was <= PRESSED_PWM)
         };
         let palette = pressed(PALETTE);
-        let dropped = pressed(DROP);
+        let dropped = pressed(DROP)
+            .then(|| read(line, BAY).map_or(1, bay))
+            .map(|bay| Move::Drop { bay });
         let refreshed: Vec<(usize, u16)> = [DROP, PITCH, YAW, ZOOM, PICTURE, PALETTE]
             .into_iter()
             .filter(|channel| {
@@ -114,7 +122,7 @@ impl Sticks {
             .chain(zoomed)
             .chain(switched)
             .chain(palette.then_some(Move::NextPalette))
-            .chain(dropped.then_some(Move::Drop))
+            .chain(dropped)
             .collect()
     }
 }
@@ -123,6 +131,18 @@ static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
     acted: BTreeMap::new(),
     sent_ms: None,
 });
+
+fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
+    let servo_bays = vehicle.payload_servos().len() as i64;
+    (vehicle.payload_setup().enabled || servo_bays > 0).then_some(servo_bays)
+}
+
+pub fn named(bay: i64, servo_bays: i64) -> i64 {
+    match (1..=servo_bays).contains(&bay) {
+        true => bay,
+        false => 0,
+    }
+}
 
 fn yaw_limits() -> (f32, f32) {
     let hub = crate::hub::lock();
@@ -170,9 +190,9 @@ pub fn steer(vehicle: u8, moves: &[Move]) {
             json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent }),
             None,
         ),
-        Move::Drop => guided(
+        Move::Drop { bay } => guided(
             vehicle,
-            json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE }),
+            json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
             Some(crate::noticeboard::PAYLOAD),
         ),
         Move::Picture(value) => setting(crate::camsettings::set_setting(
@@ -184,11 +204,19 @@ pub fn steer(vehicle: u8, moves: &[Move]) {
 
 pub fn heard(vehicle: u8, line: &[u16]) {
     let limits = yaw_limits();
-    let moves = STICKS.lock().unwrap_or_else(PoisonError::into_inner).step(
-        line,
-        limits,
-        crate::hub::now_ms(),
-    );
+    let servo_bays = crate::hub::lock().active().and_then(bays_through_the_app);
+    let moves: Vec<Move> = STICKS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .step(line, limits, crate::hub::now_ms())
+        .into_iter()
+        .filter_map(|step| match step {
+            Move::Drop { bay } => servo_bays.map(|bays| Move::Drop {
+                bay: named(bay, bays),
+            }),
+            other => Some(other),
+        })
+        .collect();
     steer(vehicle, &moves);
 }
 
@@ -319,16 +347,35 @@ mod tests {
     #[test]
     fn flipping_the_drop_switch_up_drops_once_and_flipping_it_down_drops_nothing() {
         let mut sticks = Sticks::default();
-        sticks.step(&line(&[(DROP, 988)]), LIMITS, 0);
+        sticks.step(&line(&[(DROP, 988), (BAY, 988)]), LIMITS, 0);
         assert_eq!(
-            sticks.step(&line(&[(DROP, 2012)]), LIMITS, 10),
-            vec![Move::Drop]
+            sticks.step(&line(&[(DROP, 2012), (BAY, 988)]), LIMITS, 10),
+            vec![Move::Drop { bay: 1 }],
+            "the six-position switch at its first position picks bay 1"
         );
         assert!(sticks.step(&line(&[(DROP, 2012)]), LIMITS, 20).is_empty());
         assert!(sticks.step(&line(&[(DROP, 988)]), LIMITS, 30).is_empty());
         assert_eq!(
-            sticks.step(&line(&[(DROP, 2012)]), LIMITS, 40),
-            vec![Move::Drop]
+            sticks.step(&line(&[(DROP, 2012), (BAY, 1602)]), LIMITS, 40),
+            vec![Move::Drop { bay: 4 }],
+            "the fourth position picks bay 4"
+        );
+        assert_eq!(
+            [988, 1193, 1398, 1602, 1807, 2012].map(bay),
+            [1, 2, 3, 4, 5, 6],
+            "EdgeTX spreads a 6POS switch evenly over the channel"
+        );
+        assert_eq!(
+            (named(3, 4), named(4, 0), named(5, 4)),
+            (3, 0, 0),
+            "a bay the drone does not have, or a gripper that is not per bay, drops the next bay instead"
+        );
+        let mut no_six_pos = Sticks::default();
+        no_six_pos.step(&[988; 11], LIMITS, 0);
+        assert_eq!(
+            no_six_pos.step(&[2012; 11], LIMITS, 10),
+            vec![Move::Drop { bay: 6 }],
+            "a model without a 6POS switch leaves CH5 wherever it rests"
         );
         let mut plugged_in_high = Sticks::default();
         assert!(
