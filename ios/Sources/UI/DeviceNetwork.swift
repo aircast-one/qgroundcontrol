@@ -96,6 +96,9 @@ struct WifiCard: Equatable {
     let status: DeviceBadge
     let summary: String
     let joined: DeviceBadge?
+    let held: DeviceBadge?
+    let hotspot: ConfirmedAction?
+    let saved: ConfirmedAction?
     let reopen: WifiReopen
 }
 
@@ -361,6 +364,9 @@ private func netWifi(_ json: JSON) -> WifiCard {
         status: netBadge(json, "status"),
         summary: json["summary"].string,
         joined: optDeviceBadge(json, "joined"),
+        held: optDeviceBadge(json, "held"),
+        hotspot: netConfirmed(json["hotspot"].objectOrNil),
+        saved: netConfirmed(json["saved"].objectOrNil),
         reopen: WifiReopen(host: reopen["host"].string, hostname: reopen["hostname"].string)
     )
 }

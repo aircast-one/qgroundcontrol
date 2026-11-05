@@ -65,7 +65,15 @@ internal data class StarlinkCard(
     val address: StarlinkAddress,
 )
 
-internal data class WifiCard(val status: DeviceBadge, val summary: String, val joined: DeviceBadge?, val reopen: WifiReopen)
+internal data class WifiCard(
+    val status: DeviceBadge,
+    val summary: String,
+    val joined: DeviceBadge?,
+    val held: DeviceBadge?,
+    val hotspot: ConfirmedAction?,
+    val saved: ConfirmedAction?,
+    val reopen: WifiReopen,
+)
 
 internal data class IPv4Settings(val method: String, val metric: String, val metricPlaceholder: String, val address: String, val gateway: String, val dns: String)
 
@@ -223,7 +231,15 @@ private fun parseStarlink(json: JSONObject): StarlinkCard {
 
 private fun parseWifi(json: JSONObject): WifiCard {
     val reopen = json.section("reopen")
-    return WifiCard(json.badge("status"), json.optText("summary"), optDeviceBadge(json, "joined"), WifiReopen(reopen.optText("host"), reopen.optText("hostname")))
+    return WifiCard(
+        json.badge("status"),
+        json.optText("summary"),
+        optDeviceBadge(json, "joined"),
+        optDeviceBadge(json, "held"),
+        parseConfirmed(json.optJSONObject("hotspot")),
+        parseConfirmed(json.optJSONObject("saved")),
+        WifiReopen(reopen.optText("host"), reopen.optText("hostname")),
+    )
 }
 
 private fun parseEditor(json: JSONObject?): LinkEditor? = json?.let {

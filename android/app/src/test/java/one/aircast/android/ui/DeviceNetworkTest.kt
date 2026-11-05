@@ -64,6 +64,19 @@ private const val VIEW = """{
 
 class DeviceNetworkTest {
     @Test
+    fun `reads the manual Wi-Fi controls the device offers`() {
+        val json = JSONObject(VIEW)
+        json.getJSONObject("wifi")
+            .put("held", JSONObject().put("level", 2).put("text", "Hotspot kept on by hand"))
+            .put("saved", JSONObject().put("label", "Join workshop").put("confirm", "Join workshop now?"))
+            .put("hotspot", JSONObject().put("label", "Use hotspot").put("confirm", "Keep the hotspot on?"))
+        val wifi = checkNotNull(parseNetwork(json)).wifi
+        assertEquals("Hotspot kept on by hand", wifi.held?.text)
+        assertEquals(ConfirmedAction("Join workshop", "Join workshop now?"), wifi.saved)
+        assertEquals("Use hotspot", wifi.hotspot?.label)
+    }
+
+    @Test
     fun `reads the network view the device serves`() {
         val view = checkNotNull(parseNetwork(JSONObject(VIEW)))
         assertEquals(UplinkBackup("LTE (wwan0)", DeviceBadge(DeviceLevel.Neutral, "standing by · takes over in ~15 s")), view.uplink.failover.first())
@@ -74,6 +87,9 @@ class DeviceNetworkTest {
         assertEquals(StarlinkAddress("10.0.0.9:9200", "192.168.100.1:9200", defaultFirst = true, open = true), view.starlink.address)
         assertNull(view.starlink.demo)
         assertNull(view.wifi.joined)
+        assertNull(view.wifi.held)
+        assertNull(view.wifi.hotspot)
+        assertNull(view.wifi.saved)
         assertEquals(WifiReopen("harness.local", "harness"), view.wifi.reopen)
         assertEquals("eth0", view.interfaces.links.first().editor?.iface)
         assertNull(view.interfaces.links.first().role)

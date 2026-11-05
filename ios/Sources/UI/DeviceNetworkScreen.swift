@@ -1,5 +1,33 @@
 import SwiftUI
 
+private struct WifiControls: View {
+    let wifi: WifiCard
+
+    var body: some View {
+        if wifi.saved != nil || wifi.hotspot != nil {
+            DeviceButtonRow {
+                if let saved = wifi.saved {
+                    ActionButton(
+                        label: saved.label,
+                        request: DeviceRequest(method: .POST, path: "/api/network/wifi/saved"),
+                        success: "Joined. The device switches Wi-Fi by itself again.",
+                        confirm: ActionConfirm(title: "\(saved.label)?", text: saved.confirm, confirm: "Join")
+                    )
+                }
+                if let hotspot = wifi.hotspot {
+                    ActionButton(
+                        label: hotspot.label,
+                        request: DeviceRequest(method: .POST, path: "/api/network/wifi/hotspot"),
+                        success: "Hotspot on until the device restarts.",
+                        confirm: ActionConfirm(title: "Keep the hotspot on?", text: hotspot.confirm, confirm: "Use hotspot"),
+                        tonal: false
+                    )
+                }
+            }
+        }
+    }
+}
+
 struct DeviceNetworkScreen: View {
     let props: DeviceScreenProps
     @DeviceView("network") private var reading
@@ -13,6 +41,8 @@ struct DeviceNetworkScreen: View {
                 DeviceSection(title: "Wi-Fi", badge: view.wifi.status) {
                     NetSummary(text: view.wifi.summary)
                     if let joined = view.wifi.joined { DeviceNotice(notice: joined) }
+                    if let held = view.wifi.held { DeviceNotice(notice: held) }
+                    WifiControls(wifi: view.wifi)
                     WifiJoin(reopen: view.wifi.reopen)
                 }
                 InterfacesSection(interfaces: view.interfaces)

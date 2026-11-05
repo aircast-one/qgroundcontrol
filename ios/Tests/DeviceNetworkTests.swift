@@ -63,6 +63,22 @@ final class DeviceNetworkTests: XCTestCase {
         return .object(map)
     }
 
+    func testReadsTheManualWiFiControlsTheDeviceOffers() throws {
+        let wifi = JSON.parse("""
+            {
+              "status": { "level": 1, "text": "join failed" }, "summary": "workshop",
+              "held": { "level": 2, "text": "Hotspot kept on by hand" },
+              "saved": { "label": "Join workshop", "confirm": "Join workshop now?" },
+              "hotspot": { "label": "Use hotspot", "confirm": "Keep the hotspot on?" },
+              "reopen": { "host": "harness.local", "hostname": "harness" }
+            }
+            """)
+        let view = try XCTUnwrap(parseNetwork(servedWith("wifi", wifi)))
+        XCTAssertEqual(view.wifi.held?.text, "Hotspot kept on by hand")
+        XCTAssertEqual(view.wifi.saved, ConfirmedAction(label: "Join workshop", confirm: "Join workshop now?"))
+        XCTAssertEqual(view.wifi.hotspot?.label, "Use hotspot")
+    }
+
     func testReadsTheNetworkViewTheDeviceServes() throws {
         let view = try XCTUnwrap(parseNetwork(served))
         XCTAssertEqual(view.uplink.failover.first, UplinkBackup(label: "LTE (wwan0)", status: DeviceBadge(level: DeviceLevel.Neutral, text: "standing by · takes over in ~15 s")))
@@ -73,6 +89,9 @@ final class DeviceNetworkTests: XCTestCase {
         XCTAssertEqual(view.starlink.address, StarlinkAddress(value: "10.0.0.9:9200", fallback: "192.168.100.1:9200", defaultFirst: true, open: true))
         XCTAssertNil(view.starlink.demo)
         XCTAssertNil(view.wifi.joined)
+        XCTAssertNil(view.wifi.held)
+        XCTAssertNil(view.wifi.hotspot)
+        XCTAssertNil(view.wifi.saved)
         XCTAssertEqual(view.wifi.reopen, WifiReopen(host: "harness.local", hostname: "harness"))
         XCTAssertEqual(view.interfaces.links.first?.editor?.iface, "eth0")
         XCTAssertNil(view.interfaces.links.first?.role)

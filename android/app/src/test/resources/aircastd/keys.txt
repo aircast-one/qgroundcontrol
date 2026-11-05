@@ -226,6 +226,7 @@ health
 hef
 hefExists
 height
+held
 heldBack
 hero
 heroCaption
@@ -238,6 +239,7 @@ host
 hostLabel
 hostname
 hostPort
+hotspot
 hours
 href
 iceServers

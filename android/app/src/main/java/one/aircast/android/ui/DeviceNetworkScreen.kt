@@ -51,6 +51,8 @@ internal fun DeviceNetworkScreen(props: DeviceScreenProps) {
     DeviceSection("Wi-Fi", view.wifi.status) {
         Summary(view.wifi.summary)
         view.wifi.joined?.let { DeviceNotice(it) }
+        view.wifi.held?.let { DeviceNotice(it) }
+        WifiControls(view.wifi)
         WifiJoin(view.wifi.reopen)
     }
     InterfacesSection(view.interfaces)
@@ -209,6 +211,30 @@ private fun UseDefaultAddress(fallback: String) {
     if (fallback.isEmpty()) return
     ButtonRow {
         ActionButton("Use default ($fallback)", DeviceRequest(DeviceMethod.PUT, "/api/starlink/config", JSONObject().put("addr", fallback)), success = "Dish address back to the default.")
+    }
+}
+
+@Composable
+private fun WifiControls(wifi: WifiCard) {
+    if (wifi.saved == null && wifi.hotspot == null) return
+    ButtonRow {
+        wifi.saved?.let {
+            ActionButton(
+                it.label,
+                DeviceRequest(DeviceMethod.POST, "/api/network/wifi/saved"),
+                success = "Joined. The device switches Wi-Fi by itself again.",
+                confirm = ActionConfirm("${it.label}?", it.confirm, "Join"),
+            )
+        }
+        wifi.hotspot?.let {
+            ActionButton(
+                it.label,
+                DeviceRequest(DeviceMethod.POST, "/api/network/wifi/hotspot"),
+                success = "Hotspot on until the device restarts.",
+                confirm = ActionConfirm("Keep the hotspot on?", it.confirm, "Use hotspot"),
+                tonal = false,
+            )
+        }
     }
 }
 
