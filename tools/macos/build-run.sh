@@ -34,7 +34,7 @@ if grep -qE 'error:|FAILED' "$log"; then grep -E 'error:|FAILED' "$log" | tail -
 
 # The dylib has to be at least as new as the Rust archive linked into it. Nothing else
 # here notices a core change that built but never got linked, and the comparison tool
-# cannot either: it reads the head and the core through the same process, so a stale
+# cannot either: it reads the app and the core through the same process, so a stale
 # core makes both sides agree on the same stale answer.
 dylib="$root/build-test/Debug/AircastQGC.app/Contents/Frameworks/libAircastQGC.dylib"
 archive=$(ls -t "$root"/build-test/groundstation/*/libgroundstation.a 2>/dev/null | head -1)
@@ -47,7 +47,7 @@ fi
 # `build-run.sh -AppleLanguages '(de)'` runs one instance in another locale without writing a
 # settings fact -- which is the only way to exercise a tr() path, since QGCApplication takes
 # QLocale::system() unless a language setting overrides it.
-QGC_DEBUG_API_PORT="$port" nohup "$app" --allow-multiple --native-window "$@" > /tmp/qgc-app.log 2>&1 &
+QGC_DEBUG_API_PORT="$port" nohup "$app" --allow-multiple "$@" > /tmp/qgc-app.log 2>&1 &
 pid=$!
 echo "$pid" > /tmp/qgc-app.pid
 

@@ -6,7 +6,7 @@ description: >-
 
 inputs:
   platform-workflows:
-    description: Comma-separated platform workflow names (e.g. "Linux,Windows,MacOS,Android")
+    description: Comma-separated platform workflow names (e.g. "Linux,Windows,Android")
     required: true
   head-sha:
     description: Head SHA to look up runs for

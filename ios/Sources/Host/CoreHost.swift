@@ -33,6 +33,9 @@ enum CoreHost {
             "--save-path", documents.appendingPathComponent(application, isDirectory: true).path,
             "--app-version", version,
         ] + debug
+        #if os(macOS)
+        useBundledGStreamer()
+        #endif
         qgc_ios_register_gstreamer_plugins(Bundle.main.path(forResource: "ca-certificates", ofType: "crt"))
         launch(arguments)
         GcsLocation.start()
@@ -65,6 +68,37 @@ enum CoreHost {
         false
         #endif
     }
+
+    #if os(macOS)
+    /// A packaged app carries its own GStreamer.framework (ios/package-macos.sh), so GStreamer is pointed at the
+    /// plugins, plugin scanner and GIO modules inside it rather than anything installed on the Mac, the way the
+    /// Qt desktop app's GStreamerEnvironment did. A development build has none embedded and is left alone.
+    private static func useBundledGStreamer() {
+        guard let frameworks = Bundle.main.privateFrameworksURL else { return }
+        let root = frameworks.appendingPathComponent("GStreamer.framework/Versions/1.0", isDirectory: true)
+        let plugins = root.appendingPathComponent("lib/gstreamer-1.0", isDirectory: true).path
+        guard FileManager.default.fileExists(atPath: plugins) else { return }
+        let scanner = root.appendingPathComponent("libexec/gstreamer-1.0/gst-plugin-scanner").path
+        let gioModules = root.appendingPathComponent("lib/gio/modules", isDirectory: true).path
+        for name in ["GST_PLUGIN_PATH", "GST_PLUGIN_PATH_1_0", "GST_PLUGIN_SCANNER", "GST_PLUGIN_SCANNER_1_0", "GIO_EXTRA_MODULES"] {
+            unsetenv(name)
+        }
+        setenv("GST_PLUGIN_SYSTEM_PATH_1_0", plugins, 1)
+        setenv("GST_PLUGIN_SYSTEM_PATH", plugins, 1)
+        setenv("GST_REGISTRY_REUSE_PLUGIN_SCANNER", "no", 1)
+        setenv("GST_REGISTRY_FORK", "no", 1)
+        if FileManager.default.isExecutableFile(atPath: scanner) {
+            setenv("GST_PLUGIN_SCANNER_1_0", scanner, 1)
+            setenv("GST_PLUGIN_SCANNER", scanner, 1)
+        }
+        if FileManager.default.fileExists(atPath: gioModules) {
+            setenv("GIO_EXTRA_MODULES", gioModules, 1)
+        }
+        if let certificates = Bundle.main.path(forResource: "ca-certificates", ofType: "crt") {
+            setenv("SSL_CERT_FILE", certificates, 0)
+        }
+    }
+    #endif
 
     private static func launch(_ arguments: [String]) {
         var pointers = arguments.map { strdup($0) }

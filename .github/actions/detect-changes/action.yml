@@ -3,7 +3,7 @@ description: Detect source, test, and CI changes for one or more platforms
 
 inputs:
   platform:
-    description: "Space-separated platform(s) (linux, windows, macos, android, ios, docker-linux, docker-android)"
+    description: "Space-separated platform(s) (linux, windows, android, ios, docker-linux, docker-android)"
     required: true
 
 outputs:
@@ -16,9 +16,6 @@ outputs:
   windows:
     description: "Windows-relevant files changed"
     value: ${{ steps.check.outputs.windows }}
-  macos:
-    description: "macOS-relevant files changed"
-    value: ${{ steps.check.outputs.macos }}
   android:
     description: "Android-relevant files changed"
     value: ${{ steps.check.outputs.android }}

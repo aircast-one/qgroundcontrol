@@ -12,7 +12,6 @@ on:
       - 'tools/uv.lock'
       - 'tools/tests/**'
       - 'tools/android/studio.py'
-      - 'tools/macos/xcode.py'
       - 'tools/common/**'
       - 'tools/generators/**'
       - 'tools/analyzers/**'
@@ -33,7 +32,6 @@ on:
       - 'tools/uv.lock'
       - 'tools/tests/**'
       - 'tools/android/studio.py'
-      - 'tools/macos/xcode.py'
       - 'tools/common/**'
       - 'tools/generators/**'
       - 'tools/analyzers/**'
@@ -112,7 +110,6 @@ jobs:
             tools/setup
             tools/tests
             tools/android/studio.py
-            tools/macos/xcode.py
             tools/common
             tools/generators
             tools/analyzers

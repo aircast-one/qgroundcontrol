@@ -16,16 +16,4 @@ target_sources(${CMAKE_PROJECT_NAME}
         QGCVideoC.h
 )
 
-if(APPLE AND NOT IOS)
-    target_sources(${CMAKE_PROJECT_NAME}
-        PRIVATE
-            QGCLinksC.cc
-            QGCLinksC.h
-            QGCMapTileC.cc
-            QGCMapTileC.h
-            QGCNativeDebugC.cc
-            QGCNativeDebugC.h
-    )
-endif()
-
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

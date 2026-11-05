@@ -14,7 +14,7 @@ class TestWorkflowNameForPlatform:
     def test_regular_platform(self) -> None:
         assert workflow_name_for_platform("linux") == "linux"
         assert workflow_name_for_platform("windows") == "windows"
-        assert workflow_name_for_platform("macos") == "macos"
+        assert workflow_name_for_platform("android") == "android"
 
     def test_docker_prefix(self) -> None:
         assert workflow_name_for_platform("docker-linux") == "docker"
@@ -59,7 +59,7 @@ class TestHasRelevantChanges:
         assert has_relevant_changes(["CMakeLists.txt"], "linux")
 
     def test_cmake_dir_triggers(self) -> None:
-        assert has_relevant_changes(["cmake/FindFoo.cmake"], "macos")
+        assert has_relevant_changes(["cmake/FindFoo.cmake"], "windows")
 
     def test_qrc_triggers(self) -> None:
         assert has_relevant_changes(["resources/qgc.qrc"], "linux")
@@ -124,8 +124,8 @@ class TestHasRelevantChanges:
         assert has_relevant_changes(["test/UnitTest.cc"], "linux")
 
     def test_deploy_platform_triggers(self) -> None:
-        assert has_relevant_changes(["deploy/macos/Info.plist"], "macos")
-        assert not has_relevant_changes(["deploy/macos/Info.plist"], "linux")
+        assert has_relevant_changes(["deploy/windows/installer.nsi"], "windows")
+        assert not has_relevant_changes(["deploy/windows/installer.nsi"], "linux")
 
     def test_scripts_dir_triggers_all(self) -> None:
         assert has_relevant_changes([".github/scripts/foo.py"], "windows")

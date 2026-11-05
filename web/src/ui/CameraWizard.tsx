@@ -62,7 +62,7 @@ export const CameraWizard = ({
   const [rtsp, setRtsp] = useState(view.rtsp);
   const [name, setName] = useState(view.suggestedName);
   const address = useFold(view.addressOpen);
-  const makes = useFold(false);
+  const makes = useFold(true);
   const naming = useFold(false);
   const tech = useFold(fixPort !== null);
   const portFold = useFold(false);

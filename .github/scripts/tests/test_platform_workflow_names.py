@@ -32,7 +32,6 @@ EXTRA_TRIGGERS: frozenset[str] = frozenset({"pre-commit"})
 PLATFORM_FILES: dict[str, str] = {
     "Linux": "linux.yml",
     "Windows": "windows.yml",
-    "MacOS": "macos.yml",
     "Android": "android.yml",
 }
 

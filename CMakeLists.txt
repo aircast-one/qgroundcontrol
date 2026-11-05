@@ -66,7 +66,6 @@ endif()
 
 if(QGC_HEADLESS_CORE)
     set(QGC_BUILD_TESTING OFF CACHE BOOL "Enable unit tests" FORCE)
-    set(QGC_NATIVE_UI ON CACHE BOOL "Build the in-tree Swift UI into the macOS app" FORCE)
 endif()
 
 # Disable testing if not explicitly enabled
@@ -450,10 +449,6 @@ endif()
 
 add_subdirectory(src)
 add_subdirectory(groundstation)
-
-if(MACOS)
-    add_subdirectory(macos)
-endif()
 
 if(QGC_BUILD_TESTING)
     add_subdirectory(test)
