@@ -5,7 +5,7 @@ import { type DeviceBadge, parseBadge } from '@/ui/DeviceKit';
 import { type TailscaleCard, optBadge, parseTailscale } from '@/ui/DeviceNetwork';
 import type { DevicePage } from '@/ui/DeviceStatus';
 import { type DeviceEndpoint, parseEndpointList } from '@/ui/DeviceTelemetry';
-import type { WifiReopen } from '@/ui/DeviceWifiWizard';
+import { type WifiReopen, parseReopen } from '@/ui/DeviceWifiWizard';
 
 export type SetupStep = { readonly key: string; readonly label: string; readonly title: string; readonly lead: string; readonly status: DeviceBadge | null };
 
@@ -13,6 +13,7 @@ export type SetupCheckRow = { readonly label: string; readonly status: DeviceBad
 
 export type SetupInternet = {
   readonly online: DeviceBadge;
+  readonly lockdown: DeviceBadge | null;
   readonly lastJoin: DeviceBadge | null;
   readonly joinOpen: boolean;
   readonly reopen: WifiReopen;
@@ -37,12 +38,12 @@ export type SetupView = {
 export type SetupNav = { readonly back: boolean; readonly later: boolean; readonly next: 'next' | 'skip' | null; readonly finish: boolean };
 
 const parseInternet = (json: Json | null): SetupInternet => {
-  const reopen = optJSONObject(json, 'reopen');
   return {
     online: parseBadge(json?.online),
+    lockdown: optBadge(json, 'lockdown'),
     lastJoin: optBadge(json, 'lastJoin'),
     joinOpen: optBoolean(json, 'joinOpen'),
-    reopen: { host: optText(reopen, 'host'), hostname: optText(reopen, 'hostname') },
+    reopen: parseReopen(optJSONObject(json, 'reopen')),
     connection: parsePage(optJSONObject(json, 'connection')),
     hint: optText(json, 'hint'),
   };

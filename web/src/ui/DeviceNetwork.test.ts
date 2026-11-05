@@ -86,7 +86,11 @@ describe('DeviceNetworkTest', () => {
     expect(held?.wifi.held?.text).toBe('Hotspot kept on by hand');
     expect(held?.wifi.saved).toEqual({ label: 'Join workshop', confirm: 'Join workshop now?' });
     expect(held?.wifi.hotspot?.label).toBe('Use hotspot');
-    expect(view?.wifi.reopen).toEqual({ host: 'harness.local', hostname: 'harness' });
+    expect(view?.wifi.reopen).toEqual({ host: 'harness.local', hostname: 'harness', tailnet: false });
+    expect(view?.lockdown).toBeNull();
+    const fight = parseNetwork({ ...VIEW, lockdown: { level: 3, text: 'Fight mode: this device ignores its local network' }, wifi: { ...VIEW.wifi, reopen: { host: 'pi4.ts.example.net', hostname: 'pi4', tailnet: true } } });
+    expect(fight?.lockdown?.text).toContain('Fight mode');
+    expect(fight?.wifi.reopen).toEqual({ host: 'pi4.ts.example.net', hostname: 'pi4', tailnet: true });
     expect(view?.interfaces.links[0]?.editor?.iface).toBe('eth0');
     expect(view?.interfaces.links[0]?.role).toBeNull();
     expect(view?.interfaces.saved[0]?.ipv4.method).toBe('auto');

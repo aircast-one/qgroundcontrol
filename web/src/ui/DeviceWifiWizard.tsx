@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { isJson, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
+import { type Json, isJson, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { FilledTonalButton, OutlinedButton, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
@@ -12,7 +12,9 @@ export type WifiNetwork = { readonly ssid: string; readonly signal: number; read
 
 export type WifiScan = { readonly networks: readonly WifiNetwork[]; readonly cached: boolean; readonly scannedAt: string };
 
-export type WifiReopen = { readonly host: string; readonly hostname: string };
+export type WifiReopen = { readonly host: string; readonly hostname: string; readonly tailnet: boolean };
+
+export const parseReopen = (json: Json | null): WifiReopen => ({ host: optText(json, 'host'), hostname: optText(json, 'hostname'), tailnet: optBoolean(json, 'tailnet') });
 
 export type AppPlace = { readonly pathname: string; readonly hash: string };
 
@@ -195,7 +197,25 @@ const WifiJoining = ({ join, reopen, onBack }: { join: WifiJoin; reopen: WifiReo
       <div role="status">
         <Text typography="bodyLarge">{join.status}</Text>
       </div>
-      {join.instructions ? (
+      {join.instructions && reopen.tailnet ? (
+        <div role="note" aria-label="How to reach the device again" className="flex flex-col gap-2 rounded-shape-md bg-surface-container-high px-4 py-3">
+          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+            This device is in fight mode: it does not answer on the local network. Once it is on <strong className="text-on-surface">{join.target}</strong> it rejoins Tailscale by itself.
+          </Text>
+          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+            Open{' '}
+            {link === '' ? (
+              reopenLabel(link)
+            ) : (
+              <a href={link} target="_blank" rel="noopener" className="font-mono break-all text-on-surface underline">
+                {reopenLabel(link)}
+              </a>
+            )}{' '}
+            in a minute or two.
+          </Text>
+        </div>
+      ) : null}
+      {join.instructions && !reopen.tailnet ? (
         <div role="note" aria-label="How to reach the device again" className="flex flex-col gap-2 rounded-shape-md bg-surface-container-high px-4 py-3">
           <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
             The recovery hotspot is turning off. To reach the device again:

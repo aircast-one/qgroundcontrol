@@ -48,7 +48,7 @@ export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
     <DeviceColumns
       left={
         <>
-          <InternetSection uplink={view.uplink} wifi={view.wifi} onOpen={onOpen} />
+          <InternetSection uplink={view.uplink} wifi={view.wifi} lockdown={view.lockdown} onOpen={onOpen} />
           <OtherLinksSection view={view} />
           <FootNote text="The device routes through the best link that reaches the internet and moves off one that stops." />
         </>
@@ -65,11 +65,12 @@ export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
   );
 };
 
-const InternetSection = ({ uplink, wifi, onOpen }: { uplink: UplinkCard; wifi: WifiCard; onOpen: (href: string) => void }) => {
+const InternetSection = ({ uplink, wifi, lockdown, onOpen }: { uplink: UplinkCard; wifi: WifiCard; lockdown: DeviceBadge | null; onOpen: (href: string) => void }) => {
   const [joining, setJoining] = useState(false);
   return (
     <DeviceSection title="Internet" badge={uplink.status}>
       <UplinkBody uplink={uplink} onOpen={onOpen} />
+      {lockdown !== null ? <DeviceNotice notice={lockdown} /> : null}
       {wifi.joined !== null && wifi.joined.level !== DeviceLevel.Ready ? <DeviceNotice notice={wifi.joined} /> : null}
       {wifi.held !== null ? <DeviceNotice notice={wifi.held} /> : null}
       <Actions>

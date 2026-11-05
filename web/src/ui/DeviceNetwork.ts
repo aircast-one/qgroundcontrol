@@ -1,5 +1,6 @@
 import { type Json, isJson, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
+import { type WifiReopen, parseReopen } from '@/ui/DeviceWifiWizard';
 import { type DeviceBadge, type DeviceChartView, type DeviceOption, parseBadge, parseBadges, parseChart, parseOptions } from '@/ui/DeviceKit';
 
 export type DeviceFact = { readonly label: string; readonly value: string };
@@ -53,7 +54,7 @@ export type WifiCard = CardHead & {
   readonly held: DeviceBadge | null;
   readonly hotspot: ConfirmedAction | null;
   readonly saved: ConfirmedAction | null;
-  readonly reopen: { readonly host: string; readonly hostname: string };
+  readonly reopen: WifiReopen;
 };
 
 export type IPv4Settings = { readonly method: string; readonly metric: string; readonly metricPlaceholder: string; readonly address: string; readonly gateway: string; readonly dns: string };
@@ -125,6 +126,7 @@ export type IceServer = { readonly url: string; readonly username: string; reado
 export type RelayCard = CardHead & { readonly on: boolean; readonly configured: boolean; readonly reason: string; readonly notice: DeviceBadge; readonly servers: readonly IceServer[] };
 
 export type NetworkView = {
+  readonly lockdown: DeviceBadge | null;
   readonly uplink: UplinkCard;
   readonly modem: ModemCard | null;
   readonly starlink: StarlinkCard;
@@ -218,7 +220,7 @@ const parseWifi = (json: Json | null): WifiCard => {
     held: optBadge(json, 'held'),
     hotspot: parseConfirmed(optJSONObject(json, 'hotspot')),
     saved: parseConfirmed(optJSONObject(json, 'saved')),
-    reopen: { host: optText(reopen, 'host'), hostname: optText(reopen, 'hostname') },
+    reopen: parseReopen(reopen),
   };
 };
 
@@ -346,6 +348,7 @@ export const parseNetwork = (json: unknown): NetworkView | null =>
         uplink: parseUplink(json.uplink),
         modem: parseModem(optJSONObject(json, 'modem')),
         starlink: parseStarlink(optJSONObject(json, 'starlink')),
+        lockdown: optBadge(json, 'lockdown'),
         wifi: parseWifi(optJSONObject(json, 'wifi')),
         interfaces: parseInterfaces(optJSONObject(json, 'interfaces')),
         data: parseData(optJSONObject(json, 'data')),

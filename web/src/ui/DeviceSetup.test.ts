@@ -44,7 +44,8 @@ describe('DeviceSetupTest', () => {
     expect(view?.steps.map((step) => step.key)).toEqual(['network', 'tailscale', 'camera', 'telemetry', 'done']);
     expect(view?.steps[0]?.status).toEqual({ level: DeviceLevel.Ready, text: 'ready' });
     expect(view?.steps[1]?.status).toBeNull();
-    expect(view?.internet.reopen).toEqual({ host: 'falcon.local', hostname: 'falcon' });
+    expect(view?.internet.reopen).toEqual({ host: 'falcon.local', hostname: 'falcon', tailnet: false });
+    expect(view?.internet.lockdown).toBeNull();
     expect(view?.internet.lastJoin?.text).toContain('Last Wi-Fi attempt 3m ago');
     expect(parseSetup({ ...served, internet: { ...served.internet, lastJoin: undefined } })?.internet.lastJoin).toBeNull();
     expect(view?.internet.connection.href).toBe('/network');
