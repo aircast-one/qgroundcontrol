@@ -47,6 +47,13 @@ internal static class Map3dLook
             : ((recent[^1].At.X - recent[0].At.X) * 1000.0 / span, (recent[^1].At.Y - recent[0].At.Y) * 1000.0 / span);
     }
 
+    public static (double Twist, double Rise, double Zoom) Spin(IReadOnlyList<(double Twist, double Rise, double Zoom, long Ms)> samples, long now)
+    {
+        var recent = samples.Where(sample => now - sample.Ms < FlingWindowMs).ToList();
+        var perSecond = 1000.0 / FlingWindowMs;
+        return (recent.Sum(sample => sample.Twist) * perSecond, recent.Sum(sample => sample.Rise) * perSecond, recent.Sum(sample => sample.Zoom) * perSecond);
+    }
+
     private const double NeedleReach = 0.8;
     private const double NeedleHalfWidth = 0.22;
     private const long FlingWindowMs = 100;
@@ -65,6 +72,7 @@ public sealed partial class Map3dView : UserControl
     private const string OpenCommand = "map3d.open";
     private const string PickCommand = "map3d.pick";
     private const string FlingCommand = "map3d.fling";
+    private const string SpinCommand = "map3d.spin";
     private const string StopCommand = "map3d.stop";
     private const string Drawn = "drawn";
     private const string Failed = "failed";
@@ -107,6 +115,7 @@ public sealed partial class Map3dView : UserControl
     private bool _showing;
     private bool _dragged;
     private ImmutableList<(Point At, long Ms)> _samples = ImmutableList<(Point At, long Ms)>.Empty;
+    private ImmutableList<(double Twist, double Rise, double Zoom, long Ms)> _spins = ImmutableList<(double Twist, double Rise, double Zoom, long Ms)>.Empty;
 
     public Map3dView()
     {
@@ -334,6 +343,7 @@ public sealed partial class Map3dView : UserControl
         _drag = _twoFingered ? null : new Drag(e.Pointer.PointerId, point.Position, point.Position, orbit, false);
         _dragged = _twoFingered;
         _samples = ImmutableList.Create((point.Position, Environment.TickCount64));
+        _spins = _spins.Clear();
         Send(StopCommand);
         _root.CapturePointer(e.Pointer);
         e.Handled = true;
@@ -353,7 +363,7 @@ public sealed partial class Map3dView : UserControl
         if (_drag is not { } drag || drag.Pointer != e.Pointer.PointerId) return;
         var moved = drag.Moved || Math.Abs(at.X - drag.Start.X) + Math.Abs(at.Y - drag.Start.Y) > TapSlop;
         var (dx, dy) = (at.X - drag.Last.X, at.Y - drag.Last.Y);
-        if (moved && drag.Orbit) Orbited(dx, dy);
+        if (moved && drag.Orbit) Spun(Orbited(dx, dy), 1);
         else if (moved) Send(PanCommand, dx, dy, Math.Max(_root.ActualWidth, 1));
         _drag = drag with { Last = at, Moved = moved };
         _dragged = _dragged || moved;
@@ -373,12 +383,15 @@ public sealed partial class Map3dView : UserControl
 
     private void OnReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (_drag is { Moved: true, Orbit: false } drag && drag.Pointer == e.Pointer.PointerId && !_twoFingered)
+        var now = Environment.TickCount64;
+        if (_drag is { Moved: true, Orbit: true } orbit && orbit.Pointer == e.Pointer.PointerId && !_twoFingered)
+            SendSpin(now);
+        else if (_drag is { Moved: true } drag && drag.Pointer == e.Pointer.PointerId && !_twoFingered)
         {
-            var now = Environment.TickCount64;
             var (vx, vy) = Map3dLook.Velocity(_samples.Add((e.GetCurrentPoint(_root).Position, now)), now);
             Send(FlingCommand, vx, vy, Math.Max(_root.ActualWidth, 1));
         }
+        if (_twoFingered && _touches.Remove(e.Pointer.PointerId).IsEmpty) SendSpin(now);
         Lifted(e.Pointer.PointerId);
         _root.ReleasePointerCapture(e.Pointer);
         e.Handled = true;
@@ -414,10 +427,12 @@ public sealed partial class Map3dView : UserControl
         _compassDrag = drag with { Last = at, Moved = moved };
     }
 
-    private void Orbited(double dx, double dy)
+    private (double Twist, double Rise) Orbited(double dx, double dy)
     {
-        Send(TurnCommand, dx / Math.Max(_root.ActualWidth, 1) * TurnPerViewWidth);
+        var twist = dx / Math.Max(_root.ActualWidth, 1) * TurnPerViewWidth;
+        Send(TurnCommand, twist);
         Send(TiltCommand, -dy, Math.Max(_root.ActualHeight, 1));
+        return (twist, -dy);
     }
 
     private void Pinched(Pinch3D pinch)
@@ -425,6 +440,16 @@ public sealed partial class Map3dView : UserControl
         if (pinch.Scale != 1) ZoomBy(pinch.Scale);
         if (pinch.Twist != 0) Send(TurnCommand, pinch.Twist);
         if (pinch.Rise != 0) Send(TiltCommand, pinch.Rise, Math.Max(_root.ActualHeight, 1));
+        Spun((pinch.Twist, pinch.Rise), pinch.Scale);
+    }
+
+    private void Spun((double Twist, double Rise) swung, double scale) =>
+        _spins = _spins.Add((swung.Twist, swung.Rise, Math.Log(scale), Environment.TickCount64));
+
+    private void SendSpin(long now)
+    {
+        var (twist, rise, zoom) = Map3dLook.Spin(_spins, now);
+        Send(SpinCommand, twist, rise, Math.Max(_root.ActualHeight, 1), zoom);
     }
 
     private static (Vector2 A, Vector2 B)? Pair(ImmutableSortedDictionary<uint, Vector2> touches) =>

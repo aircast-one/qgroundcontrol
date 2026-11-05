@@ -27,6 +27,7 @@ const MAP3D_NORTH = 'map3d.north';
 const MAP3D_OPEN = 'map3d.open';
 const MAP3D_PICK = 'map3d.pick';
 const MAP3D_FLING = 'map3d.fling';
+const MAP3D_SPIN = 'map3d.spin';
 const MAP3D_STOP = 'map3d.stop';
 const FLING_WINDOW_MS = 100;
 const TURN_PER_VIEW_WIDTH_DEG = 180.0;
@@ -100,6 +101,18 @@ export const flingVelocity = (samples: readonly PointerSample[], release: Pointe
   const from = samples.find(within(release)) ?? release;
   const seconds = (release.time - from.time) / 1000;
   return seconds > 0 ? Offset((release.at.x - from.at.x) / seconds, (release.at.y - from.at.y) / seconds) : Offset(0, 0);
+};
+
+export type SpinSample = { readonly turn: number; readonly up: number; readonly zoom: number; readonly time: number };
+
+const fresh = (time: number) => (sample: { readonly time: number }): boolean => time - sample.time < FLING_WINDOW_MS;
+
+export const recentSpins = (samples: readonly SpinSample[], latest: SpinSample): readonly SpinSample[] => [...samples.filter(fresh(latest.time)), latest];
+
+export const spinRates = (samples: readonly SpinSample[], time: number): readonly [number, number, number] => {
+  const recent = samples.filter(fresh(time));
+  const perSecond = (part: (sample: SpinSample) => number): number => (recent.reduce((sum, sample) => sum + part(sample), 0) * 1000) / FLING_WINDOW_MS;
+  return [perSecond((sample) => sample.turn), perSecond((sample) => sample.up), perSecond((sample) => sample.zoom)];
 };
 
 const pairOf = (pointers: ReadonlyMap<number, Offset>): Pair | null => {
@@ -218,6 +231,7 @@ export const Map3dView = ({
     tapUpAt: -Infinity,
     held: false,
     samples: [] as readonly PointerSample[],
+    spins: [] as readonly SpinSample[],
     timer: undefined as ReturnType<typeof setTimeout> | undefined,
   });
   useEffect(() => {
@@ -258,6 +272,7 @@ export const Map3dView = ({
     now.second = event.timeStamp - now.tapUpAt <= DOUBLE_TAP_TIMEOUT_MS;
     now.held = false;
     now.samples = [{ at, time: event.timeStamp }];
+    now.spins = [];
     const element = event.currentTarget;
     now.timer =
       event.pointerType === 'mouse'
@@ -286,6 +301,7 @@ export const Map3dView = ({
       if (step.scale !== 1) send(MAP3D_ZOOM, step.scale);
       if (step.turn !== 0) send(MAP3D_TURN, step.turn);
       if (step.up !== 0) send(MAP3D_TILT, step.up, height);
+      now.spins = recentSpins(now.spins, { turn: step.turn, up: step.up, zoom: Math.log(step.scale), time: event.timeStamp });
       return;
     }
     const moved = minus(at, last);
@@ -293,6 +309,7 @@ export const Map3dView = ({
     if (now.twist) {
       if (moved.x !== 0) send(MAP3D_TURN, mouseTurn(moved.x, width));
       if (moved.y !== 0) send(MAP3D_TILT, -moved.y, height);
+      now.spins = recentSpins(now.spins, { turn: mouseTurn(moved.x, width), up: -moved.y, zoom: 0, time: event.timeStamp });
       return;
     }
     now.samples = recentSamples(now.samples, { at, time: event.timeStamp });
@@ -310,6 +327,10 @@ export const Map3dView = ({
     if (!cancelled && now.moving && !now.pinched && !now.twist) {
       const velocity = flingVelocity(now.samples, { at: Offset(event.clientX, event.clientY), time: event.timeStamp });
       send(MAP3D_FLING, velocity.x, velocity.y, event.currentTarget.clientWidth);
+    }
+    if (!cancelled && now.moving && now.pointers.size === 0 && (now.pinched || now.twist)) {
+      const [turn, rise, zoom] = spinRates(now.spins, event.timeStamp);
+      send(MAP3D_SPIN, turn, rise, event.currentTarget.clientHeight, zoom);
     }
     now.tapUpAt = tapped && !now.second ? event.timeStamp : -Infinity;
   };

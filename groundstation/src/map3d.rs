@@ -16,6 +16,7 @@ pub const MAP3D_OPEN: &str = "map3d.open";
 pub const MAP3D_LOOK: &str = "map3d.look";
 pub const MAP3D_PICK: &str = "map3d.pick";
 pub const MAP3D_FLING: &str = "map3d.fling";
+pub const MAP3D_SPIN: &str = "map3d.spin";
 pub const MAP3D_STOP: &str = "map3d.stop";
 pub const MAP3D_CHANGED: &str = "core.map3d@changed";
 pub const DEPS: &[&str] = &[
@@ -33,6 +34,9 @@ const FOLLOW_RANGE_PER_HEIGHT: f64 = 4.0;
 const FOLLOW_RANGE_M: (f64, f64) = (150.0, 1000.0);
 const GLIDE_DECAY_S: f64 = 0.35;
 const GLIDE_SPEED_PX_S: (f64, f64) = (60.0, 5000.0);
+const GLIDE_TURN_DEG_S: (f64, f64) = (30.0, 360.0);
+const GLIDE_ZOOM_PER_S: (f64, f64) = (0.5, 4.0);
+const GLIDE_SETTLED_S: f64 = 8.0 * GLIDE_DECAY_S;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Orbit {
@@ -60,10 +64,24 @@ pub const START: Orbit = Orbit {
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+enum Motion {
+    Pan {
+        right: f64,
+        down: f64,
+        width: f64,
+    },
+    Spin {
+        clockwise: f64,
+        up: f64,
+        height: f64,
+        zoom: f64,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Glide {
     from: Orbit,
-    velocity: (f64, f64),
-    width: f64,
+    motion: Motion,
     at: Instant,
 }
 
@@ -114,6 +132,7 @@ pub fn owns(path: &str) -> bool {
         MAP3D_LOOK,
         MAP3D_PICK,
         MAP3D_FLING,
+        MAP3D_SPIN,
         MAP3D_STOP,
     ]
     .contains(&path)
@@ -124,23 +143,43 @@ pub fn orbit() -> Orbit {
     GLIDE
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .map_or(held, |glide| glided(&glide, Instant::now()))
+        .map_or(held, |glide| {
+            let now = Instant::now();
+            if glide.reshapes_view(now) {
+                CHANGED.store(true, Ordering::SeqCst);
+            }
+            glided(&glide, now)
+        })
+}
+
+impl Glide {
+    fn reshapes_view(&self, now: Instant) -> bool {
+        matches!(self.motion, Motion::Spin { .. })
+            && now.saturating_duration_since(self.at).as_secs_f64() < GLIDE_SETTLED_S
+    }
 }
 
 pub fn glided(glide: &Glide, now: Instant) -> Orbit {
     let elapsed = now.saturating_duration_since(glide.at).as_secs_f64();
     let reach = GLIDE_DECAY_S * (1.0 - (-elapsed / GLIDE_DECAY_S).exp());
-    glide.from.focus.map_or(glide.from, |spot| {
-        panned(
-            glide.from,
-            spot,
-            [
-                glide.velocity.0 * reach,
-                glide.velocity.1 * reach,
-                glide.width,
-            ],
-        )
-    })
+    match glide.motion {
+        Motion::Pan { right, down, width } => glide.from.focus.map_or(glide.from, |spot| {
+            panned(glide.from, spot, [right * reach, down * reach, width])
+        }),
+        Motion::Spin {
+            clockwise,
+            up,
+            height,
+            zoom,
+        } => {
+            let swung = tilted(turned(glide.from, clockwise * reach), [up * reach, height]);
+            if zoom == 0.0 {
+                swung
+            } else {
+                zoomed(swung, (zoom * reach).exp())
+            }
+        }
+    }
 }
 
 pub fn flung(orbit: Orbit, [right, down, width]: [f64; 3], at: Instant) -> Option<Glide> {
@@ -148,10 +187,37 @@ pub fn flung(orbit: Orbit, [right, down, width]: [f64; 3], at: Instant) -> Optio
     let scale = speed.min(GLIDE_SPEED_PX_S.1) / speed.max(f64::EPSILON);
     (speed >= GLIDE_SPEED_PX_S.0 && orbit.focus.is_some() && width > 0.0).then_some(Glide {
         from: orbit,
-        velocity: (right * scale, down * scale),
-        width,
+        motion: Motion::Pan {
+            right: right * scale,
+            down: down * scale,
+            width,
+        },
         at,
     })
+}
+
+pub fn spun(orbit: Orbit, [clockwise, up, height, zoom]: [f64; 4], at: Instant) -> Option<Glide> {
+    let clockwise = brisk(clockwise, GLIDE_TURN_DEG_S);
+    let up = brisk(up, GLIDE_SPEED_PX_S);
+    let zoom = brisk(zoom, GLIDE_ZOOM_PER_S);
+    (height > 0.0 && [clockwise, up, zoom].iter().any(|rate| *rate != 0.0)).then_some(Glide {
+        from: orbit,
+        motion: Motion::Spin {
+            clockwise,
+            up,
+            height,
+            zoom,
+        },
+        at,
+    })
+}
+
+fn brisk(rate: f64, (least, most): (f64, f64)) -> f64 {
+    if rate.abs() < least {
+        0.0
+    } else {
+        rate.clamp(-most, most)
+    }
 }
 
 pub fn take_changed() -> bool {
@@ -318,6 +384,18 @@ pub fn run(path: &str, args: &str, aircraft: Option<Aircraft>) -> Value {
             *glide = flung(*held, [*right, *down, *width], now);
             return json!({ "ok": true, "gliding": glide.is_some() });
         }
+        (MAP3D_SPIN, [clockwise, up, height, zoom]) => {
+            let from = if held.framed && *zoom != 0.0 {
+                Orbit {
+                    range: shown_range().unwrap_or(held.range),
+                    ..*held
+                }
+            } else {
+                *held
+            };
+            *glide = spun(from, [*clockwise, *up, *height, *zoom], now);
+            return json!({ "ok": true, "gliding": glide.is_some() });
+        }
         _ => {}
     }
     let from = match path {
@@ -352,6 +430,9 @@ fn needs(path: &str) -> &'static str {
         }
         MAP3D_LOOK => "the latitude (-90 to 90) and longitude (-180 to 180) of the spot to look at",
         MAP3D_FLING => "the release velocity right and down and the view width, in pixels",
+        MAP3D_SPIN => {
+            "the release rates: twist in degrees clockwise, drag up in pixels and the view height in pixels, and pinch as the log of the scale, each per second"
+        }
         _ => "no arguments",
     }
 }
@@ -634,11 +715,107 @@ mod tests {
             flung(START, [800.0, 0.0, 1000.0], at).is_none(),
             "following, there is no spot to carry"
         );
-        let fast = flung(pinned, [30_000.0, 40_000.0, 1000.0], at).unwrap();
-        assert!((fast.velocity.0.hypot(fast.velocity.1) - GLIDE_SPEED_PX_S.1).abs() < 1e-6);
+        let Motion::Pan { right, down, .. } = flung(pinned, [30_000.0, 40_000.0, 1000.0], at)
+            .unwrap()
+            .motion
+        else {
+            panic!("a flick pans")
+        };
+        assert!((right.hypot(down) - GLIDE_SPEED_PX_S.1).abs() < 1e-6);
         assert!(
-            (fast.velocity.1 / fast.velocity.0 - 40.0 / 30.0).abs() < 1e-9,
+            (down / right - 40.0 / 30.0).abs() < 1e-9,
             "the cap keeps the direction"
+        );
+    }
+
+    #[test]
+    fn a_twist_tilt_or_pinch_let_go_quickly_carries_on_and_slows_to_a_stop() {
+        let at = Instant::now();
+        let after = |glide: &Glide, seconds: f64| {
+            glided(glide, at + std::time::Duration::from_secs_f64(seconds))
+        };
+        let twist = spun(START, [180.0, 0.0, 800.0, 0.0], at).expect("a quick twist spins");
+        assert_eq!(
+            after(&twist, 0.0),
+            START,
+            "it starts where the fingers let go"
+        );
+        let turned_by =
+            |seconds: f64| (START.heading - after(&twist, seconds).heading).rem_euclid(360.0);
+        assert!(turned_by(0.1) > 0.0 && turned_by(0.1) < turned_by(0.5));
+        assert!((turned_by(10.0) - 180.0 * GLIDE_DECAY_S).abs() < 1e-6);
+        assert!(
+            after(&twist, 10.0).framed,
+            "a twist alone keeps framing the aircraft"
+        );
+
+        let raised = Orbit {
+            tilt: 45.0,
+            ..START
+        };
+        let tilt = spun(raised, [0.0, 800.0, 800.0, 0.0], at).unwrap();
+        assert!(after(&tilt, 0.1).tilt < raised.tilt);
+        assert!(
+            (after(&tilt, 10.0).tilt - tilted(raised, [800.0 * GLIDE_DECAY_S, 800.0]).tilt).abs()
+                < 1e-6
+        );
+        let toward_ground = spun(raised, [0.0, -50_000.0, 800.0, 0.0], at).unwrap();
+        assert_eq!(
+            after(&toward_ground, 10.0).tilt,
+            TILT_DEG.1,
+            "it stops at straight down"
+        );
+
+        let pinch = spun(START, [0.0, 0.0, 800.0, 2.0], at).unwrap();
+        assert!(after(&pinch, 0.1).range < START.range);
+        assert!(
+            (after(&pinch, 10.0).range - START.range / (2.0 * GLIDE_DECAY_S).exp()).abs() < 1e-6
+        );
+        assert!(!after(&pinch, 0.1).framed, "a pinch fixes the distance");
+    }
+
+    #[test]
+    fn only_a_brisk_release_spins_and_never_faster_than_the_cap() {
+        let at = Instant::now();
+        assert!(
+            spun(START, [10.0, 30.0, 800.0, 0.2], at).is_none(),
+            "a slow release just stops"
+        );
+        assert!(spun(START, [180.0, 0.0, 0.0, 0.0], at).is_none());
+        assert_eq!(
+            spun(START, [100_000.0, 20.0, 800.0, -0.1], at)
+                .unwrap()
+                .motion,
+            Motion::Spin {
+                clockwise: GLIDE_TURN_DEG_S.1,
+                up: 0.0,
+                height: 800.0,
+                zoom: 0.0
+            },
+            "only the brisk part carries on, capped"
+        );
+        assert_eq!(
+            spun(START, [0.0, 0.0, 800.0, -100.0], at).unwrap().motion,
+            Motion::Spin {
+                clockwise: 0.0,
+                up: 0.0,
+                height: 800.0,
+                zoom: -GLIDE_ZOOM_PER_S.1
+            }
+        );
+    }
+
+    #[test]
+    fn heads_hear_about_a_spin_until_it_settles_but_not_about_a_pan() {
+        let at = Instant::now();
+        let spin = spun(START, [180.0, 0.0, 800.0, 0.0], at).unwrap();
+        assert!(spin.reshapes_view(at + std::time::Duration::from_millis(100)));
+        assert!(!spin.reshapes_view(at + std::time::Duration::from_secs_f64(GLIDE_SETTLED_S)));
+        let pinned = moved(START, MAP3D_PAN, &[0.0, 0.0, 1000.0], Some(AIRCRAFT)).unwrap();
+        let pan = flung(pinned, [-800.0, 0.0, 1000.0], at).unwrap();
+        assert!(
+            !pan.reshapes_view(at),
+            "a pan glide moves the picture, not the compass"
         );
     }
 

@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.VelocityTracker1D
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -51,6 +52,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.AircastSpace
+import kotlin.math.ln
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -71,6 +73,7 @@ private const val MAP3D_NORTH = "map3d.north"
 private const val MAP3D_OPEN = "map3d.open"
 private const val MAP3D_PICK = "map3d.pick"
 private const val MAP3D_FLING = "map3d.fling"
+private const val MAP3D_SPIN = "map3d.spin"
 private const val MAP3D_STOP = "map3d.stop"
 private const val TURN_PER_VIEW_WIDTH_DEG = 180f
 private const val CONTROL_SCRIM_ALPHA = 0.55f
@@ -111,27 +114,35 @@ private fun Modifier.map3dGestures(onTouch: () -> Unit, onPress: (Offset, IntSiz
         onTouch()
         send(MAP3D_STOP)
         val velocity = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
+        val (twist, raise, pinch) = List(3) { VelocityTracker1D(isDataDifferential = true) }
         var travelled = Offset.Zero
         var pinched = false
         do {
             val event = awaitPointerEvent()
             val fingers = event.changes.count { it.pressed }
             val pan = event.calculatePan()
+            val at = event.changes.first().uptimeMillis
             travelled += pan
             pinched = pinched || fingers > 1
             event.changes.firstOrNull { it.id == down.id }?.let { velocity.addPosition(it.uptimeMillis, it.position) }
             if (fingers > 1) {
-                event.calculateZoom().takeIf { it != 1f }?.let { send(MAP3D_ZOOM, it) }
-                event.calculateRotation().takeIf { it != 0f }?.let { send(MAP3D_TURN, it) }
+                val (zoom, rotation) = event.calculateZoom() to event.calculateRotation()
+                zoom.takeIf { it != 1f }?.let { send(MAP3D_ZOOM, it) }
+                rotation.takeIf { it != 0f }?.let { send(MAP3D_TURN, it) }
                 pan.y.takeIf { it != 0f }?.let { send(MAP3D_TILT, -it, size.height) }
-            } else if (!pinched && travelled.getDistance() > viewConfiguration.touchSlop && pan != Offset.Zero) {
+                listOf(twist to rotation, raise to -pan.y, pinch to ln(zoom)).forEach { (tracker, moved) -> tracker.addDataPoint(at, moved) }
+            } else if (pinched) {
+                listOf(twist, raise, pinch).forEach { it.addDataPoint(at, 0f) }
+            } else if (travelled.getDistance() > viewConfiguration.touchSlop && pan != Offset.Zero) {
                 send(MAP3D_PAN, pan.x, pan.y, size.width)
             }
             if (pinched || travelled.getDistance() > viewConfiguration.touchSlop) {
                 event.changes.filter { it.positionChanged() }.forEach { it.consume() }
             }
         } while (event.changes.any { it.pressed })
-        if (!pinched && travelled.getDistance() > viewConfiguration.touchSlop) {
+        if (pinched) {
+            send(MAP3D_SPIN, twist.calculateVelocity(), raise.calculateVelocity(), size.height, pinch.calculateVelocity())
+        } else if (travelled.getDistance() > viewConfiguration.touchSlop) {
             velocity.calculateVelocity().let { send(MAP3D_FLING, it.x, it.y, size.width) }
         }
     }

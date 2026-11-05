@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { Offset, Rect } from '@/ui/FlyShell';
-import { flingVelocity, map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dPickArgs, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, recentSamples, wheelScale } from '@/ui/Map3dView';
+import { flingVelocity, map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dPickArgs, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, recentSamples, recentSpins, spinRates, wheelScale } from '@/ui/Map3dView';
 import { SyntheticDraw } from '@/ui/SyntheticView';
 
 describe('Map3dNoteTest', () => {
@@ -117,6 +117,27 @@ describe('Map3dFlingTest', () => {
   it('a drag keeps only the samples a release could still use', () => {
     expect(recentSamples([sample(0, 0, 0), sample(5, 0, 50), sample(9, 0, 120)], sample(12, 0, 150))).toEqual([sample(5, 0, 50), sample(9, 0, 120), sample(12, 0, 150)]);
     expect(recentSamples([sample(0, 0, 0)], sample(12, 0, 400))).toEqual([sample(12, 0, 400)]);
+  });
+});
+
+describe('Map3dSpinTest', () => {
+  const spin = (turn: number, up: number, zoom: number, time: number) => ({ turn, up, zoom, time });
+
+  it('a twist, tilt or pinch lets go at what it moved over its last tenth of a second, per second', () => {
+    const twist = [spin(1, 0, 0, 0), spin(3, 2, 0.01, 40), spin(3, 2, 0.01, 80)];
+    const [turn, up, zoom] = spinRates(twist, 120);
+    expect(turn).toBeCloseTo(60.0);
+    expect(up).toBeCloseTo(40.0);
+    expect(zoom).toBeCloseTo(0.2);
+  });
+
+  it('fingers held still before lifting let go still', () => {
+    expect(spinRates([spin(9, 9, 1, 0)], 300)).toEqual([0, 0, 0]);
+    expect(spinRates([], 300)).toEqual([0, 0, 0]);
+  });
+
+  it('a gesture keeps only the samples a release could still use', () => {
+    expect(recentSpins([spin(1, 0, 0, 0), spin(2, 0, 0, 50)], spin(3, 0, 0, 120))).toEqual([spin(2, 0, 0, 50), spin(3, 0, 0, 120)]);
   });
 });
 

@@ -33,6 +33,26 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertNil(pickedPoint(nil))
     }
 
+    func testAReleaseRateCountsOnlyTheLastTenthOfASecondSoAPauseBeforeLiftingStops() {
+        var rate = Rate()
+        rate.add(5, at: 10)
+        rate.add(3, at: 10.0625)
+        rate.add(2, at: 10.09375)
+        XCTAssertEqual(rate.perSecond(at: 10.125), 50, accuracy: 1e-9)
+        XCTAssertEqual(rate.perSecond(at: 10.5), 0, "fingers held still before lifting leave nothing to carry on")
+    }
+
+    func testTwoFingersSpinOnlyWhenTheLastOfTheirGesturesEndsAndANewGestureStartsFresh() {
+        var spin = Spin()
+        spin.began()
+        spin.began()
+        spin.twist.add(9, at: 1)
+        XCTAssertFalse(spin.ended(), "the pinch ended but the twist is still going")
+        XCTAssertTrue(spin.ended())
+        spin.began()
+        XCTAssertEqual(spin.twist.perSecond(at: 1), 0)
+    }
+
     func testTheMapToggleNamesTheMapItSwitchesTo() {
         XCTAssertEqual(map3dToggleText(false), "3D")
         XCTAssertEqual(map3dToggleLabel(false), "Show the 3D map")
