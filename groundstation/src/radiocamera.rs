@@ -3,6 +3,7 @@ use std::sync::{Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
+pub const DROP: usize = 11;
 pub const PITCH: usize = 18;
 pub const YAW: usize = 20;
 pub const ZOOM: usize = 21;
@@ -27,6 +28,7 @@ pub enum Move {
     Zoom(f32),
     Picture(u8),
     NextPalette,
+    Drop,
 }
 
 #[derive(Debug, Default)]
@@ -82,12 +84,16 @@ impl Sticks {
                     .is_some_and(|was| position(*was) != *at)
             })
             .map(|at| Move::Picture(PICTURES[at]));
-        let pressed = read(line, PALETTE).is_some_and(|pwm| pwm > PRESSED_PWM)
-            && self
-                .acted
-                .get(&PALETTE)
-                .is_some_and(|was| *was <= PRESSED_PWM);
-        let refreshed: Vec<(usize, u16)> = [PITCH, YAW, ZOOM, PICTURE, PALETTE]
+        let pressed = |channel: usize| {
+            read(line, channel).is_some_and(|pwm| pwm > PRESSED_PWM)
+                && self
+                    .acted
+                    .get(&channel)
+                    .is_some_and(|was| *was <= PRESSED_PWM)
+        };
+        let palette = pressed(PALETTE);
+        let dropped = pressed(DROP);
+        let refreshed: Vec<(usize, u16)> = [DROP, PITCH, YAW, ZOOM, PICTURE, PALETTE]
             .into_iter()
             .filter(|channel| {
                 !self.acted.contains_key(channel)
@@ -107,7 +113,8 @@ impl Sticks {
             .into_iter()
             .chain(zoomed)
             .chain(switched)
-            .chain(pressed.then_some(Move::NextPalette))
+            .chain(palette.then_some(Move::NextPalette))
+            .chain(dropped.then_some(Move::Drop))
             .collect()
     }
 }
@@ -130,13 +137,18 @@ fn yaw_limits() -> (f32, f32) {
         .unwrap_or(UNKNOWN_YAW_LIMITS)
 }
 
-fn guided(vehicle: u8, action: Value) {
+fn guided(vehicle: u8, action: Value, told: Option<&str>) {
     let sent = crate::hub::lock().guided(Some(vehicle), &action, crate::hub::now_ms());
-    match sent {
-        Ok(frames) => frames.iter().for_each(|(link, bytes)| {
+    match (sent, told) {
+        (Ok(frames), _) => frames.iter().for_each(|(link, bytes)| {
             crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
         }),
-        Err(reason) => log::debug!("the radio's camera channels could not {action}: {reason}"),
+        (Err(reason), Some(kind)) => {
+            crate::noticeboard::post_from_vehicle(kind, &reason);
+        }
+        (Err(reason), None) => {
+            log::debug!("the radio's camera channels could not {action}: {reason}")
+        }
     }
 }
 
@@ -151,10 +163,17 @@ pub fn steer(vehicle: u8, moves: &[Move]) {
         Move::Aim { pitch, yaw } => guided(
             vehicle,
             json!({ "action": "gimbal", "op": "aim", "pitch": pitch, "bodyYaw": yaw }),
+            None,
         ),
         Move::Zoom(percent) => guided(
             vehicle,
             json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent }),
+            None,
+        ),
+        Move::Drop => guided(
+            vehicle,
+            json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE }),
+            Some(crate::noticeboard::PAYLOAD),
         ),
         Move::Picture(value) => setting(crate::camsettings::set_setting(
             &json!([PICTURE_SETTING, value]).to_string(),
@@ -294,6 +313,29 @@ mod tests {
         assert_eq!(
             sticks.step(&line(&[(PALETTE, 2012)]), LIMITS, 40),
             vec![Move::NextPalette]
+        );
+    }
+
+    #[test]
+    fn flipping_the_drop_switch_up_drops_once_and_flipping_it_down_drops_nothing() {
+        let mut sticks = Sticks::default();
+        sticks.step(&line(&[(DROP, 988)]), LIMITS, 0);
+        assert_eq!(
+            sticks.step(&line(&[(DROP, 2012)]), LIMITS, 10),
+            vec![Move::Drop]
+        );
+        assert!(sticks.step(&line(&[(DROP, 2012)]), LIMITS, 20).is_empty());
+        assert!(sticks.step(&line(&[(DROP, 988)]), LIMITS, 30).is_empty());
+        assert_eq!(
+            sticks.step(&line(&[(DROP, 2012)]), LIMITS, 40),
+            vec![Move::Drop]
+        );
+        let mut plugged_in_high = Sticks::default();
+        assert!(
+            plugged_in_high
+                .step(&line(&[(DROP, 2012)]), LIMITS, 0)
+                .is_empty(),
+            "a radio plugged in with the switch already up drops nothing"
         );
     }
 
