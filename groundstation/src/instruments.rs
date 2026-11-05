@@ -111,10 +111,34 @@ fn converted(backend: &dyn Backend, fact: &Value) -> Option<(String, String)> {
         .and_then(Value::as_i64)
         .unwrap_or(1)
         .clamp(0, 6) as usize;
+    let (shown, name, places) = match matches!(raw_units, "m" | "meter" | "meters") {
+        true => long_distance(unit.show(raw), &unit.name, places),
+        false => (unit.show(raw), unit.name.clone(), places),
+    };
     Some((
-        crate::read::settled(crate::settingsstore::fixed_as_qt(unit.show(raw), places)),
-        unit.name.clone(),
+        crate::read::settled(crate::settingsstore::fixed_as_qt(shown, places)),
+        name,
     ))
+}
+
+/// A horizontal distance of a kilometre or a mile and more reads in that unit: "5379 km", not "5378617.7 m".
+fn long_distance(shown: f64, unit: &str, places: usize) -> (f64, String, usize) {
+    let (step, long) = match unit {
+        "m" => (1000.0, "km"),
+        "ft" => (5280.0, "mi"),
+        _ => return (shown, unit.to_string(), places),
+    };
+    match shown.abs() >= step {
+        true => {
+            let scaled = shown / step;
+            (
+                scaled,
+                long.to_string(),
+                if scaled.abs() >= 100.0 { 0 } else { 1 },
+            )
+        }
+        false => (shown, unit.to_string(), places),
+    }
 }
 
 pub fn vehicle_class_key(class: &Value) -> &'static str {
@@ -173,6 +197,21 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_long_distance_reads_in_kilometres_or_miles() {
+        assert_eq!(
+            long_distance(5_378_617.7, "m", 1),
+            (5378.6177, "km".to_string(), 0)
+        );
+        assert_eq!(long_distance(1_500.0, "m", 1), (1.5, "km".to_string(), 1));
+        assert_eq!(long_distance(999.0, "m", 1), (999.0, "m".to_string(), 1));
+        assert_eq!(long_distance(10_560.0, "ft", 1), (2.0, "mi".to_string(), 1));
+        assert_eq!(
+            long_distance(5_000.0, "ft", 1),
+            (5_000.0, "ft".to_string(), 1)
+        );
+    }
 
     #[test]
     fn the_layout_key_is_the_vehicle_class_like_fact_value_grid() {

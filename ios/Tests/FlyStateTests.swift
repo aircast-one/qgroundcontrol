@@ -153,6 +153,13 @@ final class FlyReadinessTests: XCTestCase {
         XCTAssertEqual(readinessWarning(passed), "Not ready. Aircraft setup is not complete.")
     }
 
+    func testTheFlyDeckGivesTheReasonWithoutRepeatingTheChip() {
+        XCTAssertEqual(readinessWarning(state(ready: false), named: false), "2 checks need attention before arming.")
+        var silent = state(ready: false)
+        silent.summaryDetail = ""
+        XCTAssertEqual(readinessWarning(silent, named: false), "Not ready")
+    }
+
     func testAReadinessIssueBlocksOnlyWhenTheVehicleCannotArm() {
         XCTAssertEqual(guidedReadiness(state(ready: false)), Readiness(text: "Not ready. 2 checks need attention before arming.", blocks: false))
         var refusing = state(ready: false)

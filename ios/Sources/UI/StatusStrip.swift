@@ -717,9 +717,9 @@ private struct BatteryRing: View {
                     .trim(from: 0, to: CGFloat(percent) / 100)
                     .stroke(colour ?? theme.aircast.success, style: StrokeStyle(lineWidth: BATTERY_RING_STROKE, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                Text("\(percent)")
+                // The % sign says what the ring counts: a bare "0" in a circle read as a counter of something.
+                (Text("\(percent)").monospacedDigit() + Text("%").font(.system(size: BATTERY_COUNT_SIZE, weight: .medium)))
                     .font(.labelSmall)
-                    .monospacedDigit()
                     .foregroundStyle(theme.aircast.outdoorForeground)
             }
             .padding(BATTERY_RING_STROKE / 2)

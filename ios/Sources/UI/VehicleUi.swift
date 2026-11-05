@@ -538,7 +538,7 @@ struct FlightActions<Center: View>: View {
         .task(id: actions.popupDue) { await popupSettles() }
     }
 
-    private var readiness: Readiness? { guidedReadiness(state) }
+    private var readiness: Readiness? { guidedReadiness(state, named: false) }
 
     private func entries() -> [DeckEntry] {
         let actions = actions

@@ -41,10 +41,11 @@ func chipTone(_ state: FlyState?, _ lost: Bool) -> ChipTone {
 let ALL_CHECKS_PASSED = "All checks passed."
 let SETUP_NOT_COMPLETE = "Aircraft setup is not complete."
 
-func readinessWarning(_ state: FlyState?) -> String? {
+/// `named` leads with the state ("Not ready. ..."); the Fly deck leaves it out, as the vehicle chip above already says it.
+func readinessWarning(_ state: FlyState?, named: Bool = true) -> String? {
     guard let state, state.connected, !state.armed, state.contactLost != true, notReadyToFly(state) || !state.nominal else { return nil }
     let detail = notReadyToFly(state) && state.summaryDetail == ALL_CHECKS_PASSED ? SETUP_NOT_COMPLETE : state.summaryDetail
-    let text = [state.stateText, detail].filter { !$0.isBlank }.joined(separator: ". ")
+    let text = [named || detail.isBlank ? state.stateText : "", detail].filter { !$0.isBlank }.joined(separator: ". ")
     return text.isBlank ? nil : text
 }
 
@@ -55,8 +56,8 @@ struct Readiness: Equatable {
 
 let READINESS_BLOCKED = "The vehicle will refuse to arm until this is fixed."
 
-func guidedReadiness(_ state: FlyState?) -> Readiness? {
-    readinessWarning(state).map { text in
+func guidedReadiness(_ state: FlyState?, named: Bool = true) -> Readiness? {
+    readinessWarning(state, named: named).map { text in
         let blocks = state?.canArm == false
         return Readiness(text: blocks ? "\(text.removingSuffix(".")). \(READINESS_BLOCKED)" : text, blocks: blocks)
     }
