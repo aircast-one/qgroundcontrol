@@ -13,6 +13,7 @@ export type SetupCheckRow = { readonly label: string; readonly status: DeviceBad
 
 export type SetupInternet = {
   readonly online: DeviceBadge;
+  readonly lastJoin: DeviceBadge | null;
   readonly joinOpen: boolean;
   readonly reopen: WifiReopen;
   readonly connection: DevicePage;
@@ -39,6 +40,7 @@ const parseInternet = (json: Json | null): SetupInternet => {
   const reopen = optJSONObject(json, 'reopen');
   return {
     online: parseBadge(json?.online),
+    lastJoin: optBadge(json, 'lastJoin'),
     joinOpen: optBoolean(json, 'joinOpen'),
     reopen: { host: optText(reopen, 'host'), hostname: optText(reopen, 'hostname') },
     connection: parsePage(optJSONObject(json, 'connection')),

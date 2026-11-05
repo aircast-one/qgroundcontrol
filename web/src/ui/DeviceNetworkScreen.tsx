@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { FilledTonalButton, IconButton, LinearProgressIndicator, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
@@ -15,6 +15,7 @@ import {
   type InterfacesCard,
   type ModemCard,
   type NetLink,
+  type NetworkView,
   type RelayCard,
   type SavedProfile,
   type StarlinkCard,
@@ -22,6 +23,7 @@ import {
   type TailscaleCard,
   type TailscaleControl,
   type UplinkCard,
+  type WifiCard,
   connectionFieldShown,
   emptyIceServer,
   iceRows,
@@ -33,8 +35,10 @@ import {
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDeviceView } from '@/ui/DeviceView';
-import { WifiJoin } from '@/ui/DeviceWifiWizard';
+import { WifiWizard } from '@/ui/DeviceWifiWizard';
 import { FootNote } from '@/ui/SetupRow';
+
+export const wifiActionLabel = (uplink: UplinkCard, wifi: WifiCard): string => (uplink.icon === 'wifi' || wifi.status.text === 'connected' ? 'Change Wi-Fi' : 'Join Wi-Fi');
 
 export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('network', parseNetwork);
@@ -43,30 +47,95 @@ export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
     <DeviceColumns
       left={
         <>
-          <UplinkSection uplink={view.uplink} onOpen={onOpen} />
-          {view.modem !== null ? <ModemSection modem={view.modem} /> : null}
-          <StarlinkSection starlink={view.starlink} />
-          <DeviceSection title="Wi-Fi" badge={view.wifi.status}>
-            <Summary text={view.wifi.summary} />
-            {view.wifi.joined !== null ? <DeviceNotice notice={view.wifi.joined} /> : null}
-            <WifiJoin reopen={view.wifi.reopen} />
-          </DeviceSection>
-          <InterfacesSection interfaces={view.interfaces} />
-          <FootNote text="The device routes through the best uplink that reaches the internet and moves off one that stops — this is where you say what it may use." />
+          <InternetSection uplink={view.uplink} wifi={view.wifi} onOpen={onOpen} />
+          <OtherLinksSection view={view} />
+          <FootNote text="The device routes through the best link that reaches the internet and moves off one that stops." />
         </>
       }
       right={
         <>
-          <DataSection data={view.data} />
-          <FootNote text="Mobile data is metered; the budget here is what keeps a flight from spending a month of it — set it before a SIM goes in." />
-          <TailscaleSection tailscale={view.tailscale} />
-          <RelaySection relay={view.relay} />
+          {!view.data.absent ? <DataSection data={view.data} /> : null}
+          <TailscaleSection tailscale={view.tailscale} title="Remote access" controlInline={false} />
           <FootNote text="Reaching this device from somewhere else — it is not needed to fly." />
+          <AdvancedSection view={view} />
         </>
       }
     />
   );
 };
+
+const InternetSection = ({ uplink, wifi, onOpen }: { uplink: UplinkCard; wifi: WifiCard; onOpen: (href: string) => void }) => {
+  const [joining, setJoining] = useState(false);
+  return (
+    <DeviceSection title="Internet" badge={uplink.status}>
+      <UplinkBody uplink={uplink} onOpen={onOpen} />
+      {wifi.joined !== null && wifi.joined.level !== DeviceLevel.Ready ? <DeviceNotice notice={wifi.joined} /> : null}
+      <Actions>
+        <FilledTonalButton onClick={() => setJoining((open) => !open)}>{joining ? 'Close' : wifiActionLabel(uplink, wifi)}</FilledTonalButton>
+      </Actions>
+      {joining ? (
+        <div className="mx-list my-2 rounded-shape-md bg-surface-container-high py-1">
+          <WifiWizard reopen={wifi.reopen} />
+        </div>
+      ) : null}
+    </DeviceSection>
+  );
+};
+
+const OtherLinksSection = ({ view }: { view: NetworkView }) => (
+  <DeviceSection title="Other links">
+    {view.modem !== null ? <ModemSection modem={view.modem} /> : <AbsentLink name="Cellular" status={view.data.status} note="Plug in a USB modem with a SIM and it appears here." />}
+    {view.starlink.absent ? <AbsentStarlink starlink={view.starlink} /> : <StarlinkSection starlink={view.starlink} />}
+  </DeviceSection>
+);
+
+const AbsentLink = ({ name, status, note, children }: { name: string; status: DeviceBadge; note: string; children?: ReactNode }) => (
+  <div role="group" aria-label={name} className="flex flex-col px-list py-2">
+    <div className="flex items-center justify-between gap-3">
+      <Text typography="bodyLarge">{name}</Text>
+      <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+        {status.text}
+      </Text>
+    </div>
+    <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+      {note}
+    </Text>
+    {children}
+  </div>
+);
+
+const AbsentStarlink = ({ starlink }: { starlink: StarlinkCard }) => {
+  const [setup, setSetup] = useState(starlink.address.open && starlink.notices.length > 0);
+  return (
+    <AbsentLink name="Starlink" status={starlink.status} note="Put this device on the terminal's network and it appears here.">
+      {starlink.notices.map((notice) => (
+        <DeviceNotice key={notice.text} notice={notice} />
+      ))}
+      <div className="pt-1">
+        <TextButton onClick={() => setSetup((open) => !open)}>{setup ? 'Hide dish address' : 'Dish at another address?'}</TextButton>
+      </div>
+      {setup ? <DishAddress starlink={starlink} /> : null}
+    </AbsentLink>
+  );
+};
+
+const AdvancedSection = ({ view }: { view: NetworkView }) => (
+  <DeviceDisclosure title="Advanced" summary="Interfaces and routing priority, relay server, Tailscale control server, demo dish.">
+    <InterfacesSection interfaces={view.interfaces} />
+    {view.data.absent ? <DataSection data={view.data} /> : null}
+    <RelaySection relay={view.relay} />
+    {view.tailscale.control !== null ? (
+      <DeviceSection title="Tailscale control server">
+        <ControlServer control={view.tailscale.control} />
+      </DeviceSection>
+    ) : null}
+    {view.starlink.demo !== null ? (
+      <DeviceSection title="Starlink demo">
+        <DemoDish demo={view.starlink.demo} />
+      </DeviceSection>
+    ) : null}
+  </DeviceDisclosure>
+);
 
 const Summary = ({ text }: { text: string }) =>
   text === '' ? null : (
@@ -100,8 +169,8 @@ const ProblemNotice = ({ problem }: { problem: DeviceProblem }) => (
 
 const Actions = ({ children }: { children: ReactNode }) => <div className="flex flex-wrap items-start gap-2 px-list py-2">{children}</div>;
 
-const UplinkSection = ({ uplink, onOpen }: { uplink: UplinkCard; onOpen: (href: string) => void }) => (
-  <DeviceSection title="Primary uplink" badge={uplink.status}>
+const UplinkBody = ({ uplink, onOpen }: { uplink: UplinkCard; onOpen: (href: string) => void }) => (
+  <>
     <div className="flex items-start gap-3 px-list py-2">
       <MaterialIcon name={uplinkIcon(uplink.icon)} style={{ color: md('onSurfaceVariant') }} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -153,11 +222,11 @@ const UplinkSection = ({ uplink, onOpen }: { uplink: UplinkCard; onOpen: (href: 
     ) : null}
     <DeviceText text={uplink.switchText} />
     <DeviceText text={uplink.backup} />
-  </DeviceSection>
+  </>
 );
 
 const ModemSection = ({ modem }: { modem: ModemCard }) => (
-  <DeviceSection title="Cellular modem" badge={modem.status}>
+  <DeviceSection title="Cellular" badge={modem.status}>
     {modem.notices.map((notice) => (
       <DeviceNotice key={notice.text} notice={notice} />
     ))}
@@ -215,7 +284,6 @@ const ModemSection = ({ modem }: { modem: ModemCard }) => (
 const StarlinkSection = ({ starlink }: { starlink: StarlinkCard }) => (
   <DeviceSection title="Starlink" badge={starlink.status}>
     <Summary text={starlink.summary} />
-    {starlink.demo !== null && starlink.demo.first ? <DemoDish demo={starlink.demo} /> : null}
     {starlink.notices.map((notice) => (
       <DeviceNotice key={notice.text} notice={notice} />
     ))}
@@ -231,19 +299,24 @@ const StarlinkSection = ({ starlink }: { starlink: StarlinkCard }) => (
     ))}
     {starlink.firmware !== '' ? <DeviceFact label="Firmware" value={starlink.firmware} /> : null}
     <DeviceDisclosure title="Dish address" initiallyOpen={starlink.address.open}>
-      <DeviceText text="The network address of the Starlink dish. Leave the default unless the dish is reached at a different address on this device's network. Port 9200 is assumed if you leave it off." />
-      {starlink.address.defaultFirst ? <UseDefaultAddress fallback={starlink.address.fallback} /> : null}
-      <DeviceForm
-        method="PUT"
-        path="/api/starlink/config"
-        submit="Save"
-        success="Dish address saved."
-        fields={[{ name: 'addr', label: 'Dish address', value: starlink.address.value, placeholder: '192.168.100.1:9200', keyboard: 'uri' }]}
-      />
-      {!starlink.address.defaultFirst ? <UseDefaultAddress fallback={starlink.address.fallback} /> : null}
+      <DishAddress starlink={starlink} />
     </DeviceDisclosure>
-    {starlink.demo !== null && !starlink.demo.first ? <DemoDish demo={starlink.demo} /> : null}
   </DeviceSection>
+);
+
+const DishAddress = ({ starlink }: { starlink: StarlinkCard }) => (
+  <>
+    <DeviceText text="The network address of the Starlink dish. Leave the default unless the dish is reached at a different address on this device's network. Port 9200 is assumed if you leave it off." />
+    {starlink.address.defaultFirst ? <UseDefaultAddress fallback={starlink.address.fallback} /> : null}
+    <DeviceForm
+      method="PUT"
+      path="/api/starlink/config"
+      submit="Save"
+      success="Dish address saved."
+      fields={[{ name: 'addr', label: 'Dish address', value: starlink.address.value, placeholder: '192.168.100.1:9200', keyboard: 'uri' }]}
+    />
+    {!starlink.address.defaultFirst ? <UseDefaultAddress fallback={starlink.address.fallback} /> : null}
+  </>
 );
 
 const UseDefaultAddress = ({ fallback }: { fallback: string }) =>
@@ -303,7 +376,7 @@ const RenameForm = ({ uuid, name }: { uuid: string; name: string }) => (
 const InterfacesSection = ({ interfaces }: { interfaces: InterfacesCard }) => {
   const listed = interfaces.links.length + interfaces.saved.length + interfaces.other.length > 0;
   return (
-    <DeviceSection title="Interfaces & priority" badge={interfaces.status}>
+    <DeviceSection title="Interfaces & routing priority" badge={interfaces.status}>
       <Summary text={interfaces.summary} />
       {interfaces.problem !== null ? <ProblemNotice problem={interfaces.problem} /> : null}
       {interfaces.problem === null && !listed ? <DeviceNotice notice={{ level: DeviceLevel.Neutral, text: 'No connections.' }} /> : null}
@@ -528,8 +601,8 @@ const Gauge = ({ gauge }: { gauge: DataGauge }) => (
   </div>
 );
 
-export const TailscaleSection = ({ tailscale }: { tailscale: TailscaleCard }) => (
-  <DeviceSection title="Tailscale" badge={tailscale.status}>
+export const TailscaleSection = ({ tailscale, title = 'Tailscale', controlInline = true }: { tailscale: TailscaleCard; title?: string; controlInline?: boolean }) => (
+  <DeviceSection title={title} badge={tailscale.status}>
     <Summary text={tailscale.summary} />
     {tailscale.problem !== null ? <ProblemNotice problem={tailscale.problem} /> : null}
     {tailscale.banner !== null ? (
@@ -572,6 +645,7 @@ export const TailscaleSection = ({ tailscale }: { tailscale: TailscaleCard }) =>
         {tailscale.logOut !== '' ? (
           <ActionButton
             label="Log out"
+            tonal={false}
             request={{ method: 'DELETE', path: '/api/tailscale/connection' }}
             success="Logged out of Tailscale."
             confirm={{ title: 'Log out of the tailnet?', text: tailscale.logOut, confirm: 'Log out' }}
@@ -580,7 +654,7 @@ export const TailscaleSection = ({ tailscale }: { tailscale: TailscaleCard }) =>
       </Actions>
     ) : null}
     <DeviceText text={tailscale.hint} />
-    {tailscale.control !== null ? <ControlServer control={tailscale.control} /> : null}
+    {controlInline && tailscale.control !== null ? <ControlServer control={tailscale.control} /> : null}
   </DeviceSection>
 );
 
@@ -636,7 +710,7 @@ const ControlServer = ({ control }: { control: TailscaleControl }) => (
 const RELAY_SWITCH = 'Use my relay instead of Tailscale';
 
 const RelaySection = ({ relay }: { relay: RelayCard }) => (
-  <DeviceSection title="Relay server (TURN)" badge={relay.status}>
+  <DeviceSection title="Relay server for remote video" badge={relay.status}>
     <Summary text={relay.summary} />
     {relay.configured ? (
       <DeviceSwitchRow

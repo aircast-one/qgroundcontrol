@@ -39,6 +39,7 @@ export type ModemCard = CardHead & {
 export type StarlinkDemo = { readonly on: boolean; readonly note: string; readonly condition: string; readonly conditions: readonly DeviceOption[]; readonly first: boolean };
 
 export type StarlinkCard = CardHead & {
+  readonly absent: boolean;
   readonly demo: StarlinkDemo | null;
   readonly notices: readonly DeviceBadge[];
   readonly pollError: string;
@@ -81,7 +82,7 @@ export type DataGauge = {
 
 export type BudgetSettings = { readonly summary: string; readonly monthlyCapGB: string; readonly flightCapMB: string; readonly warnPercent: string };
 
-export type DataCard = CardHead & { readonly gauge: DataGauge | null; readonly budget: BudgetSettings };
+export type DataCard = CardHead & { readonly absent: boolean; readonly gauge: DataGauge | null; readonly budget: BudgetSettings };
 
 export type TailscaleControl = {
   readonly title: string;
@@ -189,6 +190,7 @@ const parseStarlink = (json: Json | null): StarlinkCard => {
   const address = optJSONObject(json, 'address');
   return {
     ...parseHead(json),
+    absent: optBoolean(json, 'absent'),
     demo: parseDemo(optJSONObject(json, 'demo')),
     notices: parseBadges(json, 'notices'),
     pollError: optText(json, 'pollError'),
@@ -268,6 +270,7 @@ const parseData = (json: Json | null): DataCard => {
   const budget = optJSONObject(json, 'budget');
   return {
     ...parseHead(json),
+    absent: optBoolean(json, 'absent'),
     gauge: parseGauge(optJSONObject(json, 'gauge')),
     budget: { summary: optText(budget, 'summary'), monthlyCapGB: optText(budget, 'monthlyCapGB'), flightCapMB: optText(budget, 'flightCapMB'), warnPercent: optText(budget, 'warnPercent') },
   };

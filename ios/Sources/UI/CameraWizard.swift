@@ -217,6 +217,17 @@ struct CameraWizard: View {
         }
     }
 
+    @ViewBuilder
+    private func leadButton(_ title: String, leads: Bool, quiet: Bool = false, action: @escaping () -> Void) -> some View {
+        if leads {
+            Button(title, action: action).buttonStyle(.filled)
+        } else if quiet {
+            Button(title, action: action).buttonStyle(.text)
+        } else {
+            Button(title, action: action).buttonStyle(.bordered)
+        }
+    }
+
     private func restart(then next: @escaping () async -> Void = {}) {
         Task {
             await restartWizard()
@@ -547,14 +558,14 @@ struct CameraWizard: View {
         .accessibilityElement(children: .combine)
         HStack(spacing: 8) {
             if failed {
-                Button("Scan for cameras") { restart { await scanForCameras() } }.buttonStyle(.text)
+                leadButton("Scan for cameras", leads: wizard.apply.lead == "scan", quiet: true) { restart { await scanForCameras() } }
             } else {
                 Button("Start over") { restart() }.buttonStyle(.text)
             }
             Spacer(minLength: 0)
             if failed {
-                Button("Change settings") { step = 2 }.buttonStyle(.bordered)
-                Button("Try again") { applySetup(rtsp, cameraName, iface, ip, transport) }.buttonStyle(.filled)
+                leadButton("Change settings", leads: wizard.apply.lead == "settings") { step = form.skipsPort ? 1 : 2 }
+                leadButton("Try again", leads: wizard.apply.lead == "retry") { applySetup(rtsp, cameraName, iface, ip, transport) }
             }
         }
     }

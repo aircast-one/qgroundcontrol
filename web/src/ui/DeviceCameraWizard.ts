@@ -59,6 +59,7 @@ export type WizardApply = {
   readonly field: string;
   readonly url: string;
   readonly camera: string;
+  readonly lead: string;
 };
 export type WizardNotice = { readonly n: number; readonly text: string };
 export type DeviceWizard = {
@@ -226,6 +227,7 @@ export const parseDeviceWizard = (json: Json | null): DeviceWizard => {
       field: optText(apply, 'field'),
       url: optText(apply, 'url'),
       camera: optText(apply, 'camera'),
+      lead: optText(apply, 'lead'),
     },
     notice: { n: optInt(notice, 'n'), text: optText(notice, 'text') },
   };

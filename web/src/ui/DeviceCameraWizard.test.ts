@@ -77,7 +77,7 @@ describe('DeviceCameraWizardTest', () => {
       templateBusy: false,
       templateNote: '',
       template: { n: 1, refusal: '', camera: null, name: 'siyi' },
-      apply: { n: 0, state: 'failed', text: 'That name is taken', field: 'name', url: '', camera: '' },
+      apply: { n: 0, state: 'failed', text: 'That name is taken', field: 'name', url: '', camera: '', lead: '' },
       notice: { n: 1, text: 'Gimbal control was not switched to this camera — no answer' },
     });
     expect(wizard.session).toBe(3);
@@ -92,7 +92,7 @@ describe('DeviceCameraWizardTest', () => {
     expect(wizard.rest[0]?.detail).toBe("this is the device's own uplink");
     expect(wizard.templates[0]).toEqual({ id: 'siyi', label: 'SIYI camera', sub: 'ZT30', action: 'Set up' });
     expect(wizard.template).toEqual({ n: 1, refusal: '', camera: null, name: 'siyi' });
-    expect(wizard.apply).toEqual({ n: 0, state: 'failed', text: 'That name is taken', field: 'name', url: '', camera: '' });
+    expect(wizard.apply).toEqual({ n: 0, state: 'failed', text: 'That name is taken', field: 'name', url: '', camera: '', lead: '' });
     expect(wizard.notice.n).toBe(1);
     expect(parseDeviceWizard(null).session).toBe(-1);
   });

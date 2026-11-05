@@ -3,7 +3,7 @@ import { shownFields } from '@/ui/DeviceKitForms';
 import { GOOGLE_STUN, connectionFieldShown, iceRows, manualAddressing, parseIceServerLines, parseNetwork, uplinkIcon } from '@/ui/DeviceNetwork';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { NO_ANSWER } from '@/ui/DeviceView';
-import { joinOutcome, parseWifiScan, reopenLabel, reopenLink, wifiJoinProblem } from '@/ui/DeviceWifiWizard';
+import { joinOutcome, parseWifiScan, reopenLabel, reopenLink, scanHint, wifiJoinProblem } from '@/ui/DeviceWifiWizard';
 
 const VIEW = {
   uplink: {
@@ -26,7 +26,7 @@ const VIEW = {
     messages: { summary: '1 on the SIM · latest from MAGTICOM', items: [{ from: 'MAGTICOM', text: 'code 2157', when: 'Sep 25 17:41' }] },
     sim: { summary: 'APN internet', apn: 'internet', placeholder: 'auto', metered: 'auto', options: [{ value: 'auto', label: 'Automatic' }] },
   },
-  starlink: { status: { level: 3, text: 'no dish' }, summary: '', notices: [], facts: [], address: { value: '10.0.0.9:9200', default: '192.168.100.1:9200', defaultFirst: true, open: true } },
+  starlink: { status: { level: 3, text: 'no dish' }, summary: '', absent: true, notices: [], facts: [], address: { value: '10.0.0.9:9200', default: '192.168.100.1:9200', defaultFirst: true, open: true } },
   wifi: { status: { level: 3, text: 'not joined' }, summary: 'join a network', reopen: { host: 'harness.local', hostname: 'harness' } },
   interfaces: {
     status: { level: 3, text: '' },
@@ -68,6 +68,8 @@ describe('DeviceNetworkTest', () => {
     expect(view?.modem?.sim?.apn).toBe('internet');
     expect(view?.starlink.address).toEqual({ value: '10.0.0.9:9200', fallback: '192.168.100.1:9200', defaultFirst: true, open: true });
     expect(view?.starlink.demo).toBeNull();
+    expect(view?.starlink.absent).toBe(true);
+    expect(view?.data.absent).toBe(false);
     expect(view?.wifi.joined).toBeNull();
     expect(view?.wifi.reopen).toEqual({ host: 'harness.local', hostname: 'harness' });
     expect(view?.interfaces.links[0]?.editor?.iface).toBe('eth0');
@@ -140,8 +142,21 @@ describe('DeviceNetworkTest', () => {
     expect(reopenLabel('')).toBe("the device's address on your network");
   });
 
-  it('reads the networks a scan found', () => {
-    expect(parseWifiScan({ networks: [{ ssid: 'workshop', signal: 82, secured: true }] })).toEqual([{ ssid: 'workshop', signal: 82, secured: true, active: false }]);
+  it('reads the networks a scan found, and whether they are left over from before the hotspot', () => {
+    expect(parseWifiScan({ networks: [{ ssid: 'workshop', signal: 82, secured: true }] })).toEqual({ networks: [{ ssid: 'workshop', signal: 82, secured: true, active: false }], cached: false, scannedAt: '' });
+    expect(parseWifiScan({ networks: [], cached: true, scannedAt: '2026-11-04T21:35:00Z' })).toMatchObject({ cached: true, scannedAt: '2026-11-04T21:35:00Z' });
     expect(parseWifiScan(null)).toBeNull();
+  });
+
+  it('the scan hint tells the user when typing the name is the only way', () => {
+    const live = { networks: [{ ssid: 'workshop', signal: 82, secured: true, active: false }], cached: false, scannedAt: '' };
+    expect(scanHint(null)).toBe('Pick a nearby network or type its name.');
+    expect(scanHint(live)).toBe('Pick a nearby network or type its name.');
+    expect(scanHint({ ...live, networks: [] })).toContain('No networks found');
+    expect(scanHint('failed')).toContain("Can't scan right now");
+    const cached = scanHint({ ...live, cached: true, scannedAt: '2026-11-04T21:35:00Z' });
+    expect(cached).toContain("Can't scan while the hotspot is on");
+    expect(cached).toContain('seen before it came up at ');
+    expect(scanHint({ ...live, cached: true, scannedAt: '' })).toContain('seen before it came up. If yours is missing');
   });
 });
