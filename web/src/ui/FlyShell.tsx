@@ -35,7 +35,7 @@ import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
-import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
+import { useHasVehicle } from '@/ui/FlyState';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
@@ -102,6 +102,8 @@ export const PASS_THROUGH =
   'pointer-events-none [&_button]:pointer-events-auto [&_a]:pointer-events-auto [&_input]:pointer-events-auto [&_textarea]:pointer-events-auto [&_[role=button]]:pointer-events-auto [&_[role=slider]]:pointer-events-auto [&_[role=switch]]:pointer-events-auto [&_[role=tab]]:pointer-events-auto [&_[data-gesture]]:pointer-events-auto';
 
 const layer = (z: number): number => Math.round(z * 2);
+
+export const EDIT_BAR_LAYER = layer(FULL_SCREEN_LAYER + 1.5);
 
 const stopPropagation = (event: SyntheticEvent) => event.stopPropagation();
 
@@ -350,11 +352,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
     shellState.mapOrnamentEnd.value = null;
   }, []);
   const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : 0;
-  const flyJson = useQgcPath(FLY_STATE);
-  const armed = flyState(flyJson)?.armed === true;
-  useEffect(() => {
-    layout.lockWhileArmed(armed);
-  }, [armed]);
+  const editing = useValue(layout.editing);
   const settingsOver = useValue(useContext(LocalAppNavigation).settingsOpen);
   const deciding = useValue(shellState.guidedPanels) > 0;
   const obstacles = useValue(shellState.obstacles);
@@ -428,6 +426,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               tabIndex={0}
               aria-label="Map"
               aria-description="Show the map"
+              inert={editing}
               onClick={showMap}
               onKeyDown={activate(showMap)}
               className="absolute cursor-pointer overflow-hidden rounded-shape-md"
@@ -440,6 +439,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               tabIndex={0}
               aria-label="Video"
               aria-description="Show the video"
+              inert={editing}
               onClick={showVideo}
               onKeyDown={activate(showVideo)}
               className="absolute cursor-pointer overflow-hidden rounded-shape-md"

@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { connectMock, expect, flightMode, showMapFull, slideAcross, takeOff, test } from './fixtures';
+import { connectMock, expect, flightMode, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 test('more actions lists every deck command', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
@@ -16,6 +16,40 @@ test('edit layout from more actions starts and ends layout editing', async ({ ve
   await expect(vehicle.getByRole('button', { name: 'Reset layout' })).toBeVisible();
   await vehicle.getByRole('button', { name: 'Done' }).click();
   await expect(vehicle.getByRole('button', { name: 'Reset layout' })).toBeHidden();
+});
+
+const paintedOnTopAcross = (control: Locator): Promise<readonly boolean[]> =>
+  control.evaluate((it) => {
+    const everything = Object.assign(document.createElement('style'), { textContent: '* { pointer-events: auto !important; }' });
+    document.head.append(everything);
+    const box = it.getBoundingClientRect();
+    const y = box.top + box.height / 2;
+    const onTop = [box.left + 4, box.left + box.width / 2, box.right - 4].map((x) => it.contains(document.elementFromPoint(x, y)));
+    everything.remove();
+    return onTop;
+  });
+
+test('the layout edit bar sits above every fly overlay, leaves the map and video alone, and its size grows the on-screen readouts', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const mapPip = (await vehicle.getByRole('region', { name: 'Map' }).boundingBox())!;
+  const readout = telemetry(vehicle, 'H').filter({ visible: true }).first().locator('span').last();
+  const fontSize = () => readout.evaluate((it) => parseFloat(getComputedStyle(it).fontSize));
+  const before = await fontSize();
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Edit layout').click();
+  const size = vehicle.getByRole('button', { name: /^Size: / });
+  const controls = [size, vehicle.getByRole('button', { name: 'Reset layout' }), vehicle.getByRole('button', { name: 'Done' })];
+  await Promise.all(controls.map((it) => expect(it).toBeVisible()));
+  expect(await Promise.all(controls.map(paintedOnTopAcross))).toEqual(controls.map(() => [true, true, true]));
+
+  await vehicle.mouse.click(mapPip.x + mapPip.width / 2, mapPip.y + mapPip.height / 2);
+  await expect(size).toHaveText('Size: Default');
+  await size.click();
+  await size.click();
+  await expect(size).toHaveText('Size: Medium');
+  await expect.poll(fontSize).toBeCloseTo(before * 1.25);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  expect(await vehicle.getByRole('region', { name: 'Map' }).boundingBox(), 'the map stayed in its corner').toEqual(mapPip);
 });
 
 test('choose readings opens the readings chooser', async ({ vehicle }) => {

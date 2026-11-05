@@ -43,7 +43,7 @@ import { FirstRunDialog } from '@/ui/FirstRunDialog';
 import type { FlyDeckLayout } from '@/ui/FlyDeck';
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
-import { FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
+import { EDIT_BAR_LAYER, FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
 import { FLY_STATE, VEHICLE_FLIGHT_DISTANCE, disarmNotice, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog } from '@/ui/GimbalIndicator';
@@ -305,7 +305,7 @@ export const AircastShell = () => {
     setPicturePressed(press);
   };
   const flyVideo = (modifier: ModifierProps, expanded: boolean) => (
-    <div {...modifier}>
+    <div {...modifier} inert={layoutEditing}>
       <div className="size-full" {...plainTaps(expanded && pictureGoTo && pictureHoldHint === MapHoldHint.Unseen ? () => setPictureHoldHint(MapHoldHint.Due) : null)}>
         <VideoSurface
           className="size-full"
@@ -326,7 +326,7 @@ export const AircastShell = () => {
     setPicturePressed(null);
   };
   const flyMap = (modifier: ModifierProps) => (
-    <div {...modifier}>
+    <div {...modifier} inert={layoutEditing}>
       {map3dShown && !mapPip ? (
         <Map3dView
           className="size-full"
@@ -442,6 +442,8 @@ export const AircastShell = () => {
   }, [notices]);
 
   const flyNow = useQgcDerived(FLY_STATE, shellFly);
+  const armedNow = flyNow !== null && flyNow.connected && flyNow.armed;
+  useEffect(() => overlayLayout.lockWhileArmed(armedNow), [armedNow]);
   const wasArmed = useRef(false);
   const flewWhileArmed = useRef(false);
   const armedBattery = useRef<number | null>(null);
@@ -456,7 +458,6 @@ export const AircastShell = () => {
   };
 
   useEffect(() => {
-    const armedNow = flyNow !== null && flyNow.connected && flyNow.armed;
     if (armedNow && !wasArmed.current) {
       void batteryPercentNow().then((percent) => {
         armedBattery.current = percent;
@@ -607,7 +608,11 @@ export const AircastShell = () => {
           <div className="flex min-w-0 flex-1 flex-col">
             {!onFly ? <AlertHost hostState={alerts} className="p-3 pt-[max(12px,env(safe-area-inset-top))]" /> : null}
             <div className={`relative min-h-0 flex-1 overflow-hidden ${contentInsets}`}>
-              {onFly ? <OverlayEditBar className="absolute bottom-0 left-1/2 z-[2] w-full max-w-[560px] -translate-x-1/2 p-2 pb-[calc(8px+env(safe-area-inset-bottom))]" /> : null}
+              {onFly && !settingsOpen ? (
+                <div className="absolute bottom-0 left-1/2 w-full max-w-[560px] -translate-x-1/2" style={{ zIndex: EDIT_BAR_LAYER }}>
+                  <OverlayEditBar className="p-2 pb-[calc(8px+env(safe-area-inset-bottom))]" />
+                </div>
+              ) : null}
               {onFly && flyLandscape ? (
                 <FlyScreen
                   view={shownFlyView}

@@ -1,5 +1,5 @@
-import { type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, openApp, takeOff, test } from './fixtures';
+import { type Locator, type Page } from '@playwright/test';
+import { connectMock, expect, flightMode, openApp, slideAcross, takeOff, test } from './fixtures';
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 test.describe.configure({ timeout: 120_000 });
@@ -55,4 +55,67 @@ test('held upright, a drag up on the camera strip tilts the gimbal down without 
   await page.mouse.move(thumb.x + thumb.width / 2, track.y + track.height + 40, { steps: 12 });
   await page.mouse.up();
   await expect.poll(() => gimbalPitch(page), { timeout: 20_000 }).toBeLessThan(-88);
+});
+
+const editBar = (page: Page) => page.getByRole('button', { name: 'Reset layout' });
+
+const battery = (page: Page) => page.getByRole('button', { name: /^Battery \d+%/ }).first();
+
+const pressAndHold = async (page: Page, target: Locator, held: () => Promise<unknown>) => {
+  const box = (await target.boundingBox())!;
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await held();
+  await page.mouse.move(x, y + box.height * 6, { steps: 4 });
+  await page.mouse.up();
+};
+
+const land = async (page: Page) => {
+  await expect(flightMode(page)).toHaveAccessibleName(/^Hold\b/, { timeout: 60_000 });
+  await slideAcross(page, page.getByRole('button', { name: 'Slide to land' }));
+  await expect(page.getByRole('button', { name: 'Take off' })).toBeVisible({ timeout: 90_000 });
+};
+
+const expectLayoutEditable = async (page: Page) => {
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog').getByText('Edit layout').click();
+  await expect(editBar(page)).toBeVisible();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(page)).toBeHidden();
+  await pressAndHold(page, battery(page), () => expect(editBar(page)).toBeVisible());
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(page)).toBeHidden();
+};
+
+test('held upright, the layout locks once the aircraft is armed and unlocks when it lands', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openApp(page);
+  await connectMock(page);
+  await takeOff(page, '5 m');
+  await expect(flightMode(page)).toHaveAccessibleName(/^(Takeoff|Hold)\b/, { timeout: 60_000 });
+  await pressAndHold(page, battery(page), () => expect(flightMode(page)).toHaveAccessibleName(/^Hold\b/, { timeout: 60_000 }));
+  await expect(editBar(page), 'a hold through the climb does not edit the layout').toBeHidden();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  const more = page.getByRole('dialog').filter({ hasText: 'More actions' });
+  await expect(more.getByText('Choose readings')).toBeVisible();
+  await expect(more.getByText('Edit layout')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(more).toBeHidden();
+  await land(page);
+  await expectLayoutEditable(page);
+});
+
+test('armed sideways and landed upright, the layout can be edited again', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 844, height: 390 });
+  await openApp(page);
+  await connectMock(page);
+  await takeOff(page, '5 m');
+  await expect(flightMode(page)).toHaveAccessibleName(/^(Takeoff|Hold)\b/, { timeout: 60_000 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await land(page);
+  await expectLayoutEditable(page);
 });

@@ -19,6 +19,7 @@ import {
   osdIsSpeed,
   osdLabel,
   rowWidth,
+  scaledTypography,
 } from './VehicleUi';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -188,6 +189,14 @@ describe('OperatorDistanceTest', () => {
     expect(operatorDistance(json('{"distanceToVehicleText":null}'))).toEqual([]);
     expect(operatorDistance(json('{}'))).toEqual([]);
     expect(operatorDistance(null)).toEqual([]);
+  });
+});
+
+describe('ScaledTypographyTest', () => {
+  it('the OSD readings grow with the chosen value size, line height and all', () => {
+    expect(scaledTypography('titleLarge', 1)).toEqual({ fontSize: 22, lineHeight: '28px' });
+    expect(scaledTypography('titleLarge', 1.5)).toEqual({ fontSize: 33, lineHeight: '42px' });
+    expect(scaledTypography('labelLarge', 1.25)).toEqual({ fontSize: 17.5, lineHeight: '25px' });
   });
 });
 
