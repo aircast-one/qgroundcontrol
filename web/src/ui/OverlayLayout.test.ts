@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RESET_ARM_MILLIS, ResetTap, clampedDrag, hiddenKeys, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, storedIndicatorOrder, storedOffsets, withHidden } from './OverlayLayout';
+import { RESET_ARM_MILLIS, ResetTap, clampedDrag, clampedInto, hiddenKeys, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
 
@@ -46,13 +46,29 @@ describe('OverlayLayoutTest', () => {
   });
 
   it('a widget its own offset pushed off screen is pulled back, a scrolled or oversized one is left alone', () => {
-    const root = { width: 1000, height: 500 };
+    const root = rect(0, 0, 1000, 500);
     expect(onScreenCorrection(rect(900, 400, 1300, 600), root, [400, 300])).toEqual([-300, -100]);
     expect(onScreenCorrection(rect(900, 0, 1300, 100), root, [100, 0])).toEqual([-100, 0]);
     expect(onScreenCorrection(rect(-40, 0, 60, 100), root, [-80, 0])).toEqual([40, 0]);
     expect(onScreenCorrection(rect(1100, 10, 1300, 200), root, [0, 0])).toEqual([0, 0]);
     expect(onScreenCorrection(rect(10, 10, 200, 200), root, [50, 50])).toEqual([0, 0]);
     expect(onScreenCorrection(rect(20, 10, 1600, 200), root, [30, 0])).toEqual([0, 0]);
+  });
+
+  it('a widget dragged past the status row stops below it and clear of the safe area', () => {
+    const area = visibleArea({ width: 1280, height: 800 }, 48, rect(44, 20, 44, 21));
+    expect(area).toEqual(rect(44, 48, 1236, 779));
+    expect(clampedInto(rect(1000, 300, 1200, 500), area, -50, -400)).toEqual([-50, -252]);
+    expect(clampedInto(rect(1000, 300, 1200, 500), area, 200, 400)).toEqual([36, 279]);
+    expect(visibleArea({ width: 1280, height: 800 }, 0, rect(0, 20, 0, 0)).top).toBe(20);
+  });
+
+  it('the on-screen correction is worked out from the stored offset, so a window shrunk and restored shows the widget where the pilot left it', () => {
+    const wide = rect(0, 0, 1280, 800);
+    const small = rect(0, 0, 900, 560);
+    expect(shownCorrection(rect(900, 500, 1100, 700), small, [274, 160], [0, 0])).toEqual([-200, -140]);
+    expect(shownCorrection(rect(700, 360, 900, 560), small, [274, 160], [-200, -140])).toEqual([-200, -140]);
+    expect(shownCorrection(rect(700, 360, 900, 560), wide, [274, 160], [-200, -140])).toEqual([0, 0]);
   });
 });
 

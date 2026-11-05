@@ -1,4 +1,4 @@
-import { type CSSProperties, type HTMLAttributes, type PointerEvent, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, type Dispatch, type HTMLAttributes, type PointerEvent, type ReactNode, type SetStateAction, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
 import { Button, Surface, TextButton, radius } from '@/m3';
 import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
@@ -8,7 +8,7 @@ import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
-import { LocalAvoidedByVideoMessage, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
+import { LocalAvoidedByVideoMessage, useAvoidedByVideoMessage, useFlyIsPortrait, useSafeAreaInsets } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
 import { LocalFlyOsd, osdShadow } from '@/ui/Osd';
@@ -104,10 +104,20 @@ export const storedIndicatorOrder = (stored: Readonly<Record<string, unknown>>):
   return (typeof order === 'string' ? order : '').split(',').filter((it) => it.trim() !== '');
 };
 
-export const onScreenCorrection = (bounds: Bounds, root: Size, offset: Offset): Offset => {
-  const [dx, dy] = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, 0, 0);
-  return [pulledBack(bounds.right - bounds.left > root.width ? 0 : dx, offset[0]), pulledBack(bounds.bottom - bounds.top > root.height ? 0 : dy, offset[1])];
+export const onScreenCorrection = (bounds: Bounds, area: Bounds, offset: Offset): Offset => {
+  const [dx, dy] = clampedInto(bounds, area, 0, 0);
+  return [pulledBack(bounds.right - bounds.left > area.right - area.left ? 0 : dx, offset[0]), pulledBack(bounds.bottom - bounds.top > area.bottom - area.top ? 0 : dy, offset[1])];
 };
+
+export const shownCorrection = (bounds: Bounds, area: Bounds, offset: Offset, shown: Offset): Offset =>
+  onScreenCorrection({ left: bounds.left - shown[0], top: bounds.top - shown[1], right: bounds.right - shown[0], bottom: bounds.bottom - shown[1] }, area, offset);
+
+export const visibleArea = (root: Size, statusRowBottom: number, insets: Bounds): Bounds => ({
+  left: insets.left,
+  top: Math.max(insets.top, statusRowBottom),
+  right: root.width - insets.right,
+  bottom: root.height - insets.bottom,
+});
 
 export const pulledBack = (correction: number, offset: number): number => {
   if (offset > 0) return coerceIn(correction, -offset, 0);
@@ -150,18 +160,19 @@ export const storedOffsets = (stored: Readonly<Record<string, unknown>>): Map<st
     }),
   );
 
-const rootSize = (): Size => ({ width: window.innerWidth, height: window.innerHeight });
+const shownArea = (insets: Bounds): Bounds =>
+  visibleArea({ width: window.innerWidth, height: window.innerHeight }, document.querySelector('[data-status-row]')?.getBoundingClientRect().bottom ?? 0, insets);
 
-const useRootBounds = (seen: (bounds: Bounds, root: Size) => void): ((node: HTMLElement | null) => () => void) => {
+const useRootBounds = (seen: (bounds: Bounds) => void): ((node: HTMLElement | null) => () => void) => {
   const latest = useUpdatedRef(seen);
   const node = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
-    if (node.current) latest.current(node.current.getBoundingClientRect(), rootSize());
+    if (node.current) latest.current(node.current.getBoundingClientRect());
   });
   return useCallback((element: HTMLElement | null) => {
     node.current = element;
     const measure = () => {
-      if (element) latest.current(element.getBoundingClientRect(), rootSize());
+      if (element) latest.current(element.getBoundingClientRect());
     };
     const observer = typeof ResizeObserver === 'undefined' || !element ? null : new ResizeObserver(measure);
     if (element) observer?.observe(element);
@@ -176,40 +187,62 @@ const useRootBounds = (seen: (bounds: Bounds, root: Size) => void): ((node: HTML
 
 const useLayoutKey = (key: string): string => orientedKey(key, !useFlyIsPortrait());
 
-const useKeptOnScreen = (key: string) => {
+const NO_OFFSET: Offset = [0, 0];
+
+const useKeptOnScreen = (key: string, insets: Bounds): [Offset, (node: HTMLElement | null) => () => void] => {
   const layout = useContext(LocalFlyScreenState).layout;
-  return useRootBounds((bounds, root) => {
-    const [x, y] = layout.offsets.value.get(key) ?? [0, 0];
-    const [dx, dy] = onScreenCorrection(bounds, root, [x, y]);
-    if (dx === 0 && dy === 0) return;
-    layout.nudge(key, dx, dy);
-    layout.saveOffset(key);
+  const [correction, setCorrection] = useState<Offset>(NO_OFFSET);
+  const kept = useRootBounds((bounds) => {
+    const next = shownCorrection(bounds, shownArea(insets), layout.offsets.value.get(key) ?? NO_OFFSET, correction);
+    setCorrection((was) => (was[0] === next[0] && was[1] === next[1] ? was : next));
   });
+  return [correction, kept];
 };
 
 export const useHoldToEditLayout = (): HTMLAttributes<HTMLElement> => {
   const layout = useContext(LocalFlyScreenState).layout;
   const editing = useValue(layout.editing);
   const locked = useValue(layout.locked);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const press = useRef<{ id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const held = useRef(false);
   const cancel = () => {
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
+    if (press.current !== null) clearTimeout(press.current.timer);
+    press.current = null;
   };
   useEffect(() => cancel, []);
-  if (editing || locked) return {};
+  const swallowHeldClick: HTMLAttributes<HTMLElement>['onClickCapture'] = (event) => {
+    if (!held.current) return;
+    held.current = false;
+    event.stopPropagation();
+    event.preventDefault();
+  };
+  if (editing || locked)
+    return {
+      onPointerDownCapture: () => {
+        held.current = false;
+      },
+      onClickCapture: swallowHeldClick,
+    };
   return {
     onPointerDownCapture: (event) => {
       cancel();
-      if (!event.currentTarget.contains(event.target as Node)) return;
-      timer.current = setTimeout(() => {
-        timer.current = null;
+      held.current = false;
+      if (!event.isPrimary || event.button !== 0 || !event.currentTarget.contains(event.target as Node)) return;
+      const timer = setTimeout(() => {
+        press.current = null;
         layout.startEditing();
+        held.current = layout.editing.value;
       }, LONG_PRESS_TIMEOUT_MS);
+      press.current = { id: event.pointerId, x: event.clientX, y: event.clientY, timer };
+    },
+    onPointerMoveCapture: (event) => {
+      const down = press.current;
+      if (down !== null && down.id === event.pointerId && Math.hypot(event.clientX - down.x, event.clientY - down.y) > TOUCH_SLOP) cancel();
     },
     onPointerUpCapture: cancel,
     onPointerCancelCapture: cancel,
     onPointerLeave: cancel,
+    onClickCapture: swallowHeldClick,
   };
 };
 
@@ -236,7 +269,10 @@ export const clampedDrag = (left: number, top: number, right: number, bottom: nu
   coerceIn(dy, -top, coerceAtLeast(height - bottom, -top)),
 ];
 
-export const LayoutDragArea = ({ widgetKey, className }: { widgetKey: string; className?: string }) => {
+export const clampedInto = (bounds: Bounds, area: Bounds, dx: number, dy: number): Offset =>
+  clampedDrag(bounds.left - area.left, bounds.top - area.top, bounds.right - area.left, bounds.bottom - area.top, area.right - area.left, area.bottom - area.top, dx, dy);
+
+export const LayoutDragArea = ({ widgetKey, correction, insets, className }: { widgetKey: string; correction: Offset; insets: Bounds; className?: string }) => {
   const layout = useContext(LocalFlyScreenState).layout;
   const placedKey = useLayoutKey(widgetKey);
   const drag = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
@@ -248,6 +284,7 @@ export const LayoutDragArea = ({ widgetKey, className }: { widgetKey: string; cl
   };
   return (
     <div
+      data-gesture
       className={`touch-none ${className ?? ''}`}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -261,11 +298,10 @@ export const LayoutDragArea = ({ widgetKey, className }: { widgetKey: string; cl
         const distance = Math.hypot(rawX, rawY);
         if (!held.dragging && distance <= TOUCH_SLOP) return;
         const past = held.dragging ? 1 : (distance - TOUCH_SLOP) / distance;
-        const bounds = event.currentTarget.getBoundingClientRect();
-        const root = rootSize();
-        const [dx, dy] = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, rawX * past, rawY * past);
+        const [dx, dy] = clampedInto(event.currentTarget.getBoundingClientRect(), shownArea(insets), rawX * past, rawY * past);
+        const [foldX, foldY] = held.dragging ? NO_OFFSET : correction;
         drag.current = { id: held.id, x: event.clientX, y: event.clientY, dragging: true };
-        layout.nudge(placedKey, dx, dy);
+        layout.nudge(placedKey, dx + foldX, dy + foldY);
       }}
       onPointerUp={end}
       onPointerCancel={end}
@@ -273,7 +309,11 @@ export const LayoutDragArea = ({ widgetKey, className }: { widgetKey: string; cl
   );
 };
 
-const BADGE = 'absolute end-0 top-0 grid place-items-center';
+const BADGE = 'absolute grid place-items-center';
+
+const BADGE_PLACE: CSSProperties = { width: BADGE_SIZE, height: BADGE_SIZE, top: 0, insetInlineEnd: -BADGE_SIZE / 2 };
+
+const LocalLayoutParent = createContext<Dispatch<SetStateAction<number>> | null>(null);
 
 export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, className, children }: { widgetKey: string; movable?: boolean; hideable?: boolean; className?: string; children?: ReactNode }) => {
   const layout = useContext(LocalFlyScreenState).layout;
@@ -284,8 +324,15 @@ export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, class
   const avoidedRef = useAvoidedByVideoMessage(widgetKey);
   const osd = useContext(LocalFlyOsd);
   const placedKey = useLayoutKey(widgetKey);
-  const kept = useKeptOnScreen(placedKey);
+  const insets = useSafeAreaInsets();
+  const [correction, kept] = useKeptOnScreen(placedKey, insets);
   const hold = useHoldToEditLayout();
+  const parent = useContext(LocalLayoutParent);
+  const [nested, setNested] = useState(0);
+  useLayoutEffect(() => {
+    parent?.((count) => count + 1);
+    return () => parent?.((count) => count - 1);
+  }, [parent]);
   const [shown, setShown] = useState(false);
   const sized = useCallback((node: HTMLElement | null) => {
     if (!node || typeof ResizeObserver === 'undefined') return undefined;
@@ -293,26 +340,27 @@ export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, class
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const decorated = editing && shown;
+  const decorated = editing && shown && nested === 0;
   const jiggle = useJiggleAngle(widgetKey, decorated);
   if (hidden && !editing) return null;
-  const [x, y] = movable ? (offsets.get(placedKey) ?? [0, 0]) : [0, 0];
+  const [x, y] = movable ? (offsets.get(placedKey) ?? NO_OFFSET) : NO_OFFSET;
+  const [cx, cy] = movable ? correction : NO_OFFSET;
   return (
-    <div ref={movable ? kept : undefined} className={className} style={{ translate: `${x}px ${y}px` }} {...hold}>
+    <div ref={movable ? kept : undefined} className={className} style={{ translate: `${x + cx}px ${y + cy}px` }} {...hold}>
       <div ref={avoided ? avoidedRef : undefined} className="relative" style={jiggle}>
         <div
           ref={sized}
           className={osd ? osdShadow() : undefined}
           style={{ opacity: hidden ? HIDDEN_ALPHA : 1, ...(decorated ? { outline: `1px solid ${md('outline')}`, outlineOffset: -1, borderRadius: radius('medium') } : {}) }}
         >
-          {children}
+          <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
-        {decorated && movable ? <LayoutDragArea widgetKey={widgetKey} className="absolute inset-0" /> : null}
+        {decorated && movable ? <LayoutDragArea widgetKey={widgetKey} correction={correction} insets={insets} className="absolute inset-0" /> : null}
         {decorated && hideable ? (
           <Surface
             onClick={() => layout.setHidden(widgetKey, !hidden)}
             className={BADGE}
-            style={{ width: BADGE_SIZE, height: BADGE_SIZE }}
+            style={BADGE_PLACE}
             shape="full"
             color={hidden ? md('primary') : md('inverseSurface')}
             contentColor={hidden ? md('onPrimary') : md('inverseOnSurface')}
@@ -323,7 +371,7 @@ export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, class
           </Surface>
         ) : null}
         {decorated && !hideable ? (
-          <Surface className={BADGE} style={{ width: BADGE_SIZE, height: BADGE_SIZE }} shape="full" color={md('surfaceContainerHighest')} contentColor={md('onSurfaceVariant')} shadow>
+          <Surface className={BADGE} style={BADGE_PLACE} shape="full" color={md('surfaceContainerHighest')} contentColor={md('onSurfaceVariant')} shadow>
             <MaterialIcon name="lock" filled size={BADGE_SIZE - 10} label="Always shown" />
           </Surface>
         ) : null}
