@@ -117,6 +117,7 @@ const PageRow = ({ page, onOpen }: { page: DevicePage; onOpen: (href: string) =>
 const InternetStep = ({ internet, onOpen }: { internet: SetupInternet; onOpen: (href: string) => void }) => (
   <>
     <DeviceNotice notice={internet.online} />
+    {internet.lastJoin !== null ? <DeviceNotice notice={internet.lastJoin} /> : null}
     <WifiJoin reopen={internet.reopen} initiallyOpen={internet.joinOpen} />
     <PageRow page={internet.connection} onOpen={onOpen} />
     <DeviceText text={internet.hint} />

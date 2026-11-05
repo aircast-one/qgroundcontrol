@@ -3,7 +3,7 @@ import { shownFields } from '@/ui/DeviceKitForms';
 import { GOOGLE_STUN, connectionFieldShown, iceRows, manualAddressing, parseIceServerLines, parseNetwork, uplinkIcon } from '@/ui/DeviceNetwork';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { NO_ANSWER } from '@/ui/DeviceView';
-import { joinOutcome, parseWifiScan, reopenLabel, reopenLink, wifiJoinProblem } from '@/ui/DeviceWifiWizard';
+import { joinOutcome, parseWifiScan, reopenLabel, reopenLink, scanHint, wifiJoinProblem } from '@/ui/DeviceWifiWizard';
 
 const VIEW = {
   uplink: {
@@ -140,8 +140,21 @@ describe('DeviceNetworkTest', () => {
     expect(reopenLabel('')).toBe("the device's address on your network");
   });
 
-  it('reads the networks a scan found', () => {
-    expect(parseWifiScan({ networks: [{ ssid: 'workshop', signal: 82, secured: true }] })).toEqual([{ ssid: 'workshop', signal: 82, secured: true, active: false }]);
+  it('reads the networks a scan found, and whether they are left over from before the hotspot', () => {
+    expect(parseWifiScan({ networks: [{ ssid: 'workshop', signal: 82, secured: true }] })).toEqual({ networks: [{ ssid: 'workshop', signal: 82, secured: true, active: false }], cached: false, scannedAt: '' });
+    expect(parseWifiScan({ networks: [], cached: true, scannedAt: '2026-11-04T21:35:00Z' })).toMatchObject({ cached: true, scannedAt: '2026-11-04T21:35:00Z' });
     expect(parseWifiScan(null)).toBeNull();
+  });
+
+  it('the scan hint tells the user when typing the name is the only way', () => {
+    const live = { networks: [{ ssid: 'workshop', signal: 82, secured: true, active: false }], cached: false, scannedAt: '' };
+    expect(scanHint(null)).toBe('Pick a nearby network or type its name.');
+    expect(scanHint(live)).toBe('Pick a nearby network or type its name.');
+    expect(scanHint({ ...live, networks: [] })).toContain('No networks found');
+    expect(scanHint('failed')).toContain("Can't scan right now");
+    const cached = scanHint({ ...live, cached: true, scannedAt: '2026-11-04T21:35:00Z' });
+    expect(cached).toContain("Can't scan while the hotspot is on");
+    expect(cached).toContain('seen before it came up at ');
+    expect(scanHint({ ...live, cached: true, scannedAt: '' })).toContain('seen before it came up. If yours is missing');
   });
 });

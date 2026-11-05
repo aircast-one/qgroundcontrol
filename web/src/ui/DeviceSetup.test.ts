@@ -13,6 +13,7 @@ const served = {
   ],
   internet: {
     online: { level: 0, text: 'Online — this device can reach the internet.' },
+    lastJoin: { level: 2, text: 'Last Wi-Fi attempt 3m ago: “Tenda” is in range but its router didn\'t answer' },
     joinOpen: false,
     reopen: { host: 'falcon.local', hostname: 'falcon' },
     connection: { title: 'Connection', href: '/network', icon: 'network', summary: 'home-wifi' },
@@ -44,6 +45,8 @@ describe('DeviceSetupTest', () => {
     expect(view?.steps[0]?.status).toEqual({ level: DeviceLevel.Ready, text: 'ready' });
     expect(view?.steps[1]?.status).toBeNull();
     expect(view?.internet.reopen).toEqual({ host: 'falcon.local', hostname: 'falcon' });
+    expect(view?.internet.lastJoin?.text).toContain('Last Wi-Fi attempt 3m ago');
+    expect(parseSetup({ ...served, internet: { ...served.internet, lastJoin: undefined } })?.internet.lastJoin).toBeNull();
     expect(view?.internet.connection.href).toBe('/network');
     expect(view?.remote.connect).toBe('Connect to Tailscale');
     expect(view?.camera.wizard.isNew).toBe(false);

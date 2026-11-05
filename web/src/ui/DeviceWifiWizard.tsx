@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { isJson, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { FilledTonalButton, OutlinedButton, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
@@ -10,6 +10,8 @@ import { type DeviceRefusal, NO_ANSWER, deviceCall, deviceRead } from '@/ui/Devi
 
 export type WifiNetwork = { readonly ssid: string; readonly signal: number; readonly secured: boolean; readonly active: boolean };
 
+export type WifiScan = { readonly networks: readonly WifiNetwork[]; readonly cached: boolean; readonly scannedAt: string };
+
 export type WifiReopen = { readonly host: string; readonly hostname: string };
 
 export type AppPlace = { readonly pathname: string; readonly hash: string };
@@ -18,10 +20,32 @@ export type WifiJoin = { readonly attempt: number; readonly target: string; read
 
 type JoinProblem = { readonly message: string; readonly field: 'ssid' | 'psk' };
 
-export const parseWifiScan = (json: unknown): readonly WifiNetwork[] | null =>
+export const parseWifiScan = (json: unknown): WifiScan | null =>
   isJson(json)
-    ? jsonObjects(optJSONArray(json, 'networks')).map((it) => ({ ssid: optText(it, 'ssid'), signal: optInt(it, 'signal'), secured: optBoolean(it, 'secured'), active: optBoolean(it, 'active') }))
+    ? {
+        networks: jsonObjects(optJSONArray(json, 'networks')).map((it) => ({ ssid: optText(it, 'ssid'), signal: optInt(it, 'signal'), secured: optBoolean(it, 'secured'), active: optBoolean(it, 'active') })),
+        cached: optBoolean(json, 'cached'),
+        scannedAt: optText(json, 'scannedAt'),
+      }
     : null;
+
+const TYPE_IT = 'type the name exactly as printed on your router';
+
+const clockText = (iso: string): string => {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? '' : ` at ${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+export const scanHint = (scan: WifiScan | null | 'failed'): string =>
+  scan === null
+    ? 'Pick a nearby network or type its name.'
+    : scan === 'failed'
+      ? `Can't scan right now — ${TYPE_IT}.`
+      : scan.cached
+        ? `Can't scan while the hotspot is on — these were seen before it came up${clockText(scan.scannedAt)}. If yours is missing, ${TYPE_IT}.`
+        : scan.networks.length === 0
+          ? `No networks found — ${TYPE_IT}.`
+          : 'Pick a nearby network or type its name.';
 
 export const wifiJoinProblem = (ssid: string, psk: string, pickedSecured: string): JoinProblem | null => {
   const name = ssid.trim();
@@ -52,14 +76,18 @@ export const WifiWizard = ({ reopen }: { reopen: WifiReopen }) => {
   const [pickedSecured, setPickedSecured] = useState('');
   const [problem, setProblem] = useState<JoinProblem | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [networks, setNetworks] = useState<readonly WifiNetwork[] | null | 'failed'>(null);
-  const scan = () => {
+  const [scan, setScan] = useState<WifiScan | null | 'failed'>(null);
+  const runScan = () => {
     setScanning(true);
     void deviceRead('/api/network/wifi/scan', parseWifiScan).then((found) => {
       setScanning(false);
-      setNetworks(found ?? 'failed');
+      setScan(found ?? 'failed');
     });
   };
+  useEffect(() => {
+    runScan();
+  }, []);
+  const networks = scan === null || scan === 'failed' ? [] : scan.networks;
   const pick = (network: WifiNetwork) => {
     setSsid(network.ssid);
     setPsk('');
@@ -84,15 +112,13 @@ export const WifiWizard = ({ reopen }: { reopen: WifiReopen }) => {
     <div className="flex flex-col gap-3 px-list py-2" role="group" aria-label="Join a Wi-Fi network">
       <div className="flex items-center gap-3">
         <Text typography="bodySmall" color={md('onSurfaceVariant')} className="min-w-0 flex-1">
-          Pick a nearby network or type its name. Scanning is limited while the hotspot is on, so typing is usually fastest.
+          {scanning && scan === null ? 'Looking for nearby networks…' : scanHint(scan)}
         </Text>
-        <OutlinedButton enabled={!scanning} onClick={scan}>
-          {scanning ? 'Scanning…' : 'Scan'}
+        <OutlinedButton enabled={!scanning} onClick={runScan}>
+          {scanning ? 'Scanning…' : 'Scan again'}
         </OutlinedButton>
       </div>
-      {networks === 'failed' ? <Hint text="Scan failed — type your network name below." /> : null}
-      {networks !== null && networks !== 'failed' && networks.length === 0 ? <Hint text="No networks found — type your network name below." /> : null}
-      {networks !== null && networks !== 'failed' && networks.length > 0 ? (
+      {networks.length > 0 ? (
         <ul aria-label="Nearby networks" className="flex flex-col gap-1.5">
           {networks.map((network) => (
             <li key={network.ssid}>
@@ -142,7 +168,7 @@ export const WifiWizard = ({ reopen }: { reopen: WifiReopen }) => {
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          Saved with autoconnect, ahead of the hotspot.
+          Saved — the device rejoins it on every boot.
         </Text>
         <FilledTonalButton onClick={connect}>Connect</FilledTonalButton>
       </div>
@@ -198,6 +224,7 @@ const WifiJoining = ({ join, reopen, onBack }: { join: WifiJoin; reopen: WifiReo
             <Hint text={`Doesn't open? Android and some Windows PCs can't open .local names — find ${reopen.hostname} in your router's list of connected devices and open its address instead.`} />
           ) : null}
           <Hint text="This page is served over the link that's going away, so it can't refresh itself." />
+          <Hint text={`If the drone's hotspot comes back within a minute, the join failed — rejoin the hotspot and the Wi-Fi card says why.`} />
         </div>
       ) : null}
       <div>
