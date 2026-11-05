@@ -1,5 +1,5 @@
-import { type Locator } from '@playwright/test';
-import { connectMock, expect, slideAcross, test, vehicleStatus } from './fixtures';
+import { type Locator, type Page } from '@playwright/test';
+import { connectMock, expect, flightMode, slideAcross, test, vehicleStatus } from './fixtures';
 
 test('the status sheet arms the aircraft without starting layout editing', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
@@ -61,4 +61,64 @@ test('all status lists the gimbal and Tilt 90 points it as far down as it goes',
   await gimbal.click();
   await app.getByRole('button', { name: 'Tilt 90' }).click();
   await expect(app.getByRole('button', { name: /· P: -90\.0 ·/ })).toBeVisible({ timeout: 30_000 });
+});
+
+const editLayout = async (page: Page) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog').getByText('Edit layout').click();
+  await expect(page.getByRole('button', { name: 'Reset layout' })).toBeVisible();
+};
+
+const fitsAndKeepsTheFlightMode = async (page: Page) => {
+  await editLayout(page);
+  const scrollsInside = () =>
+    page.getByRole('timer', { name: 'Flight time' }).evaluate((node, width) => {
+      const scroller = (it: Element | null): Element | null => (it === null || getComputedStyle(it).overflowX === 'auto' ? it : scroller(it.parentElement));
+      const found = scroller(node);
+      return found !== null && found.getBoundingClientRect().right <= width && found.scrollWidth > found.clientWidth;
+    }, page.viewportSize()?.width ?? 0);
+  await expect.poll(scrollsInside, { message: 'the strip ends inside the screen and scrolls to the indicators past its end' }).toBe(true);
+  const cut = await flightMode(page).evaluate((chip) => [chip, ...chip.querySelectorAll('*')].filter((it) => getComputedStyle(it).textOverflow === 'ellipsis' && (it.clientWidth === 0 || it.scrollWidth > it.clientWidth + 1)).length);
+  expect(cut, 'the flight mode is squeezed out of its chip').toBe(0);
+};
+
+test('while editing the layout the status strip scrolls inside the screen and the flight mode keeps its name', async ({ vehicle }) => {
+  await fitsAndKeepsTheFlightMode(vehicle);
+});
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 412, height: 860 } });
+
+  test('while editing the layout the status strip scrolls inside the screen and the flight mode keeps its name', async ({ vehicle }) => {
+    await fitsAndKeepsTheFlightMode(vehicle);
+  });
+});
+
+test('› moves an indicator past the next one on screen, and only indicators on screen can be moved', async ({ vehicle }) => {
+  await editLayout(vehicle);
+  const timer = vehicle.getByRole('timer', { name: 'Flight time' });
+  const gps = vehicle.getByRole('button', { name: /sats$/ });
+  const left = async (locator: Locator) => (await locator.boundingBox())?.x ?? Number.NaN;
+  expect(await left(timer)).toBeLessThan(await left(gps));
+  const earlier = vehicle.getByRole('button', { name: '‹', exact: true });
+  const later = vehicle.getByRole('button', { name: '›', exact: true });
+  await expect(earlier.first(), 'the first indicator has nowhere further back to go').toBeDisabled();
+  await expect(later.last(), 'the last indicator has nowhere further on to go').toBeDisabled();
+  const pairs = await Promise.all([earlier.all(), later.all()]);
+  expect(pairs[0].length, 'every indicator has both arrows').toBe(pairs[1].length);
+  const boxes = await Promise.all(pairs.map((arrows) => Promise.all(arrows.map((it) => it.boundingBox()))));
+  const between = boxes[0].map((back, at) => (boxes[1][at]?.x ?? 0) - ((back?.x ?? 0) + (back?.width ?? 0)));
+  expect(between.filter((room) => room < 8), 'arrows with no indicator between them').toEqual([]);
+  const covered = await vehicle.evaluate(() => {
+    const rects = (match: (it: HTMLButtonElement) => boolean) => [...document.querySelectorAll('button')].filter(match).map((it) => it.getBoundingClientRect());
+    const badges = rects((it) => it.getAttribute('aria-label') === 'Hide');
+    return rects((it) => it.textContent === '‹' || it.textContent === '›').filter((arrow) => badges.some((badge) => arrow.left < badge.right && badge.left < arrow.right && arrow.top < badge.bottom && badge.top < arrow.bottom)).length;
+  });
+  expect(covered, 'arrows under a hide badge').toBe(0);
+  await timer.locator('xpath=../..').getByRole('button', { name: '›', exact: true }).click();
+  await expect.poll(async () => (await left(timer)) - (await left(gps))).toBeGreaterThan(0);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await expect(timer, 'the flight time moved rather than hid').toBeVisible();
+  expect(await left(timer)).toBeGreaterThan(await left(gps));
 });

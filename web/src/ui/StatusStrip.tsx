@@ -193,6 +193,32 @@ const stripGap = (narrow: boolean): number => (narrow ? NARROW_STRIP_GAP : STRIP
 
 export const shownStatusCells = (narrow: boolean): number => (narrow ? NARROW_STATUS_CELLS : COMPACT_STATUS_CELLS);
 
+export const movedPastShown = (keys: readonly string[], shown: ReadonlySet<string>, key: string, delta: number): string[] | null => {
+  const visible = keys.filter((it) => shown.has(it));
+  const at = visible.indexOf(key);
+  const past = at < 0 ? undefined : visible[at + delta];
+  return past === undefined ? null : movedKey(keys, key, keys.indexOf(past) - keys.indexOf(key));
+};
+
+const IndicatorSlot = ({ name, onShown, children }: { name: string; onShown: (name: string, shown: boolean) => void; children: ReactNode }) => {
+  const sized = useCallback(
+    (node: HTMLElement | null) => {
+      if (node === null) return undefined;
+      const read = () => onShown(name, node.offsetWidth > 0);
+      read();
+      const observer = new ResizeObserver(read);
+      observer.observe(node);
+      return () => observer.disconnect();
+    },
+    [name, onShown],
+  );
+  return (
+    <div ref={sized} className="flex items-center">
+      {children}
+    </div>
+  );
+};
+
 const LeadingGap = ({ gap, children }: { gap: number; children: ReactNode }) => (
   <div className="flex shrink-0 items-center empty:hidden" style={{ marginInlineStart: gap }}>
     {children}
@@ -294,6 +320,11 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const [allStatus, setAllStatus] = useState(false);
   const [batteryDisplay, setBatteryDisplay] = useState(false);
   const [rtkSettings, setRtkSettings] = useState(false);
+  const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
+  const seen = useCallback(
+    (key: string, on: boolean) => setShown((current) => (current.has(key) === on ? current : new Set(on ? [...current, key] : [...current].filter((it) => it !== key)))),
+    [],
+  );
   const layout = useContext(LocalFlyScreenState).layout;
   const editing = useValue(layout.editing);
   const indicatorOrder = useValue(layout.indicatorOrder);
@@ -335,6 +366,20 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const keys = compact ? ordered.slice(0, shownStatusCells(narrow)) : ordered;
   const silence = silentFor === null ? null : silenceText(silentFor);
   const battery = detail === StripDetail.Battery;
+  const arrow = (key: string, delta: number) => {
+    const moved = movedPastShown(keys, shown, key, delta);
+    return (
+      <TextButton
+        enabled={moved !== null}
+        className={delta < 0 ? 'ms-3' : 'me-3'}
+        onClick={() => {
+          if (moved !== null) layout.saveIndicatorOrder(moved);
+        }}
+      >
+        {delta < 0 ? '‹' : '›'}
+      </TextButton>
+    );
+  };
   const rows = (() => {
     if (detail === StripDetail.Battery) {
       const draw = totalDraw(batteryJson);
@@ -352,28 +397,12 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
       <div className={`flex items-center overflow-x-auto ${className ?? ''}`} style={{ ...style, opacity: live ? 1 : 0.45 }}>
         {keys.map((key) => (
           <LayoutWidget key={key} widgetKey={`indicator-${key}`} movable={false}>
-            <LeadingGap gap={stripGap(narrow)}>
-              {editing ? (
-                <TextButton
-                  onClick={() => {
-                    const moved = movedKey(keys, key, -1);
-                    if (moved !== null) layout.saveIndicatorOrder(moved);
-                  }}
-                >
-                  {'‹'}
-                </TextButton>
-              ) : null}
-              {byKey.get(key) ?? null}
-              {editing ? (
-                <TextButton
-                  onClick={() => {
-                    const moved = movedKey(keys, key, 1);
-                    if (moved !== null) layout.saveIndicatorOrder(moved);
-                  }}
-                >
-                  {'›'}
-                </TextButton>
-              ) : null}
+            <LeadingGap gap={shown.has(key) ? stripGap(narrow) : 0}>
+              {editing && shown.has(key) ? arrow(key, -1) : null}
+              <IndicatorSlot name={key} onShown={seen}>
+                {byKey.get(key) ?? null}
+              </IndicatorSlot>
+              {editing && shown.has(key) ? arrow(key, 1) : null}
             </LeadingGap>
           </LayoutWidget>
         ))}

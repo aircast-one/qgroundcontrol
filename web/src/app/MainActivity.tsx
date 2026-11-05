@@ -532,7 +532,7 @@ export const AircastShell = () => {
           ...(browserFullScreenSupported() ? [{ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen' as const, current: false, onSelect: () => void toggleBrowserFullScreen().catch(() => undefined) }] : []),
         ]}
       />
-      <div className="flex min-w-0 flex-1 items-center justify-start">
+      <div className={`flex items-center justify-start ${layoutEditing ? 'grow shrink-0' : 'min-w-0 flex-1'}`}>
         <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false} className="min-w-0">
           <VehicleStateChip />
         </LayoutWidget>
@@ -542,7 +542,7 @@ export const AircastShell = () => {
       </LayoutWidget>
       <ControlRequestPrompt />
       <DeviceStatusChip />
-      <LayoutWidget widgetKey="statusPill" movable={false} hideable={false}>
+      <LayoutWidget widgetKey="statusPill" movable={false} hideable={false} className="min-w-0">
         <StatusPill />
       </LayoutWidget>
       <FlySettingsButton />
