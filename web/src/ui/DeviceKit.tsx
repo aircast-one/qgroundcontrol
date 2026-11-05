@@ -46,17 +46,21 @@ export const levelColor = (level: number): string =>
 
 const levelIcon = (level: number): string => (level === DeviceLevel.Ready ? 'check_circle' : level === DeviceLevel.Neutral ? 'info' : 'warning');
 
-export const DeviceColumns = ({ left, right }: { left: ReactNode; right: ReactNode }) => {
+export const DeviceColumns = ({ left, right, below = null }: { left: ReactNode; right: ReactNode; below?: ReactNode }) => {
   const desktop = useDesktopLayout();
   return desktop ? (
-    <div className="grid grid-cols-2 items-start gap-x-6">
-      <div className="flex min-w-0 flex-col">{left}</div>
-      <div className="flex min-w-0 flex-col">{right}</div>
-    </div>
+    <>
+      <div className="grid grid-cols-2 items-start gap-x-6">
+        <div className="flex min-w-0 flex-col">{left}</div>
+        <div className="flex min-w-0 flex-col">{right}</div>
+      </div>
+      {below}
+    </>
   ) : (
     <>
       {left}
       {right}
+      {below}
     </>
   );
 };

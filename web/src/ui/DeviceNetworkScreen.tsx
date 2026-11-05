@@ -57,9 +57,9 @@ export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
           {!view.data.absent ? <DataSection data={view.data} /> : null}
           <TailscaleSection tailscale={view.tailscale} title="Remote access" controlInline={false} />
           <FootNote text="Reaching this device from somewhere else — it is not needed to fly." />
-          <AdvancedSection view={view} />
         </>
       }
+      below={<AdvancedSection view={view} />}
     />
   );
 };
