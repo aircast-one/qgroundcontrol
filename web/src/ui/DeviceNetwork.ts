@@ -48,7 +48,13 @@ export type StarlinkCard = CardHead & {
   readonly address: { readonly value: string; readonly fallback: string; readonly defaultFirst: boolean; readonly open: boolean };
 };
 
-export type WifiCard = CardHead & { readonly joined: DeviceBadge | null; readonly reopen: { readonly host: string; readonly hostname: string } };
+export type WifiCard = CardHead & {
+  readonly joined: DeviceBadge | null;
+  readonly held: DeviceBadge | null;
+  readonly hotspot: ConfirmedAction | null;
+  readonly saved: ConfirmedAction | null;
+  readonly reopen: { readonly host: string; readonly hostname: string };
+};
 
 export type IPv4Settings = { readonly method: string; readonly metric: string; readonly metricPlaceholder: string; readonly address: string; readonly gateway: string; readonly dns: string };
 
@@ -206,7 +212,14 @@ const parseStarlink = (json: Json | null): StarlinkCard => {
 
 const parseWifi = (json: Json | null): WifiCard => {
   const reopen = optJSONObject(json, 'reopen');
-  return { ...parseHead(json), joined: optBadge(json, 'joined'), reopen: { host: optText(reopen, 'host'), hostname: optText(reopen, 'hostname') } };
+  return {
+    ...parseHead(json),
+    joined: optBadge(json, 'joined'),
+    held: optBadge(json, 'held'),
+    hotspot: parseConfirmed(optJSONObject(json, 'hotspot')),
+    saved: parseConfirmed(optJSONObject(json, 'saved')),
+    reopen: { host: optText(reopen, 'host'), hostname: optText(reopen, 'hostname') },
+  };
 };
 
 const parseEditor = (json: Json | null): LinkEditor | null =>

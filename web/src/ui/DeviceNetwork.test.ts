@@ -71,6 +71,21 @@ describe('DeviceNetworkTest', () => {
     expect(view?.starlink.absent).toBe(true);
     expect(view?.data.absent).toBe(false);
     expect(view?.wifi.joined).toBeNull();
+    expect(view?.wifi.held).toBeNull();
+    expect(view?.wifi.hotspot).toBeNull();
+    expect(view?.wifi.saved).toBeNull();
+    const held = parseNetwork({
+      ...VIEW,
+      wifi: {
+        ...VIEW.wifi,
+        held: { level: 2, text: 'Hotspot kept on by hand' },
+        saved: { label: 'Join workshop', confirm: 'Join workshop now?' },
+        hotspot: { label: 'Use hotspot', confirm: 'Keep the hotspot on?' },
+      },
+    });
+    expect(held?.wifi.held?.text).toBe('Hotspot kept on by hand');
+    expect(held?.wifi.saved).toEqual({ label: 'Join workshop', confirm: 'Join workshop now?' });
+    expect(held?.wifi.hotspot?.label).toBe('Use hotspot');
     expect(view?.wifi.reopen).toEqual({ host: 'harness.local', hostname: 'harness' });
     expect(view?.interfaces.links[0]?.editor?.iface).toBe('eth0');
     expect(view?.interfaces.links[0]?.role).toBeNull();

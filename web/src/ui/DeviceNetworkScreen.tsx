@@ -71,8 +71,27 @@ const InternetSection = ({ uplink, wifi, onOpen }: { uplink: UplinkCard; wifi: W
     <DeviceSection title="Internet" badge={uplink.status}>
       <UplinkBody uplink={uplink} onOpen={onOpen} />
       {wifi.joined !== null && wifi.joined.level !== DeviceLevel.Ready ? <DeviceNotice notice={wifi.joined} /> : null}
+      {wifi.held !== null ? <DeviceNotice notice={wifi.held} /> : null}
       <Actions>
         <FilledTonalButton onClick={() => setJoining((open) => !open)}>{joining ? 'Close' : wifiActionLabel(uplink, wifi)}</FilledTonalButton>
+        {wifi.saved !== null ? (
+          <ActionButton
+            label={wifi.saved.label}
+            tonal={false}
+            request={{ method: 'POST', path: '/api/network/wifi/saved' }}
+            success="Joined. The device switches Wi-Fi by itself again."
+            confirm={{ title: `${wifi.saved.label}?`, text: wifi.saved.confirm, confirm: 'Join' }}
+          />
+        ) : null}
+        {wifi.hotspot !== null ? (
+          <ActionButton
+            label={wifi.hotspot.label}
+            tonal={false}
+            request={{ method: 'POST', path: '/api/network/wifi/hotspot' }}
+            success="Hotspot on until the device restarts."
+            confirm={{ title: 'Keep the hotspot on?', text: wifi.hotspot.confirm, confirm: 'Use hotspot' }}
+          />
+        ) : null}
       </Actions>
       {joining ? (
         <div className="mx-list my-2 rounded-shape-md bg-surface-container-high py-1">
