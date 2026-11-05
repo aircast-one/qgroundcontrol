@@ -367,6 +367,7 @@ struct VehicleMap: View {
             }
         }
         .modifier(VehicleMapOverlays(map: self, scene: scene, model: model))
+        .modifier(VehicleMapMarks(map: self, scene: scene, model: model))
         .modifier(VehicleMapPlan(map: self, scene: scene, model: model, track: track))
     }
 }
@@ -483,6 +484,18 @@ private struct VehicleMapOverlays: ViewModifier {
             .onChange(of: Keys(generation, scene.previewPath), initial: true) {
                 if let style { renderGotoPath(style, scene.previewPath) }
             }
+    }
+}
+
+private struct VehicleMapMarks: ViewModifier {
+    let map: VehicleMap
+    let scene: VehicleMapScene
+    @ObservedObject var model: VehicleMapModel
+
+    func body(content: Content) -> some View {
+        let generation = model.generation
+        let style = model.style
+        return content
             .onChange(of: Keys(generation, map.roi), initial: true) {
                 if let style { renderRoi(style, map.roi) }
             }
