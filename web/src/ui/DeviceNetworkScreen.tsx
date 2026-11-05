@@ -80,7 +80,7 @@ const InternetSection = ({ uplink, wifi, lockdown, onOpen }: { uplink: UplinkCar
             label={wifi.saved.label}
             tonal={false}
             request={{ method: 'POST', path: '/api/network/wifi/saved' }}
-            success="Joined. The device switches Wi-Fi by itself again."
+            success="Joining. If the network doesn't answer, the hotspot comes back."
             confirm={{ title: `${wifi.saved.label}?`, text: wifi.saved.confirm, confirm: 'Join' }}
           />
         ) : null}
@@ -89,7 +89,7 @@ const InternetSection = ({ uplink, wifi, lockdown, onOpen }: { uplink: UplinkCar
             label={wifi.hotspot.label}
             tonal={false}
             request={{ method: 'POST', path: '/api/network/wifi/hotspot' }}
-            success="Hotspot on until the device restarts."
+            success="Switching to the hotspot. It stays on until the device reboots."
             confirm={{ title: 'Keep the hotspot on?', text: wifi.hotspot.confirm, confirm: 'Use hotspot' }}
           />
         ) : null}

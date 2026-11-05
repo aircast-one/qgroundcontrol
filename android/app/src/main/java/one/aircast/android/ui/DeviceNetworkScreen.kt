@@ -222,7 +222,7 @@ private fun WifiControls(wifi: WifiCard) {
             ActionButton(
                 it.label,
                 DeviceRequest(DeviceMethod.POST, "/api/network/wifi/saved"),
-                success = "Joined. The device switches Wi-Fi by itself again.",
+                success = "Joining. If the network doesn't answer, the hotspot comes back.",
                 confirm = ActionConfirm("${it.label}?", it.confirm, "Join"),
             )
         }
@@ -230,7 +230,7 @@ private fun WifiControls(wifi: WifiCard) {
             ActionButton(
                 it.label,
                 DeviceRequest(DeviceMethod.POST, "/api/network/wifi/hotspot"),
-                success = "Hotspot on until the device restarts.",
+                success = "Switching to the hotspot. It stays on until the device reboots.",
                 confirm = ActionConfirm("Keep the hotspot on?", it.confirm, "Use hotspot"),
                 tonal = false,
             )

@@ -10,7 +10,7 @@ private struct WifiControls: View {
                     ActionButton(
                         label: saved.label,
                         request: DeviceRequest(method: .POST, path: "/api/network/wifi/saved"),
-                        success: "Joined. The device switches Wi-Fi by itself again.",
+                        success: "Joining. If the network doesn't answer, the hotspot comes back.",
                         confirm: ActionConfirm(title: "\(saved.label)?", text: saved.confirm, confirm: "Join")
                     )
                 }
@@ -18,7 +18,7 @@ private struct WifiControls: View {
                     ActionButton(
                         label: hotspot.label,
                         request: DeviceRequest(method: .POST, path: "/api/network/wifi/hotspot"),
-                        success: "Hotspot on until the device restarts.",
+                        success: "Switching to the hotspot. It stays on until the device reboots.",
                         confirm: ActionConfirm(title: "Keep the hotspot on?", text: hotspot.confirm, confirm: "Use hotspot"),
                         tonal: false
                     )
