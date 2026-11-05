@@ -5,24 +5,28 @@ struct DeviceSettingsScreen: View {
     @DeviceView("device") private var reading
 
     var body: some View {
-        if let view = deviceView(reading, parseDeviceSettings) {
-            HealthLine(health: view.health, onOpen: props.onOpen)
-            if let notice = view.notice { DeviceNotice(notice: notice) }
-            DeviceSection(title: "Status") {
-                ForEach(view.stats, id: \.label) { stat in
-                    if stat.label == SERVICES {
-                        ServicesStat(stat: stat, services: view.services)
-                    } else {
-                        StatText(stat: stat).padding(.horizontal, 16).padding(.vertical, 8)
+        NativeForm {
+            if let view = deviceView(reading, parseDeviceSettings) {
+                Section {
+                    HealthLine(health: view.health, onOpen: props.onOpen)
+                    if let notice = view.notice { DeviceNotice(notice: notice) }
+                }
+                DeviceSection(title: "Status") {
+                    ForEach(view.stats, id: \.label) { stat in
+                        if stat.label == SERVICES {
+                            ServicesStat(stat: stat, services: view.services)
+                        } else {
+                            StatText(stat: stat)
+                        }
                     }
                 }
+                CloudSection(cloud: view.cloud)
+                SoftwareSection(software: view.software)
+                DeviceSection(title: "More devices") { ProvisionSteps() }
+                ResetSection(hostname: view.hostname)
+            } else {
+                FootNote(text: DEVICE_WAITING)
             }
-            CloudSection(cloud: view.cloud)
-            SoftwareSection(software: view.software)
-            DeviceSection(title: "More devices") { ProvisionSteps() }
-            ResetSection(hostname: view.hostname)
-        } else {
-            FootNote(text: DEVICE_WAITING)
         }
     }
 }
@@ -33,14 +37,13 @@ private struct HealthLine: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.s3) {
             Circle().fill(deviceLevelColor(health.level, theme)).frame(width: 10, height: 10)
-            Text(health.text).font(.titleMedium).foregroundStyle(deviceLevelColor(health.level, theme)).frame(maxWidth: .infinity, alignment: .leading)
+            Text(health.text).font(.headline).foregroundStyle(deviceLevelColor(health.level, theme)).frame(maxWidth: .infinity, alignment: .leading)
             if !health.href.isEmpty {
                 Button("Check") { onOpen(health.href) }.buttonStyle(.bordered)
             }
         }
-        .padding(EdgeInsets(top: 16, leading: 16, bottom: 4, trailing: 16))
     }
 }
 
@@ -48,12 +51,16 @@ private struct StatText: View {
     let stat: DeviceStat
     @Environment(\.theme) private var theme
 
+    // A value row: the label left, the value right (coloured by its level), the hint underneath.
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(stat.label).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-            Text(stat.value).font(.titleMedium).foregroundStyle(deviceLevelTextColor(stat.level, theme))
+            LabeledContent(stat.label) {
+                Text(stat.value)
+                    .foregroundStyle(stat.level == DeviceLevel.Neutral ? Color.secondary : deviceLevelColor(stat.level, theme))
+                    .multilineTextAlignment(.trailing)
+            }
             if !stat.hint.isEmpty {
-                Text(stat.hint).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text(stat.hint).font(.footnote).foregroundStyle(Color.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,33 +73,17 @@ private struct ServicesStat: View {
     @Environment(\.theme) private var theme
     @State private var open = false
 
+    // The services stat opens to one row per supervised unit.
     var body: some View {
-        Button { open.toggle() } label: {
-            HStack(spacing: 16) {
-                StatText(stat: stat)
-                Text(open ? "Hide" : "Show details").font(.labelMedium).foregroundStyle(theme.colors.primary)
-                Image(open ? .arrowUp : .arrowDropDown).foregroundStyle(theme.colors.onSurfaceVariant)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        if open {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(services, id: \.label) { service in
-                    HStack(spacing: 12) {
-                        Text(service.label).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
-                        Text(service.state).font(.labelLarge).foregroundStyle(deviceLevelColor(service.level, theme))
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
+        DisclosureGroup(isExpanded: $open) {
+            ForEach(services, id: \.label) { service in
+                LabeledContent(service.label) {
+                    Text(service.state).foregroundStyle(deviceLevelColor(service.level, theme))
                 }
-                DeviceStatusLine(text: "Supervised by systemd — a unit that stops is restarted automatically.")
             }
-            .padding(.bottom, 8)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Supervised units")
+            DeviceStatusLine(text: "Supervised by systemd — a unit that stops is restarted automatically.")
+        } label: {
+            StatText(stat: stat)
         }
     }
 }
@@ -141,7 +132,7 @@ private struct CloudConnect: View {
         let refusedIssuer = action.refusal?.field == "issuer"
         DeviceText(text: "Not connected. Linking signs this device in to an Aircast cloud account; it is optional — every local and self-hosted path works without it.")
         if !cloud.error.isEmpty { DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Warn, text: cloud.error)) }
-        DeviceDisclosure("Advanced · environment", summary: "Which Aircast cloud to sign in to", initiallyOpen: refusedIssuer) {
+        DeviceGroup("Advanced · environment", summary: "Which Aircast cloud to sign in to", initiallyOpen: refusedIssuer) {
             DeviceTextField(
                 label: "Cloud API",
                 value: issuer,
@@ -151,31 +142,23 @@ private struct CloudConnect: View {
                 supporting: "Leave this alone unless you were told to use a different Aircast environment.",
                 keyboard: .uri
             )
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
         }
         DeviceRefusalText(refusal: action.refusal, field: action.refusal?.field ?? "")
-        DeviceButtonRow {
-            Button("Connect", action: connect).buttonStyle(.bordered).disabled(action.busy)
-        }
+        Button("Connect", action: connect).buttonStyle(.borderedProminent).disabled(action.busy)
     }
 }
 
 private struct SoftwareNoticeRow: View {
     let notice: SoftwareNotice
-    @Environment(\.theme) private var theme
 
     var body: some View {
         DeviceNotice(notice: DeviceBadge(level: notice.level, text: notice.text.isEmpty ? notice.title : "\(notice.title) \(notice.text)"))
         if !notice.detail.isEmpty {
-            DeviceDisclosure(notice.detailLabel) {
+            DeviceGroup(notice.detailLabel) {
                 ScrollView {
                     Text(notice.detail).font(deviceMono(.bodySmall)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
                 }
                 .frame(maxHeight: 192)
-                .padding(12)
-                .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.small))
-                .padding(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
             }
         }
     }
@@ -183,16 +166,15 @@ private struct SoftwareNoticeRow: View {
 
 private struct SoftwareSection: View {
     let software: SoftwareStatus
-    @Environment(\.theme) private var theme
 
     var body: some View {
         DeviceSection(title: "Software", badge: software.status) {
-            StackedFact(label: "Running", value: software.summary)
+            DeviceFact(label: "Running", value: software.summary)
             ForEach(software.notices, id: \.title) { SoftwareNoticeRow(notice: $0) }
             if let candidate = software.candidate {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(candidate.title).font(.titleMedium)
-                    HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: Space.s2) {
+                    Text(candidate.title).font(.headline)
+                    HStack(spacing: Space.s2) {
                         ActionButton(
                             label: candidate.install,
                             request: DeviceRequest(method: .POST, path: "/api/update"),
@@ -203,22 +185,17 @@ private struct SoftwareSection: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.medium))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, Space.s1)
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Available update")
             }
             ForEach(software.notes, id: \.self) { DeviceText(text: $0) }
-            HStack(spacing: 8) {
-                Text(software.checked).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Space.s2) {
+                Text(software.checked).font(.footnote).foregroundStyle(Color.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 if software.canCheck {
                     ActionButton(label: "Check now", request: DeviceRequest(method: .POST, path: "/api/update/check"), success: "Checked for updates.", tonal: false)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
         }
     }
 }
@@ -231,18 +208,15 @@ private let PROVISION_STEPS = [
 ]
 
 private struct ProvisionSteps: View {
-    @Environment(\.theme) private var theme
     @Environment(\.LocalDeviceOrigin) private var origin
 
     var body: some View {
-        DeviceDisclosure("Set up another device like this one", summary: "Export these settings for the next card.") {
+        DeviceGroup("Set up another device like this one", summary: "Export these settings for the next card.") {
             ForEach(Array(PROVISION_STEPS.enumerated()), id: \.offset) { index, step in
-                HStack(alignment: .top, spacing: 8) {
-                    Text("\(index + 1).").font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                    Text(step).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant).frame(maxWidth: .infinity, alignment: .leading)
+                HStack(alignment: .top, spacing: Space.s2) {
+                    Text("\(index + 1).").foregroundStyle(Color.secondary)
+                    Text(step).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
             }
             DeviceText(text: "The file carries the camera's own address, sign-in included — that is what makes it worth copying. Treat it like the password it contains.")
             DeviceButtonRow { LinkButton(href: resolveDeviceUrl(origin, "/api/provision/export"), text: "Export these settings", icon: .download) }
@@ -253,7 +227,6 @@ private struct ProvisionSteps: View {
 
 private struct ResetSection: View {
     let hostname: String
-    @Environment(\.theme) private var theme
     @Environment(\.LocalChangeNotice) private var notice
     @State private var action = DeviceActionState()
     @State private var asking = false
@@ -267,29 +240,29 @@ private struct ResetSection: View {
         }
     }
 
+    // A destructive row in its own section, the explanation as the footer; the typed confirmation is unchanged.
     var body: some View {
-        DeviceSection(title: "Reset device") {
-            DeviceText(text: "Reboots and reverts the device to factory settings — camera, telemetry and all Wi-Fi and added network settings are wiped, and the setup wizard runs again. Tailscale stays connected so the device remains reachable.")
-            DeviceButtonRow {
-                Button("Reset to defaults") {
-                    typed = ""
-                    asking = true
-                }
-                .buttonStyle(.bordered)
-                .tint(theme.colors.error)
-                .disabled(action.busy)
+        Section {
+            Button("Reset to defaults", role: .destructive) {
+                typed = ""
+                asking = true
             }
+            .disabled(action.busy)
+            .deviceTypedConfirm(
+                $asking,
+                title: "Reset to factory settings?",
+                text: "It reboots and wipes the camera, telemetry and all Wi-Fi and added network settings, then runs setup again. Tailscale is preserved.",
+                label: "Type \(hostname) to confirm",
+                expected: hostname,
+                confirm: "Reset",
+                typed: $typed,
+                onConfirm: reset
+            )
             DeviceRefusalText(refusal: action.refusal, field: action.refusal?.field ?? "")
+        } header: {
+            SectionHeader(text: "Reset device")
+        } footer: {
+            Text("Reboots and reverts the device to factory settings — camera, telemetry and all Wi-Fi and added network settings are wiped, and the setup wizard runs again. Tailscale stays connected so the device remains reachable.")
         }
-        .deviceTypedConfirm(
-            $asking,
-            title: "Reset to factory settings?",
-            text: "It reboots and wipes the camera, telemetry and all Wi-Fi and added network settings, then runs setup again. Tailscale is preserved.",
-            label: "Type \(hostname) to confirm",
-            expected: hostname,
-            confirm: "Reset",
-            typed: $typed,
-            onConfirm: reset
-        )
     }
 }

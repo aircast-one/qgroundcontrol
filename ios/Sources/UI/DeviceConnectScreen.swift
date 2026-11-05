@@ -11,14 +11,16 @@ struct DeviceConnectScreen: View {
     }
 
     var body: some View {
-        if let view = deviceView(reading, parseConnect) {
-            if let add = view.noCamera {
-                NoCamera(add: add, onOpen: props.onOpen)
+        NativeForm {
+            if let view = deviceView(reading, parseConnect) {
+                if let add = view.noCamera {
+                    NoCamera(add: add, onOpen: props.onOpen)
+                } else {
+                    ConnectLinks(view: view, choice: chosenGcs(view.choices, saved), onPick: pick, onOpen: props.onOpen)
+                }
             } else {
-                ConnectLinks(view: view, choice: chosenGcs(view.choices, saved), onPick: pick, onOpen: props.onOpen)
+                FootNote(text: DEVICE_WAITING)
             }
-        } else {
-            FootNote(text: DEVICE_WAITING)
         }
     }
 }
@@ -30,10 +32,7 @@ private struct NoCamera: View {
     var body: some View {
         DeviceSection(title: "Cameras") {
             DeviceText(text: "There is no camera on this device yet, so there is nothing to point a ground station at.")
-            Button(add.label) { onOpen(add.href) }
-                .buttonStyle(.bordered)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+            Button(add.label) { onOpen(add.href) }.buttonStyle(.bordered)
         }
     }
 }
@@ -47,16 +46,19 @@ private struct ReachLine: View {
             .font(.labelMedium)
             .foregroundStyle(reach ? theme.aircast.success : theme.aircast.warning)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
+            .rowPadding(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
     }
 }
 
 private struct TargetRow: View {
     let target: ConnectTarget
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
     @State private var reach: Bool?
 
     var body: some View {
+        // The link and whether it answers form one row; its address-only alternatives follow as their own,
+        // indented rows, so each keeps its copy and QR buttons.
         VStack(alignment: .leading, spacing: 0) {
             CopyRow(
                 label: target.tag.isEmpty ? target.label : "\(target.label) · \(target.tag)",
@@ -66,14 +68,6 @@ private struct TargetRow: View {
                 level: target.down ? DeviceLevel.Warn : DeviceLevel.Neutral
             )
             if let reach { ReachLine(reach: reach) }
-            if !target.alternatives.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    DeviceText(text: "Doesn't resolve on Android or Windows? Use the address instead:")
-                    ForEach(target.alternatives, id: \.url) { CopyRow(label: $0.label, text: $0.url) }
-                }
-                .overlay(alignment: .leading) { Rectangle().fill(theme.colors.outlineVariant).frame(width: 2) }
-                .padding(.leading, 16)
-            }
         }
         .task(id: target.reach) {
             let url = target.reach
@@ -82,6 +76,22 @@ private struct TargetRow: View {
             while !Task.isCancelled {
                 reach = await deviceReach(url)
                 try? await Task.sleep(for: .milliseconds(REACH_RECHECK_MS))
+            }
+        }
+        if !target.alternatives.isEmpty {
+            if nativeList {
+                Text("Doesn't resolve on Android or Windows? Use the address instead:")
+                    .font(.footnote)
+                    .foregroundStyle(Color.secondary)
+                    .padding(.leading, Space.s4)
+                ForEach(target.alternatives, id: \.url) { CopyRow(label: $0.label, text: $0.url).padding(.leading, Space.s4) }
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    DeviceText(text: "Doesn't resolve on Android or Windows? Use the address instead:")
+                    ForEach(target.alternatives, id: \.url) { CopyRow(label: $0.label, text: $0.url) }
+                }
+                .overlay(alignment: .leading) { Rectangle().fill(theme.colors.outlineVariant).frame(width: 2) }
+                .padding(.leading, 16)
             }
         }
     }
@@ -101,12 +111,14 @@ private struct GcsChooser: View {
     let choice: GcsChoice?
     let onPick: (String) -> Void
 
+    // The ground station as a menu row ("Ground station: QGroundControl"), picked once and remembered.
     var body: some View {
-        DeviceButtonRow {
-            ForEach(choices, id: \.value) { option in
-                DeviceChip(label: option.label, selected: option.value == choice?.value) { onPick(option.value) }
-            }
-        }
+        DeviceSelect(
+            label: "Ground station",
+            value: choice?.value ?? "",
+            options: choices.map { DeviceOption(value: $0.value, label: $0.label) },
+            onPick: onPick
+        )
     }
 }
 
@@ -115,9 +127,9 @@ private struct Subheading: View {
 
     var body: some View {
         Text(text)
-            .font(.titleSmall)
+            .font(.headline)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(EdgeInsets(top: 16, leading: 16, bottom: 4, trailing: 16))
+            .rowPadding(EdgeInsets(top: 16, leading: 16, bottom: 4, trailing: 16))
     }
 }
 
@@ -132,7 +144,7 @@ private struct ConnectLinks: View {
             GcsChooser(choices: view.choices, choice: choice, onPick: onPick)
             DeviceText(text: "QGroundControl and Mission Planner play the RTSP link; a browser, OBS or Aircast QGC play WebRTC. This app remembers your answer.")
             DeviceText(text: view.scope)
-            DeviceDisclosure("How to connect a ground station") {
+            DeviceGroup("How to connect a ground station") {
                 DeviceText(text: "Each link below says where to paste it in your app; video and telemetry are two separate links.")
                 DeviceText(text: "Ground station on another device? Scan that link's QR code from there — no retyping.")
             }
@@ -141,10 +153,7 @@ private struct ConnectLinks: View {
             DeviceSection(title: camera.name, badge: camera.status) {
                 if !camera.notice.isEmpty { DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Warn, text: camera.notice)) }
                 if let fix = camera.fix {
-                    Button(fix.label) { onOpen(fix.href) }
-                        .buttonStyle(.bordered)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                    Button(fix.label) { onOpen(fix.href) }.buttonStyle(.bordered)
                 }
                 TargetRows(targets: camera.targets, choice: choice)
             }
@@ -162,11 +171,10 @@ private struct ConnectLinks: View {
 private struct TroubleSection: View {
     let trouble: ConnectTrouble
     let choice: GcsChoice?
-    @Environment(\.theme) private var theme
 
     var body: some View {
         DeviceSection(title: "Troubleshooting") {
-            DeviceDisclosure("This link didn't play in my app", summary: "Reach the device by address, or fall back to a player that takes anything.") {
+            DeviceGroup("This link didn't play in my app", summary: "Reach the device by address, or fall back to a player that takes anything.") {
                 if !trouble.fallback.isEmpty {
                     Subheading(text: "When nothing else will play")
                     TargetRows(targets: trouble.fallback, choice: choice)
@@ -179,10 +187,10 @@ private struct TroubleSection: View {
                     )
                     ForEach(addresses.groups, id: \.label) { group in
                         Text(group.label)
-                            .font(.labelMedium)
-                            .foregroundStyle(theme.colors.onSurfaceVariant)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
+                            .rowPadding(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
                         TargetRows(targets: group.targets, choice: choice)
                     }
                 }

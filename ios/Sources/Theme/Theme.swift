@@ -141,6 +141,9 @@ private struct ScaledType: ViewModifier {
     func body(content: Content) -> some View { content.font(scale.font(size)) }
 }
 
+// Aircast's prominent button (borderedProminent in the primary colour) for an action inside a page's content, at
+// its regular size. A list or form page's own primary action (Connect, Save, Start) goes in the navigation bar
+// instead — pagePrimaryAction (Support/NativeUI.swift) — not as a full-width button at the foot of the page.
 struct FilledButtonStyle: PrimitiveButtonStyle {
     @Environment(\.theme) private var theme
     @Environment(\.isEnabled) private var isEnabled

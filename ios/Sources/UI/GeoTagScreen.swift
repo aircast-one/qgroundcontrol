@@ -39,95 +39,107 @@ struct GeoTagScreen: View {
         picking = true
     }
 
-    private var content: some View {
-        ScrollView {
-            if let current = run.state { form(current) }
+    @ViewBuilder private var content: some View {
+        if let current = run.state {
+            form(current)
+        } else {
+            Color.clear
         }
     }
 
+    // The three files as disclosure rows that open the picker, the options as form rows, and Start (or Preview, or
+    // Cancel while tagging) as the page's primary action.
     private func form(_ current: GeoTagState) -> some View {
         let editable = !current.inProgress && !run.busy
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("Tag images from a survey mission with GPS coordinates from your flight log.")
-                .font(.bodyMedium)
-                .foregroundStyle(theme.colors.onSurfaceVariant)
+        let canRun = current.inProgress || (!run.busy && !current.logFile.isBlank && !current.imageDirectory.isBlank)
+        let messages = [geoTagError(current), run.note].compactMap { $0 }
+        return NativeForm {
             if current.inProgress {
-                Text("Geotagging in progress...").font(.bodyMedium)
-                ProgressView(value: min(max(current.progress / 100, 0), 1))
+                Section {
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        Text("Geotagging in progress...")
+                        ProgressView(value: min(max(current.progress / 100, 0), 1))
+                    }
+                    .padding(.vertical, Space.s1)
+                }
             }
-            ForEach([geoTagError(current), run.note].compactMap { $0 }, id: \.self) { message in
-                Text(message).font(.bodyMedium).foregroundStyle(theme.colors.error)
-            }
-            if let summary = geoTagSummary(current) {
-                Text(summary).font(.bodyMedium).foregroundStyle(theme.colors.primary)
-            }
-
-            GeoTagStepRow(
-                mark: geoTagStep(!current.logFile.isBlank, 1),
-                title: "Flight log",
-                detail: current.logFile.isBlank ? "No file selected" : current.logFile.components(separatedBy: "/").last ?? "",
-                enabled: editable
-            ) { browse(.log) }
-            if !logs.isEmpty && editable {
-                VStack(alignment: .leading) {
-                    ForEach(logs, id: \.self) { log in
-                        Button(log.lastPathComponent) { run.pickDownloadedLog(log.path) }.buttonStyle(.text)
+            if !messages.isEmpty || geoTagSummary(current) != nil {
+                Section {
+                    ForEach(messages, id: \.self) { message in
+                        Text(message).foregroundStyle(theme.colors.error)
+                    }
+                    if let summary = geoTagSummary(current) {
+                        Text(summary).foregroundStyle(theme.colors.primary)
                     }
                 }
-                .padding(.leading, 40)
             }
-            GeoTagStepRow(
-                mark: geoTagStep(!current.imageDirectory.isBlank, 2),
-                title: "Photos folder",
-                detail: run.imageTree.map(treeName) ?? "No folder selected",
-                enabled: editable
-            ) { browse(.images) }
-            GeoTagStepRow(
-                mark: "3",
-                title: "Output folder (optional)",
-                detail: geoTagOutputText(run.outputTree.map(treeName), run.imageTree.map(treeName)),
-                enabled: editable
-            ) { browse(.output) }
-
-            Text("Advanced options").font(.titleSmall)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Time offset (seconds)").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-                TextField("Time offset (seconds)", text: Binding(
-                    get: { offsetText ?? shownOffset(current.timeOffsetSecs) },
-                    set: { typed in
+            Section {
+                GeoTagStepRow(
+                    mark: geoTagStep(!current.logFile.isBlank, 1),
+                    title: "Flight log",
+                    detail: current.logFile.isBlank ? "No file selected" : current.logFile.components(separatedBy: "/").last ?? "",
+                    enabled: editable
+                ) { browse(.log) }
+                GeoTagStepRow(
+                    mark: geoTagStep(!current.imageDirectory.isBlank, 2),
+                    title: "Photos folder",
+                    detail: run.imageTree.map(treeName) ?? "No folder selected",
+                    enabled: editable
+                ) { browse(.images) }
+                GeoTagStepRow(
+                    mark: "3",
+                    title: "Output folder (optional)",
+                    detail: geoTagOutputText(run.outputTree.map(treeName), run.imageTree.map(treeName)),
+                    enabled: editable
+                ) { browse(.output) }
+            } footer: {
+                Text("Tag images from a survey mission with GPS coordinates from your flight log.")
+            }
+            if !logs.isEmpty && editable {
+                Section {
+                    ForEach(logs, id: \.self) { log in
+                        Button(log.lastPathComponent) { run.pickDownloadedLog(log.path) }
+                    }
+                } header: {
+                    SectionHeader(text: "Downloaded flight logs")
+                }
+            }
+            Section {
+                FieldRow(
+                    label: "Time offset (s)",
+                    value: offsetText ?? shownOffset(current.timeOffsetSecs),
+                    hint: "Adjust if camera clock differs from flight log",
+                    enabled: editable,
+                    keyboard: .numbersAndPunctuation,
+                    onChange: { typed in
                         offsetText = typed
                         if let seconds = parsedOffset(typed) { run.set("timeOffsetSecs", seconds) }
                     }
-                ))
-                .keyboardType(.numbersAndPunctuation)
-                .textFieldStyle(.roundedBorder)
-                .disabled(!editable)
-                Text("Adjust if camera clock differs from flight log").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-            }
-            Toggle(isOn: Binding(get: { current.previewMode }, set: { run.set("previewMode", $0) })) {
-                VStack(alignment: .leading) {
-                    Text("Preview mode (don't write files)").font(.bodyMedium)
-                    Text("Verify time offset before committing").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                )
+                Toggle(isOn: Binding(get: { current.previewMode }, set: { run.set("previewMode", $0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Preview mode (don't write files)")
+                        Text("Verify time offset before committing").font(.subheadline).foregroundStyle(Color.secondary)
+                    }
                 }
+                .disabled(!editable)
+            } header: {
+                SectionHeader(text: "Advanced options")
             }
-            .disabled(!editable)
-            Button {
-                if current.inProgress { run.cancel() } else { run.start() }
-            } label: {
-                Text(geoTagButton(current)).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.filled)
-            .disabled(!(current.inProgress || (!run.busy && !current.logFile.isBlank && !current.imageDirectory.isBlank)))
             if !current.images.isEmpty {
-                Text("Images (\(current.images.count))").font(.titleSmall)
-                GeoTagLegend()
-                ForEach(Array(current.images.enumerated()), id: \.offset) { _, image in
-                    GeoTagImageRow(image: image)
+                Section {
+                    GeoTagLegend()
+                    ForEach(Array(current.images.enumerated()), id: \.offset) { _, image in
+                        GeoTagImageRow(image: image)
+                    }
+                } header: {
+                    SectionHeader(text: "Images (\(current.images.count))")
                 }
             }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .pagePrimaryAction(geoTagButton(current), enabled: canRun) {
+            if current.inProgress { run.cancel() } else { run.start() }
+        }
     }
 }
 
@@ -179,6 +191,7 @@ private struct GeoTagImageRow: View {
     }
 }
 
+// One of the three files: its step (a number, or a check once chosen), name and choice, opening the picker.
 private struct GeoTagStepRow: View {
     let mark: String
     let title: String
@@ -190,24 +203,16 @@ private struct GeoTagStepRow: View {
     var body: some View {
         let done = !mark.allSatisfy(\.isNumber)
         Button(action: onBrowse) {
-            HStack(spacing: 16) {
-                Text(mark)
-                    .font(.labelLarge)
-                    .foregroundStyle(done ? theme.colors.onPrimary : theme.colors.onSecondaryContainer)
-                    .frame(width: 32, height: 32)
-                    .background(done ? theme.colors.primary : theme.colors.secondaryContainer, in: Circle())
-                VStack(alignment: .leading) {
-                    Text(title).font(.titleSmall).foregroundStyle(theme.colors.onSurface)
-                    Text(detail).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Space.s3) {
+                Image(systemName: done ? "checkmark.circle.fill" : "\(mark).circle")
+                    .font(.title2)
+                    .foregroundStyle(done ? theme.colors.primary : Color.secondary)
+                    .accessibilityHidden(true)
+                NativeRowLabel(title: title, subtitle: Text(detail), dimmed: !enabled)
             }
-            .padding(16)
-            .background(theme.colors.surfaceContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .listRowButton()
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.6)
     }
 }

@@ -110,11 +110,15 @@ struct Px4TuningScreen: View {
         ZStack(alignment: .topLeading) {
             Color.clear
             if !loaded {
-                Text("Reading parameters from the vehicle.").padding(16)
+                NativeForm {
+                    Section { Text("Reading parameters from the vehicle.").foregroundStyle(Color.secondary) }
+                }
             } else if tabs.indices.contains(tabIndex) {
                 screen(tabs[tabIndex])
             } else {
-                Text("This vehicle has no PX4 tuning page.").padding(16)
+                NativeForm {
+                    Section { Text("This vehicle has no PX4 tuning page.").foregroundStyle(Color.secondary) }
+                }
             }
         }
         .task(id: revision) {
@@ -131,9 +135,9 @@ struct Px4TuningScreen: View {
 
     private func screen(_ tab: TuningTab) -> some View {
         let axis = currentAxis(tab)
-        return VStack(alignment: .leading, spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                Picker("", selection: Binding(get: { tabIndex }, set: { index in
+        return NativeForm {
+            Section {
+                Picker("Controller", selection: Binding(get: { tabIndex }, set: { index in
                     tabIndex = index
                     axisIndex = 0
                 })) {
@@ -141,60 +145,69 @@ struct Px4TuningScreen: View {
                         Text(each.name).tag(index)
                     }
                 }
-                .pickerStyle(.segmented)
-                .fixedSize()
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                ForEach(tab.extras) { fact in
+                    FactRow(fact: fact, onWrite: { revision += 1 })
+                }
             }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(tab.extras) { fact in
-                        FactRow(fact: fact, onWrite: { revision += 1 })
-                    }
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Array(tab.axes.enumerated()), id: \.offset) { index, each in
-                                CameraChip(label: each.name, selected: each == axis) { axisIndex = index }
-                            }
+            Section {
+                if tab.axes.count > 1 {
+                    Picker("Axis", selection: Binding(get: { axis.flatMap { shown in tab.axes.firstIndex(of: shown) } ?? 0 }, set: { axisIndex = $0 })) {
+                        ForEach(Array(tab.axes.enumerated()), id: \.offset) { index, each in
+                            Text(each.name).tag(index)
                         }
                     }
-                    if let axis {
-                        TuningChart(axis: axis, unit: tab.unit, windowSeconds: tab.chartSeconds, modes: tab.autoModeChange ? modes : nil)
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                if let axis {
+                    TuningChart(axis: axis, unit: tab.unit, windowSeconds: tab.chartSeconds, modes: tab.autoModeChange ? modes : nil)
+                        .padding(.vertical, Space.s1)
+                }
+            } header: {
+                SectionHeader(text: "Response")
+            }
+            if tab.autoTuning {
+                Section {
+                    Picker("Tuning", selection: $useAutoTuning) {
+                        Text("Auto-tuning").tag(true)
+                        Text("Manual tuning").tag(false)
                     }
-                    if tab.autoTuning {
-                        HStack(spacing: 16) {
-                            RadioChoiceRow(label: "Use auto-tuning", selected: useAutoTuning) { useAutoTuning = true }
-                            RadioChoiceRow(label: "Use manual tuning", selected: !useAutoTuning) { useAutoTuning = false }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+            }
+            if tab.autoTuning && useAutoTuning {
+                Section {
+                    AutotuneSection()
+                } header: {
+                    SectionHeader(text: "Auto-tuning")
+                }
+            } else if let axis {
+                Section {
+                    ForEach(axis.params, id: \.fact.path) { param in
+                        TuningSlider(param: param) { write(param.fact.path, $0) }
+                    }
+                } header: {
+                    SectionHeader(text: axis.name)
+                }
+                Section {
+                    Button("Save to clipboard") { clipboard = axis.params.map { ($0.fact, $0.fact.valueString) } }
+                    Button("Restore from clipboard") {
+                        clipboard.forEach { fact, value in
+                            if let number = Double(value) { write(fact.path, number) }
                         }
                     }
-                    if tab.autoTuning && useAutoTuning {
-                        AutotuneSection()
-                    } else if let axis {
-                        ForEach(axis.params, id: \.fact.path) { param in
-                            TuningSlider(param: param) { write(param.fact.path, $0) }
-                        }
-                        HStack(spacing: 8) {
-                            Button("Save to clipboard") { clipboard = axis.params.map { ($0.fact, $0.fact.valueString) } }
-                            Button("Restore from clipboard") {
-                                clipboard.forEach { fact, value in
-                                    if let number = Double(value) { write(fact.path, number) }
-                                }
-                            }
-                            .disabled(clipboard.isEmpty)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    if let refusal {
-                        Text(refusal).foregroundStyle(theme.colors.error)
-                    }
+                    .disabled(clipboard.isEmpty)
+                } footer: {
                     if !clipboard.isEmpty {
-                        Text("Clipboard values:").font(.labelLarge)
-                        ForEach(Array(clipboard.enumerated()), id: \.offset) { _, entry in
-                            Text("\(entry.0.name)  \(entry.1)").font(.bodySmall)
-                        }
+                        Text("Clipboard values:\n" + clipboard.map { "\($0.0.name)  \($0.1)" }.joined(separator: "\n"))
                     }
                 }
-                .padding(16)
+            }
+            if let refusal {
+                Section {
+                    Text(refusal).foregroundStyle(theme.colors.error)
+                }
             }
         }
         .onChange(of: [tabIndex, axisIndex], initial: true) {
@@ -222,7 +235,6 @@ private func sliderRange(_ min: Float, _ max: Float) -> ClosedRange<Float> {
 private struct TuningSlider: View {
     let param: TuningParam
     let onWrite: (Float) -> Void
-    @Environment(\.theme) private var theme
     @State private var dragging: Float = 0
 
     var body: some View {
@@ -230,8 +242,8 @@ private struct TuningSlider: View {
         let shown = Binding(get: { Swift.min(Swift.max(dragging, range.lowerBound), range.upperBound) }, set: { dragging = $0 })
         let finished: (Bool) -> Void = { editing in if !editing { onWrite(dragging) } }
         VStack(alignment: .leading, spacing: 2) {
-            Text(param.title).font(.bodyMedium)
-            Text(param.description).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+            Text(param.title)
+            Text(param.description).font(.footnote).foregroundStyle(Color.secondary)
             HStack {
                 Group {
                     if sliderSteps(param.min, param.max, param.step) > 0 {

@@ -4,40 +4,44 @@ struct DeviceRecordingsScreen: View {
     @DeviceView("recordings") private var reading
 
     var body: some View {
-        if let view = deviceView(reading, parseRecordings) {
-            DeviceSection(title: "Storage") {
-                LimitPicker(limit: view.limit).id(view.limit.value)
-                DeviceStatusLine(text: "Recordings share the card this device boots from. Past the limit the oldest go first, so recording can never fill the card.")
-            }
-            if !view.cameras.isEmpty {
-                DeviceSection(title: "Cameras") {
-                    ForEach(view.cameras, id: \.name) { camera in
-                        DeviceSwitchRow(
-                            title: camera.name,
-                            checked: camera.recording,
-                            on: DeviceRequest(method: .PUT, path: recordPath(camera.name)),
-                            off: DeviceRequest(method: .DELETE, path: recordPath(camera.name)),
-                            detail: camera.note,
-                            success: "Recording turned on for \(camera.name).",
-                            offSuccess: "Recording turned off for \(camera.name) — its recordings stay below."
-                        )
+        NativeForm {
+            if let view = deviceView(reading, parseRecordings) {
+                Section {
+                    LimitPicker(limit: view.limit).id(view.limit.value)
+                } header: {
+                    SectionHeader(text: "Storage")
+                } footer: {
+                    Text("Recordings share the card this device boots from. Past the limit the oldest go first, so recording can never fill the card.")
+                }
+                if !view.cameras.isEmpty {
+                    DeviceSection(title: "Cameras") {
+                        ForEach(view.cameras, id: \.name) { camera in
+                            DeviceSwitchRow(
+                                title: camera.name,
+                                checked: camera.recording,
+                                on: DeviceRequest(method: .PUT, path: recordPath(camera.name)),
+                                off: DeviceRequest(method: .DELETE, path: recordPath(camera.name)),
+                                detail: camera.note,
+                                success: "Recording turned on for \(camera.name).",
+                                offSuccess: "Recording turned off for \(camera.name) — its recordings stay below."
+                            )
+                        }
                     }
                 }
-            }
-            if !view.recorded.isEmpty {
-                ForEach(view.recorded, id: \.name) { RecordedSection(camera: $0) }
+                if !view.recorded.isEmpty {
+                    ForEach(view.recorded, id: \.name) { RecordedSection(camera: $0) }
+                } else {
+                    DeviceSection(title: "On this device") { DeviceText(text: "Nothing recorded yet. Turn recording on for a camera above.") }
+                }
             } else {
-                DeviceSection(title: "On this device") { DeviceText(text: "Nothing recorded yet. Turn recording on for a camera above.") }
+                FootNote(text: DEVICE_WAITING)
             }
-        } else {
-            FootNote(text: DEVICE_WAITING)
         }
     }
 }
 
 private struct LimitPicker: View {
     let limit: RecordingsLimit
-    @Environment(\.theme) private var theme
     @Environment(\.LocalChangeNotice) private var notice
     @State private var action = DeviceActionState()
     @State private var picked: String
@@ -59,7 +63,7 @@ private struct LimitPicker: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Space.s1) {
             DeviceSelect(
                 label: "Recordings may use",
                 value: picked,
@@ -74,14 +78,11 @@ private struct LimitPicker: View {
                 },
                 enabled: !action.busy
             )
-            .frame(maxWidth: 320)
             if !limit.used.isEmpty {
-                Text(limit.used).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text(limit.used).font(.footnote).foregroundStyle(Color.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
         .deviceConfirm(
             ActionConfirm(title: "Lower the limit?", text: "Lowering the limit deletes the oldest recordings straight away.", confirm: "Lower it"),
             isPresented: $asking
@@ -92,25 +93,21 @@ private struct LimitPicker: View {
 
 private struct RecordedSection: View {
     let camera: RecordedCamera
-    @Environment(\.theme) private var theme
 
     var body: some View {
         DeviceSection(title: camera.name, badge: camera.status) {
             if camera.full {
                 DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Warn, text: "Recordings have reached the size limit, so the oldest are being deleted to make room for new ones."))
             }
-            HStack(spacing: 8) {
-                Text("\(camera.summary) · \(camera.usage)").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).frame(maxWidth: .infinity, alignment: .leading)
-                ActionButton(
+            HStack(spacing: Space.s2) {
+                Text("\(camera.summary) · \(camera.usage)").font(.footnote).foregroundStyle(Color.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                DeviceDestructiveButton(
                     label: "Delete all",
                     request: DeviceRequest(method: .DELETE, path: recordingsPath(camera.name)),
                     success: "Deleted every recording of \(camera.name).",
-                    confirm: ActionConfirm(title: "Delete every recording?", text: "Delete every recording of \(camera.name)? This cannot be undone.", confirm: "Delete all"),
-                    tonal: false
+                    confirm: ActionConfirm(title: "Delete every recording?", text: "Delete every recording of \(camera.name)? This cannot be undone.", confirm: "Delete all")
                 )
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
             ForEach(camera.segments, id: \.at) { SegmentRow(camera: camera.name, segment: $0) }
             DeviceStatusLine(
                 text: "Each download carries the aircraft's height, speed, battery and position as a subtitle track. Players keep subtitles off until asked — in QuickTime choose View → Subtitles, " +
@@ -123,7 +120,6 @@ private struct RecordedSection: View {
 private struct SegmentRow: View {
     let camera: String
     let segment: RecordingSegment
-    @Environment(\.theme) private var theme
     @Environment(\.LocalChangeNotice) private var notice
     @Environment(\.LocalDeviceOrigin) private var origin
     @State private var action = DeviceActionState()
@@ -135,24 +131,25 @@ private struct SegmentRow: View {
         Task { @MainActor in _ = await action.run(request, success: "Recording deleted.", notice: notice) }
     }
 
+    // One recording: its start and details, Download, and a red trash button.
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s2) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(segment.started).font(.bodyLarge)
-                Text(segmentDetail(segment).joined(separator: " · ")).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text(segment.started)
+                Text(segmentDetail(segment).joined(separator: " · ")).font(.footnote).foregroundStyle(Color.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if !segment.open {
                 LinkButton(href: resolveDeviceUrl(origin, segment.url), text: "Download", look: .Text, icon: .download)
             }
-            Button { asking = true } label: { Image(.delete).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
-                .buttonStyle(.plain)
-                .disabled(action.busy)
-                .accessibilityLabel("Delete the recording from \(segment.started)")
-                .macTooltip("Delete the recording from \(segment.started)")
+            Button(role: .destructive) { asking = true } label: {
+                Image(systemName: "trash").frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle())
+            }
+            .buttonStyle(.borderless)
+            .disabled(action.busy)
+            .accessibilityLabel("Delete the recording from \(segment.started)")
+            .macTooltip("Delete the recording from \(segment.started)")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
         .deviceConfirm(
             ActionConfirm(title: "Delete this recording?", text: "Delete the recording from \(segment.started)?", confirm: "Delete"),
             isPresented: $asking,

@@ -299,27 +299,27 @@ struct FlasherScreen: View {
     @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
+    // The three steps as a native form: the step strip, the step's sections, its note, and its next action as the
+    // page's primary action; the navigation bar's back steps back through the steps first.
     var body: some View {
         let back = flasherPreviousStep(step, state?.busy == true, state?.phase ?? "")
-        VStack(alignment: .leading, spacing: 0) {
-            stepHeader(back)
-            Divider()
+        VStack(spacing: 0) {
             if let current = state, let fields = form {
                 if current.available {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) { stepBody(current, fields) }
-                            .padding(.vertical, Space.s2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    NativeForm {
+                        Section { stepHeader(back) }
+                        stepBody(current, fields)
+                        actions(current)
                     }
-                    Divider()
-                    actions(current)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { primaryAction(current) }
+                    }
                 } else {
                     Text("This device cannot write cards.").foregroundStyle(theme.aircast.warning).padding(Space.s4)
-                    Spacer(minLength: 0)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                Text("Loading…").padding(Space.s4)
-                Spacer(minLength: 0)
+                Text("Loading…").padding(Space.s4).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -455,35 +455,29 @@ struct FlasherScreen: View {
         .padding(.vertical, Space.s1)
     }
 
+    @ViewBuilder
     private func actions(_ current: FlasherState) -> some View {
         let note = flasherActionNote(step, current, refusal, showAllProblems ? flasherProblemNote(current) : "")
-        return VStack(alignment: .leading, spacing: Space.s2) {
-            if !note.isBlank {
-                Text(note).font(.bodyMedium).foregroundStyle(theme.aircast.warning)
-            }
-            HStack(spacing: Space.s3) {
-                if current.busy {
-                    Spacer(minLength: 0)
-                    Button("Cancel") { command(FLASHER_CANCEL) }.buttonStyle(.bordered)
-                } else if FLASHER_FINISHED.contains(current.phase) {
-                    Spacer(minLength: 0)
-                    Button(current.phase == "done" ? "Flash another card" : "Try again") { again(current.phase) }.buttonStyle(.filled)
-                } else {
-                    if let previous = FlasherStep(rawValue: step.rawValue - 1) {
-                        Button("Back") {
-                            refusal = ""
-                            step = previous
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    Spacer(minLength: 0)
-                    Button(step == .Write ? "Write card" : "Continue") { advance(current) }
-                        .buttonStyle(.filled)
-                        .disabled(step == .Write && !current.canStart)
-                }
+        if !note.isBlank {
+            FormNote(text: note, color: theme.aircast.warning)
+        }
+        if current.busy {
+            Section {
+                Button("Cancel writing", role: .destructive) { command(FLASHER_CANCEL) }
             }
         }
-        .padding(Space.s4)
+    }
+
+    @ViewBuilder
+    private func primaryAction(_ current: FlasherState) -> some View {
+        if current.busy {
+            EmptyView()
+        } else if FLASHER_FINISHED.contains(current.phase) {
+            Button(current.phase == "done" ? "Flash another card" : "Try again") { again(current.phase) }
+        } else {
+            Button(step == .Write ? "Write card" : "Continue") { advance(current) }
+                .disabled(step == .Write && !current.canStart)
+        }
     }
 
     @ViewBuilder
@@ -498,70 +492,62 @@ struct FlasherScreen: View {
     }
 
     private func heading(_ title: String, _ detail: String) -> some View {
-        VStack(alignment: .leading, spacing: Space.s1) {
-            Text(title).font(.titleLarge).foregroundStyle(theme.colors.onSurface)
-            Text(detail).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+        Section {
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text(title).font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(Color.secondary)
+            }
+            .padding(.vertical, Space.s1)
         }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func subHeading(_ text: String) -> some View {
-        Text(text)
-            .font(.titleSmall)
-            .foregroundStyle(theme.colors.primary)
-            .padding(EdgeInsets(top: Space.s4, leading: Space.s4, bottom: Space.s1, trailing: Space.s4))
     }
 
     private func choiceRow(_ title: String, _ detail: String, selected: Bool, detailColor: Color? = nil, trailing: Bool = false, onClick: @escaping () -> Void) -> some View {
         Button(action: onClick) {
-            HStack(spacing: Space.s4) {
-                RadioIndicator(selected: selected)
+            HStack(spacing: Space.s3) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
+                    Text(title).foregroundStyle(Color.primary)
                     if !detail.isBlank {
-                        Text(detail).font(.bodyMedium).foregroundStyle(detailColor ?? theme.colors.onSurfaceVariant)
+                        Text(detail).font(.subheadline).foregroundStyle(detailColor ?? Color.secondary)
                     }
                 }
-                Spacer(minLength: 0)
-                if trailing {
-                    Image(.check).foregroundStyle(theme.colors.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if selected {
+                    Image(systemName: trailing ? "checkmark.circle.fill" : "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(trailing ? theme.aircast.success : theme.colors.primary)
                 }
             }
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .listRowButton()
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     @ViewBuilder
     private func cardStep(_ current: FlasherState) -> some View {
         heading("Insert the card", "Put the drone's SD card in this Mac's card slot, or in a USB card reader plugged into it.")
-        if current.disks.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Waiting for a card reader…").font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                Text("You can continue and plug it in before writing").font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+        Section {
+            if current.disks.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Waiting for a card reader…")
+                    Text("You can continue and plug it in before writing").font(.subheadline).foregroundStyle(Color.secondary)
+                }
             }
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
-        }
-        ForEach(current.disks) { disk in
-            let chosen = disk.id == current.cardId
-            choiceRow(
-                disk.name,
-                chosen ? current.cardText : "",
-                selected: chosen,
-                detailColor: current.cardState == "failed" ? theme.aircast.warning : nil,
-                trailing: chosen && current.cardState == "ready"
-            ) { command(FLASHER_CHOOSE_DISK, [disk.id]) }
-        }
-        if current.cardState == "failed" && !current.cardId.isBlank {
-            Button("Try the reader again") { command(FLASHER_CHOOSE_DISK, [current.cardId]) }
-                .buttonStyle(.text)
-                .padding(.horizontal, Space.s2)
+            ForEach(current.disks) { disk in
+                let chosen = disk.id == current.cardId
+                choiceRow(
+                    disk.name,
+                    chosen ? current.cardText : "",
+                    selected: chosen,
+                    detailColor: current.cardState == "failed" ? theme.aircast.warning : nil,
+                    trailing: chosen && current.cardState == "ready"
+                ) { command(FLASHER_CHOOSE_DISK, [disk.id]) }
+            }
+            if current.cardState == "failed" && !current.cardId.isBlank {
+                Button("Try the reader again") { command(FLASHER_CHOOSE_DISK, [current.cardId]) }
+            }
+        } header: {
+            SectionHeader(text: "Card reader")
         }
     }
 
@@ -569,36 +555,36 @@ struct FlasherScreen: View {
     private func setupStep(_ current: FlasherState, _ fields: FlasherForm, _ meteredNote: String?) -> some View {
         let problems = flasherVisibleProblems(current.problems, touched, showAllProblems)
         heading("Set up the drone", "These are applied on the drone's first boot, so it joins your network by itself.")
-        FlasherField(label: "Drone name", value: fields.hostname, problem: problems["hostname"], help: fields.hostname.isBlank ? nil : "It answers at \(fields.hostname).local") { typed in
-            edit(withChanges(fields) { $0.hostname = typed }, "hostname", .string(typed))
-        }
-        if !fields.noWifi {
-            FlasherField(label: "WiFi network", value: fields.ssid, problem: problems["ssid"]) { typed in
-                edit(withChanges(fields) { $0.ssid = typed }, "ssid", .string(typed))
+        Section {
+            FlasherField(label: "Drone name", value: fields.hostname, problem: problems["hostname"], help: fields.hostname.isBlank ? nil : "It answers at \(fields.hostname).local") { typed in
+                edit(withChanges(fields) { $0.hostname = typed }, "hostname", .string(typed))
             }
-            FlasherField(label: "WiFi password", value: fields.wifiPassword, problem: problems["wifiPassword"], secret: true) { typed in
-                edit(withChanges(fields) { $0.wifiPassword = typed }, "wifiPassword", .string(typed))
+            if !fields.noWifi {
+                FlasherField(label: "WiFi network", value: fields.ssid, problem: problems["ssid"]) { typed in
+                    edit(withChanges(fields) { $0.ssid = typed }, "ssid", .string(typed))
+                }
+                FlasherField(label: "WiFi password", value: fields.wifiPassword, problem: problems["wifiPassword"], secret: true) { typed in
+                    edit(withChanges(fields) { $0.wifiPassword = typed }, "wifiPassword", .string(typed))
+                }
             }
-        }
-        Toggle(isOn: Binding(get: { fields.noWifi }, set: { checked in
-            edit(withChanges(fields) { $0.noWifi = checked }, "noWifi", .bool(checked))
-        })) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("No WiFi").font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                Text("The drone goes online over Ethernet or cellular").font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+            Toggle(isOn: Binding(get: { fields.noWifi }, set: { checked in
+                edit(withChanges(fields) { $0.noWifi = checked }, "noWifi", .bool(checked))
+            })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No WiFi")
+                    Text("The drone goes online over Ethernet or cellular").font(.subheadline).foregroundStyle(Color.secondary)
+                }
             }
-        }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
-        if fields.sshMode == FLASHER_PASSWORD_MODE {
-            FlasherField(label: "Password for pi", value: fields.devicePassword, problem: problems["devicePassword"], help: "At least 8 characters. You sign in to the drone as pi with it.", secret: true) { typed in
-                edit(withChanges(fields) { $0.devicePassword = typed }, "devicePassword", .string(typed))
+            if fields.sshMode == FLASHER_PASSWORD_MODE {
+                FlasherField(label: "Password for pi", value: fields.devicePassword, problem: problems["devicePassword"], help: "At least 8 characters. You sign in to the drone as pi with it.", secret: true) { typed in
+                    edit(withChanges(fields) { $0.devicePassword = typed }, "devicePassword", .string(typed))
+                }
             }
         }
         downloadLine(current, meteredNote)
-        Button(more ? "Fewer options" : "More options") { more.toggle() }
-            .buttonStyle(.text)
-            .padding(.horizontal, Space.s2)
+        Section {
+            AdvancedToggle(open: more, label: "More options") { more.toggle() }
+        }
         if more {
             moreOptions(current, fields, problems)
         }
@@ -607,139 +593,133 @@ struct FlasherScreen: View {
     @ViewBuilder
     private func downloadLine(_ current: FlasherState, _ meteredNote: String?) -> some View {
         if let meteredNote {
-            VStack(alignment: .leading, spacing: Space.s1) {
-                Text(meteredNote).font(.bodySmall).foregroundStyle(theme.aircast.warning)
-                Button("Download now anyway") { command(FLASHER_DOWNLOAD) }.buttonStyle(.text)
+            Section {
+                Text(meteredNote).font(.footnote).foregroundStyle(theme.aircast.warning)
+                Button("Download now anyway") { command(FLASHER_DOWNLOAD) }
             }
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s1)
         } else if !current.downloadText.isBlank {
-            Text(current.downloadText)
-                .font(.bodySmall)
-                .foregroundStyle(theme.colors.onSurfaceVariant)
-                .padding(.horizontal, Space.s4)
-                .padding(.vertical, Space.s1)
+            FormNote(text: current.downloadText)
         }
     }
 
     @ViewBuilder
     private func moreOptions(_ current: FlasherState, _ fields: FlasherForm, _ problems: [String: String]) -> some View {
-        subHeading("Aircast OS version")
-        ForEach(current.releases, id: \.version) { release in
-            choiceRow(release.label, flasherReleaseDetail(release), selected: release.version == current.selected) {
-                command(FLASHER_SELECT, [release.version])
+        Section {
+            ForEach(current.releases, id: \.version) { release in
+                choiceRow(release.label, flasherReleaseDetail(release), selected: release.version == current.selected) {
+                    command(FLASHER_SELECT, [release.version])
+                }
             }
+            if current.releasesState == "failed" {
+                Text(current.releasesError).foregroundStyle(theme.aircast.warning)
+            }
+            if flasherShowsChannels(FLASHER_DEBUG_BUILD, current.channel) && !current.channels.isEmpty {
+                Picker("Channel", selection: Binding(get: { current.channel }, set: { command(FLASHER_CHANNEL, [$0]) })) {
+                    ForEach(current.channels, id: \.self) { channel in Text(channel.capitalizedFirst).tag(channel) }
+                }
+                .pickerStyle(.segmented)
+            }
+        } header: {
+            SectionHeader(text: "Aircast OS version")
         }
-        if current.releasesState == "failed" {
-            Text(current.releasesError).font(.bodyMedium).foregroundStyle(theme.aircast.warning).padding(.horizontal, Space.s4)
-        }
-        if flasherShowsChannels(FLASHER_DEBUG_BUILD, current.channel) && !current.channels.isEmpty {
-            Picker("Channel", selection: Binding(get: { current.channel }, set: { command(FLASHER_CHANNEL, [$0]) })) {
-                ForEach(current.channels, id: \.self) { channel in Text(channel.capitalizedFirst).tag(channel) }
+        Section {
+            Picker("Signing in", selection: Binding(get: { fields.sshMode }, set: { mode in
+                edit(withChanges(fields) { $0.sshMode = mode }, "sshMode", .string(mode))
+            })) {
+                ForEach(FLASHER_SSH_MODES, id: \.first) { mode in Text(mode.second).tag(mode.first) }
             }
             .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .padding(.horizontal, Space.s4)
-        }
-        subHeading("Signing in to the drone")
-        Picker("Signing in", selection: Binding(get: { fields.sshMode }, set: { mode in
-            edit(withChanges(fields) { $0.sshMode = mode }, "sshMode", .string(mode))
-        })) {
-            ForEach(FLASHER_SSH_MODES, id: \.first) { mode in Text(mode.second).tag(mode.first) }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
-        .padding(.horizontal, Space.s4)
-        if fields.sshMode == "key-only" {
-            FlasherField(label: "SSH public key", value: fields.authorizedKey, problem: problems["authorizedKey"], multiline: true) { typed in
-                edit(withChanges(fields) { $0.authorizedKey = typed }, "authorizedKey", .string(typed))
+            if fields.sshMode == "key-only" {
+                FlasherField(label: "SSH public key", value: fields.authorizedKey, problem: problems["authorizedKey"], multiline: true) { typed in
+                    edit(withChanges(fields) { $0.authorizedKey = typed }, "authorizedKey", .string(typed))
+                }
+                if !current.keyIdentity.isBlank {
+                    Text(current.keyIdentity)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textSelection(.enabled)
+                }
             }
-            if !current.keyIdentity.isBlank {
-                Text(current.keyIdentity)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(.horizontal, Space.s4)
+        } header: {
+            SectionHeader(text: "Signing in to the drone")
+        }
+        Section {
+            FlasherField(label: "Tailscale auth key", value: fields.authKey, help: "The drone joins your tailnet on first boot", secret: true) { typed in
+                edit(withChanges(fields) { $0.authKey = typed }, "authKey", .string(typed))
             }
-        }
-        subHeading("Remote access")
-        FlasherField(label: "Tailscale auth key", value: fields.authKey, help: "The drone joins your tailnet on first boot", secret: true) { typed in
-            edit(withChanges(fields) { $0.authKey = typed }, "authKey", .string(typed))
-        }
-        if !fields.authKey.isBlank {
-            FlasherField(label: "Headscale server", value: fields.controlServer, problem: problems["controlServer"], help: "Leave empty for Tailscale") { typed in
-                edit(withChanges(fields) { $0.controlServer = typed }, "controlServer", .string(typed))
+            if !fields.authKey.isBlank {
+                FlasherField(label: "Headscale server", value: fields.controlServer, problem: problems["controlServer"], help: "Leave empty for Tailscale") { typed in
+                    edit(withChanges(fields) { $0.controlServer = typed }, "controlServer", .string(typed))
+                }
             }
+        } header: {
+            SectionHeader(text: "Remote access")
         }
-        subHeading("WiFi region")
-        FlasherField(label: "Country code", value: fields.country, help: "Sets which WiFi channels the drone may use") { typed in
-            let code = String(typed.uppercased().prefix(2))
-            edit(withChanges(fields) { $0.country = code }, "country", .string(code))
+        Section {
+            FlasherField(label: "Country code", value: fields.country, help: "Sets which WiFi channels the drone may use") { typed in
+                let code = String(typed.uppercased().prefix(2))
+                edit(withChanges(fields) { $0.country = code }, "country", .string(code))
+            }
+        } header: {
+            SectionHeader(text: "WiFi region")
         }
-        Spacer(minLength: Space.s2)
     }
 
     @ViewBuilder
     private func writeStep(_ current: FlasherState, _ fields: FlasherForm, _ meteredNote: String?) -> some View {
         if current.busy {
-            VStack(alignment: .leading, spacing: Space.s3) {
-                Text(flasherPhaseLabel(current.phase)).font(.titleLarge).foregroundStyle(theme.colors.onSurface)
-                ProgressView(value: min(max(current.percent / 100, 0), 1))
-                Text(["\(saturatingInt(current.percent))%", current.speedText, current.remainingText].filter { !$0.isBlank }.joined(separator: " · "))
-                    .font(.bodyMedium)
-                Text("Keep the card reader plugged in until this finishes.").font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+            Section {
+                VStack(alignment: .leading, spacing: Space.s3) {
+                    Text(flasherPhaseLabel(current.phase)).font(.headline)
+                    ProgressView(value: min(max(current.percent / 100, 0), 1))
+                    Text(["\(saturatingInt(current.percent))%", current.speedText, current.remainingText].filter { !$0.isBlank }.joined(separator: " · "))
+                        .font(.subheadline)
+                }
+                .padding(.vertical, Space.s1)
+            } footer: {
+                Text("Keep the card reader plugged in until this finishes.")
             }
-            .padding(Space.s4)
         } else if current.phase == "done" {
             heading("Card ready", "The card is written and checked. It's safe to unplug the reader.")
-            subHeading("What happens next")
-            ForEach(Array(flasherNextSteps(fields.ssid.trimmed, current.hostname, fields.noWifi).enumerated()), id: \.offset) { index, line in
-                Text("\(index + 1). \(line)")
-                    .font(.bodyMedium)
-                    .padding(.horizontal, Space.s4)
-                    .padding(.vertical, Space.s1)
+            Section {
+                ForEach(Array(flasherNextSteps(fields.ssid.trimmed, current.hostname, fields.noWifi).enumerated()), id: \.offset) { index, line in
+                    Text("\(index + 1). \(line)")
+                }
+            } header: {
+                SectionHeader(text: "What happens next")
             }
         } else if current.phase == "failed" {
             heading("Writing failed", "The card is not usable as it is. Fix the problem below and write it again.")
-            Text(current.jobError)
-                .font(.bodyMedium)
-                .foregroundStyle(theme.aircast.warning)
-                .textSelection(.enabled)
-                .padding(.horizontal, Space.s4)
+            Section {
+                Text(current.jobError)
+                    .foregroundStyle(theme.aircast.warning)
+                    .textSelection(.enabled)
+            }
         } else if current.phase == "cancelled" {
             heading("Cancelled", "The card is incomplete. Write it again before putting it in the drone.")
         } else {
             heading("Check and write", "Everything on the card is replaced.")
-            ForEach(current.summary, id: \.label) { row in
-                summaryLine(row.label, row.value, warn: row.warn)
-            }
-            summaryLine("Card", current.cardText.ifBlank("Not connected"), warn: current.cardState != "ready")
-            if current.downloadState != "ready" && !current.downloadText.isBlank {
-                Text(current.downloadText)
-                    .font(.bodySmall)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
-                    .padding(.horizontal, Space.s4)
-                    .padding(.vertical, Space.s1)
-            }
-            if let meteredNote {
-                Text("\(meteredNote) It downloads when you write the card.")
-                    .font(.bodySmall)
-                    .foregroundStyle(theme.aircast.warning)
-                    .padding(.horizontal, Space.s4)
-                    .padding(.vertical, Space.s1)
+            Section {
+                ForEach(current.summary, id: \.label) { row in
+                    summaryLine(row.label, row.value, warn: row.warn)
+                }
+                summaryLine("Card", current.cardText.ifBlank("Not connected"), warn: current.cardState != "ready")
+            } footer: {
+                if let meteredNote {
+                    Text("\(meteredNote) It downloads when you write the card.").foregroundStyle(theme.aircast.warning)
+                } else if current.downloadState != "ready" && !current.downloadText.isBlank {
+                    Text(current.downloadText)
+                }
             }
         }
     }
 
     private func summaryLine(_ label: String, _ value: String, warn: Bool) -> some View {
-        HStack(spacing: Space.s2) {
-            Text(label).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
-            Text(value).font(.bodyMedium).foregroundStyle(warn ? theme.aircast.warning : theme.colors.onSurface)
-            Button("Change") { change(label) }.buttonStyle(.text)
+        LabeledContent(label) {
+            HStack(spacing: Space.s2) {
+                Text(value).foregroundStyle(warn ? theme.aircast.warning : Color.secondary)
+                Button("Change") { change(label) }
+            }
         }
-        .padding(.leading, Space.s4)
-        .padding(.trailing, Space.s1)
     }
 
     private func change(_ row: String) {
@@ -748,6 +728,7 @@ struct FlasherScreen: View {
     }
 }
 
+// A setup field as a native row: inline label and value, the problem (or the help) under it; a key spans its row.
 private struct FlasherField: View {
     let label: String
     let value: String
@@ -758,29 +739,22 @@ private struct FlasherField: View {
     let onChange: (String) -> Void
     @Environment(\.theme) private var theme
 
-    private var text: Binding<String> { Binding(get: { value }, set: onChange) }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s1) {
-            Text(label).font(.bodySmall).foregroundStyle(problem != nil ? theme.colors.error : theme.colors.onSurfaceVariant)
-            Group {
-                if secret {
-                    SecureField("", text: text)
-                } else if multiline {
-                    TextField("", text: text, axis: .vertical).lineLimit(3...8)
-                } else {
-                    TextField("", text: text)
+        if multiline {
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text(label).foregroundStyle(problem != nil ? theme.colors.error : Color.primary)
+                TextField(label, text: Binding(get: { value }, set: onChange), axis: .vertical)
+                    .lineLimit(3...8)
+                    .labelsHidden()
+                    .autocorrectionDisabled()
+                    .font(.system(.body, design: .monospaced))
+                if let note = problem ?? help {
+                    Text(note).font(.footnote).foregroundStyle(problem != nil ? theme.colors.error : Color.secondary)
                 }
             }
-            .textFieldStyle(.roundedBorder)
-            .autocorrectionDisabled()
-            if let note = problem ?? help {
-                Text(note).font(.bodySmall).foregroundStyle(problem != nil ? theme.colors.error : theme.colors.onSurfaceVariant)
-            }
+        } else {
+            FieldRow(label: label, value: value, error: problem, hint: help ?? "", secure: secret, onChange: onChange)
         }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s1)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 #endif

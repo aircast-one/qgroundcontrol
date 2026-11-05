@@ -49,30 +49,10 @@ struct RcToParamDialog: View {
 
     var body: some View {
         let entered = rcToParam(scale, center, tuningIndex, min, max)
-        SetupDialog(title: "RC To Param") {
-            Text("Bind an RC Channel to a parameter value. Tuning IDs can be mapped to an RC Channel from Radio Setup page.").font(.bodySmall)
-            if !ready { Text("Waiting on parameter update from Vehicle.") }
-            Text("Parameter  \(fact.name)")
-            Menu {
-                ForEach(Array(TUNING_IDS.enumerated()), id: \.offset) { index, id in
-                    Button("\(id)") { tuningIndex = index }
-                }
-            } label: {
-                Text("Tuning ID \(TUNING_IDS[tuningIndex])")
-            }
-            .buttonStyle(.bordered)
-            .disabled(!ready)
-            field("Scale", $scale)
-            field("Center Value", $center)
-            field("Min Value", $min)
-            field("Max Value", $max)
-            Text("Double check that all values are correct prior to confirming dialog.").font(.bodySmall)
-            if let refusal {
-                Text(refusal).foregroundStyle(theme.colors.error)
-            }
-        } buttons: {
-            Button("Cancel", action: onDismiss)
-            Button("OK") {
+        SetupDialog(
+            title: "RC To Param",
+            cancel: DialogButton(title: "Cancel", action: onDismiss),
+            primary: DialogButton(title: "OK", enabled: entered != nil) {
                 guard let chosen = entered else { return }
                 let name = fact.name
                 scope.launch {
@@ -82,8 +62,24 @@ struct RcToParamDialog: View {
                     if answer == nil { onDismiss() }
                 }
             }
-            .buttonStyle(.filled)
-            .disabled(entered == nil)
+        ) {
+            Text("Bind an RC Channel to a parameter value. Tuning IDs can be mapped to an RC Channel from Radio Setup page.").font(.bodySmall)
+            if !ready { Text("Waiting on parameter update from Vehicle.") }
+            LabeledContent("Parameter", value: fact.name)
+            Picker("Tuning ID", selection: $tuningIndex) {
+                ForEach(Array(TUNING_IDS.enumerated()), id: \.offset) { index, id in
+                    Text("\(id)").tag(index)
+                }
+            }
+            .disabled(!ready)
+            field("Scale", $scale)
+            field("Center Value", $center)
+            field("Min Value", $min)
+            field("Max Value", $max)
+            Text("Double check that all values are correct prior to confirming dialog.").font(.bodySmall)
+            if let refusal {
+                Text(refusal).foregroundStyle(theme.colors.error)
+            }
         }
         .task(id: fact.name) {
             let name = fact.name
@@ -102,12 +98,6 @@ struct RcToParamDialog: View {
     }
 
     private func field(_ label: String, _ value: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-            TextField(label, text: value)
-                .keyboardType(.numbersAndPunctuation)
-                .textFieldStyle(.roundedBorder)
-                .disabled(!ready)
-        }
+        FieldRow(label: label, value: value.wrappedValue, enabled: ready, keyboard: .numbersAndPunctuation, onChange: { value.wrappedValue = $0 })
     }
 }

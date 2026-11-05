@@ -66,6 +66,10 @@ struct AutoLink: Equatable {
     var index = 0
 }
 
+extension LinkRow: Identifiable {
+    var id: Int { index }
+}
+
 func autoLinks(_ view: JSON?) -> [AutoLink] {
     (view?["links"].array ?? [])
         .filter { $0.object != nil && $0["dynamic"].bool && $0["connected"].bool }
@@ -321,8 +325,17 @@ private struct LinkIconBadge: View {
     let type: LinkType
     let lit: Bool
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            NativeRowIcon(icon: linkIcon(type), tint: lit ? theme.aircast.success : nil)
+        } else {
+            badge
+        }
+    }
+
+    private var badge: some View {
         Image(linkIcon(type))
             .font(.system(size: 18))
             .foregroundStyle(lit ? theme.aircast.success : theme.colors.onSecondaryContainer)
@@ -335,6 +348,7 @@ private struct AutoLinkItem: View {
     let link: AutoLink
     var onStop: (() -> Void)? = nil
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         HStack(spacing: 16) {
@@ -349,9 +363,8 @@ private struct AutoLinkItem: View {
                 Button("Stop", action: onStop).buttonStyle(.text)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
+        .rowPadding(horizontal: 16, vertical: 12)
+        .frame(maxWidth: .infinity, minHeight: nativeList ? nil : Metrics.rowLarge)
     }
 }
 
@@ -362,6 +375,7 @@ private struct LinkRowItem: View {
     let onRemove: () -> Void
     let onEdit: () -> Void
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     private var fixByEditing: Bool { row.errorRemedy == REMEDY_EDIT_ADDRESS && linkIsEditable(row) }
 
@@ -412,11 +426,10 @@ private struct LinkRowItem: View {
             if row.connected {
                 Text(CONNECTED_STATUS).font(.labelLarge).foregroundStyle(theme.aircast.success)
             }
-            Image(.chevronRight).foregroundStyle(theme.colors.onSurfaceVariant)
+            Image(systemName: "ellipsis.circle").foregroundStyle(theme.colors.primary)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
+        .rowPadding(horizontal: 16, vertical: 12)
+        .frame(maxWidth: .infinity, minHeight: nativeList ? nil : Metrics.rowLarge)
         .contentShape(Rectangle())
         .macHover()
     }
@@ -424,28 +437,6 @@ private struct LinkRowItem: View {
 
 func primaryLinkAction(_ connected: Bool, _ fixByEditing: Bool) -> String {
     connected ? "Disconnect" : fixByEditing ? "Try again" : "Connect"
-}
-
-private struct AdvancedDisclosure: View {
-    let open: Bool
-    let onToggle: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        Button(action: onToggle) {
-            HStack {
-                Text("Advanced").font(.titleSmall).foregroundStyle(theme.colors.onSurface)
-                Spacer()
-                Image(open ? .arrowUp : .arrowDropDown)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
-                    .accessibilityLabel(open ? "Hide advanced options" : "Show advanced options")
-            }
-            .frame(maxWidth: .infinity, minHeight: Metrics.rowCompact)
-            .contentShape(Rectangle())
-            .macHover()
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 private struct LinkFlagSwitches: View {
@@ -572,6 +563,7 @@ private func udpPortOrDefault(_ value: JSON) -> String {
     return String(port)
 }
 
+// A link editor's text field: a native form row, its label on the left and the value typed on the right.
 private struct LinkTextField: View {
     let label: String
     let value: String
@@ -581,34 +573,9 @@ private struct LinkTextField: View {
     var keyboard: UIKeyboardType = .default
     var onSubmit: () -> Void = {}
     let onChange: (String) -> Void
-    @Environment(\.theme) private var theme
-    @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.labelMedium).foregroundStyle(error == nil ? theme.colors.onSurfaceVariant : theme.colors.error)
-            TextField(placeholder, text: Binding(get: { value }, set: onChange))
-                .keyboardType(keyboard)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .textFieldStyle(.roundedBorder)
-                .submitLabel(.done)
-                .onSubmit(onSubmit)
-                .focused($focused)
-                .toolbar {
-                    if focused && KEYBOARDS_WITHOUT_RETURN.contains(keyboard) {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Spacer()
-                            Button("Done") { focused = false }
-                        }
-                    }
-                }
-                .disabled(!enabled)
-            if let error {
-                Text(error).font(.bodySmall).foregroundStyle(theme.colors.error)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        FieldRow(label: label, value: value, prompt: placeholder, error: error, enabled: enabled, keyboard: keyboard, onSubmit: onSubmit, onChange: onChange)
     }
 }
 
@@ -617,10 +584,11 @@ private struct LinkPortField: View {
     let value: String
     let error: String?
     let enabled: Bool
+    var placeholder = ""
     let onChange: (String) -> Void
 
     var body: some View {
-        LinkTextField(label: label, value: value, error: error, enabled: enabled, keyboard: .numberPad, onChange: onChange)
+        LinkTextField(label: label, value: value, placeholder: placeholder, error: error, enabled: enabled, keyboard: .numberPad, onChange: onChange)
     }
 }
 
@@ -631,7 +599,7 @@ private struct LinkHostField: View {
     let onChange: (String) -> Void
 
     var body: some View {
-        LinkTextField(label: "Host address", value: value, placeholder: "Example: 192.168.1.10", error: error, enabled: enabled, onChange: onChange)
+        LinkTextField(label: "Host address", value: value, placeholder: "192.168.1.10", error: error, enabled: enabled, keyboard: .URL, onChange: onChange)
     }
 }
 
@@ -645,13 +613,11 @@ private struct EditLinkFields: View {
     var body: some View {
         switch editing {
         case .LogFile:
-            Text((edit.logFile.components(separatedBy: "/").last ?? "").ifBlank("No log file chosen")).font(.bodyLarge)
-            Button(action: onPickLog) { Text("Choose another log file").frame(maxWidth: .infinity) }
-                .buttonStyle(.bordered)
-                .disabled(!enabled)
+            Text((edit.logFile.components(separatedBy: "/").last ?? "").ifBlank("No log file chosen"))
+            Button("Choose another log file", action: onPickLog).disabled(!enabled)
         case .HostAndPort:
             LinkHostField(value: edit.host, error: nil, enabled: enabled) { host in onEdit(withChanges(edit) { $0.host = host }) }
-            LinkPortField(label: "Port", value: edit.port, error: nil, enabled: enabled) { port in onEdit(withChanges(edit) { $0.port = port }) }
+            LinkPortField(label: "Port", value: edit.port, error: nil, enabled: enabled, placeholder: DEFAULT_TCP_PORT) { port in onEdit(withChanges(edit) { $0.port = port }) }
         case .PortOnly, .None:
             LinkPortField(label: editing == .PortOnly ? "Listening port" : "Port", value: edit.port, error: nil, enabled: enabled) { port in onEdit(withChanges(edit) { $0.port = port }) }
         case .Serial, .Device:
@@ -660,34 +626,19 @@ private struct EditLinkFields: View {
     }
 }
 
-private struct PageFrame<Content: View>: View {
-    let title: String
-    let backLabel: String
-    let onBack: () -> Void
-    let action: String
-    let actionEnabled: Bool
-    let onAction: () -> Void
-    @ViewBuilder let content: () -> Content
-    @Environment(\.LocalPageHeading) private var pageHeading
+// Editing a saved link: a sheet with its own navigation bar — Cancel on the left, Save on the right — over an
+// inset-grouped form of the link's fields, its servers and an Advanced group.
+private struct EditLinkSheet: View {
+    let row: LinkRow
+    let onDismiss: () -> Void
+    let onSaved: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            OverridePageHeading(title: title, onBack: onBack)
-            if pageHeading == nil {
-                PageTopBar(title: title, backLabel: backLabel, onBack: onBack)
-            }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12, content: content)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            Button(action: onAction) { Text(action).frame(maxWidth: .infinity, minHeight: Metrics.primaryButton) }
-                .buttonStyle(.filled)
-                .disabled(!actionEnabled)
-                .padding(16)
+        NavigationStack {
+            EditLinkPage(row: row, onDismiss: onDismiss, onSaved: onSaved)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .presentationDetents([.large])
+        .nativeSheetFrame()
     }
 }
 
@@ -720,14 +671,15 @@ private struct EditLinkPage: View {
     private var typedServer: String? { row.editing == .PortOnly ? udpServer(server, listenPort) : nil }
 
     var body: some View {
-        PageFrame(title: "Edit \(row.name)", backLabel: "Back to links", onBack: cancel, action: "Save and connect", actionEnabled: editable, onAction: save) {
-            if !linkKind(row.type).about.isBlank {
-                Text(linkKind(row.type).about).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-            }
+        NativeForm {
             if !editable {
-                Text(EDIT_WHILE_CONNECTED).font(.bodyMedium).foregroundStyle(theme.colors.error)
+                FormNote(text: EDIT_WHILE_CONNECTED, color: theme.colors.error)
             }
-            EditLinkFields(editing: row.editing, edit: edit, enabled: editable, onPickLog: { picking = true }) { edit = $0 }
+            Section {
+                EditLinkFields(editing: row.editing, edit: edit, enabled: editable, onPickLog: { picking = true }) { edit = $0 }
+            } footer: {
+                if !linkKind(row.type).about.isBlank { Text(linkKind(row.type).about) }
+            }
             if row.editing == .PortOnly {
                 UdpServers(
                     index: row.index,
@@ -746,15 +698,20 @@ private struct EditLinkPage: View {
                     }
                 )
             }
-            AdvancedDisclosure(open: advanced) { advanced.toggle() }
-            if advanced {
-                LinkTextField(label: "Name", value: edit.name, enabled: editable) { name in edit.name = name }
-                LinkFlagSwitches(autoConnect: edit.autoConnect, highLatency: edit.highLatency, onAutoConnect: { edit.autoConnect = $0 }, onHighLatency: { edit.highLatency = $0 })
+            Section {
+                DisclosureGroup("Advanced", isExpanded: $advanced) {
+                    LinkTextField(label: "Name", value: edit.name, enabled: editable) { name in edit.name = name }
+                    LinkFlagSwitches(autoConnect: edit.autoConnect, highLatency: edit.highLatency, onAutoConnect: { edit.autoConnect = $0 }, onHighLatency: { edit.highLatency = $0 })
+                }
             }
             if let error, serverError == nil {
-                Text(error).font(.bodySmall).foregroundStyle(theme.colors.error)
+                FormNote(text: error, color: theme.colors.error)
             }
         }
+        .navigationTitle("Edit \(row.name)")
+        .navigationBarTitleDisplayMode(.inline)
+        .pageCancelAction(action: cancel)
+        .pagePrimaryAction("Save", enabled: editable, action: save)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.item]) { result in
             guard case .success(let chosen) = result else { return }
             let link = row.name
@@ -923,14 +880,16 @@ private func addLink(_ draft: LinkDraft, _ name: String, _ udpDefault: String, _
     return outcome
 }
 
-private struct AddLinkPage: View {
+// Adding a link: a sheet with its own NavigationStack. Its first page lists the kinds of link (Cancel on the left);
+// picking one pushes that kind's form, with Cancel on the left, the kind as a picker at the top and Connect on the
+// right.
+private struct AddLinkSheet: View {
     let onDismiss: () -> Void
     let onAdded: () -> Void
     @State private var type: LinkType?
     @State private var picks = 0
     @State private var cloudOffered = false
     @QgcPath(LINKS_VIEW) private var linksJson
-    @Environment(\.LocalPageHeading) private var pageHeading
 
     private var choices: [LinkType] {
         (addableLinkTypes(linksJson) + [LinkType.AircastCloud].filter { cloudOffered && linkTypeIds(linksJson).contains($0) })
@@ -938,36 +897,47 @@ private struct AddLinkPage: View {
     }
 
     var body: some View {
-        Group {
-            if let chosen = type {
-                AddLinkDetails(type: chosen, mock: preferredMockChoices(linksJson), onBack: { type = nil }, onAdded: { if type == chosen { onAdded() } })
-                    .id(picks)
-            } else {
-                picker
-            }
+        NavigationStack {
+            picker
+                .navigationTitle("Add link")
+                .navigationBarTitleDisplayMode(.inline)
+                .pageCancelAction(action: onDismiss)
+                .navigationDestination(item: $type) { chosen in
+                    AddLinkDetails(
+                        type: chosen,
+                        choices: choices,
+                        mock: preferredMockChoices(linksJson),
+                        onCancel: onDismiss,
+                        onType: { next in
+                            picks += 1
+                            type = next
+                        },
+                        onAdded: { if type == chosen { onAdded() } }
+                    )
+                    .id("\(picks):\(chosen.id)")
+                }
         }
+        .presentationDetents([.large])
+        .nativeSheetFrame()
         .task { cloudOffered = await offMain { accountState(AccountCommands.state()) != nil } }
     }
 
     private var picker: some View {
-        VStack(spacing: 0) {
-            OverridePageHeading(title: "Add link", onBack: onDismiss)
-            if pageHeading == nil {
-                PageTopBar(title: "Add link", backLabel: "Back to links", onBack: onDismiss)
+        NativeForm {
+            Section {
+                ForEach(pilotLinkKinds(choices, !serialPortChoices(linksJson).isEmpty).map(linkKind), id: \.type) { row($0) }
+            } header: {
+                SectionHeader(text: "Connect over")
             }
-            ScrollView {
-                VStack(spacing: 0) {
-                    SectionHeader(text: "Connect over")
-                    ForEach(pilotLinkKinds(choices, !serialPortChoices(linksJson).isEmpty).map(linkKind), id: \.type) { row($0) }
-                    let tools = toolLinkKinds(choices)
-                    if !tools.isEmpty {
-                        SectionHeader(text: "Other")
-                        ForEach(tools.map(linkKind), id: \.type) { row($0) }
-                    }
+            let tools = toolLinkKinds(choices)
+            if !tools.isEmpty {
+                Section {
+                    ForEach(tools.map(linkKind), id: \.type) { row($0) }
+                } header: {
+                    SectionHeader(text: "Other")
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func row(_ kind: LinkKind) -> some View {
@@ -975,6 +945,7 @@ private struct AddLinkPage: View {
     }
 }
 
+// A new link's own fields, as rows and sections of the add form.
 private struct NewLinkFields: View {
     let draft: LinkDraft
     let hostError: String?
@@ -986,28 +957,34 @@ private struct NewLinkFields: View {
     var body: some View {
         switch draft.type {
         case .Mock:
-            MockLinkFields(choices: draft.mock) { mock in onDraft(withChanges(draft) { $0.mock = mock }) }
-        case .LogReplay:
-            Button(action: onPickLog) {
-                Text(draft.replayLog.isBlank ? "Choose a log file" : URL(string: draft.replayLog)?.lastPathComponent ?? "Choose a log file")
-                    .frame(maxWidth: .infinity)
+            Section {
+                MockLinkFields(choices: draft.mock) { mock in onDraft(withChanges(draft) { $0.mock = mock }) }
             }
-            .buttonStyle(.bordered)
+        case .LogReplay:
+            Section {
+                Button(draft.replayLog.isBlank ? "Choose a log file" : URL(string: draft.replayLog)?.lastPathComponent ?? "Choose a log file", action: onPickLog)
+            }
         case .AircastCloud:
-            AircastCloudFields(
-                apiBase: draft.apiBase,
-                deviceId: draft.deviceId,
-                showErrors: cloudErrors,
-                onApiBase: { base in onDraft(withChanges(draft) { $0.apiBase = base }) },
-                onDeviceId: { device in onDraft(withChanges(draft) { $0.deviceId = device }) }
-            )
+            Section {
+                AircastCloudFields(
+                    apiBase: draft.apiBase,
+                    deviceId: draft.deviceId,
+                    showErrors: cloudErrors,
+                    onApiBase: { base in onDraft(withChanges(draft) { $0.apiBase = base }) },
+                    onDeviceId: { device in onDraft(withChanges(draft) { $0.deviceId = device }) }
+                )
+            }
         case .Serial, .Bluetooth:
             EmptyView()
         case .Udp:
-            LinkPortField(label: "Listening port", value: draft.port, error: portError, enabled: true) { port in onDraft(withChanges(draft) { $0.port = port }) }
+            Section {
+                LinkPortField(label: "Listening port", value: draft.port, error: portError, enabled: true) { port in onDraft(withChanges(draft) { $0.port = port }) }
+            }
         case .Tcp, .Other:
-            LinkHostField(value: draft.host, error: hostError, enabled: true) { host in onDraft(withChanges(draft) { $0.host = host }) }
-            LinkPortField(label: "Port", value: draft.port, error: portError, enabled: true) { port in onDraft(withChanges(draft) { $0.port = port }) }
+            Section {
+                LinkHostField(value: draft.host, error: hostError, enabled: true) { host in onDraft(withChanges(draft) { $0.host = host }) }
+                LinkPortField(label: "Port", value: draft.port, error: portError, enabled: true, placeholder: DEFAULT_TCP_PORT) { port in onDraft(withChanges(draft) { $0.port = port }) }
+            }
         }
     }
 }
@@ -1052,7 +1029,9 @@ private struct NewLinkAdvanced: View {
 
 private struct AddLinkDetails: View {
     let type: LinkType
-    let onBack: () -> Void
+    let choices: [LinkType]
+    let onCancel: () -> Void
+    let onType: (LinkType) -> Void
     let onAdded: () -> Void
     @State private var typed: LinkDraft
     @State private var pickedLog: URL?
@@ -1065,9 +1044,11 @@ private struct AddLinkDetails: View {
     @QgcValue(UDP_LISTEN_PORT) private var udpListen
     @Environment(\.theme) private var theme
 
-    init(type: LinkType, mock: MockLinkChoices, onBack: @escaping () -> Void, onAdded: @escaping () -> Void) {
+    init(type: LinkType, choices: [LinkType], mock: MockLinkChoices, onCancel: @escaping () -> Void, onType: @escaping (LinkType) -> Void, onAdded: @escaping () -> Void) {
         self.type = type
-        self.onBack = onBack
+        self.choices = choices
+        self.onCancel = onCancel
+        self.onType = onType
         self.onAdded = onAdded
         _typed = State(initialValue: LinkDraft(type: type, port: portFor(type, DEFAULT_PORT), mock: mock))
     }
@@ -1086,8 +1067,16 @@ private struct AddLinkDetails: View {
     }
 
     var body: some View {
-        PageFrame(title: linkKind(type).title, backLabel: "Back to link types", onBack: onBack, action: busy ? "Connecting…" : type == .Mock ? "Start" : "Connect", actionEnabled: !busy, onAction: connect) {
-            Text(linkKind(type).about).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+        NativeForm {
+            Section {
+                Picker("Connect over", selection: Binding(get: { type }, set: { next in if next != type { onType(next) } })) {
+                    ForEach(choices.contains(type) ? choices : [type] + choices, id: \.self) { kind in
+                        Text(linkKind(kind).title).tag(kind)
+                    }
+                }
+            } footer: {
+                Text(linkKind(type).about)
+            }
             NewLinkFields(
                 draft: draft,
                 hostError: fieldError == "host" ? error : nil,
@@ -1100,15 +1089,20 @@ private struct AddLinkDetails: View {
                 DraftServers(draft: draft, udpDefault: udpDefault, error: fieldError == "server" ? error : nil, onError: { error = $0 }, onDraft: change)
             }
             if type != .Mock {
-                AdvancedDisclosure(open: advanced) { advanced.toggle() }
-                if advanced {
-                    NewLinkAdvanced(draft: draft, suggestedName: suggestedName, onDraft: change)
+                Section {
+                    DisclosureGroup("Advanced", isExpanded: $advanced) {
+                        NewLinkAdvanced(draft: draft, suggestedName: suggestedName, onDraft: change)
+                    }
                 }
             }
             if fieldError == nil, let error {
-                Text(error).font(.bodySmall).foregroundStyle(theme.colors.error)
+                FormNote(text: error, color: theme.colors.error)
             }
         }
+        .navigationTitle(linkKind(type).title)
+        .navigationBarTitleDisplayMode(.inline)
+        .pageCancelAction(action: onCancel)
+        .pagePrimaryAction(busy ? "Connecting\u{2026}" : type == .Mock ? "Start" : "Connect", enabled: !busy, action: connect)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.item]) { result in
             guard case .success(let chosen) = result else { return }
             pickedLog = chosen
@@ -1178,54 +1172,51 @@ struct LinksScreen<Footer: View>: View {
     @State private var editing: LinkRow?
     @State private var opened = 0
 
+    // The links page: a native list of connected and saved links, "+" in the navigation bar to add one, and the
+    // add and edit forms as sheets with their own navigation bars.
     var body: some View {
-        Group {
-            if adding {
-                AddLinkPage(onDismiss: { adding = false }, onAdded: { adding = false }).id(opened)
-            } else if let row = editing {
-                EditLinkPage(row: row, onDismiss: { editing = nil }, onSaved: { if editing == row { editing = nil } }).id(opened)
-            } else {
-                list
+        list
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { adding = true } label: {
+                        Label("Add link\u{2026}", systemImage: Icon.add.rawValue)
+                    }
+                    .accessibilityLabel("Add link")
+                    .macTooltip("Add link")
+                }
             }
-        }
-        .onChange(of: adding) { _, now in if now { opened += 1 } }
-        .onChange(of: editing) { _, now in if now != nil { opened += 1 } }
-        .onChange(of: navigation.addLinkRequested, initial: true) { _, requested in
-            guard requested else { return }
-            adding = true
-            navigation.addLinkRequested = false
-        }
+            .queuedSheet(isPresented: $adding) {
+                AddLinkSheet(onDismiss: { adding = false }, onAdded: { adding = false }).id(opened)
+            }
+            .queuedSheet(item: $editing) { row in
+                EditLinkSheet(row: row, onDismiss: { editing = nil }, onSaved: { if editing == row { editing = nil } }).id(opened)
+            }
+            .onChange(of: adding) { _, now in if now { opened += 1 } }
+            .onChange(of: editing) { _, now in if now != nil { opened += 1 } }
+            .onChange(of: navigation.addLinkRequested, initial: true) { _, requested in
+                guard requested else { return }
+                adding = true
+                navigation.addLinkRequested = false
+            }
     }
 
     private var list: some View {
         let rows = linkRows(view)
         let auto = autoLinks(view)
-        return VStack(alignment: .leading, spacing: 0) {
+        return NativeForm {
             if let notice {
-                Text(notice).font(.bodySmall).foregroundStyle(theme.colors.error).padding(.horizontal, 20).padding(.vertical, 8)
+                FormNote(text: notice, color: theme.colors.error)
             }
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    if rows.isEmpty && auto.isEmpty {
-                        FootNote(text: "No links saved. Add a link for Wi-Fi or a network connection.")
-                    }
-                    section("Connected", rows.filter(\.connected), auto)
-                    section("Saved", rows.filter { !$0.connected }, [])
-                    Button { adding = true } label: {
-                        HStack(spacing: 8) {
-                            Image(.add)
-                            Text("Add link\u{2026}")
-                        }
-                    }
-                    .buttonStyle(.filled)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
-                    AdvancedToggle(open: advanced) { advanced.toggle() }
-                    if advanced { footer() }
-                }
+            if rows.isEmpty && auto.isEmpty {
+                FootNote(text: "No links saved. Add a link for Wi-Fi or a network connection.")
             }
+            section("Connected", rows.filter(\.connected), auto)
+            section("Saved", rows.filter { !$0.connected }, [])
+            Section {
+                AdvancedToggle(open: advanced) { advanced.toggle() }
+            }
+            if advanced { footer() }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .alert(
             "Disconnect \(confirmingDisconnect?.name ?? "")?",
             isPresented: presented($confirmingDisconnect),
@@ -1254,24 +1245,27 @@ struct LinksScreen<Footer: View>: View {
     @ViewBuilder
     private func section(_ title: String, _ group: [LinkRow], _ auto: [AutoLink]) -> some View {
         if !group.isEmpty || !auto.isEmpty {
-            SectionHeader(text: title)
-        }
-        ForEach(group.map { ("\(title) \($0.name)", $0) }, id: \.0) { _, row in
-            LinkRowItem(
-                row: row,
-                onConnect: {
-                    let index = row.index
-                    attempt("connect", { rowConnected(index) == true }) { LinkCommands.connect("@\(LINKS_PATH).\(index)") }
-                },
-                onDisconnect: {
-                    if hasVehicle { confirmingDisconnect = row } else { disconnect(row) }
-                },
-                onRemove: { confirmingRemove = row },
-                onEdit: { editing = row }
-            )
-        }
-        ForEach(auto, id: \.name) { link in
-            AutoLinkItem(link: link, onStop: link.type == .Mock ? { stop(link) } : nil)
+            Section {
+                ForEach(group.map { ("\(title) \($0.name)", $0) }, id: \.0) { _, row in
+                    LinkRowItem(
+                        row: row,
+                        onConnect: {
+                            let index = row.index
+                            attempt("connect", { rowConnected(index) == true }) { LinkCommands.connect("@\(LINKS_PATH).\(index)") }
+                        },
+                        onDisconnect: {
+                            if hasVehicle { confirmingDisconnect = row } else { disconnect(row) }
+                        },
+                        onRemove: { confirmingRemove = row },
+                        onEdit: { editing = row }
+                    )
+                }
+                ForEach(auto, id: \.name) { link in
+                    AutoLinkItem(link: link, onStop: link.type == .Mock ? { stop(link) } : nil)
+                }
+            } header: {
+                SectionHeader(text: title)
+            }
         }
     }
 
@@ -1338,6 +1332,7 @@ private struct UdpServers: View {
     }
 }
 
+// A UDP link's servers as a form section: each server a row with Remove, then a row to type and add another.
 private struct ServerList: View {
     let servers: [String]
     let typed: String
@@ -1348,24 +1343,7 @@ private struct ServerList: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Server addresses (optional)").font(.labelMedium).foregroundStyle(error == nil ? theme.colors.onSurfaceVariant : theme.colors.error)
-            HStack {
-                TextField("Example: 127.0.0.1:14550", text: Binding(get: { typed }, set: onTyped))
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
-                    .submitLabel(.done)
-                    .onSubmit { if !typed.isBlank { onAdd() } }
-                    .accessibilityLabel("Server address")
-                Button("Add server", action: onAdd)
-                    .buttonStyle(.bordered)
-                    .disabled(typed.isBlank)
-            }
-            if let error {
-                Text(error).font(.bodySmall).foregroundStyle(theme.colors.error)
-            }
+        Section {
             ForEach(servers, id: \.self) { server in
                 HStack {
                     Text(server).frame(maxWidth: .infinity, alignment: .leading)
@@ -1373,7 +1351,25 @@ private struct ServerList: View {
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Remove \(server)")
                 }
-                .frame(minHeight: Metrics.rowCompact)
+            }
+            HStack {
+                TextField("Server address", text: Binding(get: { typed }, set: onTyped), prompt: Text("127.0.0.1:14550"))
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit { if !typed.isBlank { onAdd() } }
+                    .labelsHidden()
+                    .accessibilityLabel("Server address")
+                Button("Add server", action: onAdd)
+                    .buttonStyle(.borderless)
+                    .disabled(typed.isBlank)
+            }
+        } header: {
+            Text("Server addresses (optional)")
+        } footer: {
+            if let error {
+                Text(error).foregroundStyle(theme.colors.error)
             }
         }
     }

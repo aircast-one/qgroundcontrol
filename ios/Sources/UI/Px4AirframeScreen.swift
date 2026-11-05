@@ -80,52 +80,52 @@ struct Px4AirframeScreen: View {
                     screen(read)
                 }
             } else {
-                Text("This vehicle has no SYS_AUTOSTART and SYS_AUTOCONFIG.").padding(16)
+                NativeForm {
+                    Section { Text("This vehicle has no SYS_AUTOSTART and SYS_AUTOCONFIG.").foregroundStyle(Color.secondary) }
+                }
             }
         }
         .onChange(of: read?.autostartId, initial: true) { selection = read.flatMap(initialSelection) }
     }
 
     private func custom(_ read: Px4Airframes) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(read.customText)
-            Button("Reset") { act(PX4_AIRFRAME_RESET) }
-                .buttonStyle(.filled)
-                .frame(maxWidth: .infinity)
+        NativeForm {
+            Section {
+                Text(read.customText)
+            }
+            Section {
+                Button("Reset", role: .destructive) { act(PX4_AIRFRAME_RESET) }
+            }
             if let refusal {
-                Text(refusal).foregroundStyle(theme.colors.error)
+                Section {
+                    Text(refusal).foregroundStyle(theme.colors.error)
+                }
             }
         }
-        .padding(16)
     }
 
     private func screen(_ read: Px4Airframes) -> some View {
         let chosen = selection.flatMap { picked in
             read.groups.first { $0.name == picked.group }.flatMap { $0.airframes.indices.contains(picked.index) ? $0.airframes[picked.index] : nil }
         }
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Text(read.heading).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
-                Button(read.applyTitle) { confirming = true }
-                    .buttonStyle(.filled)
-                    .disabled(chosen == nil)
-            }
-            .padding(16)
+        return NativeForm {
             if let refusal {
-                Text(refusal).foregroundStyle(theme.colors.error).padding(.horizontal, 16)
+                Section {
+                    Text(refusal).foregroundStyle(theme.colors.error)
+                }
             }
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(read.groups, id: \.name) { group in
-                        let picked = selection?.group == group.name
-                        AirframeGroupCard(group: group, picked: picked, index: picked ? selection?.index ?? 0 : 0) { index in
-                            selection = AirframeSelection(group: group.name, index: index)
-                        }
+            Section {
+                ForEach(read.groups, id: \.name) { group in
+                    let picked = selection?.group == group.name
+                    AirframeGroupRow(group: group, picked: picked, index: picked ? selection?.index ?? 0 : 0) { index in
+                        selection = AirframeSelection(group: group.name, index: index)
                     }
                 }
-                .padding(16)
+            } header: {
+                if !read.heading.isBlank { Text(read.heading).textCase(nil) }
             }
         }
+        .pagePrimaryAction(read.applyTitle, enabled: chosen != nil) { confirming = true }
         .alert(read.applyTitle, isPresented: Binding(get: { confirming && chosen != nil }, set: { if !$0 { confirming = false } })) {
             Button("Apply") {
                 confirming = false
@@ -142,7 +142,12 @@ struct Px4AirframeScreen: View {
     }
 }
 
-private struct AirframeGroupCard: View {
+private let AIRFRAME_IMAGE_WIDTH: CGFloat = 88
+private let AIRFRAME_IMAGE_HEIGHT: CGFloat = 56
+
+// One airframe type as a form row: its picture, its name, the airframe of that type to use, and a checkmark on the
+// chosen type. Tapping the row picks the type with the airframe shown.
+private struct AirframeGroupRow: View {
     let group: AirframeGroup
     let picked: Bool
     let index: Int
@@ -150,33 +155,35 @@ private struct AirframeGroupCard: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            RadioIndicator(selected: picked).padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(group.name).font(.titleSmall)
-                if let asset = airframeImageAsset(group.image) {
-                    Image(asset)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 96)
-                        .padding(.vertical, 4)
-                        .accessibilityLabel(group.name)
-                }
+        HStack(spacing: Space.s3) {
+            if let asset = airframeImageAsset(group.image) {
+                Image(asset)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: AIRFRAME_IMAGE_WIDTH, height: AIRFRAME_IMAGE_HEIGHT)
+                    .accessibilityLabel(group.name)
+            }
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text(group.name)
                 Menu {
                     ForEach(Array(group.airframes.enumerated()), id: \.offset) { at, frame in
                         Button(frame.name) { onPick(at) }
                     }
                 } label: {
                     Text(group.airframes.indices.contains(index) ? group.airframes[index].name : "")
+                        .font(.subheadline)
+                        .multilineTextAlignment(.leading)
                 }
-                .buttonStyle(.bordered)
+                .fixedSize()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if picked {
+                Image(systemName: "checkmark")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(theme.colors.primary)
+                    .accessibilityHidden(true)
+            }
         }
-        .padding(12)
-        .background(picked ? theme.colors.secondaryContainer : theme.colors.surface, in: RoundedRectangle(cornerRadius: Corner.medium))
-        .overlay(RoundedRectangle(cornerRadius: Corner.medium).stroke(picked ? theme.colors.primary : theme.colors.outlineVariant, lineWidth: 1))
         .contentShape(Rectangle())
         .onTapGesture { onPick(index) }
         .accessibilityAddTraits(picked ? .isSelected : [])

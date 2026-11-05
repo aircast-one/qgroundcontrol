@@ -29,7 +29,7 @@ struct DeviceCamerasScreen: View {
 
     var body: some View {
         let view = deviceView(reading, parseCameras)
-        VStack(alignment: .leading, spacing: 0) {
+        NativeForm {
             if let view {
                 CamerasBody(
                     view: view,
@@ -42,7 +42,6 @@ struct DeviceCamerasScreen: View {
                 FootNote(text: DEVICE_WAITING)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: view?.cameras, initial: true) { _, cameras in announceComebacks(cameras) }
     }
 }
@@ -63,28 +62,37 @@ private struct CamerasBody: View {
         let selected = shownCamera(shown)
         let canAdd = shown != .Add
         let fixing = selected?.live == false
-        if !view.cameras.isEmpty {
-            CameraTabs(cameras: view.cameras, shown: selected, onPick: onPick)
-        }
-        if !fixing && (canAdd || !view.cloudLink.isEmpty) {
-            HStack(spacing: 8) {
-                if canAdd { Button("+ Add camera", action: onAdd).buttonStyle(.text) }
-                Spacer(minLength: 0)
-                if !view.cloudLink.isEmpty { LinkButton(href: view.cloudLink, text: "Watch in the cloud", look: .Outlined, external: true) }
+        // The camera tabs (a custom strip) and Add / Watch in the cloud lead the page; then the picked camera, the
+        // wall of every camera, or the add wizard, each in its own section; the topic pages close it.
+        if !view.cameras.isEmpty || (!fixing && (canAdd || !view.cloudLink.isEmpty)) {
+            Section {
+                if !view.cameras.isEmpty {
+                    CameraTabs(cameras: view.cameras, shown: selected, onPick: onPick)
+                        .listRowInsets(EdgeInsets())
+                }
+                if !fixing && canAdd {
+                    Button(action: onAdd) { Label("Add camera", systemImage: "plus.circle.fill") }
+                }
+                if !fixing && !view.cloudLink.isEmpty {
+                    LinkButton(href: view.cloudLink, text: "Watch in the cloud", look: .Text, external: true)
+                }
             }
-            .padding(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 16))
         }
         switch shown {
         case .Camera(let camera):
             CameraDetail(camera: camera, scan: props.query["scan"] != nil && props.query["camera"] == camera.name, onOpen: props.onOpen)
                 .id(camera.name)
-            TopicRow(page: camera.topic, onOpen: props.onOpen)
-            TopicRow(page: view.video, onOpen: props.onOpen)
+            Section {
+                TopicRow(page: camera.topic, onOpen: props.onOpen)
+                TopicRow(page: view.video, onOpen: props.onOpen)
+            }
         case .Wall:
             ForEach(view.cameras, id: \.name) { camera in
                 CameraTile(camera: camera) { onPick(camera.name) }
             }
-            TopicRow(page: view.video, onOpen: props.onOpen)
+            Section {
+                TopicRow(page: view.video, onOpen: props.onOpen)
+            }
         case .Add:
             DeviceSection(title: view.add.title) {
                 CameraWizard(view: view.add, onDone: onPick)
@@ -98,6 +106,7 @@ private struct CameraTabs: View {
     let shown: CameraView?
     let onPick: (String) -> Void
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -122,7 +131,9 @@ private struct CameraTabs: View {
                 }
             }
         }
-        .overlay(alignment: .bottom) { Rectangle().fill(theme.colors.outlineVariant).frame(height: 1) }
+        .overlay(alignment: .bottom) {
+            if !nativeList { Rectangle().fill(theme.colors.outlineVariant).frame(height: 1) }
+        }
     }
 }
 
@@ -159,11 +170,12 @@ private struct CameraTile: View {
     let onPick: () -> Void
     @Environment(\.theme) private var theme
 
+    // One camera on the wall: its section holds the name, the live picture (drawn by hand) and Record to disk.
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
-                    Button(action: onPick) { Text(camera.name).font(.titleMedium).foregroundStyle(theme.colors.onSurface) }
+        Section {
+            VStack(alignment: .leading, spacing: Space.s2) {
+                HStack(spacing: Space.s3) {
+                    Button(action: onPick) { Text(camera.name).font(.headline).foregroundStyle(Color.primary) }
                         .buttonStyle(.plain)
                     DeviceBadgeText(badge: camera.status)
                     Spacer(minLength: 0)
@@ -171,11 +183,12 @@ private struct CameraTile: View {
                 }
                 CameraPicture(camera: camera)
                 if let diagnosis = camera.diagnosis {
-                    Text(diagnosis.text).font(.bodyMedium).foregroundStyle(deviceLevelColor(diagnosis.level, theme))
+                    Text(diagnosis.text).font(.subheadline).foregroundStyle(deviceLevelColor(diagnosis.level, theme))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, Space.s1)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(camera.name)
             DeviceSwitchRow(
                 title: "Record to disk",
                 checked: camera.recording,
@@ -185,9 +198,6 @@ private struct CameraTile: View {
                 offSuccess: "Recording turned off for \(camera.name) — download it under Settings → Recordings."
             )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(camera.name)
     }
 }
 
@@ -219,11 +229,12 @@ private struct CameraOverview: View {
     let onWizard: (Bool) -> Void
     @Environment(\.theme) private var theme
     @Environment(\.LocalDeviceOrigin) private var origin
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         DeviceSection(title: camera.name, badge: camera.status) {
             if camera.shared {
-                DeviceBadgeText(badge: DeviceBadge(level: DeviceLevel.Warn, text: "shared source")).padding(.horizontal, 16)
+                DeviceBadgeText(badge: DeviceBadge(level: DeviceLevel.Warn, text: "shared source")).rowPadding(horizontal: 16)
                 DeviceNotice(
                     notice: DeviceBadge(
                         level: DeviceLevel.Warn,
@@ -234,8 +245,8 @@ private struct CameraOverview: View {
             CameraPicture(camera: camera)
                 .frame(maxWidth: 576)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .rowPadding(horizontal: 16, vertical: 8)
+                .padding(.vertical, nativeList ? Space.s1 : 0)
             if camera.live {
                 DeviceButtonRow {
                     LinkButton(href: resolveDeviceUrl(origin, camera.watch), text: "▶ Watch live", look: .Filled, external: true)
@@ -247,14 +258,13 @@ private struct CameraOverview: View {
             if let diagnosis = camera.diagnosis {
                 DeviceNotice(notice: diagnosis)
                 if let fix = camera.fix {
-                    Button(fix.label) { onWizard(fix.scan) }.buttonStyle(.filled).padding(.horizontal, 16)
+                    Button(fix.label) { onWizard(fix.scan) }.buttonStyle(.filled).rowPadding(horizontal: 16)
                 }
                 Text("This page keeps checking — it updates by itself the moment the camera answers again.")
                     .font(.bodySmall)
                     .foregroundStyle(theme.colors.onSurfaceVariant)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 4)
+                    .rowPadding(horizontal: 16, vertical: 4)
             }
             if camera.fix == nil {
                 ReconfigureButton(live: camera.live, onWizard: onWizard)
@@ -292,8 +302,7 @@ private struct ReconfigureButton: View {
                 Button("Reconfigure") { onWizard(true) }.buttonStyle(.filled)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .rowPadding(horizontal: 16, vertical: 8)
     }
 }
 
@@ -301,9 +310,15 @@ private struct CameraLinks: View {
     let camera: CameraView
     let onOpen: (String) -> Void
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
+    // In a NativeForm the heading and each link are rows of the camera's section.
     var body: some View {
-        if camera.live {
+        if camera.live && nativeList {
+            Text("Every way to watch this camera").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondary)
+            EndpointRows(endpoints: camera.links)
+            MoreWays(onOpen: onOpen)
+        } else if camera.live {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Every way to watch this camera")
                     .font(.labelLarge)
@@ -316,7 +331,7 @@ private struct CameraLinks: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Every way to watch this camera")
         } else {
-            DeviceDisclosure("Links — they will play once it's back") {
+            DeviceGroup("Links — they will play once it's back") {
                 EndpointRows(endpoints: camera.links)
                 MoreWays(onOpen: onOpen)
             }

@@ -535,7 +535,6 @@ private struct CommandPicker: View {
     let itemCategory: String?
     let onDismiss: () -> Void
     let onChosen: (Int) -> Void
-    @Environment(\.theme) private var theme
     @State private var categories: [String] = []
     @State private var category: String?
     @State private var commands: [CommandChoice] = []
@@ -543,32 +542,29 @@ private struct CommandPicker: View {
     var body: some View {
         let listedCategories = categories
         let listedCommands = commands
-        PlanDialog(title: "Select mission command", onDismiss: onDismiss) {
-            VStack(alignment: .leading, spacing: Space.s2) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Space.s1) {
+        NativeDialogSheet(title: "Select mission command", onDismissRequest: onDismiss, detents: [.large]) {
+            NativeForm {
+                Section {
+                    Picker("Category", selection: $category) {
                         ForEach(listedCategories, id: \.self) { name in
-                            CameraChip(label: sentenceCase(name), selected: name == category) { category = name }
+                            Text(sentenceCase(name)).tag(Optional(name))
                         }
                     }
                 }
-                LazyVStack(alignment: .leading, spacing: 0) {
+                Section {
                     ForEach(listedCommands) { command in
                         Button { onChosen(command.id) } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(sentenceCase(command.name)).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                                Text(command.description).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, Space.s3)
-                            .contentShape(Rectangle())
+                            NativeRowLabel(
+                                title: sentenceCase(command.name),
+                                subtitle: command.description.isBlank ? nil : Text(command.description),
+                                chevron: false
+                            )
                         }
-                        .buttonStyle(.plain)
+                        .listRowButton()
                     }
                 }
             }
-        } buttons: {
-            Button("Cancel", action: onDismiss)
+            .dialogButtons(cancel: DialogButton(title: "Cancel", action: onDismiss))
         }
         .task {
             categories = await offMain { categoryNames(PlanCommands.commandCategories()) }
@@ -743,24 +739,28 @@ struct EditPositionDialog: View {
     private var altitudePath: String? { onAltitude == nil ? nil : vehicleAltitudePath(altitudeMode) }
 
     var body: some View {
-        PlanDialog(title: title, onDismiss: onDismiss) {
-            VStack(alignment: .leading, spacing: Space.s2) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Space.s1) {
+        NativeDialogSheet(title: title, onDismissRequest: onDismiss) {
+            NativeForm {
+                Section {
+                    Picker("Coordinates", selection: Binding<CoordinateSystem>(get: { system }, set: { choice in
+                        system = choice
+                        problem = nil
+                    })) {
                         ForEach(CoordinateSystem.allCases.filter { $0 != .Vehicle || connected }, id: \.self) { choice in
-                            CameraChip(label: choice.label, selected: choice == system) {
-                                system = choice
-                                problem = nil
-                            }
+                            Text(choice.label).tag(choice)
                         }
                     }
                 }
-                fields
-                if let problem { Text(problem).foregroundStyle(theme.colors.error) }
+                Section {
+                    fields
+                } footer: {
+                    if let problem { Text(problem).foregroundStyle(theme.colors.error) }
+                }
             }
-        } buttons: {
-            Button("Cancel", action: onDismiss)
-            Button(system == .Vehicle ? vehicleConfirm ?? confirm : confirm) { move() }
+            .dialogButtons(
+                cancel: DialogButton(title: "Cancel", action: onDismiss),
+                primary: DialogButton(title: system == .Vehicle ? vehicleConfirm ?? confirm : confirm) { move() }
+            )
         }
         .task(id: "\(system)|\(altitudePath ?? "")") {
             let path = altitudePath
@@ -881,11 +881,7 @@ private struct PositionRow: View {
     let value: String
 
     var body: some View {
-        HStack {
-            Text(label).frame(maxWidth: .infinity, alignment: .leading)
-            Text(value)
-        }
-        .padding(.vertical, Space.s1)
+        LabeledContent(label, value: value)
     }
 }
 
@@ -903,16 +899,17 @@ private struct PositionField: View {
     let value: String
     var keyboard: UIKeyboardType = .numbersAndPunctuation
     let onChange: (String) -> Void
-    @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-            TextField(label, text: Binding(get: { value }, set: onChange))
+        LabeledContent {
+            TextField(label, text: Binding(get: { value }, set: onChange), prompt: Text(""))
+                .labelsHidden()
+                .multilineTextAlignment(.trailing)
                 .keyboardType(keyboard)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.characters)
-                .textFieldStyle(.roundedBorder)
+        } label: {
+            Text(label)
         }
     }
 }

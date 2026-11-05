@@ -106,18 +106,18 @@ struct ActuatorTestSection: View {
     @State private var allMotors = 0.0
 
     var body: some View {
+        // One form row (the host's section carries the heading). A form row also goes away when it scrolls out of
+        // sight, so leaving it switches the test off (sliders back to rest, test inactive) rather than leaving the
+        // switch on with nothing sending.
         VStack(alignment: .leading, spacing: 8) {
-            Text("Actuator testing").font(.titleMedium)
             if testing.actuators.isEmpty {
-                Text("Configure some outputs in order to test them.")
+                Text("Configure some outputs in order to test them.").foregroundStyle(Color.secondary)
             } else {
-                HStack(spacing: 8) {
-                    Toggle("", isOn: Binding(get: { enabled && !testing.hadFailure }, set: setEnabled))
-                        .labelsHidden()
-                        .disabled(testing.hadFailure || assigning)
+                Toggle(isOn: Binding(get: { enabled && !testing.hadFailure }, set: setEnabled)) {
                     Text(enabled ? "Careful: actuator sliders are enabled" : "Propellers are removed - enable sliders")
                         .foregroundStyle(theme.aircast.warning)
                 }
+                .disabled(testing.hadFailure || assigning)
                 if let motors = testing.allMotors {
                     TestSlider(channel: motors, value: allMotors, enabled: enabled) { value in
                         allMotors = value
@@ -157,7 +157,7 @@ struct ActuatorTestSection: View {
         }
         .onChange(of: testing.allMotors, initial: true) { allMotors = testing.allMotors?.rest ?? 0 }
         .onChange(of: scenePhase) { _, phase in if enabled && phase != .active { setEnabled(false) } }
-        .onDisappear { offMainInOrder { Qgc.invoke(ACTUATOR_TEST_ACTIVE, false) } }
+        .onDisappear { setEnabled(false) }
     }
 
     private func setEnabled(_ on: Bool) {
@@ -222,7 +222,7 @@ private struct TestSlider: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(channel.label).font(.labelMedium)
+            Text(channel.label).font(.subheadline).foregroundStyle(Color.secondary)
             Slider(
                 value: Binding(get: { value }, set: { onChange(snapped(channel, $0)) }),
                 in: testRange(channel)

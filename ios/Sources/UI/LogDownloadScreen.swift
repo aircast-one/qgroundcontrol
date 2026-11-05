@@ -146,6 +146,7 @@ enum EraseKind {
     var confirm: String { self == .All ? "Erase All" : "Erase Selected" }
 }
 
+// A log as a selectable row: the selection circle leading, as in an editing list.
 private struct LogRow: View {
     let entry: LogEntry
     let enabled: Bool
@@ -153,30 +154,27 @@ private struct LogRow: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
+        let detail = [entry.time, entry.sizeStr].filter { !$0.isBlank }.joined(separator: " · ")
         Button { onToggle(!entry.selected) } label: {
-            HStack(spacing: 16) {
-                Image(entry.selected ? .checkCircle : .description)
-                    .font(.system(size: 20))
-                    .foregroundStyle(entry.selected ? theme.colors.onPrimary : theme.colors.onSecondaryContainer)
-                    .frame(width: Metrics.avatar, height: Metrics.avatar)
-                    .background(entry.selected ? theme.colors.primary : theme.colors.secondaryContainer, in: Circle())
+            HStack(spacing: Space.s3) {
+                Image(systemName: entry.selected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(entry.selected ? theme.colors.primary : Color.secondary)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Log \(entry.id)").font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                    Text([entry.time, entry.sizeStr].filter { !$0.isBlank }.joined(separator: " · "))
-                        .font(.bodyMedium)
-                        .foregroundStyle(theme.colors.onSurfaceVariant)
+                    Text("Log \(entry.id)").foregroundStyle(Color.primary)
+                    if !detail.isBlank {
+                        Text(detail).font(.subheadline).foregroundStyle(Color.secondary)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Text(entry.status).font(.labelMedium).foregroundStyle(theme.colors.primary)
+                if !entry.status.isBlank {
+                    Text(entry.status).font(.subheadline).foregroundStyle(Color.secondary).lineLimit(1)
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
-            .background(entry.selected ? theme.colors.secondaryContainer : .clear)
             .contentShape(Rectangle())
-            .macHover()
         }
-        .buttonStyle(.plain)
+        .listRowButton()
         .disabled(!(enabled && entry.received))
         .accessibilityAddTraits(entry.selected ? .isSelected : [])
     }
@@ -241,107 +239,81 @@ struct LogDownloadScreen: View {
         offMain { Qgc.invoke("\(LOG_ROOT).\(action)") }
     }
 
+    // The logs as a native list: a section per place a log is kept, Download as the page's primary action, Refresh
+    // and the sort order in the navigation bar's menu, and the erase actions as destructive rows of their own.
     private func connected(_ logs: LogsView) -> some View {
         let entries = logs.entries
         let selectedCount = entries.filter(\.selected).count
         let selectable = entries.filter(\.received)
         let busy = logs.busy
-        return ZStack(alignment: .bottomTrailing) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 8) {
-                    Button("Refresh") { invoke("refresh") }.disabled(!logs.canRefresh)
-                    if !logs.sortText.isBlank {
-                        Button(sentenceCase(logs.sortText)) { invoke("toggleSortByDate") }.disabled(!logs.canSort)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-
-                if !selectable.isEmpty && !busy {
-                    Toggle(isOn: Binding(get: { selectedCount == selectable.count }, set: { _ in
-                        let selectAll = selectedCount < selectable.count
-                        let indices = selectable.map(\.index)
-                        offMain { indices.forEach { Qgc.set("\(LOG_MODEL).\($0).selected", selectAll) } }
-                    })) {
-                        Text(selectedCount < selectable.count ? "Select all" : "Deselect all").font(.labelLarge)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 4)
-                }
-
-                if busy {
-                    let (title, progress) = downloadCard(entries)
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text(title).font(.titleSmall).frame(maxWidth: .infinity, alignment: .leading)
-                            if !progress.isBlank {
-                                Text(progress).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                            }
-                            if logs.canCancel {
-                                Button("Cancel") { invoke("cancel") }.buttonStyle(.text)
-                            }
-                        }
+        return NativeForm {
+            if busy {
+                let (title, progress) = downloadCard(entries)
+                Section {
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        LabeledContent(title, value: progress)
                         IndeterminateBar()
                     }
-                    .padding(16)
-                    .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.large))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, Space.s1)
+                    if logs.canCancel {
+                        Button("Cancel download") { invoke("cancel") }
+                    }
                 }
-
-                if entries.isEmpty {
+            }
+            if entries.isEmpty {
+                Section {
                     EmptyState(icon: .description, title: "No logs yet", text: logs.emptyText.ifBlank("This vehicle reports no flight logs."))
-                    Spacer(minLength: 0)
-                } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(logRows(entries), id: \.entry.index) { header, entry in
-                                VStack(alignment: .leading, spacing: 0) {
-                                    if let header { SectionHeader(text: header) }
-                                    LogRow(entry: entry, enabled: !busy) { checked in
-                                        offMain { Qgc.set("\(LOG_MODEL).\(entry.index).selected", checked) }
-                                    }
-                                }
-                            }
-                            if !busy {
-                                HStack(spacing: 8) {
-                                    if logs.eraseSelectedShown {
-                                        Button("Erase selected") { confirmErase = .Selected }.disabled(!logs.canEraseSelected)
-                                    }
-                                    Button("Erase all") { confirmErase = .All }.disabled(!logs.canErase)
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(theme.colors.error)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                            }
-                            Color.clear.frame(height: 88)
+                        .listRowBackground(Color.clear)
+                }
+            } else {
+                if !selectable.isEmpty && !busy {
+                    Section {
+                        Button(selectedCount < selectable.count ? "Select all" : "Deselect all") {
+                            let selectAll = selectedCount < selectable.count
+                            let indices = selectable.map(\.index)
+                            offMain { indices.forEach { Qgc.set("\(LOG_MODEL).\($0).selected", selectAll) } }
                         }
                     }
                 }
-
-                if let line = savedToText(logs) {
-                    Text(line).font(.bodySmall).frame(maxWidth: .infinity, alignment: .leading).padding(16)
+                ForEach(logSections(entries), id: \.0) { title, section in
+                    Section {
+                        ForEach(section, id: \.index) { entry in
+                            LogRow(entry: entry, enabled: !busy) { checked in
+                                offMain { Qgc.set("\(LOG_MODEL).\(entry.index).selected", checked) }
+                            }
+                        }
+                    } header: {
+                        SectionHeader(text: title)
+                    }
+                }
+                if !busy {
+                    Section {
+                        if logs.eraseSelectedShown {
+                            Button("Erase selected…", role: .destructive) { confirmErase = .Selected }.disabled(!logs.canEraseSelected)
+                        }
+                        Button("Erase all…", role: .destructive) { confirmErase = .All }.disabled(!logs.canErase)
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            if logs.canDownload && selectedCount > 0 {
-                Button { invoke("download") } label: {
-                    HStack(spacing: 12) {
-                        Image(.download)
-                        Text("Download (\(selectedCount))").font(.labelLarge)
+            if let line = savedToText(logs) {
+                FormNote(text: line)
+            }
+        }
+        .pagePrimaryAction(selectedCount > 0 ? "Download (\(selectedCount))" : "Download", enabled: logs.canDownload && selectedCount > 0) {
+            invoke("download")
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button { invoke("refresh") } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                        .disabled(!logs.canRefresh)
+                    if !logs.sortText.isBlank {
+                        Button { invoke("toggleSortByDate") } label: { Label(sentenceCase(logs.sortText), systemImage: "arrow.up.arrow.down") }
+                            .disabled(!logs.canSort)
                     }
-                    .foregroundStyle(theme.colors.onPrimaryContainer)
-                    .padding(.horizontal, 20)
-                    .frame(height: Metrics.floatingButton)
-                    .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: Corner.large))
-                    .macHover(RoundedRectangle(cornerRadius: Corner.large))
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Download (\(selectedCount))")
-                .padding(16)
             }
         }
         .task(id: logs.connected) {

@@ -73,6 +73,68 @@ private struct ShownKey: Equatable {
     let setup: JSON?
 }
 
+// What a host form keys its pilot-settings read on, so the rows reload when the vehicle's parameters change.
+struct PilotShownKey: Equatable {
+    let settings: [PilotSetting]
+    let setup: JSON?
+}
+
+func loadPilotShown(_ settings: [PilotSetting]) async -> [ShownPilotSetting] {
+    await offMain {
+        settings.compactMap { setting in
+            firstReported(setting) { parameterFact($0, setting.quantity) }.map { ShownPilotSetting(setting: setting, fact: $0) }
+        }
+    }
+}
+
+// The pilot settings as sections of a NativeForm. A form's rows cannot each carry the read, so the host form reads
+// them (loadPilotShown, keyed on PilotShownKey) and hands them in.
+struct PilotSettingSections: View {
+    let settings: [PilotSetting]
+    let shown: [ShownPilotSetting]
+    @HasVehicle private var hasVehicle
+    @QgcPath(SETUP) private var setup
+    @Environment(AppNavigationState.self) private var navigation
+
+    var body: some View {
+        if settings.isEmpty {
+            EmptyView()
+        } else if !hasVehicle || !parametersReady(setup) {
+            let offline = !hasVehicle
+            ForEach(Array(pilotSections(settings).enumerated()), id: \.element.key) { at, section in
+                Section {
+                    ForEach(section.value, id: \.label) { setting in
+                        OfflineRow(label: setting.label, hint: setting.hint)
+                    }
+                } header: {
+                    SectionHeader(text: section.key)
+                } footer: {
+                    if at == 0 {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(offline ? OFFLINE_PILOT_NOTE : LOADING_PILOT_NOTE)
+                            if offline {
+                                Button("Add a link") { navigation.settingsPage = CONNECTIONS_PAGE }
+                                    .font(.footnote)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            let wanted = Set(settings.map(\.label))
+            ForEach(groupedInOrder(shown.filter { wanted.contains($0.setting.label) }) { $0.setting.section }, id: \.key) { section in
+                Section {
+                    ForEach(section.value, id: \.fact.path) { row in
+                        PilotFactRow(shown: row.fact, setting: row.setting)
+                    }
+                } header: {
+                    SectionHeader(text: section.key)
+                }
+            }
+        }
+    }
+}
+
 struct PilotSettings: View {
     let settings: [PilotSetting]
     @HasVehicle private var hasVehicle
@@ -159,6 +221,7 @@ private struct OfflineRow: View {
     let label: String
     let hint: String?
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         HStack(spacing: Space.s3) {
@@ -174,9 +237,8 @@ private struct OfflineRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(OFFLINE_VALUE).font(.bodyLarge).foregroundStyle(theme.colors.onSurfaceVariant.opacity(DISABLED_ALPHA))
         }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
-        .frame(minHeight: Metrics.row)
+        .rowPadding(horizontal: Space.s4, vertical: Space.s2)
+        .frame(minHeight: nativeList ? nil : Metrics.row)
     }
 }
 
@@ -197,8 +259,48 @@ struct SensorChecks: View {
     @QgcPath(CALIBRATION) private var json
     @HasVehicle private var hasVehicle
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
+        if nativeList {
+            nativeSection
+        } else {
+            handDrawn
+        }
+    }
+
+    // Inside a NativeForm: one Sensors section, each check a row with its state and, when it needs it, Calibrate.
+    @ViewBuilder private var nativeSection: some View {
+        let checks = hasVehicle ? sensorChecks(calibrationState(json)) : []
+        if !hasVehicle || !checks.isEmpty {
+            Section {
+                if !hasVehicle {
+                    ForEach(OFFLINE_SENSORS, id: \.self) { OfflineRow(label: $0, hint: nil) }
+                } else {
+                    ForEach(checks, id: \.id) { routine in
+                        LabeledContent {
+                            HStack(spacing: Space.s3) {
+                                Text(sensorHealthy(routine) ? "Normal" : routine.status.ifBlank("Not checked"))
+                                    .foregroundStyle(sensorHealthy(routine) ? Color.secondary : theme.colors.error)
+                                if !sensorHealthy(routine) {
+                                    Button("Calibrate", action: onCalibrate)
+                                        .buttonStyle(.borderless)
+                                        .disabled(!routine.enabled)
+                                }
+                            }
+                        } label: {
+                            Text(sentenceCase(routine.title))
+                        }
+                    }
+                    SetupRow(title: "Calibrate sensors", status: "", onClick: onCalibrate)
+                }
+            } header: {
+                SectionHeader(text: SENSORS_SECTION)
+            }
+        }
+    }
+
+    private var handDrawn: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !hasVehicle {
                 SectionHeader(text: SENSORS_SECTION)

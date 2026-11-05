@@ -8,21 +8,28 @@ struct BreachReturnDialog: View {
     let onAltitude: (Double) -> Void
     let onRemove: () -> Void
     @State private var typed = ""
-    @Environment(\.theme) private var theme
 
     var body: some View {
         let value = typedNumber(typed)
-        PlanDialog(title: "Breach return point", onDismiss: onDismiss) {
-            VStack(alignment: .leading, spacing: 8) {
-                PlanTextField(label: "Altitude", text: $typed, suffix: breach.units, isError: value == nil)
-                Button(action: onRemove) {
-                    Text("Remove breach return point").foregroundStyle(theme.colors.error)
+        NativeDialogSheet(title: "Breach return point", onDismissRequest: onDismiss, detents: [.medium]) {
+            NativeForm {
+                Section {
+                    FieldRow(
+                        label: breach.units.isBlank ? "Altitude" : "Altitude (\(breach.units))",
+                        value: typed,
+                        error: value == nil ? "Enter a number" : nil,
+                        keyboard: .numbersAndPunctuation,
+                        onChange: { typed = $0 }
+                    )
                 }
-                .buttonStyle(.text)
+                Section {
+                    Button("Remove breach return point", role: .destructive, action: onRemove)
+                }
             }
-        } buttons: {
-            Button("Close", action: onDismiss)
-            Button("Set") { value.map(onAltitude) }.disabled(value == nil || breach.altitudePath.isEmpty)
+            .dialogButtons(
+                cancel: DialogButton(title: "Cancel", action: onDismiss),
+                primary: DialogButton(title: "Set", enabled: value != nil && !breach.altitudePath.isEmpty) { if let value { onAltitude(value) } }
+            )
         }
         .onChange(of: breach, initial: true) { typed = breachAltitudeText(breach.altitude) }
     }

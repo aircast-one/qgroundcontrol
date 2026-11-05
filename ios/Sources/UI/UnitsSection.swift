@@ -59,17 +59,24 @@ private struct UnitSystemRow: View {
             .pickerStyle(.segmented)
             .labelsHidden()
         }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
+        .rowPadding(horizontal: Space.s4, vertical: Space.s2)
     }
 }
 
 struct UnitsSection: View {
     @QgcPath(GENERAL_SETTINGS) private var page
     @QgcValue("\(UNITS_PATH).unitSystem") private var system
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
-        if let chosen = system.int {
+        if let chosen = system.int, nativeList {
+            // Rows of the Section the form puts this in.
+            UnitSystemRow(system: chosen) { picked in
+                offMain { _ = Qgc.invoke("\(UNITS_PATH).setUnitSystem", picked) }
+            }
+            Text(unitSystemNote(chosen)).font(.footnote).foregroundStyle(Color.secondary)
+            FactRuns(facts: unitRowsFor(chosen, unitFacts(page)))
+        } else if let chosen = system.int {
             VStack(alignment: .leading, spacing: 0) {
                 UnitSystemRow(system: chosen) { picked in
                     offMain { _ = Qgc.invoke("\(UNITS_PATH).setUnitSystem", picked) }

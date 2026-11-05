@@ -21,6 +21,7 @@ func powerTiles(_ view: JSON?) -> [PowerTile] {
 struct PowerLiveCard: View {
     @QgcPath("view.battery") private var json
     @Environment(\.theme) private var theme
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         let tiles = powerTiles(json)
@@ -37,11 +38,10 @@ struct PowerLiveCard: View {
                     }
                 }
             }
-            .padding(Space.s4)
+            .rowPadding(horizontal: Space.s4, vertical: Space.s4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(theme.colors.surfaceContainer, in: RoundedRectangle(cornerRadius: Corner.large))
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
+            .background(nativeList ? Color.clear : theme.colors.surfaceContainer, in: RoundedRectangle(cornerRadius: Corner.large))
+            .rowPadding(horizontal: Space.s4, vertical: Space.s2)
         }
     }
 }

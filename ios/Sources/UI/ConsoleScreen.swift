@@ -84,6 +84,17 @@ private struct ConsoleSelectingField: View {
     }
 }
 
+private struct ConsoleHistoryStep {
+    let step: String
+    let symbol: String
+    let label: String
+}
+
+private let CONSOLE_HISTORY_STEPS = [
+    ConsoleHistoryStep(step: "historyUp", symbol: "arrow.up", label: "Previous command"),
+    ConsoleHistoryStep(step: "historyDown", symbol: "arrow.down", label: "Next command"),
+]
+
 private final class VisibleRows {
     var shown: Set<Int> = []
 }
@@ -130,33 +141,39 @@ struct ConsoleScreen: View {
                 }
             }
 
-            HStack(spacing: 8) {
+            // The input as a native compose bar: history steps, the command field and Send.
+            HStack(alignment: .bottom, spacing: Space.s2) {
+                ForEach(CONSOLE_HISTORY_STEPS, id: \.step) { entry in
+                    Button { recall(entry.step) } label: {
+                        Image(systemName: entry.symbol)
+                            .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(entry.label)
+                    .macTooltip(entry.label)
+                }
                 ConsoleField(field: field, onEdit: edit)
                     .lineLimit(1...4)
+                    .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.send)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(theme.colors.surfaceContainerHighest, in: Capsule())
-                ForEach([("historyUp", "\u{2191}"), ("historyDown", "\u{2193}")], id: \.0) { step, arrow in
-                    Button(arrow) { recall(step) }
-                        .buttonStyle(.text)
-                        .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
-                        .macTooltip(step == "historyUp" ? "Previous command" : "Next command")
-                }
+                    .font(.body.monospaced())
                 Button(action: send) {
-                    Image(.send)
-                        .foregroundStyle(theme.colors.onPrimaryContainer)
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
                         .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
-                        .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.borderless)
                 .accessibilityLabel("Send")
                 .macTooltip("Send")
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(theme.colors.surfaceContainerLow)
+            .padding(.horizontal, Space.s3)
+            .padding(.vertical, Space.s2)
+            .background(.bar)
+            .overlay(alignment: .top) { Divider() }
         }
         .task { offMainInOrder { Qgc.invoke(CONSOLE_OPEN) } }
     }

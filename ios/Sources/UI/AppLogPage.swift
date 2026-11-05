@@ -164,25 +164,32 @@ struct AppLogPage: View {
             }
             .clipped()
             .onChange(of: atBottom) { if !atBottom { following = false } }
-            Divider()
-            AppLogFilterBar(
-                filter: filter,
-                read: read,
-                onFilter: { filter = $0 },
-                onCategories: { showCategories = true },
-                onSave: save,
-                onClear: {
-                    scope.launch {
-                        _ = await offMain { Qgc.invoke(APP_LOG_CLEAR) }
-                        cleared += 1
-                    }
-                }
-            )
-            if let notice {
-                Text(notice)
+            if let line = notice ?? (read?.regexValid == false ? "The search is not a valid regular expression." : nil) {
+                Divider()
+                Text(line)
+                    .font(.footnote)
                     .foregroundStyle(theme.aircast.alert)
-                    .padding(.horizontal, Space.s3)
-                    .padding(.vertical, Space.s1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Space.s4)
+                    .padding(.vertical, Space.s2)
+            }
+        }
+        .searchable(text: Binding(get: { filter.text }, set: { text in filter = withChanges(filter) { $0.text = text } }), prompt: "Search log")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                AppLogMenu(
+                    filter: filter,
+                    read: read,
+                    onFilter: { filter = $0 },
+                    onCategories: { showCategories = true },
+                    onSave: save,
+                    onClear: {
+                        scope.launch {
+                            _ = await offMain { Qgc.invoke(APP_LOG_CLEAR) }
+                            cleared += 1
+                        }
+                    }
+                )
             }
         }
         .task(id: PollKey(filter: filter, cleared: cleared)) {
@@ -264,68 +271,41 @@ private struct AppLogRow: View {
     }
 }
 
-private struct AppLogFilterBar: View {
+// The log's filters and actions as the navigation bar's menu: level and category pickers, the regular-expression
+// switch for the search field, logging categories, Save and Clear.
+private struct AppLogMenu: View {
     let filter: AppLogFilter
     let read: AppLogRead?
     let onFilter: (AppLogFilter) -> Void
     let onCategories: () -> Void
     let onSave: () -> Void
     let onClear: () -> Void
-    @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s2) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.s2) {
-                    let levels = read?.levels ?? []
-                    OptionMenu(
-                        label: sentenceCase(levels.indices.contains(filter.levelIndex) ? levels[filter.levelIndex] : "All Levels"),
-                        options: levels.map(sentenceCase)
-                    ) { index in onFilter(withChanges(filter) { $0.levelIndex = index }) }
-                    let categories = read?.categories ?? []
-                    OptionMenu(
-                        label: sentenceCase(filter.category.ifEmpty("All Categories")),
-                        options: categories.map(sentenceCase)
-                    ) { index in onFilter(withChanges(filter) { $0.category = index == 0 ? "" : categories[index] }) }
-                    Button("Categories", action: onCategories).buttonStyle(.bordered)
-                    Button("Save", action: onSave).buttonStyle(.bordered)
-                    Button("Clear", action: onClear).buttonStyle(.bordered)
-                }
-            }
-            HStack(spacing: Space.s2) {
-                TextField("Search…", text: Binding(get: { filter.text }, set: { text in onFilter(withChanges(filter) { $0.text = text }) }))
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .overlay {
-                        if read?.regexValid == false {
-                            RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(theme.colors.error, lineWidth: 1)
-                        }
-                    }
-                Toggle(isOn: Binding(get: { filter.regex }, set: { regex in onFilter(withChanges(filter) { $0.regex = regex }) })) {
-                    Text(".*").monospaced()
-                }
-                .toggleStyle(.button)
-            }
-        }
-        .padding(Space.s2)
-        .background(theme.colors.surfaceContainer)
-    }
-}
-
-private struct OptionMenu: View {
-    let label: String
-    let options: [String]
-    let onPick: (Int) -> Void
-
-    var body: some View {
+        let levels = read?.levels ?? []
+        let categories = read?.categories ?? []
         Menu {
-            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
-                Button(option) { onPick(index) }
+            if !levels.isEmpty {
+                Picker("Level", selection: Binding(get: { filter.levelIndex }, set: { index in onFilter(withChanges(filter) { $0.levelIndex = index }) })) {
+                    ForEach(levels.indices, id: \.self) { index in Text(sentenceCase(levels[index])).tag(index) }
+                }
+                .pickerStyle(.menu)
             }
+            if !categories.isEmpty {
+                Picker("Category", selection: Binding(get: { filter.category }, set: { category in onFilter(withChanges(filter) { $0.category = category }) })) {
+                    ForEach(categories.indices, id: \.self) { index in
+                        Text(sentenceCase(categories[index])).tag(index == 0 ? "" : categories[index])
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            Toggle("Regular expression", isOn: Binding(get: { filter.regex }, set: { regex in onFilter(withChanges(filter) { $0.regex = regex }) }))
+            Divider()
+            Button(action: onCategories) { Label("Logging categories…", systemImage: "list.bullet") }
+            Button(action: onSave) { Label("Save…", systemImage: "square.and.arrow.down") }
+            Button(role: .destructive, action: onClear) { Label("Clear", systemImage: "trash") }
         } label: {
-            Text(label)
+            Label("Log options", systemImage: "line.3.horizontal.decrease.circle")
         }
-        .disabled(options.isEmpty)
     }
 }

@@ -6,16 +6,21 @@ struct DeviceEngineeringScreen: View {
     @Environment(\.LocalDeviceOrigin) private var origin
 
     var body: some View {
-        if let view = deviceView(reading, parseEngineering) {
-            BackendSection(backend: view.backend)
-            PublishSection(publish: view.publish, onOpen: props.onOpen)
-            DeviceSection(title: "Device logs") {
-                DeviceText(text: "Everything every service on this device has logged, gzipped.")
-                DeviceButtonRow { LinkButton(href: resolveDeviceUrl(origin, "/api/logs"), text: "Download logs", icon: .download) }
+        NativeForm {
+            if let view = deviceView(reading, parseEngineering) {
+                BackendSection(backend: view.backend)
+                PublishSection(publish: view.publish, onOpen: props.onOpen)
+                Section {
+                    LinkButton(href: resolveDeviceUrl(origin, "/api/logs"), text: "Download logs", look: .Text, icon: .download)
+                } header: {
+                    SectionHeader(text: "Device logs")
+                } footer: {
+                    Text("Everything every service on this device has logged, gzipped.")
+                }
+                DiagnosticsSection(diagnostics: view.diagnostics)
+            } else {
+                FootNote(text: DEVICE_WAITING)
             }
-            DiagnosticsSection(diagnostics: view.diagnostics)
-        } else {
-            FootNote(text: DEVICE_WAITING)
         }
     }
 }
@@ -35,7 +40,7 @@ private struct BackendSection: View {
                     confirm: ActionConfirm(title: "Restart the device?", text: backend.confirm, confirm: "Switch")
                 )
             }
-            DeviceDisclosure("Technical details") {
+            DeviceGroup("Technical details") {
                 DeviceText(
                     text: "Both backends bind the same ports — 8554, 8888, 8889, 1935, 8890 — so only one can run, and the choice is read once at startup. Switching writes the setting and restarts aircastd into it; " +
                         "if the restart fails the setting still stands and the next boot lands on it. Camera paths carry across in both directions. Only the engine can send a camera to a wfb-ng packet radio."
@@ -56,11 +61,10 @@ private struct PublishSection: View {
                     "is configured per camera on the Cameras page."
             )
             if publish.awaitingCloud {
-                DeviceButtonRow { Button("Connect the cloud account") { onOpen("/settings/device") }.buttonStyle(.bordered) }
-                DeviceStatusLine(text: "Nothing to fill in here — the sign-in arrives with the cloud account.")
+                SetupRow(title: "Connect the cloud account", onClick: { onOpen("/settings/device") }, subtitle: "Nothing to fill in here — the sign-in arrives with the cloud account.")
             }
-            DeviceButtonRow { Button("Choose where cameras publish") { onOpen("/streaming") }.buttonStyle(.text) }
-            DeviceDisclosure("Advanced · sign-in credentials", summary: "How this device signs in to video servers.") {
+            SetupRow(title: "Choose where cameras publish", onClick: { onOpen("/streaming") })
+            DeviceGroup("Advanced · sign-in credentials", summary: "How this device signs in to video servers.") {
                 SignInEditor(publish: publish).id(signInKey(publish))
             }
         }
@@ -109,57 +113,48 @@ private struct SignInEditor: View {
         let dirty = mode != publish.mode
         let confirm = dirty ? picked?.confirm ?? "" : ""
         let fields = signInFields(publish, mode)
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(publish.modes, id: \.value) { option in
-                    Button { mode = option.value } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(option.value == mode ? .radioChecked : Icon.radioUnchecked)
-                                .foregroundStyle(option.value == mode ? theme.colors.primary : theme.colors.onSurfaceVariant)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(option.title).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                                Text(option.desc).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(12)
-                        .overlay(RoundedRectangle(cornerRadius: Corner.medium).stroke(theme.colors.outlineVariant))
-                        .contentShape(Rectangle())
+        // Rows inside the Advanced group: one checkmark row per sign-in method, then its fields, the verdict and Save.
+        ForEach(publish.modes, id: \.value) { option in
+            Button { mode = option.value } label: {
+                HStack(spacing: Space.s3) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(option.title).foregroundStyle(Color.primary)
+                        Text(option.desc).font(.subheadline).foregroundStyle(Color.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(option.value == mode ? .isSelected : [])
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if option.value == mode {
+                        Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(theme.colors.primary)
+                    }
                 }
+                .contentShape(Rectangle())
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Sign-in method")
-            if mode == "aircast" && !publish.environment.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Environment").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-                    Text(publish.environment).font(deviceMono(.bodyMedium))
-                }
-            }
-            ForEach(fields, id: \.name) { field in
-                SignInInput(field: field, value: edits[field.name] ?? field.value, refusal: action.refusal) { edits[field.name] = $0 }
-            }
-            if dirty {
-                Text(picked?.unsaved ?? "").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-            } else if publish.verdict.level == DeviceLevel.Blocked {
-                DeviceNotice(notice: publish.verdict).padding(.horizontal, -DEVICE_LIST_PADDING)
-            } else {
-                Text(publish.verdict.text).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-            }
-            if let refusal = action.refusal, !fields.contains(where: { $0.name == refusal.field }) {
-                DeviceRefusalText(refusal: refusal, field: refusal.field).padding(.horizontal, -DEVICE_LIST_PADDING)
-            }
-            HStack(spacing: 8) {
-                Text("Stored on the device only.").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).frame(maxWidth: .infinity, alignment: .leading)
-                Button(picked?.submit ?? "Save") { if confirm.isEmpty { save() } else { asking = true } }
-                    .buttonStyle(.bordered)
-                    .disabled(action.busy)
+            .listRowButton()
+            .accessibilityAddTraits(option.value == mode ? .isSelected : [])
+        }
+        if mode == "aircast" && !publish.environment.isEmpty {
+            LabeledContent("Environment") {
+                Text(publish.environment).font(deviceMono(.bodyMedium)).foregroundStyle(Color.secondary)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        ForEach(fields, id: \.name) { field in
+            SignInInput(field: field, value: edits[field.name] ?? field.value, refusal: action.refusal) { edits[field.name] = $0 }
+        }
+        if dirty {
+            Text(picked?.unsaved ?? "").font(.footnote).foregroundStyle(Color.secondary)
+        } else if publish.verdict.level == DeviceLevel.Blocked {
+            DeviceNotice(notice: publish.verdict)
+        } else {
+            Text(publish.verdict.text).font(.subheadline).foregroundStyle(Color.secondary)
+        }
+        if let refusal = action.refusal, !fields.contains(where: { $0.name == refusal.field }) {
+            DeviceRefusalText(refusal: refusal, field: refusal.field)
+        }
+        HStack(spacing: Space.s2) {
+            Text("Stored on the device only.").font(.footnote).foregroundStyle(Color.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            Button(picked?.submit ?? "Save") { if confirm.isEmpty { save() } else { asking = true } }
+                .buttonStyle(.bordered)
+                .disabled(action.busy)
+        }
         .deviceConfirm(ActionConfirm(title: "Clear the sign-in?", text: confirm, confirm: "Clear"), isPresented: $asking) { save() }
     }
 }
@@ -189,7 +184,6 @@ private struct DiagnosticsSection: View {
 
 private struct DiagnosticsForm: View {
     let diagnostics: DiagnosticsSettings
-    @Environment(\.theme) private var theme
     @Environment(\.LocalChangeNotice) private var notice
     @State private var action = DeviceActionState()
     @State private var endpoint: String
@@ -210,35 +204,29 @@ private struct DiagnosticsForm: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DeviceTextField(
-                label: "OTLP endpoint (host:port)",
-                value: endpoint,
-                onValueChange: { endpoint = $0 },
-                placeholder: "otel.example.com:443",
-                isError: refused("endpoint"),
-                supporting: refused("endpoint") ? action.refusal?.message ?? "" : "",
-                keyboard: .uri
-            )
-            SecretField(
-                label: diagnostics.tokenLabel,
-                value: token,
-                onValueChange: { token = $0 },
-                placeholder: "none",
-                isError: refused("token"),
-                supportingText: refused("token") ? action.refusal?.message ?? "" : ""
-            )
-            if let refusal = action.refusal, !refused("endpoint"), !refused("token") {
-                DeviceRefusalText(refusal: refusal, field: refusal.field).padding(.horizontal, -DEVICE_LIST_PADDING)
-            }
-            HStack(spacing: 8) {
-                Text("Stored on the device only.").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).frame(maxWidth: .infinity, alignment: .leading)
-                Button("Save", action: save).buttonStyle(.bordered).disabled(action.busy)
-            }
+        DeviceTextField(
+            label: "OTLP endpoint (host:port)",
+            value: endpoint,
+            onValueChange: { endpoint = $0 },
+            placeholder: "otel.example.com:443",
+            isError: refused("endpoint"),
+            supporting: refused("endpoint") ? action.refusal?.message ?? "" : "",
+            keyboard: .uri
+        )
+        SecretField(
+            label: diagnostics.tokenLabel,
+            value: token,
+            onValueChange: { token = $0 },
+            placeholder: "none",
+            isError: refused("token"),
+            supportingText: refused("token") ? action.refusal?.message ?? "" : ""
+        )
+        if let refusal = action.refusal, !refused("endpoint"), !refused("token") {
+            DeviceRefusalText(refusal: refusal, field: refusal.field)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Diagnostics endpoint")
+        HStack(spacing: Space.s2) {
+            Text("Stored on the device only.").font(.footnote).foregroundStyle(Color.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            Button("Save", action: save).buttonStyle(.bordered).disabled(action.busy)
+        }
     }
 }

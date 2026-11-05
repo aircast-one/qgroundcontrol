@@ -210,12 +210,90 @@ struct UpdatesSection: View {
     @State private var prompt: UpdatePrompt?
     @Environment(\.theme) private var theme
     @Environment(\.openURL) private var openURL
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         if let reading = appUpdateReading(view) {
-            section(reading, installFailureFor(MacInstaller.shared.outcome, reading))
-                .modifier(UpdatePrompts(reading: reading, prompt: $prompt, download: { act("appUpdate.download") }))
-                .modifier(ForgetsStaleInstall(reading: reading))
+            if nativeList {
+                nativeSection(reading, installFailureFor(MacInstaller.shared.outcome, reading))
+            } else {
+                section(reading, installFailureFor(MacInstaller.shared.outcome, reading))
+                    .modifier(UpdatePrompts(reading: reading, prompt: $prompt, download: { act("appUpdate.download") }))
+                    .modifier(ForgetsStaleInstall(reading: reading))
+            }
+        }
+    }
+
+    // Inside a NativeForm: an Updates section — the version row with Check now (which carries the prompts), the
+    // automatic check switch, the state with its detail, and each action the state offers as a row of its own.
+    @ViewBuilder private func nativeSection(_ reading: AppUpdateReading, _ failure: InstallFailure?) -> some View {
+        let status = refusal ?? updateStatus(reading, failure: failure)
+        let alarming = refusal != nil || failure != nil || reading.phase == .Failed
+        let offersRelease = reading.phase == .Ready && readyAction(failure) == .OpenReleasePage
+        let detail = updateDetail(reading)
+        Section {
+            LabeledContent {
+                Button("Check now") { act("appUpdate.check") }
+                    .disabled(reading.phase == .Checking || reading.phase == .Downloading)
+            } label: {
+                Text("Aircast version")
+                Text("\(reading.current) · \(reading.channel) channel")
+            }
+            .modifier(UpdatePrompts(reading: reading, prompt: $prompt, download: { act("appUpdate.download") }))
+            .modifier(ForgetsStaleInstall(reading: reading))
+            Toggle("Check for updates automatically", isOn: Binding(get: { reading.autoCheck }, set: { on in
+                offMain { _ = Qgc.invoke("appUpdate.setAutoCheck", on) }
+            }))
+            if !status.isBlank {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(status).foregroundStyle(alarming ? theme.colors.error : Color.primary)
+                    if !detail.isBlank {
+                        Text(detail).font(.subheadline).foregroundStyle(Color.secondary)
+                    }
+                }
+            }
+            if reading.phase == .Downloading {
+                ProgressView(value: min(max(reading.progress, 0), 1))
+            }
+            if (reading.phase == .Available || reading.phase == .Ready) && !reading.notes.isBlank {
+                Text(plainNotes(reading.notes))
+                    .font(.footnote)
+                    .foregroundStyle(Color.secondary)
+                    .lineLimit(NOTES_MAX_LINES)
+                    .truncationMode(.tail)
+            }
+            switch reading.phase {
+            case .Available:
+                Button(sizedLabel("Download", updateSizeText(reading.sizeBytes))) {
+                    askToDownload($prompt) { act("appUpdate.download") }
+                }
+            case .Downloading:
+                Button("Cancel download") { act("appUpdate.cancel") }
+            case .Ready:
+                switch readyAction(failure) {
+                case .OpenReleasePage:
+                    Button("Open release page") { open(reading.releaseUrl.ifBlank(releaseTagUrl(reading.latest))) }
+                case .Install:
+                    Button(installLabel(failure)) { prompt = .Install }.disabled(!reading.canInstall)
+                case .None:
+                    EmptyView()
+                }
+            case .Failed:
+                if !reading.assetUrl.isBlank {
+                    Button("Download in browser") { open(reading.assetUrl) }
+                }
+                Button("Try again") { act("appUpdate.check") }
+            default:
+                EmptyView()
+            }
+            if !reading.releaseUrl.isBlank && reading.phase != .UpToDate && !offersRelease {
+                Button("Release notes") { open(reading.releaseUrl) }
+            }
+            if (reading.phase == .Available || reading.phase == .Ready) && !skippedThis(reading) {
+                Button("Skip this version") { act("appUpdate.skip") }
+            }
+        } header: {
+            SectionHeader(text: "Updates")
         }
     }
 

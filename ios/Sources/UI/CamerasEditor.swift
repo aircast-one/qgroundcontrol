@@ -3,13 +3,6 @@ import SwiftUI
 private let CAMERA_UNDO_WINDOW_MS = 6000
 private let CAMERA_LIST_SETTLE_MS = 2000
 private let CAMERA_CLASSIFY_SETTLE_MS = 300
-private let ROW_PAD_HORIZONTAL = Space.s4
-private let ROW_PAD_VERTICAL: CGFloat = 10
-private let ROW_MIN_HEIGHT: CGFloat = Metrics.rowTall
-private let ROW_GAP: CGFloat = 14
-private let ROW_LINE_GAP: CGFloat = 2
-private let SHEET_PAD = Space.s6
-private let SHEET_GAP = Space.s3
 private let GIMBAL_AIMED = "Aimed by a gimbal"
 private let TILT_HELP = "For a camera fixed to the frame: 0 looks straight ahead, -90 straight down. Leave empty when a gimbal aims it. Used to place home and the plan on the video."
 private let TILT_UNREADABLE = "Type the tilt as a number of degrees, like -30."
@@ -137,42 +130,36 @@ struct CamerasEditor: View {
         let editable = reading?.readable == true
         let storedNow = reading?.stored.map { StoredCamera(name: $0.name, source: $0.source, url: $0.url, tilt: $0.tilt) }
         let busy = pending || (settlingFrom != nil && settlingFrom == storedNow)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Spacer()
-                    Button { draft = CameraDraft(stored: nil, title: "", name: "", source: "", url: "") } label: {
-                        Image(.add).font(.system(size: 20)).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle())
-                    }
-                    .disabled(!editable || busy)
-                    .accessibilityLabel("Add a video source")
-                    .macTooltip("Add a video source")
-                }
-                .padding(.trailing, Space.s1)
-                .padding(.top, Space.s2)
-                if let reading, !reading.readable { ErrorLine(text: reading.reason) }
-                if let notice { ErrorLine(text: notice) }
+        NativeForm {
+            if let reading, !reading.readable { FormNote(text: reading.reason, color: theme.colors.error) }
+            if let notice { FormNote(text: notice, color: theme.colors.error) }
+            Section {
                 if reading != nil && cameras.isEmpty {
-                    FootNote(text: "No video sources yet. Cameras on the drone show up here by themselves. Tap + to add a stream by its address.")
+                    Text("No video sources yet. Cameras on the drone show up here by themselves. Tap + to add a stream by its address.")
+                        .foregroundStyle(Color.secondary)
                 }
                 ForEach(cameras) { camera in
                     CameraRow(camera: camera, onEdit: editDraft(camera, kinds).flatMap { opened in editable ? { draft = opened } : nil })
-                    Divider()
                 }
                 if let gone = removed {
-                    HStack {
-                        Text("Removed \(gone.title).").font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
+                    LabeledContent("Removed \(gone.title).") {
                         Button("Undo") {
                             removed = nil
                             let storedCount = reading?.stored.count ?? 0
                             change(storedNow, { undoRemoval(gone, storedCount) }) { notice = $0 }
                         }
-                        .buttonStyle(.text)
                         .disabled(busy)
                     }
-                    .padding(.horizontal, ROW_PAD_HORIZONTAL)
-                    .padding(.vertical, Space.s1)
                 }
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { draft = CameraDraft(stored: nil, title: "", name: "", source: "", url: "") } label: {
+                    Label("Add a video source", systemImage: "plus")
+                }
+                .disabled(!editable || busy)
+                .macTooltip("Add a video source")
             }
         }
         .background { sheet(reading, cameras, kinds, storedNow, busy) }
@@ -230,48 +217,37 @@ struct CamerasEditor: View {
     }
 }
 
-private struct ErrorLine: View {
-    let text: String
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        Text(text)
-            .font(.bodySmall)
-            .foregroundStyle(theme.colors.error)
-            .padding(.horizontal, ROW_PAD_HORIZONTAL)
-            .padding(.vertical, Space.s1)
-    }
-}
-
+// A video source as a native row: its state, name and address, "On screen" for the one shown, and (for one stored
+// here) the disclosure chevron that opens its editor.
 private struct CameraRow: View {
     let camera: CameraEntry
     let onEdit: (() -> Void)?
     @Environment(\.theme) private var theme
 
     var body: some View {
-        let row = HStack(spacing: ROW_GAP) {
+        let row = HStack(spacing: Space.s3) {
             CameraStatusDot(status: camera.status)
-            VStack(alignment: .leading, spacing: ROW_LINE_GAP) {
-                Text(camera.title).font(.bodyLarge).foregroundStyle(theme.colors.onSurface).lineLimit(1)
-                Text(cameraDetail(camera)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant).lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(camera.title).foregroundStyle(Color.primary).lineLimit(1)
+                Text(cameraDetail(camera)).font(.subheadline).foregroundStyle(Color.secondary).lineLimit(1)
                 if let problem = camera.problem {
-                    Text(problem).font(.bodySmall).foregroundStyle(theme.colors.error)
+                    Text(problem).font(.subheadline).foregroundStyle(theme.colors.error)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if camera.active {
-                Text("On screen").font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text("On screen").foregroundStyle(Color.secondary)
             }
             if onEdit != nil {
-                Image(.chevronRight).foregroundStyle(theme.colors.onSurfaceVariant)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.secondary.opacity(0.6))
+                    .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, ROW_PAD_HORIZONTAL)
-        .padding(.vertical, ROW_PAD_VERTICAL)
-        .frame(minHeight: ROW_MIN_HEIGHT)
         .contentShape(Rectangle())
         if let onEdit {
-            Button(action: onEdit) { row.macHover() }.buttonStyle(.plain)
+            Button(action: onEdit) { row }.listRowButton()
         } else {
             row
         }
@@ -320,54 +296,47 @@ private struct CameraSheet: View {
         let problem = draft.refusal ?? (draft.url.isBlank ? nil : guess?.problem)
         let canSave = !busy && (!draft.url.isBlank || !draft.needsUrl) && tiltReadable(draft.tilt)
         let save = { if canSave { onSave(guess) } }
-        AircastSheet(onDismissRequest: onDismiss, skipPartiallyExpanded: true) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: SHEET_GAP) {
-                    Text(draft.stored == nil ? "Add video source" : draft.title).font(.titleMedium)
-                    if draft.stored != nil { nameField(save) }
-                    if draft.needsUrl {
-                        address(guess, problem, save)
-                    } else {
-                        Text(kindLabel(draft.source)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                        if let refusal = draft.refusal {
-                            Text(refusal).font(.bodySmall).foregroundStyle(theme.colors.error)
-                        }
-                    }
-                    if draft.stored == nil { nameField(save) }
-                    tiltField(save)
-                    HStack {
-                        if let onRemove {
-                            Button("Remove", action: onRemove).foregroundStyle(theme.colors.error).buttonStyle(.text).disabled(busy)
-                        }
-                        Spacer()
-                        Button("Cancel", action: onDismiss).buttonStyle(.text)
-                        Button("Save", action: save).buttonStyle(.filled).disabled(!canSave)
-                    }
-                    if !others.isEmpty {
-                        Text("Other sources")
-                            .font(.labelLarge)
-                            .foregroundStyle(theme.colors.onSurfaceVariant)
-                            .padding(.top, Space.s2)
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(others, id: \.raw) { kind in
-                                Button { onPick(kind) } label: {
-                                    Text(otherSourceLabel(kind))
-                                        .font(.bodyLarge)
-                                        .foregroundStyle(theme.colors.onSurface)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.vertical, Space.s3)
-                                        .contentShape(Rectangle())
+        Color.clear
+            .invisibleAnchor()
+            .queuedSheet(isPresented: Binding(get: { true }, set: { shown in if !shown { onDismiss() } })) {
+                NavigationStack {
+                    NativeForm {
+                        Section {
+                            if draft.stored != nil { nameField(save) }
+                            if draft.needsUrl {
+                                address(guess, problem, save)
+                            } else {
+                                LabeledContent("Source", value: kindLabel(draft.source))
+                                if let refusal = draft.refusal {
+                                    Text(refusal).foregroundStyle(theme.colors.error)
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(busy)
+                            }
+                            if draft.stored == nil { nameField(save) }
+                            tiltField(save)
+                        }
+                        if !others.isEmpty {
+                            Section {
+                                ForEach(others, id: \.raw) { kind in
+                                    Button(otherSourceLabel(kind)) { onPick(kind) }.disabled(busy)
+                                }
+                            } header: {
+                                SectionHeader(text: "Other sources")
+                            }
+                        }
+                        if let onRemove {
+                            Section {
+                                Button("Remove", role: .destructive, action: onRemove).disabled(busy)
                             }
                         }
                     }
+                    .navigationTitle(draft.stored == nil ? "Add video source" : draft.title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .pageCancelAction(action: onDismiss)
+                    .pagePrimaryAction("Save", enabled: canSave, action: save)
                 }
-                .padding(.horizontal, SHEET_PAD)
-                .padding(.bottom, SHEET_PAD)
+                .presentationDetents([.large])
+                .nativeSheetFrame()
             }
-        }
         .task(id: ClassifyKey(url: draft.url, needsUrl: draft.needsUrl)) {
             guard !draft.url.isBlank, draft.needsUrl else { return }
             try? await Task.sleep(for: .milliseconds(CAMERA_CLASSIFY_SETTLE_MS))
@@ -380,65 +349,50 @@ private struct CameraSheet: View {
 
     @ViewBuilder private func nameField(_ save: @escaping () -> Void) -> some View {
         if naming {
-            field("Name") {
-                TextField("Name", text: Binding(get: { draft.name }, set: { typed in
-                    onChange(withChanges(draft) { $0.name = typed; $0.refusal = nil })
-                }))
-                .textInputAutocapitalization(.words)
-                .submitLabel(.done)
-                .onSubmit(save)
-            }
+            FieldRow(
+                label: "Name",
+                value: draft.name,
+                autocapitalize: true,
+                onSubmit: save,
+                onChange: { typed in onChange(withChanges(draft) { $0.name = typed; $0.refusal = nil }) }
+            )
         } else {
-            Button("Add a name") { naming = true }.buttonStyle(.text)
+            Button("Add a name") { naming = true }
         }
     }
 
     @ViewBuilder private func address(_ guess: CameraGuess?, _ problem: String?, _ save: @escaping () -> Void) -> some View {
-        let supporting = problem ?? (draft.url.isBlank ? nil : guessText(guess))
-        field("Address") {
-            TextField("Address", text: Binding(get: { draft.url }, set: { typed in
-                onChange(withChanges(draft) { $0.url = typed; $0.refusal = nil })
-            }), prompt: Text(hint))
-            .keyboardType(.URL)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .submitLabel(.done)
-            .onSubmit(save)
-        }
-        if let supporting, !supporting.isBlank {
-            Text(supporting).font(.bodySmall).foregroundStyle(problem != nil ? theme.colors.error : theme.colors.onSurfaceVariant)
-        }
+        FieldRow(
+            label: "Address",
+            value: draft.url,
+            prompt: hint,
+            error: problem,
+            hint: draft.url.isBlank ? "" : guessText(guess),
+            keyboard: .URL,
+            onSubmit: save,
+            onChange: { typed in onChange(withChanges(draft) { $0.url = typed; $0.refusal = nil }) }
+        )
         if let ambiguous = guess, ambiguous.ambiguous {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.s2) {
-                    ForEach(ambiguous.choices, id: \.self) { choice in
-                        CameraChip(label: kindLabel(choice), selected: choice == chosenKind(ambiguous, draft.picked, "")) {
-                            onChange(withChanges(draft) { $0.picked = choice; $0.refusal = nil })
-                        }
-                    }
-                }
+            Picker("Kind", selection: Binding(
+                get: { chosenKind(ambiguous, draft.picked, "") },
+                set: { choice in onChange(withChanges(draft) { $0.picked = choice; $0.refusal = nil }) }
+            )) {
+                ForEach(ambiguous.choices, id: \.self) { choice in Text(kindLabel(choice)).tag(choice) }
             }
         }
     }
 
     @ViewBuilder private func tiltField(_ save: @escaping () -> Void) -> some View {
         let readable = tiltReadable(draft.tilt)
-        field("Tilt (°)") {
-            TextField("Tilt", text: Binding(get: { draft.tilt }, set: { typed in
-                onChange(withChanges(draft) { $0.tilt = typed; $0.refusal = nil })
-            }), prompt: Text(GIMBAL_AIMED))
-            .keyboardType(.numbersAndPunctuation)
-            .autocorrectionDisabled()
-            .submitLabel(.done)
-            .onSubmit(save)
-        }
-        Text(readable ? TILT_HELP : TILT_UNREADABLE).font(.bodySmall).foregroundStyle(readable ? theme.colors.onSurfaceVariant : theme.colors.error)
-    }
-
-    private func field<Field: View>(_ label: String, @ViewBuilder _ input: () -> Field) -> some View {
-        VStack(alignment: .leading, spacing: Space.s1) {
-            Text(label).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-            input().textFieldStyle(.roundedBorder)
-        }
+        FieldRow(
+            label: "Tilt (°)",
+            value: draft.tilt,
+            prompt: GIMBAL_AIMED,
+            error: readable ? nil : TILT_UNREADABLE,
+            hint: TILT_HELP,
+            keyboard: .numbersAndPunctuation,
+            onSubmit: save,
+            onChange: { typed in onChange(withChanges(draft) { $0.tilt = typed; $0.refusal = nil }) }
+        )
     }
 }

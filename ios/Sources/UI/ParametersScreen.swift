@@ -48,7 +48,6 @@ struct ParametersScreen: View {
     @State private var chosenCategory: String?
     @State private var chosenGroup: String?
     @State private var reads = 0
-    @Environment(\.theme) private var theme
 
     init(initialSearch: String = "") {
         self.initialSearch = initialSearch
@@ -63,48 +62,50 @@ struct ParametersScreen: View {
         let category = tree.first { $0.name == chosenCategory } ?? tree.first
         let group = category.flatMap { shown in shown.groups.first { $0 == chosenGroup } ?? shown.groups.first }
         let query = ParameterQuery(loads: loads, search: search, modifiedOnly: modifiedOnly, category: category?.name, group: group)
-        VStack(spacing: 0) {
-            SearchPill(value: search, onValueChange: { search = $0 }, placeholder: "Search parameters")
+        List {
             if !ready {
-                Text("Waiting for parameters from the vehicle.").padding(Space.s4).frame(maxWidth: .infinity, alignment: .leading)
-                Spacer(minLength: 0)
+                Section {
+                    HStack(spacing: Space.s3) {
+                        ProgressView()
+                        Text("Waiting for parameters from the vehicle.").foregroundStyle(Color.secondary)
+                    }
+                }
             } else {
-                HStack(spacing: Space.s2) {
-                    Text(parameterCountLine(matches.count, modified.count))
-                        .font(.bodyMedium)
-                        .foregroundStyle(theme.colors.onSurfaceVariant)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                Section {
+                    LabeledContent {
+                        ParameterToolsMenu(onRefreshed: { reads += 1 })
+                    } label: {
+                        Text(parameterCountLine(matches.count, modified.count)).foregroundStyle(Color.secondary)
+                    }
                     if px4 {
-                        Picker("Filter", selection: $modifiedChosen) {
+                        Picker("Show", selection: $modifiedChosen) {
                             Text("All").tag(false)
                             Text("Changed").tag(true)
                         }
                         .pickerStyle(.segmented)
-                        .fixedSize()
                     }
-                    ParameterToolsMenu(onRefreshed: { reads += 1 })
-                }
-                .padding(.horizontal, Space.s4)
-                if browsing, let category {
-                    HStack(spacing: Space.s2) {
-                        ChoiceButton(shown: category.name, options: tree.map(\.name)) { picked in
+                    if browsing, let category {
+                        Picker("Category", selection: Binding(get: { category.name }, set: { picked in
                             chosenCategory = picked
                             chosenGroup = nil
+                        })) {
+                            ForEach(tree.map(\.name), id: \.self) { Text($0).tag($0) }
                         }
                         if let group {
-                            ChoiceButton(shown: group, options: category.groups) { chosenGroup = $0 }
+                            Picker("Group", selection: Binding(get: { group }, set: { chosenGroup = $0 })) {
+                                ForEach(category.groups, id: \.self) { Text($0).tag($0) }
+                            }
                         }
-                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, Space.s4)
                 }
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(matches, id: \.self) { ParameterRow(name: $0, offersRcToParam: px4) }
-                    }
+                Section {
+                    ForEach(matches, id: \.self) { ParameterRow(name: $0, offersRcToParam: px4) }
                 }
             }
         }
+        .parameterListStyle()
+        .environment(\.LocalNativeList, true)
+        .searchable(text: $search, prompt: "Search parameters")
         .onChange(of: query, initial: true) {
             matches = names
                 .filter { parameterShown($0, descriptions[$0] ?? [], search, modifiedOnly, modified) }
@@ -161,10 +162,9 @@ private struct ParameterRow: View {
                 row(loaded)
             } else {
                 Text(name)
-                    .font(.bodyMedium)
+                    .foregroundStyle(Color.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Space.s4)
-                    .padding(.vertical, Space.s5)
+                    .padding(.vertical, Space.s2)
             }
         }
         .task(id: ParameterRowKey(name: name, revision: revision, live: live)) {
@@ -177,26 +177,22 @@ private struct ParameterRow: View {
 
     private func row(_ loaded: Fact) -> some View {
         HStack(spacing: Space.s3) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(loaded.name).font(.bodyLarge).lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(loaded.name).lineLimit(1)
                 if !loaded.description.isBlank {
-                    Text(loaded.description).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant).lineLimit(1)
+                    Text(loaded.description).font(.subheadline).foregroundStyle(Color.secondary).lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(parameterValueText(loaded))
-                .font(.labelMedium)
-                .foregroundStyle(loaded.changedFromDefault ? theme.colors.primary : theme.colors.onSurface)
+                .foregroundStyle(loaded.changedFromDefault ? theme.colors.primary : Color.secondary)
                 .lineLimit(2)
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: 160, alignment: .trailing)
             if offersRcToParam && !loaded.readOnly && !name.contains(":") {
-                Button("RC") { mapping = true }.buttonStyle(.text)
+                Button("RC") { mapping = true }.buttonStyle(.borderless)
             }
         }
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
-        .frame(maxWidth: .infinity, minHeight: Metrics.rowLarge)
         .contentShape(Rectangle())
         .macHover()
         .onTapGesture { forcing = true }
@@ -301,19 +297,13 @@ func parameterFact(_ name: String, _ quantity: String? = nil) -> Fact? {
     factFromParameter(name, Qgc.get(parameterPath(name, quantity)), quantity)
 }
 
-private struct ChoiceButton: View {
-    let shown: String
-    let options: [String]
-    let onPick: (String) -> Void
-
-    var body: some View {
-        Menu {
-            ForEach(options, id: \.self) { option in
-                Button(option) { onPick(option) }
-            }
-        } label: {
-            Text(shown).lineLimit(1)
-        }
-        .buttonStyle(.bordered)
+extension View {
+    // The parameter list: a lazy List (thousands of rows, each watching its value), inset-grouped like a NativeForm.
+    fileprivate func parameterListStyle() -> some View {
+        #if os(macOS)
+        return listStyle(.inset)
+        #else
+        return listStyle(.insetGrouped)
+        #endif
     }
 }

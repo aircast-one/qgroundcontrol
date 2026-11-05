@@ -216,8 +216,7 @@ struct SliderValueRow<Title: View>: View {
                 bar.frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
+        .rowPadding(horizontal: 16, vertical: 6)
         .onChange(of: fact.valueString) { dragging = nil }
         .onChange(of: fact.path) {
             dragging = nil

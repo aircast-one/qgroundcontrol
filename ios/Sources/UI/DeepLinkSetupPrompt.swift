@@ -19,32 +19,23 @@ func deepLinkSetup(_ view: JSON?) -> DeepLinkSetup? {
 
 struct DeepLinkSetupPrompt: View {
     @QgcPath(DEEP_LINK_SETUP_PATH) private var view
-    @State private var lastShown: DeepLinkSetup?
+    @State private var answered: DeepLinkSetup?
 
     var body: some View {
         let setup = deepLinkSetup(view)
+        let asking = setup.flatMap { $0 != answered ? $0 : nil }
         Color.clear
             .invisibleAnchor()
-            .onChange(of: setup, initial: true) { _, now in if let now { lastShown = now } }
-            .queuedSheet(isPresented: Binding(get: { setup != nil }, set: { shown in if !shown, let setup { answer(DECLINE, setup) } }), dialog: true) {
-                if let shown = setup ?? lastShown { content(shown) }
-            }
-    }
-
-    private func content(_ setup: DeepLinkSetup) -> some View {
-        VStack(alignment: .leading, spacing: Space.s4) {
-            Text(setup.title).font(.headlineSmall)
-            Text(setup.text).font(.bodyMedium)
-            HStack {
-                Spacer()
-                Button(setup.decline) { answer(DECLINE, setup) }
-                Button(setup.accept) { answer(ACCEPT, setup) }
-            }
-            .buttonStyle(.text)
-        }
-        .padding(Space.s6)
-        .fixedSize(horizontal: false, vertical: true)
-        .presentationDetents([.medium])
+            .onChange(of: setup == nil, initial: true) { _, gone in if gone { answered = nil } }
+            .alertWhenPresenterFree(
+                Binding<DeepLinkSetup?>(get: { asking }, set: { if $0 == nil, let asking { answered = asking } }),
+                title: { $0.title },
+                actions: { shown in
+                    Button(shown.decline, role: .cancel) { answer(DECLINE, shown) }
+                    Button(shown.accept) { answer(ACCEPT, shown) }
+                },
+                message: { Text($0.text) }
+            )
     }
 
     private func answer(_ path: String, _ setup: DeepLinkSetup) {

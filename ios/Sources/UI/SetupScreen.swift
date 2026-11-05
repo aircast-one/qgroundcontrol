@@ -185,13 +185,14 @@ private let OWN_SCREEN_HEADS: Set<String> = [SENSORS, RADIO, REMOTE_SUPPORT, MOT
 private struct SectionHits: View {
     let titles: [String]
     let onOpen: (String) -> Void
+    @Environment(\.LocalNativeList) private var nativeList
 
     var body: some View {
         ForEach(titles, id: \.self) { title in
             Button(sentenceCase(title)) { onOpen(title) }
                 .buttonStyle(.text)
-                .padding(.leading, 56)
-                .padding(.vertical, Space.s2)
+                .padding(.leading, nativeList ? NATIVE_ICON_SIZE + Space.s3 : 56)
+                .padding(.vertical, nativeList ? 0 : Space.s2)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -232,12 +233,9 @@ private struct NavigationRequest: Equatable {
     let hasVehicle: Bool
 }
 
-private struct AutoOpen: Equatable {
-    let components: [SetupComponent]
-    let page: String?
-    let twoPane: Bool
-}
-
+// Aircraft setup, pushed onto the Settings NavigationStack: the components in a native list, each opening its page
+// as a further push (openComponent / parametersOpen drive navigationDestination), so the page gets the system back
+// and swipe-back, and BlocksNavigation (a calibration) holds them.
 struct SetupScreen: View {
     @Environment(AppNavigationState.self) private var navigation
     @Environment(\.theme) private var theme
@@ -254,10 +252,36 @@ struct SetupScreen: View {
 
     private var hasVehicle: Bool { setupReadiness(setupJson)?.connected == true }
 
+    // The open component, when it has a page here to push.
+    private var shownComponent: Binding<SetupComponent?> {
+        Binding(
+            get: { openComponent.flatMap { headCanOpen(setupPage(setupJson, $0.name), $0.name) ? $0 : nil } },
+            set: { openComponent = $0 }
+        )
+    }
+
     var body: some View {
         let components = setupComponents(setupJson)
         content(components)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .navigationDestination(item: shownComponent) { open in
+                ComponentPage(
+                    open: open,
+                    section: openSection,
+                    setupJson: setupJson,
+                    onOpen: { first in
+                        openComponent = setupComponents(setupJson).first { $0.name == first }
+                        openSection = nil
+                    }
+                )
+                .id(open.name)
+                .nativePage(sentenceCase(open.name))
+            }
+            .navigationDestination(isPresented: $parametersOpen) {
+                ParametersScreen(initialSearch: parametersSearch)
+                    .id("parameters")
+                    .nativePage("Parameters")
+            }
             .onChange(of: hasVehicle) { _, connected in
                 guard !connected else { return }
                 summaries = [:]
@@ -288,8 +312,10 @@ struct SetupScreen: View {
         if requested == SETUP_PARAMETERS_PAGE {
             parametersSearch = navigation.parametersSearch
             navigation.parametersSearch = ""
+            openComponent = nil
             parametersOpen = true
         } else if let found = components.first(where: { $0.name == requested }) {
+            parametersOpen = false
             openComponent = found
             openSection = nil
         }
@@ -325,64 +351,11 @@ struct SetupScreen: View {
                 }
                 if waiting.downloadOffered {
                     Button("Download parameters") { offMain { _ = Qgc.invoke(PARAMETER_REFRESH) } }
-                        .buttonStyle(.filled)
+                        .buttonStyle(.borderedProminent)
                 }
             }
         } else {
-            GeometryReader { geometry in
-                let twoPane = geometry.size.width >= LIST_DETAIL_MIN_WIDTH
-                let detailShown = hasDetail
-                HStack(spacing: 0) {
-                    if twoPane || !detailShown {
-                        overview(components)
-                            .frame(width: twoPane ? LIST_PANE_WIDTH : nil)
-                            .background(twoPane ? theme.colors.surfaceContainerLow : .clear)
-                    }
-                    if twoPane || detailShown {
-                        ZStack(alignment: .topLeading) {
-                            if detailShown {
-                                detail.frame(maxWidth: twoPane ? DETAIL_PANE_MAX_WIDTH : .infinity)
-                            } else {
-                                EmptyState(icon: .build, title: AIRCRAFT_SETUP, text: "Choose a component on the left.")
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .environment(\.LocalTwoPane, twoPane)
-                    }
-                }
-                .task(id: AutoOpen(components: components, page: navigation.setupPage, twoPane: twoPane)) {
-                    guard twoPane, openComponent == nil, !parametersOpen, navigation.setupPage == nil else { return }
-                    openComponent = components.first { headCanOpen(setupPage(setupJson, $0.name), $0.name) }
-                    openSection = nil
-                }
-            }
-        }
-    }
-
-    private var hasDetail: Bool {
-        parametersOpen || openComponent.map { headCanOpen(setupPage(setupJson, $0.name), $0.name) } == true
-    }
-
-    @ViewBuilder
-    private var detail: some View {
-        if parametersOpen {
-            VStack(spacing: 0) {
-                SetupPageBar(title: "Parameters") { parametersOpen = false }
-                ParametersScreen(initialSearch: parametersSearch)
-            }
-            .id("parameters")
-        } else if let open = openComponent {
-            ComponentPage(
-                open: open,
-                section: openSection,
-                setupJson: setupJson,
-                onBack: { openComponent = nil },
-                onOpen: { first in
-                    openComponent = setupComponents(setupJson).first { $0.name == first }
-                    openSection = nil
-                }
-            )
-            .id(open.name)
+            overview(components)
         }
     }
 
@@ -432,55 +405,62 @@ private struct SetupOverview: View {
         let remaining = remainingSetup(components).filter(searchHit)
         let split = splitDesktopOnly(remaining) { headCanOpen(setupPage(setupJson, $0.name), headPage($0)) }
         let parametersAreReady = parametersReady(setupJson)
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ReadinessHeader(
-                    vehicle: line.vehicleType.ifBlank("Vehicle"),
-                    firmware: line.summary,
-                    vehicleId: setup?.vehicleId,
-                    note: readinessNote(setup, components.contains { $0.needsAttention })
-                )
-                SearchPill(
-                    value: setupSearch,
-                    onValueChange: { setupSearch = $0 },
-                    placeholder: "Search",
-                    keyboardOptions: .search,
-                    keyboardActions: {
-                        if advanced && !setupSearch.isBlank { onParameters(setupSearch.trimmed) }
-                    }
-                )
-                if !needSetup.isEmpty {
-                    SectionHeader(text: "Needs attention")
+        NativeForm {
+            ReadinessHeader(
+                vehicle: line.vehicleType.ifBlank("Vehicle"),
+                firmware: line.summary,
+                vehicleId: setup?.vehicleId,
+                note: readinessNote(setup, components.contains { $0.needsAttention })
+            )
+            if !needSetup.isEmpty {
+                Section {
                     ForEach(needSetup, id: \.index) { component in
                         attentionRow(component)
                     }
+                } header: {
+                    SectionHeader(text: "Needs attention")
                 }
-                if components.isEmpty {
+            }
+            if components.isEmpty {
+                Group {
                     if let incomplete = parametersIncomplete(setupJson) {
                         SetupNotice(text: incomplete)
                     } else {
                         EmptyState(icon: .build, title: NOTHING_TO_CONFIGURE, text: NOTHING_TO_CONFIGURE_TEXT)
                     }
-                } else if !remaining.isEmpty {
-                    if !split.first.isEmpty { SectionHeader(text: "Ready") }
-                    ForEach(split.first, id: \.index) { readyRow($0) }
-                    if !split.second.isEmpty {
-                        SectionHeader(text: "Advanced")
-                        ForEach(split.second, id: \.index) { readyRow($0) }
-                    }
                 }
-                if advanced && setupMatches("Parameters", setupSearch) {
-                    if split.second.isEmpty { SectionHeader(text: "Advanced") }
-                    SetupRow(
-                        title: "Parameters",
-                        state: .Neutral,
-                        onClick: { onParameters("") },
-                        icon: .tune,
-                        subtitle: parameterCountText(parameterCount) ?? "Every setting the vehicle has",
-                        selected: parametersOpen
-                    )
+                .listRowBackground(Color.clear)
+            } else if !remaining.isEmpty && !split.first.isEmpty {
+                Section {
+                    ForEach(split.first, id: \.index) { readyRow($0) }
+                } header: {
+                    SectionHeader(text: "Ready")
                 }
             }
+            let parametersRow = advanced && setupMatches("Parameters", setupSearch)
+            if (!components.isEmpty && !split.second.isEmpty) || parametersRow {
+                Section {
+                    if !components.isEmpty {
+                        ForEach(split.second, id: \.index) { readyRow($0) }
+                    }
+                    if parametersRow {
+                        SetupRow(
+                            title: "Parameters",
+                            state: .Neutral,
+                            onClick: { onParameters("") },
+                            icon: .tune,
+                            subtitle: parameterCountText(parameterCount) ?? "Every setting the vehicle has",
+                            selected: parametersOpen
+                        )
+                    }
+                } header: {
+                    SectionHeader(text: "Advanced")
+                }
+            }
+        }
+        .searchable(text: $setupSearch, prompt: "Search")
+        .onSubmit(of: .search) {
+            if advanced && !setupSearch.isBlank { onParameters(setupSearch.trimmed) }
         }
         .task {
             _ = await offMain { Qgc.invoke(SETUP_PAGE_OPENED, SETUP_SUMMARY_PAGE) }
@@ -496,25 +476,25 @@ private struct SetupOverview: View {
         }
     }
 
+    @ViewBuilder
     private func attentionRow(_ component: SetupComponent) -> some View {
         let blocked = component.blockedReason
         let page = setupPage(setupJson, component.name)
         let summary = summaries[component.name] ?? []
-        return VStack(spacing: 0) {
-            SetupRow(
-                title: sentenceCase(component.name),
-                status: blocked.map { "Not while \($0)" } ?? attentionAction(component.className),
-                state: blocked != nil ? .Unavailable : .NeedsAttention,
-                onClick: headCanOpen(page, component.name) ? { onOpen(component, nil) } : nil,
-                summary: summary,
-                icon: setupIcon(component.known, className: component.className),
-                subtitle: summary.isEmpty ? setupNote(component.className) : "",
-                selected: component == openComponent
-            )
-            SectionHits(titles: sectionHits[component.name] ?? []) { onOpen(component, $0) }
-        }
+        SetupRow(
+            title: sentenceCase(component.name),
+            status: blocked.map { "Not while \($0)" } ?? attentionAction(component.className),
+            state: blocked != nil ? .Unavailable : .NeedsAttention,
+            onClick: headCanOpen(page, component.name) ? { onOpen(component, nil) } : nil,
+            summary: summary,
+            icon: setupIcon(component.known, className: component.className),
+            subtitle: summary.isEmpty ? setupNote(component.className) : "",
+            selected: component == openComponent
+        )
+        SectionHits(titles: sectionHits[component.name] ?? []) { onOpen(component, $0) }
     }
 
+    @ViewBuilder
     private func readyRow(_ component: SetupComponent) -> some View {
         let page = setupPage(setupJson, component.name)
         let openable = headCanOpen(page, headPage(component))
@@ -523,19 +503,17 @@ private struct SetupOverview: View {
         let status = blocked.map { "Not while \($0)" }
             ?? (component.needsAttention ? attentionAction(component.className) : !openable ? "On desktop" : "")
         let state: SetupState = blocked != nil ? .Unavailable : component.needsAttention ? .NeedsAttention : !openable ? .Unavailable : .Neutral
-        return VStack(spacing: 0) {
-            SetupRow(
-                title: sentenceCase(component.name),
-                status: status,
-                state: state,
-                onClick: openable ? { onOpen(component, nil) } : nil,
-                summary: summary,
-                icon: setupIcon(component.known, className: component.className),
-                subtitle: summary.isEmpty ? setupNote(component.className) : "",
-                selected: component == openComponent
-            )
-            SectionHits(titles: sectionHits[component.name] ?? []) { onOpen(component, $0) }
-        }
+        SetupRow(
+            title: sentenceCase(component.name),
+            status: status,
+            state: state,
+            onClick: openable ? { onOpen(component, nil) } : nil,
+            summary: summary,
+            icon: setupIcon(component.known, className: component.className),
+            subtitle: summary.isEmpty ? setupNote(component.className) : "",
+            selected: component == openComponent
+        )
+        SectionHits(titles: sectionHits[component.name] ?? []) { onOpen(component, $0) }
     }
 }
 
@@ -543,7 +521,6 @@ private struct ComponentPage: View {
     let open: SetupComponent
     let section: String?
     let setupJson: JSON?
-    let onBack: () -> Void
     let onOpen: (String) -> Void
     @Environment(\.theme) private var theme
 
@@ -551,7 +528,6 @@ private struct ComponentPage: View {
         let nativePage = setupPage(setupJson, open.name)
         let reportsLookups = reportsOpening(open.prerequisite, nativePage)
         VStack(spacing: 0) {
-            SetupPageBar(title: sentenceCase(open.name), onBack: onBack)
             if let blocked = open.blockedReason {
                 Text(disabledWhile(blocked))
                     .bold()
@@ -586,7 +562,7 @@ private struct ComponentPage: View {
                     title: "\(sentenceCase(first)) first",
                     text: prerequisiteText(first, open.name)
                 )
-                Button("Set up \(sentenceCase(first))") { onOpen(first) }.buttonStyle(.filled)
+                Button("Set up \(sentenceCase(first))") { onOpen(first) }.buttonStyle(.borderedProminent)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
@@ -605,10 +581,7 @@ private struct ComponentPage: View {
         } else if let screen = nativePage?.screen, let shown = nativeScreen(screen) {
             shown
         } else if nativePage?.parameterSections == true {
-            VStack(spacing: 0) {
-                if open.known == "power" { PowerLiveCard() }
-                ParameterForm(page: open.name, section: section)
-            }
+            ParameterForm(page: open.name, section: section, header: open.known == "power" ? AnyView(PowerLiveCard()) : nil)
         } else {
             SetupNotice(text: "\(open.name) is set up on the desktop.")
         }
@@ -634,43 +607,26 @@ private struct ComponentPage: View {
     }
 }
 
-private struct SetupPageBar: View {
-    let title: String
-    let onBack: () -> Void
-    @Environment(\.LocalPageHeading) private var pageHeading
-    @Environment(\.LocalTwoPane) private var twoPane
-
-    var body: some View {
-        if pageHeading != nil && !twoPane {
-            OverridePageHeading(title: title, onBack: onBack)
-        } else {
-            PageTopBar(title: title, backLabel: "Back to \(AIRCRAFT_SETUP)", onBack: onBack)
-        }
-    }
-}
-
 private struct ReadinessHeader: View {
     let vehicle: String
     let firmware: String
     let vehicleId: Int?
     let note: String?
-    @Environment(\.LocalPageHeading) private var pageHeading
-    @Environment(\.theme) private var theme
 
+    // The navigation bar carries "Aircraft setup"; this is the line under it, on the form's background.
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if pageHeading == nil { Text(AIRCRAFT_SETUP).font(.headlineMedium) }
-            Text(setupSubtitle(vehicle, firmware)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(setupSubtitle(vehicle, firmware)).font(.subheadline)
             if let vehicleId {
-                Text("Vehicle \(vehicleId)").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text("Vehicle \(vehicleId)").font(.footnote)
             }
             if let note {
-                Text(note).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text(note).font(.footnote)
             }
         }
+        .foregroundStyle(Color.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Space.s4)
-        .padding(.top, Space.s5)
-        .padding(.bottom, Space.s2)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: Space.s2, leading: Space.s1, bottom: 0, trailing: Space.s1))
     }
 }

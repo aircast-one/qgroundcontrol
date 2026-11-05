@@ -86,7 +86,9 @@ struct EspBridgeScreen: View {
             if let bridge = read {
                 screen(bridge)
             } else {
-                Text("No WiFi bridge is connected.").padding(16)
+                NativeForm {
+                    Section { Text("No WiFi bridge is connected.").foregroundStyle(Color.secondary) }
+                }
             }
         }
         .task {
@@ -107,9 +109,8 @@ struct EspBridgeScreen: View {
     }
 
     private func screen(_ bridge: EspBridge) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionHeader(text: "ESP WiFi bridge settings")
+        NativeForm {
+            Section {
                 if let mode = bridge.modeIndex {
                     Choice(label: "WiFi mode", options: WIFI_MODES, index: mode) { set("\(bridge.modePath).rawValue", $0) }
                 }
@@ -124,28 +125,28 @@ struct EspBridgeScreen: View {
                 TextSetting(label: "QGC UDP port", value: bridge.hostPort, enabled: !bridge.hostPortPath.isEmpty, digits: true) { typed in
                     if let port = hostPortTyped(typed) { set(bridge.hostPortPath, port) }
                 }
-
-                SectionHeader(text: "ESP WiFi bridge status")
-                ForEach([("Bridge/vehicle link", bridge.vehicle), ("Bridge/QGC link", bridge.bridge), ("QGC/bridge link", bridge.qgc)], id: \.0) { title, link in
-                    Text(title).font(.titleSmall)
-                    StatusRow(label: "Messages received", value: link.received)
-                    StatusRow(label: "Messages lost", value: link.lost)
-                    StatusRow(label: "Messages sent", value: link.sent)
-                }
                 if let refusal {
                     Text(refusal).foregroundStyle(theme.colors.error)
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        Button("Restore defaults") { act("espBridge.restoreDefaults") }
-                        Button("Restart WiFi bridge") { confirmReboot = true }.disabled(bridge.busy)
-                        Button("Reset counters") { act("espBridge.resetCounters") }
-                    }
-                    .buttonStyle(.bordered)
+            } header: {
+                SectionHeader(text: "ESP WiFi bridge settings")
+            }
+            ForEach([("Bridge/vehicle link", bridge.vehicle), ("Bridge/QGC link", bridge.bridge), ("QGC/bridge link", bridge.qgc)], id: \.0) { title, link in
+                Section {
+                    LabeledContent("Messages received", value: link.received)
+                    LabeledContent("Messages lost", value: link.lost)
+                    LabeledContent("Messages sent", value: link.sent)
+                } header: {
+                    SectionHeader(text: title)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            Section {
+                Button("Reset counters") { act("espBridge.resetCounters") }
+                Button("Restart WiFi bridge") { confirmReboot = true }.disabled(bridge.busy)
+            }
+            Section {
+                Button("Restore defaults", role: .destructive) { act("espBridge.restoreDefaults") }
+            }
         }
     }
 
@@ -158,18 +159,6 @@ struct EspBridgeScreen: View {
     }
 }
 
-private struct StatusRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack {
-            Text(label).font(.bodySmall).frame(maxWidth: .infinity, alignment: .leading)
-            Text(value).font(.bodySmall)
-        }
-    }
-}
-
 private struct Choice: View {
     let label: String
     let options: [String]
@@ -178,18 +167,12 @@ private struct Choice: View {
     let onPick: (Int) -> Void
 
     var body: some View {
-        HStack {
-            Text(label).frame(maxWidth: .infinity, alignment: .leading)
-            Menu {
-                ForEach(Array(options.enumerated()), id: \.offset) { at, option in
-                    Button(option) { onPick(at) }
-                }
-            } label: {
-                Text(options.indices.contains(index) ? options[index] : "")
+        Picker(label, selection: Binding(get: { index }, set: { picked in if picked != index { onPick(picked) } })) {
+            ForEach(Array(options.enumerated()), id: \.offset) { at, option in
+                Text(option).tag(at)
             }
-            .buttonStyle(.bordered)
-            .disabled(!enabled)
         }
+        .disabled(!enabled)
     }
 }
 
@@ -202,20 +185,16 @@ private struct TextSetting: View {
     @State private var typed = ""
 
     var body: some View {
-        HStack {
-            Text(label).frame(maxWidth: .infinity, alignment: .leading)
-            TextField("", text: Binding(get: { typed }, set: { next in
+        FieldRow(
+            label: label,
+            value: typed,
+            enabled: enabled,
+            keyboard: digits ? .numbersAndPunctuation : .default,
+            onSubmit: { onDone(typed) },
+            onChange: { next in
                 typed = digits ? String(next.filter { $0.isASCII && $0.isNumber }.prefix(5)) : String(next.prefix(16))
-            }))
-            .textFieldStyle(.roundedBorder)
-            .keyboardType(digits ? .numbersAndPunctuation : .default)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .submitLabel(.done)
-            .onSubmit { onDone(typed) }
-            .disabled(!enabled)
-            .frame(width: 180)
-        }
+            }
+        )
         .onChange(of: value, initial: true) { typed = value }
     }
 }

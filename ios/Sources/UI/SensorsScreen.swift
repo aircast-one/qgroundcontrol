@@ -80,7 +80,14 @@ private struct StartDialog: View {
 
     var body: some View {
         let copy = routineCopy(calibration)
-        SetupDialog(title: calibration.dialogTitle.ifBlank(calibration.title)) {
+        SetupDialog(
+            title: calibration.dialogTitle.ifBlank(calibration.title),
+            cancel: DialogButton(title: "Cancel", action: onDismiss),
+            primary: DialogButton(title: "OK") {
+                confirm()
+                onDismiss()
+            }
+        ) {
             if orientationFirst {
                 SensorSettingsBlock(
                     calibrating: true,
@@ -95,13 +102,6 @@ private struct StartDialog: View {
             if !copy.warning.isBlank {
                 Text(copy.warning).font(.bodyMedium).foregroundStyle(theme.colors.error)
             }
-        } buttons: {
-            Button("Cancel", action: onDismiss)
-            Button("OK") {
-                confirm()
-                onDismiss()
-            }
-            .buttonStyle(.filled)
         }
         .onChange(of: offersFast != nil, initial: true) { _, offered in
             fastChoice = offered ? offersFast.map { initialFastCompassChoice($0) } : nil
@@ -194,14 +194,16 @@ private struct RunningCalibration: View {
 
     var body: some View {
         let progress = min(max(state.progress, 0), 1)
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.s4) {
-                if state.showsSides, let positions = positionsText(state.sides) {
-                    Text(positions).font(.labelLarge).foregroundStyle(theme.colors.primary)
-                }
-                Text(runningTitle(name)).font(.titleLarge)
-                if !state.helpText.isBlank {
-                    Text(state.helpText).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+        NativeForm {
+            Section {
+                VStack(alignment: .leading, spacing: Space.s2) {
+                    if state.showsSides, let positions = positionsText(state.sides) {
+                        Text(positions).font(.subheadline.weight(.semibold)).foregroundStyle(theme.colors.primary)
+                    }
+                    Text(runningTitle(name)).font(.headline)
+                    if !state.helpText.isBlank {
+                        Text(state.helpText).foregroundStyle(Color.secondary)
+                    }
                 }
                 ZStack {
                     Circle().stroke(theme.colors.surfaceContainerHighest, lineWidth: 10)
@@ -217,28 +219,33 @@ private struct RunningCalibration: View {
                 .frame(width: CALIBRATION_RING, height: CALIBRATION_RING)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Space.s2)
-                if state.showsSides {
-                    OrientationGrid(sides: state.sides, px4: state.px4)
-                }
-                if !state.statusText.isBlank {
-                    Text(state.statusText).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                }
-                HStack(spacing: Space.s2) {
-                    Spacer(minLength: 0)
-                    Button("Cancel") { offMain { _ = Qgc.invoke("\(CAL).cancelCalibration") } }
-                        .buttonStyle(.text)
-                        .disabled(!state.cancelEnabled)
-                    Button("Next") { offMain { _ = Qgc.invoke("\(CAL).nextClicked") } }
-                        .buttonStyle(.filled)
-                        .disabled(!state.nextEnabled)
-                }
-                if state.waitingForCancel {
-                    Text(CANCEL_WAIT_TITLE).font(.titleSmall)
-                    Text(CANCEL_WAIT_TEXT).font(.bodyMedium)
+            }
+            if state.showsSides {
+                Section {
+                    OrientationGrid(sides: state.sides, px4: state.px4).padding(.vertical, Space.s1)
+                } header: {
+                    SectionHeader(text: "Positions")
                 }
             }
-            .padding(Space.s4)
+            if !state.statusText.isBlank {
+                Section {
+                    Text(state.statusText).foregroundStyle(Color.secondary)
+                }
+            }
+            if state.waitingForCancel {
+                Section {
+                    VStack(alignment: .leading, spacing: Space.s1) {
+                        Text(CANCEL_WAIT_TITLE).font(.headline)
+                        Text(CANCEL_WAIT_TEXT).foregroundStyle(Color.secondary)
+                    }
+                }
+            }
+            Section {
+                Button("Cancel calibration") { offMain { _ = Qgc.invoke("\(CAL).cancelCalibration") } }
+                    .disabled(!state.cancelEnabled)
+            }
         }
+        .pagePrimaryAction("Next", enabled: state.nextEnabled) { offMain { _ = Qgc.invoke("\(CAL).nextClicked") } }
     }
 }
 
@@ -301,10 +308,11 @@ struct SensorsScreen: View {
         .background { BlocksNavigation(blocking: state.inProgress && state.px4, reason: CALIBRATION_BLOCK) }
         .sheet(isPresented: presented($rebootPrompt)) { rebootDialog(state, prompt) }
         .sheet(isPresented: $showSettings) {
-            SetupDialog(title: state.settingsDialogTitle.ifBlank(state.settingsTitle)) {
+            SetupDialog(
+                title: state.settingsDialogTitle.ifBlank(state.settingsTitle),
+                primary: DialogButton(title: "OK") { showSettings = false }
+            ) {
                 SensorSettingsBlock(calibrating: false, showCompasses: true)
-            } buttons: {
-                Button("OK") { showSettings = false }.buttonStyle(.filled)
             }
         }
         .sheet(isPresented: presented($pending)) {
@@ -344,19 +352,19 @@ struct SensorsScreen: View {
     @ViewBuilder
     private func rebootDialog(_ state: CalibrationState, _ shown: String?) -> some View {
         if let prompt = shown {
-            SetupDialog(title: postCalibrationTitle(ranRoutine, state.px4)) {
+            SetupDialog(
+                title: postCalibrationTitle(ranRoutine, state.px4),
+                cancel: DialogButton(title: "Close") { rebootPrompt = nil },
+                primary: DialogButton(title: "Reboot vehicle") {
+                    rebootPrompt = nil
+                    offMain { _ = Qgc.invoke(REBOOT_VEHICLE) }
+                }
+            ) {
                 Text(prompt)
                 if !state.px4 && state.completed == COMPASS_ROUTINE {
                     ForEach(state.compassResults, id: \.compass) { CompassFitnessBar(result: $0) }
                 }
                 if state.px4 && ranRoutine == COMPASS_ROUTINE { CompassOrientations() }
-            } buttons: {
-                Button("Close") { rebootPrompt = nil }
-                Button("Reboot vehicle") {
-                    rebootPrompt = nil
-                    offMain { _ = Qgc.invoke(REBOOT_VEHICLE) }
-                }
-                .buttonStyle(.filled)
             }
         }
     }
@@ -377,17 +385,12 @@ struct SensorsScreen: View {
 
     private func overview(_ state: CalibrationState) -> some View {
         let health = sensorHealth(healthJson)
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                if let reading = health, reading.available, !reading.sensors.isEmpty {
-                    SectionHeader(text: "Sensor health")
+        return NativeForm {
+            if let reading = health, reading.available, !reading.sensors.isEmpty {
+                Section {
                     let line = healthSummary(reading)
                     if !line.isBlank {
-                        Text(line)
-                            .font(.bodyMedium)
-                            .foregroundStyle(theme.colors.error)
-                            .padding(.horizontal, Space.s5)
-                            .padding(.vertical, Space.s1)
+                        Text(line).foregroundStyle(theme.colors.error)
                     }
                     ForEach(reading.sensors, id: \.name) { sensor in
                         SetupRow(
@@ -397,14 +400,13 @@ struct SensorsScreen: View {
                             icon: .sensors
                         )
                     }
+                } header: {
+                    SectionHeader(text: "Sensor health")
                 }
-                SectionHeader(text: "Calibration")
+            }
+            Section {
                 if let message = notice {
-                    Text(message)
-                        .font(.bodySmall)
-                        .foregroundStyle(theme.colors.error)
-                        .padding(.horizontal, Space.s5)
-                        .padding(.vertical, Space.s2)
+                    Text(message).font(.footnote).foregroundStyle(theme.colors.error)
                 }
                 ForEach(state.routines, id: \.id) { routine in
                     SetupRow(
@@ -416,24 +418,30 @@ struct SensorsScreen: View {
                     )
                 }
                 SetupRow(title: sentenceCase(state.settingsTitle), status: "", state: .Neutral, onClick: { showSettings = true }, icon: .tune)
-                if state.px4 {
-                    SetupRow(title: "Factory reset", status: "", state: .NeedsAttention, onClick: { confirmFactoryReset = true }, icon: .delete)
-                }
-                if !state.statusText.isBlank {
+            } header: {
+                SectionHeader(text: "Calibration")
+            } footer: {
+                Text(SENSORS_CALIBRATION_NOTE)
+            }
+            if !state.statusText.isBlank {
+                Section {
+                    Text(state.statusText).font(.system(size: 14, design: .monospaced))
+                } header: {
                     SectionHeader(text: "Last calibration")
-                    Text(state.statusText)
-                        .font(.system(size: 14, design: .monospaced))
-                        .padding(.horizontal, Space.s5)
                 }
-                FootNote(
-                    text: "Calibrate where the aircraft will fly, away from metal, with the "
-                        + "propellers off. CompassMot is the exception and says so when you "
-                        + "open it: it runs the motors, with the propellers inverted."
-                )
+            }
+            if state.px4 {
+                Section {
+                    Button("Factory reset", role: .destructive) { confirmFactoryReset = true }
+                }
             }
         }
     }
 }
+
+private let SENSORS_CALIBRATION_NOTE = "Calibrate where the aircraft will fly, away from metal, with the "
+    + "propellers off. CompassMot is the exception and says so when you "
+    + "open it: it runs the motors, with the propellers inverted."
 
 private struct CompassFitnessBar: View {
     let result: CompassResult

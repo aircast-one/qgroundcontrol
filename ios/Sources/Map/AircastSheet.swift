@@ -155,6 +155,8 @@ private struct QueuedSheet<Sheet: View>: ViewModifier {
                     .onChange(of: id) { from, to in stack.moved(from, to, depth, dialog: dialog) }
                     .onDisappear { stack.disappeared(id) }
                     .environment(\.sheetDepth, depth + 1)
+                    // A sheet opened from a row of a NativeForm lays out on its own, not as rows of that form.
+                    .environment(\.LocalNativeList, false)
             }
     }
 }

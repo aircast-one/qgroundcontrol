@@ -2,66 +2,58 @@ import SwiftUI
 
 private func checkState(_ level: Int) -> SetupState { level == DeviceLevel.Ready ? .Done : .NeedsAttention }
 
-struct DeviceTab: View {
-    let open: String?
+// The Device tab's first page in Settings: the device's status and its pages, or the address to connect to. A
+// page opened here is pushed onto the Settings NavigationStack (onOpen), where DevicePageScreen draws it.
+struct DeviceHomeScreen: View {
     let onOpen: (String) -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        DeviceStack(open: open, onOpen: onOpen, onClose: onClose).id(open)
-    }
-}
-
-private struct DeviceStack: View {
-    let onOpen: (String) -> Void
-    let onClose: () -> Void
     @DeviceView("aircraft") private var reading
-    @State private var stack: [String]
-
-    init(open: String?, onOpen: @escaping (String) -> Void, onClose: @escaping () -> Void) {
-        self.onOpen = onOpen
-        self.onClose = onClose
-        _stack = State(initialValue: open.map { [$0] } ?? [])
-    }
-
-    private func back() {
-        if stack.count > 1 { stack.removeLast() } else { onClose() }
-    }
 
     var body: some View {
-        let current = stack.last
-        let opened = current.map(devicePath)
-        let entry = opened.flatMap { DEVICE_SCREENS[$0.path] }
         Group {
-            if let current, let opened, let entry {
-                NativeDevicePage(
-                    entry: entry,
-                    props: DeviceScreenProps(
-                        href: current,
-                        query: opened.query,
-                        onOpen: { stack.append($0) },
-                        onOpenFrom: { href, returnTo in stack = openedFrom(stack, href, returnTo) },
-                        onClose: back
-                    ),
-                    onBack: back
-                )
-                .id(current)
-            } else if reading.origin.isEmpty {
+            if reading.origin.isEmpty {
                 ConnectDevice()
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        if let status = deviceView(reading, parseDeviceStatus) {
-                            DeviceHome(status: status, onOpen: onOpen)
-                        } else {
-                            FootNote(text: DEVICE_WAITING)
-                        }
-                        HostedDevice(host: reading.host)
+                NativeForm {
+                    if let status = deviceView(reading, parseDeviceStatus) {
+                        DeviceHome(status: status, onOpen: onOpen)
+                    } else {
+                        FootNote(text: DEVICE_WAITING)
                     }
+                    HostedDevice(host: reading.host)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .environment(\.LocalDeviceOrigin, reading.origin)
+    }
+}
+
+// The device stack inside the Settings NavigationStack: the device hrefs above the Device tab, in order.
+// onOpenFrom replaces the top page with returnTo and opens href above it, as the device's own pages expect.
+func deviceRoutesOpenedFrom(_ hrefs: [String], _ href: String, _ returnTo: String) -> [String] { openedFrom(hrefs, href, returnTo) }
+
+// One device page pushed onto the Settings NavigationStack; an href with no screen here shows the device's home.
+struct DevicePageScreen: View {
+    let href: String
+    let onOpen: (String) -> Void
+    let onOpenFrom: (_ href: String, _ returnTo: String) -> Void
+    let onClose: () -> Void
+    @DeviceView("aircraft") private var reading
+
+    var body: some View {
+        let opened = devicePath(href)
+        Group {
+            if let entry = DEVICE_SCREENS[opened.path] {
+                NativeDevicePage(
+                    entry: entry,
+                    props: DeviceScreenProps(href: href, query: opened.query, onOpen: onOpen, onOpenFrom: onOpenFrom, onClose: onClose)
+                )
+                .id(href)
+                .nativePage(entry.title)
+            } else {
+                DeviceHomeScreen(onOpen: onOpen).nativePage(DEVICE_PAGE)
+            }
+        }
         .environment(\.LocalDeviceOrigin, reading.origin)
     }
 }
@@ -72,46 +64,52 @@ private struct DeviceHome: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(status.headline).font(.titleMedium).foregroundStyle(deviceLevelColor(status.level, theme))
-            if !status.detail.isEmpty {
-                Text(status.detail).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+        Section {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(status.headline).font(.headline).foregroundStyle(deviceLevelColor(status.level, theme))
+                if !status.detail.isEmpty {
+                    Text(status.detail).font(.subheadline).foregroundStyle(Color.secondary)
+                }
+                if let action = status.action {
+                    Button(action.label) { onOpen(action.href) }.buttonStyle(.bordered).padding(.top, 8)
+                }
             }
-            if let action = status.action {
-                Button(action.label) { onOpen(action.href) }.buttonStyle(.bordered).padding(.top, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let setup = status.setup {
+                SetupRow(title: setup.label, state: .NeedsAttention, onClick: { onOpen(setup.href) }, icon: .build)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
-        if let setup = status.setup {
-            SetupRow(title: setup.label, state: .NeedsAttention, onClick: { onOpen(setup.href) }, icon: .build)
+        Section {
+            ForEach(status.checks, id: \.label) { check in
+                SetupRow(title: check.label, status: check.value, state: checkState(check.level), onClick: check.href.isEmpty ? nil : { onOpen(check.href) })
+            }
+            SetupRow(
+                title: status.events.ifEmpty("Flight log"),
+                state: status.events.isEmpty ? .Neutral : .NeedsAttention,
+                onClick: { onOpen("/flights") }
+            )
+        } header: {
+            SectionHeader(text: "Before you fly")
         }
-        SectionHeader(text: "Before you fly")
-        ForEach(status.checks, id: \.label) { check in
-            SetupRow(title: check.label, status: check.value, state: checkState(check.level), onClick: check.href.isEmpty ? nil : { onOpen(check.href) })
-        }
-        SetupRow(
-            title: status.events.ifEmpty("Flight log"),
-            state: status.events.isEmpty ? .Neutral : .NeedsAttention,
-            onClick: { onOpen("/flights") }
-        )
         if let link = status.link { UplinkSection(link: link) }
         if let health = status.health { HealthSection(health: health) }
-        SectionHeader(text: status.name.ifEmpty("Device"))
-        ForEach(status.pages, id: \.href) { page in
-            SetupRow(
-                title: page.title,
-                status: page.summary,
-                state: page.needs ? .NeedsAttention : .Neutral,
-                onClick: { onOpen(page.href) },
-                icon: devicePageIcon(page.icon)
-            )
+        Section {
+            ForEach(status.pages, id: \.href) { page in
+                SetupRow(
+                    title: page.title,
+                    status: page.summary,
+                    state: page.needs ? .NeedsAttention : .Neutral,
+                    onClick: { onOpen(page.href) },
+                    icon: devicePageIcon(page.icon)
+                )
+            }
+        } header: {
+            SectionHeader(text: status.name.ifEmpty("Device"))
         }
     }
 }
 
 private struct ConnectDevice: View {
-    @Environment(\.theme) private var theme
     @State private var address = ""
     @State private var busy = false
     @State private var refusal = ""
@@ -126,12 +124,8 @@ private struct ConnectDevice: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Connect to an Aircast device").font(.titleMedium)
-                Text("Type the address of a device on this network. Its status, cameras and settings open here.")
-                    .font(.bodyMedium)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
+        NativeForm {
+            Section {
                 DeviceTextField(
                     label: "Device address",
                     value: address,
@@ -142,10 +136,18 @@ private struct ConnectDevice: View {
                     keyboard: .uri,
                     onSubmit: connect
                 )
-                Button("Connect", action: connect).buttonStyle(.bordered).disabled(busy)
+            } header: {
+                SectionHeader(text: "Connect to an Aircast device")
+            } footer: {
+                Text("Type the address of a device on this network. Its status, cameras and settings open here.")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
+            Section {
+                Button("Connect", action: connect)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(busy)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowBackground(Color.clear)
+            }
         }
     }
 }
@@ -156,7 +158,7 @@ private struct HostedDevice: View {
     var body: some View {
         DeviceSection(title: "This app") {
             DeviceFact(label: "Connected to", value: host)
-            Button("Disconnect") { DeviceLink.disconnect() }.buttonStyle(.text).padding(.horizontal, 8)
+            Button("Disconnect") { DeviceLink.disconnect() }
         }
     }
 }
@@ -189,20 +191,19 @@ private struct HealthSection: View {
     }
 }
 
+// A device page's own layout (phase 2 moves these into NativeForm); the Settings NavigationStack draws its bar.
 private struct NativeDevicePage: View {
     let entry: DeviceScreenEntry
     let props: DeviceScreenProps
-    let onBack: () -> Void
 
     var body: some View {
+        // Each page is its own NativeForm, which scrolls itself: a Form inside a ScrollView collapses to nothing.
+        // The reader stays so pages can scroll to a row (?flight=, #section) through LocalDeviceScroll.
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) { entry.screen(props) }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .environment(\.LocalDeviceScroll, proxy)
+            entry.screen(props)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .environment(\.LocalDeviceScroll, proxy)
         }
-        .background(OverridePageHeading(title: entry.title, onBack: onBack))
     }
 }
 

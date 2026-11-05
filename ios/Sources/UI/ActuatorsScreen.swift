@@ -264,143 +264,151 @@ struct ActuatorsScreen: View {
     @ViewBuilder private var content: some View {
         if let outputs = read {
             if !outputs.available || !outputs.showUi {
-                Text(outputs.reason.ifBlank("This vehicle does not configure its actuators here.")).padding(16)
+                NativeForm {
+                    Section { Text(outputs.reason.ifBlank("This vehicle does not configure its actuators here.")).foregroundStyle(Color.secondary) }
+                }
             } else if let group = outputs.groups.at(tab) ?? outputs.groups.first {
                 screen(outputs, group)
             }
         } else {
-            Text("Reading actuator metadata.").padding(16)
+            NativeForm {
+                Section { Text("Reading actuator metadata.").foregroundStyle(Color.secondary) }
+            }
         }
     }
 
     private func screen(_ outputs: ActuatorOutputs, _ group: ActuatorGroup) -> some View {
         let groupIndex = outputs.groups.firstIndex(of: group) ?? 0
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Spacer()
-                    Toggle("Advanced", isOn: $advanced).fixedSize()
-                }
-                .padding(.horizontal, 16)
-                if let geometry = outputs.geometry {
-                    GeometrySection(
-                        geometry: geometry,
-                        advanced: advanced,
-                        editable: mixerEditable(testing, outputs.assignment.active),
-                        write: write,
-                        highlighted: outputs.assignment.highlighted,
-                        onMotor: { motor in
-                            Task {
-                                _ = await offMain { Qgc.invoke(MOTOR_ASSIGNMENT_SELECT, motor) }
-                                revision += 1
-                            }
-                        },
-                        onWrite: { revision += 1 }
-                    )
-                    .padding(16)
-                }
-                if let testingState = outputs.testing {
+        return NativeForm {
+            Section {
+                Toggle("Advanced", isOn: $advanced)
+            }
+            if let geometry = outputs.geometry {
+                GeometrySection(
+                    geometry: geometry,
+                    advanced: advanced,
+                    editable: mixerEditable(testing, outputs.assignment.active),
+                    write: write,
+                    highlighted: outputs.assignment.highlighted,
+                    onMotor: { motor in
+                        Task {
+                            _ = await offMain { Qgc.invoke(MOTOR_ASSIGNMENT_SELECT, motor) }
+                            revision += 1
+                        }
+                    },
+                    onWrite: { revision += 1 }
+                )
+            }
+            if let testingState = outputs.testing {
+                Section {
                     ActuatorTestSection(testing: testingState, actions: outputs.actions, enabled: testing, assigning: outputs.assignment.active) { testing = $0 }
-                        .padding(16)
+                } header: {
+                    SectionHeader(text: "Actuator testing")
                 }
-                Text("Actuator outputs").font(.titleMedium).padding(.horizontal, 16)
+            }
+            Section {
                 if outputs.hasUnsetRequiredFunctions {
                     Text("One or more actuator still needs to be assigned to an output.")
                         .foregroundStyle(theme.colors.error)
-                        .padding(.horizontal, 16)
                 }
                 if outputs.assignment.multirotor {
-                    assignmentButtons(outputs, group, groupIndex).padding(.horizontal, 16)
+                    assignmentButtons(outputs, group, groupIndex)
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Picker("", selection: Binding(get: { groupIndex }, set: { tab = $0 })) {
+                if outputs.groups.count > 1 {
+                    Picker("Outputs", selection: Binding(get: { groupIndex }, set: { tab = $0 })) {
                         ForEach(Array(outputs.groups.enumerated()), id: \.offset) { index, each in
                             Text(each.label).tag(index)
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .fixedSize()
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
                 }
-                groupBody(group).padding(16)
+            } header: {
+                SectionHeader(text: "Actuator outputs")
             }
+            groupSections(group)
         }
         .alert("Error", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } }), presenting: failure) { _ in
             Button("Ok") { failure = nil }
         } message: { Text($0) }
     }
 
-    private func assignmentButtons(_ outputs: ActuatorOutputs, _ group: ActuatorGroup, _ groupIndex: Int) -> some View {
-        HStack(spacing: 8) {
-            if !outputs.assignment.active && group.groupsVisible {
-                Button("Identify & Assign Motors") {
-                    Task {
-                        let refused = await offMain { Qgc.refusalOf(MOTOR_ASSIGNMENT_INIT, groupIndex) }
-                        let message = await offMain { actuatorOutputs(Qgc.get(ACTUATOR_OUTPUTS_VIEW))?.assignment.message ?? "" }
-                        if let refused { failure = plainMessage(refused) } else { confirming = plainMessage(message) }
-                    }
+    @ViewBuilder private func assignmentButtons(_ outputs: ActuatorOutputs, _ group: ActuatorGroup, _ groupIndex: Int) -> some View {
+        if !outputs.assignment.active && group.groupsVisible {
+            Button("Identify & Assign Motors") {
+                Task {
+                    let refused = await offMain { Qgc.refusalOf(MOTOR_ASSIGNMENT_INIT, groupIndex) }
+                    let message = await offMain { actuatorOutputs(Qgc.get(ACTUATOR_OUTPUTS_VIEW))?.assignment.message ?? "" }
+                    if let refused { failure = plainMessage(refused) } else { confirming = plainMessage(message) }
                 }
-                .buttonStyle(.filled)
-                .disabled(!outputs.assignment.enabled || testing)
             }
-            if outputs.assignment.active {
-                Button("Spin motor again") { offMain { Qgc.invoke(MOTOR_ASSIGNMENT_SPIN) } }
-                    .buttonStyle(.bordered)
-                Button("Abort") {
-                    Task {
-                        _ = await offMain { Qgc.invoke(MOTOR_ASSIGNMENT_ABORT) }
-                        revision += 1
-                    }
+            .disabled(!outputs.assignment.enabled || testing)
+        }
+        if outputs.assignment.active {
+            Button("Spin motor again") { offMain { Qgc.invoke(MOTOR_ASSIGNMENT_SPIN) } }
+            Button("Abort") {
+                Task {
+                    _ = await offMain { Qgc.invoke(MOTOR_ASSIGNMENT_ABORT) }
+                    revision += 1
                 }
-                .buttonStyle(.bordered)
             }
         }
     }
 
-    private func groupBody(_ group: ActuatorGroup) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let enable = group.enable {
+    // The chosen output group: its enable, a section per subgroup and per channel, then its own parameters and notes.
+    @ViewBuilder private func groupSections(_ group: ActuatorGroup) -> some View {
+        if let enable = group.enable {
+            Section {
                 ActuatorFactRow(item: enable, write: write) { revision += 1 }
+            } header: {
+                SectionHeader(text: group.label)
             }
-            if group.groupsVisible {
-                ForEach(Array(group.subgroups.enumerated()), id: \.offset) { _, subgroup in
-                    if !subgroup.label.isEmpty {
-                        Text(subgroup.label).font(.titleSmall)
+        }
+        if group.groupsVisible {
+            ForEach(Array(group.subgroups.enumerated()), id: \.offset) { _, subgroup in
+                if subgroup.primary != nil || !subgroup.label.isEmpty {
+                    Section {
+                        if let primary = subgroup.primary {
+                            ActuatorFactRow(item: primary, write: write) { revision += 1 }
+                        }
+                    } header: {
+                        if !subgroup.label.isEmpty { SectionHeader(text: subgroup.label) }
                     }
-                    if let primary = subgroup.primary {
-                        ActuatorFactRow(item: primary, write: write) { revision += 1 }
-                    }
-                    ForEach(Array(subgroup.channels.enumerated()), id: \.offset) { _, channel in
-                        OutlinedCard {
-                            Text(channel.label).font(.labelLarge)
-                            ForEach(Array(channel.configs.enumerated()), id: \.offset) { index, config in
-                                if let column = subgroup.columns.at(index), column.visible, advanced || !column.advanced {
-                                    if let config {
-                                        ActuatorFactRow(item: config.labelled(column.label), write: write) { revision += 1 }
-                                    } else {
-                                        NotAvailableRow(label: column.label)
-                                    }
+                }
+                ForEach(Array(subgroup.channels.enumerated()), id: \.offset) { _, channel in
+                    Section {
+                        ForEach(Array(channel.configs.enumerated()), id: \.offset) { index, config in
+                            if let column = subgroup.columns.at(index), column.visible, advanced || !column.advanced {
+                                if let config {
+                                    ActuatorFactRow(item: config.labelled(column.label), write: write) { revision += 1 }
+                                } else {
+                                    NotAvailableRow(label: column.label)
                                 }
                             }
                         }
+                    } header: {
+                        SectionHeader(text: channel.label)
                     }
-                    ForEach(Array(subgroup.params.enumerated()), id: \.offset) { _, param in
-                        ActuatorFactRow(item: param, write: write) { revision += 1 }
+                }
+                if !subgroup.params.isEmpty {
+                    Section {
+                        ForEach(Array(subgroup.params.enumerated()), id: \.offset) { _, param in
+                            ActuatorFactRow(item: param, write: write) { revision += 1 }
+                        }
                     }
                 }
             }
-            ForEach(Array(group.params.enumerated()), id: \.offset) { _, param in
-                ActuatorFactRow(item: param, write: write) { revision += 1 }
-            }
-            ForEach(Array(group.notes.enumerated()), id: \.offset) { _, note in
-                Text(note).font(.bodySmall)
-            }
-            if let refusal {
-                Text(refusal).foregroundStyle(theme.colors.error)
+        }
+        if !group.params.isEmpty || !group.notes.isEmpty || refusal != nil {
+            Section {
+                ForEach(Array(group.params.enumerated()), id: \.offset) { _, param in
+                    ActuatorFactRow(item: param, write: write) { revision += 1 }
+                }
+                if let refusal {
+                    Text(refusal).foregroundStyle(theme.colors.error)
+                }
+            } footer: {
+                if !group.notes.isEmpty { Text(group.notes.joined(separator: "\n")) }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func write(_ path: String, _ value: Any) {
@@ -413,18 +421,8 @@ struct ActuatorsScreen: View {
 
 func mixerEditable(_ testing: Bool, _ assigning: Bool) -> Bool { !testing && !assigning }
 
-private struct OutlinedCard<Content: View>: View {
-    @ViewBuilder let content: Content
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) { content }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(RoundedRectangle(cornerRadius: Corner.medium).stroke(theme.colors.outlineVariant))
-    }
-}
-
+// The vehicle geometry: its picture (tap a motor while assigning), then a section per geometry group and channel.
+// While testing or assigning, the mixer rows are locked.
 private struct GeometrySection: View {
     let geometry: Geometry
     let advanced: Bool
@@ -436,37 +434,47 @@ private struct GeometrySection: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(geometry.title).font(.titleMedium).frame(maxWidth: .infinity, alignment: .leading)
-                if !geometry.helpUrl.isEmpty, let url = URL(string: geometry.helpUrl) {
-                    Button("?") { openURL(url) }.buttonStyle(.text)
-                }
-            }
+        Section {
             if geometry.motors.count > 1 {
                 GeometryImage(motors: geometry.motors, highlighted: highlighted, onMotor: onMotor)
             }
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(geometry.groups.enumerated()), id: \.offset) { _, group in
-                    Text(group.label).font(.titleSmall)
-                    if let count = group.count {
-                        FactRow(fact: count, onWrite: onWrite)
+        } header: {
+            HStack {
+                SectionHeader(text: geometry.title)
+                Spacer(minLength: 0)
+                if !geometry.helpUrl.isEmpty, let url = URL(string: geometry.helpUrl) {
+                    Button { openURL(url) } label: {
+                        Image(systemName: "questionmark.circle")
                     }
-                    ForEach(Array(group.channels.enumerated()), id: \.offset) { _, channel in
-                        OutlinedCard {
-                            Text(channel.label).font(.labelLarge)
-                            ForEach(Array(channel.cells.compactMap { $0 }.filter { !$0.hidden }.enumerated()), id: \.offset) { _, cell in
-                                cellRow(cell)
-                            }
-                        }
+                    .accessibilityLabel("Help")
+                }
+            }
+        }
+        ForEach(Array(geometry.groups.enumerated()), id: \.offset) { _, group in
+            Section {
+                if let count = group.count {
+                    FactRow(fact: count, onWrite: onWrite).disabled(!editable)
+                }
+            } header: {
+                SectionHeader(text: group.label)
+            }
+            ForEach(Array(group.channels.enumerated()), id: \.offset) { _, channel in
+                Section {
+                    ForEach(Array(channel.cells.compactMap { $0 }.filter { !$0.hidden }.enumerated()), id: \.offset) { _, cell in
+                        cellRow(cell).disabled(!editable)
                     }
-                    ForEach(Array(group.params.filter { advanced || !$0.advanced }.enumerated()), id: \.offset) { _, param in
-                        ActuatorFactRow(item: param, write: write, onWrite: onWrite)
+                } header: {
+                    SectionHeader(text: channel.label)
+                }
+            }
+            let params = group.params.filter { advanced || !$0.advanced }
+            if !params.isEmpty {
+                Section {
+                    ForEach(Array(params.enumerated()), id: \.offset) { _, param in
+                        ActuatorFactRow(item: param, write: write, onWrite: onWrite).disabled(!editable)
                     }
                 }
             }
-            .opacity(editable ? 1 : DISABLED_ALPHA)
-            .allowsHitTesting(editable)
         }
     }
 
@@ -478,10 +486,7 @@ private struct GeometrySection: View {
             }
         case .Fixed(let label, let valueString, let cellAdvanced, _):
             if advanced || !cellAdvanced {
-                HStack {
-                    Text(label).frame(maxWidth: .infinity, alignment: .leading)
-                    Text(valueString)
-                }
+                LabeledContent(label, value: valueString)
             }
         case .Axis(let options, let index, let params, let cellAdvanced, _, let disabled):
             if advanced || !cellAdvanced {
@@ -499,10 +504,7 @@ private struct NotAvailableRow: View {
     let label: String
 
     var body: some View {
-        HStack {
-            Text(label).frame(maxWidth: .infinity, alignment: .leading)
-            Text(PARAM_NOT_AVAILABLE)
-        }
+        LabeledContent(label, value: PARAM_NOT_AVAILABLE)
     }
 }
 
@@ -513,10 +515,7 @@ private struct CheckRow: View {
     let onChange: (Bool) -> Void
 
     var body: some View {
-        HStack {
-            Text(label).frame(maxWidth: .infinity, alignment: .leading)
-            Toggle("", isOn: Binding(get: { checked }, set: onChange)).labelsHidden().disabled(!enabled)
-        }
+        Toggle(label, isOn: Binding(get: { checked }, set: onChange)).disabled(!enabled)
     }
 }
 
@@ -535,8 +534,7 @@ private struct MixerCellRow: View {
         } else if item.showAs == SHOW_BITSET, let raw {
             CheckRow(label: item.label, checked: bitsetChecked(raw, item.bit), enabled: !disabled) { set(bitsetWritten(raw, item.bit, $0)) }
         } else if !item.fact.enumStrings.isEmpty {
-            HStack {
-                Text(item.label).frame(maxWidth: .infinity, alignment: .leading)
+            LabeledContent(item.label) {
                 Menu {
                     ForEach(Array(item.fact.enumStrings.enumerated()), id: \.offset) { index, label in
                         Button(label) {
@@ -546,22 +544,22 @@ private struct MixerCellRow: View {
                 } label: {
                     Text(item.fact.valueString)
                 }
-                .buttonStyle(.bordered)
                 .disabled(disabled)
             }
         } else {
-            HStack {
-                Text(item.label).frame(maxWidth: .infinity, alignment: .leading)
+            LabeledContent(item.label) {
                 HStack(spacing: 4) {
-                    TextField("", text: $typed)
+                    TextField(item.label, text: $typed)
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
                         .keyboardType(.numbersAndPunctuation)
                         .submitLabel(.done)
                         .onSubmit { if let value = Double(typed) { set(value) } }
-                    Text(item.fact.units)
+                    if !item.fact.units.isBlank {
+                        Text(item.fact.units).foregroundStyle(Color.secondary)
+                    }
                 }
-                .textFieldStyle(.roundedBorder)
                 .disabled(disabled)
-                .frame(maxWidth: .infinity)
             }
             .onChange(of: item.fact.valueString, initial: true) { typed = item.fact.valueString }
         }
@@ -585,8 +583,7 @@ private struct AxisRow: View {
     let onWrite: () -> Void
 
     var body: some View {
-        HStack {
-            Text("Axis").frame(maxWidth: .infinity, alignment: .leading)
+        LabeledContent("Axis") {
             Menu {
                 ForEach(Array(options.enumerated()), id: \.offset) { at, label in
                     Button(label) {
@@ -600,7 +597,6 @@ private struct AxisRow: View {
             } label: {
                 Text(options.at(index) ?? "")
             }
-            .buttonStyle(.bordered)
             .disabled(disabled)
         }
     }
@@ -618,10 +614,7 @@ private struct ActuatorFactRow: View {
         } else if item.showAs == SHOW_TRUE_IF_POSITIVE, let raw {
             CheckRow(label: item.label, checked: raw > 0) { write(item.fact.path, signWritten(raw, $0)) }
         } else {
-            VStack(spacing: 0) {
-                FactRow(fact: item.fact, title: item.label.ifEmpty(item.fact.title), onWrite: onWrite)
-                Divider()
-            }
+            FactRow(fact: item.fact, title: item.label.ifEmpty(item.fact.title), onWrite: onWrite)
         }
     }
 }

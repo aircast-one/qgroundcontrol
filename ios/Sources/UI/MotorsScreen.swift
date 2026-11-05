@@ -72,61 +72,62 @@ struct MotorsScreen: View {
         let motors = motorCount(reported)
         let letters = setupReadiness(setupJson)?.firmware == "apm"
         let testable = canTest(gate, propsOff)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
+        NativeForm {
+            Section {
+                Label {
+                    Text("Make sure you remove all props.").fontWeight(.semibold)
+                } icon: {
                     Image(.warning)
-                    Text("Make sure you remove all props.").font(.labelLarge)
                 }
                 .foregroundStyle(theme.aircast.warning)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(theme.aircast.warningContainer, in: Capsule())
                 if let notice = motorCountNotice(reported) {
-                    Text(notice).font(.bodyMedium).foregroundStyle(theme.aircast.warning)
+                    Text(notice).foregroundStyle(theme.aircast.warning)
                 }
                 if let refused = motorRefusal(gate) {
-                    Text(refused).font(.bodyMedium).foregroundStyle(theme.colors.error)
+                    Text(refused).foregroundStyle(theme.colors.error)
                 }
-                HStack(spacing: 12) {
-                    Toggle("", isOn: Binding(get: { propsOff }, set: { on in
-                        propsOff = on
-                        if !on { throttle = 0 }
-                    }))
-                    .labelsHidden()
+                Toggle(isOn: Binding(get: { propsOff }, set: { on in
+                    propsOff = on
+                    if !on { throttle = 0 }
+                })) {
                     Text(propsOff ? "Careful: motors are enabled" : "Propellers are removed - enable slider and motors")
-                        .font(.bodyMedium)
                         .foregroundStyle(theme.aircast.warning)
                 }
-                HStack {
-                    Text("Throttle").font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading)
-                    Text("\(Int(throttle))%").font(.labelMedium).foregroundStyle(theme.colors.primary)
+            } header: {
+                SectionHeader(text: "Safety")
+            }
+            Section {
+                LabeledContent("Throttle") {
+                    Text("\(Int(throttle))%").foregroundStyle(theme.colors.primary)
                 }
                 Slider(value: $throttle, in: 0...100).disabled(!testable)
-                ForEach(Array(stride(from: 1, through: motors, by: 2)), id: \.self) { first in
-                    HStack(spacing: 12) {
-                        ForEach(Array(first...min(first + 1, motors)), id: \.self) { motor in
-                            MotorTile(label: "Motor \(motorLabel(motor, letters))", testable: testable) {
-                                let percent = Int(throttle)
-                                offMainInOrder { spin(motor, percent) }
+            }
+            Section {
+                VStack(spacing: 12) {
+                    ForEach(Array(stride(from: 1, through: motors, by: 2)), id: \.self) { first in
+                        HStack(spacing: 12) {
+                            ForEach(Array(first...min(first + 1, motors)), id: \.self) { motor in
+                                MotorTile(label: "Motor \(motorLabel(motor, letters))", testable: testable) {
+                                    let percent = Int(throttle)
+                                    offMainInOrder { spin(motor, percent) }
+                                }
                             }
-                        }
-                        if first == motors {
-                            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                            if first == motors {
+                                Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                            }
                         }
                     }
                 }
-                HStack(spacing: 8) {
-                    Button("All") { spinAll(motors, Int(throttle)) }
-                        .buttonStyle(.bordered)
-                        .disabled(!testable)
-                    Button("Stop") { spinAll(motors, 0) }
-                        .buttonStyle(.bordered)
-                        .disabled(!canStop(gate))
-                }
+                .padding(.vertical, Space.s1)
+            } header: {
+                SectionHeader(text: "Motors")
             }
-            .padding(16)
+            Section {
+                Button("Spin all motors") { spinAll(motors, Int(throttle)) }
+                    .disabled(!testable)
+                Button("Stop all motors") { spinAll(motors, 0) }
+                    .disabled(!canStop(gate))
+            }
         }
     }
 }

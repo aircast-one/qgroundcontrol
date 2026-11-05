@@ -47,7 +47,6 @@ struct PreflightChecklist: View {
     @QgcBool(settingControl("settings.appSettings.enforceChecklist")) private var enforceChecklist
     @QgcPath(PREFLIGHT) private var preflightJson
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
-    @Environment(\.theme) private var theme
 
     var body: some View {
         let offered = preflightOffered(preflightJson)
@@ -87,19 +86,10 @@ struct PreflightChecklist: View {
                 checklist.shown = true
             }
             .queuedSheet(isPresented: Binding(get: { checklist.shown }, set: { checklist.shown = $0 })) {
-                NavigationStack {
+                NativeDialogStack(title: "Pre-flight checklist") {
                     PreflightScreen(ticked: checklist.ticked, onTicked: { checklist.ticked = $0 })
-                        .navigationTitle("Pre-flight checklist")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Close") { checklist.shown = false }
-                            }
-                        }
+                        .dialogButtons(primary: DialogButton(title: "Done") { checklist.shown = false })
                 }
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(theme.colors.surfaceContainerHigh)
             }
     }
 }

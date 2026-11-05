@@ -3,8 +3,6 @@ import SwiftUI
 let APM_SERVOS_VIEW = "view.apmServos"
 let APM_SERVOS_SCREEN = "apmServos"
 private let POLL_MS = 200
-private let REPEAT_DELAY_MS = 350
-private let REPEAT_MS = 80
 
 struct ApmServo: Equatable {
     let index: Int
@@ -39,7 +37,6 @@ func stepped(_ fact: Fact, _ direction: Int) -> Double? {
 }
 
 struct ApmServosScreen: View {
-    @Environment(\.theme) private var theme
     @State private var revision = 0
     @State private var servos: [ApmServo]?
 
@@ -48,21 +45,19 @@ struct ApmServosScreen: View {
             Color.clear
             if let read = servos {
                 if read.isEmpty {
-                    Text("This vehicle exposes no servo outputs.").padding(16)
+                    NativeForm {
+                        Section { Text("This vehicle exposes no servo outputs.").foregroundStyle(Color.secondary) }
+                    }
                 } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            Text("Configure ArduPilot servo outputs.")
-                                .font(.bodyMedium)
-                                .foregroundStyle(theme.colors.onSurfaceVariant)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                            ForEach(read, id: \.index) { servo in ServoCard(servo: servo) }
-                        }
+                    NativeForm {
+                        FormNote(text: "Configure ArduPilot servo outputs.")
+                        ForEach(read, id: \.index) { servo in ServoSection(servo: servo) }
                     }
                 }
             } else {
-                Text("Reading servo outputs.").padding(16)
+                NativeForm {
+                    Section { Text("Reading servo outputs.").foregroundStyle(Color.secondary) }
+                }
             }
         }
         .task(id: revision) {
@@ -74,41 +69,44 @@ struct ApmServosScreen: View {
     }
 }
 
-private struct ServoCard: View {
+private struct ServoSection: View {
     let servo: ApmServo
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(text: "Servo \(servo.index)")
-            HStack(spacing: 12) {
-                Text("Position").font(.bodyMedium)
-                ProgressView(value: Double(Swift.min(Swift.max(servo.position ?? 0, 0), 1)))
-                    .frame(maxWidth: .infinity)
-                Text(servo.pwm.map(String.init) ?? "-").font(.bodyMedium).frame(width: 48, alignment: .leading)
+        Section {
+            LabeledContent("Position") {
+                HStack(spacing: Space.s3) {
+                    ProgressView(value: Double(Swift.min(Swift.max(servo.position ?? 0, 0), 1)))
+                        .frame(maxWidth: SERVO_BAR_WIDTH)
+                    Text(servo.pwm.map(String.init) ?? "-").monospacedDigit().frame(width: 48, alignment: .trailing)
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 4)
             if let function = servo.function {
                 FactRow(fact: function, title: "Function")
             }
             if let min = servo.min {
-                Stepper(title: "Min", fact: min)
+                ServoValueRow(title: "Min", fact: min)
             }
             if let trim = servo.trim {
-                Stepper(title: "Trim", fact: trim)
+                ServoValueRow(title: "Trim", fact: trim)
             }
             if let max = servo.max {
-                Stepper(title: "Max", fact: max)
+                ServoValueRow(title: "Max", fact: max)
             }
             if let reversed = servo.reversed {
                 FactRow(fact: reversed, title: "Reversed")
             }
+        } header: {
+            SectionHeader(text: "Servo \(servo.index)")
         }
-        .padding(.vertical, 4)
     }
 }
 
-private struct Stepper: View {
+private let SERVO_BAR_WIDTH: CGFloat = 160
+private let SERVO_FIELD_WIDTH: CGFloat = 80
+
+// A PWM value: typed on the right, or stepped by one with the native stepper (which repeats while held).
+private struct ServoValueRow: View {
     let title: String
     let fact: Fact
     @Environment(\.theme) private var theme
@@ -121,24 +119,22 @@ private struct Stepper: View {
     private var shown: String { pending.map { JSON.format($0.rounded(.towardZero)) } ?? fact.valueString }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Text(title).font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading)
-                RepeatButton(label: "-") { step(-1) }
-                TextField("", text: $typed)
-                    .font(.bodyLarge)
-                    .textFieldStyle(.roundedBorder)
-                    .keyboardType(.numbersAndPunctuation)
-                    .submitLabel(.done)
-                    .focused($focused)
-                    .onSubmit(commit)
-                    .frame(width: 96)
-                RepeatButton(label: "+") { step(1) }
+        VStack(alignment: .leading, spacing: Space.s1) {
+            Stepper(onIncrement: { step(1) }, onDecrement: { step(-1) }) {
+                HStack(spacing: Space.s3) {
+                    Text(title).frame(maxWidth: .infinity, alignment: .leading)
+                    TextField(title, text: $typed)
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.numbersAndPunctuation)
+                        .submitLabel(.done)
+                        .focused($focused)
+                        .onSubmit(commit)
+                        .frame(width: SERVO_FIELD_WIDTH)
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 4)
             if let refusal {
-                Text(refusal).foregroundStyle(theme.colors.error).padding(.horizontal, 20)
+                Text(refusal).font(.footnote).foregroundStyle(theme.colors.error)
             }
         }
         .onChange(of: shown, initial: true) { typed = shown }
@@ -174,46 +170,5 @@ private struct Stepper: View {
             return
         }
         if number != typedNumber(shown) { write(number) }
-    }
-}
-
-private struct RepeatButton: View {
-    let label: String
-    let onStep: () -> Void
-    @Environment(\.theme) private var theme
-    @State private var repeating: Task<Void, Never>?
-    @GestureState private var pressing = false
-
-    var body: some View {
-        Text(label)
-            .font(.titleMedium)
-            .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
-            .background(theme.colors.secondaryContainer, in: RoundedRectangle(cornerRadius: Corner.small))
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .updating($pressing) { _, state, _ in state = true }
-                    .onChanged { _ in
-                        guard repeating == nil else { return }
-                        onStep()
-                        repeating = Task {
-                            try? await Task.sleep(for: .milliseconds(REPEAT_DELAY_MS))
-                            while !Task.isCancelled {
-                                onStep()
-                                try? await Task.sleep(for: .milliseconds(REPEAT_MS))
-                            }
-                        }
-                    }
-                    .onEnded { _ in stop() }
-            )
-            .onChange(of: pressing) { if !pressing { stop() } }
-            .onDisappear(perform: stop)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { onStep() }
-    }
-
-    private func stop() {
-        repeating?.cancel()
-        repeating = nil
     }
 }

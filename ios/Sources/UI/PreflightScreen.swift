@@ -9,77 +9,72 @@ struct PreflightScreen: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        if let checks = preflight(json), !checks.groups.isEmpty {
-            list(checks)
-        } else {
-            Text("Connect a vehicle to run its preflight checks.")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Space.s4)
-                .onAppear {
-                    collapsed = []
-                    passedBefore = []
+        let shown = preflight(json).flatMap { $0.groups.isEmpty ? nil : $0 }
+        let passedGroups = shown.map { checks in Set(checks.groups.filter { groupPassed($0, ticked) }.map(\.name)) }
+        NativeForm {
+            if let checks = shown {
+                list(checks)
+            } else {
+                Section {
+                    Text("Connect a vehicle to run its preflight checks.")
+                        .foregroundStyle(Color.secondary)
+                        .onAppear {
+                            collapsed = []
+                            passedBefore = []
+                        }
                 }
+            }
+        }
+        .task(id: passedGroups) {
+            guard let passedGroups, (try? await Task.sleep(for: .milliseconds(GROUP_COLLAPSE_DELAY_MS))) != nil else { return }
+            collapsed = collapsedAfterPass(collapsed, passedBefore, passedGroups)
+            passedBefore = passedGroups
         }
     }
 
+    @ViewBuilder
     private func list(_ checks: Preflight) -> some View {
-        let passedGroups = Set(checks.groups.filter { groupPassed($0, ticked) }.map(\.name))
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(checklistHeading(checklistIsComplete(checks, ticked)))
-                    .font(.titleMedium)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button("Reset") {
-                    onTicked([])
-                    collapsed = []
-                }
-                .buttonStyle(.text)
-                .disabled(ticked.isEmpty)
-            }
-            .padding(.leading, Space.s4)
-            .padding(.trailing, Space.s2)
+        Section {
             Text(preflightSummary(checks, ticked))
-                .font(.titleSmall)
-                .foregroundStyle(checks.blocked.isEmpty ? theme.colors.onSurface : theme.colors.error)
-                .padding(.horizontal, Space.s4)
-                .padding(.vertical, Space.s2)
-            if !checks.airframe.isBlank {
-                Text(checks.airframe)
-                    .font(.bodySmall)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
-                    .padding(.horizontal, Space.s4)
-            }
-            Divider().padding(.top, Space.s2)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(checks.groups.enumerated()), id: \.element.name) { groupIndex, group in
-                        let open = groupEnabled(checks.groups, groupIndex, ticked)
-                        let folded = collapsed.contains(group.name)
-                        Text(groupHeading(group, ticked))
-                            .font(.labelLarge)
-                            .foregroundStyle(open ? theme.colors.primary : theme.colors.onSurfaceVariant)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, Space.s4)
-                            .padding(.top, Space.s4)
-                            .padding(.bottom, Space.s1)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                collapsed = folded ? collapsed.subtracting([group.name]) : collapsed.union([group.name])
-                            }
-                        if !folded {
-                            ForEach(group.checks, id: \.name) { check in
-                                row(check, open)
-                            }
-                        }
+                .foregroundStyle(checks.blocked.isEmpty ? Color.primary : theme.colors.error)
+        } header: {
+            Text(checklistHeading(checklistIsComplete(checks, ticked)))
+        } footer: {
+            if !checks.airframe.isBlank { Text(checks.airframe) }
+        }
+        ForEach(Array(checks.groups.enumerated()), id: \.element.name) { groupIndex, group in
+            let open = groupEnabled(checks.groups, groupIndex, ticked)
+            let folded = collapsed.contains(group.name)
+            Section {
+                if !folded {
+                    ForEach(group.checks, id: \.name) { check in
+                        row(check, open)
                     }
                 }
+            } header: {
+                Button {
+                    collapsed = folded ? collapsed.subtracting([group.name]) : collapsed.union([group.name])
+                } label: {
+                    HStack {
+                        Text(groupHeading(group, ticked))
+                            .foregroundStyle(open ? theme.colors.primary : Color.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: folded ? "chevron.right" : "chevron.down")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(folded ? "Show checks" : "Hide checks")
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .task(id: passedGroups) {
-            guard (try? await Task.sleep(for: .milliseconds(GROUP_COLLAPSE_DELAY_MS))) != nil else { return }
-            collapsed = collapsedAfterPass(collapsed, passedBefore, passedGroups)
-            passedBefore = passedGroups
+        Section {
+            Button("Reset checklist") {
+                onTicked([])
+                collapsed = []
+            }
+            .disabled(ticked.isEmpty)
         }
     }
 
@@ -115,7 +110,5 @@ struct PreflightScreen: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, Space.s3)
-        .padding(.vertical, 6)
     }
 }

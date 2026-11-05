@@ -116,28 +116,6 @@ private func requestRate(_ messagePath: String, _ rate: Int) {
     }
 }
 
-private struct RatePicker: View {
-    let messagePath: String
-    let current: String
-    let choices: [InspectorRate]
-
-    var body: some View {
-        if !choices.isEmpty {
-            Menu {
-                ForEach(choices, id: \.rate) { choice in
-                    Button(choice.title) { requestRate(messagePath, choice.rate) }
-                }
-            } label: {
-                Text(current.isBlank ? "Set Rate:" : "Rate: \(current)")
-                    .frame(minHeight: Metrics.rowCompact)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .padding(8)
-        }
-    }
-}
-
 func openMessageIn(_ messages: [InspectorMessage], _ path: String?) -> InspectorMessage? {
     path.flatMap { wanted in messages.first { $0.path == wanted } }
 }
@@ -154,57 +132,81 @@ private struct InspectorNotice: View {
     }
 }
 
-private struct FieldList: View {
-    let messagePath: String
+// One message: its details and requested rate, the charts (drawn: no system control plots them), and its fields as
+// rows, each with the two plot switches.
+private struct InspectorMessageDetail: View {
+    let message: InspectorMessage
+    let rateChoices: [InspectorRate]
     @QgcPath(INSPECTOR_VIEW) private var inspectorJson
     @State private var charts: InspectorCharts?
-    @Environment(\.theme) private var theme
 
     var body: some View {
-        let rows = parseInspectorFields(inspectorJson, messagePath)
-        Group {
-            if rows.isEmpty {
-                InspectorNotice(text: "Waiting for this message to arrive again.")
-                    .frame(maxHeight: .infinity, alignment: .top)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        if let shown = charts {
-                            InspectorChartPanel(index: 0, charts: shown)
-                            InspectorChartPanel(index: 1, charts: shown)
-                        }
-                        HStack(spacing: 0) {
-                            Spacer()
-                            ForEach(CHART_LABELS, id: \.self) { label in
-                                Text(label).font(.labelSmall).lineLimit(1).frame(width: 56)
+        let rows = parseInspectorFields(inspectorJson, message.path)
+        NativeForm {
+            Section {
+                ForEach(inspectorDetails(message), id: \.0) { label, value in
+                    LabeledContent(label) { Text(value).monospaced() }
+                }
+                if !rateChoices.isEmpty {
+                    LabeledContent("Requested rate") {
+                        Menu {
+                            ForEach(rateChoices, id: \.rate) { choice in
+                                Button(choice.title) { requestRate(message.path, choice.rate) }
                             }
-                        }
-                        .padding(.horizontal, 16)
-                        ForEach(rows, id: \.name) { field in
-                            fieldRow(field)
-                            Divider()
+                        } label: {
+                            Text(message.targetRateTitle.ifBlank("Set rate"))
                         }
                     }
                 }
-                .task {
-                    while !Task.isCancelled {
-                        charts = await offMain { inspectorCharts(Qgc.get(INSPECTOR_CHARTS_VIEW)) }
-                        try? await Task.sleep(for: .milliseconds(CHART_POLL_MS))
+            }
+            if rows.isEmpty {
+                Section {
+                    Text("Waiting for this message to arrive again.").foregroundStyle(Color.secondary)
+                }
+            } else {
+                if let shown = charts {
+                    let plotted = [0, 1].filter { shown.charts.indices.contains($0) && !shown.charts[$0].plots.isEmpty }
+                    if !plotted.isEmpty {
+                        Section {
+                            ForEach(plotted, id: \.self) { index in
+                                InspectorChartPanel(index: index, charts: shown).legacyFormRow()
+                            }
+                        }
+                    }
+                }
+                Section {
+                    ForEach(rows, id: \.name) { field in
+                        fieldRow(field)
+                    }
+                } header: {
+                    HStack(spacing: 0) {
+                        SectionHeader(text: "Fields")
+                        Spacer(minLength: 0)
+                        ForEach(CHART_LABELS, id: \.self) { label in
+                            Text(label).lineLimit(1).frame(width: CHART_SWITCH_WIDTH)
+                        }
                     }
                 }
             }
         }
-        .task(id: messagePath) { selectMessage(messagePath) }
+        .task(id: message.path) { selectMessage(message.path) }
+        .task(id: rows.isEmpty) {
+            guard !rows.isEmpty else { return }
+            while !Task.isCancelled {
+                charts = await offMain { inspectorCharts(Qgc.get(INSPECTOR_CHARTS_VIEW)) }
+                try? await Task.sleep(for: .milliseconds(CHART_POLL_MS))
+            }
+        }
     }
 
     private func fieldRow(_ field: InspectorField) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s2) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(field.name).monospaced()
-                Text(field.type).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text(field.type).font(.subheadline).foregroundStyle(Color.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text(field.value).monospaced()
+            Text(field.value).monospaced().foregroundStyle(Color.secondary)
             ForEach(0..<2, id: \.self) { chart in
                 Toggle("", isOn: Binding(
                     get: { charts?.charted[field.name] == chart },
@@ -212,44 +214,24 @@ private struct FieldList: View {
                 ))
                 .labelsHidden()
                 .disabled(!chartToggleEnabled(charts, field.name, field.type, chart))
-                .frame(width: 56)
+                .frame(width: CHART_SWITCH_WIDTH)
                 .accessibilityLabel("\(field.name) on \(CHART_LABELS[chart])")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .frame(minHeight: Metrics.rowLarge)
     }
 }
 
-private struct InspectorChip: View {
-    let selected: Bool
-    let label: String
-    let onClick: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        Button(action: onClick) {
-            HStack(spacing: 4) {
-                if selected { Image(.check) }
-                Text(label).font(.labelLarge)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 32)
-            .foregroundStyle(selected ? theme.colors.onSecondaryContainer : theme.colors.onSurfaceVariant)
-            .background(selected ? theme.colors.secondaryContainer : .clear, in: RoundedRectangle(cornerRadius: Corner.small))
-            .overlay(RoundedRectangle(cornerRadius: Corner.small).stroke(selected ? .clear : theme.colors.outline))
-        }
-        .buttonStyle(.plain)
-    }
-}
+private let CHART_SWITCH_WIDTH: CGFloat = 56
 
 func inspectorActiveSystem(_ view: JSON?) -> Int? {
     view.flatMap { $0["systemId"].isNull ? nil : $0["systemId"].int(0) }
 }
 
+private let ALL_COMPONENTS = -1
+
+// The messages as a native list: the vehicle and component as pickers, the filter as the navigation bar's search
+// field, and each message a row that opens it. An open message steps back to the list with the bar's back.
 struct InspectorScreen: View {
-    @Environment(\.theme) private var theme
     @QgcPath(INSPECTOR_VIEW) private var inspectorJson
     @State private var openPath: String?
     @State private var filter = ""
@@ -265,41 +247,10 @@ struct InspectorScreen: View {
         if let emptyText = inspectorEmptyText(inspectorJson) {
             InspectorNotice(text: emptyText).frame(maxHeight: .infinity, alignment: .top)
         } else if let open = openMessageIn(messages, openPath) {
-            detail(open)
+            InspectorMessageDetail(message: open, rateChoices: inspectorRateChoices(inspectorJson))
+                .background { OverridePageHeading(title: open.name, onBack: { openPath = nil }) }
         } else {
             list(messages)
-        }
-    }
-
-    private func detail(_ open: InspectorMessage) -> some View {
-        VStack(spacing: 0) {
-            Button { openPath = nil } label: {
-                Text(open.name)
-                    .font(.titleSmall)
-                    .monospaced()
-                    .foregroundStyle(theme.colors.onSurface)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            HStack {
-                RatePicker(messagePath: open.path, current: open.targetRateTitle, choices: inspectorRateChoices(inspectorJson))
-                Spacer()
-            }
-            .padding(.horizontal, 8)
-            VStack(spacing: 0) {
-                ForEach(inspectorDetails(open), id: \.0) { label, value in
-                    HStack {
-                        Text(label).font(.bodySmall).frame(maxWidth: .infinity, alignment: .leading)
-                        Text(value).font(.bodySmall).monospaced()
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-            Divider()
-            FieldList(messagePath: open.path).frame(maxHeight: .infinity)
         }
     }
 
@@ -307,55 +258,49 @@ struct InspectorScreen: View {
         let systems = inspectorChoices(inspectorJson, "systems")
         let components = inspectorChoices(inspectorJson, "components")
         let activeSystem = inspectorActiveSystem(inspectorJson)
+        let systemLine = inspectorSystemText(inspectorJson)
         let shown = inspectorShown(messages, filter, component)
-        return VStack(alignment: .leading, spacing: 0) {
-            if let line = inspectorSystemText(inspectorJson) {
-                Text(line)
-                    .font(.labelSmall)
-                    .foregroundStyle(theme.colors.onSurfaceVariant)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 4)
-            }
-            if systems.count > 1 || components.count > 1 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        if systems.count > 1 {
-                            ForEach(systems, id: \.id) { system in
-                                InspectorChip(selected: system.id == activeSystem, label: system.title) {
-                                    offMain { SetupCommands.setInspectorSystem(system.id) }
-                                }
-                            }
+        return NativeForm {
+            if systems.count > 1 || components.count > 1 || systemLine != nil {
+                Section {
+                    if systems.count > 1 {
+                        Picker("Vehicle", selection: Binding(
+                            get: { activeSystem ?? systems.first?.id ?? 0 },
+                            set: { picked in offMain { SetupCommands.setInspectorSystem(picked) } }
+                        )) {
+                            ForEach(systems, id: \.id) { system in Text(system.title).tag(system.id) }
                         }
-                        if components.count > 1 {
-                            ForEach([InspectorChoice(id: -1, title: "Comp All")] + components, id: \.id) { choice in
-                                InspectorChip(selected: (component ?? -1) == choice.id, label: choice.title) {
-                                    component = choice.id >= 0 ? choice.id : nil
-                                }
-                            }
-                        }
+                    } else if let systemLine {
+                        LabeledContent("Vehicle", value: systemLine)
                     }
-                    .padding(.horizontal, 16)
-                }
-            }
-            SearchPill(value: filter, onValueChange: { filter = $0 }, placeholder: "Filter messages")
-            if shown.isEmpty {
-                InspectorNotice(text: "No message matches \"\(filter)\".")
-                Spacer(minLength: 0)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(shown, id: \.path) { message in
-                            SetupRow(
-                                title: message.name.ifBlank(message.title) + (message.fieldSelected ? " *" : ""),
-                                status: message.rateText,
-                                onClick: { openPath = message.path },
-                                subtitle: "comp \(message.compId)"
-                            )
+                    if components.count > 1 {
+                        Picker("Component", selection: Binding(
+                            get: { component ?? ALL_COMPONENTS },
+                            set: { picked in component = picked == ALL_COMPONENTS ? nil : picked }
+                        )) {
+                            Text("All").tag(ALL_COMPONENTS)
+                            ForEach(components, id: \.id) { choice in Text(choice.title).tag(choice.id) }
                         }
                     }
                 }
+            }
+            Section {
+                if shown.isEmpty {
+                    Text("No message matches \"\(filter)\".").foregroundStyle(Color.secondary)
+                }
+                ForEach(shown, id: \.path) { message in
+                    SetupRow(
+                        title: message.name.ifBlank(message.title) + (message.fieldSelected ? " *" : ""),
+                        status: message.rateText,
+                        onClick: { openPath = message.path },
+                        subtitle: "comp \(message.compId)"
+                    )
+                }
+            } header: {
+                SectionHeader(text: "Messages")
             }
         }
+        .searchable(text: $filter, prompt: "Filter messages")
     }
 }
 

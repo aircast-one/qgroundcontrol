@@ -201,22 +201,43 @@ struct FirmwareScreen: View {
     private var stable: String { job?.px4StableVersion ?? "" }
     private var beta: String { job?.px4BetaVersion ?? "" }
 
+    // The board, the firmware and the flash as a native form: the attached ports as a checked list, the firmware
+    // as menu and switch rows, Flash as the page's primary action and the job's progress in a section of its own.
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                note
-                if !busy && ports.filter({ !$0.boardType.isBlank }).count > 1 {
-                    Text(MULTIPLE_DEVICES)
-                        .font(.bodyMedium)
-                        .foregroundStyle(theme.aircast.warning)
-                        .padding(.horizontal, Space.s4)
+        let choice = firmwareChoice(source, file?.path)
+        NativeForm {
+            note
+            Section {
+                if ports.isEmpty {
+                    Text("No USB serial devices attached").foregroundStyle(Color.secondary)
                 }
                 ForEach(ports) { entry in portRow(entry) }
-                actions
-                    .padding(.horizontal, Space.s4)
-                    .padding(.vertical, Space.s3)
+            } header: {
+                SectionHeader(text: "Board")
+            } footer: {
+                if !busy && ports.filter({ !$0.boardType.isBlank }).count > 1 {
+                    Text(MULTIPLE_DEVICES).foregroundStyle(theme.aircast.warning)
+                }
+            }
+            firmwareRows
+            if let current = job {
+                progress(current)
+            }
+            if !refusal.isBlank {
+                FormNote(text: refusal, color: theme.colors.error)
+            }
+            if let messages = job?.messages, !messages.isEmpty {
+                Section {
+                    Text(messages.joined(separator: "\n"))
+                        .font(.system(size: 12, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } header: {
+                    SectionHeader(text: "Log")
+                }
             }
         }
+        .pagePrimaryAction("Flash", enabled: !busy && !port.isBlank && choice != nil) { flash(choice) }
         .task {
             while !Task.isCancelled {
                 let (readJob, readPorts) = await offMain { (firmwareJob(Qgc.get(FIRMWARE_VIEW)), firmwarePorts(Qgc.get(FIRMWARE_PORTS_VIEW))) }
@@ -245,42 +266,41 @@ struct FirmwareScreen: View {
     }
 
     private var note: some View {
-        VStack(alignment: .leading, spacing: Space.s2) {
+        Section {
             if let update = job?.updateAvailable, !update.isBlank {
-                Text(update).font(.bodyMedium).foregroundStyle(theme.aircast.warning)
+                Text(update).foregroundStyle(theme.aircast.warning)
             }
-            Text(ports.isEmpty ? "No USB serial devices attached" : "Flash a board over USB").font(.titleSmall)
-            Text(
-                "Plug in your device via USB, choose its port and either a release, downloaded once the board is "
-                    + "identified, or a firmware file, then press Flash. A board "
-                    + "running its firmware is asked to be unplugged and plugged back in so its bootloader starts."
-            )
-            .font(.bodyMedium)
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text(ports.isEmpty ? "No USB serial devices attached" : "Flash a board over USB").font(.headline)
+                Text(
+                    "Plug in your device via USB, choose its port and either a release, downloaded once the board is "
+                        + "identified, or a firmware file, then press Flash. A board "
+                        + "running its firmware is asked to be unplugged and plugged back in so its bootloader starts."
+                )
+                .font(.subheadline)
+                .foregroundStyle(Color.secondary)
+            }
+            .padding(.vertical, Space.s1)
         }
-        .padding(Space.s4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: Corner.medium))
-        .padding(.horizontal, Space.s4)
-        .padding(.vertical, Space.s2)
     }
 
     private func portRow(_ entry: FirmwarePort) -> some View {
         Button {
             port = entry.port
         } label: {
-            HStack(spacing: Space.s4) {
-                RadioIndicator(selected: entry.port == port)
+            HStack(spacing: Space.s3) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.description.ifBlank(entry.port)).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
-                    Text(firmwarePortSubtitle(entry)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+                    Text(entry.description.ifBlank(entry.port)).foregroundStyle(Color.primary)
+                    Text(firmwarePortSubtitle(entry)).font(.subheadline).foregroundStyle(Color.secondary)
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if entry.port == port {
+                    Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(theme.colors.primary)
+                }
             }
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .listRowButton()
         .disabled(busy)
         .accessibilityAddTraits(entry.port == port ? .isSelected : [])
     }
@@ -290,10 +310,9 @@ struct FirmwareScreen: View {
     }
 
     @ViewBuilder
-    private var actions: some View {
+    private var firmwareRows: some View {
         let offered = firmwareSources(advanced)
-        let choice = firmwareChoice(source, file?.path)
-        VStack(alignment: .leading, spacing: Space.s2) {
+        Section {
             ChoiceField(
                 label: "Firmware",
                 value: FIRMWARE_SOURCES.first(where: { $0.first == source }).map(sourceTitle) ?? source,
@@ -302,6 +321,14 @@ struct FirmwareScreen: View {
             ) { index in
                 if !busy && offered.indices.contains(index) { chooseSource(offered[index].first) }
             }
+            if source == FIRMWARE_FROM_FILE {
+                LabeledContent("File") {
+                    HStack(spacing: Space.s2) {
+                        Text(file?.lastPathComponent.removingPrefix(FIRMWARE_STAGE_PREFIX) ?? "None chosen").lineLimit(1).truncationMode(.middle)
+                        Button("Choose…") { picking = true }.disabled(busy)
+                    }
+                }
+            }
             if source.hasPrefix("ardupilot:"), let chibios = upgradeSettings.first(where: { $0.name == APM_CHIBIOS }) {
                 FactRow(fact: chibios)
             }
@@ -309,78 +336,55 @@ struct FirmwareScreen: View {
                 advanced = checked
                 source = sourceAfterAdvanced(source, checked)
             }))
-            .font(.bodyMedium)
             .disabled(busy)
             if bootloaderOffered(advanced, apmVehicle) {
                 Button("Flash ChibiOS bootloader") { offMain { _ = Qgc.invoke(FLASH_BOOTLOADER) } }
-                    .buttonStyle(.bordered)
                     .disabled(busy)
             }
-            if source == FIRMWARE_FROM_FILE {
-                Text(file?.lastPathComponent.removingPrefix(FIRMWARE_STAGE_PREFIX) ?? "No firmware file chosen").font(.bodyMedium)
-            }
+        } header: {
+            SectionHeader(text: "Firmware")
+        } footer: {
             if let warning = firmwareWarning(source) {
-                Text(warning).font(.bodyMedium).foregroundStyle(theme.colors.error)
-            }
-            if busy {
-                Text(flashingName.ifBlank(flashingLabel(ports, port))).font(.bodyMedium).lineLimit(1).truncationMode(.tail)
-            }
-            HStack(spacing: Space.s3) {
-                Spacer(minLength: 0)
-                if source == FIRMWARE_FROM_FILE {
-                    Button("Choose file") { picking = true }
-                        .buttonStyle(.bordered)
-                        .disabled(busy)
-                }
-                Button("Flash") { flash(choice) }
-                    .buttonStyle(.filled)
-                    .disabled(busy || port.isBlank || choice == nil)
-                if busy {
-                    Button("Cancel") { run(FIRMWARE_CANCEL, []) }
-                        .buttonStyle(.bordered)
-                        .disabled(job?.cancellable != true)
-                }
-            }
-            if let current = job {
-                progress(current)
-            }
-            if !refusal.isBlank {
-                Text(refusal).font(.bodyMedium).foregroundStyle(theme.colors.error)
-            }
-            if let messages = job?.messages, !messages.isEmpty {
-                Text(messages.joined(separator: "\n"))
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(warning).foregroundStyle(theme.colors.error)
             }
         }
     }
 
     @ViewBuilder
     private func progress(_ current: FirmwareJob) -> some View {
-        if current.busy {
-            ProgressView(value: min(max(current.progress, 0), 1))
-        }
         let phase = firmwarePhaseText(current.phase)
-        if !phase.isBlank {
-            Text(phase).font(.bodyMedium)
-        }
-        if current.phase == "choosing" {
-            ForEach(Array(current.choices.enumerated()), id: \.offset) { index, build in
-                if index == current.bestChoice {
-                    Button { run(FIRMWARE_CHOOSE, [build.url]) } label: { Text(build.name).frame(maxWidth: .infinity) }
-                        .buttonStyle(.filled)
-                } else {
-                    Button { run(FIRMWARE_CHOOSE, [build.url]) } label: { Text(build.name).frame(maxWidth: .infinity) }
-                        .buttonStyle(.bordered)
+        if current.busy || !phase.isBlank || !current.error.isBlank {
+            Section {
+                if current.busy {
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        Text(flashingName.ifBlank(flashingLabel(ports, port))).lineLimit(1).truncationMode(.tail)
+                        ProgressView(value: min(max(current.progress, 0), 1))
+                    }
+                    .padding(.vertical, Space.s1)
                 }
+                if !phase.isBlank {
+                    Text(phase)
+                }
+                if current.phase == "choosing" {
+                    ForEach(Array(current.choices.enumerated()), id: \.offset) { index, build in
+                        Button { run(FIRMWARE_CHOOSE, [build.url]) } label: {
+                            Text(build.name).fontWeight(index == current.bestChoice ? .semibold : .regular)
+                        }
+                    }
+                }
+                if !current.error.isBlank {
+                    Text(current.error).foregroundStyle(theme.colors.error).textSelection(.enabled)
+                }
+                if current.phase == "failed" {
+                    Text(FLASH_FAIL_TEXT).font(.subheadline).foregroundStyle(Color.secondary)
+                }
+                if current.busy {
+                    Button("Cancel") { run(FIRMWARE_CANCEL, []) }
+                        .disabled(current.cancellable != true)
+                }
+            } header: {
+                SectionHeader(text: "Progress")
             }
-        }
-        if !current.error.isBlank {
-            Text(current.error).font(.bodyMedium).foregroundStyle(theme.colors.error).textSelection(.enabled)
-        }
-        if current.phase == "failed" {
-            Text(FLASH_FAIL_TEXT).font(.bodyMedium)
         }
     }
 

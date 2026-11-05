@@ -3,6 +3,7 @@ import SwiftUI
 let OPTICAL_FLOW_SCREEN = "opticalFlow"
 private let OPTICAL_FLOW_VIEW = "view.opticalFlow"
 private let OPTICAL_FLOW_POLL_MS = 500
+private let FLOW_IMAGE_MAX_WIDTH: CGFloat = 360
 
 struct FlowFrame: Equatable {
     var width: Int
@@ -52,21 +53,22 @@ struct OpticalFlowScreen: View {
     @State private var image: PlatformImage?
 
     var body: some View {
-        VStack(spacing: Space.s3) {
-            Text("Optical flow camera").font(.titleMedium)
-            if let image {
-                GeometryReader { geometry in
+        NativeForm {
+            Section {
+                if let image {
                     Image(platformImage: image)
                         .resizable()
                         .scaledToFit()
-                        .frame(width: geometry.size.width / 2, height: geometry.size.width / 2 * 3 / 4)
+                        .frame(maxWidth: FLOW_IMAGE_MAX_WIDTH)
                         .frame(maxWidth: .infinity)
                         .accessibilityLabel("Optical flow camera image")
+                } else {
+                    Text("Waiting for an image from the camera.").foregroundStyle(Color.secondary)
                 }
+            } header: {
+                SectionHeader(text: "Optical flow camera")
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(Space.s4)
         .task {
             while !Task.isCancelled {
                 let view = await offMain { Qgc.get(OPTICAL_FLOW_VIEW) }

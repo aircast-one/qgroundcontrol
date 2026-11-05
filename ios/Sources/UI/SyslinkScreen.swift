@@ -41,7 +41,9 @@ struct SyslinkScreen: View {
             if let radio = read {
                 screen(radio)
             } else {
-                Text("This vehicle has no Syslink radio.").padding(16)
+                NativeForm {
+                    Section { Text("This vehicle has no Syslink radio.").foregroundStyle(Color.secondary) }
+                }
             }
         }
         .task(id: revision) {
@@ -53,9 +55,8 @@ struct SyslinkScreen: View {
     }
 
     private func screen(_ radio: Syslink) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionHeader(text: "Radio Settings")
+        NativeForm {
+            Section {
                 RadioField(label: "Channel", value: String(radio.channel), hint: radio.channelHint, keyboard: .numbersAndPunctuation, accept: { $0.allSatisfy { $0.isASCII && $0.isNumber } }) { typed in
                     if let channel = Int(typed) { act("syslink.setChannel", channel) }
                 }
@@ -64,10 +65,12 @@ struct SyslinkScreen: View {
                 if let refusal {
                     Text(refusal).foregroundStyle(theme.colors.error)
                 }
-                Button("Restore defaults") { act("syslink.resetDefaults") }.buttonStyle(.bordered)
+            } header: {
+                SectionHeader(text: "Radio Settings")
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            Section {
+                Button("Restore defaults", role: .destructive) { act("syslink.resetDefaults") }
+            }
         }
     }
 
@@ -86,25 +89,25 @@ private struct RadioField: View {
     let keyboard: UIKeyboardType
     let accept: (String) -> Bool
     let onDone: (String) -> Void
-    @Environment(\.theme) private var theme
     @State private var typed = ""
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label).frame(maxWidth: .infinity, alignment: .leading)
-                TextField("", text: Binding(get: { typed }, set: { if accept($0) { typed = $0 } }))
-                    .textFieldStyle(.roundedBorder)
+            LabeledContent(label) {
+                TextField(label, text: Binding(get: { typed }, set: { if accept($0) { typed = $0 } }))
+                    .labelsHidden()
+                    .multilineTextAlignment(.trailing)
                     .keyboardType(keyboard)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .focused($focused)
                     .onSubmit { focused = false }
-                    .frame(width: 180)
             }
-            Text(hint).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+            if !hint.isBlank {
+                Text(hint).font(.footnote).foregroundStyle(Color.secondary)
+            }
         }
         .onChange(of: value, initial: true) { typed = value }
         .onChange(of: focused) { if !focused && typed != value { onDone(typed) } }
