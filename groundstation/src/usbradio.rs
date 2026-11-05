@@ -18,20 +18,22 @@ const RELEASE_FRAMES: usize = 3;
 const SERIAL_ID: u32 = 0xfff0_0004;
 const BAUD: u32 = 115_200;
 const MAX_LINE_BYTES: usize = 1024;
-const VALUES: std::ops::RangeInclusive<usize> = 4..=24;
+const CHANNELS: usize = 24;
+const VALUES: std::ops::RangeInclusive<usize> = 4..=CHANNELS;
 const OVERRIDE_PWM: std::ops::RangeInclusive<i32> = 800..=2200;
 const SNIFF_LIMIT: usize = 16 * 1024;
 pub const RADIO_FOUND: &str = "An EdgeTX radio is streaming its sticks on USB. Fly with it?";
 pub const USE: &str = "usbRadio.use";
 
 pub type Frame = [u16; crate::joystick::RC_FRAME_CHANNELS];
+pub type Line = [u16; CHANNELS];
 pub type Target = (u8, LinkId);
 
 pub fn pwm(raw: i32) -> u16 {
     (raw / 2 + 1500).clamp(*OVERRIDE_PWM.start(), *OVERRIDE_PWM.end()) as u16
 }
 
-pub fn parse(line: &str) -> Option<Frame> {
+pub fn parse(line: &str) -> Option<Line> {
     let values: Vec<u16> = line
         .trim()
         .strip_prefix('$')?
@@ -45,6 +47,10 @@ pub fn parse(line: &str) -> Option<Frame> {
         .then(|| std::array::from_fn(|at| values.get(at).copied().unwrap_or(u16::MAX)))
 }
 
+pub fn sticks(line: &Line) -> Frame {
+    std::array::from_fn(|at| line[at])
+}
+
 pub fn released() -> Frame {
     std::array::from_fn(|at| crate::joystick::rc_release(at + 1))
 }
@@ -55,7 +61,7 @@ pub struct Lines {
 }
 
 impl Lines {
-    pub fn feed(&mut self, bytes: &[u8]) -> Vec<Frame> {
+    pub fn feed(&mut self, bytes: &[u8]) -> Vec<Line> {
         self.pending.push_str(&String::from_utf8_lossy(bytes));
         let complete = self
             .pending
@@ -479,10 +485,13 @@ fn advance(fresh: Option<Frame>) {
     answer(now, live);
 }
 
-fn heard_on(port: &str, frames: Vec<Frame>) {
-    if let Some(frame) = frames.last() {
+fn heard_on(port: &str, lines: Vec<Line>) {
+    if let Some(line) = lines.last() {
         detection().radios.insert(port.to_string());
-        advance(Some(*frame));
+        advance(Some(sticks(line)));
+        if let Some((vehicle, _)) = target() {
+            crate::radiocamera::heard(vehicle, line);
+        }
     }
 }
 
@@ -608,6 +617,16 @@ mod tests {
             (read[10], read[15], read[17]),
             (988, 1420, 2012),
             "CH11 skld low, CH16 S2, CH18 camREB high"
+        );
+        assert_eq!(
+            (read[19], read[23]),
+            (1480, 988),
+            "CH20 camyaw and CH24 termty are read for the camera"
+        );
+        assert_eq!(
+            sticks(&read)[..],
+            read[..crate::joystick::RC_FRAME_CHANNELS],
+            "the vehicle is sent the channels an RC override carries"
         );
         assert_eq!(
             pwm(1536),

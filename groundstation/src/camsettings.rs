@@ -434,6 +434,47 @@ pub fn set_setting(args: &str) -> Value {
     }
 }
 
+pub fn next_offered(
+    value_type: crate::factmeta::ValueType,
+    offered: &[crate::factmeta::EnumEntry],
+    current: Option<&Value>,
+    by: i64,
+) -> Option<Value> {
+    let count = i64::try_from(offered.len())
+        .ok()
+        .filter(|count| *count > 0)?;
+    let at = current
+        .and_then(|current| {
+            offered
+                .iter()
+                .position(|entry| crate::cameradef::same_typed(value_type, current, &entry.value))
+        })
+        .map_or(0, |at| at as i64 + by);
+    offered
+        .get(at.rem_euclid(count) as usize)
+        .map(|entry| entry.value.clone())
+}
+
+pub fn step_setting(name: &str, by: i64) -> Value {
+    let Some(key) = selected_camera() else {
+        return refused("No camera is selected.");
+    };
+    let next = with_ready(key, |ready| {
+        let value_type = ready.parameters.definition.parameter(name)?.meta.value_type;
+        next_offered(
+            value_type,
+            &ready.parameters.options(name)?.entries,
+            ready.parameters.reading(name).map(|reading| &reading.value),
+            by,
+        )
+    })
+    .flatten();
+    match next {
+        Some(value) => set_setting(&json!([name, value]).to_string()),
+        None => refused("This camera has no such setting."),
+    }
+}
+
 fn selected_camera() -> Option<(u8, u8)> {
     let hub = crate::hub::lock();
     let vehicle = hub.active()?;
@@ -476,6 +517,36 @@ mod tests {
         assert!(
             !cache_file_name("../../files/x", "a/b", 1).contains(['/', '\\']),
             "a camera's names never leave the cache folder"
+        );
+    }
+
+    #[test]
+    fn stepping_a_setting_walks_its_offered_values_and_wraps() {
+        use crate::factmeta::{EnumEntry, ValueType};
+        let offered: Vec<EnumEntry> = (0..3)
+            .map(|value| EnumEntry {
+                label: format!("Palette {}", value + 1),
+                value: json!(value),
+            })
+            .collect();
+        let next = |current: Option<Value>, by: i64| {
+            next_offered(ValueType::Uint8, &offered, current.as_ref(), by)
+        };
+        assert_eq!(next(Some(json!(0)), 1), Some(json!(1)));
+        assert_eq!(
+            next(Some(json!(2)), 1),
+            Some(json!(0)),
+            "the last wraps to the first"
+        );
+        assert_eq!(next(Some(json!(0)), -1), Some(json!(2)));
+        assert_eq!(
+            next(None, 1),
+            Some(json!(0)),
+            "an unread setting starts from the first value"
+        );
+        assert_eq!(
+            next_offered(ValueType::Uint8, &[], Some(&json!(0)), 1),
+            None
         );
     }
 

@@ -240,6 +240,7 @@ pub mod px4tuning;
 pub mod qthost;
 pub mod qtjson;
 pub mod radio;
+pub mod radiocamera;
 pub mod rallyedit;
 pub mod rccal;
 pub mod rcoverride;
