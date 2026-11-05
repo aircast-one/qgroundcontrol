@@ -512,6 +512,11 @@ pub(crate) fn pump_once() {
                     .iter()
                     .for_each(|(path, json)| announce(path, json));
             }
+            if crate::payloadrail::take_changed() {
+                CORE.on_event(crate::payloadrail::CHANGED, "null")
+                    .iter()
+                    .for_each(|(path, json)| announce(path, json));
+            }
             if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
                 CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null")
                     .iter()

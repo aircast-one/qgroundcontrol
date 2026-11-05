@@ -5,6 +5,8 @@ use serde_json::{Value, json};
 
 pub const BAY: usize = 5;
 pub const DROP: usize = 11;
+pub const ARM: usize = 12;
+const ARMED_PWM: u16 = 1750;
 const BAY_POSITIONS: f32 = 6.0;
 pub const PITCH: usize = 18;
 pub const YAW: usize = 20;
@@ -190,6 +192,12 @@ pub fn steer(vehicle: u8, moves: &[Move]) {
             json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent }),
             None,
         ),
+        Move::Drop { .. } if !crate::payloadrail::armed() => {
+            crate::noticeboard::post_from_vehicle(
+                crate::noticeboard::PAYLOAD,
+                crate::payloadrail::SAFE,
+            );
+        }
         Move::Drop { bay } => guided(
             vehicle,
             json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
@@ -202,8 +210,21 @@ pub fn steer(vehicle: u8, moves: &[Move]) {
     })
 }
 
+pub fn switches(line: &[u16], now_ms: u64) -> Option<crate::payloadrail::RadioSwitches> {
+    read(line, ARM)
+        .zip(read(line, BAY))
+        .map(|(arm, bay_pwm)| crate::payloadrail::RadioSwitches {
+            armed: arm >= ARMED_PWM,
+            bay: bay(bay_pwm),
+            at_ms: now_ms,
+        })
+}
+
 pub fn heard(vehicle: u8, line: &[u16]) {
     let limits = yaw_limits();
+    if let Some(switches) = switches(line, crate::hub::now_ms()) {
+        crate::payloadrail::radio_heard(switches);
+    }
     let servo_bays = crate::hub::lock().active().and_then(bays_through_the_app);
     let moves: Vec<Move> = STICKS
         .lock()
@@ -383,6 +404,21 @@ mod tests {
                 .step(&line(&[(DROP, 2012)]), LIMITS, 0)
                 .is_empty(),
             "a radio plugged in with the switch already up drops nothing"
+        );
+    }
+
+    #[test]
+    fn bomarm_up_arms_the_payload_and_the_6pos_picks_the_bay() {
+        let up = switches(&line(&[(ARM, 2012), (BAY, 1398)]), 7).unwrap();
+        assert_eq!((up.armed, up.bay, up.at_ms), (true, 3, 7));
+        assert!(
+            !switches(&line(&[(ARM, 1500)]), 0).unwrap().armed,
+            "the middle position is safe"
+        );
+        assert!(!switches(&line(&[(ARM, 988)]), 0).unwrap().armed);
+        assert!(
+            switches(&[1500; 11], 0).is_none(),
+            "a radio without CH12 arms nothing"
         );
     }
 

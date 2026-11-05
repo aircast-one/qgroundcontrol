@@ -13,6 +13,7 @@ import { AircastSpace, Color, aircast, withAlpha } from '@/theme/Colors';
 import { OsdCompassDial } from '@/ui/AttitudeInstrument';
 import { CameraSwitch, useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
+import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import {
   A11yActions,
@@ -299,6 +300,11 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                   className="w-full"
                   style={{ background: `linear-gradient(to bottom, transparent 0%, ${withAlpha(Color.Black, SCRIM_ALPHA)} ${DECK_SCRIM_START * 100}%)`, paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
                 >
+                  {deciding ? null : (
+                    <div className="flex justify-center px-3 pb-2">
+                      <PayloadRailStrip />
+                    </div>
+                  )}
                   <LocalDeckTelemetry.Provider value={!split}>{actions(FlyDeckLayout.Bottom)}</LocalDeckTelemetry.Provider>
                 </div>
               </div>

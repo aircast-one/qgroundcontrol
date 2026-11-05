@@ -2727,7 +2727,11 @@ impl Vehicle {
                 match crate::payloadcheck::servo_command(
                     &self.payload_servos(),
                     number("gripAction"),
-                    action.get("bay").and_then(Value::as_i64).unwrap_or(0),
+                    action
+                        .get("bay")
+                        .and_then(Value::as_f64)
+                        .map(|bay| bay as i64)
+                        .unwrap_or(0),
                 ) {
                     Ok((output, pwm)) => guidedcmd::set_servo(output, pwm),
                     Err(reason) => Plan::Refused(reason),
@@ -4506,7 +4510,12 @@ impl Vehicle {
 
     fn with_drop_bay(&self, action: &Value) -> Value {
         let bays = self.payload_servos().len() as i64;
-        let unnamed = action.get("bay").and_then(Value::as_i64).unwrap_or(0) < 1;
+        let unnamed = action
+            .get("bay")
+            .and_then(Value::as_f64)
+            .map(|bay| bay as i64)
+            .unwrap_or(0)
+            < 1;
         match action.get("action").and_then(Value::as_str) == Some("gripper") && bays > 0 && unnamed
         {
             false => action.clone(),

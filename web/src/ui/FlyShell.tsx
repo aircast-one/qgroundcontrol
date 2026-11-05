@@ -38,6 +38,7 @@ import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
@@ -68,6 +69,7 @@ const FLY_STORE = 'fly';
 const FLY_VIEW_KEY = 'view';
 const FLY_SCRIM_ALPHA = 0.55;
 const STATUS_ROW_HEIGHT = 32;
+const PAYLOAD_STRIP_CLEARANCE = 64;
 const ACTION_RAIL_CLEARANCE = 72;
 const STOP_CLEARANCE = 56;
 const RAIL_CLEARANCE = STOP_CLEARANCE + AircastSpace.s3 * 2;
@@ -545,7 +547,14 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           </div>
           <LocalFlyOsd.Provider value={view === FlyView.Video}>
             <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(deciding ? DECISION_LAYER : 2), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING, paddingTop: STATUS_ROW_HEIGHT + AircastSpace.s4 }}>
-              <div className="relative size-full">{actions(FlyDeckLayout.Rail)}</div>
+              <div className="relative size-full">
+                {actions(FlyDeckLayout.Rail)}
+                {hasVehicle ? (
+                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: PAYLOAD_STRIP_CLEARANCE + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
+                    <PayloadRailStrip />
+                  </div>
+                ) : null}
+              </div>
             </div>
           </LocalFlyOsd.Provider>
         </>

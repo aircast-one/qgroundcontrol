@@ -281,6 +281,7 @@ pub fn owns(path: &str) -> bool {
         || crate::scripting::owns(path)
         || crate::joystickhost::owns(path)
         || crate::usbradio::owns(path)
+        || crate::payloadrail::owns(path)
         || crate::espbridge::owns(path)
         || crate::syslink::owns(path)
         || path == crate::subtitles::SET_INSTRUMENTS
@@ -517,6 +518,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         }
         _ if crate::joystickhost::owns(path) => crate::joystickhost::run(backend, path, args),
         _ if crate::usbradio::owns(path) => crate::usbradio::run(backend, path, args),
+        _ if crate::payloadrail::owns(path) => crate::payloadrail::run(backend, path, args),
         _ if crate::scripting::owns(path) => crate::scripting::run(backend, path, args),
         _ if crate::logreplay::owns(path) => crate::logreplay::run(backend, path, args),
         crate::ntrip::FETCH_MOUNTPOINTS => crate::ntrip::fetch_mountpoints(),

@@ -5,6 +5,10 @@ import { plugInR2d2Radio, setRadioChannels } from './r2d2';
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
 const SIX_POS = [-1024, -614, -205, 205, 614, 1024] as const;
 
+const flip = async (page: Page, raw: Readonly<Record<number, number>>) => {
+  await setRadioChannels(page, raw);
+  await page.waitForTimeout(100);
+};
 const flyWithRadio = async (page: Page) => {
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText('Configuration tasks remain before this vehicle is ready to fly.', { exact: false }), () => page.getByRole('button', { name: 'Later', exact: true }).click());
@@ -16,12 +20,9 @@ const flyWithRadio = async (page: Page) => {
   await page.getByRole('button', { name: 'All status' }).click();
   await expect(page.getByText('Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
+  await flip(page, { 12: 1024 });
 };
 
-const flip = async (page: Page, raw: Readonly<Record<number, number>>) => {
-  await setRadioChannels(page, raw);
-  await page.waitForTimeout(100);
-};
 
 const openPayload = async (page: Page) => {
   await page.getByRole('button', { name: 'More', exact: true }).click();

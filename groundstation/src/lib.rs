@@ -216,6 +216,7 @@ pub mod params;
 pub mod paramtools;
 pub mod payloadcheck;
 pub mod payloadfall;
+pub mod payloadrail;
 pub mod pilotunits;
 pub mod plan;
 pub mod plandoc;

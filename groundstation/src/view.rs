@@ -890,6 +890,11 @@ pub const VIEWS: &[View] = &[
         compute: joystickhost::joystick_state_view,
     },
     View {
+        path: crate::payloadrail::VIEW,
+        deps: crate::payloadrail::DEPS,
+        compute: crate::payloadrail::view,
+    },
+    View {
         path: "view.usbRadio",
         deps: &[],
         compute: crate::usbradio::indicator_view,
