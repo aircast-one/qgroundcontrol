@@ -52,7 +52,7 @@ internal data class WizardCandidate(val id: String, val iface: String, val label
 
 internal data class WizardFound(val n: Int, val refusal: String, val camera: WizardCamera?, val name: String)
 
-internal data class WizardApply(val n: Int, val state: String, val text: String, val field: String, val url: String, val camera: String)
+internal data class WizardApply(val n: Int, val state: String, val text: String, val field: String, val url: String, val camera: String, val lead: String)
 
 internal data class WizardNotice(val n: Int, val text: String)
 
@@ -178,6 +178,7 @@ internal fun parseDeviceWizard(json: JSONObject?): DeviceWizard {
             apply?.optText("field").orEmpty(),
             apply?.optText("url").orEmpty(),
             apply?.optText("camera").orEmpty(),
+            apply?.optText("lead").orEmpty(),
         ),
         notice = WizardNotice(notice?.optInt("n") ?: 0, notice?.optText("text").orEmpty()),
     )

@@ -54,7 +54,7 @@ final class DeviceCameraWizardTests: XCTestCase {
         XCTAssertEqual(wizard.rest.first?.detail, "this is the device's own uplink")
         XCTAssertEqual(wizard.templates.first, WizardMake(id: "siyi", label: "SIYI camera", sub: "ZT30", action: "Set up"))
         XCTAssertEqual(wizard.template, WizardFound(n: 1, refusal: "", camera: nil, name: "siyi"))
-        XCTAssertEqual(wizard.apply, WizardApply(n: 0, state: "failed", text: "That name is taken", field: "name", url: "", camera: ""))
+        XCTAssertEqual(wizard.apply, WizardApply(n: 0, state: "failed", text: "That name is taken", field: "name", url: "", camera: "", lead: ""))
         XCTAssertEqual(wizard.notice.n, 1)
         XCTAssertEqual(parseDeviceWizard(nil).session, -1)
     }

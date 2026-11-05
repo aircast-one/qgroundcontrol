@@ -67,7 +67,7 @@ class DeviceCameraWizardTest {
         assertEquals("this is the device's own uplink", wizard.rest.first().detail)
         assertEquals(WizardMake("siyi", "SIYI camera", "ZT30", "Set up"), wizard.templates.first())
         assertEquals(WizardFound(1, "", null, "siyi"), wizard.template)
-        assertEquals(WizardApply(0, "failed", "That name is taken", "name", "", ""), wizard.apply)
+        assertEquals(WizardApply(0, "failed", "That name is taken", "name", "", "", ""), wizard.apply)
         assertEquals(1, wizard.notice.n)
         assertEquals(-1L, parseDeviceWizard(null).session)
     }

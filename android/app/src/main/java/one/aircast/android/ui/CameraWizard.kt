@@ -504,15 +504,16 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 Text(wizard.apply.text.ifEmpty { "Applying…" }, style = MaterialTheme.typography.bodyLarge, color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val lead = wizard.apply.lead
                 if (failed) {
-                    TextButton(onClick = { restart { scanForCameras() } }) { Text("Scan for cameras") }
+                    LeadButton(lead == "scan", onClick = { restart { scanForCameras() } }, quiet = true) { Text("Scan for cameras") }
                 } else {
                     TextButton(onClick = { restart() }) { Text("Start over") }
                 }
                 if (failed) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { step = 2 }) { Text("Change settings") }
-                        Button(onClick = { applySetup(rtsp, cameraName, iface, ip, transport) }) { Text("Try again") }
+                        LeadButton(lead == "settings", onClick = { step = if (form.skipsPort) 1 else 2 }) { Text("Change settings") }
+                        LeadButton(lead == "retry", onClick = { applySetup(rtsp, cameraName, iface, ip, transport) }) { Text("Try again") }
                     }
                 }
             }
@@ -521,8 +522,12 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
 }
 
 @Composable
-private fun LeadButton(leads: Boolean, onClick: () -> Unit, enabled: Boolean = true, content: @Composable RowScope.() -> Unit) {
-    if (leads) Button(onClick = onClick, enabled = enabled, content = content) else OutlinedButton(onClick = onClick, enabled = enabled, content = content)
+private fun LeadButton(leads: Boolean, onClick: () -> Unit, enabled: Boolean = true, quiet: Boolean = false, content: @Composable RowScope.() -> Unit) {
+    when {
+        leads -> Button(onClick = onClick, enabled = enabled, content = content)
+        quiet -> TextButton(onClick = onClick, enabled = enabled, content = content)
+        else -> OutlinedButton(onClick = onClick, enabled = enabled, content = content)
+    }
 }
 
 @Composable

@@ -1009,6 +1009,20 @@ struct Applying {
     field: String,
     url: String,
     camera: String,
+    lead: &'static str,
+}
+
+fn lead_for(link: &str) -> &'static str {
+    match link {
+        "wrong_address" | "host_silent" | "port_dead" => "scan",
+        "no_carrier" | "no_wired_port" => "cable",
+        "no_route" => "settings",
+        _ => "retry",
+    }
+}
+
+fn hopeless(link: &str) -> bool {
+    matches!(link, "no_carrier" | "no_wired_port" | "no_route")
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1369,12 +1383,13 @@ fn query(text: &str) -> String {
 
 async fn apply(device: &impl Device, id: u64, job: u64, setup: Setup) {
     let ours = |held: &Session| held.id == id && held.apply_job == job;
-    let status = |state: &'static str, text: String, field: String| {
+    let status = |state: &'static str, text: String, field: String, lead: &'static str| {
         change_where(ours, |held| {
             held.applying = Applying {
                 state,
                 text,
                 field,
+                lead,
                 ..held.applying.clone()
             }
         })
@@ -1402,11 +1417,11 @@ async fn apply(device: &impl Device, id: u64, job: u64, setup: Setup) {
             None => "Network error — try again.".to_string(),
             Some(_) => refusal_of(&answer, "Setup failed.").unwrap_or_default(),
         };
-        status("failed", reason, text(&answer, "field"));
+        status("failed", reason, text(&answer, "field"), "retry");
         return;
     }
     if !change_where(ours, |held| held.added = true)
-        || !status("working", VERIFYING.into(), String::new())
+        || !status("working", VERIFYING.into(), String::new(), "")
     {
         return;
     }
@@ -1424,10 +1439,12 @@ async fn apply(device: &impl Device, id: u64, job: u64, setup: Setup) {
                 field: String::new(),
                 url,
                 camera: setup.camera.clone(),
+                lead: "",
             }
         })
     };
     let mut reason = String::new();
+    let mut link = String::new();
     for _ in 0..VERIFY_ATTEMPTS {
         let answer = read(device, &path).await;
         match answer.as_ref().map(|it| text(it, "state")).as_deref() {
@@ -1458,8 +1475,14 @@ async fn apply(device: &impl Device, id: u64, job: u64, setup: Setup) {
             }
             _ => {}
         }
-        reason = answer.map_or(reason, |it| text(&it, "reason"));
-        if !status("working", VERIFYING.into(), String::new()) {
+        if let Some(it) = answer {
+            reason = text(&it, "reason");
+            link = text(&it, "link");
+        }
+        if hopeless(&link) {
+            break;
+        }
+        if !status("working", VERIFYING.into(), String::new(), "") {
             return;
         }
         device.pause(VERIFY_POLL).await;
@@ -1470,6 +1493,7 @@ async fn apply(device: &impl Device, id: u64, job: u64, setup: Setup) {
             .filter(|reason| !reason.is_empty())
             .unwrap_or_else(|| "No video yet — check the cable, IP and RTSP URL.".into()),
         String::new(),
+        lead_for(&link),
     );
 }
 
@@ -1775,6 +1799,7 @@ fn view_of(held: &Session) -> Value {
             "field": held.applying.field,
             "url": held.applying.url,
             "camera": held.applying.camera,
+            "lead": held.applying.lead,
         },
         "notice": { "n": held.notice.0, "text": held.notice.1 },
     })
@@ -3192,7 +3217,7 @@ mod tests {
         assert!(device.asked.borrow()[0].contains(r#""new":true"#));
         assert_eq!(
             shown()["apply"],
-            json!({ "n": 1, "state": "live", "text": VERIFYING, "field": "", "url": "", "camera": "cam2" })
+            json!({ "n": 1, "state": "live", "text": VERIFYING, "field": "", "url": "", "camera": "cam2", "lead": "" })
         );
         assert_eq!(
             shown()["notice"],
@@ -3237,9 +3262,49 @@ mod tests {
         assert_eq!(
             (
                 shown()["apply"]["state"].as_str(),
-                shown()["apply"]["text"].as_str()
+                shown()["apply"]["text"].as_str(),
+                shown()["apply"]["lead"].as_str()
             ),
-            (Some("failed"), Some("no packets yet"))
+            (Some("failed"), Some("no packets yet"), Some("retry"))
+        );
+        let moved = scripted(vec![
+            ("POST /api/setup/camera", answered(json!({}))),
+            (
+                status,
+                answered(
+                    json!({ "state": "unreachable", "reason": "nothing answers", "link": "wrong_address" }),
+                ),
+            ),
+        ]);
+        quietly(apply(&moved, id, 0, setup.clone()));
+        assert_eq!(
+            moved.paused.get(),
+            VERIFY_ATTEMPTS,
+            "a camera that may still be booting is given the whole wait"
+        );
+        assert_eq!(shown()["apply"]["lead"], "scan");
+        let unplugged = scripted(vec![
+            ("POST /api/setup/camera", answered(json!({}))),
+            (
+                status,
+                answered(
+                    json!({ "state": "unreachable", "reason": "no cable", "link": "no_carrier" }),
+                ),
+            ),
+        ]);
+        quietly(apply(&unplugged, id, 0, setup.clone()));
+        assert_eq!(
+            unplugged.paused.get(),
+            0,
+            "no cable cannot clear by waiting, so the verdict comes at once"
+        );
+        assert_eq!(
+            (
+                shown()["apply"]["state"].as_str(),
+                shown()["apply"]["text"].as_str(),
+                shown()["apply"]["lead"].as_str()
+            ),
+            (Some("failed"), Some("no cable"), Some("cable"))
         );
         let refused = scripted(vec![(
             "POST /api/setup/camera",

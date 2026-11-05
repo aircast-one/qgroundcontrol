@@ -79,6 +79,7 @@ struct WizardApply: Equatable {
     let field: String
     let url: String
     let camera: String
+    let lead: String
 }
 
 struct WizardNotice: Equatable {
@@ -232,7 +233,8 @@ func parseDeviceWizard(_ json: JSON?) -> DeviceWizard {
             text: apply["text"].string,
             field: apply["field"].string,
             url: apply["url"].string,
-            camera: apply["camera"].string
+            camera: apply["camera"].string,
+            lead: apply["lead"].string
         ),
         notice: WizardNotice(n: notice["n"].int(0), text: notice["text"].string)
     )

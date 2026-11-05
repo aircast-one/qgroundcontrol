@@ -242,6 +242,9 @@ export const CameraWizard = ({
   };
 
   const Scan = scanLeads(rtsp, picked !== null || wizard.candidates.length > 0) ? Button : OutlinedButton;
+  const ScanLead = wizard.apply.lead === 'scan' ? Button : TextButton;
+  const SettingsLead = wizard.apply.lead === 'settings' ? Button : OutlinedButton;
+  const RetryLead = wizard.apply.lead === 'retry' ? Button : OutlinedButton;
   const Next = continueLeads(rtsp) ? Button : OutlinedButton;
 
   return (
@@ -491,14 +494,14 @@ export const CameraWizard = ({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             {wizard.apply.state === 'failed' ? (
-              <TextButton onClick={() => void restart().then(scanForCameras)}>Scan for cameras</TextButton>
+              <ScanLead onClick={() => void restart().then(scanForCameras)}>Scan for cameras</ScanLead>
             ) : (
               <TextButton onClick={restart}>Start over</TextButton>
             )}
             {wizard.apply.state === 'failed' ? (
               <span className="flex flex-wrap gap-2">
-                <OutlinedButton onClick={() => setStep(2)}>Change settings</OutlinedButton>
-                <Button onClick={() => apply(rtsp, cameraName, iface, ip, transport)}>Try again</Button>
+                <SettingsLead onClick={() => setStep(form.skipsPort ? 1 : 2)}>Change settings</SettingsLead>
+                <RetryLead onClick={() => apply(rtsp, cameraName, iface, ip, transport)}>Try again</RetryLead>
               </span>
             ) : null}
           </div>
