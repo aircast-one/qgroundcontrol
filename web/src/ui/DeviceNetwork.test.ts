@@ -26,7 +26,7 @@ const VIEW = {
     messages: { summary: '1 on the SIM · latest from MAGTICOM', items: [{ from: 'MAGTICOM', text: 'code 2157', when: 'Sep 25 17:41' }] },
     sim: { summary: 'APN internet', apn: 'internet', placeholder: 'auto', metered: 'auto', options: [{ value: 'auto', label: 'Automatic' }] },
   },
-  starlink: { status: { level: 3, text: 'no dish' }, summary: '', notices: [], facts: [], address: { value: '10.0.0.9:9200', default: '192.168.100.1:9200', defaultFirst: true, open: true } },
+  starlink: { status: { level: 3, text: 'no dish' }, summary: '', absent: true, notices: [], facts: [], address: { value: '10.0.0.9:9200', default: '192.168.100.1:9200', defaultFirst: true, open: true } },
   wifi: { status: { level: 3, text: 'not joined' }, summary: 'join a network', reopen: { host: 'harness.local', hostname: 'harness' } },
   interfaces: {
     status: { level: 3, text: '' },
@@ -68,6 +68,8 @@ describe('DeviceNetworkTest', () => {
     expect(view?.modem?.sim?.apn).toBe('internet');
     expect(view?.starlink.address).toEqual({ value: '10.0.0.9:9200', fallback: '192.168.100.1:9200', defaultFirst: true, open: true });
     expect(view?.starlink.demo).toBeNull();
+    expect(view?.starlink.absent).toBe(true);
+    expect(view?.data.absent).toBe(false);
     expect(view?.wifi.joined).toBeNull();
     expect(view?.wifi.reopen).toEqual({ host: 'harness.local', hostname: 'harness' });
     expect(view?.interfaces.links[0]?.editor?.iface).toBe('eth0');
