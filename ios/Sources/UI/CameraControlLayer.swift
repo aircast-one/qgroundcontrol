@@ -269,6 +269,20 @@ private struct CentredRailLayout: Layout {
         return subviews.prefix(3).map { $0.sizeThatFits(room) }
     }
 
+    // With no shutter to centre on (the portrait rail), the groups simply stack: centring an empty slot doubled the
+    // taller half and left a tall dark box holding a tilt angle and two buttons.
+    private func stacked(_ sizes: [CGSize]) -> [CGFloat] {
+        var top: CGFloat = 0
+        return sizes.map { size in
+            defer { if size.height > 0 { top += size.height + RAIL_GAP } }
+            return top
+        }
+    }
+
+    private func stackedHeight(_ sizes: [CGSize]) -> CGFloat {
+        max(0, sizes.filter { $0.height > 0 }.reduce(0) { $0 + $1.height + RAIL_GAP } - RAIL_GAP)
+    }
+
     private func reach(_ sizes: [CGSize]) -> CGFloat {
         let half = centre / 2
         let up = sizes[0].height > 0 ? RAIL_GAP + sizes[0].height : 0
@@ -279,14 +293,17 @@ private struct CentredRailLayout: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let sizes = measured(subviews, proposal.width)
         guard sizes.count == 3 else { return .zero }
-        return CGSize(width: sizes.map(\.width).max() ?? 0, height: reach(sizes) * 2)
+        let height = centre > 0 ? reach(sizes) * 2 : stackedHeight(sizes)
+        return CGSize(width: sizes.map(\.width).max() ?? 0, height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let sizes = measured(subviews, bounds.width)
         guard sizes.count == 3 else { return }
         let midTop = bounds.minY + reach(sizes) - centre / 2
-        let tops = [midTop - RAIL_GAP - sizes[0].height, midTop, midTop + sizes[1].height + RAIL_GAP]
+        let tops = centre > 0
+            ? [midTop - RAIL_GAP - sizes[0].height, midTop, midTop + sizes[1].height + RAIL_GAP]
+            : stacked(sizes).map { bounds.minY + $0 }
         zip(subviews.prefix(3), zip(sizes, tops)).forEach { subview, placed in
             subview.place(at: CGPoint(x: bounds.minX + (bounds.width - placed.0.width) / 2, y: placed.1), proposal: ProposedViewSize(placed.0))
         }
