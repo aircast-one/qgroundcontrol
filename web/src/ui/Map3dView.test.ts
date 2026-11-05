@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { Offset, Rect } from '@/ui/FlyShell';
-import { map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dPickArgs, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, wheelScale } from '@/ui/Map3dView';
+import { flingVelocity, map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dPickArgs, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, recentSamples, wheelScale } from '@/ui/Map3dView';
 import { SyntheticDraw } from '@/ui/SyntheticView';
 
 describe('Map3dNoteTest', () => {
@@ -90,6 +90,33 @@ describe('Map3dGesturesTest', () => {
     expect(wheelScale(100, 0)).toBeLessThan(1.0);
     expect(wheelScale(100, 0) * wheelScale(-100, 0)).toBeCloseTo(1.0);
     expect(wheelScale(1, 1)).toBeCloseTo(wheelScale(16, 0));
+  });
+});
+
+describe('Map3dFlingTest', () => {
+  const sample = (x: number, y: number, time: number) => ({ at: Offset(x, y), time });
+
+  it('a flick lets go at the speed the pointer moved over its last tenth of a second, in pixels a second', () => {
+    const flick = [sample(0, 0, 0), sample(30, -15, 30), sample(60, -30, 60), sample(90, -45, 90)];
+    const velocity = flingVelocity(flick, sample(100, -50, 100));
+    expect(velocity.x).toBeCloseTo(1000.0);
+    expect(velocity.y).toBeCloseTo(-500.0);
+  });
+
+  it('a slow start does not drag down the speed of the flick that ends it', () => {
+    const velocity = flingVelocity([sample(0, 0, 0), sample(10, 0, 500), sample(60, 0, 550)], sample(110, 0, 600));
+    expect(velocity.x).toBeCloseTo(1000.0);
+    expect(velocity.y).toBeCloseTo(0.0);
+  });
+
+  it('a pointer that stopped before it let go lets go still', () => {
+    expect(flingVelocity([sample(0, 0, 0), sample(200, 100, 80)], sample(200, 100, 300))).toEqual(Offset(0, 0));
+    expect(flingVelocity([], sample(200, 100, 300))).toEqual(Offset(0, 0));
+  });
+
+  it('a drag keeps only the samples a release could still use', () => {
+    expect(recentSamples([sample(0, 0, 0), sample(5, 0, 50), sample(9, 0, 120)], sample(12, 0, 150))).toEqual([sample(5, 0, 50), sample(9, 0, 120), sample(12, 0, 150)]);
+    expect(recentSamples([sample(0, 0, 0)], sample(12, 0, 400))).toEqual([sample(12, 0, 400)]);
   });
 });
 

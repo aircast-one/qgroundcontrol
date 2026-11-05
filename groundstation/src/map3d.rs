@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use serde_json::{Value, json};
+use web_time::Instant;
 
 use crate::router::Backend;
 
@@ -14,6 +15,8 @@ pub const MAP3D_NORTH: &str = "map3d.north";
 pub const MAP3D_OPEN: &str = "map3d.open";
 pub const MAP3D_LOOK: &str = "map3d.look";
 pub const MAP3D_PICK: &str = "map3d.pick";
+pub const MAP3D_FLING: &str = "map3d.fling";
+pub const MAP3D_STOP: &str = "map3d.stop";
 pub const MAP3D_CHANGED: &str = "core.map3d@changed";
 pub const DEPS: &[&str] = &[
     MAP3D_CHANGED,
@@ -28,6 +31,8 @@ const FLATTEST_SINE: f64 = 0.25;
 const TILT_PER_VIEW_HEIGHT_DEG: f64 = 90.0;
 const FOLLOW_RANGE_PER_HEIGHT: f64 = 4.0;
 const FOLLOW_RANGE_M: (f64, f64) = (150.0, 1000.0);
+const GLIDE_DECAY_S: f64 = 0.35;
+const GLIDE_SPEED_PX_S: (f64, f64) = (60.0, 5000.0);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Orbit {
@@ -54,7 +59,16 @@ pub const START: Orbit = Orbit {
     framed: true,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Glide {
+    from: Orbit,
+    velocity: (f64, f64),
+    width: f64,
+    at: Instant,
+}
+
 static ORBIT: Mutex<Orbit> = Mutex::new(START);
+static GLIDE: Mutex<Option<Glide>> = Mutex::new(None);
 static CHANGED: AtomicBool = AtomicBool::new(false);
 static SHOWN_RANGE: AtomicU64 = AtomicU64::new(0);
 
@@ -99,12 +113,45 @@ pub fn owns(path: &str) -> bool {
         MAP3D_OPEN,
         MAP3D_LOOK,
         MAP3D_PICK,
+        MAP3D_FLING,
+        MAP3D_STOP,
     ]
     .contains(&path)
 }
 
 pub fn orbit() -> Orbit {
-    *ORBIT.lock().unwrap_or_else(PoisonError::into_inner)
+    let held = *ORBIT.lock().unwrap_or_else(PoisonError::into_inner);
+    GLIDE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .map_or(held, |glide| glided(&glide, Instant::now()))
+}
+
+pub fn glided(glide: &Glide, now: Instant) -> Orbit {
+    let elapsed = now.saturating_duration_since(glide.at).as_secs_f64();
+    let reach = GLIDE_DECAY_S * (1.0 - (-elapsed / GLIDE_DECAY_S).exp());
+    glide.from.focus.map_or(glide.from, |spot| {
+        panned(
+            glide.from,
+            spot,
+            [
+                glide.velocity.0 * reach,
+                glide.velocity.1 * reach,
+                glide.width,
+            ],
+        )
+    })
+}
+
+pub fn flung(orbit: Orbit, [right, down, width]: [f64; 3], at: Instant) -> Option<Glide> {
+    let speed = right.hypot(down);
+    let scale = speed.min(GLIDE_SPEED_PX_S.1) / speed.max(f64::EPSILON);
+    (speed >= GLIDE_SPEED_PX_S.0 && orbit.focus.is_some() && width > 0.0).then_some(Glide {
+        from: orbit,
+        velocity: (right * scale, down * scale),
+        width,
+        at,
+    })
 }
 
 pub fn take_changed() -> bool {
@@ -262,6 +309,17 @@ pub fn run(path: &str, args: &str, aircraft: Option<Aircraft>) -> Value {
         return pick(&given);
     }
     let mut held = ORBIT.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut glide = GLIDE.lock().unwrap_or_else(PoisonError::into_inner);
+    let now = Instant::now();
+    *held = glide.take().map_or(*held, |gliding| glided(&gliding, now));
+    match (path, given.as_slice()) {
+        (MAP3D_STOP, _) => return json!({ "ok": true }),
+        (MAP3D_FLING, [right, down, width]) => {
+            *glide = flung(*held, [*right, *down, *width], now);
+            return json!({ "ok": true, "gliding": glide.is_some() });
+        }
+        _ => {}
+    }
     let from = match path {
         MAP3D_PAN | MAP3D_ZOOM | MAP3D_LOOK if held.framed => Orbit {
             range: shown_range().unwrap_or(held.range),
@@ -293,6 +351,7 @@ fn needs(path: &str) -> &'static str {
             "nothing, or the latitude (-90 to 90) and longitude (-180 to 180) the 2D map was centred on"
         }
         MAP3D_LOOK => "the latitude (-90 to 90) and longitude (-180 to 180) of the spot to look at",
+        MAP3D_FLING => "the release velocity right and down and the view width, in pixels",
         _ => "no arguments",
     }
 }
@@ -520,6 +579,67 @@ mod tests {
         assert_eq!(numbers("[1, 2, 3]"), vec![1.0, 2.0, 3.0]);
         assert_eq!(numbers(r#"[{"latitude":46.5}]"#), Vec::<f64>::new());
         assert_eq!(numbers(r#"[1, "two"]"#), Vec::<f64>::new());
+    }
+
+    #[test]
+    fn a_flick_keeps_the_view_moving_the_way_the_finger_went_and_slows_to_a_stop() {
+        let pinned = moved(START, MAP3D_PAN, &[0.0, 0.0, 1000.0], Some(AIRCRAFT)).unwrap();
+        let spot = pinned.focus.unwrap();
+        let at = Instant::now();
+        let glide = flung(pinned, [-800.0, 0.0, 1000.0], at).expect("a quick flick glides");
+        assert_eq!(
+            glided(&glide, at),
+            pinned,
+            "it starts where the finger let go"
+        );
+        let travelled = |seconds: f64| {
+            metres(
+                glided(&glide, at + std::time::Duration::from_secs_f64(seconds))
+                    .focus
+                    .unwrap(),
+                spot,
+            )
+        };
+        assert!(travelled(0.1) > 0.0 && travelled(0.1) < travelled(0.5));
+        assert!(travelled(0.5) < travelled(3.0));
+        let settled = panned(pinned, spot, [-800.0 * GLIDE_DECAY_S, 0.0, 1000.0]);
+        assert!(
+            metres(
+                glided(&glide, at + std::time::Duration::from_secs(10))
+                    .focus
+                    .unwrap(),
+                settled.focus.unwrap()
+            ) < 0.01,
+            "it comes to rest one decay time's worth of the release speed away"
+        );
+        assert!(
+            glided(&glide, at + std::time::Duration::from_secs(1))
+                .focus
+                .unwrap()
+                .1
+                > spot.1,
+            "flicked left while looking north, it carries on east like the drag did"
+        );
+    }
+
+    #[test]
+    fn only_a_quick_flick_of_a_held_spot_glides_and_never_faster_than_the_cap() {
+        let at = Instant::now();
+        let pinned = moved(START, MAP3D_PAN, &[0.0, 0.0, 1000.0], Some(AIRCRAFT)).unwrap();
+        assert!(
+            flung(pinned, [30.0, 20.0, 1000.0], at).is_none(),
+            "a slow release just stops"
+        );
+        assert!(
+            flung(START, [800.0, 0.0, 1000.0], at).is_none(),
+            "following, there is no spot to carry"
+        );
+        let fast = flung(pinned, [30_000.0, 40_000.0, 1000.0], at).unwrap();
+        assert!((fast.velocity.0.hypot(fast.velocity.1) - GLIDE_SPEED_PX_S.1).abs() < 1e-6);
+        assert!(
+            (fast.velocity.1 / fast.velocity.0 - 40.0 / 30.0).abs() < 1e-9,
+            "the cap keeps the direction"
+        );
     }
 
     #[test]

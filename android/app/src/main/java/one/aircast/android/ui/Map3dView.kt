@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -69,6 +70,8 @@ private const val MAP3D_FOLLOW = "map3d.follow"
 private const val MAP3D_NORTH = "map3d.north"
 private const val MAP3D_OPEN = "map3d.open"
 private const val MAP3D_PICK = "map3d.pick"
+private const val MAP3D_FLING = "map3d.fling"
+private const val MAP3D_STOP = "map3d.stop"
 private const val TURN_PER_VIEW_WIDTH_DEG = 180f
 private const val CONTROL_SCRIM_ALPHA = 0.55f
 private val CONTROL_SIZE = 40.dp
@@ -104,8 +107,10 @@ private fun Modifier.map3dGestures(onTouch: () -> Unit, onPress: (Offset, IntSiz
     detectTapGestures(onDoubleTap = { send(MAP3D_FOLLOW) }, onLongPress = { onPress(it, size) })
 }.pointerInput(Unit) {
     awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false)
+        val down = awaitFirstDown(requireUnconsumed = false)
         onTouch()
+        send(MAP3D_STOP)
+        val velocity = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
         var travelled = Offset.Zero
         var pinched = false
         do {
@@ -114,6 +119,7 @@ private fun Modifier.map3dGestures(onTouch: () -> Unit, onPress: (Offset, IntSiz
             val pan = event.calculatePan()
             travelled += pan
             pinched = pinched || fingers > 1
+            event.changes.firstOrNull { it.id == down.id }?.let { velocity.addPosition(it.uptimeMillis, it.position) }
             if (fingers > 1) {
                 event.calculateZoom().takeIf { it != 1f }?.let { send(MAP3D_ZOOM, it) }
                 event.calculateRotation().takeIf { it != 0f }?.let { send(MAP3D_TURN, it) }
@@ -125,6 +131,9 @@ private fun Modifier.map3dGestures(onTouch: () -> Unit, onPress: (Offset, IntSiz
                 event.changes.filter { it.positionChanged() }.forEach { it.consume() }
             }
         } while (event.changes.any { it.pressed })
+        if (!pinched && travelled.getDistance() > viewConfiguration.touchSlop) {
+            velocity.calculateVelocity().let { send(MAP3D_FLING, it.x, it.y, size.width) }
+        }
     }
 }
 

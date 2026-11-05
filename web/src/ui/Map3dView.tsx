@@ -26,6 +26,9 @@ const MAP3D_FOLLOW = 'map3d.follow';
 const MAP3D_NORTH = 'map3d.north';
 const MAP3D_OPEN = 'map3d.open';
 const MAP3D_PICK = 'map3d.pick';
+const MAP3D_FLING = 'map3d.fling';
+const MAP3D_STOP = 'map3d.stop';
+const FLING_WINDOW_MS = 100;
 const TURN_PER_VIEW_WIDTH_DEG = 180.0;
 const WHEEL_ZOOM_RATE = 1.0 / 450.0;
 const WHEEL_LINE_PX = 16.0;
@@ -86,6 +89,18 @@ export const pinchStep = (before: Pair, after: Pair): PinchStep => ({
 export const mouseTurn = (dx: number, widthPx: number): number => (dx / coerceAtLeast(widthPx, 1)) * TURN_PER_VIEW_WIDTH_DEG;
 
 export const wheelScale = (deltaY: number, deltaMode: number): number => Math.exp(-(deltaMode === DOM_DELTA_LINE ? deltaY * WHEEL_LINE_PX : deltaY) * WHEEL_ZOOM_RATE);
+
+export type PointerSample = { readonly at: Offset; readonly time: number };
+
+const within = (latest: PointerSample) => (sample: PointerSample): boolean => latest.time - sample.time <= FLING_WINDOW_MS;
+
+export const recentSamples = (samples: readonly PointerSample[], latest: PointerSample): readonly PointerSample[] => [...samples.filter(within(latest)), latest];
+
+export const flingVelocity = (samples: readonly PointerSample[], release: PointerSample): Offset => {
+  const from = samples.find(within(release)) ?? release;
+  const seconds = (release.time - from.time) / 1000;
+  return seconds > 0 ? Offset((release.at.x - from.at.x) / seconds, (release.at.y - from.at.y) / seconds) : Offset(0, 0);
+};
 
 const pairOf = (pointers: ReadonlyMap<number, Offset>): Pair | null => {
   const [a, b] = [...pointers.values()];
@@ -202,6 +217,7 @@ export const Map3dView = ({
     pinched: false,
     tapUpAt: -Infinity,
     held: false,
+    samples: [] as readonly PointerSample[],
     timer: undefined as ReturnType<typeof setTimeout> | undefined,
   });
   useEffect(() => {
@@ -223,6 +239,7 @@ export const Map3dView = ({
     });
   const down = (event: PointerEvent<HTMLDivElement>) => {
     setHinting(false);
+    send(MAP3D_STOP);
     const now = press.current;
     const at = Offset(event.clientX, event.clientY);
     capture(event.currentTarget, event.pointerId);
@@ -240,6 +257,7 @@ export const Map3dView = ({
     now.twist = event.pointerType === 'mouse' && (event.button === SECONDARY_BUTTON || event.shiftKey);
     now.second = event.timeStamp - now.tapUpAt <= DOUBLE_TAP_TIMEOUT_MS;
     now.held = false;
+    now.samples = [{ at, time: event.timeStamp }];
     const element = event.currentTarget;
     now.timer =
       event.pointerType === 'mouse'
@@ -277,6 +295,7 @@ export const Map3dView = ({
       if (moved.y !== 0) send(MAP3D_TILT, -moved.y, height);
       return;
     }
+    now.samples = recentSamples(now.samples, { at, time: event.timeStamp });
     send(MAP3D_PAN, moved.x, moved.y, width);
   };
   const up = (event: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
@@ -288,6 +307,10 @@ export const Map3dView = ({
     const tapped = still && !now.twist;
     if (still && event.pointerType === 'mouse' && event.button === SECONDARY_BUTTON) pick(event.currentTarget, now.from);
     if (tapped && now.second) send(MAP3D_FOLLOW);
+    if (!cancelled && now.moving && !now.pinched && !now.twist) {
+      const velocity = flingVelocity(now.samples, { at: Offset(event.clientX, event.clientY), time: event.timeStamp });
+      send(MAP3D_FLING, velocity.x, velocity.y, event.currentTarget.clientWidth);
+    }
     now.tapUpAt = tapped && !now.second ? event.timeStamp : -Infinity;
   };
   return (

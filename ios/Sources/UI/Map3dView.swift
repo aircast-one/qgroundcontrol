@@ -9,6 +9,8 @@ private let MAP3D_FOLLOW = "map3d.follow"
 private let MAP3D_NORTH = "map3d.north"
 private let MAP3D_OPEN = "map3d.open"
 private let MAP3D_PICK = "map3d.pick"
+private let MAP3D_FLING = "map3d.fling"
+private let MAP3D_STOP = "map3d.stop"
 private let MAP3D_SUBJECT = "The 3D map"
 private let TURN_PER_VIEW_WIDTH_DEG = 180.0
 private let CONTROL_SCRIM_ALPHA = 0.55
@@ -81,6 +83,7 @@ private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         onTouch()
+        send(MAP3D_STOP)
         super.touchesBegan(touches, with: event)
     }
 
@@ -89,7 +92,11 @@ private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func panned(_ pan: UIPanGestureRecognizer) {
-        if pan.state == .began { twoFingered = false }
+        if pan.state == .began { twoFingered = pan.numberOfTouches > 1 }
+        if pan.state == .ended && !twoFingered {
+            let velocity = pan.velocity(in: self)
+            send(MAP3D_FLING, velocity.x, velocity.y, bounds.width)
+        }
         guard pan.state == .changed else { return }
         let moved = pan.translation(in: self)
         pan.setTranslation(.zero, in: self)

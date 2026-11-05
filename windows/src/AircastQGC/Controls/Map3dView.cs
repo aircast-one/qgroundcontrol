@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Numerics;
@@ -37,8 +38,18 @@ internal static class Map3dLook
         return new PointCollection { new Point(centre, tip), new Point(centre + half, centre), new Point(centre - half, centre) };
     }
 
+    public static (double X, double Y) Velocity(IReadOnlyList<(Point At, long Ms)> samples, long now)
+    {
+        var recent = samples.Where(sample => now - sample.Ms <= FlingWindowMs).ToList();
+        var span = recent.Count < 2 ? 0 : recent[^1].Ms - recent[0].Ms;
+        return span <= 0
+            ? (0, 0)
+            : ((recent[^1].At.X - recent[0].At.X) * 1000.0 / span, (recent[^1].At.Y - recent[0].At.Y) * 1000.0 / span);
+    }
+
     private const double NeedleReach = 0.8;
     private const double NeedleHalfWidth = 0.22;
+    private const long FlingWindowMs = 100;
 }
 
 public sealed partial class Map3dView : UserControl
@@ -53,6 +64,8 @@ public sealed partial class Map3dView : UserControl
     private const string NorthCommand = "map3d.north";
     private const string OpenCommand = "map3d.open";
     private const string PickCommand = "map3d.pick";
+    private const string FlingCommand = "map3d.fling";
+    private const string StopCommand = "map3d.stop";
     private const string Drawn = "drawn";
     private const string Failed = "failed";
     private const string LoadingNote = "Loading 3D view…";
@@ -93,6 +106,7 @@ public sealed partial class Map3dView : UserControl
     private bool _wanted;
     private bool _showing;
     private bool _dragged;
+    private ImmutableList<(Point At, long Ms)> _samples = ImmutableList<(Point At, long Ms)>.Empty;
 
     public Map3dView()
     {
@@ -319,6 +333,8 @@ public sealed partial class Map3dView : UserControl
         var orbit = !touch && (point.Properties.IsRightButtonPressed || point.Properties.IsMiddleButtonPressed || modified);
         _drag = _twoFingered ? null : new Drag(e.Pointer.PointerId, point.Position, point.Position, orbit, false);
         _dragged = _twoFingered;
+        _samples = ImmutableList.Create((point.Position, Environment.TickCount64));
+        Send(StopCommand);
         _root.CapturePointer(e.Pointer);
         e.Handled = true;
     }
@@ -341,6 +357,7 @@ public sealed partial class Map3dView : UserControl
         else if (moved) Send(PanCommand, dx, dy, Math.Max(_root.ActualWidth, 1));
         _drag = drag with { Last = at, Moved = moved };
         _dragged = _dragged || moved;
+        _samples = _samples.Add((at, Environment.TickCount64));
         e.Handled = true;
     }
 
@@ -356,6 +373,12 @@ public sealed partial class Map3dView : UserControl
 
     private void OnReleased(object sender, PointerRoutedEventArgs e)
     {
+        if (_drag is { Moved: true, Orbit: false } drag && drag.Pointer == e.Pointer.PointerId && !_twoFingered)
+        {
+            var now = Environment.TickCount64;
+            var (vx, vy) = Map3dLook.Velocity(_samples.Add((e.GetCurrentPoint(_root).Position, now)), now);
+            Send(FlingCommand, vx, vy, Math.Max(_root.ActualWidth, 1));
+        }
         Lifted(e.Pointer.PointerId);
         _root.ReleasePointerCapture(e.Pointer);
         e.Handled = true;
