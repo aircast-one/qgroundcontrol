@@ -97,7 +97,11 @@ export type TailscaleControl = {
   readonly hint: string;
 };
 
+export type TailscaleReach = { readonly label: string; readonly host: string; readonly url: string };
+
 export type TailscaleCard = CardHead & {
+  readonly reach: TailscaleReach | null;
+  readonly account: string;
   readonly problem: DeviceProblem | null;
   readonly banner: { readonly title: string; readonly subtitle: string; readonly status: DeviceBadge } | null;
   readonly facts: readonly DeviceFact[];
@@ -295,8 +299,11 @@ const parseControl = (json: Json | null): TailscaleControl | null =>
 export const parseTailscale = (json: Json | null): TailscaleCard => {
   const banner = optJSONObject(json, 'banner');
   const signIn = optJSONObject(json, 'signIn');
+  const reach = optJSONObject(json, 'reach');
   return {
     ...parseHead(json),
+    reach: reach === null ? null : { label: optText(reach, 'label'), host: optText(reach, 'host'), url: optText(reach, 'url') },
+    account: optText(json, 'account'),
     problem: parseProblem(optJSONObject(json, 'problem')),
     banner: banner === null ? null : { title: optText(banner, 'title'), subtitle: optText(banner, 'subtitle'), status: parseBadge(banner.status) },
     facts: parseFacts(json),

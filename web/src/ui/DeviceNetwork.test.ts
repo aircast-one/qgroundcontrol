@@ -78,6 +78,10 @@ describe('DeviceNetworkTest', () => {
     expect(view?.data.gauge).toBeNull();
     expect(view?.tailscale.signIn?.href).toBe('https://login.tailscale.com/a/x');
     expect(view?.tailscale.control).toBeNull();
+    expect(view?.tailscale.reach).toBeNull();
+    const reached = parseNetwork({ ...VIEW, tailscale: { ...VIEW.tailscale, reach: { label: 'Open this device from anywhere at', host: 'pi4.ts.example.net', url: 'http://pi4.ts.example.net/fly/' }, account: 'pavliha' } });
+    expect(reached?.tailscale.reach?.url).toBe('http://pi4.ts.example.net/fly/');
+    expect(reached?.tailscale.account).toBe('pavliha');
     expect(view?.relay.reason).toBe('Add a relay server first');
     expect(parseNetwork({ ...VIEW, modem: undefined })?.modem).toBeNull();
     expect(parseNetwork({ modem: VIEW.modem })).toBeNull();

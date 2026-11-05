@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import { FilledTonalButton, IconButton, LinearProgressIndicator, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
+import { FilledTonalButton, IconButton, LinearProgressIndicator, OutlinedButton, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { useDeviceDraft } from '@/ui/DeviceDraft';
@@ -22,6 +22,7 @@ import {
   type StarlinkDemo,
   type TailscaleCard,
   type TailscaleControl,
+  type TailscaleReach,
   type UplinkCard,
   type WifiCard,
   connectionFieldShown,
@@ -107,12 +108,12 @@ const AbsentLink = ({ name, status, note, children }: { name: string; status: De
 const AbsentStarlink = ({ starlink }: { starlink: StarlinkCard }) => {
   const [setup, setSetup] = useState(starlink.address.open && starlink.notices.length > 0);
   return (
-    <AbsentLink name="Starlink" status={starlink.status} note="Put this device on the terminal's network and it appears here.">
+    <AbsentLink name="Starlink" status={starlink.status} note="Connect this device to your Starlink router and it appears here.">
       {starlink.notices.map((notice) => (
         <DeviceNotice key={notice.text} notice={notice} />
       ))}
       <div className="pt-1">
-        <TextButton onClick={() => setSetup((open) => !open)}>{setup ? 'Hide dish address' : 'Dish at another address?'}</TextButton>
+        <TextButton onClick={() => setSetup((open) => !open)}>{setup ? 'Hide' : "My Starlink isn't found"}</TextButton>
       </div>
       {setup ? <DishAddress starlink={starlink} /> : null}
     </AbsentLink>
@@ -181,13 +182,13 @@ const UplinkBody = ({ uplink, onOpen }: { uplink: UplinkCard; onOpen: (href: str
         </div>
         <Leveled badge={uplink.verdict} />
         {uplink.detail !== '' ? (
-          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+          <Text typography="bodySmall" color={md('onSurfaceVariant')}>
             {uplink.detail}
           </Text>
         ) : null}
         {uplink.addr !== '' || uplink.meta !== '' ? (
           <Text typography="bodySmall" color={md('onSurfaceVariant')} className="break-words">
-            {[uplink.addr, uplink.meta].filter((it) => it !== '').join(' · ')}
+            {[uplink.addr === '' ? '' : `Local address ${uplink.addr}`, uplink.meta].filter((it) => it !== '').join(' · ')}
           </Text>
         ) : null}
       </div>
@@ -603,7 +604,7 @@ const Gauge = ({ gauge }: { gauge: DataGauge }) => (
 
 export const TailscaleSection = ({ tailscale, title = 'Tailscale', controlInline = true }: { tailscale: TailscaleCard; title?: string; controlInline?: boolean }) => (
   <DeviceSection title={title} badge={tailscale.status}>
-    <Summary text={tailscale.summary} />
+    {tailscale.reach === null ? <Summary text={tailscale.summary} /> : <ReachRow reach={tailscale.reach} account={tailscale.account} />}
     {tailscale.problem !== null ? <ProblemNotice problem={tailscale.problem} /> : null}
     {tailscale.banner !== null ? (
       <div className="mx-list my-2 flex items-start gap-3 rounded-shape-md bg-surface-container-high px-4 py-3">
@@ -619,7 +620,7 @@ export const TailscaleSection = ({ tailscale, title = 'Tailscale', controlInline
     {tailscale.facts.map((fact) => (
       <DeviceFact key={fact.label} label={fact.label} value={fact.value} />
     ))}
-    {tailscale.addresses.length > 0 ? <DeviceFact label="This device's addresses" value={tailscale.addresses.join(', ')} /> : null}
+    {tailscale.addresses.length > 0 ? <DeviceFact label="Tailscale address" value={tailscale.addresses.join(', ')} /> : null}
     {tailscale.signIn !== null ? (
       <div className="flex flex-col gap-2 px-list py-2">
         <div>
@@ -657,6 +658,31 @@ export const TailscaleSection = ({ tailscale, title = 'Tailscale', controlInline
     {controlInline && tailscale.control !== null ? <ControlServer control={tailscale.control} /> : null}
   </DeviceSection>
 );
+
+const ReachRow = ({ reach, account }: { reach: TailscaleReach; account: string }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard?.writeText(reach.url).then(() => setCopied(true));
+  };
+  return (
+    <div role="group" aria-label="Remote address" className="flex flex-col gap-1 px-list py-2">
+      <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+        {reach.label}
+      </Text>
+      <a href={reach.url} target="_blank" rel="noopener noreferrer" className="break-all text-title-medium text-on-surface underline">
+        {reach.host}
+      </a>
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <OutlinedButton onClick={copy}>{copied ? 'Copied' : 'Copy link'}</OutlinedButton>
+        {account !== '' ? (
+          <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+            {`Signed in as ${account}`}
+          </Text>
+        ) : null}
+      </div>
+    </div>
+  );
+};
 
 const ControlServer = ({ control }: { control: TailscaleControl }) => (
   <DeviceDisclosure title={control.title} initiallyOpen={control.open}>
