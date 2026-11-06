@@ -80,3 +80,12 @@ void GimbalGroundProjectionTest::_groundPointsProjectBackToThePressedPixel()
 }
 
 UT_REGISTER_TEST_LIGHTWEIGHT(GimbalGroundProjectionTest, TestLabel::Unit, TestLabel::Vehicle)
+
+void GimbalGroundProjectionTest::_aSeparateGimbalManagerTakesOverFromTheAutopilot()
+{
+    QVERIFY2(GimbalController::takesOverFrom(MAV_COMP_ID_GIMBAL, MAV_COMP_ID_AUTOPILOT1),
+             "ArduPilot's own manager for a SToRM32 MAVLink mount re-aims through its sign flip and mirrored limits");
+    QVERIFY2(!GimbalController::takesOverFrom(MAV_COMP_ID_AUTOPILOT1, MAV_COMP_ID_GIMBAL),
+             "the autopilot finishing later does not take the camera's own manager away");
+    QVERIFY(!GimbalController::takesOverFrom(MAV_COMP_ID_GIMBAL2, MAV_COMP_ID_GIMBAL));
+}

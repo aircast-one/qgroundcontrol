@@ -13,4 +13,5 @@ private slots:
     void _horizonAndSkyHitNoGround();
     void _fovComesFromTheCameraSensor();
     void _groundPointsProjectBackToThePressedPixel();
+    void _aSeparateGimbalManagerTakesOverFromTheAutopilot();
 };

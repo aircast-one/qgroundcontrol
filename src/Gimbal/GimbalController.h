@@ -59,12 +59,13 @@ public:
 
     static constexpr double kMinDepressionDeg = 1.0;
 
+    static bool takesOverFrom(uint8_t managerCompid, uint8_t activeManagerCompid);
+
 signals:
     void activeGimbalChanged();
-    void showAcquireGimbalControlPopup(); // This triggers a popup in QML asking the user for aproval to take control
+    void showAcquireGimbalControlPopup();
 
 public slots:
-    // These slots are conected with joysticks for button control
     void gimbalYawLock(bool yawLock) { setGimbalYawLock(yawLock); }
     Q_INVOKABLE void centerGimbal();
     void gimbalPitchStart(int direction);
@@ -87,9 +88,7 @@ private:
             : managerCompid(_managerCompid)
             , deviceId(_deviceId) {}
 
-        // In order to use this as a key, we need to implement <,
         bool operator<(const GimbalPairId &other) const {
-            // We compare managerCompid primarily, if they are equal, we compare the deviceId
             if (managerCompid < other.managerCompid) {
                 return true;
             } else if (managerCompid > other.managerCompid) {
@@ -130,7 +129,7 @@ private:
         unsigned requestGimbalManagerInformationRetries = 6;
         bool receivedGimbalManagerInformation = false;
     };
-    QMap<uint8_t, PotentialGimbalManager> _potentialGimbalManagers; // key is compid
+    QMap<uint8_t, PotentialGimbalManager> _potentialGimbalManagers;
 
     QMap<GimbalPairId, Gimbal*> _potentialGimbals;
     QmlObjectListModel *_gimbals = nullptr;
