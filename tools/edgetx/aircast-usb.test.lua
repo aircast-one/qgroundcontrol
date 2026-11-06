@@ -62,7 +62,7 @@ end
 for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true }, { w = 128, h = 64 } }) do
   local r = radio(screen)
   assert(r.script.run() == 0)
-  assert(#r.sent == 20, "each run streams 20 frames")
+  assert(#r.sent == 1, "each run streams one line: twenty identical ones could overrun the radio's 2 KB USB buffer")
   local values = {}
   for value in string.gmatch(r.sent[1], "(-?%d+),") do values[#values + 1] = tonumber(value) end
   assert(string.sub(r.sent[1], 1, 1) == "$" and string.sub(r.sent[1], -2) == "\r\n", "the R2D2 line format the app and R2D2 both read")

@@ -3,7 +3,6 @@
 local CHANNEL_COUNT = 24
 local SERIAL_BAUDRATE = 115200
 local SERIAL_PREFIX = "$"
-local UPDATE_INTERVAL_TICKS = 10
 local APP_SILENT_TICKS = 150
 local CONFIRM_TICKS = 300
 local SAME_PRESS_TICKS = 20
@@ -84,10 +83,8 @@ local function sendChannels()
 end
 
 local function stream()
-  for _ = 1, UPDATE_INTERVAL_TICKS do
-    readChannels()
-    sendChannels()
-  end
+  readChannels()
+  sendChannels()
 end
 
 local function now()
@@ -283,7 +280,6 @@ local function run(event)
   if exitKey(event) then askToLeave() end
   if leaving then return 1 end
   battVolt = getValue("tx-voltage")
-  stream()
   if not useLvglUI then
     if LCD_W >= 480 and LCD_H >= 272 then
       drawLarge()
