@@ -60,6 +60,9 @@ SetCompressor /SOLID /FINAL lzma
 
 Section "Install" SecMain
     SectionIn RO
+    DetailPrint "Closing a running ${APPNAME}"
+    nsExec::Exec `powershell.exe -NoProfile -NonInteractive -Command "Get-Process ${EXENAME} -ErrorAction SilentlyContinue | ForEach-Object { $$_.CloseMainWindow() | Out-Null; if (-not $$_.WaitForExit(15000)) { $$_.Kill(); $$_.WaitForExit(10000) } }"`
+    Pop $0
     DetailPrint "Checking for 64 bit uninstaller"
     SetRegView 64
     ReadRegStr $R0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "UninstallString"
@@ -122,6 +125,9 @@ doInstall:
 
 done:
     SetRegView lastused
+    ${If} ${Silent}
+        Exec '"$INSTDIR\bin\${EXENAME}.exe"'
+    ${EndIf}
 SectionEnd
 
 Section "Uninstall"

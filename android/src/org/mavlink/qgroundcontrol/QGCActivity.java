@@ -8,6 +8,8 @@ import android.content.Intent;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
+import androidx.core.content.FileProvider;
+import org.qtproject.qt.android.QtNative;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
@@ -342,4 +344,13 @@ public class QGCActivity extends QtActivity {
     public native void qgcLogWarning(final String message);
     public native void nativeStoragePermissionsResult(boolean granted);
     public native void onImportResult(final String filePath);
+
+    public static void installApk(String path) {
+        final Context context = QtNative.getContext();
+        final Uri apk = FileProvider.getUriForFile(context, context.getPackageName() + ".qtprovider", new File(path));
+        final Intent install = new Intent(Intent.ACTION_VIEW);
+        install.setDataAndType(apk, "application/vnd.android.package-archive");
+        install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(install);
+    }
 }

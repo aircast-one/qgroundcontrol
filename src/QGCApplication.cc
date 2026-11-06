@@ -45,7 +45,7 @@
 #ifdef QGC_WFB_ENABLED
 #include "PacketRadioManager.h"
 #endif
-#include "AppUpdateOffer.h"
+#include "AppUpdater.h"
 #include "ParameterManager.h"
 #include "PositionManager.h"
 #include "QGCCommandLineParser.h"
@@ -68,8 +68,6 @@
 #ifndef QGC_NO_SERIAL_LINK
 #include "SerialLink.h"
 #endif
-
-[[maybe_unused]] constexpr int kUpdateCheckEveryMs = 6 * 60 * 60 * 1000;
 
 QGC_LOGGING_CATEGORY(QGCApplicationLog, "API.QGCApplication")
 QGC_LOGGING_CATEGORY(QGCAppMessageLog, "API.QGCApplication.AppMessage")
@@ -174,18 +172,9 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
     QSvgRenderer::setDefaultOptions(QtSvg::Tiny12FeaturesOnly);
 
 #ifndef QGC_DAILY_BUILD
-    _checkForNewVersion();
-    _updateCheckTimer.setInterval(kUpdateCheckEveryMs);
-    (void) connect(&_updateCheckTimer, &QTimer::timeout, this, &QGCApplication::_checkForNewVersionAgain);
-    _updateCheckTimer.start();
+    (void) connect(AppUpdater::instance(), &AppUpdater::readyToInstall, this, &QGCApplication::_showUpdateDialog);
+    AppUpdater::instance()->start();
 #endif
-}
-
-void QGCApplication::_checkForNewVersionAgain()
-{
-    if (!MultiVehicleManager::instance()->activeVehicle()) {
-        _checkForNewVersion();
-    }
 }
 
 void QGCApplication::setLanguage()
@@ -547,79 +536,17 @@ void QGCApplication::qmlAttemptWindowClose()
     }
 }
 
-void QGCApplication::_checkForNewVersion()
-{
-    if (_runningUnitTests) {
-        return;
-    }
-
-    if (!_parseVersionText(applicationVersion(), _majorVersion, _minorVersion, _buildVersion)) {
-        return;
-    }
-
-    const QString versionCheckFile = QGCCorePlugin::instance()->stableVersionCheckFileUrl();
-    if (!versionCheckFile.isEmpty()) {
-        QGCFileDownload* const download = new QGCFileDownload(this);
-        (void) connect(download, &QGCFileDownload::finished, this,
-                       &QGCApplication::_qgcCurrentStableVersionDownloadComplete);
-        if (!download->start(versionCheckFile)) {
-            qCDebug(QGCApplicationLog) << "Download QGC stable version failed to start" << download->errorString();
-            download->deleteLater();
-        }
-    }
-}
-
-void QGCApplication::_qgcCurrentStableVersionDownloadComplete(bool success, const QString& localFile,
-                                                              const QString& errorMsg)
-{
-    if (success) {
-        QFile versionFile(localFile);
-        if (versionFile.open(QIODevice::ReadOnly)) {
-            const std::optional<AppUpdateOffer::Offer> offer =
-                AppUpdateOffer::parse(versionFile.readAll(), QSysInfo::productType(), QSysInfo::kernelType(),
-                                      QSysInfo::currentCpuArchitecture());
-            qCDebug(QGCApplicationLog) << "Latest stable release"
-                                       << (offer ? offer->version : QStringLiteral("unknown"));
-            if (offer && AppUpdateOffer::newer(applicationVersion(), offer->version) &&
-                offer->version != _offeredVersion) {
-                _offeredVersion = offer->version;
-                _showUpdateDialog(AppUpdateOffer::text(applicationName(), applicationVersion(), *offer),
-                                  offer->download);
-            }
-        }
-    } else if (!errorMsg.isEmpty()) {
-        qCDebug(QGCApplicationLog) << "Download QGC stable version failed" << errorMsg;
-    }
-
-    sender()->deleteLater();
-}
-
-void QGCApplication::_showUpdateDialog(const QString& text, const QUrl& download)
+void QGCApplication::_showUpdateDialog(const QString& text)
 {
     const QString title = tr("Update available");
     QObject* const rootQmlObject = _rootQmlObject();
     if (!rootQmlObject) {
-        showAppMessage(text + QStringLiteral("\n") + download.toString(), title);
+        showAppMessage(text, title);
         return;
     }
     QVariant varReturn;
-    QMetaObject::invokeMethod(rootQmlObject, "_showUpdateDialog", Q_RETURN_ARG(QVariant, varReturn),
-                              Q_ARG(QVariant, title), Q_ARG(QVariant, text), Q_ARG(QVariant, download.toString()));
-}
-
-bool QGCApplication::_parseVersionText(const QString& versionString, int& majorVersion, int& minorVersion,
-                                       int& buildVersion)
-{
-    static const QRegularExpression regExp("v(\\d+)\\.(\\d+)\\.(\\d+)");
-    const QRegularExpressionMatch match = regExp.match(versionString);
-    if (match.hasMatch() && match.lastCapturedIndex() == 3) {
-        majorVersion = match.captured(1).toInt();
-        minorVersion = match.captured(2).toInt();
-        buildVersion = match.captured(3).toInt();
-        return true;
-    }
-
-    return false;
+    (void) QMetaObject::invokeMethod(rootQmlObject, "_showUpdateDialog", Q_RETURN_ARG(QVariant, varReturn),
+                                     Q_ARG(QVariant, title), Q_ARG(QVariant, text));
 }
 
 QString QGCApplication::cachedParameterMetaDataFile()

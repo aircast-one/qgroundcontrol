@@ -134,11 +134,7 @@ public slots:
 private slots:
     /// Called when the delay timer fires to show the missing parameters warning
     void _missingParamsDisplay();
-    void _qgcCurrentStableVersionDownloadComplete(bool success, const QString& localFile, const QString& errorMsg);
-    static bool _parseVersionText(const QString& versionString, int& majorVersion, int& minorVersion,
-                                  int& buildVersion);
-    void _checkForNewVersionAgain();
-    void _showUpdateDialog(const QString& text, const QUrl& download);
+    void _showUpdateDialog(const QString& text);
     void _showDelayedAppMessages();
 
 private:
@@ -161,11 +157,8 @@ private:
     void _initForNormalAppBoot();
 
     QObject* _rootQmlObject();
-    void _checkForNewVersion();
     bool _rebootMessageDebounced();
 
-    QTimer _updateCheckTimer;
-    QString _offeredVersion;
     bool _runningUnitTests = false;
     bool _simpleBootTest = false;
     bool _uiTestMode = false;      ///< true: QML UI test harness registered its engine via setQmlAppEngine()

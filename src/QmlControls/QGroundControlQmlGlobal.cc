@@ -30,6 +30,7 @@
 #endif
 
 #ifndef QGC_NO_SERIAL_LINK
+#include "AppUpdater.h"
 #include "UsbRadio.h"
 #endif
 
@@ -401,6 +402,11 @@ QString QGroundControlQmlGlobal::appName()
 bool QGroundControlQmlGlobal::isRadiomasterAx12()
 {
     return RadiomasterAx12::isThisRemote();
+}
+
+QObject* QGroundControlQmlGlobal::appUpdater()
+{
+    return AppUpdater::instance();
 }
 
 QObject* QGroundControlQmlGlobal::usbRadio()

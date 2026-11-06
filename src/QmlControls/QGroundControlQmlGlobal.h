@@ -68,6 +68,7 @@ public:
     Q_PROPERTY(QString appName READ appName CONSTANT)
     Q_PROPERTY(LinkManager* linkManager READ linkManager CONSTANT)
     Q_PROPERTY(QObject* usbRadio READ usbRadio CONSTANT)
+    Q_PROPERTY(QObject* appUpdater READ appUpdater CONSTANT)
     Q_PROPERTY(MultiVehicleManager* multiVehicleManager READ multiVehicleManager CONSTANT)
     Q_PROPERTY(QGCMapEngineManager* mapEngineManager READ mapEngineManager CONSTANT)
     Q_PROPERTY(QGCPositionManager* qgcPositionManger READ qgcPositionManger CONSTANT)
@@ -155,6 +156,7 @@ public:
     LinkManager* linkManager() { return _linkManager; }
 
     QObject* usbRadio();
+    QObject* appUpdater();
 
     MultiVehicleManager* multiVehicleManager() { return _multiVehicleManager; }
 

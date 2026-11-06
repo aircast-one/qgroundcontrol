@@ -51,9 +51,12 @@ void AppUpdateOfferTest::_onlyANewerStableVersionIsAnOffer_test()
     QVERIFY(!newer(QStringLiteral("aircast-v5.5.13"), QStringLiteral("v5.5.13")));
     QVERIFY(!newer(QStringLiteral("aircast-v5.6.5-beta.30"), QStringLiteral("v5.5.13")));
     QVERIFY(!newer(QStringLiteral("unknown"), QStringLiteral("v5.5.13")));
-    const QString said = text(QStringLiteral("Aircast QGC"), QStringLiteral("aircast-v5.5.12"),
-                              Offer{QStringLiteral("v5.5.13"), QUrl(), QUrl()});
-    QVERIFY(said.startsWith(QStringLiteral("Aircast QGC v5.5.13 is available. You are running v5.5.12.")));
+    const Offer offer{QStringLiteral("v5.5.13"), QUrl(), QUrl()};
+    const QString ready = text(QStringLiteral("Aircast QGC"), QStringLiteral("aircast-v5.5.12"), offer, true);
+    QVERIFY(ready.startsWith(QStringLiteral("Aircast QGC v5.5.13 is available. You are running v5.5.12.")));
+    QVERIFY(ready.endsWith(QStringLiteral("OK installs it and restarts Aircast QGC.")));
+    QVERIFY(text(QStringLiteral("Aircast QGC"), QStringLiteral("aircast-v5.5.12"), offer, false)
+                .contains(QStringLiteral("OK opens the download")));
 }
 
 UT_REGISTER_TEST(AppUpdateOfferTest, TestLabel::Unit)

@@ -22,6 +22,6 @@ QString assetSuffix(const QString& productType, const QString& kernelType, const
 std::optional<Offer> parse(const QByteArray& releaseJson, const QString& productType, const QString& kernelType,
                            const QString& arch);
 bool newer(const QString& current, const QString& latest);
-QString text(const QString& appName, const QString& current, const Offer& offer);
+QString text(const QString& appName, const QString& current, const Offer& offer, bool downloaded);
 
 }  // namespace AppUpdateOffer

@@ -65,16 +65,21 @@ bool newer(const QString& current, const QString& latest)
     return here && there && *here < *there;
 }
 
-QString text(const QString& appName, const QString& current, const Offer& offer)
+QString text(const QString& appName, const QString& current, const Offer& offer, bool downloaded)
 {
     const auto here = numbers(current);
     const QString running =
         here ? QStringLiteral("v%1.%2.%3").arg(std::get<0>(*here)).arg(std::get<1>(*here)).arg(std::get<2>(*here))
              : current;
-    return QCoreApplication::translate("AppUpdateOffer",
-                                       "%1 %2 is available. You are running %3.\n\nOK opens the download in your "
-                                       "browser; install it the same way as the first time.")
-        .arg(appName, offer.version, running);
+    const QString head = QCoreApplication::translate("AppUpdateOffer", "%1 %2 is available. You are running %3.")
+                             .arg(appName, offer.version, running);
+    const QString how =
+        downloaded ? QCoreApplication::translate("AppUpdateOffer",
+                                                 "It has been downloaded and checked. OK installs it and restarts %1.")
+                         .arg(appName)
+                   : QCoreApplication::translate("AppUpdateOffer",
+                                                 "OK opens the download; install it the same way as the first time.");
+    return head + QStringLiteral("\n\n") + how;
 }
 
 }  // namespace AppUpdateOffer
