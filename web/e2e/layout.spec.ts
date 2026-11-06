@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { connectMock, expect, flightMode, test } from './fixtures';
+import { connectMock, expect, flightMode, takeOff, test } from './fixtures';
 
 const LONG_PRESS_MS = 400;
 const CAMERA_PANEL_OFFSET = 'aircast.fly-overlay-layout.OverlayRigOffset-cameraControl@landscape';
@@ -30,10 +30,20 @@ const withCamera = async (page: Page) => {
   await expect(page.getByRole('button', { name: 'Start recording' })).toBeVisible();
 };
 
-const dragCameraPanel = async (page: Page, dx: number, dy: number) => {
+const bottomOf = async (target: Locator): Promise<number> => {
+  const box = await target.boundingBox();
+  if (box === null) throw new Error('target is not on screen');
+  return box.y + box.height;
+};
+
+const editLayout = async (page: Page) => {
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('dialog').getByText('Edit layout').click();
   await expect(editBar(page)).toBeVisible();
+};
+
+const dragCameraPanel = async (page: Page, dx: number, dy: number) => {
+  await editLayout(page);
   const [x, y] = await centre(page.getByRole('button', { name: 'Start recording' }));
   await page.mouse.move(x, y);
   await page.mouse.down();
@@ -54,13 +64,79 @@ test('holding the shutter starts layout editing without recording, and a tap sti
   await expect(app.getByRole('button', { name: 'Stop recording' }), 'one tap, one toggle: the hold never toggled it').toBeVisible();
 });
 
-test('holding the zoom chip starts layout editing without opening the zoom slider', async ({ app }) => {
+test('after a hold on an indicator inside the status pill, the keyboard still opens that indicator', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const battery = vehicle.getByRole('button', { name: /^Battery \d+%/ }).first();
+  await holdUntilEditing(vehicle, battery);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(vehicle)).toBeHidden();
+  await battery.focus();
+  await vehicle.keyboard.press('Enter');
+  await expect(vehicle.getByRole('dialog').getByText(/^Battery 1/)).toBeVisible();
+});
+
+test('only widgets without layout widgets inside them jiggle, so the status pill does not swing as one slab', async ({ vehicle }) => {
+  await editLayout(vehicle);
+  const jiggling = () =>
+    vehicle.evaluate(() => {
+      const targets = document
+        .getAnimations()
+        .filter((it): it is CSSAnimation => it instanceof CSSAnimation && it.animationName === 'aircast-overlay-jiggle')
+        .map((it) => it.effect)
+        .filter((it): it is KeyframeEffect => it instanceof KeyframeEffect)
+        .map((it) => it.target)
+        .filter((it): it is Element => it !== null);
+      return { count: targets.length, nested: targets.filter((it) => targets.some((other) => other !== it && other.contains(it))).length };
+    });
+  await expect.poll(async () => (await jiggling()).count).toBeGreaterThan(1);
+  expect((await jiggling()).nested, 'a jiggling widget inside another jiggling widget').toBe(0);
+});
+
+test('while editing the layout the video takes no input, and it does again after Done', async ({ app }) => {
   await withCamera(app);
-  await holdUntilEditing(app, app.getByRole('button', { name: /^Zoom \d+%$/ }));
-  await expect(app.getByRole('slider', { name: 'Zoom' })).toHaveCount(0);
+  const [x, y] = await app.evaluate(() => [Math.round(innerWidth * 0.4), Math.round(innerHeight * 0.6)] as const);
+  await app.evaluate(([px, py]) => {
+    const video = document.elementFromPoint(px, py);
+    if (video === null) throw new Error('nothing under the probe point');
+    Object.assign(window, { videoPresses: 0 });
+    video.addEventListener('pointerdown', () => Object.assign(window, { videoPresses: (window as unknown as { videoPresses: number }).videoPresses + 1 }));
+  }, [x, y] as const);
+  const presses = () => app.evaluate(() => (window as unknown as { videoPresses: number }).videoPresses);
+  await editLayout(app);
+  await app.mouse.click(x, y);
   await app.getByRole('button', { name: 'Done' }).click();
-  await app.getByRole('button', { name: /^Zoom \d+%$/ }).click();
-  await expect(app.getByRole('slider', { name: 'Zoom' }), 'a tap still opens it').toBeVisible();
+  await expect(editBar(app)).toBeHidden();
+  expect(await presses(), 'the press made while editing').toBe(0);
+  await app.mouse.click(x, y);
+  await expect.poll(presses, { message: 'the probe point is the video' }).toBe(1);
+});
+
+test('a widget dragged up stops below the status row, also after turning the screen and back', async ({ app }) => {
+  await withCamera(app);
+  const rowWidth = async () => (await app.locator('[data-status-row]').boundingBox())?.width ?? 0;
+  await app.setViewportSize({ width: 412, height: 860 });
+  await expect.poll(rowWidth).toBeLessThan(500);
+  await app.setViewportSize({ width: 1280, height: 800 });
+  await expect.poll(rowWidth).toBeGreaterThan(500);
+  await dragCameraPanel(app, 0, -1000);
+  const row = await bottomOf(app.locator('[data-status-row]'));
+  const zoom = await app.getByRole('button', { name: /^Zoom \d+%$/ }).boundingBox();
+  expect(zoom?.y, 'the top of the camera panel').toBeGreaterThanOrEqual(row);
+});
+
+test('sideways, an armed vehicle locks layout editing', async ({ vehicle }) => {
+  test.setTimeout(120_000);
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^(Takeoff|Hold)\b/, { timeout: 60_000 });
+  const battery = vehicle.getByRole('button', { name: /^Battery \d+%/ }).first();
+  const [x, y] = await centre(battery);
+  await vehicle.mouse.move(x, y);
+  await vehicle.mouse.down();
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold\b/, { timeout: 60_000 });
+  await vehicle.mouse.move(x, y + 300, { steps: 4 });
+  await vehicle.mouse.up();
+  await expect(editBar(vehicle), 'a hold while armed does not edit the layout').toBeHidden();
 });
 
 test('holding the flight mode chip, which stays where it is while editing, starts layout editing without opening the mode menu', async ({ vehicle }) => {
@@ -117,7 +193,7 @@ test('the camera panel stays on screen in a smaller window and goes back to its 
   expect(stored, 'dragged down to the bottom edge').toMatch(/^0,\d+(\.\d+)?$/);
   const placed = await centre(shutter);
   await app.setViewportSize({ width: 900, height: 560 });
-  await expect.poll(async () => (await shutter.boundingBox())!.y + (await shutter.boundingBox())!.height, { message: 'pulled up into the smaller window' }).toBeLessThanOrEqual(560);
+  await expect.poll(() => bottomOf(shutter), { message: 'pulled up into the smaller window' }).toBeLessThanOrEqual(560);
   expect(await storedCameraPanel(app), 'the pull-back is not saved').toBe(stored);
   await app.setViewportSize({ width: 1280, height: 800 });
   await expect.poll(async () => (await centre(shutter))[1]).toBeCloseTo(placed[1], -1);

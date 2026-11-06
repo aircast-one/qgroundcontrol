@@ -7,10 +7,9 @@ import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { delay } from '@/kotlin/Std';
-import { AlertDialog, Checkbox, DropdownMenu, HorizontalDivider, IconButton, ListItem, Surface, Switch, Text, TextButton } from '@/m3';
+import { AlertDialog, Checkbox, DropdownMenu, HorizontalDivider, IconButton, ListItem, Surface, Switch, Text, TextButton, type Typography } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { sentenceCase } from '@/map/SentenceCase';
-import { AircastTypography } from '@/map/Theme';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { aircast, argb, md, withAlpha } from '@/theme/Colors';
@@ -307,12 +306,12 @@ export const TelemetryRow = ({
   if (shown.length === 0) return sheets;
 
   if (compact) {
-    const reading = (instrument: Instrument, typography: keyof typeof AircastTypography) => (
+    const reading = (instrument: Instrument, typography: Typography) => (
       <div key={`${instrument.id}|${instrument.label}`} className="flex items-baseline gap-1">
         <Text typography="labelMedium" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
           {osdLabel(instrument.label)}
         </Text>
-        <Text typography={typography} className="tabular-nums" maxLines={1} style={scaledTypography(typography, valueSize.scale)} color={silent ? md('onSurfaceVariant') : colourOf(displayFor(displays, instrument), instrument.raw) ?? aircast('outdoorForeground')}>
+        <Text typography={typography} className="tabular-nums" maxLines={1} style={{ zoom: valueSize.scale }} color={silent ? md('onSurfaceVariant') : colourOf(displayFor(displays, instrument), instrument.raw) ?? aircast('outdoorForeground')}>
           {`${instrument.value}${instrument.units}`}
         </Text>
       </div>
@@ -387,11 +386,6 @@ export const scaledNumber = (scale: number): CSSProperties => ({
   fontWeight: 500,
   fontVariantNumeric: 'tabular-nums',
 });
-
-export const scaledTypography = (typography: keyof typeof AircastTypography, scale: number): CSSProperties => {
-  const { fontSize, lineHeight } = AircastTypography[typography];
-  return { fontSize: Number(fontSize) * scale, lineHeight: `${parseFloat(String(lineHeight)) * scale}px` };
-};
 
 export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center = null }: { className?: string; layout?: FlyDeckLayout; center?: ReactNode }) => {
   const flyScreen = useContext(LocalFlyScreenState);

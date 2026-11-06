@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect } from 'react';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { mutableStateListOf, mutableStateMapOf, mutableStateOf, useValue } from '@/kotlin/State';
 import { FlyMapEdits } from '@/map/FlyMapEdits';
-import { MapInsets, type Rect } from '@/ui/FlyShell';
+import { type Insets, MapInsets, NO_INSETS, type Rect } from '@/ui/FlyShell';
 import type { OverlayLayoutState } from '@/ui/OverlayLayout';
 import { PipCorner } from '@/ui/VideoGestures';
 
@@ -21,6 +21,7 @@ export class FlyScreenState {
   readonly obstacles = mutableStateMapOf<string, Rect>();
   readonly mapInsets = mutableStateOf<MapInsets>(MapInsets({ top: 0, bottom: 0 }));
   readonly mapOrnamentEnd = mutableStateOf<number | null>(null);
+  readonly widgetInsets = mutableStateOf<Insets>(NO_INSETS);
   readonly videoTucked = mutableStateOf(false);
   readonly pipCorner = mutableStateOf<PipCorner>(PipCorner.TopEnd);
 

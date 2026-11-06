@@ -33,8 +33,8 @@ test('the layout edit bar sits above every fly overlay, leaves the map and video
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const mapPip = (await vehicle.getByRole('region', { name: 'Map' }).boundingBox())!;
   const readout = telemetry(vehicle, 'H').filter({ visible: true }).first().locator('span').last();
-  const fontSize = () => readout.evaluate((it) => parseFloat(getComputedStyle(it).fontSize));
-  const before = await fontSize();
+  const height = () => readout.evaluate((it) => it.getBoundingClientRect().height);
+  const before = await height();
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
   const size = vehicle.getByRole('button', { name: /^Size: / });
@@ -47,7 +47,7 @@ test('the layout edit bar sits above every fly overlay, leaves the map and video
   await size.click();
   await size.click();
   await expect(size).toHaveText('Size: Medium');
-  await expect.poll(fontSize).toBeCloseTo(before * 1.25);
+  await expect.poll(height).toBeCloseTo(before * 1.25, 0);
   await vehicle.getByRole('button', { name: 'Done' }).click();
   expect(await vehicle.getByRole('region', { name: 'Map' }).boundingBox(), 'the map stayed in its corner').toEqual(mapPip);
 });

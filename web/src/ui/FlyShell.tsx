@@ -77,6 +77,7 @@ const TOP_SCRIM_HEIGHT = 96;
 const TOP_SCRIM_ALPHA = 0.6;
 const MINIMAP_THUMB = 56;
 const FULL_SCREEN_LAYER = 10;
+const STICK_LAYER = FULL_SCREEN_LAYER + 1;
 const DECISION_LAYER = 4;
 const MAP_SCALE_CLEARANCE = 88;
 const STICK_FLOOR = MINIMAP_THUMB + AircastSpace.s3 * 2;
@@ -103,7 +104,7 @@ export const PASS_THROUGH =
 
 const layer = (z: number): number => Math.round(z * 2);
 
-export const EDIT_BAR_LAYER = layer(FULL_SCREEN_LAYER + 1.5);
+export const EDIT_BAR_LAYER = layer(STICK_LAYER + 0.5);
 
 const stopPropagation = (event: SyntheticEvent) => event.stopPropagation();
 
@@ -187,9 +188,9 @@ export const useScreenSize = (): Size => {
   return useMemo(() => Size(width, height), [width, height]);
 };
 
-type Insets = { left: number; top: number; right: number; bottom: number };
+export type Insets = { left: number; top: number; right: number; bottom: number };
 
-const NO_INSETS: Insets = { left: 0, top: 0, right: 0, bottom: 0 };
+export const NO_INSETS: Insets = { left: 0, top: 0, right: 0, bottom: 0 };
 
 export const useSafeAreaInsets = (): Insets => {
   const [insets, setInsets] = useState<Insets>(NO_INSETS);
@@ -210,6 +211,20 @@ export const useSafeAreaInsets = (): Insets => {
     };
   }, []);
   return insets;
+};
+
+export const useStatusRowInsets = (): RefCallback<HTMLElement> => {
+  const flyScreen = useContext(LocalFlyScreenState);
+  const safe = useSafeAreaInsets();
+  const row = useElementSize();
+  useLayoutEffect(() => {
+    const below = row.node.current?.getBoundingClientRect().bottom ?? safe.top;
+    flyScreen.widgetInsets.value = { ...safe, top: Math.max(safe.top, below) };
+    return () => {
+      flyScreen.widgetInsets.value = NO_INSETS;
+    };
+  }, [safe, row.size]);
+  return row.ref;
 };
 
 export const CUTOUT_PADDING: CSSProperties = { paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' };
@@ -337,6 +352,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const stickBand = boxHeight - TOP_SCRIM_HEIGHT - STICK_FLOOR;
   const stickPad = useShownStickPad(boxHeight, stickBand);
   const shellState = useContext(LocalFlyScreenState);
+  const statusRow = useStatusRowInsets();
   const layout = shellState.layout;
   const safeArea = useSafeAreaInsets();
   const direction = typeof document === 'undefined' ? 'ltr' : document.dir;
@@ -475,7 +491,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     <div className="relative">
                       <div className="flex flex-col gap-2 px-3 pb-2" style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${AircastSpace.s2}px)` }}>
                         <LocalCompactStatus.Provider value>
-                          <div data-status-row className="flex w-full items-center gap-2" style={{ minHeight: STATUS_ROW_HEIGHT }}>
+                          <div ref={statusRow} data-status-row className="flex w-full items-center gap-2" style={{ minHeight: STATUS_ROW_HEIGHT }}>
                             {status}
                           </div>
                         </LocalCompactStatus.Provider>
@@ -565,7 +581,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
             <div
               className={`absolute inset-x-0 bottom-0 flex justify-center ${PASS_THROUGH}`}
               style={{
-                zIndex: layer(deciding ? DECISION_LAYER - 0.5 : FULL_SCREEN_LAYER + 1),
+                zIndex: layer(deciding ? DECISION_LAYER - 0.5 : STICK_LAYER),
                 opacity: settingsOver ? 0 : 1,
                 paddingInlineStart: insets.rowStart,
                 paddingInlineEnd: insets.rowEnd,

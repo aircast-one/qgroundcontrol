@@ -443,7 +443,9 @@ export const AircastShell = () => {
 
   const flyNow = useQgcDerived(FLY_STATE, shellFly);
   const armedNow = flyNow !== null && flyNow.connected && flyNow.armed;
-  useEffect(() => overlayLayout.lockWhileArmed(armedNow), [armedNow]);
+  useEffect(() => {
+    overlayLayout.lockWhileArmed(armedNow);
+  }, [armedNow]);
   const wasArmed = useRef(false);
   const flewWhileArmed = useRef(false);
   const armedBattery = useRef<number | null>(null);
