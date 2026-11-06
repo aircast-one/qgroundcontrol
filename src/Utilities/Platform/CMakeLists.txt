@@ -11,6 +11,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         GraphicsSetup.h
         RunGuard.cc
         RunGuard.h
+        TrackpadTouchFilter.cc
+        TrackpadTouchFilter.h
 )
 
 # Signal handling uses POSIX signals, not available on mobile platforms

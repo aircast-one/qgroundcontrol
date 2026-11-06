@@ -59,6 +59,7 @@
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 #include "TCPLink.h"
+#include "TrackpadTouchFilter.h"
 #include "UDPLink.h"
 #include "Vehicle.h"
 #include "VideoManager.h"
@@ -289,6 +290,10 @@ bool QGCApplication::_initQmlRootWindow()
     QGCCorePlugin::instance()->createRootWindow(_qmlAppEngine);
 
     GraphicsSetup::configureMainWindow(mainRootWindow());
+
+    if (mainRootWindow()) {
+        mainRootWindow()->installEventFilter(new TrackpadTouchFilter(mainRootWindow()));
+    }
 
     return mainRootWindow() != nullptr;
 }
@@ -652,7 +657,6 @@ bool QGCApplication::compressEvent(QEvent* event, QObject* receiver, QPostEventL
             continue;
         }
 
-        /* Keep The Newest Call */
         struct EventHelper : private QEvent
         {
             static void clearPostedFlag(QEvent* ev) { (&static_cast<EventHelper*>(ev)->t)[1] &= ~0x8001; }

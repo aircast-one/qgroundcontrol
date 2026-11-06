@@ -7,6 +7,8 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         PlatformTest.cc
         PlatformTest.h
+        TrackpadTouchFilterTest.cc
+        TrackpadTouchFilterTest.h
 )
 
 # RunGuard and SignalHandler only available on desktop platforms
@@ -27,3 +29,5 @@ if(NOT ANDROID AND NOT IOS)
     add_qgc_test(RunGuardTest LABELS Unit Utilities)
     add_qgc_test(SignalHandlerTest LABELS Unit Utilities)
 endif()
+
+add_qgc_test(TrackpadTouchFilterTest LABELS Unit Utilities)
