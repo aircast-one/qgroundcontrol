@@ -1309,14 +1309,19 @@ impl Gimbals {
         self.gimbals
             .entry(pair)
             .and_modify(|gimbal| gimbal.complete = true);
-        let activated = self.active.is_none();
-        self.active = self.active.or(Some(pair));
+        let activated = self.active.is_none_or(|active| takes_over(pair, active));
+        self.active = activated.then_some(pair).or(self.active);
         activated
             .then_some(Out::ActiveGimbal(pair))
             .into_iter()
             .chain([Out::GimbalComplete(pair)])
             .collect()
     }
+}
+
+fn takes_over(pair: PairId, active: PairId) -> bool {
+    active.manager_compid == crate::compinfo::AUTOPILOT_COMPONENT
+        && pair.manager_compid != crate::compinfo::AUTOPILOT_COMPONENT
 }
 
 pub fn gimbal_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
@@ -2775,11 +2780,27 @@ mod tests {
         );
         assert_eq!(
             complete,
-            vec![Out::GimbalComplete(second)],
-            "a second gimbal does not steal the active slot from the first"
+            vec![Out::ActiveGimbal(second), Out::GimbalComplete(second)],
+            "a camera's own gimbal manager takes over from the autopilot's, which aims a SToRM32 MAVLink mount through its sign flip and mirrored limits"
         );
-        assert_eq!(gimbals.set_active(second), vec![Out::ActiveGimbal(second)]);
-        assert_eq!(gimbals.pairs(), vec![pair(), second]);
+        let third = PairId {
+            manager_compid: 3,
+            device_id: 156,
+        };
+        gimbals.on_manager_information(info(3, 156, 0), 7000);
+        gimbals.on_manager_status(status(3, 156, OUR_SYSTEM, OUR_COMPONENT), 8000);
+        let complete = gimbals.on_device_attitude_status(
+            attitude(156, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()),
+            0.0,
+            8000,
+        );
+        assert_eq!(
+            complete,
+            vec![Out::GimbalComplete(third)],
+            "a further gimbal does not steal the active slot from a camera's own manager"
+        );
+        assert_eq!(gimbals.set_active(pair()), vec![Out::ActiveGimbal(pair())]);
+        assert_eq!(gimbals.pairs(), vec![pair(), second, third]);
     }
 
     #[test]
