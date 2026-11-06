@@ -144,15 +144,17 @@ private fun EndpointEditorRow(row: EndpointRow, shown: EndpointRowView, onChange
             IconButton(onClick = onRemove) { Icon(painterResource(R.drawable.ic_close), "Remove endpoint") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = row.host,
-                onValueChange = { onChange(row.copy(host = it)) },
-                label = { Text(shown.hostLabel) },
-                placeholder = shown.placeholder.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-                modifier = Modifier.weight(1f),
-            )
+            if (shown.hostLabel.isNotEmpty()) {
+                OutlinedTextField(
+                    value = row.host,
+                    onValueChange = { onChange(row.copy(host = it)) },
+                    label = { Text(shown.hostLabel) },
+                    placeholder = shown.placeholder.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+                    modifier = Modifier.weight(1f),
+                )
+            }
             OutlinedTextField(
                 value = row.port,
                 onValueChange = { onChange(row.copy(port = it)) },

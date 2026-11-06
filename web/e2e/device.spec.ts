@@ -281,6 +281,18 @@ base('a device that hears no flight controller says so and opens its telemetry p
   await expect(page.getByRole('region', { name: 'Connect another ground station' }).getByText('e2e-device:14550')).toBeVisible();
 });
 
+base('a ground-station endpoint asks for an address only when the device sends to one', async ({ page }) => {
+  await page.goto(`${DEVICE}/#device=/telemetry`);
+  const rows = page.getByRole('group', { name: 'Endpoint' });
+  await expect(rows.first().getByRole('textbox', { name: 'Port' })).toHaveValue('14550', { timeout: 60_000 });
+  await expect(rows.first().getByRole('textbox')).toHaveCount(1);
+  await expect(rows.first()).toContainText('connects to this device on this port');
+
+  await rows.first().getByRole('button', { name: 'Connection type' }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'UDP · Send to a ground station' }).click();
+  await expect(rows.first().getByRole('textbox', { name: 'Ground station address' })).toBeVisible();
+});
+
 base('on a desktop the Fly screen says what the device is missing and opens its telemetry page', async ({ page }) => {
   await page.goto(`${SILENT}/`);
   await page.getByRole('button', { name: 'Map', exact: true }).click({ timeout: 60_000 });

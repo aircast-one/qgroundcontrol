@@ -144,7 +144,10 @@ const TELEMETRY = {
   notices: [],
   endpoints: [{ proto: 'UDP', label: 'MAVLink', url: 'e2e-device:14550', hint: 'QGroundControl: Application Settings → Comm Links → Add → Type UDP.' }],
   settings: { endpoints: 'udps:0.0.0.0:14550', baud: '115200' },
-  schemes: [{ value: 'udps', label: 'UDP · listen', host: '0.0.0.0', port: '14550', hostLabel: 'Listen address', placeholder: '0.0.0.0', hint: 'The device listens here and any ground station on the network can connect. This is the usual choice.' }],
+  schemes: [
+    { value: 'udps', label: 'UDP · Wait for a ground station', host: '0.0.0.0', port: '14550', hostLabel: 'Listen address', placeholder: '0.0.0.0', hint: 'Any ground station on the network connects to this device on this port. The usual choice.' },
+    { value: 'udpc', label: 'UDP · Send to a ground station', host: '', port: '14550', hostLabel: 'Ground station address', placeholder: '192.168.1.20', hint: 'The device sends telemetry to this address. Use it when the ground station cannot reach the device first.' },
+  ],
 };
 
 const CONNECT = {

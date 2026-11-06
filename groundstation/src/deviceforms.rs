@@ -83,10 +83,11 @@ fn retarget(schemes: &[Value], typed: &EndpointRow) -> EndpointRow {
             let default = text(it, "host");
             !default.is_empty() && default == host
         });
+    let target = default_host(schemes, &typed.scheme);
     EndpointRow {
         scheme: typed.scheme.clone(),
-        host: match untouched {
-            true => default_host(schemes, &typed.scheme).to_string(),
+        host: match untouched || !target.is_empty() {
+            true => target.to_string(),
             false => typed.host.clone(),
         },
         port: match typed.port.trim().is_empty() {
@@ -149,6 +150,11 @@ fn option(schemes: &[Value], typed: &EndpointRow, value: &str, label: &str) -> V
     json!({ "value": value, "label": label, "row": row_json(&retarget(schemes, &picked)) })
 }
 
+fn asks_host(schemes: &[Value], typed: &EndpointRow) -> bool {
+    let (default, host) = (default_host(schemes, &typed.scheme), typed.host.trim());
+    default.is_empty() || !(host.is_empty() || host == default)
+}
+
 fn row_view(schemes: &[Value], typed: &EndpointRow) -> Value {
     let scheme = scheme_of(schemes, &typed.scheme);
     let unknown = (scheme.is_none() && !typed.scheme.is_empty())
@@ -162,7 +168,10 @@ fn row_view(schemes: &[Value], typed: &EndpointRow) -> Value {
         "scheme": typed.scheme,
         "host": typed.host,
         "port": typed.port,
-        "hostLabel": scheme.map_or(FALLBACK_HOST_LABEL, |it| text(it, "hostLabel")),
+        "hostLabel": match asks_host(schemes, typed) {
+            true => scheme.map_or(FALLBACK_HOST_LABEL, |it| text(it, "hostLabel")),
+            false => "",
+        },
         "placeholder": scheme.map_or("", |it| text(it, "placeholder")),
         "note": scheme.map_or(UNKNOWN_SCHEME_HINT, |it| text(it, "hint")),
         "problem": endpoint_problem(schemes, typed).map(|problem| format!("{problem} {UNSAVED}")).unwrap_or_default(),
@@ -339,6 +348,28 @@ mod tests {
             row("udpb", "255.255.255.255", "14550")
         );
         assert_eq!(retargeted(("tcps", "", "")), row("tcps", "0.0.0.0", "5760"));
+        assert_eq!(
+            retargeted(("udps", "10.0.0.5", "14550")),
+            row("udps", "0.0.0.0", "14550"),
+            "a ground station's address is not one this device can listen on"
+        );
+    }
+
+    #[test]
+    fn the_address_is_asked_for_only_where_the_device_dials_out_or_a_stored_one_differs() {
+        let label = |typed: (&str, &str, &str)| {
+            row_view(&schemes(), &row(typed.0, typed.1, typed.2))["hostLabel"].clone()
+        };
+        assert_eq!(label(("udps", "0.0.0.0", "14550")), "");
+        assert_eq!(label(("udps", "", "14550")), "");
+        assert_eq!(label(("udpb", "255.255.255.255", "14550")), "");
+        assert_eq!(label(("udpc", "", "14550")), "Address");
+        assert_eq!(label(("tcpc", "gcs.local", "5760")), "Address");
+        assert_eq!(
+            label(("udps", "sitl.aircast.one", "14550")),
+            "Address",
+            "a stored listen address that is not the default stays in sight so it can be cleared"
+        );
     }
 
     #[test]

@@ -21,48 +21,48 @@
   "schemes": [
     {
       "value": "udps",
-      "label": "UDP \u00b7 listen",
+      "label": "UDP \u00b7 Wait for a ground station",
       "host": "0.0.0.0",
       "port": "14550",
       "hostLabel": "Listen address",
       "placeholder": "0.0.0.0",
-      "hint": "The device listens here and any ground station on the network can connect. This is the usual choice."
+      "hint": "Any ground station on the network connects to this device on this port. The usual choice."
     },
     {
       "value": "udpc",
-      "label": "UDP \u00b7 send to",
+      "label": "UDP \u00b7 Send to a ground station",
       "host": "",
       "port": "14550",
       "hostLabel": "Ground station address",
       "placeholder": "192.168.1.20",
-      "hint": "The device pushes telemetry to this address. Use it when the ground station cannot reach the device first."
+      "hint": "The device sends telemetry to this address. Use it when the ground station cannot reach the device first."
     },
     {
       "value": "udpb",
-      "label": "UDP \u00b7 broadcast",
+      "label": "UDP \u00b7 Broadcast to the network",
       "host": "255.255.255.255",
       "port": "14550",
       "hostLabel": "Broadcast address",
       "placeholder": "255.255.255.255",
-      "hint": "Telemetry goes to every host on this subnet \u2014 one link, several ground stations."
+      "hint": "Every ground station on the local network gets telemetry on this port."
     },
     {
       "value": "tcps",
-      "label": "TCP \u00b7 listen",
+      "label": "TCP \u00b7 Wait for a ground station",
       "host": "0.0.0.0",
       "port": "5760",
       "hostLabel": "Listen address",
       "placeholder": "0.0.0.0",
-      "hint": "The device listens for a TCP connection. Slower to recover on a lossy link than UDP."
+      "hint": "A ground station opens a TCP connection to this device on this port. Slower to recover on a lossy link than UDP."
     },
     {
       "value": "tcpc",
-      "label": "TCP \u00b7 connect out",
+      "label": "TCP \u00b7 Connect to a server",
       "host": "",
       "port": "5760",
       "hostLabel": "Server address",
       "placeholder": "192.168.1.20",
-      "hint": "The device opens a TCP connection out to this server."
+      "hint": "The device opens a TCP connection to this server and sends telemetry over it."
     }
   ]
 }

@@ -398,7 +398,7 @@ export const DeviceSelect = ({ label, value, options, onPick, enabled = true }: 
   const [open, setOpen] = useState(false);
   const shown = options.find((option) => option.value === value)?.label ?? value;
   return (
-    <div className="grid gap-label">
+    <div className="grid grid-cols-1 gap-label">
       <Text typography="bodySmall" color={md('onSurfaceVariant')}>
         {label}
       </Text>

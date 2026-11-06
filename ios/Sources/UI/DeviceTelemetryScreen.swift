@@ -27,7 +27,6 @@ struct DeviceTelemetryScreen: View {
     }
 }
 
-// What to do to get telemetry flowing: numbered steps, and what the device is waiting for.
 private struct FixSteps: View {
     let fix: TelemetryFix
     @Environment(\.theme) private var theme
@@ -98,7 +97,6 @@ private struct MavlinkEditor: View {
         }
     }
 
-    // Rows of the MAVLink section: the endpoint list (which also loads the editor), then the baud, the notes and Save.
     var body: some View {
         let rows = editor.map { typed ?? $0.rows.map(\.row) }
         endpointList(rows)
@@ -165,7 +163,6 @@ private struct EndpointEditorRow: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        // One endpoint inside the MAVLink row, its fields drawn as the form's own label / value rows.
         VStack(alignment: .leading, spacing: Space.s2) {
             HStack(spacing: Space.s2) {
                 DeviceSelect(
@@ -176,13 +173,15 @@ private struct EndpointEditorRow: View {
                 )
                 DeviceRemoveButton(label: "Remove endpoint", action: onRemove)
             }
-            DeviceTextField(
-                label: shown.hostLabel,
-                value: row.host,
-                onValueChange: { host in onChange(withChanges(row) { $0.host = host }) },
-                placeholder: shown.placeholder,
-                keyboard: .uri
-            )
+            if !shown.hostLabel.isEmpty {
+                DeviceTextField(
+                    label: shown.hostLabel,
+                    value: row.host,
+                    onValueChange: { host in onChange(withChanges(row) { $0.host = host }) },
+                    placeholder: shown.placeholder,
+                    keyboard: .uri
+                )
+            }
             DeviceTextField(
                 label: "Port",
                 value: row.port,

@@ -159,24 +159,28 @@ const MavlinkEditor = ({ view }: { view: TelemetryView }) => {
 
 const EndpointEditorRow = ({ row, shown, onChange, onRemove }: { row: EndpointRow; shown: EndpointRowView; onChange: (row: EndpointRow) => void; onRemove: () => void }) => (
   <div className="flex flex-col gap-2 rounded-shape-md bg-surface-container-high p-3" role="group" aria-label="Endpoint">
-    <div className="flex flex-wrap items-end gap-2">
-      <div className="w-48 max-sm:w-full">
+    <div className="flex items-end gap-2">
+      <div className="min-w-0 flex-1">
         <DeviceSelect label="Connection type" value={row.scheme} options={shown.options} onPick={(scheme) => onChange(shown.options.find((it) => it.value === scheme)?.row ?? row)} />
       </div>
-      <OutlinedTextField
-        label={shown.hostLabel}
-        ariaLabel={shown.hostLabel}
-        value={row.host}
-        placeholder={shown.placeholder}
-        keyboardType="uri"
-        autoCorrect={false}
-        className="min-w-40 flex-1"
-        onValueChange={(host) => onChange({ ...row, host })}
-      />
-      <OutlinedTextField label="Port" ariaLabel="Port" value={row.port} placeholder="14550" keyboardType="number" className="w-28" onValueChange={(port) => onChange({ ...row, port })} />
       <IconButton label="Remove endpoint" onClick={onRemove}>
         <MaterialIcon name="close" />
       </IconButton>
+    </div>
+    <div className="flex items-end gap-2">
+      {shown.hostLabel !== '' ? (
+        <OutlinedTextField
+          label={shown.hostLabel}
+          ariaLabel={shown.hostLabel}
+          value={row.host}
+          placeholder={shown.placeholder}
+          keyboardType="uri"
+          autoCorrect={false}
+          className="min-w-0 flex-1"
+          onValueChange={(host) => onChange({ ...row, host })}
+        />
+      ) : null}
+      <OutlinedTextField label="Port" ariaLabel="Port" value={row.port} placeholder="14550" keyboardType="number" className="w-28" onValueChange={(port) => onChange({ ...row, port })} />
     </div>
     {shown.problem !== '' ? (
       <Text typography="bodySmall" color={md('error')}>
