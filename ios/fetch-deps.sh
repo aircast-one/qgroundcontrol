@@ -21,7 +21,8 @@ mkdir -p "$vendor" "$cache"
 fetch() {
     url=$1 file=$2 sum=$3
     if [ ! -f "$file" ] || ! echo "$sum  $file" | shasum -a 256 -c - >/dev/null 2>&1; then
-        curl -fsSL -o "$file.part" "$url"
+        rm -f "$file.part"
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -C - -o "$file.part" "$url"
         echo "$sum  $file.part" | shasum -a 256 -c - >/dev/null
         mv "$file.part" "$file"
     fi

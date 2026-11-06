@@ -81,7 +81,8 @@ if [ ! -f "$gst_root/Versions/1.0/lib/pkgconfig/gstreamer-1.0.pc" ] || \
         sum=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["gstreamer"]; print(c["checksums"][c["version"]["macos"]][sys.argv[2]])' "$config" "$key")
         pkg="$cache/$name"
         if [ ! -f "$pkg" ] || ! echo "$sum  $pkg" | shasum -a 256 -c - >/dev/null 2>&1; then
-            curl -fsSL -o "$pkg.part" "$base/$name"
+            rm -f "$pkg.part"
+            curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -C - -o "$pkg.part" "$base/$name"
             echo "$sum  $pkg.part" | shasum -a 256 -c - >/dev/null
             mv "$pkg.part" "$pkg"
         fi
