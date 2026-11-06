@@ -15,5 +15,12 @@ if [ -z "${QGC_APM_PARAMS_DIR:-}" ] && ! ls -d "$params"/*/Copter-4.5 >/dev/null
 fi
 
 rustup target add wasm32-unknown-unknown
-AR_wasm32_unknown_unknown=$archiver cargo rustc --lib --release --target wasm32-unknown-unknown --crate-type cdylib --features synthetic
-wasm-bindgen --target web --out-dir ../web/src/core/pkg target/wasm32-unknown-unknown/release/groundstation.wasm
+built=$(AR_wasm32_unknown_unknown=$archiver cargo rustc --lib --profile wasm --target wasm32-unknown-unknown --crate-type cdylib --features synthetic --message-format=json-render-diagnostics \
+  | jq -r 'select(.reason == "build-script-executed" and (.package_id | test("/groundstation#"))) | .out_dir')
+[ -n "$built" ] || { echo "the core build failed or reported no build-script output" >&2; exit 1; }
+pkg=../web/src/core/pkg
+wasm-bindgen --target web --remove-name-section --out-dir "$pkg" target/wasm32-unknown-unknown/wasm/groundstation.wasm
+rm -rf "$pkg/apm"
+mkdir -p "$pkg/apm"
+cp "$built"/*.json.gz "$pkg/apm/"
+cp src/synthetic/facades/colour.jpg "$pkg/facade-colour.jpg"

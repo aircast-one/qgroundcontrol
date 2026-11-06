@@ -1,4 +1,4 @@
-import { expect, openAircraftSetup, test } from './fixtures';
+import { connectMock, expect, openAircraftSetup, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -29,4 +29,15 @@ test('a parameter typed into its editor is written to the vehicle', async ({ veh
   await editor.getByRole('button', { name: 'Done' }).click();
   await expect(editor).toBeHidden();
   await expect(row).toContainText('45.0 m');
+});
+
+test('an ArduPilot parameter is described by the metadata file the browser fetches for that firmware', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Parameters/ }).click();
+  await app.getByRole('textbox', { name: 'Search parameters' }).fill('FLTMODE1');
+  await app.getByRole('button', { name: /^FLTMODE1/ }).first().click();
+  const editor = app.getByRole('dialog').filter({ hasText: 'FLTMODE1' });
+  await expect(editor.getByText('Flight Mode 1', { exact: false }).first()).toBeVisible();
+  await expect(editor.getByText(/Flightmode channel/)).toBeVisible();
 });

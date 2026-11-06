@@ -61,6 +61,10 @@ fn main() {
                 .then_some((name, pdef.to_string_lossy().into_owned()))
         })
         .collect();
+    let fetched = std::env::var("CARGO_CFG_TARGET_FAMILY")
+        .unwrap_or_default()
+        .split(',')
+        .any(|family| family == "wasm");
     let table: Vec<String> = entries
         .iter()
         .map(|(name, pdef)| {
@@ -78,10 +82,13 @@ fn main() {
             )
         })
         .collect();
-    let generated = format!(
-        "pub const APM_PARAMETER_FILES: &[(&str, &[u8])] = &[\n{}\n];\n",
-        table.join("\n")
-    );
+    let generated = match fetched {
+        true => String::new(),
+        false => format!(
+            "pub const APM_PARAMETER_FILES: &[(&str, &[u8])] = &[\n{}\n];\n",
+            table.join("\n")
+        ),
+    };
     std::fs::write(Path::new(&out).join("apm_parameter_files.rs"), generated)
         .expect("table written");
 }

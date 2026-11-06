@@ -134,6 +134,11 @@ pub fn set_mock_links_available(available: bool) {
     crate::mocklink::set_available(available);
 }
 
+#[wasm_bindgen(js_name = setParameterFiles)]
+pub fn set_parameter_files(names: Vec<String>, urls: Vec<String>) {
+    crate::apmmeta::serve_files_from(names.into_iter().zip(urls).collect());
+}
+
 #[wasm_bindgen(js_name = linkOpen)]
 pub fn link_open(config: &str) -> String {
     taken(unsafe { crate::abi::qgc_core_link_open(c(config).as_ptr()) })
@@ -346,6 +351,12 @@ pub async fn map_tile(map_type: String, x: i32, y: i32, zoom: i32) -> JsValue {
         .map_or(JsValue::NULL, |tile| {
             js_sys::Uint8Array::from(tile.as_slice()).into()
         })
+}
+
+#[cfg(feature = "synthetic")]
+#[wasm_bindgen(js_name = setFacadeColour)]
+pub fn set_facade_colour(bytes: Vec<u8>) {
+    crate::synthetic::render::show_facade_colour(bytes);
 }
 
 #[cfg(feature = "synthetic")]

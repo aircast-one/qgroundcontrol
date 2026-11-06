@@ -54,7 +54,26 @@ const CASTER_REACH_M: f64 = 10000.0;
 const ANCHOR_PERIOD_M: f64 = 65536.0;
 const NO_CLOUD_MAP: u32 = u32::BITS - 1;
 const SKY_LIGHT_WIDTH: u32 = 64;
+#[cfg(not(target_family = "wasm"))]
 const FACADE_COLOUR: &[u8] = include_bytes!("facades/colour.jpg");
+
+#[cfg(target_family = "wasm")]
+static FACADE_COLOUR: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+
+#[cfg(target_family = "wasm")]
+pub fn show_facade_colour(bytes: Vec<u8>) {
+    let _ = FACADE_COLOUR.set(bytes);
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn facade_colour() -> &'static [u8] {
+    FACADE_COLOUR
+}
+
+#[cfg(target_family = "wasm")]
+fn facade_colour() -> &'static [u8] {
+    FACADE_COLOUR.get().map_or(&[], Vec::as_slice)
+}
 const FACADE_MASK: &[u8] = include_bytes!("facades/mask.png");
 
 #[derive(Clone, Copy)]
@@ -1691,7 +1710,7 @@ fn noise_texture(
 
 fn facade_layers(shrink: u32) -> Vec<Vec<image::RgbaImage>> {
     let decode = |bytes: &[u8]| image::load_from_memory(bytes).map(|found| found.to_rgba8());
-    let (Ok(colour), Ok(mask)) = (decode(FACADE_COLOUR), decode(FACADE_MASK)) else {
+    let (Ok(colour), Ok(mask)) = (decode(facade_colour()), decode(FACADE_MASK)) else {
         return vec![vec![solid(MISSING_TEXTURE)]];
     };
     let side = colour.width();

@@ -116,3 +116,9 @@ windows-sys = { version = "0.61.2", features = ["Win32_Security", "Win32_System_
 
 [build-dependencies]
 flate2 = "1.1.10"
+
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1

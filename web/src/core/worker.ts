@@ -34,6 +34,21 @@ const coreModule = async (): Promise<Response> => {
 };
 
 await init({ module_or_path: coreModule() });
+
+const PARAMETER_FILE = /([^/]+)\.json\.gz$/;
+const parameterFiles = Object.entries(import.meta.glob<string>('./pkg/apm/*.json.gz', { query: '?url', import: 'default', eager: true })).flatMap(([path, url]) => {
+  const name = PARAMETER_FILE.exec(path)?.[1];
+  return name === undefined ? [] : [[name, new URL(url, import.meta.url).href] as const];
+});
+core.setParameterFiles(
+  parameterFiles.map(([name]) => name),
+  parameterFiles.map(([, url]) => url),
+);
+
+const facadeColour = fetch(new URL('./pkg/facade-colour.jpg', import.meta.url))
+  .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(new Error(`facade texture: HTTP ${response.status}`))))
+  .then((bytes) => core.setFacadeColour(new Uint8Array(bytes)))
+  .catch((reason: unknown) => console.warn('the 3D view draws plain buildings', reason));
 core.onEvent((path: string, json: string) => scope.postMessage({ event: { path, json } }));
 core.setSerialHost({
   open: (id: number, name: string, baud: number, dataBits: number, stopBits: number, parity: number) => {
@@ -106,7 +121,10 @@ const calls = {
   gcsPositionUpdate: core.gcsPositionUpdate,
   gcsPositionError: core.gcsPositionError,
   notifyDeepLink: core.notifyDeepLink,
-  syntheticAttach: core.syntheticAttach,
+  syntheticAttach: async (...args: Parameters<typeof core.syntheticAttach>) => {
+    await facadeColour;
+    return core.syntheticAttach(...args);
+  },
   syntheticResize: core.syntheticResize,
   syntheticRelease: core.syntheticRelease,
 } as const;

@@ -15,6 +15,68 @@ pub fn group_from_name(name: &str) -> String {
 
 include!(concat!(env!("OUT_DIR"), "/apm_parameter_files.rs"));
 
+#[cfg(target_family = "wasm")]
+static FILE_URLS: std::sync::LazyLock<std::sync::Mutex<BTreeMap<String, String>>> =
+    std::sync::LazyLock::new(Default::default);
+
+#[cfg(target_family = "wasm")]
+const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+#[cfg(target_family = "wasm")]
+pub fn serve_files_from(urls: BTreeMap<String, String>) {
+    *FILE_URLS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = urls;
+}
+
+#[cfg(target_family = "wasm")]
+fn file_names() -> Vec<String> {
+    FILE_URLS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .keys()
+        .cloned()
+        .collect()
+}
+
+#[cfg(target_family = "wasm")]
+fn file_bytes(name: &str) -> Option<Vec<u8>> {
+    let url = FILE_URLS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(name)
+        .cloned()?;
+    crate::http::get(&url, &[], FETCH_TIMEOUT).ok()
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn file_names() -> Vec<String> {
+    APM_PARAMETER_FILES
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect()
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn file_bytes(name: &str) -> Option<Vec<u8>> {
+    APM_PARAMETER_FILES
+        .iter()
+        .find(|(found, _)| *found == name)
+        .map(|(_, bytes)| bytes.to_vec())
+}
+
+fn unzipped(bytes: &[u8]) -> Option<String> {
+    let mut text = String::new();
+    match bytes.starts_with(&[0x1f, 0x8b]) {
+        true => {
+            std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(bytes), &mut text)
+                .ok()?;
+            Some(text)
+        }
+        false => String::from_utf8(bytes.to_vec()).ok(),
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct JsonParameters {
     pub by_name: BTreeMap<String, (String, serde_json::Map<String, Value>)>,
@@ -73,15 +135,15 @@ pub fn vehicle_file_name(mav_type: u8) -> Option<&'static str> {
     })
 }
 
-fn embedded(vehicle: &str, major: i64, minor: i64) -> Option<(&'static str, &'static [u8])> {
-    let wanted = format!("{vehicle}-{major}.{minor}");
-    APM_PARAMETER_FILES
-        .iter()
-        .find(|(name, _)| *name == wanted)
-        .copied()
+pub fn file_for(vehicle: &str, major: i64, minor: i64) -> Option<String> {
+    newest_file(&file_names(), vehicle, major, minor)
 }
 
-pub fn file_for(vehicle: &str, major: i64, minor: i64) -> Option<(&'static str, &'static [u8])> {
+fn newest_file(names: &[String], vehicle: &str, major: i64, minor: i64) -> Option<String> {
+    let named = |major: i64, minor: i64| {
+        let wanted = format!("{vehicle}-{major}.{minor}");
+        names.iter().find(|name| **name == wanted).cloned()
+    };
     let newest = std::iter::successors(Some((major, minor)), |&(major, minor)| {
         Some(if minor - 1 == 0 {
             (major - 1, 10)
@@ -90,27 +152,25 @@ pub fn file_for(vehicle: &str, major: i64, minor: i64) -> Option<(&'static str, 
         })
     })
     .take_while(|&(major, minor)| major >= 4 && minor > 0)
-    .find_map(|(major, minor)| embedded(vehicle, major, minor));
-    newest.or_else(|| (0..10).find_map(|minor| embedded(vehicle, 4, minor)))
+    .find_map(|(major, minor)| named(major, minor));
+    newest.or_else(|| (0..10).find_map(|minor| named(4, minor)))
 }
 
 static LOADED: std::sync::LazyLock<
-    std::sync::Mutex<BTreeMap<&'static str, std::sync::Arc<JsonParameters>>>,
+    std::sync::Mutex<BTreeMap<String, Option<std::sync::Arc<JsonParameters>>>>,
 > = std::sync::LazyLock::new(Default::default);
 
 pub fn load(vehicle: &str, major: i64, minor: i64) -> Option<std::sync::Arc<JsonParameters>> {
-    let (name, gz) = file_for(vehicle, major, minor)?;
-    let mut loaded = LOADED
+    let name = file_for(vehicle, major, minor)?;
+    LOADED
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(found) = loaded.get(name) {
-        return Some(found.clone());
-    }
-    let mut text = String::new();
-    std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(gz), &mut text).ok()?;
-    let parsed = std::sync::Arc::new(parse_json(&text).ok()?);
-    loaded.insert(name, parsed.clone());
-    Some(parsed)
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .entry(name)
+        .or_insert_with_key(|name| {
+            let text = unzipped(&file_bytes(name)?)?;
+            Some(std::sync::Arc::new(parse_json(&text).ok()?))
+        })
+        .clone()
 }
 
 fn raw_converted(value_type: ValueType, text: &str) -> Option<Value> {
@@ -283,7 +343,7 @@ mod tests {
 
     #[test]
     fn the_metadata_file_is_the_newest_at_or_below_the_firmware_then_the_oldest() {
-        assert_eq!(file_for("Copter", 4, 5).map(|(n, _)| n), Some("Copter-4.5"));
+        assert_eq!(file_for("Copter", 4, 5).as_deref(), Some("Copter-4.5"));
         let newest = APM_PARAMETER_FILES
             .iter()
             .filter(|(n, _)| n.starts_with("Copter-4."))
@@ -291,7 +351,7 @@ mod tests {
             .max_by_key(|n| n["Copter-4.".len()..].parse::<u32>().unwrap_or(0))
             .unwrap();
         assert_eq!(
-            file_for("Copter", 4, 10).map(|(n, _)| n),
+            file_for("Copter", 4, 10).as_deref(),
             Some(newest),
             "a firmware newer than any file takes the newest one below it"
         );
@@ -303,9 +363,32 @@ mod tests {
             })
             .map(|(n, _)| *n);
         assert_eq!(
-            file_for("Copter", -1, -1).map(|(n, _)| n),
+            file_for("Copter", -1, -1).as_deref(),
             oldest,
             "an unknown firmware falls back to the oldest 4.x"
+        );
+    }
+
+    #[test]
+    fn the_browser_picks_from_the_files_it_was_given_and_reads_them_plain_or_gzipped() {
+        let names = ["Copter-4.4", "Copter-4.6", "Plane-4.5"].map(String::from);
+        assert_eq!(
+            newest_file(&names, "Copter", 4, 5).as_deref(),
+            Some("Copter-4.4")
+        );
+        assert_eq!(
+            newest_file(&names, "Copter", -1, -1).as_deref(),
+            Some("Copter-4.4")
+        );
+        assert_eq!(newest_file(&names, "Rover", 4, 5), None);
+        let json = r#"{"Misc": {}}"#;
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        std::io::Write::write_all(&mut gz, json.as_bytes()).unwrap();
+        assert_eq!(unzipped(&gz.finish().unwrap()).as_deref(), Some(json));
+        assert_eq!(
+            unzipped(json.as_bytes()).as_deref(),
+            Some(json),
+            "a server that already unzipped it"
         );
     }
 
