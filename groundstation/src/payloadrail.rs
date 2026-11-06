@@ -6,17 +6,17 @@ use serde_json::{Value, json};
 use crate::router::Backend;
 
 pub const VIEW: &str = "view.payloadRail";
-pub const ARM: &str = "payloadRail.arm";
-pub const SELECT: &str = "payloadRail.select";
-pub const DROP: &str = "payloadRail.drop";
-pub const CHANGED: &str = "core.payloadRail@changed";
+pub const ARM_RAIL: &str = "payloadRail.arm";
+pub const SELECT_BAY: &str = "payloadRail.select";
+pub const DROP_BAY: &str = "payloadRail.drop";
+pub const RAIL_CHANGED: &str = "core.payloadRail@changed";
 pub const DEPS: &[&str] = &[
     "settings.flyViewSettings.payloadBays",
     "vehicle.payloadSetup",
     "vehicles.activeVehicleAvailable",
     "vehicle.id",
     "vehicle.gripper",
-    CHANGED,
+    RAIL_CHANGED,
 ];
 pub const SAFE: &str = "The payload is safe. Arm it first.";
 pub const RADIO_ARMS: &str = "The radio's BOMARM switch arms the payload while it streams.";
@@ -136,7 +136,7 @@ pub fn selected() -> i64 {
 }
 
 pub fn owns(path: &str) -> bool {
-    [ARM, SELECT, DROP].contains(&path)
+    [ARM_RAIL, SELECT_BAY, DROP_BAY].contains(&path)
 }
 
 fn refused(reason: &str) -> Value {
@@ -155,11 +155,11 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
     let now_ms = crate::hub::now_ms();
     match path {
-        ARM => settled(rail().arm(
+        ARM_RAIL => settled(rail().arm(
             given.first().and_then(Value::as_bool).unwrap_or(false),
             now_ms,
         )),
-        SELECT => match given
+        SELECT_BAY => match given
             .first()
             .and_then(Value::as_i64)
             .filter(|bay| *bay >= 1)
@@ -167,7 +167,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             Some(bay) => settled(rail().select(bay, now_ms)),
             None => refused("Name the bay to pick, from 1."),
         },
-        DROP => drop(backend),
+        DROP_BAY => drop(backend),
         _ => refused("Unknown payload rail action."),
     }
 }
@@ -188,7 +188,7 @@ fn drop(backend: &dyn Backend) -> Value {
     crate::guided::invoke_valued(
         backend,
         crate::guided::Valued::Gripper,
-        DROP,
+        DROP_BAY,
         &json!([crate::guided::GRIPPER_RELEASE, named]).to_string(),
     )
 }
@@ -392,6 +392,6 @@ mod tests {
 
     #[test]
     fn the_rail_owns_its_three_actions() {
-        assert!(owns(ARM) && owns(SELECT) && owns(DROP) && !owns("payloadRail.other"));
+        assert!(owns(ARM_RAIL) && owns(SELECT_BAY) && owns(DROP_BAY) && !owns("payloadRail.other"));
     }
 }

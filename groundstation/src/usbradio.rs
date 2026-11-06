@@ -18,15 +18,15 @@ const RELEASE_FRAMES: usize = 3;
 const SERIAL_ID: u32 = 0xfff0_0004;
 const BAUD: u32 = 115_200;
 const MAX_LINE_BYTES: usize = 1024;
-const CHANNELS: usize = 24;
-const VALUES: std::ops::RangeInclusive<usize> = 4..=CHANNELS;
+const LINE_CHANNELS: usize = 24;
+const VALUES: std::ops::RangeInclusive<usize> = 4..=LINE_CHANNELS;
 const OVERRIDE_PWM: std::ops::RangeInclusive<i32> = 800..=2200;
 const SNIFF_LIMIT: usize = 16 * 1024;
 pub const RADIO_FOUND: &str = "An EdgeTX radio is streaming its sticks on USB. Fly with it?";
 pub const USE: &str = "usbRadio.use";
 
 pub type Frame = [u16; crate::joystick::RC_FRAME_CHANNELS];
-pub type Line = [u16; CHANNELS];
+pub type Line = [u16; LINE_CHANNELS];
 pub type Target = (u8, LinkId);
 
 pub fn pwm(raw: i32) -> u16 {

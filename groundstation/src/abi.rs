@@ -513,7 +513,7 @@ pub(crate) fn pump_once() {
                     .for_each(|(path, json)| announce(path, json));
             }
             if crate::payloadrail::take_changed() {
-                CORE.on_event(crate::payloadrail::CHANGED, "null")
+                CORE.on_event(crate::payloadrail::RAIL_CHANGED, "null")
                     .iter()
                     .for_each(|(path, json)| announce(path, json));
             }

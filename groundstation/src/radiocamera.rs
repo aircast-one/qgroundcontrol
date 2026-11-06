@@ -3,25 +3,25 @@ use std::sync::{Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
-pub const BAY: usize = 5;
-pub const DROP: usize = 11;
-pub const ARM: usize = 12;
+pub const BAY_CHANNEL: usize = 5;
+pub const DROP_CHANNEL: usize = 11;
+pub const ARM_CHANNEL: usize = 12;
 const ARMED_PWM: u16 = 1750;
 const BAY_POSITIONS: f32 = 6.0;
-pub const PITCH: usize = 18;
-pub const YAW: usize = 20;
-pub const ZOOM: usize = 21;
-pub const PICTURE: usize = 22;
-pub const PALETTE: usize = 24;
+pub const PITCH_CHANNEL: usize = 18;
+pub const YAW_CHANNEL: usize = 20;
+pub const ZOOM_CHANNEL: usize = 21;
+pub const PICTURE_CHANNEL: usize = 22;
+pub const PALETTE_CHANNEL: usize = 24;
 pub const PICTURE_SETTING: &str = "IR_PIP";
 pub const PALETTE_SETTING: &str = "IR_PALETTE";
 pub const PICTURES: [u8; 3] = [0, 1, 3];
-pub const PITCH_RANGE: (f32, f32) = (-90.0, 0.0);
+pub const STICK_PITCH_RANGE: (f32, f32) = (-90.0, 0.0);
 pub const UNKNOWN_YAW_LIMITS: (f32, f32) = (-180.0, 180.0);
 pub const STEADY_PWM: u16 = 3;
 pub const RESEND_MS: u64 = 100;
-const LOW_PWM: f32 = 988.0;
-const SPAN_PWM: f32 = 1024.0;
+const STICK_LOW_PWM: f32 = 988.0;
+const STICK_SPAN_PWM: f32 = 1024.0;
 const SWITCH_LOW_PWM: u16 = 1250;
 const SWITCH_HIGH_PWM: u16 = 1750;
 const PRESSED_PWM: u16 = 1500;
@@ -49,7 +49,7 @@ fn read(line: &[u16], channel: usize) -> Option<u16> {
 }
 
 fn between((low, high): (f32, f32), pwm: u16) -> f32 {
-    let share = ((f32::from(pwm) - LOW_PWM) / SPAN_PWM).clamp(0.0, 1.0);
+    let share = ((f32::from(pwm) - STICK_LOW_PWM) / STICK_SPAN_PWM).clamp(0.0, 1.0);
     low + share * (high - low)
 }
 
@@ -75,21 +75,21 @@ impl Sticks {
                 .zip(self.acted.get(&channel))
                 .is_some_and(|(now, was)| now.abs_diff(*was) >= STEADY_PWM)
         };
-        let aimed = read(line, PITCH)
-            .zip(read(line, YAW))
-            .filter(|_| due && (moved(PITCH) || moved(YAW)))
+        let aimed = read(line, PITCH_CHANNEL)
+            .zip(read(line, YAW_CHANNEL))
+            .filter(|_| due && (moved(PITCH_CHANNEL) || moved(YAW_CHANNEL)))
             .map(|(pitch, yaw)| Move::Aim {
-                pitch: between(PITCH_RANGE, pitch),
+                pitch: between(STICK_PITCH_RANGE, pitch),
                 yaw: between(yaw_limits, yaw),
             });
-        let zoomed = read(line, ZOOM)
-            .filter(|_| due && moved(ZOOM))
+        let zoomed = read(line, ZOOM_CHANNEL)
+            .filter(|_| due && moved(ZOOM_CHANNEL))
             .map(|zoom| Move::Zoom(between((0.0, 100.0), zoom)));
-        let switched = read(line, PICTURE)
+        let switched = read(line, PICTURE_CHANNEL)
             .map(position)
             .filter(|at| {
                 self.acted
-                    .get(&PICTURE)
+                    .get(&PICTURE_CHANNEL)
                     .is_some_and(|was| position(*was) != *at)
             })
             .map(|at| Move::Picture(PICTURES[at]));
@@ -100,27 +100,34 @@ impl Sticks {
                     .get(&channel)
                     .is_some_and(|was| *was <= PRESSED_PWM)
         };
-        let palette = pressed(PALETTE);
+        let palette = pressed(PALETTE_CHANNEL);
         let high = |pwm: Option<u16>| pwm.is_some_and(|pwm| pwm > PRESSED_PWM);
-        let dropped = (high(read(line, DROP))
-            && high(self.acted.get(&DROP).copied())
+        let dropped = (high(read(line, DROP_CHANNEL))
+            && high(self.acted.get(&DROP_CHANNEL).copied())
             && self.drop_before.is_some_and(|pwm| pwm <= PRESSED_PWM))
-        .then(|| read(line, BAY).map_or(1, bay))
+        .then(|| read(line, BAY_CHANNEL).map_or(1, bay))
         .map(|bay| Move::Drop { bay });
-        let refreshed: Vec<(usize, u16)> = [DROP, PITCH, YAW, ZOOM, PICTURE, PALETTE]
-            .into_iter()
-            .filter(|channel| {
-                !self.acted.contains_key(channel)
-                    || match *channel {
-                        PITCH | YAW => aimed.is_some(),
-                        ZOOM => zoomed.is_some(),
-                        _ => true,
-                    }
-            })
-            .filter_map(|channel| read(line, channel).map(|pwm| (channel, pwm)))
-            .collect();
-        self.drop_before =
-            read(line, DROP).map_or(self.drop_before, |_| self.acted.get(&DROP).copied());
+        let refreshed: Vec<(usize, u16)> = [
+            DROP_CHANNEL,
+            PITCH_CHANNEL,
+            YAW_CHANNEL,
+            ZOOM_CHANNEL,
+            PICTURE_CHANNEL,
+            PALETTE_CHANNEL,
+        ]
+        .into_iter()
+        .filter(|channel| {
+            !self.acted.contains_key(channel)
+                || match *channel {
+                    PITCH_CHANNEL | YAW_CHANNEL => aimed.is_some(),
+                    ZOOM_CHANNEL => zoomed.is_some(),
+                    _ => true,
+                }
+        })
+        .filter_map(|channel| read(line, channel).map(|pwm| (channel, pwm)))
+        .collect();
+        self.drop_before = read(line, DROP_CHANNEL)
+            .map_or(self.drop_before, |_| self.acted.get(&DROP_CHANNEL).copied());
         self.acted.extend(refreshed);
         if aimed.is_some() || zoomed.is_some() {
             self.sent_ms = Some(now_ms);
@@ -218,8 +225,8 @@ pub fn steer(vehicle: u8, moves: &[Move]) {
 }
 
 pub fn switches(line: &[u16], now_ms: u64) -> Option<crate::payloadrail::RadioSwitches> {
-    read(line, ARM)
-        .zip(read(line, BAY))
+    read(line, ARM_CHANNEL)
+        .zip(read(line, BAY_CHANNEL))
         .map(|(arm, bay_pwm)| crate::payloadrail::RadioSwitches {
             armed: arm >= ARMED_PWM,
             bay: bay(bay_pwm),
@@ -267,12 +274,20 @@ mod tests {
     fn the_sliders_point_the_gimbal_once_moved_and_not_on_the_first_line() {
         let mut sticks = Sticks::default();
         assert_eq!(
-            sticks.step(&line(&[(PITCH, 2012), (YAW, 1471)]), LIMITS, 0),
+            sticks.step(
+                &line(&[(PITCH_CHANNEL, 2012), (YAW_CHANNEL, 1471)]),
+                LIMITS,
+                0
+            ),
             vec![],
             "plugging the radio in leaves the camera where it is"
         );
         assert_eq!(
-            sticks.step(&line(&[(PITCH, 2012), (YAW, 2012)]), LIMITS, 1_000),
+            sticks.step(
+                &line(&[(PITCH_CHANNEL, 2012), (YAW_CHANNEL, 2012)]),
+                LIMITS,
+                1_000
+            ),
             vec![Move::Aim {
                 pitch: 0.0,
                 yaw: 150.0
@@ -280,7 +295,11 @@ mod tests {
             "the right slider at the top looks ahead and the left one at the top turns to the gimbal's right limit"
         );
         assert_eq!(
-            sticks.step(&line(&[(PITCH, 988), (YAW, 988)]), LIMITS, 2_000),
+            sticks.step(
+                &line(&[(PITCH_CHANNEL, 988), (YAW_CHANNEL, 988)]),
+                LIMITS,
+                2_000
+            ),
             vec![Move::Aim {
                 pitch: -90.0,
                 yaw: -150.0
@@ -292,23 +311,32 @@ mod tests {
     #[test]
     fn a_slider_that_only_jitters_sends_nothing_and_a_moving_one_is_sent_ten_times_a_second() {
         let mut sticks = Sticks::default();
-        sticks.step(&line(&[(YAW, 1500)]), LIMITS, 0);
+        sticks.step(&line(&[(YAW_CHANNEL, 1500)]), LIMITS, 0);
         assert!(
             sticks
-                .step(&line(&[(YAW, 1500 + STEADY_PWM - 1)]), LIMITS, 1_000)
+                .step(
+                    &line(&[(YAW_CHANNEL, 1500 + STEADY_PWM - 1)]),
+                    LIMITS,
+                    1_000
+                )
                 .is_empty(),
             "slider noise does not move the camera"
         );
-        assert_eq!(sticks.step(&line(&[(YAW, 1600)]), LIMITS, 2_000).len(), 1);
+        assert_eq!(
+            sticks
+                .step(&line(&[(YAW_CHANNEL, 1600)]), LIMITS, 2_000)
+                .len(),
+            1
+        );
         assert!(
             sticks
-                .step(&line(&[(YAW, 1700)]), LIMITS, 2_000 + RESEND_MS - 1)
+                .step(&line(&[(YAW_CHANNEL, 1700)]), LIMITS, 2_000 + RESEND_MS - 1)
                 .is_empty()
         );
         assert_eq!(
-            sticks.step(&line(&[(YAW, 1700)]), LIMITS, 2_000 + RESEND_MS),
+            sticks.step(&line(&[(YAW_CHANNEL, 1700)]), LIMITS, 2_000 + RESEND_MS),
             vec![Move::Aim {
-                pitch: between(PITCH_RANGE, 1500),
+                pitch: between(STICK_PITCH_RANGE, 1500),
                 yaw: between(LIMITS, 1700)
             }],
             "a move held back by the resend period is sent on the next line after it"
@@ -318,13 +346,13 @@ mod tests {
     #[test]
     fn the_zoom_knob_sets_the_zoom_level_it_points_at() {
         let mut sticks = Sticks::default();
-        sticks.step(&line(&[(ZOOM, 1422)]), LIMITS, 0);
+        sticks.step(&line(&[(ZOOM_CHANNEL, 1422)]), LIMITS, 0);
         assert_eq!(
-            sticks.step(&line(&[(ZOOM, 2012)]), LIMITS, 1_000),
+            sticks.step(&line(&[(ZOOM_CHANNEL, 2012)]), LIMITS, 1_000),
             vec![Move::Zoom(100.0)]
         );
         assert_eq!(
-            sticks.step(&line(&[(ZOOM, 988)]), LIMITS, 2_000),
+            sticks.step(&line(&[(ZOOM_CHANNEL, 988)]), LIMITS, 2_000),
             vec![Move::Zoom(0.0)]
         );
     }
@@ -332,21 +360,23 @@ mod tests {
     #[test]
     fn the_three_position_switch_picks_visible_the_cameras_default_or_thermal() {
         let mut sticks = Sticks::default();
-        sticks.step(&line(&[(PICTURE, 2012)]), LIMITS, 0);
+        sticks.step(&line(&[(PICTURE_CHANNEL, 2012)]), LIMITS, 0);
         assert_eq!(
-            sticks.step(&line(&[(PICTURE, 1500)]), LIMITS, 10),
+            sticks.step(&line(&[(PICTURE_CHANNEL, 1500)]), LIMITS, 10),
             vec![Move::Picture(1)]
         );
         assert_eq!(
-            sticks.step(&line(&[(PICTURE, 988)]), LIMITS, 20),
+            sticks.step(&line(&[(PICTURE_CHANNEL, 988)]), LIMITS, 20),
             vec![Move::Picture(0)]
         );
         assert!(
-            sticks.step(&line(&[(PICTURE, 990)]), LIMITS, 30).is_empty(),
+            sticks
+                .step(&line(&[(PICTURE_CHANNEL, 990)]), LIMITS, 30)
+                .is_empty(),
             "a switch left where it is changes nothing"
         );
         assert_eq!(
-            sticks.step(&line(&[(PICTURE, 2012)]), LIMITS, 40),
+            sticks.step(&line(&[(PICTURE_CHANNEL, 2012)]), LIMITS, 40),
             vec![Move::Picture(3)]
         );
     }
@@ -354,20 +384,24 @@ mod tests {
     #[test]
     fn each_press_of_the_momentary_switch_steps_the_palette_once() {
         let mut sticks = Sticks::default();
-        sticks.step(&line(&[(PALETTE, 988)]), LIMITS, 0);
+        sticks.step(&line(&[(PALETTE_CHANNEL, 988)]), LIMITS, 0);
         assert_eq!(
-            sticks.step(&line(&[(PALETTE, 2012)]), LIMITS, 10),
+            sticks.step(&line(&[(PALETTE_CHANNEL, 2012)]), LIMITS, 10),
             vec![Move::NextPalette]
         );
         assert!(
             sticks
-                .step(&line(&[(PALETTE, 2012)]), LIMITS, 20)
+                .step(&line(&[(PALETTE_CHANNEL, 2012)]), LIMITS, 20)
                 .is_empty(),
             "holding it down does not keep stepping"
         );
-        assert!(sticks.step(&line(&[(PALETTE, 988)]), LIMITS, 30).is_empty());
+        assert!(
+            sticks
+                .step(&line(&[(PALETTE_CHANNEL, 988)]), LIMITS, 30)
+                .is_empty()
+        );
         assert_eq!(
-            sticks.step(&line(&[(PALETTE, 2012)]), LIMITS, 40),
+            sticks.step(&line(&[(PALETTE_CHANNEL, 2012)]), LIMITS, 40),
             vec![Move::NextPalette]
         );
     }
@@ -378,7 +412,7 @@ mod tests {
         let moves: Vec<Move> = [988, 2012, 988, 2012, 988]
             .into_iter()
             .zip((0..).step_by(10))
-            .flat_map(|(drop, at)| sticks.step(&line(&[(DROP, drop)]), LIMITS, at))
+            .flat_map(|(drop, at)| sticks.step(&line(&[(DROP_CHANNEL, drop)]), LIMITS, at))
             .collect();
         assert!(moves.is_empty(), "a glitched line is not a flip: {moves:?}");
     }
@@ -386,23 +420,47 @@ mod tests {
     #[test]
     fn flipping_the_drop_switch_up_drops_once_and_flipping_it_down_drops_nothing() {
         let mut sticks = Sticks::default();
-        sticks.step(&line(&[(DROP, 988), (BAY, 988)]), LIMITS, 0);
+        sticks.step(&line(&[(DROP_CHANNEL, 988), (BAY_CHANNEL, 988)]), LIMITS, 0);
         assert!(
             sticks
-                .step(&line(&[(DROP, 2012), (BAY, 988)]), LIMITS, 10)
+                .step(
+                    &line(&[(DROP_CHANNEL, 2012), (BAY_CHANNEL, 988)]),
+                    LIMITS,
+                    10
+                )
                 .is_empty(),
             "the first line with the switch up only arms the drop"
         );
         assert_eq!(
-            sticks.step(&line(&[(DROP, 2012), (BAY, 988)]), LIMITS, 20),
+            sticks.step(
+                &line(&[(DROP_CHANNEL, 2012), (BAY_CHANNEL, 988)]),
+                LIMITS,
+                20
+            ),
             vec![Move::Drop { bay: 1 }],
             "the six-position switch at its first position picks bay 1"
         );
-        assert!(sticks.step(&line(&[(DROP, 2012)]), LIMITS, 30).is_empty());
-        assert!(sticks.step(&line(&[(DROP, 988)]), LIMITS, 40).is_empty());
-        sticks.step(&line(&[(DROP, 2012), (BAY, 1602)]), LIMITS, 50);
+        assert!(
+            sticks
+                .step(&line(&[(DROP_CHANNEL, 2012)]), LIMITS, 30)
+                .is_empty()
+        );
+        assert!(
+            sticks
+                .step(&line(&[(DROP_CHANNEL, 988)]), LIMITS, 40)
+                .is_empty()
+        );
+        sticks.step(
+            &line(&[(DROP_CHANNEL, 2012), (BAY_CHANNEL, 1602)]),
+            LIMITS,
+            50,
+        );
         assert_eq!(
-            sticks.step(&line(&[(DROP, 2012), (BAY, 1602)]), LIMITS, 60),
+            sticks.step(
+                &line(&[(DROP_CHANNEL, 2012), (BAY_CHANNEL, 1602)]),
+                LIMITS,
+                60
+            ),
             vec![Move::Drop { bay: 4 }],
             "the fourth position picks bay 4"
         );
@@ -427,7 +485,7 @@ mod tests {
         let mut plugged_in_high = Sticks::default();
         assert!(
             plugged_in_high
-                .step(&line(&[(DROP, 2012)]), LIMITS, 0)
+                .step(&line(&[(DROP_CHANNEL, 2012)]), LIMITS, 0)
                 .is_empty(),
             "a radio plugged in with the switch already up drops nothing"
         );
@@ -435,13 +493,13 @@ mod tests {
 
     #[test]
     fn bomarm_up_arms_the_payload_and_the_6pos_picks_the_bay() {
-        let up = switches(&line(&[(ARM, 2012), (BAY, 1398)]), 7).unwrap();
+        let up = switches(&line(&[(ARM_CHANNEL, 2012), (BAY_CHANNEL, 1398)]), 7).unwrap();
         assert_eq!((up.armed, up.bay, up.at_ms), (true, 3, 7));
         assert!(
-            !switches(&line(&[(ARM, 1500)]), 0).unwrap().armed,
+            !switches(&line(&[(ARM_CHANNEL, 1500)]), 0).unwrap().armed,
             "the middle position is safe"
         );
-        assert!(!switches(&line(&[(ARM, 988)]), 0).unwrap().armed);
+        assert!(!switches(&line(&[(ARM_CHANNEL, 988)]), 0).unwrap().armed);
         assert!(
             switches(&[1500; 11], 0).is_none(),
             "a radio without CH12 arms nothing"
@@ -455,7 +513,11 @@ mod tests {
         assert!(sticks.step(&short, LIMITS, 0).is_empty());
         assert!(
             sticks
-                .step(&line(&[(YAW, 2012), (ZOOM, 2012)]), LIMITS, 1_000)
+                .step(
+                    &line(&[(YAW_CHANNEL, 2012), (ZOOM_CHANNEL, 2012)]),
+                    LIMITS,
+                    1_000
+                )
                 .is_empty(),
             "a channel first heard is where its control rests, not a move"
         );
