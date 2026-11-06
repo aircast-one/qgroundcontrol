@@ -35,7 +35,9 @@ uint16_t pwm(int raw)
     return static_cast<uint16_t>(std::clamp(raw / 2 + 1500, kOverrideMin, kOverrideMax));
 }
 
-std::optional<Frame> parse(const QByteArray& line)
+namespace {
+
+std::optional<QList<int>> values(const QByteArray& line)
 {
     const QByteArray trimmed = line.trimmed();
     if (!trimmed.startsWith('$')) {
@@ -54,11 +56,26 @@ std::optional<Frame> parse(const QByteArray& line)
     if (!numeric || present.size() < kMinValues || present.size() > kMaxValues) {
         return std::nullopt;
     }
+    QList<int> read;
+    std::ranges::transform(present, std::back_inserter(read), [](const QByteArray& field) { return field.toInt(); });
+    return read;
+}
+
+Frame frameOf(const QList<int>& read)
+{
     Frame frame{};
-    std::ranges::transform(std::views::iota(0, kChannels), frame.begin(), [&present](int at) {
-        return at < present.size() ? pwm(present[at].toInt()) : static_cast<uint16_t>(UINT16_MAX);
+    std::ranges::transform(std::views::iota(0, kChannels), frame.begin(), [&read](int at) {
+        return at < read.size() ? pwm(read[at]) : static_cast<uint16_t>(UINT16_MAX);
     });
     return frame;
+}
+
+}  // namespace
+
+std::optional<Frame> parse(const QByteArray& line)
+{
+    const std::optional<QList<int>> read = values(line);
+    return read ? std::optional<Frame>(frameOf(*read)) : std::nullopt;
 }
 
 Frame released()
@@ -140,9 +157,14 @@ QList<Frame> Lines::feed(const QByteArray& bytes)
     }
     const QList<QByteArray> lines = complete.split('\n');
     return std::accumulate(lines.cbegin(), lines.cend(), QList<Frame>{},
-                           [](QList<Frame> frames, const QByteArray& line) {
-                               const std::optional<Frame> frame = parse(line);
-                               return frame ? (frames << *frame) : frames;
+                           [this](QList<Frame> frames, const QByteArray& line) {
+                               const std::optional<QList<int>> read = values(line);
+                               if (!read) {
+                                   return frames;
+                               }
+                               const bool steady = !_width || *_width == read->size();
+                               _width = read->size();
+                               return steady ? (frames << frameOf(*read)) : frames;
                            });
 }
 

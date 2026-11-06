@@ -108,6 +108,7 @@ public:
 
 private:
     QByteArray _pending;
+    std::optional<qsizetype> _width;
 };
 
 class Sniffer

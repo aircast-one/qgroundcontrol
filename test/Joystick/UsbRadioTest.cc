@@ -108,6 +108,19 @@ void UsbRadioTest::_linesSplitAcrossReadsAreJoined_test()
     QCOMPARE(lines.feed(QByteArray("\n") + kLine + kLine).size(), 2);
 }
 
+void UsbRadioTest::_aLineSplicedByARadioBufferOverrunIsDroppedNotReadShifted_test()
+{
+    const QList<QByteArray> fields = kLine.trimmed().split(',');
+    const QByteArray spliced = fields.mid(0, 10).join(',') + ',' + fields.mid(11).join(',') + "\r\n";
+    QVERIFY(parse(spliced).has_value());
+
+    Lines lines;
+    QCOMPARE(lines.feed(kLine).size(), 1);
+    QVERIFY2(lines.feed(spliced).isEmpty(), "a line one value short of its neighbours would move CH12 into CH11");
+    QVERIFY(lines.feed(kLine).isEmpty());
+    QCOMPARE(lines.feed(kLine).size(), 1);
+}
+
 void UsbRadioTest::_radioFliesAtMostEverySendPeriodAndHandsBackWhenQuiet_test()
 {
     Radio radio;

@@ -15,6 +15,7 @@ private slots:
     void _vehicleKindFollowsTheAirframe_test();
     void _unmappedSticksFallBackToTheFirstFourChannels_test();
     void _linesSplitAcrossReadsAreJoined_test();
+    void _aLineSplicedByARadioBufferOverrunIsDroppedNotReadShifted_test();
     void _radioFliesAtMostEverySendPeriodAndHandsBackWhenQuiet_test();
     void _losingTheVehicleHandsBackAndANewVehicleIsFlown_test();
     void _statusSaysWhatToDoWhenTheRadioIsBusyOrSilent_test();
