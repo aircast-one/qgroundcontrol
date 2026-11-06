@@ -200,6 +200,12 @@ ApplicationWindow {
         _showMessageDialogWorker(mainWindow, dialogTitle, dialogText)
     }
 
+    // This variant is only meant to be called by QGCApplication. Ok opens the download.
+    function _showUpdateDialog(dialogTitle, dialogText, downloadUrl) {
+        _showMessageDialogWorker(mainWindow, dialogTitle, dialogText, Dialog.Ok | Dialog.Cancel,
+                                 function() { Qt.openUrlExternally(downloadUrl) })
+    }
+
     // This variant is only meant to be called by QGCApplication. Ok reboots the active vehicle.
     function _showRebootVehicleDialog(dialogTitle, dialogText) {
         _showMessageDialogWorker(mainWindow, dialogTitle,

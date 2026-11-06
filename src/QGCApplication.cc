@@ -45,6 +45,7 @@
 #ifdef QGC_WFB_ENABLED
 #include "PacketRadioManager.h"
 #endif
+#include "AppUpdateOffer.h"
 #include "ParameterManager.h"
 #include "PositionManager.h"
 #include "QGCCommandLineParser.h"
@@ -67,6 +68,8 @@
 #ifndef QGC_NO_SERIAL_LINK
 #include "SerialLink.h"
 #endif
+
+[[maybe_unused]] constexpr int kUpdateCheckEveryMs = 6 * 60 * 60 * 1000;
 
 QGC_LOGGING_CATEGORY(QGCApplicationLog, "API.QGCApplication")
 QGC_LOGGING_CATEGORY(QGCAppMessageLog, "API.QGCApplication.AppMessage")
@@ -172,7 +175,17 @@ QGCApplication::QGCApplication(int& argc, char* argv[], const QGCCommandLinePars
 
 #ifndef QGC_DAILY_BUILD
     _checkForNewVersion();
+    _updateCheckTimer.setInterval(kUpdateCheckEveryMs);
+    (void) connect(&_updateCheckTimer, &QTimer::timeout, this, &QGCApplication::_checkForNewVersionAgain);
+    _updateCheckTimer.start();
 #endif
+}
+
+void QGCApplication::_checkForNewVersionAgain()
+{
+    if (!MultiVehicleManager::instance()->activeVehicle()) {
+        _checkForNewVersion();
+    }
 }
 
 void QGCApplication::setLanguage()
@@ -562,22 +575,16 @@ void QGCApplication::_qgcCurrentStableVersionDownloadComplete(bool success, cons
     if (success) {
         QFile versionFile(localFile);
         if (versionFile.open(QIODevice::ReadOnly)) {
-            QTextStream textStream(&versionFile);
-            const QString version = textStream.readLine();
-
-            qCDebug(QGCApplicationLog) << version;
-
-            int majorVersion, minorVersion, buildVersion;
-            if (_parseVersionText(version, majorVersion, minorVersion, buildVersion)) {
-                if (_majorVersion < majorVersion ||
-                    ((_majorVersion == majorVersion) && (_minorVersion < minorVersion)) ||
-                    ((_majorVersion == majorVersion) && (_minorVersion == minorVersion) &&
-                     (_buildVersion < buildVersion))) {
-                    showAppMessage(tr("There is a newer version of %1 available. You can download it from %2.")
-                                       .arg(applicationName())
-                                       .arg(QGCCorePlugin::instance()->stableDownloadLocation()),
-                                   tr("New Version Available"));
-                }
+            const std::optional<AppUpdateOffer::Offer> offer =
+                AppUpdateOffer::parse(versionFile.readAll(), QSysInfo::productType(), QSysInfo::kernelType(),
+                                      QSysInfo::currentCpuArchitecture());
+            qCDebug(QGCApplicationLog) << "Latest stable release"
+                                       << (offer ? offer->version : QStringLiteral("unknown"));
+            if (offer && AppUpdateOffer::newer(applicationVersion(), offer->version) &&
+                offer->version != _offeredVersion) {
+                _offeredVersion = offer->version;
+                _showUpdateDialog(AppUpdateOffer::text(applicationName(), applicationVersion(), *offer),
+                                  offer->download);
             }
         }
     } else if (!errorMsg.isEmpty()) {
@@ -585,6 +592,19 @@ void QGCApplication::_qgcCurrentStableVersionDownloadComplete(bool success, cons
     }
 
     sender()->deleteLater();
+}
+
+void QGCApplication::_showUpdateDialog(const QString& text, const QUrl& download)
+{
+    const QString title = tr("Update available");
+    QObject* const rootQmlObject = _rootQmlObject();
+    if (!rootQmlObject) {
+        showAppMessage(text + QStringLiteral("\n") + download.toString(), title);
+        return;
+    }
+    QVariant varReturn;
+    QMetaObject::invokeMethod(rootQmlObject, "_showUpdateDialog", Q_RETURN_ARG(QVariant, varReturn),
+                              Q_ARG(QVariant, title), Q_ARG(QVariant, text), Q_ARG(QVariant, download.toString()));
 }
 
 bool QGCApplication::_parseVersionText(const QString& versionString, int& majorVersion, int& minorVersion,

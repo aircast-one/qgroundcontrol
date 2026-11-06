@@ -152,12 +152,12 @@ public:
 #ifdef QGC_CUSTOM_BUILD
     virtual QString stableVersionCheckFileUrl() const { return QString(); }
 #else
-    virtual QString stableVersionCheckFileUrl() const { return QStringLiteral("https://s3-us-west-2.amazonaws.com/qgroundcontrol/latest/QGC.version.txt"); }
+    virtual QString stableVersionCheckFileUrl() const { return QStringLiteral("https://api.github.com/repos/aircast-one/qgroundcontrol/releases/latest"); }
 #endif
 
     /// Returns the user visible url to show user where to download new stable builds from.
     /// Custom builds must override to provide their own location.
-    virtual QString stableDownloadLocation() const { return QStringLiteral("qgroundcontrol.com"); }
+    virtual QString stableDownloadLocation() const { return QStringLiteral("https://github.com/aircast-one/qgroundcontrol/releases"); }
 
     /// Returns the complex mission items to display in the Plan UI.
     /// Each entry in the list is a QVariantMap with keys:

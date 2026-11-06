@@ -7,6 +7,8 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         AppMessages.cc
         AppMessages.h
+        AppUpdateOffer.cc
+        AppUpdateOffer.h
         DataRateTracker.cc
         DataRateTracker.h
         QGCCommandLineParser.cc
