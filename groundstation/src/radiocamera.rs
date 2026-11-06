@@ -39,6 +39,7 @@ pub enum Move {
 pub struct Sticks {
     acted: BTreeMap<usize, u16>,
     sent_ms: Option<u64>,
+    drop_before: Option<u16>,
 }
 
 fn read(line: &[u16], channel: usize) -> Option<u16> {
@@ -100,9 +101,12 @@ impl Sticks {
                     .is_some_and(|was| *was <= PRESSED_PWM)
         };
         let palette = pressed(PALETTE);
-        let dropped = pressed(DROP)
-            .then(|| read(line, BAY).map_or(1, bay))
-            .map(|bay| Move::Drop { bay });
+        let high = |pwm: Option<u16>| pwm.is_some_and(|pwm| pwm > PRESSED_PWM);
+        let dropped = (high(read(line, DROP))
+            && high(self.acted.get(&DROP).copied())
+            && self.drop_before.is_some_and(|pwm| pwm <= PRESSED_PWM))
+        .then(|| read(line, BAY).map_or(1, bay))
+        .map(|bay| Move::Drop { bay });
         let refreshed: Vec<(usize, u16)> = [DROP, PITCH, YAW, ZOOM, PICTURE, PALETTE]
             .into_iter()
             .filter(|channel| {
@@ -115,6 +119,8 @@ impl Sticks {
             })
             .filter_map(|channel| read(line, channel).map(|pwm| (channel, pwm)))
             .collect();
+        self.drop_before =
+            read(line, DROP).map_or(self.drop_before, |_| self.acted.get(&DROP).copied());
         self.acted.extend(refreshed);
         if aimed.is_some() || zoomed.is_some() {
             self.sent_ms = Some(now_ms);
@@ -132,6 +138,7 @@ impl Sticks {
 static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
     acted: BTreeMap::new(),
     sent_ms: None,
+    drop_before: None,
 });
 
 fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
@@ -366,18 +373,36 @@ mod tests {
     }
 
     #[test]
+    fn one_line_with_the_drop_switch_up_between_lines_with_it_down_drops_nothing() {
+        let mut sticks = Sticks::default();
+        let moves: Vec<Move> = [988, 2012, 988, 2012, 988]
+            .into_iter()
+            .zip((0..).step_by(10))
+            .flat_map(|(drop, at)| sticks.step(&line(&[(DROP, drop)]), LIMITS, at))
+            .collect();
+        assert!(moves.is_empty(), "a glitched line is not a flip: {moves:?}");
+    }
+
+    #[test]
     fn flipping_the_drop_switch_up_drops_once_and_flipping_it_down_drops_nothing() {
         let mut sticks = Sticks::default();
         sticks.step(&line(&[(DROP, 988), (BAY, 988)]), LIMITS, 0);
+        assert!(
+            sticks
+                .step(&line(&[(DROP, 2012), (BAY, 988)]), LIMITS, 10)
+                .is_empty(),
+            "the first line with the switch up only arms the drop"
+        );
         assert_eq!(
-            sticks.step(&line(&[(DROP, 2012), (BAY, 988)]), LIMITS, 10),
+            sticks.step(&line(&[(DROP, 2012), (BAY, 988)]), LIMITS, 20),
             vec![Move::Drop { bay: 1 }],
             "the six-position switch at its first position picks bay 1"
         );
-        assert!(sticks.step(&line(&[(DROP, 2012)]), LIMITS, 20).is_empty());
-        assert!(sticks.step(&line(&[(DROP, 988)]), LIMITS, 30).is_empty());
+        assert!(sticks.step(&line(&[(DROP, 2012)]), LIMITS, 30).is_empty());
+        assert!(sticks.step(&line(&[(DROP, 988)]), LIMITS, 40).is_empty());
+        sticks.step(&line(&[(DROP, 2012), (BAY, 1602)]), LIMITS, 50);
         assert_eq!(
-            sticks.step(&line(&[(DROP, 2012), (BAY, 1602)]), LIMITS, 40),
+            sticks.step(&line(&[(DROP, 2012), (BAY, 1602)]), LIMITS, 60),
             vec![Move::Drop { bay: 4 }],
             "the fourth position picks bay 4"
         );
@@ -393,8 +418,9 @@ mod tests {
         );
         let mut no_six_pos = Sticks::default();
         no_six_pos.step(&[988; 11], LIMITS, 0);
+        no_six_pos.step(&[2012; 11], LIMITS, 10);
         assert_eq!(
-            no_six_pos.step(&[2012; 11], LIMITS, 10),
+            no_six_pos.step(&[2012; 11], LIMITS, 20),
             vec![Move::Drop { bay: 6 }],
             "a model without a 6POS switch leaves CH5 wherever it rests"
         );

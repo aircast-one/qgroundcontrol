@@ -34,6 +34,10 @@ pub fn pwm(raw: i32) -> u16 {
 }
 
 pub fn parse(line: &str) -> Option<Line> {
+    values(line).map(|values| widened(&values))
+}
+
+fn values(line: &str) -> Option<Vec<u16>> {
     let values: Vec<u16> = line
         .trim()
         .strip_prefix('$')?
@@ -42,9 +46,11 @@ pub fn parse(line: &str) -> Option<Line> {
         .filter(|value| !value.is_empty())
         .map(|value| value.parse::<i32>().ok().map(pwm))
         .collect::<Option<_>>()?;
-    VALUES
-        .contains(&values.len())
-        .then(|| std::array::from_fn(|at| values.get(at).copied().unwrap_or(u16::MAX)))
+    VALUES.contains(&values.len()).then_some(values)
+}
+
+fn widened(values: &[u16]) -> Line {
+    std::array::from_fn(|at| values.get(at).copied().unwrap_or(u16::MAX))
 }
 
 pub fn sticks(line: &Line) -> Frame {
@@ -58,6 +64,7 @@ pub fn released() -> Frame {
 #[derive(Default)]
 pub struct Lines {
     pending: String,
+    width: Option<usize>,
 }
 
 impl Lines {
@@ -71,7 +78,15 @@ impl Lines {
         if self.pending.len() > MAX_LINE_BYTES {
             self.pending.clear();
         }
-        complete.lines().filter_map(parse).collect()
+        complete
+            .lines()
+            .filter_map(values)
+            .filter_map(|values| {
+                let steady = self.width.is_none_or(|width| width == values.len());
+                self.width = Some(values.len());
+                steady.then(|| widened(&values))
+            })
+            .collect()
     }
 }
 
@@ -897,6 +912,31 @@ mod tests {
             lines.feed(format!("\n{LINE}{LINE}").as_bytes()).len(),
             2,
             "an overlong run without a newline is dropped, not glued to the next line"
+        );
+    }
+
+    #[test]
+    fn a_line_spliced_by_a_radio_buffer_overrun_is_dropped_not_read_shifted() {
+        let mut lines = Lines::default();
+        let (head, tail) = LINE.split_at(LINE.match_indices(',').nth(9).unwrap().0);
+        let spliced = format!(
+            "{head}{}",
+            &tail[tail.match_indices(',').nth(1).unwrap().0..]
+        );
+        assert_eq!(lines.feed(LINE.as_bytes()).len(), 1);
+        assert!(
+            parse(&spliced).is_some(),
+            "on its own the spliced line still parses"
+        );
+        assert!(
+            lines.feed(spliced.as_bytes()).is_empty(),
+            "a line one value short of its neighbours would move CH12 into CH11"
+        );
+        assert!(lines.feed(LINE.as_bytes()).is_empty());
+        assert_eq!(
+            lines.feed(LINE.as_bytes()).len(),
+            1,
+            "two lines that agree again are read"
         );
     }
 
