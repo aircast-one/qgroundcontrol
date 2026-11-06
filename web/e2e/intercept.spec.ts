@@ -12,6 +12,10 @@ const offeredConfirm = (page: Page) =>
   );
 
 test('auto intercept on a marked point asks with the core words, then the pill follows the run', async ({ app: vehicle }) => {
+  await vehicle.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.appSettings.autodropEnabled', true);
+  }, '/src/bridge/Qgc.ts');
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await takeOff(vehicle, '10 m');
   await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4])m$/, { timeout: 60_000 });
