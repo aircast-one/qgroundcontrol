@@ -29,3 +29,15 @@ PAGES.map(([tab, page, title = page]) =>
     await expect(row).toBeVisible();
   }),
 );
+
+test('a setup row clicked before the tab pager settles opens its page and stays there', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: /^Aircraft setup/ })).toBeVisible();
+  await vehicle.clock.install();
+  await vehicle.clock.pauseAt(await vehicle.evaluate(() => Date.now() + 10));
+  await vehicle.getByRole('tablist').getByRole('tab', { name: 'Safety' }).click();
+  await vehicle.getByRole('button', { name: /^More failsafe settings/ }).click();
+  await expect(vehicle.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+  await vehicle.clock.runFor(1_000);
+  await expect(vehicle.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+});

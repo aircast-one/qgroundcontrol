@@ -74,6 +74,7 @@ const usePagerState = (initialPage: number): PagerState => {
         if (settling.current !== null) clearTimeout(settling.current);
         settling.current = setTimeout(() => {
           animating.current = null;
+          if (element.current === null) return;
           setTargetPage(nearest());
           onSettled(nearest());
         }, SETTLE_MS);
