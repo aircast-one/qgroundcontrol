@@ -23,4 +23,6 @@ private slots:
     void _savedScriptReplacesTheOldOneAndItsCompiledCopy_test();
     void _aPortStreamingTheScriptIsARadioAndMavlinkIsNot_test();
     void _indicatorStateFollowsTheRadioAndWhoFlies_test();
+    void _cameraChannelsSteerTheGimbalZoomPictureAndPalette_test();
+    void _dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test();
 };

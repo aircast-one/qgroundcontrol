@@ -7,16 +7,21 @@
 #include <QtCore/QStorageInfo>
 #include <QtSerialPort/QSerialPort>
 #include <algorithm>
+#include <cmath>
 #include <numeric>
 #include <ranges>
 
 #include "AutoConnectSettings.h"
+#include "Fact.h"
+#include "GimbalController.h"
 #include "JoystickManager.h"
 #include "LinkConfiguration.h"
 #include "LinkInterface.h"
 #include "MAVLinkProtocol.h"
+#include "MavlinkCameraControlInterface.h"
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
+#include "QGCCameraManager.h"
 #include "QGCLoggingCategory.h"
 #include "QGCMAVLink.h"
 #include "QGCSerialPortInfo.h"
@@ -61,21 +66,112 @@ std::optional<QList<int>> values(const QByteArray& line)
     return read;
 }
 
-Frame frameOf(const QList<int>& read)
+Line lineOf(const QList<int>& read)
 {
-    Frame frame{};
-    std::ranges::transform(std::views::iota(0, kChannels), frame.begin(), [&read](int at) {
+    Line line{};
+    std::ranges::transform(std::views::iota(0, kMaxValues), line.begin(), [&read](int at) {
         return at < read.size() ? pwm(read[at]) : static_cast<uint16_t>(UINT16_MAX);
     });
-    return frame;
+    return line;
+}
+
+std::optional<uint16_t> channel(const Line& line, int number)
+{
+    const uint16_t value = line[number - 1];
+    return value == UINT16_MAX ? std::nullopt : std::optional<uint16_t>(value);
+}
+
+int position(uint16_t pwm)
+{
+    return pwm < kSwitchLowPwm ? 0 : pwm <= kSwitchHighPwm ? 1 : 2;
 }
 
 }  // namespace
 
-std::optional<Frame> parse(const QByteArray& line)
+std::optional<Line> parse(const QByteArray& line)
 {
     const std::optional<QList<int>> read = values(line);
-    return read ? std::optional<Frame>(frameOf(*read)) : std::nullopt;
+    return read ? std::optional<Line>(lineOf(*read)) : std::nullopt;
+}
+
+Frame flightChannels(const Line& line)
+{
+    Frame frame{};
+    std::copy_n(line.begin(), kChannels, frame.begin());
+    return frame;
+}
+
+float between(float low, float high, uint16_t pwm)
+{
+    const float share = std::clamp((static_cast<float>(pwm) - 988.0f) / 1024.0f, 0.0f, 1.0f);
+    return low + share * (high - low);
+}
+
+int bayOf(uint16_t pwm)
+{
+    return static_cast<int>(std::lround(between(0.0f, kBayPositions - 1.0f, pwm))) + 1;
+}
+
+std::optional<Switches> switches(const Line& line)
+{
+    const std::optional<uint16_t> arm = channel(line, kArmChannel);
+    const std::optional<uint16_t> bay = channel(line, kBayChannel);
+    return (arm && bay) ? std::optional<Switches>(Switches{*arm >= kArmedPwm, bayOf(*bay)}) : std::nullopt;
+}
+
+QList<Move> CameraSticks::step(const Line& line, qint64 nowMs)
+{
+    const bool due = !_sentMs || (nowMs - *_sentMs) >= kCameraResendMs;
+    const auto moved = [this, &line](int number) {
+        const std::optional<uint16_t> now = channel(line, number);
+        return now && _acted.contains(number) && std::abs(int(*now) - int(_acted[number])) >= kSteadyPwm;
+    };
+    const auto pressed = [this, &line](int number) {
+        const std::optional<uint16_t> now = channel(line, number);
+        return now && *now > kPressedPwm && _acted.contains(number) && _acted[number] <= kPressedPwm;
+    };
+    const std::optional<uint16_t> pitch = channel(line, kPitchChannel);
+    const std::optional<uint16_t> yaw = channel(line, kYawChannel);
+    const std::optional<uint16_t> zoom = channel(line, kZoomChannel);
+    const std::optional<uint16_t> picture = channel(line, kPictureChannel);
+    const bool aimed = pitch && yaw && due && (moved(kPitchChannel) || moved(kYawChannel));
+    const bool zoomed = zoom && due && moved(kZoomChannel);
+    const bool switched =
+        picture && _acted.contains(kPictureChannel) && position(_acted[kPictureChannel]) != position(*picture);
+    const bool palette = pressed(kPaletteChannel);
+    const bool dropped = pressed(kDropChannel);
+    const auto refresh = [this, &line, aimed, zoomed](int number) {
+        const std::optional<uint16_t> now = channel(line, number);
+        const bool keep = !_acted.contains(number) || (number == kPitchChannel || number == kYawChannel ? aimed
+                                                       : number == kZoomChannel                         ? zoomed
+                                                                                                        : true);
+        if (now && keep) {
+            _acted[number] = *now;
+        }
+    };
+    QList<Move> moves;
+    if (aimed) {
+        moves << Move{Move::Kind::Aim, between(kPitchDown, kPitchAhead, *pitch), between(-kYawLimit, kYawLimit, *yaw)};
+    }
+    if (zoomed) {
+        moves << Move{Move::Kind::Zoom, 0.0f, 0.0f, between(0.0f, 100.0f, *zoom)};
+    }
+    if (switched) {
+        moves << Move{Move::Kind::Picture, 0.0f, 0.0f, 0.0f, kPictures[position(*picture)]};
+    }
+    if (palette) {
+        moves << Move{Move::Kind::NextPalette};
+    }
+    if (dropped) {
+        const std::optional<uint16_t> bay = channel(line, kBayChannel);
+        moves << Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, bay ? bayOf(*bay) : 1};
+    }
+    std::ranges::for_each(
+        std::array{kDropChannel, kPitchChannel, kYawChannel, kZoomChannel, kPictureChannel, kPaletteChannel}, refresh);
+    if (aimed || zoomed) {
+        _sentMs = nowMs;
+    }
+    return moves;
 }
 
 Frame released()
@@ -146,7 +242,7 @@ bool standbyAirframe(bool ardupilot, int mavType)
     return ardupilot && std::ranges::find(kMulticopters, mavType) != kMulticopters.end();
 }
 
-QList<Frame> Lines::feed(const QByteArray& bytes)
+QList<Line> Lines::feed(const QByteArray& bytes)
 {
     _pending += bytes;
     const qsizetype end = _pending.lastIndexOf('\n');
@@ -156,15 +252,15 @@ QList<Frame> Lines::feed(const QByteArray& bytes)
         _pending.clear();
     }
     const QList<QByteArray> lines = complete.split('\n');
-    return std::accumulate(lines.cbegin(), lines.cend(), QList<Frame>{},
-                           [this](QList<Frame> frames, const QByteArray& line) {
+    return std::accumulate(lines.cbegin(), lines.cend(), QList<Line>{},
+                           [this](QList<Line> frames, const QByteArray& line) {
                                const std::optional<QList<int>> read = values(line);
                                if (!read) {
                                    return frames;
                                }
                                const bool steady = !_width || *_width == read->size();
                                _width = read->size();
-                               return steady ? (frames << frameOf(*read)) : frames;
+                               return steady ? (frames << lineOf(*read)) : frames;
                            });
 }
 
@@ -489,9 +585,67 @@ void UsbRadio::_close()
 
 void UsbRadio::_read()
 {
-    const QList<Frame> frames = _lines.feed(_port->readAll());
-    if (!frames.isEmpty()) {
-        _advance(frames.last());
+    const QList<Line> lines = _lines.feed(_port->readAll());
+    if (!lines.isEmpty()) {
+        _advance(flightChannels(lines.last()));
+        _steer(lines.last());
+    }
+}
+
+void UsbRadio::_steer(const Line& line)
+{
+    Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!vehicle || !_target()) {
+        return;
+    }
+    const std::optional<Switches> armed = switches(line);
+    const QList<Move> moves = _camera.step(line, _clock.elapsed());
+    std::ranges::for_each(moves,
+                          [this, vehicle, &armed](const Move& move) { _apply(vehicle, move, armed && armed->armed); });
+}
+
+void UsbRadio::_apply(Vehicle* vehicle, const Move& move, bool armed) const
+{
+    MavlinkCameraControlInterface* const camera =
+        vehicle->cameraManager() ? vehicle->cameraManager()->currentCameraInstance() : nullptr;
+    const auto setting = [camera](const char* name) -> Fact* {
+        const QString id = QLatin1String(name);
+        return camera && camera->paramComplete() && camera->factExists(id) ? camera->getFact(id) : nullptr;
+    };
+    switch (move.kind) {
+        case Move::Kind::Aim:
+            if (vehicle->gimbalController()) {
+                vehicle->gimbalController()->sendPitchBodyYaw(move.pitch, move.yaw, false);
+            }
+            return;
+        case Move::Kind::Zoom:
+            if (camera) {
+                camera->setZoomLevel(move.level);
+            }
+            return;
+        case Move::Kind::Picture:
+            if (Fact* const picture = setting("IR_PIP")) {
+                picture->setRawValue(move.value);
+            }
+            return;
+        case Move::Kind::NextPalette:
+            if (Fact* const palette = setting("IR_PALETTE")) {
+                const QVariantList offered = palette->enumValues();
+                const qsizetype at = offered.indexOf(palette->rawValue());
+                if (!offered.isEmpty()) {
+                    palette->setRawValue(offered[(at + 1) % offered.size()]);
+                }
+            }
+            return;
+        case Move::Kind::Drop:
+            if (!armed) {
+                qCInfo(UsbRadioLog) << "The drop switch was flipped while BOMARM is safe; nothing dropped";
+                return;
+            }
+            if (vehicle->hasGripper()) {
+                vehicle->sendGripperAction(GRIPPER_ACTION_RELEASE);
+            }
+            return;
     }
 }
 

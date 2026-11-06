@@ -16,6 +16,16 @@ namespace {
 const QByteArray kLine =
     QByteArrayLiteral("$-1024,1024,0,-512,-1024,-1024,0,0,0,0,-1024,0,0,0,0,-160,0,1024,8,-40,-160,0,0,-1024,\r\n");
 
+Line lineWith(const QList<std::pair<int, uint16_t>>& pairs)
+{
+    Line line{};
+    std::ranges::transform(std::views::iota(1, kMaxValues + 1), line.begin(), [&pairs](int channel) {
+        const auto found = std::ranges::find_if(pairs, [channel](const auto& pair) { return pair.first == channel; });
+        return found == pairs.end() ? static_cast<uint16_t>(1500) : found->second;
+    });
+    return line;
+}
+
 Frame frameWith(const QList<std::pair<int, uint16_t>>& pairs)
 {
     Frame frame{};
@@ -30,12 +40,15 @@ Frame frameWith(const QList<std::pair<int, uint16_t>>& pairs)
 
 void UsbRadioTest::_scriptLineReadsAsTheRadioShowsItsChannels_test()
 {
-    const std::optional<Frame> read = parse(kLine);
+    const std::optional<Line> read = parse(kLine);
     QVERIFY(read);
     QCOMPARE(QList<uint16_t>(read->begin(), read->begin() + 5), QList<uint16_t>({988, 2012, 1500, 1244, 988}));
     QCOMPARE((*read)[10], uint16_t(988));
     QCOMPARE((*read)[15], uint16_t(1420));
     QCOMPARE((*read)[17], uint16_t(2012));
+    QCOMPARE((*read)[19], uint16_t(1480));
+    QCOMPARE((*read)[23], uint16_t(988));
+    QCOMPARE(flightChannels(*read)[17], uint16_t(2012));
     QCOMPARE(pwm(1536), uint16_t(2200));
     QVERIFY(!parse("$1500,1500\r\n"));
     QVERIFY(!parse("$0,0,0,x,0\r\n"));
@@ -229,3 +242,76 @@ void UsbRadioTest::_indicatorStateFollowsTheRadioAndWhoFlies_test()
 }
 
 UT_REGISTER_TEST_LIGHTWEIGHT(UsbRadioTest, TestLabel::Unit, TestLabel::Joystick)
+
+void UsbRadioTest::_cameraChannelsSteerTheGimbalZoomPictureAndPalette_test()
+{
+    CameraSticks sticks;
+    QVERIFY2(sticks.step(lineWith({{kPitchChannel, 2012}, {kYawChannel, 1471}}), 0).isEmpty(),
+             "plugging the radio in leaves the camera where it is");
+    QCOMPARE(sticks.step(lineWith({{kPitchChannel, 2012}, {kYawChannel, 2012}}), 1000),
+             (QList<Move>{Move{Move::Kind::Aim, 0.0f, kYawLimit}}));
+    QCOMPARE(sticks.step(lineWith({{kPitchChannel, 988}, {kYawChannel, 988}}), 2000),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, -kYawLimit}}));
+    QVERIFY2(sticks.step(lineWith({{kPitchChannel, 988 + kSteadyPwm - 1}, {kYawChannel, 988}}), 2050).isEmpty(),
+             "slider noise does not move the camera");
+    QVERIFY2(sticks.step(lineWith({{kPitchChannel, 1500}, {kYawChannel, 988}}), 2000 + kCameraResendMs - 1).isEmpty(),
+             "a moving slider is sent at most ten times a second");
+    QCOMPARE(sticks.step(lineWith({{kPitchChannel, 1500}, {kYawChannel, 988}}), 2000 + kCameraResendMs).size(), 1);
+
+    CameraSticks knob;
+    (void) knob.step(lineWith({{kZoomChannel, 1422}}), 0);
+    QCOMPARE(knob.step(lineWith({{kZoomChannel, 2012}}), 1000),
+             (QList<Move>{Move{Move::Kind::Zoom, 0.0f, 0.0f, 100.0f}}));
+    QCOMPARE(knob.step(lineWith({{kZoomChannel, 988}}), 2000), (QList<Move>{Move{Move::Kind::Zoom, 0.0f, 0.0f, 0.0f}}));
+
+    CameraSticks picture;
+    (void) picture.step(lineWith({{kPictureChannel, 2012}}), 0);
+    QCOMPARE(picture.step(lineWith({{kPictureChannel, 1500}}), 10),
+             (QList<Move>{Move{Move::Kind::Picture, 0.0f, 0.0f, 0.0f, 1}}));
+    QCOMPARE(picture.step(lineWith({{kPictureChannel, 988}}), 20),
+             (QList<Move>{Move{Move::Kind::Picture, 0.0f, 0.0f, 0.0f, 0}}));
+    QVERIFY2(picture.step(lineWith({{kPictureChannel, 990}}), 30).isEmpty(),
+             "a switch left where it is changes nothing");
+    QCOMPARE(picture.step(lineWith({{kPictureChannel, 2012}}), 40),
+             (QList<Move>{Move{Move::Kind::Picture, 0.0f, 0.0f, 0.0f, 3}}));
+
+    CameraSticks palette;
+    (void) palette.step(lineWith({{kPaletteChannel, 988}}), 0);
+    QCOMPARE(palette.step(lineWith({{kPaletteChannel, 2012}}), 10), (QList<Move>{Move{Move::Kind::NextPalette}}));
+    QVERIFY2(palette.step(lineWith({{kPaletteChannel, 2012}}), 20).isEmpty(), "holding it down does not keep stepping");
+    QVERIFY(palette.step(lineWith({{kPaletteChannel, 988}}), 30).isEmpty());
+    QCOMPARE(palette.step(lineWith({{kPaletteChannel, 2012}}), 40), (QList<Move>{Move{Move::Kind::NextPalette}}));
+
+    CameraSticks unsent;
+    Line nothing{};
+    nothing.fill(UINT16_MAX);
+    QVERIFY(unsent.step(nothing, 0).isEmpty());
+    QVERIFY2(unsent.step(nothing, 1000).isEmpty(), "channels the radio did not send steer nothing");
+}
+
+void UsbRadioTest::_dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test()
+{
+    CameraSticks sticks;
+    (void) sticks.step(lineWith({{kDropChannel, 988}, {kBayChannel, 988}}), 0);
+    QCOMPARE(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 988}}), 10),
+             (QList<Move>{Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, 1}}));
+    QVERIFY(sticks.step(lineWith({{kDropChannel, 2012}}), 20).isEmpty());
+    QVERIFY2(sticks.step(lineWith({{kDropChannel, 988}}), 30).isEmpty(), "flipping it back down is not a drop");
+    QCOMPARE(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 1602}}), 40),
+             (QList<Move>{Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, 4}}));
+    CameraSticks pluggedInHigh;
+    QVERIFY2(pluggedInHigh.step(lineWith({{kDropChannel, 2012}}), 0).isEmpty(),
+             "a radio plugged in with the switch already up drops nothing");
+
+    QCOMPARE(QList<int>({bayOf(988), bayOf(1193), bayOf(1398), bayOf(1602), bayOf(1807), bayOf(2012)}),
+             QList<int>({1, 2, 3, 4, 5, 6}));
+    const std::optional<Switches> up = switches(lineWith({{kArmChannel, 2012}, {kBayChannel, 1398}}));
+    QVERIFY(up);
+    QCOMPARE(*up, (Switches{true, 3}));
+    QVERIFY2(!switches(lineWith({{kArmChannel, 1500}}))->armed, "the middle position is safe");
+    QVERIFY(!switches(lineWith({{kArmChannel, 988}}))->armed);
+    Line eleven{};
+    eleven.fill(UINT16_MAX);
+    std::fill_n(eleven.begin(), 11, static_cast<uint16_t>(1500));
+    QVERIFY2(!switches(eleven), "a radio without CH12 arms nothing");
+}

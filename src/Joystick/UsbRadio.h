@@ -16,6 +16,7 @@
 
 class QSerialPort;
 class LinkInterface;
+class Vehicle;
 
 Q_DECLARE_LOGGING_CATEGORY(UsbRadioLog)
 
@@ -41,6 +42,27 @@ constexpr int kRadioFrames = 3;
 constexpr qsizetype kSniffBytes = 16 * 1024;
 
 using Frame = std::array<uint16_t, kChannels>;
+using Line = std::array<uint16_t, kMaxValues>;
+
+constexpr int kBayChannel = 5;
+constexpr int kDropChannel = 11;
+constexpr int kArmChannel = 12;
+constexpr int kPitchChannel = 18;
+constexpr int kYawChannel = 20;
+constexpr int kZoomChannel = 21;
+constexpr int kPictureChannel = 22;
+constexpr int kPaletteChannel = 24;
+constexpr uint16_t kArmedPwm = 1750;
+constexpr uint16_t kSteadyPwm = 3;
+constexpr uint16_t kPressedPwm = 1500;
+constexpr uint16_t kSwitchLowPwm = 1250;
+constexpr uint16_t kSwitchHighPwm = 1750;
+constexpr qint64 kCameraResendMs = 100;
+constexpr float kPitchDown = -90.0f;
+constexpr float kPitchAhead = 0.0f;
+constexpr float kYawLimit = 180.0f;
+constexpr float kBayPositions = 6.0f;
+constexpr std::array<int, 3> kPictures = {0, 1, 3};
 
 enum class Flying
 {
@@ -85,8 +107,49 @@ enum class State
 };
 
 uint16_t pwm(int raw);
-std::optional<Frame> parse(const QByteArray& line);
+std::optional<Line> parse(const QByteArray& line);
+Frame flightChannels(const Line& line);
 Frame released();
+float between(float low, float high, uint16_t pwm);
+int bayOf(uint16_t pwm);
+
+struct Move
+{
+    enum class Kind
+    {
+        Aim,
+        Zoom,
+        Picture,
+        NextPalette,
+        Drop
+    };
+    Kind kind = Kind::Aim;
+    float pitch = 0.0f;
+    float yaw = 0.0f;
+    float level = 0.0f;
+    int value = 0;
+    bool operator==(const Move& other) const = default;
+};
+
+struct Switches
+{
+    bool armed = false;
+    int bay = 1;
+    bool operator==(const Switches& other) const = default;
+};
+
+std::optional<Switches> switches(const Line& line);
+
+class CameraSticks
+{
+public:
+    QList<Move> step(const Line& line, qint64 nowMs);
+
+private:
+    QHash<int, uint16_t> _acted;
+    std::optional<qint64> _sentMs;
+};
+
 QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {});
 Kind kind(int mavType);
 Sticks sticks(int roll, int pitch, int throttle, int yaw);
@@ -104,7 +167,7 @@ QString stateName(State state);
 class Lines
 {
 public:
-    QList<Frame> feed(const QByteArray& bytes);
+    QList<Line> feed(const QByteArray& bytes);
 
 private:
     QByteArray _pending;
@@ -212,6 +275,8 @@ private:
     void _open(const QString& port);
     void _close();
     void _read();
+    void _steer(const UsbRadioProtocol::Line& line);
+    void _apply(Vehicle* vehicle, const UsbRadioProtocol::Move& move, bool armed) const;
     void _advance(std::optional<UsbRadioProtocol::Frame> fresh);
     void _send(int vehicle, bool standby, const UsbRadioProtocol::Frame& frame) const;
     void _setStatus(const QString& status);
@@ -230,6 +295,7 @@ private:
     std::optional<qint64> _echoedAt;
     bool _wasStandby = false;
     UsbRadioProtocol::Lines _lines;
+    UsbRadioProtocol::CameraSticks _camera;
     UsbRadioProtocol::Radio _radio;
     QString _status;
     QString _state = UsbRadioProtocol::stateName(UsbRadioProtocol::State::Off);
