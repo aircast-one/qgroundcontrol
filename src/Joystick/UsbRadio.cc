@@ -139,7 +139,11 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs)
     const bool switched =
         picture && _acted.contains(kPictureChannel) && position(_acted[kPictureChannel]) != position(*picture);
     const bool palette = pressed(kPaletteChannel);
-    const bool dropped = pressed(kDropChannel);
+    const auto high = [](std::optional<uint16_t> pwm) { return pwm && *pwm > kPressedPwm; };
+    const std::optional<uint16_t> drop = channel(line, kDropChannel);
+    const std::optional<uint16_t> dropWas =
+        _acted.contains(kDropChannel) ? std::optional<uint16_t>(_acted[kDropChannel]) : std::nullopt;
+    const bool dropped = high(drop) && high(dropWas) && _dropBefore && *_dropBefore <= kPressedPwm;
     const auto refresh = [this, &line, aimed, zoomed](int number) {
         const std::optional<uint16_t> now = channel(line, number);
         const bool keep = !_acted.contains(number) || (number == kPitchChannel || number == kYawChannel ? aimed
@@ -166,6 +170,7 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs)
         const std::optional<uint16_t> bay = channel(line, kBayChannel);
         moves << Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, bay ? bayOf(*bay) : 1};
     }
+    _dropBefore = drop ? dropWas : _dropBefore;
     std::ranges::for_each(
         std::array{kDropChannel, kPitchChannel, kYawChannel, kZoomChannel, kPictureChannel, kPaletteChannel}, refresh);
     if (aimed || zoomed) {

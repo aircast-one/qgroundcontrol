@@ -4,6 +4,8 @@
 #include <QtCore/QFile>
 #include <QtCore/QTemporaryDir>
 #include <algorithm>
+#include <array>
+#include <numeric>
 #include <ranges>
 
 #include "MAVLinkLib.h"
@@ -293,12 +295,22 @@ void UsbRadioTest::_dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test()
 {
     CameraSticks sticks;
     (void) sticks.step(lineWith({{kDropChannel, 988}, {kBayChannel, 988}}), 0);
-    QCOMPARE(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 988}}), 10),
+    QVERIFY2(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 988}}), 10).isEmpty(),
+             "the first line with the switch up only arms the drop");
+    QCOMPARE(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 988}}), 20),
              (QList<Move>{Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, 1}}));
-    QVERIFY(sticks.step(lineWith({{kDropChannel, 2012}}), 20).isEmpty());
-    QVERIFY2(sticks.step(lineWith({{kDropChannel, 988}}), 30).isEmpty(), "flipping it back down is not a drop");
-    QCOMPARE(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 1602}}), 40),
+    QVERIFY(sticks.step(lineWith({{kDropChannel, 2012}}), 30).isEmpty());
+    QVERIFY2(sticks.step(lineWith({{kDropChannel, 988}}), 40).isEmpty(), "flipping it back down is not a drop");
+    (void) sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 1602}}), 50);
+    QCOMPARE(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 1602}}), 60),
              (QList<Move>{Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, 4}}));
+    CameraSticks glitched;
+    const std::array<uint16_t, 5> glitch{988, 2012, 988, 2012, 988};
+    const QList<Move> glitchMoves =
+        std::accumulate(glitch.cbegin(), glitch.cend(), QList<Move>{}, [&glitched](QList<Move> moves, uint16_t drop) {
+            return moves + glitched.step(lineWith({{kDropChannel, drop}}), 0);
+        });
+    QVERIFY2(glitchMoves.isEmpty(), "one line with the switch up between lines with it down drops nothing");
     CameraSticks pluggedInHigh;
     QVERIFY2(pluggedInHigh.step(lineWith({{kDropChannel, 2012}}), 0).isEmpty(),
              "a radio plugged in with the switch already up drops nothing");

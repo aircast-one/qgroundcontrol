@@ -148,6 +148,7 @@ public:
 private:
     QHash<int, uint16_t> _acted;
     std::optional<qint64> _sentMs;
+    std::optional<uint16_t> _dropBefore;
 };
 
 QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {});
