@@ -9,7 +9,6 @@ import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
 import androidx.core.content.FileProvider;
-import org.qtproject.qt.android.QtNative;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
@@ -337,7 +336,6 @@ public class QGCActivity extends QtActivity {
         return super.dispatchKeyEvent(event);
     }
 
-    // Native C++ functions
     public native boolean nativeInit();
     public native void nativeDeepLink(final String url);
     public native void qgcLogDebug(final String message);
@@ -346,7 +344,10 @@ public class QGCActivity extends QtActivity {
     public native void onImportResult(final String filePath);
 
     public static void installApk(String path) {
-        final Context context = QtNative.getContext();
+        final QGCActivity context = m_instance;
+        if (context == null) {
+            return;
+        }
         final Uri apk = FileProvider.getUriForFile(context, context.getPackageName() + ".qtprovider", new File(path));
         final Intent install = new Intent(Intent.ACTION_VIEW);
         install.setDataAndType(apk, "application/vnd.android.package-archive");
