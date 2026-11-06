@@ -529,6 +529,7 @@ pub(crate) fn pump_once() {
                 .iter()
                 .for_each(|(path, json)| announce(path, json));
         }
+        crate::devicefind::tick(crate::hub::now_ms());
         if crate::deeplinksetup::take_changed() {
             CORE.on_event(crate::deeplinksetup::SETUP_CHANGED, "null")
                 .iter()

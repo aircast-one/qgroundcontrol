@@ -1616,6 +1616,7 @@ mod deps_cover_reads {
         ("windisk", include_str!("windisk.rs")),
         ("platformserial", include_str!("platformserial.rs")),
         ("device", include_str!("device.rs")),
+        ("devicefind", include_str!("devicefind.rs")),
         ("deviceflights", include_str!("deviceflights.rs")),
         ("hostsocket", include_str!("hostsocket.rs")),
         ("hostdevice", include_str!("hostdevice.rs")),

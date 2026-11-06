@@ -21,6 +21,7 @@ static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
 struct Drones {
     base: String,
     list: Vec<Value>,
+    reach: Vec<crate::devicefind::Drone>,
     status: String,
     asked_ms: Option<i64>,
 }
@@ -28,6 +29,7 @@ struct Drones {
 static DRONES: Mutex<Drones> = Mutex::new(Drones {
     base: String::new(),
     list: Vec::new(),
+    reach: Vec::new(),
     status: String::new(),
     asked_ms: None,
 });
@@ -194,10 +196,9 @@ pub fn refresh_drones() {
         }
         match answer {
             Ok((status, body)) if (200..300).contains(&status) => {
-                held.list = drones_from(
-                    &serde_json::from_slice(&body).unwrap_or(Value::Null),
-                    chrono::Utc::now(),
-                );
+                let body = serde_json::from_slice(&body).unwrap_or(Value::Null);
+                held.list = drones_from(&body, chrono::Utc::now());
+                held.reach = crate::devicefind::drones_in(&body);
                 held.status = if held.list.is_empty() {
                     "No drones on this account yet. Connect one to the cloud from its own page."
                         .to_string()
@@ -212,11 +213,7 @@ pub fn refresh_drones() {
     });
 }
 
-pub fn object() -> Value {
-    let pending = PENDING
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clone();
+fn current_drones() -> Option<Drones> {
     let (base, signed) = (api_base(), signed_in());
     if drones_due(signed, &base, crate::hub::wall_ms()) {
         refresh_drones();
@@ -225,7 +222,21 @@ pub fn object() -> Value {
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .clone();
-    let current = signed && drones.base == base;
+    (signed && drones.base == base).then_some(drones)
+}
+
+pub fn reachable_drones() -> Vec<crate::devicefind::Drone> {
+    current_drones()
+        .map(|drones| drones.reach)
+        .unwrap_or_default()
+}
+
+pub fn object() -> Value {
+    let pending = PENDING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    let drones = current_drones();
     json!({
         "kind": "object",
         "apiBase": api_base(),
@@ -234,8 +245,8 @@ pub fn object() -> Value {
         "userCode": pending.as_ref().map(|p| p.user_code.clone()).unwrap_or_default(),
         "verificationUrl": pending.map(|p| p.verification_url).unwrap_or_default(),
         "status": STATUS.lock().unwrap_or_else(PoisonError::into_inner).clone(),
-        "drones": if current { drones.list } else { Vec::new() },
-        "dronesStatus": if current { drones.status } else { String::new() },
+        "drones": drones.as_ref().map(|drones| drones.list.clone()).unwrap_or_default(),
+        "dronesStatus": drones.map(|drones| drones.status).unwrap_or_default(),
     })
 }
 
