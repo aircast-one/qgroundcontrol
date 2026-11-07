@@ -324,7 +324,12 @@ fn yaw_limits() -> (f32, f32) {
                 .and_then(|pair| vehicle.gimbals.get(pair))
         })
         .and_then(|gimbal| gimbal.limits[4].zip(gimbal.limits[5]))
-        .unwrap_or(UNKNOWN_YAW_LIMITS)
+        .map_or(UNKNOWN_YAW_LIMITS, slider_yaw_range)
+}
+
+pub fn slider_yaw_range((low, high): (f32, f32)) -> (f32, f32) {
+    let (widest_low, widest_high) = UNKNOWN_YAW_LIMITS;
+    (low.max(widest_low), high.min(widest_high))
 }
 
 fn guided(vehicle: u8, action: Value, told: Option<&str>) {
@@ -783,6 +788,17 @@ mod tests {
             ],
             "once they are found the slider's position is sent"
         );
+    }
+
+    #[test]
+    fn the_yaw_slider_spans_at_most_half_a_turn_each_way() {
+        assert_eq!(
+            slider_yaw_range((-270.0, 270.0)),
+            (-180.0, 180.0),
+            "a ZR30 reports 270 degrees each way; an end of the slider past 180 would wrap to the other side"
+        );
+        assert_eq!(slider_yaw_range((-150.0, 150.0)), (-150.0, 150.0));
+        assert_eq!(slider_yaw_range((-44.0, 90.0)), (-44.0, 90.0));
     }
 
     #[test]
