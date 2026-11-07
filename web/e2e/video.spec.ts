@@ -36,6 +36,14 @@ test('a WHEP camera plays in the Fly view', async ({ app }) => {
   await expect(app.getByText(/^Detections:/)).toHaveCount(0);
 });
 
+test('the Fly OSD reads the live video frame rate and bitrate', async ({ vehicle }) => {
+  const details = vehicle.locator('[data-osd-details]');
+  await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText('VIDEOOFF', { timeout: 30_000 });
+  await addVideoSource(vehicle, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText(/^VIDEO[1-9]\d*fps \d+(\.\d)?[kM]b\/s$/, { timeout: 30_000 });
+  await expect(details.getByText('JIT', { exact: true })).toBeVisible();
+});
+
 test('a stream the browser cannot play says so', async ({ app }) => {
   await addVideoSource(app, /^RTSP/, 'rtsp://localhost:18554/e2e');
   await expect(app.getByText('This browser can only play WebRTC (WHEP) streams.', { exact: false })).toBeVisible({ timeout: 30_000 });
