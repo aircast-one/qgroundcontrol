@@ -3,16 +3,18 @@ use std::sync::{Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
-pub const BAY_CHANNEL: usize = 5;
-pub const DROP_CHANNEL: usize = 11;
-pub const ARM_CHANNEL: usize = 12;
 const ARMED_PWM: u16 = 1750;
 const BAY_POSITIONS: f32 = 6.0;
-pub const PITCH_CHANNEL: usize = 18;
-pub const YAW_CHANNEL: usize = 20;
-pub const ZOOM_CHANNEL: usize = 21;
-pub const PICTURE_CHANNEL: usize = 22;
-pub const PALETTE_CHANNEL: usize = 24;
+pub const LAYOUT_SETTINGS: [&str; 8] = [
+    "settings.autoConnectSettings.usbRadioPitchChannel",
+    "settings.autoConnectSettings.usbRadioYawChannel",
+    "settings.autoConnectSettings.usbRadioZoomChannel",
+    "settings.autoConnectSettings.usbRadioPictureChannel",
+    "settings.autoConnectSettings.usbRadioPaletteChannel",
+    "settings.autoConnectSettings.usbRadioDropChannel",
+    "settings.autoConnectSettings.usbRadioArmChannel",
+    "settings.autoConnectSettings.usbRadioBayChannel",
+];
 pub const PICTURE_SETTING: &str = "IR_PIP";
 pub const PALETTE_SETTING: &str = "IR_PALETTE";
 pub const PICTURES: [u8; 3] = [0, 1, 3];
@@ -35,15 +37,82 @@ pub enum Move {
     Drop { bay: i64 },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layout {
+    pub pitch: usize,
+    pub yaw: usize,
+    pub zoom: usize,
+    pub picture: usize,
+    pub palette: usize,
+    pub drop: usize,
+    pub arm: usize,
+    pub bay: usize,
+}
+
+pub const R2D2: Layout = Layout {
+    pitch: 18,
+    yaw: 20,
+    zoom: 21,
+    picture: 22,
+    palette: 24,
+    drop: 11,
+    arm: 12,
+    bay: 5,
+};
+
+impl Default for Layout {
+    fn default() -> Self {
+        R2D2
+    }
+}
+
+impl Layout {
+    pub fn channels(&self) -> [usize; 8] {
+        [
+            self.pitch,
+            self.yaw,
+            self.zoom,
+            self.picture,
+            self.palette,
+            self.drop,
+            self.arm,
+            self.bay,
+        ]
+    }
+}
+
+pub fn layout() -> Layout {
+    let [pitch, yaw, zoom, picture, palette, drop, arm, bay] =
+        crate::settingsstore::raw_settings(LAYOUT_SETTINGS).map(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+                .map_or(0, |number| number as usize)
+        });
+    Layout {
+        pitch,
+        yaw,
+        zoom,
+        picture,
+        palette,
+        drop,
+        arm,
+        bay,
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Sticks {
     acted: BTreeMap<usize, u16>,
     sent_ms: Option<u64>,
     drop_before: Option<u16>,
+    pub layout: Layout,
 }
 
 fn read(line: &[u16], channel: usize) -> Option<u16> {
-    line.get(channel - 1)
+    channel
+        .checked_sub(1)
+        .and_then(|at| line.get(at))
         .copied()
         .filter(|pwm| *pwm != u16::MAX)
 }
@@ -67,6 +136,7 @@ fn position(pwm: u16) -> usize {
 
 impl Sticks {
     pub fn step(&mut self, line: &[u16], yaw_limits: (f32, f32), now_ms: u64) -> Vec<Move> {
+        let layout = self.layout;
         let due = self
             .sent_ms
             .is_none_or(|at| now_ms.saturating_sub(at) >= RESEND_MS);
@@ -75,21 +145,21 @@ impl Sticks {
                 .zip(self.acted.get(&channel))
                 .is_some_and(|(now, was)| now.abs_diff(*was) >= STEADY_PWM)
         };
-        let aimed = read(line, PITCH_CHANNEL)
-            .zip(read(line, YAW_CHANNEL))
-            .filter(|_| due && (moved(PITCH_CHANNEL) || moved(YAW_CHANNEL)))
+        let aimed = read(line, layout.pitch)
+            .zip(read(line, layout.yaw))
+            .filter(|_| due && (moved(layout.pitch) || moved(layout.yaw)))
             .map(|(pitch, yaw)| Move::Aim {
                 pitch: between(STICK_PITCH_RANGE, pitch),
                 yaw: between(yaw_limits, yaw),
             });
-        let zoomed = read(line, ZOOM_CHANNEL)
-            .filter(|_| due && moved(ZOOM_CHANNEL))
+        let zoomed = read(line, layout.zoom)
+            .filter(|_| due && moved(layout.zoom))
             .map(|zoom| Move::Zoom(between((0.0, 100.0), zoom)));
-        let switched = read(line, PICTURE_CHANNEL)
+        let switched = read(line, layout.picture)
             .map(position)
             .filter(|at| {
                 self.acted
-                    .get(&PICTURE_CHANNEL)
+                    .get(&layout.picture)
                     .is_some_and(|was| position(*was) != *at)
             })
             .map(|at| Move::Picture(PICTURES[at]));
@@ -100,34 +170,34 @@ impl Sticks {
                     .get(&channel)
                     .is_some_and(|was| *was <= PRESSED_PWM)
         };
-        let palette = pressed(PALETTE_CHANNEL);
+        let palette = pressed(layout.palette);
         let high = |pwm: Option<u16>| pwm.is_some_and(|pwm| pwm > PRESSED_PWM);
-        let dropped = (high(read(line, DROP_CHANNEL))
-            && high(self.acted.get(&DROP_CHANNEL).copied())
+        let dropped = (high(read(line, layout.drop))
+            && high(self.acted.get(&layout.drop).copied())
             && self.drop_before.is_some_and(|pwm| pwm <= PRESSED_PWM))
-        .then(|| read(line, BAY_CHANNEL).map_or(1, bay))
+        .then(|| read(line, layout.bay).map_or(1, bay))
         .map(|bay| Move::Drop { bay });
         let refreshed: Vec<(usize, u16)> = [
-            DROP_CHANNEL,
-            PITCH_CHANNEL,
-            YAW_CHANNEL,
-            ZOOM_CHANNEL,
-            PICTURE_CHANNEL,
-            PALETTE_CHANNEL,
+            layout.drop,
+            layout.pitch,
+            layout.yaw,
+            layout.zoom,
+            layout.picture,
+            layout.palette,
         ]
         .into_iter()
         .filter(|channel| {
             !self.acted.contains_key(channel)
                 || match *channel {
-                    PITCH_CHANNEL | YAW_CHANNEL => aimed.is_some(),
-                    ZOOM_CHANNEL => zoomed.is_some(),
+                    c if c == layout.pitch || c == layout.yaw => aimed.is_some(),
+                    c if c == layout.zoom => zoomed.is_some(),
                     _ => true,
                 }
         })
         .filter_map(|channel| read(line, channel).map(|pwm| (channel, pwm)))
         .collect();
-        self.drop_before = read(line, DROP_CHANNEL)
-            .map_or(self.drop_before, |_| self.acted.get(&DROP_CHANNEL).copied());
+        self.drop_before = read(line, layout.drop)
+            .map_or(self.drop_before, |_| self.acted.get(&layout.drop).copied());
         self.acted.extend(refreshed);
         if aimed.is_some() || zoomed.is_some() {
             self.sent_ms = Some(now_ms);
@@ -146,6 +216,7 @@ static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
     acted: BTreeMap::new(),
     sent_ms: None,
     drop_before: None,
+    layout: R2D2,
 });
 
 fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
@@ -224,9 +295,13 @@ pub fn steer(vehicle: u8, moves: &[Move]) {
     })
 }
 
-pub fn switches(line: &[u16], now_ms: u64) -> Option<crate::payloadrail::RadioSwitches> {
-    read(line, ARM_CHANNEL)
-        .zip(read(line, BAY_CHANNEL))
+pub fn switches(
+    line: &[u16],
+    now_ms: u64,
+    layout: Layout,
+) -> Option<crate::payloadrail::RadioSwitches> {
+    read(line, layout.arm)
+        .zip(read(line, layout.bay))
         .map(|(arm, bay_pwm)| crate::payloadrail::RadioSwitches {
             armed: arm >= ARMED_PWM,
             bay: bay(bay_pwm),
@@ -236,13 +311,14 @@ pub fn switches(line: &[u16], now_ms: u64) -> Option<crate::payloadrail::RadioSw
 
 pub fn heard(vehicle: u8, line: &[u16]) {
     let limits = yaw_limits();
-    if let Some(switches) = switches(line, crate::hub::now_ms()) {
+    let layout = layout();
+    if let Some(switches) = switches(line, crate::hub::now_ms(), layout) {
         crate::payloadrail::radio_heard(switches);
     }
     let servo_bays = crate::hub::lock().active().and_then(bays_through_the_app);
-    let moves: Vec<Move> = STICKS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
+    let mut sticks = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
+    sticks.layout = layout;
+    let moves: Vec<Move> = sticks
         .step(line, limits, crate::hub::now_ms())
         .into_iter()
         .filter_map(|step| match step {
@@ -258,6 +334,15 @@ pub fn heard(vehicle: u8, line: &[u16]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const PITCH_CHANNEL: usize = R2D2.pitch;
+    const YAW_CHANNEL: usize = R2D2.yaw;
+    const ZOOM_CHANNEL: usize = R2D2.zoom;
+    const PICTURE_CHANNEL: usize = R2D2.picture;
+    const PALETTE_CHANNEL: usize = R2D2.palette;
+    const DROP_CHANNEL: usize = R2D2.drop;
+    const ARM_CHANNEL: usize = R2D2.arm;
+    const BAY_CHANNEL: usize = R2D2.bay;
 
     const LIMITS: (f32, f32) = (-150.0, 150.0);
 
@@ -493,15 +578,21 @@ mod tests {
 
     #[test]
     fn bomarm_up_arms_the_payload_and_the_6pos_picks_the_bay() {
-        let up = switches(&line(&[(ARM_CHANNEL, 2012), (BAY_CHANNEL, 1398)]), 7).unwrap();
+        let up = switches(&line(&[(ARM_CHANNEL, 2012), (BAY_CHANNEL, 1398)]), 7, R2D2).unwrap();
         assert_eq!((up.armed, up.bay, up.at_ms), (true, 3, 7));
         assert!(
-            !switches(&line(&[(ARM_CHANNEL, 1500)]), 0).unwrap().armed,
+            !switches(&line(&[(ARM_CHANNEL, 1500)]), 0, R2D2)
+                .unwrap()
+                .armed,
             "the middle position is safe"
         );
-        assert!(!switches(&line(&[(ARM_CHANNEL, 988)]), 0).unwrap().armed);
         assert!(
-            switches(&[1500; 11], 0).is_none(),
+            !switches(&line(&[(ARM_CHANNEL, 988)]), 0, R2D2)
+                .unwrap()
+                .armed
+        );
+        assert!(
+            switches(&[1500; 11], 0, R2D2).is_none(),
             "a radio without CH12 arms nothing"
         );
     }
@@ -523,5 +614,53 @@ mod tests {
         );
         let unsent = [u16::MAX; 24];
         assert!(sticks.step(&unsent, LIMITS, 2_000).is_empty());
+    }
+
+    #[test]
+    fn camera_and_payload_channels_are_settings_with_the_r2d2_layout_as_default() {
+        let moved = Layout {
+            pitch: 13,
+            yaw: 14,
+            zoom: 15,
+            picture: 0,
+            palette: 0,
+            drop: 0,
+            arm: 0,
+            bay: 0,
+        };
+        let mut sticks = Sticks {
+            layout: moved,
+            ..Sticks::default()
+        };
+        sticks.step(&line(&[(13, 1500), (14, 1500)]), LIMITS, 0);
+        assert_eq!(
+            sticks
+                .step(&line(&[(13, 2012), (14, 1500)]), LIMITS, 1000)
+                .len(),
+            1,
+            "with pitch moved to CH13 that channel steers"
+        );
+        assert!(
+            sticks
+                .step(
+                    &line(&[(13, 2012), (14, 1500), (PITCH_CHANNEL, 988)]),
+                    LIMITS,
+                    2000
+                )
+                .is_empty(),
+            "and the R2D2 pitch channel steers nothing"
+        );
+        let mut off = Sticks {
+            layout: moved,
+            ..Sticks::default()
+        };
+        let drops: Vec<Move> = [988, 2012, 2012]
+            .into_iter()
+            .zip((0..).step_by(10))
+            .flat_map(|(pwm, at)| off.step(&line(&[(DROP_CHANNEL, pwm)]), LIMITS, at))
+            .collect();
+        assert!(drops.is_empty(), "a function on channel 0 is off");
+        assert!(switches(&line(&[(ARM_CHANNEL, 2012)]), 0, moved).is_none());
+        assert_eq!(Sticks::default().layout, R2D2);
     }
 }

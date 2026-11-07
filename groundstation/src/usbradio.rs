@@ -193,19 +193,25 @@ pub fn roles(
     Some(Roles { kind, channels })
 }
 
-pub fn echo(flying: Flying, roles: Option<Roles>) -> String {
+fn layout_tail(layout: crate::radiocamera::Layout) -> String {
+    let channels: Vec<String> = layout.channels().iter().map(usize::to_string).collect();
+    format!(";{}", channels.join(","))
+}
+
+pub fn echo(flying: Flying, roles: Option<Roles>, layout: crate::radiocamera::Layout) -> String {
+    let tail = layout_tail(layout);
     let (state, id) = match flying {
-        Flying::NoVehicle => return "@N\n".to_string(),
+        Flying::NoVehicle => return format!("@N{tail}\n"),
         Flying::Vehicle(id) => ('F', id),
         Flying::Standby(id) => ('S', id),
         Flying::Joystick(id) => ('J', id),
     };
     match roles {
-        None => format!("@{state},{id}\n"),
+        None => format!("@{state},{id}{tail}\n"),
         Some(Roles {
             kind,
             channels: [roll, pitch, throttle, yaw],
-        }) => format!("@{state},{id},{kind},{roll},{pitch},{throttle},{yaw}\n"),
+        }) => format!("@{state},{id},{kind},{roll},{pitch},{throttle},{yaw}{tail}\n"),
     }
 }
 
@@ -252,7 +258,7 @@ fn answer(now_ms: u64, live: bool) {
         due
     };
     if due {
-        let line = echo(flying(), active_roles());
+        let line = echo(flying(), active_roles(), crate::radiocamera::layout());
         if let Some(port) = ATTEMPT
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -674,23 +680,33 @@ mod tests {
 
     #[test]
     fn the_radio_is_told_what_its_sticks_are_doing() {
-        assert_eq!(echo(Flying::Vehicle(1), None), "@F,1\n");
         assert_eq!(
-            echo(Flying::Standby(3), None),
-            "@S,3\n",
+            echo(Flying::Vehicle(1), None, crate::radiocamera::R2D2),
+            "@F,1;18,20,21,22,24,11,12,5\n"
+        );
+        assert_eq!(
+            echo(Flying::Standby(3), None, crate::radiocamera::R2D2),
+            "@S,3;18,20,21,22,24,11,12,5\n",
             "in 4G standby the sticks go to the aircraft computer"
         );
-        assert_eq!(echo(Flying::Joystick(1), None), "@J,1\n");
-        assert_eq!(echo(Flying::NoVehicle, None), "@N\n");
+        assert_eq!(
+            echo(Flying::Joystick(1), None, crate::radiocamera::R2D2),
+            "@J,1;18,20,21,22,24,11,12,5\n"
+        );
+        assert_eq!(
+            echo(Flying::NoVehicle, None, crate::radiocamera::R2D2),
+            "@N;18,20,21,22,24,11,12,5\n"
+        );
         assert_eq!(
             echo(
                 Flying::NoVehicle,
                 Some(Roles {
                     kind: 'C',
                     channels: [1, 2, 3, 4]
-                })
+                }),
+                crate::radiocamera::R2D2
             ),
-            "@N\n"
+            "@N;18,20,21,22,24,11,12,5\n"
         );
         assert_eq!(
             echo(
@@ -698,9 +714,10 @@ mod tests {
                 Some(Roles {
                     kind: 'C',
                     channels: [1, 2, 3, 4]
-                })
+                }),
+                crate::radiocamera::R2D2
             ),
-            "@F,1,C,1,2,3,4\n",
+            "@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5\n",
             "a known vehicle says what each stick channel does"
         );
         assert!(
@@ -709,7 +726,8 @@ mod tests {
                 Some(Roles {
                     kind: 'P',
                     channels: [1, 2, 3, 4]
-                })
+                }),
+                crate::radiocamera::R2D2
             )
             .lines()
             .all(|line| parse(line).is_none()),
@@ -809,7 +827,7 @@ mod tests {
         answer(5_000, true);
         assert_eq!(
             String::from_utf8(written.lock().unwrap().clone()).unwrap(),
-            "@N\n",
+            "@N;18,20,21,22,24,11,12,5\n",
             "with no vehicle the radio is told so"
         );
         *ATTEMPT.lock().unwrap() = None;

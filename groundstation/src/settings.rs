@@ -373,6 +373,14 @@ const IOS_HIDDEN: &[&str] = &[
     "nmeaUdpPort",
     "usbRadioPort",
     "usbRadioStandby",
+    "usbRadioPitchChannel",
+    "usbRadioYawChannel",
+    "usbRadioZoomChannel",
+    "usbRadioPictureChannel",
+    "usbRadioPaletteChannel",
+    "usbRadioDropChannel",
+    "usbRadioArmChannel",
+    "usbRadioBayChannel",
 ];
 
 fn user_visible(name: &str, ios: bool) -> bool {
@@ -747,6 +755,46 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
         "usbRadioStandby",
         "Network standby (4G / Starlink)",
     ),
+    (
+        "autoConnectSettings",
+        "usbRadioPitchChannel",
+        "Camera pitch channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioYawChannel",
+        "Camera yaw channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioZoomChannel",
+        "Camera zoom channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioPictureChannel",
+        "Camera picture channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioPaletteChannel",
+        "Thermal palette channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioDropChannel",
+        "Payload drop channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioArmChannel",
+        "Payload arm channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioBayChannel",
+        "Payload bay channel",
+    ),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     (
         "videoSettings",
@@ -1075,7 +1123,18 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
             ),
             (
                 "Radio on USB (EdgeTX script)",
-                &["usbRadioPort", "usbRadioStandby"],
+                &[
+                    "usbRadioPort",
+                    "usbRadioStandby",
+                    "usbRadioPitchChannel",
+                    "usbRadioYawChannel",
+                    "usbRadioZoomChannel",
+                    "usbRadioPictureChannel",
+                    "usbRadioPaletteChannel",
+                    "usbRadioDropChannel",
+                    "usbRadioArmChannel",
+                    "usbRadioBayChannel",
+                ],
             ),
         ],
     ),

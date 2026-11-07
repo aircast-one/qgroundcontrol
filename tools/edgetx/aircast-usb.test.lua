@@ -74,7 +74,8 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
   if screen.w == 480 then
     assert(shows(r, "Waiting for the app") and shows(r, "Pick it under Radio on USB"), "silence says where in the app to pick the radio")
     assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
-    assert(shows(r, "+13 unused channels") and shows(r, "CH24 src107 termty 1500"), "only the channels this model mixes are listed")
+    assert(shows(r, "+20 unused channels") and not shows(r, "CH24"), "only the channels this model mixes are listed")
+    assert(next(r.inserted) == nil, "nothing is set up before the app says which channels it reads")
     assert(shows(r, "RTN: stop sending sticks and exit"), "the way out is on the screen")
 
     r.hear("@F,1\n")
@@ -97,8 +98,12 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
 end
 
 local full = radio({ w = 480, h = 272, mixes = 24 })
+full.hear("@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5\n")
+full.script.run(0)
 assert(next(full.inserted) == nil, "a channel that already has a mix keeps it: nothing is added to a model mixing all 24")
 local fresh = radio({ w = 480, h = 272 })
+fresh.hear("@F,1\n")
+fresh.script.run(0)
 local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camPit", 99 }, [19] = { "camYaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 } }
 for channel, mix in pairs(wanted) do
   local got = fresh.inserted[channel]
@@ -106,7 +111,20 @@ for channel, mix in pairs(wanted) do
 end
 local count = 0
 for _ in pairs(fresh.inserted) do count = count + 1 end
-assert(count == 7, "only the R2D2 camera and payload channels are added, never CH5 or CH10, which can be flight modes")
+assert(count == 7, "an app that names no layout gets the R2D2 camera and payload channels, never the bay on CH5, which can be flight modes")
+local moved = radio({ w = 480, h = 272 })
+moved.hear("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0\n")
+moved.script.run(0)
+assert(moved.inserted[12] and moved.inserted[12].name == "camPit" and moved.inserted[12].source == 99, "the app's pitch channel gets the right slider")
+assert(moved.inserted[13] and moved.inserted[13].name == "camYaw" and moved.inserted[14] and moved.inserted[14].name == "zoom", "and its yaw and zoom channels the left slider and S2")
+count = 0
+for _ in pairs(moved.inserted) do count = count + 1 end
+assert(count == 3, "a function the app turned off (channel 0) is not set up anywhere")
+moved.hear("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0\n")
+moved.script.run(0)
+moved.hear("@F,1,C,1,2,3,4;16,14,15,0,0,0,0,0\n")
+moved.script.run(0)
+assert(moved.inserted[15] and moved.inserted[15].name == "camPit", "moving pitch in the app sets the new channel up")
 full.script.run(0)
 assert(shows(full, "CH24 src23 m23    1500") and not shows(full, "+0 unused channels"), "a model mixing all 24 channels shows every one")
 
