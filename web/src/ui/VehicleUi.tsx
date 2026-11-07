@@ -323,8 +323,8 @@ export const TelemetryRow = ({
         {sheets}
         {stacked ? (
           <div className={`flex flex-col gap-0.5 ${className ?? ''}`}>
-            {speeds.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{speeds.map((it) => reading(it, 'titleLarge'))}</div> : null}
-            {places.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{places.map((it) => reading(it, 'headlineMedium'))}</div> : null}
+            {speeds.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{speeds.map((it) => reading(it, 'headlineMedium'))}</div> : null}
+            {places.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{places.map((it) => reading(it, 'displaySmall'))}</div> : null}
           </div>
         ) : (
           <div className={`flex flex-wrap justify-center gap-x-4 gap-y-0.5 ${className ?? ''}`}>{shown.map((it) => reading(it, 'titleMedium'))}</div>
@@ -765,7 +765,7 @@ const OfflineDeck = ({ className }: { className?: string }) => {
 export const LocalDeckTelemetry = createContext(true);
 
 const DECISION_CARD_WIDTH = 460;
-const OSD_LABEL_ALPHA = 0.75;
+export const OSD_LABEL_ALPHA = 0.75;
 export const STOP_MOTORS = 'Stop motors';
 const FLIGHT_ACTIONS = 'Flight actions';
 const RAIL_LIFT = 56;

@@ -461,12 +461,12 @@ private fun TelemetryPlaceholder() {
     val units = placeholderUnits(enumIndex(distance), enumIndex(height), enumIndex(speed))
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
-            PlaceholderReading("H.S", units.speed, MaterialTheme.typography.titleLarge)
-            PlaceholderReading("V.S", units.speed, MaterialTheme.typography.titleLarge)
+            PlaceholderReading("H.S", units.speed, MaterialTheme.typography.headlineMedium)
+            PlaceholderReading("V.S", units.speed, MaterialTheme.typography.headlineMedium)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
-            PlaceholderReading("D", units.distance, MaterialTheme.typography.headlineMedium)
-            PlaceholderReading("H", units.height, MaterialTheme.typography.headlineMedium)
+            PlaceholderReading("D", units.distance, MaterialTheme.typography.displaySmall)
+            PlaceholderReading("H", units.height, MaterialTheme.typography.displaySmall)
         }
     }
 }

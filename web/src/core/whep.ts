@@ -1,4 +1,6 @@
-export type WhepReport = { running: boolean; frames: number; width: number; height: number; error: string; restarted: boolean };
+export type WhepStats = { fps: number; kbps: number; jitterMs: number; lost: number; dropped: number; bytes: number; at: number };
+export type WhepReport = { running: boolean; frames: number; width: number; height: number; error: string; restarted: boolean; stats: WhepStats | null };
+type InboundVideo = { timestamp: number; framesPerSecond?: number; bytesReceived?: number; jitter?: number; packetsLost?: number; framesDropped?: number };
 
 const ICE_GATHER_MS = 2000;
 const REPORT_MS = 500;
@@ -26,9 +28,26 @@ const negotiate = async (peer: RTCPeerConnection, endpoint: string): Promise<str
   return resource === null ? null : new URL(resource, endpoint).href;
 };
 
+export const whepStats = (inbound: InboundVideo, previous: WhepStats | null): WhepStats => {
+  const bytes = inbound.bytesReceived ?? 0;
+  const elapsedMs = previous === null ? 0 : inbound.timestamp - previous.at;
+  return {
+    fps: Math.round(inbound.framesPerSecond ?? 0),
+    kbps: previous === null || elapsedMs <= 0 ? 0 : Math.round(((bytes - previous.bytes) * 8) / elapsedMs),
+    jitterMs: Math.round((inbound.jitter ?? 0) * 1000),
+    lost: inbound.packetsLost ?? 0,
+    dropped: inbound.framesDropped ?? 0,
+    bytes,
+    at: inbound.timestamp,
+  };
+};
+
+const inboundVideo = (report: RTCStatsReport): InboundVideo | null =>
+  ([...report.values()] as (InboundVideo & { type: string; kind?: string })[]).find((stat) => stat.type === 'inbound-rtp' && stat.kind === 'video') ?? null;
+
 export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: WhepReport) => void): (() => void) => {
   const peer = new RTCPeerConnection();
-  const session = { resource: null as string | null, error: '', first: true };
+  const session = { resource: null as string | null, error: '', first: true, stats: null as WhepStats | null };
   peer.addTransceiver('video', { direction: 'recvonly' });
   peer.ontrack = ({ streams, track }) => {
     video.srcObject = streams[0] ?? new MediaStream([track]);
@@ -42,8 +61,12 @@ export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (rea
     },
   );
   const timer = setInterval(() => {
+    void peer.getStats().then((report) => {
+      const inbound = inboundVideo(report);
+      session.stats = inbound === null ? null : whepStats(inbound, session.stats);
+    }, () => undefined);
     const frames = video.getVideoPlaybackQuality().totalVideoFrames;
-    report({ running: peer.connectionState === 'connected', frames, width: video.videoWidth, height: video.videoHeight, error: session.error, restarted: session.first });
+    report({ running: peer.connectionState === 'connected', frames, width: video.videoWidth, height: video.videoHeight, error: session.error, restarted: session.first, stats: session.stats });
     session.first = false;
   }, REPORT_MS);
   return () => {

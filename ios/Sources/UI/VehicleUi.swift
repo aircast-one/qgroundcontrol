@@ -349,10 +349,10 @@ private struct TelemetryReadings: View {
             let places = shown.filter { !osdIsSpeed($0.label) }
             VStack(alignment: .leading, spacing: 2) {
                 if !speeds.isEmpty {
-                    HStack(spacing: Space.s4) { ForEach(Array(speeds.enumerated()), id: \.offset) { osdReading($0.element, .titleLarge, silent) } }
+                    PlanFlowRow(spacing: Space.s4, lineSpacing: 2) { ForEach(Array(speeds.enumerated()), id: \.offset) { osdReading($0.element, .headlineMedium, silent) } }
                 }
                 if !places.isEmpty {
-                    HStack(spacing: Space.s4) { ForEach(Array(places.enumerated()), id: \.offset) { osdReading($0.element, .headlineMedium, silent) } }
+                    PlanFlowRow(spacing: Space.s4, lineSpacing: 2) { ForEach(Array(places.enumerated()), id: \.offset) { osdReading($0.element, .displaySmall, silent) } }
                 }
             }
         } else {

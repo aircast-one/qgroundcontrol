@@ -1,5 +1,8 @@
 #![allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{EstimatorStatusFlags, MavMessage, MavSensorOrientation};
+use mavlink::dialects::ardupilotmega::{
+    EKF_STATUS_REPORT_DATA, ESTIMATOR_STATUS_DATA, EkfStatusFlags, EstimatorStatusFlags,
+    MavMessage, MavSensorOrientation,
+};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -557,9 +560,42 @@ impl LocalPositionFacts {
 
 impl EstimatorStatusFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::ESTIMATOR_STATUS(d) = message else {
-            return false;
+        match message {
+            MavMessage::ESTIMATOR_STATUS(d) => self.apply_px4(d),
+            MavMessage::EKF_STATUS_REPORT(d) => self.apply_ardupilot(d),
+            _ => return false,
+        }
+        true
+    }
+
+    fn apply_ardupilot(&mut self, d: &EKF_STATUS_REPORT_DATA) {
+        let has = |flag: EkfStatusFlags| d.flags.contains(flag);
+        *self = EstimatorStatusFacts {
+            good_attitude: has(EkfStatusFlags::EKF_ATTITUDE),
+            good_horiz_vel: has(EkfStatusFlags::EKF_VELOCITY_HORIZ),
+            good_vert_vel: has(EkfStatusFlags::EKF_VELOCITY_VERT),
+            good_horiz_pos_rel: has(EkfStatusFlags::EKF_POS_HORIZ_REL),
+            good_horiz_pos_abs: has(EkfStatusFlags::EKF_POS_HORIZ_ABS),
+            good_vert_pos_abs: has(EkfStatusFlags::EKF_POS_VERT_ABS),
+            good_vert_pos_agl: has(EkfStatusFlags::EKF_POS_VERT_AGL),
+            good_const_pos_mode: has(EkfStatusFlags::EKF_CONST_POS_MODE),
+            good_pred_horiz_pos_rel: has(EkfStatusFlags::EKF_PRED_POS_HORIZ_REL),
+            good_pred_horiz_pos_abs: has(EkfStatusFlags::EKF_PRED_POS_HORIZ_ABS),
+            gps_glitch: has(EkfStatusFlags::EKF_GPS_GLITCHING),
+            accel_error: false,
+            vel_ratio: d.velocity_variance as f64,
+            horiz_pos_ratio: d.pos_horiz_variance as f64,
+            vert_pos_ratio: d.pos_vert_variance as f64,
+            mag_ratio: d.compass_variance as f64,
+            hagl_ratio: d.terrain_alt_variance as f64,
+            tas_ratio: d.airspeed_variance as f64,
+            horiz_pos_accuracy: 0.0,
+            vert_pos_accuracy: 0.0,
+            seen: true,
         };
+    }
+
+    fn apply_px4(&mut self, d: &ESTIMATOR_STATUS_DATA) {
         let has = |flag: EstimatorStatusFlags| d.flags.contains(flag);
         *self = EstimatorStatusFacts {
             good_attitude: has(EstimatorStatusFlags::ESTIMATOR_ATTITUDE),
@@ -584,7 +620,6 @@ impl EstimatorStatusFacts {
             vert_pos_accuracy: d.pos_vert_accuracy as f64,
             seen: true,
         };
-        true
     }
 }
 
@@ -870,6 +905,25 @@ mod tests {
         );
         assert!((estimator.mag_ratio - 0.4).abs() < 1e-6);
         assert!(!estimator.apply(&MavMessage::HEARTBEAT(Default::default())));
+    }
+
+    #[test]
+    fn an_ardupilot_ekf_report_fills_the_estimator_facts() {
+        let mut estimator = EstimatorStatusFacts::default();
+        let mut d = EKF_STATUS_REPORT_DATA::default();
+        d.flags = EkfStatusFlags::EKF_ATTITUDE | EkfStatusFlags::EKF_GPS_GLITCHING;
+        d.velocity_variance = 0.2;
+        d.compass_variance = 0.6;
+        assert!(estimator.apply(&MavMessage::EKF_STATUS_REPORT(d)));
+        assert!(
+            estimator.seen
+                && estimator.good_attitude
+                && estimator.gps_glitch
+                && !estimator.good_horiz_vel
+        );
+        assert!(
+            (estimator.vel_ratio - 0.2).abs() < 1e-6 && (estimator.mag_ratio - 0.6).abs() < 1e-6
+        );
     }
 
     #[test]

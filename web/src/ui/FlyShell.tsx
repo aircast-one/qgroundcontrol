@@ -38,6 +38,7 @@ import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { OsdDetails } from '@/ui/OsdDetails';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget } from '@/ui/OverlayLayout';
@@ -359,6 +360,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const cutoutStart = direction === 'rtl' ? safeArea.right : safeArea.left;
   const cutoutEnd = direction === 'rtl' ? safeArea.left : safeArea.right;
   const controls = useElementSize();
+  const osd = useElementSize();
   const insets = stickInsets(stickPad, fullScreen, box.letterbox, cutoutStart, cutoutEnd, controls.size.width);
   const ornamentEnd = insets.ornamentEnd;
   useEffect(() => {
@@ -550,10 +552,12 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 )}
                 {hasVehicle && !deciding ? (
                   <div
+                    ref={osd.ref}
                     className={`absolute start-0 bottom-0 max-w-full ${osdShadow()}`}
                     style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideThumb + AircastSpace.s3 * 2, paddingInlineEnd: AircastSpace.s3, paddingBottom: AircastSpace.s3 }}
                   >
                     <LocalFlyOsd.Provider value>
+                      <OsdDetails />
                       <TelemetryRow valuesShown chooser={false} compact stacked />
                     </LocalFlyOsd.Provider>
                   </div>
@@ -566,7 +570,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               <div className="relative size-full">
                 {actions(FlyDeckLayout.Rail)}
                 {hasVehicle ? (
-                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: PAYLOAD_STRIP_CLEARANCE + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
+                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
                     <PayloadRailStrip />
                   </div>
                 ) : null}

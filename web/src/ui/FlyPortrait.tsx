@@ -448,12 +448,12 @@ const TelemetryPlaceholder = () => {
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex gap-4">
-        <PlaceholderReading label="H.S" unit={units.speed} typography="titleLarge" />
-        <PlaceholderReading label="V.S" unit={units.speed} typography="titleLarge" />
+        <PlaceholderReading label="H.S" unit={units.speed} typography="headlineMedium" />
+        <PlaceholderReading label="V.S" unit={units.speed} typography="headlineMedium" />
       </div>
       <div className="flex gap-4">
-        <PlaceholderReading label="D" unit={units.distance} typography="headlineMedium" />
-        <PlaceholderReading label="H" unit={units.height} typography="headlineMedium" />
+        <PlaceholderReading label="D" unit={units.distance} typography="displaySmall" />
+        <PlaceholderReading label="H" unit={units.height} typography="displaySmall" />
       </div>
     </div>
   );

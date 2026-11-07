@@ -426,12 +426,12 @@ private struct TelemetryPlaceholder: View {
         let units = placeholderUnits(distance.int, height.int, speed.int)
         VStack(alignment: .leading, spacing: PLACEHOLDER_ROW_GAP) {
             HStack(spacing: Space.s4) {
-                PlaceholderReading(label: "H.S", unit: units.speed, font: .titleLarge)
-                PlaceholderReading(label: "V.S", unit: units.speed, font: .titleLarge)
+                PlaceholderReading(label: "H.S", unit: units.speed, font: .headlineMedium)
+                PlaceholderReading(label: "V.S", unit: units.speed, font: .headlineMedium)
             }
             HStack(spacing: Space.s4) {
-                PlaceholderReading(label: "D", unit: units.distance, font: .headlineMedium)
-                PlaceholderReading(label: "H", unit: units.height, font: .headlineMedium)
+                PlaceholderReading(label: "D", unit: units.distance, font: .displaySmall)
+                PlaceholderReading(label: "H", unit: units.height, font: .displaySmall)
             }
         }
         .accessibilityElement(children: .combine)

@@ -25,6 +25,7 @@ import { GIMBAL_INDICATOR_PATH, GimbalModeSwitch, GimbalScreenControl, onScreenG
 import { LocalNoVideoSize, NoVideoPanel, NoVideoSize, deviceNeeds, openCameraSetup, useCameraMissing } from '@/ui/NoVideoPanel';
 import { DEVICE_TELEMETRY, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, type OfflineStatus, offlineStatus, openAddLink, openDeviceTelemetry } from '@/ui/OfflineStatusSheet';
 import { osdShadow } from '@/ui/Osd';
+import { mainVideoStats } from '@/ui/OsdDetails';
 import { type PicturePress, type PictureSpot, PictureMark, usePictureHold } from '@/ui/PictureHold';
 import { ProximityRadarOverlay } from '@/ui/ProximityRadar';
 import { SYNTHETIC_SOURCE, SyntheticView, shownCameraStatus, useRememberSyntheticAvailable, useRememberSyntheticChosen, useSyntheticPage } from '@/ui/SyntheticView';
@@ -409,7 +410,15 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
   useEffect(() => {
     const element = video.current;
     if (endpoint === null || element === null) return undefined;
-    return playWhep(element, endpoint, (reading) => void VideoCommands.reportPlayback(channel, reading));
+    const main = channel === MAIN_VIDEO_CHANNEL;
+    const stop = playWhep(element, endpoint, (reading) => {
+      void VideoCommands.reportPlayback(channel, reading);
+      if (main) mainVideoStats.value = reading.running ? reading.stats : null;
+    });
+    return () => {
+      stop();
+      if (main) mainVideoStats.value = null;
+    };
   }, [endpoint, channel, restarts]);
   useEffect(() => {
     const stream = video.current?.srcObject;
