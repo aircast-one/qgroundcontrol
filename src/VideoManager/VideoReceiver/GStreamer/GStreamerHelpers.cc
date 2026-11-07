@@ -58,7 +58,6 @@ bool isValidRtspUri(const gchar* uri_str)
 
 QString writePipelineDot(GstElement* pipeline, const char* tag)
 {
-    // kMaxDotFiles: cap retained .dot pipeline graphs; below 5 makes retro-debugging hard.
     constexpr int kMaxDotFiles = 10;
 
     if (!pipeline)
@@ -75,9 +74,8 @@ QString writePipelineDot(GstElement* pipeline, const char* tag)
         return {};
     }
 
-    // Rotate: remove oldest .dot files until under cap. Sort by mtime ascending.
-    QFileInfoList existing = dir.entryInfoList(QStringList{QStringLiteral("*.dot")},
-                                               QDir::Files, QDir::Time | QDir::Reversed);
+    QFileInfoList existing =
+        dir.entryInfoList(QStringList{QStringLiteral("*.dot")}, QDir::Files, QDir::Time | QDir::Reversed);
     while (existing.size() >= kMaxDotFiles) {
         QFile::remove(existing.takeFirst().absoluteFilePath());
     }
@@ -132,7 +130,6 @@ bool isHardwareDecoderFactory(GstElementFactory* factory)
 
     const QByteArray nameLower = QByteArray::fromRawData(factoryName, qstrlen(factoryName)).toLower();
 
-    // Android MediaCodec: exclude software wrappers, accept remaining as hardware
     if (nameLower.startsWith("amcviddec-omxgoogle") || nameLower.startsWith("amcviddec-c2android")) {
         return false;
     }
@@ -195,7 +192,6 @@ void applyRanks(GstRegistry* registry, std::span<const char* const> features, ui
     }
 }
 
-// Decoder-family rank tables, shared by setCodecPriorities and the zero-copy steering below.
 constexpr std::array<const char* const, 7> kVaDecoders = {"vaav1dec",   "vah264dec", "vah265dec", "vajpegdec",
                                                           "vampeg2dec", "vavp8dec",  "vavp9dec"};
 constexpr std::array<const char* const, 9> kNvidiaDecoders = {"nvav1dec",       "nvh264dec",       "nvh265dec",
@@ -297,13 +293,8 @@ void prioritizeByHardwareClass(GstRegistry* registry, uint16_t prioritizedRank, 
 }
 
 #ifdef Q_OS_WIN
-// A decoder whose D3D family mismatches the active QRhi backend can't be sampled zero-copy and drops to a CPU copy.
 void alignD3DDecoderRanksToRhi(GstRegistry* registry, bool promoteMatchedFamily)
 {
-    // Prefer the resolved QRhi backend; ranks usually apply before the scene graph resolves, so cachedRhi() is often
-    // null here and graphicsApi() Unknown — fall back to QSG_RHI_BACKEND (Qt's D3D11 default) in that Windows case.
-    // QGCRhiCapture/qrhi.h link only when a GPU path is compiled (GuiPrivate), so the resolved-backend lookup is gated;
-    // a no-GPU Windows build relies on graphicsApi()/QSG_RHI_BACKEND alone.
     bool wantD3D12 = false;
     bool resolved = false;
 #if defined(QGC_HAS_ANY_GPU_PATH)
@@ -354,18 +345,12 @@ constexpr std::array<const char* const, 8> kLegacyVaapiDecoders = {"vaapiav1dec"
 constexpr std::array<const char* const, 6> kV4l2StatelessDecoders = {
     "v4l2slh264dec", "v4l2slh265dec", "v4l2slvp8dec", "v4l2slvp9dec", "v4l2slav1dec", "v4l2slmpeg2dec"};
 
-// Steer autoplug toward zero-copy GPU-memory decoders (DMABuf/DMA_DRM) over system-memory ones. Rank-only and
-// additive: absent factories no-op, va/v4l2 self-demote at runtime without a device, software fallback untouched.
 void preferZeroCopyDecoders(GstRegistry* registry)
 {
     static constexpr uint16_t ZeroCopyRank = GST_RANK_PRIMARY + 2;
 
-    // Legacy gstreamer-vaapi negotiates GstVaapiMemory the qgcqvideosink/HwBuffers paths can't import
-    // zero-copy; demote it so the modern va plugin (clean DMABuf/DMA_DRM output) wins when both exist.
     applyRanks(registry, kLegacyVaapiDecoders, GST_RANK_NONE);
 
-    // Modern va decoders (gst-va, supersedes gstreamer-vaapi) emit DMABuf/DMA_DRM, and V4L2 stateless
-    // decoders expose DMA_DRM caps on 1.26+; bump both above software so the zero-copy allocator is picked.
     applyRanks(registry, kVaDecoders, ZeroCopyRank);
     applyRanks(registry, kV4l2StatelessDecoders, ZeroCopyRank);
 }
@@ -375,7 +360,6 @@ void preferZeroCopyDecoders(GstRegistry* registry)
 
 void setCodecPriorities(int rawOption)
 {
-    // Validate the raw setting here so the enum switch below stays default-free (-Wswitch).
     if ((rawOption < ForceVideoDecoderDefault) || (rawOption > ForceVideoDecoderHardware)) {
         qCWarning(GStreamerHelpersLog) << "Ignoring invalid decode option:" << rawOption;
         return;
@@ -396,9 +380,11 @@ void setCodecPriorities(VideoDecoderOptions option)
 
     switch (option) {
         case ForceVideoDecoderDefault:
-            // HW-decoder GPU caps (GLMemory/DMABuf/VAMemory) auto-plug to system memory via gldownload/vapostproc.
 #ifdef Q_OS_LINUX
             preferZeroCopyDecoders(registry);
+#endif
+#ifdef Q_OS_MACOS
+            applyRanks(registry, kVideoToolboxDecoders, GST_RANK_PRIMARY - 1);
 #endif
             break;
         case ForceVideoDecoderSoftware:
@@ -423,7 +409,6 @@ void setCodecPriorities(VideoDecoderOptions option)
             applyRanks(registry, kIntelDecoders, PrioritizedRank);
             break;
         case ForceVideoDecoderVulkan:
-            // Vulkan zero-copy import is dormant: gst-vulkan's own VkDevice fails QGC's device-match guard → CPU copy.
             qCWarning(GStreamerHelpersLog) << "Forcing Vulkan video decoders: zero-copy import is dormant "
                                               "(foreign VkDevice → CPU fallback), so decode will not be zero-copy.";
             applyRanks(registry, kVulkanDecoders, PrioritizedRank);
@@ -431,8 +416,6 @@ void setCodecPriorities(VideoDecoderOptions option)
     }
 
 #ifdef Q_OS_WIN
-    // After any option-driven rank changes, force the D3D decoder API to match the active QRhi
-    // backend so a D3D12 decoder never wins over D3D11 on Qt's default Windows RHI (and vice-versa).
     const bool promoteMatchingD3D = (option == ForceVideoDecoderDefault) || (option == ForceVideoDecoderHardware) ||
                                     (option == ForceVideoDecoderDirectX3D);
     alignD3DDecoderRanksToRhi(registry, promoteMatchingD3D);

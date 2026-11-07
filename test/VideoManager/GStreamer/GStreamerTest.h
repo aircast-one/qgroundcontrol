@@ -15,6 +15,7 @@ private slots:
     void _testSetCodecPrioritiesDefaultPrefersMatchingD3DDecoder();
     void _testSetCodecPrioritiesSkipsAbsentD3DDecoders();
     void _testD3D12RhiDisablesGpuZeroCopySink();
+    void _testSetCodecPrioritiesDefaultLeavesVideoToolboxBelowSoftware();
     void _testSetCodecPrioritiesSoftware();
     void _testSetCodecPrioritiesHardware();
     void _testRedirectGLibLogging();

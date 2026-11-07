@@ -10,7 +10,6 @@
 
 namespace {
 
-// Borrowed (bin-owned) first child whose element-factory name matches, or nullptr.
 GstElement* findChildByFactoryName(GstElement* bin, const char* factoryName)
 {
     GstIterator* it = gst_bin_iterate_elements(GST_BIN(bin));
@@ -198,15 +197,13 @@ void GStreamerTest::_testSourceFactoryAdaptJitterLatency()
 {
     using GStreamer::SourceFactory::adaptJitterLatencyMs;
 
-    QCOMPARE(adaptJitterLatencyMs(80, 80, false, 0, 0), 80u);
-    QCOMPARE(adaptJitterLatencyMs(80, 80, true, 0, 0), 120u);
-    QCOMPARE(adaptJitterLatencyMs(80, 80, true, 0, 170), 220u);
-    QCOMPARE(adaptJitterLatencyMs(480, 80, true, 0, 170), 500u);
-    QCOMPARE(adaptJitterLatencyMs(220, 80, false, 9999, 170), 220u);
-    QCOMPARE(adaptJitterLatencyMs(220, 80, false, 10000, 170), 200u);
-    QCOMPARE(adaptJitterLatencyMs(90, 80, false, 10000, 0), 80u);
-    QCOMPARE(adaptJitterLatencyMs(80, 80, false, 60000, 0), 80u);
-    QCOMPARE(adaptJitterLatencyMs(40, 40, true, 0, 0), 80u);
+    QCOMPARE(adaptJitterLatencyMs(150, 150, false, 0), 150u);
+    QCOMPARE(adaptJitterLatencyMs(150, 150, true, 0), 190u);
+    QCOMPARE(adaptJitterLatencyMs(150, 150, true, 170), 220u);
+    QCOMPARE(adaptJitterLatencyMs(480, 150, true, 170), 500u);
+    QCOMPARE(adaptJitterLatencyMs(220, 150, false, 170), 220u);
+    QCOMPARE(adaptJitterLatencyMs(220, 150, false, 0), 220u);
+    QCOMPARE(adaptJitterLatencyMs(40, 40, true, 0), 80u);
 }
 
 void GStreamerTest::_testSourceFactoryRejectsBadUri()

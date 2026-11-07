@@ -137,12 +137,8 @@ void GStreamerTest::init()
         QStringLiteral("cannot register existing type|"
                        "g_type_add_interface_static.*G_TYPE_IS_INSTANTIATABLE|"
                        "g_once_init_leave.*result != 0"));
-    // GStreamer/GLib type registration warnings are environment/startup-order dependent
-    // and may occur 0..N times across test process lifetime.
     ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtCriticalMsg, sGLibTypeRe);
 
-    // On headless/software-GL CI the sink bin cannot honor construct-only GPU properties
-    // and the GL bridge is disabled. These warnings are environment-dependent.
     ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtWarningMsg,
                      QRegularExpression(QStringLiteral("gpu-zerocopy.*can't be set after construction")));
     ignoreLogMessage("Video.GStreamer.HwBuffers.GstGlBridge", QtWarningMsg,
@@ -367,6 +363,28 @@ void GStreamerTest::_testSetCodecPrioritiesSoftware()
     gst_plugin_feature_list_free(factories);
 }
 
+void GStreamerTest::_testSetCodecPrioritiesDefaultLeavesVideoToolboxBelowSoftware()
+{
+#ifdef Q_OS_MACOS
+    GStreamer::setCodecPriorities(GStreamer::ForceVideoDecoderDefault);
+    GstElementFactory* vtdec = gst_element_factory_find("vtdec_hw");
+    GstElementFactory* avdec = gst_element_factory_find("avdec_h265");
+    if (!vtdec || !avdec) {
+        gst_clear_object(&vtdec);
+        gst_clear_object(&avdec);
+        QSKIP("vtdec_hw/avdec_h265 unavailable");
+    }
+    const guint vtdecRank = gst_plugin_feature_get_rank(GST_PLUGIN_FEATURE(vtdec));
+    const guint avdecRank = gst_plugin_feature_get_rank(GST_PLUGIN_FEATURE(avdec));
+    gst_object_unref(vtdec);
+    gst_object_unref(avdec);
+    QVERIFY2(vtdecRank < avdecRank,
+             "VideoToolbox holds 16 H.265 frames before it outputs one; software decoding must win by default");
+#else
+    QSKIP("macOS only");
+#endif
+}
+
 void GStreamerTest::_testSetCodecPrioritiesHardware()
 {
     GStreamer::setCodecPriorities(GStreamer::ForceVideoDecoderHardware);
@@ -396,10 +414,8 @@ void GStreamerTest::_testRedirectGLibLogging()
 {
     GStreamer::redirectGLibLogging();
 
-    // Debug-level GLib messages map to QtDebugMsg — suppress it.
     ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtDebugMsg,
                      QRegularExpression(QStringLiteral("GStreamerTest debug message")));
-    // Warning-level message is the redirect target being tested — expect and verify it.
     expectLogMessage("Video.GStreamer.GStreamerLogging", QtWarningMsg,
                      QRegularExpression(QStringLiteral("GStreamerTest warning message")));
     g_log("TestDomain", G_LOG_LEVEL_DEBUG, "GStreamerTest debug message");
@@ -453,7 +469,6 @@ void GStreamerTest::_testVerifyRequiredPlugins()
 
 void GStreamerTest::_testEnvironmentSetup()
 {
-    // Save and clear relevant env vars
     static constexpr const char* envVars[] = {
         "GIO_EXTRA_MODULES",
         "GIO_MODULE_DIR",
@@ -489,7 +504,6 @@ void GStreamerTest::_testEnvironmentSetup()
          {"GST_PLUGIN_PATH", "GST_PLUGIN_PATH_1_0", "GST_PLUGIN_SYSTEM_PATH", "GST_PLUGIN_SYSTEM_PATH_1_0"}) {
         if (qEnvironmentVariableIsSet(var)) {
             const QString path = qEnvironmentVariable(var);
-            // Paths may be colon-separated; check each component
             const QStringList parts = path.split(QDir::listSeparator(), Qt::SkipEmptyParts);
             for (const QString& part : parts) {
                 QVERIFY2(QDir(part).exists(),
@@ -636,9 +650,6 @@ void GStreamerTest::_testRecordingSinkFinalizesMidStreamH265Mp4()
         gst_object_unref(factory);
     }
 
-    // Synthetic 32x32 Annex-B H.265 access units. Only the first AU contains VPS/SPS/PPS; the
-    // later IDRs intentionally contain just a slice. This reproduces a camera that sends codec
-    // configuration once at session startup, before the user begins recording.
     const QByteArray initialAu = QByteArray::fromBase64(QByteArrayLiteral(
         "AAAAAUABDAH//wQIAAADAJgoAAADAAAeugJAAAAAAUIBAQQIAAADAJgoAAADAAAekAhBCKUt0lJhf/gACAALUGBgYEAAAAMAQ"
         "AAAAwECAAAAAUQBwHAwYBEgAAAAASgBrC2AE6/7X1g="));
