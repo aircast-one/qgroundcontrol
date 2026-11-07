@@ -67,6 +67,20 @@ impl Default for Layout {
 }
 
 impl Layout {
+    pub fn without(self, channel: usize) -> Layout {
+        let off = |at: usize| if channel > 0 && at == channel { 0 } else { at };
+        Layout {
+            pitch: off(self.pitch),
+            yaw: off(self.yaw),
+            zoom: off(self.zoom),
+            picture: off(self.picture),
+            palette: off(self.palette),
+            drop: off(self.drop),
+            arm: off(self.arm),
+            bay: off(self.bay),
+        }
+    }
+
     pub fn channels(&self) -> [usize; 8] {
         [
             self.pitch,
@@ -300,18 +314,15 @@ pub fn switches(
     now_ms: u64,
     layout: Layout,
 ) -> Option<crate::payloadrail::RadioSwitches> {
-    read(line, layout.arm)
-        .zip(read(line, layout.bay))
-        .map(|(arm, bay_pwm)| crate::payloadrail::RadioSwitches {
-            armed: arm >= ARMED_PWM,
-            bay: bay(bay_pwm),
-            at_ms: now_ms,
-        })
+    read(line, layout.arm).map(|arm| crate::payloadrail::RadioSwitches {
+        armed: arm >= ARMED_PWM,
+        bay: read(line, layout.bay).map(bay),
+        at_ms: now_ms,
+    })
 }
 
-pub fn heard(vehicle: u8, line: &[u16]) {
+pub fn heard(vehicle: u8, line: &[u16], layout: Layout) {
     let limits = yaw_limits();
-    let layout = layout();
     if let Some(switches) = switches(line, crate::hub::now_ms(), layout) {
         crate::payloadrail::radio_heard(switches);
     }
@@ -323,7 +334,14 @@ pub fn heard(vehicle: u8, line: &[u16]) {
         .into_iter()
         .filter_map(|step| match step {
             Move::Drop { bay } => servo_bays.map(|bays| Move::Drop {
-                bay: named(bay, bays),
+                bay: named(
+                    if layout.bay > 0 {
+                        bay
+                    } else {
+                        crate::payloadrail::selected()
+                    },
+                    bays,
+                ),
             }),
             other => Some(other),
         })
@@ -579,7 +597,7 @@ mod tests {
     #[test]
     fn bomarm_up_arms_the_payload_and_the_6pos_picks_the_bay() {
         let up = switches(&line(&[(ARM_CHANNEL, 2012), (BAY_CHANNEL, 1398)]), 7, R2D2).unwrap();
-        assert_eq!((up.armed, up.bay, up.at_ms), (true, 3, 7));
+        assert_eq!((up.armed, up.bay, up.at_ms), (true, Some(3), 7));
         assert!(
             !switches(&line(&[(ARM_CHANNEL, 1500)]), 0, R2D2)
                 .unwrap()
@@ -662,5 +680,22 @@ mod tests {
         assert!(drops.is_empty(), "a function on channel 0 is off");
         assert!(switches(&line(&[(ARM_CHANNEL, 2012)]), 0, moved).is_none());
         assert_eq!(Sticks::default().layout, R2D2);
+    }
+
+    #[test]
+    fn a_function_on_the_flight_mode_channel_is_off() {
+        assert_eq!(
+            R2D2.without(5),
+            Layout { bay: 0, ..R2D2 },
+            "flight modes on CH5 take the bay switch off it"
+        );
+        assert_eq!(R2D2.without(10), R2D2, "flight modes on CH10 leave it");
+        assert_eq!(R2D2.without(0), R2D2, "no flight mode channel leaves it");
+        assert_eq!(
+            switches(&line(&[(ARM_CHANNEL, 2012), (5, 1500)]), 0, R2D2.without(5))
+                .map(|radio| (radio.armed, radio.bay)),
+            Some((true, None)),
+            "the arm switch still arms, and the bay is left to the app"
+        );
     }
 }

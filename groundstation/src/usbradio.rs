@@ -162,6 +162,7 @@ pub enum Flying {
 pub struct Roles {
     pub kind: char,
     pub channels: [u8; 4],
+    pub modes: u8,
 }
 
 const DEFAULT_CHANNELS: [u8; 4] = [1, 2, 3, 4];
@@ -172,6 +173,8 @@ const PX4_MAP: [&str; 4] = [
     "RC_MAP_THROTTLE",
     "RC_MAP_YAW",
 ];
+const ARDUPILOT_MODES: &[&str] = &["FLTMODE_CH", "MODE_CH"];
+const PX4_MODES: &[&str] = &["RC_MAP_FLTMODE"];
 
 pub fn roles(
     vehicle_type: u8,
@@ -184,13 +187,20 @@ pub fn roles(
         crate::modes::VehicleClass::Rover => 'R',
         crate::modes::VehicleClass::Other => return None,
     };
-    let names = if px4 { PX4_MAP } else { ARDUPILOT_MAP };
-    let channels = std::array::from_fn(|at| {
-        parameter(names[at])
-            .filter(|c| (1.0..=255.0).contains(c))
-            .map_or(DEFAULT_CHANNELS[at], |c| c as u8)
-    });
-    Some(Roles { kind, channels })
+    let (names, modes) = if px4 {
+        (PX4_MAP, PX4_MODES)
+    } else {
+        (ARDUPILOT_MAP, ARDUPILOT_MODES)
+    };
+    let channel = |value: Option<f64>| value.filter(|c| (1.0..=255.0).contains(c)).map(|c| c as u8);
+    let channels =
+        std::array::from_fn(|at| channel(parameter(names[at])).unwrap_or(DEFAULT_CHANNELS[at]));
+    let modes = channel(modes.iter().find_map(|name| parameter(name))).unwrap_or(0);
+    Some(Roles {
+        kind,
+        channels,
+        modes,
+    })
 }
 
 fn layout_tail(layout: crate::radiocamera::Layout) -> String {
@@ -199,20 +209,27 @@ fn layout_tail(layout: crate::radiocamera::Layout) -> String {
 }
 
 pub fn echo(flying: Flying, roles: Option<Roles>, layout: crate::radiocamera::Layout) -> String {
-    let tail = layout_tail(layout);
     let (state, id) = match flying {
-        Flying::NoVehicle => return format!("@N{tail}\n"),
+        Flying::NoVehicle => return format!("@N{}\n", layout_tail(layout)),
         Flying::Vehicle(id) => ('F', id),
         Flying::Standby(id) => ('S', id),
         Flying::Joystick(id) => ('J', id),
     };
     match roles {
-        None => format!("@{state},{id}{tail}\n"),
+        None => format!("@{state},{id}{}\n", layout_tail(layout)),
         Some(Roles {
             kind,
             channels: [roll, pitch, throttle, yaw],
-        }) => format!("@{state},{id},{kind},{roll},{pitch},{throttle},{yaw}{tail}\n"),
+            modes,
+        }) => format!(
+            "@{state},{id},{kind},{roll},{pitch},{throttle},{yaw},{modes}{}\n",
+            layout_tail(layout.without(modes.into()))
+        ),
     }
+}
+
+fn layout() -> crate::radiocamera::Layout {
+    crate::radiocamera::layout().without(active_roles().map_or(0, |roles| roles.modes.into()))
 }
 
 fn active_roles() -> Option<Roles> {
@@ -511,7 +528,7 @@ fn heard_on(port: &str, lines: Vec<Line>) {
         detection().radios.insert(port.to_string());
         advance(Some(sticks(line)));
         if let Some((vehicle, _)) = target() {
-            crate::radiocamera::heard(vehicle, line);
+            crate::radiocamera::heard(vehicle, line, layout());
         }
     }
 }
@@ -702,7 +719,8 @@ mod tests {
                 Flying::NoVehicle,
                 Some(Roles {
                     kind: 'C',
-                    channels: [1, 2, 3, 4]
+                    channels: [1, 2, 3, 4],
+                    modes: 5
                 }),
                 crate::radiocamera::R2D2
             ),
@@ -713,19 +731,34 @@ mod tests {
                 Flying::Vehicle(1),
                 Some(Roles {
                     kind: 'C',
-                    channels: [1, 2, 3, 4]
+                    channels: [1, 2, 3, 4],
+                    modes: 10
                 }),
                 crate::radiocamera::R2D2
             ),
-            "@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5\n",
-            "a known vehicle says what each stick channel does"
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n",
+            "a known vehicle says what each stick channel does and where it reads flight modes"
+        );
+        assert_eq!(
+            echo(
+                Flying::Vehicle(1),
+                Some(Roles {
+                    kind: 'C',
+                    channels: [1, 2, 3, 4],
+                    modes: 5
+                }),
+                crate::radiocamera::R2D2
+            ),
+            "@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0\n",
+            "a vehicle reading flight modes on the bay channel keeps the bay off it"
         );
         assert!(
             echo(
                 Flying::Vehicle(1),
                 Some(Roles {
                     kind: 'P',
-                    channels: [1, 2, 3, 4]
+                    channels: [1, 2, 3, 4],
+                    modes: 5
                 }),
                 crate::radiocamera::R2D2
             )
@@ -742,7 +775,8 @@ mod tests {
             roles(2, false, none),
             Some(Roles {
                 kind: 'C',
-                channels: [1, 2, 3, 4]
+                channels: [1, 2, 3, 4],
+                modes: 0
             }),
             "a quad without RCMAP params flies on 1 to 4"
         );
@@ -794,6 +828,34 @@ mod tests {
             roles(2, false, px4).map(|r| r.channels),
             Some([1, 2, 3, 4]),
             "ArduPilot ignores PX4's names"
+        );
+        let modes = |names: &'static [(&'static str, f64)]| {
+            move |name: &str| {
+                names
+                    .iter()
+                    .find(|(wanted, _)| *wanted == name)
+                    .map(|(_, value)| *value)
+            }
+        };
+        assert_eq!(
+            roles(2, false, modes(&[("FLTMODE_CH", 10.0)])).map(|r| r.modes),
+            Some(10),
+            "a copter reads flight modes from FLTMODE_CH"
+        );
+        assert_eq!(
+            roles(10, false, modes(&[("MODE_CH", 8.0)])).map(|r| r.modes),
+            Some(8),
+            "a rover reads them from MODE_CH"
+        );
+        assert_eq!(
+            roles(2, true, modes(&[("RC_MAP_FLTMODE", 6.0)])).map(|r| r.modes),
+            Some(6),
+            "PX4 reads RC_MAP_FLTMODE"
+        );
+        assert_eq!(
+            roles(2, false, modes(&[("FLTMODE_CH", 0.0)])).map(|r| r.modes),
+            Some(0),
+            "no flight mode channel is 0"
         );
     }
 

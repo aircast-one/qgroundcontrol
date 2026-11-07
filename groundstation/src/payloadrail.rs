@@ -28,7 +28,7 @@ pub const APP: &str = "app";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RadioSwitches {
     pub armed: bool,
-    pub bay: i64,
+    pub bay: Option<i64>,
     pub at_ms: u64,
 }
 
@@ -65,9 +65,9 @@ impl Rail {
     }
 
     pub fn selected(&self, now_ms: u64) -> Owned<i64> {
-        match self.radio(now_ms) {
-            Some(radio) => Owned {
-                value: radio.bay,
+        match self.radio(now_ms).and_then(|radio| radio.bay) {
+            Some(bay) => Owned {
+                value: bay,
                 by: RADIO,
             },
             None => Owned {
@@ -96,7 +96,7 @@ impl Rail {
     }
 
     pub fn select(&mut self, bay: i64, now_ms: u64) -> Result<(), &'static str> {
-        match self.radio(now_ms) {
+        match self.radio(now_ms).and_then(|radio| radio.bay) {
             Some(_) => Err(RADIO_SELECTS),
             None => {
                 self.selected = bay.max(1);
@@ -273,9 +273,26 @@ mod tests {
 
     const LIVE: RadioSwitches = RadioSwitches {
         armed: true,
-        bay: 3,
+        bay: Some(3),
         at_ms: 1_000,
     };
+
+    #[test]
+    fn a_radio_with_no_bay_switch_arms_and_leaves_the_bay_to_the_app() {
+        let mut rail = Rail::default();
+        assert_eq!(rail.select(2, 0), Ok(()));
+        rail.heard(RadioSwitches { bay: None, ..LIVE });
+        assert_eq!(
+            rail.armed(1_100),
+            Owned {
+                value: true,
+                by: RADIO
+            }
+        );
+        assert_eq!(rail.selected(1_100), Owned { value: 2, by: APP });
+        assert_eq!(rail.select(3, 1_100), Ok(()));
+        assert_eq!(rail.arm(false, 1_100), Err(RADIO_ARMS));
+    }
 
     #[test]
     fn the_radio_owns_the_switches_while_it_streams_and_the_app_takes_over_when_it_stops() {
