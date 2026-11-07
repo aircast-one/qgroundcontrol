@@ -56,26 +56,6 @@ local function readChannels()
   end
 end
 
-local R2D2 = {
-  { 11, "sf", "skld" },
-  { 12, "se", "BOMARM" },
-  { 18, "rs", "camPit" },
-  { 20, "ls", "camYaw" },
-  { 21, "s2", "zoom" },
-  { 22, "sg", "camtyp" },
-  { 24, "sh", "termty" },
-}
-
-local function addR2d2Mixes()
-  if not (getFieldInfo and model.insertMix) then return end
-  for _, slot in ipairs(R2D2) do
-    local field = getFieldInfo(slot[2])
-    if field and not model.getMix(slot[1] - 1, 0) then
-      model.insertMix(slot[1] - 1, 0, { name = slot[3], source = field.id, weight = 100 })
-    end
-  end
-end
-
 local function readMixes()
   used = {}
   for i = 1, CHANNEL_COUNT do
@@ -88,6 +68,40 @@ local function readMixes()
     mixesInfo[i] = { name = m and m.name or "", src = srcName }
     if m then used[#used + 1] = i end
   end
+end
+
+local FUNCTIONS = {
+  { "rs", "camPit", 18 },
+  { "ls", "camYaw", 20 },
+  { "s2", "zoom", 21 },
+  { "sg", "camtyp", 22 },
+  { "sh", "termty", 24 },
+  { "sf", "skld", 11 },
+  { "se", "BOMARM", 12 },
+}
+local layoutSetUp = nil
+
+local function layoutFrom(line)
+  local tail = string.match(line, ";([%d,]+)")
+  local channels = {}
+  if tail then
+    for number in string.gmatch(tail, "(%d+)") do channels[#channels + 1] = tonumber(number) end
+    return channels, tail
+  end
+  for at, wanted in ipairs(FUNCTIONS) do channels[at] = wanted[3] end
+  return channels, "R2D2"
+end
+
+local function setUpChannels(channels)
+  if not (getFieldInfo and model.insertMix) then return end
+  for at, wanted in ipairs(FUNCTIONS) do
+    local channel = channels[at] or 0
+    local field = getFieldInfo(wanted[1])
+    if channel >= 1 and channel <= CHANNEL_COUNT and field and not model.getMix(channel - 1, 0) then
+      model.insertMix(channel - 1, 0, { name = wanted[2], source = field.id, weight = 100 })
+    end
+  end
+  readMixes()
 end
 
 local function sendChannels()
@@ -118,6 +132,11 @@ local function listen()
       local kind, roll, pitch, throttle, yaw = string.match(line, "^@%a,%d+,(%a),(%d+),(%d+),(%d+),(%d+)")
       app.state, app.vehicle, app.at = state, vehicle, now()
       app.labels = labelsFor(kind, { roll, pitch, throttle, yaw })
+      local channels, layout = layoutFrom(line)
+      if layout ~= layoutSetUp then
+        layoutSetUp = layout
+        setUpChannels(channels)
+      end
     end
     line = string.match(heard, "^(.-)\n")
   end
@@ -280,7 +299,6 @@ end
 
 local function init()
   modelInfo = model.getInfo() or { name = "Unknown" }
-  addR2d2Mixes()
   readMixes()
   readChannels()
   setSerialBaudrate(SERIAL_BAUDRATE)

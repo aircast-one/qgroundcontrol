@@ -94,6 +94,62 @@ SettingsGroupLayout {
         visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
     }
 
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioPitchChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioYawChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioZoomChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioPictureChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioPaletteChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioDropChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioArmChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioBayChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
     QGCLabel {
         Layout.fillWidth:   true
         text:               _usbRadio ? _usbRadio.status : ""

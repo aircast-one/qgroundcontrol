@@ -15,6 +15,8 @@ using namespace UsbRadioProtocol;
 
 namespace {
 
+const Layout kR2d2;
+
 const QByteArray kLine =
     QByteArrayLiteral("$-1024,1024,0,-512,-1024,-1024,0,0,0,0,-1024,0,0,0,0,-160,0,1024,8,-40,-160,0,0,-1024,\r\n");
 
@@ -70,20 +72,21 @@ void UsbRadioTest::_standbySendsToTheAircraftComputer_test()
 
 void UsbRadioTest::_radioIsToldWhatItsSticksAreDoing_test()
 {
-    QCOMPARE(echo(Flying::Vehicle, 1), QByteArray("@F,1\n"));
-    QCOMPARE(echo(Flying::Standby, 3), QByteArray("@S,3\n"));
-    QCOMPARE(echo(Flying::Joystick, 1), QByteArray("@J,1\n"));
-    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N\n"));
+    QCOMPARE(echo(Flying::Vehicle, 1), QByteArray("@F,1;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::Standby, 3), QByteArray("@S,3;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::Joystick, 1), QByteArray("@J,1;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N;18,20,21,22,24,11,12,5\n"));
     QVERIFY(!parse(echo(Flying::Vehicle, 1)));
 }
 
 void UsbRadioTest::_radioLearnsTheVehicleKindAndItsStickChannels_test()
 {
-    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}), QByteArray("@F,1,C,1,2,3,4\n"));
-    QCOMPARE(echo(Flying::Standby, 2, Kind::Plane, Sticks{2, 1, 3, 4}), QByteArray("@S,2,P,2,1,3,4\n"));
-    QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{}), QByteArray("@J,3,R,1,2,3,4\n"));
-    QCOMPARE(echo(Flying::Vehicle, 4, Kind::Unknown, Sticks{2, 1, 3, 4}), QByteArray("@F,4\n"));
-    QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N\n"));
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}), QByteArray("@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::Standby, 2, Kind::Plane, Sticks{2, 1, 3, 4}),
+             QByteArray("@S,2,P,2,1,3,4;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{}), QByteArray("@J,3,R,1,2,3,4;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::Vehicle, 4, Kind::Unknown, Sticks{2, 1, 3, 4}), QByteArray("@F,4;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N;18,20,21,22,24,11,12,5\n"));
 }
 
 void UsbRadioTest::_vehicleKindFollowsTheAirframe_test()
@@ -248,41 +251,40 @@ UT_REGISTER_TEST_LIGHTWEIGHT(UsbRadioTest, TestLabel::Unit, TestLabel::Joystick)
 void UsbRadioTest::_cameraChannelsSteerTheGimbalZoomPictureAndPalette_test()
 {
     CameraSticks sticks;
-    QVERIFY2(sticks.step(lineWith({{kPitchChannel, 2012}, {kYawChannel, 1471}}), 0).isEmpty(),
+    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 2012}, {kR2d2.yaw, 1471}}), 0).isEmpty(),
              "plugging the radio in leaves the camera where it is");
-    QCOMPARE(sticks.step(lineWith({{kPitchChannel, 2012}, {kYawChannel, 2012}}), 1000),
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 2012}, {kR2d2.yaw, 2012}}), 1000),
              (QList<Move>{Move{Move::Kind::Aim, 0.0f, kYawLimit}}));
-    QCOMPARE(sticks.step(lineWith({{kPitchChannel, 988}, {kYawChannel, 988}}), 2000),
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 988}}), 2000),
              (QList<Move>{Move{Move::Kind::Aim, kPitchDown, -kYawLimit}}));
-    QVERIFY2(sticks.step(lineWith({{kPitchChannel, 988 + kSteadyPwm - 1}, {kYawChannel, 988}}), 2050).isEmpty(),
+    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 988 + kSteadyPwm - 1}, {kR2d2.yaw, 988}}), 2050).isEmpty(),
              "slider noise does not move the camera");
-    QVERIFY2(sticks.step(lineWith({{kPitchChannel, 1500}, {kYawChannel, 988}}), 2000 + kCameraResendMs - 1).isEmpty(),
+    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 988}}), 2000 + kCameraResendMs - 1).isEmpty(),
              "a moving slider is sent at most ten times a second");
-    QCOMPARE(sticks.step(lineWith({{kPitchChannel, 1500}, {kYawChannel, 988}}), 2000 + kCameraResendMs).size(), 1);
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 988}}), 2000 + kCameraResendMs).size(), 1);
 
     CameraSticks knob;
-    (void) knob.step(lineWith({{kZoomChannel, 1422}}), 0);
-    QCOMPARE(knob.step(lineWith({{kZoomChannel, 2012}}), 1000),
+    (void) knob.step(lineWith({{kR2d2.zoom, 1422}}), 0);
+    QCOMPARE(knob.step(lineWith({{kR2d2.zoom, 2012}}), 1000),
              (QList<Move>{Move{Move::Kind::Zoom, 0.0f, 0.0f, 100.0f}}));
-    QCOMPARE(knob.step(lineWith({{kZoomChannel, 988}}), 2000), (QList<Move>{Move{Move::Kind::Zoom, 0.0f, 0.0f, 0.0f}}));
+    QCOMPARE(knob.step(lineWith({{kR2d2.zoom, 988}}), 2000), (QList<Move>{Move{Move::Kind::Zoom, 0.0f, 0.0f, 0.0f}}));
 
     CameraSticks picture;
-    (void) picture.step(lineWith({{kPictureChannel, 2012}}), 0);
-    QCOMPARE(picture.step(lineWith({{kPictureChannel, 1500}}), 10),
+    (void) picture.step(lineWith({{kR2d2.picture, 2012}}), 0);
+    QCOMPARE(picture.step(lineWith({{kR2d2.picture, 1500}}), 10),
              (QList<Move>{Move{Move::Kind::Picture, 0.0f, 0.0f, 0.0f, 1}}));
-    QCOMPARE(picture.step(lineWith({{kPictureChannel, 988}}), 20),
+    QCOMPARE(picture.step(lineWith({{kR2d2.picture, 988}}), 20),
              (QList<Move>{Move{Move::Kind::Picture, 0.0f, 0.0f, 0.0f, 0}}));
-    QVERIFY2(picture.step(lineWith({{kPictureChannel, 990}}), 30).isEmpty(),
-             "a switch left where it is changes nothing");
-    QCOMPARE(picture.step(lineWith({{kPictureChannel, 2012}}), 40),
+    QVERIFY2(picture.step(lineWith({{kR2d2.picture, 990}}), 30).isEmpty(), "a switch left where it is changes nothing");
+    QCOMPARE(picture.step(lineWith({{kR2d2.picture, 2012}}), 40),
              (QList<Move>{Move{Move::Kind::Picture, 0.0f, 0.0f, 0.0f, 3}}));
 
     CameraSticks palette;
-    (void) palette.step(lineWith({{kPaletteChannel, 988}}), 0);
-    QCOMPARE(palette.step(lineWith({{kPaletteChannel, 2012}}), 10), (QList<Move>{Move{Move::Kind::NextPalette}}));
-    QVERIFY2(palette.step(lineWith({{kPaletteChannel, 2012}}), 20).isEmpty(), "holding it down does not keep stepping");
-    QVERIFY(palette.step(lineWith({{kPaletteChannel, 988}}), 30).isEmpty());
-    QCOMPARE(palette.step(lineWith({{kPaletteChannel, 2012}}), 40), (QList<Move>{Move{Move::Kind::NextPalette}}));
+    (void) palette.step(lineWith({{kR2d2.palette, 988}}), 0);
+    QCOMPARE(palette.step(lineWith({{kR2d2.palette, 2012}}), 10), (QList<Move>{Move{Move::Kind::NextPalette}}));
+    QVERIFY2(palette.step(lineWith({{kR2d2.palette, 2012}}), 20).isEmpty(), "holding it down does not keep stepping");
+    QVERIFY(palette.step(lineWith({{kR2d2.palette, 988}}), 30).isEmpty());
+    QCOMPARE(palette.step(lineWith({{kR2d2.palette, 2012}}), 40), (QList<Move>{Move{Move::Kind::NextPalette}}));
 
     CameraSticks unsent;
     Line nothing{};
@@ -294,36 +296,57 @@ void UsbRadioTest::_cameraChannelsSteerTheGimbalZoomPictureAndPalette_test()
 void UsbRadioTest::_dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test()
 {
     CameraSticks sticks;
-    (void) sticks.step(lineWith({{kDropChannel, 988}, {kBayChannel, 988}}), 0);
-    QVERIFY2(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 988}}), 10).isEmpty(),
+    (void) sticks.step(lineWith({{kR2d2.drop, 988}, {kR2d2.bay, 988}}), 0);
+    QVERIFY2(sticks.step(lineWith({{kR2d2.drop, 2012}, {kR2d2.bay, 988}}), 10).isEmpty(),
              "the first line with the switch up only arms the drop");
-    QCOMPARE(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 988}}), 20),
+    QCOMPARE(sticks.step(lineWith({{kR2d2.drop, 2012}, {kR2d2.bay, 988}}), 20),
              (QList<Move>{Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, 1}}));
-    QVERIFY(sticks.step(lineWith({{kDropChannel, 2012}}), 30).isEmpty());
-    QVERIFY2(sticks.step(lineWith({{kDropChannel, 988}}), 40).isEmpty(), "flipping it back down is not a drop");
-    (void) sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 1602}}), 50);
-    QCOMPARE(sticks.step(lineWith({{kDropChannel, 2012}, {kBayChannel, 1602}}), 60),
+    QVERIFY(sticks.step(lineWith({{kR2d2.drop, 2012}}), 30).isEmpty());
+    QVERIFY2(sticks.step(lineWith({{kR2d2.drop, 988}}), 40).isEmpty(), "flipping it back down is not a drop");
+    (void) sticks.step(lineWith({{kR2d2.drop, 2012}, {kR2d2.bay, 1602}}), 50);
+    QCOMPARE(sticks.step(lineWith({{kR2d2.drop, 2012}, {kR2d2.bay, 1602}}), 60),
              (QList<Move>{Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, 4}}));
     CameraSticks glitched;
     const std::array<uint16_t, 5> glitch{988, 2012, 988, 2012, 988};
     const QList<Move> glitchMoves =
         std::accumulate(glitch.cbegin(), glitch.cend(), QList<Move>{}, [&glitched](QList<Move> moves, uint16_t drop) {
-            return moves + glitched.step(lineWith({{kDropChannel, drop}}), 0);
+            return moves + glitched.step(lineWith({{kR2d2.drop, drop}}), 0);
         });
     QVERIFY2(glitchMoves.isEmpty(), "one line with the switch up between lines with it down drops nothing");
     CameraSticks pluggedInHigh;
-    QVERIFY2(pluggedInHigh.step(lineWith({{kDropChannel, 2012}}), 0).isEmpty(),
+    QVERIFY2(pluggedInHigh.step(lineWith({{kR2d2.drop, 2012}}), 0).isEmpty(),
              "a radio plugged in with the switch already up drops nothing");
 
     QCOMPARE(QList<int>({bayOf(988), bayOf(1193), bayOf(1398), bayOf(1602), bayOf(1807), bayOf(2012)}),
              QList<int>({1, 2, 3, 4, 5, 6}));
-    const std::optional<Switches> up = switches(lineWith({{kArmChannel, 2012}, {kBayChannel, 1398}}));
+    const std::optional<Switches> up = switches(lineWith({{kR2d2.arm, 2012}, {kR2d2.bay, 1398}}));
     QVERIFY(up);
     QCOMPARE(*up, (Switches{true, 3}));
-    QVERIFY2(!switches(lineWith({{kArmChannel, 1500}}))->armed, "the middle position is safe");
-    QVERIFY(!switches(lineWith({{kArmChannel, 988}}))->armed);
+    QVERIFY2(!switches(lineWith({{kR2d2.arm, 1500}}))->armed, "the middle position is safe");
+    QVERIFY(!switches(lineWith({{kR2d2.arm, 988}}))->armed);
     Line eleven{};
     eleven.fill(UINT16_MAX);
     std::fill_n(eleven.begin(), 11, static_cast<uint16_t>(1500));
     QVERIFY2(!switches(eleven), "a radio without CH12 arms nothing");
+}
+
+void UsbRadioTest::_cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefault_test()
+{
+    QCOMPARE(kR2d2, (Layout{18, 20, 21, 22, 24, 11, 12, 5}));
+
+    const Layout moved{13, 14, 15, 0, 0, 0, 0, 0};
+    CameraSticks sticks;
+    (void) sticks.step(lineWith({{13, 1500}, {14, 1500}, {kR2d2.pitch, 1500}}), 0, moved);
+    QCOMPARE(sticks.step(lineWith({{13, 2012}, {14, 1500}, {kR2d2.pitch, 1500}}), 1000, moved).size(), 1);
+    QVERIFY2(sticks.step(lineWith({{13, 2012}, {14, 1500}, {kR2d2.pitch, 988}}), 2000, moved).isEmpty(),
+             "with pitch moved to CH13 the R2D2 pitch channel steers nothing");
+
+    CameraSticks off;
+    (void) off.step(lineWith({{kR2d2.drop, 988}}), 0, moved);
+    (void) off.step(lineWith({{kR2d2.drop, 2012}}), 10, moved);
+    QVERIFY2(off.step(lineWith({{kR2d2.drop, 2012}}), 20, moved).isEmpty(), "a function set to channel 0 is off");
+    QVERIFY(!switches(lineWith({{kR2d2.arm, 2012}}), moved));
+
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, moved),
+             QByteArray("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0\n"));
 }

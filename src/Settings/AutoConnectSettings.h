@@ -4,10 +4,6 @@
 
 #include "SettingsGroup.h"
 
-/// \brief Auto connect settings
-///
-/// Defines which links should be automatically created and started at runtime
-///
 class AutoConnectSettings : public SettingsGroup
 {
     Q_OBJECT
@@ -39,4 +35,12 @@ public:
     DEFINE_SETTINGFACT(nmeaUdpPort)
     DEFINE_SETTINGFACT(usbRadioPort)
     DEFINE_SETTINGFACT(usbRadioStandby)
+    DEFINE_SETTINGFACT(usbRadioPitchChannel)
+    DEFINE_SETTINGFACT(usbRadioYawChannel)
+    DEFINE_SETTINGFACT(usbRadioZoomChannel)
+    DEFINE_SETTINGFACT(usbRadioPictureChannel)
+    DEFINE_SETTINGFACT(usbRadioPaletteChannel)
+    DEFINE_SETTINGFACT(usbRadioDropChannel)
+    DEFINE_SETTINGFACT(usbRadioArmChannel)
+    DEFINE_SETTINGFACT(usbRadioBayChannel)
 };

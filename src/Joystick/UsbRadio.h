@@ -44,14 +44,18 @@ constexpr qsizetype kSniffBytes = 16 * 1024;
 using Frame = std::array<uint16_t, kChannels>;
 using Line = std::array<uint16_t, kMaxValues>;
 
-constexpr int kBayChannel = 5;
-constexpr int kDropChannel = 11;
-constexpr int kArmChannel = 12;
-constexpr int kPitchChannel = 18;
-constexpr int kYawChannel = 20;
-constexpr int kZoomChannel = 21;
-constexpr int kPictureChannel = 22;
-constexpr int kPaletteChannel = 24;
+struct Layout
+{
+    int pitch = 18;
+    int yaw = 20;
+    int zoom = 21;
+    int picture = 22;
+    int palette = 24;
+    int drop = 11;
+    int arm = 12;
+    int bay = 5;
+    bool operator==(const Layout& other) const = default;
+};
 constexpr uint16_t kArmedPwm = 1750;
 constexpr uint16_t kSteadyPwm = 3;
 constexpr uint16_t kPressedPwm = 1500;
@@ -138,12 +142,12 @@ struct Switches
     bool operator==(const Switches& other) const = default;
 };
 
-std::optional<Switches> switches(const Line& line);
+std::optional<Switches> switches(const Line& line, const Layout& layout = {});
 
 class CameraSticks
 {
 public:
-    QList<Move> step(const Line& line, qint64 nowMs);
+    QList<Move> step(const Line& line, qint64 nowMs, const Layout& layout = {});
 
 private:
     QHash<int, uint16_t> _acted;
@@ -151,7 +155,7 @@ private:
     std::optional<uint16_t> _dropBefore;
 };
 
-QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {});
+QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {}, const Layout& layout = {});
 Kind kind(int mavType);
 Sticks sticks(int roll, int pitch, int throttle, int yaw);
 bool echoDue(std::optional<qint64> last, qint64 nowMs, bool live);
@@ -284,6 +288,7 @@ private:
     void _setState(const QString& state);
     void _setOffer(const QString& port, const QString& label);
     QString _wanted() const;
+    UsbRadioProtocol::Layout _layout() const;
     bool _standby(int vehicle) const;
     std::optional<int> _target() const;
     Flight _flight() const;

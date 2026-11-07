@@ -90,6 +90,86 @@
             "label": "Network standby (4G / Starlink)"
         },
         {
+            "name": "usbRadioPitchChannel",
+            "shortDesc": "Camera pitch channel",
+            "longDesc": "The radio channel that tilts the camera: its lowest value points straight down, its highest straight ahead. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 18,
+            "label": "Camera pitch channel"
+        },
+        {
+            "name": "usbRadioYawChannel",
+            "shortDesc": "Camera yaw channel",
+            "longDesc": "The radio channel that turns the camera across the gimbal's yaw limits. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 20,
+            "label": "Camera yaw channel"
+        },
+        {
+            "name": "usbRadioZoomChannel",
+            "shortDesc": "Camera zoom channel",
+            "longDesc": "The radio channel that sets the camera's zoom level, from wide at its lowest to full zoom at its highest. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 21,
+            "label": "Camera zoom channel"
+        },
+        {
+            "name": "usbRadioPictureChannel",
+            "shortDesc": "Camera picture channel",
+            "longDesc": "A three-position switch: visible, the camera's own picture, thermal. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 22,
+            "label": "Camera picture channel"
+        },
+        {
+            "name": "usbRadioPaletteChannel",
+            "shortDesc": "Thermal palette channel",
+            "longDesc": "A momentary switch: each press steps to the next thermal palette. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 24,
+            "label": "Thermal palette channel"
+        },
+        {
+            "name": "usbRadioDropChannel",
+            "shortDesc": "Payload drop channel",
+            "longDesc": "Flipping it up drops the payload, once the drop is armed. It has to read up on two lines in a row. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 11,
+            "label": "Payload drop channel"
+        },
+        {
+            "name": "usbRadioArmChannel",
+            "shortDesc": "Payload arm channel",
+            "longDesc": "High arms the payload drop; the middle and low positions keep it safe. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 12,
+            "label": "Payload arm channel"
+        },
+        {
+            "name": "usbRadioBayChannel",
+            "shortDesc": "Payload bay channel",
+            "longDesc": "A six-position switch picking the bay the drop releases. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 5,
+            "label": "Payload bay channel"
+        },
+        {
             "name": "autoConnectZeroConf",
             "shortDesc": "Automatically open a connection with Zero-Conf",
             "longDesc": "If this option is enabled GroundControl will automatically connect to a vehicle which is detected over Zero-Conf.",

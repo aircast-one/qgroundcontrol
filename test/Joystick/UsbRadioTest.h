@@ -25,4 +25,5 @@ private slots:
     void _indicatorStateFollowsTheRadioAndWhoFlies_test();
     void _cameraChannelsSteerTheGimbalZoomPictureAndPalette_test();
     void _dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test();
+    void _cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefault_test();
 };

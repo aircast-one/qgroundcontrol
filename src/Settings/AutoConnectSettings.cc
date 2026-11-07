@@ -5,8 +5,6 @@
 
 DECLARE_SETTINGGROUP(AutoConnect, "AutoConnect")
 {
-    // Settings group name was changed from "LinkManager" to "AutoConnect" in v5.0.0
-    // Copy over an old settings to the new name
     QSettings settings;
     static const char* deprecatedGroupName = "LinkManager";
     if (settings.childGroups().contains(deprecatedGroupName)) {
@@ -25,13 +23,9 @@ DECLARE_SETTINGGROUP(AutoConnect, "AutoConnect")
         settings.endGroup();
     }
 
-    // autoConnectNmeaPort used to store a combo label ("Disabled"/"UDP Port"/serial device),
-    // sometimes translated. Migrate it to the nmeaSource enum, leaving only a serial device
-    // name in autoConnectNmeaPort.
     settings.beginGroup(_name);
     if (!settings.contains(nmeaSourceName) && settings.contains(autoConnectNmeaPortName)) {
         const QString oldValue = settings.value(autoConnectNmeaPortName).toString();
-        // The legacy combo labels were written translated from two different QML contexts
         const auto matches = [&oldValue](const char* source) {
             return (oldValue == QLatin1String(source)) ||
                    (oldValue == QCoreApplication::translate("NmeaGpsSettings", source)) ||
@@ -56,6 +50,14 @@ DECLARE_SETTINGSFACT(AutoConnectSettings, udpTargetHostPort)
 DECLARE_SETTINGSFACT(AutoConnectSettings, nmeaUdpPort)
 DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioPort)
 DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioStandby)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioPitchChannel)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioYawChannel)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioZoomChannel)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioPictureChannel)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioPaletteChannel)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioDropChannel)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioArmChannel)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioBayChannel)
 
 DECLARE_SETTINGSFACT_NO_FUNC(AutoConnectSettings, autoConnectPixhawk)
 {

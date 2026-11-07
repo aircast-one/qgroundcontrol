@@ -77,6 +77,9 @@ Line lineOf(const QList<int>& read)
 
 std::optional<uint16_t> channel(const Line& line, int number)
 {
+    if (number < 1 || number > static_cast<int>(line.size())) {
+        return std::nullopt;
+    }
     const uint16_t value = line[number - 1];
     return value == UINT16_MAX ? std::nullopt : std::optional<uint16_t>(value);
 }
@@ -112,14 +115,14 @@ int bayOf(uint16_t pwm)
     return static_cast<int>(std::lround(between(0.0f, kBayPositions - 1.0f, pwm))) + 1;
 }
 
-std::optional<Switches> switches(const Line& line)
+std::optional<Switches> switches(const Line& line, const Layout& layout)
 {
-    const std::optional<uint16_t> arm = channel(line, kArmChannel);
-    const std::optional<uint16_t> bay = channel(line, kBayChannel);
+    const std::optional<uint16_t> arm = channel(line, layout.arm);
+    const std::optional<uint16_t> bay = channel(line, layout.bay);
     return (arm && bay) ? std::optional<Switches>(Switches{*arm >= kArmedPwm, bayOf(*bay)}) : std::nullopt;
 }
 
-QList<Move> CameraSticks::step(const Line& line, qint64 nowMs)
+QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout)
 {
     const bool due = !_sentMs || (nowMs - *_sentMs) >= kCameraResendMs;
     const auto moved = [this, &line](int number) {
@@ -130,25 +133,25 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs)
         const std::optional<uint16_t> now = channel(line, number);
         return now && *now > kPressedPwm && _acted.contains(number) && _acted[number] <= kPressedPwm;
     };
-    const std::optional<uint16_t> pitch = channel(line, kPitchChannel);
-    const std::optional<uint16_t> yaw = channel(line, kYawChannel);
-    const std::optional<uint16_t> zoom = channel(line, kZoomChannel);
-    const std::optional<uint16_t> picture = channel(line, kPictureChannel);
-    const bool aimed = pitch && yaw && due && (moved(kPitchChannel) || moved(kYawChannel));
-    const bool zoomed = zoom && due && moved(kZoomChannel);
+    const std::optional<uint16_t> pitch = channel(line, layout.pitch);
+    const std::optional<uint16_t> yaw = channel(line, layout.yaw);
+    const std::optional<uint16_t> zoom = channel(line, layout.zoom);
+    const std::optional<uint16_t> picture = channel(line, layout.picture);
+    const bool aimed = pitch && yaw && due && (moved(layout.pitch) || moved(layout.yaw));
+    const bool zoomed = zoom && due && moved(layout.zoom);
     const bool switched =
-        picture && _acted.contains(kPictureChannel) && position(_acted[kPictureChannel]) != position(*picture);
-    const bool palette = pressed(kPaletteChannel);
+        picture && _acted.contains(layout.picture) && position(_acted[layout.picture]) != position(*picture);
+    const bool palette = pressed(layout.palette);
     const auto high = [](std::optional<uint16_t> pwm) { return pwm && *pwm > kPressedPwm; };
-    const std::optional<uint16_t> drop = channel(line, kDropChannel);
+    const std::optional<uint16_t> drop = channel(line, layout.drop);
     const std::optional<uint16_t> dropWas =
-        _acted.contains(kDropChannel) ? std::optional<uint16_t>(_acted[kDropChannel]) : std::nullopt;
+        _acted.contains(layout.drop) ? std::optional<uint16_t>(_acted[layout.drop]) : std::nullopt;
     const bool dropped = high(drop) && high(dropWas) && _dropBefore && *_dropBefore <= kPressedPwm;
-    const auto refresh = [this, &line, aimed, zoomed](int number) {
+    const auto refresh = [this, &line, &layout, aimed, zoomed](int number) {
         const std::optional<uint16_t> now = channel(line, number);
-        const bool keep = !_acted.contains(number) || (number == kPitchChannel || number == kYawChannel ? aimed
-                                                       : number == kZoomChannel                         ? zoomed
-                                                                                                        : true);
+        const bool keep = !_acted.contains(number) || (number == layout.pitch || number == layout.yaw ? aimed
+                                                       : number == layout.zoom                        ? zoomed
+                                                                                                      : true);
         if (now && keep) {
             _acted[number] = *now;
         }
@@ -167,12 +170,12 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs)
         moves << Move{Move::Kind::NextPalette};
     }
     if (dropped) {
-        const std::optional<uint16_t> bay = channel(line, kBayChannel);
+        const std::optional<uint16_t> bay = channel(line, layout.bay);
         moves << Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, bay ? bayOf(*bay) : 1};
     }
     _dropBefore = drop ? dropWas : _dropBefore;
     std::ranges::for_each(
-        std::array{kDropChannel, kPitchChannel, kYawChannel, kZoomChannel, kPictureChannel, kPaletteChannel}, refresh);
+        std::array{layout.drop, layout.pitch, layout.yaw, layout.zoom, layout.picture, layout.palette}, refresh);
     if (aimed || zoomed) {
         _sentMs = nowMs;
     }
@@ -188,22 +191,35 @@ Frame released()
     return frame;
 }
 
-QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks)
+namespace {
+
+QByteArray layoutTail(const Layout& layout)
+{
+    const std::array channels{layout.pitch,   layout.yaw,  layout.zoom, layout.picture,
+                              layout.palette, layout.drop, layout.arm,  layout.bay};
+    return std::accumulate(channels.cbegin(), channels.cend(), QByteArray(";"), [](const QByteArray& tail, int number) {
+        return tail + (tail.size() > 1 ? "," : "") + QByteArray::number(number);
+    });
+}
+
+}  // namespace
+
+QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layout& layout)
 {
     const char state = flying == Flying::Vehicle    ? 'F'
                        : flying == Flying::Standby  ? 'S'
                        : flying == Flying::Joystick ? 'J'
                                                     : 'N';
     if (state == 'N') {
-        return QByteArrayLiteral("@N\n");
+        return QByteArrayLiteral("@N") + layoutTail(layout) + '\n';
     }
     const QByteArray head = QByteArrayLiteral("@") + state + ',' + QByteArray::number(vehicle);
     const char letter = kind == Kind::Copter ? 'C' : kind == Kind::Plane ? 'P' : kind == Kind::Rover ? 'R' : '\0';
     if (letter == '\0') {
-        return head + '\n';
+        return head + layoutTail(layout) + '\n';
     }
     return head + ',' + letter + ',' + QByteArray::number(sticks.roll) + ',' + QByteArray::number(sticks.pitch) + ',' +
-           QByteArray::number(sticks.throttle) + ',' + QByteArray::number(sticks.yaw) + '\n';
+           QByteArray::number(sticks.throttle) + ',' + QByteArray::number(sticks.yaw) + layoutTail(layout) + '\n';
 }
 
 Kind kind(int mavType)
@@ -539,6 +555,17 @@ void UsbRadio::_setState(const QString& state)
     }
 }
 
+UsbRadioProtocol::Layout UsbRadio::_layout() const
+{
+    AutoConnectSettings* const settings = SettingsManager::instance()->autoConnectSettings();
+    const auto number = [](Fact* fact) { return fact->rawValue().toInt(); };
+    return UsbRadioProtocol::Layout{
+        number(settings->usbRadioPitchChannel()),   number(settings->usbRadioYawChannel()),
+        number(settings->usbRadioZoomChannel()),    number(settings->usbRadioPictureChannel()),
+        number(settings->usbRadioPaletteChannel()), number(settings->usbRadioDropChannel()),
+        number(settings->usbRadioArmChannel()),     number(settings->usbRadioBayChannel())};
+}
+
 QString UsbRadio::_wanted() const
 {
     return SettingsManager::instance()->autoConnectSettings()->usbRadioPort()->rawValue().toString().trimmed();
@@ -603,8 +630,9 @@ void UsbRadio::_steer(const Line& line)
     if (!vehicle || !_target()) {
         return;
     }
-    const std::optional<Switches> armed = switches(line);
-    const QList<Move> moves = _camera.step(line, _clock.elapsed());
+    const Layout layout = _layout();
+    const std::optional<Switches> armed = switches(line, layout);
+    const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout);
     std::ranges::for_each(moves,
                           [this, vehicle, &armed](const Move& move) { _apply(vehicle, move, armed && armed->armed); });
 }
@@ -738,7 +766,7 @@ void UsbRadio::_advance(std::optional<Frame> fresh)
     const Flight flight = _flight();
     if (echoDue(_echoedAt, now, live) && _port && _port->isOpen()) {
         _echoedAt = now;
-        (void) _port->write(echo(flight.flying, flight.vehicle, flight.kind, flight.sticks));
+        (void) _port->write(echo(flight.flying, flight.vehicle, flight.kind, flight.sticks, _layout()));
     }
     const qint64 quietSince = std::max(_openedAt.value_or(now), _radio.heardAt().value_or(0));
     const QString quiet = _portName.isEmpty() ? tr("Off") : silentText(_portName, now - quietSince);
