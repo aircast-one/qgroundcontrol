@@ -35,7 +35,7 @@ local function radio(screen)
       { __index = function(_, name) return function(_, _, text) drawn[#drawn + 1] = { name, text } end end }),
   }, { __index = _G })
   if screen.lvgl then
-    env.lvgl = { page = function(page)
+    env.lvgl = { clear = function() for k in pairs(drawn) do drawn[k] = nil end end, page = function(page)
       pages[#pages + 1] = page
       drawn[#drawn + 1] = { "page", page.title }
       return setmetatable({}, { __index = function(_, name) return function(_, spec)
@@ -120,6 +120,10 @@ assert(moved.inserted[13] and moved.inserted[13].name == "camyaw" and moved.inse
 count = 0
 for _ in pairs(moved.inserted) do count = count + 1 end
 assert(count == 3, "a function the app turned off (channel 0) is not set up anywhere")
+local onScreen = radio({ w = 480, h = 272, lvgl = true })
+onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+onScreen.script.run(0)
+assert(shows(onScreen, string.format("CH%-2d %-5s %-6s %4d", 18, "src99", "camREB", 2012)), "a channel the script just set up appears on the screen")
 local his = radio({ w = 480, h = 272 })
 his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
 his.script.run(0)

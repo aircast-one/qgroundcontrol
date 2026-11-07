@@ -142,6 +142,25 @@ pub fn layout() -> Layout {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ready {
+    pub gimbal: bool,
+    pub camera: bool,
+    pub settings: bool,
+}
+
+pub const ALL_READY: Ready = Ready {
+    gimbal: true,
+    camera: true,
+    settings: true,
+};
+
+impl Default for Ready {
+    fn default() -> Self {
+        ALL_READY
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Sticks {
     acted: BTreeMap<usize, u16>,
@@ -149,6 +168,7 @@ pub struct Sticks {
     drop_before: Option<u16>,
     pub layout: Layout,
     pub bay: i64,
+    pub ready: Ready,
 }
 
 fn read(line: &[u16], channel: usize) -> Option<u16> {
@@ -179,6 +199,7 @@ fn position(pwm: u16) -> usize {
 impl Sticks {
     pub fn step(&mut self, line: &[u16], yaw_limits: (f32, f32), now_ms: u64) -> Vec<Move> {
         let layout = self.layout;
+        let ready = self.ready;
         let due = self
             .sent_ms
             .is_none_or(|at| now_ms.saturating_sub(at) >= RESEND_MS);
@@ -189,20 +210,22 @@ impl Sticks {
         };
         let aimed = read(line, layout.pitch)
             .zip(read(line, layout.yaw))
-            .filter(|_| due && (moved(layout.pitch) || moved(layout.yaw)))
+            .filter(|_| ready.gimbal && due && (moved(layout.pitch) || moved(layout.yaw)))
             .map(|(pitch, yaw)| Move::Aim {
                 pitch: between(STICK_PITCH_RANGE, pitch),
                 yaw: between(yaw_limits, yaw),
             });
         let zoomed = read(line, layout.zoom)
-            .filter(|_| due && moved(layout.zoom))
+            .filter(|_| ready.camera && due && moved(layout.zoom))
             .map(|zoom| Move::Zoom(between((0.0, 100.0), zoom)));
         let switched = read(line, layout.picture)
             .map(position)
             .filter(|at| {
-                self.acted
-                    .get(&layout.picture)
-                    .is_some_and(|was| position(*was) != *at)
+                ready.settings
+                    && self
+                        .acted
+                        .get(&layout.picture)
+                        .is_some_and(|was| position(*was) != *at)
             })
             .map(|at| Move::Picture(PICTURES[at]));
         let pressed = |channel: usize| {
@@ -212,7 +235,7 @@ impl Sticks {
                     .get(&channel)
                     .is_some_and(|was| *was <= PRESSED_PWM)
         };
-        let palette = pressed(layout.palette);
+        let palette = ready.settings && pressed(layout.palette);
         let high = |pwm: Option<u16>| pwm.is_some_and(|pwm| pwm > PRESSED_PWM);
         let dropped = (high(read(line, layout.drop))
             && high(self.acted.get(&layout.drop).copied())
@@ -232,6 +255,7 @@ impl Sticks {
                 || match *channel {
                     c if c == layout.pitch || c == layout.yaw => aimed.is_some(),
                     c if c == layout.zoom => zoomed.is_some(),
+                    c if c == layout.picture || c == layout.palette => ready.settings,
                     _ => true,
                 }
         })
@@ -259,6 +283,7 @@ static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
     drop_before: None,
     layout: R2D2,
     bay: 1,
+    ready: ALL_READY,
 });
 
 fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
@@ -270,6 +295,22 @@ pub fn named(bay: i64, servo_bays: i64) -> i64 {
     match (1..=servo_bays).contains(&bay) {
         true => bay,
         false => 0,
+    }
+}
+
+fn ready() -> Ready {
+    let (gimbal, camera) = crate::hub::lock()
+        .active()
+        .map_or((false, false), |vehicle| {
+            (
+                vehicle.gimbals.active().is_some(),
+                vehicle.cameras.selected().is_some(),
+            )
+        });
+    Ready {
+        gimbal,
+        camera,
+        settings: crate::camsettings::settings_ready(),
     }
 }
 
@@ -358,6 +399,7 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout) {
     let mut sticks = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
     sticks.layout = layout;
     sticks.bay = crate::payloadrail::selected();
+    sticks.ready = ready();
     let moves: Vec<Move> = sticks
         .step(line, limits, crate::hub::now_ms())
         .into_iter()
@@ -699,6 +741,48 @@ mod tests {
         assert!(drops.is_empty(), "a function on channel 0 is off");
         assert!(switches(&line(&[(ARM_CHANNEL, 2012)]), 0, moved).is_none());
         assert_eq!(Sticks::default().layout, R2D2);
+    }
+
+    #[test]
+    fn a_slider_moved_before_the_gimbal_is_found_aims_once_it_is() {
+        let mut sticks = Sticks {
+            ready: Ready {
+                gimbal: false,
+                camera: false,
+                settings: false,
+            },
+            ..Sticks::default()
+        };
+        sticks.step(
+            &line(&[
+                (PITCH_CHANNEL, 1500),
+                (YAW_CHANNEL, 1500),
+                (ZOOM_CHANNEL, 1500),
+            ]),
+            LIMITS,
+            0,
+        );
+        let moved = line(&[
+            (PITCH_CHANNEL, 988),
+            (YAW_CHANNEL, 1500),
+            (ZOOM_CHANNEL, 2012),
+        ]);
+        assert!(
+            sticks.step(&moved, LIMITS, 1000).is_empty(),
+            "with no gimbal or camera found yet nothing is sent"
+        );
+        sticks.ready = ALL_READY;
+        assert_eq!(
+            sticks.step(&moved, LIMITS, 2000),
+            vec![
+                Move::Aim {
+                    pitch: -90.0,
+                    yaw: 0.0
+                },
+                Move::Zoom(100.0)
+            ],
+            "once they are found the slider's position is sent"
+        );
     }
 
     #[test]

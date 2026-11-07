@@ -24,6 +24,7 @@ local mixesInfo = {}
 local channelValues = {}
 local used = {}
 local useLvglUI = false
+local relayout = false
 local leaving = false
 local confirmUntil = nil
 local askedAt = nil
@@ -111,6 +112,7 @@ local function setUpChannels(mixes)
     end
   end
   readMixes()
+  relayout = useLvglUI
 end
 
 local function sendChannels()
@@ -324,6 +326,11 @@ local function run(event)
   if exitKey(event) then askToLeave() end
   if leaving then return 1 end
   battVolt = getValue("tx-voltage")
+  if relayout then
+    relayout = false
+    lvgl.clear()
+    buildLvglUI()
+  end
   if not useLvglUI then
     if LCD_W >= 480 and LCD_H >= 272 then
       drawLarge()

@@ -475,6 +475,10 @@ pub fn step_setting(name: &str, by: i64) -> Value {
     }
 }
 
+pub fn settings_ready() -> bool {
+    selected_camera().is_some_and(|key| with_ready(key, |_| ()).is_some())
+}
+
 fn selected_camera() -> Option<(u8, u8)> {
     let hub = crate::hub::lock();
     let vehicle = hub.active()?;
