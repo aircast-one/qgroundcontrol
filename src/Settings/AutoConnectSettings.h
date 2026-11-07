@@ -43,4 +43,6 @@ public:
     DEFINE_SETTINGFACT(usbRadioDropChannel)
     DEFINE_SETTINGFACT(usbRadioArmChannel)
     DEFINE_SETTINGFACT(usbRadioBayChannel)
+    DEFINE_SETTINGFACT(usbRadioTiltChannel)
+    DEFINE_SETTINGFACT(usbRadioLookChannel)
 };

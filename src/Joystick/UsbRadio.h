@@ -54,6 +54,8 @@ struct Layout
     int drop = 11;
     int arm = 12;
     int bay = 5;
+    int tilt = 19;
+    int look = 23;
     bool operator==(const Layout& other) const = default;
 };
 
@@ -159,6 +161,7 @@ private:
     QHash<int, uint16_t> _acted;
     std::optional<qint64> _sentMs;
     std::optional<uint16_t> _dropBefore;
+    std::optional<int> _pitchSource;
 };
 
 QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {}, const Layout& layout = {},

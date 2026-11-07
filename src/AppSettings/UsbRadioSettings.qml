@@ -150,6 +150,20 @@ SettingsGroupLayout {
         visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
     }
 
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioTiltChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioLookChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
     QGCLabel {
         Layout.fillWidth:   true
         text:               _usbRadio ? _usbRadio.status : ""

@@ -170,6 +170,26 @@
             "label": "Payload bay channel"
         },
         {
+            "name": "usbRadioTiltChannel",
+            "shortDesc": "Tilt knob channel",
+            "longDesc": "A knob that tilts the camera from straight down to straight ahead, like the camera pitch slider. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 19,
+            "label": "Tilt knob channel"
+        },
+        {
+            "name": "usbRadioLookChannel",
+            "shortDesc": "Look switch channel",
+            "longDesc": "A three-position switch: up looks straight down, down looks ahead, the middle leaves the camera where it is. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 23,
+            "label": "Look switch channel"
+        },
+        {
             "name": "autoConnectZeroConf",
             "shortDesc": "Automatically open a connection with Zero-Conf",
             "longDesc": "If this option is enabled GroundControl will automatically connect to a vehicle which is detected over Zero-Conf.",

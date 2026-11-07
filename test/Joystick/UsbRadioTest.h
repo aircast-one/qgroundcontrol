@@ -28,4 +28,6 @@ private slots:
     void _cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefault_test();
     void _aFunctionOnTheFlightModeChannelIsOff_test();
     void _aSliderMovedBeforeTheGimbalIsFoundAimsOnceItIs_test();
+    void _theTiltKnobAimsLikeThePitchSlider_test();
+    void _theLookSwitchAimsDownOrAheadWhenItFlips_test();
 };

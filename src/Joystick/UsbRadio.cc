@@ -114,8 +114,8 @@ float between(float low, float high, uint16_t pwm)
 Layout without(const Layout& layout, int channel)
 {
     const auto off = [channel](int at) { return channel > 0 && at == channel ? 0 : at; };
-    return Layout{off(layout.pitch),   off(layout.yaw),  off(layout.zoom), off(layout.picture),
-                  off(layout.palette), off(layout.drop), off(layout.arm),  off(layout.bay)};
+    return Layout{off(layout.pitch), off(layout.yaw), off(layout.zoom), off(layout.picture), off(layout.palette),
+                  off(layout.drop),  off(layout.arm), off(layout.bay),  off(layout.tilt),    off(layout.look)};
 }
 
 std::optional<Switches> switches(const Line& line, const Layout& layout)
@@ -127,22 +127,35 @@ std::optional<Switches> switches(const Line& line, const Layout& layout)
 QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout, Ready ready)
 {
     const bool due = !_sentMs || (nowMs - *_sentMs) >= kCameraResendMs;
-    const auto moved = [this, &line](int number) {
+    const auto delta = [this, &line](int number) {
         const std::optional<uint16_t> now = channel(line, number);
-        return now && _acted.contains(number) && std::abs(int(*now) - int(_acted[number])) >= kSteadyPwm;
+        return now && _acted.contains(number) ? std::abs(int(*now) - int(_acted[number])) : 0;
     };
+    const auto moved = [&delta](int number) { return delta(number) >= kSteadyPwm; };
     const auto pressed = [this, &line](int number) {
         const std::optional<uint16_t> now = channel(line, number);
         return now && *now > kPressedPwm && _acted.contains(number) && _acted[number] <= kPressedPwm;
     };
-    const std::optional<uint16_t> pitch = channel(line, layout.pitch);
+    const auto flipped = [this, &line](int number) {
+        const std::optional<uint16_t> now = channel(line, number);
+        return now && _acted.contains(number) && position(_acted[number]) != position(*now);
+    };
+    const bool remembered = _pitchSource && (*_pitchSource == layout.pitch || *_pitchSource == layout.tilt);
+    const int source = moved(layout.tilt) && delta(layout.tilt) > delta(layout.pitch) ? layout.tilt
+                       : moved(layout.pitch)                                          ? layout.pitch
+                       : remembered                                                   ? *_pitchSource
+                       : layout.pitch > 0                                             ? layout.pitch
+                                                                                      : layout.tilt;
+    const std::optional<uint16_t> pitch = channel(line, source);
     const std::optional<uint16_t> yaw = channel(line, layout.yaw);
     const std::optional<uint16_t> zoom = channel(line, layout.zoom);
     const std::optional<uint16_t> picture = channel(line, layout.picture);
-    const bool aimed = ready.gimbal && pitch && yaw && due && (moved(layout.pitch) || moved(layout.yaw));
+    const std::optional<uint16_t> look = channel(line, layout.look);
+    const bool aimed =
+        ready.gimbal && pitch && yaw && due && (moved(layout.pitch) || moved(layout.tilt) || moved(layout.yaw));
+    const bool looked = ready.gimbal && look && flipped(layout.look) && position(*look) != 1;
     const bool zoomed = ready.camera && zoom && due && moved(layout.zoom);
-    const bool switched = ready.settings && picture && _acted.contains(layout.picture) &&
-                          position(_acted[layout.picture]) != position(*picture);
+    const bool switched = ready.settings && flipped(layout.picture);
     const bool palette = ready.settings && pressed(layout.palette);
     const auto high = [](std::optional<uint16_t> pwm) { return pwm && *pwm > kPressedPwm; };
     const std::optional<uint16_t> drop = channel(line, layout.drop);
@@ -152,9 +165,10 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const auto refresh = [this, &line, &layout, &ready, aimed, zoomed](int number) {
         const std::optional<uint16_t> now = channel(line, number);
         const bool keep =
-            !_acted.contains(number) || (number == layout.pitch || number == layout.yaw         ? aimed
+            !_acted.contains(number) || (number == layout.pitch || number == layout.yaw || number == layout.tilt ? aimed
                                          : number == layout.zoom                                ? zoomed
                                          : number == layout.picture || number == layout.palette ? ready.settings
+                                         : number == layout.look                                ? ready.gimbal
                                                                                                 : true);
         if (now && keep) {
             _acted[number] = *now;
@@ -163,6 +177,11 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     QList<Move> moves;
     if (aimed) {
         moves << Move{Move::Kind::Aim, between(kPitchDown, kPitchAhead, *pitch), between(-kYawLimit, kYawLimit, *yaw)};
+        _pitchSource = source;
+    }
+    if (looked) {
+        moves << Move{Move::Kind::Aim, position(*look) == 2 ? kPitchDown : kPitchAhead,
+                      yaw ? between(-kYawLimit, kYawLimit, *yaw) : 0.0f};
     }
     if (zoomed) {
         moves << Move{Move::Kind::Zoom, 0.0f, 0.0f, between(0.0f, 100.0f, *zoom)};
@@ -177,8 +196,9 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
         moves << Move{Move::Kind::Drop};
     }
     _dropBefore = drop ? dropWas : _dropBefore;
-    std::ranges::for_each(
-        std::array{layout.drop, layout.pitch, layout.yaw, layout.zoom, layout.picture, layout.palette}, refresh);
+    std::ranges::for_each(std::array{layout.drop, layout.pitch, layout.yaw, layout.zoom, layout.picture, layout.palette,
+                                     layout.tilt, layout.look},
+                          refresh);
     if (aimed || zoomed) {
         _sentMs = nowMs;
     }
@@ -198,8 +218,8 @@ namespace {
 
 QByteArray layoutTail(const Layout& layout)
 {
-    const std::array channels{layout.pitch,   layout.yaw,  layout.zoom, layout.picture,
-                              layout.palette, layout.drop, layout.arm,  layout.bay};
+    const std::array channels{layout.pitch, layout.yaw, layout.zoom, layout.picture, layout.palette,
+                              layout.drop,  layout.arm, layout.bay,  layout.tilt,    layout.look};
     return std::accumulate(channels.cbegin(), channels.cend(), QByteArray(";"), [](const QByteArray& tail, int number) {
         return tail + (tail.size() > 1 ? "," : "") + QByteArray::number(number);
     });
@@ -228,14 +248,16 @@ QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layo
 
 QStringList namedOn(const Layout& layout, int channel)
 {
-    const std::array<std::pair<int, const char*>, 8> functions{{{layout.pitch, "camera pitch"},
-                                                                {layout.yaw, "camera yaw"},
-                                                                {layout.zoom, "zoom"},
-                                                                {layout.picture, "picture"},
-                                                                {layout.palette, "palette"},
-                                                                {layout.drop, "drop"},
-                                                                {layout.arm, "arm"},
-                                                                {layout.bay, "bay"}}};
+    const std::array<std::pair<int, const char*>, 10> functions{{{layout.pitch, "camera pitch"},
+                                                                 {layout.yaw, "camera yaw"},
+                                                                 {layout.zoom, "zoom"},
+                                                                 {layout.picture, "picture"},
+                                                                 {layout.palette, "palette"},
+                                                                 {layout.drop, "drop"},
+                                                                 {layout.arm, "arm"},
+                                                                 {layout.bay, "bay"},
+                                                                 {layout.tilt, "tilt"},
+                                                                 {layout.look, "look"}}};
     return std::accumulate(
         functions.cbegin(), functions.cend(), QStringList{},
         [channel](QStringList names, const std::pair<int, const char*>& function) {
@@ -593,7 +615,8 @@ UsbRadioProtocol::Layout UsbRadio::_layout() const
         number(settings->usbRadioPitchChannel()),   number(settings->usbRadioYawChannel()),
         number(settings->usbRadioZoomChannel()),    number(settings->usbRadioPictureChannel()),
         number(settings->usbRadioPaletteChannel()), number(settings->usbRadioDropChannel()),
-        number(settings->usbRadioArmChannel()),     number(settings->usbRadioBayChannel())};
+        number(settings->usbRadioArmChannel()),     number(settings->usbRadioBayChannel()),
+        number(settings->usbRadioTiltChannel()),    number(settings->usbRadioLookChannel())};
 }
 
 QString UsbRadio::_wanted() const
