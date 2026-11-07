@@ -361,6 +361,6 @@ void UsbRadioTest::_aFunctionOnTheFlightModeChannelIsOff_test()
     QCOMPARE(without(kR2d2, 0), kR2d2);
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{1, 2, 3, 4, 5}),
              QByteArray("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0\n"));
-    QVERIFY2(!switches(lineWith({{kR2d2.arm, 2012}, {5, 1500}}), without(kR2d2, 5)),
-             "a vehicle reading flight modes on CH5 takes the bay switch off it");
+    QVERIFY2(switches(lineWith({{kR2d2.arm, 2012}, {5, 1500}}), without(kR2d2, 5)) == std::optional(Switches{true, 1}),
+             "a vehicle reading flight modes on CH5 takes the bay switch off it, and BOMARM still arms");
 }

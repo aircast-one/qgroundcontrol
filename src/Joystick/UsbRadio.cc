@@ -126,7 +126,7 @@ std::optional<Switches> switches(const Line& line, const Layout& layout)
 {
     const std::optional<uint16_t> arm = channel(line, layout.arm);
     const std::optional<uint16_t> bay = channel(line, layout.bay);
-    return (arm && bay) ? std::optional<Switches>(Switches{*arm >= kArmedPwm, bayOf(*bay)}) : std::nullopt;
+    return arm ? std::optional<Switches>(Switches{*arm >= kArmedPwm, bay ? bayOf(*bay) : 1}) : std::nullopt;
 }
 
 QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout)
