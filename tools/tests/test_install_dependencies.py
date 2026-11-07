@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Tests for tools/setup/install_dependencies."""
 
 from __future__ import annotations
 
@@ -133,8 +132,6 @@ def test_resolve_package_alternatives_swaps_to_available_alternative() -> None:
 
 
 def test_resolve_package_alternatives_drops_when_none_available() -> None:
-    # Regression: Debian bookworm has neither the good-dev package nor its
-    # alternative; keeping the unknown name made apt abort the whole install.
     with patch(
         "setup.install_dependencies._common.check_apt_package_available",
         side_effect=lambda pkg: False,
@@ -318,7 +315,6 @@ def test_download_file_network_error(tmp_path: Path) -> None:
     from setup.install_dependencies import download_file
 
     dest = tmp_path / "test.bin"
-    # Mock httpx to raise, then fall through to urllib which also raises
     with patch("urllib.request.urlopen", side_effect=OSError("unreachable")):
         result = download_file("https://example.com/test.bin", dest, dry_run=False)
     assert result is False
@@ -372,7 +368,6 @@ def test_get_brew_install_command_empty_input_returns_noop() -> None:
 
 
 def test_get_brew_install_command_brew_list_failure_passes_all() -> None:
-    # brew list failure (e.g. brew not yet on PATH) shouldn't suppress installs.
     with patch(
         "setup.install_dependencies._common.subprocess.run",
         return_value=completed(returncode=1),
@@ -419,7 +414,6 @@ def test_install_just_debian_skips_when_current_version_meets_minimum() -> None:
 
 
 def test_install_just_debian_upgrades_when_existing_too_old() -> None:
-    """Stale apt-installed just (1.21) must trigger upstream binary install."""
     versions = iter([(1, 21, 0), (1, 21, 0)])
     with (
         patch(
@@ -427,6 +421,7 @@ def test_install_just_debian_upgrades_when_existing_too_old() -> None:
             side_effect=lambda: next(versions),
         ),
         patch("setup.install_dependencies._common.check_apt_package_available", return_value=False),
+        patch("setup.install_dependencies._debian.platform.machine", return_value="x86_64"),
         patch("setup.install_dependencies._common.download_file", return_value=False) as mock_dl,
     ):
         install_just_debian()
@@ -434,7 +429,6 @@ def test_install_just_debian_upgrades_when_existing_too_old() -> None:
 
 
 def test_install_just_debian_falls_back_when_apt_version_too_old() -> None:
-    """apt's just may itself be too old (Ubuntu 22.04); fall through to upstream."""
     versions = iter([None, (1, 21, 0)])
     with (
         patch(
@@ -443,6 +437,7 @@ def test_install_just_debian_falls_back_when_apt_version_too_old() -> None:
         ),
         patch("setup.install_dependencies._common.check_apt_package_available", return_value=True),
         patch("setup.install_dependencies._common.run_apt_install_with_retry", return_value=True),
+        patch("setup.install_dependencies._debian.platform.machine", return_value="x86_64"),
         patch("setup.install_dependencies._common.download_file", return_value=False) as mock_dl,
     ):
         install_just_debian()
