@@ -426,12 +426,12 @@ private struct TelemetryPlaceholder: View {
         let units = placeholderUnits(distance.int, height.int, speed.int)
         VStack(alignment: .leading, spacing: PLACEHOLDER_ROW_GAP) {
             HStack(spacing: Space.s4) {
-                PlaceholderReading(label: "H.S", unit: units.speed, font: .labelLarge)
-                PlaceholderReading(label: "V.S", unit: units.speed, font: .labelLarge)
+                PlaceholderReading(label: "H.S", unit: units.speed, font: .titleLarge)
+                PlaceholderReading(label: "V.S", unit: units.speed, font: .titleLarge)
             }
             HStack(spacing: Space.s4) {
-                PlaceholderReading(label: "D", unit: units.distance, font: .titleLarge)
-                PlaceholderReading(label: "H", unit: units.height, font: .titleLarge)
+                PlaceholderReading(label: "D", unit: units.distance, font: .headlineMedium)
+                PlaceholderReading(label: "H", unit: units.height, font: .headlineMedium)
             }
         }
         .accessibilityElement(children: .combine)
@@ -446,7 +446,7 @@ private struct PlaceholderReading: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.s1) {
-            Text(label).font(.labelMedium).lineLimit(1)
+            Text(label).font(.labelLarge).lineLimit(1)
             Text("\u{2014} \(unit)").font(font).lineLimit(1)
         }
         .foregroundStyle(theme.aircast.outdoorForeground.opacity(PLACEHOLDER_ALPHA))

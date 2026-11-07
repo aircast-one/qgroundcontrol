@@ -461,12 +461,12 @@ private fun TelemetryPlaceholder() {
     val units = placeholderUnits(enumIndex(distance), enumIndex(height), enumIndex(speed))
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
-            PlaceholderReading("H.S", units.speed, MaterialTheme.typography.labelLarge)
-            PlaceholderReading("V.S", units.speed, MaterialTheme.typography.labelLarge)
+            PlaceholderReading("H.S", units.speed, MaterialTheme.typography.titleLarge)
+            PlaceholderReading("V.S", units.speed, MaterialTheme.typography.titleLarge)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
-            PlaceholderReading("D", units.distance, MaterialTheme.typography.titleLarge)
-            PlaceholderReading("H", units.height, MaterialTheme.typography.titleLarge)
+            PlaceholderReading("D", units.distance, MaterialTheme.typography.headlineMedium)
+            PlaceholderReading("H", units.height, MaterialTheme.typography.headlineMedium)
         }
     }
 }
@@ -474,7 +474,7 @@ private fun TelemetryPlaceholder() {
 @Composable
 private fun PlaceholderReading(label: String, unit: String, style: androidx.compose.ui.text.TextStyle) {
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = PLACEHOLDER_ALPHA), maxLines = 1, modifier = Modifier.alignByBaseline())
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = PLACEHOLDER_ALPHA), maxLines = 1, modifier = Modifier.alignByBaseline())
         Text("— $unit", style = style, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = PLACEHOLDER_ALPHA), maxLines = 1, modifier = Modifier.alignByBaseline())
     }
 }

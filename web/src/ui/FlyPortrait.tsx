@@ -448,12 +448,12 @@ const TelemetryPlaceholder = () => {
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex gap-4">
-        <PlaceholderReading label="H.S" unit={units.speed} typography="labelLarge" />
-        <PlaceholderReading label="V.S" unit={units.speed} typography="labelLarge" />
+        <PlaceholderReading label="H.S" unit={units.speed} typography="titleLarge" />
+        <PlaceholderReading label="V.S" unit={units.speed} typography="titleLarge" />
       </div>
       <div className="flex gap-4">
-        <PlaceholderReading label="D" unit={units.distance} typography="titleLarge" />
-        <PlaceholderReading label="H" unit={units.height} typography="titleLarge" />
+        <PlaceholderReading label="D" unit={units.distance} typography="headlineMedium" />
+        <PlaceholderReading label="H" unit={units.height} typography="headlineMedium" />
       </div>
     </div>
   );
@@ -463,7 +463,7 @@ const PlaceholderReading = ({ label, unit, typography }: { label: string; unit: 
   const tint = withAlpha(aircast('outdoorForeground'), PLACEHOLDER_ALPHA);
   return (
     <div className="flex items-baseline gap-1">
-      <Text typography="labelMedium" color={tint} maxLines={1}>
+      <Text typography="labelLarge" color={tint} maxLines={1}>
         {label}
       </Text>
       <Text typography={typography} color={tint} maxLines={1}>

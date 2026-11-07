@@ -329,7 +329,7 @@ private struct TelemetryReadings: View {
     private func osdReading(_ instrument: Instrument, _ font: TypeScale, _ silent: Bool) -> some View {
         HStack(alignment: .lastTextBaseline, spacing: Space.s1) {
             Text(osdLabel(instrument.label))
-                .font(.labelMedium)
+                .font(.labelLarge)
                 .foregroundStyle(theme.aircast.outdoorForeground.opacity(OSD_LABEL_ALPHA))
                 .lineLimit(1)
                 .fixedSize()
@@ -349,10 +349,10 @@ private struct TelemetryReadings: View {
             let places = shown.filter { !osdIsSpeed($0.label) }
             VStack(alignment: .leading, spacing: 2) {
                 if !speeds.isEmpty {
-                    HStack(spacing: Space.s4) { ForEach(Array(speeds.enumerated()), id: \.offset) { osdReading($0.element, .labelLarge, silent) } }
+                    HStack(spacing: Space.s4) { ForEach(Array(speeds.enumerated()), id: \.offset) { osdReading($0.element, .titleLarge, silent) } }
                 }
                 if !places.isEmpty {
-                    HStack(spacing: Space.s4) { ForEach(Array(places.enumerated()), id: \.offset) { osdReading($0.element, .titleLarge, silent) } }
+                    HStack(spacing: Space.s4) { ForEach(Array(places.enumerated()), id: \.offset) { osdReading($0.element, .headlineMedium, silent) } }
                 }
             }
         } else {

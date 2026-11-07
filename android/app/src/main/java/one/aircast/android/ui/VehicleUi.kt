@@ -317,7 +317,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     if (compact) {
         val reading: @Composable (Instrument, TextStyle) -> Unit = { instrument, style ->
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
-                Text(osdLabel(instrument.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = OSD_LABEL_ALPHA), maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline())
+                Text(osdLabel(instrument.label), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = OSD_LABEL_ALPHA), maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline())
                 Text(
                     "${instrument.value}${instrument.units}",
                     style = style.copy(fontFeatureSettings = "tnum"),
@@ -331,8 +331,8 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
         if (stacked) {
             val (speeds, places) = shown.partition { osdIsSpeed(it.label) }
             Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (speeds.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { speeds.map { reading(it, MaterialTheme.typography.labelLarge) } }
-                if (places.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { places.map { reading(it, MaterialTheme.typography.titleLarge) } }
+                if (speeds.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { speeds.map { reading(it, MaterialTheme.typography.titleLarge) } }
+                if (places.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { places.map { reading(it, MaterialTheme.typography.headlineMedium) } }
             }
         } else {
             FlowRow(

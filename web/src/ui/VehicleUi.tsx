@@ -308,7 +308,7 @@ export const TelemetryRow = ({
   if (compact) {
     const reading = (instrument: Instrument, typography: Typography) => (
       <div key={`${instrument.id}|${instrument.label}`} className="flex items-baseline gap-1">
-        <Text typography="labelMedium" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
+        <Text typography="labelLarge" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
           {osdLabel(instrument.label)}
         </Text>
         <Text typography={typography} className="tabular-nums" maxLines={1} style={{ zoom: valueSize.scale }} color={silent ? md('onSurfaceVariant') : colourOf(displayFor(displays, instrument), instrument.raw) ?? aircast('outdoorForeground')}>
@@ -323,8 +323,8 @@ export const TelemetryRow = ({
         {sheets}
         {stacked ? (
           <div className={`flex flex-col gap-0.5 ${className ?? ''}`}>
-            {speeds.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{speeds.map((it) => reading(it, 'labelLarge'))}</div> : null}
-            {places.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{places.map((it) => reading(it, 'titleLarge'))}</div> : null}
+            {speeds.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{speeds.map((it) => reading(it, 'titleLarge'))}</div> : null}
+            {places.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{places.map((it) => reading(it, 'headlineMedium'))}</div> : null}
           </div>
         ) : (
           <div className={`flex flex-wrap justify-center gap-x-4 gap-y-0.5 ${className ?? ''}`}>{shown.map((it) => reading(it, 'titleMedium'))}</div>
