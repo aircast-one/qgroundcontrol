@@ -32,7 +32,7 @@ const NO_ANSWER: &str = "The device did not answer.";
 const NOT_CONNECTED: &str = "No Aircast device is connected.";
 const TYPE_AN_ADDRESS: &str = "Type an address like 192.168.1.100 or falcon.local.";
 const ACCEPT_JSON: (&str, &str) = ("Accept", "application/json");
-const HOME_VIEW: &str = "/api/views/aircraft";
+pub const HOME_VIEW: &str = "/api/views/aircraft";
 const SECURE_ORIGIN: &str = "/api/tls";
 
 #[derive(Default)]
@@ -407,16 +407,20 @@ fn upgraded(origin: &str) -> Option<String> {
     .then_some(secure)
 }
 
-fn answers_as_device(sent: &Result<(u16, Vec<u8>), String>) -> bool {
+pub fn device_home(sent: &Result<(u16, Vec<u8>), String>) -> Option<Value> {
     sent.as_ref()
         .ok()
         .filter(|(status, _)| (200..300).contains(status))
         .and_then(|(_, bytes)| serde_json::from_slice::<Value>(bytes).ok())
-        .is_some_and(|view| {
+        .filter(|view| {
             view.get("headline")
                 .and_then(Value::as_str)
                 .is_some_and(|headline| !headline.is_empty())
         })
+}
+
+fn answers_as_device(sent: &Result<(u16, Vec<u8>), String>) -> bool {
+    device_home(sent).is_some()
 }
 
 pub fn pair(args: &str) -> Value {
