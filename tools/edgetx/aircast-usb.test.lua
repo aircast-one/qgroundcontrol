@@ -10,7 +10,8 @@ local EXIT = 1537
 getmetatable("").__index = nil
 
 local function radio(screen)
-  local sent, drawn, pages = {}, {}, {}
+  local sent, drawn, pages, inserted = {}, {}, {}, {}
+  local controls = { sf = 105, se = 104, rs = 99, ls = 98, s2 = 97, sg = 106, sh = 107 }
   local clock, inbox, cable = 0, "", true
   local env = setmetatable({
     SMLSIZE = 0, MIDSIZE = 0, INVERS = 0,
@@ -20,13 +21,15 @@ local function radio(screen)
     getOutputValue = function(index) return ({ [0] = -1024, [1] = 1024, [3] = -512, [10] = -1024, [17] = 1024 })[index] or 0 end,
     getValue = function() return 8.3 end,
     getSourceName = function(source) return "src" .. source end,
+    getFieldInfo = function(name) return controls[name] and { id = controls[name] } end,
     setSerialBaudrate = function(baud) assert(baud == 115200) end,
     serialWrite = function(data) sent[#sent + 1] = data end,
     serialRead = function() local got = inbox; inbox = ""; return got end,
     usbConnected = function() return cable end,
     model = {
       getInfo = function() return { name = "VAMPIRE" } end,
-      getMix = function(channel) return channel < (screen.mixes or 4) and { name = "m" .. channel, source = channel } or nil end,
+      getMix = function(channel) return inserted[channel] or (channel < (screen.mixes or 4) and { name = "m" .. channel, source = channel } or nil) end,
+      insertMix = function(channel, line, mix) assert(line == 0); inserted[channel] = mix end,
     },
     lcd = setmetatable({ RGB = function() return 0 end, clear = function() for k in pairs(drawn) do drawn[k] = nil end end },
       { __index = function(_, name) return function(_, _, text) drawn[#drawn + 1] = { name, text } end end }),
@@ -44,7 +47,7 @@ local function radio(screen)
   local script = assert(loadfile(here .. "aircast-usb.lua", "t", env))()
   script.init()
   return {
-    script = script, sent = sent, drawn = drawn, pages = pages,
+    script = script, sent = sent, drawn = drawn, pages = pages, inserted = inserted,
     at = function(t) clock = t end,
     hear = function(line) inbox = inbox .. line end,
     unplug = function() cable = false end,
@@ -71,7 +74,7 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
   if screen.w == 480 then
     assert(shows(r, "Waiting for the app") and shows(r, "Pick it under Radio on USB"), "silence says where in the app to pick the radio")
     assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
-    assert(shows(r, "+20 unused channels") and not shows(r, "CH24"), "only the channels this model mixes are listed")
+    assert(shows(r, "+13 unused channels") and shows(r, "CH24 src107 termty 1500"), "only the channels this model mixes are listed")
     assert(shows(r, "RTN: stop sending sticks and exit"), "the way out is on the screen")
 
     r.hear("@F,1\n")
@@ -94,6 +97,16 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
 end
 
 local full = radio({ w = 480, h = 272, mixes = 24 })
+assert(next(full.inserted) == nil, "a channel that already has a mix keeps it: nothing is added to a model mixing all 24")
+local fresh = radio({ w = 480, h = 272 })
+local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camPit", 99 }, [19] = { "camYaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 } }
+for channel, mix in pairs(wanted) do
+  local got = fresh.inserted[channel]
+  assert(got and got.name == mix[1] and got.source == mix[2] and got.weight == 100, "an empty CH" .. (channel + 1) .. " gets the R2D2 " .. mix[1] .. " mix")
+end
+local count = 0
+for _ in pairs(fresh.inserted) do count = count + 1 end
+assert(count == 7, "only the R2D2 camera and payload channels are added, never CH5 or CH10, which can be flight modes")
 full.script.run(0)
 assert(shows(full, "CH24 src23 m23    1500") and not shows(full, "+0 unused channels"), "a model mixing all 24 channels shows every one")
 

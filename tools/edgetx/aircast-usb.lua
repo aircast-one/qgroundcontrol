@@ -60,6 +60,26 @@ local function readChannels()
   end
 end
 
+local R2D2 = {
+  { 11, "sf", "skld" },
+  { 12, "se", "BOMARM" },
+  { 18, "rs", "camPit" },
+  { 20, "ls", "camYaw" },
+  { 21, "s2", "zoom" },
+  { 22, "sg", "camtyp" },
+  { 24, "sh", "termty" },
+}
+
+local function addR2d2Mixes()
+  if not (getFieldInfo and model.insertMix) then return end
+  for _, slot in ipairs(R2D2) do
+    local field = getFieldInfo(slot[2])
+    if field and not model.getMix(slot[1] - 1, 0) then
+      model.insertMix(slot[1] - 1, 0, { name = slot[3], source = field.id, weight = 100 })
+    end
+  end
+end
+
 local function readMixes()
   used = {}
   for i = 1, CHANNEL_COUNT do
@@ -266,6 +286,7 @@ end
 
 local function init()
   modelInfo = model.getInfo() or { name = "Unknown" }
+  addR2d2Mixes()
   readMixes()
   readChannels()
   setSerialBaudrate(SERIAL_BAUDRATE)
