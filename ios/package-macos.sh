@@ -63,17 +63,46 @@ allowed_reference() {
     esac
 }
 
+expand_path() {
+    case $3 in
+        @loader_path*) echo "$(dirname "$1")${3#@loader_path}" ;;
+        @executable_path*) echo "$(dirname "$2")${3#@executable_path}" ;;
+        *) echo "$3" ;;
+    esac
+}
+
+resolves() {
+    local binary="$1" main="$2" dependency="$3" searched="$4" path
+    case $dependency in
+        @rpath/*)
+            while IFS= read -r path; do
+                [ -n "$path" ] || continue
+                [ -e "$(expand_path "$binary" "$main" "$path")/${dependency#@rpath/}" ] && return 0
+            done <<<"$searched"
+            return 1
+            ;;
+        @loader_path/* | @executable_path/*) [ -e "$(expand_path "$binary" "$main" "$dependency")" ] ;;
+        *) return 0 ;;
+    esac
+}
+
 verify_bundle() {
-    local app="$1" bad=0 count=0 binary dependency path list
+    local app="$1" bad=0 count=0 binary dependency path list main main_rpaths searched
+    main="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$app/Contents/Info.plist")"
+    main_rpaths="$(rpaths "$main")"
     list="$(mktemp)"
     macho_files "$app" >"$list"
     while IFS= read -r -d '' binary; do
         count=$((count + 1))
         [ $((count % 250)) -ne 0 ] || step "checked $count files, now ${binary#"$app"/}"
+        searched="$(rpaths "$binary")"
         while IFS= read -r dependency; do
             [ -n "$dependency" ] || continue
             if ! allowed_reference "$dependency"; then
                 echo "::error::${binary#"$app"/} loads $dependency" >&2
+                bad=1
+            elif ! resolves "$binary" "$main" "$dependency" "$searched"$'\n'"$main_rpaths"; then
+                echo "::error::${binary#"$app"/} loads $dependency, which is not in the bundle" >&2
                 bad=1
             fi
         done <<<"$(load_commands "$binary")"
@@ -83,7 +112,7 @@ verify_bundle() {
                 echo "::error::${binary#"$app"/} searches rpath $path" >&2
                 bad=1
             fi
-        done <<<"$(rpaths "$binary")"
+        done <<<"$searched"
     done <"$list"
     rm -f "$list"
     [ "$count" -gt 0 ] || die "no Mach-O files found in $app"
@@ -257,6 +286,11 @@ embed_external_dylibs() {
                     cp -L "$source" "$target"
                     chmod u+w "$target"
                     install_name_tool -id "@rpath/$name" "$target"
+                    while IFS= read -r path; do
+                        case $path in
+                            @loader_path*) install_name_tool -rpath "$path" "$(expand_path "$source" "" "$path")" "$target" ;;
+                        esac
+                    done <<<"$(rpaths "$target")"
                     changed=1
                 fi
                 install_name_tool -change "$dependency" \
