@@ -456,7 +456,7 @@ Version numbers and build settings are centralized in `.github/build-config.json
   "gstreamer": { "version": { "default": "1.28.4", ... }, ... },
   "android": { "platform": "36", "ndk_full_version": "27.2.12479018", "java_version": "21", ... },
   "apple": { "xcode_version": "16.x", "macos_deployment_target": "13.0", ... },
-  "build": { "cmake_minimum_version": "3.25", "platform_workflows": "Linux,Windows,Android" }
+  "build": { "cmake_minimum_version": "3.25" }
 }
 ```
 

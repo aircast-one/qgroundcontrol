@@ -111,17 +111,13 @@
     },
     "build": {
       "type": "object",
-      "required": ["cmake_minimum_version", "platform_workflows"],
+      "required": ["cmake_minimum_version"],
       "additionalProperties": false,
       "properties": {
         "cmake_minimum_version": {
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+$",
           "description": "Minimum required CMake version"
-        },
-        "platform_workflows": {
-          "type": "string",
-          "description": "Comma-separated list of platform workflow names"
         }
       }
     },

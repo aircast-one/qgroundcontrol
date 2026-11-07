@@ -24,8 +24,7 @@
     "cargo_ndk_version": "4.1.2"
   },
   "build": {
-    "cmake_minimum_version": "3.25",
-    "platform_workflows": "Linux,Windows,Android"
+    "cmake_minimum_version": "3.25"
   },
   "gstreamer": {
     "version": {

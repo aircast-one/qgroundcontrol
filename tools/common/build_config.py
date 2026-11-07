@@ -1,5 +1,3 @@
-"""Shared helpers for reading and exporting .github/build-config.json."""
-
 from __future__ import annotations
 
 import os
@@ -32,7 +30,6 @@ DEFAULT_EXPORT_KEYS = [
     "android.build_tools",
     "android.cmdline_tools",
     "build.cmake_minimum_version",
-    "build.platform_workflows",
 ]
 IOS_QT_MODULE_EXCLUDES = {"qtserialport"}
 
@@ -42,7 +39,6 @@ def find_build_config(
     *,
     extra_candidates: list[Path] | None = None,
 ) -> Path:
-    """Find build-config.json by env override, extra candidates, or repo search."""
     if env_path := os.environ.get(CONFIG_ENV_VAR):
         return Path(env_path)
 
@@ -69,7 +65,6 @@ def load_build_config(
     start: Path | None = None,
     extra_candidates: list[Path] | None = None,
 ) -> dict[str, Any]:
-    """Load and parse the build config JSON file."""
     path = config_file or find_build_config(start, extra_candidates=extra_candidates)
     data = read_json(path)
     if not isinstance(data, dict):
@@ -85,14 +80,6 @@ def get_build_config_value(
     start: Path | None = None,
     extra_candidates: list[Path] | None = None,
 ) -> str:
-    """Return a string value from the build config or *default*.
-
-    Dotted keys (e.g. "gstreamer.version.default") walk nested objects.
-
-    File-missing / unreadable → silent default (callers may run outside the repo).
-    Parse / schema errors → raise: an existing-but-corrupted config silently
-    swapping defaults can produce wrong artifacts without warning.
-    """
     try:
         config = load_build_config(config_file, start=start, extra_candidates=extra_candidates)
     except (FileNotFoundError, OSError):
@@ -107,7 +94,6 @@ def get_build_config_value(
 
 
 def derive_ios_qt_modules(qt_modules: str) -> str:
-    """Return the iOS-safe Qt module list."""
     modules = [module for module in qt_modules.split() if module not in IOS_QT_MODULE_EXCLUDES]
     return " ".join(modules)
 
@@ -129,7 +115,6 @@ def export_build_config_values(
     *,
     keys: list[str] | None = None,
 ) -> dict[str, str]:
-    """Return uppercase env-style values exported from the config."""
     exported: dict[str, str] = {}
     for key in keys or DEFAULT_EXPORT_KEYS:
         value: Any = config
@@ -149,7 +134,6 @@ def export_build_config_values(
 
 
 def github_output_values(values: dict[str, str]) -> dict[str, str]:
-    """Lowercase-key outputs for $GITHUB_OUTPUT, plus derived qt_modules_ios."""
     outputs = {key.lower(): value for key, value in sorted(values.items())}
     qt_modules = values.get("QT_MODULES", "")
     if qt_modules:

@@ -56,9 +56,6 @@ outputs:
   apple_ios_deployment_target:
     description: iOS deployment target version
     value: ${{ steps.read.outputs.apple_ios_deployment_target }}
-  build_platform_workflows:
-    description: Comma-separated platform workflow names
-    value: ${{ steps.read.outputs.build_platform_workflows }}
 
 runs:
   using: composite

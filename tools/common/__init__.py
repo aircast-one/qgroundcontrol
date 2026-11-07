@@ -1,21 +1,3 @@
-"""Common utilities for QGC developer tools — lazy facade.
-
-Submodules are imported on first attribute access, not at package-import
-time. This keeps `from common import log_info` cheap and isolates
-optional third-party deps (httpx, defusedxml, etc.) from setup scripts
-that run before `pip install` completes.
-
-Submodules:
-    patterns:        QGC-specific regex patterns
-    file_traversal:  C++ source-tree walkers
-    gh_actions:      GitHub Actions API helpers
-    build_config:    build-config.json loader
-    github_runs:     workflow run helpers
-    logging:         colored terminal output
-    errors:          ToolNotFoundError
-    deps:            external-tool checks
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -99,18 +81,6 @@ if TYPE_CHECKING:
     )
     from .gh_actions import (
         write_step_summary as write_step_summary,
-    )
-    from .github_runs import (
-        group_runs_by_name as group_runs_by_name,
-    )
-    from .github_runs import (
-        is_newer_run as is_newer_run,
-    )
-    from .github_runs import (
-        parse_created_at as parse_created_at,
-    )
-    from .github_runs import (
-        select_latest_runs_by_name as select_latest_runs_by_name,
     )
     from .logging import (
         Color as Color,
@@ -203,10 +173,6 @@ _LAZY_SYMBOLS: dict[str, str] = {
     "get_build_config_value": "build_config",
     "export_build_config_values": "build_config",
     "derive_ios_qt_modules": "build_config",
-    "parse_created_at": "github_runs",
-    "is_newer_run": "github_runs",
-    "select_latest_runs_by_name": "github_runs",
-    "group_runs_by_name": "github_runs",
     "Color": "logging",
     "Logger": "logging",
     "use_color": "logging",
@@ -248,8 +214,6 @@ _LAZY_SYMBOLS: dict[str, str] = {
     "is_macos": "platform",
     "is_windows": "platform",
     "open_in_default_app": "opener",
-    "format_bytes": "format",
-    "format_delta_bytes": "format",
     "md_table": "markdown",
 }
 
@@ -267,12 +231,6 @@ def __getattr__(name: str):
 
 
 def pip_install(packages: list[str], quiet: bool = True) -> None:
-    """Install packages using uv (preferred) or pip.
-
-    Targets the project .venv (on PATH in CI) rather than --system: the system
-    interpreter may be externally managed (PEP 668) when no writable runner
-    Python is provisioned. Falls back to --system when no .venv exists.
-    """
     import shutil
     import subprocess
     import sys

@@ -1,12 +1,3 @@
-"""Regression guard: the `common` facade must not eagerly import submodules.
-
-CI setup scripts run on system Python (pre-venv, possibly 3.10) and under
-sparse checkouts that contain only a subset of `tools/common/*.py`. Importing
-one submodule must therefore NOT drag in siblings — otherwise a missing file
-(ModuleNotFoundError) or a newer-Python-only feature in an unrelated submodule
-(e.g. `enum.StrEnum` in common.logging) breaks scripts that never used it.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -21,9 +12,7 @@ CI_CRITICAL_SUBMODULES = [
     "build_config",
     "git",
     "proc",
-    "github_runs",
     "env",
-    "format",
     "io",
     "tool_version",
 ]
