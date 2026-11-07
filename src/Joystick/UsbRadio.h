@@ -143,10 +143,17 @@ struct Switches
 
 std::optional<Switches> switches(const Line& line, const Layout& layout = {});
 
+struct Ready
+{
+    bool gimbal = true;
+    bool camera = true;
+    bool settings = true;
+};
+
 class CameraSticks
 {
 public:
-    QList<Move> step(const Line& line, qint64 nowMs, const Layout& layout = {});
+    QList<Move> step(const Line& line, qint64 nowMs, const Layout& layout = {}, Ready ready = {});
 
 private:
     QHash<int, uint16_t> _acted;

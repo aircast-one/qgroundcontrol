@@ -349,6 +349,22 @@ void UsbRadioTest::_cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefaul
              QByteArray("@F,1,C,1,2,3,4,0;13,14,15,0,0,0,0,0\n"));
 }
 
+void UsbRadioTest::_aSliderMovedBeforeTheGimbalIsFoundAimsOnceItIs_test()
+{
+    CameraSticks sticks;
+    const Ready nothing{false, false, false};
+    (void) sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1500}, {kR2d2.zoom, 1500}}), 0, kR2d2, nothing);
+    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 1500}, {kR2d2.zoom, 2012}}), 1000, kR2d2, nothing)
+                 .isEmpty(),
+             "with no gimbal or camera found yet nothing is sent");
+    const QList<Move> found =
+        sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 1500}, {kR2d2.zoom, 2012}}), 2000, kR2d2, Ready{});
+    QCOMPARE(found.size(), 2);
+    QCOMPARE(found[0].kind, Move::Kind::Aim);
+    QCOMPARE(found[0].pitch, -90.0f);
+    QCOMPARE(found[1].kind, Move::Kind::Zoom);
+}
+
 void UsbRadioTest::_aFunctionOnTheFlightModeChannelIsOff_test()
 {
     QCOMPARE(without(kR2d2, 5), (Layout{18, 20, 21, 22, 24, 11, 12, 0}));

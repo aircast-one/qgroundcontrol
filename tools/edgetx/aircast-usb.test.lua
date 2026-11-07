@@ -35,11 +35,11 @@ local function radio(screen)
       { __index = function(_, name) return function(_, _, text) drawn[#drawn + 1] = { name, text } end end }),
   }, { __index = _G })
   if screen.lvgl then
-    env.lvgl = { page = function(page)
+    env.lvgl = { clear = function() for k in pairs(drawn) do drawn[k] = nil end end, page = function(page)
       pages[#pages + 1] = page
       drawn[#drawn + 1] = { "page", page.title }
       return setmetatable({}, { __index = function(_, name) return function(_, spec)
-        drawn[#drawn + 1] = { name, spec.text }
+        drawn[#drawn + 1] = { name, spec.text, spec.y }
         if spec.size then spec.size() end
       end end })
     end }
@@ -120,6 +120,10 @@ assert(moved.inserted[13] and moved.inserted[13].name == "camyaw" and moved.inse
 count = 0
 for _ in pairs(moved.inserted) do count = count + 1 end
 assert(count == 3, "a function the app turned off (channel 0) is not set up anywhere")
+local onScreen = radio({ w = 480, h = 272, lvgl = true })
+onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+onScreen.script.run(0)
+assert(shows(onScreen, string.format("CH%-2d %-5s %-6s %4d", 18, "src99", "camREB", 2012)), "a channel the script just set up appears on the screen")
 local his = radio({ w = 480, h = 272 })
 his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
 his.script.run(0)
@@ -145,6 +149,15 @@ moved.script.run(0)
 assert(moved.inserted[15] and moved.inserted[15].name == "camREB", "moving pitch in the app sets the new channel up")
 full.script.run(0)
 assert(shows(full, "CH24 src23 m23    1500") and not shows(full, "+0 unused channels"), "a model mixing all 24 channels shows every one")
+
+for _, mixes in ipairs({ 7, 24 }) do
+  local tx16s = radio({ w = 480, h = 272, lvgl = true, mixes = mixes })
+  tx16s.script.run(0)
+  assert(shows(tx16s, string.format("CH%-2d %-5s %-6s %4d", mixes, "src" .. (mixes - 1), "m" .. (mixes - 1), 1500)))
+  for _, call in ipairs(tx16s.drawn) do
+    assert((call[3] or 0) <= 272 - 50 - 16, "a TX16S shows all " .. mixes .. " channels and the way out without scrolling")
+  end
+end
 
 local labelled = radio({ w = 480, h = 272 })
 labelled.hear("@F,1,C,2,1,3,4\n")

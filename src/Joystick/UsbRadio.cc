@@ -124,7 +124,7 @@ std::optional<Switches> switches(const Line& line, const Layout& layout)
     return arm ? std::optional<Switches>(Switches{*arm >= kArmedPwm}) : std::nullopt;
 }
 
-QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout)
+QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout, Ready ready)
 {
     const bool due = !_sentMs || (nowMs - *_sentMs) >= kCameraResendMs;
     const auto moved = [this, &line](int number) {
@@ -139,21 +139,23 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const std::optional<uint16_t> yaw = channel(line, layout.yaw);
     const std::optional<uint16_t> zoom = channel(line, layout.zoom);
     const std::optional<uint16_t> picture = channel(line, layout.picture);
-    const bool aimed = pitch && yaw && due && (moved(layout.pitch) || moved(layout.yaw));
-    const bool zoomed = zoom && due && moved(layout.zoom);
-    const bool switched =
-        picture && _acted.contains(layout.picture) && position(_acted[layout.picture]) != position(*picture);
-    const bool palette = pressed(layout.palette);
+    const bool aimed = ready.gimbal && pitch && yaw && due && (moved(layout.pitch) || moved(layout.yaw));
+    const bool zoomed = ready.camera && zoom && due && moved(layout.zoom);
+    const bool switched = ready.settings && picture && _acted.contains(layout.picture) &&
+                          position(_acted[layout.picture]) != position(*picture);
+    const bool palette = ready.settings && pressed(layout.palette);
     const auto high = [](std::optional<uint16_t> pwm) { return pwm && *pwm > kPressedPwm; };
     const std::optional<uint16_t> drop = channel(line, layout.drop);
     const std::optional<uint16_t> dropWas =
         _acted.contains(layout.drop) ? std::optional<uint16_t>(_acted[layout.drop]) : std::nullopt;
     const bool dropped = high(drop) && high(dropWas) && _dropBefore && *_dropBefore <= kPressedPwm;
-    const auto refresh = [this, &line, &layout, aimed, zoomed](int number) {
+    const auto refresh = [this, &line, &layout, &ready, aimed, zoomed](int number) {
         const std::optional<uint16_t> now = channel(line, number);
-        const bool keep = !_acted.contains(number) || (number == layout.pitch || number == layout.yaw ? aimed
-                                                       : number == layout.zoom                        ? zoomed
-                                                                                                      : true);
+        const bool keep =
+            !_acted.contains(number) || (number == layout.pitch || number == layout.yaw         ? aimed
+                                         : number == layout.zoom                                ? zoomed
+                                         : number == layout.picture || number == layout.palette ? ready.settings
+                                                                                                : true);
         if (now && keep) {
             _acted[number] = *now;
         }
@@ -663,7 +665,11 @@ void UsbRadio::_steer(const Line& line)
     _warnOfClash(flight.vehicle, settings, flight.modeChannel);
     const Layout layout = without(settings, flight.modeChannel);
     const std::optional<Switches> armed = switches(line, layout);
-    const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout);
+    MavlinkCameraControlInterface* const camera =
+        vehicle->cameraManager() ? vehicle->cameraManager()->currentCameraInstance() : nullptr;
+    const Ready ready{vehicle->gimbalController() && vehicle->gimbalController()->activeGimbal(), camera != nullptr,
+                      camera && camera->paramComplete()};
+    const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout, ready);
     std::ranges::for_each(moves,
                           [this, vehicle, &armed](const Move& move) { _apply(vehicle, move, armed && armed->armed); });
 }

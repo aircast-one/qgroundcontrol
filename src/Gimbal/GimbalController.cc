@@ -84,8 +84,8 @@ void GimbalController::_handleHeartbeat(const mavlink_message_t &message)
 
     PotentialGimbalManager &gimbalManager = _potentialGimbalManagers[message.compid];
 
-    if (!gimbalManager.receivedGimbalManagerInformation && (gimbalManager.requestGimbalManagerInformationRetries > 0)) {
-        _requestGimbalInformation(message.compid);
+    if (!gimbalManager.receivedGimbalManagerInformation && (gimbalManager.requestGimbalManagerInformationRetries > 0) &&
+        _requestGimbalInformation(message.compid)) {
         --gimbalManager.requestGimbalManagerInformationRetries;
     }
 }
@@ -256,16 +256,16 @@ void GimbalController::_handleGimbalDeviceAttitudeStatus(const mavlink_message_t
     _checkComplete(*gimbal, pairId);
 }
 
-void GimbalController::_requestGimbalInformation(uint8_t compid)
+bool GimbalController::_requestGimbalInformation(uint8_t compid)
 {
     qCDebug(GimbalControllerLog) << "_requestGimbalInformation(" << compid << ")";
 
     if (!_vehicle) {
-        return;
+        return false;
     }
     if (_pendingInformationRequestCompId != -1) {
         qCDebug(GimbalControllerLog) << "_requestGimbalInformation: request already in flight for compid" << _pendingInformationRequestCompId;
-        return;
+        return false;
     }
 
     _pendingInformationRequestCompId = compid;
@@ -273,6 +273,7 @@ void GimbalController::_requestGimbalInformation(uint8_t compid)
                              this,
                              compid,
                              MAVLINK_MSG_ID_GIMBAL_MANAGER_INFORMATION);
+    return true;
 }
 
 void GimbalController::_requestMessageResultHandler(void* resultHandlerData, MAV_RESULT result, VehicleTypes::RequestMessageResultHandlerFailureCode_t failureCode, const mavlink_message_t& message)
@@ -293,8 +294,8 @@ void GimbalController::_checkComplete(Gimbal &gimbal, GimbalPairId pairId)
         return;
     }
 
-    if (!gimbal._receivedGimbalManagerInformation && gimbal._requestInformationRetries > 0) {
-        _requestGimbalInformation(pairId.managerCompid);
+    if (!gimbal._receivedGimbalManagerInformation && gimbal._requestInformationRetries > 0 &&
+        _requestGimbalInformation(pairId.managerCompid)) {
         --gimbal._requestInformationRetries;
     }
     static qint64 lastRequestStatusMessage = 0;
