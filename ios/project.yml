@@ -116,8 +116,9 @@ targets:
       - path: Vendor/Cesium
         type: folder
         buildPhase: resources
+      - path: ../deploy/macos/qgroundcontrol.icns
+        buildPhase: resources
       - path: ../src/Bridge/QGCVideoC.cc
-      # The packet radio bridge registers itself with the core from a static initializer.
       - path: ../src/Bridge/QGCWfbC.cc
         compilerFlags: "-I$(QGC_ROOT)/libs/wfb -I$(QGC_ROOT)/libs/wfb/wifi -I$(QGC_ROOT)/libs/wfb/wifi/compat -I$(QGC_ROOT)/libs/wfb/devourer/src -I$(QGC_ROOT)/libs/wfb/devourer/hal -I/opt/homebrew/include -I/opt/homebrew/include/libusb-1.0"
     dependencies:
@@ -133,7 +134,6 @@ targets:
         showEnvVars: false
         script: |
           export PATH="/opt/homebrew/bin:$PATH"
-          # The app links libusb and libsodium statically (OTHER_LDFLAGS), so a packaged app needs no Homebrew.
           for lib in /opt/homebrew/lib/libusb-1.0.a /opt/homebrew/lib/libsodium.a; do
             [ -f "$lib" ] || { echo "error: $lib is missing; run ios/fetch-deps-macos.sh" >&2; exit 1; }
           done
@@ -154,7 +154,6 @@ targets:
         HEADER_SEARCH_PATHS: $(QGC_ROOT)/src/Bridge $(GSTREAMER_MACOS)/Headers
         GCC_PREPROCESSOR_DEFINITIONS: $(inherited) QGC_GST_STREAMING=1
         FRAMEWORK_SEARCH_PATHS: $(inherited) /Library/Frameworks
-        # A release finds GStreamer.framework inside the bundle, where ios/package-macos.sh embeds it.
         LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/../Frameworks
         ARCHS: arm64
         OTHER_LDFLAGS: >-
@@ -170,7 +169,6 @@ targets:
           -framework CoreLocation -framework Security -framework SystemConfiguration -framework IOKit
           -framework AppKit -framework CoreFoundation -framework Foundation
       configs:
-        # Development builds run unpackaged, against the GStreamer.framework fetch-deps-macos.sh installs.
         Debug:
           LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/../Frameworks /Library/Frameworks
   AircastMacTests:
