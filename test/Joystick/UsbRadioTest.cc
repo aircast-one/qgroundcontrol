@@ -81,11 +81,11 @@ void UsbRadioTest::_radioIsToldWhatItsSticksAreDoing_test()
 
 void UsbRadioTest::_radioLearnsTheVehicleKindAndItsStickChannels_test()
 {
-    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{1, 2, 3, 4, 10}),
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10),
              QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n"));
     QCOMPARE(echo(Flying::Standby, 2, Kind::Plane, Sticks{2, 1, 3, 4}),
              QByteArray("@S,2,P,2,1,3,4,0;18,20,21,22,24,11,12,5\n"));
-    QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{1, 2, 3, 4, 8}),
+    QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{}, kR2d2, 8),
              QByteArray("@J,3,R,1,2,3,4,8;18,20,21,22,24,11,12,5\n"));
     QCOMPARE(echo(Flying::Vehicle, 4, Kind::Unknown, Sticks{2, 1, 3, 4}), QByteArray("@F,4;18,20,21,22,24,11,12,5\n"));
     QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N;18,20,21,22,24,11,12,5\n"));
@@ -109,7 +109,6 @@ void UsbRadioTest::_unmappedSticksFallBackToTheFirstFourChannels_test()
     QCOMPARE(sticks(2, 1, 3, 4), (Sticks{2, 1, 3, 4}));
     QCOMPARE(sticks(0, 0, 0, 0), Sticks{});
     QCOMPARE(sticks(5, 0, 7, 0), (Sticks{5, 2, 7, 4}));
-    QCOMPARE(sticks(0, 0, 0, 0, 10), (Sticks{1, 2, 3, 4, 10}));
 }
 
 void UsbRadioTest::_radioHearsBackOnlyWhileItStreams_test()
@@ -299,16 +298,14 @@ void UsbRadioTest::_cameraChannelsSteerTheGimbalZoomPictureAndPalette_test()
 void UsbRadioTest::_dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test()
 {
     CameraSticks sticks;
-    (void) sticks.step(lineWith({{kR2d2.drop, 988}, {kR2d2.bay, 988}}), 0);
-    QVERIFY2(sticks.step(lineWith({{kR2d2.drop, 2012}, {kR2d2.bay, 988}}), 10).isEmpty(),
+    (void) sticks.step(lineWith({{kR2d2.drop, 988}}), 0);
+    QVERIFY2(sticks.step(lineWith({{kR2d2.drop, 2012}}), 10).isEmpty(),
              "the first line with the switch up only arms the drop");
-    QCOMPARE(sticks.step(lineWith({{kR2d2.drop, 2012}, {kR2d2.bay, 988}}), 20),
-             (QList<Move>{Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, 1}}));
+    QCOMPARE(sticks.step(lineWith({{kR2d2.drop, 2012}}), 20), (QList<Move>{Move{Move::Kind::Drop}}));
     QVERIFY(sticks.step(lineWith({{kR2d2.drop, 2012}}), 30).isEmpty());
     QVERIFY2(sticks.step(lineWith({{kR2d2.drop, 988}}), 40).isEmpty(), "flipping it back down is not a drop");
-    (void) sticks.step(lineWith({{kR2d2.drop, 2012}, {kR2d2.bay, 1602}}), 50);
-    QCOMPARE(sticks.step(lineWith({{kR2d2.drop, 2012}, {kR2d2.bay, 1602}}), 60),
-             (QList<Move>{Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, 4}}));
+    (void) sticks.step(lineWith({{kR2d2.drop, 2012}}), 50);
+    QCOMPARE(sticks.step(lineWith({{kR2d2.drop, 2012}}), 60), (QList<Move>{Move{Move::Kind::Drop}}));
     CameraSticks glitched;
     const std::array<uint16_t, 5> glitch{988, 2012, 988, 2012, 988};
     const QList<Move> glitchMoves =
@@ -320,11 +317,9 @@ void UsbRadioTest::_dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test()
     QVERIFY2(pluggedInHigh.step(lineWith({{kR2d2.drop, 2012}}), 0).isEmpty(),
              "a radio plugged in with the switch already up drops nothing");
 
-    QCOMPARE(QList<int>({bayOf(988), bayOf(1193), bayOf(1398), bayOf(1602), bayOf(1807), bayOf(2012)}),
-             QList<int>({1, 2, 3, 4, 5, 6}));
-    const std::optional<Switches> up = switches(lineWith({{kR2d2.arm, 2012}, {kR2d2.bay, 1398}}));
+    const std::optional<Switches> up = switches(lineWith({{kR2d2.arm, 2012}}));
     QVERIFY(up);
-    QCOMPARE(*up, (Switches{true, 3}));
+    QCOMPARE(*up, (Switches{true}));
     QVERIFY2(!switches(lineWith({{kR2d2.arm, 1500}}))->armed, "the middle position is safe");
     QVERIFY(!switches(lineWith({{kR2d2.arm, 988}}))->armed);
     Line eleven{};
@@ -359,8 +354,15 @@ void UsbRadioTest::_aFunctionOnTheFlightModeChannelIsOff_test()
     QCOMPARE(without(kR2d2, 5), (Layout{18, 20, 21, 22, 24, 11, 12, 0}));
     QCOMPARE(without(kR2d2, 10), kR2d2);
     QCOMPARE(without(kR2d2, 0), kR2d2);
-    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{1, 2, 3, 4, 5}),
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 5),
              QByteArray("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0\n"));
-    QVERIFY2(switches(lineWith({{kR2d2.arm, 2012}, {5, 1500}}), without(kR2d2, 5)) == std::optional(Switches{true, 1}),
+    QVERIFY2(switches(lineWith({{kR2d2.arm, 2012}, {5, 1500}}), without(kR2d2, 5)) == std::optional(Switches{true}),
              "a vehicle reading flight modes on CH5 takes the bay switch off it, and BOMARM still arms");
+    QCOMPARE(namedOn(kR2d2, 5), QStringList({QStringLiteral("bay")}));
+    QVERIFY(namedOn(kR2d2, 10).isEmpty());
+    QVERIFY(namedOn(kR2d2, 0).isEmpty());
+    QCOMPARE(
+        clashText(5, {QStringLiteral("bay")}),
+        QStringLiteral("The drone reads flight modes on CH5, so the radio's bay switch is off. Move flight modes or "
+                       "the switch to another channel."));
 }

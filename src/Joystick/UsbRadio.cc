@@ -21,6 +21,7 @@
 #include "MavlinkCameraControlInterface.h"
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
+#include "QGCApplication.h"
 #include "QGCCameraManager.h"
 #include "QGCLoggingCategory.h"
 #include "QGCMAVLink.h"
@@ -110,11 +111,6 @@ float between(float low, float high, uint16_t pwm)
     return low + share * (high - low);
 }
 
-int bayOf(uint16_t pwm)
-{
-    return static_cast<int>(std::lround(between(0.0f, kBayPositions - 1.0f, pwm))) + 1;
-}
-
 Layout without(const Layout& layout, int channel)
 {
     const auto off = [channel](int at) { return channel > 0 && at == channel ? 0 : at; };
@@ -125,8 +121,7 @@ Layout without(const Layout& layout, int channel)
 std::optional<Switches> switches(const Line& line, const Layout& layout)
 {
     const std::optional<uint16_t> arm = channel(line, layout.arm);
-    const std::optional<uint16_t> bay = channel(line, layout.bay);
-    return arm ? std::optional<Switches>(Switches{*arm >= kArmedPwm, bay ? bayOf(*bay) : 1}) : std::nullopt;
+    return arm ? std::optional<Switches>(Switches{*arm >= kArmedPwm}) : std::nullopt;
 }
 
 QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout)
@@ -177,8 +172,7 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
         moves << Move{Move::Kind::NextPalette};
     }
     if (dropped) {
-        const std::optional<uint16_t> bay = channel(line, layout.bay);
-        moves << Move{Move::Kind::Drop, 0.0f, 0.0f, 0.0f, bay ? bayOf(*bay) : 1};
+        moves << Move{Move::Kind::Drop};
     }
     _dropBefore = drop ? dropWas : _dropBefore;
     std::ranges::for_each(
@@ -211,7 +205,7 @@ QByteArray layoutTail(const Layout& layout)
 
 }  // namespace
 
-QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layout& layout)
+QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layout& layout, int modeChannel)
 {
     const char state = flying == Flying::Vehicle    ? 'F'
                        : flying == Flying::Standby  ? 'S'
@@ -227,7 +221,33 @@ QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layo
     }
     return head + ',' + letter + ',' + QByteArray::number(sticks.roll) + ',' + QByteArray::number(sticks.pitch) + ',' +
            QByteArray::number(sticks.throttle) + ',' + QByteArray::number(sticks.yaw) + ',' +
-           QByteArray::number(sticks.modes) + layoutTail(without(layout, sticks.modes)) + '\n';
+           QByteArray::number(modeChannel) + layoutTail(without(layout, modeChannel)) + '\n';
+}
+
+QStringList namedOn(const Layout& layout, int channel)
+{
+    const std::array<std::pair<int, const char*>, 8> functions{{{layout.pitch, "camera pitch"},
+                                                                {layout.yaw, "camera yaw"},
+                                                                {layout.zoom, "zoom"},
+                                                                {layout.picture, "picture"},
+                                                                {layout.palette, "palette"},
+                                                                {layout.drop, "drop"},
+                                                                {layout.arm, "arm"},
+                                                                {layout.bay, "bay"}}};
+    return std::accumulate(
+        functions.cbegin(), functions.cend(), QStringList{},
+        [channel](QStringList names, const std::pair<int, const char*>& function) {
+            return channel > 0 && function.first == channel ? names << QString::fromLatin1(function.second) : names;
+        });
+}
+
+QString clashText(int channel, const QStringList& names)
+{
+    return QCoreApplication::translate("UsbRadio",
+                                       "The drone reads flight modes on CH%1, so the radio's %2 switch is off. Move "
+                                       "flight modes or the switch to another channel.")
+        .arg(channel)
+        .arg(names.join(QStringLiteral(" and ")));
 }
 
 Kind kind(int mavType)
@@ -245,12 +265,12 @@ Kind kind(int mavType)
                                                                : Kind::Unknown;
 }
 
-Sticks sticks(int roll, int pitch, int throttle, int yaw, int modes)
+Sticks sticks(int roll, int pitch, int throttle, int yaw)
 {
     const Sticks fallback;
     const auto pick = [](int mapped, int otherwise) { return mapped > 0 ? mapped : otherwise; };
     return Sticks{pick(roll, fallback.roll), pick(pitch, fallback.pitch), pick(throttle, fallback.throttle),
-                  pick(yaw, fallback.yaw), pick(modes, fallback.modes)};
+                  pick(yaw, fallback.yaw)};
 }
 
 bool echoDue(std::optional<qint64> last, qint64 nowMs, bool live)
@@ -638,11 +658,26 @@ void UsbRadio::_steer(const Line& line)
     if (!vehicle || !_target()) {
         return;
     }
-    const Layout layout = without(_layout(), _flight().sticks.modes);
+    const Flight flight = _flight();
+    const Layout settings = _layout();
+    _warnOfClash(flight.vehicle, settings, flight.modeChannel);
+    const Layout layout = without(settings, flight.modeChannel);
     const std::optional<Switches> armed = switches(line, layout);
     const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout);
     std::ranges::for_each(moves,
                           [this, vehicle, &armed](const Move& move) { _apply(vehicle, move, armed && armed->armed); });
+}
+
+void UsbRadio::_warnOfClash(int vehicle, const Layout& layout, int modeChannel)
+{
+    const QStringList names = namedOn(layout, modeChannel);
+    const std::optional<std::pair<int, int>> clash =
+        names.isEmpty() ? std::nullopt : std::optional<std::pair<int, int>>(std::pair{vehicle, modeChannel});
+    const bool fresh = clash && clash != _clash;
+    _clash = clash;
+    if (fresh) {
+        qgcApp()->showAppMessage(clashText(modeChannel, names));
+    }
 }
 
 void UsbRadio::_apply(Vehicle* vehicle, const Move& move, bool armed) const
@@ -722,10 +757,11 @@ UsbRadio::Flight UsbRadio::_flight() const
                    : 0;
     };
     const auto mapped = [&parameter, &prefix](const char* axis) { return parameter(prefix + QLatin1String(axis)); };
-    const int modes = px4 ? parameter(QStringLiteral("RC_MAP_FLTMODE"))
-                          : std::max(parameter(QStringLiteral("FLTMODE_CH")), parameter(QStringLiteral("MODE_CH")));
+    const int modeChannel =
+        px4 ? parameter(QStringLiteral("RC_MAP_FLTMODE"))
+            : std::max(parameter(QStringLiteral("FLTMODE_CH")), parameter(QStringLiteral("MODE_CH")));
     return Flight{flying, vehicle->id(), kind(vehicle->vehicleType()),
-                  sticks(mapped("ROLL"), mapped("PITCH"), mapped("THROTTLE"), mapped("YAW"), modes)};
+                  sticks(mapped("ROLL"), mapped("PITCH"), mapped("THROTTLE"), mapped("YAW")), modeChannel};
 }
 
 std::optional<int> UsbRadio::_target() const
@@ -777,7 +813,8 @@ void UsbRadio::_advance(std::optional<Frame> fresh)
     const Flight flight = _flight();
     if (echoDue(_echoedAt, now, live) && _port && _port->isOpen()) {
         _echoedAt = now;
-        (void) _port->write(echo(flight.flying, flight.vehicle, flight.kind, flight.sticks, _layout()));
+        (void) _port->write(
+            echo(flight.flying, flight.vehicle, flight.kind, flight.sticks, _layout(), flight.modeChannel));
     }
     const qint64 quietSince = std::max(_openedAt.value_or(now), _radio.heardAt().value_or(0));
     const QString quiet = _portName.isEmpty() ? tr("Off") : silentText(_portName, now - quietSince);

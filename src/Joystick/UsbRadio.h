@@ -67,7 +67,6 @@ constexpr qint64 kCameraResendMs = 100;
 constexpr float kPitchDown = -90.0f;
 constexpr float kPitchAhead = 0.0f;
 constexpr float kYawLimit = 180.0f;
-constexpr float kBayPositions = 6.0f;
 constexpr std::array<int, 3> kPictures = {0, 1, 3};
 
 enum class Flying
@@ -92,7 +91,6 @@ struct Sticks
     int pitch = 2;
     int throttle = 3;
     int yaw = 4;
-    int modes = 0;
     bool operator==(const Sticks& other) const = default;
 };
 
@@ -118,7 +116,6 @@ std::optional<Line> parse(const QByteArray& line);
 Frame flightChannels(const Line& line);
 Frame released();
 float between(float low, float high, uint16_t pwm);
-int bayOf(uint16_t pwm);
 
 struct Move
 {
@@ -141,7 +138,6 @@ struct Move
 struct Switches
 {
     bool armed = false;
-    int bay = 1;
     bool operator==(const Switches& other) const = default;
 };
 
@@ -158,9 +154,12 @@ private:
     std::optional<uint16_t> _dropBefore;
 };
 
-QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {}, const Layout& layout = {});
+QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {}, const Layout& layout = {},
+                int modeChannel = 0);
+QStringList namedOn(const Layout& layout, int channel);
+QString clashText(int channel, const QStringList& names);
 Kind kind(int mavType);
-Sticks sticks(int roll, int pitch, int throttle, int yaw, int modes = 0);
+Sticks sticks(int roll, int pitch, int throttle, int yaw);
 bool echoDue(std::optional<qint64> last, qint64 nowMs, bool live);
 uint8_t component(bool standby);
 bool standbyAirframe(bool ardupilot, int mavType);
@@ -277,6 +276,7 @@ private:
         int vehicle = 0;
         UsbRadioProtocol::Kind kind = UsbRadioProtocol::Kind::Unknown;
         UsbRadioProtocol::Sticks sticks;
+        int modeChannel = 0;
     };
 
     void _maintain();
@@ -284,6 +284,7 @@ private:
     void _close();
     void _read();
     void _steer(const UsbRadioProtocol::Line& line);
+    void _warnOfClash(int vehicle, const UsbRadioProtocol::Layout& layout, int modeChannel);
     void _apply(Vehicle* vehicle, const UsbRadioProtocol::Move& move, bool armed) const;
     void _advance(std::optional<UsbRadioProtocol::Frame> fresh);
     void _send(int vehicle, bool standby, const UsbRadioProtocol::Frame& frame) const;
@@ -306,6 +307,7 @@ private:
     UsbRadioProtocol::Lines _lines;
     UsbRadioProtocol::CameraSticks _camera;
     UsbRadioProtocol::Radio _radio;
+    std::optional<std::pair<int, int>> _clash;
     QString _status;
     QString _state = UsbRadioProtocol::stateName(UsbRadioProtocol::State::Off);
     QHash<const LinkInterface*, UsbRadioProtocol::Sniffer> _sniffers;

@@ -132,6 +132,12 @@ assert(stock.inserted[4] and stock.inserted[4].name == "phold", "a drone reading
 count = 0
 for _ in pairs(stock.inserted) do count = count + 1 end
 assert(count == 8, "the seven R2D2 functions and the flight mode switch")
+local short = radio({ w = 480, h = 272 })
+short.hear("@F,1,C,1,2,3,4;13\n")
+short.script.run(0)
+count = 0
+for _ in pairs(short.inserted) do count = count + 1 end
+assert(count == 1 and short.inserted[12], "a function the app's layout leaves out is off, not the R2D2 default")
 moved.hear("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0\n")
 moved.script.run(0)
 moved.hear("@F,1,C,1,2,3,4;16,14,15,0,0,0,0,0\n")

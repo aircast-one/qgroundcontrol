@@ -83,18 +83,18 @@ local layoutSetUp = nil
 
 local function layoutFrom(line)
   local tail = string.match(line, ";([%d,]+)")
-  local modes = tonumber(string.match(line, "^@%a,%d+,%a,%d+,%d+,%d+,%d+,(%d+)")) or 0
+  local modeChannel = tonumber(string.match(line, "^@%a,%d+,%a,%d+,%d+,%d+,%d+,(%d+)")) or 0
   local channels = {}
   for number in string.gmatch(tail or "", "(%d+)") do channels[#channels + 1] = tonumber(number) end
   local mixes = {}
   for at, wanted in ipairs(FUNCTIONS) do
-    mixes[at] = { wanted[1], wanted[2], tail and channels[at] or wanted[3] }
+    mixes[at] = { wanted[1], wanted[2], tail and (channels[at] or 0) or wanted[3] }
   end
-  if modes > 0 then
+  if modeChannel > 0 then
     mixes[#mixes + 1] = { "6pos", "", channels[#FUNCTIONS + 1] or 0 }
-    mixes[#mixes + 1] = { "sb", "phold", modes }
+    mixes[#mixes + 1] = { "sb", "phold", modeChannel }
   end
-  return mixes, (tail or "R2D2") .. "@" .. modes
+  return mixes, (tail or "R2D2") .. "@" .. modeChannel
 end
 
 local function setUpChannels(mixes)
