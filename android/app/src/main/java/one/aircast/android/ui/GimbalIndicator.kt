@@ -92,7 +92,14 @@ internal data class GimbalIndicatorState(
     val gimbals: List<GimbalChoice>,
     val pitchDegrees: Double? = null,
     val yawDegrees: Double? = null,
+    val yawRange: ClosedFloatingPointRange<Double>? = null,
 )
+
+internal fun turnRange(range: org.json.JSONArray?): ClosedFloatingPointRange<Double>? {
+    val low = range?.optDouble(0, Double.NaN) ?: Double.NaN
+    val high = range?.optDouble(1, Double.NaN) ?: Double.NaN
+    return (low..high).takeIf { low < high }
+}
 
 internal fun gimbalIndicator(view: JSONObject?): GimbalIndicatorState? =
     view?.takeIf { it.optBoolean("shown") }?.let {
@@ -110,6 +117,7 @@ internal fun gimbalIndicator(view: JSONObject?): GimbalIndicatorState? =
             haveControl = it.optBoolean("haveControl"),
             pitchDegrees = it.optDouble("pitchDegrees", Double.NaN).takeIf(Double::isFinite),
             yawDegrees = it.optDouble("bodyYawDegrees", Double.NaN).takeIf(Double::isFinite),
+            yawRange = turnRange(it.optJSONArray("yawRange")),
             gimbals = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
                 listed!!.optJSONObject(index)?.let { g ->
                     GimbalChoice(g.optText("name"), g.optInt("managerCompid"), g.optInt("deviceId"), g.optBoolean("active"))

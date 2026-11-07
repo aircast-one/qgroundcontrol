@@ -42,6 +42,12 @@ struct GimbalIndicatorState: Equatable {
     var gimbals: [GimbalChoice]
     var pitchDegrees: Double? = nil
     var yawDegrees: Double? = nil
+    var yawRange: ClosedRange<Double>? = nil
+}
+
+func turnRange(_ range: JSON) -> ClosedRange<Double>? {
+    guard let low = range[0].double, let high = range[1].double, low < high else { return nil }
+    return low...high
 }
 
 func gimbalIndicator(_ view: JSON?) -> GimbalIndicatorState? {
@@ -61,7 +67,8 @@ func gimbalIndicator(_ view: JSON?) -> GimbalIndicatorState? {
             GimbalChoice(name: g["name"].string, managerCompid: g["managerCompid"].int(0), deviceId: g["deviceId"].int(0), active: g["active"].bool)
         },
         pitchDegrees: view["pitchDegrees"].double.flatMap { $0.isFinite ? $0 : nil },
-        yawDegrees: view["bodyYawDegrees"].double.flatMap { $0.isFinite ? $0 : nil }
+        yawDegrees: view["bodyYawDegrees"].double.flatMap { $0.isFinite ? $0 : nil },
+        yawRange: turnRange(view["yawRange"])
     )
 }
 

@@ -22,6 +22,7 @@ pub const GIMBAL_SELECT: &str = "gimbal.select";
 pub const GIMBAL_ON_SCREEN: &str = "gimbal.onScreen";
 pub const GIMBAL_DRAG: &str = "gimbal.drag";
 pub const GIMBAL_PITCH: &str = "gimbal.pitch";
+pub const GIMBAL_YAW: &str = "gimbal.yaw";
 pub const GIMBAL_AIM: &str = "gimbal.aim";
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
@@ -50,6 +51,31 @@ pub fn status_text(gimbal: &Value) -> &'static str {
     }
 }
 
+fn active_gimbal(snapshot: &Value) -> Option<Value> {
+    let gimbals = snapshot["gimbals"].as_array()?;
+    gimbals
+        .iter()
+        .find(|g| flag(g, "active"))
+        .or(gimbals.first())
+        .cloned()
+}
+
+fn held_pitch(snapshot: &Value) -> f64 {
+    active_gimbal(snapshot)
+        .and_then(|gimbal| gimbal["pitch"].as_f64())
+        .filter(|pitch| pitch.is_finite())
+        .unwrap_or(0.0)
+}
+
+fn yaw_range(gimbal: &Value) -> [f32; 2] {
+    let limit = |key: &str| gimbal["limits"][key].as_f64().map(|v| v as f32);
+    let (low, high) = limit("yawMin").zip(limit("yawMax")).map_or(
+        crate::radiocamera::UNKNOWN_YAW_LIMITS,
+        crate::radiocamera::slider_yaw_range,
+    );
+    [low, high]
+}
+
 pub fn indicator(
     snapshot: &Value,
     show_azimuth: bool,
@@ -57,12 +83,7 @@ pub fn indicator(
     on_screen: (bool, bool),
 ) -> Value {
     let gimbals = snapshot["gimbals"].as_array().cloned().unwrap_or_default();
-    let Some(active) = gimbals
-        .iter()
-        .find(|g| flag(g, "active"))
-        .or(gimbals.first())
-        .cloned()
-    else {
+    let Some(active) = active_gimbal(snapshot) else {
         return json!({ "kind": "object", "class": "GimbalIndicator", "shown": false });
     };
     let yaw = match show_azimuth {
@@ -79,6 +100,7 @@ pub fn indicator(
         "pitchText": angle(&active["pitch"]).map(|v| format!("P: {v}")),
         "pitchDegrees": active["pitch"].as_f64(),
         "bodyYawDegrees": active["bodyYaw"].as_f64(),
+        "yawRange": yaw_range(&active),
         "yawText": yaw,
         "yawLockLabel": if flag(&active, "yawLock") { "Yaw Follow" } else { "Yaw Lock" },
         "yawLocked": flag(&active, "yawLock"),
@@ -143,6 +165,7 @@ pub fn owns(path: &str) -> bool {
         GIMBAL_ON_SCREEN,
         GIMBAL_DRAG,
         GIMBAL_PITCH,
+        GIMBAL_YAW,
         GIMBAL_AIM,
     ]
     .contains(&path)
@@ -204,6 +227,25 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             }
             None => {
                 json!({ "ok": false, "refusal": "badPitch", "reason": "A tilt is a number of degrees." })
+            }
+        },
+        GIMBAL_YAW => match given
+            .get(0)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+        {
+            Some(body_yaw) => {
+                let pitch = held_pitch(&crate::gimbal::gimbal_view(backend, &[]));
+                crate::guided::dispatch(
+                    backend,
+                    Some(op("aim", json!({ "pitch": pitch, "bodyYaw": body_yaw }))),
+                    vehicle,
+                    &qt_path("sendPitchBodyYaw"),
+                    &json!([pitch, body_yaw, false]).to_string(),
+                )
+            }
+            None => {
+                json!({ "ok": false, "refusal": "badYaw", "reason": "A yaw is a number of degrees from the nose." })
             }
         },
         GIMBAL_AIM => match (
@@ -351,6 +393,49 @@ mod tests {
 
     fn snapshot(gimbal: Value) -> Value {
         json!({ "gimbals": [gimbal] })
+    }
+
+    #[test]
+    fn the_yaw_slider_spans_what_the_gimbal_turns_without_wrapping_past_the_tail() {
+        let range = |limits: Value| {
+            indicator(
+                &snapshot(json!({ "active": true, "limits": limits })),
+                false,
+                false,
+                (false, false),
+            )["yawRange"]
+                .clone()
+        };
+        assert_eq!(
+            range(json!({ "yawMin": -270.0, "yawMax": 270.0 })),
+            json!([-180.0, 180.0]),
+            "a ZR30 reports 270 degrees each way; past 180 the aim wraps to the other side"
+        );
+        assert_eq!(
+            range(json!({ "yawMin": -150.0, "yawMax": 150.0 })),
+            json!([-150.0, 150.0])
+        );
+        assert_eq!(
+            range(json!({ "yawMin": null, "yawMax": null })),
+            json!([-180.0, 180.0]),
+            "a gimbal that never said spans the whole turn"
+        );
+        assert_eq!(
+            range(json!({ "yawMin": 0.0, "yawMax": 0.0 })),
+            json!([0.0, 0.0]),
+            "a gimbal with no yaw axis offers no turn"
+        );
+    }
+
+    #[test]
+    fn a_turn_holds_the_tilt_the_active_gimbal_has() {
+        let gimbals = json!({ "gimbals": [{ "active": false, "pitch": -10.0 }, { "active": true, "pitch": -45.0 }] });
+        assert_eq!(held_pitch(&gimbals), -45.0);
+        assert_eq!(
+            held_pitch(&json!({ "gimbals": [{ "active": true, "pitch": null }] })),
+            0.0,
+            "a gimbal that has not reported yet is aimed level"
+        );
     }
 
     #[test]

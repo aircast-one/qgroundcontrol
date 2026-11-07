@@ -1,5 +1,5 @@
 import { type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { type Json, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import { type Json, type JsonArray, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc, makeFact, refusal } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { SetupCommands } from '@/bridge/BridgeCommands';
@@ -45,9 +45,15 @@ export type GimbalIndicatorState = {
   gimbals: readonly GimbalChoice[];
   pitchDegrees: number | null;
   yawDegrees: number | null;
+  yawRange: readonly [number, number] | null;
 };
 
 const finiteOrNull = (value: number): number | null => (Number.isFinite(value) ? value : null);
+
+export const turnRange = (range: JsonArray | null): readonly [number, number] | null => {
+  const [low, high] = [range?.[0], range?.[1]];
+  return typeof low === 'number' && typeof high === 'number' && low < high ? [low, high] : null;
+};
 
 export const gimbalIndicator = (view: Json | null): GimbalIndicatorState | null =>
   view !== null && optBoolean(view, 'shown')
@@ -64,6 +70,7 @@ export const gimbalIndicator = (view: Json | null): GimbalIndicatorState | null 
         haveControl: optBoolean(view, 'haveControl'),
         pitchDegrees: finiteOrNull(optDouble(view, 'pitchDegrees', NaN)),
         yawDegrees: finiteOrNull(optDouble(view, 'bodyYawDegrees', NaN)),
+        yawRange: turnRange(optJSONArray(view, 'yawRange')),
         gimbals: jsonObjects(optJSONArray(view, 'gimbals')).map((g) => ({
           name: optText(g, 'name'),
           managerCompid: optInt(g, 'managerCompid'),

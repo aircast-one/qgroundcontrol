@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { makeFact } from '@/bridge/Qgc';
 import type { SettingsSectionRows } from './SettingsScreen';
-import { aimFraction, grabFraction, swiped, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
+import { aimFraction, grabFraction, swiped, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, serialAsks, turnRange, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
 
 describe('GimbalIndicatorTest', () => {
   it('the cell reads status, pitch and yaw as the toolbar does', () => {
@@ -18,6 +18,12 @@ describe('GimbalIndicatorTest', () => {
     expect(state.retractOffered).toBe(true);
     expect(state.gimbals[0]!.deviceId).toBe(154);
     expect(gimbalIndicator(parseJson('{"shown":false}'))).toBeNull();
+  });
+
+  it('the yaw slider spans the range the core gives, and a gimbal with no yaw axis gets none', () => {
+    expect(gimbalIndicator(parseJson('{"shown":true,"yawRange":[-180,180]}'))!.yawRange).toEqual([-180, 180]);
+    expect(turnRange([0, 0])).toBeNull();
+    expect(turnRange(null)).toBeNull();
   });
 
   it("a tap maps to QGC's cooked screen fractions", () => {

@@ -129,6 +129,10 @@ private fun sendTilt(pitch: Float) {
     gimbalSends.execute { gimbalRefusal(Qgc.call("gimbal.pitch", pitch.toDouble())) }
 }
 
+private fun sendYaw(yaw: Float) {
+    gimbalSends.execute { gimbalRefusal(Qgc.call("gimbal.yaw", yaw.toDouble())) }
+}
+
 private const val GIMBAL_REFUSAL_MS = 4000L
 internal const val GIMBAL_TILT_MIN = -90f
 internal const val GIMBAL_TILT_MAX = 30f
@@ -140,56 +144,100 @@ private const val TILT_POPUP_ALPHA = 0.55f
 
 private fun aimSynthetic(tilt: Float, pan: Double) = offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, tilt.toDouble(), pan) }
 
+private class RailDrag(private val send: (Float) -> Unit) {
+    var dragging by mutableStateOf<Float?>(null)
+        private set
+    private var lastSent = 0L
+
+    fun change(next: Float) {
+        dragging = next
+        val now = SystemClock.uptimeMillis()
+        if (rcSendDue(now, lastSent, finished = false)) {
+            lastSent = now
+            send(next)
+        }
+    }
+
+    fun finish() {
+        dragging?.let(send)
+        dragging = null
+    }
+}
+
 @Composable
-private fun TiltSlider(pitch: Double?, onRecenter: (() -> Unit)?, slider: Boolean, onTilt: (Float) -> Unit) {
-    var dragging by remember { mutableStateOf<Float?>(null) }
-    var lastSent by remember { mutableLongStateOf(0L) }
-    val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
+private fun rememberRailDrag(onSend: (Float) -> Unit): RailDrag {
+    val latest by rememberUpdatedState(onSend)
+    return remember { RailDrag { latest(it) } }
+}
+
+internal class YawRail(val degrees: Double?, val range: ClosedFloatingPointRange<Double>, val onYaw: (Float) -> Unit)
+
+private val FULL_TURN = -180.0..180.0
+
+@Composable
+private fun AimSliders(pitch: Double?, yaw: YawRail?, onRecenter: (() -> Unit)?, slider: Boolean, onTilt: (Float) -> Unit) {
+    val tilt = rememberRailDrag(onTilt)
+    val turn = rememberRailDrag { yaw?.onYaw?.invoke(it) }
+    val shown = tilt.dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
+    val turned = yaw?.let { turn.dragging ?: (it.degrees ?: 0.0).coerceIn(it.range).toFloat() }
     var active by remember { mutableStateOf(true) }
     var wake by remember { mutableIntStateOf(0) }
     var open by remember { mutableStateOf(false) }
-    LaunchedEffect(shown, dragging, wake) {
+    LaunchedEffect(shown, turned, tilt.dragging, turn.dragging, wake) {
         active = true
-        if (dragging == null) {
+        if (tilt.dragging == null && turn.dragging == null) {
             kotlinx.coroutines.delay(GIMBAL_IDLE_MS)
             active = false
             open = false
         }
     }
+    val fade = Modifier.alpha(if (active) 1f else TILT_IDLE_ALPHA)
+    val colors = androidx.compose.material3.SliderDefaults.colors(
+        thumbColor = Color.White,
+        activeTrackColor = Color.White.copy(alpha = GIMBAL_TRACK_ALPHA),
+        inactiveTrackColor = Color.White.copy(alpha = GIMBAL_REST_ALPHA),
+    )
     val rail: @Composable () -> Unit = {
         Slider(
             value = shown,
-            onValueChange = { next ->
-                dragging = next
-                val now = SystemClock.uptimeMillis()
-                if (rcSendDue(now, lastSent, finished = false)) {
-                    lastSent = now
-                    onTilt(next)
-                }
-            },
-            onValueChangeFinished = {
-                dragging?.let(onTilt)
-                dragging = null
-            },
+            onValueChange = tilt::change,
+            onValueChangeFinished = tilt::finish,
             valueRange = GIMBAL_TILT_MIN..GIMBAL_TILT_MAX,
-            colors = androidx.compose.material3.SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color.White.copy(alpha = GIMBAL_TRACK_ALPHA),
-                inactiveTrackColor = Color.White.copy(alpha = GIMBAL_REST_ALPHA),
-            ),
-            modifier = Modifier.railSlider().alpha(if (active) 1f else TILT_IDLE_ALPHA).semantics { contentDescription = "Camera tilt" },
+            colors = colors,
+            modifier = Modifier.railSlider().then(fade).semantics { contentDescription = "Camera tilt" },
         )
+    }
+    val yawRail: (@Composable () -> Unit)? = if (yaw == null || turned == null) null else {
+        {
+            Column(Modifier.width(RAIL_SLIDER_LENGTH), horizontalAlignment = Alignment.CenterHorizontally) {
+                Slider(
+                    value = turned,
+                    onValueChange = turn::change,
+                    onValueChangeFinished = turn::finish,
+                    valueRange = yaw.range.start.toFloat()..yaw.range.endInclusive.toFloat(),
+                    colors = colors,
+                    modifier = Modifier.width(RAIL_SLIDER_LENGTH).height(RAIL_SLIDER_THICKNESS).then(fade).semantics { contentDescription = "Camera yaw" },
+                )
+                Text("Yaw ${tiltText(turned.toDouble())}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.osdShadow())
+            }
+        }
     }
     if (slider) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             TiltReadout(shown.toDouble(), onRecenter, onTap = { wake += 1 }, tapLabel = "Tilt the camera")
             RailSlot { rail() }
+            yawRail?.invoke()
         }
     } else {
         Box {
             TiltReadout(shown.toDouble(), null, onTap = { open = !open; wake += 1 }, tapLabel = "Tilt the camera")
             if (open) Popup(popupPositionProvider = BesideAnchor, onDismissRequest = { open = false }, properties = PopupProperties(focusable = false)) {
-                Surface(shape = CircleShape, color = Color.Black.copy(alpha = TILT_POPUP_ALPHA)) { Box(Modifier.padding(4.dp)) { rail() } }
+                Surface(shape = if (yawRail == null) CircleShape else MaterialTheme.shapes.large, color = Color.Black.copy(alpha = TILT_POPUP_ALPHA)) {
+                    Column(Modifier.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        rail()
+                        yawRail?.invoke()
+                    }
+                }
             }
         }
     }
@@ -242,8 +290,22 @@ fun RcCameraControls(modifier: Modifier = Modifier, tiltSlider: Boolean = true) 
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (syntheticAims) TiltSlider(syntheticTilt ?: DEFAULT_TILT_DEG, onRecenter(RecenterTarget.Synthetic), tiltSlider) { aimSynthetic(it, syntheticPan ?: 0.0) }
-            else if (gimbal != null) TiltSlider(gimbal.pitchDegrees, onRecenter(RecenterTarget.Gimbal), tiltSlider, ::sendTilt)
+            if (syntheticAims) {
+                AimSliders(
+                    pitch = syntheticTilt ?: DEFAULT_TILT_DEG,
+                    yaw = YawRail(syntheticPan ?: 0.0, FULL_TURN) { aimSynthetic((syntheticTilt ?: DEFAULT_TILT_DEG).toFloat(), it.toDouble()) },
+                    onRecenter = onRecenter(RecenterTarget.Synthetic),
+                    slider = tiltSlider,
+                ) { aimSynthetic(it, syntheticPan ?: 0.0) }
+            } else if (gimbal != null) {
+                AimSliders(
+                    pitch = gimbal.pitchDegrees,
+                    yaw = gimbal.yawRange?.let { YawRail(gimbal.yawDegrees, it, ::sendYaw) },
+                    onRecenter = onRecenter(RecenterTarget.Gimbal),
+                    slider = tiltSlider,
+                    onTilt = ::sendTilt,
+                )
+            }
             if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
             if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
             if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }

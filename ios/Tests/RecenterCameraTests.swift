@@ -30,4 +30,10 @@ final class RecenterCameraTests: XCTestCase {
         let view = JSON.parse(#"{"shown":true,"pitchDegrees":-20,"bodyYawDegrees":35,"gimbals":[]}"#)
         XCTAssertEqual(gimbalIndicator(view)?.yawDegrees, 35)
     }
+
+    func testTheYawSliderSpansTheRangeTheCoreGivesAndAGimbalWithNoYawAxisGetsNone() {
+        XCTAssertEqual(gimbalIndicator(JSON.parse(#"{"shown":true,"yawRange":[-180,180],"gimbals":[]}"#))?.yawRange, -180...180)
+        XCTAssertNil(turnRange(JSON.parse("[0,0]")))
+        XCTAssertNil(turnRange(JSON.parse("{}")["yawRange"]))
+    }
 }

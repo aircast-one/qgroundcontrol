@@ -107,6 +107,10 @@ private func sendTilt(_ pitch: Double) {
     gimbalSends.async { _ = gimbalRefusal(Qgc.call("gimbal.pitch", pitch)) }
 }
 
+private func sendYaw(_ yaw: Double) {
+    gimbalSends.async { _ = gimbalRefusal(Qgc.call("gimbal.yaw", yaw)) }
+}
+
 private let GIMBAL_REFUSAL_MS = 4000
 let GIMBAL_TILT_MIN = -90.0
 let GIMBAL_TILT_MAX = 30.0
@@ -116,20 +120,27 @@ private let GIMBAL_REST_ALPHA = 0.25
 
 private struct TiltWake: Equatable {
     let shown: Double
+    let turned: Double?
     let dragging: Double?
+    let turning: Double?
     let wake: Int
 }
 
 private struct GimbalTiltSlider: View {
     let pitch: Double?
+    let yaw: Double?
+    let yawRange: ClosedRange<Double>?
     let onRecenter: (() -> Void)?
     @State private var dragging: Double?
+    @State private var turning: Double?
     @State private var lastSent: Int64 = 0
+    @State private var lastTurned: Int64 = 0
     @State private var active = true
     @State private var wake = 0
 
     var body: some View {
         let shown = dragging ?? (pitch ?? 0).clamped(to: GIMBAL_TILT_MIN...GIMBAL_TILT_MAX)
+        let turned = yawRange.map { turning ?? (yaw ?? 0).clamped(to: $0) }
         VStack(spacing: 0) {
             TiltReadout(degrees: shown, onRecenter: onRecenter, onTap: { wake += 1 }, tapHint: "Tilt the gimbal")
             RailSlot { length in
@@ -167,12 +178,52 @@ private struct GimbalTiltSlider: View {
             .frame(width: RAIL_SLIDER_THICKNESS, height: length)
             .animation(.default, value: active)
             }
+            if let yawRange, let turned { yawRail(turned, yawRange) }
         }
-        .task(id: TiltWake(shown: shown, dragging: dragging, wake: wake)) {
+        .task(id: TiltWake(shown: shown, turned: turned, dragging: dragging, turning: turning, wake: wake)) {
             active = true
-            guard dragging == nil else { return }
+            guard dragging == nil && turning == nil else { return }
             try? await Task.sleep(for: .milliseconds(GIMBAL_IDLE_MS))
             if !Task.isCancelled { active = false }
+        }
+    }
+}
+
+private extension GimbalTiltSlider {
+    func yawRail(_ turned: Double, _ range: ClosedRange<Double>) -> some View {
+        VStack(spacing: 0) {
+            ZStack {
+                if active {
+                    Slider(
+                        value: Binding(get: { turned }, set: { next in
+                            turning = next
+                            let now = uptimeMillis()
+                            if rcSendDue(now, lastTurned, false) {
+                                lastTurned = now
+                                sendYaw(next)
+                            }
+                        }),
+                        in: range,
+                        onEditingChanged: { editing in
+                            guard !editing else { return }
+                            turning.map(sendYaw)
+                            turning = nil
+                        }
+                    )
+                    .tint(Color.white.opacity(GIMBAL_TRACK_ALPHA))
+                    .background(Capsule().fill(Color.white.opacity(GIMBAL_REST_ALPHA)).frame(height: 4))
+                    .accessibilityLabel("Gimbal yaw")
+                    .transition(.opacity)
+                } else {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { wake += 1 }
+                        .accessibilityHint("Turn the gimbal")
+                }
+            }
+            .frame(width: RAIL_SLIDER_LENGTH, height: RAIL_SLIDER_THICKNESS)
+            .animation(.default, value: active)
+            Text("Yaw \(tiltReadoutText(turned))").font(.labelMedium).osdShadow(true)
         }
     }
 }
@@ -245,7 +296,7 @@ struct RcCameraControls: View {
         return VStack(spacing: 4) {
             if syntheticAims { TiltReadout(degrees: syntheticTilt ?? DEFAULT_TILT_DEG, onRecenter: onRecenter(.Synthetic)) }
             HStack(spacing: 4) {
-                if let gimbal { GimbalTiltSlider(pitch: gimbal.pitchDegrees, onRecenter: onRecenter(.Gimbal)) }
+                if let gimbal { GimbalTiltSlider(pitch: gimbal.pitchDegrees, yaw: gimbal.yawDegrees, yawRange: gimbal.yawRange, onRecenter: onRecenter(.Gimbal)) }
                 if !gimbalManager && channels.tilt > 0 { PwmSlider(label: "Tilt", channel: channels.tilt, pwm: tilt) { tilt = $0 } }
                 if !gimbalManager && channels.pan > 0 { PwmSlider(label: "Pan", channel: channels.pan, pwm: pan) { pan = $0 } }
                 if channels.zoom > 0 { PwmSlider(label: "Zoom", channel: channels.zoom, pwm: zoom) { zoom = $0 } }

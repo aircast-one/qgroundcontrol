@@ -24,6 +24,13 @@ class GimbalIndicatorTest {
     }
 
     @Test
+    fun `the yaw slider spans the range the core gives, and a gimbal with no yaw axis gets none`() {
+        assertEquals(-180.0..180.0, gimbalIndicator(JSONObject("""{"shown":true,"yawRange":[-180,180]}"""))!!.yawRange)
+        assertNull(turnRange(org.json.JSONArray("[0,0]")))
+        assertNull(turnRange(null))
+    }
+
+    @Test
     fun `a tap maps to QGC's cooked screen fractions`() {
         val centre = screenFraction(50f, 50f, 100, 100)
         assertEquals(0f, centre.first, 0f)

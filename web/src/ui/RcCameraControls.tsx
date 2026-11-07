@@ -16,8 +16,9 @@ import { OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, rcSendDue } from '@/ui/RcControls';
+import { osdShadow } from '@/ui/Osd';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
-import { RecenterTarget, TiltReadout, recenter, recenterTarget } from '@/ui/RecenterCamera';
+import { RecenterTarget, TiltReadout, recenter, recenterTarget, tiltText } from '@/ui/RecenterCamera';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM, SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
 
 const FLY_VIEW_SETTINGS = 'settings.flyViewSettings';
@@ -37,30 +38,32 @@ export const RailSlider = ({
   colors = null,
   label,
   style,
+  orientation = 'vertical',
 }: {
   value: number;
   onValueChange: (value: number) => void;
   onValueChangeFinished?: () => void;
-  valueRange: [number, number];
+  valueRange: readonly [number, number];
   colors?: RailSliderColors | null;
   label?: string;
   style?: CSSProperties;
+  orientation?: 'vertical' | 'horizontal';
 }) => (
   <BaseSlider.Root
     value={value}
     min={valueRange[0]}
     max={valueRange[1]}
     step={(valueRange[1] - valueRange[0]) / 1000}
-    orientation="vertical"
+    orientation={orientation}
     onValueChange={(next) => onValueChange(Array.isArray(next) ? (next[0] ?? value) : next)}
     onValueCommitted={() => onValueChangeFinished?.()}
     aria-label={label}
-    className="h-full transition-opacity"
-    style={{ width: RAIL_SLIDER_THICKNESS, ...style }}
+    className={`${orientation === 'vertical' ? 'h-full' : 'w-full'} transition-opacity`}
+    style={{ ...(orientation === 'vertical' ? { width: RAIL_SLIDER_THICKNESS } : { height: RAIL_SLIDER_THICKNESS }), ...style }}
   >
-    <BaseSlider.Control data-gesture className="flex h-full w-full touch-none justify-center">
-      <BaseSlider.Track className={`relative h-full w-1 rounded-full ${colors === null ? 'bg-secondary-container' : ''}`} style={{ background: colors?.inactiveTrack }}>
-        <BaseSlider.Indicator className={`w-full rounded-full ${colors === null ? 'bg-primary' : ''}`} style={{ background: colors?.activeTrack }} />
+    <BaseSlider.Control data-gesture className={`flex h-full w-full touch-none ${orientation === 'vertical' ? 'justify-center' : 'items-center'}`}>
+      <BaseSlider.Track className={`relative rounded-full ${orientation === 'vertical' ? 'h-full w-1' : 'h-1 w-full'} ${colors === null ? 'bg-secondary-container' : ''}`} style={{ background: colors?.inactiveTrack }}>
+        <BaseSlider.Indicator className={`rounded-full ${orientation === 'vertical' ? 'w-full' : 'h-full'} ${colors === null ? 'bg-primary' : ''}`} style={{ background: colors?.activeTrack }} />
         <BaseSlider.Thumb getAriaLabel={label === undefined ? null : () => label} className={`size-5 rounded-full shadow outline-none focus-visible:ring-4 focus-visible:ring-primary/30 ${colors === null ? 'bg-primary' : ''}`} style={{ background: colors?.thumb }} />
       </BaseSlider.Track>
     </BaseSlider.Control>
@@ -135,6 +138,7 @@ const PwmSlider = ({ label, channel, pwm, onPwm }: { label: string; channel: num
 };
 
 const sendTilt = (pitch: number) => void (async () => gimbalRefusal(await Qgc.call('gimbal.pitch', pitch)))();
+const sendYaw = (yaw: number) => void (async () => gimbalRefusal(await Qgc.call('gimbal.yaw', yaw)))();
 
 const GIMBAL_REFUSAL_MS = 4000;
 export const GIMBAL_TILT_MIN = -90;
@@ -153,18 +157,45 @@ const TILT_COLORS: RailSliderColors = {
 
 const aimSynthetic = (tilt: number, pan: number) => void Qgc.invoke(SYNTHETIC_AIM, tilt, pan);
 
-const TiltSlider = ({ pitch, onRecenter, slider, onTilt }: { pitch: number | null; onRecenter: (() => void) | null; slider: boolean; onTilt: (tilt: number) => void }) => {
+const useRailDrag = (onSend: (value: number) => void) => {
   const [dragging, setDragging] = useState<number | null>(null);
   const dragged = useRef<number | null>(null);
   const lastSent = useRef(0);
-  const shown = dragging ?? coerceIn(pitch ?? 0, GIMBAL_TILT_MIN, GIMBAL_TILT_MAX);
+  return {
+    dragging,
+    onValueChange: (next: number) => {
+      dragged.current = next;
+      setDragging(next);
+      const now = performance.now();
+      if (rcSendDue(now, lastSent.current, false)) {
+        lastSent.current = now;
+        onSend(next);
+      }
+    },
+    onValueChangeFinished: () => {
+      if (dragged.current !== null) onSend(dragged.current);
+      dragged.current = null;
+      setDragging(null);
+    },
+  };
+};
+
+export type YawRail = { degrees: number | null; range: readonly [number, number]; onYaw: (yaw: number) => void };
+
+const FULL_TURN: readonly [number, number] = [-180, 180];
+
+const AimSliders = ({ pitch, yaw, onRecenter, slider, onTilt }: { pitch: number | null; yaw: YawRail | null; onRecenter: (() => void) | null; slider: boolean; onTilt: (tilt: number) => void }) => {
+  const tilt = useRailDrag(onTilt);
+  const turn = useRailDrag((it) => yaw?.onYaw(it));
+  const shown = tilt.dragging ?? coerceIn(pitch ?? 0, GIMBAL_TILT_MIN, GIMBAL_TILT_MAX);
+  const turned = yaw === null ? null : (turn.dragging ?? coerceIn(yaw.degrees ?? 0, yaw.range[0], yaw.range[1]));
   const [active, setActive] = useState(true);
   const [wake, setWake] = useState(0);
   const [opener, setOpener] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  useLaunchedEffect([shown, dragging, wake], async (scope) => {
+  useLaunchedEffect([shown, turned, tilt.dragging, turn.dragging, wake], async (scope) => {
     setActive(true);
-    if (dragging === null) {
+    if (tilt.dragging === null && turn.dragging === null) {
       await delay(GIMBAL_IDLE_MS);
       if (scope.isActive()) {
         setActive(false);
@@ -172,34 +203,42 @@ const TiltSlider = ({ pitch, onRecenter, slider, onTilt }: { pitch: number | nul
       }
     }
   });
+  const fade = { opacity: active ? 1 : TILT_IDLE_ALPHA };
   const rail = (
     <RailSlider
       value={shown}
-      onValueChange={(next) => {
-        dragged.current = next;
-        setDragging(next);
-        const now = performance.now();
-        if (rcSendDue(now, lastSent.current, false)) {
-          lastSent.current = now;
-          onTilt(next);
-        }
-      }}
-      onValueChangeFinished={() => {
-        if (dragged.current !== null) onTilt(dragged.current);
-        dragged.current = null;
-        setDragging(null);
-      }}
+      onValueChange={tilt.onValueChange}
+      onValueChangeFinished={tilt.onValueChangeFinished}
       valueRange={[GIMBAL_TILT_MIN, GIMBAL_TILT_MAX]}
       colors={TILT_COLORS}
       label="Camera tilt"
-      style={{ opacity: active ? 1 : TILT_IDLE_ALPHA }}
+      style={fade}
     />
   );
+  const yawRail =
+    yaw === null || turned === null ? null : (
+      <div className="flex flex-col items-center" style={{ width: RAIL_SLIDER_LENGTH }}>
+        <RailSlider
+          orientation="horizontal"
+          value={turned}
+          onValueChange={turn.onValueChange}
+          onValueChangeFinished={turn.onValueChangeFinished}
+          valueRange={yaw.range}
+          colors={TILT_COLORS}
+          label="Camera yaw"
+          style={fade}
+        />
+        <Text typography="labelMedium" className={osdShadow()}>
+          Yaw {tiltText(turned)}
+        </Text>
+      </div>
+    );
   if (slider)
     return (
       <div className="flex min-h-0 flex-col items-center">
         <TiltReadout degrees={shown} onRecenter={onRecenter} onTap={() => setWake((it) => it + 1)} tapLabel="Tilt the camera" />
         <RailSlot>{rail}</RailSlot>
+        {yawRail}
       </div>
     );
   return (
@@ -215,8 +254,9 @@ const TiltSlider = ({ pitch, onRecenter, slider, onTilt }: { pitch: number | nul
       />
       {open && opener !== null ? (
         <BesidePopup anchor={opener} onDismissRequest={() => setOpen(false)}>
-          <Surface shape="full" color={withAlpha(Color.Black, TILT_POPUP_ALPHA)} className="p-1">
+          <Surface shape={yawRail === null ? 'full' : 'large'} color={withAlpha(Color.Black, TILT_POPUP_ALPHA)} className="flex flex-col items-center p-1">
             <div style={{ height: RAIL_SLIDER_LENGTH }}>{rail}</div>
+            {yawRail}
           </Surface>
         </BesidePopup>
       ) : null}
@@ -323,9 +363,21 @@ const RcCameraControlsShown = ({
       {channels.light > 0 || gimbal !== null || rcGimbal ? <OpenOnRequest name={GIMBAL_SHEET} open={() => setOptions(true)} /> : null}
       <div className="flex min-h-0 shrink gap-1">
         {syntheticAims ? (
-          <TiltSlider pitch={syntheticTilt ?? DEFAULT_TILT_DEG} onRecenter={onRecenter(RecenterTarget.Synthetic)} slider={tiltSlider} onTilt={(it) => aimSynthetic(it, syntheticPan ?? 0.0)} />
+          <AimSliders
+            pitch={syntheticTilt ?? DEFAULT_TILT_DEG}
+            yaw={{ degrees: syntheticPan ?? 0.0, range: FULL_TURN, onYaw: (it) => aimSynthetic(syntheticTilt ?? DEFAULT_TILT_DEG, it) }}
+            onRecenter={onRecenter(RecenterTarget.Synthetic)}
+            slider={tiltSlider}
+            onTilt={(it) => aimSynthetic(it, syntheticPan ?? 0.0)}
+          />
         ) : gimbal !== null ? (
-          <TiltSlider pitch={gimbal.pitchDegrees} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} onTilt={sendTilt} />
+          <AimSliders
+            pitch={gimbal.pitchDegrees}
+            yaw={gimbal.yawRange === null ? null : { degrees: gimbal.yawDegrees, range: gimbal.yawRange, onYaw: sendYaw }}
+            onRecenter={onRecenter(RecenterTarget.Gimbal)}
+            slider={tiltSlider}
+            onTilt={sendTilt}
+          />
         ) : null}
         {!gimbalManager && channels.tilt > 0 ? <PwmSlider label="Tilt" channel={channels.tilt} pwm={pwm.tilt} onPwm={setPwm.tilt} /> : null}
         {!gimbalManager && channels.pan > 0 ? <PwmSlider label="Pan" channel={channels.pan} pwm={pwm.pan} onPwm={setPwm.pan} /> : null}
