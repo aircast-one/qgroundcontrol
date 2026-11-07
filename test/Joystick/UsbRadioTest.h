@@ -26,4 +26,5 @@ private slots:
     void _cameraChannelsSteerTheGimbalZoomPictureAndPalette_test();
     void _dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test();
     void _cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefault_test();
+    void _aFunctionOnTheFlightModeChannelIsOff_test();
 };

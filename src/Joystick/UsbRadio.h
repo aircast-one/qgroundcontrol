@@ -56,6 +56,8 @@ struct Layout
     int bay = 5;
     bool operator==(const Layout& other) const = default;
 };
+
+Layout without(const Layout& layout, int channel);
 constexpr uint16_t kArmedPwm = 1750;
 constexpr uint16_t kSteadyPwm = 3;
 constexpr uint16_t kPressedPwm = 1500;
@@ -90,6 +92,7 @@ struct Sticks
     int pitch = 2;
     int throttle = 3;
     int yaw = 4;
+    int modes = 0;
     bool operator==(const Sticks& other) const = default;
 };
 
@@ -157,7 +160,7 @@ private:
 
 QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {}, const Layout& layout = {});
 Kind kind(int mavType);
-Sticks sticks(int roll, int pitch, int throttle, int yaw);
+Sticks sticks(int roll, int pitch, int throttle, int yaw, int modes = 0);
 bool echoDue(std::optional<qint64> last, qint64 nowMs, bool live);
 uint8_t component(bool standby);
 bool standbyAirframe(bool ardupilot, int mavType);

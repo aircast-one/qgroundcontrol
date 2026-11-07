@@ -115,6 +115,13 @@ int bayOf(uint16_t pwm)
     return static_cast<int>(std::lround(between(0.0f, kBayPositions - 1.0f, pwm))) + 1;
 }
 
+Layout without(const Layout& layout, int channel)
+{
+    const auto off = [channel](int at) { return channel > 0 && at == channel ? 0 : at; };
+    return Layout{off(layout.pitch),   off(layout.yaw),  off(layout.zoom), off(layout.picture),
+                  off(layout.palette), off(layout.drop), off(layout.arm),  off(layout.bay)};
+}
+
 std::optional<Switches> switches(const Line& line, const Layout& layout)
 {
     const std::optional<uint16_t> arm = channel(line, layout.arm);
@@ -219,7 +226,8 @@ QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layo
         return head + layoutTail(layout) + '\n';
     }
     return head + ',' + letter + ',' + QByteArray::number(sticks.roll) + ',' + QByteArray::number(sticks.pitch) + ',' +
-           QByteArray::number(sticks.throttle) + ',' + QByteArray::number(sticks.yaw) + layoutTail(layout) + '\n';
+           QByteArray::number(sticks.throttle) + ',' + QByteArray::number(sticks.yaw) + ',' +
+           QByteArray::number(sticks.modes) + layoutTail(without(layout, sticks.modes)) + '\n';
 }
 
 Kind kind(int mavType)
@@ -237,12 +245,12 @@ Kind kind(int mavType)
                                                                : Kind::Unknown;
 }
 
-Sticks sticks(int roll, int pitch, int throttle, int yaw)
+Sticks sticks(int roll, int pitch, int throttle, int yaw, int modes)
 {
     const Sticks fallback;
     const auto pick = [](int mapped, int otherwise) { return mapped > 0 ? mapped : otherwise; };
     return Sticks{pick(roll, fallback.roll), pick(pitch, fallback.pitch), pick(throttle, fallback.throttle),
-                  pick(yaw, fallback.yaw)};
+                  pick(yaw, fallback.yaw), pick(modes, fallback.modes)};
 }
 
 bool echoDue(std::optional<qint64> last, qint64 nowMs, bool live)
@@ -630,7 +638,7 @@ void UsbRadio::_steer(const Line& line)
     if (!vehicle || !_target()) {
         return;
     }
-    const Layout layout = _layout();
+    const Layout layout = without(_layout(), _flight().sticks.modes);
     const std::optional<Switches> armed = switches(line, layout);
     const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout);
     std::ranges::for_each(moves,
@@ -706,15 +714,18 @@ UsbRadio::Flight UsbRadio::_flight() const
                           JoystickManager::instance()->activeJoystickEnabledForActiveVehicle();
     const Flying flying = joystick ? Flying::Joystick : (_standby(vehicle->id()) ? Flying::Standby : Flying::Vehicle);
     ParameterManager* const parameters = vehicle->parameterManager();
-    const QString prefix = vehicle->px4Firmware() ? QStringLiteral("RC_MAP_") : QStringLiteral("RCMAP_");
-    const auto mapped = [parameters, &prefix](const char* axis) {
-        const QString name = prefix + QLatin1String(axis);
+    const bool px4 = vehicle->px4Firmware();
+    const QString prefix = px4 ? QStringLiteral("RC_MAP_") : QStringLiteral("RCMAP_");
+    const auto parameter = [parameters](const QString& name) {
         return parameters && parameters->parameterExists(ParameterManager::defaultComponentId, name)
                    ? parameters->getParameter(ParameterManager::defaultComponentId, name)->rawValue().toInt()
                    : 0;
     };
+    const auto mapped = [&parameter, &prefix](const char* axis) { return parameter(prefix + QLatin1String(axis)); };
+    const int modes = px4 ? parameter(QStringLiteral("RC_MAP_FLTMODE"))
+                          : std::max(parameter(QStringLiteral("FLTMODE_CH")), parameter(QStringLiteral("MODE_CH")));
     return Flight{flying, vehicle->id(), kind(vehicle->vehicleType()),
-                  sticks(mapped("ROLL"), mapped("PITCH"), mapped("THROTTLE"), mapped("YAW"))};
+                  sticks(mapped("ROLL"), mapped("PITCH"), mapped("THROTTLE"), mapped("YAW"), modes)};
 }
 
 std::optional<int> UsbRadio::_target() const

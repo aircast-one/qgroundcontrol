@@ -81,10 +81,12 @@ void UsbRadioTest::_radioIsToldWhatItsSticksAreDoing_test()
 
 void UsbRadioTest::_radioLearnsTheVehicleKindAndItsStickChannels_test()
 {
-    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}), QByteArray("@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{1, 2, 3, 4, 10}),
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n"));
     QCOMPARE(echo(Flying::Standby, 2, Kind::Plane, Sticks{2, 1, 3, 4}),
-             QByteArray("@S,2,P,2,1,3,4;18,20,21,22,24,11,12,5\n"));
-    QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{}), QByteArray("@J,3,R,1,2,3,4;18,20,21,22,24,11,12,5\n"));
+             QByteArray("@S,2,P,2,1,3,4,0;18,20,21,22,24,11,12,5\n"));
+    QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{1, 2, 3, 4, 8}),
+             QByteArray("@J,3,R,1,2,3,4,8;18,20,21,22,24,11,12,5\n"));
     QCOMPARE(echo(Flying::Vehicle, 4, Kind::Unknown, Sticks{2, 1, 3, 4}), QByteArray("@F,4;18,20,21,22,24,11,12,5\n"));
     QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N;18,20,21,22,24,11,12,5\n"));
 }
@@ -107,6 +109,7 @@ void UsbRadioTest::_unmappedSticksFallBackToTheFirstFourChannels_test()
     QCOMPARE(sticks(2, 1, 3, 4), (Sticks{2, 1, 3, 4}));
     QCOMPARE(sticks(0, 0, 0, 0), Sticks{});
     QCOMPARE(sticks(5, 0, 7, 0), (Sticks{5, 2, 7, 4}));
+    QCOMPARE(sticks(0, 0, 0, 0, 10), (Sticks{1, 2, 3, 4, 10}));
 }
 
 void UsbRadioTest::_radioHearsBackOnlyWhileItStreams_test()
@@ -348,5 +351,16 @@ void UsbRadioTest::_cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefaul
     QVERIFY(!switches(lineWith({{kR2d2.arm, 2012}}), moved));
 
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, moved),
-             QByteArray("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0\n"));
+             QByteArray("@F,1,C,1,2,3,4,0;13,14,15,0,0,0,0,0\n"));
+}
+
+void UsbRadioTest::_aFunctionOnTheFlightModeChannelIsOff_test()
+{
+    QCOMPARE(without(kR2d2, 5), (Layout{18, 20, 21, 22, 24, 11, 12, 0}));
+    QCOMPARE(without(kR2d2, 10), kR2d2);
+    QCOMPARE(without(kR2d2, 0), kR2d2);
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{1, 2, 3, 4, 5}),
+             QByteArray("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0\n"));
+    QVERIFY2(!switches(lineWith({{kR2d2.arm, 2012}, {5, 1500}}), without(kR2d2, 5)),
+             "a vehicle reading flight modes on CH5 takes the bay switch off it");
 }
