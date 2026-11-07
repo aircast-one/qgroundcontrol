@@ -89,6 +89,7 @@ local FUNCTIONS = {
 }
 local BAY = 8
 local layoutSetUp = nil
+local layoutNames = {}
 
 local function layoutFrom(line)
   local tail = string.match(line, ";([%d,]+)")
@@ -108,6 +109,10 @@ local function layoutFrom(line)
 end
 
 local function setUpChannels(mixes)
+  layoutNames = {}
+  for _, wanted in ipairs(mixes) do
+    if wanted[3] and wanted[3] >= 1 and wanted[2] ~= "" then layoutNames[wanted[3]] = wanted[2] end
+  end
   if not (getFieldInfo and model.insertMix) then return end
   for _, wanted in ipairs(mixes) do
     local channel = wanted[3] or 0
@@ -209,7 +214,7 @@ local function role(i)
 end
 
 local function channelText(i)
-  return string.format("CH%-2d %-5s %-6s %4d", i, role(i) or mixesInfo[i].src, mixesInfo[i].name, pwm(i))
+  return string.format("CH%-2d %-5s %-6s %4d", i, role(i) or mixesInfo[i].src, mixesInfo[i].name ~= "" and mixesInfo[i].name or layoutNames[i] or "", pwm(i))
 end
 
 local function place(slot, rows)

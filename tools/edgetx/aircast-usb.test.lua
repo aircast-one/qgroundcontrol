@@ -28,7 +28,7 @@ local function radio(screen)
     usbConnected = function() return cable end,
     model = {
       getInfo = function() return { name = "VAMPIRE" } end,
-      getMix = function(channel) return inserted[channel] or (channel < (screen.mixes or 4) and { name = "m" .. channel, source = channel } or nil) end,
+      getMix = function(channel) return inserted[channel] or (channel < (screen.mixes or 4) and { name = screen.unnamed and "" or ("m" .. channel), source = channel } or nil) end,
       insertMix = function(channel, line, mix) assert(line == 0); inserted[channel] = mix end,
     },
     lcd = setmetatable({ RGB = function() return 0 end, clear = function() for k in pairs(drawn) do drawn[k] = nil end end },
@@ -128,6 +128,12 @@ local onScreen = radio({ w = 480, h = 272, lvgl = true })
 onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 onScreen.script.run(0)
 assert(shows(onScreen, string.format("CH%-2d %-5s %-6s %4d", 18, "src99", "camREB", 2012)), "a channel the script just set up appears on the screen")
+local unnamed = radio({ w = 480, h = 272, lvgl = true, mixes = 24, unnamed = true })
+unnamed.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
+unnamed.script.run(0)
+assert(next(unnamed.inserted) == nil, "existing mixes are left alone even when they have no name")
+assert(shows(unnamed, string.format("CH%-2d %-5s %-6s %4d", 19, "src18", "campit", 1500)), "a layout channel whose mix has no name shows the function's name")
+assert(shows(unnamed, string.format("CH%-2d %-5s %-6s %4d", 23, "src22", "cam90", 1500)), "SC too")
 local his = radio({ w = 480, h = 272 })
 his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 his.script.run(0)
