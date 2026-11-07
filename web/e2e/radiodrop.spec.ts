@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, openAircraftSetup, openApp, test } from './fixtures';
-import { plugInR2d2Radio, setRadioChannels } from './r2d2';
+import { connectMock, expect, openApp, test } from './fixtures';
+import { plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
 const SIX_POS = [-1024, -614, -205, 205, 614, 1024] as const;
@@ -23,21 +23,6 @@ const flyWithRadio = async (page: Page) => {
   await flip(page, { 12: 1024 });
 };
 
-
-const readFlightModesOn = async (page: Page, channel: number) => {
-  await openAircraftSetup(page);
-  await page.getByRole('button', { name: /^Parameters/ }).click();
-  await page.getByRole('textbox', { name: 'Search parameters' }).fill('FLTMODE_CH');
-  const row = page.getByRole('button', { name: /^FLTMODE_CH/ }).first();
-  await row.click();
-  const editor = page.getByRole('dialog').filter({ hasText: 'FLTMODE_CH' });
-  await editor.getByRole('button', { name: /^Channel ?5$/ }).click();
-  const choice = new RegExp(`^Channel ?${channel}$`);
-  await page.getByRole('menuitem', { name: choice }).or(page.getByRole('option', { name: choice })).first().click();
-  await editor.getByRole('button', { name: 'Done' }).click();
-  await expect(row).toContainText(String(channel));
-  await page.getByRole('button', { name: 'Close settings' }).click();
-};
 
 const openPayload = async (page: Page) => {
   await page.getByRole('button', { name: 'More', exact: true }).click();
@@ -65,6 +50,7 @@ test('flipping the R2D2 drop switch up drops the payload through the app', async
 test('the six-position switch picks which bay the drop switch drops', async ({ page }) => {
   test.setTimeout(180_000);
   await flyWithRadio(page);
+  await expect(page.getByText("The drone reads flight modes on CH5, so the radio's bay switch is off.", { exact: false }), 'a stock copter reads flight modes on the bay channel, and the app says so').toBeVisible({ timeout: 30_000 });
   await readFlightModesOn(page, 10);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByPlaceholder('Search settings').fill('bay');

@@ -60,6 +60,24 @@ pub const R2D2: Layout = Layout {
     bay: 5,
 };
 
+const FUNCTION_NAMES: [&str; 8] = [
+    "camera pitch",
+    "camera yaw",
+    "zoom",
+    "picture",
+    "palette",
+    "drop",
+    "arm",
+    "bay",
+];
+
+pub fn clash_notice(channel: usize, names: &[&str]) -> String {
+    format!(
+        "The drone reads flight modes on CH{channel}, so the radio's {} switch is off. Move flight modes or the switch to another channel.",
+        names.join(" and ")
+    )
+}
+
 impl Default for Layout {
     fn default() -> Self {
         R2D2
@@ -79,6 +97,15 @@ impl Layout {
             arm: off(self.arm),
             bay: off(self.bay),
         }
+    }
+
+    pub fn named_on(&self, channel: usize) -> Vec<&'static str> {
+        FUNCTION_NAMES
+            .iter()
+            .zip(self.channels())
+            .filter(|(_, at)| channel > 0 && *at == channel)
+            .map(|(name, _)| *name)
+            .collect()
     }
 
     pub fn channels(&self) -> [usize; 8] {
@@ -121,6 +148,7 @@ pub struct Sticks {
     sent_ms: Option<u64>,
     drop_before: Option<u16>,
     pub layout: Layout,
+    pub bay: i64,
 }
 
 fn read(line: &[u16], channel: usize) -> Option<u16> {
@@ -189,8 +217,7 @@ impl Sticks {
         let dropped = (high(read(line, layout.drop))
             && high(self.acted.get(&layout.drop).copied())
             && self.drop_before.is_some_and(|pwm| pwm <= PRESSED_PWM))
-        .then(|| read(line, layout.bay).map_or(1, bay))
-        .map(|bay| Move::Drop { bay });
+        .then_some(Move::Drop { bay: self.bay });
         let refreshed: Vec<(usize, u16)> = [
             layout.drop,
             layout.pitch,
@@ -231,6 +258,7 @@ static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
     sent_ms: None,
     drop_before: None,
     layout: R2D2,
+    bay: 1,
 });
 
 fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
@@ -329,19 +357,13 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout) {
     let servo_bays = crate::hub::lock().active().and_then(bays_through_the_app);
     let mut sticks = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
     sticks.layout = layout;
+    sticks.bay = crate::payloadrail::selected();
     let moves: Vec<Move> = sticks
         .step(line, limits, crate::hub::now_ms())
         .into_iter()
         .filter_map(|step| match step {
             Move::Drop { bay } => servo_bays.map(|bays| Move::Drop {
-                bay: named(
-                    if layout.bay > 0 {
-                        bay
-                    } else {
-                        crate::payloadrail::selected()
-                    },
-                    bays,
-                ),
+                bay: named(bay, bays),
             }),
             other => Some(other),
         })
@@ -521,8 +543,12 @@ mod tests {
     }
 
     #[test]
-    fn flipping_the_drop_switch_up_drops_once_and_flipping_it_down_drops_nothing() {
-        let mut sticks = Sticks::default();
+    fn flipping_the_drop_switch_up_drops_the_selected_bay_once_and_flipping_it_down_drops_nothing()
+    {
+        let mut sticks = Sticks {
+            bay: 1,
+            ..Sticks::default()
+        };
         sticks.step(&line(&[(DROP_CHANNEL, 988), (BAY_CHANNEL, 988)]), LIMITS, 0);
         assert!(
             sticks
@@ -541,7 +567,7 @@ mod tests {
                 20
             ),
             vec![Move::Drop { bay: 1 }],
-            "the six-position switch at its first position picks bay 1"
+            "the bay the payload rail has selected drops"
         );
         assert!(
             sticks
@@ -553,6 +579,7 @@ mod tests {
                 .step(&line(&[(DROP_CHANNEL, 988)]), LIMITS, 40)
                 .is_empty()
         );
+        sticks.bay = 4;
         sticks.step(
             &line(&[(DROP_CHANNEL, 2012), (BAY_CHANNEL, 1602)]),
             LIMITS,
@@ -565,7 +592,7 @@ mod tests {
                 60
             ),
             vec![Move::Drop { bay: 4 }],
-            "the fourth position picks bay 4"
+            "a new selection drops next"
         );
         assert_eq!(
             [988, 1193, 1398, 1602, 1807, 2012].map(bay),
@@ -576,14 +603,6 @@ mod tests {
             (named(3, 4), named(4, 0), named(5, 4)),
             (3, 0, 0),
             "a bay the drone does not have, or a gripper that is not per bay, drops the next bay instead"
-        );
-        let mut no_six_pos = Sticks::default();
-        no_six_pos.step(&[988; 11], LIMITS, 0);
-        no_six_pos.step(&[2012; 11], LIMITS, 10);
-        assert_eq!(
-            no_six_pos.step(&[2012; 11], LIMITS, 20),
-            vec![Move::Drop { bay: 6 }],
-            "a model without a 6POS switch leaves CH5 wherever it rests"
         );
         let mut plugged_in_high = Sticks::default();
         assert!(
@@ -696,6 +715,13 @@ mod tests {
                 .map(|radio| (radio.armed, radio.bay)),
             Some((true, None)),
             "the arm switch still arms, and the bay is left to the app"
+        );
+        assert_eq!(R2D2.named_on(5), vec!["bay"]);
+        assert_eq!(R2D2.named_on(10), Vec::<&str>::new());
+        assert_eq!(R2D2.named_on(0), Vec::<&str>::new());
+        assert_eq!(
+            clash_notice(5, &R2D2.named_on(5)),
+            "The drone reads flight modes on CH5, so the radio's bay switch is off. Move flight modes or the switch to another channel."
         );
     }
 }

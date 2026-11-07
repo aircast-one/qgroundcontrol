@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { connectMock, expect, openApp, test } from './fixtures';
-import { plugInR2d2Radio, setRadioChannels } from './r2d2';
+import { plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
 const SIX_POS = [-1024, -614, -205, 205, 614, 1024] as const;
@@ -55,6 +55,7 @@ test("the radio's BOMARM switch arms the rail and its 6POS switch picks the bay"
   await page.getByRole('button', { name: 'Use', exact: true }).click();
   await connectMock(page, [], 'APM ArduCopter Vehicle');
   await fourServoBays(page);
+  await readFlightModesOn(page, 10);
   await page.getByRole('button', { name: 'All status' }).click();
   await expect(page.getByText('Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');

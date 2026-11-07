@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { expect, openAircraftSetup } from './fixtures';
 
 export const STM32_VCP_VENDOR = 0x0483;
 export const STM32_VCP_PRODUCT = 0x5740;
@@ -55,3 +56,18 @@ export const setRadioChannels = (page: Page, raw: Readonly<Record<number, number
 export const setRadioStreaming = (page: Page, on: boolean) => page.evaluate((value) => (window as RadioWindow).radioStreaming?.(value), on);
 
 export const lastAnswer = (page: Page) => page.evaluate(() => ((window as RadioWindow).radioHeard?.() ?? '').split('\n').filter((line) => line.startsWith('@')).at(-1) ?? '');
+
+export const readFlightModesOn = async (page: Page, channel: number) => {
+  await openAircraftSetup(page);
+  await page.getByRole('button', { name: /^Parameters/ }).click();
+  await page.getByRole('textbox', { name: 'Search parameters' }).fill('FLTMODE_CH');
+  const row = page.getByRole('button', { name: /^FLTMODE_CH/ }).first();
+  await row.click();
+  const editor = page.getByRole('dialog').filter({ hasText: 'FLTMODE_CH' });
+  await editor.getByRole('button', { name: /^Channel ?\d+$/ }).click();
+  const choice = new RegExp(`^Channel ?${channel}$`);
+  await page.getByRole('menuitem', { name: choice }).or(page.getByRole('option', { name: choice })).first().click();
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect(row).toContainText(String(channel));
+  await page.getByRole('button', { name: 'Close settings' }).click();
+};
