@@ -134,7 +134,7 @@ protected:
     bool _recording = false;
     bool _streaming = false;
     bool _lowLatency = false;
-    int _rtpJitterLatencyMs = 80;
+    int _rtpJitterLatencyMs = 150;
     std::atomic<bool> _autoReconnect = true;     ///< RTSP/UDP auto-reconnect with exponential backoff on watchdog/error.
     bool _endOfStream = false;
     bool _removingDecoder = false;

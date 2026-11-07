@@ -207,10 +207,8 @@ GstElement *findByFactory(GstBin *bin, const char *factory)
 
 constexpr gint64 kJitterAdaptIntervalUs = G_USEC_PER_SEC;
 constexpr guint kJitterStepUpMs = 40;
-constexpr guint kJitterStepDownMs = 20;
 constexpr guint kJitterRtxMarginMs = 50;
 constexpr guint kJitterCapMs = 500;
-constexpr gint64 kJitterCleanWindowMs = 10000;
 
 struct JitterAdapter
 {
@@ -220,19 +218,15 @@ struct JitterAdapter
     guint64 lost;
     guint64 late;
     gint64 lastCheckUs;
-    gint64 cleanSinceUs;
 };
 
-guint adaptJitterLatencyMs(guint currentMs, guint floorMs, bool degraded, gint64 cleanForMs, guint rttMs)
+guint adaptJitterLatencyMs(guint currentMs, guint floorMs, bool degraded, guint rttMs)
 {
-    if (degraded) {
-        const guint rtxTarget = (rttMs > 0) ? (rttMs + kJitterRtxMarginMs) : 0;
-        return std::min(kJitterCapMs, std::max({currentMs + kJitterStepUpMs, rtxTarget, floorMs}));
+    if (!degraded) {
+        return currentMs;
     }
-    if (cleanForMs >= kJitterCleanWindowMs && currentMs > floorMs) {
-        return std::max(floorMs, (currentMs > kJitterStepDownMs) ? (currentMs - kJitterStepDownMs) : 0u);
-    }
-    return currentMs;
+    const guint rtxTarget = (rttMs > 0) ? (rttMs + kJitterRtxMarginMs) : 0;
+    return std::min(kJitterCapMs, std::max({currentMs + kJitterStepUpMs, rtxTarget, floorMs}));
 }
 
 GstPadProbeReturn adaptJitterLatency(GstPad *, GstPadProbeInfo *, gpointer data)
@@ -258,14 +252,10 @@ GstPadProbeReturn adaptJitterLatency(GstPad *, GstPadProbeInfo *, gpointer data)
     const bool degraded = (lost > adapter->lost) || (late > adapter->late);
     adapter->lost = lost;
     adapter->late = late;
-    if (degraded) {
-        adapter->cleanSinceUs = now;
-    }
-    const guint next = adaptJitterLatencyMs(adapter->currentMs, adapter->floorMs, degraded, (now - adapter->cleanSinceUs) / 1000, static_cast<guint>(rttNs / GST_MSECOND));
+    const guint next = adaptJitterLatencyMs(adapter->currentMs, adapter->floorMs, degraded, static_cast<guint>(rttNs / GST_MSECOND));
     if (next != adapter->currentMs) {
         g_object_set(adapter->jitterBuffer, "latency", next, nullptr);
         adapter->currentMs = next;
-        adapter->cleanSinceUs = now;
     }
     return GST_PAD_PROBE_OK;
 }
@@ -275,7 +265,7 @@ void adaptNewJitterBuffer(GstElement *, GstElement *jitterBuffer, guint, guint, 
     guint currentMs = 0;
     g_object_get(jitterBuffer, "latency", &currentMs, nullptr);
     const gint64 now = g_get_monotonic_time();
-    auto *const adapter = new JitterAdapter{jitterBuffer, GPOINTER_TO_UINT(data), currentMs, 0, 0, now, now};
+    auto *const adapter = new JitterAdapter{jitterBuffer, GPOINTER_TO_UINT(data), currentMs, 0, 0, now};
     g_object_set_data_full(G_OBJECT(jitterBuffer), "qgc-jitter-adapter", adapter, [](gpointer p) { delete static_cast<JitterAdapter *>(p); });
     if (GstPad *const src = gst_element_get_static_pad(jitterBuffer, "src")) {
         gst_pad_add_probe(src, GST_PAD_PROBE_TYPE_BUFFER, adaptJitterLatency, adapter, nullptr);

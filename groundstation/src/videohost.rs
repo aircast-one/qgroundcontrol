@@ -415,7 +415,7 @@ fn playable(uri: &str, low_latency: bool) -> bool {
         true => whep_endpoint(uri).is_some(),
         false => pipeline(
             uri,
-            setting("rtpJitterLatencyMs").as_i64().unwrap_or(80),
+            setting("rtpJitterLatencyMs").as_i64().unwrap_or(150),
             low_latency,
         )
         .is_some(),
@@ -749,7 +749,7 @@ fn pipeline_for(host: &Host, channel: usize) -> Option<String> {
         .then(|| {
             pipeline(
                 &oriented(&uri, host.camera_rotation),
-                setting("rtpJitterLatencyMs").as_i64().unwrap_or(80),
+                setting("rtpJitterLatencyMs").as_i64().unwrap_or(150),
                 host.state.settings.low_latency,
             )
         })
@@ -759,7 +759,7 @@ fn pipeline_for(host: &Host, channel: usize) -> Option<String> {
 fn preview_pipeline(host: &Host, shown: &Preview) -> Option<String> {
     pipeline(
         &shown.uri,
-        setting("rtpJitterLatencyMs").as_i64().unwrap_or(80),
+        setting("rtpJitterLatencyMs").as_i64().unwrap_or(150),
         host.state.settings.low_latency,
     )
 }
@@ -2314,7 +2314,7 @@ mod tests {
         );
         assert!(
             preview_on(&host, 2).is_some_and(|played| played.starts_with(
-                "whepsrc name=whep_latency_80 whep-endpoint=\"http://falcon:8889/whep/cam0\""
+                "whepsrc name=whep_latency_150 whep-endpoint=\"http://falcon:8889/whep/cam0\""
             )),
             "a preview channel plays its address through the same pipeline a camera would"
         );

@@ -210,7 +210,7 @@ QList<QByteArray> topLevelBoxes(const QByteArray& path)
     return boxes;
 }
 
-}
+}  // namespace
 
 void GStreamerTest::init()
 {
@@ -450,6 +450,28 @@ void GStreamerTest::_testSetCodecPrioritiesSoftware()
     gst_plugin_feature_list_free(factories);
 }
 
+void GStreamerTest::_testSetCodecPrioritiesDefaultLeavesVideoToolboxBelowSoftware()
+{
+#ifdef Q_OS_MACOS
+    GStreamer::setCodecPriorities(GStreamer::ForceVideoDecoderDefault);
+    GstElementFactory* vtdec = gst_element_factory_find("vtdec_hw");
+    GstElementFactory* avdec = gst_element_factory_find("avdec_h265");
+    if (!vtdec || !avdec) {
+        gst_clear_object(&vtdec);
+        gst_clear_object(&avdec);
+        QSKIP("vtdec_hw/avdec_h265 unavailable");
+    }
+    const guint vtdecRank = gst_plugin_feature_get_rank(GST_PLUGIN_FEATURE(vtdec));
+    const guint avdecRank = gst_plugin_feature_get_rank(GST_PLUGIN_FEATURE(avdec));
+    gst_object_unref(vtdec);
+    gst_object_unref(avdec);
+    QVERIFY2(vtdecRank < avdecRank,
+             "VideoToolbox holds 16 H.265 frames before it outputs one; software decoding must win by default");
+#else
+    QSKIP("macOS only");
+#endif
+}
+
 void GStreamerTest::_testSetCodecPrioritiesHardware()
 {
     GStreamer::setCodecPriorities(GStreamer::ForceVideoDecoderHardware);
@@ -676,7 +698,8 @@ void GStreamerTest::_testNativeSinkPlaysOnTheChannelItIsAttachedTo()
     QVERIFY(qgc_video_frames(QGC_VIDEO_MAIN) >= played);
     QCOMPARE(qgc_video_frames(QGC_VIDEO_PIP), 0);
 
-    expectLogMessage("Video.GStreamer.GStreamer", QtCriticalMsg, QRegularExpression(QStringLiteral("could not be attached to channel")));
+    expectLogMessage("Video.GStreamer.GStreamer", QtCriticalMsg,
+                     QRegularExpression(QStringLiteral("could not be attached to channel")));
     QVERIFY(!GStreamer::attachNativeSink(sink, QGC_VIDEO_CHANNELS));
     verifyExpectedLogMessage();
 }
@@ -703,10 +726,13 @@ void GStreamerTest::_testASinkReplacedOnItsChannelStopsDrawingThere()
     gst_bin_add_many(GST_BIN(pipeline), source, sink, nullptr);
     QVERIFY(gst_element_link(source, sink));
     GstPad* const sinkPad = gst_element_get_static_pad(sink, "sink");
-    (void) gst_pad_add_probe(sinkPad, GST_PAD_PROBE_TYPE_BUFFER, [](GstPad*, GstPadProbeInfo*, gpointer count) {
-        static_cast<std::atomic<int>*>(count)->fetch_add(1);
-        return GST_PAD_PROBE_OK;
-    }, &rendered, nullptr);
+    (void) gst_pad_add_probe(
+        sinkPad, GST_PAD_PROBE_TYPE_BUFFER,
+        [](GstPad*, GstPadProbeInfo*, gpointer count) {
+            static_cast<std::atomic<int>*>(count)->fetch_add(1);
+            return GST_PAD_PROBE_OK;
+        },
+        &rendered, nullptr);
     gst_object_unref(sinkPad);
 
     QVERIFY(GStreamer::attachNativeSink(sink, QGC_VIDEO_MAIN));

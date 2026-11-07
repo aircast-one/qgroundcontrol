@@ -1,9 +1,8 @@
 #include "GstSourceFactory.h"
 
-#include <algorithm>
-
 #include <QtCore/QFile>
 #include <QtCore/QUrl>
+#include <algorithm>
 #include <gst/gst.h>
 #include <gst/rtsp/gstrtsptransport.h>
 
@@ -21,10 +20,8 @@ constexpr guint kWhepRequestTimeoutSec = 8;
 constexpr guint kWhepLowLatencyJitterMs = 40;
 constexpr gint64 kJitterAdaptIntervalUs = G_USEC_PER_SEC;
 constexpr guint kJitterStepUpMs = 40;
-constexpr guint kJitterStepDownMs = 20;
 constexpr guint kJitterRtxMarginMs = 50;
 constexpr guint kJitterCapMs = 500;
-constexpr gint64 kJitterCleanWindowMs = 10000;
 
 bool isH26xDepayloader(GstElement* element)
 {
@@ -57,9 +54,6 @@ void configureH26xParser(GstElement* element)
 
     const char* factoryName = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory));
     if ((g_strcmp0(factoryName, "h264parse") == 0) || (g_strcmp0(factoryName, "h265parse") == 0)) {
-        // Recording can begin long after RTSP setup. Repeat codec parameter sets at every IDR so
-        // the late-opened recording branch can construct MP4/MOV codec_data without relying on
-        // the camera to resend its startup-only VPS/SPS/PPS or SPS/PPS.
         g_object_set(element, "config-interval", -1, nullptr);
     }
 }
@@ -71,7 +65,6 @@ void configureAutopluggedParser([[maybe_unused]] GstBin* bin, [[maybe_unused]] G
     configureH26xDepayloader(element);
 }
 
-// Older Linux/system GStreamer needs an autoplug-query caps filter to keep parsebin on byte-stream output.
 #if defined(QGC_GST_ENABLE_LEGACY_PARSEBIN_CAPS_FILTER)
 gboolean filterParserCaps([[maybe_unused]] GstElement* bin, [[maybe_unused]] GstPad* pad,
                           [[maybe_unused]] GstElement* element, GstQuery* query, [[maybe_unused]] gpointer data)
@@ -132,13 +125,10 @@ void wrapWithGhostPad(GstElement* element, GstPad* pad, [[maybe_unused]] gpointe
 
     (void) gst_pad_set_active(ghostpad, TRUE);
 
-    // gst_object_get_parent takes a ref (GST_ELEMENT_PARENT does not) — guards against a
-    // concurrent bin teardown finalizing the parent before gst_element_add_pad.
     GstObject* parent = gst_object_get_parent(GST_OBJECT(element));
     if (parent) {
         if (!gst_element_add_pad(GST_ELEMENT(parent), ghostpad)) {
             qCCritical(GstSourceFactoryLog) << "gst_element_add_pad() failed";
-            // add_pad only sinks the ghost pad's floating ref on success; release it on failure.
             gst_object_unref(ghostpad);
         }
         gst_object_unref(parent);
@@ -194,35 +184,28 @@ namespace GStreamer::SourceFactory {
 
 namespace {
 
-// Shared by the static and dynamic (pad-added) link paths so both apply the identical jitter-buffer
-// policy. rtx-delay/rtx-max-retries are fixed (not auto) so RF-link recovery is predictable.
 void configureJitterBuffer(GstElement* buffer, const Config& config, guint latencyMs)
 {
     g_object_set(buffer, "latency", latencyMs, "do-lost", TRUE, "do-retransmission",
                  config.doRetransmission ? TRUE : FALSE, "drop-on-latency",
                  config.jitterBuffer == JitterBuffer::DropOnLatency ? TRUE : FALSE, nullptr);
     if (config.doRetransmission) {
-        // Fixed 25 ms rtx-delay + single retry: bounded recovery latency over a lossy RF link,
-        // instead of the auto(-1) heuristic that can stack retries and balloon playout latency.
         g_object_set(buffer, "rtx-delay", 25, "rtx-max-retries", 1, nullptr);
     }
 }
 
-// Heap-owned context for the dynamic (pad-added) link path; freed when @binParser is finalized.
 struct DynamicLinkContext
 {
     GstElement* binParser;
     Config config;
     guint latencyMs;
-    bool allowJitterBuffer;  // false for RTSP (rtspsrc has its own internal jitterbuffer)
+    bool allowJitterBuffer;
 };
 
 void linkPad(GstElement* element, GstPad* pad, gpointer data)
 {
     const auto* ctx = static_cast<const DynamicLinkContext*>(data);
 
-    // tsdemux fires pad-added for audio/data pads too; only link video src pads so non-video
-    // pads don't trigger a spurious CRITICAL cascade on the expected link failure.
     if (GST_PAD_DIRECTION(pad) != GST_PAD_SRC) {
         return;
     }
@@ -245,7 +228,6 @@ void linkPad(GstElement* element, GstPad* pad, gpointer data)
                 isVideo = true;
             } else if (g_str_equal(sname, "application/x-rtp")) {
                 isRtp = true;
-                // RTP carries video; the depayloader/parsebin downstream classifies the payload.
                 isVideo = true;
             }
         }
@@ -255,8 +237,6 @@ void linkPad(GstElement* element, GstPad* pad, gpointer data)
         return;
     }
 
-    // Link only the first matching video pad. A second pad-added (duplicate RTP pad, or a later
-    // tsdemux elementary stream) must not stack a second jitterbuffer or re-link an occupied sink.
     if (GstPad* parserSink = gst_element_get_static_pad(ctx->binParser, "sink")) {
         const gboolean alreadyLinked = gst_pad_is_linked(parserSink);
         gst_object_unref(parserSink);
@@ -265,8 +245,6 @@ void linkPad(GstElement* element, GstPad* pad, gpointer data)
         }
     }
 
-    // Insert a jitterbuffer ahead of the parser for RTP pads on non-RTSP dynamic sources, matching the
-    // static path's policy. RTSP is excluded: rtspsrc owns an internal jitterbuffer (no double-buffering).
     GstElement* downstream = ctx->binParser;
     GstElement* dynamicBuffer = nullptr;
     const auto removeDynamicBuffer = [&dynamicBuffer] {
@@ -322,9 +300,6 @@ void linkPad(GstElement* element, GstPad* pad, gpointer data)
     g_clear_pointer(&name, g_free);
 }
 
-// Each build* helper makes and configures the source element for one scheme family, logs the
-// specific failure, and returns the owning element (or nullptr). create() owns it from here on.
-
 GstElement* buildRtspSource(const QString& uri, const QUrl& sourceUrl, const Config& config, guint latencyMs)
 {
     if (!GStreamer::isValidRtspUri(uri.toUtf8().constData())) {
@@ -342,13 +317,9 @@ GstElement* buildRtspSource(const QString& uri, const QUrl& sourceUrl, const Con
     cleanUrl.setUserInfo(QString());
     const QByteArray cleanLocation = cleanUrl.toEncoded();
 
-    // protocols mask enables TCP-interleaved fallback when UDP is blocked; without it
-    // firewalled networks hang until tcp-timeout instead of negotiating TCP.
     constexpr GstRTSPLowerTrans kRtspProtocols =
         static_cast<GstRTSPLowerTrans>(GST_RTSP_LOWER_TRANS_UDP | GST_RTSP_LOWER_TRANS_TCP);
 
-    // do-retransmission forwards to rtspsrc's internal rtpjitterbuffer (added 1.6);
-    // drop-on-latency=TRUE unless jitterBuffer==Buffered (opt out of bounded playout).
     const gboolean dropOnLatency = (config.jitterBuffer == JitterBuffer::Buffered) ? FALSE : TRUE;
     g_object_set(source, "location", cleanLocation.constData(), "latency", latencyMs, "do-rtcp", TRUE,
                  "do-retransmission", config.doRetransmission ? TRUE : FALSE, "tcp-timeout", kRtspTcpTimeoutUs,
@@ -372,10 +343,10 @@ struct JitterAdapter
     guint64 lost;
     guint64 late;
     gint64 lastCheckUs;
-    gint64 cleanSinceUs;
 };
 
-GstPadProbeReturn adaptJitterLatency([[maybe_unused]] GstPad* pad, [[maybe_unused]] GstPadProbeInfo* info, gpointer data)
+GstPadProbeReturn adaptJitterLatency([[maybe_unused]] GstPad* pad, [[maybe_unused]] GstPadProbeInfo* info,
+                                     gpointer data)
 {
     auto* adapter = static_cast<JitterAdapter*>(data);
     const gint64 now = g_get_monotonic_time();
@@ -400,19 +371,14 @@ GstPadProbeReturn adaptJitterLatency([[maybe_unused]] GstPad* pad, [[maybe_unuse
     const bool degraded = (lost > adapter->lost) || (late > adapter->late);
     adapter->lost = lost;
     adapter->late = late;
-    if (degraded) {
-        adapter->cleanSinceUs = now;
-    }
 
-    const guint next = adaptJitterLatencyMs(adapter->currentMs, adapter->floorMs, degraded,
-                                            (now - adapter->cleanSinceUs) / 1000,
-                                            static_cast<guint>(rttNs / GST_MSECOND));
+    const guint next =
+        adaptJitterLatencyMs(adapter->currentMs, adapter->floorMs, degraded, static_cast<guint>(rttNs / GST_MSECOND));
     if (next != adapter->currentMs) {
         g_object_set(adapter->jitterBuffer, "latency", next, nullptr);
         qCDebug(GstSourceFactoryLog) << "WHEP jitter buffer" << adapter->currentMs << "->" << next << "ms, lost" << lost
                                      << "late" << late << "rtt" << (rttNs / GST_MSECOND) << "ms";
         adapter->currentMs = next;
-        adapter->cleanSinceUs = now;
     }
     return GST_PAD_PROBE_OK;
 }
@@ -423,7 +389,7 @@ void adaptNewJitterBuffer([[maybe_unused]] GstElement* rtpbin, GstElement* jitte
     guint currentMs = 0;
     g_object_get(jitterBuffer, "latency", &currentMs, nullptr);
     const gint64 now = g_get_monotonic_time();
-    auto* adapter = new JitterAdapter{jitterBuffer, GPOINTER_TO_UINT(data), currentMs, 0, 0, now, now};
+    auto* adapter = new JitterAdapter{jitterBuffer, GPOINTER_TO_UINT(data), currentMs, 0, 0, now};
     g_object_set_data_full(G_OBJECT(jitterBuffer), "qgc-jitter-adapter", adapter,
                            [](gpointer p) { delete static_cast<JitterAdapter*>(p); });
 
@@ -475,8 +441,6 @@ GstElement* buildWhepSource(const QUrl& sourceUrl, const Config& config, guint l
         endpointUrl.setScheme(QStringLiteral("https"));
     }
 
-    // Offer H.264/H.265 only so the stream flows through the same parse/decode path as the
-    // other sources. An empty audio caps list keeps the audio m-line out of the offer.
     GstCaps* videoCaps = gst_caps_from_string(
         "application/x-rtp,media=(string)video,encoding-name=(string)H264,payload=(int)96,clock-rate=(int)90000;"
         "application/x-rtp,media=(string)video,encoding-name=(string)H265,payload=(int)97,clock-rate=(int)90000");
@@ -548,17 +512,13 @@ GstElement* buildUdpSource(const QUrl& sourceUrl, bool isUdpH264, bool isUdpH265
         return nullptr;
     }
 
-    // Normalize udp265:///mpegts:// to udp:// for udpsrc, preserving query params.
     QUrl udpUrl(sourceUrl);
     udpUrl.setScheme(QStringLiteral("udp"));
     udpUrl.setUserInfo(QString());
     const QByteArray udpUri = udpUrl.toEncoded();
 
-    // SO_RCVBUF above net.core.rmem_max needs CAP_NET_ADMIN; without it gstudpsrc fails with EPERM
-    // (scary warning) then clamps. Request the kernel-permitted max instead (Linux/Android only).
     int udpBufferSize = kUdpBufferSizeBytes;
 #ifdef Q_OS_LINUX
-    // rmem_max is a boot-time sysctl; parse once and cache (0 = unreadable, leave request unclamped).
     static const int s_rmemMax = [] {
         QFile rmemMaxFile(QStringLiteral("/proc/sys/net/core/rmem_max"));
         if (rmemMaxFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -600,13 +560,9 @@ GstElement* buildUdpSource(const QUrl& sourceUrl, bool isUdpH264, bool isUdpH265
     return source;
 }
 
-// Wire upstream → (optional rtpjitterbuffer) → binParser, topology chosen by RTP probe (MPEG-TS
-// links via pad-added). Created elements join @p bin; returns false (logged) on failure.
 bool linkSourceToParser(GstElement* bin, GstElement* upstream, GstElement* binParser, const Config& config,
                         guint latencyMs, bool isMpegTs, bool isRtsp)
 {
-    // MPEG-TS exposes elementary streams via tsdemux dynamic src pads (none at NULL state) and
-    // isn't raw RTP, so skip the RTP probe and link via pad-added when the video pad appears.
     int probeRes = 0;
     if (!isMpegTs) {
         (void) gst_element_foreach_src_pad(upstream, padProbe, &probeRes);
@@ -627,7 +583,6 @@ bool linkSourceToParser(GstElement* bin, GstElement* upstream, GstElement* binPa
                 gst_object_unref(buffer);
                 return false;
             }
-            // bin owns buffer now; a link failure below is cleaned up via the caller's bin teardown.
             if (!gst_element_link_many(upstream, buffer, binParser, nullptr)) {
                 qCCritical(GstSourceFactoryLog) << "gst_element_link_many(source, rtpjitterbuffer, parser) failed";
                 return false;
@@ -639,16 +594,12 @@ bool linkSourceToParser(GstElement* bin, GstElement* upstream, GstElement* binPa
             }
         }
     } else {
-        // linkPad applies the jitter-buffer policy itself when an application/x-rtp pad appears on a
-        // non-RTSP source. Context lifetime is tied to binParser (freed on its finalize).
         auto* ctx = new DynamicLinkContext{binParser, config, latencyMs, !isRtsp};
         g_object_set_data_full(G_OBJECT(binParser), "qgc-dynamic-link-ctx", ctx,
                                [](gpointer p) { delete static_cast<DynamicLinkContext*>(p); });
         (void) g_signal_connect(upstream, "pad-added", G_CALLBACK(linkPad), ctx);
     }
 
-    // pad-added fires on the streaming thread after create() returns the NULL-state bin, so it
-    // can't race construction; wrapWithGhostPad ref-checks the parent against teardown.
     (void) g_signal_connect(binParser, "pad-added", G_CALLBACK(wrapWithGhostPad), nullptr);
     return true;
 }
@@ -720,8 +671,6 @@ GstElement* create(const QString& uri, const Config& config)
         return nullptr;
     }
 
-    // Owning locals until gst_bin_add*, then nulled (non-owning alias used downstream) so the
-    // unconditional gst_clear_object cleanup at the bottom stays safe.
     GstElement* source = nullptr;
     GstElement* parser = nullptr;
     GstElement* rtpDepay = nullptr;
@@ -736,7 +685,7 @@ GstElement* create(const QString& uri, const Config& config)
             source = buildWhepSource(sourceUrl, config, latencyMs);
         } else if (isTcpMPEGTS) {
             source = buildTcpSource(sourceUrl);
-        } else {  // isUdpH264 || isUdpH265 || isUdpMPEGTS
+        } else {
             source = buildUdpSource(sourceUrl, isUdpH264, isUdpH265);
         }
         if (!source) {
@@ -757,9 +706,6 @@ GstElement* create(const QString& uri, const Config& config)
         }
 
         if (isUdpH265) {
-            // UDP H.265 has no SDP/RTSP control plane. Make depayloading and parser config explicit
-            // so hardware decoders, especially Android MediaCodec, see repeated VPS/SPS/PPS at IDR
-            // boundaries instead of depending on parsebin's defaults after startup or reconnect.
             rtpDepay = gst_element_factory_make("rtph265depay", nullptr);
             if (!rtpDepay) {
                 qCCritical(GstSourceFactoryLog) << "gst_element_factory_make('rtph265depay') failed";
@@ -768,21 +714,15 @@ GstElement* create(const QString& uri, const Config& config)
             configureH26xDepayloader(rtpDepay);
             configureH26xParser(parser);
         } else {
-            // parsebin creates the codec parser only after it sees the stream caps. Configure that
-            // parser as soon as it is autoplugged, before the pipeline reaches PLAYING.
             (void) g_signal_connect(parser, "deep-element-added", G_CALLBACK(configureAutopluggedParser), nullptr);
         }
 
-        // Older Linux/system GStreamer misnegotiates parser->decoder caps; force avc/hvc1 there only.
-        // Bundled 1.28+ SDKs do not need it, and the forced caps break byte-stream HW decoders.
 #if defined(QGC_GST_ENABLE_LEGACY_PARSEBIN_CAPS_FILTER)
         if (!isUdpH265) {
             (void) g_signal_connect(parser, "autoplug-query", G_CALLBACK(filterParserCaps), nullptr);
         }
 #endif
 
-        // Add individually so ownership is unambiguous on failure: gst_bin_add sinks the ref only
-        // on success, so the local stays owning (and gets unref'd by the cleanup block) when it fails.
         if (!gst_bin_add(GST_BIN(bin), source)) {
             qCCritical(GstSourceFactoryLog) << "gst_bin_add(source) failed";
             break;
@@ -804,7 +744,6 @@ GstElement* create(const QString& uri, const Config& config)
         GstElement* binParser = parser;
         parser = nullptr;
 
-        // Android can't determine MPEG2-TS via parsebin, so create tsdemux explicitly.
         if (isTcpMPEGTS || isUdpMPEGTS) {
             tsdemux = gst_element_factory_make("tsdemux", nullptr);
             if (!tsdemux) {
@@ -854,16 +793,13 @@ GstElement* create(const QString& uri, const Config& config)
     return srcbin;
 }
 
-guint adaptJitterLatencyMs(guint currentMs, guint floorMs, bool degraded, gint64 cleanForMs, guint rttMs)
+guint adaptJitterLatencyMs(guint currentMs, guint floorMs, bool degraded, guint rttMs)
 {
-    if (degraded) {
-        const guint rtxTarget = (rttMs > 0) ? (rttMs + kJitterRtxMarginMs) : 0;
-        return std::min(kJitterCapMs, std::max({currentMs + kJitterStepUpMs, rtxTarget, floorMs}));
+    if (!degraded) {
+        return currentMs;
     }
-    if (cleanForMs >= kJitterCleanWindowMs && currentMs > floorMs) {
-        return std::max(floorMs, (currentMs > kJitterStepDownMs) ? (currentMs - kJitterStepDownMs) : 0u);
-    }
-    return currentMs;
+    const guint rtxTarget = (rttMs > 0) ? (rttMs + kJitterRtxMarginMs) : 0;
+    return std::min(kJitterCapMs, std::max({currentMs + kJitterStepUpMs, rtxTarget, floorMs}));
 }
 
 }  // namespace GStreamer::SourceFactory
