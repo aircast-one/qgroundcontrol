@@ -715,20 +715,20 @@ mod tests {
     fn the_radio_is_told_what_its_sticks_are_doing() {
         assert_eq!(
             echo(Flying::Vehicle(1), None, crate::radiocamera::R2D2),
-            "@F,1;18,20,21,22,24,11,12,5\n"
+            "@F,1;18,20,21,22,24,11,12,5,19,23\n"
         );
         assert_eq!(
             echo(Flying::Standby(3), None, crate::radiocamera::R2D2),
-            "@S,3;18,20,21,22,24,11,12,5\n",
+            "@S,3;18,20,21,22,24,11,12,5,19,23\n",
             "in 4G standby the sticks go to the aircraft computer"
         );
         assert_eq!(
             echo(Flying::Joystick(1), None, crate::radiocamera::R2D2),
-            "@J,1;18,20,21,22,24,11,12,5\n"
+            "@J,1;18,20,21,22,24,11,12,5,19,23\n"
         );
         assert_eq!(
             echo(Flying::NoVehicle, None, crate::radiocamera::R2D2),
-            "@N;18,20,21,22,24,11,12,5\n"
+            "@N;18,20,21,22,24,11,12,5,19,23\n"
         );
         assert_eq!(
             echo(
@@ -740,7 +740,7 @@ mod tests {
                 }),
                 crate::radiocamera::R2D2
             ),
-            "@N;18,20,21,22,24,11,12,5\n"
+            "@N;18,20,21,22,24,11,12,5,19,23\n"
         );
         assert_eq!(
             echo(
@@ -752,7 +752,7 @@ mod tests {
                 }),
                 crate::radiocamera::R2D2
             ),
-            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n",
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n",
             "a known vehicle says what each stick channel does and where it reads flight modes"
         );
         assert_eq!(
@@ -765,7 +765,7 @@ mod tests {
                 }),
                 crate::radiocamera::R2D2
             ),
-            "@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0\n",
+            "@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23\n",
             "a vehicle reading flight modes on the bay channel keeps the bay off it"
         );
         assert!(
@@ -905,7 +905,7 @@ mod tests {
         answer(5_000, true);
         assert_eq!(
             String::from_utf8(written.lock().unwrap().clone()).unwrap(),
-            "@N;18,20,21,22,24,11,12,5\n",
+            "@N;18,20,21,22,24,11,12,5,19,23\n",
             "with no vehicle the radio is told so"
         );
         *ATTEMPT.lock().unwrap() = None;

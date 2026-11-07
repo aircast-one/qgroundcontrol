@@ -381,6 +381,8 @@ const IOS_HIDDEN: &[&str] = &[
     "usbRadioDropChannel",
     "usbRadioArmChannel",
     "usbRadioBayChannel",
+    "usbRadioTiltChannel",
+    "usbRadioLookChannel",
 ];
 
 fn user_visible(name: &str, ios: bool) -> bool {
@@ -795,6 +797,16 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
         "usbRadioBayChannel",
         "Payload bay channel",
     ),
+    (
+        "autoConnectSettings",
+        "usbRadioTiltChannel",
+        "Camera tilt knob channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioLookChannel",
+        "Camera look switch channel",
+    ),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     (
         "videoSettings",
@@ -1134,6 +1146,8 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
                     "usbRadioDropChannel",
                     "usbRadioArmChannel",
                     "usbRadioBayChannel",
+                    "usbRadioTiltChannel",
+                    "usbRadioLookChannel",
                 ],
             ),
         ],

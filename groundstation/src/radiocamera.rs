@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 const ARMED_PWM: u16 = 1750;
 const BAY_POSITIONS: f32 = 6.0;
-pub const LAYOUT_SETTINGS: [&str; 8] = [
+pub const LAYOUT_SETTINGS: [&str; 10] = [
     "settings.autoConnectSettings.usbRadioPitchChannel",
     "settings.autoConnectSettings.usbRadioYawChannel",
     "settings.autoConnectSettings.usbRadioZoomChannel",
@@ -14,7 +14,11 @@ pub const LAYOUT_SETTINGS: [&str; 8] = [
     "settings.autoConnectSettings.usbRadioDropChannel",
     "settings.autoConnectSettings.usbRadioArmChannel",
     "settings.autoConnectSettings.usbRadioBayChannel",
+    "settings.autoConnectSettings.usbRadioTiltChannel",
+    "settings.autoConnectSettings.usbRadioLookChannel",
 ];
+pub const LOOK_DOWN_PITCH: f32 = -90.0;
+pub const LOOK_AHEAD_PITCH: f32 = 0.0;
 pub const PICTURE_SETTING: &str = "IR_PIP";
 pub const PALETTE_SETTING: &str = "IR_PALETTE";
 pub const PICTURES: [u8; 3] = [0, 1, 3];
@@ -47,6 +51,8 @@ pub struct Layout {
     pub drop: usize,
     pub arm: usize,
     pub bay: usize,
+    pub tilt: usize,
+    pub look: usize,
 }
 
 pub const R2D2: Layout = Layout {
@@ -58,9 +64,11 @@ pub const R2D2: Layout = Layout {
     drop: 11,
     arm: 12,
     bay: 5,
+    tilt: 19,
+    look: 23,
 };
 
-const FUNCTION_NAMES: [&str; 8] = [
+const FUNCTION_NAMES: [&str; 10] = [
     "camera pitch",
     "camera yaw",
     "zoom",
@@ -69,6 +77,8 @@ const FUNCTION_NAMES: [&str; 8] = [
     "drop",
     "arm",
     "bay",
+    "tilt",
+    "look",
 ];
 
 pub fn clash_notice(channel: usize, names: &[&str]) -> String {
@@ -96,6 +106,8 @@ impl Layout {
             drop: off(self.drop),
             arm: off(self.arm),
             bay: off(self.bay),
+            tilt: off(self.tilt),
+            look: off(self.look),
         }
     }
 
@@ -108,7 +120,7 @@ impl Layout {
             .collect()
     }
 
-    pub fn channels(&self) -> [usize; 8] {
+    pub fn channels(&self) -> [usize; 10] {
         [
             self.pitch,
             self.yaw,
@@ -118,18 +130,30 @@ impl Layout {
             self.drop,
             self.arm,
             self.bay,
+            self.tilt,
+            self.look,
         ]
     }
 }
 
 pub fn layout() -> Layout {
-    let [pitch, yaw, zoom, picture, palette, drop, arm, bay] =
-        crate::settingsstore::raw_settings(LAYOUT_SETTINGS).map(|value| {
-            value
-                .as_u64()
-                .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
-                .map_or(0, |number| number as usize)
-        });
+    let [
+        pitch,
+        yaw,
+        zoom,
+        picture,
+        palette,
+        drop,
+        arm,
+        bay,
+        tilt,
+        look,
+    ] = crate::settingsstore::raw_settings(LAYOUT_SETTINGS).map(|value| {
+        value
+            .as_u64()
+            .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+            .map_or(0, |number| number as usize)
+    });
     Layout {
         pitch,
         yaw,
@@ -139,6 +163,8 @@ pub fn layout() -> Layout {
         drop,
         arm,
         bay,
+        tilt,
+        look,
     }
 }
 
@@ -208,12 +234,41 @@ impl Sticks {
                 .zip(self.acted.get(&channel))
                 .is_some_and(|(now, was)| now.abs_diff(*was) >= STEADY_PWM)
         };
-        let aimed = read(line, layout.pitch)
+        let travelled = |channel: usize| {
+            read(line, channel)
+                .zip(self.acted.get(&channel))
+                .map_or(0, |(now, was)| now.abs_diff(*was))
+        };
+        let pitch_source = if layout.pitch == 0 || travelled(layout.tilt) > travelled(layout.pitch)
+        {
+            layout.tilt
+        } else {
+            layout.pitch
+        };
+        let aimed = read(line, pitch_source)
             .zip(read(line, layout.yaw))
-            .filter(|_| ready.gimbal && due && (moved(layout.pitch) || moved(layout.yaw)))
+            .filter(|_| ready.gimbal && due && (moved(pitch_source) || moved(layout.yaw)))
             .map(|(pitch, yaw)| Move::Aim {
                 pitch: between(STICK_PITCH_RANGE, pitch),
                 yaw: between(yaw_limits, yaw),
+            });
+        let looked = read(line, layout.look)
+            .map(position)
+            .filter(|at| {
+                ready.gimbal
+                    && *at != 1
+                    && self
+                        .acted
+                        .get(&layout.look)
+                        .is_some_and(|was| position(*was) != *at)
+            })
+            .map(|at| Move::Aim {
+                pitch: if at == 2 {
+                    LOOK_DOWN_PITCH
+                } else {
+                    LOOK_AHEAD_PITCH
+                },
+                yaw: read(line, layout.yaw).map_or(0.0, |yaw| between(yaw_limits, yaw)),
             });
         let zoomed = read(line, layout.zoom)
             .filter(|_| ready.camera && due && moved(layout.zoom))
@@ -248,14 +303,19 @@ impl Sticks {
             layout.zoom,
             layout.picture,
             layout.palette,
+            layout.tilt,
+            layout.look,
         ]
         .into_iter()
         .filter(|channel| {
             !self.acted.contains_key(channel)
                 || match *channel {
-                    c if c == layout.pitch || c == layout.yaw => aimed.is_some(),
+                    c if c == layout.pitch || c == layout.yaw || c == layout.tilt => {
+                        aimed.is_some()
+                    }
                     c if c == layout.zoom => zoomed.is_some(),
                     c if c == layout.picture || c == layout.palette => ready.settings,
+                    c if c == layout.look => ready.gimbal,
                     _ => true,
                 }
         })
@@ -269,6 +329,7 @@ impl Sticks {
         }
         aimed
             .into_iter()
+            .chain(looked)
             .chain(zoomed)
             .chain(switched)
             .chain(palette.then_some(Move::NextPalette))
@@ -430,6 +491,8 @@ mod tests {
     const DROP_CHANNEL: usize = R2D2.drop;
     const ARM_CHANNEL: usize = R2D2.arm;
     const BAY_CHANNEL: usize = R2D2.bay;
+    const TILT_CHANNEL: usize = R2D2.tilt;
+    const LOOK_CHANNEL: usize = R2D2.look;
 
     const LIMITS: (f32, f32) = (-150.0, 150.0);
 
@@ -701,6 +764,108 @@ mod tests {
     }
 
     #[test]
+    fn the_tilt_knob_points_the_gimbal_like_the_pitch_slider_and_the_last_one_moved_wins() {
+        let mut sticks = Sticks::default();
+        assert!(
+            sticks
+                .step(&line(&[(TILT_CHANNEL, 1500)]), LIMITS, 0)
+                .is_empty(),
+            "the first line only records where the knob is"
+        );
+        assert_eq!(
+            sticks.step(&line(&[(TILT_CHANNEL, 988)]), LIMITS, 1000),
+            vec![Move::Aim {
+                pitch: -90.0,
+                yaw: 0.0
+            }],
+            "the knob at its bottom points straight down"
+        );
+        assert_eq!(
+            sticks.step(
+                &line(&[(TILT_CHANNEL, 988), (PITCH_CHANNEL, 2012)]),
+                LIMITS,
+                2000
+            ),
+            vec![Move::Aim {
+                pitch: 0.0,
+                yaw: 0.0
+            }],
+            "the slider moving afterwards takes the gimbal with it"
+        );
+        assert_eq!(
+            sticks.step(
+                &line(&[(TILT_CHANNEL, 1500), (PITCH_CHANNEL, 2012)]),
+                LIMITS,
+                3000
+            ),
+            vec![Move::Aim {
+                pitch: -45.0,
+                yaw: 0.0
+            }],
+            "and the knob moving again takes it back"
+        );
+    }
+
+    #[test]
+    fn the_look_switch_points_down_when_up_and_ahead_when_down_and_rests_in_the_middle() {
+        let mut sticks = Sticks::default();
+        assert!(
+            sticks
+                .step(
+                    &line(&[(LOOK_CHANNEL, 1500), (YAW_CHANNEL, 2012)]),
+                    LIMITS,
+                    0
+                )
+                .is_empty(),
+            "the first line only records the switch"
+        );
+        assert_eq!(
+            sticks.step(
+                &line(&[(LOOK_CHANNEL, 2012), (YAW_CHANNEL, 2012)]),
+                LIMITS,
+                1000
+            ),
+            vec![Move::Aim {
+                pitch: LOOK_DOWN_PITCH,
+                yaw: 150.0
+            }],
+            "up points straight down, at the yaw slider's heading"
+        );
+        assert!(
+            sticks
+                .step(
+                    &line(&[(LOOK_CHANNEL, 2012), (YAW_CHANNEL, 2012)]),
+                    LIMITS,
+                    2000
+                )
+                .is_empty(),
+            "holding the switch sends nothing more"
+        );
+        assert!(
+            sticks
+                .step(
+                    &line(&[(LOOK_CHANNEL, 1500), (YAW_CHANNEL, 2012)]),
+                    LIMITS,
+                    3000
+                )
+                .is_empty(),
+            "the middle position leaves the gimbal where it is"
+        );
+        assert_eq!(
+            sticks.step(
+                &line(&[(LOOK_CHANNEL, 988), (YAW_CHANNEL, 2012)]),
+                LIMITS,
+                4000
+            ),
+            vec![Move::Aim {
+                pitch: LOOK_AHEAD_PITCH,
+                yaw: 150.0
+            }],
+            "down points ahead"
+        );
+    }
+
+    #[test]
     fn camera_and_payload_channels_are_settings_with_the_r2d2_layout_as_default() {
         let moved = Layout {
             pitch: 13,
@@ -711,6 +876,8 @@ mod tests {
             drop: 0,
             arm: 0,
             bay: 0,
+            tilt: 0,
+            look: 0,
         };
         let mut sticks = Sticks {
             layout: moved,

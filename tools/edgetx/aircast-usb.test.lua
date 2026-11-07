@@ -11,7 +11,7 @@ getmetatable("").__index = nil
 
 local function radio(screen)
   local sent, drawn, pages, inserted = {}, {}, {}, {}
-  local controls = { sf = 105, se = 104, rs = 99, ls = 98, s2 = 97, sg = 106, sh = 107, sb = 101, ["6pos"] = 108 }
+  local controls = { sf = 105, se = 104, rs = 99, ls = 98, s2 = 97, sg = 106, sh = 107, sb = 101, ["6pos"] = 108, s1 = 96, sc = 103 }
   local clock, inbox, cable = 0, "", true
   local env = setmetatable({
     SMLSIZE = 0, MIDSIZE = 0, INVERS = 0,
@@ -98,44 +98,48 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
 end
 
 local full = radio({ w = 480, h = 272, mixes = 24 })
-full.hear("@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5\n")
+full.hear("@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5,19,23\n")
 full.script.run(0)
 assert(next(full.inserted) == nil, "a channel that already has a mix keeps it: nothing is added to a model mixing all 24")
 local fresh = radio({ w = 480, h = 272 })
 fresh.hear("@F,1\n")
 fresh.script.run(0)
-local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camREB", 99 }, [19] = { "camyaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 } }
+local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camREB", 99 }, [19] = { "camyaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 }, [18] = { "campit", 96 }, [22] = { "cam90", 103 } }
 for channel, mix in pairs(wanted) do
   local got = fresh.inserted[channel]
   assert(got and got.name == mix[1] and got.source == mix[2] and got.weight == 100, "an empty CH" .. (channel + 1) .. " gets the R2D2 " .. mix[1] .. " mix")
 end
 local count = 0
 for _ in pairs(fresh.inserted) do count = count + 1 end
-assert(count == 7, "an app that names no layout gets the R2D2 camera and payload channels, never the bay on CH5, which can be flight modes")
+assert(count == 9, "an app that names no layout gets the R2D2 camera and payload channels, S1 and SC included, never the bay on CH5, which can be flight modes")
 local moved = radio({ w = 480, h = 272 })
-moved.hear("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0\n")
+moved.hear("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0,0,0\n")
 moved.script.run(0)
 assert(moved.inserted[12] and moved.inserted[12].name == "camREB" and moved.inserted[12].source == 99, "the app's pitch channel gets the right slider")
 assert(moved.inserted[13] and moved.inserted[13].name == "camyaw" and moved.inserted[14] and moved.inserted[14].name == "zoom", "and its yaw and zoom channels the left slider and S2")
 count = 0
 for _ in pairs(moved.inserted) do count = count + 1 end
 assert(count == 3, "a function the app turned off (channel 0) is not set up anywhere")
+local older = radio({ w = 480, h = 272 })
+older.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+older.script.run(0)
+assert(not older.inserted[18] and not older.inserted[22], "an app naming only eight channels leaves S1 and SC alone, like any function its layout leaves out")
 local onScreen = radio({ w = 480, h = 272, lvgl = true })
-onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 onScreen.script.run(0)
 assert(shows(onScreen, string.format("CH%-2d %-5s %-6s %4d", 18, "src99", "camREB", 2012)), "a channel the script just set up appears on the screen")
 local his = radio({ w = 480, h = 272 })
-his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 his.script.run(0)
 assert(his.inserted[9] and his.inserted[9].name == "phold" and his.inserted[9].source == 101, "a drone reading flight modes on CH10 gets SB there, like the R2D2 model")
 assert(his.inserted[4] and his.inserted[4].source == 108, "and the six-position switch on CH5 picks the bay")
 local stock = radio({ w = 480, h = 272 })
-stock.hear("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0\n")
+stock.hear("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23\n")
 stock.script.run(0)
 assert(stock.inserted[4] and stock.inserted[4].name == "phold", "a drone reading flight modes on CH5 gets SB there and no bay switch")
 count = 0
 for _ in pairs(stock.inserted) do count = count + 1 end
-assert(count == 8, "the seven R2D2 functions and the flight mode switch")
+assert(count == 10, "the nine R2D2 functions and the flight mode switch")
 local short = radio({ w = 480, h = 272 })
 short.hear("@F,1,C,1,2,3,4;13\n")
 short.script.run(0)

@@ -83,7 +83,11 @@ local FUNCTIONS = {
   { "sh", "termty", 24 },
   { "sf", "skld", 11 },
   { "se", "BOMARM", 12 },
+  { "6pos", "", 5 },
+  { "s1", "campit", 19 },
+  { "sc", "cam90", 23 },
 }
+local BAY = 8
 local layoutSetUp = nil
 
 local function layoutFrom(line)
@@ -93,10 +97,11 @@ local function layoutFrom(line)
   for number in string.gmatch(tail or "", "(%d+)") do channels[#channels + 1] = tonumber(number) end
   local mixes = {}
   for at, wanted in ipairs(FUNCTIONS) do
-    mixes[at] = { wanted[1], wanted[2], tail and (channels[at] or 0) or wanted[3] }
+    local channel = tail and (channels[at] or 0) or wanted[3]
+    if at == BAY and modeChannel == 0 then channel = 0 end
+    mixes[at] = { wanted[1], wanted[2], channel }
   end
   if modeChannel > 0 then
-    mixes[#mixes + 1] = { "6pos", "", channels[#FUNCTIONS + 1] or 0 }
     mixes[#mixes + 1] = { "sb", "phold", modeChannel }
   end
   return mixes, (tail or "R2D2") .. "@" .. modeChannel
