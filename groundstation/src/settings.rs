@@ -376,6 +376,7 @@ const IOS_HIDDEN: &[&str] = &[
     "usbRadioStandby",
     "usbRadioPitchChannel",
     "usbRadioYawChannel",
+    "usbRadioYawSpeed",
     "usbRadioZoomChannel",
     "usbRadioPictureChannel",
     "usbRadioPaletteChannel",
@@ -384,6 +385,7 @@ const IOS_HIDDEN: &[&str] = &[
     "usbRadioBayChannel",
     "usbRadioTiltChannel",
     "usbRadioLookChannel",
+    "usbRadioLookReversed",
 ];
 
 fn user_visible(name: &str, ios: bool) -> bool {
@@ -780,6 +782,7 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
         "usbRadioYawChannel",
         "Camera yaw channel",
     ),
+    ("autoConnectSettings", "usbRadioYawSpeed", "Camera yaw speed"),
     (
         "autoConnectSettings",
         "usbRadioZoomChannel",
@@ -819,6 +822,11 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
         "autoConnectSettings",
         "usbRadioLookChannel",
         "Camera look switch channel",
+    ),
+    (
+        "autoConnectSettings",
+        "usbRadioLookReversed",
+        "Reverse the camera look switch",
     ),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     (
@@ -1154,6 +1162,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
                     "usbRadioStandby",
                     "usbRadioPitchChannel",
                     "usbRadioYawChannel",
+                    "usbRadioYawSpeed",
                     "usbRadioZoomChannel",
                     "usbRadioPictureChannel",
                     "usbRadioPaletteChannel",
@@ -1162,6 +1171,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
                     "usbRadioBayChannel",
                     "usbRadioTiltChannel",
                     "usbRadioLookChannel",
+                    "usbRadioLookReversed",
                 ],
             ),
         ],

@@ -112,6 +112,7 @@ pub const ORDER: &[(&str, &[&str])] = &[
             "usbRadioStandby",
             "usbRadioPitchChannel",
             "usbRadioYawChannel",
+            "usbRadioYawSpeed",
             "usbRadioZoomChannel",
             "usbRadioPictureChannel",
             "usbRadioPaletteChannel",
@@ -120,6 +121,7 @@ pub const ORDER: &[(&str, &[&str])] = &[
             "usbRadioBayChannel",
             "usbRadioTiltChannel",
             "usbRadioLookChannel",
+            "usbRadioLookReversed",
         ],
     ),
     (

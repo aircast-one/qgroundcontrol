@@ -108,10 +108,10 @@ assert(next(full.inserted) == nil, "a channel that already has a mix keeps it: n
 local fresh = radio({ w = 480, h = 272 })
 fresh.hear("@F,1\n")
 fresh.script.run(0)
-local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camREB", 99 }, [19] = { "camyaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 }, [18] = { "campit", 96 }, [22] = { "cam90", 103 } }
+local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camREB", 99 }, [19] = { "camyaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 }, [18] = { "campit", 96 }, [22] = { "cam90", 103, -100 } }
 for channel, mix in pairs(wanted) do
   local got = fresh.inserted[channel]
-  assert(got and got.name == mix[1] and got.source == mix[2] and got.weight == 100, "an empty CH" .. (channel + 1) .. " gets the R2D2 " .. mix[1] .. " mix")
+  assert(got and got.name == mix[1] and got.source == mix[2] and got.weight == (mix[3] or 100), "an empty CH" .. (channel + 1) .. " gets the R2D2 " .. mix[1] .. " mix, SC reversed so up reads high and looks ahead")
 end
 local count = 0
 for _ in pairs(fresh.inserted) do count = count + 1 end

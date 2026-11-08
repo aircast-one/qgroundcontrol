@@ -107,7 +107,7 @@ local FUNCTIONS = {
   { "se", "BOMARM", 12 },
   { "6pos", "", 5 },
   { "s1", "campit", 19 },
-  { "sc", "cam90", 23 },
+  { "sc", "cam90", 23, -100 },
 }
 local BAY = 8
 local layoutSetUp = nil
@@ -125,7 +125,7 @@ local function layoutFrom(line)
   for at, wanted in ipairs(FUNCTIONS) do
     local channel = tail and (channels[at] or 0) or wanted[3]
     if at == BAY and modeChannel == 0 then channel = 0 end
-    mixes[at] = { wanted[1], wanted[2], channel }
+    mixes[at] = { wanted[1], wanted[2], channel, wanted[4] }
   end
   if modeChannel > 0 then
     mixes[#mixes + 1] = { "sb", "phold", modeChannel }
@@ -148,7 +148,7 @@ local function setUpChannels(mixes, named)
     local channel = wanted[3] or 0
     local field = getFieldInfo(wanted[1])
     if channel >= 1 and channel <= CHANNEL_COUNT and field and not model.getMix(channel - 1, 0) then
-      model.insertMix(channel - 1, 0, { name = wanted[2], source = field.id, weight = 100 })
+      model.insertMix(channel - 1, 0, { name = wanted[2], source = field.id, weight = wanted[4] or 100 })
     end
   end
   readMixes()
@@ -302,7 +302,7 @@ local VALUE = {
   Pitch = degrees, Tilt = degrees, Zoom = share, ["stick Thr"] = share,
   Picture = function(v) return v < -512 and "Day" or v > 512 and "IR" or "PiP" end,
   Palette = function(v) return v > 0 and "next" or "-" end,
-  Look = function(v) return v > 512 and "down" or v < -512 and "ahead" or "-" end,
+  Look = function(v) return v > 512 and "ahead" or v < -512 and "down" or "-" end,
   Arm = function(v) return v > 512 and "ARMED" or "safe" end,
   Drop = function(v) return v > 512 and "DROP" or "-" end,
   Bay = function(v) return "bay " .. (math.floor((v + 1024) * 5 / 2048 + 0.5) + 1) end,

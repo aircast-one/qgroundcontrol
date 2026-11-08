@@ -102,12 +102,23 @@
         {
             "name": "usbRadioYawChannel",
             "shortDesc": "Camera yaw channel",
-            "longDesc": "The radio channel that turns the camera across the gimbal's yaw limits. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "longDesc": "The radio channel that turns the camera left and right: off its centre the camera keeps turning, faster the further over, and back in the centre it stops. The radio's script sets an empty channel up for it. 0 turns it off.",
             "type": "uint8",
             "min": 0,
             "max": 24,
             "default": 20,
             "label": "Camera yaw channel"
+        },
+        {
+            "name": "usbRadioYawSpeed",
+            "shortDesc": "Camera yaw speed",
+            "longDesc": "How fast the yaw channel turns the camera with its slider all the way over. Halfway over turns it at half this speed.",
+            "type": "uint8",
+            "min": 1,
+            "max": 180,
+            "default": 20,
+            "units": "deg/s",
+            "label": "Camera yaw speed"
         },
         {
             "name": "usbRadioZoomChannel",
@@ -182,12 +193,20 @@
         {
             "name": "usbRadioLookChannel",
             "shortDesc": "Camera look switch channel",
-            "longDesc": "A three-position switch: up points the camera straight down, down points it ahead, the middle leaves it where it is. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "longDesc": "A three-position switch: its high end points the camera ahead and undoes every turn, its low end points it straight down, the middle leaves it where it is. The radio's script sets an empty channel up for it. 0 turns it off.",
             "type": "uint8",
             "min": 0,
             "max": 24,
             "default": 23,
             "label": "Camera look switch channel"
+        },
+        {
+            "name": "usbRadioLookReversed",
+            "shortDesc": "Reverse the camera look switch",
+            "longDesc": "Swaps the look switch's ends: its low end points the camera ahead and its high end straight down.",
+            "type": "bool",
+            "default": false,
+            "label": "Reverse the camera look switch"
         },
         {
             "name": "autoConnectZeroConf",
