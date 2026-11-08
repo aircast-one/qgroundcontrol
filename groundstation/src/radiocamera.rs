@@ -195,6 +195,7 @@ pub struct Sticks {
     drop_before: Option<u16>,
     bay_before: Option<u16>,
     arm_before: Option<u16>,
+    pitch_hold: Option<f32>,
     pub layout: Layout,
     pub bay: i64,
     pub ready: Ready,
@@ -248,11 +249,16 @@ impl Sticks {
         } else {
             layout.pitch
         };
+        let pitch_hold = self.pitch_hold;
         let aimed = read(line, pitch_source)
             .zip(read(line, layout.yaw))
             .filter(|_| ready.gimbal && due && (moved(pitch_source) || moved(layout.yaw)))
             .map(|(pitch, yaw)| Move::Aim {
-                pitch: between(STICK_PITCH_RANGE, pitch),
+                pitch: if moved(pitch_source) {
+                    between(STICK_PITCH_RANGE, pitch)
+                } else {
+                    pitch_hold.unwrap_or(between(STICK_PITCH_RANGE, pitch))
+                },
                 yaw: between(yaw_limits, yaw),
             });
         let looked = read(line, layout.look)
@@ -273,6 +279,9 @@ impl Sticks {
                 },
                 yaw: read(line, layout.yaw).map_or(0.0, |yaw| between(yaw_limits, yaw)),
             });
+        if let Some(Move::Aim { pitch, .. }) = looked.or(aimed) {
+            self.pitch_hold = Some(pitch);
+        }
         let zoomed = read(line, layout.zoom)
             .filter(|_| ready.camera && due && moved(layout.zoom))
             .map(|zoom| Move::Zoom(between((0.0, 100.0), zoom)));
@@ -365,6 +374,7 @@ static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
     drop_before: None,
     bay_before: None,
     arm_before: None,
+    pitch_hold: None,
     layout: R2D2,
     bay: 1,
     ready: ALL_READY,
@@ -1001,6 +1011,64 @@ mod tests {
                 yaw: 150.0
             }],
             "down points ahead"
+        );
+    }
+
+    #[test]
+    fn a_yaw_move_after_look_ahead_keeps_the_camera_level() {
+        let mut sticks = Sticks::default();
+        let rest = [
+            (LOOK_CHANNEL, 1500),
+            (PITCH_CHANNEL, 1500),
+            (YAW_CHANNEL, 1500),
+        ];
+        assert!(sticks.step(&line(&rest), LIMITS, 0).is_empty());
+        assert_eq!(
+            sticks.step(
+                &line(&[
+                    (LOOK_CHANNEL, 988),
+                    (PITCH_CHANNEL, 1500),
+                    (YAW_CHANNEL, 1500)
+                ]),
+                LIMITS,
+                1000
+            ),
+            vec![Move::Aim {
+                pitch: LOOK_AHEAD_PITCH,
+                yaw: 0.0
+            }]
+        );
+        assert_eq!(
+            sticks.step(
+                &line(&[
+                    (LOOK_CHANNEL, 988),
+                    (PITCH_CHANNEL, 1500),
+                    (YAW_CHANNEL, 2012)
+                ]),
+                LIMITS,
+                2000
+            ),
+            vec![Move::Aim {
+                pitch: LOOK_AHEAD_PITCH,
+                yaw: 150.0
+            }],
+            "turning the yaw slider keeps the pitch Look chose, not the pitch slider's -45"
+        );
+        assert_eq!(
+            sticks.step(
+                &line(&[
+                    (LOOK_CHANNEL, 988),
+                    (PITCH_CHANNEL, 988),
+                    (YAW_CHANNEL, 2012)
+                ]),
+                LIMITS,
+                3000
+            ),
+            vec![Move::Aim {
+                pitch: -90.0,
+                yaw: 150.0
+            }],
+            "the pitch slider moving takes the pitch back"
         );
     }
 
