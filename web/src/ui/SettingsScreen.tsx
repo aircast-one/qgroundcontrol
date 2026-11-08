@@ -689,11 +689,18 @@ const SettingsControls = ({
               <Fragment key={index}>
                 {blockHeadings && notBlank(heading) ? <SectionHeader text={sentenceCase(heading)} /> : null}
                 <SettingsCard>
-                  <FactRuns facts={block.facts} onWrite={onWrite} />
+                  {block.title === USB_RADIO_BLOCK ? (
+                    <>
+                      <FactRuns facts={block.facts.slice(0, 1)} onWrite={onWrite} />
+                      <UsbAccess />
+                      <FactRuns facts={block.facts.slice(1)} onWrite={onWrite} />
+                    </>
+                  ) : (
+                    <FactRuns facts={block.facts} onWrite={onWrite} />
+                  )}
                   {page.showsNtrip && block.title === NTRIP_MOUNTPOINT_BLOCK ? <NtripMountpointBrowser onWrite={onWrite} /> : null}
                   {section.group === REMOTE_ID_GROUP && block.title === GCS_LOCATION_BLOCK ? <GcsPositionStatus /> : null}
                   {section.group === MAVLINK_GROUP && block.title === SIGNING_AFTER_BLOCK ? <SigningKeysSection /> : null}
-                  {block.title === USB_RADIO_BLOCK ? <UsbAccess /> : null}
                 </SettingsCard>
               </Fragment>
             );
