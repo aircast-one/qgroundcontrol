@@ -453,7 +453,6 @@ void GStreamerTest::_testSetCodecPrioritiesSoftware()
 void GStreamerTest::_testSetCodecPrioritiesDefaultLeavesVideoToolboxBelowSoftware()
 {
 #ifdef Q_OS_MACOS
-    GStreamer::setCodecPriorities(GStreamer::ForceVideoDecoderDefault);
     GstElementFactory* vtdec = gst_element_factory_find("vtdec_hw");
     GstElementFactory* avdec = gst_element_factory_find("avdec_h265");
     if (!vtdec || !avdec) {
@@ -461,6 +460,9 @@ void GStreamerTest::_testSetCodecPrioritiesDefaultLeavesVideoToolboxBelowSoftwar
         gst_clear_object(&avdec);
         QSKIP("vtdec_hw/avdec_h265 unavailable");
     }
+    gst_plugin_feature_set_rank(GST_PLUGIN_FEATURE(vtdec), GST_RANK_PRIMARY + 1);
+    gst_plugin_feature_set_rank(GST_PLUGIN_FEATURE(avdec), GST_RANK_PRIMARY);
+    GStreamer::setCodecPriorities(GStreamer::ForceVideoDecoderDefault);
     const guint vtdecRank = gst_plugin_feature_get_rank(GST_PLUGIN_FEATURE(vtdec));
     const guint avdecRank = gst_plugin_feature_get_rank(GST_PLUGIN_FEATURE(avdec));
     gst_object_unref(vtdec);
