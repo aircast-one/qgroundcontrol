@@ -20,7 +20,7 @@ local function radio(screen)
     getTime = function() return clock end,
     getOutputValue = function(index) return ({ [0] = -1024, [1] = 1024, [3] = -512, [10] = -1024, [17] = 1024 })[index] or 0 end,
     getValue = function() return 8.3 end,
-    getSourceName = function(source) return "src" .. source end,
+    getSourceName = function(source) return screen.stickSources and ({ [0] = "\200Ail", [1] = "\200Ele", [2] = "\200Thr", [3] = "\200Rud" })[source] or ("src" .. source) end,
     getFieldInfo = (not screen.noInsert) and function(name) return controls[name] and { id = controls[name] } end or nil,
     setSerialBaudrate = function(baud) assert(baud == 115200) end,
     serialWrite = function(data) sent[#sent + 1] = data end,
@@ -166,7 +166,7 @@ told.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Loiter,AltHold
 told.script.run(0)
 assert(shows(told, "REFUSED"), "the arm row shows the app's verdict, not the switch")
 assert(shows(told, "RTL"), "the mode row names the flight mode the switch position selects: 1500 us is ArduPilot position 4")
-assert(shows(told, "CH1 m0"), "a stick row keeps its mix name beside the role")
+assert(shows(told, "CH1 src0"), "a stick row keeps its control beside the role")
 told.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|safe|\n")
 told.script.run(0)
 assert(shows(told, "safe") and shows(told, "mid"), "without mode names the switch position is shown")
@@ -227,7 +227,10 @@ assert(shows(small, "Roll") and shows(small, "Pitc"), "the small screen shows th
 local colourLabels = radio({ w = 480, h = 320, lvgl = true })
 colourLabels.hear("@F,1,C,1,2,3,4\n")
 colourLabels.script.run(0)
-assert(shows(colourLabels, "Roll") and shows(colourLabels, "CH1 m0") and shows(colourLabels, "-100%"), "an LVGL radio names its rows by their role and keeps the mix name beside it")
+assert(shows(colourLabels, "Roll") and shows(colourLabels, "CH1 src0") and shows(colourLabels, "-100%"), "an LVGL radio names its rows by their role")
+local sticks = radio({ w = 480, h = 272, lvgl = true, stickSources = true })
+sticks.script.run(0)
+assert(shows(sticks, "Roll") and shows(sticks, "Pitch") and shows(sticks, "Thr") and shows(sticks, "Yaw"), "before the app speaks, a stick's row is named by the stick that feeds it, never by the model's mix name")
 
 local quiet = radio({ w = 480, h = 272 })
 quiet.script.run(0)

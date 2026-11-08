@@ -265,9 +265,15 @@ local function shownName(i)
   return name ~= "" and name or layoutNames[i] or ""
 end
 
+local STICKS = { Ail = "Roll", Ele = "Pitch", Thr = "Thr", Rud = "Yaw" }
+
+local function stickName(i)
+  return STICKS[string.match(mixesInfo[i].src, "(%a+)$") or ""]
+end
+
 local function functionName(i)
   local name = shownName(i)
-  return role(i) or FRIENDLY[name] or (name ~= "" and name or mixesInfo[i].src)
+  return role(i) or stickName(i) or FRIENDLY[name] or (name ~= "" and name or mixesInfo[i].src)
 end
 
 local GROUP = {
@@ -276,7 +282,7 @@ local GROUP = {
 }
 
 local function groupOf(i)
-  if role(i) or i <= 4 then return "flight" end
+  if role(i) or stickName(i) or i <= 4 then return "flight" end
   return GROUP[FRIENDLY[shownName(i)] or ""] or "other"
 end
 
@@ -510,7 +516,7 @@ local function buildLvglUI()
       text = function() return functionName(i) end,
     })
     pg:label({ x = colBase + LVGL_META_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
-      text = function() return "CH" .. i .. " " .. ((role(i) and mixesInfo[i].name ~= "") and mixesInfo[i].name or mixesInfo[i].src) end,
+      text = "CH" .. i .. " " .. mixesInfo[i].src,
     })
     pg:rectangle({ x = colBase + LVGL_BAR_X, y = barY, w = LVGL_BAR_W, h = LVGL_BAR_H, filled = true, rounded = 4,
       color = color.track,
