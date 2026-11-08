@@ -7,6 +7,7 @@ import { md } from '@/theme/Colors';
 export const USB_RADIO_BLOCK = 'Radio on USB (EdgeTX script)';
 export const USB_RADIO_PORT = 'settings.autoConnectSettings.usbRadioPort';
 export const CHROME_INSECURE_ORIGIN_FLAG = 'chrome://flags/#unsafely-treat-insecure-origin-as-secure';
+export const OPEN_OVER_HTTPS = 'Open over https to use USB…';
 
 const DEVICE_TLS = '/api/tls';
 const PROBE_MS = 2000;
@@ -50,11 +51,15 @@ const trustedOrigin = async (): Promise<string | null> => {
   return firstAnswered(origins, await Promise.all(origins.map(answers)));
 };
 
+export const openOverHttps = async (): Promise<void> => {
+  window.location.assign(securePage(window.location.href, await trustedOrigin()));
+};
+
 const OpenOverHttps = () => {
   const [opening, setOpening] = useState(false);
   const open = async () => {
     setOpening(true);
-    window.location.assign(securePage(window.location.href, await trustedOrigin()));
+    await openOverHttps();
   };
   return (
     <div className="px-1 py-1">

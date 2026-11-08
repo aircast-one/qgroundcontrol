@@ -46,7 +46,7 @@ import { AppLogPage } from '@/ui/AppLogPage';
 import { PilotSettings, SensorChecks, pilotSearchHits, pilotWorded } from '@/ui/PilotSettings';
 import { GENERAL_PAGE, ResetAllSettingsRow } from '@/ui/ResetAllSettings';
 import { UnitsSection, unitSystemLabel } from '@/ui/UnitsSection';
-import { USB_RADIO_BLOCK, UsbAccess } from '@/ui/UsbAccess';
+import { OPEN_OVER_HTTPS, USB_RADIO_BLOCK, UsbAccess, openOverHttps } from '@/ui/UsbAccess';
 
 const SETTINGS_VIEW = 'view.settings';
 const SEARCH_SETTLE_MS = 250;
@@ -1184,10 +1184,13 @@ const toLongOrNull = (text: string): number | null => (/^[+-]?\d+$/.test(text) ?
 
 export const ALLOW_USB_PORT = 'Allow a USB port…';
 
-export const choiceOptions = (fact: Fact, webSerial: boolean): readonly string[] => [...fact.enumStrings.map(sentenceCase), ...(fact.portChoice && webSerial ? [ALLOW_USB_PORT] : [])];
+const portExtras = (webSerial: boolean, secure: boolean): readonly string[] => (webSerial ? [ALLOW_USB_PORT] : secure ? [] : [OPEN_OVER_HTTPS]);
+
+export const choiceOptions = (fact: Fact, webSerial: boolean, secure = true): readonly string[] => [...fact.enumStrings.map(sentenceCase), ...(fact.portChoice ? portExtras(webSerial, secure) : [])];
 
 const EnumField = ({ fact, style, write }: { fact: Fact; style: CSSProperties; write: (block: () => Promise<boolean>) => void }) => {
   const notice = useContext(LocalChangeNotice);
+  const options = choiceOptions(fact, serialAvailable(), window.isSecureContext);
   const choose = (index: number): Promise<boolean> => {
     const raw = fact.enumValues[index];
     const rawChoice = fact.rawChoice && raw !== undefined ? toLongOrNull(raw) : null;
@@ -1197,11 +1200,15 @@ const EnumField = ({ fact, style, write }: { fact: Fact; style: CSSProperties; w
     <ChoiceField
       label={null}
       value={shownEnumLabel(fact)}
-      options={choiceOptions(fact, serialAvailable())}
+      options={options}
       style={style}
       enabled={fact.enabled}
       groups={fact.enumGroups}
       onPick={(index) => {
+        if (options[index] === OPEN_OVER_HTTPS) {
+          void openOverHttps();
+          return;
+        }
         if (index >= fact.enumStrings.length) {
           write(() => requestSerialPort().then(() => true, () => false));
           return;

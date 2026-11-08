@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { OPEN_OVER_HTTPS } from './UsbAccess';
 import { makeFact } from '@/bridge/Qgc';
 import type { Json } from '@/bridge/Json';
 import { PRIVACY_POLICY_LINK, aboutLinks } from '@/ui/AboutPage';
@@ -98,7 +99,9 @@ describe('SettingsGroupsTest', () => {
     const port = makeFact({ path: 'settings.autoConnectSettings.usbRadioPort', name: 'usbRadioPort', description: 'Device', units: '', valueString: '', value: '', enumStrings: ['Off', 'EdgeTX radio (webserial-0)'], enumIndex: 0, isBool: false, isString: true, readOnly: false, portChoice: true });
     expect(choiceOptions(port, true)).toEqual(['Off', 'EdgeTX radio (webserial-0)', ALLOW_USB_PORT]);
     expect(choiceOptions(port, false)).toEqual(['Off', 'EdgeTX radio (webserial-0)']);
+    expect(choiceOptions(port, false, false)).toEqual(['Off', 'EdgeTX radio (webserial-0)', OPEN_OVER_HTTPS]);
     expect(choiceOptions({ ...port, portChoice: false }, true)).toEqual(['Off', 'EdgeTX radio (webserial-0)']);
+    expect(choiceOptions({ ...port, portChoice: false }, false, false)).toEqual(['Off', 'EdgeTX radio (webserial-0)']);
   });
 
   it('borrowedBlocksAreHeadedByTheirOwnNames', () => {
