@@ -63,7 +63,7 @@ public sealed class StatusStrip : UserControl
     private readonly StatusPill _rc = StatusLook.Pill("RC signal", "");
     private readonly StatusPill _override = StatusLook.Pill("RC override", "");
     private readonly StatusPill _telemetry = StatusLook.Pill("Telemetry RSSI", "");
-    private readonly StatusPill _aircastLink = StatusLook.Pill("Cellular link", "");
+    private readonly StatusPill _aircastLink = StatusLook.Pill("Aircraft link", "");
     private readonly StatusPill _esc = StatusLook.Pill("ESC status", "");
     private readonly StatusPill _joystick = StatusLook.Pill("Joystick", "");
     private readonly StatusPill _remoteId = StatusLook.Pill("Remote ID", "");
@@ -110,7 +110,7 @@ public sealed class StatusStrip : UserControl
         var resilienceSheet = new Sheet("GPS resilience", ResilienceBody);
         var rtkSheet = new Sheet("RTK GPS Status", RtkBody, RtkSettings, closed: ForgetBase, refreshed: PaintBase);
         _rtkSettingsSheet = new Sheet("RTK GPS settings", () => null, RtkSettings, closed: ForgetBase, refreshed: PaintBase);
-        var aircastSheet = new Sheet("Cellular link", AircastBody);
+        var aircastSheet = new Sheet("Aircraft link", AircastBody);
         var joystickSheet = new Sheet("Joystick", JoystickBody);
         var gcsSheet = new Sheet("Ground Station", GcsBody);
         _sheets = [_batterySheet, _gpsSheet, _linksSheet, _offlineSheet, _rtkSettingsSheet, rcSheet, telemetrySheet, escSheet, _remoteIdSheet, resilienceSheet, rtkSheet, aircastSheet, joystickSheet, gcsSheet];
@@ -149,7 +149,7 @@ public sealed class StatusStrip : UserControl
             new(StatusKeys.Rc, "RC signal", _rc.Button, true),
             new(StatusKeys.RcOverride, "RC override", _override.Button, true),
             new(StatusKeys.Telemetry, "Telemetry RSSI", _telemetry.Button, true),
-            new(StatusKeys.AircastLink, "Cellular link", _aircastLink.Button, true),
+            new(StatusKeys.AircastLink, "Aircraft link", _aircastLink.Button, true),
             new(StatusKeys.Esc, "ESC status", _esc.Button, true),
             new(StatusKeys.Joystick, "Joystick", _joystick.Button, true),
             new(StatusKeys.UsbRadio, "USB radio", owner is null ? new UsbRadioCell() : _usbPill.Button, false),
@@ -568,11 +568,20 @@ public sealed class StatusStrip : UserControl
 
     private UIElement? AircastBody() => AircastLink.Parse(View(AircastLinkPath)) is not AircastLink link ? null : Ui.Column(
     [
-        StatusLook.Pairs([("Signal:", link.SignalText), ("Network:", link.Network), ("Modem:", link.Modem), ("Video bitrate:", link.BitrateText)]),
+        StatusLook.Pairs(new (string, string)?[]
+        {
+            link.Uplink is null ? null : ("Uplink:", link.UplinkText),
+            ("Signal:", link.SignalText), ("Network:", link.Network), ("Modem:", link.Modem), ("Video bitrate:", link.BitrateText),
+        }.OfType<(string, string)>()),
         Ui.Caption("Signal, up to the last hour"),
         StatusLook.Sparkline(link.QualityHistory, AircastLink.SignalMaximum),
         Ui.Caption("Video bitrate, up to the last hour"),
         StatusLook.Sparkline(link.BitrateHistory, 0),
+        .. link.Switches.Count == 0 ? [] : new UIElement[]
+        {
+            StatusLook.Heading("Switches"),
+            Ui.Column(link.Switches.Select(s => Ui.Line([Ui.Text(s.Clock, brush: "TextSecondaryBrush"), Ui.Text($"{s.From} → {s.To}")], 12)), 4),
+        },
     ], 6);
 
     private UIElement? JoystickBody() => JoystickBadge.Parse(View(JoystickPath)) is not JoystickBadge badge ? null : Ui.Column(

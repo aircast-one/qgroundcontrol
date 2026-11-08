@@ -97,7 +97,15 @@ internal sealed class NetworkScreen : DeviceScreen
         }
         .Concat(DJ.Objs(uplink, "failover").Select(row => (Node?)Kit.Fact(DJ.Text(row, "label"), DJ.Badge(row, "status").Text, DJ.Badge(row, "status").Level)))
         .Append(Kit.Text(DJ.Text(uplink, "switch")))
+        .Append(SwitchHistory(DJ.Objs(uplink, "switches")))
         .Append(Kit.Text(DJ.Text(uplink, "backup"))));
+
+    private static Node? SwitchHistory(IReadOnlyList<JsonObject> switches) => switches.Count < 2 ? null :
+        Kit.Disclosure("Switch history", $"{switches.Count} switches", null, false, () => switches.Select(row => (Node?)DeviceTree.Leaf(
+            $"uplink-switch:{DJ.Text(row, "at")}|{DJ.Text(row, "from")}|{DJ.Text(row, "to")}", DJ.Sig(DJ.Text(row, "ago"), DJ.Text(row, "reason")), () => FormLook.Row(
+                FormLook.Text($"{DJ.Text(row, "from")} → {DJ.Text(row, "to")}"),
+                FormLook.Caption(DJ.Text(row, "ago")),
+                DJ.Text(row, "reason") is { Length: > 0 } reason ? FormLook.Caption(reason) : null))));
 
     private static Node Modem(DeviceContext ctx, JsonObject modem)
     {

@@ -655,7 +655,10 @@ internal sealed record RtkStatus(bool Active, bool Valid, int? Satellites, doubl
             : null;
 }
 
-internal sealed record AircastLink(string QualityText, string SignalText, string Network, string Modem, string BitrateText, IReadOnlyList<double> QualityHistory, IReadOnlyList<double> BitrateHistory)
+internal sealed record UplinkSwitch(string Clock, string From, string To);
+
+internal sealed record AircastLink(string QualityText, string SignalText, string Network, string Modem, string BitrateText, IReadOnlyList<double> QualityHistory, IReadOnlyList<double> BitrateHistory,
+    string? Uplink, string UplinkText, string LinkText, IReadOnlyList<UplinkSwitch> Switches)
 {
     public const double SignalMaximum = 100;
 
@@ -668,10 +671,16 @@ internal sealed record AircastLink(string QualityText, string SignalText, string
                 StatusJson.Text(view["modem"]),
                 StatusJson.Text(view["bitrateText"]),
                 StatusJson.Numbers(view["qualityHistory"]),
-                StatusJson.Numbers(view["bitrateHistory"]))
+                StatusJson.Numbers(view["bitrateHistory"]),
+                StatusJson.Text(view["uplink"]) is { Length: > 0 } uplink ? uplink : null,
+                StatusJson.Text(view["uplinkText"]),
+                StatusJson.Text(view["cellText"]),
+                StatusJson.Objects(view["switches"])
+                    .Select(s => new UplinkSwitch(StatusJson.Text(s["clock"]), StatusJson.Text(s["from"]), StatusJson.Text(s["to"])))
+                    .ToList())
             : null;
 
-    public string CellText => $"{QualityText} {BitrateText}";
+    public string CellText => string.Join(' ', new[] { LinkText.Length > 0 ? LinkText : QualityText, BitrateText }.Where(part => part.Length > 0));
 
     public static IReadOnlyList<IReadOnlyList<(double X, double Y)>> SparkRuns(IReadOnlyList<double> values, double maximum)
     {
