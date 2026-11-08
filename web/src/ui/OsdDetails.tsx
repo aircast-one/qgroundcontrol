@@ -29,7 +29,7 @@ export type OsdDetailsInput = {
 const EKF_RATIOS = ['velRatio', 'horizPosRatio', 'vertPosRatio', 'magRatio', 'haglRatio', 'tasRatio'] as const;
 const EKF_WARNING = 0.5;
 const EKF_DANGER = 0.8;
-const ICON_SIZE = 14;
+const ICON_SIZE = 20;
 
 const detail = (label: string, value: string, tone: Tone = null): OsdDetail[] => (value.trim() === '' ? [] : [{ label, value, tone }]);
 
@@ -97,16 +97,16 @@ export const OsdDetails = () => {
     radio: usbRadioBadge(useQgcPath(USB_RADIO_VIEW)),
   });
   return (
-    <div data-osd-details className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-5 gap-y-1">
+    <div data-osd-details className="osd-shadow flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-6 gap-y-1">
       {lines.map((line) => (
-        <div key={line.icon} className="flex items-center gap-2 whitespace-nowrap">
+        <div key={line.icon} className="flex items-center gap-3 whitespace-nowrap">
           <Drawable name={line.icon} size={ICON_SIZE} style={{ color: toneColour(worstTone(line.details)) }} />
           {line.details.map((it) => (
             <div key={it.label} className="flex items-baseline gap-1">
-              <Text typography="labelSmall" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
+              <Text typography="labelLarge" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
                 {it.label}
               </Text>
-              <Text typography="labelLarge" className="tabular-nums" color={toneColour(it.tone)} maxLines={1}>
+              <Text typography="titleLarge" className="tabular-nums" color={toneColour(it.tone)} maxLines={1}>
                 {it.value}
               </Text>
             </div>

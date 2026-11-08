@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@fontsource-variable/roboto";
 @import "./AircastTokens.css";
+@source inline("text-{display,headline,title,body,label}-{large,medium,small} text-telemetry text-telemetry-medium");
 
 @font-face {
   font-family: "Material Symbols Rounded";
