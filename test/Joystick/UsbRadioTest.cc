@@ -94,8 +94,8 @@ void UsbRadioTest::_radioLearnsTheVehicleKindAndItsStickChannels_test()
 
 void UsbRadioTest::_radioHearsThePayloadStateAndTheFlightModeNames_test()
 {
-    const QStringList copter{QStringLiteral("Loiter"), QStringLiteral("Alt Hold"), QStringLiteral("PosHold"),
-                             QStringLiteral("RTL"),    QStringLiteral("Auto"),     QStringLiteral("Land")};
+    const QStringList copter{QStringLiteral("Loiter"), QStringLiteral("Altitude Hold"), QStringLiteral("Position Hold"),
+                             QStringLiteral("RTL"),    QStringLiteral("Auto"),          QStringLiteral("Land")};
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Safe, copter),
              QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|safe|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Armed, copter),
@@ -113,7 +113,7 @@ void UsbRadioTest::_radioHearsThePayloadStateAndTheFlightModeNames_test()
     const QByteArray capped = echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Refused, plane);
     QVERIFY(capped.size() < kMaxEchoBytes);
     QCOMPARE(capped,
-             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,Altitud,Positio,SmartRT,"
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,AltHold,PosHold,SmartRT,"
                         "Auto\n"));
     QVERIFY2(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Safe, plane).endsWith("Auto,Land\n"),
              "a shorter payload word leaves room for every mode");

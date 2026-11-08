@@ -286,11 +286,40 @@ QByteArray layoutTail(const Layout& layout)
     });
 }
 
+constexpr std::array<std::pair<const char*, const char*>, 19> kArduPilotShortNames{
+    {{"Altitude Hold", "AltHold"},
+     {"Position Hold", "PosHold"},
+     {"Smart RTL", "SmartRTL"},
+     {"Flow Hold", "FlowHold"},
+     {"Auto RTL", "AutoRTL"},
+     {"Guided No GPS", "GuidedNoGPS"},
+     {"Avoid ADSB", "Avoid_ADSB"},
+     {"Depth Hold", "AltHold"},
+     {"Motor Detection", "MotorDetect"},
+     {"FBW A", "FBWA"},
+     {"FBW B", "FBWB"},
+     {"Loiter to QLand", "LoiterToQLand"},
+     {"QuadPlane Stabilize", "QStabilize"},
+     {"QuadPlane Hover", "QHover"},
+     {"QuadPlane Loiter", "QLoiter"},
+     {"QuadPlane Land", "QLand"},
+     {"QuadPlane RTL", "QRTL"},
+     {"QuadPlane AutoTune", "QAutoTune"},
+     {"QuadPlane Acro", "QAcro"}}};
+
+QString shortName(const QString& mode)
+{
+    const auto known = std::ranges::find_if(kArduPilotShortNames,
+                                            [&mode](const auto& pair) { return mode == QLatin1String(pair.first); });
+    const QString named = known == kArduPilotShortNames.end() ? mode : QString::fromLatin1(known->second);
+    return QString(named).remove(' ').left(kModeNameChars);
+}
+
 QByteArray modesTail(qsizetype room, const QStringList& modes)
 {
-    const QStringList shortened = std::accumulate(
-        modes.cbegin(), modes.cend(), QStringList{},
-        [](QStringList kept, const QString& mode) { return kept << QString(mode).remove(' ').left(kModeNameChars); });
+    const QStringList shortened =
+        std::accumulate(modes.cbegin(), modes.cend(), QStringList{},
+                        [](QStringList kept, const QString& mode) { return kept << shortName(mode); });
     const auto joined = [&shortened](int count) { return shortened.mid(0, count).join(',').toLatin1(); };
     const auto counts = std::views::iota(0, static_cast<int>(shortened.size()) + 1) | std::views::reverse;
     const auto fits = [&joined, room](int count) { return joined(count).size() <= std::max<qsizetype>(room, 0); };
