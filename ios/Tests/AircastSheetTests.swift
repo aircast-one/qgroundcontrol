@@ -77,4 +77,24 @@ final class AircastSheetTests: XCTestCase {
         XCTAssertEqual(appAlert(false, [message]), .Message(message))
         XCTAssertNil(appAlert(false, []))
     }
+
+    #if os(macOS)
+    func testAClickBehindTheTopSheetIsTheOnlyOneThatClosesIt() {
+        let window = { NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false) }
+        let root = window()
+        let sheet = window()
+        let nested = window()
+        root.orderFront(nil)
+        root.beginSheet(sheet)
+        XCTAssertTrue(clickedBehind(sheet, root.windowNumber))
+        XCTAssertFalse(clickedBehind(sheet, sheet.windowNumber), "a click on the sheet itself")
+        sheet.beginSheet(nested)
+        XCTAssertFalse(clickedBehind(sheet, root.windowNumber), "a sheet under another sheet stays")
+        XCTAssertTrue(clickedBehind(nested, sheet.windowNumber))
+        XCTAssertFalse(clickedBehind(nil, root.windowNumber))
+        sheet.endSheet(nested)
+        root.endSheet(sheet)
+        root.orderOut(nil)
+    }
+    #endif
 }

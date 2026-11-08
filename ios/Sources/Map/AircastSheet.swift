@@ -203,8 +203,39 @@ private struct SheetBody<Content: View>: View {
             .presentationBackground(theme.colors.surfaceContainerLow)
             .statusBarHidden(immersive)
             .persistentSystemOverlays(immersive ? .hidden : .automatic)
+            #if os(macOS)
+            .modifier(DismissOnOutsideClick())
+            #endif
     }
 }
+
+#if os(macOS)
+private struct DismissOnOutsideClick: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    @State private var probe = PresenterProbe()
+    @State private var monitor: Any?
+
+    func body(content: Content) -> some View {
+        content
+            .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
+            .onAppear {
+                monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [probe, dismiss] event in
+                    let clicked = event.windowNumber
+                    let behind = MainActor.assumeIsolated { clickedBehind(probe.presenter, clicked) }
+                    if behind { dismiss() }
+                    return behind ? nil : event
+                }
+            }
+            .onDisappear { monitor.map(NSEvent.removeMonitor) }
+    }
+}
+
+@MainActor
+func clickedBehind(_ sheet: NSWindow?, _ clicked: Int) -> Bool {
+    guard let sheet, sheet.attachedSheet == nil else { return false }
+    return sheet.sheetParent?.windowNumber == clicked
+}
+#endif
 
 struct AircastSheet<Content: View>: View {
     let onDismissRequest: () -> Void
