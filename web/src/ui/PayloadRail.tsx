@@ -13,6 +13,7 @@ export const PAYLOAD_RAIL_VIEW = 'view.payloadRail';
 const ARM = 'payloadRail.arm';
 const SELECT = 'payloadRail.select';
 const DROP = 'payloadRail.drop';
+const DROP_ALL = 'payloadRail.dropAll';
 const TILE = 48;
 const DISABLED_ALPHA = 0.38;
 const MAX_BAYS = 6;
@@ -29,6 +30,8 @@ export type PayloadRail = {
   readonly bays: readonly { readonly bay: number; readonly loaded: boolean }[];
   readonly dropReady: boolean;
   readonly dropLabel: string;
+  readonly dropAll: boolean;
+  readonly dropAllReady: boolean;
   readonly reason: string | null;
 };
 
@@ -48,6 +51,8 @@ export const payloadRailOf = (json: Json | null): PayloadRail | null =>
           .map((bay) => ({ bay: optInt(bay, 'bay'), loaded: optBoolean(bay, 'loaded') })),
         dropReady: optBoolean(json, 'dropReady'),
         dropLabel: optText(json, 'dropLabel'),
+        dropAll: optBoolean(json, 'dropAll'),
+        dropAllReady: optBoolean(json, 'dropAllReady'),
         reason: optText(json, 'reason') || null,
       };
 
@@ -115,6 +120,15 @@ export const PayloadRailStrip = () => {
             <Drawable name="ic_drop" size={28} className={osdShadow()} />
           </Tile>
         </Labelled>
+        {rail.dropAll ? (
+          <Labelled text="Drop all" tone={aircast('outdoorForeground')}>
+            <Tile label="Drop all" enabled={rail.dropAllReady} ring={false} fill={rail.dropAllReady ? md('error') : dim} onClick={() => run(DROP_ALL)}>
+              <Text typography="titleMedium" color={aircast('outdoorForeground')} className={osdShadow()}>
+                All
+              </Text>
+            </Tile>
+          </Labelled>
+        ) : null}
       </div>
       {note === null ? null : (
         <Text typography="bodyMedium" color={aircast('outdoorForeground')} maxLines={2} className="rounded-full px-3 py-1" style={{ background: withAlpha(Color.Black, 0.65) }}>

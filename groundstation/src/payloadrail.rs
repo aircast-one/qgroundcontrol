@@ -9,6 +9,7 @@ pub const VIEW: &str = "view.payloadRail";
 pub const ARM_RAIL: &str = "payloadRail.arm";
 pub const SELECT_BAY: &str = "payloadRail.select";
 pub const DROP_BAY: &str = "payloadRail.drop";
+pub const DROP_ALL: &str = "payloadRail.dropAll";
 pub const RAIL_CHANGED: &str = "core.payloadRail@changed";
 pub const DEPS: &[&str] = &[
     "settings.flyViewSettings.payloadBays",
@@ -175,7 +176,7 @@ pub fn selected() -> i64 {
 }
 
 pub fn owns(path: &str) -> bool {
-    [ARM_RAIL, SELECT_BAY, DROP_BAY].contains(&path)
+    [ARM_RAIL, SELECT_BAY, DROP_BAY, DROP_ALL].contains(&path)
 }
 
 fn refused(reason: &str) -> Value {
@@ -207,6 +208,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             None => refused("Name the bay to pick, from 1."),
         },
         DROP_BAY => drop(backend),
+        DROP_ALL => drop_all(backend),
         _ => refused("Unknown payload rail action."),
     }
 }
@@ -231,6 +233,26 @@ fn drop(backend: &dyn Backend) -> Value {
     )
 }
 
+fn drop_all(backend: &dyn Backend) -> Value {
+    match armed() {
+        false => refused(SAFE),
+        true => crate::guided::dispatch(
+            backend,
+            Some(json!({ "action": "dropAll" })),
+            crate::guided::active_id(backend),
+            DROP_ALL,
+            "[]",
+        ),
+    }
+}
+
+fn has_drop_board() -> bool {
+    let now_ms = crate::hub::now_ms();
+    crate::hub::lock()
+        .active()
+        .is_some_and(|vehicle| vehicle.drop_board_at(now_ms).is_some())
+}
+
 pub fn rail_json(
     bays: i64,
     empty: &[i64],
@@ -238,6 +260,7 @@ pub fn rail_json(
     selected: Owned<i64>,
     drop_offer: Result<(), String>,
     shown: bool,
+    drop_all: bool,
 ) -> Value {
     let drop_offered = drop_offer.is_ok();
     let loaded = |bay: i64| !empty.contains(&bay);
@@ -257,6 +280,8 @@ pub fn rail_json(
         "selectedBy": selected.by,
         "bays": (1..=bays).map(|bay| json!({ "bay": bay, "loaded": loaded(bay) })).collect::<Vec<_>>(),
         "dropReady": drop_ready,
+        "dropAll": shown && drop_all,
+        "dropAllReady": shown && drop_all && armed.value && drop_offered,
         "dropLabel": drop_label,
         "reason": match (shown, armed.value, has_selected, drop_offered) {
             (false, ..) => Value::Null,
@@ -291,6 +316,7 @@ pub fn view(backend: &dyn Backend, _args: &[String]) -> Value {
             }
         });
     let shown = shown();
+    let drop_all = has_drop_board();
     let now_ms = crate::hub::now_ms();
     let rail = rail();
     rail_json(
@@ -300,6 +326,7 @@ pub fn view(backend: &dyn Backend, _args: &[String]) -> Value {
         rail.selected(now_ms),
         drop_offer,
         shown,
+        drop_all,
     )
 }
 
@@ -312,6 +339,41 @@ mod tests {
         bay: Some(3),
         at_ms: 1_000,
     };
+
+    #[test]
+    fn drop_all_is_offered_only_for_a_drop_board_and_only_while_armed() {
+        let armed = Owned {
+            value: true,
+            by: APP,
+        };
+        let safe = Owned {
+            value: false,
+            by: APP,
+        };
+        let on = |bay| Owned {
+            value: bay,
+            by: APP,
+        };
+        let board = rail_json(4, &[], armed, on(1), Ok(()), true, true);
+        assert_eq!(
+            (board["dropAll"].as_bool(), board["dropAllReady"].as_bool()),
+            (Some(true), Some(true))
+        );
+        let locked = rail_json(4, &[], safe, on(1), Ok(()), true, true);
+        assert_eq!(
+            (
+                locked["dropAll"].as_bool(),
+                locked["dropAllReady"].as_bool()
+            ),
+            (Some(true), Some(false))
+        );
+        let gripper = rail_json(4, &[], armed, on(1), Ok(()), true, false);
+        assert_eq!(
+            gripper["dropAll"].as_bool(),
+            Some(false),
+            "a flight controller gripper has no drop all"
+        );
+    }
 
     #[test]
     fn a_radio_with_no_bay_switch_arms_and_leaves_the_bay_to_the_app() {
@@ -435,17 +497,20 @@ mod tests {
             value: bay,
             by: RADIO,
         };
-        let shown = rail_json(4, &[2], armed, on(1), Ok(()), true);
+        let shown = rail_json(4, &[2], armed, on(1), Ok(()), true, false);
         assert_eq!(shown["dropReady"], true);
         assert_eq!(shown["dropLabel"], "Drop 1");
         assert_eq!(shown["bays"][1], json!({ "bay": 2, "loaded": false }));
         assert_eq!(shown["reason"], Value::Null);
         assert_eq!(
-            rail_json(4, &[2], armed, on(2), Ok(()), true)["reason"],
+            rail_json(4, &[2], armed, on(2), Ok(()), true, false)["reason"],
             "Bay 2 is empty."
         );
-        assert_eq!(rail_json(4, &[], safe, on(1), Ok(()), true)["reason"], SAFE);
-        let past = rail_json(4, &[], armed, on(6), Ok(()), true);
+        assert_eq!(
+            rail_json(4, &[], safe, on(1), Ok(()), true, false)["reason"],
+            SAFE
+        );
+        let past = rail_json(4, &[], armed, on(6), Ok(()), true, false);
         assert_eq!(
             (
                 past["dropReady"].clone(),
@@ -459,15 +524,15 @@ mod tests {
             )
         );
         assert_eq!(
-            rail_json(4, &[], armed, on(1), Err(String::new()), true)["reason"],
+            rail_json(4, &[], armed, on(1), Err(String::new()), true, false)["reason"],
             "Drop is not offered now."
         );
         assert_eq!(
-            rail_json(4, &[], armed, on(1), Err("No signal.".into()), true)["reason"],
+            rail_json(4, &[], armed, on(1), Err("No signal.".into()), true, false)["reason"],
             "No signal.",
             "the deck's own reason is shown when it has one"
         );
-        let hidden = rail_json(1, &[], armed, on(1), Ok(()), false);
+        let hidden = rail_json(1, &[], armed, on(1), Ok(()), false, false);
         assert_eq!(
             (
                 hidden["shown"].clone(),

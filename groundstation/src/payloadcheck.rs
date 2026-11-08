@@ -173,6 +173,7 @@ pub const DEVICE_DROPPER_STALE_MS: u64 = 3_000;
 pub const DROP_BOARD_BAYS: i64 = 4;
 pub const DROP_BOARD_STALE_MS: u64 = 10_000;
 pub const DROP_BOARD_ONLY_DROPS: &str = "The drop module on this drone only drops.";
+pub const DROP_ALL_NEEDS_BOARD: &str = "Drop all is for a drop module that answers each bay.";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Setup {

@@ -966,6 +966,26 @@ pub fn drop_on(component: u8, bay: f64) -> Plan {
     }])
 }
 
+pub fn drop_all_on(component: u8, bays: i64) -> Plan {
+    Plan::Steps(
+        (1..=bays)
+            .flat_map(|bay| {
+                [
+                    Step::ComponentCommand {
+                        component,
+                        command: CMD_DO_GRIPPER,
+                        params: [bay as f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    },
+                    Step::AwaitAccepted {
+                        command: CMD_DO_GRIPPER,
+                        failure: Some(format!("The drop module did not confirm bay {bay}.")),
+                    },
+                ]
+            })
+            .collect(),
+    )
+}
+
 pub fn set_servo(output: f64, pwm: f64) -> Plan {
     Plan::Steps(vec![Step::Command {
         command: CMD_DO_SET_SERVO,

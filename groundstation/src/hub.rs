@@ -2731,6 +2731,13 @@ impl Vehicle {
             "startMission" => guidedcmd::start_mission(&state, flag("flying")),
             "emergencyStop" => guidedcmd::emergency_stop(),
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
+            "dropAll" if !self.payload_lock.armed() => {
+                Plan::Refused(crate::payloadrail::SAFE.into())
+            }
+            "dropAll" => match self.drop_board_at(now_ms()) {
+                Some(board) => guidedcmd::drop_all_on(board, crate::payloadcheck::DROP_BOARD_BAYS),
+                None => Plan::Refused(crate::payloadcheck::DROP_ALL_NEEDS_BOARD.into()),
+            },
             "gripper" if releases_while_safe(number("gripAction"), self.payload_lock.armed()) => {
                 Plan::Refused(crate::payloadrail::SAFE.into())
             }
@@ -4589,6 +4596,7 @@ impl Vehicle {
             None => self.gripper_released_ms,
         };
         self.empty_bays = match answered.empties() {
+            _ if self.drop_board_at(now_ms).is_some() => Default::default(),
             Some(true) if answered.bay > 0 && self.empty_bays.contains(&answered.bay) => {
                 [answered.bay].into_iter().collect()
             }
@@ -6963,7 +6971,12 @@ impl Vehicle {
                 }
             }
             MavMessage::COMMAND_ACK(a) if mavout::for_us(a.target_system) => {
-                if from == (self.id, self.component) {
+                if from == (self.id, self.component)
+                    || (a.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_GRIPPER
+                        && self
+                            .drop_board
+                            .is_some_and(|(board, _)| from == (self.id, board)))
+                {
                     self.guided.on_command_result(
                         a.command as u32 as u16,
                         a.result
@@ -13735,8 +13748,8 @@ mod tests {
             now,
         );
         assert!(
-            hub.active().unwrap().empty_bays.contains(&2),
-            "the board's ack empties the bay"
+            hub.active().unwrap().empty_bays.is_empty(),
+            "the board cannot say a holder was loaded again, so the app never marks one empty"
         );
         assert_eq!(
             hub.guided(
@@ -13748,6 +13761,85 @@ mod tests {
             .as_deref(),
             Some(crate::payloadcheck::DROP_BOARD_ONLY_DROPS),
             "the board drops on any DO_GRIPPER, so a grab is never sent to it"
+        );
+    }
+
+    #[test]
+    fn drop_all_drops_each_bay_of_the_board_after_the_last_one_answered() {
+        use mavlink::dialects::ardupilotmega::{
+            COMMAND_ACK_DATA, COMMAND_LONG_DATA, MavCmd, MavResult,
+        };
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let board = MavHeader {
+            component_id: 169,
+            ..autopilot
+        };
+        let now = now_ms();
+        hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), now, now);
+        hub.on_frame(
+            origin(0),
+            &board,
+            &MavMessage::COMMAND_LONG(COMMAND_LONG_DATA {
+                target_system: 255,
+                target_component: 190,
+                command: MavCmd::MAV_CMD_DO_GRIPPER,
+                ..Default::default()
+            }),
+            now,
+            now,
+        );
+        let drops = |frames: &[(LinkId, Vec<u8>)]| -> Vec<f32> {
+            frames
+                .iter()
+                .filter_map(|(_, bytes)| match decode(bytes) {
+                    MavMessage::COMMAND_LONG(c)
+                        if c.command == MavCmd::MAV_CMD_DO_GRIPPER && c.target_component == 169 =>
+                    {
+                        Some(c.param1)
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+            command: MavCmd::MAV_CMD_DO_GRIPPER,
+            result: MavResult::MAV_RESULT_ACCEPTED,
+            target_system: 255,
+            ..Default::default()
+        });
+        let first = hub
+            .guided(None, &json!({ "action": "dropAll" }), now)
+            .unwrap();
+        assert_eq!(
+            drops(&first),
+            vec![1.0],
+            "one bay at a time: a second DO_GRIPPER to the board while one is open is refused as a duplicate"
+        );
+        let rest: Vec<f32> = (2..=4)
+            .flat_map(|_| drops(&hub.on_frame(origin(0), &board, &ack, now, now)))
+            .collect();
+        assert_eq!(rest, vec![2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn drop_all_needs_the_payload_armed() {
+        let mut hub = Hub::with_payload_lock(PayloadLock(|| false));
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), 0, 0);
+        assert_eq!(
+            hub.guided(None, &json!({ "action": "dropAll" }), 1)
+                .err()
+                .as_deref(),
+            Some(crate::payloadrail::SAFE)
         );
     }
 

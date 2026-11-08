@@ -7,11 +7,12 @@ const SHOWN = '{"shown":true,"armed":true,"armedBy":"radio","selected":3,"select
 describe('PayloadRail', () => {
   it("reads the core's rail and hides when the drone cannot drop", () => {
     const rail = payloadRailOf(parseJson(SHOWN));
-    expect(rail).toEqual({ shown: true, armed: true, armedBy: 'radio', selected: 3, selectedBy: 'radio', bays: [{ bay: 1, loaded: true }, { bay: 2, loaded: false }], dropReady: false, dropLabel: 'No bay 3', reason: 'This drone has 2 bays.' });
+    expect(rail).toEqual({ shown: true, armed: true, armedBy: 'radio', selected: 3, selectedBy: 'radio', bays: [{ bay: 1, loaded: true }, { bay: 2, loaded: false }], dropReady: false, dropLabel: 'No bay 3', dropAll: false, dropAllReady: false, reason: 'This drone has 2 bays.' });
     expect(payloadRailOf(parseJson('{"shown":false}'))).toBeNull();
     expect(payloadRailOf(null)).toBeNull();
     expect(payloadRailOf(parseJson('{"shown":true,"armedBy":"martian","reason":null}'))?.armedBy).toBe('app');
     expect(payloadRailOf(parseJson('{"shown":true,"reason":null}'))?.reason).toBeNull();
+    expect(payloadRailOf(parseJson('{"shown":true,"dropAll":true,"dropAllReady":true}'))).toMatchObject({ dropAll: true, dropAllReady: true });
   });
 
   it('says nothing while the payload is safe, and explains only what blocks an armed drop or a refused press', () => {
