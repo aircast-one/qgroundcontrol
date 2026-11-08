@@ -791,6 +791,7 @@ mod tests {
 
     #[test]
     fn a_recorded_bench_flight_replays_with_the_tracking_the_live_run_had() {
+        crate::payloadrail::armed_for_tests();
         let _exclusive = exclusive();
         let (outcome, recording) = recorded(network(), 3, DETECTOR, true, true);
         let recording = recording.expect("recorded");
@@ -877,6 +878,7 @@ mod tests {
 
     #[test]
     fn one_bench_run_drops_on_a_road_car() {
+        crate::payloadrail::armed_for_tests();
         let _exclusive = exclusive();
         let outcome = alone(network(), 3, DETECTOR, true);
         assert!(outcome.dropped && outcome.hit, "{outcome:?}");

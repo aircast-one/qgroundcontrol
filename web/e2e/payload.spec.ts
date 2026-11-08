@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, dropFromStrip, expect, flightMode, itemCount, openAircraftSetup, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
+import { armPayload, connectMock, dropFromStrip, expect, flightMode, itemCount, openAircraftSetup, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -48,6 +48,7 @@ test('a drop after the last waypoint falls and ends the mission', async ({ app: 
   const progress = vehicle.getByText(/^To waypoint \d+ of \d+/);
   await expect(progress).toBeVisible({ timeout: 30_000 });
   await expect(progress).toBeHidden({ timeout: 240_000 });
+  await armPayload(vehicle);
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   await slideAcross(vehicle, vehicle.getByRole('dialog').getByRole('button', { name: 'Slide to drop' }));
@@ -56,6 +57,7 @@ test('a drop after the last waypoint falls and ends the mission', async ({ app: 
 
 test('a second drop while the gripper is still open is refused rather than counted', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await armPayload(vehicle);
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   const sheet = vehicle.getByRole('dialog');
@@ -133,6 +135,7 @@ test('four bays on their own servos drop one after another by hand, each from it
   await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).click();
   await vehicle.getByRole('menu').getByRole('menuitem', { name: 'Loiter' }).click();
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Loiter/);
+  await armPayload(vehicle);
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   const sheet = vehicle.getByRole('dialog');

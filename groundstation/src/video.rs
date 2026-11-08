@@ -22,10 +22,8 @@ pub const VIDEO_DEPS: &[&str] = &[
     "video.cameraUrls",
     "settings.videoSettings.cameras",
     "settings.videoSettings.streamEnabled",
-    FIGHT_MODE,
+    "vehicle.fightMode",
 ];
-
-const FIGHT_MODE: &str = "vehicle.fightMode";
 
 fn fight_mode(backend: &dyn Backend) -> bool {
     flag(&backend.value_fields("vehicle", "fightMode"), "fightMode")
@@ -94,7 +92,7 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCamera",
     "vehicle.cameraTriggerPoints.count",
     crate::devicetrack::TRACK_CHANGED,
-    FIGHT_MODE,
+    "vehicle.fightMode",
 ];
 
 const UNDEFINED_MODE: i64 = -1;

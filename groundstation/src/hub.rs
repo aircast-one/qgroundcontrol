@@ -2725,6 +2725,9 @@ impl Vehicle {
             "startMission" => guidedcmd::start_mission(&state, flag("flying")),
             "emergencyStop" => guidedcmd::emergency_stop(),
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
+            "gripper" if releases_while_safe(number("gripAction"), crate::payloadrail::armed()) => {
+                Plan::Refused(crate::payloadrail::SAFE.into())
+            }
             "gripper" if !self.payload_servos().is_empty() => {
                 match crate::payloadcheck::servo_command(
                     &self.payload_servos(),
@@ -7988,6 +7991,10 @@ pub struct LinkKinds {
 const SENSOR_REFRESH_DELAY_MS: u64 = 1000;
 const REBOOT_TAG: u64 = 0x5245_424F_4F54;
 const GRIPPER_RELEASE_ACTION: f64 = 0.0;
+
+fn releases_while_safe(grip_action: f64, armed: bool) -> bool {
+    grip_action == GRIPPER_RELEASE_ACTION && !armed
+}
 const FACTORY_RESET_TAG: u64 = 0x5245_5345_5446;
 const ESP_BRIDGE_TAG: u64 = 0x4553_5042_5247;
 const INSPECTOR_RATE_TAG: u64 = 0x4D53_4749_0000_0000;
@@ -10543,6 +10550,7 @@ mod tests {
 
     #[test]
     fn tick_autodrop_wakes_when_the_release_falls_due_and_fires_then() {
+        crate::payloadrail::armed_for_tests();
         let _ground = crate::synthview::TEST_GROUND
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
@@ -11134,6 +11142,7 @@ mod tests {
 
     #[test]
     fn the_drop_uses_the_bay_the_run_was_started_with_and_holds_a_second_later() {
+        crate::payloadrail::armed_for_tests();
         let _ground = crate::synthview::TEST_GROUND
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
@@ -12359,6 +12368,7 @@ mod tests {
 
     #[test]
     fn a_payload_drop_is_told_by_the_flight_controllers_answer_not_by_the_send() {
+        crate::payloadrail::armed_for_tests();
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
         let mut hub = Hub::default();
         let header = MavHeader {
@@ -12450,6 +12460,7 @@ mod tests {
 
     #[test]
     fn a_basket_remembers_which_bays_it_has_dropped() {
+        crate::payloadrail::armed_for_tests();
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
         let mut hub = Hub::default();
         let header = MavHeader {
@@ -12552,6 +12563,7 @@ mod tests {
 
     #[test]
     fn every_confirmed_drop_and_no_refused_one_leaves_a_bottle_falling_from_the_drone() {
+        crate::payloadrail::armed_for_tests();
         use mavlink::dialects::ardupilotmega::{
             COMMAND_ACK_DATA, GLOBAL_POSITION_INT_DATA, MavCmd, MavResult,
         };
@@ -12641,7 +12653,16 @@ mod tests {
     }
 
     #[test]
+    fn a_drop_while_the_payload_is_safe_is_refused_and_grab_and_hold_are_not() {
+        assert!(releases_while_safe(GRIPPER_RELEASE_ACTION, false));
+        assert!(!releases_while_safe(GRIPPER_RELEASE_ACTION, true));
+        assert!(!releases_while_safe(1.0, false), "grab works while safe");
+        assert!(!releases_while_safe(2.0, false), "hold works while safe");
+    }
+
+    #[test]
     fn a_drop_the_gripper_cannot_make_is_refused_in_any_mode() {
+        crate::payloadrail::armed_for_tests();
         const STABILIZE: u32 = 0;
         let mut hub = Hub::default();
         let header = MavHeader {
@@ -12904,6 +12925,7 @@ mod tests {
 
     #[test]
     fn each_servo_bay_drops_from_its_own_output_one_after_another() {
+        crate::payloadrail::armed_for_tests();
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
         four_servo_bays();
         let mut hub = Hub::default();

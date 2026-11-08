@@ -170,6 +170,11 @@ pub fn armed() -> bool {
     rail().armed(crate::hub::now_ms()).value
 }
 
+#[cfg(test)]
+pub fn armed_for_tests() {
+    let _ = rail().arm(true, crate::hub::now_ms());
+}
+
 pub fn selected() -> i64 {
     rail().selected(crate::hub::now_ms()).value
 }
