@@ -26,6 +26,10 @@ private slots:
     void _indicatorStateFollowsTheRadioAndWhoFlies_test();
     void _cameraChannelsSteerTheGimbalZoomPictureAndPalette_test();
     void _dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test();
+    void _withBomarmArmedPressingASixPosPositionDropsThatBayOnce_test();
+    void _aSixPosPressAndTheDropSwitchTogetherDropTheBayOnce_test();
+    void _whileThePayloadIsSafeTheSixPosOnlyPicksTheBay_test();
+    void _aBayDropsOnItsOwnServoOnlyWhereTheDroneHasOne_test();
     void _cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefault_test();
     void _aFunctionOnTheFlightModeChannelIsOff_test();
     void _aSliderMovedBeforeTheGimbalIsFoundAimsOnceItIs_test();

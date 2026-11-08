@@ -14,6 +14,7 @@
 #include "AutoConnectSettings.h"
 #include "Fact.h"
 #include "FirmwarePlugin.h"
+#include "FlyViewSettings.h"
 #include "GimbalController.h"
 #include "JoystickManager.h"
 #include "LinkConfiguration.h"
@@ -125,6 +126,23 @@ std::optional<Switches> switches(const Line& line, const Layout& layout)
     return arm ? std::optional<Switches>(Switches{*arm >= kArmedPwm}) : std::nullopt;
 }
 
+int bay(uint16_t pwm)
+{
+    return static_cast<int>(std::lround(between(0.0f, kBayPositions - 1.0f, pwm))) + 1;
+}
+
+int bayOf(const Line& line, const Layout& layout)
+{
+    const std::optional<uint16_t> pwm = channel(line, layout.bay);
+    return pwm ? bay(*pwm) : 0;
+}
+
+std::optional<BayServo> bayServo(int bay, const QList<BayServo>& servos)
+{
+    return bay >= 1 && bay <= servos.size() && servos[bay - 1].output > 0 ? std::optional<BayServo>(servos[bay - 1])
+                                                                          : std::nullopt;
+}
+
 Payload payload(std::optional<Switches> switches, bool flown, bool gripper)
 {
     return !switches          ? Payload::Off
@@ -186,6 +204,16 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const std::optional<uint16_t> dropWas =
         _acted.contains(layout.drop) ? std::optional<uint16_t>(_acted[layout.drop]) : std::nullopt;
     const bool dropped = high(drop) && high(dropWas) && _dropBefore && *_dropBefore <= kPressedPwm;
+    const auto was = [this](int number) {
+        return _acted.contains(number) ? std::optional<uint16_t>(_acted[number]) : std::nullopt;
+    };
+    const auto armedPwm = [](std::optional<uint16_t> pwm) { return pwm && *pwm >= kArmedPwm; };
+    const std::optional<uint16_t> arm = channel(line, layout.arm);
+    const std::optional<uint16_t> armWas = was(layout.arm);
+    const std::optional<uint16_t> bayNow = channel(line, layout.bay);
+    const std::optional<uint16_t> bayWas = was(layout.bay);
+    const bool pressedBay = bayNow && bayWas && _bayBefore && armedPwm(arm) && armedPwm(armWas) &&
+                            armedPwm(_armBefore) && bay(*bayWas) == bay(*bayNow) && bay(*_bayBefore) != bay(*bayNow);
     const auto refresh = [this, &line, &layout, &ready, aimed, zoomed](int number) {
         const std::optional<uint16_t> now = channel(line, number);
         const bool keep =
@@ -216,12 +244,17 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     if (palette) {
         moves << Move{Move::Kind::NextPalette};
     }
-    if (dropped) {
+    if (dropped && !pressedBay) {
         moves << Move{Move::Kind::Drop};
     }
+    if (pressedBay) {
+        moves << Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, bay(*bayNow)};
+    }
     _dropBefore = drop ? dropWas : _dropBefore;
-    std::ranges::for_each(std::array{layout.drop, layout.pitch, layout.yaw, layout.zoom, layout.picture, layout.palette,
-                                     layout.tilt, layout.look},
+    _bayBefore = bayNow ? bayWas : _bayBefore;
+    _armBefore = arm ? armWas : _armBefore;
+    std::ranges::for_each(std::array{layout.drop, layout.arm, layout.bay, layout.pitch, layout.yaw, layout.zoom,
+                                     layout.picture, layout.palette, layout.tilt, layout.look},
                           refresh);
     if (aimed || zoomed) {
         _sentMs = nowMs;
@@ -731,8 +764,10 @@ void UsbRadio::_steer(const Line& line)
     const Ready ready{vehicle->gimbalController() && vehicle->gimbalController()->activeGimbal(), camera != nullptr,
                       camera && camera->paramComplete()};
     const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout, ready);
-    std::ranges::for_each(moves,
-                          [this, vehicle, &armed](const Move& move) { _apply(vehicle, move, armed && armed->armed); });
+    const int selectedBay = bayOf(line, layout);
+    std::ranges::for_each(moves, [this, vehicle, &armed, selectedBay](const Move& move) {
+        _apply(vehicle, move, armed && armed->armed, selectedBay);
+    });
 }
 
 void UsbRadio::_warnOfClash(int vehicle, const Layout& layout, int modeChannel)
@@ -747,7 +782,7 @@ void UsbRadio::_warnOfClash(int vehicle, const Layout& layout, int modeChannel)
     }
 }
 
-void UsbRadio::_apply(Vehicle* vehicle, const Move& move, bool armed) const
+void UsbRadio::_apply(Vehicle* vehicle, const Move& move, bool armed, int selectedBay) const
 {
     MavlinkCameraControlInterface* const camera =
         vehicle->cameraManager() ? vehicle->cameraManager()->currentCameraInstance() : nullptr;
@@ -785,11 +820,50 @@ void UsbRadio::_apply(Vehicle* vehicle, const Move& move, bool armed) const
                 qCInfo(UsbRadioLog) << "The drop switch was flipped while BOMARM is safe; nothing dropped";
                 return;
             }
-            if (vehicle->hasGripper()) {
-                vehicle->sendGripperAction(GRIPPER_ACTION_RELEASE);
+            _release(vehicle, selectedBay, false);
+            return;
+        case Move::Kind::DropBay:
+            if (armed) {
+                _release(vehicle, move.value, true);
             }
             return;
     }
+}
+
+void UsbRadio::_release(Vehicle* vehicle, int bay, bool pressed) const
+{
+    const QList<BayServo> servos = _bayServos(vehicle);
+    if (const std::optional<BayServo> servo = bayServo(bay, servos)) {
+        vehicle->sendMavCommand(vehicle->defaultComponentId(), MAV_CMD_DO_SET_SERVO, true, servo->output,
+                                servo->releasePwm);
+        return;
+    }
+    if (!servos.isEmpty() || pressed) {
+        qCInfo(UsbRadioLog) << "The drone has no servo for bay" << bay << "; nothing dropped";
+        return;
+    }
+    if (vehicle->hasGripper()) {
+        vehicle->sendGripperAction(GRIPPER_ACTION_RELEASE);
+    }
+}
+
+QList<BayServo> UsbRadio::_bayServos(const Vehicle* vehicle) const
+{
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    if (!vehicle->apmFirmware() || settings->payloadRelease()->rawValue().toInt() != 1) {
+        return {};
+    }
+    const auto fact = [settings](int bay, const char* part) {
+        return settings->property(qPrintable(QStringLiteral("payloadBay%1%2").arg(bay).arg(QLatin1String(part))))
+            .value<Fact*>()
+            ->rawValue()
+            .toInt();
+    };
+    QList<BayServo> servos;
+    std::ranges::transform(std::views::iota(1, settings->payloadBays()->rawValue().toInt() + 1),
+                           std::back_inserter(servos),
+                           [&fact](int bay) { return BayServo{fact(bay, "Output"), fact(bay, "ReleasePwm")}; });
+    return servos;
 }
 
 bool UsbRadio::_standby(int vehicleId) const
@@ -843,7 +917,7 @@ Payload UsbRadio::_payload(const Flight& flight) const
     const Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
     const std::optional<Switches> armed =
         vehicle && _line ? switches(*_line, without(_layout(), flight.modeChannel)) : std::nullopt;
-    return payload(armed, _target().has_value(), vehicle && vehicle->hasGripper());
+    return payload(armed, _target().has_value(), vehicle && (vehicle->hasGripper() || !_bayServos(vehicle).isEmpty()));
 }
 
 QStringList UsbRadio::_modes() const

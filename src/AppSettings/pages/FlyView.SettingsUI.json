@@ -4,7 +4,9 @@
     "bindings": {
         "hasChecklist": "QGroundControl.corePlugin.options.preFlightChecklistUrl.toString().length",
         "useChecklistValue": "QGroundControl.settingsManager.appSettings.useChecklist.value",
-        "virtualJoystickOn": "QGroundControl.settingsManager.appSettings.virtualJoystick.rawValue"
+        "virtualJoystickOn": "QGroundControl.settingsManager.appSettings.virtualJoystick.rawValue",
+        "servoPerBay": "QGroundControl.settingsManager.flyViewSettings.payloadRelease.rawValue === 1",
+        "payloadBayCount": "QGroundControl.settingsManager.flyViewSettings.payloadBays.rawValue"
     },
     "groups": [
         {
@@ -103,6 +105,90 @@
                 },
                 {
                     "setting": "flyViewSettings.instrumentQmlFile2"
+                }
+            ]
+        },
+        {
+            "heading": "Payload",
+            "keywords": ["payload", "bay", "drop", "gripper", "servo", "release"],
+            "controls": [
+                {
+                    "setting": "flyViewSettings.payloadBays"
+                },
+                {
+                    "setting": "flyViewSettings.payloadRelease"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay1Output",
+                    "showWhen": "servoPerBay && payloadBayCount >= 1"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay1ReleasePwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 1"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay1HoldPwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 1"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay2Output",
+                    "showWhen": "servoPerBay && payloadBayCount >= 2"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay2ReleasePwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 2"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay2HoldPwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 2"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay3Output",
+                    "showWhen": "servoPerBay && payloadBayCount >= 3"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay3ReleasePwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 3"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay3HoldPwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 3"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay4Output",
+                    "showWhen": "servoPerBay && payloadBayCount >= 4"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay4ReleasePwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 4"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay4HoldPwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 4"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay5Output",
+                    "showWhen": "servoPerBay && payloadBayCount >= 5"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay5ReleasePwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 5"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay5HoldPwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 5"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay6Output",
+                    "showWhen": "servoPerBay && payloadBayCount >= 6"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay6ReleasePwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 6"
+                },
+                {
+                    "setting": "flyViewSettings.payloadBay6HoldPwm",
+                    "showWhen": "servoPerBay && payloadBayCount >= 6"
                 }
             ]
         }

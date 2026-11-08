@@ -73,6 +73,7 @@ constexpr float kPitchDown = -90.0f;
 constexpr float kPitchAhead = 0.0f;
 constexpr float kYawLimit = 180.0f;
 constexpr std::array<int, 3> kPictures = {0, 1, 3};
+constexpr int kBayPositions = 6;
 
 enum class Flying
 {
@@ -130,7 +131,8 @@ struct Move
         Zoom,
         Picture,
         NextPalette,
-        Drop
+        Drop,
+        DropBay
     };
     Kind kind = Kind::Aim;
     float pitch = 0.0f;
@@ -147,6 +149,17 @@ struct Switches
 };
 
 std::optional<Switches> switches(const Line& line, const Layout& layout = {});
+int bay(uint16_t pwm);
+int bayOf(const Line& line, const Layout& layout = {});
+
+struct BayServo
+{
+    int output = 0;
+    int releasePwm = 0;
+    bool operator==(const BayServo& other) const = default;
+};
+
+std::optional<BayServo> bayServo(int bay, const QList<BayServo>& servos);
 
 enum class Payload
 {
@@ -175,6 +188,8 @@ private:
     QHash<int, uint16_t> _acted;
     std::optional<qint64> _sentMs;
     std::optional<uint16_t> _dropBefore;
+    std::optional<uint16_t> _bayBefore;
+    std::optional<uint16_t> _armBefore;
     std::optional<int> _pitchSource;
 };
 
@@ -309,7 +324,9 @@ private:
     void _read();
     void _steer(const UsbRadioProtocol::Line& line);
     void _warnOfClash(int vehicle, const UsbRadioProtocol::Layout& layout, int modeChannel);
-    void _apply(Vehicle* vehicle, const UsbRadioProtocol::Move& move, bool armed) const;
+    void _apply(Vehicle* vehicle, const UsbRadioProtocol::Move& move, bool armed, int selectedBay) const;
+    void _release(Vehicle* vehicle, int bay, bool pressed) const;
+    QList<UsbRadioProtocol::BayServo> _bayServos(const Vehicle* vehicle) const;
     void _advance(std::optional<UsbRadioProtocol::Frame> fresh);
     void _send(int vehicle, bool standby, const UsbRadioProtocol::Frame& frame) const;
     void _setStatus(const QString& status);

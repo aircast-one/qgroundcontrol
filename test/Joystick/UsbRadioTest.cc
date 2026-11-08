@@ -468,3 +468,72 @@ void UsbRadioTest::_theLookSwitchAimsDownOrAheadWhenItFlips_test()
     QCOMPARE(noGimbal.step(lineWith({{kR2d2.look, 2012}}), 20, kR2d2, Ready{}),
              (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}));
 }
+
+namespace {
+
+QList<Move> stepAll(CameraSticks& sticks, const QList<std::pair<uint16_t, std::pair<uint16_t, uint16_t>>>& lines)
+{
+    return std::accumulate(lines.cbegin(), lines.cend(), QList<Move>{}, [&sticks](QList<Move> moves, const auto& at) {
+        const auto [arm, sixPos] = at.second;
+        return moves + sticks.step(lineWith({{kR2d2.arm, arm}, {kR2d2.bay, sixPos}, {kR2d2.drop, at.first}}), 0);
+    });
+}
+
+}  // namespace
+
+void UsbRadioTest::_withBomarmArmedPressingASixPosPositionDropsThatBayOnce_test()
+{
+    CameraSticks sticks;
+    const QList<Move> moves = stepAll(sticks, {{988, {2012, 1398}},
+                                               {988, {2012, 1398}},
+                                               {988, {2012, 1398}},
+                                               {988, {2012, 988}},
+                                               {988, {2012, 988}},
+                                               {988, {2012, 988}},
+                                               {988, {2012, 1602}},
+                                               {988, {2012, 1602}}});
+    QCOMPARE(moves, (QList<Move>{Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, 1},
+                                 Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, 4}}));
+}
+
+void UsbRadioTest::_aSixPosPressAndTheDropSwitchTogetherDropTheBayOnce_test()
+{
+    CameraSticks sticks;
+    const QList<Move> moves = stepAll(
+        sticks,
+        {{988, {2012, 988}}, {988, {2012, 988}}, {2012, {2012, 1398}}, {2012, {2012, 1398}}, {2012, {2012, 1398}}});
+    QCOMPARE(moves, (QList<Move>{Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, 3}}));
+}
+
+void UsbRadioTest::_whileThePayloadIsSafeTheSixPosOnlyPicksTheBay_test()
+{
+    CameraSticks sticks;
+    const QList<Move> moves = stepAll(sticks, {{988, {988, 1398}},
+                                               {988, {988, 1398}},
+                                               {988, {988, 988}},
+                                               {988, {988, 988}},
+                                               {988, {2012, 988}},
+                                               {988, {2012, 988}},
+                                               {988, {2012, 988}},
+                                               {988, {988, 988}},
+                                               {988, {2012, 1602}},
+                                               {988, {2012, 1602}},
+                                               {988, {2012, 1602}}});
+    QVERIFY2(moves.isEmpty(), "a position picked while safe, or together with arming, does not drop");
+}
+
+void UsbRadioTest::_aBayDropsOnItsOwnServoOnlyWhereTheDroneHasOne_test()
+{
+    const std::array<uint16_t, 6> sixPos{988, 1193, 1398, 1602, 1807, 2012};
+    QList<int> positions;
+    std::ranges::transform(sixPos, std::back_inserter(positions), [](uint16_t pwm) { return bay(pwm); });
+    QCOMPARE(positions, (QList<int>{1, 2, 3, 4, 5, 6}));
+    QCOMPARE(bayOf(lineWith({{kR2d2.bay, 1398}})), 3);
+    QCOMPARE(bayOf(lineWith({{kR2d2.bay, 1398}}), without(kR2d2, kR2d2.bay)), 0);
+    const QList<BayServo> servos{{5, 1900}, {6, 1900}, {0, 1900}, {8, 1950}};
+    QCOMPARE(bayServo(2, servos), (std::optional<BayServo>(BayServo{6, 1900})));
+    QCOMPARE(bayServo(4, servos), (std::optional<BayServo>(BayServo{8, 1950})));
+    QVERIFY2(!bayServo(3, servos), "a bay with output 0 has no servo");
+    QVERIFY2(!bayServo(5, servos), "the 6POS has more positions than the drone has bays");
+    QVERIFY(!bayServo(1, {}));
+}
