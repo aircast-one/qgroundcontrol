@@ -782,7 +782,11 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
         "usbRadioYawChannel",
         "Camera yaw channel",
     ),
-    ("autoConnectSettings", "usbRadioYawSpeed", "Camera yaw speed"),
+    (
+        "autoConnectSettings",
+        "usbRadioYawSpeed",
+        "Camera yaw speed",
+    ),
     (
         "autoConnectSettings",
         "usbRadioZoomChannel",
