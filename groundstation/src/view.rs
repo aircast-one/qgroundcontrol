@@ -350,6 +350,11 @@ pub const VIEWS: &[View] = &[
         compute: firstrun::first_run_view,
     },
     View {
+        path: "view.betaDiagnostics",
+        deps: crate::diaglog::DEPS,
+        compute: crate::diaglog::beta_diagnostics_view,
+    },
+    View {
         path: "view.deepLinkSetup",
         deps: crate::deeplinksetup::DEPS,
         compute: crate::deeplinksetup::deep_link_setup_view,
@@ -1511,6 +1516,7 @@ mod deps_cover_reads {
         ("escal", include_str!("escal.rs")),
         ("csvlog", include_str!("csvlog.rs")),
         ("firstrun", include_str!("firstrun.rs")),
+        ("diaglog", include_str!("diaglog.rs")),
         ("deeplinksetup", include_str!("deeplinksetup.rs")),
         ("deviceviews", include_str!("deviceviews.rs")),
         ("deviceforms", include_str!("deviceforms.rs")),

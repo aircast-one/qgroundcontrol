@@ -73,7 +73,7 @@ pub fn set_application_version(version: &str) {
     let _ = APPLICATION_VERSION.set(version.to_string());
 }
 
-fn application_version() -> String {
+pub fn application_version() -> String {
     APPLICATION_VERSION
         .get()
         .cloned()

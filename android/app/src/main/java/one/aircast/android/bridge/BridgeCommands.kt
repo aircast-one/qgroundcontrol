@@ -50,6 +50,8 @@ private const val INSPECTOR_MESSAGE_INTERVAL = "mavlinkInspector.setMessageInter
 private const val INSPECTOR_ACTIVE_SYSTEM = "mavlinkInspector.setActiveSystem"
 private const val GIMBAL_CONTROL = "gimbal.control"
 private const val FIRST_RUN_SHOWN = "firstRun.markShown"
+private const val BETA_DIAGNOSTICS_ACCEPT = "betaDiagnostics.accept"
+private const val BETA_DIAGNOSTICS_DISMISS = "betaDiagnostics.dismiss"
 private const val SUBTITLES_INSTRUMENTS = "subtitles.setInstruments"
 private const val HOST_ACKNOWLEDGE = "host.acknowledgeThrough"
 
@@ -121,6 +123,8 @@ internal object SetupCommands {
 
 internal object AppCommands {
     fun markFirstRunShown(): Boolean = Qgc.invoke(FIRST_RUN_SHOWN)
+    fun acceptBetaDiagnostics(): Boolean = Qgc.invoke(BETA_DIAGNOSTICS_ACCEPT)
+    fun dismissBetaDiagnostics(): Boolean = Qgc.invoke(BETA_DIAGNOSTICS_DISMISS)
     fun setSubtitleInstruments(vehicleClass: String, instruments: List<String>): Boolean = Qgc.invoke(SUBTITLES_INSTRUMENTS, vehicleClass, instruments.joinToString(","))
     fun acknowledgeNoticesThrough(through: Long): Boolean = Qgc.invoke(HOST_ACKNOWLEDGE, through)
 }

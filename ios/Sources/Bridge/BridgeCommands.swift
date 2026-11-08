@@ -50,6 +50,8 @@ private let inspectorMessageInterval = "mavlinkInspector.setMessageInterval"
 private let inspectorActiveSystem = "mavlinkInspector.setActiveSystem"
 private let gimbalControl = "gimbal.control"
 private let firstRunShown = "firstRun.markShown"
+private let betaDiagnosticsAccept = "betaDiagnostics.accept"
+private let betaDiagnosticsDismiss = "betaDiagnostics.dismiss"
 private let subtitlesInstruments = "subtitles.setInstruments"
 private let hostAcknowledge = "host.acknowledgeThrough"
 
@@ -125,6 +127,8 @@ enum SetupCommands {
 
 enum AppCommands {
     @discardableResult static func markFirstRunShown() -> Bool { Qgc.invoke(firstRunShown) }
+    @discardableResult static func acceptBetaDiagnostics() -> Bool { Qgc.invoke(betaDiagnosticsAccept) }
+    @discardableResult static func dismissBetaDiagnostics() -> Bool { Qgc.invoke(betaDiagnosticsDismiss) }
     @discardableResult static func setSubtitleInstruments(_ vehicleClass: String, _ instruments: [String]) -> Bool { Qgc.invoke(subtitlesInstruments, vehicleClass, instruments.joined(separator: ",")) }
     @discardableResult static func acknowledgeNoticesThrough(_ through: Int64) -> Bool { Qgc.invoke(hostAcknowledge, through) }
 }

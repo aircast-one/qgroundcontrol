@@ -246,6 +246,7 @@ pub fn owns(path: &str) -> bool {
         || crate::cameras::owns(path)
         || [crate::lens::MEASURE, crate::lens::FORGET].contains(&path)
         || path == crate::firstrun::MARK_SHOWN
+        || crate::diaglog::owns(path)
         || crate::routerec::ROUTE_ACTIONS.contains(&path)
         || path == crate::device::PAIR
         || path == crate::deviceflights::FLIGHT_CHART
@@ -468,6 +469,8 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
         UNDO | REDO => step(backend, path),
         crate::firstrun::MARK_SHOWN => crate::firstrun::mark_shown(backend),
+        crate::diaglog::ACCEPT_OFFER => crate::diaglog::accept(backend),
+        crate::diaglog::DISMISS_OFFER => crate::diaglog::dismiss(backend),
         _ if crate::routerec::ROUTE_ACTIONS.contains(&path) => crate::routerec::run(path, args),
         crate::device::PAIR => crate::deviceviews::pair(args),
         crate::deviceflights::FLIGHT_CHART => crate::deviceflights::chart(backend, args),

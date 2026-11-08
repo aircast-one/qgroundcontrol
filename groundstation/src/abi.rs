@@ -970,6 +970,7 @@ static TILE_CACHE: std::sync::Mutex<Option<crate::tilecache::Cache>> = std::sync
 pub unsafe extern "C" fn qgc_core_settings_open(path: *const c_char) {
     crate::settingsstore::open(std::path::Path::new(&text(path)));
     crate::applog::load_categories();
+    crate::diaglog::start();
 }
 
 #[unsafe(no_mangle)]

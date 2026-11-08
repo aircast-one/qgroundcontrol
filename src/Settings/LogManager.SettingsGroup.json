@@ -3,6 +3,30 @@
     "fileType": "FactMetaData",
     "QGC.MetaData.Facts": [
         {
+            "name": "remoteLoggingEnabled",
+            "shortDesc": "Stream the application log to Aircast support so problems you report can be debugged.",
+            "type": "bool",
+            "default": false,
+            "label": "Share logs with Aircast",
+            "group": "Share With Aircast Support"
+        },
+        {
+            "name": "remoteLoggingEndpoint",
+            "shortDesc": "OpenTelemetry collector the log is streamed to, as host:port.",
+            "type": "string",
+            "default": "otel.aircast.one:443",
+            "label": "Endpoint",
+            "group": "Share With Aircast Support"
+        },
+        {
+            "name": "remoteLoggingToken",
+            "shortDesc": "Bearer token the collector expects. Leave empty on a beta build to use the token it ships with.",
+            "type": "string",
+            "default": "",
+            "label": "Token",
+            "group": "Share With Aircast Support"
+        },
+        {
             "name": "diskLoggingEnabled",
             "shortDesc": "Write application log messages to disk in Logs directory.",
             "type": "bool",

@@ -107,6 +107,12 @@ unsafe extern "C" fn event(path: *const c_char, json: *const c_char) {
 pub fn settings_open(text: &str) {
     crate::settingsstore::open_text(text);
     crate::applog::load_categories();
+    crate::diaglog::start();
+}
+
+#[wasm_bindgen(js_name = setApplicationVersion)]
+pub fn set_application_version(version: &str) {
+    crate::mavlinklog::set_application_version(version);
 }
 
 #[wasm_bindgen(js_name = settingsAdopt)]
@@ -115,6 +121,7 @@ pub fn settings_adopt(text: &str) -> bool {
     if adopted {
         crate::corelinks::reload_saved();
         crate::applog::load_categories();
+        crate::diaglog::start();
     }
     adopted
 }

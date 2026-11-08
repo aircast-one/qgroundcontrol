@@ -289,6 +289,7 @@ jobs:
           AIRCAST_KEY_ALIAS: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' && 'aircast-upload' || env.QT_ANDROID_KEYSTORE_ALIAS }}
           AIRCAST_VERSION_CODE: ${{ github.run_number }}
           RELEASE_TAG: ${{ needs.setup.outputs.version }}
+          OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
         run: |
           export AIRCAST_VERSION_NAME="${RELEASE_TAG#aircast-v}"
           ./gradlew --no-daemon :app:testCoreDebugUnitTest
@@ -405,6 +406,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           SHORT: ${{ needs.setup.outputs.short_version }}
+          OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
         run: |
           export ASC_KEY_PATH="$RUNNER_TEMP/asc.p8"
           MARKETING_VERSION=$(echo "$SHORT" | grep -oE '^v[0-9]+\.[0-9]+\.[0-9]+' | cut -c2-)
@@ -532,6 +534,7 @@ jobs:
         working-directory: ios
         env:
           SHORT: ${{ needs.setup.outputs.short_version }}
+          OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
         run: |
           xcodegen generate
           status=0
@@ -755,6 +758,8 @@ jobs:
     with:
       ref: ${{ needs.setup.outputs.version }}
       short_version: ${{ needs.setup.outputs.short_version }}
+    secrets:
+      OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
 
   build-linux:
     needs: setup
@@ -862,6 +867,8 @@ jobs:
           package-manager-cache: false
 
       - name: Build core
+        env:
+          OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
         run: web/build-core.sh
 
       - name: Build web

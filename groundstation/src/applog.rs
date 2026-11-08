@@ -333,8 +333,11 @@ pub fn record_entry(level: usize, category: &str, message: &str, file: &str, lin
     if store.entries.len() > MAX_LOG_ENTRIES {
         store.entries.pop_front();
     }
-    if let (Some(entry), Ok(mut pending)) = (store.entries.back().cloned(), DISK_PENDING.lock()) {
-        if pending.len() < MAX_LOG_ENTRIES {
+    if let Some(entry) = store.entries.back().cloned() {
+        crate::diaglog::record(&entry);
+        if let Ok(mut pending) = DISK_PENDING.lock()
+            && pending.len() < MAX_LOG_ENTRIES
+        {
             pending.push(entry);
         }
     }

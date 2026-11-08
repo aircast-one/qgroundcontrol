@@ -61,6 +61,7 @@ core.setSerialHost({
   },
   close: (id: number) => scope.postMessage({ serial: { op: 'close', id } }),
 });
+core.setApplicationVersion(import.meta.env.VITE_APP_VERSION ?? 'dev');
 core.setCloudHost(cloudHost(core));
 core.setSocketHost(socketHost(core));
 const settings: { revision: bigint | null } = { revision: null };

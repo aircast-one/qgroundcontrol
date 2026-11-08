@@ -92,6 +92,7 @@ import one.aircast.android.ui.MapClickMenu
 import one.aircast.android.ui.MapPoint
 import one.aircast.android.ui.MapHoldHint
 import one.aircast.android.ui.MAP_HOLD_HINT
+import one.aircast.android.ui.BetaDiagnosticsDialog
 import one.aircast.android.ui.FirstRunDialog
 import one.aircast.android.ui.MissionCompleteDialog
 import one.aircast.android.ui.SetWaypointSheet
@@ -703,6 +704,7 @@ fun AircastShell(hostView: android.view.View?) {
                 var resumeDismissed by remember { mutableStateOf<Int?>(null) }
                 if (onFly) ResumeFailedPrompt(resumeDismissed) { resumeDismissed = it }
                 FirstRunDialog()
+                BetaDiagnosticsDialog()
                 one.aircast.android.ui.DeepLinkSetupPrompt()
 
                 key(popEpoch) {

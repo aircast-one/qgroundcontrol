@@ -256,7 +256,8 @@ const PAGES: &[Page] = &[
     Page {
         title: "App Logging",
         sections: &[
-            ("Save To Disk", "logManagerSettings"),
+            ("Share With Aircast Support", REMOTE_LOGGING),
+            ("Save To Disk", DISK_LOGGING),
             ("Log Viewer", APP_LOG_VIEWER),
         ],
         shows_links: false,
@@ -538,6 +539,18 @@ const GATED: &[(&str, &str, bool, &str)] = &[
         "diskLoggingEnabled",
         true,
         DISK_LOGGING_OFF,
+    ),
+    (
+        "remoteLoggingEndpoint",
+        "remoteLoggingEnabled",
+        true,
+        REMOTE_LOGGING_OFF,
+    ),
+    (
+        "remoteLoggingToken",
+        "remoteLoggingEnabled",
+        true,
+        REMOTE_LOGGING_OFF,
     ),
     ("enforceChecklist", "useChecklist", true, CHECKLIST_OFF),
     (
@@ -908,6 +921,7 @@ const LOGGING_ROWS: [&str; 3] = ["telemetrySave", "telemetrySaveNotArmed", "save
 const VIRTUAL_JOYSTICK_OFF: &str = "Has no effect while on-screen sticks are off.";
 
 const DISK_LOGGING_OFF: &str = "Writing the log to disk is off";
+const REMOTE_LOGGING_OFF: &str = "Sharing logs with Aircast is off";
 
 const GATED_FROM: &[(&str, &str)] = &[("apmMavlinkStreamRateSettings", "mavlinkSettings")];
 
@@ -1562,6 +1576,13 @@ pub fn video_row_shown(name: &str, stream_source: bool) -> bool {
 
 const MAP_PROVIDERS: &str = "appSettings#mapProviders";
 const APP_LOG_VIEWER: &str = "appSettings#logViewer";
+const REMOTE_LOGGING: &str = "logManagerSettings#remote";
+const DISK_LOGGING: &str = "logManagerSettings#disk";
+const REMOTE_LOGGING_ROWS: [&str; 3] = [
+    "remoteLoggingEnabled",
+    "remoteLoggingEndpoint",
+    "remoteLoggingToken",
+];
 const APP_LOG_VIEWER_ROWS: [&str; 1] = ["showAppLogTimestampAsElapsedTime"];
 const MAP_PROVIDER_ROWS: [&str; 9] = [
     "mapboxToken",
@@ -1579,6 +1600,8 @@ pub fn slice_shows(slice: &str, name: &str) -> bool {
     match slice {
         MAP_PROVIDERS => MAP_PROVIDER_ROWS.contains(&name),
         APP_LOG_VIEWER => APP_LOG_VIEWER_ROWS.contains(&name),
+        REMOTE_LOGGING => REMOTE_LOGGING_ROWS.contains(&name),
+        DISK_LOGGING => !REMOTE_LOGGING_ROWS.contains(&name),
         "appSettings" => !MAP_PROVIDER_ROWS.contains(&name) && !APP_LOG_VIEWER_ROWS.contains(&name),
         _ => true,
     }
