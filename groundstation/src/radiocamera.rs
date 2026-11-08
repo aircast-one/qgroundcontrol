@@ -39,6 +39,7 @@ pub enum Move {
     Picture(u8),
     NextPalette,
     Drop { bay: i64 },
+    DropBay(i64),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,6 +193,8 @@ pub struct Sticks {
     acted: BTreeMap<usize, u16>,
     sent_ms: Option<u64>,
     drop_before: Option<u16>,
+    bay_before: Option<u16>,
+    arm_before: Option<u16>,
     pub layout: Layout,
     pub bay: i64,
     pub ready: Ready,
@@ -296,8 +299,21 @@ impl Sticks {
             && high(self.acted.get(&layout.drop).copied())
             && self.drop_before.is_some_and(|pwm| pwm <= PRESSED_PWM))
         .then_some(Move::Drop { bay: self.bay });
+        let armed = |pwm: Option<u16>| pwm.is_some_and(|pwm| pwm >= ARMED_PWM);
+        let pressed_bay = read(line, layout.bay)
+            .map(bay)
+            .filter(|now| {
+                armed(read(line, layout.arm))
+                    && armed(self.acted.get(&layout.arm).copied())
+                    && armed(self.arm_before)
+                    && self.acted.get(&layout.bay).map(|pwm| bay(*pwm)) == Some(*now)
+                    && self.bay_before.is_some_and(|pwm| bay(pwm) != *now)
+            })
+            .map(Move::DropBay);
         let refreshed: Vec<(usize, u16)> = [
             layout.drop,
+            layout.arm,
+            layout.bay,
             layout.pitch,
             layout.yaw,
             layout.zoom,
@@ -323,6 +339,10 @@ impl Sticks {
         .collect();
         self.drop_before = read(line, layout.drop)
             .map_or(self.drop_before, |_| self.acted.get(&layout.drop).copied());
+        self.bay_before = read(line, layout.bay)
+            .map_or(self.bay_before, |_| self.acted.get(&layout.bay).copied());
+        self.arm_before = read(line, layout.arm)
+            .map_or(self.arm_before, |_| self.acted.get(&layout.arm).copied());
         self.acted.extend(refreshed);
         if aimed.is_some() || zoomed.is_some() {
             self.sent_ms = Some(now_ms);
@@ -333,7 +353,8 @@ impl Sticks {
             .chain(zoomed)
             .chain(switched)
             .chain(palette.then_some(Move::NextPalette))
-            .chain(dropped)
+            .chain(dropped.filter(|_| pressed_bay.is_none()))
+            .chain(pressed_bay)
             .collect()
     }
 }
@@ -342,6 +363,8 @@ static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
     acted: BTreeMap::new(),
     sent_ms: None,
     drop_before: None,
+    bay_before: None,
+    arm_before: None,
     layout: R2D2,
     bay: 1,
     ready: ALL_READY,
@@ -350,6 +373,18 @@ static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
 fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
     let servo_bays = vehicle.payload_servos().len() as i64;
     (vehicle.payload_setup().enabled || servo_bays > 0).then_some(servo_bays)
+}
+
+fn through_the_app(step: Move, servo_bays: Option<i64>) -> Option<Move> {
+    match step {
+        Move::Drop { bay } => servo_bays.map(|bays| Move::Drop {
+            bay: named(bay, bays),
+        }),
+        Move::DropBay(bay) => servo_bays
+            .filter(|bays| (1..=*bays).contains(&bay))
+            .map(|_| Move::Drop { bay }),
+        other => Some(other),
+    }
 }
 
 pub fn named(bay: i64, servo_bays: i64) -> i64 {
@@ -426,13 +461,13 @@ pub fn steer(vehicle: u8, moves: &[Move]) {
             json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent }),
             None,
         ),
-        Move::Drop { .. } if !crate::payloadrail::armed() => {
+        Move::Drop { .. } | Move::DropBay(_) if !crate::payloadrail::armed() => {
             crate::noticeboard::post_from_vehicle(
                 crate::noticeboard::PAYLOAD,
                 crate::payloadrail::SAFE,
             );
         }
-        Move::Drop { bay } => guided(
+        Move::Drop { bay } | Move::DropBay(bay) => guided(
             vehicle,
             json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
             Some(crate::noticeboard::PAYLOAD),
@@ -469,12 +504,7 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout) {
     let moves: Vec<Move> = sticks
         .step(line, limits, crate::hub::now_ms())
         .into_iter()
-        .filter_map(|step| match step {
-            Move::Drop { bay } => servo_bays.map(|bays| Move::Drop {
-                bay: named(bay, bays),
-            }),
-            other => Some(other),
-        })
+        .filter_map(|step| through_the_app(step, servo_bays))
         .collect();
     steer(vehicle, &moves);
 }
@@ -720,6 +750,115 @@ mod tests {
                 .step(&line(&[(DROP_CHANNEL, 2012)]), LIMITS, 0)
                 .is_empty(),
             "a radio plugged in with the switch already up drops nothing"
+        );
+    }
+
+    #[test]
+    fn with_bomarm_armed_pressing_a_6pos_position_drops_that_bay_once() {
+        let mut sticks = Sticks::default();
+        let armed =
+            |bay: u16| line(&[(ARM_CHANNEL, 2012), (BAY_CHANNEL, bay), (DROP_CHANNEL, 988)]);
+        let moves: Vec<Vec<Move>> = [1398, 1398, 1398, 988, 988, 988, 1602, 1602]
+            .into_iter()
+            .zip((0..).step_by(10))
+            .map(|(bay, at)| sticks.step(&armed(bay), LIMITS, at))
+            .collect();
+        assert_eq!(
+            moves,
+            vec![
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                vec![Move::DropBay(1)],
+                vec![],
+                vec![],
+                vec![Move::DropBay(4)],
+            ],
+            "arming on a set position drops nothing; a press drops its bay on the second line, once"
+        );
+    }
+
+    #[test]
+    fn a_6pos_press_and_the_drop_switch_together_drop_the_bay_once() {
+        let mut sticks = Sticks {
+            bay: 3,
+            ..Sticks::default()
+        };
+        let at = |bay: u16, drop: u16| {
+            line(&[
+                (ARM_CHANNEL, 2012),
+                (BAY_CHANNEL, bay),
+                (DROP_CHANNEL, drop),
+            ])
+        };
+        let moves: Vec<Move> = [
+            (988, 988),
+            (988, 988),
+            (1398, 2012),
+            (1398, 2012),
+            (1398, 2012),
+        ]
+        .into_iter()
+        .zip((0..).step_by(10))
+        .flat_map(|((bay, drop), now)| sticks.step(&at(bay, drop), LIMITS, now))
+        .collect();
+        assert_eq!(moves, vec![Move::DropBay(3)]);
+    }
+
+    #[test]
+    fn while_the_payload_is_safe_the_6pos_only_picks_the_bay() {
+        let mut sticks = Sticks::default();
+        let at = |arm: u16, bay: u16| {
+            line(&[(ARM_CHANNEL, arm), (BAY_CHANNEL, bay), (DROP_CHANNEL, 988)])
+        };
+        let moves: Vec<Move> = [
+            (988, 1398),
+            (988, 1398),
+            (988, 988),
+            (988, 988),
+            (2012, 988),
+            (2012, 988),
+            (2012, 988),
+            (988, 988),
+            (2012, 1602),
+            (2012, 1602),
+            (2012, 1602),
+        ]
+        .into_iter()
+        .zip((0..).step_by(10))
+        .flat_map(|((arm, bay), now)| sticks.step(&at(arm, bay), LIMITS, now))
+        .collect();
+        assert!(
+            moves.is_empty(),
+            "a position picked while safe, or together with arming, does not drop: {moves:?}"
+        );
+    }
+
+    #[test]
+    fn a_pressed_bay_drops_only_where_the_drone_has_that_bay_on_a_servo() {
+        assert_eq!(
+            through_the_app(Move::DropBay(3), Some(4)),
+            Some(Move::Drop { bay: 3 })
+        );
+        assert_eq!(
+            through_the_app(Move::DropBay(5), Some(4)),
+            None,
+            "the 6POS has more positions than the drone has bays"
+        );
+        assert_eq!(
+            through_the_app(Move::DropBay(1), Some(0)),
+            None,
+            "one gripper still drops from the drop switch"
+        );
+        assert_eq!(
+            through_the_app(Move::DropBay(1), None),
+            None,
+            "a drone with no payload leaves the radio to the flight controller"
+        );
+        assert_eq!(
+            through_the_app(Move::Drop { bay: 5 }, Some(4)),
+            Some(Move::Drop { bay: 0 })
         );
     }
 
