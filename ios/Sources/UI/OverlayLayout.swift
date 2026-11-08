@@ -9,7 +9,20 @@ private let JIGGLE_DEGREES = 1.2
 private let JIGGLE_MILLIS = 120
 private let JIGGLE_SPREAD = 0x1f
 let BADGE_SIZE: CGFloat = 24
-private let CORNER_BADGE_OFFSET = CGSize(width: BADGE_SIZE / 2, height: -BADGE_SIZE * 3 / 4)
+
+enum BadgeSpot {
+    case inside, aboveTopTrailing, onTopLeading
+
+    var alignment: Alignment { self == .onTopLeading ? .topLeading : .topTrailing }
+
+    var offset: CGSize {
+        switch self {
+        case .inside: .zero
+        case .aboveTopTrailing: CGSize(width: BADGE_SIZE / 2, height: -BADGE_SIZE * 3 / 4)
+        case .onTopLeading: CGSize(width: -BADGE_SIZE / 2, height: -BADGE_SIZE / 2)
+        }
+    }
+}
 private let HOLD_TO_EDIT_SECONDS = 0.5
 let RESET_ARM_MILLIS: Int64 = 4000
 
@@ -279,11 +292,29 @@ struct LayoutPipEditor: View {
     }
 }
 
+struct LayoutGroup<Content: View>: View {
+    let key: String
+    @ViewBuilder let content: () -> Content
+    @Environment(FlyScreenState.self) private var flyScreen
+    @Environment(\.LocalAvoidedByVideoMessage) private var avoided
+    @FlyIsPortrait private var portrait
+
+    var body: some View {
+        let placedKey = orientedKey(key, !portrait)
+        content()
+            .holdToEditLayout()
+            .modifier(KeptOnScreen(key: placedKey, active: true))
+            .offset(flyScreen.layout.offsets[placedKey] ?? .zero)
+            .modifier(AvoidedByVideoMessage(key: key, active: avoided))
+    }
+}
+
 struct LayoutWidget<Content: View>: View {
     let key: String
     var movable: Bool = true
     var hideable: Bool = true
-    var cornerBadge: Bool = false
+    var badgeSpot: BadgeSpot = .inside
+    var dragsWith: String? = nil
     @ViewBuilder let content: () -> Content
     @Environment(FlyScreenState.self) private var flyScreen
     @Environment(\.LocalAvoidedByVideoMessage) private var avoided
@@ -309,11 +340,11 @@ struct LayoutWidget<Content: View>: View {
                 .opacity(hidden ? HIDDEN_ALPHA : 1)
                 .osdShadow(flyOsd)
                 .overlay {
-                    if decorated && movable { LayoutDragArea(key: key) }
+                    if decorated && (movable || dragsWith != nil) { LayoutDragArea(key: dragsWith ?? key) }
                 }
-                .overlay(alignment: .topTrailing) {
+                .overlay(alignment: badgeSpot.alignment) {
                     if decorated {
-                        badge(layout, hidden).offset(cornerBadge ? CORNER_BADGE_OFFSET : .zero)
+                        badge(layout, hidden).offset(badgeSpot.offset)
                     }
                 }
                 .modifier(Jiggle(key: key, active: decorated))

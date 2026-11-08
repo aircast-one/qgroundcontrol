@@ -530,7 +530,7 @@ struct AircastShell: View {
 
     private func flyRail(_ stacked: Bool, _ splitRoom: Bool) -> AnyView {
         let cameraSwitch = LayoutWidget(key: "cameraSwitch") { CameraSwitch(splitRoom: splitRoom) }
-        let cameraControl = LayoutWidget(key: "cameraControl") { CameraControlLayer(shutters: !portrait) }
+        let cameraControl = LayoutGroup(key: CAMERA_CONTROL_KEY) { CameraControlLayer(shutters: !portrait) }
         if stacked {
             return AnyView(VStack(alignment: .trailing, spacing: 0) {
                 if !splitRoom { cameraSwitch.padding(.bottom, Space.s2) }

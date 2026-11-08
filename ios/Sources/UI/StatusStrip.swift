@@ -222,7 +222,7 @@ private struct VehicleStatusReadings: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
                     ForEach(keys, id: \.self) { key in
-                        LayoutWidget(key: "indicator-\(key)", movable: false, cornerBadge: true) {
+                        LayoutWidget(key: "indicator-\(key)", movable: false, badgeSpot: .aboveTopTrailing) {
                             cell(key, state, live)
                                 .onGeometryChange(for: CGFloat?.self) { $0.size.width > 0 ? $0.frame(in: .global).midX : nil } action: { centre in
                                     if dragging != key { centres = centres.filter { $0.key != key }.merging(centre.map { [key: $0] } ?? [:]) { $1 } }

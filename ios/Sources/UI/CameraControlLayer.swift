@@ -19,6 +19,13 @@ let RECORD_RED = Color(hex: 0xE53935)
 
 private let CAMERA_CONTROLS_GRACE_MS = 300
 
+let CAMERA_CONTROL_KEY = "cameraControl"
+private let CAMERA_SHUTTER_KEY = "cameraShutter"
+
+private func cameraElement<Content: View>(_ key: String, @ViewBuilder _ content: @escaping () -> Content) -> some View {
+    LayoutWidget(key: key, movable: false, badgeSpot: .onTopLeading, dragsWith: CAMERA_CONTROL_KEY, content: content)
+}
+
 @MainActor
 private func afterGrace(_ work: @escaping @MainActor () -> Void) {
     Task { @MainActor in
@@ -104,8 +111,8 @@ struct CameraControlLayer: View {
                     rail(camera, panel)
                 } else {
                     HStack(spacing: 0) {
-                        RcCameraControls()
-                        if shutters { StreamShutter() }
+                        cameraElement("cameraGimbal") { RcCameraControls() }
+                        if shutters { cameraElement(CAMERA_SHUTTER_KEY) { StreamShutter() } }
                     }
                 }
             }
@@ -117,14 +124,20 @@ struct CameraControlLayer: View {
     }
 
     private func rail(_ camera: CameraReading, _ panel: CameraPanel) -> some View {
-        HStack(spacing: 0) {
-            RcCameraControls()
-            ShutterCentredRail(centre: shutters && !panel.shutters.isEmpty ? SHUTTER_SIZE : 0) {
+        let layout = flyScreen.layout
+        let shutterShown = shutters && !panel.shutters.isEmpty && (layout.editing || !layout.hidden.contains(CAMERA_SHUTTER_KEY))
+        return HStack(spacing: 0) {
+            cameraElement("cameraGimbal") { RcCameraControls() }
+            ShutterCentredRail(centre: shutterShown ? SHUTTER_SIZE : 0) {
                 above(camera)
             } shutter: {
                 if shutters {
-                    ForEach(Array(panel.shutters.enumerated()), id: \.offset) { _, shutter in
-                        ShutterButton(caption: shutterCaption(panel, shutter), shutter: shutter) { press(shutter, refusal) }
+                    cameraElement(CAMERA_SHUTTER_KEY) {
+                        VStack(spacing: RAIL_GAP) {
+                            ForEach(Array(panel.shutters.enumerated()), id: \.offset) { _, shutter in
+                                ShutterButton(caption: shutterCaption(panel, shutter), shutter: shutter) { press(shutter, refusal) }
+                            }
+                        }
                     }
                 }
             } below: {
@@ -159,44 +172,42 @@ struct CameraControlLayer: View {
     }
 
     @ViewBuilder private func above(_ camera: CameraReading) -> some View {
-        Button { state.details = true } label: {
-            Image(.settings).font(.system(size: 20)).frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle()).macHover(Circle(), tint: .white)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Camera settings")
-        .macTooltip("Camera settings")
-        if let label = zoomText(camera) {
+        cameraElement("cameraSettings") {
             Button { state.details = true } label: {
-                Text(label)
-                    .font(.labelLarge)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(osdBackdrop(Color.black.opacity(CAMERA_SCRIM_ALPHA), flyOsd), in: Capsule())
-                    .overlay(Capsule().stroke(theme.aircast.outdoorForeground.opacity(ZOOM_CHIP_BORDER_ALPHA), lineWidth: 1))
+                Image(.settings).font(.system(size: 20)).frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle()).macHover(Circle(), tint: .white)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Zoom \(label)")
+            .accessibilityLabel("Camera settings")
+            .macTooltip("Camera settings")
+        }
+        if let label = zoomText(camera) {
+            cameraElement("cameraZoom") {
+                Button { state.details = true } label: {
+                    Text(label)
+                        .font(.labelLarge)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(osdBackdrop(Color.black.opacity(CAMERA_SCRIM_ALPHA), flyOsd), in: Capsule())
+                        .overlay(Capsule().stroke(theme.aircast.outdoorForeground.opacity(ZOOM_CHIP_BORDER_ALPHA), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Zoom \(label)")
+            }
         }
     }
 
     @ViewBuilder private func below(_ camera: CameraReading, _ panel: CameraPanel) -> some View {
-        if shutters {
-            Text(panel.inPhotoMode ? "PHOTO" : "VIDEO").font(.labelSmall).osdShadow()
-        }
-        if camera.hasModes {
-            let toVideo = panel.inPhotoMode
-            Button {
-                guard modeTapSwitches(camera, toVideo) else { return }
-                let mode = toVideo ? "video" : "photo"
-                let state = state
-                Task { state.refused = await offMain { Qgc.refusalOf(CAMERA_SET_MODE, mode) } }
-            } label: {
-                Image(toVideo ? .videocam : .photoCamera).font(.system(size: 22)).osdShadow().frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle()).macHover(Circle(), tint: .white)
+        if shutters || camera.hasModes {
+            cameraElement("cameraMode") {
+                VStack(spacing: RAIL_GAP) {
+                    if shutters {
+                        Text(panel.inPhotoMode ? "PHOTO" : "VIDEO").font(.labelSmall).osdShadow()
+                    }
+                    if camera.hasModes {
+                        modeSwitch(camera, panel)
+                    }
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(!(toVideo ? panel.selectVideoEnabled : panel.selectPhotoEnabled))
-            .accessibilityLabel(toVideo ? "Switch to video" : "Switch to photo")
-            .macTooltip(toVideo ? "Switch to video" : "Switch to photo")
         }
         if let plan = lapsePlan(camera) {
             Text(plan).font(.labelSmall)
@@ -204,6 +215,22 @@ struct CameraControlLayer: View {
         if let refused {
             Text(refused).font(.bodySmall).foregroundStyle(theme.colors.error).padding(.horizontal, 4)
         }
+    }
+
+    private func modeSwitch(_ camera: CameraReading, _ panel: CameraPanel) -> some View {
+        let toVideo = panel.inPhotoMode
+        return Button {
+            guard modeTapSwitches(camera, toVideo) else { return }
+            let mode = toVideo ? "video" : "photo"
+            let state = state
+            Task { state.refused = await offMain { Qgc.refusalOf(CAMERA_SET_MODE, mode) } }
+        } label: {
+            Image(toVideo ? .videocam : .photoCamera).font(.system(size: 22)).osdShadow().frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle()).macHover(Circle(), tint: .white)
+        }
+        .buttonStyle(.plain)
+        .disabled(!(toVideo ? panel.selectVideoEnabled : panel.selectPhotoEnabled))
+        .accessibilityLabel(toVideo ? "Switch to video" : "Switch to photo")
+        .macTooltip(toVideo ? "Switch to video" : "Switch to photo")
     }
 }
 
