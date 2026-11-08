@@ -2069,6 +2069,9 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         "vehicle.aircastLink.bitrateHistory" => {
             return Some(json!({ "kind": "value", "value": known.aircast.bitrate_history }));
         }
+        "vehicle.aircastLink.uplinkSwitches" => {
+            return Some(known.aircast.uplink_switches_value());
+        }
         aircast if aircast.starts_with("vehicle.aircastLink.") => {
             return crate::vehiclefact::spec_property(
                 &crate::vehiclefact::AIRCAST_LINK,

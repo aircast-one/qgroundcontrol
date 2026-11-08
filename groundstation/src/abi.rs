@@ -738,7 +738,7 @@ fn install_hub_sink() {
                         crate::hub::now_us(),
                         crate::hub::now_ms(),
                     );
-                    hub.note_cellular(frame.header.system_id, &frame.message, &frame.raw);
+                    hub.note_aircast_link(&frame.header, &frame.message, &frame.raw);
                     outbound
                 };
                 deliver(outbound);

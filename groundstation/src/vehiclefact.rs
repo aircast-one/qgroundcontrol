@@ -568,11 +568,14 @@ pub const AIRCAST_LINK: GroupSpec = GroupSpec {
         ("radioType", "radioType"),
         ("status", "status"),
         ("videoBitrate", "videoBitrate"),
+        ("uplink", "uplink"),
     ],
-    added: &["quality", "radioType", "status", "videoBitrate"],
+    added: &["quality", "radioType", "status", "videoBitrate", "uplink"],
 };
 
 const AIRCAST_HISTORY_LENGTH: usize = 720;
+const UPLINK_SWITCHES_KEPT: usize = 20;
+pub const UPLINK_VALUE: &str = "UPLINK";
 const CELLULAR_QUALITY_UNKNOWN: u8 = u8::MAX;
 const CELLULAR_RX_RATE_OFFSET: usize = 15;
 const MAVLINK_V2_HEADER_LENGTH: usize = 10;
@@ -597,6 +600,15 @@ pub struct AircastLinkFacts {
     pub quality_history: std::collections::VecDeque<i64>,
     pub bitrate_history: std::collections::VecDeque<u32>,
     pub telemetry: bool,
+    pub uplink: Option<u8>,
+    pub uplink_switches: std::collections::VecDeque<UplinkSwitch>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UplinkSwitch {
+    pub at_ms: i64,
+    pub from: u8,
+    pub to: u8,
 }
 
 fn remembered<T: Clone>(
@@ -635,21 +647,57 @@ impl AircastLinkFacts {
             quality_history: remembered(&self.quality_history, quality),
             bitrate_history: remembered(&self.bitrate_history, bitrate_kbps),
             telemetry: true,
+            uplink: self.uplink,
+            uplink_switches: std::mem::take(&mut self.uplink_switches),
         };
+    }
+
+    pub fn note_uplink(&mut self, kind: i32, at_ms: i64) {
+        let kind = u8::try_from(kind).unwrap_or_default();
+        if let Some(from) = self.uplink.filter(|from| *from != kind) {
+            self.uplink_switches = std::iter::once(UplinkSwitch {
+                at_ms,
+                from,
+                to: kind,
+            })
+            .chain(self.uplink_switches.iter().cloned())
+            .take(UPLINK_SWITCHES_KEPT)
+            .collect();
+        }
+        self.uplink = Some(kind);
+    }
+
+    fn switches(&self) -> Value {
+        json!(
+            self.uplink_switches
+                .iter()
+                .map(|s| json!({ "atMs": s.at_ms, "from": s.from, "to": s.to }))
+                .collect::<Vec<_>>()
+        )
     }
 
     pub fn raw(&self, name: &str) -> Value {
         match name {
-            "quality" => json!(self.quality),
+            "quality" if self.telemetry => json!(self.quality),
+            "quality" => Value::Null,
             "radioType" => json!(self.radio_type),
             "status" => json!(self.status),
             "videoBitrate" => json!(self.bitrate_kbps),
+            "uplink" => self.uplink.map_or(Value::Null, |kind| json!(kind)),
             _ => Value::Null,
         }
     }
 
+    pub fn uplink_switches_value(&self) -> Value {
+        json!({ "kind": "value", "value": self.switches() })
+    }
+
     pub fn group(&self) -> Value {
-        let group = spec_group(&AIRCAST_LINK, |n| self.raw(n), self.telemetry);
+        let group = spec_group(
+            &AIRCAST_LINK,
+            |n| self.raw(n),
+            self.telemetry || self.uplink.is_some(),
+        );
         match group {
             Value::Object(fields) => Value::Object(
                 fields
@@ -657,6 +705,7 @@ impl AircastLinkFacts {
                     .chain([
                         ("qualityHistory".to_string(), json!(self.quality_history)),
                         ("bitrateHistory".to_string(), json!(self.bitrate_history)),
+                        ("uplinkSwitches".to_string(), self.switches()),
                     ])
                     .collect(),
             ),

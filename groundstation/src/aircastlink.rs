@@ -7,9 +7,70 @@ pub const DEPS: &[&str] = &[
     "vehicle.aircastLink.radioType",
     "vehicle.aircastLink.status",
     "vehicle.aircastLink.videoBitrate",
+    "vehicle.aircastLink.uplink",
+    "vehicle.aircastLink.uplinkSwitches",
 ];
 
 const QUALITY_UNKNOWN: i64 = 255;
+const UPLINK_CELLULAR: i64 = 3;
+const UPLINKS: [(&str, &str); 5] = [
+    ("none", "No uplink"),
+    ("ethernet", "Ethernet"),
+    ("wifi", "Wi-Fi"),
+    ("cellular", "LTE"),
+    ("starlink", "Starlink"),
+];
+
+fn uplink(code: i64) -> Option<(&'static str, &'static str)> {
+    usize::try_from(code)
+        .ok()
+        .and_then(|i| UPLINKS.get(i))
+        .copied()
+}
+
+fn uplink_label(code: Option<i64>) -> String {
+    code.and_then(uplink)
+        .map_or("Unknown".to_string(), |(_, label)| label.to_string())
+}
+
+fn clock(at_ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(at_ms).map_or_else(String::new, |at| {
+        at.with_timezone(&chrono::Local)
+            .format("%H:%M:%S")
+            .to_string()
+    })
+}
+
+fn switches(backend: &dyn Backend, group: &Value) -> Value {
+    json!(
+        history(backend, group, "uplinkSwitches")
+            .as_array()
+            .map(|switches| {
+                switches
+                    .iter()
+                    .map(|s| {
+                        let at = s.get("atMs").and_then(Value::as_i64).unwrap_or_default();
+                        json!({
+                            "atMs": at,
+                            "clock": clock(at),
+                            "from": uplink_label(s.get("from").and_then(Value::as_i64)),
+                            "to": uplink_label(s.get("to").and_then(Value::as_i64)),
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    )
+}
+
+pub fn cell_text(uplink_code: Option<i64>, quality: Option<i64>) -> String {
+    let quality_text = quality.map_or("--".to_string(), |q| format!("{q}%"));
+    match uplink_code.and_then(|code| uplink(code).map(|(_, label)| (code, label))) {
+        None => quality_text,
+        Some((UPLINK_CELLULAR, label)) => format!("{label} {quality_text}"),
+        Some((_, label)) => label.to_string(),
+    }
+}
 
 fn fact<'a>(group: &'a Value, name: &str) -> Option<&'a Value> {
     group.get("facts")?.as_array()?.iter().find(|fact| {
@@ -60,6 +121,7 @@ pub fn aircast_link_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let group = backend.value("vehicle.aircastLink");
     let quality = raw(&group, "quality").filter(|q| *q != QUALITY_UNKNOWN);
     let bitrate = raw(&group, "videoBitrate").unwrap_or(0);
+    let uplink_code = raw(&group, "uplink");
     json!({
         "kind": "object",
         "class": "AircastLink",
@@ -72,6 +134,10 @@ pub fn aircast_link_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "bitrateText": bitrate_text(bitrate),
         "qualityHistory": history(backend, &group, "qualityHistory"),
         "bitrateHistory": history(backend, &group, "bitrateHistory"),
+        "uplink": uplink_code.and_then(uplink).map(|(kind, _)| kind),
+        "uplinkText": uplink_code.and_then(uplink).map_or("", |(_, label)| label),
+        "cellText": cell_text(uplink_code, quality),
+        "switches": switches(backend, &group),
     })
 }
 
@@ -145,5 +211,93 @@ mod tests {
 
     fn raw_of(group: &Value, name: &str) -> Option<i64> {
         raw(group, name)
+    }
+
+    struct Link(crate::vehiclefact::AircastLinkFacts);
+
+    impl Backend for Link {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.aircastLink" => self.0.group().to_string(),
+                _ => "null".to_string(),
+            }
+        }
+        fn get_fields(&self, _: &str, _: &str) -> String {
+            "null".to_string()
+        }
+        fn set(&self, _: &str, _: &str) -> String {
+            "null".to_string()
+        }
+        fn invoke(&self, _: &str, _: &str) -> String {
+            "null".to_string()
+        }
+        fn watch(&self, _: &[String]) {}
+    }
+
+    #[test]
+    fn the_uplink_is_remembered_with_every_change_newest_first() {
+        let mut facts = crate::vehiclefact::AircastLinkFacts::default();
+        facts.note_uplink(4, 1_000);
+        facts.note_uplink(4, 2_000);
+        facts.note_uplink(3, 3_000);
+        facts.apply(&Default::default(), 0);
+        facts.note_uplink(4, 4_000);
+        assert_eq!(facts.uplink, Some(4));
+        assert_eq!(
+            facts
+                .uplink_switches
+                .iter()
+                .map(|s| (s.at_ms, s.from, s.to))
+                .collect::<Vec<_>>(),
+            vec![(4_000, 3, 4), (3_000, 4, 3)],
+            "a repeat is not a switch, the first value is not a switch, and a cellular report keeps the history"
+        );
+        (0..30).for_each(|i| facts.note_uplink(i % 2 + 2, 10_000 + i64::from(i)));
+        assert_eq!(facts.uplink_switches.len(), 20);
+    }
+
+    #[test]
+    fn the_cell_names_the_link_and_keeps_the_signal_only_for_lte() {
+        assert_eq!(cell_text(Some(4), Some(80)), "Starlink");
+        assert_eq!(cell_text(Some(2), None), "Wi-Fi");
+        assert_eq!(cell_text(Some(3), Some(87)), "LTE 87%");
+        assert_eq!(cell_text(Some(0), None), "No uplink");
+        assert_eq!(
+            cell_text(None, Some(87)),
+            "87%",
+            "an aircastd that never says keeps today's cell"
+        );
+    }
+
+    #[test]
+    fn the_view_shows_an_aircraft_on_wi_fi_without_a_modem() {
+        let mut facts = crate::vehiclefact::AircastLinkFacts::default();
+        facts.note_uplink(2, 1_000);
+        facts.note_uplink(3, 1_794_149_670_000);
+        let view = aircast_link_view(&Link(facts), &[]);
+        assert_eq!(
+            (
+                view["shown"].clone(),
+                view["uplink"].clone(),
+                view["uplinkText"].clone(),
+                view["cellText"].clone()
+            ),
+            (
+                json!(true),
+                json!("cellular"),
+                json!("LTE"),
+                json!("LTE --")
+            )
+        );
+        assert_eq!(view["switches"][0]["from"], json!("Wi-Fi"));
+        assert_eq!(view["switches"][0]["to"], json!("LTE"));
+        assert_eq!(view["switches"][0]["atMs"], json!(1_794_149_670_000_i64));
+        assert_eq!(view["switches"][0]["clock"].as_str().map(str::len), Some(8));
+
+        let old = aircast_link_view(&Link(Default::default()), &[]);
+        assert_eq!(
+            (old["uplink"].clone(), old["switches"].clone()),
+            (Value::Null, json!([]))
+        );
     }
 }

@@ -8967,13 +8967,29 @@ impl Hub {
         }
     }
 
-    pub fn note_cellular(&mut self, system: u8, message: &MavMessage, raw: &[u8]) {
-        if let (MavMessage::CELLULAR_STATUS(cellular), Some(vehicle)) =
-            (message, self.vehicles.get_mut(&system))
-        {
-            vehicle
+    pub fn note_aircast_link(
+        &mut self,
+        header: &mavlink::MavHeader,
+        message: &MavMessage,
+        raw: &[u8],
+    ) {
+        let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else {
+            return;
+        };
+        match message {
+            MavMessage::CELLULAR_STATUS(cellular) => vehicle
                 .aircast
-                .apply(cellular, crate::vehiclefact::cellular_rx_rate(raw));
+                .apply(cellular, crate::vehiclefact::cellular_rx_rate(raw)),
+            MavMessage::NAMED_VALUE_INT(value)
+                if header.component_id == crate::joystickhost::STANDBY_COMPONENT
+                    && value
+                        .name
+                        .to_str()
+                        .is_ok_and(|name| name == crate::vehiclefact::UPLINK_VALUE) =>
+            {
+                vehicle.aircast.note_uplink(value.value, wall_ms())
+            }
+            _ => {}
         }
     }
 

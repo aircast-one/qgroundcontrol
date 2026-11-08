@@ -28,6 +28,13 @@
     "shortDesc":        "Video bitrate",
     "type":             "uint32",
     "units":            "kbit/s"
+},
+{
+    "name":             "uplink",
+    "shortDesc":        "Uplink",
+    "type":             "uint8",
+    "enumStrings":      "No uplink,Ethernet,Wi-Fi,LTE,Starlink",
+    "enumValues":       "0,1,2,3,4"
 }
 ]
 }

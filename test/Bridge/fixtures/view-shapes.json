@@ -10854,6 +10854,7 @@
             "empty"
         ],
         "bitrateText": "string",
+        "cellText": "string",
         "class": "string",
         "kind": "string",
         "modem": "string",
@@ -10864,7 +10865,12 @@
         ],
         "qualityText": "string",
         "shown": "bool",
-        "signalText": "string"
+        "signalText": "string",
+        "switches": [
+            "empty"
+        ],
+        "uplink": "null",
+        "uplinkText": "string"
     },
     "view.altitudeModes": {
         "class": "string",
