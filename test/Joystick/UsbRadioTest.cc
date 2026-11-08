@@ -469,6 +469,25 @@ void UsbRadioTest::_theLookSwitchAimsDownOrAheadWhenItFlips_test()
              (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}));
 }
 
+void UsbRadioTest::_yawAloneKeepsThePitchTheLookSwitchSet_test()
+{
+    CameraSticks sticks;
+    (void) sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1500}, {kR2d2.look, 1500}}), 0);
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1500}, {kR2d2.look, 988}}), 10),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}));
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 2012}, {kR2d2.look, 988}}), 1000),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, kYawLimit}}));
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 2012}, {kR2d2.look, 988}}), 2000),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, kYawLimit}}));
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 988}, {kR2d2.look, 988}}), 3000),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, -kYawLimit}}));
+    CameraSticks fresh;
+    (void) fresh.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1500}}), 0);
+    QVERIFY2(fresh.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 2012}}), 1000) ==
+                 (QList<Move>{Move{Move::Kind::Aim, -45.0f, kYawLimit}}),
+             "before anything was commanded the slider's reading is used");
+}
+
 namespace {
 
 QList<Move> stepAll(CameraSticks& sticks, const QList<std::pair<uint16_t, std::pair<uint16_t, uint16_t>>>& lines)

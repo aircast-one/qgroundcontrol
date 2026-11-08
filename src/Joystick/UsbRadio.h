@@ -191,6 +191,7 @@ private:
     std::optional<uint16_t> _bayBefore;
     std::optional<uint16_t> _armBefore;
     std::optional<int> _pitchSource;
+    std::optional<float> _heldPitch;
 };
 
 QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {}, const Layout& layout = {},

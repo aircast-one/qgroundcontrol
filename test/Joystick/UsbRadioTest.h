@@ -35,4 +35,5 @@ private slots:
     void _aSliderMovedBeforeTheGimbalIsFoundAimsOnceItIs_test();
     void _theTiltKnobAimsLikeThePitchSlider_test();
     void _theLookSwitchAimsDownOrAheadWhenItFlips_test();
+    void _yawAloneKeepsThePitchTheLookSwitchSet_test();
 };

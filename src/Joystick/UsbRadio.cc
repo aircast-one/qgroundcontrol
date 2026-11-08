@@ -226,14 +226,18 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
             _acted[number] = *now;
         }
     };
+    const bool pitched = moved(layout.pitch) || moved(layout.tilt);
     QList<Move> moves;
     if (aimed) {
-        moves << Move{Move::Kind::Aim, between(kPitchDown, kPitchAhead, *pitch), between(-kYawLimit, kYawLimit, *yaw)};
+        const float aimPitch = pitched || !_heldPitch ? between(kPitchDown, kPitchAhead, *pitch) : *_heldPitch;
+        moves << Move{Move::Kind::Aim, aimPitch, between(-kYawLimit, kYawLimit, *yaw)};
         _pitchSource = source;
+        _heldPitch = aimPitch;
     }
     if (looked) {
-        moves << Move{Move::Kind::Aim, position(*look) == 2 ? kPitchDown : kPitchAhead,
-                      yaw ? between(-kYawLimit, kYawLimit, *yaw) : 0.0f};
+        const float lookPitch = position(*look) == 2 ? kPitchDown : kPitchAhead;
+        moves << Move{Move::Kind::Aim, lookPitch, yaw ? between(-kYawLimit, kYawLimit, *yaw) : 0.0f};
+        _heldPitch = lookPitch;
     }
     if (zoomed) {
         moves << Move{Move::Kind::Zoom, 0.0f, 0.0f, between(0.0f, 100.0f, *zoom)};
