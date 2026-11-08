@@ -35,6 +35,7 @@ import {
   gpsDetail,
   gpsStatus,
   linkDetail,
+  lowestVoltage,
   silenceText,
   totalCurrent,
   totalDraw,
@@ -252,6 +253,7 @@ const BatteryCells = ({
   batteries,
   headline,
   live,
+  voltage,
   timeLeft,
   current,
   onOpen,
@@ -259,6 +261,7 @@ const BatteryCells = ({
   batteries: readonly BatteryReading[];
   headline: BatteryHeadline | null;
   live: boolean;
+  voltage: string;
   timeLeft: string;
   current: string;
   onOpen: () => void;
@@ -266,7 +269,7 @@ const BatteryCells = ({
   const compact = useContext(LocalCompactStatus);
   const narrow = useContext(LocalNarrowStatus);
   if (batteries.length === 0) return null;
-  const extras = narrow ? [] : ([[timeLeft, 'flight time left'], [current, 'current draw']] as const).filter(([value]) => value !== '');
+  const extras = narrow ? [] : ([[voltage, 'battery voltage'], [timeLeft, 'flight time left'], [current, 'current draw']] as const).filter(([value]) => value !== '');
   const limiting = limitingBattery(batteries);
   return (
     <div className="flex items-center" style={{ gap: BATTERY_GAP }}>
@@ -309,6 +312,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const headline = useMemo(() => batteryHeadline(batteryJson), [batteryJson]);
   const timeLeft = headline?.timeLeft ?? '';
   const current = useMemo(() => totalCurrent(batteryJson) ?? '', [batteryJson]);
+  const voltage = useMemo(() => lowestVoltage(batteryJson) ?? '', [batteryJson]);
   const linksJson = useQgcPath(VEHICLE_LINKS);
   const links = useMemo(() => linkCell(vehicleLinks(linksJson)), [linksJson]);
   const gpsJson = useQgcPath(GPS_VIEW);
@@ -339,7 +343,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const telemetry = telemetryCell(state);
 
   const cells: readonly (readonly [string, ReactNode])[] = [
-    ['battery', <BatteryCells batteries={batteries} headline={headline} live={live} timeLeft={timeLeft} current={current} onOpen={open(StripDetail.Battery)} />],
+    ['battery', <BatteryCells batteries={batteries} headline={headline} live={live} voltage={voltage} timeLeft={timeLeft} current={current} onOpen={open(StripDetail.Battery)} />],
     ['flightTime', <FlightTimeSlot />],
     ['gps', gps === null ? null : <InlineCell text={fix === null ? NO_COUNT : satsText(fix, satellites)} colour={fix === null ? null : gpsColour(fix)} icon="ic_satellite_alt" onClick={open(StripDetail.Gps)} />],
     ['rc', rc === null ? null : <InlineCell text={rc.text} colour={rc.lost ? md('error') : null} icon="ic_gamepad" onClick={open(StripDetail.Rc)} />],

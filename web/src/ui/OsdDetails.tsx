@@ -1,11 +1,11 @@
-import { type Json, jsonObjects, optBoolean, optDouble, optJSONArray, optText } from '@/bridge/Json';
 import { useQgcDouble, useQgcPath } from '@/bridge/QgcState';
 import type { WhepStats } from '@/core/whep';
 import { mutableStateOf, useValue } from '@/kotlin/State';
 import { Text } from '@/m3';
-import { aircast, md, withAlpha } from '@/theme/Colors';
+import { Drawable } from '@/res/Icon';
+import type { DrawableName } from '@/res/drawables';
+import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { FLY_STATE, flyState } from './FlyState';
-import { BATTERY_VIEW } from './InstrumentDetail';
 import { USB_RADIO_VIEW, type UsbRadioBadge, usbRadioBadge, usbRadioTone } from './UsbRadioIndicator';
 import { OSD_LABEL_ALPHA } from './VehicleUi';
 import { VIBRATION_VIEW, type VibrationReading, vibrationReading, worstSeverity } from './VibrationScreen';
@@ -14,10 +14,9 @@ export const mainVideoStats = mutableStateOf<WhepStats | null>(null);
 
 type Tone = 'error' | 'warning' | null;
 export type OsdDetail = { label: string; value: string; tone: Tone };
+export type OsdLine = { icon: DrawableName; details: readonly OsdDetail[] };
 
 export type OsdDetailsInput = {
-  battery: Json | null;
-  gps: Json | null;
   hdop: number;
   ekfRatios: readonly number[];
   vibration: VibrationReading | null;
@@ -30,7 +29,8 @@ export type OsdDetailsInput = {
 const EKF_RATIOS = ['velRatio', 'horizPosRatio', 'vertPosRatio', 'magRatio', 'haglRatio', 'tasRatio'] as const;
 const EKF_WARNING = 0.5;
 const EKF_DANGER = 0.8;
-const GPS_VIEW = 'view.gps';
+const ICON_SIZE = 14;
+const STRIPE_HEIGHT = 24;
 
 const detail = (label: string, value: string, tone: Tone = null): OsdDetail[] => (value.trim() === '' ? [] : [{ label, value, tone }]);
 
@@ -45,19 +45,7 @@ const severityTone = (severity: string | null): Tone => (severity === 'danger' ?
 
 export const bitrateText = (kbps: number): string => (kbps >= 1000 ? `${(kbps / 1000).toFixed(1)}Mb/s` : `${kbps}kb/s`);
 
-const batteryDetails = (battery: Json | null): OsdDetail[] => {
-  const pack = jsonObjects(optJSONArray(battery, 'packs'))[0] ?? null;
-  return pack === null ? [] : detail('BAT', `${optText(pack, 'voltageText')} ${optText(pack, 'currentText')}`);
-};
-
-const gpsDetails = (gps: Json | null, hdop: number): OsdDetail[] =>
-  gps === null || !optBoolean(gps, 'available')
-    ? []
-    : [
-        ...detail('GPS', optText(gps, 'lockText')),
-        ...detail('SAT', String(optDouble(gps, 'satellites', 0))),
-        ...(Number.isFinite(hdop) && hdop > 0 ? detail('HDOP', hdop.toFixed(1)) : []),
-      ];
+const hdopDetails = (hdop: number): OsdDetail[] => (Number.isFinite(hdop) && hdop > 0 && hdop < 100 ? detail('HDOP', hdop.toFixed(1)) : []);
 
 const ekfDetails = (ratios: readonly number[]): OsdDetail[] => {
   const worst = ekfWorst(ratios);
@@ -66,37 +54,41 @@ const ekfDetails = (ratios: readonly number[]): OsdDetail[] => {
 
 const vibrationDetails = (vibration: VibrationReading | null): OsdDetail[] => {
   const values = (vibration?.axes ?? []).flatMap((it) => (it.value === null ? [] : [it.value]));
-  return vibration === null || values.length === 0 ? [] : detail('VIBE', Math.max(...values).toFixed(1), severityTone(worstSeverity(vibration)));
+  return vibration === null || values.length === 0 ? [] : detail('VIB', Math.max(...values).toFixed(1), severityTone(worstSeverity(vibration)));
 };
 
-const videoDetails = (video: WhepStats | null): OsdDetail[] =>
+const videoLine = (video: WhepStats | null): OsdLine =>
   video === null
-    ? detail('VIDEO', 'OFF', 'warning')
-    : [
-        ...detail('VIDEO', `${video.fps}fps ${bitrateText(video.kbps)}`),
-        ...detail('JIT', `${video.jitterMs}ms`),
-        ...detail('LOST', String(video.lost), video.lost > 0 ? 'warning' : null),
-        ...detail('DROP', String(video.dropped), video.dropped > 0 ? 'warning' : null),
-      ];
+    ? { icon: 'ic_videocam_off', details: detail('VIDEO', 'OFF', 'warning') }
+    : {
+        icon: 'ic_videocam',
+        details: [
+          ...detail('VIDEO', `${video.fps}fps`),
+          ...detail('BR', bitrateText(video.kbps)),
+          ...detail('JIT', `${video.jitterMs}ms`),
+          ...detail('LOST', String(video.lost), video.lost > 0 ? 'warning' : null),
+          ...detail('DROP', String(video.dropped), video.dropped > 0 ? 'warning' : null),
+        ],
+      };
 
-export const osdDetails = (input: OsdDetailsInput): readonly OsdDetail[] => [
-  ...batteryDetails(input.battery),
-  ...gpsDetails(input.gps, input.hdop),
-  ...ekfDetails(input.ekfRatios),
-  ...vibrationDetails(input.vibration),
-  ...detail('TLM', input.contactLost ? 'LOST' : 'LIVE', input.contactLost ? 'error' : null),
-  ...(Number.isFinite(input.lossPercent) ? detail('LOSS', `${Math.round(input.lossPercent)}%`) : []),
-  ...videoDetails(input.video),
-  ...(input.radio === null ? [] : detail('RADIO', input.radio.state.toUpperCase(), usbRadioTone(input.radio.state))),
-];
+export const osdLines = (input: OsdDetailsInput): readonly OsdLine[] =>
+  [
+    { icon: 'ic_explore', details: [...hdopDetails(input.hdop), ...ekfDetails(input.ekfRatios), ...vibrationDetails(input.vibration)] },
+    {
+      icon: 'ic_sensors',
+      details: [...detail('TLM', input.contactLost ? 'LOST' : 'LIVE', input.contactLost ? 'error' : null), ...(Number.isFinite(input.lossPercent) ? detail('LOSS', `${Math.round(input.lossPercent)}%`) : [])],
+    },
+    videoLine(input.video),
+    { icon: 'ic_gamepad', details: input.radio === null ? [] : detail('RADIO', input.radio.state.toUpperCase(), usbRadioTone(input.radio.state)) },
+  ].filter((line): line is OsdLine => line.details.length > 0);
+
+const worstTone = (details: readonly OsdDetail[]): Tone => (details.some((it) => it.tone === 'error') ? 'error' : details.some((it) => it.tone === 'warning') ? 'warning' : null);
 
 const toneColour = (tone: Tone): string => (tone === 'error' ? md('error') : tone === 'warning' ? aircast('warning') : aircast('outdoorForeground'));
 
 export const OsdDetails = () => {
   const ekfRatios = EKF_RATIOS.map((name) => useQgcDouble(`vehicle.estimatorStatus.${name}`));
-  const details = osdDetails({
-    battery: useQgcPath(BATTERY_VIEW),
-    gps: useQgcPath(GPS_VIEW),
+  const lines = osdLines({
     hdop: useQgcDouble('vehicle.gps.hdop'),
     ekfRatios,
     vibration: vibrationReading(useQgcPath(VIBRATION_VIEW)),
@@ -106,15 +98,24 @@ export const OsdDetails = () => {
     radio: usbRadioBadge(useQgcPath(USB_RADIO_VIEW)),
   });
   return (
-    <div className="mb-1 flex flex-wrap gap-x-4 gap-y-0.5" data-osd-details>
-      {details.map((it) => (
-        <div key={it.label} className="flex items-baseline gap-1">
-          <Text typography="labelMedium" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
-            {it.label}
-          </Text>
-          <Text typography="titleMedium" className="tabular-nums" color={toneColour(it.tone)} maxLines={1}>
-            {it.value}
-          </Text>
+    <div
+      data-osd-details
+      className="flex w-full shrink-0 items-center justify-center-safe overflow-x-auto whitespace-nowrap"
+      style={{ height: STRIPE_HEIGHT, background: Color.Black, paddingInline: 'max(12px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))' }}
+    >
+      {lines.map((line, at) => (
+        <div key={line.icon} className="flex items-center gap-2.5" style={{ paddingInline: 12, borderInlineStart: at === 0 ? undefined : `1px solid ${withAlpha(Color.White, 0.18)}` }}>
+          <Drawable name={line.icon} size={ICON_SIZE} style={{ color: toneColour(worstTone(line.details)) }} />
+          {line.details.map((it) => (
+            <div key={it.label} className="flex items-baseline gap-1">
+              <Text typography="labelSmall" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
+                {it.label}
+              </Text>
+              <Text typography="labelLarge" className="tabular-nums" color={toneColour(it.tone)} maxLines={1}>
+                {it.value}
+              </Text>
+            </div>
+          ))}
         </div>
       ))}
     </div>

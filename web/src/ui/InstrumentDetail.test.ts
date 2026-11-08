@@ -11,6 +11,7 @@ import {
   gpsDetail,
   gpsStatus,
   linkDetail,
+  lowestVoltage,
   notYetComputed,
   signalLostTitle,
   silenceText,
@@ -173,5 +174,13 @@ describe('BatteryReturnTest', () => {
     expect(totalCurrent(battery(1, '119.6', '10'))).toBe('10.0A');
     expect(totalCurrent(battery(1, '119.6', 'null'))).toBeNull();
     expect(totalCurrent(null)).toBeNull();
+  });
+
+  it('the strip shows the lowest pack voltage', () => {
+    const packs = (...volts: string[]) => json(`{"available":true,"packs":[${volts.map((v) => `{"facts":[{"name":"voltage","value":${v}}]}`).join(',')}]}`);
+    expect(lowestVoltage(packs('16.8'))).toBe('16.8V');
+    expect(lowestVoltage(packs('25.2', '24.94'))).toBe('24.9V');
+    expect(lowestVoltage(packs('25.2', 'null'))).toBeNull();
+    expect(lowestVoltage(null)).toBeNull();
   });
 });

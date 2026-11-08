@@ -139,7 +139,7 @@ export const batteryReturnOffered = (view: Json | null): boolean => {
   });
 };
 
-const packFactTotal = (view: Json | null, name: string): number | null => {
+const packFactValues = (view: Json | null, name: string): readonly number[] | null => {
   const packs = optJSONArray(availableView(view), 'packs');
   if (packs === null) return null;
   const values = jsonObjects(packs).map((pack) => {
@@ -148,7 +148,14 @@ const packFactTotal = (view: Json | null, name: string): number | null => {
     return Number.isNaN(value) ? null : value;
   });
   const present = values.filter((it): it is number => it !== null);
-  return present.length > 0 && present.length === values.length ? present.reduce((sum, it) => sum + it, 0) : null;
+  return present.length > 0 && present.length === values.length ? present : null;
+};
+
+const packFactTotal = (view: Json | null, name: string): number | null => packFactValues(view, name)?.reduce((sum, it) => sum + it, 0) ?? null;
+
+export const lowestVoltage = (view: Json | null): string | null => {
+  const values = packFactValues(view, 'voltage');
+  return values === null ? null : format('%.1fV', Math.min(...values));
 };
 
 export const totalCurrent = (view: Json | null): string | null => {

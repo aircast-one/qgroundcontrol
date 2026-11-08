@@ -40,7 +40,8 @@ test('the Fly OSD reads the live video frame rate and bitrate', async ({ vehicle
   const details = vehicle.locator('[data-osd-details]');
   await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText('VIDEOOFF', { timeout: 30_000 });
   await addVideoSource(vehicle, /^WebRTC \(WHEP\)/, WHEP_STREAM);
-  await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText(/^VIDEO[1-9]\d*fps \d+(\.\d)?[kM]b\/s$/, { timeout: 30_000 });
+  await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText(/^VIDEO[1-9]\d*fps$/, { timeout: 30_000 });
+  await expect(details.getByText('BR', { exact: true }).locator('..')).toHaveText(/^BR[1-9]\d*(\.\d)?[kM]b\/s$/);
   await expect(details.getByText('JIT', { exact: true })).toBeVisible();
 });
 
