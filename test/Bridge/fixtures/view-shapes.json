@@ -10855,6 +10855,7 @@
         ],
         "bitrateText": "string",
         "cellText": "string",
+        "cellular": "bool",
         "class": "string",
         "kind": "string",
         "modem": "string",

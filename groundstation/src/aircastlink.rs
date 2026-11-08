@@ -122,6 +122,7 @@ pub fn aircast_link_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let quality = raw(&group, "quality").filter(|q| *q != QUALITY_UNKNOWN);
     let bitrate = raw(&group, "videoBitrate").unwrap_or(0);
     let uplink_code = raw(&group, "uplink");
+    let cellular = raw(&group, "quality").is_some();
     json!({
         "kind": "object",
         "class": "AircastLink",
@@ -131,7 +132,8 @@ pub fn aircast_link_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "signalText": quality.map_or("unknown".to_string(), |q| format!("{q} %")),
         "network": label(&group, "radioType"),
         "modem": label(&group, "status"),
-        "bitrateText": bitrate_text(bitrate),
+        "cellular": cellular,
+        "bitrateText": if cellular { bitrate_text(bitrate) } else { String::new() },
         "qualityHistory": history(backend, &group, "qualityHistory"),
         "bitrateHistory": history(backend, &group, "bitrateHistory"),
         "uplink": uplink_code.and_then(uplink).map(|(kind, _)| kind),
@@ -288,6 +290,11 @@ mod tests {
                 json!("LTE"),
                 json!("LTE --")
             )
+        );
+        assert_eq!(
+            (view["cellular"].clone(), view["bitrateText"].clone()),
+            (json!(false), json!("")),
+            "no modem report yet: no signal, no bitrate to show"
         );
         assert_eq!(view["switches"][0]["from"], json!("Wi-Fi"));
         assert_eq!(view["switches"][0]["to"], json!("LTE"));
