@@ -74,7 +74,7 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
   if screen.w == 480 then
     assert(shows(r, "Waiting for the app") and shows(r, "Pick it under Radio on USB"), "silence says where in the app to pick the radio")
     if screen.lvgl then
-      assert(shows(r, "m0") and shows(r, "CH1 src0") and shows(r, "988") and shows(r, "CH4 src3") and shows(r, "1244"), "each row names what the channel does, the channel and the stick on it, and its value")
+      assert(shows(r, "m0") and shows(r, "CH1 src0") and shows(r, "-100%") and shows(r, "CH4 src3") and shows(r, "-50%"), "each row names what the channel does, the channel and the stick on it, and its value")
     else
       assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
     end
@@ -131,7 +131,7 @@ assert(not older.inserted[18] and not older.inserted[22], "an app naming only ei
 local onScreen = radio({ w = 480, h = 272, lvgl = true })
 onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 onScreen.script.run(0)
-assert(shows(onScreen, "Pitch") and shows(onScreen, "CH18 src99") and shows(onScreen, "2012"), "a channel the script just set up appears on the screen by what it does, its channel and control, and its value")
+assert(shows(onScreen, "Pitch") and shows(onScreen, "CH18 src99") and shows(onScreen, "0\194\176"), "a channel the script just set up appears on the screen by what it does, its channel and control, and its value in the app's terms: the slider at its top points ahead")
 local unnamed = radio({ w = 480, h = 272, lvgl = true, mixes = 24, unnamed = true })
 unnamed.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 unnamed.script.run(0)
@@ -200,7 +200,7 @@ assert(shows(small, "Roll") and shows(small, "Pitc"), "the small screen shows th
 local colourLabels = radio({ w = 480, h = 320, lvgl = true })
 colourLabels.hear("@F,1,C,1,2,3,4\n")
 colourLabels.script.run(0)
-assert(shows(colourLabels, "Roll") and shows(colourLabels, "CH1 src0") and shows(colourLabels, "988"), "an LVGL radio names its rows by their role")
+assert(shows(colourLabels, "Roll") and shows(colourLabels, "CH1 src0") and shows(colourLabels, "-100%"), "an LVGL radio names its rows by their role")
 
 local quiet = radio({ w = 480, h = 272 })
 quiet.script.run(0)

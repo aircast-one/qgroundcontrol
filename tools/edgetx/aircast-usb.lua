@@ -12,11 +12,15 @@ local LVGL_ROWS_TOP = 46
 local LVGL_ROW_H = 22
 local LVGL_LINE_H = 16
 local LVGL_TEXT_ROW_H = 17
+local LVGL_NAME_X = 8
+local LVGL_ACCENT_W = 3
+local MOVED_RAW = 24
+local MOVED_TICKS = 100
 local LVGL_META_X = 78
-local LVGL_BAR_X = 156
-local LVGL_BAR_W = 50
+local LVGL_BAR_X = 150
+local LVGL_BAR_W = 40
 local LVGL_BAR_H = 8
-local LVGL_VALUE_X = 210
+local LVGL_VALUE_X = 194
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
@@ -27,6 +31,8 @@ local battVolt = 0
 local modelInfo
 local mixesInfo = {}
 local channelValues = {}
+local movedAt = {}
+local lastValues = {}
 local used = {}
 local useLvglUI = false
 local relayout = false
@@ -61,8 +67,11 @@ local SAYS = {
 }
 
 local function readChannels()
+  local t = getTime and getTime() or 0
   for i = 1, CHANNEL_COUNT do
     channelValues[i] = getOutputValue(i - 1)
+    if lastValues[i] and math.abs(channelValues[i] - lastValues[i]) > MOVED_RAW then movedAt[i] = t end
+    lastValues[i] = channelValues[i]
   end
 end
 
@@ -234,6 +243,48 @@ local function functionName(i)
   return role(i) or FRIENDLY[name] or (name ~= "" and name or mixesInfo[i].src)
 end
 
+local GROUP = {
+  Pitch = "camera", Tilt = "camera", Yaw = "camera", Zoom = "camera", Picture = "camera", Palette = "camera", Look = "camera",
+  Drop = "payload", Arm = "payload", Bay = "payload", Modes = "flight",
+}
+
+local function groupOf(i)
+  if role(i) then return "flight" end
+  return GROUP[FRIENDLY[shownName(i)] or ""] or "other"
+end
+
+local function percent(v)
+  return string.format("%+d%%", math.floor(v * 100 / 1024 + 0.5))
+end
+
+local function share(v)
+  return string.format("%d%%", math.floor((v + 1024) * 100 / 2048 + 0.5))
+end
+
+local function degrees(v)
+  return string.format("%d\194\176", math.floor(-90 + (v + 1024) * 90 / 2048 + 0.5))
+end
+
+local VALUE = {
+  Pitch = degrees, Tilt = degrees, Zoom = share, ["stick Thr"] = share,
+  Picture = function(v) return v < -512 and "Day" or v > 512 and "IR" or "PiP" end,
+  Palette = function(v) return v > 0 and "next" or "-" end,
+  Look = function(v) return v > 512 and "down" or v < -512 and "ahead" or "-" end,
+  Arm = function(v) return v > 512 and "ARMED" or "safe" end,
+  Drop = function(v) return v > 512 and "DROP" or "-" end,
+  Bay = function(v) return "bay " .. (math.floor((v + 1024) * 5 / 2048 + 0.5) + 1) end,
+  Modes = function(v) return v < -512 and "up" or v > 512 and "down" or "mid" end,
+}
+
+local function valueText(i)
+  local key = role(i) and ("stick " .. role(i)) or functionName(i)
+  return (VALUE[key] or percent)(channelValues[i])
+end
+
+local function movedLately(i)
+  return movedAt[i] ~= nil and now() - movedAt[i] < MOVED_TICKS
+end
+
 local function channelText(i)
   return string.format("CH%-2d %-5s %-6s %4d", i, role(i) or mixesInfo[i].src, shownName(i), pwm(i))
 end
@@ -256,6 +307,9 @@ local function brand()
     good = lcd.RGB(0x3D, 0xD6, 0x8C),
     warning = lcd.RGB(0xF4, 0xA4, 0x37),
     track = lcd.RGB(0x2A, 0x2D, 0x34),
+    camera = lcd.RGB(0x3D, 0xD6, 0x8C),
+    payload = lcd.RGB(0xF4, 0xA4, 0x37),
+    other = lcd.RGB(0x6B, 0x70, 0x78),
   }
 end
 
@@ -328,7 +382,12 @@ local function buildLvglUI()
     local barY = yOfs + math.floor((rowH - LVGL_BAR_H) / 2)
     local centre = colBase + LVGL_BAR_X + math.floor(LVGL_BAR_W / 2)
 
-    pg:label({ x = colBase, y = yOfs, font = rowFont,
+    local fill = ({ flight = color.primary, camera = color.camera, payload = color.payload, other = color.other })[groupOf(i)]
+
+    pg:rectangle({ x = colBase, y = yOfs + 2, w = LVGL_ACCENT_W, h = rowH - 4, filled = true, color = fill,
+      pos = function() return movedLately(i) and colBase or -LVGL_ACCENT_W - 1, yOfs + 2 end,
+    })
+    pg:label({ x = colBase + LVGL_NAME_X, y = yOfs, font = rowFont,
       text = function() return functionName(i) end,
     })
     pg:label({ x = colBase + LVGL_META_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
@@ -338,7 +397,7 @@ local function buildLvglUI()
       color = color.track,
     })
     pg:rectangle({ x = centre, y = barY, w = 1, h = LVGL_BAR_H, filled = true, rounded = 4,
-      color = color.primary,
+      color = fill,
       pos = function()
         local v = channelValues[i]
         return (v < 0) and (centre - math.floor(-v * LVGL_BAR_W / 2048)) or centre, barY
@@ -350,7 +409,7 @@ local function buildLvglUI()
       end,
     })
     pg:label({ x = colBase + LVGL_VALUE_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
-      text = function() return string.format("%d", pwm(i)) end,
+      text = function() return valueText(i) end,
     })
   end
   pg:label({ x = 0, y = hintY, font = SMLSIZE, text = hint })
