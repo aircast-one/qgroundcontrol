@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { whepStats } from '@/core/whep';
-import { type OsdLine, bitrateText, ekfWorst, osdLines, percentText, shownDetails } from '@/ui/OsdDetails';
+import { type OsdLine, bitrateText, ekfRatiosOf, ekfWorst, osdLines, percentText, playingStats, shownDetails } from '@/ui/OsdDetails';
 
 const quiet = { hdop: NaN, ekfRatios: [], vibration: null, contactLost: false, lossPercent: NaN, video: null, radio: null };
 const counters = { bytes: 0, lost: 0, received: 0, dropped: 0, at: 0 };
@@ -57,9 +57,22 @@ describe('OsdDetailsTest', () => {
     ]);
   });
 
-  it('the EKF reads its worst reported variance', () => {
+  it('the strip reads whichever main video surface is still playing', () => {
+    const stats = { ...healthyVideo, fps: 25 };
+    expect(playingStats(new Map())).toBeNull();
+    expect(playingStats(new Map([[Symbol('gone'), stats]]))).toBe(stats);
+  });
+
+  it('the EKF reads its worst reported variance from the estimator facts', () => {
+    const facts = [
+      { name: 'velRatio', value: 0.2 },
+      { name: 'magRatio', value: 0.9 },
+      { name: 'haglRatio', value: null },
+      { name: 'goodAttitudeEsimate', value: 1 },
+    ] as never;
+    expect(ekfRatiosOf(facts)).toEqual([0.2, 0.9, NaN]);
+    expect(ekfWorst(ekfRatiosOf(facts))).toBe(0.9);
     expect(ekfWorst([NaN, NaN])).toBeNull();
-    expect(ekfWorst([0.2, 0.9, NaN])).toBe(0.9);
   });
 
   it('loss and skipped frames are rates over the recent window, not totals since connecting', () => {

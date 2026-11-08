@@ -4,18 +4,18 @@ import { PAUSE, RELEASE } from './MoreActions';
 
 describe('FlyDeckTest', () => {
   it('groundOffersChecklistAndTakeoffAsPrimary', () => {
-    expect(deckIds(new Set([CHECKLIST, 'arm', 'takeoff', 'changeSpeed']), false)).toEqual([
+    expect(deckIds(new Set([CHECKLIST, 'arm', 'takeoff', 'changeSpeed']), false, false)).toEqual([
       [CHECKLIST, false],
       ['takeoff', true],
     ]);
   });
 
   it('groundWithoutTakeoffArmsAsPrimary', () => {
-    expect(deckIds(new Set(['arm']), false)).toEqual([['arm', true]]);
+    expect(deckIds(new Set(['arm']), false, false)).toEqual([['arm', true]]);
   });
 
   it('flyingOffersPauseReturnLandWithReturnPrimary', () => {
-    expect(deckIds(new Set(['arm', PAUSE, 'rtl', 'land', 'changeAltitude']), true)).toEqual([
+    expect(deckIds(new Set(['arm', PAUSE, 'rtl', 'land', 'changeAltitude']), true, false)).toEqual([
       [PAUSE, false],
       ['rtl', true],
       ['land', false],
@@ -23,11 +23,11 @@ describe('FlyDeckTest', () => {
   });
 
   it('armedOnTheGroundKeepsTheGroundDeck', () => {
-    expect(deckIds(new Set(['arm', 'takeoff']), true)).toEqual([['takeoff', true]]);
+    expect(deckIds(new Set(['arm', 'takeoff']), true, false)).toEqual([['takeoff', true]]);
   });
 
   it('a drop sits on the deck beside the flight actions in flight and never takes the primary slot', () => {
-    expect(deckIds(new Set(['arm', PAUSE, 'rtl', 'land', RELEASE]), true)).toEqual([
+    expect(deckIds(new Set(['arm', PAUSE, 'rtl', 'land', RELEASE]), true, false)).toEqual([
       [PAUSE, false],
       ['rtl', true],
       ['land', false],
@@ -44,7 +44,7 @@ describe('FlyDeckTest', () => {
   });
 
   it('on the ground the deck is for taking off; the drop stays in the payload sheet', () => {
-    expect(deckIds(new Set(['arm', 'takeoff', RELEASE]), false)).toEqual([['takeoff', true]]);
+    expect(deckIds(new Set(['arm', 'takeoff', RELEASE]), false, false)).toEqual([['takeoff', true]]);
   });
 
   it('sliding across most of the button confirms as surely as holding it', () => {
@@ -66,7 +66,7 @@ describe('RailLabelTest', () => {
 });
 
 describe('DeckFitTest', () => {
-  const flying = deckIds(new Set(['arm', PAUSE, 'rtl', 'land', RELEASE]), true);
+  const flying = deckIds(new Set(['arm', PAUSE, 'rtl', 'land', RELEASE]), true, false);
   const ids = (deck: DeckIds) => deck.map(([id]) => id);
 
   it('on a phone every flight action stays on the deck and the camera moves above it', () => {
@@ -86,7 +86,7 @@ describe('DeckFitTest', () => {
   });
 
   it('the ground deck gives up the checklist before taking off', () => {
-    expect(ids(bottomDeck(deckIds(new Set([CHECKLIST, 'arm', 'takeoff']), false), 140, 0).deck)).toEqual(['takeoff']);
+    expect(ids(bottomDeck(deckIds(new Set([CHECKLIST, 'arm', 'takeoff']), false, false), 140, 0).deck)).toEqual(['takeoff']);
   });
 
   it('a deck not measured yet shows every action', () => {

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, mapMenuAt, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { armPayload, connectMock, expect, mapMenuAt, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 test.describe.configure({ timeout: 240_000 });
 
@@ -19,6 +19,7 @@ test('auto intercept on a marked point asks with the core words, then the pill f
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await takeOff(vehicle, '10 m');
   await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4])m$/, { timeout: 60_000 });
+  await armPayload(vehicle);
   await showMapFull(vehicle);
   await mapMenuAt(vehicle, 120, -80);
   await vehicle.getByRole('button', { name: 'Mark as target' }).click();

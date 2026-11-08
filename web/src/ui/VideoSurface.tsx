@@ -411,13 +411,15 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
     const element = video.current;
     if (endpoint === null || element === null) return undefined;
     const main = channel === MAIN_VIDEO_CHANNEL;
+    const surface = Symbol('main video');
     const stop = playWhep(element, endpoint, (reading) => {
       void VideoCommands.reportPlayback(channel, reading);
-      if (main) mainVideoStats.value = reading.running ? reading.stats : null;
+      if (main && reading.running && reading.stats !== null) mainVideoStats.set(surface, reading.stats);
+      else if (main) mainVideoStats.remove(surface);
     });
     return () => {
       stop();
-      if (main) mainVideoStats.value = null;
+      mainVideoStats.remove(surface);
     };
   }, [endpoint, channel, restarts]);
   useEffect(() => {

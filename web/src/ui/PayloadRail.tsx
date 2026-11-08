@@ -81,17 +81,19 @@ const Labelled = ({ text, tone, children }: { text: string; tone: string; childr
   </div>
 );
 
+type Refusal = { text: string; at: number };
+
 export const PayloadRailStrip = () => {
   const rail = payloadRailOf(useQgcPath(PAYLOAD_RAIL_VIEW) as Json | null);
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
   useLaunchedEffect([refusal], async (scope) => {
     if (refusal === null) return;
     await delay(REFUSAL_SHOWN_MS);
     if (scope.isActive()) setRefusal(null);
   });
   if (rail === null) return null;
-  const run = (path: string, ...args: unknown[]) => void Qgc.refusalOf(path, ...args).then(setRefusal);
-  const note = payloadNote(rail, refusal);
+  const run = (path: string, ...args: unknown[]) => void Qgc.refusalOf(path, ...args).then((text) => setRefusal(text === null ? null : { text, at: Date.now() }));
+  const note = payloadNote(rail, refusal === null ? null : refusal.text);
   const dim = withAlpha(aircast('outdoorBackground'), 0.4);
   return (
     <div role="group" aria-label="Payload" className="flex flex-col items-center gap-1">

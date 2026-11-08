@@ -373,6 +373,7 @@ fn follow_needed(current: Option<(f64, f64)>, (heading, pitch): (f64, f64)) -> b
 
 #[derive(Debug)]
 pub struct Vehicle {
+    payload_lock: PayloadLock,
     pub id: u8,
     pub component: u8,
     pub link: LinkId,
@@ -660,6 +661,7 @@ impl Vehicle {
         replay: bool,
     ) -> Vehicle {
         Vehicle {
+            payload_lock: PayloadLock::default(),
             id,
             component,
             link,
@@ -2725,7 +2727,7 @@ impl Vehicle {
             "startMission" => guidedcmd::start_mission(&state, flag("flying")),
             "emergencyStop" => guidedcmd::emergency_stop(),
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
-            "gripper" if releases_while_safe(number("gripAction"), crate::payloadrail::armed()) => {
+            "gripper" if releases_while_safe(number("gripAction"), self.payload_lock.armed()) => {
                 Plan::Refused(crate::payloadrail::SAFE.into())
             }
             "gripper" if !self.payload_servos().is_empty() => {
@@ -3925,6 +3927,9 @@ impl Vehicle {
     }
 
     pub fn start_guided(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        if action.get("autodrop") == Some(&Value::Bool(true)) && !self.payload_lock.armed() {
+            return Err(crate::payloadrail::SAFE.to_string());
+        }
         if action.get("autodrop") == Some(&Value::Bool(true))
             && let Some(reason) = crate::dropzone::refusal(
                 &crate::dropzone::corners(),
@@ -7992,6 +7997,34 @@ const SENSOR_REFRESH_DELAY_MS: u64 = 1000;
 const REBOOT_TAG: u64 = 0x5245_424F_4F54;
 const GRIPPER_RELEASE_ACTION: f64 = 0.0;
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PayloadLock(fn() -> bool);
+
+impl Default for PayloadLock {
+    fn default() -> Self {
+        Self(crate::payloadrail::armed)
+    }
+}
+
+impl PayloadLock {
+    pub(crate) const ARMED: PayloadLock = PayloadLock(|| true);
+    #[cfg(test)]
+    pub(crate) const SAFE: PayloadLock = PayloadLock(|| false);
+
+    fn armed(self) -> bool {
+        (self.0)()
+    }
+}
+
+impl Hub {
+    pub(crate) fn with_payload_lock(payload_lock: PayloadLock) -> Hub {
+        Hub {
+            payload_lock,
+            ..Hub::default()
+        }
+    }
+}
+
 fn releases_while_safe(grip_action: f64, armed: bool) -> bool {
     grip_action == GRIPPER_RELEASE_ACTION && !armed
 }
@@ -8077,6 +8110,7 @@ fn calibration_as_info(
 
 #[derive(Debug, Default)]
 pub struct Hub {
+    payload_lock: PayloadLock,
     vehicles: BTreeMap<u8, Vehicle>,
     link_kinds: LinkKinds,
     arrival: Vec<u8>,
@@ -8218,6 +8252,7 @@ impl Hub {
                     origin.replay,
                 );
                 vehicle.link_kinds = self.link_kinds.clone();
+                vehicle.payload_lock = self.payload_lock;
                 vehicle.commands.high_latency = self.link_kinds.high_latency.contains(&origin.link);
                 if kind == TYPE_SUBMARINE && !origin.replay && !crate::qthost::present() {
                     sub_video_defaults();
@@ -10119,6 +10154,7 @@ mod tests {
     #[test]
     fn an_intercept_on_a_real_link_without_a_drop_zone_is_refused() {
         let mut vehicle = Vehicle::heard(1);
+        vehicle.payload_lock = PayloadLock::ARMED;
         vehicle.link_kinds.labels =
             BTreeMap::from([(vehicle.link, ("Radio".to_string(), "serial".to_string()))]);
         let refused = vehicle.start_guided(
@@ -10550,12 +10586,12 @@ mod tests {
 
     #[test]
     fn tick_autodrop_wakes_when_the_release_falls_due_and_fires_then() {
-        crate::payloadrail::armed_for_tests();
         let _ground = crate::synthview::TEST_GROUND
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         let north = |metres: f64| crate::geo::ned_to_geo(metres, 0.0, 0.0, (47.0, 8.0, 0.0)).0;
         let mut vehicle = Vehicle::heard(1);
+        vehicle.payload_lock = PayloadLock::ARMED;
         vehicle.manual_target = Some((
             north(10.0 * (crate::dropsim::fall_time_s(40.0, 0.0) + 0.25)),
             8.0,
@@ -11142,12 +11178,12 @@ mod tests {
 
     #[test]
     fn the_drop_uses_the_bay_the_run_was_started_with_and_holds_a_second_later() {
-        crate::payloadrail::armed_for_tests();
         let _ground = crate::synthview::TEST_GROUND
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         let north = |metres: f64| crate::geo::ned_to_geo(metres, 0.0, 0.0, (47.0, 8.0, 0.0)).0;
         let mut vehicle = Vehicle::heard(1);
+        vehicle.payload_lock = PayloadLock::ARMED;
         vehicle.manual_target = Some((north(10.0 * crate::dropsim::fall_time_s(40.0, 0.0)), 8.0));
         vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
         vehicle.facts.altitude_relative = 40.0;
@@ -12368,9 +12404,8 @@ mod tests {
 
     #[test]
     fn a_payload_drop_is_told_by_the_flight_controllers_answer_not_by_the_send() {
-        crate::payloadrail::armed_for_tests();
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
-        let mut hub = Hub::default();
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
         let header = MavHeader {
             system_id: 1,
             component_id: 1,
@@ -12460,9 +12495,8 @@ mod tests {
 
     #[test]
     fn a_basket_remembers_which_bays_it_has_dropped() {
-        crate::payloadrail::armed_for_tests();
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
-        let mut hub = Hub::default();
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
         let header = MavHeader {
             system_id: 1,
             component_id: 1,
@@ -12563,11 +12597,10 @@ mod tests {
 
     #[test]
     fn every_confirmed_drop_and_no_refused_one_leaves_a_bottle_falling_from_the_drone() {
-        crate::payloadrail::armed_for_tests();
         use mavlink::dialects::ardupilotmega::{
             COMMAND_ACK_DATA, GLOBAL_POSITION_INT_DATA, MavCmd, MavResult,
         };
-        let mut hub = Hub::default();
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
         let header = MavHeader {
             system_id: 1,
             component_id: 1,
@@ -12653,18 +12686,39 @@ mod tests {
     }
 
     #[test]
-    fn a_drop_while_the_payload_is_safe_is_refused_and_grab_and_hold_are_not() {
-        assert!(releases_while_safe(GRIPPER_RELEASE_ACTION, false));
-        assert!(!releases_while_safe(GRIPPER_RELEASE_ACTION, true));
-        assert!(!releases_while_safe(1.0, false), "grab works while safe");
-        assert!(!releases_while_safe(2.0, false), "hold works while safe");
+    fn a_drop_or_an_auto_intercept_run_while_the_payload_is_safe_is_refused_up_front() {
+        let mut hub = Hub::with_payload_lock(PayloadLock::SAFE);
+        let header = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let safe = Some(crate::payloadrail::SAFE.to_string());
+        let refusal = |hub: &mut Hub, action: Value| hub.guided(None, &action, 1).err();
+        assert_eq!(
+            refusal(&mut hub, json!({ "action": "gripper", "gripAction": 0 })),
+            safe
+        );
+        assert_eq!(
+            refusal(
+                &mut hub,
+                json!({ "action": "goto", "latitude": 47.0, "longitude": 8.0, "autodrop": true })
+            ),
+            safe,
+            "an Auto Intercept run never flies off while the payload is safe"
+        );
+        assert_eq!(
+            refusal(&mut hub, json!({ "action": "gripper", "gripAction": 1 })),
+            None,
+            "grab works while safe"
+        );
     }
 
     #[test]
     fn a_drop_the_gripper_cannot_make_is_refused_in_any_mode() {
-        crate::payloadrail::armed_for_tests();
         const STABILIZE: u32 = 0;
-        let mut hub = Hub::default();
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
         let header = MavHeader {
             system_id: 1,
             component_id: 1,
@@ -12925,10 +12979,9 @@ mod tests {
 
     #[test]
     fn each_servo_bay_drops_from_its_own_output_one_after_another() {
-        crate::payloadrail::armed_for_tests();
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
         four_servo_bays();
-        let mut hub = Hub::default();
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
         let header = MavHeader {
             system_id: 1,
             component_id: 1,

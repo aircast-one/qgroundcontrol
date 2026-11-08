@@ -36,7 +36,7 @@ import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
-import { GIMBAL_INDICATOR_PATH, onScreenGimbal } from '@/ui/GimbalIndicator';
+import { gimbalSwitchWidth } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { OsdDetails } from '@/ui/OsdDetails';
@@ -362,8 +362,8 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const cutoutEnd = direction === 'rtl' ? safeArea.left : safeArea.right;
   const controls = useElementSize();
   const osd = useElementSize();
-  const gimbalSwitchShown = onScreenGimbal(useQgcPath(GIMBAL_INDICATOR_PATH)) !== null && view === FlyView.Video;
-  const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitchShown ? GIMBAL_SWITCH_ROOM : AircastSpace.s3;
+  const gimbalSwitch = useValue(gimbalSwitchWidth);
+  const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitch > 0 ? gimbalSwitch + AircastSpace.s2 * 2 : AircastSpace.s3;
   const insets = stickInsets(stickPad, fullScreen, box.letterbox, cutoutStart, cutoutEnd, controls.size.width);
   const ornamentEnd = insets.ornamentEnd;
   useEffect(() => {
@@ -634,7 +634,6 @@ export const FleetCard = () => {
 };
 
 const MAP_LAYERS_SIZE = 48;
-const GIMBAL_SWITCH_ROOM = 190;
 export const MAP_LAYERS_CLEARANCE = MAP_LAYERS_SIZE + AircastSpace.s3 + AircastSpace.s2;
 const FLEET_CARD_MAX_WIDTH = 440;
 const FLEET_CARD_MAX_HEIGHT = 320;

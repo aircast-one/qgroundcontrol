@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useQgcDouble, useQgcPath } from '@/bridge/QgcState';
+import type { Fact } from '@/bridge/Qgc';
+import { useQgcDouble, useQgcFacts, useQgcPath } from '@/bridge/QgcState';
 import type { WhepStats } from '@/core/whep';
-import { mutableStateOf, useValue } from '@/kotlin/State';
+import { mutableStateMapOf, useValue } from '@/kotlin/State';
 import { Text } from '@/m3';
 import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
@@ -11,7 +12,9 @@ import { USB_RADIO_VIEW, type UsbRadioBadge, usbRadioBadge, usbRadioTone } from 
 import { OSD_LABEL_ALPHA } from './VehicleUi';
 import { VIBRATION_VIEW, type VibrationReading, vibrationReading, worstSeverity } from './VibrationScreen';
 
-export const mainVideoStats = mutableStateOf<WhepStats | null>(null);
+export const mainVideoStats = mutableStateMapOf<symbol, WhepStats>();
+
+export const playingStats = (surfaces: ReadonlyMap<symbol, WhepStats>): WhepStats | null => [...surfaces.values()].at(0) ?? null;
 
 type Tone = 'error' | 'warning' | null;
 export type OsdDetail = { label: string; value: string; tone: Tone };
@@ -27,7 +30,8 @@ export type OsdDetailsInput = {
   radio: UsbRadioBadge | null;
 };
 
-const EKF_RATIOS = ['velRatio', 'horizPosRatio', 'vertPosRatio', 'magRatio', 'haglRatio', 'tasRatio'] as const;
+const EKF_RATIOS: ReadonlySet<string> = new Set(['velRatio', 'horizPosRatio', 'vertPosRatio', 'magRatio', 'haglRatio', 'tasRatio']);
+const ESTIMATOR_STATUS = 'vehicle.estimatorStatus';
 const EKF_WARNING = 0.5;
 const EKF_DANGER = 0.8;
 const ICON_SIZE = 20;
@@ -37,6 +41,8 @@ const SKIP_WARNING = 1;
 const SKIP_DANGER = 5;
 
 const detail = (label: string, value: string, tone: Tone = null): OsdDetail[] => (value.trim() === '' ? [] : [{ label, value, tone }]);
+
+export const ekfRatiosOf = (facts: readonly Fact[]): readonly number[] => facts.filter((it) => EKF_RATIOS.has(it.name)).map((it) => (typeof it.value === 'number' ? it.value : NaN));
 
 export const ekfWorst = (ratios: readonly number[]): number | null => {
   const seen = ratios.filter((it) => Number.isFinite(it));
@@ -102,14 +108,14 @@ const toggled = (set: ReadonlySet<string>, id: string): ReadonlySet<string> => n
 
 export const OsdDetails = () => {
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
-  const ekfRatios = EKF_RATIOS.map((name) => useQgcDouble(`vehicle.estimatorStatus.${name}`));
+  const ekfRatios = ekfRatiosOf(useQgcFacts(ESTIMATOR_STATUS));
   const lines = osdLines({
     hdop: useQgcDouble('vehicle.gps.hdop'),
     ekfRatios,
     vibration: vibrationReading(useQgcPath(VIBRATION_VIEW)),
     contactLost: flyState(useQgcPath(FLY_STATE))?.contactLost === true,
     lossPercent: useQgcDouble('vehicle.mavlinkLossPercent'),
-    video: useValue(mainVideoStats),
+    video: playingStats(useValue(mainVideoStats)),
     radio: usbRadioBadge(useQgcPath(USB_RADIO_VIEW)),
   });
   return (

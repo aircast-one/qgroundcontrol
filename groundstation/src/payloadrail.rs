@@ -170,11 +170,6 @@ pub fn armed() -> bool {
     rail().armed(crate::hub::now_ms()).value
 }
 
-#[cfg(test)]
-pub fn armed_for_tests() {
-    let _ = rail().arm(true, crate::hub::now_ms());
-}
-
 pub fn selected() -> i64 {
     rail().selected(crate::hub::now_ms()).value
 }
@@ -229,7 +224,7 @@ fn drop(backend: &dyn Backend) -> Value {
         .active()
         .map_or(0, |vehicle| vehicle.payload_servos().len() as i64);
     let named = crate::radiocamera::named(bay, servo_bays);
-    crate::actions::gripper(
+    crate::guided::gripper(
         backend,
         DROP_BAY,
         &json!([crate::guided::GRIPPER_RELEASE, named]).to_string(),

@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::autodrop::{CAR_LENGTH_M, CAR_WIDTH_M, TURN_WINDOW_MS, TURNED_DEG};
 use crate::dropsim::Point;
 use crate::geo::geo_to_ned;
-use crate::hub::{Hub, Origin};
+use crate::hub::{Hub, Origin, PayloadLock};
 use crate::mockcamera::StreamKind;
 use crate::mocklink::{Options, Out, Sim, Vehicle};
 
@@ -359,7 +359,7 @@ fn flown(
     crate::detections::lock().retarget(crate::detections::parse("rtsp://bench/cam0", None));
     let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
     let mut world = World {
-        hub: Hub::default(),
+        hub: Hub::with_payload_lock(PayloadLock::ARMED),
         copter: Sim::new(options(Vehicle::Copter, true), COPTER, None),
         rover: Sim::new(options(Vehicle::Rover, false), CAR, None),
         car: VecDeque::new(),
@@ -791,7 +791,6 @@ mod tests {
 
     #[test]
     fn a_recorded_bench_flight_replays_with_the_tracking_the_live_run_had() {
-        crate::payloadrail::armed_for_tests();
         let _exclusive = exclusive();
         let (outcome, recording) = recorded(network(), 3, DETECTOR, true, true);
         let recording = recording.expect("recorded");
@@ -878,7 +877,6 @@ mod tests {
 
     #[test]
     fn one_bench_run_drops_on_a_road_car() {
-        crate::payloadrail::armed_for_tests();
         let _exclusive = exclusive();
         let outcome = alone(network(), 3, DETECTOR, true);
         assert!(outcome.dropped && outcome.hit, "{outcome:?}");

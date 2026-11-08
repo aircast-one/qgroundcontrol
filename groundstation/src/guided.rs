@@ -941,6 +941,14 @@ fn valued_check(
     }
 }
 
+pub fn gripper(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let answer = invoke_valued(backend, Valued::Gripper, path, args);
+    if answer["ok"] != true {
+        crate::noticeboard::post_from_vehicle(crate::noticeboard::PAYLOAD, "");
+    }
+    answer
+}
+
 pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let state = read_state(backend);

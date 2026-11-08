@@ -199,7 +199,7 @@ const DeckPress = ({ entry, children }: { entry: DeckEntry; children: ReactNode 
 
 export type DeckIds = readonly (readonly [string, boolean])[];
 
-export const deckIds = (shown: ReadonlySet<string>, armed: boolean, payloadStrip = false): DeckIds => {
+export const deckIds = (shown: ReadonlySet<string>, armed: boolean, payloadStrip: boolean): DeckIds => {
   const flying = armed && (shown.has('rtl') || shown.has('land'));
   const ground = [CHECKLIST, shown.has('takeoff') ? 'takeoff' : 'arm'];
   const flown = (flying ? [PAUSE, 'rtl', 'land'] : ground).filter((it) => shown.has(it));

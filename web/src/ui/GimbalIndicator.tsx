@@ -295,6 +295,20 @@ export const GimbalVideoMode = () => {
   );
 };
 
+export const gimbalSwitchWidth = mutableStateOf(0);
+
+const reportSwitchWidth = (element: HTMLElement | null) => {
+  if (element === null) return undefined;
+  const observer = new ResizeObserver(() => {
+    gimbalSwitchWidth.value = element.offsetWidth;
+  });
+  observer.observe(element);
+  return () => {
+    observer.disconnect();
+    gimbalSwitchWidth.value = 0;
+  };
+};
+
 export const GimbalModeSwitch = ({ className }: { className?: string }) => {
   const view = useQgcPath(GIMBAL_INDICATOR_PATH);
   const control = useMemo(() => onScreenGimbal(view), [view]);
@@ -303,6 +317,7 @@ export const GimbalModeSwitch = ({ className }: { className?: string }) => {
   const next = modeChoice(nextVideoGimbalMode(current.mode));
   return (
     <button
+      ref={reportSwitchWidth}
       type="button"
       aria-label={`Video gimbal mode, ${current.label}`}
       aria-description={`Switch to ${next.label}`}
