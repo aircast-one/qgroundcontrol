@@ -255,7 +255,7 @@ mod tests {
             "a repeat is not a switch, the first value is not a switch, and a cellular report keeps the history"
         );
         (0..30).for_each(|i| facts.note_uplink(i % 2 + 2, 10_000 + i64::from(i)));
-        assert_eq!(facts.uplink_switches.len(), 20);
+        assert_eq!(facts.uplink_switches.len(), 5);
     }
 
     #[test]

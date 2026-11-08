@@ -574,7 +574,7 @@ pub const AIRCAST_LINK: GroupSpec = GroupSpec {
 };
 
 const AIRCAST_HISTORY_LENGTH: usize = 720;
-const UPLINK_SWITCHES_KEPT: usize = 20;
+const UPLINK_SWITCHES_KEPT: usize = 5;
 pub const UPLINK_VALUE: &str = "UPLINK";
 const CELLULAR_QUALITY_UNKNOWN: u8 = u8::MAX;
 const CELLULAR_RX_RATE_OFFSET: usize = 15;
