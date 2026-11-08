@@ -433,7 +433,7 @@ private let PILOT_LABELS = [
     "offlineEditingHoverSpeed": "Planning hover speed",
     "offlineEditingAscentSpeed": "Planning climb speed",
     "offlineEditingDescentSpeed": "Planning descent speed",
-    "followTarget": "Send this phone's location (Follow Me)",
+    "followTarget": "Send this device's location (Follow Me)",
     "enableMultiVehiclePanel": "Show the multi-aircraft panel",
     "androidDontSaveToSDCard": "Save data to the SD card",
     "disableAllPersistence": "Don't save any data",

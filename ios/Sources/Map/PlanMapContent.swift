@@ -1764,6 +1764,8 @@ struct CenterMenu: View {
                     .background(theme.colors.secondaryContainer, in: Capsule())
             }
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .background {
             if asking {
                 let parsed = parsedCoordinate(latitude, longitude)

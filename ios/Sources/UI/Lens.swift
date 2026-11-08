@@ -56,14 +56,14 @@ struct LensSection: View {
                 Button(lens.measuring ? "Measuring…" : "Measure the lens") { offMain { Qgc.invoke(LENS_MEASURE) } }
                     .buttonStyle(.text)
                     .disabled(!lens.canMeasure)
-                    .padding(.horizontal, Space.s1)
+                    .padding(.horizontal, Space.s4)
                 if !lens.measuring, let reason = lens.reason {
                     Text(reason).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).padding(.horizontal, Space.s4)
                 }
                 if !lens.measuredZooms.isEmpty && !lens.measuring {
                     Button("Forget measurements") { offMain { Qgc.invoke(LENS_FORGET) } }
                         .buttonStyle(.text)
-                        .padding(.horizontal, Space.s1)
+                        .padding(.horizontal, Space.s4)
                 }
             }
         }

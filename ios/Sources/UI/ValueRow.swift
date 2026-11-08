@@ -340,6 +340,8 @@ struct SafeChoiceMenu<Label: View>: View {
         } label: {
             label()
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .alert(
             Text(confirming.flatMap { options.indices.contains($0) ? "\(options[$0])?" : nil } ?? ""),
             isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),

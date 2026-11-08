@@ -13,6 +13,7 @@ import AppKit
 #if os(iOS)
 typealias MapGestureRecognizer = UIGestureRecognizer
 typealias MapGestureDelegate = UIGestureRecognizerDelegate
+typealias BareMapView = MLNMapView
 let MAP_COLOR_CLASS = "UIColor"
 #elseif os(macOS)
 typealias MapGestureRecognizer = NSGestureRecognizer
@@ -22,6 +23,11 @@ let MAP_COLOR_CLASS = "NSColor"
 private let PRIMARY_BUTTON = 0x1
 private let SECONDARY_BUTTON = 0x2
 private let MAP_PRESS_SECONDS = 0.5
+
+final class BareMapView: MLNMapView {
+    override var isZoomEnabled: Bool { didSet { zoomControls.isHidden = true } }
+    override var isRotateEnabled: Bool { didSet { compass.isHidden = true } }
+}
 #endif
 
 extension MLNMapView {

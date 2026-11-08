@@ -955,7 +955,7 @@ private struct VehicleMapView: PlatformViewRepresentable {
     let gestures: Bool
 
     func makePlatformView(context: Context) -> MLNMapView {
-        let view = MLNMapView(frame: .zero, styleURL: model.initialStyleURL(mapStyle))
+        let view = BareMapView(frame: .zero, styleURL: model.initialStyleURL(mapStyle))
         #if os(iOS)
         view.automaticallyAdjustsContentInset = false
         #elseif os(macOS)
