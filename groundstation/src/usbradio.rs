@@ -18,6 +18,8 @@ const RELEASE_FRAMES: usize = 3;
 const SERIAL_ID: u32 = 0xfff0_0004;
 const BAUD: u32 = 115_200;
 const MAX_LINE_BYTES: usize = 1024;
+const MAX_ECHO_BYTES: usize = 96;
+const MODE_NAME_CHARS: usize = 7;
 const LINE_CHANNELS: usize = 24;
 const VALUES: std::ops::RangeInclusive<usize> = 4..=LINE_CHANNELS;
 const OVERRIDE_PWM: std::ops::RangeInclusive<i32> = 800..=2200;
@@ -174,6 +176,7 @@ const PX4_MAP: [&str; 4] = [
     "RC_MAP_YAW",
 ];
 const ARDUPILOT_MODE_CHANNEL: &[&str] = &["FLTMODE_CH", "MODE_CH"];
+const ARDUPILOT_MODE_SLOTS: &[&str] = &["FLTMODE", "MODE"];
 const PX4_MODE_CHANNEL: &[&str] = &["RC_MAP_FLTMODE"];
 
 pub fn roles(
@@ -203,29 +206,84 @@ pub fn roles(
     })
 }
 
+pub fn mode_names(
+    autopilot: u8,
+    vehicle_type: u8,
+    parameter: impl Fn(&str) -> Option<f64>,
+) -> Vec<String> {
+    if autopilot != crate::modes::AUTOPILOT_ARDUPILOT {
+        return Vec::new();
+    }
+    (1..=crate::modeslots::SLOTS)
+        .map_while(|slot| {
+            ARDUPILOT_MODE_SLOTS
+                .iter()
+                .find_map(|prefix| parameter(&format!("{prefix}{slot}")))
+        })
+        .map(|mode| {
+            crate::modes::name(
+                autopilot,
+                vehicle_type,
+                crate::modes::FLAG_CUSTOM,
+                mode as u32,
+            )
+        })
+        .map(|name| {
+            name.chars()
+                .filter(|c| !c.is_whitespace())
+                .take(MODE_NAME_CHARS)
+                .collect()
+        })
+        .collect()
+}
+
 fn layout_tail(layout: crate::radiocamera::Layout) -> String {
     let channels: Vec<String> = layout.channels().iter().map(usize::to_string).collect();
     format!(";{}", channels.join(","))
 }
 
-pub fn echo(flying: Flying, roles: Option<Roles>, layout: crate::radiocamera::Layout) -> String {
+fn fitted(head: &str, modes: &[String]) -> String {
+    let names: Vec<&str> = modes
+        .iter()
+        .scan(head.len(), |len, name| {
+            *len += name.len() + 1;
+            (*len < MAX_ECHO_BYTES).then_some(name.as_str())
+        })
+        .collect();
+    format!("{head}{}\n", names.join(","))
+}
+
+pub fn echo(
+    flying: Flying,
+    roles: Option<Roles>,
+    layout: crate::radiocamera::Layout,
+    payload: &str,
+    modes: &[String],
+) -> String {
     let (state, id) = match flying {
-        Flying::NoVehicle => return format!("@N{}\n", layout_tail(layout)),
+        Flying::NoVehicle => {
+            return format!(
+                "@N{}|{}|\n",
+                layout_tail(layout),
+                crate::payloadrail::SWITCH_OFF
+            );
+        }
         Flying::Vehicle(id) => ('F', id),
         Flying::Standby(id) => ('S', id),
         Flying::Joystick(id) => ('J', id),
     };
-    match roles {
-        None => format!("@{state},{id}{}\n", layout_tail(layout)),
+    let head = match roles {
+        None => format!("@{state},{id}{}|{payload}|", layout_tail(layout)),
         Some(Roles {
             kind,
             channels: [roll, pitch, throttle, yaw],
             mode_channel,
         }) => format!(
-            "@{state},{id},{kind},{roll},{pitch},{throttle},{yaw},{mode_channel}{}\n",
+            "@{state},{id},{kind},{roll},{pitch},{throttle},{yaw},{mode_channel}{}|{payload}|",
             layout_tail(layout.without(mode_channel.into()))
         ),
-    }
+    };
+    fitted(&head, modes)
 }
 
 static CLASH: Mutex<Option<(u8, usize)>> = Mutex::new(None);
@@ -259,6 +317,19 @@ fn active_roles() -> Option<Roles> {
     )
 }
 
+fn active_modes() -> Vec<String> {
+    let hub = crate::hub::lock();
+    hub.active()
+        .filter(|v| !v.on_high_latency_link())
+        .map_or_else(Vec::new, |vehicle| {
+            mode_names(vehicle.autopilot, vehicle.vehicle_type, |name| {
+                vehicle
+                    .parameter_exact(vehicle.component, name)
+                    .map(|value| value.as_f64())
+            })
+        })
+}
+
 fn flying() -> Flying {
     let vehicle = crate::hub::lock()
         .active()
@@ -288,7 +359,13 @@ fn answer(now_ms: u64, live: bool) {
         due
     };
     if due {
-        let line = echo(flying(), active_roles(), crate::radiocamera::layout());
+        let line = echo(
+            flying(),
+            active_roles(),
+            crate::radiocamera::layout(),
+            crate::payloadrail::verdict(),
+            &active_modes(),
+        );
         if let Some(port) = ATTEMPT
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -539,13 +616,18 @@ fn advance(fresh: Option<Frame>) {
 fn heard_on(port: &str, lines: Vec<Line>) {
     if let Some(line) = lines.last() {
         detection().radios.insert(port.to_string());
-        advance(Some(sticks(line)));
+        let mode_channel = active_roles().map_or(0, |roles| usize::from(roles.mode_channel));
+        let layout = crate::radiocamera::layout();
+        crate::payloadrail::radio_seen(crate::radiocamera::switches(
+            line,
+            crate::hub::now_ms(),
+            layout.without(mode_channel),
+        ));
         if let Some((vehicle, _)) = target() {
-            let mode_channel = active_roles().map_or(0, |roles| usize::from(roles.mode_channel));
-            let layout = crate::radiocamera::layout();
             warn_of_clash(vehicle, layout, mode_channel);
             crate::radiocamera::heard(vehicle, line, layout.without(mode_channel));
         }
+        advance(Some(sticks(line)));
     }
 }
 
@@ -713,75 +795,202 @@ mod tests {
 
     #[test]
     fn the_radio_is_told_what_its_sticks_are_doing() {
+        let safe = crate::payloadrail::SWITCH_SAFE;
+        let copter = |mode_channel: u8| {
+            Some(Roles {
+                kind: 'C',
+                channels: [1, 2, 3, 4],
+                mode_channel,
+            })
+        };
         assert_eq!(
-            echo(Flying::Vehicle(1), None, crate::radiocamera::R2D2),
-            "@F,1;18,20,21,22,24,11,12,5,19,23\n"
+            echo(
+                Flying::Vehicle(1),
+                None,
+                crate::radiocamera::R2D2,
+                safe,
+                &[]
+            ),
+            "@F,1;18,20,21,22,24,11,12,5,19,23|safe|\n"
         );
         assert_eq!(
-            echo(Flying::Standby(3), None, crate::radiocamera::R2D2),
-            "@S,3;18,20,21,22,24,11,12,5,19,23\n",
+            echo(
+                Flying::Standby(3),
+                None,
+                crate::radiocamera::R2D2,
+                safe,
+                &[]
+            ),
+            "@S,3;18,20,21,22,24,11,12,5,19,23|safe|\n",
             "in 4G standby the sticks go to the aircraft computer"
         );
         assert_eq!(
-            echo(Flying::Joystick(1), None, crate::radiocamera::R2D2),
-            "@J,1;18,20,21,22,24,11,12,5,19,23\n"
+            echo(
+                Flying::Joystick(1),
+                None,
+                crate::radiocamera::R2D2,
+                safe,
+                &[]
+            ),
+            "@J,1;18,20,21,22,24,11,12,5,19,23|safe|\n"
         );
         assert_eq!(
-            echo(Flying::NoVehicle, None, crate::radiocamera::R2D2),
-            "@N;18,20,21,22,24,11,12,5,19,23\n"
+            echo(Flying::NoVehicle, None, crate::radiocamera::R2D2, safe, &[]),
+            "@N;18,20,21,22,24,11,12,5,19,23|off|\n",
+            "with no vehicle there is nothing to arm and no modes to name"
         );
         assert_eq!(
             echo(
                 Flying::NoVehicle,
-                Some(Roles {
-                    kind: 'C',
-                    channels: [1, 2, 3, 4],
-                    mode_channel: 5
-                }),
-                crate::radiocamera::R2D2
+                copter(5),
+                crate::radiocamera::R2D2,
+                crate::payloadrail::SWITCH_ARMED,
+                &["Loiter".into()]
             ),
-            "@N;18,20,21,22,24,11,12,5,19,23\n"
+            "@N;18,20,21,22,24,11,12,5,19,23|off|\n"
         );
         assert_eq!(
             echo(
                 Flying::Vehicle(1),
-                Some(Roles {
-                    kind: 'C',
-                    channels: [1, 2, 3, 4],
-                    mode_channel: 10
-                }),
-                crate::radiocamera::R2D2
+                copter(10),
+                crate::radiocamera::R2D2,
+                safe,
+                &names(&["Loiter", "AltHold", "PosHold", "RTL", "Auto", "Land"])
             ),
-            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n",
-            "a known vehicle says what each stick channel does and where it reads flight modes"
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|safe|Loiter,AltHold,PosHold,RTL,Auto,Land\n",
+            "a known vehicle says what each stick channel does, where it reads flight modes, and what the mode switch positions are"
         );
         assert_eq!(
             echo(
                 Flying::Vehicle(1),
-                Some(Roles {
-                    kind: 'C',
-                    channels: [1, 2, 3, 4],
-                    mode_channel: 5
-                }),
-                crate::radiocamera::R2D2
+                copter(5),
+                crate::radiocamera::R2D2,
+                crate::payloadrail::SWITCH_ARMED,
+                &[]
             ),
-            "@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23\n",
+            "@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23|armed|\n",
             "a vehicle reading flight modes on the bay channel keeps the bay off it"
+        );
+        assert_eq!(
+            echo(
+                Flying::Joystick(1),
+                copter(5),
+                crate::radiocamera::R2D2,
+                crate::payloadrail::SWITCH_REFUSED,
+                &[]
+            ),
+            "@J,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23|refused|\n",
+            "the arm switch is up but the app did not take it"
+        );
+        assert_eq!(
+            echo(
+                Flying::Vehicle(1),
+                copter(12),
+                crate::radiocamera::R2D2,
+                crate::payloadrail::SWITCH_OFF,
+                &[]
+            ),
+            "@F,1,C,1,2,3,4,12;18,20,21,22,24,11,0,5,19,23|off|\n",
+            "flight modes on the arm channel switch the arm function off"
         );
         assert!(
             echo(
                 Flying::Vehicle(1),
-                Some(Roles {
-                    kind: 'P',
-                    channels: [1, 2, 3, 4],
-                    mode_channel: 5
-                }),
-                crate::radiocamera::R2D2
+                copter(5),
+                crate::radiocamera::R2D2,
+                safe,
+                &names(&["Loiter"])
             )
             .lines()
             .all(|line| parse(line).is_none()),
             "an echo is never read back as stick values"
         );
+    }
+
+    fn names(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn the_echo_drops_mode_names_from_the_end_to_fit_the_radios_line_buffer() {
+        let seven = names(&[
+            "Stabili", "Altitud", "Positio", "SmartRT", "Autotun", "GuidedN",
+        ]);
+        let line = echo(
+            Flying::Vehicle(1),
+            Some(Roles {
+                kind: 'C',
+                channels: [1, 2, 3, 4],
+                mode_channel: 10,
+            }),
+            crate::radiocamera::R2D2,
+            crate::payloadrail::SWITCH_REFUSED,
+            &seven,
+        );
+        assert_eq!(
+            line,
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,Altitud,Positio,SmartRT,Autotun\n"
+        );
+        assert_eq!(line.len(), 95);
+        assert!(
+            echo(
+                Flying::Vehicle(1),
+                None,
+                crate::radiocamera::R2D2,
+                crate::payloadrail::SWITCH_REFUSED,
+                &seven,
+            )
+            .ends_with("|refused|Stabili,Altitud,Positio,SmartRT,Autotun,GuidedN\n"),
+            "a shorter head leaves room for every name"
+        );
+    }
+
+    #[test]
+    fn mode_names_come_from_ardupilots_slot_parameters_in_the_vehicles_own_table() {
+        let slots = |prefix: &'static str, modes: &'static [f64]| {
+            move |name: &str| {
+                name.strip_prefix(prefix)
+                    .and_then(|slot| slot.parse::<usize>().ok())
+                    .and_then(|slot| modes.get(slot - 1).copied())
+            }
+        };
+        assert_eq!(
+            mode_names(
+                crate::modes::AUTOPILOT_ARDUPILOT,
+                2,
+                slots("FLTMODE", &[5.0, 2.0, 16.0, 6.0, 3.0, 9.0])
+            ),
+            names(&["Loiter", "Altitud", "Positio", "RTL", "Auto", "Land"]),
+            "a copter reads FLTMODE1..6; names lose their spaces and are cut to seven characters"
+        );
+        assert_eq!(
+            mode_names(
+                crate::modes::AUTOPILOT_ARDUPILOT,
+                10,
+                slots("MODE", &[0.0, 4.0, 10.0])
+            ),
+            names(&["Manual", "Hold", "Auto"]),
+            "a rover reads MODE1..6 and stops at the first slot it lacks"
+        );
+        assert_eq!(
+            mode_names(
+                crate::modes::AUTOPILOT_ARDUPILOT,
+                2,
+                slots("FLTMODE", &[99.0])
+            ),
+            names(&["Mode99"]),
+            "an unknown mode number is still named"
+        );
+        assert!(
+            mode_names(
+                crate::modes::AUTOPILOT_PX4,
+                2,
+                slots("COM_FLTMODE", &[1.0, 2.0])
+            )
+            .is_empty(),
+            "PX4 picks modes another way"
+        );
+        assert!(mode_names(crate::modes::AUTOPILOT_ARDUPILOT, 2, |_| None).is_empty());
     }
 
     #[test]
@@ -905,7 +1114,7 @@ mod tests {
         answer(5_000, true);
         assert_eq!(
             String::from_utf8(written.lock().unwrap().clone()).unwrap(),
-            "@N;18,20,21,22,24,11,12,5,19,23\n",
+            "@N;18,20,21,22,24,11,12,5,19,23|off|\n",
             "with no vehicle the radio is told so"
         );
         *ATTEMPT.lock().unwrap() = None;

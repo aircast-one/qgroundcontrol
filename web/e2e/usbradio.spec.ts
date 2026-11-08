@@ -55,7 +55,7 @@ test('a radio streaming the script is found by what it sends, offered once, and 
   await expect(indicator(page, 'Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
   await expect(indicator(page, 'Radio · live')).toBeHidden();
-  await expect.poll(() => lastAnswer(page), { message: 'the radio is told a copter flies on it, which channel does what, that flight modes are on CH5, and the camera and payload channels the app reads, with the bay kept off CH5', timeout: 10_000 }).toMatch(/^@F,\d+,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23$/);
+  await expect.poll(() => lastAnswer(page), { message: 'the radio is told a copter flies on it, which channel does what, that flight modes are on CH5, and the camera and payload channels the app reads, with the bay kept off CH5, then what the app made of the arm switch and the names on the mode switch', timeout: 10_000 }).toMatch(/^@F,\d+,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23\|(armed|safe|refused|off)\|[\w,]*$/);
   await setRadioChannels(page, { 1: 1024, 3: -1024, 11: 1024 });
   await expect.poll(channel(ROLL), { message: 'roll right', timeout: 20_000 }).toBeGreaterThan(1900);
   await expect.poll(channel(THROTTLE), { message: 'throttle low' }).toBeLessThan(1050);

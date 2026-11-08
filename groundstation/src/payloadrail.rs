@@ -24,6 +24,10 @@ pub const RADIO_SELECTS: &str = "The radio's 6POS switch picks the bay while it 
 pub const RADIO_STALE_MS: u64 = crate::usbradio::STALE_AFTER_MS;
 pub const RADIO: &str = "radio";
 pub const APP: &str = "app";
+pub const SWITCH_ARMED: &str = "armed";
+pub const SWITCH_SAFE: &str = "safe";
+pub const SWITCH_REFUSED: &str = "refused";
+pub const SWITCH_OFF: &str = "off";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RadioSwitches {
@@ -37,6 +41,7 @@ pub struct Rail {
     armed: bool,
     selected: i64,
     radio: Option<RadioSwitches>,
+    seen: Option<RadioSwitches>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +90,24 @@ impl Rail {
         changed
     }
 
+    pub fn seen(&mut self, switches: Option<RadioSwitches>) {
+        self.seen = switches;
+    }
+
+    pub fn verdict(&self, has_payload: bool, now_ms: u64) -> &'static str {
+        match self.seen {
+            None => SWITCH_OFF,
+            Some(RadioSwitches { armed: false, .. }) => SWITCH_SAFE,
+            Some(_) => match self.armed(now_ms) {
+                Owned {
+                    value: true,
+                    by: RADIO,
+                } if has_payload => SWITCH_ARMED,
+                _ => SWITCH_REFUSED,
+            },
+        }
+    }
+
     pub fn arm(&mut self, armed: bool, now_ms: u64) -> Result<(), &'static str> {
         match self.radio(now_ms) {
             Some(_) => Err(RADIO_ARMS),
@@ -110,6 +133,7 @@ static RAIL: Mutex<Rail> = Mutex::new(Rail {
     armed: false,
     selected: 1,
     radio: None,
+    seen: None,
 });
 static CHANGED_FLAG: AtomicBool = AtomicBool::new(false);
 
@@ -121,6 +145,21 @@ pub fn radio_heard(switches: RadioSwitches) {
     if rail().heard(switches) {
         CHANGED_FLAG.store(true, Ordering::Relaxed);
     }
+}
+
+pub fn radio_seen(switches: Option<RadioSwitches>) {
+    rail().seen(switches);
+}
+
+pub fn verdict() -> &'static str {
+    let has_payload = shown();
+    rail().verdict(has_payload, crate::hub::now_ms())
+}
+
+fn shown() -> bool {
+    crate::hub::lock().active().is_some_and(|vehicle| {
+        vehicle.payload_setup().enabled || !vehicle.payload_servos().is_empty()
+    })
 }
 
 pub fn take_changed() -> bool {
@@ -252,9 +291,7 @@ pub fn view(backend: &dyn Backend, _args: &[String]) -> Value {
                 false => Err(offer["reason"].as_str().unwrap_or_default().to_string()),
             }
         });
-    let shown = crate::hub::lock().active().is_some_and(|vehicle| {
-        vehicle.payload_setup().enabled || !vehicle.payload_servos().is_empty()
-    });
+    let shown = shown();
     let now_ms = crate::hub::now_ms();
     let rail = rail();
     rail_json(
@@ -348,6 +385,41 @@ mod tests {
             }
         );
         assert_eq!(rail.selected(2_000), Owned { value: 2, by: APP });
+    }
+
+    #[test]
+    fn the_rail_tells_the_radio_what_it_made_of_the_arm_switch() {
+        let mut rail = Rail::default();
+        assert_eq!(
+            rail.verdict(true, 1_000),
+            SWITCH_OFF,
+            "a radio with no arm channel has nothing to arm with"
+        );
+        rail.seen(Some(RadioSwitches {
+            armed: false,
+            ..LIVE
+        }));
+        assert_eq!(rail.verdict(true, 1_000), SWITCH_SAFE);
+        rail.seen(Some(LIVE));
+        assert_eq!(
+            rail.verdict(true, 1_000),
+            SWITCH_REFUSED,
+            "the switch is up but the rail never heard it: the radio is not flying the vehicle"
+        );
+        rail.heard(LIVE);
+        assert_eq!(rail.verdict(true, 1_000), SWITCH_ARMED);
+        assert_eq!(
+            rail.verdict(false, 1_000),
+            SWITCH_REFUSED,
+            "with no payload the arm is not taken"
+        );
+        assert_eq!(
+            rail.verdict(true, 1_000 + RADIO_STALE_MS + 1),
+            SWITCH_REFUSED,
+            "a stale arm is the app's, not the radio's"
+        );
+        rail.seen(None);
+        assert_eq!(rail.verdict(true, 1_000), SWITCH_OFF);
     }
 
     #[test]
