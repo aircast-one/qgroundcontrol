@@ -73,7 +73,11 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
 
   if screen.w == 480 then
     assert(shows(r, "Waiting for the app") and shows(r, "Pick it under Radio on USB"), "silence says where in the app to pick the radio")
-    assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
+    if screen.lvgl then
+      assert(shows(r, "m0") and shows(r, "CH1 src0") and shows(r, "988") and shows(r, "CH4 src3") and shows(r, "1244"), "each row names what the channel does, the channel and the stick on it, and its value")
+    else
+      assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
+    end
     assert(shows(r, "+20 unused channels") and not shows(r, "CH24"), "only the channels this model mixes are listed")
     assert(next(r.inserted) == nil, "nothing is set up before the app says which channels it reads")
     assert(shows(r, "RTN: stop sending sticks and exit"), "the way out is on the screen")
@@ -127,13 +131,13 @@ assert(not older.inserted[18] and not older.inserted[22], "an app naming only ei
 local onScreen = radio({ w = 480, h = 272, lvgl = true })
 onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 onScreen.script.run(0)
-assert(shows(onScreen, string.format("CH%-2d %-5s %-6s %4d", 18, "src99", "camREB", 2012)), "a channel the script just set up appears on the screen")
+assert(shows(onScreen, "Pitch") and shows(onScreen, "CH18 src99") and shows(onScreen, "2012"), "a channel the script just set up appears on the screen by what it does, its channel and control, and its value")
 local unnamed = radio({ w = 480, h = 272, lvgl = true, mixes = 24, unnamed = true })
 unnamed.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 unnamed.script.run(0)
 assert(next(unnamed.inserted) == nil, "existing mixes are left alone even when they have no name")
-assert(shows(unnamed, string.format("CH%-2d %-5s %-6s %4d", 19, "src18", "campit", 1500)), "a layout channel whose mix has no name shows the function's name")
-assert(shows(unnamed, string.format("CH%-2d %-5s %-6s %4d", 23, "src22", "cam90", 1500)), "SC too")
+assert(shows(unnamed, "Tilt") and shows(unnamed, "CH19 src18"), "a layout channel whose mix has no name shows the function's name")
+assert(shows(unnamed, "Look") and shows(unnamed, "CH23 src22"), "SC too")
 local his = radio({ w = 480, h = 272 })
 his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 his.script.run(0)
@@ -163,7 +167,7 @@ assert(shows(full, "CH24 src23 m23    1500") and not shows(full, "+0 unused chan
 for _, mixes in ipairs({ 7, 24 }) do
   local tx16s = radio({ w = 480, h = 272, lvgl = true, mixes = mixes })
   tx16s.script.run(0)
-  assert(shows(tx16s, string.format("CH%-2d %-5s %-6s %4d", mixes, "src" .. (mixes - 1), "m" .. (mixes - 1), 1500)))
+  assert(shows(tx16s, "m" .. (mixes - 1)) and shows(tx16s, "CH" .. mixes .. " src" .. (mixes - 1)))
   for _, call in ipairs(tx16s.drawn) do
     assert((call[3] or 0) <= 272 - 50 - 16, "a TX16S shows all " .. mixes .. " channels and the way out without scrolling")
   end
@@ -196,7 +200,7 @@ assert(shows(small, "Roll") and shows(small, "Pitc"), "the small screen shows th
 local colourLabels = radio({ w = 480, h = 320, lvgl = true })
 colourLabels.hear("@F,1,C,1,2,3,4\n")
 colourLabels.script.run(0)
-assert(shows(colourLabels, "CH1  Roll  m0      988"), "an LVGL radio labels its rows the same way")
+assert(shows(colourLabels, "Roll") and shows(colourLabels, "CH1 src0") and shows(colourLabels, "988"), "an LVGL radio names its rows by their role")
 
 local quiet = radio({ w = 480, h = 272 })
 quiet.script.run(0)

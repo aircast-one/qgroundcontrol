@@ -6,12 +6,17 @@ local SERIAL_PREFIX = "$"
 local APP_SILENT_TICKS = 150
 local CONFIRM_TICKS = 300
 local SAME_PRESS_TICKS = 20
-local BAR_MAX_W = 50
 local COLUMN_ROWS = 12
 local LVGL_HEADER_H = 50
 local LVGL_ROWS_TOP = 46
 local LVGL_ROW_H = 22
 local LVGL_LINE_H = 16
+local LVGL_TEXT_ROW_H = 17
+local LVGL_META_X = 78
+local LVGL_BAR_X = 156
+local LVGL_BAR_W = 50
+local LVGL_BAR_H = 8
+local LVGL_VALUE_X = 210
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
@@ -111,7 +116,8 @@ end
 local function setUpChannels(mixes)
   layoutNames = {}
   for _, wanted in ipairs(mixes) do
-    if wanted[3] and wanted[3] >= 1 and wanted[2] ~= "" then layoutNames[wanted[3]] = wanted[2] end
+    local shown = wanted[2] ~= "" and wanted[2] or (wanted[1] == "6pos" and "bay" or "")
+    if wanted[3] and wanted[3] >= 1 and shown ~= "" then layoutNames[wanted[3]] = shown end
   end
   if not (getFieldInfo and model.insertMix) then return end
   for _, wanted in ipairs(mixes) do
@@ -213,8 +219,23 @@ local function role(i)
   return appLive() and app.labels and app.labels[i] or nil
 end
 
+local FRIENDLY = {
+  camREB = "Pitch", campit = "Tilt", camyaw = "Yaw", zoom = "Zoom", camtyp = "Picture", termty = "Palette",
+  cam90 = "Look", skld = "Drop", skid = "Drop", BOMARM = "Arm", phold = "Modes", bay = "Bay",
+}
+
+local function shownName(i)
+  local name = mixesInfo[i].name
+  return name ~= "" and name or layoutNames[i] or ""
+end
+
+local function functionName(i)
+  local name = shownName(i)
+  return role(i) or FRIENDLY[name] or (name ~= "" and name or mixesInfo[i].src)
+end
+
 local function channelText(i)
-  return string.format("CH%-2d %-5s %-6s %4d", i, role(i) or mixesInfo[i].src, mixesInfo[i].name ~= "" and mixesInfo[i].name or layoutNames[i] or "", pwm(i))
+  return string.format("CH%-2d %-5s %-6s %4d", i, role(i) or mixesInfo[i].src, shownName(i), pwm(i))
 end
 
 local function place(slot, rows)
@@ -234,6 +255,7 @@ local function brand()
     primary = lcd.RGB(0x00, 0x88, 0xF2),
     good = lcd.RGB(0x3D, 0xD6, 0x8C),
     warning = lcd.RGB(0xF4, 0xA4, 0x37),
+    track = lcd.RGB(0x2A, 0x2D, 0x34),
   }
 end
 
@@ -297,23 +319,38 @@ local function buildLvglUI()
   local hintY = LCD_H - LVGL_HEADER_H - LVGL_LINE_H
   local rows = math.max(1, math.ceil(#used / 2))
   local rowH = math.min(LVGL_ROW_H, math.floor((hintY - LVGL_ROWS_TOP) / rows))
+  local rowFont = rowH >= LVGL_TEXT_ROW_H and 0 or SMLSIZE
   for slot = 1, #used do
     local i = used[slot]
     local column, row = place(slot, rows)
-    local colBase = column == 1 and 0 or 235
+    local colBase = column == 1 and 0 or 245
     local yOfs = LVGL_ROWS_TOP + (row - 1) * rowH
+    local barY = yOfs + math.floor((rowH - LVGL_BAR_H) / 2)
+    local centre = colBase + LVGL_BAR_X + math.floor(LVGL_BAR_W / 2)
 
-    pg:label({ x = colBase, y = yOfs, font = SMLSIZE,
-      text = function() return channelText(i) end,
+    pg:label({ x = colBase, y = yOfs, font = rowFont,
+      text = function() return functionName(i) end,
     })
-
-    pg:rectangle({ x = colBase + 175, y = yOfs + 6, w = BAR_MAX_W, h = 8, filled = true,
+    pg:label({ x = colBase + LVGL_META_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
+      text = "CH" .. i .. " " .. mixesInfo[i].src,
+    })
+    pg:rectangle({ x = colBase + LVGL_BAR_X, y = barY, w = LVGL_BAR_W, h = LVGL_BAR_H, filled = true, rounded = 4,
+      color = color.track,
+    })
+    pg:rectangle({ x = centre, y = barY, w = 1, h = LVGL_BAR_H, filled = true, rounded = 4,
       color = color.primary,
-      size = function()
-        local w = math.floor((channelValues[i] + 1024) * BAR_MAX_W / 2048)
-        if w < 1 then w = 1 elseif w > BAR_MAX_W then w = BAR_MAX_W end
-        return w, 8
+      pos = function()
+        local v = channelValues[i]
+        return (v < 0) and (centre - math.floor(-v * LVGL_BAR_W / 2048)) or centre, barY
       end,
+      size = function()
+        local w = math.floor(math.abs(channelValues[i]) * LVGL_BAR_W / 2048)
+        if w < 1 then w = 1 end
+        return w, LVGL_BAR_H
+      end,
+    })
+    pg:label({ x = colBase + LVGL_VALUE_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
+      text = function() return string.format("%d", pwm(i)) end,
     })
   end
   pg:label({ x = 0, y = hintY, font = SMLSIZE, text = hint })
