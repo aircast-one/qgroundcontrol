@@ -28,7 +28,7 @@ local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
 local NO_ANSWER = "Waiting for the app"
 local NEXT_STEP = "Pick it under Radio on USB"
-local USB_MODE_STEP = "Nothing heard: USB mode must be Serial (VCP). Unplug, plug in, pick it"
+local USB_MODE_STEP = "No offer in the app? USB mode must be Serial (VCP): replug and pick it"
 local SILENT_CABLE_TICKS = 800
 local ICON_PATH = "/SCRIPTS/TOOLS/aircast-usb.png"
 local ICON_PNG = "\137PNG\013\010\026\010\000\000\000\013IHDR\000\000\000\030\000\000\000\030\008\004\000\000\000\1459f)\000\000\000\140IDAT8\203\237TA\014\192 \008[\205\254\255ev2\010\020P\147\221\236\201\205\150\022\156\131\200s\140v.\189\226m\188\209\0060\214\209q\194n\204\034\013_\194\136\189\159.f\216\227\177\211x\200QdR\244e.\229\0285\176Y\200\156Dt\027`Nlh\148\151M\219:9.\159vTR\191'\031\009\011h3$=\231)J\177u\225\172\182\034\141@/\134\008\192\207|\185\231\026\233}\174\226\023?\131\092\254_\236+\246\248\000\138\145D#\215\034\220G\000\000\000\000IEND\174B`\130"
@@ -48,7 +48,7 @@ local leaving = false
 local confirmUntil = nil
 local askedAt = nil
 local heard = ""
-local app = { state = nil, vehicle = nil, at = nil, labels = nil }
+local app = { state = nil, vehicle = nil, at = nil, labels = nil, payload = nil, modes = {} }
 
 local ROLES = {
   C = { "Roll", "Pitch", "Thr", "Yaw" },
@@ -183,6 +183,9 @@ local function listen()
       local kind, roll, pitch, throttle, yaw = string.match(line, "^@%a,%d+,(%a),(%d+),(%d+),(%d+),(%d+)")
       app.state, app.vehicle, app.at = state, vehicle, now()
       app.labels = labelsFor(kind, { roll, pitch, throttle, yaw })
+      local payload, modes = string.match(line, "|(%a+)|([%w,]*)")
+      app.payload, app.modes = payload, {}
+      for name in string.gmatch(modes or "", "([%w]+)") do app.modes[#app.modes + 1] = name end
       local mixes, layout, named = layoutFrom(line)
       if layout ~= layoutSetUp then
         layoutSetUp = layout
@@ -213,9 +216,12 @@ local function status()
 end
 
 local function nextStep()
+  return status() == NO_ANSWER and NEXT_STEP or ""
+end
+
+local function secondStep()
   if status() ~= NO_ANSWER then return "" end
-  if cableSince ~= nil and now() - cableSince >= SILENT_CABLE_TICKS then return USB_MODE_STEP end
-  return NEXT_STEP
+  return (cableSince ~= nil and now() - cableSince >= SILENT_CABLE_TICKS) and USB_MODE_STEP or ""
 end
 
 local function confirming()
@@ -297,8 +303,19 @@ local VALUE = {
   Modes = function(v) return v < -512 and "up" or v > 512 and "down" or "mid" end,
 }
 
+local function modePosition(pwm)
+  if pwm < 1231 then return 1 elseif pwm <= 1360 then return 2 elseif pwm <= 1490 then return 3
+  elseif pwm <= 1620 then return 4 elseif pwm <= 1749 then return 5 else return 6 end
+end
+
 local function valueText(i)
   local key = role(i) and ("stick " .. role(i)) or functionName(i)
+  if key == "Arm" and appLive() and app.payload then
+    return (app.payload == "armed" or app.payload == "refused") and string.upper(app.payload) or app.payload
+  end
+  if key == "Modes" and appLive() and #app.modes > 0 then
+    return app.modes[modePosition(pwm(i))] or VALUE.Modes(channelValues[i])
+  end
   return (VALUE[key] or percent)(channelValues[i])
 end
 
@@ -328,6 +345,7 @@ end
 
 local function hot(i)
   local name = functionName(i)
+  if name == "Arm" and appLive() and app.payload then return app.payload == "armed" or app.payload == "refused" end
   return (name == "Arm" or name == "Drop") and channelValues[i] > 512
 end
 
@@ -406,7 +424,7 @@ local function drawLarge()
     lcd.drawText(colBase, y, channelText(i), SMLSIZE + color.foreground)
     lcd.drawFilledRectangle(colBase + 170, y + 4, math.floor((channelValues[i] + 1024) * 55 / 2048) + 1, 6, color.primary)
   end
-  lcd.drawText(10, 256, hint(), SMLSIZE + (confirming() and color.warning or color.muted))
+  lcd.drawText(10, 256, secondStep() ~= "" and secondStep() or hint(), SMLSIZE + ((confirming() or secondStep() ~= "") and color.warning or color.muted))
   lcd.drawText(300, 256, mappedText(), SMLSIZE + color.muted)
 end
 
@@ -440,8 +458,8 @@ local function buildLvglUI()
 
   local pageH = LCD_H - LVGL_HEADER_H
   local hintY = pageH - LVGL_LINE_H
-  builtStep = nextStep()
-  local statusH = LVGL_STATUS_H + (builtStep ~= "" and LVGL_LINE_H or 0)
+  builtStep = nextStep() .. secondStep()
+  local statusH = LVGL_STATUS_H + (nextStep() ~= "" and LVGL_LINE_H or 0) + (secondStep() ~= "" and LVGL_LINE_H or 0)
   local rowsTop = LVGL_ROWS_TOP + statusH - LVGL_STATUS_H
   local missing = missingControls()
   local rows = math.max(1, math.ceil((#used + #missing) / 2))
@@ -464,8 +482,11 @@ local function buildLvglUI()
   pg:label({ x = LCD_W - 76, y = 4, font = MIDSIZE, color = color.foreground,
     text = function() return string.format("%.1fV", battVolt) end,
   })
-  if builtStep ~= "" then
+  if nextStep() ~= "" then
     pg:label({ x = 30, y = LVGL_STATUS_H - 10, font = SMLSIZE, color = color.warning, text = nextStep })
+  end
+  if secondStep() ~= "" then
+    pg:label({ x = 30, y = LVGL_STATUS_H - 10 + LVGL_LINE_H, font = SMLSIZE, color = color.warning, text = secondStep })
   end
   pg:rectangle({ x = 4, y = rowsTop - LVGL_PANEL_PAD, w = panelW, h = panelH + LVGL_PANEL_PAD, filled = true, rounded = 6, color = color.panel })
   pg:rectangle({ x = LCD_W - 4 - panelW, y = rowsTop - LVGL_PANEL_PAD, w = panelW, h = panelH + LVGL_PANEL_PAD, filled = true, rounded = 6, color = color.panel })
@@ -489,7 +510,7 @@ local function buildLvglUI()
       text = function() return functionName(i) end,
     })
     pg:label({ x = colBase + LVGL_META_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
-      text = "CH" .. i .. " " .. mixesInfo[i].src,
+      text = function() return "CH" .. i .. " " .. ((role(i) and mixesInfo[i].name ~= "") and mixesInfo[i].name or mixesInfo[i].src) end,
     })
     pg:rectangle({ x = colBase + LVGL_BAR_X, y = barY, w = LVGL_BAR_W, h = LVGL_BAR_H, filled = true, rounded = 4,
       color = color.track,
@@ -549,7 +570,7 @@ local function run(event)
   if exitKey(event) then askToLeave() end
   if leaving then return 1 end
   battVolt = getValue("tx-voltage")
-  if useLvglUI and nextStep() ~= builtStep then relayout = true end
+  if useLvglUI and nextStep() .. secondStep() ~= builtStep then relayout = true end
   if relayout then
     relayout = false
     lvgl.clear()
