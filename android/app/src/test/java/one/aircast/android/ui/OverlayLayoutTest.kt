@@ -64,4 +64,22 @@ class OverlayLayoutTest {
         assertEquals(0f to 0f, onScreenCorrection(Rect(10f, 10f, 200f, 200f), root, 50f to 50f))
         assertEquals(0f to 0f, onScreenCorrection(Rect(20f, 10f, 1600f, 200f), root, 30f to 0f))
     }
+
+    @Test
+    fun `an indicator steps past empty ones and they keep their slots`() {
+        val keys = listOf("battery", "rc", "esc", "gps", "joystick")
+        val centres = mapOf("battery" to 20f, "gps" to 80f)
+        assertEquals(listOf("gps", "rc", "esc", "battery", "joystick"), movedAmongShown(keys, centres, "gps", -1))
+        assertEquals(listOf("gps", "rc", "esc", "battery", "joystick"), movedAmongShown(keys, centres, "battery", 1))
+        assertEquals(null, movedAmongShown(keys, centres, "gps", 1))
+    }
+
+    @Test
+    fun `a dropped indicator lands where it was let go`() {
+        val keys = listOf("battery", "rc", "gps", "links")
+        val centres = mapOf("battery" to 20f, "gps" to 80f, "links" to 140f)
+        assertEquals(listOf("gps", "rc", "battery", "links"), droppedOrder(keys, centres, "battery", 90f))
+        assertEquals(listOf("links", "rc", "battery", "gps"), droppedOrder(keys, centres, "links", -200f))
+        assertEquals(keys, droppedOrder(keys, centres, "gps", 10f))
+    }
 }

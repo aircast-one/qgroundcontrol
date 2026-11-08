@@ -61,6 +61,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import one.aircast.android.ui.AppFontScale
 import one.aircast.android.ui.OverlayEditBar
 import one.aircast.android.ui.LayoutWidget
+import one.aircast.android.ui.LayoutGroup
+import one.aircast.android.ui.CAMERA_CONTROL_KEY
+import one.aircast.android.ui.holdToEditLayout
 import one.aircast.android.ui.LogReplayBar
 import one.aircast.android.ui.StatusPill
 import one.aircast.android.ui.VehicleStateChip
@@ -385,7 +388,7 @@ fun AircastShell(hostView: android.view.View?) {
             )
         }
     }
-    val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer(shutters = !flyIsPortrait()) } } }
+    val flyCameraControlLayer = remember { movableContentOf { LayoutGroup(CAMERA_CONTROL_KEY) { CameraControlLayer(shutters = !flyIsPortrait()) } } }
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
     val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
     val flyFollowMeReadout = remember { movableContentOf { LayoutWidget("followMe") { FollowMeReadout() } } }
@@ -611,7 +614,7 @@ fun AircastShell(hostView: android.view.View?) {
                         LayoutWidget("vtolState", movable = false, hideable = false) { VtolStateCell() }
                         ControlRequestPrompt()
                         one.aircast.android.ui.DeviceStatusChip()
-                        LayoutWidget("statusPill", movable = false, hideable = false) { StatusPill() }
+                        StatusPill(Modifier.holdToEditLayout())
                         one.aircast.android.ui.FlySettingsButton()
                     }
                     val flyKeyRow: @Composable () -> Unit = {

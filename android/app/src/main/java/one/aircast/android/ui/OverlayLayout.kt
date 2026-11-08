@@ -65,8 +65,14 @@ private const val HIDDEN_ALPHA = 0.35f
 private const val JIGGLE_DEGREES = 1.2f
 private const val JIGGLE_MILLIS = 120
 private const val JIGGLE_SPREAD = 0x1f
-private val BADGE_SIZE = 24.dp
+internal val BADGE_SIZE = 24.dp
 internal const val RESET_ARM_MILLIS = 4000L
+
+internal enum class BadgeSpot(val alignment: Alignment, val x: Float, val y: Float) {
+    Inside(Alignment.TopEnd, 0f, 0f),
+    AboveTopEnd(Alignment.TopEnd, 0.5f, -0.75f),
+    OnTopStart(Alignment.TopStart, -0.5f, -0.5f),
+}
 
 internal data class ResetTap(val reset: Boolean, val armed: Boolean)
 
@@ -152,6 +158,17 @@ internal fun movedKey(keys: List<String>, key: String, delta: Int): List<String>
     val to = from + delta
     return if (from < 0 || to !in keys.indices) null else keys.filterIndexed { i, _ -> i != from }.let { rest -> rest.take(to) + key + rest.drop(to) }
 }
+
+internal fun reorderedAmongShown(keys: List<String>, shownOrder: List<String>): List<String> {
+    val placed = keys.indices.filter { keys[it] in shownOrder }.zip(shownOrder).toMap()
+    return keys.indices.map { placed[it] ?: keys[it] }
+}
+
+internal fun movedAmongShown(keys: List<String>, centres: Map<String, Float>, key: String, delta: Int): List<String>? =
+    movedKey(keys.filter { it in centres }, key, delta)?.let { reorderedAmongShown(keys, it) }
+
+internal fun droppedOrder(keys: List<String>, centres: Map<String, Float>, key: String, dx: Float): List<String> =
+    reorderedAmongShown(keys, keys.filter { it in centres }.sortedBy { (centres[it] ?: 0f) + if (it == key) dx else 0f })
 
 
 
@@ -245,7 +262,27 @@ internal fun LayoutDragArea(key: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolean = true, content: @Composable () -> Unit) {
+internal fun LayoutGroup(key: String, content: @Composable () -> Unit) {
+    val placedKey = layoutKey(key)
+    val (x, y) = LocalFlyScreenState.current.layout.offsets[placedKey] ?: (0f to 0f)
+    Box(
+        Modifier
+            .offset(x.dp, y.dp)
+            .then(keptOnScreen(placedKey))
+            .holdToEditLayout()
+            .then(if (LocalAvoidedByVideoMessage.current) Modifier.avoidedByVideoMessage(key) else Modifier),
+    ) { content() }
+}
+
+@Composable
+internal fun LayoutWidget(
+    key: String,
+    movable: Boolean = true,
+    hideable: Boolean = true,
+    badgeSpot: BadgeSpot = BadgeSpot.Inside,
+    dragsWith: String? = null,
+    content: @Composable () -> Unit,
+) {
     val flyScreen = LocalFlyScreenState.current
     val layout = flyScreen.layout
     val editing = layout.editing
@@ -272,10 +309,11 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
                 .alpha(if (hidden) HIDDEN_ALPHA else 1f)
                 .then(if (LocalFlyOsd.current) Modifier.osdShadow() else Modifier),
         ) { content() }
-        if (decorated && movable) LayoutDragArea(key, Modifier.matchParentSize())
+        if (decorated && (movable || dragsWith != null)) LayoutDragArea(dragsWith ?: key, Modifier.matchParentSize())
+        val badgeAt = Modifier.align(badgeSpot.alignment).offset(BADGE_SIZE * badgeSpot.x, BADGE_SIZE * badgeSpot.y).size(BADGE_SIZE)
         if (decorated && hideable) Surface(
             onClick = { layout.setHidden(key, !hidden) },
-            modifier = Modifier.align(Alignment.TopEnd).size(BADGE_SIZE),
+            modifier = badgeAt,
             shape = CircleShape,
             color = if (hidden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.inverseSurface,
             contentColor = if (hidden) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.inverseOnSurface,
@@ -284,7 +322,7 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
             Icon(if (hidden) Icons.Default.Add else Icons.Default.Close, contentDescription = if (hidden) "Show" else "Hide", modifier = Modifier.padding(4.dp))
         }
         if (decorated && !hideable) Surface(
-            modifier = Modifier.align(Alignment.TopEnd).size(BADGE_SIZE),
+            modifier = badgeAt,
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,

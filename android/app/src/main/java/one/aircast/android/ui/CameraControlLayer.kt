@@ -101,6 +101,13 @@ private val REC_DOT_SIZE = 8.dp
 private const val REC_BLINK_MS = 600
 internal val RECORD_RED = Color(0xFFE53935)
 
+internal const val CAMERA_CONTROL_KEY = "cameraControl"
+private const val CAMERA_SHUTTER_KEY = "cameraShutter"
+
+@Composable
+private fun CameraElement(key: String, content: @Composable () -> Unit) =
+    LayoutWidget(key, movable = false, badgeSpot = BadgeSpot.OnTopStart, dragsWith = CAMERA_CONTROL_KEY, content = content)
+
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) {
     val hasVehicle = hasVehicle()
@@ -123,11 +130,13 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
 
     val panel = camera?.panel?.takeIf { hasVehicle && it.visible } ?: run {
         Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-            RcCameraControls()
-            if (shutters) StreamShutter()
+            CameraElement("cameraGimbal") { RcCameraControls() }
+            if (shutters) CameraElement(CAMERA_SHUTTER_KEY) { StreamShutter() }
         }
         return
     }
+    val layout = LocalFlyScreenState.current.layout
+    val shutterShown = panel.shutters.isNotEmpty() && (layout.editing || CAMERA_SHUTTER_KEY !in layout.hidden)
     OpenOnRequest(CAMERA_SHEET) { details = true }
 
     Surface(
@@ -137,18 +146,22 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
     ) {
         if (shutters) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RcCameraControls()
+                CameraElement("cameraGimbal") { RcCameraControls() }
                 ShutterCentredRail(
-                    centre = if (panel.shutters.isNotEmpty()) SHUTTER_SIZE else 0.dp,
+                    centre = if (shutterShown) SHUTTER_SIZE else 0.dp,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp).widthIn(max = CAMERA_RAIL_MAX_WIDTH),
-                    above = { zoomText(camera)?.let { label -> ZoomChip(camera, label) } },
+                    above = { zoomText(camera)?.let { label -> CameraElement("cameraZoom") { ZoomChip(camera, label) } } },
                     shutter = {
-                        panel.shutters.map { shutter ->
-                            ShutterButton(shutterCaption(panel, shutter), shutter) { offMainDetached { refused = shutter.action?.let(Qgc::refusalOf) } }
+                        CameraElement(CAMERA_SHUTTER_KEY) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(RAIL_GAP)) {
+                                panel.shutters.map { shutter ->
+                                    ShutterButton(shutterCaption(panel, shutter), shutter) { offMainDetached { refused = shutter.action?.let(Qgc::refusalOf) } }
+                                }
+                            }
                         }
                     },
                     below = {
-                        CameraModeSwitch(camera, panel) { refused = it }
+                        CameraElement("cameraMode") { CameraModeSwitch(camera, panel) { refused = it } }
                         lapsePlan(camera)?.let { plan -> Text(text = plan, style = MaterialTheme.typography.labelSmall) }
                         refused?.let { sentence ->
                             Text(
@@ -163,8 +176,8 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
             }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(CAMERA_CLUSTER_GAP)) {
-                zoomText(camera)?.let { label -> ZoomChip(camera, label) }
-                RcCameraControls(tiltSlider = false)
+                zoomText(camera)?.let { label -> CameraElement("cameraZoom") { ZoomChip(camera, label) } }
+                CameraElement("cameraGimbal") { RcCameraControls(tiltSlider = false) }
             }
         }
     }

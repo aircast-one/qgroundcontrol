@@ -1,5 +1,21 @@
 package one.aircast.android.ui
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.foundation.background
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 
 import androidx.compose.material.icons.Icons
@@ -19,7 +35,6 @@ import one.aircast.android.bridge.Fact
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Surface
 import androidx.compose.ui.text.font.FontWeight
 import one.aircast.android.bridge.qgcFacts
 import androidx.compose.foundation.layout.Column
@@ -148,17 +163,12 @@ fun StatusPill(modifier: Modifier = Modifier) {
     val rtk = rememberRtkStatus()
     val gcsBattery = rememberGcsBattery()
     if (!statusPillShown(hasVehicle(), rtk != null, gcsBattery != null)) return
-    Surface(
-        modifier = modifier,
-        shape = CircleShape,
-        color = osdBackdrop(Color.Black.copy(alpha = 0.45f)),
-        contentColor = MaterialTheme.aircast.outdoorForeground,
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier.background(osdBackdrop(Color.Black.copy(alpha = 0.45f)), CircleShape).pointerInput(Unit) {},
     ) {
-        androidx.compose.foundation.layout.BoxWithConstraints {
-            val narrow = flyIsPortrait() || maxWidth < NARROW_PILL_WIDTH
-            CompositionLocalProvider(LocalCompactStatus provides true, LocalNarrowStatus provides narrow) {
-                StatusReadingsInline(rtk, gcsBattery, Modifier.padding(end = stripGap(narrow), top = 6.dp, bottom = 6.dp))
-            }
+        val narrow = flyIsPortrait() || maxWidth < NARROW_PILL_WIDTH
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.aircast.outdoorForeground, LocalCompactStatus provides true, LocalNarrowStatus provides narrow) {
+            StatusReadingsInline(rtk, gcsBattery, Modifier.padding(end = stripGap(narrow), top = 6.dp, bottom = 6.dp))
         }
     }
 }
@@ -173,6 +183,25 @@ internal val LocalNarrowStatus = androidx.compose.runtime.compositionLocalOf { f
 private fun stripGap(narrow: Boolean): Dp = if (narrow) NARROW_STRIP_GAP else STRIP_GAP
 
 internal fun shownStatusCells(narrow: Boolean): Int = if (narrow) NARROW_STATUS_CELLS else COMPACT_STATUS_CELLS
+
+private const val REORDER_HOLD_MILLIS = 150L
+
+private fun Modifier.holdToReorder(keys: List<String>, onDrag: (Float) -> Unit, onEnd: () -> Unit): Modifier = pointerInput(keys) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val released = withTimeoutOrNull(REORDER_HOLD_MILLIS) {
+            waitForUpOrCancellation()
+            true
+        }
+        if (released == null) {
+            drag(down.id) { change ->
+                onDrag(change.positionChange().x)
+                change.consume()
+            }
+            onEnd()
+        }
+    }
+}
 
 private fun Modifier.leadingGap(gap: Dp): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints.offset(horizontal = -gap.roundToPx()))
@@ -217,9 +246,12 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     var batteryDisplay by remember { mutableStateOf(false) }
     var rtkSettings by remember { mutableStateOf(false) }
     val layout = LocalFlyScreenState.current.layout
+    var centres by remember { mutableStateOf(emptyMap<String, Float>()) }
+    var dragging by remember { mutableStateOf<String?>(null) }
+    var dragX by remember { mutableFloatStateOf(0f) }
 
     Row(
-        modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()),
+        modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()).padding(end = if (layout.editing) BADGE_SIZE / 2 else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
@@ -280,11 +312,31 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
             }
         }
         keys.forEach { key ->
-            LayoutWidget("indicator-$key", movable = false) {
-                Row(Modifier.leadingGap(stripGap(narrow)), verticalAlignment = Alignment.CenterVertically) {
-                    if (layout.editing) TextButton(onClick = { movedKey(keys, key, -1)?.let { layout.saveIndicatorOrder(it) } }) { Text("\u2039") }
-                    byKey[key]?.invoke()
-                    if (layout.editing) TextButton(onClick = { movedKey(keys, key, 1)?.let { layout.saveIndicatorOrder(it) } }) { Text("\u203A") }
+            androidx.compose.runtime.key(key) {
+                DisposableEffect(key) { onDispose { centres = centres - key } }
+                val held = dragging == key
+                Box(
+                    Modifier
+                        .leadingGap(stripGap(narrow))
+                        .zIndex(if (held) 1f else 0f)
+                        .offset { IntOffset(if (held) dragX.roundToInt() else 0, 0) }
+                        .onGloballyPositioned { placed ->
+                            if (dragging != key) centres = if (placed.size.width > 0) centres + (key to placed.boundsInRoot().center.x) else centres - key
+                        }
+                        .then(
+                            if (layout.editing) Modifier.holdToReorder(keys, onDrag = { dx -> dragging = key; dragX += dx }) {
+                                layout.saveIndicatorOrder(droppedOrder(keys, centres, key, dragX))
+                                dragging = null
+                                dragX = 0f
+                            } else Modifier,
+                        )
+                        .semantics {
+                            if (layout.editing) customActions = listOf(-1 to "Move left", 1 to "Move right").map { (delta, label) ->
+                                CustomAccessibilityAction(label) { movedAmongShown(keys, centres, key, delta)?.also(layout::saveIndicatorOrder) != null }
+                            }
+                        },
+                ) {
+                    LayoutWidget("indicator-$key", movable = false, badgeSpot = BadgeSpot.AboveTopEnd) { byKey[key]?.invoke() }
                 }
             }
         }
