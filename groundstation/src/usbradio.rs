@@ -177,6 +177,27 @@ const PX4_MAP: [&str; 4] = [
 ];
 const ARDUPILOT_MODE_CHANNEL: &[&str] = &["FLTMODE_CH", "MODE_CH"];
 const ARDUPILOT_MODE_SLOTS: &[&str] = &["FLTMODE", "MODE"];
+const ARDUPILOT_SHORT_NAMES: &[(&str, &str)] = &[
+    ("Altitude Hold", "AltHold"),
+    ("Position Hold", "PosHold"),
+    ("Smart RTL", "SmartRTL"),
+    ("Flow Hold", "FlowHold"),
+    ("Auto RTL", "AutoRTL"),
+    ("Guided No GPS", "GuidedNoGPS"),
+    ("Avoid ADSB", "Avoid_ADSB"),
+    ("Depth Hold", "AltHold"),
+    ("Motor Detection", "MotorDetect"),
+    ("FBW A", "FBWA"),
+    ("FBW B", "FBWB"),
+    ("Loiter to QLand", "LoiterToQLand"),
+    ("QuadPlane Stabilize", "QStabilize"),
+    ("QuadPlane Hover", "QHover"),
+    ("QuadPlane Loiter", "QLoiter"),
+    ("QuadPlane Land", "QLand"),
+    ("QuadPlane RTL", "QRTL"),
+    ("QuadPlane AutoTune", "QAutoTune"),
+    ("QuadPlane Acro", "QAcro"),
+];
 const PX4_MODE_CHANNEL: &[&str] = &["RC_MAP_FLTMODE"];
 
 pub fn roles(
@@ -229,6 +250,12 @@ pub fn mode_names(
             )
         })
         .map(|name| {
+            ARDUPILOT_SHORT_NAMES
+                .iter()
+                .find(|(long, _)| *long == name)
+                .map_or(name, |(_, short)| short.to_string())
+        })
+        .map(|name| {
             name.chars()
                 .filter(|c| !c.is_whitespace())
                 .take(MODE_NAME_CHARS)
@@ -247,7 +274,7 @@ fn fitted(head: &str, modes: &[String]) -> String {
         .iter()
         .scan(head.len(), |len, name| {
             *len += name.len() + 1;
-            (*len < MAX_ECHO_BYTES).then_some(name.as_str())
+            (*len <= MAX_ECHO_BYTES).then_some(name.as_str())
         })
         .collect();
     format!("{head}{}\n", names.join(","))
@@ -913,34 +940,51 @@ mod tests {
 
     #[test]
     fn the_echo_drops_mode_names_from_the_end_to_fit_the_radios_line_buffer() {
-        let seven = names(&[
-            "Stabili", "Altitud", "Positio", "SmartRT", "Autotun", "GuidedN",
+        let full = |modes: &[&str]| {
+            echo(
+                Flying::Vehicle(1),
+                Some(Roles {
+                    kind: 'C',
+                    channels: [1, 2, 3, 4],
+                    mode_channel: 10,
+                }),
+                crate::radiocamera::R2D2,
+                crate::payloadrail::SWITCH_REFUSED,
+                &names(modes),
+            )
+        };
+        let exact = full(&[
+            "Stabili", "AltHold", "PosHold", "SmartRT", "Autotune", "Guided",
         ]);
-        let line = echo(
-            Flying::Vehicle(1),
-            Some(Roles {
-                kind: 'C',
-                channels: [1, 2, 3, 4],
-                mode_channel: 10,
-            }),
-            crate::radiocamera::R2D2,
-            crate::payloadrail::SWITCH_REFUSED,
-            &seven,
-        );
         assert_eq!(
-            line,
-            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,Altitud,Positio,SmartRT,Autotun\n"
+            exact,
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,AltHold,PosHold,SmartRT,Autotune\n",
+            "a 96 byte line fills the radio's buffer exactly; the name after it is dropped"
         );
-        assert_eq!(line.len(), 95);
+        assert_eq!(exact.len(), MAX_ECHO_BYTES);
+        assert_eq!(
+            full(&[
+                "Stabili",
+                "AltHold",
+                "PosHold",
+                "SmartRT",
+                "Autotune1",
+                "Guided"
+            ]),
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,AltHold,PosHold,SmartRT\n",
+            "one byte over drops the name, and every name after it keeps its position"
+        );
         assert!(
             echo(
                 Flying::Vehicle(1),
                 None,
                 crate::radiocamera::R2D2,
                 crate::payloadrail::SWITCH_REFUSED,
-                &seven,
+                &names(&[
+                    "Stabili", "AltHold", "PosHold", "SmartRT", "Autotune", "Guided"
+                ]),
             )
-            .ends_with("|refused|Stabili,Altitud,Positio,SmartRT,Autotun,GuidedN\n"),
+            .ends_with("|refused|Stabili,AltHold,PosHold,SmartRT,Autotune,Guided\n"),
             "a shorter head leaves room for every name"
         );
     }
@@ -960,8 +1004,26 @@ mod tests {
                 2,
                 slots("FLTMODE", &[5.0, 2.0, 16.0, 6.0, 3.0, 9.0])
             ),
-            names(&["Loiter", "Altitud", "Positio", "RTL", "Auto", "Land"]),
-            "a copter reads FLTMODE1..6; names lose their spaces and are cut to seven characters"
+            names(&["Loiter", "AltHold", "PosHold", "RTL", "Auto", "Land"]),
+            "a copter reads FLTMODE1..6 and says the modes by ArduPilot's own short names"
+        );
+        assert_eq!(
+            mode_names(
+                crate::modes::AUTOPILOT_ARDUPILOT,
+                2,
+                slots("FLTMODE", &[21.0, 20.0, 19.0, 22.0])
+            ),
+            names(&["SmartRT", "GuidedN", "Avoid_A", "FlowHol"]),
+            "short names longer than seven characters are cut"
+        );
+        assert_eq!(
+            mode_names(
+                crate::modes::AUTOPILOT_ARDUPILOT,
+                1,
+                slots("FLTMODE", &[5.0, 17.0, 25.0])
+            ),
+            names(&["FBWA", "QStabil", "LoiterT"]),
+            "a plane's names are shortened too"
         );
         assert_eq!(
             mode_names(
