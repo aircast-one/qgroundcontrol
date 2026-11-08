@@ -9,6 +9,7 @@ private let JIGGLE_DEGREES = 1.2
 private let JIGGLE_MILLIS = 120
 private let JIGGLE_SPREAD = 0x1f
 let BADGE_SIZE: CGFloat = 24
+private let CORNER_BADGE_OFFSET = CGSize(width: BADGE_SIZE / 2, height: -BADGE_SIZE * 3 / 4)
 private let HOLD_TO_EDIT_SECONDS = 0.5
 let RESET_ARM_MILLIS: Int64 = 4000
 
@@ -315,7 +316,7 @@ struct LayoutWidget<Content: View>: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     if decorated {
-                        badge(layout, hidden).offset(cornerBadge ? CGSize(width: BADGE_SIZE / 2, height: -BADGE_SIZE / 2) : .zero)
+                        badge(layout, hidden).offset(cornerBadge ? CORNER_BADGE_OFFSET : .zero)
                     }
                 }
                 .modifier(Jiggle(key: key, active: decorated))
