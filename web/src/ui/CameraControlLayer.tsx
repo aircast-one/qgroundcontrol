@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Json, isNull, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
@@ -51,7 +51,9 @@ import {
   zoomText,
 } from '@/ui/CameraControl';
 import { CameraDefinitionSettings } from '@/ui/CameraSettingsSection';
-import { OpenOnRequest } from '@/ui/FlyScreenState';
+import { useValue } from '@/kotlin/State';
+import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
+import { LayoutWidget } from '@/ui/OverlayLayout';
 import { useHasVehicle } from '@/ui/FlyState';
 import { LensSection } from '@/ui/LensSection';
 import { osdShadow, useOsdBackdrop } from '@/ui/Osd';
@@ -68,6 +70,14 @@ const MANAGER = 'vehicle.cameraManager';
 export const CAMERA_SHEET = 'camera';
 
 export const SHOW_PHOTO_VIDEO_CONTROL = 'settings.flyViewSettings.showPhotoVideoControl';
+export const CAMERA_CONTROL_KEY = 'cameraControl';
+const CAMERA_SHUTTER_KEY = 'cameraShutter';
+
+const CameraElement = ({ widgetKey, children }: { widgetKey: string; children: ReactNode }) => (
+  <LayoutWidget widgetKey={widgetKey} movable={false} badgeSpot="onTopLeading" dragsWith={CAMERA_CONTROL_KEY}>
+    {children}
+  </LayoutWidget>
+);
 const CAMERA_SCRIM_ALPHA = 0.55;
 const SHUTTER_SIZE = 56;
 const SHUTTER_STOP_SIZE = 20;
@@ -127,6 +137,9 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
   const thermal = useMemo(() => thermalReading(cameraJson), [cameraJson]);
   const tracking = useMemo(() => trackingReading(cameraJson), [cameraJson]);
   const destructive = useMemo(() => destructiveActions(cameraJson), [cameraJson]);
+  const layout = useContext(LocalFlyScreenState).layout;
+  const editing = useValue(layout.editing);
+  const shutterHidden = useValue(layout.hidden).has(CAMERA_SHUTTER_KEY);
 
   if (!shown) return null;
 
@@ -134,8 +147,14 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
   if (camera === null || panel === null) {
     return (
       <div className={`flex items-center ${className ?? ''}`}>
-        <RcCameraControls />
-        {shutters ? <StreamShutter /> : null}
+        <CameraElement widgetKey="cameraGimbal">
+          <RcCameraControls />
+        </CameraElement>
+        {shutters ? (
+          <CameraElement widgetKey={CAMERA_SHUTTER_KEY}>
+            <StreamShutter />
+          </CameraElement>
+        ) : null}
       </div>
     );
   }
@@ -148,18 +167,34 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
       <div className={className} style={{ color: aircast('outdoorForeground') }}>
         {shutters ? (
           <div className="flex items-center">
-            <RcCameraControls />
+            <CameraElement widgetKey="cameraGimbal">
+              <RcCameraControls />
+            </CameraElement>
             <div className="px-1.5 py-2">
               <ShutterCentredRail
-                centre={panel.shutters.length > 0 ? SHUTTER_SIZE : 0}
+                centre={panel.shutters.length > 0 && (editing || !shutterHidden) ? SHUTTER_SIZE : 0}
                 style={{ maxWidth: CAMERA_RAIL_MAX_WIDTH }}
-                above={zoomLabel !== null ? <ZoomChip camera={camera} label={zoomLabel} /> : null}
-                shutter={panel.shutters.map((shutter) => (
-                  <ShutterButton key={shutter.video ? 'video' : 'photo'} caption={shutterCaption(panel, shutter)} shutter={shutter} onPress={() => pressShutter(shutter, setRefused)} />
-                ))}
+                above={
+                  zoomLabel !== null ? (
+                    <CameraElement widgetKey="cameraZoom">
+                      <ZoomChip camera={camera} label={zoomLabel} />
+                    </CameraElement>
+                  ) : null
+                }
+                shutter={
+                  <CameraElement widgetKey={CAMERA_SHUTTER_KEY}>
+                    <div className="flex flex-col items-center" style={{ gap: RAIL_GAP }}>
+                      {panel.shutters.map((shutter) => (
+                        <ShutterButton key={shutter.video ? 'video' : 'photo'} caption={shutterCaption(panel, shutter)} shutter={shutter} onPress={() => pressShutter(shutter, setRefused)} />
+                      ))}
+                    </div>
+                  </CameraElement>
+                }
                 below={
                   <>
-                    <CameraModeSwitch camera={camera} panel={panel} onRefused={setRefused} />
+                    <CameraElement widgetKey="cameraMode">
+                      <CameraModeSwitch camera={camera} panel={panel} onRefused={setRefused} />
+                    </CameraElement>
                     {lapse !== null ? <Text typography="labelSmall">{lapse}</Text> : null}
                     {refused !== null ? (
                       <Text typography="bodySmall" color={md('error')} className="px-1">
@@ -173,8 +208,14 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
           </div>
         ) : (
           <div className="flex items-center" style={{ gap: CAMERA_CLUSTER_GAP }}>
-            {zoomLabel !== null ? <ZoomChip camera={camera} label={zoomLabel} /> : null}
-            <RcCameraControls tiltSlider={false} />
+            {zoomLabel !== null ? (
+              <CameraElement widgetKey="cameraZoom">
+                <ZoomChip camera={camera} label={zoomLabel} />
+              </CameraElement>
+            ) : null}
+            <CameraElement widgetKey="cameraGimbal">
+              <RcCameraControls tiltSlider={false} />
+            </CameraElement>
           </div>
         )}
       </div>

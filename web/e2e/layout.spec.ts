@@ -199,3 +199,14 @@ test('the camera panel stays on screen in a smaller window and goes back to its 
   await expect.poll(async () => (await centre(shutter))[1]).toBeCloseTo(placed[1], -1);
   expect(await storedCameraPanel(app)).toBe(stored);
 });
+
+test('each camera control hides on its own and the panel closes up around it', async ({ app }) => {
+  await withCamera(app);
+  await editLayout(app);
+  const shutter = app.getByRole('button', { name: 'Start recording' });
+  await shutter.locator('xpath=ancestor::div[contains(@class,"relative")][1]').getByRole('button', { name: 'Hide' }).click();
+  await app.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(app)).toBeHidden();
+  await expect(shutter, 'the hidden shutter').toBeHidden();
+  await expect(app.getByRole('button', { name: /^Zoom \d+%$/ }), 'the zoom stays').toBeVisible();
+});

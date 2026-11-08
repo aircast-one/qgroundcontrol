@@ -1,4 +1,4 @@
-import { type CSSProperties, Fragment, type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, Fragment, type HTMLAttributes, type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
 import { useQgcFacts, useQgcPath } from '@/bridge/QgcState';
@@ -43,7 +43,7 @@ import {
 import { JoystickIndicatorCell } from '@/ui/JoystickIndicator';
 import { USB_RADIO_VIEW, usbRadioBadge, usbRadioTone } from '@/ui/UsbRadioIndicator';
 import { useOsdBackdrop } from '@/ui/Osd';
-import { LayoutWidget, movedKey, orderedKeys } from '@/ui/OverlayLayout';
+import { BADGE_SIZE, LayoutWidget, droppedOrder, movedAmongShown, orderedKeys, swallowReleaseClick } from '@/ui/OverlayLayout';
 import { ParameterForm } from '@/ui/ParameterForm';
 import { RemoteIdIndicatorCell } from '@/ui/RemoteIdIndicator';
 import { RtkIndicatorCell, RtkSettingsSheetContent, type RtkStatus, useRememberRtkStatus } from '@/ui/RtkIndicator';
@@ -150,6 +150,7 @@ export const StatusPill = ({ className }: { className?: string }) => {
   const portrait = useFlyIsPortrait();
   const backdrop = useOsdBackdrop(withAlpha(Color.Black, 0.45));
   const [maxWidth, setMaxWidth] = useState(Number.POSITIVE_INFINITY);
+  const editing = useValue(useContext(LocalFlyScreenState).layout.editing);
   const measure = useCallback((element: HTMLElement | null) => {
     const row = element?.closest<HTMLElement>('[data-status-row]') ?? element?.parentElement ?? null;
     if (element === null || row === null) return undefined;
@@ -163,7 +164,7 @@ export const StatusPill = ({ className }: { className?: string }) => {
   const narrow = portrait || maxWidth < NARROW_PILL_WIDTH;
   return (
     <div ref={measure} className={`min-w-0 ${className ?? ''}`}>
-      <Surface shape="full" color={backdrop} contentColor={aircast('outdoorForeground')} className="max-w-full overflow-hidden">
+      <Surface shape="full" color={backdrop} contentColor={aircast('outdoorForeground')} className={`max-w-full ${editing ? 'overflow-visible' : 'overflow-hidden'}`}>
         <LocalCompactStatus.Provider value>
           <LocalNarrowStatus.Provider value={narrow}>
             <StatusReadingsInline rtk={rtk} gcsBattery={gcsBattery} style={{ paddingInlineEnd: stripGap(narrow), paddingTop: 6, paddingBottom: 6 }} />
@@ -194,11 +195,76 @@ const stripGap = (narrow: boolean): number => (narrow ? NARROW_STRIP_GAP : STRIP
 
 export const shownStatusCells = (narrow: boolean): number => (narrow ? NARROW_STATUS_CELLS : COMPACT_STATUS_CELLS);
 
-export const movedPastShown = (keys: readonly string[], shown: ReadonlySet<string>, key: string, delta: number): string[] | null => {
-  const visible = keys.filter((it) => shown.has(it));
-  const at = visible.indexOf(key);
-  const past = at < 0 ? undefined : visible[at + delta];
-  return past === undefined ? null : movedKey(keys, key, keys.indexOf(past) - keys.indexOf(key));
+const REORDER_HOLD_MS = 150;
+const REORDER_SLOP = 8;
+
+type ReorderPress = { readonly key: string; readonly id: number; readonly x: number; readonly y: number; readonly timer: ReturnType<typeof setTimeout>; readonly centres: ReadonlyMap<string, number> | null };
+
+const useIndicatorReorder = (keys: readonly string[], shown: ReadonlySet<string>, save: (keys: readonly string[]) => void) => {
+  const nodes = useRef(new Map<string, HTMLElement>());
+  const press = useRef<ReorderPress | null>(null);
+  const [dragged, setDragged] = useState<{ key: string; dx: number } | null>(null);
+  const stop = () => {
+    if (press.current !== null) clearTimeout(press.current.timer);
+    press.current = null;
+    setDragged(null);
+  };
+  useEffect(
+    () => () => {
+      if (press.current !== null) clearTimeout(press.current.timer);
+    },
+    [],
+  );
+  const centres = (): ReadonlyMap<string, number> =>
+    new Map(
+      [...nodes.current]
+        .filter(([key]) => shown.has(key))
+        .map(([key, node]) => {
+          const box = node.getBoundingClientRect();
+          return [key, (box.left + box.right) / 2] as const;
+        }),
+    );
+  const bind = (key: string): HTMLAttributes<HTMLDivElement> & { ref: (node: HTMLDivElement | null) => void } => ({
+    ref: (node) => {
+      if (node === null) nodes.current.delete(key);
+      else nodes.current.set(key, node);
+    },
+    onPointerDown: (event) => {
+      if (!event.isPrimary || event.button !== 0) return;
+      stop();
+      const target = event.currentTarget;
+      const id = event.pointerId;
+      const timer = setTimeout(() => {
+        const down = press.current;
+        if (down === null || down.id !== id) return;
+        press.current = { ...down, centres: centres() };
+        target.setPointerCapture(id);
+        setDragged({ key, dx: 0 });
+      }, REORDER_HOLD_MS);
+      press.current = { key, id, x: event.clientX, y: event.clientY, timer, centres: null };
+    },
+    onPointerMove: (event) => {
+      const down = press.current;
+      if (down === null || down.id !== event.pointerId) return;
+      if (down.centres !== null) setDragged({ key: down.key, dx: event.clientX - down.x });
+      else if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > REORDER_SLOP) stop();
+    },
+    onPointerUp: (event) => {
+      const down = press.current;
+      if (down !== null && down.id === event.pointerId && down.centres !== null) {
+        save(droppedOrder(keys, down.centres, down.key, event.clientX - down.x));
+        swallowReleaseClick();
+      }
+      stop();
+    },
+    onPointerCancel: stop,
+    onKeyDown: (event) => {
+      const delta = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+      const moved = delta === 0 ? null : movedAmongShown(keys, shown, key, delta);
+      if (moved !== null) save(moved);
+    },
+  });
+  return [dragged, bind] as const;
 };
 
 const IndicatorSlot = ({ name, onShown, children }: { name: string; onShown: (name: string, shown: boolean) => void; children: ReactNode }) => {
@@ -370,20 +436,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const keys = compact ? ordered.slice(0, shownStatusCells(narrow)) : ordered;
   const silence = silentFor === null ? null : silenceText(silentFor);
   const battery = detail === StripDetail.Battery;
-  const arrow = (key: string, delta: number) => {
-    const moved = movedPastShown(keys, shown, key, delta);
-    return (
-      <TextButton
-        enabled={moved !== null}
-        className={delta < 0 ? 'ms-3' : 'me-3'}
-        onClick={() => {
-          if (moved !== null) layout.saveIndicatorOrder(moved);
-        }}
-      >
-        {delta < 0 ? '‹' : '›'}
-      </TextButton>
-    );
-  };
+  const [dragged, reorder] = useIndicatorReorder(keys, shown, (moved) => layout.saveIndicatorOrder(moved));
   const rows = (() => {
     if (detail === StripDetail.Battery) {
       const draw = totalDraw(batteryJson);
@@ -398,17 +451,24 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   return (
     <>
       <OpenOnRequest name="status-all" open={() => setAllStatus(true)} />
-      <div className={`flex items-center overflow-x-auto ${className ?? ''}`} style={{ ...style, opacity: live ? 1 : 0.45 }}>
+      <div
+        className={`flex items-center overflow-x-auto ${className ?? ''}`}
+        style={{ ...style, opacity: live ? 1 : 0.45, ...(editing ? { paddingTop: BADGE_SIZE, marginTop: -BADGE_SIZE, paddingInlineEnd: BADGE_SIZE / 2 } : {}) }}
+      >
         {keys.map((key) => (
-          <LayoutWidget key={key} widgetKey={`indicator-${key}`} movable={false}>
-            <LeadingGap gap={shown.has(key) ? stripGap(narrow) : 0}>
-              {editing && shown.has(key) ? arrow(key, -1) : null}
-              <IndicatorSlot name={key} onShown={seen}>
-                {byKey.get(key) ?? null}
-              </IndicatorSlot>
-              {editing && shown.has(key) ? arrow(key, 1) : null}
-            </LeadingGap>
-          </LayoutWidget>
+          <LeadingGap key={key} gap={shown.has(key) ? stripGap(narrow) : 0}>
+            <div
+              {...(editing && shown.has(key) ? { ...reorder(key), 'data-gesture': true, tabIndex: 0, 'aria-description': 'Move with the left and right arrow keys' } : {})}
+              className={editing ? 'relative touch-none' : 'relative'}
+              style={dragged?.key === key ? { translate: `${dragged.dx}px 0`, zIndex: 1 } : undefined}
+            >
+              <LayoutWidget widgetKey={`indicator-${key}`} movable={false} badgeSpot="aboveTopTrailing">
+                <IndicatorSlot name={key} onShown={seen}>
+                  {byKey.get(key) ?? null}
+                </IndicatorSlot>
+              </LayoutWidget>
+            </div>
+          </LeadingGap>
         ))}
         {compact && !narrow ? (
           <LeadingGap gap={STRIP_GAP}>

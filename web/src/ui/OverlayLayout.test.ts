@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RESET_ARM_MILLIS, ResetTap, clampedInto, hiddenKeys, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
+import { RESET_ARM_MILLIS, ResetTap, clampedInto, droppedOrder, hiddenKeys, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
 
@@ -82,5 +82,26 @@ describe('IndicatorOrderTest', () => {
     expect(movedKey(['battery', 'gps', 'rc'], 'rc', -1)).toEqual(['battery', 'rc', 'gps']);
     expect(movedKey(['battery', 'gps'], 'battery', -1)).toBeNull();
     expect(movedKey(['battery', 'gps'], 'nope', 1)).toBeNull();
+  });
+
+  it('an indicator steps past empty ones and they keep their slots', () => {
+    const keys = ['battery', 'rc', 'esc', 'gps', 'joystick'];
+    const shown = new Set(['battery', 'gps']);
+    expect(movedAmongShown(keys, shown, 'gps', -1)).toEqual(['gps', 'rc', 'esc', 'battery', 'joystick']);
+    expect(movedAmongShown(keys, shown, 'battery', 1)).toEqual(['gps', 'rc', 'esc', 'battery', 'joystick']);
+    expect(movedAmongShown(keys, shown, 'gps', 1)).toBeNull();
+    expect(movedAmongShown(keys, shown, 'rc', 1)).toBeNull();
+  });
+
+  it('a dropped indicator lands where it was let go', () => {
+    const keys = ['battery', 'rc', 'gps', 'links'];
+    const centres = new Map([
+      ['battery', 20],
+      ['gps', 80],
+      ['links', 140],
+    ]);
+    expect(droppedOrder(keys, centres, 'battery', 90)).toEqual(['gps', 'rc', 'battery', 'links']);
+    expect(droppedOrder(keys, centres, 'links', -200)).toEqual(['links', 'rc', 'battery', 'gps']);
+    expect(droppedOrder(keys, centres, 'gps', 10)).toEqual(keys);
   });
 });

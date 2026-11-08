@@ -31,7 +31,7 @@ import { useAdvancedUiShown } from '@/ui/AdvancedUi';
 import { type AnalyzePage, AnalyzeScreen } from '@/ui/AnalyzeScreen';
 import { AppFontScale } from '@/ui/AppFontScale';
 import { AppNavigationState, LocalAppNavigation, LocalOpenPlan, OpenPlanDocument, navigationRefusal } from '@/ui/AppNavigation';
-import { CameraControlLayer, CameraShutters } from '@/ui/CameraControlLayer';
+import { CAMERA_CONTROL_KEY, CameraControlLayer, CameraShutters } from '@/ui/CameraControlLayer';
 import { CameraSwitch } from '@/ui/CameraSwitch';
 import { CloseGuard } from '@/ui/CloseGuard';
 import { ConnectingCard } from '@/ui/ConnectingCard';
@@ -59,7 +59,7 @@ import { ObstacleArc } from '@/ui/ObstacleArc';
 import { ObstacleReadout } from '@/ui/ObstacleReadout';
 import { OrbitReadout } from '@/ui/OrbitReadout';
 import { useAppDarkTheme } from '@/ui/Palette';
-import { LayoutWidget, OverlayEditBar, OverlayLayoutState, overlayLayoutStore } from '@/ui/OverlayLayout';
+import { LayoutGroup, LayoutWidget, OverlayEditBar, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
 import { PlanTab } from '@/ui/PlanTab';
 import { RcControlsLayer } from '@/ui/RcControlsLayer';
 import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
@@ -356,10 +356,11 @@ export const AircastShell = () => {
       )}
     </div>
   );
+  const statusPillHold = useHoldToEditLayout();
   const flyCameraControlLayer = (
-    <LayoutWidget widgetKey="cameraControl">
+    <LayoutGroup widgetKey={CAMERA_CONTROL_KEY}>
       <CameraControlLayer shutters={!portrait} />
-    </LayoutWidget>
+    </LayoutGroup>
   );
   const flyObstacleArc = (
     <LayoutWidget widgetKey="obstacleArc">
@@ -546,9 +547,9 @@ export const AircastShell = () => {
       </LayoutWidget>
       <ControlRequestPrompt />
       <DeviceStatusChip />
-      <LayoutWidget widgetKey="statusPill" movable={false} hideable={false} className="min-w-0">
+      <div className="min-w-0" {...statusPillHold}>
         <StatusPill />
-      </LayoutWidget>
+      </div>
       <FlySettingsButton />
     </>
   );

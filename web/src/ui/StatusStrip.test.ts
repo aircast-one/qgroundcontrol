@@ -16,7 +16,6 @@ import {
   flightTimeSeconds,
   flightTimeText,
   indicatorParameterWait,
-  movedPastShown,
   overrideCell,
   packCountText,
   rcCell,
@@ -197,34 +196,6 @@ describe('CompactStatusTest', () => {
   it('a narrow status pill keeps only the battery so nothing is cut in half', () => {
     expect(shownStatusCells(true)).toBe(1);
     expect(shownStatusCells(false)).toBe(COMPACT_STATUS_CELLS);
-  });
-});
-
-describe('IndicatorOrderTest', () => {
-  const keys = ['battery', 'rc', 'gps', 'links', 'esc', 'rtk'];
-  const shown = new Set(['battery', 'gps', 'esc']);
-  const absent = (order: readonly string[] | null) => (order ?? []).filter((it) => !shown.has(it));
-
-  it('an indicator moves past the next one on screen, not into an empty slot', () => {
-    const moved = movedPastShown(keys, shown, 'battery', 1);
-    expect(moved?.filter((it) => shown.has(it))).toEqual(['gps', 'battery', 'esc']);
-    expect(absent(moved)).toEqual(['rc', 'links', 'rtk']);
-  });
-
-  it('moving back skips the empty slots before it too', () => {
-    const moved = movedPastShown(keys, shown, 'esc', -1);
-    expect(moved?.filter((it) => shown.has(it))).toEqual(['battery', 'esc', 'gps']);
-    expect(absent(moved)).toEqual(['rc', 'links', 'rtk']);
-  });
-
-  it('the first and last indicator on screen have nowhere further to go', () => {
-    expect(movedPastShown(keys, shown, 'battery', -1)).toBeNull();
-    expect(movedPastShown(keys, shown, 'esc', 1)).toBeNull();
-  });
-
-  it('an indicator that is not on screen cannot be moved', () => {
-    expect(movedPastShown(keys, shown, 'rc', 1)).toBeNull();
-    expect(movedPastShown(keys, shown, 'nope', -1)).toBeNull();
   });
 });
 

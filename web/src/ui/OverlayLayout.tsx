@@ -21,7 +21,7 @@ const HIDDEN_ALPHA = 0.35;
 const JIGGLE_DEGREES = 1.2;
 const JIGGLE_MILLIS = 120;
 const JIGGLE_SPREAD = 0x1f;
-const BADGE_SIZE = 24;
+export const BADGE_SIZE = 24;
 const LONG_PRESS_TIMEOUT_MS = 400;
 const TOUCH_SLOP = 8;
 export const RESET_ARM_MILLIS = 4000;
@@ -140,6 +140,29 @@ export const movedKey = (keys: readonly string[], key: string, delta: number): s
   return [...rest.slice(0, to), key, ...rest.slice(to)];
 };
 
+export const reorderedAmongShown = (keys: readonly string[], shownOrder: readonly string[]): string[] => {
+  const slots = keys.flatMap((key, index) => (shownOrder.includes(key) ? [index] : []));
+  const placed = new Map(slots.map((slot, at) => [slot, shownOrder[at]]));
+  return keys.map((key, index) => placed.get(index) ?? key);
+};
+
+export const movedAmongShown = (keys: readonly string[], shown: ReadonlySet<string>, key: string, delta: number): string[] | null => {
+  const moved = movedKey(
+    keys.filter((it) => shown.has(it)),
+    key,
+    delta,
+  );
+  return moved === null ? null : reorderedAmongShown(keys, moved);
+};
+
+export const droppedOrder = (keys: readonly string[], centres: ReadonlyMap<string, number>, key: string, dx: number): string[] => {
+  const at = (shown: string) => (centres.get(shown) ?? 0) + (shown === key ? dx : 0);
+  return reorderedAmongShown(
+    keys,
+    keys.filter((it) => centres.has(it)).toSorted((a, b) => at(a) - at(b)),
+  );
+};
+
 export const hiddenKeys = (stored: Readonly<Record<string, unknown>>): Set<string> =>
   new Set(
     Object.entries(stored)
@@ -199,7 +222,7 @@ const useKeptOnScreen = (key: string): readonly [Offset, (node: HTMLElement | nu
   return [correction, kept, frame];
 };
 
-const swallowReleaseClick = (): void => {
+export const swallowReleaseClick = (): void => {
   const release = new AbortController();
   const listening = { capture: true, signal: release.signal };
   window.addEventListener(
@@ -311,11 +334,56 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, className }: { wi
 
 const BADGE = 'absolute grid place-items-center';
 
-const BADGE_PLACE: CSSProperties = { width: BADGE_SIZE, height: BADGE_SIZE, top: 0, insetInlineEnd: -BADGE_SIZE / 2 };
+export type BadgeSpot = 'inside' | 'aboveTopTrailing' | 'onTopLeading';
+
+const BADGE_SPOTS: Readonly<Record<BadgeSpot, CSSProperties>> = {
+  inside: { top: 0, insetInlineEnd: -BADGE_SIZE / 2 },
+  aboveTopTrailing: { top: (-BADGE_SIZE * 3) / 4, insetInlineEnd: -BADGE_SIZE / 2 },
+  onTopLeading: { top: -BADGE_SIZE / 2, insetInlineStart: -BADGE_SIZE / 2 },
+};
+
+const badgePlace = (spot: BadgeSpot): CSSProperties => ({ width: BADGE_SIZE, height: BADGE_SIZE, ...BADGE_SPOTS[spot] });
 
 const LocalLayoutParent = createContext<Dispatch<SetStateAction<number>> | null>(null);
 
-export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, className, children }: { widgetKey: string; movable?: boolean; hideable?: boolean; className?: string; children?: ReactNode }) => {
+type GroupFrame = { readonly correction: Offset; readonly frame: RefObject<HTMLElement | null> };
+
+const LocalLayoutGroup = createContext<GroupFrame | null>(null);
+
+export const LayoutGroup = ({ widgetKey, className, children }: { widgetKey: string; className?: string; children?: ReactNode }) => {
+  const offsets = useValue(useContext(LocalFlyScreenState).layout.offsets);
+  const avoided = useContext(LocalAvoidedByVideoMessage);
+  const avoidedRef = useAvoidedByVideoMessage(widgetKey);
+  const placedKey = useLayoutKey(widgetKey);
+  const [correction, kept, frame] = useKeptOnScreen(placedKey);
+  const hold = useHoldToEditLayout();
+  const [x, y] = offsets.get(placedKey) ?? NO_OFFSET;
+  return (
+    <div ref={kept} className={className} style={{ translate: `${x + correction[0]}px ${y + correction[1]}px` }} {...hold}>
+      <div ref={avoided ? avoidedRef : undefined}>
+        <LocalLayoutGroup.Provider value={{ correction, frame }}>{children}</LocalLayoutGroup.Provider>
+      </div>
+    </div>
+  );
+};
+
+export const LayoutWidget = ({
+  widgetKey,
+  movable = true,
+  hideable = true,
+  badgeSpot = 'inside',
+  dragsWith,
+  className,
+  children,
+}: {
+  widgetKey: string;
+  movable?: boolean;
+  hideable?: boolean;
+  badgeSpot?: BadgeSpot;
+  dragsWith?: string;
+  className?: string;
+  children?: ReactNode;
+}) => {
   const layout = useContext(LocalFlyScreenState).layout;
   const editing = useValue(layout.editing);
   const hidden = useValue(layout.hidden).has(widgetKey);
@@ -326,6 +394,7 @@ export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, class
   const placedKey = useLayoutKey(widgetKey);
   const [correction, kept, frame] = useKeptOnScreen(placedKey);
   const hold = useHoldToEditLayout();
+  const group = useContext(LocalLayoutGroup);
   const parent = useContext(LocalLayoutParent);
   const [nested, setNested] = useState(0);
   useLayoutEffect(() => {
@@ -344,6 +413,8 @@ export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, class
   if (hidden && !editing) return null;
   const [x, y] = movable ? (offsets.get(placedKey) ?? NO_OFFSET) : NO_OFFSET;
   const [cx, cy] = movable ? correction : NO_OFFSET;
+  const carried = dragsWith !== undefined && group !== null ? { key: dragsWith, ...group } : null;
+  const place = badgePlace(badgeSpot);
   return (
     <div ref={movable ? kept : undefined} className={className} style={{ translate: `${x + cx}px ${y + cy}px` }} {...hold}>
       <div ref={avoided ? avoidedRef : undefined} className="relative" style={jiggle}>
@@ -354,12 +425,14 @@ export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, class
         >
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
-        {decorated && movable ? <LayoutDragArea widgetKey={widgetKey} correction={correction} frame={frame} className="absolute inset-0" /> : null}
+        {decorated && (movable || carried !== null) ? (
+          <LayoutDragArea widgetKey={carried?.key ?? widgetKey} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} className="absolute inset-0" />
+        ) : null}
         {decorated && hideable ? (
           <Surface
             onClick={() => layout.setHidden(widgetKey, !hidden)}
             className={BADGE}
-            style={BADGE_PLACE}
+            style={place}
             shape="full"
             color={hidden ? md('primary') : md('inverseSurface')}
             contentColor={hidden ? md('onPrimary') : md('inverseOnSurface')}
@@ -370,7 +443,7 @@ export const LayoutWidget = ({ widgetKey, movable = true, hideable = true, class
           </Surface>
         ) : null}
         {decorated && !hideable ? (
-          <Surface className={BADGE} style={BADGE_PLACE} shape="full" color={md('surfaceContainerHighest')} contentColor={md('onSurfaceVariant')} shadow>
+          <Surface className={BADGE} style={place} shape="full" color={md('surfaceContainerHighest')} contentColor={md('onSurfaceVariant')} shadow>
             <MaterialIcon name="lock" filled size={BADGE_SIZE - 10} label="Always shown" />
           </Surface>
         ) : null}
