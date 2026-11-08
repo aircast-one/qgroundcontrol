@@ -111,6 +111,13 @@ SettingsGroupLayout {
     LabelledFactTextField {
         Layout.fillWidth:   true
         label:              fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioYawSpeed
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    LabelledFactTextField {
+        Layout.fillWidth:   true
+        label:              fact.shortDescription
         fact:               _autoConnectSettings.usbRadioZoomChannel
         visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
     }
@@ -161,6 +168,13 @@ SettingsGroupLayout {
         Layout.fillWidth:   true
         label:              fact.shortDescription
         fact:               _autoConnectSettings.usbRadioLookChannel
+        visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
+    }
+
+    FactCheckBoxSlider {
+        Layout.fillWidth:   true
+        text:               fact.shortDescription
+        fact:               _autoConnectSettings.usbRadioLookReversed
         visible:            _autoConnectSettings.usbRadioPort.rawValue !== ""
     }
 

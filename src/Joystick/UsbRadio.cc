@@ -166,7 +166,14 @@ QByteArray payloadName(Payload payload)
     }
 }
 
-QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout, Ready ready)
+float turnRate(uint16_t pwm, float speed)
+{
+    const float off = float(pwm) - kStickCentrePwm;
+    const float past = std::max(std::abs(off) - kYawDeadbandPwm, 0.0f) / (kStickHalfSpanPwm - kYawDeadbandPwm);
+    return std::copysign(std::min(past, 1.0f), off) * speed;
+}
+
+QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout, Ready ready, const Aiming& aiming)
 {
     const bool due = !_sentMs || (nowMs - *_sentMs) >= kCameraResendMs;
     const auto delta = [this, &line](int number) {
@@ -193,9 +200,17 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const std::optional<uint16_t> zoom = channel(line, layout.zoom);
     const std::optional<uint16_t> picture = channel(line, layout.picture);
     const std::optional<uint16_t> look = channel(line, layout.look);
-    const bool aimed =
-        ready.gimbal && pitch && yaw && due && (moved(layout.pitch) || moved(layout.tilt) || moved(layout.yaw));
+    const std::optional<float> slider = yaw ? std::optional<float>(turnRate(*yaw, aiming.yawSpeed)) : std::nullopt;
+    const float rate = ready.gimbal && _yawCentred && slider ? *slider : 0.0f;
+    const bool turning = rate != 0.0f;
+    const bool stopped = !turning && _turnedMs.has_value();
+    const qint64 elapsed = _turnedMs ? std::min(nowMs - *_turnedMs, kMaxTurnStepMs) : 0;
+    const float start = _yaw ? *_yaw : aiming.reportedYaw.value_or(0.0f);
+    const float heading = turning ? std::clamp(start + rate * float(elapsed) / 1000.0f, -kYawLimit, kYawLimit) : start;
+    const bool pitched = moved(layout.pitch) || moved(layout.tilt);
+    const bool aimed = ready.gimbal && pitch && ((due && (pitched || turning)) || stopped);
     const bool looked = ready.gimbal && look && flipped(layout.look) && position(*look) != 1;
+    const bool lookedAhead = looked && position(*look) == (aiming.lookReversed ? 0 : 2);
     const bool zoomed = ready.camera && zoom && due && moved(layout.zoom);
     const bool switched = ready.settings && flipped(layout.picture);
     const bool palette = ready.settings && pressed(layout.palette);
@@ -226,17 +241,16 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
             _acted[number] = *now;
         }
     };
-    const bool pitched = moved(layout.pitch) || moved(layout.tilt);
     QList<Move> moves;
     if (aimed) {
         const float aimPitch = pitched || !_heldPitch ? between(kPitchDown, kPitchAhead, *pitch) : *_heldPitch;
-        moves << Move{Move::Kind::Aim, aimPitch, between(-kYawLimit, kYawLimit, *yaw)};
+        moves << Move{Move::Kind::Aim, aimPitch, heading};
         _pitchSource = source;
         _heldPitch = aimPitch;
     }
     if (looked) {
-        const float lookPitch = position(*look) == 2 ? kPitchDown : kPitchAhead;
-        moves << Move{Move::Kind::Aim, lookPitch, yaw ? between(-kYawLimit, kYawLimit, *yaw) : 0.0f};
+        const float lookPitch = lookedAhead ? kPitchAhead : kPitchDown;
+        moves << Move{Move::Kind::Aim, lookPitch, lookedAhead ? 0.0f : heading};
         _heldPitch = lookPitch;
     }
     if (zoomed) {
@@ -254,6 +268,11 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     if (pressedBay) {
         moves << Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, bay(*bayNow)};
     }
+    _turnedMs = turning ? std::optional<qint64>(nowMs) : std::nullopt;
+    _yawCentred = _yawCentred || (slider && *slider == 0.0f);
+    _yaw = looked              ? std::optional<float>(lookedAhead ? 0.0f : heading)
+           : (turning || _yaw) ? std::optional<float>(heading)
+                               : std::nullopt;
     _dropBefore = drop ? dropWas : _dropBefore;
     _bayBefore = bayNow ? bayWas : _bayBefore;
     _armBefore = arm ? armWas : _armBefore;
@@ -796,7 +815,12 @@ void UsbRadio::_steer(const Line& line)
         vehicle->cameraManager() ? vehicle->cameraManager()->currentCameraInstance() : nullptr;
     const Ready ready{vehicle->gimbalController() && vehicle->gimbalController()->activeGimbal(), camera != nullptr,
                       camera && camera->paramComplete()};
-    const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout, ready);
+    AutoConnectSettings* const autoConnect = SettingsManager::instance()->autoConnectSettings();
+    Gimbal* const gimbal = vehicle->gimbalController() ? vehicle->gimbalController()->activeGimbal() : nullptr;
+    const Aiming aiming{autoConnect->usbRadioYawSpeed()->rawValue().toFloat(),
+                        autoConnect->usbRadioLookReversed()->rawValue().toBool(),
+                        gimbal ? std::optional<float>(gimbal->bodyYaw()->rawValue().toFloat()) : std::nullopt};
+    const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout, ready, aiming);
     const int selectedBay = bayOf(line, layout);
     std::ranges::for_each(moves, [this, vehicle, &armed, selectedBay](const Move& move) {
         _apply(vehicle, move, armed && armed->armed, selectedBay);

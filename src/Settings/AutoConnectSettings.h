@@ -37,6 +37,7 @@ public:
     DEFINE_SETTINGFACT(usbRadioStandby)
     DEFINE_SETTINGFACT(usbRadioPitchChannel)
     DEFINE_SETTINGFACT(usbRadioYawChannel)
+    DEFINE_SETTINGFACT(usbRadioYawSpeed)
     DEFINE_SETTINGFACT(usbRadioZoomChannel)
     DEFINE_SETTINGFACT(usbRadioPictureChannel)
     DEFINE_SETTINGFACT(usbRadioPaletteChannel)
@@ -45,4 +46,5 @@ public:
     DEFINE_SETTINGFACT(usbRadioBayChannel)
     DEFINE_SETTINGFACT(usbRadioTiltChannel)
     DEFINE_SETTINGFACT(usbRadioLookChannel)
+    DEFINE_SETTINGFACT(usbRadioLookReversed)
 };

@@ -72,6 +72,11 @@ constexpr qint64 kCameraResendMs = 100;
 constexpr float kPitchDown = -90.0f;
 constexpr float kPitchAhead = 0.0f;
 constexpr float kYawLimit = 180.0f;
+constexpr float kYawSpeedDefault = 20.0f;
+constexpr float kYawDeadbandPwm = 40.0f;
+constexpr qint64 kMaxTurnStepMs = 200;
+constexpr float kStickCentrePwm = 1500.0f;
+constexpr float kStickHalfSpanPwm = 512.0f;
 constexpr std::array<int, 3> kPictures = {0, 1, 3};
 constexpr int kBayPositions = 6;
 
@@ -122,6 +127,7 @@ std::optional<Line> parse(const QByteArray& line);
 Frame flightChannels(const Line& line);
 Frame released();
 float between(float low, float high, uint16_t pwm);
+float turnRate(uint16_t pwm, float speed);
 
 struct Move
 {
@@ -179,10 +185,18 @@ struct Ready
     bool settings = true;
 };
 
+struct Aiming
+{
+    float yawSpeed = kYawSpeedDefault;
+    bool lookReversed = false;
+    std::optional<float> reportedYaw;
+};
+
 class CameraSticks
 {
 public:
-    QList<Move> step(const Line& line, qint64 nowMs, const Layout& layout = {}, Ready ready = {});
+    QList<Move> step(const Line& line, qint64 nowMs, const Layout& layout = {}, Ready ready = {},
+                     const Aiming& aiming = {});
 
 private:
     QHash<int, uint16_t> _acted;
@@ -192,6 +206,9 @@ private:
     std::optional<uint16_t> _armBefore;
     std::optional<int> _pitchSource;
     std::optional<float> _heldPitch;
+    std::optional<float> _yaw;
+    std::optional<qint64> _turnedMs;
+    bool _yawCentred = false;
 };
 
 QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {}, const Layout& layout = {},

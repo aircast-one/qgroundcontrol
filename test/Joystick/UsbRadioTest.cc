@@ -291,15 +291,13 @@ void UsbRadioTest::_cameraChannelsSteerTheGimbalZoomPictureAndPalette_test()
     CameraSticks sticks;
     QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 2012}, {kR2d2.yaw, 1471}}), 0).isEmpty(),
              "plugging the radio in leaves the camera where it is");
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 2012}, {kR2d2.yaw, 2012}}), 1000),
-             (QList<Move>{Move{Move::Kind::Aim, 0.0f, kYawLimit}}));
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 988}}), 2000),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, -kYawLimit}}));
-    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 988 + kSteadyPwm - 1}, {kR2d2.yaw, 988}}), 2050).isEmpty(),
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 1471}}), 2000),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}));
+    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 988 + kSteadyPwm - 1}, {kR2d2.yaw, 1471}}), 2050).isEmpty(),
              "slider noise does not move the camera");
-    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 988}}), 2000 + kCameraResendMs - 1).isEmpty(),
+    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1471}}), 2000 + kCameraResendMs - 1).isEmpty(),
              "a moving slider is sent at most ten times a second");
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 988}}), 2000 + kCameraResendMs).size(), 1);
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1471}}), 2000 + kCameraResendMs).size(), 1);
 
     CameraSticks knob;
     (void) knob.step(lineWith({{kR2d2.zoom, 1422}}), 0);
@@ -425,67 +423,126 @@ void UsbRadioTest::_theTiltKnobAimsLikeThePitchSlider_test()
 {
     CameraSticks sticks;
     (void) sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.tilt, 1500}, {kR2d2.yaw, 1500}}), 0);
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.tilt, 988}, {kR2d2.yaw, 2012}}), 1000),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, kYawLimit}}));
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.tilt, 988}, {kR2d2.yaw, 988}}), 2000),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, -kYawLimit}}));
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 2012}, {kR2d2.tilt, 988}, {kR2d2.yaw, 988}}), 3000),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, -kYawLimit}}));
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 2000}, {kR2d2.tilt, 1500}, {kR2d2.yaw, 988}}), 4000),
-             (QList<Move>{Move{Move::Kind::Aim, -45.0f, -kYawLimit}}));
-    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 2000 + kSteadyPwm - 1}, {kR2d2.tilt, 1500}, {kR2d2.yaw, 988}}), 5000)
-                 .isEmpty(),
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.tilt, 988}}), 1000),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}));
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 2012}, {kR2d2.tilt, 988}}), 2000),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}));
+    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 2000}, {kR2d2.tilt, 1500}}), 3000),
+             (QList<Move>{Move{Move::Kind::Aim, -45.0f, 0.0f}}));
+    QVERIFY2(sticks.step(lineWith({{kR2d2.pitch, 2000 + kSteadyPwm - 1}, {kR2d2.tilt, 1500}}), 4000).isEmpty(),
              "knob noise does not move the camera");
     const Layout noSlider{0, 20, 21, 22, 24, 11, 12, 5, 19, 23};
     CameraSticks knobOnly;
-    (void) knobOnly.step(lineWith({{kR2d2.tilt, 1500}, {kR2d2.yaw, 1500}}), 0, noSlider);
-    QCOMPARE(knobOnly.step(lineWith({{kR2d2.tilt, 1500}, {kR2d2.yaw, 2012}}), 1000, noSlider),
-             (QList<Move>{Move{Move::Kind::Aim, -45.0f, kYawLimit}}));
+    (void) knobOnly.step(lineWith({{kR2d2.tilt, 1500}}), 0, noSlider);
+    QCOMPARE(knobOnly.step(lineWith({{kR2d2.tilt, 988}}), 1000, noSlider),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}));
 }
 
 void UsbRadioTest::_theLookSwitchAimsDownOrAheadWhenItFlips_test()
 {
     CameraSticks sticks;
-    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 2012}}), 0).isEmpty(),
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}}), 0).isEmpty(),
              "plugging the radio in with the switch up aims nothing");
-    QCOMPARE(sticks.step(lineWith({{kR2d2.look, 988}, {kR2d2.yaw, 2012}}), 10),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, kYawLimit}}));
-    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 1500}, {kR2d2.yaw, 2012}}), 20).isEmpty(),
+    QCOMPARE(sticks.step(lineWith({{kR2d2.look, 988}}), 10), (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}));
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 1500}}), 20).isEmpty(),
              "the middle position leaves the camera where it is");
-    QCOMPARE(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 2012}}), 30),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, kYawLimit}}));
-    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2010}, {kR2d2.yaw, 2012}}), 40).isEmpty(),
-             "a switch left where it is changes nothing");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}}), 30) == (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}),
+             "high points ahead, the way an R2D2 radio's switch up reads");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2010}}), 40).isEmpty(), "a switch left where it is changes nothing");
     const Layout noYaw{18, 0, 21, 22, 24, 11, 12, 5, 19, 23};
     CameraSticks yawOff;
-    (void) yawOff.step(lineWith({{kR2d2.look, 1500}, {kR2d2.yaw, 2012}}), 0, noYaw);
-    QCOMPARE(yawOff.step(lineWith({{kR2d2.look, 988}, {kR2d2.yaw, 2012}}), 10, noYaw),
+    (void) yawOff.step(lineWith({{kR2d2.look, 1500}}), 0, noYaw);
+    QCOMPARE(yawOff.step(lineWith({{kR2d2.look, 2012}}), 10, noYaw),
              (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}));
     CameraSticks noGimbal;
     const Ready nothing{false, false, false};
     (void) noGimbal.step(lineWith({{kR2d2.look, 1500}}), 0, kR2d2, nothing);
     QVERIFY(noGimbal.step(lineWith({{kR2d2.look, 2012}}), 10, kR2d2, nothing).isEmpty());
     QCOMPARE(noGimbal.step(lineWith({{kR2d2.look, 2012}}), 20, kR2d2, Ready{}),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}));
+             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}));
+    CameraSticks reversed;
+    const Aiming swapped{kYawSpeedDefault, true, std::nullopt};
+    (void) reversed.step(lineWith({{kR2d2.look, 1500}}), 0, kR2d2, Ready{}, swapped);
+    QVERIFY2(reversed.step(lineWith({{kR2d2.look, 2012}}), 10, kR2d2, Ready{}, swapped) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}),
+             "reversed, high points down");
 }
 
 void UsbRadioTest::_yawAloneKeepsThePitchTheLookSwitchSet_test()
 {
     CameraSticks sticks;
     (void) sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1500}, {kR2d2.look, 1500}}), 0);
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1500}, {kR2d2.look, 988}}), 10),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}));
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 2012}, {kR2d2.look, 988}}), 1000),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, kYawLimit}}));
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 2012}, {kR2d2.look, 988}}), 2000),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, kYawLimit}}));
-    QCOMPARE(sticks.step(lineWith({{kR2d2.pitch, 988}, {kR2d2.yaw, 988}, {kR2d2.look, 988}}), 3000),
-             (QList<Move>{Move{Move::Kind::Aim, kPitchDown, -kYawLimit}}));
-    CameraSticks fresh;
-    (void) fresh.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1500}}), 0);
-    QVERIFY2(fresh.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 2012}}), 1000) ==
+    QCOMPARE(sticks.step(lineWith({{kR2d2.look, 2012}}), 10), (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}));
+    (void) sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 2012}}), 1000);
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 2012}}), 1100) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 2.0f}}),
+             "turning keeps the pitch the look switch set");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.pitch, 988}}), 2000) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 2.0f}}),
+             "the pitch slider takes the pitch back and keeps the heading");
+    CameraSticks seeded;
+    const Aiming facingRight{kYawSpeedDefault, false, 30.0f};
+    (void) seeded.step(lineWith({}), 0, kR2d2, Ready{}, facingRight);
+    (void) seeded.step(lineWith({{kR2d2.yaw, 2012}}), 1000, kR2d2, Ready{}, facingRight);
+    QVERIFY2(seeded.step(lineWith({{kR2d2.yaw, 2012}}), 1100, kR2d2, Ready{}, facingRight) ==
+                 (QList<Move>{Move{Move::Kind::Aim, -45.0f, 32.0f}}),
+             "the first turn starts from where the gimbal says it points");
+}
+
+void UsbRadioTest::_theYawSliderTurnsAtTheSetSpeedAndHoldsAtTheCentre_test()
+{
+    CameraSticks sticks;
+    QVERIFY(sticks.step(lineWith({}), 0).isEmpty());
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1000) == (QList<Move>{Move{Move::Kind::Aim, -45.0f, 0.0f}}),
+             "the slider leaving the centre starts the turn from where the camera is");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1100) == (QList<Move>{Move{Move::Kind::Aim, -45.0f, 2.0f}}),
+             "all the way over it turns at the set speed, 20 degrees a second");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1150).isEmpty(),
+             "between sends it keeps turning without a message");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1530}}), 1200) == (QList<Move>{Move{Move::Kind::Aim, -45.0f, 3.0f}}),
+             "back in the centre's dead band it stops where it got to");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1500}}), 1300).isEmpty(), "and holds there");
+    (void) sticks.step(lineWith({{kR2d2.yaw, 1224}}), 2000);
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1224}}), 2500) == (QList<Move>{Move{Move::Kind::Aim, -45.0f, 1.0f}}),
+             "halfway to the left turns left at half speed, and a gap between lines counts as no more than 200 ms");
+    CameraSticks fast;
+    const Aiming quick{900.0f, false, std::nullopt};
+    (void) fast.step(lineWith({}), 0, kR2d2, Ready{}, quick);
+    (void) fast.step(lineWith({{kR2d2.yaw, 2012}}), 1000, kR2d2, Ready{}, quick);
+    QVERIFY2(fast.step(lineWith({{kR2d2.yaw, 2012}}), 1200, kR2d2, Ready{}, quick) ==
                  (QList<Move>{Move{Move::Kind::Aim, -45.0f, kYawLimit}}),
-             "before anything was commanded the slider's reading is used");
+             "it stops at the yaw limit");
+    QCOMPARE(turnRate(1500 + 40, 20.0f), 0.0f);
+    QCOMPARE(turnRate(1776, 20.0f), 10.0f);
+}
+
+void UsbRadioTest::_aYawSliderLeftOffCentreTurnsNothingUntilItHasBeenBackToTheCentre_test()
+{
+    CameraSticks sticks;
+    const Line over = lineWith({{kR2d2.yaw, 2012}});
+    QVERIFY(sticks.step(over, 0).isEmpty());
+    QVERIFY2(sticks.step(over, 1000).isEmpty(),
+             "a slider parked off centre when the radio connects does not spin the camera");
+    QVERIFY(sticks.step(lineWith({{kR2d2.yaw, 1500}}), 2000).isEmpty());
+    QCOMPARE(sticks.step(over, 3000).size(), 1);
+}
+
+void UsbRadioTest::_lookAheadTurnsTheCameraBackToStraightAhead_test()
+{
+    CameraSticks sticks;
+    (void) sticks.step(lineWith({}), 0);
+    (void) sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1000);
+    (void) sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1200);
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 988}}), 1300) ==
+                 (QList<Move>{Move{Move::Kind::Aim, -45.0f, 4.0f}, Move{Move::Kind::Aim, kPitchDown, 4.0f}}),
+             "down keeps the heading the slider turned to");
+    QVERIFY2(
+        sticks.step(lineWith({{kR2d2.look, 2012}}), 2000) == (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}),
+        "ahead undoes every turn");
+    (void) sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 988}}), 3000);
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 988}}), 3100) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, -2.0f}}),
+             "and the next nudge turns from straight ahead");
 }
 
 namespace {

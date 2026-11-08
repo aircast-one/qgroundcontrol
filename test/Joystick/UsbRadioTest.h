@@ -36,4 +36,7 @@ private slots:
     void _theTiltKnobAimsLikeThePitchSlider_test();
     void _theLookSwitchAimsDownOrAheadWhenItFlips_test();
     void _yawAloneKeepsThePitchTheLookSwitchSet_test();
+    void _theYawSliderTurnsAtTheSetSpeedAndHoldsAtTheCentre_test();
+    void _aYawSliderLeftOffCentreTurnsNothingUntilItHasBeenBackToTheCentre_test();
+    void _lookAheadTurnsTheCameraBackToStraightAhead_test();
 };
