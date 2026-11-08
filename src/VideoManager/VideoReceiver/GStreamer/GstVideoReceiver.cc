@@ -23,6 +23,7 @@
 QGC_LOGGING_CATEGORY(GstVideoReceiverLog, "Video.GStreamer.GstVideoReceiver")
 
 namespace {
+
 constexpr GstClockTime kEosTimeoutNs = 3 * GST_SECOND;
 
 gboolean grabFirstSrcPad(GstElement *, GstPad *pad, gpointer userData)
@@ -155,10 +156,9 @@ void GstVideoReceiver::start(uint32_t timeout)
         }
 
         g_object_set(decoderQueue,
-                     "leaky", 2,
-                     "max-size-buffers", 2,
+                     "max-size-buffers", 0,
                      "max-size-bytes", 0,
-                     "max-size-time", G_GUINT64_CONSTANT(0),
+                     "max-size-time", GST_SECOND,
                      nullptr);
 
         _decoderValve = gst_element_factory_make("valve", nullptr);
@@ -1040,7 +1040,6 @@ void GstVideoReceiver::_logDecodebin3SelectedCodec(GstElement *decodebin3)
     g_value_unset(&value);
     gst_iterator_free(iter);
 }
-
 
 void GstVideoReceiver::_onNewDecoderPad(GstPad *pad)
 {
