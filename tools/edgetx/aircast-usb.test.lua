@@ -78,7 +78,7 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
     else
       assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
     end
-    assert(shows(r, "+20 unused channels") and not shows(r, "CH24"), "only the channels this model mixes are listed")
+    assert(not shows(r, "CH24") and not shows(r, "CH24 src23"), "only the channels this model mixes are listed")
     assert(next(r.inserted) == nil, "nothing is set up before the app says which channels it reads")
     assert(shows(r, "RTN: stop sending sticks and exit"), "the way out is on the screen")
 
@@ -143,6 +143,11 @@ his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 his.script.run(0)
 assert(his.inserted[9] and his.inserted[9].name == "phold" and his.inserted[9].source == 101, "a drone reading flight modes on CH10 gets SB there, like the R2D2 model")
 assert(his.inserted[4] and his.inserted[4].source == 108, "and the six-position switch on CH5 picks the bay")
+assert(shows(his, "10 of 10 app functions on the radio"), "the footer confirms every function the app reads has a control")
+local partial = radio({ w = 480, h = 272, lvgl = true, mixes = 24 })
+partial.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+partial.script.run(0)
+assert(shows(partial, "not read") and shows(partial, "8 of 8 app functions on the radio"), "an app that names eight functions leaves S1 and SC rows marked as not read")
 local stock = radio({ w = 480, h = 272 })
 stock.hear("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23\n")
 stock.script.run(0)

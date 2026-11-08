@@ -104,6 +104,9 @@ local FUNCTIONS = {
 local BAY = 8
 local layoutSetUp = nil
 local layoutNames = {}
+local appNamed = nil
+local appMixes = {}
+local unread = {}
 
 local function layoutFrom(line)
   local tail = string.match(line, ";([%d,]+)")
@@ -119,11 +122,14 @@ local function layoutFrom(line)
   if modeChannel > 0 then
     mixes[#mixes + 1] = { "sb", "phold", modeChannel }
   end
-  return mixes, (tail or "R2D2") .. "@" .. modeChannel
+  return mixes, (tail or "R2D2") .. "@" .. modeChannel, tail and #channels or BAY
 end
 
-local function setUpChannels(mixes)
-  layoutNames = {}
+local function setUpChannels(mixes, named)
+  appNamed, appMixes, layoutNames, unread = named, mixes, {}, {}
+  for at, wanted in ipairs(FUNCTIONS) do
+    if at > named and wanted[3] >= 1 then unread[wanted[3]] = true end
+  end
   for _, wanted in ipairs(mixes) do
     local shown = wanted[2] ~= "" and wanted[2] or (wanted[1] == "6pos" and "bay" or "")
     if wanted[3] and wanted[3] >= 1 and shown ~= "" then layoutNames[wanted[3]] = shown end
@@ -168,10 +174,10 @@ local function listen()
       local kind, roll, pitch, throttle, yaw = string.match(line, "^@%a,%d+,(%a),(%d+),(%d+),(%d+),(%d+)")
       app.state, app.vehicle, app.at = state, vehicle, now()
       app.labels = labelsFor(kind, { roll, pitch, throttle, yaw })
-      local mixes, layout = layoutFrom(line)
+      local mixes, layout, named = layoutFrom(line)
       if layout ~= layoutSetUp then
         layoutSetUp = layout
-        setUpChannels(mixes)
+        setUpChannels(mixes, named)
       end
     end
     line = string.match(heard, "^(.-)\n")
@@ -249,7 +255,7 @@ local GROUP = {
 }
 
 local function groupOf(i)
-  if role(i) then return "flight" end
+  if role(i) or i <= 4 then return "flight" end
   return GROUP[FRIENDLY[shownName(i)] or ""] or "other"
 end
 
@@ -293,9 +299,32 @@ local function place(slot, rows)
   return (slot <= rows) and 1 or 2, (slot <= rows) and slot or (slot - rows)
 end
 
-local function unusedText()
-  local unused = CHANNEL_COUNT - #used
-  return unused > 0 and ("+" .. unused .. " unused channels") or ""
+local function mappedText()
+  if not appNamed then return "" end
+  local total, on = 0, 0
+  for at, m in ipairs(appMixes) do
+    if at <= appNamed and m[3] >= 1 then
+      total = total + 1
+      if mixesInfo[m[3]] and model.getMix(m[3] - 1, 0) then on = on + 1 end
+    end
+  end
+  return string.format("%d of %d app functions on the radio", on, total)
+end
+
+local function hot(i)
+  local name = functionName(i)
+  return (name == "Arm" or name == "Drop") and channelValues[i] > 512
+end
+
+local function shownOrder()
+  local order = {}
+  for _, i in ipairs(used) do
+    if groupOf(i) ~= "other" then order[#order + 1] = i end
+  end
+  for _, i in ipairs(used) do
+    if groupOf(i) == "other" then order[#order + 1] = i end
+  end
+  return order
 end
 
 local function brand()
@@ -351,7 +380,7 @@ local function drawLarge()
     lcd.drawFilledRectangle(colBase + 170, y + 4, math.floor((channelValues[i] + 1024) * 55 / 2048) + 1, 6, color.primary)
   end
   lcd.drawText(10, 256, hint(), SMLSIZE + (confirming() and color.warning or color.muted))
-  lcd.drawText(330, 256, unusedText(), SMLSIZE + color.muted)
+  lcd.drawText(300, 256, mappedText(), SMLSIZE + color.muted)
 end
 
 local function buildLvglUI()
@@ -374,20 +403,22 @@ local function buildLvglUI()
   local rows = math.max(1, math.ceil(#used / 2))
   local rowH = math.min(LVGL_ROW_H, math.floor((hintY - LVGL_ROWS_TOP) / rows))
   local rowFont = rowH >= LVGL_TEXT_ROW_H and 0 or SMLSIZE
-  for slot = 1, #used do
-    local i = used[slot]
+  local order = shownOrder()
+  for slot = 1, #order do
+    local i = order[slot]
     local column, row = place(slot, rows)
     local colBase = column == 1 and 0 or 245
     local yOfs = LVGL_ROWS_TOP + (row - 1) * rowH
     local barY = yOfs + math.floor((rowH - LVGL_BAR_H) / 2)
     local centre = colBase + LVGL_BAR_X + math.floor(LVGL_BAR_W / 2)
 
-    local fill = ({ flight = color.primary, camera = color.camera, payload = color.payload, other = color.other })[groupOf(i)]
+    local group = unread[i] and "other" or groupOf(i)
+    local fill = ({ flight = color.primary, camera = color.camera, payload = color.payload, other = color.other })[group]
 
     pg:rectangle({ x = colBase, y = yOfs + 2, w = LVGL_ACCENT_W, h = rowH - 4, filled = true, color = fill,
-      pos = function() return movedLately(i) and colBase or -LVGL_ACCENT_W - 1, yOfs + 2 end,
+      pos = function() return (movedLately(i) or hot(i)) and colBase or -LVGL_ACCENT_W - 1, yOfs + 2 end,
     })
-    pg:label({ x = colBase + LVGL_NAME_X, y = yOfs, font = rowFont,
+    pg:label({ x = colBase + LVGL_NAME_X, y = yOfs, font = rowFont, color = group == "other" and color.muted or nil,
       text = function() return functionName(i) end,
     })
     pg:label({ x = colBase + LVGL_META_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
@@ -408,12 +439,19 @@ local function buildLvglUI()
         return w, LVGL_BAR_H
       end,
     })
-    pg:label({ x = colBase + LVGL_VALUE_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
-      text = function() return valueText(i) end,
-    })
+    if unread[i] then
+      pg:label({ x = colBase + LVGL_VALUE_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.other, text = "not read" })
+    else
+      pg:label({ x = colBase + LVGL_VALUE_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
+        text = function() return hot(i) and "" or valueText(i) end,
+      })
+      pg:label({ x = colBase + LVGL_VALUE_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.payload,
+        text = function() return hot(i) and valueText(i) or "" end,
+      })
+    end
   end
   pg:label({ x = 0, y = hintY, font = SMLSIZE, text = hint })
-  pg:label({ x = 300, y = hintY, font = SMLSIZE, color = color.muted, text = unusedText() })
+  pg:label({ x = 270, y = hintY, font = SMLSIZE, color = color.muted, text = mappedText() })
 end
 
 local function init()
