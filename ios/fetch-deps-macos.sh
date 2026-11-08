@@ -33,11 +33,13 @@ if [ ! -f "$vendor/MapLibre-$MAPLIBRE_VERSION" ]; then
     }
     bazel=$(command -v bazelisk || command -v bazel)
     src="$cache/maplibre-native-$MAPLIBRE_VERSION"
-    if [ ! -d "$src/.git" ]; then
-        rm -rf "$src"
+    if [ ! -d "$src" ]; then
+        partial=$(mktemp -d "$cache/maplibre-clone.XXXXXX")
         git clone --quiet --depth 1 --branch "ios-v$MAPLIBRE_VERSION" \
             --recurse-submodules --shallow-submodules \
-            https://github.com/maplibre/maplibre-native "$src"
+            https://github.com/maplibre/maplibre-native "$partial/src"
+        [ -d "$src" ] || mv "$partial/src" "$src"
+        rm -rf "$partial"
     fi
     (cd "$src" && "$bazel" build //platform/macos:MapLibre.dynamic \
         --//:renderer=metal --//platform/macos:macos_loop=cfrunloop --compilation_mode=opt)
