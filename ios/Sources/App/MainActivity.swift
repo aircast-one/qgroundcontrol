@@ -421,7 +421,8 @@ struct AircastShell: View {
                 LayoutWidget(key: "vtolState", movable: false, hideable: false) { VtolStateCell() }
                 ControlRequestPrompt()
                 DeviceStatusChip()
-                LayoutWidget(key: "statusPill", movable: false, hideable: false) { StatusPill() }
+                StatusPill()
+                    .holdToEditLayout()
                     .layoutPriority(1)
                 FlySettingsButton()
             })

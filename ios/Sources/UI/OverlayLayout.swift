@@ -8,7 +8,7 @@ private let HIDDEN_ALPHA = 0.35
 private let JIGGLE_DEGREES = 1.2
 private let JIGGLE_MILLIS = 120
 private let JIGGLE_SPREAD = 0x1f
-private let BADGE_SIZE: CGFloat = 24
+let BADGE_SIZE: CGFloat = 24
 private let HOLD_TO_EDIT_SECONDS = 0.5
 let RESET_ARM_MILLIS: Int64 = 4000
 
@@ -109,6 +109,21 @@ func movedKey(_ keys: [String], _ key: String, _ delta: Int) -> [String]? {
     let to = from + delta
     let rest = keys.enumerated().filter { $0.offset != from }.map(\.element)
     return Array(rest.prefix(to)) + [key] + Array(rest.dropFirst(to))
+}
+
+func reorderedAmongShown(_ keys: [String], _ shownOrder: [String]) -> [String] {
+    let slots = keys.indices.filter { shownOrder.contains(keys[$0]) }
+    let placed = Dictionary(uniqueKeysWithValues: zip(slots, shownOrder))
+    return keys.indices.map { placed[$0] ?? keys[$0] }
+}
+
+func movedAmongShown(_ keys: [String], _ centres: [String: CGFloat], _ key: String, _ delta: Int) -> [String]? {
+    movedKey(keys.filter { centres[$0] != nil }, key, delta).map { reorderedAmongShown(keys, $0) }
+}
+
+func droppedOrder(_ keys: [String], _ centres: [String: CGFloat], _ key: String, _ dx: CGFloat) -> [String] {
+    let at = { (shown: String) in (centres[shown] ?? 0) + (shown == key ? dx : 0) }
+    return reorderedAmongShown(keys, keys.filter { centres[$0] != nil }.sorted { at($0) < at($1) })
 }
 
 func hiddenKeys(_ stored: [String: Any]) -> Set<String> {
@@ -270,6 +285,7 @@ struct LayoutWidget<Content: View>: View {
     let key: String
     var movable: Bool = true
     var hideable: Bool = true
+    var cornerBadge: Bool = false
     @ViewBuilder let content: () -> Content
     @Environment(FlyScreenState.self) private var flyScreen
     @Environment(\.LocalAvoidedByVideoMessage) private var avoided
@@ -298,7 +314,9 @@ struct LayoutWidget<Content: View>: View {
                     if decorated && movable { LayoutDragArea(key: key) }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if decorated { badge(layout, hidden) }
+                    if decorated {
+                        badge(layout, hidden).offset(cornerBadge ? CGSize(width: BADGE_SIZE / 2, height: -BADGE_SIZE / 2) : .zero)
+                    }
                 }
                 .modifier(Jiggle(key: key, active: decorated))
                 .holdToEditLayout()

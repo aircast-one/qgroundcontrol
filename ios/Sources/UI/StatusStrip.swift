@@ -157,8 +157,8 @@ struct StatusPill: View {
 
 private let STRIP_GAP: CGFloat = 14
 private let TEXT_BUTTON_HEIGHT: CGFloat = 40
-private let TEXT_BUTTON_MIN_WIDTH: CGFloat = 58
 private let NARROW_STRIP_GAP: CGFloat = 6
+private let REORDER_HOLD_SECONDS = 0.15
 private let NARROW_PILL_WIDTH: CGFloat = 120
 private let NARROW_STATUS_CELLS = 1
 
@@ -207,6 +207,9 @@ private struct VehicleStatusReadings: View {
     @State private var batteryDisplay = false
     @State private var rtkSettings = false
     @State private var contentSize: CGSize?
+    @State private var centres: [String: CGFloat] = [:]
+    @State private var dragging: String?
+    @State private var dragX: CGFloat = 0
 
     var body: some View {
         let state = flyState(stateJson)
@@ -219,16 +222,21 @@ private struct VehicleStatusReadings: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
                     ForEach(keys, id: \.self) { key in
-                        LayoutWidget(key: "indicator-\(key)", movable: false) {
-                            if layout.editing {
-                                HStack(spacing: 0) {
-                                    moveArrow("\u{2039}") { movedKey(keys, key, -1).map { layout.saveIndicatorOrder($0) } }
-                                    cell(key, state, live)
-                                    moveArrow("\u{203A}") { movedKey(keys, key, 1).map { layout.saveIndicatorOrder($0) } }
+                        LayoutWidget(key: "indicator-\(key)", movable: false, cornerBadge: true) {
+                            cell(key, state, live)
+                                .onGeometryChange(for: CGFloat?.self) { $0.size.width > 0 ? $0.frame(in: .global).midX : nil } action: { centre in
+                                    if dragging != key { centres = centres.filter { $0.key != key }.merging(centre.map { [key: $0] } ?? [:]) { $1 } }
                                 }
-                                .padding(.leading, stripGap(narrow))
-                            } else {
-                                cell(key, state, live).padding(.leading, stripGap(narrow))
+                                .onDisappear { centres = centres.filter { $0.key != key } }
+                        }
+                        .padding(.leading, stripGap(narrow))
+                        .offset(x: dragging == key ? dragX : 0)
+                        .zIndex(dragging == key ? 1 : 0)
+                        .simultaneousGesture(reorder(keys, key), including: layout.editing ? .all : .subviews)
+                        .accessibilityActions {
+                            if layout.editing {
+                                Button("Move left") { movedAmongShown(keys, centres, key, -1).map { layout.saveIndicatorOrder($0) } }
+                                Button("Move right") { movedAmongShown(keys, centres, key, 1).map { layout.saveIndicatorOrder($0) } }
                             }
                         }
                     }
@@ -236,7 +244,7 @@ private struct VehicleStatusReadings: View {
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { contentSize = $0 }
                 .frame(minHeight: MINIMUM_TOUCH_TARGET)
                 .padding(.top, MINIMUM_TOUCH_TARGET / 2)
-                .padding(.trailing, stripGap(narrow))
+                .padding(.trailing, layout.editing ? max(stripGap(narrow), BADGE_SIZE / 2) : stripGap(narrow))
             }
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .padding(.vertical, min(0, ((contentSize?.height ?? MINIMUM_TOUCH_TARGET) - MINIMUM_TOUCH_TARGET) / 2))
@@ -278,14 +286,23 @@ private struct VehicleStatusReadings: View {
         }
     }
 
-    private func moveArrow(_ label: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.labelLarge)
-                .frame(minWidth: TEXT_BUTTON_MIN_WIDTH, minHeight: TEXT_BUTTON_HEIGHT)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
+    private func reorder(_ keys: [String], _ key: String) -> some Gesture {
+        LongPressGesture(minimumDuration: REORDER_HOLD_SECONDS)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
+            .onChanged { value in
+                guard case .second(true, let drag?) = value else { return }
+                dragging = key
+                dragX = drag.translation.width
+            }
+            .onEnded { value in
+                withAnimation(.snappy) {
+                    if case .second(true, let drag?) = value {
+                        flyScreen.layout.saveIndicatorOrder(droppedOrder(keys, centres, key, drag.translation.width))
+                    }
+                    dragging = nil
+                    dragX = 0
+                }
+            }
     }
 
     @ViewBuilder

@@ -63,4 +63,20 @@ final class OverlayLayoutTests: XCTestCase {
         XCTAssertNil(movedKey(["battery", "gps"], "battery", -1))
         XCTAssertNil(movedKey(["battery", "gps"], "nope", 1))
     }
+
+    func testAnIndicatorStepsPastEmptyOnesAndTheyKeepTheirSlots() {
+        let keys = ["battery", "rc", "esc", "gps", "joystick"]
+        let centres: [String: CGFloat] = ["battery": 20, "gps": 80]
+        XCTAssertEqual(movedAmongShown(keys, centres, "gps", -1), ["gps", "rc", "esc", "battery", "joystick"])
+        XCTAssertEqual(movedAmongShown(keys, centres, "battery", 1), ["gps", "rc", "esc", "battery", "joystick"])
+        XCTAssertNil(movedAmongShown(keys, centres, "gps", 1))
+    }
+
+    func testADroppedIndicatorLandsWhereItWasLetGo() {
+        let keys = ["battery", "rc", "gps", "links"]
+        let centres: [String: CGFloat] = ["battery": 20, "gps": 80, "links": 140]
+        XCTAssertEqual(droppedOrder(keys, centres, "battery", 90), ["gps", "rc", "battery", "links"])
+        XCTAssertEqual(droppedOrder(keys, centres, "links", -200), ["links", "rc", "battery", "gps"])
+        XCTAssertEqual(droppedOrder(keys, centres, "gps", 10), keys)
+    }
 }
