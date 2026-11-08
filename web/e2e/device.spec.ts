@@ -166,15 +166,17 @@ test('the Connection page keeps the uplink switch history under the last switch'
 test.describe('an aircraft that names its uplink', () => {
   test.use({ deviceAt: UPLINKED });
 
-  test('the link cell names the uplink in use and its sheet lists every switch, newest first', async ({ device }) => {
+  test('the link cell names the uplink in use and its sheet lists every switch, newest first, with no modem rows when there is no modem', async ({ device }) => {
     await flyNow(device);
     await device.getByRole('button', { name: 'All status' }).click();
-    const cell = device.getByRole('button', { name: /^Starlink \d/ });
+    const cell = device.getByRole('button', { name: 'Starlink', exact: true });
     await expect(cell).toBeVisible({ timeout: 30_000 });
     await cell.click();
     const sheet = device.getByRole('dialog').filter({ hasText: 'Aircraft link' });
     await expect(sheet.getByText(/^Uplink:\s+Starlink$/)).toBeVisible();
     await expect(sheet.getByText(/→/)).toHaveText([/^\d\d:\d\d:\d\d\s+LTE → Starlink$/, /^\d\d:\d\d:\d\d\s+Wi-Fi → LTE$/]);
+    await expect(sheet.getByText(/^(Signal|Network|Modem|Video bitrate):/), 'the aircraft sent no modem report').toHaveCount(0);
+    await expect(sheet.getByText(/up to the last hour$/)).toHaveCount(0);
   });
 });
 

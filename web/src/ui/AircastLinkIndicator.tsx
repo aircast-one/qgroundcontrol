@@ -14,6 +14,7 @@ export type UplinkSwitch = { clock: string; from: string; to: string };
 export type AircastLink = {
   cellText: string;
   uplinkText: string;
+  cellular: boolean;
   signalText: string;
   network: string;
   modem: string;
@@ -31,6 +32,7 @@ export const aircastLink = (view: Json | null): AircastLink | null =>
     ? {
         cellText: optString(view, 'cellText', optString(view, 'qualityText')),
         uplinkText: isNull(view, 'uplink') ? '' : optString(view, 'uplinkText'),
+        cellular: optBoolean(view, 'cellular', true),
         signalText: optString(view, 'signalText'),
         network: optString(view, 'network'),
         modem: optString(view, 'modem'),
@@ -40,6 +42,8 @@ export const aircastLink = (view: Json | null): AircastLink | null =>
         switches: jsonObjects(optJSONArray(view, 'switches')).map((it) => ({ clock: optString(it, 'clock'), from: optString(it, 'from'), to: optString(it, 'to') })),
       }
     : null;
+
+export const cellLabel = (link: AircastLink): string => [link.cellText, link.bitrateText].filter((text) => text !== '').join(' ');
 
 type SparkPoint = readonly [number, number];
 
@@ -84,7 +88,7 @@ export const AircastLinkCell = () => {
     <>
       <button type="button" onClick={() => setOpen(true)}>
         <Text typography="labelMedium" color={md('onSurfaceVariant')} maxLines={1}>
-          {`${link.cellText} ${link.bitrateText}`}
+          {cellLabel(link)}
         </Text>
       </button>
 
@@ -95,18 +99,26 @@ export const AircastLinkCell = () => {
             {(
               [
                 ...(link.uplinkText === '' ? [] : [['Uplink:', link.uplinkText] as const]),
-                ['Signal:', link.signalText],
-                ['Network:', link.network],
-                ['Modem:', link.modem],
-                ['Video bitrate:', link.bitrateText],
+                ...(link.cellular
+                  ? ([
+                      ['Signal:', link.signalText],
+                      ['Network:', link.network],
+                      ['Modem:', link.modem],
+                      ['Video bitrate:', link.bitrateText],
+                    ] as const)
+                  : []),
               ] as const
             ).map(([label, value]) => (
               <Text key={label} typography="bodySmall">{`${label}  ${value}`}</Text>
             ))}
-            <Text typography="labelSmall">Signal, up to the last hour</Text>
-            <Sparkline values={link.qualityHistory} maximum={SIGNAL_MAXIMUM} />
-            <Text typography="labelSmall">Video bitrate, up to the last hour</Text>
-            <Sparkline values={link.bitrateHistory} maximum={0} />
+            {link.cellular ? (
+              <>
+                <Text typography="labelSmall">Signal, up to the last hour</Text>
+                <Sparkline values={link.qualityHistory} maximum={SIGNAL_MAXIMUM} />
+                <Text typography="labelSmall">Video bitrate, up to the last hour</Text>
+                <Sparkline values={link.bitrateHistory} maximum={0} />
+              </>
+            ) : null}
             {link.switches.length > 0 ? (
               <>
                 <Text typography="labelSmall">Switches</Text>
