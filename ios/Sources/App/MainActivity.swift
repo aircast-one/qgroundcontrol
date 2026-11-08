@@ -339,6 +339,8 @@ struct AircastShell: View {
         case .Open("settings"): navigation.settingsOpen = true
         case .Open(let target) where REQUESTABLE_SHEETS.contains(target): flyScreen.requestedSheet = target
         case .Open(let target): flyScreen.deckRequest = target
+        case .SettingsPage(let page): navigation.settingsPage = page
+        case .Aircraft: navigation.openAircraft()
         }
     }
 

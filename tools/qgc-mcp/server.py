@@ -1259,16 +1259,17 @@ def native_probe(id: str = "", action: str = "", args: dict[str, str] | None = N
     window: one node per element with path, role, label/title/value, frame in window points
     (native_click coordinates) and actions. args: window=<title> or "#<index>" for an untitled
     sheet or popover, filter=<substring>, actionable="1", all="1" for unlabelled containers.
-    id="ui" with action press|increment|decrement|confirm|cancel|pick|focus|set|click|escape
+    id="ui" with action press|increment|decrement|confirm|cancel|pick|focus|select|set|click|escape
     acts on one element named by args path=<path from the tree> or label=<label, title, id or
-    value> (role=AXButton, nth=<n> to disambiguate); set takes value=<text>; click sends a mouse
-    click to the element's centre (only lands while the window is key); escape sends Esc to the
+    value> (role=AXButton, nth=<n> to disambiguate); set takes value=<text>; select picks a list row
+    (Mac lists navigate by selection, not press); click sends a mouse click to the element's centre (only lands while the window is key); escape sends Esc to the
     element's window, closing its sheet or popover. Skip AXMenuButton: pressing one opens a modal
     menu that holds the main thread until it closes.
     id="snapshot" draws a window (args window=<title> or "#<index>") to a PNG and returns its
     path; it works on another Space, but glass and Metal (map, video) draw blank or white.
     id="debugUi" reads the shell's state (tab, fly view, open sheet); with action
-    tab|fly-view|orientation|layout-edit|layout-reset|open and args value=... it drives it,
+    tab|fly-view|orientation|layout-edit|layout-reset|open|settings-page|aircraft and args
+    value=... it drives it (settings-page takes a page title, e.g. "Video sources"),
     e.g. native_probe("debugUi", "tab", {"value": "plan"}) or ("debugUi", "open", {"value": "settings"})."""
     query = "&".join(
         f"{quote(str(k))}={quote(str(v))}"

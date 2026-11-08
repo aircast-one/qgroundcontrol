@@ -14,6 +14,8 @@ final class DebugUiTests: XCTestCase {
         XCTAssertEqual(try debugCommand("layout-edit", "off").get(), .EditLayout(false))
         XCTAssertEqual(try debugCommand("layout-reset", nil).get(), .ResetLayout)
         XCTAssertEqual(try debugCommand("open", "takeoff").get(), .Open("takeoff"))
+        XCTAssertEqual(try debugCommand("settings-page", "Video sources").get(), .SettingsPage("Video sources"))
+        XCTAssertEqual(try debugCommand("aircraft", nil).get(), .Aircraft)
     }
 
     func testABadCommandNamesWhatItAcceptsInsteadOfGuessing() {
@@ -24,5 +26,6 @@ final class DebugUiTests: XCTestCase {
             refusal(debugCommand("open", "")),
             "open needs a sheet (more, readings, camera, gimbal, status, status-all, modes, traffic, settings) or a flight action id, e.g. takeoff, rtl, land"
         )
+        XCTAssertEqual(refusal(debugCommand("settings-page", " ")), "settings-page needs a page title, e.g. Connections, Video sources, Flight Modes")
     }
 }

@@ -24,6 +24,8 @@ enum DebugCommand: Equatable {
     case EditLayout(Bool)
     case ResetLayout
     case Open(String)
+    case SettingsPage(String)
+    case Aircraft
 }
 
 struct DebugUiError: Error, Equatable {
@@ -39,7 +41,7 @@ private let ORIENTATIONS: [(String, DebugOrientation)] = [
 
 private let SWITCHES = [("on", true), ("off", false)]
 
-let DEBUG_COMMANDS = "state, tab, fly-view, orientation, layout-edit, layout-reset, open"
+let DEBUG_COMMANDS = "state, tab, fly-view, orientation, layout-edit, layout-reset, open, settings-page, aircraft"
 
 private func named<T>(_ value: String?, _ choices: [(String, T)], _ what: String) -> Result<T, DebugUiError> {
     choices.first { $0.0.caseInsensitiveCompare(value ?? "") == .orderedSame }.map { .success($0.1) }
@@ -56,6 +58,10 @@ func debugCommand(_ cmd: String?, _ value: String?) -> Result<DebugCommand, Debu
     case "open":
         value.flatMap { $0.isBlank ? nil : Result<DebugCommand, DebugUiError>.success(.Open($0)) }
             ?? .failure(DebugUiError(message: "open needs a sheet (\((REQUESTABLE_SHEETS + ["settings"]).joined(separator: ", "))) or a flight action id, e.g. takeoff, rtl, land"))
+    case "settings-page":
+        value.flatMap { $0.isBlank ? nil : Result<DebugCommand, DebugUiError>.success(.SettingsPage($0)) }
+            ?? .failure(DebugUiError(message: "settings-page needs a page title, e.g. Connections, Video sources, Flight Modes"))
+    case "aircraft": .success(.Aircraft)
     default: .failure(DebugUiError(message: "cmd must be one of \(DEBUG_COMMANDS)"))
     }
 }

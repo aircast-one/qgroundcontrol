@@ -239,6 +239,9 @@ enum NativeDebug {
     func accessibilityPerformPick() -> Bool
     func setAccessibilityValue(_ value: Any?)
     func setAccessibilityFocused(_ focused: Bool)
+    func setAccessibilitySelected(_ selected: Bool)
+    func accessibilityParent() -> Any?
+    func setAccessibilitySelectedRows(_ rows: [Any])
 }
 
 private let PERFORMS: [(action: NSAccessibility.Action, selector: Selector, run: (Accessible) -> Bool)] = [
@@ -320,6 +323,20 @@ private struct AxElement {
         return true
     }
 
+    func select() -> Bool {
+        let table = role == NSAccessibility.Role.row.rawValue
+            ? (has(#selector(Accessible.accessibilityParent)) ? ax.accessibilityParent() : attribute(.parent)) as AnyObject?
+            : nil
+        if let table, (table as? NSObject)?.responds(to: #selector(Accessible.setAccessibilitySelectedRows(_:))) == true {
+            unsafeBitCast(table, to: Accessible.self).setAccessibilitySelectedRows([object])
+            return true
+        }
+        if has(#selector(Accessible.setAccessibilitySelected(_:))) { ax.setAccessibilitySelected(true); return true }
+        guard has(#selector(Accessible.accessibilitySetValue(_:forAttribute:))) else { return false }
+        ax.accessibilitySetValue(true, forAttribute: .selected)
+        return true
+    }
+
     func focus() -> Bool {
         if has(#selector(Accessible.setAccessibilityFocused(_:))) { ax.setAccessibilityFocused(true); return true }
         guard has(#selector(Accessible.accessibilitySetValue(_:forAttribute:))) else { return false }
@@ -364,8 +381,15 @@ enum UiTree {
                     done = element.set(element.value is NSNumber ? Double(text).map { $0 as NSNumber } ?? text : text)
                 case "focus":
                     done = element.focus()
+                case "select":
+                    done = element.select()
                 case "escape":
-                    done = (node.window.firstResponder ?? node.window).tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil)
+                    let key = NSEvent.keyEvent(
+                        with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: node.window.windowNumber, context: nil, characters: "\u{1b}",
+                        charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)
+                    done = key.map(node.window.performKeyEquivalent) == true
+                        || (node.window.firstResponder ?? node.window).tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil)
                 case "click":
                     let box = describe(node)["frame"] as? [Int] ?? []
                     guard box.count == 4 else { return refusal("\(node.path) has no frame") }
