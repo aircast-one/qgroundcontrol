@@ -16,11 +16,13 @@ local LVGL_NAME_X = 8
 local LVGL_ACCENT_W = 3
 local MOVED_RAW = 24
 local MOVED_TICKS = 100
-local LVGL_META_X = 78
-local LVGL_BAR_X = 150
+local LVGL_META_X = 72
+local LVGL_BAR_X = 140
 local LVGL_BAR_W = 40
+local LVGL_PANEL_PAD = 6
+local LVGL_STATUS_H = 42
 local LVGL_BAR_H = 8
-local LVGL_VALUE_X = 194
+local LVGL_VALUE_X = 184
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
@@ -330,8 +332,9 @@ end
 local function brand()
   return {
     background = lcd.RGB(0x0D, 0x0E, 0x11),
+    panel = lcd.RGB(0x17, 0x19, 0x1E),
     foreground = lcd.RGB(0xFA, 0xFA, 0xFA),
-    muted = lcd.RGB(0xD2, 0xD4, 0xD8),
+    muted = lcd.RGB(0x9A, 0xA0, 0xA8),
     primary = lcd.RGB(0x00, 0x88, 0xF2),
     good = lcd.RGB(0x3D, 0xD6, 0x8C),
     warning = lcd.RGB(0xF4, 0xA4, 0x37),
@@ -391,23 +394,37 @@ local function buildLvglUI()
     back = askToLeave,
   })
 
-  pg:label({ x = 0, y = 0, font = MIDSIZE,
+  local pageH = LCD_H - LVGL_HEADER_H
+  local hintY = pageH - LVGL_LINE_H
+  local rows = math.max(1, math.ceil(#used / 2))
+  local rowH = math.min(LVGL_ROW_H, math.floor((hintY - LVGL_ROWS_TOP - LVGL_PANEL_PAD) / rows))
+  local rowFont = rowH >= LVGL_TEXT_ROW_H and 0 or SMLSIZE
+  local panelW = math.floor(LCD_W / 2) - 6
+  local panelH = rows * rowH + LVGL_PANEL_PAD
+
+  pg:rectangle({ x = 0, y = 0, w = LCD_W, h = pageH, filled = true, color = color.background })
+  pg:rectangle({ x = 4, y = 2, w = LCD_W - 8, h = LVGL_STATUS_H - 4, filled = true, rounded = 6, color = color.panel })
+  pg:rectangle({ x = 12, y = 12, w = 10, h = 10, filled = true, rounded = 5, color = color.good,
+    pos = function() local _, ok = status(); return ok and 12 or -20, 12 end,
+  })
+  pg:rectangle({ x = 12, y = 12, w = 10, h = 10, filled = true, rounded = 5, color = color.warning,
+    pos = function() local _, ok = status(); return ok and -20 or 12, 12 end,
+  })
+  pg:label({ x = 30, y = 4, font = MIDSIZE, color = color.foreground,
     text = function() return (status()) end,
   })
-  pg:label({ x = 330, y = 0, font = MIDSIZE,
+  pg:label({ x = LCD_W - 76, y = 4, font = MIDSIZE, color = color.foreground,
     text = function() return string.format("%.1fV", battVolt) end,
   })
-  pg:label({ x = 0, y = 28, font = SMLSIZE, color = color.warning, text = nextStep })
+  pg:label({ x = 30, y = 26, font = SMLSIZE, color = color.warning, text = nextStep })
+  pg:rectangle({ x = 4, y = LVGL_ROWS_TOP - LVGL_PANEL_PAD, w = panelW, h = panelH + LVGL_PANEL_PAD, filled = true, rounded = 6, color = color.panel })
+  pg:rectangle({ x = LCD_W - 4 - panelW, y = LVGL_ROWS_TOP - LVGL_PANEL_PAD, w = panelW, h = panelH + LVGL_PANEL_PAD, filled = true, rounded = 6, color = color.panel })
 
-  local hintY = LCD_H - LVGL_HEADER_H - LVGL_LINE_H
-  local rows = math.max(1, math.ceil(#used / 2))
-  local rowH = math.min(LVGL_ROW_H, math.floor((hintY - LVGL_ROWS_TOP) / rows))
-  local rowFont = rowH >= LVGL_TEXT_ROW_H and 0 or SMLSIZE
   local order = shownOrder()
   for slot = 1, #order do
     local i = order[slot]
     local column, row = place(slot, rows)
-    local colBase = column == 1 and 0 or 245
+    local colBase = column == 1 and 4 + LVGL_PANEL_PAD or LCD_W - panelW - 4 + LVGL_PANEL_PAD
     local yOfs = LVGL_ROWS_TOP + (row - 1) * rowH
     local barY = yOfs + math.floor((rowH - LVGL_BAR_H) / 2)
     local centre = colBase + LVGL_BAR_X + math.floor(LVGL_BAR_W / 2)
@@ -418,7 +435,7 @@ local function buildLvglUI()
     pg:rectangle({ x = colBase, y = yOfs + 2, w = LVGL_ACCENT_W, h = rowH - 4, filled = true, color = fill,
       pos = function() return (movedLately(i) or hot(i)) and colBase or -LVGL_ACCENT_W - 1, yOfs + 2 end,
     })
-    pg:label({ x = colBase + LVGL_NAME_X, y = yOfs, font = rowFont, color = group == "other" and color.muted or nil,
+    pg:label({ x = colBase + LVGL_NAME_X, y = yOfs, font = rowFont, color = group == "other" and color.muted or color.foreground,
       text = function() return functionName(i) end,
     })
     pg:label({ x = colBase + LVGL_META_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.muted,
@@ -450,7 +467,12 @@ local function buildLvglUI()
       })
     end
   end
-  pg:label({ x = 0, y = hintY, font = SMLSIZE, text = hint })
+  pg:label({ x = 4, y = hintY, font = SMLSIZE, color = color.muted,
+    text = function() return confirming() and "" or hint() end,
+  })
+  pg:label({ x = 4, y = hintY, font = SMLSIZE, color = color.warning,
+    text = function() return confirming() and hint() or "" end,
+  })
   pg:label({ x = 270, y = hintY, font = SMLSIZE, color = color.muted, text = mappedText() })
 end
 
