@@ -997,7 +997,7 @@ const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void;
 export const RC_TRANSMITTER = {
   title: 'RC transmitter (EdgeTX script)',
   detail: 'Your radio’s sticks over USB',
-  about: 'An EdgeTX radio running the Aircast USB script sends its sticks to this app. Pick the port it is plugged into.',
+  about: 'An EdgeTX radio running the Aircast USB script sends its sticks to this app. On the radio: SYS → Hardware → USB-VCP set to LUA; plug in and choose USB Serial (VCP); then SYS → Tools → Aircast USB. Pick the port it is plugged into.',
   picked: 'The radio sends its sticks to this app. Its screen shows whether the app hears it. Change the port under Control > Radio on USB.',
 };
 

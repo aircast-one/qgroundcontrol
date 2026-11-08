@@ -28,6 +28,8 @@ local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
 local NO_ANSWER = "Waiting for the app"
 local NEXT_STEP = "Pick it under Radio on USB"
+local USB_MODE_STEP = "Nothing heard: USB mode must be Serial (VCP). Unplug, plug in, pick it"
+local SILENT_CABLE_TICKS = 800
 local ICON_PATH = "/SCRIPTS/TOOLS/aircast-usb.png"
 local ICON_PNG = "\137PNG\013\010\026\010\000\000\000\013IHDR\000\000\000\030\000\000\000\030\008\004\000\000\000\1459f)\000\000\000\140IDAT8\203\237TA\014\192 \008[\205\254\255ev2\010\020P\147\221\236\201\205\150\022\156\131\200s\140v.\189\226m\188\209\0060\214\209q\194n\204\034\013_\194\136\189\159.f\216\227\177\211x\200QdR\244e.\229\0285\176Y\200\156Dt\027`Nlh\148\151M\219:9.\159vTR\191'\031\009\011h3$=\231)J\177u\225\172\182\034\141@/\134\008\192\207|\185\231\026\233}\174\226\023?\131\092\254_\236+\246\248\000\138\145D#\215\034\220G\000\000\000\000IEND\174B`\130"
 
@@ -36,6 +38,7 @@ local modelInfo
 local mixesInfo = {}
 local channelValues = {}
 local movedAt = {}
+local cableSince = nil
 local lastValues = {}
 local used = {}
 local useLvglUI = false
@@ -138,6 +141,7 @@ local function setUpChannels(mixes, named)
     local shown = wanted[2] ~= "" and wanted[2] or (wanted[1] == "6pos" and "bay" or "")
     if wanted[3] and wanted[3] >= 1 and shown ~= "" then layoutNames[wanted[3]] = shown end
   end
+  relayout = useLvglUI
   if not (getFieldInfo and model.insertMix) then return end
   for _, wanted in ipairs(mixes) do
     local channel = wanted[3] or 0
@@ -199,12 +203,18 @@ end
 
 local function status()
   if appLive() then return SAYS[app.state](app.vehicle), true end
-  if usbConnected and not usbConnected() then return NO_CABLE, false end
+  if usbConnected and not usbConnected() then
+    cableSince = nil
+    return NO_CABLE, false
+  end
+  if cableSince == nil then cableSince = now() end
   return NO_ANSWER, false
 end
 
 local function nextStep()
-  return status() == NO_ANSWER and NEXT_STEP or ""
+  if status() ~= NO_ANSWER then return "" end
+  if cableSince ~= nil and now() - cableSince >= SILENT_CABLE_TICKS then return USB_MODE_STEP end
+  return NEXT_STEP
 end
 
 local function confirming()
@@ -320,6 +330,17 @@ local function hot(i)
   return (name == "Arm" or name == "Drop") and channelValues[i] > 512
 end
 
+local function missingControls()
+  if not appNamed then return {} end
+  local missing = {}
+  for at, m in ipairs(appMixes) do
+    if at <= appNamed and m[3] >= 1 and not model.getMix(m[3] - 1, 0) then
+      missing[#missing + 1] = { FRIENDLY[m[2]] or FRIENDLY[m[1] == "6pos" and "bay" or ""] or m[2], m[3] }
+    end
+  end
+  return missing
+end
+
 local function shownOrder()
   local order = {}
   for _, i in ipairs(used) do
@@ -418,7 +439,8 @@ local function buildLvglUI()
 
   local pageH = LCD_H - LVGL_HEADER_H
   local hintY = pageH - LVGL_LINE_H
-  local rows = math.max(1, math.ceil(#used / 2))
+  local missing = missingControls()
+  local rows = math.max(1, math.ceil((#used + #missing) / 2))
   local rowH = math.min(LVGL_ROW_H, math.floor((hintY - LVGL_ROWS_TOP - LVGL_PANEL_PAD) / rows))
   local rowFont = rowH >= LVGL_TEXT_ROW_H and 0 or SMLSIZE
   local panelW = math.floor(LCD_W / 2) - 6
@@ -488,6 +510,13 @@ local function buildLvglUI()
         text = function() return hot(i) and valueText(i) or "" end,
       })
     end
+  end
+  for at, gap in ipairs(missing) do
+    local column, row = place(#order + at, rows)
+    local colBase = column == 1 and 4 + LVGL_PANEL_PAD or LCD_W - panelW - 4 + LVGL_PANEL_PAD
+    local yOfs = LVGL_ROWS_TOP + (row - 1) * rowH
+    pg:label({ x = colBase + LVGL_NAME_X, y = yOfs, font = rowFont, color = color.muted, text = gap[1] })
+    pg:label({ x = colBase + LVGL_META_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.warning, text = "no control on CH" .. gap[2] })
   end
   pg:label({ x = 4, y = hintY, font = SMLSIZE, color = color.muted,
     text = function() return confirming() and "" or hint() end,

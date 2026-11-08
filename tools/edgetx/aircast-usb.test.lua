@@ -21,7 +21,7 @@ local function radio(screen)
     getOutputValue = function(index) return ({ [0] = -1024, [1] = 1024, [3] = -512, [10] = -1024, [17] = 1024 })[index] or 0 end,
     getValue = function() return 8.3 end,
     getSourceName = function(source) return "src" .. source end,
-    getFieldInfo = function(name) return controls[name] and { id = controls[name] } end,
+    getFieldInfo = (not screen.noInsert) and function(name) return controls[name] and { id = controls[name] } end or nil,
     setSerialBaudrate = function(baud) assert(baud == 115200) end,
     serialWrite = function(data) sent[#sent + 1] = data end,
     serialRead = function() local got = inbox; inbox = ""; return got end,
@@ -148,6 +148,19 @@ local partial = radio({ w = 480, h = 272, lvgl = true, mixes = 24 })
 partial.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
 partial.script.run(0)
 assert(shows(partial, "not read") and shows(partial, "8 of 8 app functions on the radio"), "an app that names eight functions leaves S1 and SC rows marked as not read")
+local bare = radio({ w = 480, h = 272, lvgl = true, noInsert = true })
+bare.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
+bare.script.run(0)
+assert(shows(bare, "Tilt") and shows(bare, "no control on CH19") and shows(bare, "no control on CH18") and shows(bare, "0 of 10 app functions on the radio"), "a radio that cannot set channels up lists each function the app reads that has no control yet")
+local deaf = radio({ w = 480, h = 272 })
+deaf.script.run(0)
+assert(shows(deaf, "Pick it under Radio on USB"), "right after plugging in, the next step is in the app")
+deaf.at(900)
+deaf.script.run(0)
+assert(shows(deaf, "Nothing heard: USB mode must be Serial (VCP). Unplug, plug in, pick it"), "a cable that stays silent points at the radio's USB mode")
+deaf.hear("@F,1\n")
+deaf.script.run(0)
+assert(not shows(deaf, "Nothing heard: USB mode must be Serial (VCP). Unplug, plug in, pick it"), "and the hint goes once the app answers")
 local stock = radio({ w = 480, h = 272 })
 stock.hear("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23\n")
 stock.script.run(0)
