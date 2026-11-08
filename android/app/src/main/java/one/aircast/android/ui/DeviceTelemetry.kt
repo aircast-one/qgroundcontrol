@@ -32,6 +32,15 @@ internal data class TelemetryGimbal(
     val models: List<DeviceOption>,
 )
 
+internal data class TelemetryDropper(
+    val status: DeviceBadge,
+    val on: Boolean,
+    val notice: String,
+    val about: String,
+    val switch: String,
+    val detail: String,
+)
+
 internal data class TelemetryCloud(val status: DeviceBadge, val text: String)
 
 internal data class TelemetrySettings(val endpoints: String, val baud: String)
@@ -48,6 +57,7 @@ internal data class TelemetryView(
     val settings: TelemetrySettings,
     val schemes: JSONArray,
     val gimbal: TelemetryGimbal?,
+    val dropper: TelemetryDropper?,
 )
 
 internal fun parseEndpointList(json: JSONObject?, key: String): List<DeviceEndpoint> =
@@ -69,6 +79,17 @@ private fun parseGimbal(json: JSONObject?): TelemetryGimbal? = json?.let {
     )
 }
 
+private fun parseDropper(json: JSONObject?): TelemetryDropper? = json?.let {
+    TelemetryDropper(
+        status = parseBadge(it.optJSONObject("status")),
+        on = it.optBoolean("on"),
+        notice = it.optText("notice"),
+        about = it.optText("about"),
+        switch = it.optText("switch"),
+        detail = it.optText("detail"),
+    )
+}
+
 internal fun parseTelemetry(json: JSONObject): TelemetryView? =
     json.optJSONObject("status")?.let { status ->
         val settings = json.optJSONObject("settings")
@@ -85,6 +106,7 @@ internal fun parseTelemetry(json: JSONObject): TelemetryView? =
             settings = TelemetrySettings(settings?.optText("endpoints").orEmpty(), settings?.optText("baud").orEmpty()),
             schemes = json.optJSONArray("schemes") ?: JSONArray(),
             gimbal = parseGimbal(json.optJSONObject("gimbal")),
+            dropper = parseDropper(json.optJSONObject("dropper")),
         )
     }
 

@@ -31,6 +31,27 @@ final class DeviceTelemetryTests: XCTestCase {
         )
     }
 
+    func testReadsTheDropperCardInTheWordsTheDeviceGivesIt() {
+        let view = parseTelemetry(JSON.parse("""
+            {"status":{"level":0,"text":"ready"},
+            "dropper":{"status":{"level":2,"text":"no output"},"on":true,"notice":"The outputs could not start: no pwm",
+            "about":"Wire the bay line to GPIO 12.","switch":"Drive the dropper from this device","detail":"Channel 11 drops."}}
+            """))
+        XCTAssertEqual(
+            view?.dropper,
+            TelemetryDropper(
+                status: DeviceBadge(level: DeviceLevel.Blocked, text: "no output"),
+                on: true,
+                notice: "The outputs could not start: no pwm",
+                about: "Wire the bay line to GPIO 12.",
+                switchLabel: "Drive the dropper from this device",
+                detail: "Channel 11 drops."
+            )
+        )
+        XCTAssertNotNil(parseTelemetry(JSON.parse(#"{"status":{"level":0,"text":"ready"}}"#)))
+        XCTAssertNil(parseTelemetry(JSON.parse(#"{"status":{"level":0,"text":"ready"}}"#))?.dropper)
+    }
+
     func testReadsTheEndpointRowsTheCoreMakesOfTheStoredSpecOrTheTypedRows() {
         let editor = parseEndpointEditor(JSON.parse("""
             {"ok":true,"result":{

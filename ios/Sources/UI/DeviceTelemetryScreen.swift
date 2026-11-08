@@ -20,6 +20,7 @@ struct DeviceTelemetryScreen: View {
                     MavlinkEditor(view: view).id(view.settings)
                 }
                 if let gimbal = view.gimbal { GimbalSection(gimbal: gimbal) }
+                if let dropper = view.dropper { DropperSection(dropper: dropper) }
             } else {
                 FootNote(text: DEVICE_WAITING)
             }
@@ -218,6 +219,26 @@ private struct GimbalSection: View {
                 note: "Takes effect on save — no reboot. Changing the make resets the model and address to that make's defaults if the old ones do not fit."
             )
             .id([gimbal.vendor, gimbal.model, gimbal.cameraAddr, gimbal.mavlinkAddr])
+        }
+    }
+}
+
+private struct DropperSection: View {
+    let dropper: TelemetryDropper
+
+    var body: some View {
+        DeviceSection(title: "Dropper", badge: dropper.status) {
+            DeviceText(text: dropper.about)
+            if !dropper.notice.isEmpty { DeviceNotice(notice: DeviceBadge(level: DeviceLevel.Blocked, text: dropper.notice)) }
+            DeviceSwitchRow(
+                title: dropper.switchLabel,
+                checked: dropper.on,
+                on: DeviceRequest(method: .PUT, path: "/api/dropper/config", body: .object(["enabled": .bool(true)])),
+                off: DeviceRequest(method: .PUT, path: "/api/dropper/config", body: .object(["enabled": .bool(false)])),
+                detail: dropper.detail,
+                success: "Dropper on.",
+                offSuccess: "Dropper off."
+            )
         }
     }
 }

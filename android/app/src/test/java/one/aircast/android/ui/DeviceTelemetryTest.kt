@@ -31,6 +31,7 @@ class DeviceTelemetryTest {
         assertEquals(TelemetryFix("No flight controller found", listOf("Plug it in.", "Power it on."), "Looking for it."), view?.fix)
         assertNull(parseTelemetry(JSONObject("""{"status":{"level":0,"text":"ready"}}"""))?.fix)
         assertNull(parseTelemetry(JSONObject("""{"endpoints":[]}""")))
+        assertNull(view?.dropper)
         val endpoint = DeviceEndpoint("UDP", "MAVLink", "falcon:14550", "", "", "", down = false, primary = false)
         assertEquals("UDP · MAVLink", endpointLabel(endpoint))
         assertEquals("TCP · Betaflight", endpointLabel(endpoint.copy(proto = "TCP", label = "TCP · Betaflight")))
@@ -63,5 +64,20 @@ class DeviceTelemetryTest {
         assertEquals("udps:0.0.0.0:14550", editor?.endpoints)
         assertNull(parseEndpointEditor(JSONObject("""{"ok":false,"reason":"no"}""")))
         assertNull(parseEndpointEditor(null))
+    }
+
+    @Test
+    fun `reads the dropper the device serves`() {
+        val dropper = parseTelemetry(
+            JSONObject(
+                """{"status":{"level":0,"text":"ready"},
+                "dropper":{"status":{"level":3,"text":"bay 3 · safe"},"on":true,"notice":"The outputs could not start.",
+                "about":"For a drop module that takes two servo signals.","switch":"Drive the dropper from this device","detail":"Radio channel 5 picks the bay."}}""",
+            ),
+        )?.dropper
+        assertEquals(
+            TelemetryDropper(DeviceBadge(DeviceLevel.Neutral, "bay 3 · safe"), true, "The outputs could not start.", "For a drop module that takes two servo signals.", "Drive the dropper from this device", "Radio channel 5 picks the bay."),
+            dropper,
+        )
     }
 }

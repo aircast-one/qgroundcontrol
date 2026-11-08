@@ -53,6 +53,7 @@ internal fun DeviceTelemetryScreen(props: DeviceScreenProps) {
         key(view.settings) { MavlinkEditor(view) }
     }
     view.gimbal?.let { GimbalSection(it) }
+    view.dropper?.let { DropperSection(it) }
 }
 
 @Composable
@@ -192,5 +193,24 @@ private fun GimbalSection(gimbal: TelemetryGimbal) {
                 note = "Takes effect on save — no reboot. Changing the make resets the model and address to that make's defaults if the old ones do not fit.",
             )
         }
+    }
+}
+
+private fun dropperEnabled(enabled: Boolean): DeviceRequest = DeviceRequest(DeviceMethod.PUT, "/api/dropper/config", JSONObject().put("enabled", enabled))
+
+@Composable
+private fun DropperSection(dropper: TelemetryDropper) {
+    DeviceSection("Dropper", dropper.status) {
+        DeviceText(dropper.about)
+        if (dropper.notice.isNotEmpty()) DeviceNotice(DeviceBadge(DeviceLevel.Blocked, dropper.notice))
+        DeviceSwitchRow(
+            title = dropper.switch,
+            checked = dropper.on,
+            on = dropperEnabled(true),
+            off = dropperEnabled(false),
+            detail = dropper.detail,
+            success = "Dropper on.",
+            offSuccess = "Dropper off.",
+        )
     }
 }

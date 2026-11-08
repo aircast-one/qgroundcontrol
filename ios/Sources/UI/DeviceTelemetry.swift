@@ -23,6 +23,15 @@ struct TelemetryGimbal: Equatable {
     let models: [DeviceOption]
 }
 
+struct TelemetryDropper: Equatable {
+    let status: DeviceBadge
+    let on: Bool
+    let notice: String
+    let about: String
+    let switchLabel: String
+    let detail: String
+}
+
 struct TelemetryCloud: Equatable {
     let status: DeviceBadge
     let text: String
@@ -49,6 +58,7 @@ struct TelemetryView: Equatable {
     let settings: TelemetrySettings
     let schemes: JSON
     let gimbal: TelemetryGimbal?
+    let dropper: TelemetryDropper?
 }
 
 func parseEndpointList(_ json: JSON?, _ key: String) -> [DeviceEndpoint] {
@@ -81,6 +91,18 @@ private func parseGimbal(_ json: JSON?) -> TelemetryGimbal? {
     )
 }
 
+private func parseDropper(_ json: JSON?) -> TelemetryDropper? {
+    guard let json else { return nil }
+    return TelemetryDropper(
+        status: parseBadge(json["status"].objectOrNil),
+        on: json["on"].bool,
+        notice: json["notice"].string,
+        about: json["about"].string,
+        switchLabel: json["switch"].string,
+        detail: json["detail"].string
+    )
+}
+
 func parseTelemetry(_ json: JSON) -> TelemetryView? {
     guard let status = json["status"].objectOrNil else { return nil }
     let settings = json["settings"].objectOrNil
@@ -93,7 +115,8 @@ func parseTelemetry(_ json: JSON) -> TelemetryView? {
         cloud: json["cloud"].objectOrNil.map { TelemetryCloud(status: parseBadge($0["status"].objectOrNil), text: $0["text"].string) },
         settings: TelemetrySettings(endpoints: settings?["endpoints"].string ?? "", baud: settings?["baud"].string ?? ""),
         schemes: json["schemes"].arrayOrNil.map { JSON.array($0) } ?? JSON.array([]),
-        gimbal: parseGimbal(json["gimbal"].objectOrNil)
+        gimbal: parseGimbal(json["gimbal"].objectOrNil),
+        dropper: parseDropper(json["dropper"].objectOrNil)
     )
 }
 
