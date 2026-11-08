@@ -4,7 +4,7 @@ import { mutableStateOf, useValue } from '@/kotlin/State';
 import { Text } from '@/m3';
 import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
-import { Color, aircast, md, withAlpha } from '@/theme/Colors';
+import { aircast, md, withAlpha } from '@/theme/Colors';
 import { FLY_STATE, flyState } from './FlyState';
 import { USB_RADIO_VIEW, type UsbRadioBadge, usbRadioBadge, usbRadioTone } from './UsbRadioIndicator';
 import { OSD_LABEL_ALPHA } from './VehicleUi';
@@ -30,7 +30,6 @@ const EKF_RATIOS = ['velRatio', 'horizPosRatio', 'vertPosRatio', 'magRatio', 'ha
 const EKF_WARNING = 0.5;
 const EKF_DANGER = 0.8;
 const ICON_SIZE = 14;
-const STRIPE_HEIGHT = 24;
 
 const detail = (label: string, value: string, tone: Tone = null): OsdDetail[] => (value.trim() === '' ? [] : [{ label, value, tone }]);
 
@@ -98,13 +97,9 @@ export const OsdDetails = () => {
     radio: usbRadioBadge(useQgcPath(USB_RADIO_VIEW)),
   });
   return (
-    <div
-      data-osd-details
-      className="flex w-full shrink-0 items-center justify-center-safe overflow-x-auto whitespace-nowrap"
-      style={{ height: STRIPE_HEIGHT, background: Color.Black, paddingInline: 'max(12px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))' }}
-    >
-      {lines.map((line, at) => (
-        <div key={line.icon} className="flex items-center gap-2.5" style={{ paddingInline: 12, borderInlineStart: at === 0 ? undefined : `1px solid ${withAlpha(Color.White, 0.18)}` }}>
+    <div data-osd-details className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-5 gap-y-1">
+      {lines.map((line) => (
+        <div key={line.icon} className="flex items-center gap-2 whitespace-nowrap">
           <Drawable name={line.icon} size={ICON_SIZE} style={{ color: toneColour(worstTone(line.details)) }} />
           {line.details.map((it) => (
             <div key={it.label} className="flex items-baseline gap-1">
