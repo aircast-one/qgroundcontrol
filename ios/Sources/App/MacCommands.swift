@@ -50,13 +50,15 @@ func tabShortcutKey(_ index: Int) -> Character? {
 
 enum ShellEscape: Equatable {
     case CloseSettings
+    case EndLayoutEdit
     case LeaveFullScreen
 }
 
 // What Esc closes in the main window. Settings is drawn over the window rather than presented as a sheet, and
 // full-screen video is the shell's own mode, so neither gets the Esc a Mac sheet answers to on its own.
-func shellEscape(settingsOpen: Bool, fullScreen: Bool) -> ShellEscape? {
+func shellEscape(settingsOpen: Bool, editingLayout: Bool, fullScreen: Bool) -> ShellEscape? {
     if settingsOpen { return .CloseSettings }
+    if editingLayout { return .EndLayoutEdit }
     if fullScreen { return .LeaveFullScreen }
     return nil
 }

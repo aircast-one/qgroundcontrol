@@ -47,10 +47,11 @@ final class MacCommandsTests: XCTestCase {
         XCTAssertEqual(menuFlightItems(offers, true).map(\.title), ["Return to Launch\u{2026}", "Land", "Hold\u{2026}"])
     }
 
-    func testEscClosesSettingsBeforeLeavingFullScreenVideo() {
-        XCTAssertEqual(shellEscape(settingsOpen: true, fullScreen: true), .CloseSettings)
-        XCTAssertEqual(shellEscape(settingsOpen: false, fullScreen: true), .LeaveFullScreen)
-        XCTAssertNil(shellEscape(settingsOpen: false, fullScreen: false))
+    func testEscClosesSettingsThenEndsLayoutEditThenLeavesFullScreenVideo() {
+        XCTAssertEqual(shellEscape(settingsOpen: true, editingLayout: true, fullScreen: true), .CloseSettings)
+        XCTAssertEqual(shellEscape(settingsOpen: false, editingLayout: true, fullScreen: true), .EndLayoutEdit)
+        XCTAssertEqual(shellEscape(settingsOpen: false, editingLayout: false, fullScreen: true), .LeaveFullScreen)
+        XCTAssertNil(shellEscape(settingsOpen: false, editingLayout: false, fullScreen: false))
     }
 
     func testTheWindowNeverStartsOrShrinksPhoneShaped() {

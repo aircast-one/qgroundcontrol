@@ -154,21 +154,18 @@ private func jiggleSpread(_ key: String) -> Int {
     key.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xffff } & JIGGLE_SPREAD
 }
 
+func jiggleDegrees(_ seconds: Double, _ key: String) -> Double {
+    JIGGLE_DEGREES * sin(seconds * .pi * 1000 / Double(JIGGLE_MILLIS + jiggleSpread(key)))
+}
+
 private struct Jiggle: ViewModifier {
     let key: String
     let active: Bool
-    @State private var swing = false
 
     func body(content: Content) -> some View {
-        content
-            .rotationEffect(.degrees(active ? (swing ? JIGGLE_DEGREES : -JIGGLE_DEGREES) : 0))
-            .onChange(of: active, initial: true) { _, now in
-                if now {
-                    withAnimation(.easeInOut(duration: Double(JIGGLE_MILLIS + jiggleSpread(key)) / 1000).repeatForever(autoreverses: true)) { swing = true }
-                } else {
-                    withAnimation(.easeOut(duration: 0.1)) { swing = false }
-                }
-            }
+        TimelineView(.animation(paused: !active)) { timeline in
+            content.rotationEffect(.degrees(active ? jiggleDegrees(timeline.date.timeIntervalSinceReferenceDate, key) : 0))
+        }
     }
 }
 

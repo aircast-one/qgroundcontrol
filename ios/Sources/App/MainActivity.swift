@@ -241,7 +241,7 @@ struct AircastShell: View {
             tabs: tabs,
             current: navigation.settingsOpen ? nil : tab,
             fullScreen: fullScreen,
-            escape: shellEscape(settingsOpen: navigation.settingsOpen, fullScreen: fullScreen),
+            escape: shellEscape(settingsOpen: navigation.settingsOpen, editingLayout: flyScreen.layout.editing, fullScreen: fullScreen),
             onSelect: macSelectTab,
             onSettings: { navigation.settingsOpen = true },
             onEscape: macEscape,
@@ -266,6 +266,7 @@ struct AircastShell: View {
     private func macEscape(_ target: ShellEscape) {
         switch target {
         case .CloseSettings: navigation.settingsOpen = false
+        case .EndLayoutEdit: flyScreen.layout.editing = false
         case .LeaveFullScreen: videoFullScreen = false
         }
     }
