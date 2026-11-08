@@ -220,10 +220,10 @@ fn drop(backend: &dyn Backend) -> Value {
     if !armed {
         return refused(SAFE);
     }
-    let servo_bays = crate::hub::lock()
+    let bays = crate::hub::lock()
         .active()
-        .map_or(0, |vehicle| vehicle.payload_servos().len() as i64);
-    let named = crate::radiocamera::named(bay, servo_bays);
+        .map_or(0, crate::hub::Vehicle::drop_bays);
+    let named = crate::radiocamera::named(bay, bays);
     crate::guided::gripper(
         backend,
         DROP_BAY,

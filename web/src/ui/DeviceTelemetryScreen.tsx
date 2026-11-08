@@ -3,11 +3,12 @@ import { CircularProgressIndicator, FilledTonalButton, IconButton, OutlinedTextF
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { useDeviceDraft } from '@/ui/DeviceDraft';
-import { CopyRow, DeviceBadgeText, DeviceColumns, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceText, DeviceWaiting, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
+import { CopyRow, DeviceBadgeText, DeviceColumns, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceSwitchRow, DeviceText, DeviceWaiting, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import {
   type DeviceEndpoint,
+  type DropperSettings,
   type EndpointEditor,
   type EndpointRow,
   type EndpointRowView,
@@ -72,6 +73,7 @@ export const TelemetryScreen = (_: DeviceScreenProps) => {
             <MavlinkEditor view={view} />
           </DeviceSection>
           {view.gimbal !== null ? <GimbalSection gimbal={view.gimbal} /> : null}
+          {view.dropper !== null ? <DropperSection dropper={view.dropper} /> : null}
         </>
       }
     />
@@ -209,6 +211,22 @@ const GimbalSection = ({ gimbal }: { gimbal: GimbalSettings }) => (
         { name: 'cameraAddr', label: 'Camera address', value: gimbal.cameraAddr, placeholder: '192.168.144.25:37260', keyboard: 'uri' },
         { name: 'mavlinkAddr', label: 'MAVLink endpoint', value: gimbal.mavlinkAddr, placeholder: '127.0.0.1:14550', keyboard: 'uri' },
       ]}
+    />
+  </DeviceSection>
+);
+
+const DropperSection = ({ dropper }: { dropper: DropperSettings }) => (
+  <DeviceSection title="Dropper" badge={dropper.status}>
+    <DeviceText text={dropper.about} />
+    {dropper.notice !== '' ? <DeviceNotice notice={{ level: DeviceLevel.Blocked, text: dropper.notice }} /> : null}
+    <DeviceSwitchRow
+      title={dropper.switchLabel}
+      detail={dropper.detail}
+      checked={dropper.on}
+      on={{ method: 'PUT', path: '/api/dropper/config', body: { enabled: true } }}
+      off={{ method: 'PUT', path: '/api/dropper/config', body: { enabled: false } }}
+      success="Dropper on."
+      offSuccess="Dropper off."
     />
   </DeviceSection>
 );

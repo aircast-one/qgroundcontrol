@@ -168,8 +168,12 @@ pub struct ServoBay {
     pub function: Option<i64>,
 }
 
+pub const DEVICE_DROPPER_VALUE: &str = "DROPPER";
+pub const DEVICE_DROPPER_STALE_MS: u64 = 3_000;
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Setup {
+    pub device_bays: i64,
     pub ardupilot: bool,
     pub enabled: bool,
     pub loaded: bool,
@@ -196,6 +200,7 @@ impl Setup {
     ) -> Setup {
         let servo = parameter("GRIP_TYPE") == Some(GRIPPER_TYPE_SERVO);
         Setup {
+            device_bays: 0,
             ardupilot,
             enabled,
             loaded: parameter("GRIP_TYPE").is_some(),
@@ -223,6 +228,7 @@ impl Setup {
 
     pub fn json(&self) -> Value {
         json!({
+            "deviceBays": self.device_bays,
             "ardupilot": self.ardupilot,
             "enabled": self.enabled,
             "loaded": self.loaded,
@@ -243,6 +249,7 @@ impl Setup {
         let flag = |key: &str| value.get(key).and_then(Value::as_bool).unwrap_or(false);
         let number = |key: &str| value.get(key).and_then(Value::as_f64).unwrap_or(0.0);
         Setup {
+            device_bays: number("deviceBays") as i64,
             ardupilot: flag("ardupilot"),
             enabled: flag("enabled"),
             loaded: flag("loaded"),
@@ -487,7 +494,7 @@ impl Problem {
 pub fn problems(s: &Setup, bays: i64) -> Vec<Problem> {
     PROBLEMS
         .into_iter()
-        .filter(|p| p.applies(s, bays))
+        .filter(|p| s.device_bays == 0 && p.applies(s, bays))
         .collect()
 }
 
@@ -514,14 +521,14 @@ pub fn problems_json(s: &Setup, bays: i64) -> Value {
 pub fn release_refusal(s: &Setup, released_at_ms: Option<i64>, now_ms: i64) -> Option<String> {
     [Problem::NeedsReboot, Problem::NoType, Problem::NoOutput]
         .into_iter()
-        .find(|problem| problem.applies(s, 1))
+        .find(|problem| s.device_bays == 0 && problem.applies(s, 1))
         .map(|problem| format!("Nothing would fall. {}", problem.text(s, 1)))
         .or_else(|| open_refusal(s, released_at_ms, now_ms))
 }
 
 fn open_refusal(s: &Setup, released_at_ms: Option<i64>, now_ms: i64) -> Option<String> {
     let since = released_at_ms?;
-    match s.ardupilot && s.enabled {
+    match s.device_bays == 0 && s.ardupilot && s.enabled {
         false => None,
         true if s.stays_open() => Some("The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.".to_string()),
         true => {
@@ -534,6 +541,26 @@ fn open_refusal(s: &Setup, released_at_ms: Option<i64>, now_ms: i64) -> Option<S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_drop_module_on_the_device_needs_no_flight_controller_gripper() {
+        let device = Setup {
+            device_bays: 6,
+            ardupilot: true,
+            enabled: true,
+            ..Default::default()
+        };
+        assert!(
+            problems(&device, 6).is_empty(),
+            "GRIP_ENABLE 0 on the flight controller is how the device's dropper runs"
+        );
+        assert_eq!(
+            release_refusal(&device, Some(0), 1),
+            None,
+            "the module drops again at once, there is no gripper left open"
+        );
+        assert_eq!(Setup::from_json(&device.json()).device_bays, 6);
+    }
 
     fn item(seq: u16, command: u16, action: f64) -> Item {
         Item {
@@ -548,6 +575,7 @@ mod tests {
 
     fn copter(drops: usize) -> Setup {
         Setup {
+            device_bays: 0,
             ardupilot: true,
             enabled: true,
             loaded: true,
@@ -881,6 +909,7 @@ mod tests {
     #[test]
     fn px4_is_only_asked_for_a_gripper() {
         let px4 = Setup {
+            device_bays: 0,
             ardupilot: false,
             enabled: true,
             loaded: false,
@@ -922,6 +951,7 @@ mod tests {
         assert_eq!(
             read,
             Setup {
+                device_bays: 0,
                 ardupilot: true,
                 enabled: true,
                 loaded: true,
@@ -988,6 +1018,7 @@ mod tests {
         assert_eq!(
             open_refusal(
                 &Setup {
+                    device_bays: 0,
                     ardupilot: false,
                     ..copter(0)
                 },

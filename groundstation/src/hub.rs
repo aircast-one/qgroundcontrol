@@ -421,6 +421,7 @@ pub struct Vehicle {
     pending_notices: Vec<(&'static str, String)>,
     pub rc_values: Vec<u16>,
     pub standby: Option<(i32, u64)>,
+    pub device_dropper: Option<(i32, u64)>,
     pub fight: bool,
     pub servo_outputs: Vec<i32>,
     pub message_log: crate::messagelog::MessageLog,
@@ -699,6 +700,7 @@ impl Vehicle {
             pending_notices: Vec::new(),
             rc_values: Vec::new(),
             standby: None,
+            device_dropper: None,
             fight: false,
             servo_outputs: Vec::new(),
             message_log: crate::messagelog::MessageLog::default(),
@@ -4520,7 +4522,7 @@ impl Vehicle {
     }
 
     fn with_drop_bay(&self, action: &Value) -> Value {
-        let bays = self.payload_servos().len() as i64;
+        let bays = self.drop_bays();
         let unnamed = action
             .get("bay")
             .and_then(Value::as_f64)
@@ -6593,6 +6595,19 @@ impl Vehicle {
         crate::payloadcheck::servo_bays(self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT)
     }
 
+    pub fn device_bays_at(&self, now_ms: u64) -> i64 {
+        self.device_dropper
+            .filter(|(bays, at)| {
+                *bays > 0
+                    && now_ms.saturating_sub(*at) <= crate::payloadcheck::DEVICE_DROPPER_STALE_MS
+            })
+            .map_or(0, |(bays, _)| i64::from(bays))
+    }
+
+    pub fn drop_bays(&self) -> i64 {
+        (self.payload_servos().len() as i64).max(self.device_bays_at(now_ms()))
+    }
+
     pub fn payload_setup(&self) -> crate::payloadcheck::Setup {
         let parameter = |name: &str| self.parameter(self.component, name).map(|p| p.as_f64());
         let enabled = crate::vehiclefacade::has_gripper(self.autopilot, parameter);
@@ -6605,10 +6620,13 @@ impl Vehicle {
             crate::payloadcheck::drops_in(self.mission_items(), &servos),
             crate::payloadcheck::early_drops_in(self.mission_items(), self.sends_home(), &servos),
         );
+        let device_bays = self.device_bays_at(now_ms());
         crate::payloadcheck::Setup {
             stale: self
                 .gripper_at_load
                 .is_some_and(|at| at != self.gripper_params()),
+            enabled: read.enabled || device_bays > 0,
+            device_bays,
             ..read
         }
     }
@@ -7489,6 +7507,15 @@ impl Vehicle {
                 .is_ok_and(|name| name == crate::joystickhost::STANDBY_VALUE)
         {
             self.standby = Some((value.value, now_ms));
+        }
+        if let MavMessage::NAMED_VALUE_INT(value) = message
+            && header.component_id == crate::joystickhost::STANDBY_COMPONENT
+            && value
+                .name
+                .to_str()
+                .is_ok_and(|name| name == crate::payloadcheck::DEVICE_DROPPER_VALUE)
+        {
+            self.device_dropper = Some((value.value, now_ms));
         }
         if let MavMessage::NAMED_VALUE_INT(value) = message
             && header.component_id == crate::joystickhost::STANDBY_COMPONENT
@@ -13596,6 +13623,59 @@ mod tests {
             )
             .is_some(),
             "Vehicle::_handleStatusText drops it only when _healthAndArmingChecksSupported(component)"
+        );
+    }
+
+    #[test]
+    fn the_devices_dropper_is_a_payload_of_its_own_bays() {
+        use mavlink::dialects::ardupilotmega::{MavCmd, NAMED_VALUE_INT_DATA};
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let now = now_ms();
+        hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), now, now);
+        let dropper = |value| {
+            MavMessage::NAMED_VALUE_INT(NAMED_VALUE_INT_DATA {
+                time_boot_ms: 0,
+                value,
+                name: mavlink::types::CharArray::from("DROPPER"),
+            })
+        };
+        hub.on_frame(origin(0), &autopilot, &dropper(6), now, now);
+        assert_eq!(
+            hub.active().unwrap().drop_bays(),
+            0,
+            "a flight controller script naming a value DROPPER is not aircastd"
+        );
+        hub.on_frame(
+            origin(0),
+            &MavHeader {
+                component_id: crate::joystickhost::STANDBY_COMPONENT,
+                ..autopilot
+            },
+            &dropper(6),
+            now,
+            now,
+        );
+        let vehicle = hub.active().unwrap();
+        assert_eq!(vehicle.drop_bays(), 6);
+        let setup = vehicle.payload_setup();
+        assert!(setup.enabled);
+        assert_eq!(setup.device_bays, 6);
+        assert_eq!(
+            vehicle.device_bays_at(now + crate::payloadcheck::DEVICE_DROPPER_STALE_MS + 1),
+            0,
+            "a dropper switched off stops saying so, and the payload goes with it"
+        );
+        let sent = hub
+            .guided(None, &json!({ "action": "gripper", "gripAction": 0 }), 1)
+            .unwrap();
+        assert!(
+            sent.iter().any(|(_, bytes)| matches!(decode(bytes), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_GRIPPER && c.param1 == 1.0 && c.param2 == 0.0)),
+            "an unnamed drop goes to the first loaded bay of the device's six"
         );
     }
 

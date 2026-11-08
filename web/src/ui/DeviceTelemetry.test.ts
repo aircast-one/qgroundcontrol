@@ -24,12 +24,28 @@ describe('DeviceTelemetryTest', () => {
     expect(view?.settings).toEqual({ endpoints: 'udps:0.0.0.0:14550', baud: '57600' });
     expect(view?.schemes).toEqual([UDPS]);
     expect(view?.gimbal?.vendors).toEqual([{ value: 'siyi', label: 'SIYI' }]);
+    expect(view?.dropper).toBeNull();
     expect(view?.fix).toEqual({ title: 'No flight controller found', steps: ['Plug it in.', 'Power it on.'], waiting: 'Looking for it.' });
     expect(parseTelemetry({ status: { level: 0, text: 'ready' } })?.fix).toBeNull();
     expect(parseTelemetry({ endpoints: [] })).toBeNull();
     const endpoint = { proto: 'UDP', label: 'MAVLink', url: 'falcon:14550', hint: '', note: '', appLink: '', down: false, primary: false };
     expect(endpointLabel(endpoint)).toBe('UDP · MAVLink');
     expect(endpointLabel({ ...endpoint, proto: 'TCP', label: 'TCP · Betaflight' })).toBe('TCP · Betaflight');
+  });
+
+  it('reads the dropper card in the words the device gives it', () => {
+    const view = parseTelemetry({
+      status: { level: 0, text: 'ready' },
+      dropper: { status: { level: 2, text: 'no output' }, on: true, notice: 'The outputs could not start: no pwm', about: 'Wire the bay line to GPIO 12.', switch: 'Drive the dropper from this device', detail: 'Channel 11 drops.' },
+    });
+    expect(view?.dropper).toEqual({
+      status: { level: DeviceLevel.Blocked, text: 'no output' },
+      on: true,
+      notice: 'The outputs could not start: no pwm',
+      about: 'Wire the bay line to GPIO 12.',
+      switchLabel: 'Drive the dropper from this device',
+      detail: 'Channel 11 drops.',
+    });
   });
 
   it('reads the endpoint rows the core makes of the stored spec or the typed rows', () => {

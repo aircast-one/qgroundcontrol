@@ -381,8 +381,8 @@ static STICKS: Mutex<Sticks> = Mutex::new(Sticks {
 });
 
 fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
-    let servo_bays = vehicle.payload_servos().len() as i64;
-    (vehicle.payload_setup().enabled || servo_bays > 0).then_some(servo_bays)
+    let bays = vehicle.drop_bays();
+    (vehicle.payload_setup().enabled || bays > 0).then_some(bays)
 }
 
 fn through_the_app(step: Move, servo_bays: Option<i64>) -> Option<Move> {

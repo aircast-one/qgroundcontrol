@@ -25,6 +25,15 @@ export type GimbalSettings = {
   readonly models: readonly DeviceOption[];
 };
 
+export type DropperSettings = {
+  readonly status: DeviceBadge;
+  readonly on: boolean;
+  readonly notice: string;
+  readonly about: string;
+  readonly switchLabel: string;
+  readonly detail: string;
+};
+
 export type TelemetryFix = { readonly title: string; readonly steps: readonly string[]; readonly waiting: string };
 
 export type TelemetryView = {
@@ -37,6 +46,7 @@ export type TelemetryView = {
   readonly settings: { readonly endpoints: string; readonly baud: string };
   readonly schemes: readonly Json[];
   readonly gimbal: GimbalSettings | null;
+  readonly dropper: DropperSettings | null;
 };
 
 export const parseEndpointList = (json: unknown, key: string): readonly DeviceEndpoint[] =>
@@ -66,6 +76,18 @@ const parseGimbal = (json: unknown): GimbalSettings | null =>
       }
     : null;
 
+const parseDropper = (json: unknown): DropperSettings | null =>
+  isJson(json)
+    ? {
+        status: parseBadge(json.status),
+        on: optBoolean(json, 'on'),
+        notice: optText(json, 'notice'),
+        about: optText(json, 'about'),
+        switchLabel: optText(json, 'switch'),
+        detail: optText(json, 'detail'),
+      }
+    : null;
+
 export const parseTelemetry = (json: unknown): TelemetryView | null => {
   if (!isJson(json) || !isJson(json.status)) return null;
   const cloud = optJSONObject(json, 'cloud');
@@ -81,6 +103,7 @@ export const parseTelemetry = (json: unknown): TelemetryView | null => {
     settings: { endpoints: optText(settings, 'endpoints'), baud: optText(settings, 'baud') },
     schemes: jsonObjects(optJSONArray(json, 'schemes')),
     gimbal: parseGimbal(json.gimbal),
+    dropper: parseDropper(json.dropper),
   };
 };
 

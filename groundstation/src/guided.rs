@@ -287,7 +287,8 @@ impl Action {
             && match self {
                 Action::Arm => !s.armed,
                 Action::Disarm => s.armed && !s.flying,
-                Action::Grab | Action::Release => s.has_gripper,
+                Action::Grab => s.has_gripper && s.payload.device_bays == 0,
+                Action::Release => s.has_gripper,
                 Action::Hold => s.has_gripper && !s.apm,
                 Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl,
                 Action::Takeoff => s.takeoff_supported && !s.flying,
@@ -523,8 +524,17 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         landing: flag(&vehicle, "landing"),
         has_gripper: flag(&vehicle, "hasGripper"),
         apm: flag(&vehicle, "apmFirmware"),
-        payload_bays: value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue"))
-            .map_or(1, |bays| bays as i64),
+        payload_bays: vehicle
+            .get("payloadSetup")
+            .and_then(|p| p.get("setup"))
+            .and_then(|setup| setup.get("deviceBays"))
+            .and_then(Value::as_i64)
+            .filter(|bays| *bays > 0)
+            .or_else(|| {
+                value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue"))
+                    .map(|bays| bays as i64)
+            })
+            .unwrap_or(1),
         empty_bays: vehicle
             .get("payloadSetup")
             .and_then(|p| p.get("empty"))
@@ -1334,6 +1344,28 @@ mod tests {
 
     fn offer_of(state: &GuidedState, action: Action) -> &'static str {
         action.offer(state).offer
+    }
+
+    #[test]
+    fn a_drop_module_on_the_device_offers_drop_but_never_grab() {
+        let dropper = GuidedState {
+            has_gripper: true,
+            apm: true,
+            payload: crate::payloadcheck::Setup {
+                device_bays: 6,
+                enabled: true,
+                ..Default::default()
+            },
+            ..ready_on_ground()
+        };
+        assert_eq!(
+            (
+                offer_of(&dropper, Action::Release),
+                offer_of(&dropper, Action::Grab)
+            ),
+            ("ready", "hidden"),
+            "a drop module has no way to close on a payload"
+        );
     }
 
     fn ready_on_ground() -> GuidedState {

@@ -975,7 +975,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "mavlinkLossCount": v.link_status.lost,
         "mavlinkLossPercent": v.link_status.percent,
         "vtolInFwdFlight": v.vtol_in_forward_flight,
-        "hasGripper": !v.payload_servos().is_empty() || has_gripper(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
+        "hasGripper": v.drop_bays() > 0 || has_gripper(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
         "gripper": v.gripper.map(|g| g.json(&v.empty_bays)),
         "payloadSetup": json!({ "setup": v.payload_setup().json(), "empty": v.empty_bays }),
         "bottles": v.releases.iter().map(|release| release.at(crate::hub::wall_ms())).collect::<Vec<_>>(),
