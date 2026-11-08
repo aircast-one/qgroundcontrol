@@ -27,6 +27,7 @@ Rectangle {
     property bool _cameraInVideoMode: !_cameraInPhotoMode
     property bool _videoCaptureIdle: _camera.captureVideoState === MavlinkCameraControlInterface.CaptureVideoStateIdle
     property bool _photoCaptureIdle: _camera.capturePhotosState === MavlinkCameraControlInterface.CapturePhotosStateIdle
+    property bool _fightMode: _activeVehicle ? _activeVehicle.fightMode : false
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
 
@@ -165,6 +166,17 @@ Rectangle {
                     visible:            _cameraManager.cameras.length > 1
                 }
 
+                QGCLabel {
+                    objectName:             "photoVideoControl_fightMode"
+                    Layout.alignment:       Qt.AlignHCenter
+                    Layout.maximumWidth:    ScreenTools.defaultFontPixelWidth * 14
+                    horizontalAlignment:    Text.AlignHCenter
+                    wrapMode:               Text.WordWrap
+                    font.pointSize:         ScreenTools.smallFontPointSize
+                    text:                   qsTr("Fight mode: nothing is recorded.")
+                    visible:                _fightMode
+                }
+
                 // Start/Stop Video button
                 Rectangle {
                     id: videoCaptureButton
@@ -176,7 +188,7 @@ Rectangle {
                     border.width: 1
                     border.color: videoCaptureButtonPalette.buttonBorder
                     visible: (_camera.hasModes && _cameraInVideoMode) || (!_camera.hasModes && _camera.capturesVideo)
-                    enabled: _camera.captureVideoState !== MavlinkCameraControlInterface.CaptureVideoStateDisabled
+                    enabled: _camera.captureVideoState !== MavlinkCameraControlInterface.CaptureVideoStateDisabled && (!_fightMode || !_videoCaptureIdle)
 
                     QGCPalette { id: videoCaptureButtonPalette; colorGroupEnabled: videoCaptureButton.enabled }
 
@@ -253,7 +265,7 @@ Rectangle {
                     border.width: 1
                     border.color: photoCaptureButtonPalette.buttonBorder
                     visible: (_camera.hasModes && _cameraInPhotoMode) || (!_camera.hasModes && (_camera.hasVideoStream || _camera.capturesPhotos))
-                    enabled: _camera.capturePhotosState !== MavlinkCameraControlInterface.CapturePhotosStateDisabled
+                    enabled: _camera.capturePhotosState !== MavlinkCameraControlInterface.CapturePhotosStateDisabled && (!_fightMode || _camera.capturePhotosState === MavlinkCameraControlInterface.CapturePhotosStateCapturingMultiplePhotos)
 
                     QGCPalette { id: photoCaptureButtonPalette; colorGroupEnabled: photoCaptureButton.enabled }
 

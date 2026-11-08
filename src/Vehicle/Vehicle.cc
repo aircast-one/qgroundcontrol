@@ -599,6 +599,9 @@ void Vehicle::_mavlinkMessageReceived(LinkInterface* link, mavlink_message_t mes
     case MAVLINK_MSG_ID_HOME_POSITION:
         _handleHomePosition(message);
         break;
+    case MAVLINK_MSG_ID_NAMED_VALUE_INT:
+        _handleNamedValueInt(message);
+        break;
     case MAVLINK_MSG_ID_HEARTBEAT:
         _handleHeartbeat(message);
         break;
@@ -3108,8 +3111,29 @@ void Vehicle::sendJoystickAuxRcOverrideThreadSafe(const std::array<uint16_t, kAu
     _joystickAuxRcOverrideActive = true;
 }
 
+void Vehicle::_handleNamedValueInt(const mavlink_message_t& message)
+{
+    if (_fightMode || message.compid != MAV_COMP_ID_ONBOARD_COMPUTER) {
+        return;
+    }
+    mavlink_named_value_int_t value{};
+    mavlink_msg_named_value_int_decode(&message, &value);
+    const QString name =
+        QString::fromLatin1(value.name, static_cast<qsizetype>(strnlen(value.name, sizeof(value.name))));
+    if (name != QStringLiteral("FIGHT") || value.value == 0) {
+        return;
+    }
+    _fightMode = true;
+    emit fightModeChanged();
+    VideoManager::instance()->stopRecording();
+}
+
 void Vehicle::triggerSimpleCamera()
 {
+    if (_fightMode) {
+        QGC::showAppMessage(nothingRecorded());
+        return;
+    }
     sendMavCommand(_defaultComponentId,
                    MAV_CMD_DO_DIGICAM_CONTROL,
                    true,                        // show errors

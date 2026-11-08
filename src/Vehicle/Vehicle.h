@@ -220,6 +220,7 @@ public:
 
     // Vehicle state used for guided control
     Q_PROPERTY(bool     flying                  READ flying                                         NOTIFY flyingChanged)       ///< Vehicle is flying
+    Q_PROPERTY(bool     fightMode               READ fightMode                                      NOTIFY fightModeChanged)
     Q_PROPERTY(bool     landing                 READ landing                                        NOTIFY landingChanged)      ///< Vehicle is in landing pattern (DO_LAND_START)
     Q_PROPERTY(bool     guidedMode              READ guidedMode                 WRITE setGuidedMode NOTIFY guidedModeChanged)   ///< Vehicle is in Guided mode and can respond to guided commands
     Q_PROPERTY(QString  gotoFlightMode          READ gotoFlightMode                                 CONSTANT)                   ///< Flight mode vehicle is in while performing goto
@@ -506,6 +507,8 @@ public:
     uint            messagesSent                () const{ return _messagesSent; }
     uint            messagesLost                () const{ return _messagesLost; }
     bool            flying                      () const { return _flying; }
+    bool            fightMode                   () const { return _fightMode; }
+    static QString  nothingRecorded             () { return tr("Fight mode: nothing is recorded."); }
     bool            landing                     () const { return _landing; }
     bool            guidedMode                  () const;
     bool            inFwdFlight                 () const;
@@ -760,6 +763,7 @@ signals:
     void armedChanged                   (bool armed);
     void flightModeChanged              (const QString& flightMode);
     void flyingChanged                  (bool flying);
+    void fightModeChanged               ();
     void landingChanged                 (bool landing);
     void guidedModeChanged              (bool guidedMode);
     void inFwdFlightChanged             ();
@@ -886,6 +890,7 @@ private:
     // ArduPilot dialect messages
     void _handleCameraFeedback          (const mavlink_message_t& message);
     void _handleCameraImageCaptured     (const mavlink_message_t& message);
+    void _handleNamedValueInt           (const mavlink_message_t& message);
     void _handleCommandLong             (const mavlink_message_t& message);
     void _missionManagerError           (int errorCode, const QString& errorMsg);
     void _geoFenceManagerError          (int errorCode, const QString& errorMsg);
@@ -942,6 +947,7 @@ private:
     qreal           _initialGCSTemperature = 0.;
 
     bool            _flying = false;
+    bool            _fightMode = false;
     bool            _landing = false;
     bool            _vtolInFwdFlight = false;
     uint32_t        _onboardControlSensorsPresent = 0;

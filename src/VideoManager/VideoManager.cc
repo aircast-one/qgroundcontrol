@@ -383,8 +383,21 @@ void VideoManager::_cleanupOldVideos()
     }
 }
 
+static bool _fightModeRefuses()
+{
+    const Vehicle* vehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!vehicle || !vehicle->fightMode()) {
+        return false;
+    }
+    QGC::showAppMessage(Vehicle::nothingRecorded());
+    return true;
+}
+
 void VideoManager::startRecording(const QString &videoFile)
 {
+    if (_fightModeRefuses()) {
+        return;
+    }
     const VideoReceiver::FILE_FORMAT fileFormat = static_cast<VideoReceiver::FILE_FORMAT>(_videoSettings->recordingFormat()->rawValue().toInt());
     if (!VideoReceiver::isValidFileFormat(fileFormat)) {
         QGC::showAppMessage(tr("Invalid video format defined."));
@@ -424,6 +437,9 @@ void VideoManager::stopRecording()
 
 void VideoManager::grabImage(const QString &imageFile)
 {
+    if (_fightModeRefuses()) {
+        return;
+    }
     if (imageFile.isEmpty()) {
         _imageFile = SettingsManager::instance()->appSettings()->photoSavePath();
         _imageFile += QStringLiteral("/") + QDateTime::currentDateTime().toString("yyyy-MM-dd_hh.mm.ss.zzz") + QStringLiteral(".jpg");

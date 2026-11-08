@@ -442,6 +442,10 @@ bool VehicleCameraControl::takePhoto()
     if (_resetting) {
         return false;
     }
+    if (_vehicle->fightMode()) {
+        QGC::showAppMessage(Vehicle::nothingRecorded());
+        return false;
+    }
     if (capturePhotosState() == CapturePhotosStateDisabled) {
         qCWarning(VehicleCameraControlLog) << "Take photo denied - photo capture is disabled";
         return false;
@@ -513,6 +517,10 @@ bool VehicleCameraControl::stopTakePhoto()
 bool VehicleCameraControl::startVideoRecording()
 {
     if (_resetting) {
+        return false;
+    }
+    if (_vehicle->fightMode()) {
+        QGC::showAppMessage(Vehicle::nothingRecorded());
         return false;
     }
     if (captureVideoState() == CaptureVideoStateCapturing) {

@@ -262,3 +262,104 @@ void VehicleCameraControlTest::_testZoomTriggersCameraSettingsRequest()
 }
 
 UT_REGISTER_TEST(VehicleCameraControlTest, TestLabel::Integration, TestLabel::Vehicle)
+
+void VehicleCameraControlTest::_testFightModeRefusesEveryCapture()
+{
+    auto* mockConfig = new MockConfiguration(QStringLiteral("CameraFightModeTest"));
+    mockConfig->setFirmwareType(MAV_AUTOPILOT_PX4);
+    mockConfig->setVehicleType(MAV_TYPE_QUADROTOR);
+    mockConfig->setDynamic(true);
+    mockConfig->setEnableCamera(true);
+    mockConfig->setCameraCaptureImage(true);
+    mockConfig->setCameraCaptureVideo(true);
+
+    QSignalSpy spyVehicle(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged);
+    QVERIFY(spyVehicle.isValid());
+
+    SharedLinkConfigurationPtr linkConfig = LinkManager::instance()->addConfiguration(mockConfig);
+    QVERIFY(LinkManager::instance()->createConnectedLink(linkConfig));
+    QVERIFY2(UnitTest::waitForSignal(spyVehicle, TestTimeout::longMs(), QStringLiteral("activeVehicleChanged")),
+             "Timeout waiting for vehicle connection");
+
+    _vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(_vehicle);
+    _mockLink = qobject_cast<MockLink*>(linkConfig->link());
+    QVERIFY(_mockLink);
+
+    if (!_vehicle->isInitialConnectComplete()) {
+        QSignalSpy spyConnect(_vehicle, &Vehicle::initialConnectComplete);
+        QVERIFY(spyConnect.isValid());
+        QVERIFY2(UnitTest::waitForSignal(spyConnect, TestTimeout::longMs(), QStringLiteral("initialConnectComplete")),
+                 "Timeout waiting for initial connect");
+    }
+
+    QGCCameraManager* cameraManager = _vehicle->cameraManager();
+    QVERIFY(cameraManager);
+    QVERIFY_TRUE_WAIT(cameraManager->cameras()->count() >= 2, TestTimeout::longMs());
+
+    MavlinkCameraControlInterface* camera = nullptr;
+    for (int i = 0; i < cameraManager->cameras()->count(); i++) {
+        auto* cam = qobject_cast<MavlinkCameraControlInterface*>(cameraManager->cameras()->get(i));
+        if (cam && cam->compID() == MAV_COMP_ID_CAMERA) {
+            camera = cam;
+            break;
+        }
+    }
+    QVERIFY2(camera, "Camera 1 (MAV_COMP_ID_CAMERA) not found in camera list");
+
+    const auto sendNamedValue = [this](uint8_t compId, const char* name, int32_t number) {
+        mavlink_named_value_int_t value{};
+        strncpy(value.name, name, sizeof(value.name));
+        value.value = number;
+        mavlink_message_t message{};
+        (void) mavlink_msg_named_value_int_encode(static_cast<uint8_t>(_mockLink->vehicleId()), compId, &message,
+                                                  &value);
+        _mockLink->respondWithMavlinkMessage(message);
+    };
+
+    QSignalSpy spyHome(_vehicle, &Vehicle::homePositionChanged);
+    QVERIFY(spyHome.isValid());
+    sendNamedValue(MAV_COMP_ID_AUTOPILOT1, "FIGHT", 1);
+    sendNamedValue(MAV_COMP_ID_ONBOARD_COMPUTER, "OTHER", 1);
+    sendNamedValue(MAV_COMP_ID_ONBOARD_COMPUTER, "FIGHT", 0);
+    mavlink_home_position_t home{};
+    home.latitude = 471234567;
+    home.longitude = 85432100;
+    home.altitude = 10000;
+    home.q[0] = 1.0f;
+    mavlink_message_t homeMessage{};
+    (void) mavlink_msg_home_position_encode(static_cast<uint8_t>(_mockLink->vehicleId()), MAV_COMP_ID_AUTOPILOT1,
+                                            &homeMessage, &home);
+    _mockLink->respondWithMavlinkMessage(homeMessage);
+    QVERIFY2(UnitTest::waitForSignal(spyHome, TestTimeout::longMs(), QStringLiteral("homePositionChanged")),
+             "Timeout waiting for the home position sent after the other values");
+    QVERIFY2(!_vehicle->fightMode(), "only aircastd's FIGHT=1 from the onboard computer turns fight mode on");
+
+    sendNamedValue(MAV_COMP_ID_ONBOARD_COMPUTER, "FIGHT", 1);
+    QVERIFY_TRUE_WAIT(_vehicle->fightMode(), TestTimeout::longMs());
+
+    _mockLink->clearReceivedMavCommandCounts();
+    const QRegularExpression refused(QStringLiteral("Fight mode: nothing is recorded"));
+    expectAppMessage(refused);
+    QVERIFY(!camera->takePhoto());
+    verifyExpectedLogMessage();
+    expectAppMessage(refused);
+    QVERIFY(!camera->startVideoRecording());
+    verifyExpectedLogMessage();
+    expectAppMessage(refused);
+    QVERIFY(!camera->toggleVideoRecording());
+    verifyExpectedLogMessage();
+    expectAppMessage(refused);
+    _vehicle->triggerSimpleCamera();
+    verifyExpectedLogMessage();
+    expectLogMessage("Camera.VehicleCameraControl", QtWarningMsg, QRegularExpression(QStringLiteral("already idle")));
+    QVERIFY2(camera->stopVideoRecording(), "stopping a recording is never refused");
+    verifyExpectedLogMessage();
+
+    _vehicle->sendMavCommand(_vehicle->defaultComponentId(), MAV_CMD_REQUEST_MESSAGE, false,
+                             MAVLINK_MSG_ID_HOME_POSITION);
+    QTRY_VERIFY_WITH_TIMEOUT(_mockLink->receivedMavCommandCount(MAV_CMD_REQUEST_MESSAGE) > 0, TestTimeout::longMs());
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_IMAGE_START_CAPTURE), 0);
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_VIDEO_START_CAPTURE), 0);
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_DIGICAM_CONTROL), 0);
+}
