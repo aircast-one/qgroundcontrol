@@ -39,6 +39,7 @@ local mixesInfo = {}
 local channelValues = {}
 local movedAt = {}
 local cableSince = nil
+local builtStep = ""
 local lastValues = {}
 local used = {}
 local useLvglUI = false
@@ -439,15 +440,18 @@ local function buildLvglUI()
 
   local pageH = LCD_H - LVGL_HEADER_H
   local hintY = pageH - LVGL_LINE_H
+  builtStep = nextStep()
+  local statusH = LVGL_STATUS_H + (builtStep ~= "" and LVGL_LINE_H or 0)
+  local rowsTop = LVGL_ROWS_TOP + statusH - LVGL_STATUS_H
   local missing = missingControls()
   local rows = math.max(1, math.ceil((#used + #missing) / 2))
-  local rowH = math.min(LVGL_ROW_H, math.floor((hintY - LVGL_ROWS_TOP - LVGL_PANEL_PAD) / rows))
+  local rowH = math.min(LVGL_ROW_H, math.floor((hintY - rowsTop - LVGL_PANEL_PAD) / rows))
   local rowFont = rowH >= LVGL_TEXT_ROW_H and 0 or SMLSIZE
   local panelW = math.floor(LCD_W / 2) - 6
   local panelH = rows * rowH + LVGL_PANEL_PAD
 
   pg:rectangle({ x = 0, y = 0, w = LCD_W, h = pageH, filled = true, color = color.background })
-  pg:rectangle({ x = 4, y = 2, w = LCD_W - 8, h = LVGL_STATUS_H - 4, filled = true, rounded = 6, color = color.panel })
+  pg:rectangle({ x = 4, y = 2, w = LCD_W - 8, h = statusH - 4, filled = true, rounded = 6, color = color.panel })
   pg:rectangle({ x = 12, y = 12, w = 10, h = 10, filled = true, rounded = 5, color = color.good,
     pos = function() local _, ok = status(); return ok and 12 or -20, 12 end,
   })
@@ -460,16 +464,18 @@ local function buildLvglUI()
   pg:label({ x = LCD_W - 76, y = 4, font = MIDSIZE, color = color.foreground,
     text = function() return string.format("%.1fV", battVolt) end,
   })
-  pg:label({ x = 30, y = 26, font = SMLSIZE, color = color.warning, text = nextStep })
-  pg:rectangle({ x = 4, y = LVGL_ROWS_TOP - LVGL_PANEL_PAD, w = panelW, h = panelH + LVGL_PANEL_PAD, filled = true, rounded = 6, color = color.panel })
-  pg:rectangle({ x = LCD_W - 4 - panelW, y = LVGL_ROWS_TOP - LVGL_PANEL_PAD, w = panelW, h = panelH + LVGL_PANEL_PAD, filled = true, rounded = 6, color = color.panel })
+  if builtStep ~= "" then
+    pg:label({ x = 30, y = LVGL_STATUS_H - 10, font = SMLSIZE, color = color.warning, text = nextStep })
+  end
+  pg:rectangle({ x = 4, y = rowsTop - LVGL_PANEL_PAD, w = panelW, h = panelH + LVGL_PANEL_PAD, filled = true, rounded = 6, color = color.panel })
+  pg:rectangle({ x = LCD_W - 4 - panelW, y = rowsTop - LVGL_PANEL_PAD, w = panelW, h = panelH + LVGL_PANEL_PAD, filled = true, rounded = 6, color = color.panel })
 
   local order = shownOrder()
   for slot = 1, #order do
     local i = order[slot]
     local column, row = place(slot, rows)
     local colBase = column == 1 and 4 + LVGL_PANEL_PAD or LCD_W - panelW - 4 + LVGL_PANEL_PAD
-    local yOfs = LVGL_ROWS_TOP + (row - 1) * rowH
+    local yOfs = rowsTop + (row - 1) * rowH
     local barY = yOfs + math.floor((rowH - LVGL_BAR_H) / 2)
     local centre = colBase + LVGL_BAR_X + math.floor(LVGL_BAR_W / 2)
 
@@ -514,7 +520,7 @@ local function buildLvglUI()
   for at, gap in ipairs(missing) do
     local column, row = place(#order + at, rows)
     local colBase = column == 1 and 4 + LVGL_PANEL_PAD or LCD_W - panelW - 4 + LVGL_PANEL_PAD
-    local yOfs = LVGL_ROWS_TOP + (row - 1) * rowH
+    local yOfs = rowsTop + (row - 1) * rowH
     pg:label({ x = colBase + LVGL_NAME_X, y = yOfs, font = rowFont, color = color.muted, text = gap[1] })
     pg:label({ x = colBase + LVGL_META_X, y = yOfs + (rowFont == 0 and 3 or 0), font = SMLSIZE, color = color.warning, text = "no control on CH" .. gap[2] })
   end
@@ -543,6 +549,7 @@ local function run(event)
   if exitKey(event) then askToLeave() end
   if leaving then return 1 end
   battVolt = getValue("tx-voltage")
+  if useLvglUI and nextStep() ~= builtStep then relayout = true end
   if relayout then
     relayout = false
     lvgl.clear()
