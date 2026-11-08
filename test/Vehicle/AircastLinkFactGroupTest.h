@@ -10,4 +10,8 @@ private slots:
     void _cellularStatusFillsTheFacts();
     void _unknownQualityIsAGapInTheHistory();
     void _historyKeepsAnHourAtFiveSeconds();
+    void _uplinkSwitchesAreChangesNewestFirst();
+    void _uplinkSwitchesKeepTheLastTwenty();
+    void _uplinkAloneShowsTheLink();
+    void _linkTextNamesTheUplink();
 };

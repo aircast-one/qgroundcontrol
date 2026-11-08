@@ -39,7 +39,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
 
             QGCLabel {
-                text:           _qualityKnown ? _quality + "%" : "--"
+                text:           _link.linkText
                 font.pointSize: ScreenTools.smallFontPointSize
             }
 
@@ -62,7 +62,13 @@ Item {
             showExpand: false
 
             contentComponent: SettingsGroupLayout {
-                heading: qsTr("Cellular link")
+                heading: qsTr("Aircraft link")
+
+                LabelledLabel {
+                    label:      qsTr("Uplink:")
+                    labelText:  _link.uplink.enumStringValue
+                    visible:    _link.uplinkKnown
+                }
 
                 LabelledLabel {
                     label:      qsTr("Signal:")
@@ -102,6 +108,24 @@ Item {
                 Sparkline {
                     values:     _link.bitrateHistory
                     maximum:    0
+                }
+
+                ColumnLayout {
+                    spacing: 0
+                    visible: _link.uplinkSwitches.length > 0
+
+                    QGCLabel {
+                        text:           qsTr("Switches")
+                        font.pointSize: ScreenTools.smallFontPointSize
+                    }
+
+                    Repeater {
+                        model: _link.uplinkSwitches
+
+                        QGCLabel {
+                            text: modelData.clock + "  " + modelData.from + " → " + modelData.to
+                        }
+                    }
                 }
             }
         }
