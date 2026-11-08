@@ -26,6 +26,8 @@ export type PublishSignIn = {
   readonly verdict: DeviceBadge;
 };
 
+export type DiagnosticsOffer = { readonly title: string; readonly text: string; readonly endpoint: string; readonly accept: string; readonly dismiss: string };
+
 export type DiagnosticsSettings = {
   readonly status: DeviceBadge;
   readonly hint: string;
@@ -36,7 +38,11 @@ export type DiagnosticsSettings = {
   readonly canStream: boolean;
   readonly state: string;
   readonly confirm: string;
+  readonly offer: DiagnosticsOffer | null;
 };
+
+export const parseOffer = (json: unknown): DiagnosticsOffer | null =>
+  isJson(json) ? { title: optText(json, 'title'), text: optText(json, 'text'), endpoint: optText(json, 'endpoint'), accept: optText(json, 'accept'), dismiss: optText(json, 'dismiss') } : null;
 
 export type EngineeringView = { readonly backend: BackendChoice; readonly publish: PublishSignIn; readonly diagnostics: DiagnosticsSettings };
 
@@ -92,6 +98,7 @@ export const parseEngineering = (json: unknown): EngineeringView | null => {
       canStream: optBoolean(diagnostics, 'canStream'),
       state: optText(diagnostics, 'state'),
       confirm: optText(diagnostics, 'confirm'),
+      offer: parseOffer(optJSONObject(diagnostics, 'offer')),
     },
   };
 };

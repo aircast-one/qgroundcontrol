@@ -28,6 +28,8 @@ internal data class PublishSignIn(
     val verdict: DeviceBadge,
 )
 
+internal data class DiagnosticsOffer(val title: String, val text: String, val endpoint: String, val accept: String, val dismiss: String)
+
 internal data class DiagnosticsSettings(
     val status: DeviceBadge,
     val hint: String,
@@ -38,7 +40,11 @@ internal data class DiagnosticsSettings(
     val canStream: Boolean,
     val state: String,
     val confirm: String,
+    val offer: DiagnosticsOffer?,
 )
+
+internal fun parseOffer(json: JSONObject?): DiagnosticsOffer? =
+    json?.let { DiagnosticsOffer(it.optText("title"), it.optText("text"), it.optText("endpoint"), it.optText("accept"), it.optText("dismiss")) }
 
 internal data class EngineeringView(val backend: BackendChoice, val publish: PublishSignIn, val diagnostics: DiagnosticsSettings)
 
@@ -64,6 +70,7 @@ private fun parseDiagnostics(json: JSONObject?): DiagnosticsSettings = Diagnosti
     canStream = json?.optBoolean("canStream") == true,
     state = json?.optText("state").orEmpty(),
     confirm = json?.optText("confirm").orEmpty(),
+    offer = parseOffer(json?.optJSONObject("offer")),
 )
 
 internal fun parseEngineering(json: JSONObject): EngineeringView? =

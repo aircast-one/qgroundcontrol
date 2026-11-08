@@ -159,11 +159,37 @@ private struct SignInEditor: View {
     }
 }
 
+private struct DiagnosticsOfferCard: View {
+    let offer: DiagnosticsOffer
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(offer.title).font(.subheadline.weight(.semibold))
+            Text(offer.text).font(.body)
+            DeviceButtonRow {
+                ActionButton(label: offer.accept, request: DeviceRequest(method: .POST, path: "/api/diagnostics/offer", body: deviceBody(["accept": "true", "endpoint": offer.endpoint])), success: "Streaming logs to Aircast.")
+                ActionButton(label: offer.dismiss, request: DeviceRequest(method: .POST, path: "/api/diagnostics/offer", body: deviceBody(["accept": "false"])), success: "Not sharing logs.", tonal: false)
+            }
+        }
+        .foregroundStyle(theme.colors.onPrimaryContainer)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.colors.primaryContainer, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, DEVICE_LIST_PADDING)
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(offer.title)
+    }
+}
+
 private struct DiagnosticsSection: View {
     let diagnostics: DiagnosticsSettings
 
     var body: some View {
         DeviceSection(title: "Remote diagnostics", badge: diagnostics.status) {
+            if let offer = diagnostics.offer { DiagnosticsOfferCard(offer: offer) }
             DeviceText(text: diagnostics.hint)
             DiagnosticsForm(diagnostics: diagnostics).id("\(diagnostics.endpoint)|\(diagnostics.token)")
             DeviceSwitchRow(

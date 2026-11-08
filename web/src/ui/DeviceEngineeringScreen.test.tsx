@@ -28,7 +28,7 @@ const served = (clientId: string, issuer = 'https://auth.example.com') => ({
     environment: issuer,
     verdict: { level: 3, text: 'Not tested yet.' },
   },
-  diagnostics: { status: { level: 3, text: 'off' }, hint: '', endpoint: '', token: '', tokenLabel: 'Bearer token', streaming: false, canStream: false, state: '', confirm: '' },
+  diagnostics: { status: { level: 3, text: 'off' }, hint: '', endpoint: '', token: '', tokenLabel: 'Bearer token', streaming: false, canStream: false, state: '', confirm: '', offer: null },
 });
 
 const screenFor = (view: unknown) => {

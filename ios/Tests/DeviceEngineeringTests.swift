@@ -24,7 +24,7 @@ final class DeviceEngineeringTests: XCTestCase {
             "environment": "https://api.dev.aircast.one",
             "verdict": {"level": 3, "text": "Not tested yet — press Test sign-in."}
           },
-          "diagnostics": {"status": {"level": 3, "text": "off"}, "hint": "Stream logs.", "endpoint": "otel.aircast.one:443", "token": "", "tokenLabel": "Bearer token", "streaming": false, "canStream": false, "state": "Save the endpoint first.", "confirm": "Stream?"}
+          "diagnostics": {"status": {"level": 3, "text": "off"}, "hint": "Stream logs.", "endpoint": "otel.aircast.one:443", "token": "", "tokenLabel": "Bearer token", "streaming": false, "canStream": false, "state": "Save the endpoint first.", "confirm": "Stream?", "offer": {"title": "Help us debug this beta", "text": "Logs go to otel.aircast.one:443", "endpoint": "otel.aircast.one:443", "accept": "Share logs", "dismiss": "Not now"}}
         }
         """
     }
@@ -40,6 +40,9 @@ final class DeviceEngineeringTests: XCTestCase {
         XCTAssertTrue(publish.awaitingCloud)
         XCTAssertEqual(publish.fields.first { $0.name == "clientSecret" }?.secret, true)
         XCTAssertFalse(view?.diagnostics.canStream ?? true)
+        XCTAssertEqual(view?.diagnostics.offer?.accept, "Share logs")
+        XCTAssertEqual(view?.diagnostics.offer?.endpoint, "otel.aircast.one:443")
+        XCTAssertNil(parseOffer(nil))
         XCTAssertNil(parseEngineering(JSON.parse(#"{"publish":{}}"#)))
     }
 

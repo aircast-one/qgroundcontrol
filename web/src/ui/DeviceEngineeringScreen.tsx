@@ -4,7 +4,7 @@ import { md } from '@/theme/Colors';
 import { useDeviceDraft } from '@/ui/DeviceDraft';
 import { ActionButton, ConfirmDialog, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceSwitchRow, DeviceText, DeviceWaiting, LinkButton, RefusalText, SecretField, useDeviceAction } from '@/ui/DeviceKit';
 import { ButtonRow, StatusLine } from '@/ui/DeviceKitSettings';
-import { type DiagnosticsSettings, type EngineeringView, type PublishSignIn, modeNamed, parseEngineering, shownFields, signInBody, signInValues } from '@/ui/DeviceEngineering';
+import { type DiagnosticsOffer, type DiagnosticsSettings, type EngineeringView, type PublishSignIn, modeNamed, parseEngineering, shownFields, signInBody, signInValues } from '@/ui/DeviceEngineering';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
@@ -169,8 +169,20 @@ const SignInEditor = ({ publish }: { publish: PublishSignIn }) => {
   );
 };
 
+const DiagnosticsOfferCard = ({ offer }: { offer: DiagnosticsOffer }) => (
+  <div role="group" aria-label={offer.title} className="mx-list my-2 flex flex-col gap-2 rounded-shape-md bg-primary-container px-4 py-3 text-on-primary-container">
+    <Text typography="titleSmall">{offer.title}</Text>
+    <Text typography="bodyMedium">{offer.text}</Text>
+    <div className="flex flex-wrap items-center gap-2">
+      <ActionButton label={offer.accept} request={{ method: 'POST', path: '/api/diagnostics/offer', body: { accept: 'true', endpoint: offer.endpoint } }} success="Streaming logs to Aircast." />
+      <ActionButton label={offer.dismiss} request={{ method: 'POST', path: '/api/diagnostics/offer', body: { accept: 'false' } }} success="Not sharing logs." tonal={false} />
+    </div>
+  </div>
+);
+
 const DiagnosticsSection = ({ diagnostics }: { diagnostics: DiagnosticsSettings }) => (
   <DeviceSection title="Remote diagnostics" badge={diagnostics.status}>
+    {diagnostics.offer ? <DiagnosticsOfferCard offer={diagnostics.offer} /> : null}
     <DeviceText text={diagnostics.hint} />
     <DiagnosticsForm diagnostics={diagnostics} />
     <DeviceSwitchRow

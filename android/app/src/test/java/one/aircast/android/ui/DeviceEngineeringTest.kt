@@ -29,7 +29,7 @@ class DeviceEngineeringTest {
             "environment": "https://api.dev.aircast.one",
             "verdict": {"level": 3, "text": "Not tested yet — press Test sign-in."}
           },
-          "diagnostics": {"status": {"level": 3, "text": "off"}, "hint": "Stream logs.", "endpoint": "otel.aircast.one:443", "token": "", "tokenLabel": "Bearer token", "streaming": false, "canStream": false, "state": "Save the endpoint first.", "confirm": "Stream?"}
+          "diagnostics": {"status": {"level": 3, "text": "off"}, "hint": "Stream logs.", "endpoint": "otel.aircast.one:443", "token": "", "tokenLabel": "Bearer token", "streaming": false, "canStream": false, "state": "Save the endpoint first.", "confirm": "Stream?", "offer": {"title": "Help us debug this beta", "text": "Logs go to otel.aircast.one:443", "endpoint": "otel.aircast.one:443", "accept": "Share logs", "dismiss": "Not now"}}
         }
         """
 
@@ -43,6 +43,9 @@ class DeviceEngineeringTest {
         assertTrue(publish.awaitingCloud)
         assertEquals(true, publish.fields.firstOrNull { it.name == "clientSecret" }?.secret)
         assertFalse(view?.diagnostics?.canStream ?: true)
+        assertEquals("Share logs", view?.diagnostics?.offer?.accept)
+        assertEquals("otel.aircast.one:443", view?.diagnostics?.offer?.endpoint)
+        assertNull(parseOffer(JSONObject("""{"status": {}}""").optJSONObject("offer")))
         assertNull(parseEngineering(JSONObject("""{"publish":{}}""")))
     }
 

@@ -38,6 +38,19 @@ struct PublishSignIn: Equatable {
     var verdict: DeviceBadge
 }
 
+struct DiagnosticsOffer: Equatable {
+    let title: String
+    let text: String
+    let endpoint: String
+    let accept: String
+    let dismiss: String
+}
+
+func parseOffer(_ json: JSON?) -> DiagnosticsOffer? {
+    guard let json, json.objectOrNil != nil else { return nil }
+    return DiagnosticsOffer(title: json["title"].string ?? "", text: json["text"].string ?? "", endpoint: json["endpoint"].string ?? "", accept: json["accept"].string ?? "", dismiss: json["dismiss"].string ?? "")
+}
+
 struct DiagnosticsSettings: Equatable {
     let status: DeviceBadge
     let hint: String
@@ -48,6 +61,7 @@ struct DiagnosticsSettings: Equatable {
     let canStream: Bool
     let state: String
     let confirm: String
+    let offer: DiagnosticsOffer?
 }
 
 struct EngineeringView: Equatable {
@@ -91,7 +105,8 @@ private func parseDiagnostics(_ json: JSON?) -> DiagnosticsSettings {
         streaming: json?["streaming"].bool ?? false,
         canStream: json?["canStream"].bool ?? false,
         state: json?["state"].string ?? "",
-        confirm: json?["confirm"].string ?? ""
+        confirm: json?["confirm"].string ?? "",
+        offer: parseOffer(json?["offer"])
     )
 }
 

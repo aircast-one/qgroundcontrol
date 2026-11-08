@@ -2,6 +2,9 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -161,9 +164,26 @@ private fun SignInEditor(publish: PublishSignIn) {
     if (asking) ConfirmDialog(ActionConfirm("Clear the sign-in?", confirm, "Clear"), { save() }) { asking = false }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DiagnosticsOfferCard(offer: DiagnosticsOffer) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp).semantics { contentDescription = offer.title },
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(offer.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Text(offer.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ActionButton(offer.accept, DeviceRequest(DeviceMethod.POST, "/api/diagnostics/offer", JSONObject(mapOf("accept" to "true", "endpoint" to offer.endpoint))), success = "Streaming logs to Aircast.")
+            ActionButton(offer.dismiss, DeviceRequest(DeviceMethod.POST, "/api/diagnostics/offer", JSONObject(mapOf("accept" to "false"))), success = "Not sharing logs.", tonal = false)
+        }
+    }
+}
+
 @Composable
 private fun DiagnosticsSection(diagnostics: DiagnosticsSettings) {
     DeviceSection("Remote diagnostics", diagnostics.status) {
+        diagnostics.offer?.let { DiagnosticsOfferCard(it) }
         DeviceText(diagnostics.hint)
         key("${diagnostics.endpoint}|${diagnostics.token}") { DiagnosticsForm(diagnostics) }
         DeviceSwitchRow(
