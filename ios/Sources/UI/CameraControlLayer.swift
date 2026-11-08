@@ -337,7 +337,8 @@ private struct StreamShutter: View {
     @State private var elapsed: Int?
 
     var body: some View {
-        let recordable = !(videoJson?.has("deviceCamera") ?? false)
+        let refusal = videoJson?["recordRefusal"].stringOrNil ?? ""
+        let recordable = !(videoJson?.has("deviceCamera") ?? false) && refusal.isEmpty
         ZStack {
             if videoReading(videoJson)?.decoding == true {
                 VStack(spacing: 0) {
@@ -346,7 +347,7 @@ private struct StreamShutter: View {
                         offMainInOrder { VideoCommands.setRecording(next) }
                     }
                     if !recordable {
-                        Text(STREAM_NOT_RECORDABLE).font(.labelSmall).osdShadow()
+                        Text(refusal.isEmpty ? STREAM_NOT_RECORDABLE : refusal).font(.labelSmall).osdShadow()
                     }
                 }
             }

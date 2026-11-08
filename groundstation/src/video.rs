@@ -22,7 +22,14 @@ pub const VIDEO_DEPS: &[&str] = &[
     "video.cameraUrls",
     "settings.videoSettings.cameras",
     "settings.videoSettings.streamEnabled",
+    FIGHT_MODE,
 ];
+
+const FIGHT_MODE: &str = "vehicle.fightMode";
+
+fn fight_mode(backend: &dyn Backend) -> bool {
+    flag(&backend.value_fields("vehicle", "fightMode"), "fightMode")
+}
 
 pub fn no_video_text(source: &str, url: &str) -> String {
     match () {
@@ -87,6 +94,7 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCamera",
     "vehicle.cameraTriggerPoints.count",
     crate::devicetrack::TRACK_CHANGED,
+    FIGHT_MODE,
 ];
 
 const UNDEFINED_MODE: i64 = -1;
@@ -258,6 +266,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "whepRestarts": crate::videohost::whep_restarts(),
         "deviceCamera": crate::videohost::device_camera(),
         "nativeRecording": crate::videohost::native_recording(),
+        "recordRefusal": fight_mode(backend).then_some(crate::hub::NOTHING_RECORDED),
     })
 }
 
@@ -357,7 +366,7 @@ fn photo_count_text(shots: i64) -> String {
     format!("{:05}", shots.rem_euclid(100_000))
 }
 
-fn photo_video_panel(camera: &Value, present: bool, shots: i64) -> Value {
+fn photo_video_panel(camera: &Value, present: bool, shots: i64, fight: bool) -> Value {
     let raw_video = integer(camera, "captureVideoState").unwrap_or(CAPTURE_DISABLED);
     let raw_photo = integer(camera, "capturePhotosState").unwrap_or(CAPTURE_DISABLED);
     let in_photo = matches!(
@@ -385,19 +394,22 @@ fn photo_video_panel(camera: &Value, present: bool, shots: i64) -> Value {
         "selectPhotoEnabled": in_photo || raw_video == CAPTURE_IDLE,
         "bothShown": video_shown && photo_shown,
         "video": video_shown.then(|| json!({
-            "enabled": raw_video != CAPTURE_DISABLED,
+            "enabled": raw_video != CAPTURE_DISABLED && (!fight || raw_video == CAPTURE_VIDEO),
             "capturing": raw_video == CAPTURE_VIDEO,
             "idle": raw_video == CAPTURE_IDLE,
             "clock": if raw_video == CAPTURE_IDLE { IDLE_CLOCK.to_string() } else { text(camera, "recordTimeStr") },
         })),
         "photo": photo_shown.then(|| json!({
-            "enabled": raw_photo != CAPTURE_DISABLED,
+            "enabled": raw_photo != CAPTURE_DISABLED && (!fight || raw_photo == CAPTURE_MULTIPLE_PHOTOS),
             "capturing": matches!(raw_photo, CAPTURE_SINGLE_PHOTO | CAPTURE_MULTIPLE_PHOTOS),
             "idle": raw_photo == CAPTURE_IDLE,
-            "press": match raw_photo { CAPTURE_MULTIPLE_PHOTOS => Some("stop"), CAPTURE_IDLE => Some("take"), _ => None },
+            "press": match raw_photo { CAPTURE_MULTIPLE_PHOTOS => Some("stop"), CAPTURE_IDLE if !fight => Some("take"), _ => None },
             "count": photo_count_text(shots),
         })),
-        "freeText": (integer(camera, "storageStatus") == Some(STORAGE_READY)).then(|| format!("Free: {}", text(camera, "storageFreeStr"))),
+        "freeText": match fight {
+            true => Some(crate::hub::NOTHING_RECORDED.to_string()),
+            false => (integer(camera, "storageStatus") == Some(STORAGE_READY)).then(|| format!("Free: {}", text(camera, "storageFreeStr"))),
+        },
         "batteryText": (battery >= 0).then(|| format!("Battery: {battery} %")),
     })
 }
@@ -479,6 +491,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         photo_status,
         PHOTO_CAPTURE_IN_PROGRESS | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS
     );
+    let fight = fight_mode(backend);
     json!({
         "kind": "object",
         "class": "CameraControl",
@@ -531,8 +544,9 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         }))),
         "hasZoom": flag(&camera, "hasZoom"),
         "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(0.0),
-        "canRecord": present && integer(&camera, "captureVideoState").is_some_and(|state| state != CAPTURE_DISABLED),
-        "canPhoto": present && captures_photos && photo_status == PHOTO_CAPTURE_IDLE,
+        "canRecord": present && integer(&camera, "captureVideoState").is_some_and(|state| state != CAPTURE_DISABLED) && (!fight || is_recording),
+        "canPhoto": present && captures_photos && photo_status == PHOTO_CAPTURE_IDLE && !fight,
+        "fightMode": fight,
         "photoMode": match timelapse { true => "timelapse", false => "single" },
         "lapseSeconds": timelapse.then(|| camera.get("photoLapse").and_then(Value::as_f64)).flatten(),
         "lapseCount": timelapse.then(|| integer(&camera, "photoLapseCount")).flatten(),
@@ -540,7 +554,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canStopPhoto": present && matches!(photo_status, PHOTO_CAPTURE_INTERVAL_IDLE | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS),
         "capturesPhotos": present && captures_photos,
         "hasVideoStream": present && flag(&camera, "hasVideoStream"),
-        "panel": photo_video_panel(&camera, present, shots),
+        "panel": photo_video_panel(&camera, present, shots, fight),
         "hasModes": has_modes,
         "canChangeMode": present && has_modes && match mode {
             PHOTO_MODE | SURVEY_MODE => integer(&camera, "capturePhotosState") == Some(CAPTURE_IDLE),
@@ -553,6 +567,58 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_fight_mode_the_camera_offers_no_capture_but_still_stops_one() {
+        let idle = json!({ "kind": "object", "modelName": "ZR30", "capturesVideo": true, "capturesPhotos": true, "hasModes": false, "captureVideoState": 1, "capturePhotosState": 1, "storageStatus": 2, "storageFreeStr": "12 GB" });
+        let calm = camera_view(&Fake::new(json!({ "kind": "object" }), idle.clone()), &[]);
+        assert_eq!(
+            (calm["canRecord"].as_bool(), calm["canPhoto"].as_bool()),
+            (Some(true), Some(true))
+        );
+        let fight = camera_view(
+            &Fake::new(json!({ "kind": "object" }), idle.clone()).fighting(),
+            &[],
+        );
+        assert_eq!(
+            (fight["canRecord"].as_bool(), fight["canPhoto"].as_bool()),
+            (Some(false), Some(false))
+        );
+        assert_eq!(fight["panel"]["video"]["enabled"].as_bool(), Some(false));
+        assert_eq!(fight["panel"]["photo"]["enabled"].as_bool(), Some(false));
+        assert_eq!(fight["panel"]["photo"]["press"], Value::Null);
+        assert_eq!(
+            fight["panel"]["freeText"].as_str(),
+            Some(crate::hub::NOTHING_RECORDED)
+        );
+        let mut recording = idle;
+        recording["captureVideoState"] = json!(2);
+        let stopping = camera_view(
+            &Fake::new(json!({ "kind": "object" }), recording).fighting(),
+            &[],
+        );
+        assert_eq!(
+            stopping["canRecord"].as_bool(),
+            Some(true),
+            "a recording left running can still be stopped"
+        );
+        assert_eq!(stopping["panel"]["video"]["enabled"].as_bool(), Some(true));
+        assert_eq!(
+            video_view(
+                &Fake::new(json!({ "kind": "object" }), json!({ "kind": "object" })).fighting(),
+                &[]
+            )["recordRefusal"]
+                .as_str(),
+            Some(crate::hub::NOTHING_RECORDED)
+        );
+        assert_eq!(
+            video_view(
+                &Fake::new(json!({ "kind": "object" }), json!({ "kind": "object" })),
+                &[]
+            )["recordRefusal"],
+            Value::Null
+        );
+    }
 
     #[test]
     fn the_synthetic_view_standing_in_for_a_camera_says_which_camera_has_no_video() {
@@ -601,11 +667,23 @@ mod tests {
     struct Fake {
         video: Value,
         camera: Value,
+        fight: bool,
     }
 
     impl Fake {
         fn new(video: Value, camera: Value) -> Fake {
-            Fake { video, camera }
+            Fake {
+                video,
+                camera,
+                fight: false,
+            }
+        }
+
+        fn fighting(self) -> Fake {
+            Fake {
+                fight: true,
+                ..self
+            }
         }
     }
 
@@ -628,6 +706,7 @@ mod tests {
                     json!({ "kind": "object", "cameraLabels": ["Sony ILCE-7", "Thermal"] })
                         .to_string()
                 }
+                "vehicle" => json!({ "kind": "object", "fightMode": self.fight }).to_string(),
                 _ => json!({ "kind": "object", "count": 42 }).to_string(),
             }
         }

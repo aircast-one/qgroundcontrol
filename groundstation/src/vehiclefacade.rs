@@ -969,6 +969,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "id": v.id,
         "armed": v.armed(),
         "flying": v.flying,
+        "fightMode": v.fight,
         "mavlinkSentCount": v.link_status.sent,
         "mavlinkReceivedCount": v.link_status.received,
         "mavlinkLossCount": v.link_status.lost,

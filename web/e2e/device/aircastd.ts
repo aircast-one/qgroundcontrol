@@ -8,7 +8,7 @@ import type { Duplex } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { tickFrames } from '../tlog.ts';
+import { fightFrame, tickFrames } from '../tlog.ts';
 
 export const DEVICE_PORT = 18780;
 export const SBS1_PORT = 30003;
@@ -19,6 +19,7 @@ export const DEVICE_TLS_PORT = 18785;
 export const UPGRADING_PORT = 18786;
 export const OFFLINE_PORT = 18787;
 export const SILENT_PORT = 18788;
+export const FIGHT_PORT = 18789;
 const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
 const VITE = Number(process.env.E2E_PORT ?? 8800);
 const HOME = { lat: 47.3977, lon: 8.5456 };
@@ -231,6 +232,7 @@ const upgrading = createServer(device({ origin: SECURE_ORIGIN }, false));
 const https = createSecureServer(certificate(), device({ origin: SECURE_ORIGIN }, true));
 const offline = createServer(device({ origin: 'https://10.255.255.1' }, false));
 const silent = createServer(device({ origin: '' }, false));
+const fight = createServer(device({ origin: '' }, false));
 
 const pipeTcp = (socket: WebSocket, address: string) => {
   const [host, port] = [address.slice(0, address.lastIndexOf(':')).replace(/^\[|\]$/g, ''), Number(address.slice(address.lastIndexOf(':') + 1))];
@@ -274,8 +276,9 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     return mavlink.handleUpgrade(request, socket, head, (ws) => {
       if (request.headers.host?.endsWith(`:${SILENT_PORT}`)) return;
       const state = { tick: 0 };
+      const fighting = request.headers.host?.endsWith(`:${FIGHT_PORT}`) === true;
       const timer = setInterval(() => {
-        tickFrames(state.tick, HOME).map((frame) => ws.send(Buffer.from(frame)));
+        [...tickFrames(state.tick, HOME), ...(fighting ? [fightFrame(state.tick)] : [])].map((frame) => ws.send(Buffer.from(frame)));
         state.tick = state.tick + 1;
       }, TICK_MS);
       ws.on('message', (data: Buffer) => {
@@ -293,7 +296,7 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
   upstream.on('error', () => socket.destroy());
   socket.on('error', () => upstream.destroy());
 };
-[http, upgrading, https, offline, silent].forEach((server) => server.on('upgrade', upgrade));
+[http, upgrading, https, offline, silent, fight].forEach((server) => server.on('upgrade', upgrade));
 
 const sbs1 = (icao: string, lat: number, lon: number): string =>
   ['MSG', '3', '1', '1', icao, '1', '', '', '', '', '', '4000', '', '', String(lat), String(lon), '', '', '', '', '', '0'].join(',') + '\r\n';
@@ -344,3 +347,4 @@ upgrading.listen(UPGRADING_PORT);
 https.listen(DEVICE_TLS_PORT);
 offline.listen(OFFLINE_PORT);
 silent.listen(SILENT_PORT);
+fight.listen(FIGHT_PORT);

@@ -822,7 +822,10 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
         ),
         RECORD => (
             gate("canRecord"),
-            "This camera cannot record video in the mode it is in.".to_string(),
+            match gate("fightMode") {
+                true => crate::hub::NOTHING_RECORDED.to_string(),
+                false => "This camera cannot record video in the mode it is in.".to_string(),
+            },
             "toggleVideoRecording".to_string(),
         ),
         STOP_PHOTO => (
@@ -869,8 +872,12 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
 }
 
 fn photo_refusal(view: &Value) -> String {
-    match view.get("isTakingPhoto").and_then(Value::as_bool) {
-        Some(true) => "The camera is still taking the last photo.".to_string(),
+    match (
+        view.get("fightMode").and_then(Value::as_bool),
+        view.get("isTakingPhoto").and_then(Value::as_bool),
+    ) {
+        (Some(true), _) => crate::hub::NOTHING_RECORDED.to_string(),
+        (_, Some(true)) => "The camera is still taking the last photo.".to_string(),
         _ => "This camera cannot take a photo.".to_string(),
     }
 }

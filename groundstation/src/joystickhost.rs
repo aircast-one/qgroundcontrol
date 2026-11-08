@@ -69,6 +69,7 @@ const ENABLED_VEHICLES: &str = "JoystickManager/joystickEnabledVehiclesIds";
 const SETTINGS_PREFIX: &str = "JoystickSettingsV2";
 pub const STANDBY_SETTING: &str = "standby";
 pub const STANDBY_VALUE: &str = "STANDBY";
+pub const FIGHT_VALUE: &str = "FIGHT";
 pub const STANDBY_COMPONENT: u8 = 191;
 const STANDBY_TARGET: u8 = 0;
 const STANDBY_STALE_MS: u64 = 3000;

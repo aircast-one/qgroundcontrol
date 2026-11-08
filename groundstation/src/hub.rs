@@ -420,6 +420,7 @@ pub struct Vehicle {
     pending_notices: Vec<(&'static str, String)>,
     pub rc_values: Vec<u16>,
     pub standby: Option<(i32, u64)>,
+    pub fight: bool,
     pub servo_outputs: Vec<i32>,
     pub message_log: crate::messagelog::MessageLog,
     pub control: crate::operatorcontrol::ControlState,
@@ -696,6 +697,7 @@ impl Vehicle {
             pending_notices: Vec::new(),
             rc_values: Vec::new(),
             standby: None,
+            fight: false,
             servo_outputs: Vec::new(),
             message_log: crate::messagelog::MessageLog::default(),
             control: crate::operatorcontrol::ControlState::default(),
@@ -2796,6 +2798,7 @@ impl Vehicle {
                     .and_then(Value::as_f64)
                     .unwrap_or(0.0),
             ),
+            "triggerCamera" if self.fight => Plan::Refused(NOTHING_RECORDED.into()),
             "triggerCamera" => guidedcmd::trigger_camera(),
             "landingGear" => guidedcmd::landing_gear(flag("retract")),
             "motorInterlock" => guidedcmd::motor_interlock(&state, flag("enable")),
@@ -6064,7 +6067,19 @@ impl Vehicle {
                     as usize
             })
         };
-        let commands = match action.get("op").and_then(Value::as_str).unwrap_or("") {
+        let op = action.get("op").and_then(Value::as_str).unwrap_or("");
+        let records = match op {
+            "takePhoto" | "startRecording" => true,
+            "toggleRecording" => !self
+                .cameras
+                .selected()
+                .is_some_and(|camera| camera.recording()),
+            _ => false,
+        };
+        if self.fight && records {
+            return Err(NOTHING_RECORDED.to_string());
+        }
+        let commands = match op {
             "step" => self.cameras.step(axis, direction, now_ms),
             "slew" => self.cameras.slew(axis, direction, now_ms),
             "stepCamera" => {
@@ -7466,6 +7481,21 @@ impl Vehicle {
                 .is_ok_and(|name| name == crate::joystickhost::STANDBY_VALUE)
         {
             self.standby = Some((value.value, now_ms));
+        }
+        if let MavMessage::NAMED_VALUE_INT(value) = message
+            && header.component_id == crate::joystickhost::STANDBY_COMPONENT
+            && value.value != 0
+            && !self.fight
+            && value
+                .name
+                .to_str()
+                .is_ok_and(|name| name == crate::joystickhost::FIGHT_VALUE)
+        {
+            self.fight = true;
+            let _ = crate::background::spawn(
+                "groundstation-fight-mode",
+                crate::videohost::stop_recording,
+            );
         }
         self.distance.apply(message);
         self.local.apply(message);
@@ -9227,6 +9257,12 @@ const ARDUPILOT_AUTO_RTL: &str = "AutoRTL";
 
 pub fn wall_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
+}
+
+pub const NOTHING_RECORDED: &str = "Fight mode: nothing is recorded.";
+
+pub fn fight_mode() -> bool {
+    lock().active().is_some_and(|vehicle| vehicle.fight)
 }
 
 pub fn lock() -> MutexGuard<'static, Hub> {
@@ -13506,6 +13542,57 @@ mod tests {
             2,
         );
         assert_eq!(hub.active().and_then(|v| v.standby), Some((1, 2)));
+    }
+
+    #[test]
+    fn a_device_in_fight_mode_refuses_every_capture_but_lets_a_recording_stop() {
+        use mavlink::dialects::ardupilotmega::NAMED_VALUE_INT_DATA;
+        let mut hub = Hub::default();
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let computer = MavHeader {
+            component_id: crate::joystickhost::STANDBY_COMPONENT,
+            ..autopilot
+        };
+        hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), 0, 0);
+        let fight = MavMessage::NAMED_VALUE_INT(NAMED_VALUE_INT_DATA {
+            time_boot_ms: 0,
+            value: 1,
+            name: mavlink::types::CharArray::from("FIGHT"),
+        });
+        hub.on_frame(origin(0), &autopilot, &fight, 1, 1);
+        assert!(
+            !hub.active().is_some_and(|v| v.fight),
+            "a flight controller script is not aircastd"
+        );
+        hub.on_frame(origin(0), &computer, &fight, 2, 2);
+        assert!(hub.active().is_some_and(|v| v.fight));
+        [
+            json!({ "action": "camera", "op": "takePhoto" }),
+            json!({ "action": "camera", "op": "startRecording" }),
+            json!({ "action": "camera", "op": "toggleRecording" }),
+            json!({ "action": "triggerCamera" }),
+        ]
+        .into_iter()
+        .for_each(|action| {
+            assert_eq!(
+                hub.guided(None, &action, 3),
+                Err(NOTHING_RECORDED.to_string()),
+                "{action}"
+            );
+        });
+        assert_ne!(
+            hub.guided(
+                None,
+                &json!({ "action": "camera", "op": "stopRecording" }),
+                3
+            ),
+            Err(NOTHING_RECORDED.to_string()),
+            "stopping is never refused"
+        );
     }
 
     #[test]

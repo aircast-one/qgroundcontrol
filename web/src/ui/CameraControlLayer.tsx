@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type Json, isNull } from '@/bridge/Json';
+import { type Json, isNull, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
 import { VideoCommands } from '@/bridge/BridgeCommands';
 import { settingControl, useQgcBool, useQgcPath } from '@/bridge/QgcState';
@@ -418,7 +418,8 @@ const StreamShutter = () => {
 };
 
 const StreamShutterShown = ({ videoJson, recording }: { videoJson: Json | null; recording: boolean }) => {
-  const recordable = videoJson === null || isNull(videoJson, 'deviceCamera');
+  const refusal = optText(videoJson, 'recordRefusal');
+  const recordable = (videoJson === null || isNull(videoJson, 'deviceCamera')) && refusal === '';
   const elapsed = useProduceState<number | null>(null, [recording], async (set, scope) => {
     const started = performance.now();
     set(recording ? 0 : null);
@@ -435,7 +436,7 @@ const StreamShutterShown = ({ videoJson, recording }: { videoJson: Json | null; 
       <ShutterButton caption={null} shutter={streamShutter(recording, recordable, elapsed)} onPress={() => void VideoCommands.setRecording(!recording)} />
       {!recordable ? (
         <Text typography="labelSmall" className={osdShadow()}>
-          {STREAM_NOT_RECORDABLE}
+          {refusal === '' ? STREAM_NOT_RECORDABLE : refusal}
         </Text>
       ) : null}
     </div>

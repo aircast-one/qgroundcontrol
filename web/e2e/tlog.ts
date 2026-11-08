@@ -1,5 +1,7 @@
 const HEARTBEAT = { id: 0, crcExtra: 50 };
 const GLOBAL_POSITION_INT = { id: 33, crcExtra: 104 };
+const NAMED_VALUE_INT = { id: 252, crcExtra: 44 };
+const AIRCRAFT_COMPUTER = 191;
 const QUADROTOR = 2;
 const AUTOPILOT_PX4 = 12;
 const CUSTOM_MODE_ENABLED = 1;
@@ -16,8 +18,8 @@ const crcX25 = (bytes: readonly number[]): number =>
 
 const le = (value: number, size: number): number[] => Array.from({ length: size }, (_, at) => Number((BigInt.asUintN(size * 8, BigInt(Math.trunc(value))) >> BigInt(at * 8)) & 0xffn));
 
-const frame = (seq: number, message: { id: number; crcExtra: number }, payload: readonly number[]): number[] => {
-  const header = [payload.length, 0, 0, seq & 0xff, 1, 1, ...le(message.id, 3)];
+const frame = (seq: number, message: { id: number; crcExtra: number }, payload: readonly number[], component = 1): number[] => {
+  const header = [payload.length, 0, 0, seq & 0xff, 1, component, ...le(message.id, 3)];
   const crc = crcX25([...header, ...payload, message.crcExtra]);
   return [0xfd, ...header, ...payload, crc & 0xff, crc >> 8];
 };
@@ -25,6 +27,9 @@ const frame = (seq: number, message: { id: number; crcExtra: number }, payload: 
 const stamped = (us: bigint, bytes: readonly number[]): number[] => [...Array.from({ length: 8 }, (_, at) => Number((us >> BigInt((7 - at) * 8)) & 0xffn)), ...bytes];
 
 export type Home = { lat: number; lon: number };
+
+export const fightFrame = (seq: number): number[] =>
+  frame(seq, NAMED_VALUE_INT, [...le(0, 4), ...le(1, 4), ...Array.from({ length: 10 }, (_, at) => 'FIGHT'.charCodeAt(at) || 0)], AIRCRAFT_COMPUTER);
 
 export const tickFrames = (tick: number, home: Home): readonly number[][] => {
   const heartbeat = tick % 4 === 0 ? [frame(tick * 2, HEARTBEAT, [...le(0, 4), QUADROTOR, AUTOPILOT_PX4, CUSTOM_MODE_ENABLED, STATE_ACTIVE, MAVLINK_VERSION])] : [];

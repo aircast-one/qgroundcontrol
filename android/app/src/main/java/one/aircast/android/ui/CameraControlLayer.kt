@@ -76,6 +76,7 @@ import one.aircast.android.bridge.settingControl
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import one.aircast.android.bridge.Fact
+import one.aircast.map.optText
 
 private const val REFUSAL_MS = 4000L
 private const val ZOOM_CHIP_BORDER_ALPHA = 0.4f
@@ -372,7 +373,8 @@ private fun StreamShutter() {
     val videoJson by qgcPath(VIDEO_VIEW)
     val recording by qgcBool(VIDEO_RECORDING_STATE)
     if (videoReading(videoJson)?.decoding != true) return
-    val recordable = videoJson?.isNull("deviceCamera") != false
+    val refusal = videoJson?.optText("recordRefusal").orEmpty()
+    val recordable = videoJson?.isNull("deviceCamera") != false && refusal.isEmpty()
     val elapsed by produceState<Long?>(null, recording) {
         val started = android.os.SystemClock.elapsedRealtime()
         value = if (recording) 0L else null
@@ -383,7 +385,7 @@ private fun StreamShutter() {
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         ShutterButton(null, streamShutter(recording, recordable, elapsed)) { offMainInOrder { VideoCommands.setRecording(!recording) } }
-        if (!recordable) Text(STREAM_NOT_RECORDABLE, style = MaterialTheme.typography.labelSmall, modifier = Modifier.osdShadow())
+        if (!recordable) Text(refusal.ifEmpty { STREAM_NOT_RECORDABLE }, style = MaterialTheme.typography.labelSmall, modifier = Modifier.osdShadow())
     }
 }
 

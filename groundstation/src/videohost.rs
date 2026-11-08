@@ -224,7 +224,10 @@ fn cleanup_old_videos(folder: &str) {
 }
 
 pub fn start_recording() -> Result<(), Option<&'static str>> {
-    let started = begin_recording();
+    let started = match crate::hub::fight_mode() {
+        true => Err(Some(crate::hub::NOTHING_RECORDED)),
+        false => begin_recording(),
+    };
     if let Err(Some(message)) = started {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", message);
     }

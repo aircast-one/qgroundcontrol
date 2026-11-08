@@ -3,6 +3,7 @@ import { flyNow, openMenu, test as hosted } from './fixtures';
 
 const DEVICE = 'http://localhost:18780';
 const SILENT = 'http://localhost:18788';
+const FIGHT = 'http://localhost:18789';
 const UPGRADING = 'localhost:18786';
 const SECURE = 'localhost:18785';
 const PLAIN_UPGRADING = 'http://aircast-device.test:18786';
@@ -311,4 +312,19 @@ base('on a phone the device page offers to check the device, not to add a link',
   await page.goto(`${SILENT}/`);
   await expect(page.getByRole('button', { name: 'Check device' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: 'Add a link' })).toHaveCount(0);
+});
+
+base('a device in fight mode records nothing, not even in the browser', async ({ page }) => {
+  await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'did not respond to request for parameters' }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
+  await page.goto(`${FIGHT}/`);
+  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => page.locator('video').first().evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBeGreaterThan(0);
+  await expect(page.getByText('Fight mode: nothing is recorded.').first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Start recording' }).first()).toBeDisabled();
+  const asked = await page.evaluate(
+    async (module) => ((await import(module)) as { Qgc: { invoke: (path: string) => Promise<unknown> } }).Qgc.invoke('video.startRecording'),
+    '/src/bridge/Qgc.ts',
+  );
+  expect(asked, 'the core refuses even when asked directly').not.toBe(true);
+  await expect(page.getByRole('button', { name: 'Stop recording' })).toHaveCount(0);
 });
