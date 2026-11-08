@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import one.aircast.map.AircastSheet
@@ -29,29 +31,41 @@ import org.json.JSONObject
 internal const val AIRCAST_LINK_VIEW = "view.aircastLink"
 private const val SIGNAL_MAXIMUM = 100.0
 
+internal data class LinkSwitch(val clock: String, val from: String, val to: String)
+
 internal data class AircastLink(
-    val qualityText: String,
+    val cellText: String,
+    val uplinkText: String,
+    val cellular: Boolean,
     val signalText: String,
     val network: String,
     val modem: String,
     val bitrateText: String,
     val qualityHistory: List<Double>,
     val bitrateHistory: List<Double>,
+    val switches: List<LinkSwitch>,
 )
 
 private fun numbers(array: JSONArray?): List<Double> = (0 until (array?.length() ?: 0)).map { array?.optDouble(it) ?: -1.0 }
 
 internal fun aircastLink(view: JSONObject?): AircastLink? = view?.takeIf { it.optBoolean("shown") }?.let {
     AircastLink(
-        qualityText = it.optString("qualityText"),
+        cellText = it.optString("cellText", it.optString("qualityText")),
+        uplinkText = if (it.isNull("uplink")) "" else it.optString("uplinkText"),
+        cellular = it.optBoolean("cellular", true),
         signalText = it.optString("signalText"),
         network = it.optString("network"),
         modem = it.optString("modem"),
         bitrateText = it.optString("bitrateText"),
         qualityHistory = numbers(it.optJSONArray("qualityHistory")),
         bitrateHistory = numbers(it.optJSONArray("bitrateHistory")),
+        switches = it.optJSONArray("switches").deviceObjects().map { switch -> LinkSwitch(switch.optString("clock"), switch.optString("from"), switch.optString("to")) },
     )
 }
+
+internal fun aircastLinkRows(link: AircastLink): List<Pair<String, String>> =
+    listOfNotNull(link.uplinkText.takeIf { it.isNotEmpty() }?.let { "Uplink:" to it }) +
+        if (link.cellular) listOf("Signal:" to link.signalText, "Network:" to link.network, "Modem:" to link.modem, "Video bitrate:" to link.bitrateText) else emptyList()
 
 internal fun sparkRuns(values: List<Double>, maximum: Double): List<List<Pair<Float, Float>>> {
     if (values.size < 2) return emptyList()
@@ -91,7 +105,7 @@ internal fun AircastLinkCell() {
     var open by remember { mutableStateOf(false) }
 
     Text(
-        "${link.qualityText} ${link.bitrateText}",
+        listOf(link.cellText, link.bitrateText).filter { it.isNotEmpty() }.joinToString(" "),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
@@ -101,16 +115,21 @@ internal fun AircastLinkCell() {
     if (open) {
         AircastSheet(onDismissRequest = { open = false }) {
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("Cellular link", style = MaterialTheme.typography.titleSmall)
-                listOf("Signal:" to link.signalText, "Network:" to link.network, "Modem:" to link.modem, "Video bitrate:" to link.bitrateText)
-                    .forEach { (label, value) -> Text("$label  $value", style = MaterialTheme.typography.bodySmall) }
-                Text("Signal, up to the last hour", style = MaterialTheme.typography.labelSmall)
-                Sparkline(link.qualityHistory, SIGNAL_MAXIMUM)
-                Text("Video bitrate, up to the last hour", style = MaterialTheme.typography.labelSmall)
-                Sparkline(link.bitrateHistory, 0.0)
+                Text("Aircraft link", style = MaterialTheme.typography.titleSmall)
+                aircastLinkRows(link).map { (label, value) -> Text("$label  $value", style = MaterialTheme.typography.bodySmall) }
+                if (link.cellular) {
+                    Text("Signal, up to the last hour", style = MaterialTheme.typography.labelSmall)
+                    Sparkline(link.qualityHistory, SIGNAL_MAXIMUM)
+                    Text("Video bitrate, up to the last hour", style = MaterialTheme.typography.labelSmall)
+                    Sparkline(link.bitrateHistory, 0.0)
+                }
+                if (link.switches.isNotEmpty()) {
+                    Text("Switches", style = MaterialTheme.typography.labelSmall)
+                    link.switches.map { Text("${it.clock}  ${it.from} → ${it.to}", style = MaterialTheme.typography.bodySmall) }
+                }
             }
         }
     }

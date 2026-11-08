@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import one.aircast.android.R
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -81,6 +82,7 @@ class DeviceNetworkTest {
         val view = checkNotNull(parseNetwork(JSONObject(VIEW)))
         assertEquals(UplinkBackup("LTE (wwan0)", DeviceBadge(DeviceLevel.Neutral, "standing by · takes over in ~15 s")), view.uplink.failover.first())
         assertTrue(view.uplink.switchText.contains("from Wi-Fi (wlan0) to LTE (wwan0)"))
+        assertEquals(emptyList<UplinkSwitch>(), view.uplink.switches)
         assertEquals(listOf(80.0, -1.0, 72.0), view.modem?.signal?.values)
         assertEquals("MAGTICOM", view.modem?.messages?.items?.first()?.from)
         assertEquals("internet", view.modem?.sim?.apn)
@@ -100,6 +102,27 @@ class DeviceNetworkTest {
         assertEquals("Add a relay server first", view.relay.reason)
         assertNull(parseNetwork(JSONObject(VIEW).apply { remove("modem") })?.modem)
         assertNull(parseNetwork(JSONObject().put("modem", JSONObject(VIEW).getJSONObject("modem"))))
+    }
+
+    @Test
+    fun `the uplink card keeps the switch history newest first, with why each happened`() {
+        val json = JSONObject(VIEW)
+        json.getJSONObject("uplink").put(
+            "switches",
+            JSONArray(
+                """[
+                  { "at": "2026-11-08T21:04:09Z", "ago": "just now", "from": "Wi-Fi (wlan0)", "to": "LTE (wwan0)", "reason": "wlan0 lost the internet" },
+                  { "at": "2026-11-08T20:58:00Z", "ago": "6 min ago", "from": "LTE (wwan0)", "to": "Wi-Fi (wlan0)" }
+                ]""",
+            ),
+        )
+        assertEquals(
+            listOf(
+                UplinkSwitch("2026-11-08T21:04:09Z", "just now", "Wi-Fi (wlan0)", "LTE (wwan0)", "wlan0 lost the internet"),
+                UplinkSwitch("2026-11-08T20:58:00Z", "6 min ago", "LTE (wwan0)", "Wi-Fi (wlan0)", ""),
+            ),
+            parseNetwork(json)?.uplink?.switches,
+        )
     }
 
     @Test

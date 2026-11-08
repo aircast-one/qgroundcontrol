@@ -122,6 +122,21 @@ private fun PrimaryUplinkSection(uplink: UplinkCard, onOpen: (String) -> Unit) {
             }
         }
         DeviceText(uplink.switchText)
+        if (uplink.switches.size >= 2) {
+            DeviceDisclosure("Switch history", "${uplink.switches.size} switches") {
+                uplink.switches.map { switch ->
+                    key("${switch.at}|${switch.to}") {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("${switch.from} → ${switch.to}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                Text(switch.ago, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (switch.reason.isNotEmpty()) Text(switch.reason, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
         DeviceText(uplink.backup)
     }
 }

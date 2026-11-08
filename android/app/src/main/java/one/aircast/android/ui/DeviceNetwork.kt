@@ -17,6 +17,8 @@ internal data class ConfirmedAction(val label: String, val confirm: String)
 
 internal data class UplinkBackup(val label: String, val status: DeviceBadge)
 
+internal data class UplinkSwitch(val at: String, val ago: String, val from: String, val to: String, val reason: String)
+
 internal data class UplinkCard(
     val icon: String,
     val title: String,
@@ -29,6 +31,7 @@ internal data class UplinkCard(
     val rate: String,
     val failover: List<UplinkBackup>,
     val switchText: String,
+    val switches: List<UplinkSwitch>,
     val backup: String,
 )
 
@@ -191,6 +194,7 @@ private fun parseUplink(json: JSONObject): UplinkCard = UplinkCard(
     rate = json.optText("rate"),
     failover = json.deviceObjects("failover").map { UplinkBackup(it.optText("label"), it.badge("status")) },
     switchText = json.optText("switch"),
+    switches = json.deviceObjects("switches").map { UplinkSwitch(it.optText("at"), it.optText("ago"), it.optText("from"), it.optText("to"), it.optText("reason")) },
     backup = json.optText("backup"),
 )
 
