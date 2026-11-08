@@ -21,7 +21,7 @@ class AircastLinkFactGroup : public FactGroup
 
 public:
     static constexpr int kHistoryLength = 720;
-    static constexpr int kUplinkSwitchesKept = 20;
+    static constexpr int kUplinkSwitchesKept = 5;
     static constexpr int kQualityUnknown = UINT8_MAX;
     static constexpr int kUplinkLte = 3;
 

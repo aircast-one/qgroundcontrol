@@ -105,7 +105,7 @@ void AircastLinkFactGroupTest::_uplinkSwitchesAreChangesNewestFirst()
     QCOMPARE(group.uplinkSwitches().first().toMap()[QStringLiteral("clock")].toString().size(), 8);
 }
 
-void AircastLinkFactGroupTest::_uplinkSwitchesKeepTheLastTwenty()
+void AircastLinkFactGroupTest::_uplinkSwitchesKeepTheLastFive()
 {
     AircastLinkFactGroup group;
 

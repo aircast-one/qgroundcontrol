@@ -11,7 +11,7 @@ private slots:
     void _unknownQualityIsAGapInTheHistory();
     void _historyKeepsAnHourAtFiveSeconds();
     void _uplinkSwitchesAreChangesNewestFirst();
-    void _uplinkSwitchesKeepTheLastTwenty();
+    void _uplinkSwitchesKeepTheLastFive();
     void _uplinkAloneShowsTheLink();
     void _anyModemReportMeansCellular();
     void _linkTextNamesTheUplink();
