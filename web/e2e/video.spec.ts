@@ -36,13 +36,16 @@ test('a WHEP camera plays in the Fly view', async ({ app }) => {
   await expect(app.getByText(/^Detections:/)).toHaveCount(0);
 });
 
-test('the Fly OSD reads the live video frame rate and bitrate', async ({ vehicle }) => {
+test('the Fly OSD reads the live video frame rate, and a tap shows its bitrate and loss rates', async ({ vehicle }) => {
   const details = vehicle.locator('[data-osd-details]');
   await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText('VIDEOOFF', { timeout: 30_000 });
   await addVideoSource(vehicle, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText(/^VIDEO[1-9]\d*fps$/, { timeout: 30_000 });
+  await expect(details.getByText('BR', { exact: true }), 'a healthy stream shows only its frame rate').toBeHidden();
+  await details.getByRole('button', { name: 'video readings' }).click();
   await expect(details.getByText('BR', { exact: true }).locator('..')).toHaveText(/^BR[1-9]\d*(\.\d)?[kM]b\/s$/);
-  await expect(details.getByText('JIT', { exact: true })).toBeVisible();
+  await expect(details.getByText('PKT LOSS', { exact: true }).locator('..')).toHaveText(/^PKT LOSS\d+(\.\d)?%$/);
+  await expect(details.getByText('SKIP', { exact: true }).locator('..')).toHaveText(/^SKIP\d+\/s$/);
 });
 
 test('a stream the browser cannot play says so', async ({ app }) => {

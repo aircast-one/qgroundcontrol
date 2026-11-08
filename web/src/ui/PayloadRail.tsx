@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { type Json, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
+import { useLaunchedEffect } from '@/kotlin/Compose';
+import { delay } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
 import { Drawable } from '@/res/Icon';
-import { aircast, md, withAlpha } from '@/theme/Colors';
+import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { osdShadow } from '@/ui/Osd';
 
 export const PAYLOAD_RAIL_VIEW = 'view.payloadRail';
@@ -14,6 +16,7 @@ const DROP = 'payloadRail.drop';
 const TILE = 48;
 const DISABLED_ALPHA = 0.38;
 const MAX_BAYS = 6;
+const REFUSAL_SHOWN_MS = 4000;
 
 export type PayloadRailOwner = 'radio' | 'app';
 
@@ -48,6 +51,8 @@ export const payloadRailOf = (json: Json | null): PayloadRail | null =>
         reason: optText(json, 'reason') || null,
       };
 
+export const payloadNote = (rail: PayloadRail, refusal: string | null): string | null => refusal ?? (rail.dropReady || !rail.armed ? null : rail.reason);
+
 export const lockLabel = (rail: PayloadRail): string => (rail.armed ? `Payload armed${rail.armedBy === 'radio' ? ' by radio' : ', tap to make safe'}` : `Payload safe${rail.armedBy === 'radio' ? ' by radio' : ', tap to arm'}`);
 
 export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}`;
@@ -79,9 +84,14 @@ const Labelled = ({ text, tone, children }: { text: string; tone: string; childr
 export const PayloadRailStrip = () => {
   const rail = payloadRailOf(useQgcPath(PAYLOAD_RAIL_VIEW) as Json | null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  useLaunchedEffect([refusal], async (scope) => {
+    if (refusal === null) return;
+    await delay(REFUSAL_SHOWN_MS);
+    if (scope.isActive()) setRefusal(null);
+  });
   if (rail === null) return null;
   const run = (path: string, ...args: unknown[]) => void Qgc.refusalOf(path, ...args).then(setRefusal);
-  const note = refusal ?? (rail.dropReady ? null : rail.reason);
+  const note = payloadNote(rail, refusal);
   const dim = withAlpha(aircast('outdoorBackground'), 0.4);
   return (
     <div role="group" aria-label="Payload" className="flex flex-col items-center gap-1">
@@ -105,7 +115,7 @@ export const PayloadRailStrip = () => {
         </Labelled>
       </div>
       {note === null ? null : (
-        <Text typography="bodySmall" color={md('error')} maxLines={2} className={osdShadow()}>
+        <Text typography="bodyMedium" color={aircast('outdoorForeground')} maxLines={2} className="rounded-full px-3 py-1" style={{ background: withAlpha(Color.Black, 0.65) }}>
           {note}
         </Text>
       )}

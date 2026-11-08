@@ -1,9 +1,11 @@
-export type WhepStats = { fps: number; kbps: number; jitterMs: number; lost: number; dropped: number; bytes: number; at: number };
+export type WhepCounters = { bytes: number; lost: number; received: number; dropped: number; at: number };
+export type WhepStats = { fps: number; kbps: number; jitterMs: number; lossPercent: number; skippedPerSecond: number; counters: WhepCounters };
 export type WhepReport = { running: boolean; frames: number; width: number; height: number; error: string; restarted: boolean; stats: WhepStats | null };
-type InboundVideo = { timestamp: number; framesPerSecond?: number; bytesReceived?: number; jitter?: number; packetsLost?: number; framesDropped?: number };
+type InboundVideo = { timestamp: number; framesPerSecond?: number; bytesReceived?: number; jitter?: number; packetsLost?: number; packetsReceived?: number; framesDropped?: number };
 
 const ICE_GATHER_MS = 2000;
 const REPORT_MS = 500;
+const STATS_WINDOW_REPORTS = 5;
 
 const iceGathered = (peer: RTCPeerConnection): Promise<void> =>
   new Promise((resolve) => {
@@ -28,17 +30,19 @@ const negotiate = async (peer: RTCPeerConnection, endpoint: string): Promise<str
   return resource === null ? null : new URL(resource, endpoint).href;
 };
 
-export const whepStats = (inbound: InboundVideo, previous: WhepStats | null): WhepStats => {
-  const bytes = inbound.bytesReceived ?? 0;
-  const elapsedMs = previous === null ? 0 : inbound.timestamp - previous.at;
+export const whepStats = (inbound: InboundVideo, oldest: WhepCounters | null): WhepStats => {
+  const counters = { bytes: inbound.bytesReceived ?? 0, lost: inbound.packetsLost ?? 0, received: inbound.packetsReceived ?? 0, dropped: inbound.framesDropped ?? 0, at: inbound.timestamp };
+  const since = oldest ?? counters;
+  const elapsedMs = counters.at - since.at;
+  const lost = counters.lost - since.lost;
+  const packets = lost + counters.received - since.received;
   return {
     fps: Math.round(inbound.framesPerSecond ?? 0),
-    kbps: previous === null || elapsedMs <= 0 ? 0 : Math.round(((bytes - previous.bytes) * 8) / elapsedMs),
+    kbps: elapsedMs > 0 ? Math.round(((counters.bytes - since.bytes) * 8) / elapsedMs) : 0,
     jitterMs: Math.round((inbound.jitter ?? 0) * 1000),
-    lost: inbound.packetsLost ?? 0,
-    dropped: inbound.framesDropped ?? 0,
-    bytes,
-    at: inbound.timestamp,
+    lossPercent: packets > 0 ? (100 * lost) / packets : 0,
+    skippedPerSecond: elapsedMs > 0 ? (1000 * (counters.dropped - since.dropped)) / elapsedMs : 0,
+    counters,
   };
 };
 
@@ -47,7 +51,7 @@ const inboundVideo = (report: RTCStatsReport): InboundVideo | null =>
 
 export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (reading: WhepReport) => void): (() => void) => {
   const peer = new RTCPeerConnection();
-  const session = { resource: null as string | null, error: '', first: true, stats: null as WhepStats | null };
+  const session = { resource: null as string | null, error: '', first: true, stats: null as WhepStats | null, history: [] as readonly WhepCounters[] };
   peer.addTransceiver('video', { direction: 'recvonly' });
   peer.ontrack = ({ streams, track }) => {
     video.srcObject = streams[0] ?? new MediaStream([track]);
@@ -63,7 +67,8 @@ export const playWhep = (video: HTMLVideoElement, endpoint: string, report: (rea
   const timer = setInterval(() => {
     void peer.getStats().then((report) => {
       const inbound = inboundVideo(report);
-      session.stats = inbound === null ? null : whepStats(inbound, session.stats);
+      session.stats = inbound === null ? null : whepStats(inbound, session.history[0] ?? null);
+      session.history = session.stats === null ? [] : [...session.history, session.stats.counters].slice(-STATS_WINDOW_REPORTS);
     }, () => undefined);
     const frames = video.getVideoPlaybackQuality().totalVideoFrames;
     report({ running: peer.connectionState === 'connected', frames, width: video.videoWidth, height: video.videoHeight, error: session.error, restarted: session.first, stats: session.stats });

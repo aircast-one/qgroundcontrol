@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { bayTileLabel, lockLabel, payloadRailOf } from './PayloadRail';
+import { bayTileLabel, lockLabel, payloadNote, payloadRailOf } from './PayloadRail';
 
 const SHOWN = '{"shown":true,"armed":true,"armedBy":"radio","selected":3,"selectedBy":"radio","bays":[{"bay":1,"loaded":true},{"bay":2,"loaded":false}],"dropReady":false,"dropLabel":"No bay 3","reason":"This drone has 2 bays."}';
 
@@ -12,6 +12,16 @@ describe('PayloadRail', () => {
     expect(payloadRailOf(null)).toBeNull();
     expect(payloadRailOf(parseJson('{"shown":true,"armedBy":"martian","reason":null}'))?.armedBy).toBe('app');
     expect(payloadRailOf(parseJson('{"shown":true,"reason":null}'))?.reason).toBeNull();
+  });
+
+  it('says nothing while the payload is safe, and explains only what blocks an armed drop or a refused press', () => {
+    const rail = payloadRailOf(parseJson(SHOWN));
+    if (rail === null) throw new Error('shown');
+    const safe = { ...rail, armed: false, reason: 'The payload is safe. Arm it first.' };
+    expect(payloadNote(safe, null)).toBeNull();
+    expect(payloadNote(safe, 'The payload is safe. Arm it first.')).toBe('The payload is safe. Arm it first.');
+    expect(payloadNote(rail, null)).toBe('This drone has 2 bays.');
+    expect(payloadNote({ ...rail, dropReady: true }, null)).toBeNull();
   });
 
   it('names the tiles by their state and who owns the switches', () => {

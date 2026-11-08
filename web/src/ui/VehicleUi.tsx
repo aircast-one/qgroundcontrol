@@ -56,6 +56,7 @@ import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
 import { ParameterForm } from './ParameterForm';
+import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
 import { PreflightChecklist, PreflightChecklistReset, useRememberPreflightChecklist } from './PreflightChecklistGate';
 import { FLIGHT_MODES_PAGE } from './SetupPages';
@@ -500,7 +501,8 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const rail = layout === FlyDeckLayout.Rail;
   const room = useElementSize();
   const centre = useElementSize();
-  const offered = deckIds(new Set(entries.map((it) => it.id)), armed);
+  const payloadStrip = payloadRailOf(useQgcPath(PAYLOAD_RAIL_VIEW)) !== null;
+  const offered = deckIds(new Set(entries.map((it) => it.id)), armed, payloadStrip);
   const railFit = railDeck(offered, room.size.height);
   const bottomFit = bottomDeck(offered, room.size.width, centre.size.width);
   const deck = rail ? railFit.deck : bottomFit.deck;

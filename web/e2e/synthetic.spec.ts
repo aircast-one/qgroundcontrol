@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, flyNow, slideAcross, takeOff, test } from './fixtures';
+import { connectMock, dropFromStrip, expect, flightMode, flyNow, takeOff, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -203,7 +203,7 @@ test('a dropped water bottle falls from the drone and lies on the ground below t
       page.bottleTrail = [...page.bottleTrail, ...(Qgc.path('view.syntheticView')?.bottles ?? [])];
     });
   }, '/src/bridge/Qgc.ts');
-  await slideAcross(app, app.getByRole('button', { name: 'Slide to drop' }));
+  await dropFromStrip(app);
   const bottles = async () => (await view()).bottles ?? [];
   await expect.poll(async () => (await bottles()).some((it) => it.landed || it.aboveHome < 7), { intervals: [25], timeout: 30_000 }).toBe(true);
   await app.screenshot({ path: testInfo.outputPath('bottle-falling.png') });

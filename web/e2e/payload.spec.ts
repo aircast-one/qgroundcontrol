@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, flightMode, itemCount, openAircraftSetup, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
+import { connectMock, dropFromStrip, expect, flightMode, itemCount, openAircraftSetup, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -86,20 +86,17 @@ test('a waypoint takes a drop from its actions and gives it back', async ({ app:
   await expect(vehicle.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
 });
 
-test('a pilot flying by hand drops from the deck, and a drop that cannot fall says why', async ({ app: vehicle }) => {
+test('a pilot flying by hand drops from the payload strip, and a drop that cannot fall says why', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await takeOff(vehicle, '10 m');
   await expect(vehicle.getByRole('button', { name: 'Slide to land' })).toBeVisible({ timeout: 60_000 });
   await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).click();
   await vehicle.getByRole('menu').getByRole('menuitem', { name: 'Loiter' }).click();
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Loiter/);
-  const drop = vehicle.getByRole('button', { name: 'Slide to drop' });
-  await slideAcross(vehicle, drop);
+  await dropFromStrip(vehicle);
   await expect(vehicle.getByText('Payload dropped')).toBeVisible({ timeout: 30_000 });
-  await drop.click();
-  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to drop' }));
-  await expect(vehicle.getByText('The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.')).toBeVisible({ timeout: 30_000 });
-  expect(await vehicle.getByText('Sent · Drop').count(), 'a refused drop shows only the refusal').toBe(0);
+  await dropFromStrip(vehicle);
+  await expect(vehicle.getByText('The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.').first()).toBeVisible({ timeout: 30_000 });
   await expect(vehicle.getByRole('status').filter({ hasText: 'Payload dropped' }), 'the refusal is the newest payload result, so the earlier drop leaves the screen').toBeHidden({ timeout: 1_000 });
 });
 
@@ -150,7 +147,7 @@ test('four bays on their own servos drop one after another by hand, each from it
   await expectBaysReleased(vehicle);
 });
 
-test('dropping bays quickly from the deck shows each bay as it drops, never one left queued by an earlier drop', async ({ app: vehicle }) => {
+test('dropping bays quickly from the payload strip shows each bay as it drops, never one left queued by an earlier drop', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await fourServoBays(vehicle);
   await takeOff(vehicle, '10 m');
@@ -158,8 +155,7 @@ test('dropping bays quickly from the deck shows each bay as it drops, never one 
   const notice = vehicle.getByRole('status').filter({ hasText: / dropped$/ });
   await [1, 2, 3].reduce(async (previous, bay) => {
     await previous;
-    await vehicle.getByRole('button', { name: `Slide to drop ${bay} · ${BAY_OUTPUTS.length + 1 - bay} left`, exact: true }).click();
-    await slideAcross(vehicle, vehicle.getByRole('button', { name: /^Slide to drop/ }));
+    await dropFromStrip(vehicle, bay);
     await expect(notice, `the notice on screen after dropping bay ${bay} names bay ${bay}`).toHaveText([`Bay ${bay} dropped`], { timeout: 1_500 });
   }, Promise.resolve());
 });

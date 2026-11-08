@@ -224,9 +224,8 @@ fn drop(backend: &dyn Backend) -> Value {
         .active()
         .map_or(0, |vehicle| vehicle.payload_servos().len() as i64);
     let named = crate::radiocamera::named(bay, servo_bays);
-    crate::guided::invoke_valued(
+    crate::actions::gripper(
         backend,
-        crate::guided::Valued::Gripper,
         DROP_BAY,
         &json!([crate::guided::GRIPPER_RELEASE, named]).to_string(),
     )

@@ -35,6 +35,14 @@ describe('FlyDeckTest', () => {
     ]);
   });
 
+  it('with the payload strip on screen the strip is the only drop, so the deck leaves it out', () => {
+    expect(deckIds(new Set(['arm', PAUSE, 'rtl', 'land', RELEASE]), true, true)).toEqual([
+      [PAUSE, false],
+      ['rtl', true],
+      ['land', false],
+    ]);
+  });
+
   it('on the ground the deck is for taking off; the drop stays in the payload sheet', () => {
     expect(deckIds(new Set(['arm', 'takeoff', RELEASE]), false)).toEqual([['takeoff', true]]);
   });

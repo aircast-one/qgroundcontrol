@@ -199,12 +199,12 @@ const DeckPress = ({ entry, children }: { entry: DeckEntry; children: ReactNode 
 
 export type DeckIds = readonly (readonly [string, boolean])[];
 
-export const deckIds = (shown: ReadonlySet<string>, armed: boolean): DeckIds => {
+export const deckIds = (shown: ReadonlySet<string>, armed: boolean, payloadStrip = false): DeckIds => {
   const flying = armed && (shown.has('rtl') || shown.has('land'));
   const ground = [CHECKLIST, shown.has('takeoff') ? 'takeoff' : 'arm'];
   const flown = (flying ? [PAUSE, 'rtl', 'land'] : ground).filter((it) => shown.has(it));
   const primary = flying ? (flown.includes('rtl') ? 'rtl' : null) : (flown[flown.length - 1] ?? null);
-  const chosen = flying && shown.has(RELEASE) ? [...flown, RELEASE] : flown;
+  const chosen = flying && shown.has(RELEASE) && !payloadStrip ? [...flown, RELEASE] : flown;
   return chosen.map((it) => [it, it === primary] as const);
 };
 
@@ -263,6 +263,8 @@ export const DeckButton = ({ entry, primary, className, buttons = 0 }: { entry: 
 const RAIL_BUTTON_SIZE = 48;
 const RAIL_ICON_SIZE = 24;
 const RAIL_PRIMARY_ICON_SIZE = 32;
+const RAIL_INSET_ICON_SIZE = 20;
+const RAIL_INSET_LABEL_SIZE = 10;
 
 export const railLabel = (label: string): string => {
   const rest = label.startsWith('Slide to ') ? label.slice('Slide to '.length) : label;
@@ -279,7 +281,18 @@ export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: De
       style={{ width: RAIL_BUTTON_SIZE, height: RAIL_BUTTON_SIZE, opacity: entry.enabled ? 1 : DISABLED_ALPHA }}
     >
       <DeckPress entry={entry}>
-        <Drawable name={entry.icon} label={entry.label} size={primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE} className={osdShadow()} />
+        {labelled ? (
+          <Drawable name={entry.icon} label={entry.label} size={primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE} className={osdShadow()} />
+        ) : (
+          <span className="flex flex-col items-center">
+            <Drawable name={entry.icon} label={entry.label} size={RAIL_INSET_ICON_SIZE} className={osdShadow()} />
+            <span aria-hidden>
+              <Text typography="labelSmall" color={aircast('outdoorForeground')} maxLines={1} className={osdShadow()} style={{ fontSize: RAIL_INSET_LABEL_SIZE, lineHeight: `${RAIL_INSET_LABEL_SIZE + 2}px` }}>
+                {railLabel(entry.label)}
+              </Text>
+            </span>
+          </span>
+        )}
       </DeckPress>
     </Surface>
     {labelled ? (

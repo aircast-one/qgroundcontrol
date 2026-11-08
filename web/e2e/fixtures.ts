@@ -86,6 +86,15 @@ export const mapMenuAt = async (page: Page, dx: number, dy: number) => {
   }).toPass({ timeout: 45_000 });
 };
 
+export const dropFromStrip = async (page: Page, bay: number | null = null) => {
+  const strip = page.getByRole('group', { name: 'Payload', exact: true });
+  const safe = strip.getByRole('button', { name: 'Payload safe, tap to arm' });
+  if (await safe.isVisible()) await safe.click();
+  await expect(strip.getByRole('button', { name: 'Payload armed, tap to make safe' })).toBeVisible();
+  if (bay !== null) await strip.getByRole('button', { name: new RegExp(`^Bay ${bay}, loaded`) }).click();
+  await strip.getByRole('button', { name: /^Drop \d/ }).click();
+};
+
 export const takeOff = async (page: Page, height: string) => {
   await page.getByRole('button', { name: 'Take off' }).click();
   await page.getByRole('button', { name: height, exact: true }).click();

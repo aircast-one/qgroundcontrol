@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { connectMock, expect, flightMode, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { connectMock, dropFromStrip, expect, flightMode, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 test('more actions lists every deck command', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
@@ -77,19 +77,20 @@ test('the payload sheet offers drop and grab and reports what the aircraft answe
   await expect(vehicle.getByRole('dialog').getByRole('button', { name: 'Slide to drop' })).toBeVisible();
 });
 
-test('the drop joins the fly deck once the aircraft is flying', async ({ vehicle }) => {
+test('in flight the payload strip is the only drop: the deck offers none, and the strip drops once armed', async ({ vehicle }) => {
   test.setTimeout(120_000);
   await expect(vehicle.getByRole('button', { name: 'Take off' })).toBeVisible();
-  await expect(vehicle.getByRole('button', { name: 'Slide to drop' })).toBeHidden();
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
-  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to drop' }));
+  await expect(vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Return' })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: 'Slide to drop' })).toBeHidden();
+  await dropFromStrip(vehicle);
   await expect(vehicle.getByText('Payload dropped')).toBeVisible();
 });
 
 type Target = { name: string; left: number; top: number; right: number; bottom: number; clipped: boolean };
 
-const FLIGHT_ACTIONS = [/pause/i, /return/i, /land/i, /drop/i, /^More$/];
+const FLIGHT_ACTIONS = [/pause/i, /return/i, /land/i, /^More$/];
 
 const flyWithFourBays = async (app: Page): Promise<Locator> => {
   await app.evaluate(async (module) => {
@@ -125,6 +126,7 @@ const overlaps = (a: Target, b: Target): boolean => a.left < b.right && b.left <
 
 const expectFullSizeTargets = (shown: readonly Target[]) => {
   expect(shown.map((it) => it.name)).toEqual(expect.arrayContaining(FLIGHT_ACTIONS.map((name) => expect.stringMatching(name))));
+  expect(shown.filter((it) => /drop/i.test(it.name)), 'the payload strip is the only drop').toEqual([]);
   expect(shown.filter((it) => it.right - it.left < 44 || it.bottom - it.top < 44 || it.clipped)).toEqual([]);
   expect(shown.filter((it, at) => shown.some((other, index) => index !== at && overlaps(it, other)))).toEqual([]);
 };

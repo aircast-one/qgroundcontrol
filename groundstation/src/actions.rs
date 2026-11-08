@@ -696,14 +696,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         PAUSE_VEHICLE => {
             crate::guided::invoke_valued(backend, crate::guided::Valued::Pause, path, args)
         }
-        GRIPPER => {
-            let answer =
-                crate::guided::invoke_valued(backend, crate::guided::Valued::Gripper, path, args);
-            if answer["ok"] != true {
-                crate::noticeboard::post_from_vehicle(crate::noticeboard::PAYLOAD, "");
-            }
-            answer
-        }
+        GRIPPER => gripper(backend, path, args),
         AUTO_INTERCEPT_DROP => crate::autodrop::run(backend, args),
         crate::autointercept::PICK_ANOTHER => crate::autointercept::pick_another(backend),
         FIX_PAYLOAD => crate::guided::fix_payload(backend, path, args),
@@ -793,6 +786,14 @@ fn step(backend: &dyn Backend, path: &str) -> Value {
 }
 
 const CAMERA: &str = "vehicle.cameraManager.currentCameraInstance";
+
+pub fn gripper(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let answer = crate::guided::invoke_valued(backend, crate::guided::Valued::Gripper, path, args);
+    if answer["ok"] != true {
+        crate::noticeboard::post_from_vehicle(crate::noticeboard::PAYLOAD, "");
+    }
+    answer
+}
 
 fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let mode = match path {

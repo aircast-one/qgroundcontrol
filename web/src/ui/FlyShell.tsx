@@ -574,7 +574,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
             <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(deciding ? DECISION_LAYER : 2), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING, paddingTop: STATUS_ROW_HEIGHT + AircastSpace.s4 }}>
               <div className="relative size-full">
                 {actions(FlyDeckLayout.Rail)}
-                {hasVehicle ? (
+                {hasVehicle && !deciding ? (
                   <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
                     <PayloadRailStrip />
                   </div>
