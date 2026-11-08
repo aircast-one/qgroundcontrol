@@ -6,9 +6,20 @@
         "settingsManager": "QGroundControl.settingsManager",
         "logSettings": "settingsManager.logManagerSettings",
         "diskLoggingEnabledValue": "logSettings.diskLoggingEnabled.rawValue",
-        "logSavePath": "settingsManager.appSettings.logSavePath"
+        "logSavePath": "settingsManager.appSettings.logSavePath",
+        "remoteLoggingEnabledValue": "logSettings.remoteLoggingEnabled.rawValue"
     },
     "groups": [
+        {
+            "heading": "Share With Aircast Support",
+            "sectionName": "Share With Aircast Support",
+            "keywords": ["remote", "support", "diagnostics", "otlp", "telemetry", "share", "logs", "beta"],
+            "controls": [
+                { "setting": "logManagerSettings.remoteLoggingEnabled" },
+                { "setting": "logManagerSettings.remoteLoggingEndpoint", "enableWhen": "remoteLoggingEnabledValue" },
+                { "setting": "logManagerSettings.remoteLoggingToken", "enableWhen": "remoteLoggingEnabledValue" }
+            ]
+        },
         {
             "heading": "Save To Disk",
             "sectionName": "Save To Disk",
