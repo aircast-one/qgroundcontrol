@@ -611,5 +611,8 @@ void UsbRadioTest::_aBayDropsOnItsOwnServoOnlyWhereTheDroneHasOne_test()
     QCOMPARE(bayServo(4, servos), (std::optional<BayServo>(BayServo{8, 1950})));
     QVERIFY2(!bayServo(3, servos), "a bay with output 0 has no servo");
     QVERIFY2(!bayServo(5, servos), "the 6POS has more positions than the drone has bays");
+    QCOMPARE(boardBay(3, 4), std::optional<int>(3));
+    QVERIFY2(!boardBay(5, 4), "the drop module has four bays, the 6POS six positions");
+    QVERIFY2(!boardBay(0, 4), "no position picked drops nothing");
     QVERIFY(!bayServo(1, {}));
 }

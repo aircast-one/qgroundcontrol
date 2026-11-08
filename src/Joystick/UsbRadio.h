@@ -166,6 +166,7 @@ struct BayServo
 };
 
 std::optional<BayServo> bayServo(int bay, const QList<BayServo>& servos);
+std::optional<int> boardBay(int bay, int bays);
 
 enum class Payload
 {

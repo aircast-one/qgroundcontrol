@@ -286,6 +286,12 @@ void Vehicle::_commonInit(LinkInterface* link)
     connect(_parameterManager, &ParameterManager::parametersReadyChanged, this, [this](bool) {
         emit hasGripperChanged();
     });
+    _dropBoardTimer.setSingleShot(true);
+    _dropBoardTimer.setInterval(kDropBoardStaleMsecs);
+    connect(&_dropBoardTimer, &QTimer::timeout, this, [this]() {
+        _dropBoardComponent = 0;
+        emit hasGripperChanged();
+    });
     connect(_initialConnectStateMachine, &InitialConnectStateMachine::progressUpdate,
             this, &Vehicle::_gotProgressUpdate);
     connect(_parameterManager, &ParameterManager::loadProgressChanged, this, &Vehicle::_gotProgressUpdate);
@@ -1889,7 +1895,7 @@ double Vehicle::minimumEquivalentAirspeed()
 
 bool Vehicle::hasGripper()  const
 {
-    return _firmwarePlugin->hasGripper(this);
+    return _dropBoardComponent != 0 || _firmwarePlugin->hasGripper(this);
 }
 
 void Vehicle::startTakeoff()
@@ -3141,8 +3147,55 @@ void Vehicle::triggerSimpleCamera()
                    1.0);                        // trigger camera
 }
 
+void Vehicle::_heardDropBoard(uint8_t component)
+{
+    const bool appeared = _dropBoardComponent != component;
+    _dropBoardComponent = component;
+    _dropBoardTimer.start();
+    if (appeared) {
+        emit hasGripperChanged();
+    }
+}
+
+void Vehicle::dropBay(int bay)
+{
+    if (_dropBoardComponent == 0 || bay < 1 || bay > kDropBoardBays) {
+        return;
+    }
+    sendMavCommand(_dropBoardComponent, MAV_CMD_DO_GRIPPER, true, bay, GRIPPER_ACTION_RELEASE);
+}
+
+void Vehicle::dropAllBays()
+{
+    _dropAllFrom(1);
+}
+
+void Vehicle::_dropAllFrom(int bay)
+{
+    if (_dropBoardComponent == 0 || bay < 1 || bay > kDropBoardBays) {
+        return;
+    }
+    _dropAllNext = bay + 1;
+    const MavCmdAckHandlerInfo_t handlerInfo = {&Vehicle::_dropAllResult, this, nullptr, nullptr};
+    sendMavCommandWithHandler(&handlerInfo, _dropBoardComponent, MAV_CMD_DO_GRIPPER, bay, GRIPPER_ACTION_RELEASE);
+}
+
+void Vehicle::_dropAllResult(void* resultHandlerData, int, const mavlink_command_ack_t& ack, MavCmdResultFailureCode_t failureCode)
+{
+    Vehicle* const vehicle = static_cast<Vehicle*>(resultHandlerData);
+    if (failureCode != MavCmdResultCommandResultOnly || ack.result != MAV_RESULT_ACCEPTED) {
+        QGC::showAppMessage(tr("The drop module did not confirm bay %1, so the remaining bays were not dropped.").arg(vehicle->_dropAllNext - 1));
+        return;
+    }
+    QTimer::singleShot(0, vehicle, [vehicle]() { vehicle->_dropAllFrom(vehicle->_dropAllNext); });
+}
+
 void Vehicle::sendGripperAction(GRIPPER_ACTIONS gripperAction)
 {
+    if (_dropBoardComponent != 0) {
+        QGC::showAppMessage(tr("This drone's drop module drops one bay at a time: pick the bay in the Gripper panel."));
+        return;
+    }
     sendMavCommand(
             _defaultComponentId,
             MAV_CMD_DO_GRIPPER,
@@ -3344,6 +3397,9 @@ void Vehicle::_handleCommandLong(const mavlink_message_t& message)
     }
     if (commandLong.command == MAV_CMD_REQUEST_OPERATOR_CONTROL) {
         _handleCommandRequestOperatorControl(commandLong);
+    }
+    if (commandLong.command == MAV_CMD_DO_GRIPPER && message.compid != _defaultComponentId) {
+        _heardDropBoard(message.compid);
     }
 }
 

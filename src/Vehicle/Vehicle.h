@@ -204,6 +204,7 @@ public:
     Q_PROPERTY(float                mavlinkLossPercent          READ mavlinkLossPercent                                             NOTIFY mavlinkStatusChanged)
     Q_PROPERTY(GimbalController*    gimbalController            READ gimbalController                                               CONSTANT)
     Q_PROPERTY(bool                 hasGripper                  READ hasGripper                                                     NOTIFY hasGripperChanged)
+    Q_PROPERTY(int                  dropBoardBays               READ dropBoardBays                                                  NOTIFY hasGripperChanged)
     Q_PROPERTY(bool                 isROIEnabled                READ isROIEnabled                                                   NOTIFY isROIEnabledChanged)
     Q_PROPERTY(CheckList            checkListState              READ checkListState             WRITE setCheckListState             NOTIFY checkListStateChanged)
     Q_PROPERTY(bool                 readyToFlyAvailable         READ readyToFlyAvailable                                            NOTIFY readyToFlyAvailableChanged)  ///< true: readyToFly signalling is available on this vehicle
@@ -410,6 +411,7 @@ public:
 
     VehicleSupports* supports() { return _vehicleSupports; }
     bool    hasGripper              () const;
+    int     dropBoardBays           () const { return _dropBoardComponent ? kDropBoardBays : 0; }
     bool haveMRSpeedLimits() const { return _multirotor_speed_limits_available; }
     bool haveFWSpeedLimits() const { return _fixed_wing_airspeed_limits_available; }
 
@@ -754,6 +756,8 @@ public slots:
     void _offlineFirmwareTypeSettingChanged (QVariant varFirmwareType); // Should only be used by MissionControler to set firmware from Plan file
     void _offlineVehicleTypeSettingChanged  (QVariant varVehicleType);  // Should only be used by MissionController to set vehicle type from Plan file
     Q_INVOKABLE void sendGripperAction(GRIPPER_ACTIONS gripperOption);
+    Q_INVOKABLE void dropBay(int bay);
+    Q_INVOKABLE void dropAllBays();
 
 signals:
     void coordinateChanged              (QGeoCoordinate coordinate);
@@ -948,6 +952,15 @@ private:
 
     bool            _flying = false;
     bool            _fightMode = false;
+
+    static constexpr int kDropBoardBays = 4;
+    static constexpr int kDropBoardStaleMsecs = 10000;
+    uint8_t         _dropBoardComponent = 0;
+    QTimer          _dropBoardTimer;
+    int             _dropAllNext = 0;
+    void            _heardDropBoard(uint8_t component);
+    void            _dropAllFrom(int bay);
+    static void     _dropAllResult(void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, MavCmdResultFailureCode_t failureCode);
     bool            _landing = false;
     bool            _vtolInFwdFlight = false;
     uint32_t        _onboardControlSensorsPresent = 0;

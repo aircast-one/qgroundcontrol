@@ -143,6 +143,11 @@ std::optional<BayServo> bayServo(int bay, const QList<BayServo>& servos)
                                                                           : std::nullopt;
 }
 
+std::optional<int> boardBay(int bay, int bays)
+{
+    return bay >= 1 && bay <= bays ? std::optional<int>(bay) : std::nullopt;
+}
+
 Payload payload(std::optional<Switches> switches, bool flown, bool gripper)
 {
     return !switches          ? Payload::Off
@@ -893,6 +898,14 @@ void UsbRadio::_release(Vehicle* vehicle, int bay, bool pressed) const
     if (const std::optional<BayServo> servo = bayServo(bay, servos)) {
         vehicle->sendMavCommand(vehicle->defaultComponentId(), MAV_CMD_DO_SET_SERVO, true, servo->output,
                                 servo->releasePwm);
+        return;
+    }
+    if (vehicle->dropBoardBays() > 0) {
+        if (const std::optional<int> held = boardBay(bay, vehicle->dropBoardBays())) {
+            vehicle->dropBay(*held);
+            return;
+        }
+        qCInfo(UsbRadioLog) << "The drop module has no bay" << bay << "; nothing dropped";
         return;
     }
     if (!servos.isEmpty() || pressed) {
