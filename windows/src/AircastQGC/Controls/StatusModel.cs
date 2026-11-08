@@ -658,7 +658,7 @@ internal sealed record RtkStatus(bool Active, bool Valid, int? Satellites, doubl
 internal sealed record UplinkSwitch(string Clock, string From, string To);
 
 internal sealed record AircastLink(string QualityText, string SignalText, string Network, string Modem, string BitrateText, IReadOnlyList<double> QualityHistory, IReadOnlyList<double> BitrateHistory,
-    string? Uplink, string UplinkText, string LinkText, IReadOnlyList<UplinkSwitch> Switches)
+    string? Uplink, string UplinkText, string LinkText, IReadOnlyList<UplinkSwitch> Switches, bool Cellular)
 {
     public const double SignalMaximum = 100;
 
@@ -677,7 +677,8 @@ internal sealed record AircastLink(string QualityText, string SignalText, string
                 StatusJson.Text(view["cellText"]),
                 StatusJson.Objects(view["switches"])
                     .Select(s => new UplinkSwitch(StatusJson.Text(s["clock"]), StatusJson.Text(s["from"]), StatusJson.Text(s["to"])))
-                    .ToList())
+                    .ToList(),
+                StatusJson.MaybeFlag(view["cellular"]) ?? true)
             : null;
 
     public string CellText => string.Join(' ', new[] { LinkText.Length > 0 ? LinkText : QualityText, BitrateText }.Where(part => part.Length > 0));

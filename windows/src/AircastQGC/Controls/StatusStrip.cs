@@ -568,15 +568,15 @@ public sealed class StatusStrip : UserControl
 
     private UIElement? AircastBody() => AircastLink.Parse(View(AircastLinkPath)) is not AircastLink link ? null : Ui.Column(
     [
-        StatusLook.Pairs(new (string, string)?[]
+        StatusLook.Pairs(new[] { ("Uplink:", link.UplinkText) }.Where(_ => link.Uplink is not null)
+            .Concat(new[] { ("Signal:", link.SignalText), ("Network:", link.Network), ("Modem:", link.Modem), ("Video bitrate:", link.BitrateText) }.Where(_ => link.Cellular))),
+        .. link.Cellular ? new UIElement[]
         {
-            link.Uplink is null ? null : ("Uplink:", link.UplinkText),
-            ("Signal:", link.SignalText), ("Network:", link.Network), ("Modem:", link.Modem), ("Video bitrate:", link.BitrateText),
-        }.OfType<(string, string)>()),
-        Ui.Caption("Signal, up to the last hour"),
-        StatusLook.Sparkline(link.QualityHistory, AircastLink.SignalMaximum),
-        Ui.Caption("Video bitrate, up to the last hour"),
-        StatusLook.Sparkline(link.BitrateHistory, 0),
+            Ui.Caption("Signal, up to the last hour"),
+            StatusLook.Sparkline(link.QualityHistory, AircastLink.SignalMaximum),
+            Ui.Caption("Video bitrate, up to the last hour"),
+            StatusLook.Sparkline(link.BitrateHistory, 0),
+        } : [],
         .. link.Switches.Count == 0 ? [] : new UIElement[]
         {
             StatusLook.Heading("Switches"),
