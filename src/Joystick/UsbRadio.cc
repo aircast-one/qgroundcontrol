@@ -13,6 +13,7 @@
 
 #include "AutoConnectSettings.h"
 #include "Fact.h"
+#include "FirmwarePlugin.h"
 #include "GimbalController.h"
 #include "JoystickManager.h"
 #include "LinkConfiguration.h"
@@ -124,6 +125,29 @@ std::optional<Switches> switches(const Line& line, const Layout& layout)
     return arm ? std::optional<Switches>(Switches{*arm >= kArmedPwm}) : std::nullopt;
 }
 
+Payload payload(std::optional<Switches> switches, bool flown, bool gripper)
+{
+    return !switches          ? Payload::Off
+           : !switches->armed ? Payload::Safe
+           : flown && gripper ? Payload::Armed
+                              : Payload::Refused;
+}
+
+QByteArray payloadName(Payload payload)
+{
+    switch (payload) {
+        case Payload::Armed:
+            return QByteArrayLiteral("armed");
+        case Payload::Safe:
+            return QByteArrayLiteral("safe");
+        case Payload::Refused:
+            return QByteArrayLiteral("refused");
+        case Payload::Off:
+        default:
+            return QByteArrayLiteral("off");
+    }
+}
+
 QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout, Ready ready)
 {
     const bool due = !_sentMs || (nowMs - *_sentMs) >= kCameraResendMs;
@@ -225,25 +249,37 @@ QByteArray layoutTail(const Layout& layout)
     });
 }
 
+QByteArray modesTail(qsizetype room, const QStringList& modes)
+{
+    const QStringList shortened = std::accumulate(
+        modes.cbegin(), modes.cend(), QStringList{},
+        [](QStringList kept, const QString& mode) { return kept << QString(mode).remove(' ').left(kModeNameChars); });
+    const auto joined = [&shortened](int count) { return shortened.mid(0, count).join(',').toLatin1(); };
+    const auto counts = std::views::iota(0, static_cast<int>(shortened.size()) + 1) | std::views::reverse;
+    const auto fits = [&joined, room](int count) { return joined(count).size() <= std::max<qsizetype>(room, 0); };
+    return joined(*std::ranges::find_if(counts, fits));
+}
+
 }  // namespace
 
-QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layout& layout, int modeChannel)
+QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layout& layout, int modeChannel,
+                Payload payload, const QStringList& modes)
 {
     const char state = flying == Flying::Vehicle    ? 'F'
                        : flying == Flying::Standby  ? 'S'
                        : flying == Flying::Joystick ? 'J'
                                                     : 'N';
-    if (state == 'N') {
-        return QByteArrayLiteral("@N") + layoutTail(layout) + '\n';
-    }
     const QByteArray head = QByteArrayLiteral("@") + state + ',' + QByteArray::number(vehicle);
     const char letter = kind == Kind::Copter ? 'C' : kind == Kind::Plane ? 'P' : kind == Kind::Rover ? 'R' : '\0';
-    if (letter == '\0') {
-        return head + layoutTail(layout) + '\n';
-    }
-    return head + ',' + letter + ',' + QByteArray::number(sticks.roll) + ',' + QByteArray::number(sticks.pitch) + ',' +
-           QByteArray::number(sticks.throttle) + ',' + QByteArray::number(sticks.yaw) + ',' +
-           QByteArray::number(modeChannel) + layoutTail(without(layout, modeChannel)) + '\n';
+    const QByteArray flight = state == 'N' ? QByteArrayLiteral("@N") + layoutTail(layout)
+                              : letter == '\0'
+                                  ? head + layoutTail(layout)
+                                  : head + ',' + letter + ',' + QByteArray::number(sticks.roll) + ',' +
+                                        QByteArray::number(sticks.pitch) + ',' + QByteArray::number(sticks.throttle) +
+                                        ',' + QByteArray::number(sticks.yaw) + ',' + QByteArray::number(modeChannel) +
+                                        layoutTail(without(layout, modeChannel));
+    const QByteArray body = flight + '|' + payloadName(payload) + '|';
+    return body + modesTail(kMaxEchoBytes - 1 - body.size() - 1, modes) + '\n';
 }
 
 QStringList namedOn(const Layout& layout, int channel)
@@ -666,12 +702,14 @@ void UsbRadio::_close()
     _portName.clear();
     _openedAt.reset();
     _lines = Lines{};
+    _line.reset();
 }
 
 void UsbRadio::_read()
 {
     const QList<Line> lines = _lines.feed(_port->readAll());
     if (!lines.isEmpty()) {
+        _line = lines.last();
         _advance(flightChannels(lines.last()));
         _steer(lines.last());
     }
@@ -800,6 +838,38 @@ std::optional<int> UsbRadio::_target() const
                                                                                   : std::nullopt;
 }
 
+Payload UsbRadio::_payload(const Flight& flight) const
+{
+    const Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    const std::optional<Switches> armed =
+        vehicle && _line ? switches(*_line, without(_layout(), flight.modeChannel)) : std::nullopt;
+    return payload(armed, _target().has_value(), vehicle && vehicle->hasGripper());
+}
+
+QStringList UsbRadio::_modes() const
+{
+    Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    ParameterManager* const parameters = vehicle ? vehicle->parameterManager() : nullptr;
+    const auto exists = [parameters](const QString& name) {
+        return parameters && parameters->parameterExists(ParameterManager::defaultComponentId, name);
+    };
+    if (!vehicle || !vehicle->apmFirmware() ||
+        (!exists(QStringLiteral("FLTMODE1")) && !exists(QStringLiteral("MODE1")))) {
+        return {};
+    }
+    const QString pattern = exists(QStringLiteral("MODE1")) ? QStringLiteral("MODE%1") : QStringLiteral("FLTMODE%1");
+    QStringList names(kModeSlots);
+    std::ranges::transform(std::views::iota(1, kModeSlots + 1), names.begin(), [&](int slot) {
+        const QString name = pattern.arg(slot);
+        return exists(name)
+                   ? vehicle->firmwarePlugin()->flightMode(
+                         MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                         parameters->getParameter(ParameterManager::defaultComponentId, name)->rawValue().toUInt())
+                   : QString();
+    });
+    return names;
+}
+
 void UsbRadio::_send(int vehicleId, bool standby, const Frame& frame) const
 {
     Vehicle* const vehicle = MultiVehicleManager::instance()->getVehicleById(vehicleId);
@@ -842,8 +912,8 @@ void UsbRadio::_advance(std::optional<Frame> fresh)
     const Flight flight = _flight();
     if (echoDue(_echoedAt, now, live) && _port && _port->isOpen()) {
         _echoedAt = now;
-        (void) _port->write(
-            echo(flight.flying, flight.vehicle, flight.kind, flight.sticks, _layout(), flight.modeChannel));
+        (void) _port->write(echo(flight.flying, flight.vehicle, flight.kind, flight.sticks, _layout(),
+                                 flight.modeChannel, _payload(flight), _modes()));
     }
     const qint64 quietSince = std::max(_openedAt.value_or(now), _radio.heardAt().value_or(0));
     const QString quiet = _portName.isEmpty() ? tr("Off") : silentText(_portName, now - quietSince);

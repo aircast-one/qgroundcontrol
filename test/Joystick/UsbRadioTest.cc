@@ -72,24 +72,59 @@ void UsbRadioTest::_standbySendsToTheAircraftComputer_test()
 
 void UsbRadioTest::_radioIsToldWhatItsSticksAreDoing_test()
 {
-    QCOMPARE(echo(Flying::Vehicle, 1), QByteArray("@F,1;18,20,21,22,24,11,12,5,19,23\n"));
-    QCOMPARE(echo(Flying::Standby, 3), QByteArray("@S,3;18,20,21,22,24,11,12,5,19,23\n"));
-    QCOMPARE(echo(Flying::Joystick, 1), QByteArray("@J,1;18,20,21,22,24,11,12,5,19,23\n"));
-    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N;18,20,21,22,24,11,12,5,19,23\n"));
+    QCOMPARE(echo(Flying::Vehicle, 1), QByteArray("@F,1;18,20,21,22,24,11,12,5,19,23|off|\n"));
+    QCOMPARE(echo(Flying::Standby, 3), QByteArray("@S,3;18,20,21,22,24,11,12,5,19,23|off|\n"));
+    QCOMPARE(echo(Flying::Joystick, 1), QByteArray("@J,1;18,20,21,22,24,11,12,5,19,23|off|\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N;18,20,21,22,24,11,12,5,19,23|off|\n"));
     QVERIFY(!parse(echo(Flying::Vehicle, 1)));
 }
 
 void UsbRadioTest::_radioLearnsTheVehicleKindAndItsStickChannels_test()
 {
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10),
-             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n"));
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|off|\n"));
     QCOMPARE(echo(Flying::Standby, 2, Kind::Plane, Sticks{2, 1, 3, 4}),
-             QByteArray("@S,2,P,2,1,3,4,0;18,20,21,22,24,11,12,5,19,23\n"));
+             QByteArray("@S,2,P,2,1,3,4,0;18,20,21,22,24,11,12,5,19,23|off|\n"));
     QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{}, kR2d2, 8),
-             QByteArray("@J,3,R,1,2,3,4,8;18,20,21,22,24,11,12,5,19,23\n"));
+             QByteArray("@J,3,R,1,2,3,4,8;18,20,21,22,24,11,12,5,19,23|off|\n"));
     QCOMPARE(echo(Flying::Vehicle, 4, Kind::Unknown, Sticks{2, 1, 3, 4}),
-             QByteArray("@F,4;18,20,21,22,24,11,12,5,19,23\n"));
-    QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N;18,20,21,22,24,11,12,5,19,23\n"));
+             QByteArray("@F,4;18,20,21,22,24,11,12,5,19,23|off|\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N;18,20,21,22,24,11,12,5,19,23|off|\n"));
+}
+
+void UsbRadioTest::_radioHearsThePayloadStateAndTheFlightModeNames_test()
+{
+    const QStringList copter{QStringLiteral("Loiter"), QStringLiteral("Alt Hold"), QStringLiteral("PosHold"),
+                             QStringLiteral("RTL"),    QStringLiteral("Auto"),     QStringLiteral("Land")};
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Safe, copter),
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|safe|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Armed, copter),
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|armed|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
+    QCOMPARE(
+        echo(Flying::Joystick, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Refused, copter),
+        QByteArray("@J,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Off, {}),
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|off|\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N;18,20,21,22,24,11,12,5,19,23|off|\n"));
+
+    const QStringList plane{QStringLiteral("Stabilize"),     QStringLiteral("Altitude Hold"),
+                            QStringLiteral("Position Hold"), QStringLiteral("Smart RTL"),
+                            QStringLiteral("Auto"),          QStringLiteral("Land")};
+    const QByteArray capped = echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Refused, plane);
+    QVERIFY(capped.size() < kMaxEchoBytes);
+    QCOMPARE(capped,
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,Altitud,Positio,SmartRT,"
+                        "Auto\n"));
+    QVERIFY2(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Safe, plane).endsWith("Auto,Land\n"),
+             "a shorter payload word leaves room for every mode");
+    QVERIFY(!parse(capped));
+
+    QCOMPARE(payload(std::nullopt, true, true), Payload::Off);
+    QCOMPARE(payload(Switches{false}, true, true), Payload::Safe);
+    QCOMPARE(payload(Switches{true}, true, true), Payload::Armed);
+    QCOMPARE(payload(Switches{true}, false, true), Payload::Refused);
+    QCOMPARE(payload(Switches{true}, true, false), Payload::Refused);
+    QCOMPARE(payloadName(Payload::Refused), QByteArray("refused"));
 }
 
 void UsbRadioTest::_vehicleKindFollowsTheAirframe_test()
@@ -347,7 +382,7 @@ void UsbRadioTest::_cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefaul
     QVERIFY(!switches(lineWith({{kR2d2.arm, 2012}}), moved));
 
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, moved),
-             QByteArray("@F,1,C,1,2,3,4,0;13,14,15,0,0,0,0,0,0,0\n"));
+             QByteArray("@F,1,C,1,2,3,4,0;13,14,15,0,0,0,0,0,0,0|off|\n"));
 }
 
 void UsbRadioTest::_aSliderMovedBeforeTheGimbalIsFoundAimsOnceItIs_test()
@@ -372,7 +407,7 @@ void UsbRadioTest::_aFunctionOnTheFlightModeChannelIsOff_test()
     QCOMPARE(without(kR2d2, 10), kR2d2);
     QCOMPARE(without(kR2d2, 0), kR2d2);
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 5),
-             QByteArray("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23\n"));
+             QByteArray("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23|off|\n"));
     QVERIFY2(switches(lineWith({{kR2d2.arm, 2012}, {5, 1500}}), without(kR2d2, 5)) == std::optional(Switches{true}),
              "a vehicle reading flight modes on CH5 takes the bay switch off it, and BOMARM still arms");
     QCOMPARE(namedOn(kR2d2, 5), QStringList({QStringLiteral("bay")}));

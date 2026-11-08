@@ -40,6 +40,9 @@ constexpr uint8_t kAutopilotComponent = 1;
 constexpr uint8_t kStandbyComponent = 191;
 constexpr int kRadioFrames = 3;
 constexpr qsizetype kSniffBytes = 16 * 1024;
+constexpr int kMaxEchoBytes = 96;
+constexpr int kModeSlots = 6;
+constexpr int kModeNameChars = 7;
 
 using Frame = std::array<uint16_t, kChannels>;
 using Line = std::array<uint16_t, kMaxValues>;
@@ -145,6 +148,17 @@ struct Switches
 
 std::optional<Switches> switches(const Line& line, const Layout& layout = {});
 
+enum class Payload
+{
+    Off,
+    Safe,
+    Armed,
+    Refused
+};
+
+Payload payload(std::optional<Switches> switches, bool flown, bool gripper);
+QByteArray payloadName(Payload payload);
+
 struct Ready
 {
     bool gimbal = true;
@@ -165,7 +179,7 @@ private:
 };
 
 QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {}, const Layout& layout = {},
-                int modeChannel = 0);
+                int modeChannel = 0, Payload payload = Payload::Off, const QStringList& modes = {});
 QStringList namedOn(const Layout& layout, int channel);
 QString clashText(int channel, const QStringList& names);
 Kind kind(int mavType);
@@ -306,6 +320,8 @@ private:
     bool _standby(int vehicle) const;
     std::optional<int> _target() const;
     Flight _flight() const;
+    UsbRadioProtocol::Payload _payload(const Flight& flight) const;
+    QStringList _modes() const;
 
     QTimer _timer;
     QElapsedTimer _clock;
@@ -315,6 +331,7 @@ private:
     std::optional<qint64> _echoedAt;
     bool _wasStandby = false;
     UsbRadioProtocol::Lines _lines;
+    std::optional<UsbRadioProtocol::Line> _line;
     UsbRadioProtocol::CameraSticks _camera;
     UsbRadioProtocol::Radio _radio;
     std::optional<std::pair<int, int>> _clash;

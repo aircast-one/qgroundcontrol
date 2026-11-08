@@ -12,6 +12,7 @@ private slots:
     void _radioIsToldWhatItsSticksAreDoing_test();
     void _radioHearsBackOnlyWhileItStreams_test();
     void _radioLearnsTheVehicleKindAndItsStickChannels_test();
+    void _radioHearsThePayloadStateAndTheFlightModeNames_test();
     void _vehicleKindFollowsTheAirframe_test();
     void _unmappedSticksFallBackToTheFirstFourChannels_test();
     void _linesSplitAcrossReadsAreJoined_test();
