@@ -28,6 +28,8 @@ local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
 local NO_ANSWER = "Waiting for the app"
 local NEXT_STEP = "Pick it under Radio on USB"
+local ICON_PATH = "/SCRIPTS/TOOLS/aircast-usb.png"
+local ICON_PNG = "\137PNG\013\010\026\010\000\000\000\013IHDR\000\000\000\030\000\000\000\030\008\004\000\000\000\1459f)\000\000\000\140IDAT8\203\237TA\014\192 \008[\205\254\255ev2\010\020P\147\221\236\201\205\150\022\156\131\200s\140v.\189\226m\188\209\0060\214\209q\194n\204\034\013_\194\136\189\159.f\216\227\177\211x\200QdR\244e.\229\0285\176Y\200\156Dt\027`Nlh\148\151M\219:9.\159vTR\191'\031\009\011h3$=\231)J\177u\225\172\182\034\141@/\134\008\192\207|\185\231\026\233}\174\226\023?\131\092\254_\236+\246\248\000\138\145D#\215\034\220G\000\000\000\000IEND\174B`\130"
 
 local battVolt = 0
 local modelInfo
@@ -386,11 +388,31 @@ local function drawLarge()
   lcd.drawText(300, 256, mappedText(), SMLSIZE + color.muted)
 end
 
+local function putIconOnCard()
+  local f = io.open(ICON_PATH, "r")
+  if f then
+    local head = io.read(f, 8)
+    io.close(f)
+    if head == string.sub(ICON_PNG, 1, 8) then return ICON_PATH end
+  end
+  local w = io.open(ICON_PATH, "w")
+  if not w then return nil end
+  io.write(w, ICON_PNG)
+  io.close(w)
+  return ICON_PATH
+end
+
+local function iconOnCard()
+  local ok, path = pcall(putIconOnCard)
+  return ok and path or nil
+end
+
 local function buildLvglUI()
   local color = brand()
   local pg = lvgl.page({
     title = "Aircast USB",
     subtitle = modelInfo.name,
+    icon = iconOnCard(),
     back = askToLeave,
   })
 
