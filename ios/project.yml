@@ -209,3 +209,5 @@ schemes:
     test:
       targets:
         - AircastMacTests
+      commandLineArguments:
+        "--app-name AircastTests": true

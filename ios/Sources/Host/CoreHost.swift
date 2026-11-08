@@ -14,12 +14,13 @@ enum CoreHost {
         let support = files.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let caches = files.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let documents = files.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let folder = support.appendingPathComponent("settings/\(organization)", isDirectory: true)
+        let named = CommandLine.arguments.firstIndex(of: "--app-name").flatMap { CommandLine.arguments.dropFirst($0 + 1).first }
+        let folder = support.appendingPathComponent("settings/\(named ?? organization)", isDirectory: true)
         try? files.createDirectory(at: folder, withIntermediateDirectories: true)
         let existing = (try? files.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil))?
             .filter { $0.pathExtension == "ini" }
             .min { $0.lastPathComponent < $1.lastPathComponent }
-        let settings = existing ?? folder.appendingPathComponent("\(defaultApplication).ini")
+        let settings = existing ?? folder.appendingPathComponent("\(named ?? defaultApplication).ini")
         let application = settings.deletingPathExtension().lastPathComponent
         let mapCache = caches.appendingPathComponent("QGCMapCache", isDirectory: true)
         try? files.createDirectory(at: mapCache, withIntermediateDirectories: true)

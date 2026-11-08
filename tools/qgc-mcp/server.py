@@ -1220,16 +1220,15 @@ def build(target: str = "release") -> str:
 
 @mcp.tool()
 def native_windows() -> list[dict]:
-    """AppKit windows of the running macOS app: title, CGWindowID, frame, and whether the
-    window hosts the embedded Qt scene. Use this instead of guessing screen coordinates."""
+    """AppKit windows of the running macOS app: title, CGWindowID, frame, key/main/sheet.
+    Use this instead of guessing screen coordinates."""
     return _api("/native/windows").get("windows", [])
 
 
 @mcp.tool()
 def native_screenshot(window: str = "") -> Image:
     """Screenshot one AppKit window by title, captured by window id so it works even when the
-    window is behind others. Omit `window` to take the front visible one. For the Qt scene's own
-    render surface use `screenshot` instead."""
+    window is behind others. Omit `window` to take the front visible one."""
     windows = _api("/native/windows").get("windows", [])
     visible = [w for w in windows if w.get("visible")]
     if window:
@@ -1252,19 +1251,28 @@ def native_screenshot(window: str = "") -> Image:
 
 
 @mcp.tool()
-def native_probe(id: str = "", action: str = "", **args: str) -> dict:
-    """Drive the native macOS UI by identity rather than by synthesised clicks.
+def native_probe(id: str = "", action: str = "", args: dict[str, str] | None = None) -> dict:
+    """Drive the native macOS UI by identity rather than by synthesised clicks. Works with
+    the screen locked, where clicks land nowhere.
 
-    This is the only thing that works when the screen is locked: no window can become
-    key, so clicks land nowhere (and look like they passed). Screenshots keep working.
-
-    Omit `id` to list probes and see whether the screen is locked. Give `id` alone to
-    read that probe's state. Give `id` and `action` plus keyword arguments to drive it,
-    e.g. native_probe("settings", "select", page="Connections") or
-    native_probe("links", "connect", index="4")."""
+    id="ui" reads the accessibility tree of every visible window, sheets nested in their
+    window: one node per element with path, role, label/title/value, frame in window points
+    (native_click coordinates) and actions. args: window=<title> or "#<index>" for an untitled
+    sheet or popover, filter=<substring>, actionable="1", all="1" for unlabelled containers.
+    id="ui" with action press|increment|decrement|confirm|cancel|pick|focus|set|click|escape
+    acts on one element named by args path=<path from the tree> or label=<label, title, id or
+    value> (role=AXButton, nth=<n> to disambiguate); set takes value=<text>; click sends a mouse
+    click to the element's centre (only lands while the window is key); escape sends Esc to the
+    element's window, closing its sheet or popover. Skip AXMenuButton: pressing one opens a modal
+    menu that holds the main thread until it closes.
+    id="snapshot" draws a window (args window=<title> or "#<index>") to a PNG and returns its
+    path; it works on another Space, but glass and Metal (map, video) draw blank or white.
+    id="debugUi" reads the shell's state (tab, fly view, open sheet); with action
+    tab|fly-view|orientation|layout-edit|layout-reset|open and args value=... it drives it,
+    e.g. native_probe("debugUi", "tab", {"value": "plan"}) or ("debugUi", "open", {"value": "settings"})."""
     query = "&".join(
         f"{quote(str(k))}={quote(str(v))}"
-        for k, v in (("id", id), ("action", action), *args.items())
+        for k, v in (("id", id), ("action", action), *(args or {}).items())
         if v != ""
     )
     return _api(f"/native/probe?{query}" if query else "/native/probe")
@@ -1272,7 +1280,8 @@ def native_probe(id: str = "", action: str = "", **args: str) -> dict:
 
 @mcp.tool()
 def native_click(window: str, x: float, y: float) -> dict:
-    """Click an AppKit window at content-view coordinates with a top-left origin.
+    """Click an AppKit window at window coordinates with a top-left origin, as native_probe
+    reports frames.
 
     Refuses when the screen is locked, because a window that cannot become key cannot
     receive the click. Use native_probe there instead."""
@@ -1289,13 +1298,6 @@ def native_menu() -> list[dict]:
 def native_menu_invoke(path: str) -> dict:
     """Fire a menu item by slash-separated title path, e.g. "Window/Native Telemetry"."""
     return _api(f"/native/menu/invoke?path={quote(path)}")
-
-
-@mcp.tool()
-def bridge_stats() -> dict:
-    """Round-trip statistics for the Swift-to-Qt reflection bridge: call count, last, worst
-    and mean milliseconds."""
-    return _api("/native/bridge")
 
 
 @mcp.tool()

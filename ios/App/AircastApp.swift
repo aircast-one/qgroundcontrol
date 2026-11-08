@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         QgcTileProtocol.install()
         CoreHost.start()
+        if CoreHost.isDebugBuild { NativeDebug.install() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

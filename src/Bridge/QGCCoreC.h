@@ -82,6 +82,18 @@ typedef void (*QGCCoreLinkStateSinkFn)(uint32_t id, bool open, const char *reaso
 void qgc_core_set_link_bytes_sink(QGCCoreLinkBytesSinkFn sink, void *user);
 void qgc_core_set_link_state_sink(QGCCoreLinkStateSinkFn sink, void *user);
 
+typedef struct QGCNativeDebugHooks {
+    char *(*windows)(void);
+    char *(*click)(const char *window, double x, double y);
+    char *(*type)(const char *window, const char *text);
+    char *(*probe)(const char *id, const char *action, const char *args_json);
+    char *(*menu)(void);
+    char *(*menu_invoke)(const char *path);
+    char *(*bridge_stats)(void);
+} QGCNativeDebugHooks;
+
+void qgc_native_debug_install(const QGCNativeDebugHooks *hooks);
+
 char *qgc_qt_get(const char *path);
 char *qgc_qt_get_fields(const char *path, const char *fields_csv);
 char *qgc_qt_set(const char *path, const char *value_json);
