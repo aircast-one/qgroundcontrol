@@ -129,9 +129,24 @@ void AircastLinkFactGroupTest::_uplinkAloneShowsTheLink()
 
     QVERIFY(group.telemetryAvailable());
     QVERIFY(group.uplinkKnown());
+    QVERIFY(!group.cellular());
     QCOMPARE(group.uplink()->enumStringValue(), QStringLiteral("LTE"));
     QCOMPARE(group.quality()->rawValue().toInt(), AircastLinkFactGroup::kQualityUnknown);
     QCOMPARE(group.linkText(), QStringLiteral("LTE --"));
+}
+
+void AircastLinkFactGroupTest::_anyModemReportMeansCellular()
+{
+    AircastLinkFactGroup group;
+    QVERIFY(!group.cellular());
+
+    group.handleMessage(nullptr, uplink(4));
+    QVERIFY(!group.cellular());
+    QCOMPARE(group.linkText(), QStringLiteral("Starlink"));
+
+    group.handleMessage(nullptr, cellularStatus(UINT8_MAX, 100, CELLULAR_NETWORK_RADIO_TYPE_NONE, CELLULAR_STATUS_FLAG_SEARCHING));
+    QVERIFY(group.cellular());
+    QCOMPARE(group.quality()->rawValue().toInt(), AircastLinkFactGroup::kQualityUnknown);
 }
 
 void AircastLinkFactGroupTest::_linkTextNamesTheUplink()

@@ -14,6 +14,7 @@ class AircastLinkFactGroup : public FactGroup
     Q_PROPERTY(Fact *uplink         READ uplink         CONSTANT)
     Q_PROPERTY(QVariantList qualityHistory READ qualityHistory NOTIFY historyChanged)
     Q_PROPERTY(QVariantList bitrateHistory READ bitrateHistory NOTIFY historyChanged)
+    Q_PROPERTY(bool         cellular       READ cellular       NOTIFY historyChanged)
     Q_PROPERTY(bool         uplinkKnown    READ uplinkKnown    NOTIFY linkChanged)
     Q_PROPERTY(QString      linkText       READ linkText       NOTIFY linkChanged)
     Q_PROPERTY(QVariantList uplinkSwitches READ uplinkSwitches NOTIFY linkChanged)
@@ -33,6 +34,7 @@ public:
     Fact *uplink()       { return &_uplinkFact; }
     QVariantList qualityHistory() const { return _qualityHistory; }
     QVariantList bitrateHistory() const { return _bitrateHistory; }
+    bool cellular() const { return !_qualityHistory.isEmpty(); }
     bool uplinkKnown() const { return _uplinkKnown; }
     QString linkText() const;
     QVariantList uplinkSwitches() const { return _uplinkSwitches; }

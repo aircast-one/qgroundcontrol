@@ -31,6 +31,7 @@ Item {
 
         SignalStrength {
             anchors.verticalCenter: parent.verticalCenter
+            visible:                _link.cellular
             size:                   parent.height * 0.8
             percent:                _qualityKnown ? _quality : 0
         }
@@ -46,6 +47,7 @@ Item {
             QGCLabel {
                 text:           bitrateText(_bitrateKbps)
                 font.pointSize: ScreenTools.smallFontPointSize
+                visible:        _link.cellular
             }
         }
     }
@@ -73,41 +75,49 @@ Item {
                 LabelledLabel {
                     label:      qsTr("Signal:")
                     labelText:  _qualityKnown ? _quality + " %" : qsTr("unknown")
+                    visible:    _link.cellular
                 }
 
                 LabelledLabel {
                     label:      qsTr("Network:")
                     labelText:  _link.radioType.enumStringValue
+                    visible:    _link.cellular
                 }
 
                 LabelledLabel {
                     label:      qsTr("Modem:")
                     labelText:  _link.status.enumStringValue
+                    visible:    _link.cellular
                 }
 
                 LabelledLabel {
                     label:      qsTr("Video bitrate:")
                     labelText:  bitrateText(_bitrateKbps)
+                    visible:    _link.cellular
                 }
 
                 QGCLabel {
                     text:           qsTr("Signal, up to the last hour")
                     font.pointSize: ScreenTools.smallFontPointSize
+                    visible:        _link.cellular
                 }
 
                 Sparkline {
                     values:     _link.qualityHistory
                     maximum:    100
+                    visible:    _link.cellular
                 }
 
                 QGCLabel {
                     text:           qsTr("Video bitrate, up to the last hour")
                     font.pointSize: ScreenTools.smallFontPointSize
+                    visible:        _link.cellular
                 }
 
                 Sparkline {
                     values:     _link.bitrateHistory
                     maximum:    0
+                    visible:    _link.cellular
                 }
 
                 ColumnLayout {

@@ -13,5 +13,6 @@ private slots:
     void _uplinkSwitchesAreChangesNewestFirst();
     void _uplinkSwitchesKeepTheLastTwenty();
     void _uplinkAloneShowsTheLink();
+    void _anyModemReportMeansCellular();
     void _linkTextNamesTheUplink();
 };
