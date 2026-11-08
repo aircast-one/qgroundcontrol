@@ -1147,7 +1147,9 @@ struct FlightModeMenu: View {
         .opacity(mode.hidden ? HIDDEN_MODE_ALPHA : 1)
         .opacity(modes.canSet ? 1 : DISABLED_ALPHA)
         .contentShape(Rectangle())
-        .onTapGesture { if modes.canSet { choose(mode) } }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(mode.current ? .isSelected : [])
+        .tapButton { if modes.canSet { choose(mode) } }
         .onLongPressGesture { if let setting = modes.hiddenSetting { toggleHidden(mode.name, setting) } }
     }
 
@@ -1423,9 +1425,8 @@ private struct OfflineDeck: View {
                     .overlay {
                         Color.clear
                             .contentShape(Rectangle())
-                            .onTapGesture { flyScreen.requestedSheet = OFFLINE_SHEET }
                             .accessibilityLabel("Find out how to connect")
-                            .accessibilityAddTraits(.isButton)
+                            .tapButton { flyScreen.requestedSheet = OFFLINE_SHEET }
                     }
             }
             DeckButton(entry: DeckEntry(id: "addLink", label: "Add a link", icon: .link, enabled: true) { openAddLink(navigation) }, primary: true)

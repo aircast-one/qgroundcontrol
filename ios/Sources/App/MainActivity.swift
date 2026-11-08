@@ -346,6 +346,7 @@ struct AircastShell: View {
         ZStack {
             if onFly {
                 flyContent(tabs)
+                    .accessibilityHidden(navigation.settingsOpen)
                 ConnectingCard()
             }
             if tab == .Fly {
@@ -386,6 +387,7 @@ struct AircastShell: View {
                 }
             }
             .id(popEpoch)
+            .accessibilityHidden(navigation.settingsOpen)
             if tab == .Fly {
                 OverlayEditBar()
                     .padding(8)

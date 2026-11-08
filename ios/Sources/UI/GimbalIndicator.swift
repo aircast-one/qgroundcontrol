@@ -122,8 +122,7 @@ struct GimbalIndicatorCell: View {
                 .foregroundStyle(theme.colors.onSurfaceVariant)
                 .lineLimit(1)
                 .minimumTouchTarget()
-                .onTapGesture { open = true }
-                .accessibilityAddTraits(.isButton)
+                .tapButton { open = true }
                 .background {
                     if open {
                         AircastSheet(onDismissRequest: { open = false }) {

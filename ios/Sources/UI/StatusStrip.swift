@@ -254,10 +254,9 @@ private struct VehicleStatusReadings: View {
             if compact && !narrow {
                 Image(.chevronRight)
                     .minimumTouchTarget()
-                    .onTapGesture { allStatus = true }
                     .accessibilityLabel("All status")
                     .macTooltip("All status")
-                    .accessibilityAddTraits(.isButton)
+                    .tapButton { allStatus = true }
                     .padding(.leading, STRIP_GAP)
                     .zIndex(-1)
             }
@@ -448,9 +447,8 @@ private struct BatteryCells: View {
                         .monospacedDigit()
                         .foregroundStyle(live ? theme.aircast.outdoorForeground : theme.colors.outline)
                         .minimumTouchTarget()
-                        .onTapGesture(perform: onClick)
                         .accessibilityLabel("\(timeLeft) flight time left")
-                        .accessibilityAddTraits(.isButton)
+                        .tapButton(perform: onClick)
                 }
             }
         }
@@ -672,6 +670,7 @@ private struct InlineCell: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
         .accessibilityAddTraits(onClick == nil ? [] : .isButton)
+        .accessibilityAction(.default) { onClick?() }
     }
 }
 
@@ -753,10 +752,9 @@ private struct BatteryRing: View {
             }
             .padding(.trailing, count.isEmpty ? 0 : BATTERY_COUNT_ROOM)
             .minimumTouchTarget()
-            .onTapGesture(perform: onClick)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(count.isEmpty ? "Battery \(percent)%" : "Lowest of \(count) batteries \(percent)%")
-            .accessibilityAddTraits(.isButton)
+            .tapButton(perform: onClick)
         } else {
             InlineCell(text: text, colour: colour, icon: .battery5Bar, onClick: onClick)
         }

@@ -202,4 +202,10 @@ struct MinimumTouchTarget: Shape {
 
 extension View {
     func minimumTouchTarget() -> some View { contentShape(MinimumTouchTarget()) }
+
+    func tapButton(perform action: @escaping () -> Void) -> some View {
+        onTapGesture(perform: action)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, action)
+    }
 }

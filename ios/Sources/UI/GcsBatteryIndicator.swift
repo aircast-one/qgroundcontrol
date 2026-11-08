@@ -141,10 +141,9 @@ struct GcsBatteryCell: View {
                 .foregroundStyle(batteryColour(shown.state, theme))
                 .lineLimit(1)
                 .minimumTouchTarget()
-                .onTapGesture { open = true }
                 .accessibilityLabel("\(shown.title) \(shown.levelText)")
                 .accessibilityHint(shown.heading)
-                .accessibilityAddTraits(.isButton)
+                .tapButton { open = true }
                 .background {
                     if open {
                         AircastSheet(onDismissRequest: { open = false }) {

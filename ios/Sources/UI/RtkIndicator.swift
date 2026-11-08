@@ -125,8 +125,7 @@ struct RtkIndicatorCell: View {
             Text("RTK")
                 .font(.labelMedium)
                 .minimumTouchTarget()
-                .onTapGesture { open = true }
-                .accessibilityAddTraits(.isButton)
+                .tapButton { open = true }
                 .background {
                     if open {
                         AircastSheet(onDismissRequest: { open = false }) {

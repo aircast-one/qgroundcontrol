@@ -158,9 +158,8 @@ struct VehicleStateChip: View {
             } else if !disconnected {
                 Image(.arrowDropDown)
                     .accessibilityLabel(lost ? SIGNAL_LOST : "Change flight mode")
-                    .accessibilityAddTraits(.isButton)
                     .minimumTouchTarget()
-                    .onTapGesture { if lost { lostMenu = true } else { modeMenu = true } }
+                    .tapButton { if lost { lostMenu = true } else { modeMenu = true } }
             }
             if let progress = loading, !lost {
                 VStack(alignment: .leading, spacing: 2) {
@@ -180,8 +179,7 @@ struct VehicleStateChip: View {
         .frame(minHeight: MINIMUM_TOUCH_TARGET)
         .background { Color.clear.contentShape(Rectangle()) }
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .onTapGesture {
+        .tapButton {
             if lost {
                 lostMenu = true
             } else if choices.ambiguous || taken {
