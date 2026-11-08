@@ -17,7 +17,7 @@ Feature parity target: the Android head. See `NATIVE_WINDOWS_REWRITE.md`.
 .\build-app.ps1 -Arch arm64
 ```
 
-Requirements (all present on the `winvm` build box): Rust `1.95.0-aarch64-pc-windows-msvc`,
+Requirements (all present on the `winvm` build box): Rust `1.99.1-aarch64-pc-windows-msvc`,
 VS 2022 with the VC ARM64 (or x64) toolset, LLVM/clang (a core C dep needs it), the .NET SDK `global.json` pins,
 GStreamer MSVC arm64 (or x86_64) at the version `.github/build-config.json` pins (`gstreamer.version.windows`).
 The Windows App SDK is pulled from NuGet on first restore.
