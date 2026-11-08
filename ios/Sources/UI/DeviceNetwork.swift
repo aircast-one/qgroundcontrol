@@ -20,6 +20,14 @@ struct UplinkBackup: Equatable {
     let status: DeviceBadge
 }
 
+struct UplinkSwitch: Equatable {
+    let at: String
+    let ago: String
+    let from: String
+    let to: String
+    let reason: String
+}
+
 struct UplinkCard: Equatable {
     let icon: String
     let title: String
@@ -32,6 +40,7 @@ struct UplinkCard: Equatable {
     let rate: String
     let failover: [UplinkBackup]
     let switchText: String
+    let switches: [UplinkSwitch]
     let backup: String
 }
 
@@ -304,6 +313,7 @@ private func netUplink(_ json: JSON) -> UplinkCard {
         rate: json["rate"].string,
         failover: json["failover"].objects.map { UplinkBackup(label: $0["label"].string, status: netBadge($0, "status")) },
         switchText: json["switch"].string,
+        switches: json["switches"].objects.map { UplinkSwitch(at: $0["at"].string, ago: $0["ago"].string, from: $0["from"].string, to: $0["to"].string, reason: $0["reason"].string) },
         backup: json["backup"].string
     )
 }

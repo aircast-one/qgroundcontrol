@@ -83,6 +83,7 @@ final class DeviceNetworkTests: XCTestCase {
         let view = try XCTUnwrap(parseNetwork(served))
         XCTAssertEqual(view.uplink.failover.first, UplinkBackup(label: "LTE (wwan0)", status: DeviceBadge(level: DeviceLevel.Neutral, text: "standing by · takes over in ~15 s")))
         XCTAssertTrue(view.uplink.switchText.contains("from Wi-Fi (wlan0) to LTE (wwan0)"))
+        XCTAssertEqual(view.uplink.switches, [])
         XCTAssertEqual(view.modem?.signal?.values, [80.0, -1.0, 72.0])
         XCTAssertEqual(view.modem?.messages.items.first?.from, "MAGTICOM")
         XCTAssertEqual(view.modem?.sim?.apn, "internet")
@@ -103,6 +104,25 @@ final class DeviceNetworkTests: XCTestCase {
         XCTAssertNotNil(parseNetwork(servedWith("modem", nil)))
         XCTAssertNil(parseNetwork(servedWith("modem", nil))?.modem)
         XCTAssertNil(parseNetwork(.object(["modem": served["modem"]])))
+    }
+
+    func testReadsTheUplinkSwitchHistoryNewestFirstWithAnOptionalReason() throws {
+        let uplink = JSON.parse("""
+            {
+              "icon": "cellular",
+              "title": "LTE (wwan0)",
+              "switch": "Moved just now: from Wi-Fi (wlan0) to LTE (wwan0)",
+              "switches": [
+                { "at": "2026-11-08T21:04:09Z", "ago": "just now", "from": "Wi-Fi (wlan0)", "to": "LTE (wwan0)", "reason": "wlan0 lost the internet" },
+                { "at": "2026-11-08T20:58:00Z", "ago": "6 min ago", "from": "LTE (wwan0)", "to": "Wi-Fi (wlan0)" }
+              ]
+            }
+            """)
+        let view = try XCTUnwrap(parseNetwork(servedWith("uplink", uplink)))
+        XCTAssertEqual(view.uplink.switches, [
+            UplinkSwitch(at: "2026-11-08T21:04:09Z", ago: "just now", from: "Wi-Fi (wlan0)", to: "LTE (wwan0)", reason: "wlan0 lost the internet"),
+            UplinkSwitch(at: "2026-11-08T20:58:00Z", ago: "6 min ago", from: "LTE (wwan0)", to: "Wi-Fi (wlan0)", reason: ""),
+        ])
     }
 
     func testEachKindOfUplinkGetsAnIconOfItsOwnAnythingElseTheNetworkOne() {

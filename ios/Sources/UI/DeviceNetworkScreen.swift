@@ -153,8 +153,34 @@ private struct PrimaryUplinkSection: View {
                 LabeledContent(row.label) { NetLeveled(badge: row.status) }
             }
             DeviceText(text: uplink.switchText)
+            if uplink.switches.count >= 2 {
+                DeviceGroup("Switch history", summary: "\(uplink.switches.count) switches") {
+                    ForEach(Array(uplink.switches.enumerated()), id: \.offset) { _, it in
+                        UplinkSwitchRow(entry: it)
+                    }
+                }
+            }
             DeviceText(text: uplink.backup)
         }
+    }
+}
+
+private struct UplinkSwitchRow: View {
+    let entry: UplinkSwitch
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("\(entry.from) → \(entry.to)").font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading)
+                Text(entry.ago).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+            }
+            if !entry.reason.isEmpty {
+                Text(entry.reason).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
     }
 }
 
@@ -776,7 +802,6 @@ private struct IceEditor: View {
         }
     }
 
-    // Rows of the relay section: one per server (URL, username, password and a red minus), the add buttons, Save.
     var body: some View {
         Text("Relay (TURN / STUN) servers").font(.headline)
         ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
@@ -791,7 +816,6 @@ private struct IceEditor: View {
                     )
                     DeviceRemoveButton(label: "Remove server") { remove(index) }
                 }
-                // .password is the plain keyboard without autocapitalisation or autocorrect, which a username needs.
                 DeviceTextField(
                     label: "Username",
                     value: row.username,

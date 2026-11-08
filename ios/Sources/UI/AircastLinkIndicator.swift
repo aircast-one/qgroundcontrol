@@ -3,14 +3,23 @@ import SwiftUI
 let AIRCAST_LINK_VIEW = "view.aircastLink"
 private let SIGNAL_MAXIMUM = 100.0
 
+struct AircastLinkSwitch: Equatable {
+    let clock: String
+    let from: String
+    let to: String
+}
+
 struct AircastLink: Equatable {
-    let qualityText: String
+    let cellText: String
+    let uplinkText: String
+    let cellular: Bool
     let signalText: String
     let network: String
     let modem: String
     let bitrateText: String
     let qualityHistory: [Double]
     let bitrateHistory: [Double]
+    let switches: [AircastLinkSwitch]
 }
 
 private func numbers(_ array: [JSON]?) -> [Double] { (array ?? []).map { $0.double ?? .nan } }
@@ -18,14 +27,26 @@ private func numbers(_ array: [JSON]?) -> [Double] { (array ?? []).map { $0.doub
 func aircastLink(_ view: JSON?) -> AircastLink? {
     guard let it = view, it["shown"].bool else { return nil }
     return AircastLink(
-        qualityText: it["qualityText"].string,
+        cellText: it["cellText"].string(it["qualityText"].string),
+        uplinkText: it["uplink"].isNull ? "" : it["uplinkText"].string,
+        cellular: it["cellular"].bool(true),
         signalText: it["signalText"].string,
         network: it["network"].string,
         modem: it["modem"].string,
         bitrateText: it["bitrateText"].string,
         qualityHistory: numbers(it["qualityHistory"].arrayOrNil),
-        bitrateHistory: numbers(it["bitrateHistory"].arrayOrNil)
+        bitrateHistory: numbers(it["bitrateHistory"].arrayOrNil),
+        switches: it["switches"].objects.map { AircastLinkSwitch(clock: $0["clock"].string, from: $0["from"].string, to: $0["to"].string) }
     )
+}
+
+func cellLabel(_ link: AircastLink) -> String {
+    [link.cellText, link.bitrateText].filter { !$0.isEmpty }.joined(separator: " ")
+}
+
+func aircastLinkRows(_ link: AircastLink) -> [(String, String)] {
+    (link.uplinkText.isEmpty ? [] : [("Uplink:", link.uplinkText)])
+        + (link.cellular ? [("Signal:", link.signalText), ("Network:", link.network), ("Modem:", link.modem), ("Video bitrate:", link.bitrateText)] : [])
 }
 
 func sparkRuns(_ values: [Double], maximum: Double) -> [[(Float, Float)]] {
@@ -69,7 +90,7 @@ struct StatusCellSheet<Label: View, Sheet: View>: View {
     var body: some View {
         label()
             .minimumTouchTarget()
-            .onTapGesture { open = true }
+            .tapButton { open = true }
             .background {
                 if open {
                     AircastSheet(onDismissRequest: { open = false }) { sheet { open = false } }
@@ -85,24 +106,34 @@ struct AircastLinkCell: View {
     var body: some View {
         if let link = aircastLink(json) {
             StatusCellSheet {
-                Text("\(link.qualityText) \(link.bitrateText)")
+                Text(cellLabel(link))
                     .font(.labelMedium)
                     .foregroundStyle(theme.colors.onSurfaceVariant)
                     .lineLimit(1)
             } sheet: { _ in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Cellular link").font(.titleSmall)
-                    ForEach([("Signal:", link.signalText), ("Network:", link.network), ("Modem:", link.modem), ("Video bitrate:", link.bitrateText)], id: \.0) { label, value in
-                        Text("\(label)  \(value)").font(.bodySmall)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Aircraft link").font(.titleSmall)
+                        ForEach(aircastLinkRows(link), id: \.0) { label, value in
+                            Text("\(label)  \(value)").font(.bodySmall)
+                        }
+                        if link.cellular {
+                            Text("Signal, up to the last hour").font(.labelSmall)
+                            Sparkline(values: link.qualityHistory, maximum: SIGNAL_MAXIMUM)
+                            Text("Video bitrate, up to the last hour").font(.labelSmall)
+                            Sparkline(values: link.bitrateHistory, maximum: 0)
+                        }
+                        if !link.switches.isEmpty {
+                            Text("Switches").font(.labelSmall)
+                            ForEach(Array(link.switches.enumerated()), id: \.offset) { _, it in
+                                Text("\(it.clock)  \(it.from) → \(it.to)").font(.bodySmall)
+                            }
+                        }
                     }
-                    Text("Signal, up to the last hour").font(.labelSmall)
-                    Sparkline(values: link.qualityHistory, maximum: SIGNAL_MAXIMUM)
-                    Text("Video bitrate, up to the last hour").font(.labelSmall)
-                    Sparkline(values: link.bitrateHistory, maximum: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Space.s5)
+                    .padding(.bottom, Space.s6)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Space.s5)
-                .padding(.bottom, Space.s6)
             }
         }
     }
