@@ -22,6 +22,11 @@ pub enum Emit {
         frame: u8,
         show_error: bool,
     },
+    ComponentCommand {
+        component: u8,
+        command: u16,
+        params: [f64; 7],
+    },
     SetMode {
         base_mode: u8,
         custom_mode: u32,
@@ -105,7 +110,9 @@ fn patience(wait_ms: u64, round_trips: u64, observed: &Observed) -> u64 {
 
 fn label(step: &Step) -> String {
     match step {
-        Step::Command { command, .. } => format!("Sending command {command}"),
+        Step::Command { command, .. } | Step::ComponentCommand { command, .. } => {
+            format!("Sending command {command}")
+        }
         Step::SetMode { mode, .. } | Step::WaitForMode(mode) => format!("Changing mode to {mode}"),
         Step::Arm | Step::WaitArmed => "Arming".to_string(),
         Step::PositionTargetLocalNed { .. } => "Sending position target".to_string(),
@@ -456,6 +463,18 @@ impl Executor {
                         command_int,
                         frame,
                         show_error,
+                    });
+                    self.at += 1;
+                }
+                Step::ComponentCommand {
+                    component,
+                    command,
+                    params,
+                } => {
+                    out.push(Emit::ComponentCommand {
+                        component,
+                        command,
+                        params,
                     });
                     self.at += 1;
                 }

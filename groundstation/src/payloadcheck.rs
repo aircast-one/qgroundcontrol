@@ -170,6 +170,9 @@ pub struct ServoBay {
 
 pub const DEVICE_DROPPER_VALUE: &str = "DROPPER";
 pub const DEVICE_DROPPER_STALE_MS: u64 = 3_000;
+pub const DROP_BOARD_BAYS: i64 = 4;
+pub const DROP_BOARD_STALE_MS: u64 = 10_000;
+pub const DROP_BOARD_ONLY_DROPS: &str = "The drop module on this drone only drops.";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Setup {

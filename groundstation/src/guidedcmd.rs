@@ -61,6 +61,11 @@ pub enum Step {
         frame: u8,
         show_error: bool,
     },
+    ComponentCommand {
+        component: u8,
+        command: u16,
+        params: [f64; 7],
+    },
     SetMode {
         mode: String,
         base_mode: u8,
@@ -951,6 +956,14 @@ pub fn gripper(action: f64, bay: f64) -> Plan {
         }
         _ => Plan::Refused("The gripper is sent 1 to grab, 0 to release or 2 to hold.".into()),
     }
+}
+
+pub fn drop_on(component: u8, bay: f64) -> Plan {
+    Plan::Steps(vec![Step::ComponentCommand {
+        component,
+        command: CMD_DO_GRIPPER,
+        params: [bay, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    }])
 }
 
 pub fn set_servo(output: f64, pwm: f64) -> Plan {

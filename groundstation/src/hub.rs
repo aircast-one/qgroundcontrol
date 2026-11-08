@@ -422,6 +422,7 @@ pub struct Vehicle {
     pub rc_values: Vec<u16>,
     pub standby: Option<(i32, u64)>,
     pub device_dropper: Option<(i32, u64)>,
+    pub drop_board: Option<(u8, u64)>,
     pub fight: bool,
     pub servo_outputs: Vec<i32>,
     pub message_log: crate::messagelog::MessageLog,
@@ -701,6 +702,7 @@ impl Vehicle {
             rc_values: Vec::new(),
             standby: None,
             device_dropper: None,
+            drop_board: None,
             fight: false,
             servo_outputs: Vec::new(),
             message_log: crate::messagelog::MessageLog::default(),
@@ -2731,6 +2733,15 @@ impl Vehicle {
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
             "gripper" if releases_while_safe(number("gripAction"), self.payload_lock.armed()) => {
                 Plan::Refused(crate::payloadrail::SAFE.into())
+            }
+            "gripper" if self.drop_board_at(now_ms()).is_some() => {
+                match number("gripAction") == GRIPPER_RELEASE_ACTION {
+                    true => guidedcmd::drop_on(
+                        self.drop_board_at(now_ms()).unwrap_or_default(),
+                        action.get("bay").and_then(Value::as_f64).unwrap_or(0.0),
+                    ),
+                    false => Plan::Refused(crate::payloadcheck::DROP_BOARD_ONLY_DROPS.into()),
+                }
             }
             "gripper" if !self.payload_servos().is_empty() => {
                 match crate::payloadcheck::servo_command(
@@ -4770,6 +4781,25 @@ impl Vehicle {
                     );
                     self.handle(outs, now_ms)
                 }
+                Emit::ComponentCommand {
+                    component,
+                    command,
+                    params,
+                } => {
+                    let outs = self.commands.send(
+                        Command {
+                            component,
+                            command,
+                            command_int: false,
+                            frame: guidedcmd::FRAME_GLOBAL,
+                            params,
+                            show_error: false,
+                            tag: 0,
+                        },
+                        now_ms,
+                    );
+                    self.handle(outs, now_ms)
+                }
                 Emit::SetMode {
                     base_mode,
                     custom_mode,
@@ -6595,13 +6625,26 @@ impl Vehicle {
         crate::payloadcheck::servo_bays(self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT)
     }
 
+    pub fn drop_board_at(&self, now_ms: u64) -> Option<u8> {
+        self.drop_board
+            .filter(|(_, at)| {
+                now_ms.saturating_sub(*at) <= crate::payloadcheck::DROP_BOARD_STALE_MS
+            })
+            .map(|(component, _)| component)
+    }
+
     pub fn device_bays_at(&self, now_ms: u64) -> i64 {
         self.device_dropper
             .filter(|(bays, at)| {
                 *bays > 0
                     && now_ms.saturating_sub(*at) <= crate::payloadcheck::DEVICE_DROPPER_STALE_MS
             })
-            .map_or(0, |(bays, _)| i64::from(bays))
+            .map(|(bays, _)| i64::from(bays))
+            .or_else(|| {
+                self.drop_board_at(now_ms)
+                    .map(|_| crate::payloadcheck::DROP_BOARD_BAYS)
+            })
+            .unwrap_or(0)
     }
 
     pub fn drop_bays(&self) -> i64 {
@@ -7516,6 +7559,13 @@ impl Vehicle {
                 .is_ok_and(|name| name == crate::payloadcheck::DEVICE_DROPPER_VALUE)
         {
             self.device_dropper = Some((value.value, now_ms));
+        }
+        if let MavMessage::COMMAND_LONG(command) = message
+            && command.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_GRIPPER
+            && header.component_id != self.component
+            && header.component_id != crate::joystickhost::STANDBY_COMPONENT
+        {
+            self.drop_board = Some((header.component_id, now_ms));
         }
         if let MavMessage::NAMED_VALUE_INT(value) = message
             && header.component_id == crate::joystickhost::STANDBY_COMPONENT
@@ -13623,6 +13673,81 @@ mod tests {
             )
             .is_some(),
             "Vehicle::_handleStatusText drops it only when _healthAndArmingChecksSupported(component)"
+        );
+    }
+
+    #[test]
+    fn a_drop_board_beside_the_autopilot_takes_the_drop_on_its_own_four_bays() {
+        use mavlink::dialects::ardupilotmega::{
+            COMMAND_ACK_DATA, COMMAND_LONG_DATA, MavCmd, MavResult,
+        };
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let board = MavHeader {
+            component_id: 169,
+            ..autopilot
+        };
+        let now = now_ms();
+        hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), now, now);
+        let beacon = MavMessage::COMMAND_LONG(COMMAND_LONG_DATA {
+            target_system: 255,
+            target_component: 190,
+            command: MavCmd::MAV_CMD_DO_GRIPPER,
+            param4: 3.12,
+            param5: 12.1,
+            ..Default::default()
+        });
+        hub.on_frame(origin(0), &board, &beacon, now, now);
+        let vehicle = hub.active().unwrap();
+        assert_eq!(
+            vehicle.drop_bays(),
+            4,
+            "the Vampire basket's board says DO_GRIPPER every 3 s and holds four bays"
+        );
+        assert!(
+            crate::payloadcheck::problems(&vehicle.payload_setup(), 4).is_empty(),
+            "GRIP_ENABLE 0 on the flight controller is how the board runs"
+        );
+        let sent = hub
+            .guided(
+                None,
+                &json!({ "action": "gripper", "gripAction": 0, "bay": 2 }),
+                1,
+            )
+            .unwrap();
+        assert!(
+            sent.iter().any(|(_, bytes)| matches!(decode(bytes), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_GRIPPER && c.target_component == 169 && c.param1 == 2.0)),
+            "the drop goes to the board, which picks the holder by param1"
+        );
+        hub.on_frame(
+            origin(0),
+            &board,
+            &MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+                command: MavCmd::MAV_CMD_DO_GRIPPER,
+                result: MavResult::MAV_RESULT_ACCEPTED,
+                ..Default::default()
+            }),
+            now,
+            now,
+        );
+        assert!(
+            hub.active().unwrap().empty_bays.contains(&2),
+            "the board's ack empties the bay"
+        );
+        assert_eq!(
+            hub.guided(
+                None,
+                &json!({ "action": "gripper", "gripAction": 1, "bay": 1 }),
+                1
+            )
+            .err()
+            .as_deref(),
+            Some(crate::payloadcheck::DROP_BOARD_ONLY_DROPS),
+            "the board drops on any DO_GRIPPER, so a grab is never sent to it"
         );
     }
 
