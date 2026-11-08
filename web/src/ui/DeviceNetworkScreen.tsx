@@ -242,6 +242,27 @@ const UplinkBody = ({ uplink, onOpen }: { uplink: UplinkCard; onOpen: (href: str
       </div>
     ) : null}
     <DeviceText text={uplink.switchText} />
+    {uplink.switches.length >= 2 ? (
+      <DeviceDisclosure title="Switch history" summary={`${uplink.switches.length} switches`}>
+        <div role="list" aria-label="Uplink switches" className="flex flex-col">
+          {uplink.switches.map((it) => (
+            <div key={`${it.at}|${it.to}`} role="listitem" className="flex flex-col px-list py-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <Text typography="bodyLarge">{`${it.from} → ${it.to}`}</Text>
+                <Text typography="bodySmall" color={md('onSurfaceVariant')} className="shrink-0">
+                  {it.ago}
+                </Text>
+              </div>
+              {it.reason !== '' ? (
+                <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="break-words">
+                  {it.reason}
+                </Text>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </DeviceDisclosure>
+    ) : null}
     <DeviceText text={uplink.backup} />
   </>
 );

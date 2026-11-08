@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { type Json, type JsonArray, optBoolean, optJSONArray, optString } from '@/bridge/Json';
+import { type Json, type JsonArray, isNull, jsonObjects, optBoolean, optJSONArray, optString } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
 import { Text } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
@@ -9,14 +9,18 @@ export const AIRCAST_LINK_VIEW = 'view.aircastLink';
 const SIGNAL_MAXIMUM = 100.0;
 const SPARKLINE_HEIGHT = 48;
 
+export type UplinkSwitch = { clock: string; from: string; to: string };
+
 export type AircastLink = {
-  qualityText: string;
+  cellText: string;
+  uplinkText: string;
   signalText: string;
   network: string;
   modem: string;
   bitrateText: string;
   qualityHistory: readonly number[];
   bitrateHistory: readonly number[];
+  switches: readonly UplinkSwitch[];
 };
 
 const numbers = (array: JsonArray | null): readonly number[] =>
@@ -25,13 +29,15 @@ const numbers = (array: JsonArray | null): readonly number[] =>
 export const aircastLink = (view: Json | null): AircastLink | null =>
   view !== null && optBoolean(view, 'shown')
     ? {
-        qualityText: optString(view, 'qualityText'),
+        cellText: optString(view, 'cellText', optString(view, 'qualityText')),
+        uplinkText: isNull(view, 'uplink') ? '' : optString(view, 'uplinkText'),
         signalText: optString(view, 'signalText'),
         network: optString(view, 'network'),
         modem: optString(view, 'modem'),
         bitrateText: optString(view, 'bitrateText'),
         qualityHistory: numbers(optJSONArray(view, 'qualityHistory')),
         bitrateHistory: numbers(optJSONArray(view, 'bitrateHistory')),
+        switches: jsonObjects(optJSONArray(view, 'switches')).map((it) => ({ clock: optString(it, 'clock'), from: optString(it, 'from'), to: optString(it, 'to') })),
       }
     : null;
 
@@ -78,16 +84,17 @@ export const AircastLinkCell = () => {
     <>
       <button type="button" onClick={() => setOpen(true)}>
         <Text typography="labelMedium" color={md('onSurfaceVariant')} maxLines={1}>
-          {`${link.qualityText} ${link.bitrateText}`}
+          {`${link.cellText} ${link.bitrateText}`}
         </Text>
       </button>
 
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
           <div className="flex w-full flex-col gap-1.5 px-sheet pb-6">
-            <Text typography="titleSmall">Cellular link</Text>
+            <Text typography="titleSmall">Aircraft link</Text>
             {(
               [
+                ...(link.uplinkText === '' ? [] : [['Uplink:', link.uplinkText] as const]),
                 ['Signal:', link.signalText],
                 ['Network:', link.network],
                 ['Modem:', link.modem],
@@ -100,6 +107,14 @@ export const AircastLinkCell = () => {
             <Sparkline values={link.qualityHistory} maximum={SIGNAL_MAXIMUM} />
             <Text typography="labelSmall">Video bitrate, up to the last hour</Text>
             <Sparkline values={link.bitrateHistory} maximum={0} />
+            {link.switches.length > 0 ? (
+              <>
+                <Text typography="labelSmall">Switches</Text>
+                {link.switches.map((it, index) => (
+                  <Text key={index} typography="bodySmall">{`${it.clock}  ${it.from} → ${it.to}`}</Text>
+                ))}
+              </>
+            ) : null}
           </div>
         </AircastSheet>
       ) : null}

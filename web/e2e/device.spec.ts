@@ -4,6 +4,7 @@ import { flyNow, openMenu, test as hosted } from './fixtures';
 const DEVICE = 'http://localhost:18780';
 const SILENT = 'http://localhost:18788';
 const FIGHT = 'http://localhost:18789';
+const UPLINKED = 'http://localhost:18792';
 const UPGRADING = 'localhost:18786';
 const SECURE = 'localhost:18785';
 const PLAIN_UPGRADING = 'http://aircast-device.test:18786';
@@ -14,12 +15,13 @@ type Stats = { uploads: string[]; firmware: number[]; relays: string[]; store: s
 
 const stats = async (): Promise<Stats> => (await fetch(`${DEVICE}/stats`)).json() as Promise<Stats>;
 
-const test = base.extend<{ device: Page }>({
-  device: async ({ page }, use) => {
+const test = base.extend<{ deviceAt: string; device: Page }>({
+  deviceAt: [DEVICE, { option: true }],
+  device: async ({ page, deviceAt }, use) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'did not respond to request for parameters' }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
-    await page.goto(`${DEVICE}/`);
+    await page.goto(`${deviceAt}/`);
     await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
     await use(page);
@@ -144,6 +146,36 @@ test('the Device tab holds the device pages, drawn natively, and device trouble 
   await expect(device.locator('iframe')).toHaveCount(0);
   await device.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(device.getByText('Before you fly')).toBeVisible();
+});
+
+test('the Connection page keeps the uplink switch history under the last switch', async ({ device }) => {
+  await device.getByRole('button', { name: 'e2e-device: No camera yet' }).click();
+  await device.getByRole('button', { name: /^Connection/ }).click();
+  await expect(device.getByText('Moved 2 min ago: from LTE (wwan0) to Starlink (eth1)')).toBeVisible();
+  const history = device.getByRole('button', { name: /^Switch history\s*3 switches/ });
+  await expect(history).toHaveAttribute('aria-expanded', 'false');
+  await history.click();
+  const switches = device.getByRole('list', { name: 'Uplink switches' }).getByRole('listitem');
+  await expect(switches).toHaveCount(3);
+  await expect(switches.first()).toContainText('LTE (wwan0) → Starlink (eth1)');
+  await expect(switches.first()).toContainText('2 min ago');
+  await expect(switches.first()).toContainText('Starlink came back and reaches the internet');
+  await expect(switches.last()).toContainText('Starlink (eth1) → Wi-Fi (wlan0)');
+});
+
+test.describe('an aircraft that names its uplink', () => {
+  test.use({ deviceAt: UPLINKED });
+
+  test('the link cell names the uplink in use and its sheet lists every switch, newest first', async ({ device }) => {
+    await flyNow(device);
+    await device.getByRole('button', { name: 'All status' }).click();
+    const cell = device.getByRole('button', { name: /^Starlink \d/ });
+    await expect(cell).toBeVisible({ timeout: 30_000 });
+    await cell.click();
+    const sheet = device.getByRole('dialog').filter({ hasText: 'Aircraft link' });
+    await expect(sheet.getByText(/^Uplink:\s+Starlink$/)).toBeVisible();
+    await expect(sheet.getByText(/→/)).toHaveText([/^\d\d:\d\d:\d\d\s+LTE → Starlink$/, /^\d\d:\d\d:\d\d\s+Wi-Fi → LTE$/]);
+  });
 });
 
 test('on a desktop the device home is a dashboard, with device health beside the checks', async ({ device }) => {

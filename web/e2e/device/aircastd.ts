@@ -8,7 +8,7 @@ import type { Duplex } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { fightFrame, tickFrames } from '../tlog.ts';
+import { fightFrame, tickFrames, uplinkFrame } from '../tlog.ts';
 
 export const DEVICE_PORT = 18780;
 export const SBS1_PORT = 30003;
@@ -20,10 +20,15 @@ export const UPGRADING_PORT = 18786;
 export const OFFLINE_PORT = 18787;
 export const SILENT_PORT = 18788;
 export const FIGHT_PORT = 18789;
+export const UPLINK_PORT = 18792;
 const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
 const VITE = Number(process.env.E2E_PORT ?? 8800);
 const HOME = { lat: 47.3977, lon: 8.5456 };
 const TICK_MS = 250;
+const UPLINK_WIFI = 2;
+const UPLINK_LTE = 3;
+const UPLINK_STARLINK = 4;
+const uplinkAt = (tick: number): number => (tick < 8 ? UPLINK_WIFI : tick < 16 ? UPLINK_LTE : UPLINK_STARLINK);
 
 const store = mkdtempSync(join(tmpdir(), 'aircastd-store-'));
 const seen = { uploads: [] as string[], firmware: [] as number[], relays: [] as string[], gcsHeartbeats: 0, tcpHeartbeats: 0, tracks: [] as string[], secure: [] as string[] };
@@ -179,7 +184,31 @@ const FLIGHTS = {
   ],
 };
 
-const VIEWS = { aircraft: AIRCRAFT, telemetry: TELEMETRY, flights: FLIGHTS, connect: CONNECT };
+const NETWORK = {
+  uplink: {
+    icon: 'satellite-dish',
+    title: 'Starlink (eth1)',
+    status: { level: 0, text: 'carrying traffic' },
+    verdict: { level: 0, text: 'Video reaches the cloud' },
+    addr: '192.168.100.12/24',
+    rate: '3.1 Mbit/s',
+    failover: [{ label: 'Wi-Fi (wlan0)', status: { level: 3, text: 'standing by · takes over in ~5 s' } }],
+    switch: 'Moved 2 min ago: from LTE (wwan0) to Starlink (eth1)',
+    switches: [
+      { at: '2026-11-08T21:12:40Z', ago: '2 min ago', from: 'LTE (wwan0)', to: 'Starlink (eth1)', reason: 'Starlink came back and reaches the internet' },
+      { at: '2026-11-08T21:03:05Z', ago: '11 min ago', from: 'Wi-Fi (wlan0)', to: 'LTE (wwan0)', reason: 'wlan0 stopped reaching the internet' },
+      { at: '2026-11-08T20:41:52Z', ago: '33 min ago', from: 'Starlink (eth1)', to: 'Wi-Fi (wlan0)', reason: 'the dish lost the sky' },
+    ],
+  },
+  starlink: { status: { level: 0, text: 'online' }, summary: '', absent: false, notices: [], facts: [], address: { value: '192.168.100.1:9200', default: '192.168.100.1:9200', defaultFirst: true, open: false } },
+  wifi: { status: { level: 3, text: 'connected' }, summary: 'workshop', reopen: { host: 'e2e-device.local', hostname: 'e2e-device' } },
+  interfaces: { status: { level: 3, text: '' }, summary: '3 in use', links: [], saved: [], other: [], methods: [], add: { types: [], ports: [], autoconnect: [] } },
+  data: { status: { level: 3, text: 'no caps' }, summary: '', absent: true, budget: { summary: 'no caps set', monthlyCapGB: '', flightCapMB: '', warnPercent: '0' } },
+  tailscale: { status: { level: 3, text: 'off' }, summary: 'not set up', facts: [], addresses: [] },
+  relay: { status: { level: 3, text: 'off' }, summary: '', on: false, configured: false, reason: '', notice: { level: 3, text: '' }, servers: [] },
+};
+
+const VIEWS = { aircraft: AIRCRAFT, telemetry: TELEMETRY, flights: FLIGHTS, connect: CONNECT, network: NETWORK };
 
 const app = (request: IncomingMessage, response: ServerResponse) => {
   const path = (request.url ?? '/').replace(/^\/fly(?=\/)/, '');
@@ -206,7 +235,7 @@ const device = (named: { origin: string }, secure: boolean) => (request: Incomin
       json(response, 200, scenes.get(placed[1]));
     });
   }
-  const view = /^\/api\/views\/(aircraft|telemetry|flights|connect)(\/events)?$/.exec(url.pathname);
+  const view = /^\/api\/views\/(aircraft|telemetry|flights|connect|network)(\/events)?$/.exec(url.pathname);
   if (view !== null && view[2] === undefined) return json(response, 200, VIEWS[view[1] as keyof typeof VIEWS]);
   if (view !== null) {
     response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
@@ -233,6 +262,7 @@ const https = createSecureServer(certificate(), device({ origin: SECURE_ORIGIN }
 const offline = createServer(device({ origin: 'https://10.255.255.1' }, false));
 const silent = createServer(device({ origin: '' }, false));
 const fight = createServer(device({ origin: '' }, false));
+const uplinked = createServer(device({ origin: '' }, false));
 
 const pipeTcp = (socket: WebSocket, address: string) => {
   const [host, port] = [address.slice(0, address.lastIndexOf(':')).replace(/^\[|\]$/g, ''), Number(address.slice(address.lastIndexOf(':') + 1))];
@@ -277,8 +307,9 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       if (request.headers.host?.endsWith(`:${SILENT_PORT}`)) return;
       const state = { tick: 0 };
       const fighting = request.headers.host?.endsWith(`:${FIGHT_PORT}`) === true;
+      const announcing = request.headers.host?.endsWith(`:${UPLINK_PORT}`) === true;
       const timer = setInterval(() => {
-        [...tickFrames(state.tick, HOME), ...(fighting ? [fightFrame(state.tick)] : [])].map((frame) => ws.send(Buffer.from(frame)));
+        [...tickFrames(state.tick, HOME), ...(fighting ? [fightFrame(state.tick)] : []), ...(announcing && state.tick % 4 === 0 ? [uplinkFrame(state.tick, uplinkAt(state.tick))] : [])].map((frame) => ws.send(Buffer.from(frame)));
         state.tick = state.tick + 1;
       }, TICK_MS);
       ws.on('message', (data: Buffer) => {
@@ -296,7 +327,7 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
   upstream.on('error', () => socket.destroy());
   socket.on('error', () => upstream.destroy());
 };
-[http, upgrading, https, offline, silent, fight].forEach((server) => server.on('upgrade', upgrade));
+[http, upgrading, https, offline, silent, fight, uplinked].forEach((server) => server.on('upgrade', upgrade));
 
 const sbs1 = (icao: string, lat: number, lon: number): string =>
   ['MSG', '3', '1', '1', icao, '1', '', '', '', '', '', '4000', '', '', String(lat), String(lon), '', '', '', '', '', '0'].join(',') + '\r\n';
@@ -348,3 +379,4 @@ https.listen(DEVICE_TLS_PORT);
 offline.listen(OFFLINE_PORT);
 silent.listen(SILENT_PORT);
 fight.listen(FIGHT_PORT);
+uplinked.listen(UPLINK_PORT);

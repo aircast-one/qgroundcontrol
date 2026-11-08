@@ -63,6 +63,21 @@ describe('DeviceNetworkTest', () => {
     const view = parseNetwork(VIEW);
     expect(view?.uplink.failover[0]).toEqual({ label: 'LTE (wwan0)', status: { level: DeviceLevel.Neutral, text: 'standing by · takes over in ~15 s' } });
     expect(view?.uplink.switchText).toContain('from Wi-Fi (wlan0) to LTE (wwan0)');
+    expect(view?.uplink.switches).toEqual([]);
+    const switched = parseNetwork({
+      ...VIEW,
+      uplink: {
+        ...VIEW.uplink,
+        switches: [
+          { at: '2026-11-08T21:04:09Z', ago: 'just now', from: 'Wi-Fi (wlan0)', to: 'LTE (wwan0)', reason: 'wlan0 lost the internet' },
+          { at: '2026-11-08T20:58:00Z', ago: '6 min ago', from: 'LTE (wwan0)', to: 'Wi-Fi (wlan0)' },
+        ],
+      },
+    });
+    expect(switched?.uplink.switches).toEqual([
+      { at: '2026-11-08T21:04:09Z', ago: 'just now', from: 'Wi-Fi (wlan0)', to: 'LTE (wwan0)', reason: 'wlan0 lost the internet' },
+      { at: '2026-11-08T20:58:00Z', ago: '6 min ago', from: 'LTE (wwan0)', to: 'Wi-Fi (wlan0)', reason: '' },
+    ]);
     expect(view?.modem?.signal?.values).toEqual([80, -1, 72]);
     expect(view?.modem?.messages.items[0]?.from).toBe('MAGTICOM');
     expect(view?.modem?.sim?.apn).toBe('internet');

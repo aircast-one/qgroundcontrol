@@ -6,8 +6,19 @@ describe('AircastLinkIndicatorTest', () => {
   it('the link shows only once cellular telemetry arrives', () => {
     expect(aircastLink(parseJson('{"shown":false}'))).toBeNull();
     const link = aircastLink(parseJson('{"shown":true,"qualityText":"73%","signalText":"73 %","network":"LTE","modem":"connected","bitrateText":"2.5 Mbit/s","qualityHistory":[73,-1],"bitrateHistory":[2048,0]}'))!;
-    expect([link.qualityText, link.network, link.modem, link.bitrateText]).toEqual(['73%', 'LTE', 'connected', '2.5 Mbit/s']);
+    expect([link.cellText, link.network, link.modem, link.bitrateText]).toEqual(['73%', 'LTE', 'connected', '2.5 Mbit/s']);
     expect(link.qualityHistory).toEqual([73.0, -1.0]);
+    expect([link.uplinkText, link.switches]).toEqual(['', []]);
+  });
+
+  it('the cell names the uplink in use and the sheet lists its switches newest first', () => {
+    const link = aircastLink(parseJson('{"shown":true,"quality":null,"qualityText":"--","signalText":"unknown","bitrateText":"1.2 Mbit/s","uplink":"wifi","uplinkText":"Wi-Fi","cellText":"Wi-Fi","switches":[{"atMs":2000,"clock":"21:04:09","from":"LTE","to":"Wi-Fi"},{"atMs":1000,"clock":"21:03:41","from":"Starlink","to":"LTE"}]}'))!;
+    expect([link.cellText, link.uplinkText]).toEqual(['Wi-Fi', 'Wi-Fi']);
+    expect(link.switches).toEqual([
+      { clock: '21:04:09', from: 'LTE', to: 'Wi-Fi' },
+      { clock: '21:03:41', from: 'Starlink', to: 'LTE' },
+    ]);
+    expect(aircastLink(parseJson('{"shown":true,"uplink":null,"uplinkText":"","cellText":"87%"}'))?.uplinkText).toBe('');
   });
 
   it('a sparkline breaks at unknown samples and scales to its peak', () => {

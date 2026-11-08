@@ -8,6 +8,8 @@ export type DeviceProblem = { readonly text: string; readonly detail: string };
 export type ConfirmedAction = { readonly label: string; readonly confirm: string };
 export type CardHead = { readonly status: DeviceBadge; readonly summary: string };
 
+export type UplinkSwitch = { readonly at: string; readonly ago: string; readonly from: string; readonly to: string; readonly reason: string };
+
 export type UplinkCard = {
   readonly icon: string;
   readonly title: string;
@@ -20,6 +22,7 @@ export type UplinkCard = {
   readonly rate: string;
   readonly failover: readonly { readonly label: string; readonly status: DeviceBadge }[];
   readonly switchText: string;
+  readonly switches: readonly UplinkSwitch[];
   readonly backup: string;
 };
 
@@ -173,6 +176,7 @@ const parseUplink = (json: Json | null): UplinkCard => ({
   rate: optText(json, 'rate'),
   failover: objects(json, 'failover').map((it) => ({ label: optText(it, 'label'), status: parseBadge(it.status) })),
   switchText: optText(json, 'switch'),
+  switches: objects(json, 'switches').map((it) => ({ at: optText(it, 'at'), ago: optText(it, 'ago'), from: optText(it, 'from'), to: optText(it, 'to'), reason: optText(it, 'reason') })),
   backup: optText(json, 'backup'),
 });
 

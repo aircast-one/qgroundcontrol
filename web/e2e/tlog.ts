@@ -28,8 +28,12 @@ const stamped = (us: bigint, bytes: readonly number[]): number[] => [...Array.fr
 
 export type Home = { lat: number; lon: number };
 
-export const fightFrame = (seq: number): number[] =>
-  frame(seq, NAMED_VALUE_INT, [...le(0, 4), ...le(1, 4), ...Array.from({ length: 10 }, (_, at) => 'FIGHT'.charCodeAt(at) || 0)], AIRCRAFT_COMPUTER);
+const namedInt = (seq: number, name: string, value: number): number[] =>
+  frame(seq, NAMED_VALUE_INT, [...le(0, 4), ...le(value, 4), ...Array.from({ length: 10 }, (_, at) => name.charCodeAt(at) || 0)], AIRCRAFT_COMPUTER);
+
+export const fightFrame = (seq: number): number[] => namedInt(seq, 'FIGHT', 1);
+
+export const uplinkFrame = (seq: number, kind: number): number[] => namedInt(seq, 'UPLINK', kind);
 
 export const tickFrames = (tick: number, home: Home): readonly number[][] => {
   const heartbeat = tick % 4 === 0 ? [frame(tick * 2, HEARTBEAT, [...le(0, 4), QUADROTOR, AUTOPILOT_PX4, CUSTOM_MODE_ENABLED, STATE_ACTIVE, MAVLINK_VERSION])] : [];
