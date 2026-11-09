@@ -18,6 +18,7 @@ import { type PointerGestureHandlers, usePointerGestures } from '@/ui/VideoGestu
 export const SYNTHETIC_VIEW = 'view.syntheticView';
 export const SYNTHETIC_OVERLAYS = 'view.syntheticOverlays';
 export const SYNTHETIC_LABEL = 'Synthetic view';
+export const VIDEO_CORNER_ROOM = '--video-corner-room';
 export const SYNTHETIC_SOURCE = 'Synthetic View';
 export const SYNTHETIC_AIM = 'syntheticView.aim';
 const TILT_SPAN_DEG = 90.0;
@@ -300,8 +301,8 @@ const SyntheticNote = ({ draw, standIn }: { draw: SyntheticDraw; standIn: string
     <div
       role="status"
       aria-label={note.text}
-      className="pointer-events-none absolute end-3 bottom-3 rounded-full px-2 py-0.5 select-none"
-      style={{ background: withAlpha(Color.Black, EDGE_NOTE_SCRIM_ALPHA) }}
+      className="pointer-events-none absolute end-3 rounded-full px-2 py-0.5 select-none"
+      style={{ bottom: `calc(0.75rem + var(${VIDEO_CORNER_ROOM}, 0px))`, background: withAlpha(Color.Black, EDGE_NOTE_SCRIM_ALPHA) }}
     >
       <Text typography="labelSmall" color={withAlpha(aircast('outdoorForeground'), EDGE_NOTE_TEXT_ALPHA)} maxLines={1}>
         {SYNTHETIC_LABEL}

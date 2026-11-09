@@ -46,7 +46,7 @@ import { LayoutWidget } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
-import { SYNTHETIC_VIEW, useRememberSyntheticAims, useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
+import { SYNTHETIC_VIEW, VIDEO_CORNER_ROOM, useRememberSyntheticAims, useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
 import { TelemetryRow } from '@/ui/VehicleUi';
 import {
@@ -363,7 +363,10 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const controls = useElementSize();
   const osd = useElementSize();
   const gimbalSwitch = useValue(gimbalSwitchWidth);
-  const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitch > 0 ? gimbalSwitch + AircastSpace.s2 * 2 : AircastSpace.s3;
+  const corner = useElementSize();
+  const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitch > 0 ? gimbalSwitch + AircastSpace.s2 * 2 : AircastSpace.s3;
+  const switchBottom = view === FlyView.Map && stickPad === null ? MAP_SCALE_CLEARANCE : AircastSpace.s3;
+  const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : switchEnd + (corner.size.width > 0 ? corner.size.width + AircastSpace.s2 : 0);
   const insets = stickInsets(stickPad, fullScreen, box.letterbox, cutoutStart, cutoutEnd, controls.size.width);
   const ornamentEnd = insets.ornamentEnd;
   useEffect(() => {
@@ -433,7 +436,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           {
             ...videoGestureProps,
             className: `pointer-events-auto overflow-hidden bg-black ${pipNow ? 'rounded-shape-md' : ''}`,
-            style: { ...videoFrame(videoTarget, () => frame.value, cameras.nudge), touchAction: 'none' },
+            style: { ...videoFrame(videoTarget, () => frame.value, cameras.nudge), touchAction: 'none', ...(pipNow || fullScreen || corner.size.width === 0 ? {} : ({ [VIDEO_CORNER_ROOM]: `${corner.size.height + AircastSpace.s2}px` } as CSSProperties)) },
           },
           !pipNow,
         )}
@@ -537,22 +540,19 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     style={{ zIndex: layer(1), paddingTop: `calc(env(safe-area-inset-top, 0px) + ${RAIL_CLEARANCE + AircastSpace.s3}px)`, paddingBottom: RAIL_CLEARANCE, paddingInlineEnd: AircastSpace.s3 }}
                   >
                     <LocalAvoidedByVideoMessage.Provider value>
-                      <div className="flex items-start">
-                        {cameraSwitch(mapIsPip, { style: { paddingInlineEnd: AircastSpace.s2 } })}
-                        <div className="flex items-center justify-center" style={{ minWidth: RAIL_SHUTTER_ROOM }}>
-                          {cameraControls}
-                        </div>
+                      <div className="flex items-center justify-center" style={{ minWidth: RAIL_SHUTTER_ROOM }}>
+                        {cameraControls}
                       </div>
                     </LocalAvoidedByVideoMessage.Provider>
                   </div>
-                ) : (
-                  <div
-                    className="absolute end-0 bottom-0 flex items-center justify-end"
-                    style={{ zIndex: layer(1), marginInlineEnd: view === FlyView.Map ? MAP_LAYERS_CLEARANCE : AircastSpace.s3, marginBottom: AircastSpace.s3, minHeight: MAP_LAYERS_SIZE }}
-                  >
-                    <LocalAvoidedByVideoMessage.Provider value>{cameraSwitch(mapIsPip, {})}</LocalAvoidedByVideoMessage.Provider>
-                  </div>
-                )}
+                ) : null}
+                <div
+                  ref={corner.ref}
+                  className="absolute end-0 bottom-0 flex items-center justify-end"
+                  style={{ zIndex: layer(1), marginInlineEnd: switchEnd, marginBottom: switchBottom, minHeight: MAP_LAYERS_SIZE }}
+                >
+                  <LocalAvoidedByVideoMessage.Provider value>{cameraSwitch(mapIsPip, {})}</LocalAvoidedByVideoMessage.Provider>
+                </div>
                 {hasVehicle && !deciding ? (
                   <div
                     ref={osd.ref}
