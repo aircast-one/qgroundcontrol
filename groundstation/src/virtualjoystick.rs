@@ -139,6 +139,22 @@ fn throttle_free(airframe: Airframe, custom_mode: u32, driven: bool) -> bool {
         }
 }
 
+pub fn throttle_free_for(autopilot: u8, vehicle_type: u8, custom_mode: u32) -> bool {
+    let airframe = match (autopilot, crate::modes::vehicle_class(vehicle_type)) {
+        (crate::modes::AUTOPILOT_PX4, _) => Airframe::Px4,
+        (crate::modes::AUTOPILOT_ARDUPILOT, crate::modes::VehicleClass::MultiRotor) => {
+            Airframe::Copter
+        }
+        (crate::modes::AUTOPILOT_ARDUPILOT, crate::modes::VehicleClass::FixedWing) => {
+            Airframe::Plane
+        }
+        (crate::modes::AUTOPILOT_ARDUPILOT, crate::modes::VehicleClass::Rover) => Airframe::Rover,
+        (crate::modes::AUTOPILOT_ARDUPILOT, crate::modes::VehicleClass::Sub) => Airframe::Sub,
+        _ => Airframe::Other,
+    };
+    throttle_free(airframe, custom_mode, false)
+}
+
 fn rate_mode(airframe: Airframe, custom_mode: u32) -> bool {
     match airframe {
         Airframe::Copter => named(&COPTER_MODES, &COPTER_RATE, custom_mode),
@@ -573,6 +589,28 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mode_where_the_stick_sets_the_throttle_is_known_from_the_heartbeat() {
+        const QUAD: u8 = 2;
+        const STABILIZE: u32 = 0;
+        const LOITER: u32 = 5;
+        assert!(throttle_free_for(
+            crate::modes::AUTOPILOT_ARDUPILOT,
+            QUAD,
+            STABILIZE
+        ));
+        assert!(!throttle_free_for(
+            crate::modes::AUTOPILOT_ARDUPILOT,
+            QUAD,
+            LOITER
+        ));
+        assert!(throttle_free_for(
+            crate::modes::AUTOPILOT_PX4,
+            QUAD,
+            crate::modes::px4(7, 0)
+        ));
+    }
 
     #[test]
     fn sent_sticks_are_remembered_for_two_seconds() {

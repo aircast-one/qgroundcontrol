@@ -209,6 +209,16 @@
             "label": "Reverse the camera look switch"
         },
         {
+            "name": "usbRadioStickChannel",
+            "shortDesc": "Left stick camera switch channel",
+            "longDesc": "High hands the left stick to the camera: up and down tilt it like the pitch channel, left and right turn it like the yaw channel. The drone holds its altitude and heading meanwhile, and gets each stick back once it passes the centre. Modes where the stick sets the throttle directly, like Stabilize, keep the stick on the drone. The radio's script sets an empty channel up for it. 0 turns it off.",
+            "type": "uint8",
+            "min": 0,
+            "max": 24,
+            "default": 17,
+            "label": "Left stick camera switch channel"
+        },
+        {
             "name": "autoConnectZeroConf",
             "shortDesc": "Automatically open a connection with Zero-Conf",
             "longDesc": "If this option is enabled GroundControl will automatically connect to a vehicle which is detected over Zero-Conf.",

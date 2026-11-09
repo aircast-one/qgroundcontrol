@@ -11,7 +11,7 @@ getmetatable("").__index = nil
 
 local function radio(screen)
   local sent, drawn, pages, inserted = {}, {}, {}, {}
-  local controls = { sf = 105, se = 104, rs = 99, ls = 98, s2 = 97, sg = 106, sh = 107, sb = 101, ["6pos"] = 108, s1 = 96, sc = 103 }
+  local controls = { sf = 105, se = 104, rs = 99, ls = 98, s2 = 97, sg = 106, sh = 107, sb = 101, ["6pos"] = 108, s1 = 96, sc = 103, sd = 102 }
   local clock, inbox, cable = 0, "", true
   local env = setmetatable({
     SMLSIZE = 0, MIDSIZE = 0, INVERS = 0,
@@ -108,14 +108,14 @@ assert(next(full.inserted) == nil, "a channel that already has a mix keeps it: n
 local fresh = radio({ w = 480, h = 272 })
 fresh.hear("@F,1\n")
 fresh.script.run(0)
-local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camREB", 99 }, [19] = { "camyaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 }, [18] = { "campit", 96 }, [22] = { "cam90", 103, -100 } }
+local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camREB", 99 }, [19] = { "camyaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 }, [18] = { "campit", 96 }, [22] = { "cam90", 103, -100 }, [16] = { "stkcam", 102 } }
 for channel, mix in pairs(wanted) do
   local got = fresh.inserted[channel]
   assert(got and got.name == mix[1] and got.source == mix[2] and got.weight == (mix[3] or 100), "an empty CH" .. (channel + 1) .. " gets the R2D2 " .. mix[1] .. " mix, SC reversed so up reads high and looks ahead")
 end
 local count = 0
 for _ in pairs(fresh.inserted) do count = count + 1 end
-assert(count == 9, "an app that names no layout gets the R2D2 camera and payload channels, S1 and SC included, never the bay on CH5, which can be flight modes")
+assert(count == 10, "an app that names no layout gets the R2D2 camera and payload channels, S1, SC and the SD stick switch included, never the bay on CH5, which can be flight modes")
 local moved = radio({ w = 480, h = 272 })
 moved.hear("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0,0,0\n")
 moved.script.run(0)
@@ -144,6 +144,11 @@ his.script.run(0)
 assert(his.inserted[9] and his.inserted[9].name == "phold" and his.inserted[9].source == 101, "a drone reading flight modes on CH10 gets SB there, like the R2D2 model")
 assert(his.inserted[4] and his.inserted[4].source == 108, "and the six-position switch on CH5 picks the bay")
 assert(shows(his, "10 of 10 app functions on the radio"), "the footer confirms every function the app reads has a control")
+local stick = radio({ w = 480, h = 272, lvgl = true })
+stick.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17\n")
+stick.script.run(0)
+assert(stick.inserted[16] and stick.inserted[16].name == "stkcam" and stick.inserted[16].source == 102, "an app reading the left stick camera switch on CH17 gets SD there")
+assert(shows(stick, "Stick") and shows(stick, "CH17 src102") and shows(stick, "drone"), "its row says who has the left stick: the drone while SD is low")
 local partial = radio({ w = 480, h = 272, lvgl = true, mixes = 24 })
 partial.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
 partial.script.run(0)

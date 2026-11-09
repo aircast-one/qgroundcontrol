@@ -122,6 +122,7 @@ pub const ORDER: &[(&str, &[&str])] = &[
             "usbRadioTiltChannel",
             "usbRadioLookChannel",
             "usbRadioLookReversed",
+            "usbRadioStickChannel",
         ],
     ),
     (

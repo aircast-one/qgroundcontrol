@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 const ARMED_PWM: u16 = 1750;
 const BAY_POSITIONS: f32 = 6.0;
-pub const LAYOUT_SETTINGS: [&str; 10] = [
+pub const LAYOUT_SETTINGS: [&str; 11] = [
     "settings.autoConnectSettings.usbRadioPitchChannel",
     "settings.autoConnectSettings.usbRadioYawChannel",
     "settings.autoConnectSettings.usbRadioZoomChannel",
@@ -16,6 +16,7 @@ pub const LAYOUT_SETTINGS: [&str; 10] = [
     "settings.autoConnectSettings.usbRadioBayChannel",
     "settings.autoConnectSettings.usbRadioTiltChannel",
     "settings.autoConnectSettings.usbRadioLookChannel",
+    "settings.autoConnectSettings.usbRadioStickChannel",
 ];
 pub const LOOK_DOWN_PITCH: f32 = -90.0;
 pub const LOOK_AHEAD_PITCH: f32 = 0.0;
@@ -63,6 +64,7 @@ pub struct Layout {
     pub bay: usize,
     pub tilt: usize,
     pub look: usize,
+    pub stick: usize,
 }
 
 pub const R2D2: Layout = Layout {
@@ -76,9 +78,10 @@ pub const R2D2: Layout = Layout {
     bay: 5,
     tilt: 19,
     look: 23,
+    stick: 17,
 };
 
-const FUNCTION_NAMES: [&str; 10] = [
+const FUNCTION_NAMES: [&str; 11] = [
     "camera pitch",
     "camera yaw",
     "zoom",
@@ -89,6 +92,7 @@ const FUNCTION_NAMES: [&str; 10] = [
     "bay",
     "tilt",
     "look",
+    "left stick camera",
 ];
 
 pub fn clash_notice(channel: usize, names: &[&str]) -> String {
@@ -118,6 +122,7 @@ impl Layout {
             bay: off(self.bay),
             tilt: off(self.tilt),
             look: off(self.look),
+            stick: off(self.stick),
         }
     }
 
@@ -130,7 +135,7 @@ impl Layout {
             .collect()
     }
 
-    pub fn channels(&self) -> [usize; 10] {
+    pub fn channels(&self) -> [usize; 11] {
         [
             self.pitch,
             self.yaw,
@@ -142,6 +147,7 @@ impl Layout {
             self.bay,
             self.tilt,
             self.look,
+            self.stick,
         ]
     }
 }
@@ -158,6 +164,7 @@ pub fn layout() -> Layout {
         bay,
         tilt,
         look,
+        stick,
     ] = crate::settingsstore::raw_settings(LAYOUT_SETTINGS).map(|value| {
         value
             .as_u64()
@@ -175,6 +182,7 @@ pub fn layout() -> Layout {
         bay,
         tilt,
         look,
+        stick,
     }
 }
 
@@ -214,6 +222,7 @@ pub struct Sticks {
     pub reported_yaw: Option<f32>,
     pub yaw_speed: f32,
     pub look_reversed: bool,
+    pub stick: Option<[usize; 2]>,
 }
 
 impl Default for Sticks {
@@ -271,11 +280,33 @@ impl Sticks {
             reported_yaw: None,
             yaw_speed: YAW_SPEED_DEFAULT,
             look_reversed: false,
+            stick: None,
+        }
+    }
+
+    fn steering(&self) -> Layout {
+        self.stick.map_or(self.layout, |[pitch, yaw]| Layout {
+            pitch,
+            yaw,
+            ..self.layout
+        })
+    }
+
+    pub fn hand_stick(&mut self, stick: Option<[usize; 2]>) {
+        if stick != self.stick {
+            self.stick
+                .into_iter()
+                .chain(stick)
+                .flatten()
+                .for_each(|channel| {
+                    self.acted.remove(&channel);
+                });
+            self.stick = stick;
         }
     }
 
     pub fn step(&mut self, line: &[u16], yaw_limits: (f32, f32), now_ms: u64) -> Vec<Move> {
-        let layout = self.layout;
+        let layout = self.steering();
         let ready = self.ready;
         let due = self
             .sent_ms
@@ -447,7 +478,8 @@ pub struct AimState {
 
 impl Sticks {
     fn aim_channels(&self) -> [usize; 3] {
-        [self.layout.pitch, self.layout.yaw, self.layout.tilt]
+        let layout = self.steering();
+        [layout.pitch, layout.yaw, layout.tilt]
     }
 
     pub fn aim_state(&self) -> AimState {
@@ -644,7 +676,11 @@ pub fn switches(
     })
 }
 
-pub fn heard(vehicle: u8, line: &[u16], layout: Layout) {
+pub fn stick_switched(line: &[u16], layout: Layout) -> bool {
+    read(line, layout.stick).is_some_and(|pwm| pwm > PRESSED_PWM)
+}
+
+pub fn heard(vehicle: u8, line: &[u16], layout: Layout, stick: Option<[usize; 2]>) {
     let limits = yaw_limits();
     let reported = reported_yaw();
     let (yaw_speed, look_reversed) = turning_settings();
@@ -659,6 +695,7 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout) {
     sticks.reported_yaw = reported;
     sticks.yaw_speed = yaw_speed;
     sticks.look_reversed = look_reversed;
+    sticks.hand_stick(stick);
     let before = sticks.aim_state();
     let moves: Vec<Move> = sticks
         .step(line, limits, crate::hub::now_ms())
@@ -694,6 +731,75 @@ mod tests {
                 .find(|(channel, _)| *channel == at + 1)
                 .map_or(1500, |(_, pwm)| *pwm)
         })
+    }
+
+    #[test]
+    fn with_the_stick_switch_up_the_left_stick_steers_the_camera_like_the_sliders() {
+        const THROTTLE: usize = 3;
+        const RUDDER: usize = 4;
+        assert!(stick_switched(&line(&[(R2D2.stick, 2012)]), R2D2));
+        assert!(
+            !stick_switched(&line(&[(R2D2.stick, 1500)]), R2D2),
+            "only the switch's high end hands the stick over"
+        );
+        let mut sticks = Sticks::default();
+        assert!(
+            sticks
+                .step(&line(&[(THROTTLE, 1100)]), LIMITS, 0)
+                .is_empty()
+        );
+        sticks.hand_stick(Some([THROTTLE, RUDDER]));
+        assert_eq!(
+            sticks.step(&line(&[(THROTTLE, 1200)]), LIMITS, 1_000),
+            vec![],
+            "taking the stick leaves the camera where it is, wherever the throttle sits"
+        );
+        assert_eq!(
+            sticks.step(&line(&[(THROTTLE, 988)]), LIMITS, 2_000),
+            vec![Move::Aim {
+                pitch: -90.0,
+                yaw: 0.0
+            }],
+            "throttle down points the camera down, as the pitch slider does"
+        );
+        assert_eq!(
+            sticks.step(&line(&[(THROTTLE, 988), (RUDDER, 2012)]), LIMITS, 3_000),
+            vec![Move::Aim {
+                pitch: -90.0,
+                yaw: 0.0
+            }],
+            "yaw over starts turning the camera from where it is"
+        );
+        assert_eq!(
+            sticks.step(&line(&[(THROTTLE, 988), (RUDDER, 2012)]), LIMITS, 3_100),
+            vec![Move::Aim {
+                pitch: -90.0,
+                yaw: 2.0
+            }],
+            "at the yaw slider's speed"
+        );
+        assert_eq!(
+            sticks.step(&line(&[(THROTTLE, 988)]), LIMITS, 3_200),
+            vec![Move::Aim {
+                pitch: -90.0,
+                yaw: 2.0
+            }],
+            "and stops where it got to when the stick springs back"
+        );
+        sticks.hand_stick(None);
+        assert!(
+            sticks
+                .step(&line(&[(THROTTLE, 2012)]), LIMITS, 4_000)
+                .is_empty(),
+            "handed back, the left stick flies again and the camera stays put"
+        );
+        sticks.hand_stick(Some([THROTTLE, RUDDER]));
+        assert!(
+            sticks
+                .step(&line(&[(THROTTLE, 1600)]), LIMITS, 5_000)
+                .is_empty(),
+            "taking it again does not jump the camera to wherever the throttle was flown"
+        );
     }
 
     #[test]
@@ -1365,6 +1471,7 @@ mod tests {
             bay: 0,
             tilt: 0,
             look: 0,
+            stick: 0,
         };
         let mut sticks = Sticks {
             layout: moved,

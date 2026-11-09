@@ -386,6 +386,7 @@ const IOS_HIDDEN: &[&str] = &[
     "usbRadioTiltChannel",
     "usbRadioLookChannel",
     "usbRadioLookReversed",
+    "usbRadioStickChannel",
 ];
 
 fn user_visible(name: &str, ios: bool) -> bool {
@@ -832,6 +833,11 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
         "usbRadioLookReversed",
         "Reverse the camera look switch",
     ),
+    (
+        "autoConnectSettings",
+        "usbRadioStickChannel",
+        "Left stick camera switch channel",
+    ),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     (
         "videoSettings",
@@ -1176,6 +1182,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
                     "usbRadioTiltChannel",
                     "usbRadioLookChannel",
                     "usbRadioLookReversed",
+                    "usbRadioStickChannel",
                 ],
             ),
         ],

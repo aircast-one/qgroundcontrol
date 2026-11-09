@@ -24,6 +24,8 @@ const LINE_CHANNELS: usize = 24;
 const VALUES: std::ops::RangeInclusive<usize> = 4..=LINE_CHANNELS;
 const OVERRIDE_PWM: std::ops::RangeInclusive<i32> = 800..=2200;
 const SNIFF_LIMIT: usize = 16 * 1024;
+const STICK_CENTRE_PWM: u16 = 1500;
+const HANDBACK_PWM: u16 = 50;
 pub const RADIO_FOUND: &str = "An EdgeTX radio is streaming its sticks on USB. Fly with it?";
 pub const USE: &str = "usbRadio.use";
 
@@ -57,6 +59,37 @@ fn widened(values: &[u16]) -> Line {
 
 pub fn sticks(line: &Line) -> Frame {
     std::array::from_fn(|at| line[at])
+}
+
+pub fn handed(
+    frame: Frame,
+    channels: [usize; 2],
+    camera: bool,
+    held: [bool; 2],
+) -> (Frame, [bool; 2]) {
+    let pwm = |channel: usize| channel.checked_sub(1).and_then(|at| frame.get(at).copied());
+    let holds: [bool; 2] = std::array::from_fn(|at| {
+        pwm(channels[at]).is_some_and(|pwm| {
+            camera || (held[at] && pwm.abs_diff(STICK_CENTRE_PWM) > HANDBACK_PWM)
+        })
+    });
+    let centred = std::array::from_fn(|at| {
+        match channels
+            .iter()
+            .zip(holds)
+            .any(|(channel, hold)| hold && *channel == at + 1)
+        {
+            true => STICK_CENTRE_PWM,
+            false => frame[at],
+        }
+    });
+    (centred, holds)
+}
+
+pub fn stick_refused(mode: &str) -> String {
+    format!(
+        "The left stick stays on the drone in {mode}, where it sets the throttle directly. Switch to a mode that holds altitude to steer the camera with it."
+    )
 }
 
 pub fn released() -> Frame {
@@ -314,6 +347,47 @@ pub fn echo(
 }
 
 static CLASH: Mutex<Option<(u8, usize)>> = Mutex::new(None);
+static REFUSED: Mutex<Option<String>> = Mutex::new(None);
+static HELD: Mutex<[bool; 2]> = Mutex::new([false; 2]);
+
+fn throttle_mode() -> Option<String> {
+    let hub = crate::hub::lock();
+    hub.active()
+        .filter(|vehicle| {
+            crate::virtualjoystick::throttle_free_for(
+                vehicle.autopilot,
+                vehicle.vehicle_type,
+                vehicle.custom_mode,
+            )
+        })
+        .map(|vehicle| {
+            crate::modes::name(
+                vehicle.autopilot,
+                vehicle.vehicle_type,
+                vehicle.base_mode,
+                vehicle.custom_mode,
+            )
+        })
+}
+
+fn camera_takes_stick(switched: bool) -> bool {
+    let refused = switched.then(throttle_mode).flatten();
+    let was = std::mem::replace(
+        &mut *REFUSED.lock().unwrap_or_else(PoisonError::into_inner),
+        refused.clone(),
+    );
+    if let Some(mode) = refused.as_ref().filter(|mode| was.as_ref() != Some(*mode)) {
+        crate::noticeboard::post_from_vehicle(crate::noticeboard::BRIEF, &stick_refused(mode));
+    }
+    switched && refused.is_none()
+}
+
+fn hand_over(frame: Frame, channels: [usize; 2], camera: bool) -> Frame {
+    let mut held = HELD.lock().unwrap_or_else(PoisonError::into_inner);
+    let (frame, holds) = handed(frame, channels, camera, *held);
+    *held = holds;
+    frame
+}
 
 fn warn_of_clash(vehicle: u8, layout: crate::radiocamera::Layout, mode_channel: usize) {
     let names = layout.named_on(mode_channel);
@@ -643,8 +717,17 @@ fn advance(fresh: Option<Frame>) {
 fn heard_on(port: &str, lines: Vec<Line>) {
     if let Some(line) = lines.last() {
         detection().radios.insert(port.to_string());
-        let mode_channel = active_roles().map_or(0, |roles| usize::from(roles.mode_channel));
+        let roles = active_roles();
+        let mode_channel = roles.map_or(0, |roles| usize::from(roles.mode_channel));
+        let [_, _, throttle, yaw] = roles
+            .map_or(DEFAULT_CHANNELS, |roles| roles.channels)
+            .map(usize::from);
         let layout = crate::radiocamera::layout();
+        let camera = target().is_some()
+            && camera_takes_stick(crate::radiocamera::stick_switched(
+                line,
+                layout.without(mode_channel),
+            ));
         crate::payloadrail::radio_seen(crate::radiocamera::switches(
             line,
             crate::hub::now_ms(),
@@ -652,9 +735,14 @@ fn heard_on(port: &str, lines: Vec<Line>) {
         ));
         if let Some((vehicle, _)) = target() {
             warn_of_clash(vehicle, layout, mode_channel);
-            crate::radiocamera::heard(vehicle, line, layout.without(mode_channel));
+            crate::radiocamera::heard(
+                vehicle,
+                line,
+                layout.without(mode_channel),
+                camera.then_some([throttle, yaw]),
+            );
         }
-        advance(Some(sticks(line)));
+        advance(Some(hand_over(sticks(line), [throttle, yaw], camera)));
     }
 }
 
@@ -811,6 +899,40 @@ mod tests {
     }
 
     #[test]
+    fn the_camera_holds_the_left_stick_centred_for_the_drone_until_each_stick_passes_the_centre() {
+        let flown = frame(&[(3, 988), (4, 2012), (17, 2012)]);
+        let (sent, held) = handed(flown, [3, 4], true, [false; 2]);
+        assert_eq!(
+            (sent[2], sent[3], sent[16], held),
+            (1500, 1500, 2012, [true, true]),
+            "while the camera has it the drone gets throttle and yaw centred, every other channel as the radio sends it"
+        );
+        let (sent, held) = handed(flown, [3, 4], false, held);
+        assert_eq!(
+            (sent[2], sent[3], held),
+            (1500, 1500, [true, true]),
+            "handed back, a stick away from the centre still holds the drone"
+        );
+        let (sent, held) = handed(frame(&[(3, 1530), (4, 2012)]), [3, 4], false, held);
+        assert_eq!(
+            (sent[2], sent[3], held),
+            (1530, 1500, [false, true]),
+            "each stick flies again once it reaches the centre"
+        );
+        let (sent, held) = handed(frame(&[(3, 988), (4, 1500)]), [3, 4], false, held);
+        assert_eq!(
+            (sent[2], sent[3], held),
+            (988, 1500, [false, false]),
+            "and from then on goes wherever the pilot puts it"
+        );
+        assert_eq!(
+            handed(flown, [3, 4], false, [false; 2]),
+            (flown, [false; 2]),
+            "with the switch down nothing changes"
+        );
+    }
+
+    #[test]
     fn in_4g_standby_the_radio_streams_to_the_aircraft_computer_not_the_flight_controller() {
         assert_eq!(component(false), crate::hub::COMP_AUTOPILOT1);
         assert_eq!(
@@ -838,7 +960,7 @@ mod tests {
                 safe,
                 &[]
             ),
-            "@F,1;18,20,21,22,24,11,12,5,19,23|safe|\n"
+            "@F,1;18,20,21,22,24,11,12,5,19,23,17|safe|\n"
         );
         assert_eq!(
             echo(
@@ -848,7 +970,7 @@ mod tests {
                 safe,
                 &[]
             ),
-            "@S,3;18,20,21,22,24,11,12,5,19,23|safe|\n",
+            "@S,3;18,20,21,22,24,11,12,5,19,23,17|safe|\n",
             "in 4G standby the sticks go to the aircraft computer"
         );
         assert_eq!(
@@ -859,11 +981,11 @@ mod tests {
                 safe,
                 &[]
             ),
-            "@J,1;18,20,21,22,24,11,12,5,19,23|safe|\n"
+            "@J,1;18,20,21,22,24,11,12,5,19,23,17|safe|\n"
         );
         assert_eq!(
             echo(Flying::NoVehicle, None, crate::radiocamera::R2D2, safe, &[]),
-            "@N;18,20,21,22,24,11,12,5,19,23|off|\n",
+            "@N;18,20,21,22,24,11,12,5,19,23,17|off|\n",
             "with no vehicle there is nothing to arm and no modes to name"
         );
         assert_eq!(
@@ -874,7 +996,7 @@ mod tests {
                 crate::payloadrail::SWITCH_ARMED,
                 &["Loiter".into()]
             ),
-            "@N;18,20,21,22,24,11,12,5,19,23|off|\n"
+            "@N;18,20,21,22,24,11,12,5,19,23,17|off|\n"
         );
         assert_eq!(
             echo(
@@ -884,7 +1006,7 @@ mod tests {
                 safe,
                 &names(&["Loiter", "AltHold", "PosHold", "RTL", "Auto", "Land"])
             ),
-            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|safe|Loiter,AltHold,PosHold,RTL,Auto,Land\n",
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|safe|Loiter,AltHold,PosHold,RTL,Auto,Land\n",
             "a known vehicle says what each stick channel does, where it reads flight modes, and what the mode switch positions are"
         );
         assert_eq!(
@@ -895,7 +1017,7 @@ mod tests {
                 crate::payloadrail::SWITCH_ARMED,
                 &[]
             ),
-            "@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23|armed|\n",
+            "@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23,17|armed|\n",
             "a vehicle reading flight modes on the bay channel keeps the bay off it"
         );
         assert_eq!(
@@ -906,7 +1028,7 @@ mod tests {
                 crate::payloadrail::SWITCH_REFUSED,
                 &[]
             ),
-            "@J,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23|refused|\n",
+            "@J,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23,17|refused|\n",
             "the arm switch is up but the app did not take it"
         );
         assert_eq!(
@@ -917,7 +1039,7 @@ mod tests {
                 crate::payloadrail::SWITCH_OFF,
                 &[]
             ),
-            "@F,1,C,1,2,3,4,12;18,20,21,22,24,11,0,5,19,23|off|\n",
+            "@F,1,C,1,2,3,4,12;18,20,21,22,24,11,0,5,19,23,17|off|\n",
             "flight modes on the arm channel switch the arm function off"
         );
         assert!(
@@ -954,24 +1076,19 @@ mod tests {
             )
         };
         let exact = full(&[
-            "Stabili", "AltHold", "PosHold", "SmartRT", "Autotune", "Guided",
+            "Stabili", "AltHold", "PosHold", "SmartRT", "Autot", "Guided",
         ]);
         assert_eq!(
             exact,
-            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,AltHold,PosHold,SmartRT,Autotune\n",
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|refused|Stabili,AltHold,PosHold,SmartRT,Autot\n",
             "a 96 byte line fills the radio's buffer exactly; the name after it is dropped"
         );
         assert_eq!(exact.len(), MAX_ECHO_BYTES);
         assert_eq!(
             full(&[
-                "Stabili",
-                "AltHold",
-                "PosHold",
-                "SmartRT",
-                "Autotune1",
-                "Guided"
+                "Stabili", "AltHold", "PosHold", "SmartRT", "Autotu", "Guided"
             ]),
-            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,AltHold,PosHold,SmartRT\n",
+            "@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|refused|Stabili,AltHold,PosHold,SmartRT\n",
             "one byte over drops the name, and every name after it keeps its position"
         );
         assert!(
@@ -1176,7 +1293,7 @@ mod tests {
         answer(5_000, true);
         assert_eq!(
             String::from_utf8(written.lock().unwrap().clone()).unwrap(),
-            "@N;18,20,21,22,24,11,12,5,19,23|off|\n",
+            "@N;18,20,21,22,24,11,12,5,19,23,17|off|\n",
             "with no vehicle the radio is told so"
         );
         *ATTEMPT.lock().unwrap() = None;

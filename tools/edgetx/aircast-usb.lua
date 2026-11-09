@@ -108,6 +108,7 @@ local FUNCTIONS = {
   { "6pos", "", 5 },
   { "s1", "campit", 19 },
   { "sc", "cam90", 23, -100 },
+  { "sd", "stkcam", 17 },
 }
 local BAY = 8
 local layoutSetUp = nil
@@ -257,7 +258,7 @@ end
 
 local FRIENDLY = {
   camREB = "Pitch", campit = "Tilt", camyaw = "Yaw", zoom = "Zoom", camtyp = "Picture", termty = "Palette",
-  cam90 = "Look", skld = "Drop", skid = "Drop", BOMARM = "Arm", phold = "Modes", bay = "Bay",
+  cam90 = "Look", skld = "Drop", skid = "Drop", BOMARM = "Arm", phold = "Modes", bay = "Bay", stkcam = "Stick",
 }
 
 local function shownName(i)
@@ -278,6 +279,7 @@ end
 
 local GROUP = {
   Pitch = "camera", Tilt = "camera", Yaw = "camera", Zoom = "camera", Picture = "camera", Palette = "camera", Look = "camera",
+  Stick = "camera",
   Drop = "payload", Arm = "payload", Bay = "payload", Modes = "flight",
 }
 
@@ -303,6 +305,7 @@ local VALUE = {
   Picture = function(v) return v < -512 and "Day" or v > 512 and "IR" or "PiP" end,
   Palette = function(v) return v > 0 and "next" or "-" end,
   Look = function(v) return v > 512 and "ahead" or v < -512 and "down" or "-" end,
+  Stick = function(v) return v > 0 and "camera" or "drone" end,
   Arm = function(v) return v > 512 and "ARMED" or "safe" end,
   Drop = function(v) return v > 512 and "DROP" or "-" end,
   Bay = function(v) return "bay " .. (math.floor((v + 1024) * 5 / 2048 + 0.5) + 1) end,
