@@ -439,6 +439,42 @@ impl Sticks {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AimState {
+    acted: [Option<u16>; 3],
+    pitch_hold: Option<f32>,
+}
+
+impl Sticks {
+    fn aim_channels(&self) -> [usize; 3] {
+        [self.layout.pitch, self.layout.yaw, self.layout.tilt]
+    }
+
+    pub fn aim_state(&self) -> AimState {
+        AimState {
+            acted: self
+                .aim_channels()
+                .map(|channel| self.acted.get(&channel).copied()),
+            pitch_hold: self.pitch_hold,
+        }
+    }
+
+    pub fn restore_aim(&mut self, state: AimState) {
+        self.aim_channels()
+            .into_iter()
+            .zip(state.acted)
+            .for_each(|(channel, was)| match was {
+                Some(pwm) => {
+                    self.acted.insert(channel, pwm);
+                }
+                None => {
+                    self.acted.remove(&channel);
+                }
+            });
+        self.pitch_hold = state.pitch_hold;
+    }
+}
+
 static STICKS: Mutex<Sticks> = Mutex::new(Sticks::new());
 
 fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
@@ -523,17 +559,22 @@ pub fn slider_yaw_range((low, high): (f32, f32)) -> (f32, f32) {
     (low.max(widest_low), high.min(widest_high))
 }
 
-fn guided(vehicle: u8, action: Value, told: Option<&str>) {
+fn guided(vehicle: u8, action: Value, told: Option<&str>) -> bool {
     let sent = crate::hub::lock().guided(Some(vehicle), &action, crate::hub::now_ms());
     match (sent, told) {
-        (Ok(frames), _) => frames.iter().for_each(|(link, bytes)| {
-            crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
-        }),
+        (Ok(frames), _) => {
+            frames.iter().for_each(|(link, bytes)| {
+                crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
+            });
+            true
+        }
         (Err(reason), Some(kind)) => {
             crate::noticeboard::post_from_vehicle(kind, &reason);
+            false
         }
         (Err(reason), None) => {
-            log::debug!("the radio's camera channels could not {action}: {reason}")
+            log::debug!("the radio's camera channels could not {action}: {reason}");
+            false
         }
     }
 }
@@ -544,34 +585,51 @@ fn setting(answer: Value) {
     }
 }
 
-pub fn steer(vehicle: u8, moves: &[Move]) {
-    moves.iter().for_each(|step| match *step {
-        Move::Aim { pitch, yaw } => guided(
-            vehicle,
-            json!({ "action": "gimbal", "op": "aim", "pitch": pitch, "bodyYaw": yaw }),
-            None,
-        ),
-        Move::Zoom(percent) => guided(
-            vehicle,
-            json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent }),
-            None,
-        ),
+pub fn steer(vehicle: u8, moves: &[Move]) -> bool {
+    moves
+        .iter()
+        .map(|step| match *step {
+            Move::Aim { pitch, yaw } => guided(
+                vehicle,
+                json!({ "action": "gimbal", "op": "aim", "pitch": pitch, "bodyYaw": yaw }),
+                None,
+            ),
+            other => {
+                steer_other(vehicle, other);
+                true
+            }
+        })
+        .fold(true, |aimed, sent| aimed && sent)
+}
+
+fn steer_other(vehicle: u8, step: Move) {
+    match step {
+        Move::Aim { .. } => {}
+        Move::Zoom(percent) => {
+            guided(
+                vehicle,
+                json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent }),
+                None,
+            );
+        }
         Move::Drop { .. } | Move::DropBay(_) if !crate::payloadrail::armed() => {
             crate::noticeboard::post_from_vehicle(
                 crate::noticeboard::PAYLOAD,
                 crate::payloadrail::SAFE,
             );
         }
-        Move::Drop { bay } | Move::DropBay(bay) => guided(
-            vehicle,
-            json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
-            Some(crate::noticeboard::PAYLOAD),
-        ),
+        Move::Drop { bay } | Move::DropBay(bay) => {
+            guided(
+                vehicle,
+                json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
+                Some(crate::noticeboard::PAYLOAD),
+            );
+        }
         Move::Picture(value) => setting(crate::camsettings::set_setting(
             &json!([PICTURE_SETTING, value]).to_string(),
         )),
         Move::NextPalette => setting(crate::camsettings::step_setting(PALETTE_SETTING, 1)),
-    })
+    }
 }
 
 pub fn switches(
@@ -601,12 +659,15 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout) {
     sticks.reported_yaw = reported;
     sticks.yaw_speed = yaw_speed;
     sticks.look_reversed = look_reversed;
+    let before = sticks.aim_state();
     let moves: Vec<Move> = sticks
         .step(line, limits, crate::hub::now_ms())
         .into_iter()
         .filter_map(|step| through_the_app(step, servo_bays))
         .collect();
-    steer(vehicle, &moves);
+    if !steer(vehicle, &moves) {
+        sticks.restore_aim(before);
+    }
 }
 
 #[cfg(test)]
@@ -633,6 +694,35 @@ mod tests {
                 .find(|(channel, _)| *channel == at + 1)
                 .map_or(1500, |(_, pwm)| *pwm)
         })
+    }
+
+    #[test]
+    fn an_aim_the_gimbal_refused_is_tried_again_from_the_next_line() {
+        let mut sticks = Sticks::default();
+        sticks.step(&line(&[(PITCH_CHANNEL, 2012)]), LIMITS, 0);
+        let before = sticks.aim_state();
+        let down = line(&[(PITCH_CHANNEL, 988)]);
+        assert_eq!(
+            sticks.step(&down, LIMITS, 1_000),
+            vec![Move::Aim {
+                pitch: -90.0,
+                yaw: 0.0
+            }]
+        );
+        assert_eq!(
+            sticks.step(&down, LIMITS, 2_000),
+            vec![],
+            "a slider that stays put is not sent again"
+        );
+        sticks.restore_aim(before);
+        assert_eq!(
+            sticks.step(&down, LIMITS, 3_000),
+            vec![Move::Aim {
+                pitch: -90.0,
+                yaw: 0.0
+            }],
+            "once the refused aim is forgotten, the same slider position is sent again"
+        );
     }
 
     #[test]
