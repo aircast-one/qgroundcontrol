@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { connectMock, expect, flightMode, takeOff, test } from './fixtures';
+import { chooseCameraJoystick, connectMock, expect, flightMode, takeOff, test } from './fixtures';
 
 const LONG_PRESS_MS = 400;
 const CAMERA_PANEL_OFFSET = 'aircast.fly-overlay-layout.OverlayRigOffset-cameraControl@landscape';
@@ -161,9 +161,11 @@ test('a three-axis gimbal gets a camera joystick: held down it tilts, held right
   test.setTimeout(120_000);
   await withCamera(app);
   const stick = app.getByRole('img', { name: 'Camera joystick' });
-  await expect(stick, 'the mock gimbal reports a yaw axis').toBeVisible({ timeout: 60_000 });
-  await expect(app.getByRole('slider', { name: 'Camera tilt' }), 'the joystick replaces the sliders').toHaveCount(0);
   await expect.poll(async () => (await gimbalAim(app)).pitch, { timeout: 60_000 }).not.toBeNull();
+  await expect(stick, 'aiming on the picture is the default, so no joystick yet').toHaveCount(0);
+  await chooseCameraJoystick(app);
+  await expect(stick, 'the mock gimbal reports a yaw axis').toBeVisible({ timeout: 30_000 });
+  await expect(app.getByRole('slider', { name: 'Camera tilt' }), 'the joystick replaces the sliders').toHaveCount(0);
   const before = await gimbalAim(app);
   const [x, y] = await centre(stick);
   await app.mouse.move(x, y);

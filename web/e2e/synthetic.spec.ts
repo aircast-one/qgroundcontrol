@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { connectMock, dropFromStrip, expect, flightMode, flyNow, takeOff, test } from './fixtures';
+import { chooseCameraJoystick, connectMock, dropFromStrip, expect, flightMode, flyNow, takeOff, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -123,6 +123,7 @@ test('adding the first camera keeps the 3D view on screen where it was instead o
 test('with a three-axis gimbal and the synthetic view standing in for the camera, the camera joystick takes the drag: held down it tilts down, held right it turns right', async ({ app }) => {
   test.setTimeout(150_000);
   await connectMock(app, ['Enable camera', 'Enable gimbal']);
+  await chooseCameraJoystick(app);
   const notice = app.getByRole('status', { name: /showing synthetic view$/ });
   await expect(notice).toBeVisible({ timeout: 30_000 });
   const stick = app.getByRole('img', { name: 'Camera joystick' });

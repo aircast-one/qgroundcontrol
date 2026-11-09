@@ -16,7 +16,7 @@ import { activeVehicleId } from '@/ui/ActiveVehicle';
 import { BesidePopup, VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
 import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
-import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal } from '@/ui/GimbalIndicator';
+import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal, onScreenGimbal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
 import { osdShadow } from '@/ui/Osd';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
@@ -423,6 +423,7 @@ const RcCameraControlsShown = ({
   setChannelRecording: (recording: boolean) => void;
 }) => {
   const gimbal: GimbalIndicatorState | null = useMemo(() => gimbalIndicator(gimbalJson), [gimbalJson]);
+  const sticks = onScreenGimbal(gimbalJson)?.stick === true;
   const [gimbalRefused, setGimbalRefused] = useState<string | null>(null);
   const [options, setOptions] = useState(false);
   const [gimbalSettings, setGimbalSettings] = useState(false);
@@ -451,10 +452,12 @@ const RcCameraControlsShown = ({
             slider={tiltSlider}
             onTilt={(it) => aimSynthetic(it, syntheticPan ?? 0.0)}
           />
-        ) : gimbal !== null && gimbal.yawAxis ? (
+        ) : gimbal !== null && sticks && gimbal.yawAxis ? (
           <AimStick pitch={gimbal.pitchDegrees} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} />
-        ) : gimbal !== null ? (
+        ) : gimbal !== null && sticks ? (
           <AimSliders pitch={gimbal.pitchDegrees} yaw={null} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} onTilt={sendTilt} />
+        ) : gimbal !== null ? (
+          <TiltReadout degrees={coerceIn(gimbal.pitchDegrees ?? 0, GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)} onRecenter={onRecenter(RecenterTarget.Gimbal)} />
         ) : null}
         {!gimbalManager && channels.tilt > 0 ? <PwmSlider label="Tilt" channel={channels.tilt} pwm={pwm.tilt} onPwm={setPwm.tilt} /> : null}
         {!gimbalManager && channels.pan > 0 ? <PwmSlider label="Pan" channel={channels.pan} pwm={pwm.pan} onPwm={setPwm.pan} /> : null}

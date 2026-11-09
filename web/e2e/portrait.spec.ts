@@ -1,5 +1,5 @@
 import { type Locator, type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, openApp, slideAcross, takeOff, test } from './fixtures';
+import { chooseCameraJoystick, connectMock, expect, flightMode, openApp, slideAcross, takeOff, test } from './fixtures';
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 test.describe.configure({ timeout: 120_000 });
@@ -38,6 +38,7 @@ test('held upright, a drag up on the camera strip tilts the gimbal down without 
   await expect(enlargeMap, 'the camera stays above the map').toBeVisible();
   expect(await picture.boundingBox()).toEqual(strip);
 
+  await chooseCameraJoystick(page);
   const opener = page.getByRole('button', { name: /^Tilt -?\d+°$/ });
   const at = (await opener.boundingBox())!;
   expect(at.y, 'on the camera strip').toBeGreaterThanOrEqual(strip.y);

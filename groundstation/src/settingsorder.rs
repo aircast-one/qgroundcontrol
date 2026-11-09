@@ -228,6 +228,7 @@ pub const ORDER: &[(&str, &[&str])] = &[
         &[
             "enableOnScreenControl",
             "clickAndDrag",
+            "onScreenStick",
             "cameraVFov",
             "cameraHFov",
             "cameraSlideSpeed",

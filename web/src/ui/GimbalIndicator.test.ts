@@ -33,8 +33,8 @@ describe('GimbalIndicatorTest', () => {
     expect(corner[0]).toBe(1);
     expect(corner[1]).toBe(1);
     expect(screenFraction(0, 100, 100, 100)[1]).toBe(-1);
-    expect(onScreenGimbal(parseJson('{"shown":true,"onScreen":{"enabled":true,"clickAndDrag":true}}'))).toEqual({ enabled: true, clickAndDrag: true });
-    expect(onScreenGimbal(parseJson('{"shown":true,"onScreen":{"enabled":false,"clickAndDrag":true}}')), 'with on-screen control off the video still aims by drag, as CameraAimArea').toEqual({ enabled: false, clickAndDrag: true });
+    expect(onScreenGimbal(parseJson('{"shown":true,"onScreen":{"enabled":true,"clickAndDrag":true}}'))).toEqual({ enabled: true, clickAndDrag: true, stick: false });
+    expect(onScreenGimbal(parseJson('{"shown":true,"onScreen":{"enabled":false,"clickAndDrag":true}}')), 'with on-screen control off the video still aims by drag, as CameraAimArea').toEqual({ enabled: false, clickAndDrag: true, stick: false });
   });
 });
 
@@ -106,13 +106,14 @@ describe('GimbalTakeControlTest', () => {
   });
 
   it('each way a drag on the video can steer the gimbal maps to its two settings and back', () => {
-    expect(VIDEO_GIMBAL_MODES.map((mode) => videoGimbalMode({ enabled: mode.onScreen, clickAndDrag: mode.clickAndDrag }))).toEqual(VIDEO_GIMBAL_MODES.map((mode) => mode.mode));
-    expect(videoGimbalMode({ enabled: false, clickAndDrag: true })).toBe('drag');
-    expect(VIDEO_GIMBAL_MODES.map((mode) => mode.label)).toEqual(['Drag to move', 'Tap to point', 'Hold and drag']);
+    expect(VIDEO_GIMBAL_MODES.map((mode) => videoGimbalMode({ enabled: mode.onScreen, clickAndDrag: mode.clickAndDrag, stick: mode.stick }))).toEqual(VIDEO_GIMBAL_MODES.map((mode) => mode.mode));
+    expect(videoGimbalMode({ enabled: false, clickAndDrag: true, stick: false })).toBe('drag');
+    expect(videoGimbalMode({ enabled: true, clickAndDrag: true, stick: true }), 'the joystick wins over any way of dragging the picture').toBe('stick');
+    expect(VIDEO_GIMBAL_MODES.map((mode) => mode.label)).toEqual(['Drag to move', 'Tap to point', 'Hold and drag', 'Joystick']);
   });
 
   it('the switch on the video steps through every mode and back to the first', () => {
-    expect(VIDEO_GIMBAL_MODES.map((mode) => nextVideoGimbalMode(mode.mode))).toEqual(['point', 'hold', 'drag']);
+    expect(VIDEO_GIMBAL_MODES.map((mode) => nextVideoGimbalMode(mode.mode))).toEqual(['point', 'hold', 'stick', 'drag']);
   });
 
   it('dragging the picture turns the camera the other way, so what you grabbed stays under your finger', () => {

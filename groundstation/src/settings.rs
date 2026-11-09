@@ -863,6 +863,11 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
         "Enabled",
     ),
     ("gimbalControllerSettings", "clickAndDrag", "Click and drag"),
+    (
+        "gimbalControllerSettings",
+        "onScreenStick",
+        "On-screen joystick",
+    ),
     ("gimbalControllerSettings", "cameraHFov", "Horizontal FOV"),
     ("gimbalControllerSettings", "cameraVFov", "Vertical FOV"),
     ("gimbalControllerSettings", "cameraSlideSpeed", "Max speed"),
@@ -1126,6 +1131,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
                 &[
                     "enableOnScreenControl",
                     "clickAndDrag",
+                    "onScreenStick",
                     "cameraHFov",
                     "cameraVFov",
                     "cameraSlideSpeed",

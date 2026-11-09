@@ -26,6 +26,12 @@ export type MockOption = 'Enable camera' | 'Enable gimbal' | 'Enable proximity s
 
 export type MockVehicle = 'PX4 Vehicle' | 'APM ArduCopter Vehicle' | 'APM ArduPlane Vehicle' | 'APM ArduSub Vehicle' | 'APM ArduRover Vehicle' | 'Generic Vehicle';
 
+export const chooseCameraJoystick = (page: Page) =>
+  page.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.gimbalControllerSettings.onScreenStick', true);
+  }, '/src/bridge/Qgc.ts');
+
 export const connectMock = async (page: Page, options: readonly MockOption[] = [], vehicle: MockVehicle | null = null) => {
   await page.getByRole('button', { name: /How to connect/ }).click();
   await page.getByRole('button', { name: 'Add link…' }).click();

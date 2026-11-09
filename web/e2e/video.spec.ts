@@ -123,7 +123,7 @@ test('the gimbal sheet chooses what a drag on the video does and opens every gim
   await flyNow(app);
   await app.getByRole('button', { name: /^Cameras, showing/ }).click();
   await app.getByRole('menuitem', { name: 'Gimbal settings' }).click();
-  await expect(app.getByText('On the video', { exact: true })).toBeVisible();
+  await expect(app.getByText('Aim the camera', { exact: true })).toBeVisible();
   await expect(app.getByRole('button', { name: 'Tap to point' })).toHaveAttribute('aria-pressed', 'true');
   await app.getByRole('button', { name: 'Drag to move' }).click();
   await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
@@ -143,7 +143,11 @@ test('the switch on the video steps through every way a drag steers the gimbal',
   await mode.click();
   await expect(mode).toHaveAccessibleName('Video gimbal mode, Hold and drag');
   await mode.click();
+  await expect(mode).toHaveAccessibleName('Video gimbal mode, Joystick');
+  await expect(app.getByRole('img', { name: 'Camera joystick' }), 'the joystick shows only in its own mode').toBeVisible();
+  await mode.click();
   await expect(mode).toHaveAccessibleName('Video gimbal mode, Drag to move');
+  await expect(app.getByRole('img', { name: 'Camera joystick' })).toHaveCount(0);
   await app.getByRole('button', { name: /^Cameras, showing/ }).click();
   await app.getByRole('menuitem', { name: 'Gimbal settings' }).click();
   await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');

@@ -8,6 +8,7 @@ pub const DEPS: &[&str] = &[
     "settings.gimbalControllerSettings.toolbarIndicatorShowAcquireReleaseControl",
     "settings.gimbalControllerSettings.enableOnScreenControl",
     "settings.gimbalControllerSettings.clickAndDrag",
+    "settings.gimbalControllerSettings.onScreenStick",
     "vehicle.homePosition",
     crate::gimbal::GIMBAL_CHANGED,
 ];
@@ -90,7 +91,7 @@ pub fn indicator(
     snapshot: &Value,
     show_azimuth: bool,
     show_control: bool,
-    on_screen: (bool, bool),
+    on_screen: (bool, bool, bool),
 ) -> Value {
     let gimbals = snapshot["gimbals"].as_array().cloned().unwrap_or_default();
     let Some(active) = active_gimbal(snapshot) else {
@@ -120,7 +121,7 @@ pub fn indicator(
         "controlOffered": show_control,
         "controlLabel": if active["haveControl"] == true { "Release Control" } else { "Acquire Control" },
         "haveControl": active["haveControl"] == true,
-        "onScreen": { "enabled": on_screen.0, "clickAndDrag": on_screen.1 },
+        "onScreen": { "enabled": on_screen.0, "clickAndDrag": on_screen.1, "stick": on_screen.2 },
     })
 }
 
@@ -133,6 +134,7 @@ pub fn indicator_view(backend: &dyn Backend, _args: &[String]) -> Value {
         (
             setting(backend, "enableOnScreenControl"),
             setting(backend, "clickAndDrag"),
+            setting(backend, "onScreenStick"),
         ),
     );
     shown["askSerial"] = json!(crate::gimbal::asked());
@@ -461,7 +463,7 @@ mod tests {
                 &snapshot(json!({ "active": true, "capabilityFlags": flags })),
                 false,
                 false,
-                (true, false),
+                (true, false, false),
             )["yawAxis"]
                 .clone()
         };
@@ -481,7 +483,7 @@ mod tests {
                 &snapshot(json!({ "active": true, "limits": limits })),
                 false,
                 false,
-                (false, false),
+                (false, false, false),
             )["yawRange"]
                 .clone()
         };
@@ -525,7 +527,7 @@ mod tests {
             ),
             false,
             true,
-            (true, false),
+            (true, false, true),
         );
         assert_eq!(shown["statusText"], "Yaw follow");
         assert_eq!(shown["pitchText"], "P: -12.3");
@@ -537,11 +539,15 @@ mod tests {
         assert_eq!(shown["yawLockLabel"], "Yaw Lock");
         assert_eq!(shown["controlLabel"], "Acquire Control");
         assert_eq!(shown["onScreen"]["enabled"], true);
+        assert_eq!(
+            shown["onScreen"]["stick"], true,
+            "the on-screen joystick setting reaches the heads"
+        );
         let azimuth = indicator(
             &snapshot(json!({ "active": true, "absoluteYaw": 185.0, "yawLock": true })),
             true,
             false,
-            (false, false),
+            (false, false, false),
         );
         assert_eq!(
             azimuth["yawText"], "Az: 185.0",
@@ -556,7 +562,7 @@ mod tests {
                     &snapshot(json!({ "active": true, "supportsYawLock": true })),
                     false,
                     false,
-                    (false, false)
+                    (false, false, false)
                 )["yawLockOffered"]
                     .clone()
             ),
@@ -568,12 +574,17 @@ mod tests {
                 &snapshot(json!({ "retracted": true, "yawLock": true })),
                 false,
                 false,
-                (false, false)
+                (false, false, false)
             )["statusText"],
             "Retracted"
         );
         assert_eq!(
-            indicator(&json!({ "gimbals": [] }), false, false, (false, false))["shown"],
+            indicator(
+                &json!({ "gimbals": [] }),
+                false,
+                false,
+                (false, false, false)
+            )["shown"],
             false,
             "no gimbal, no indicator"
         );

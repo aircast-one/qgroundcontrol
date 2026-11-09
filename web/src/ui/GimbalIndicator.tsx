@@ -237,27 +237,29 @@ export const GIMBAL_DRAG_REPEAT_MS = 100;
 
 export const screenFraction = (x: number, y: number, width: number, height: number): readonly [number, number] => [(x / width) * 2 - 1, -((y / height) * 2 - 1)];
 
-export type OnScreenGimbal = { enabled: boolean; clickAndDrag: boolean };
+export type OnScreenGimbal = { enabled: boolean; clickAndDrag: boolean; stick: boolean };
 
 export const onScreenGimbal = (view: Json | null): OnScreenGimbal | null => {
   const onScreen = view !== null && optBoolean(view, 'shown') ? optJSONObject(view, 'onScreen') : null;
-  return onScreen === null ? null : { enabled: optBoolean(onScreen, 'enabled'), clickAndDrag: optBoolean(onScreen, 'clickAndDrag') };
+  return onScreen === null ? null : { enabled: optBoolean(onScreen, 'enabled'), clickAndDrag: optBoolean(onScreen, 'clickAndDrag'), stick: optBoolean(onScreen, 'stick') };
 };
 
-export type VideoGimbalMode = 'drag' | 'point' | 'hold';
+export type VideoGimbalMode = 'drag' | 'point' | 'hold' | 'stick';
 
 const ON_SCREEN_SETTING = 'settings.gimbalControllerSettings.enableOnScreenControl';
 const CLICK_AND_DRAG_SETTING = 'settings.gimbalControllerSettings.clickAndDrag';
+const STICK_SETTING = 'settings.gimbalControllerSettings.onScreenStick';
 
-type VideoGimbalModeChoice = { mode: VideoGimbalMode; label: string; icon: string; hint: string; onScreen: boolean; clickAndDrag: boolean };
+type VideoGimbalModeChoice = { mode: VideoGimbalMode; label: string; icon: string; hint: string; onScreen: boolean; clickAndDrag: boolean; stick: boolean };
 
 export const VIDEO_GIMBAL_MODES: readonly VideoGimbalModeChoice[] = [
-  { mode: 'drag', label: 'Drag to move', icon: 'pan_tool', hint: 'Drag the picture like a map; what you grab stays under your finger.', onScreen: false, clickAndDrag: false },
-  { mode: 'point', label: 'Tap to point', icon: 'ads_click', hint: 'Tap to turn the camera there, or drag the picture to move it.', onScreen: true, clickAndDrag: false },
-  { mode: 'hold', label: 'Hold and drag', icon: 'joystick', hint: 'Press, then drag away from that spot; the further you drag, the faster the camera turns.', onScreen: true, clickAndDrag: true },
+  { mode: 'drag', label: 'Drag to move', icon: 'pan_tool', hint: 'Drag the picture like a map; what you grab stays under your finger.', onScreen: false, clickAndDrag: false, stick: false },
+  { mode: 'point', label: 'Tap to point', icon: 'ads_click', hint: 'Tap to turn the camera there, or drag the picture to move it.', onScreen: true, clickAndDrag: false, stick: false },
+  { mode: 'hold', label: 'Hold and drag', icon: 'swipe', hint: 'Press, then drag away from that spot; the further you drag, the faster the camera turns.', onScreen: true, clickAndDrag: true, stick: false },
+  { mode: 'stick', label: 'Joystick', icon: 'joystick', hint: 'Steer the camera with the on-screen joystick; drags and taps on the picture leave it alone.', onScreen: false, clickAndDrag: false, stick: true },
 ];
 
-export const videoGimbalMode = (control: OnScreenGimbal): VideoGimbalMode => (!control.enabled ? 'drag' : control.clickAndDrag ? 'hold' : 'point');
+export const videoGimbalMode = (control: OnScreenGimbal): VideoGimbalMode => (control.stick ? 'stick' : !control.enabled ? 'drag' : control.clickAndDrag ? 'hold' : 'point');
 
 const modeChoice = (mode: VideoGimbalMode): VideoGimbalModeChoice => VIDEO_GIMBAL_MODES.find((it) => it.mode === mode)!;
 
@@ -268,6 +270,7 @@ const chooseVideoGimbalMode = (mode: VideoGimbalMode) =>
     const choice = modeChoice(mode);
     await Qgc.set(ON_SCREEN_SETTING, choice.onScreen);
     await Qgc.set(CLICK_AND_DRAG_SETTING, choice.clickAndDrag);
+    await Qgc.set(STICK_SETTING, choice.stick);
   })();
 
 export const GimbalVideoMode = () => {
@@ -277,7 +280,7 @@ export const GimbalVideoMode = () => {
   const current = videoGimbalMode(control);
   return (
     <div className="flex flex-col gap-1">
-      <Text typography="titleSmall">On the video</Text>
+      <Text typography="titleSmall">Aim the camera</Text>
       <div className="flex flex-wrap gap-2">
         {VIDEO_GIMBAL_MODES.map((mode) => (
           <FilterChip key={mode.mode} selected={current === mode.mode} onClick={() => chooseVideoGimbalMode(mode.mode)} label={mode.label} />
@@ -370,7 +373,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
   useEffect(() => () => {
     if (press.current !== null) clearInterval(press.current.repeating);
   }, []);
-  if (control === null) return null;
+  if (control === null || control.stick) return null;
 
   const send = (pan: number, tilt: number, point: boolean) => void (async () => gimbalRefusal(await Qgc.call('gimbal.onScreen', pan, tilt, point)))();
   const sendDrag = (pan: number, tilt: number, begin: boolean) => void (async () => gimbalRefusal(await Qgc.call('gimbal.drag', pan, tilt, begin)))();

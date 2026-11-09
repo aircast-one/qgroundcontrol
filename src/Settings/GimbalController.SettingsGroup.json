@@ -17,6 +17,14 @@
             "label": "Click and drag"
         },
         {
+            "name": "onScreenStick",
+            "shortDesc": "Steer the camera with an on-screen joystick",
+            "longDesc": "Shows a joystick by the camera controls that turns and tilts the camera. Drags and taps on the picture then leave the camera alone.",
+            "type": "bool",
+            "default": false,
+            "label": "On-screen joystick"
+        },
+        {
             "name": "cameraVFov",
             "shortDesc": "Vertical camera field of view",
             "type": "uint32",
