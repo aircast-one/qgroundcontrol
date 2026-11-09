@@ -1,4 +1,5 @@
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Slider as BaseSlider } from '@base-ui/react';
 import { type Json, optBoolean, optDouble } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
@@ -6,13 +7,14 @@ import { VideoCommands } from '@/bridge/BridgeCommands';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { coerceIn, delay } from '@/kotlin/Std';
+import { useValue } from '@/kotlin/State';
 import { FilterChip, Surface, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { VEHICLES_VIEW } from '@/map/VehiclePicker';
 import { Color, md, withAlpha } from '@/theme/Colors';
 import { activeVehicleId } from '@/ui/ActiveVehicle';
 import { BesidePopup, VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
-import { OpenOnRequest } from '@/ui/FlyScreenState';
+import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
@@ -241,11 +243,12 @@ const AimStick = ({ pitch, onRecenter, slider }: { pitch: number | null; onRecen
   const [opener, setOpener] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const shown = coerceIn(pitch ?? 0, GIMBAL_TILT_MIN, GIMBAL_TILT_MAX);
+  const corner = useValue(useContext(LocalFlyScreenState).cameraStickSlot);
   if (slider)
     return (
       <div className="flex min-h-0 flex-col items-center gap-1">
         <TiltReadout degrees={shown} onRecenter={onRecenter} />
-        <GimbalStick />
+        {corner === null ? <GimbalStick /> : createPortal(<GimbalStick />, corner)}
       </div>
     );
   return (

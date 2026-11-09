@@ -82,6 +82,7 @@ const FULL_SCREEN_LAYER = 10;
 const STICK_LAYER = FULL_SCREEN_LAYER + 1;
 const DECISION_LAYER = 4;
 const MAP_SCALE_CLEARANCE = 88;
+const CORNER_STICK_MIN_HEIGHT = 560;
 const STICK_FLOOR = MINIMAP_THUMB + AircastSpace.s3 * 2;
 const RAIL_SHUTTER_ROOM = 56;
 const BOTTOM_LEAD = ACTION_RAIL_CLEARANCE - AircastSpace.s3;
@@ -364,8 +365,18 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const osd = useElementSize();
   const gimbalSwitch = useValue(gimbalSwitchWidth);
   const corner = useElementSize();
+  const stickSlot = useElementSize();
+  const stickInCorner = stickPad === null && view === FlyView.Video && boxHeight >= CORNER_STICK_MIN_HEIGHT;
+  const holdStick = useCallback((element: HTMLElement | null) => {
+    shellState.cameraStickSlot.value = element;
+    const release = stickSlot.ref(element);
+    return () => {
+      shellState.cameraStickSlot.value = null;
+      release?.();
+    };
+  }, []);
+  const cornerStack = stickInCorner && stickSlot.size.height > 0 ? corner.size.height + stickSlot.size.height + AircastSpace.s2 * 2 : corner.size.width > 0 ? corner.size.height + AircastSpace.s2 : 0;
   const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitch > 0 ? gimbalSwitch + AircastSpace.s2 * 2 : AircastSpace.s3;
-  const switchBottom = view === FlyView.Map && stickPad === null ? MAP_SCALE_CLEARANCE : AircastSpace.s3;
   const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : switchEnd + (corner.size.width > 0 ? corner.size.width + AircastSpace.s2 : 0);
   const insets = stickInsets(stickPad, fullScreen, box.letterbox, cutoutStart, cutoutEnd, controls.size.width);
   const ornamentEnd = insets.ornamentEnd;
@@ -375,12 +386,15 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   useEffect(() => () => {
     shellState.mapOrnamentEnd.value = null;
   }, []);
-  const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : 0;
   const editing = useValue(layout.editing);
   const settingsOver = useValue(useContext(LocalAppNavigation).settingsOpen);
   const deciding = useValue(shellState.guidedPanels) > 0;
   const obstacles = useValue(shellState.obstacles);
   const hasVehicle = useHasVehicle();
+  const mapAboveOsd = view === FlyView.Map && stickPad === null && hasVehicle && !deciding ? osd.size.height : 0;
+  const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : mapAboveOsd;
+  const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE + mapAboveOsd;
+  const switchBottom = view === FlyView.Map ? mapButtonsBottom : AircastSpace.s3;
   const syntheticChosen = useRememberSyntheticChosen();
   const [layers, setLayers] = useState(false);
   useEffect(() => setLayers(false), [view]);
@@ -436,7 +450,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           {
             ...videoGestureProps,
             className: `pointer-events-auto overflow-hidden bg-black ${pipNow ? 'rounded-shape-md' : ''}`,
-            style: { ...videoFrame(videoTarget, () => frame.value, cameras.nudge), touchAction: 'none', ...(pipNow || fullScreen || corner.size.width === 0 ? {} : ({ [VIDEO_CORNER_ROOM]: `${corner.size.height + AircastSpace.s2}px` } as CSSProperties)) },
+            style: { ...videoFrame(videoTarget, () => frame.value, cameras.nudge), touchAction: 'none', ...(pipNow || fullScreen || cornerStack === 0 ? {} : ({ [VIDEO_CORNER_ROOM]: `${cornerStack}px` } as CSSProperties)) },
           },
           !pipNow,
         )}
@@ -473,7 +487,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(1), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING }}>
             <div className="relative size-full">
               {view === FlyView.Map ? (
-                <div className="absolute end-0 bottom-0" style={{ marginInlineEnd: AircastSpace.s3, marginBottom: stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE }}>
+                <div className="absolute end-0 bottom-0" style={{ marginInlineEnd: AircastSpace.s3, marginBottom: mapButtonsBottom }}>
                   <LayoutWidget widgetKey="mapLayers" hideable={false}>
                     <div className="flex flex-col gap-2">
                       <Map3dToggle />
@@ -553,6 +567,13 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 >
                   <LocalAvoidedByVideoMessage.Provider value>{cameraSwitch(mapIsPip, {})}</LocalAvoidedByVideoMessage.Provider>
                 </div>
+                {stickInCorner ? (
+                  <div
+                    ref={holdStick}
+                    className="absolute end-0 bottom-0"
+                    style={{ zIndex: layer(1), marginInlineEnd: AircastSpace.s3, marginBottom: switchBottom + corner.size.height + AircastSpace.s2 }}
+                  />
+                ) : null}
                 {hasVehicle && !deciding ? (
                   <div
                     ref={osd.ref}
