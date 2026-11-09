@@ -72,24 +72,24 @@ void UsbRadioTest::_standbySendsToTheAircraftComputer_test()
 
 void UsbRadioTest::_radioIsToldWhatItsSticksAreDoing_test()
 {
-    QCOMPARE(echo(Flying::Vehicle, 1), QByteArray("@F,1;18,20,21,22,24,11,12,5,19,23|off|\n"));
-    QCOMPARE(echo(Flying::Standby, 3), QByteArray("@S,3;18,20,21,22,24,11,12,5,19,23|off|\n"));
-    QCOMPARE(echo(Flying::Joystick, 1), QByteArray("@J,1;18,20,21,22,24,11,12,5,19,23|off|\n"));
-    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N;18,20,21,22,24,11,12,5,19,23|off|\n"));
+    QCOMPARE(echo(Flying::Vehicle, 1), QByteArray("@F,1;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
+    QCOMPARE(echo(Flying::Standby, 3), QByteArray("@S,3;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
+    QCOMPARE(echo(Flying::Joystick, 1), QByteArray("@J,1;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
     QVERIFY(!parse(echo(Flying::Vehicle, 1)));
 }
 
 void UsbRadioTest::_radioLearnsTheVehicleKindAndItsStickChannels_test()
 {
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10),
-             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|off|\n"));
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
     QCOMPARE(echo(Flying::Standby, 2, Kind::Plane, Sticks{2, 1, 3, 4}),
-             QByteArray("@S,2,P,2,1,3,4,0;18,20,21,22,24,11,12,5,19,23|off|\n"));
+             QByteArray("@S,2,P,2,1,3,4,0;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
     QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{}, kR2d2, 8),
-             QByteArray("@J,3,R,1,2,3,4,8;18,20,21,22,24,11,12,5,19,23|off|\n"));
+             QByteArray("@J,3,R,1,2,3,4,8;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
     QCOMPARE(echo(Flying::Vehicle, 4, Kind::Unknown, Sticks{2, 1, 3, 4}),
-             QByteArray("@F,4;18,20,21,22,24,11,12,5,19,23|off|\n"));
-    QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N;18,20,21,22,24,11,12,5,19,23|off|\n"));
+             QByteArray("@F,4;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
 }
 
 void UsbRadioTest::_radioHearsThePayloadStateAndTheFlightModeNames_test()
@@ -97,23 +97,23 @@ void UsbRadioTest::_radioHearsThePayloadStateAndTheFlightModeNames_test()
     const QStringList copter{QStringLiteral("Loiter"), QStringLiteral("Altitude Hold"), QStringLiteral("Position Hold"),
                              QStringLiteral("RTL"),    QStringLiteral("Auto"),          QStringLiteral("Land")};
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Safe, copter),
-             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|safe|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|safe|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Armed, copter),
-             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|armed|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|armed|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
     QCOMPARE(
         echo(Flying::Joystick, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Refused, copter),
-        QByteArray("@J,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
+        QByteArray("@J,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|refused|Loiter,AltHold,PosHold,RTL,Auto,Land\n"));
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Off, {}),
-             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|off|\n"));
-    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N;18,20,21,22,24,11,12,5,19,23|off|\n"));
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0), QByteArray("@N;18,20,21,22,24,11,12,5,19,23,17|off|\n"));
 
     const QStringList plane{QStringLiteral("Stabilize"),     QStringLiteral("Altitude Hold"),
-                            QStringLiteral("Position Hold"), QStringLiteral("Smart RTL"),
+                            QStringLiteral("Position Hold"), QStringLiteral("Brake"),
                             QStringLiteral("Auto"),          QStringLiteral("Land")};
     const QByteArray capped = echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Refused, plane);
     QVERIFY(capped.size() < kMaxEchoBytes);
     QCOMPARE(capped,
-             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Stabili,AltHold,PosHold,SmartRT,"
+             QByteArray("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17|refused|Stabili,AltHold,PosHold,Brake,"
                         "Auto\n"));
     QVERIFY2(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 10, Payload::Safe, plane).endsWith("Auto,Land\n"),
              "a shorter payload word leaves room for every mode");
@@ -364,9 +364,9 @@ void UsbRadioTest::_dropSwitchDropsOncePerFlipUpAndBomarmArmsIt_test()
 
 void UsbRadioTest::_cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefault_test()
 {
-    QCOMPARE(kR2d2, (Layout{18, 20, 21, 22, 24, 11, 12, 5, 19, 23}));
+    QCOMPARE(kR2d2, (Layout{18, 20, 21, 22, 24, 11, 12, 5, 19, 23, 17}));
 
-    const Layout moved{13, 14, 15, 0, 0, 0, 0, 0, 0, 0};
+    const Layout moved{13, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0};
     CameraSticks sticks;
     (void) sticks.step(lineWith({{13, 1500}, {14, 1500}, {kR2d2.pitch, 1500}}), 0, moved);
     QCOMPARE(sticks.step(lineWith({{13, 2012}, {14, 1500}, {kR2d2.pitch, 1500}}), 1000, moved).size(), 1);
@@ -380,7 +380,7 @@ void UsbRadioTest::_cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefaul
     QVERIFY(!switches(lineWith({{kR2d2.arm, 2012}}), moved));
 
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, moved),
-             QByteArray("@F,1,C,1,2,3,4,0;13,14,15,0,0,0,0,0,0,0|off|\n"));
+             QByteArray("@F,1,C,1,2,3,4,0;13,14,15,0,0,0,0,0,0,0,0|off|\n"));
 }
 
 void UsbRadioTest::_aSliderMovedBeforeTheGimbalIsFoundAimsOnceItIs_test()
@@ -401,11 +401,11 @@ void UsbRadioTest::_aSliderMovedBeforeTheGimbalIsFoundAimsOnceItIs_test()
 
 void UsbRadioTest::_aFunctionOnTheFlightModeChannelIsOff_test()
 {
-    QCOMPARE(without(kR2d2, 5), (Layout{18, 20, 21, 22, 24, 11, 12, 0, 19, 23}));
+    QCOMPARE(without(kR2d2, 5), (Layout{18, 20, 21, 22, 24, 11, 12, 0, 19, 23, 17}));
     QCOMPARE(without(kR2d2, 10), kR2d2);
     QCOMPARE(without(kR2d2, 0), kR2d2);
     QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}, kR2d2, 5),
-             QByteArray("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23|off|\n"));
+             QByteArray("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23,17|off|\n"));
     QVERIFY2(switches(lineWith({{kR2d2.arm, 2012}, {5, 1500}}), without(kR2d2, 5)) == std::optional(Switches{true}),
              "a vehicle reading flight modes on CH5 takes the bay switch off it, and BOMARM still arms");
     QCOMPARE(namedOn(kR2d2, 5), QStringList({QStringLiteral("bay")}));
@@ -514,6 +514,77 @@ void UsbRadioTest::_theYawSliderTurnsAtTheSetSpeedAndHoldsAtTheCentre_test()
              "it stops at the yaw limit");
     QCOMPARE(turnRate(1500 + 40, 20.0f), 0.0f);
     QCOMPARE(turnRate(1776, 20.0f), 10.0f);
+}
+
+void UsbRadioTest::_theStickSwitchHandsTheLeftStickToTheCamera_test()
+{
+    constexpr int kThrottle = 3;
+    constexpr int kRudder = 4;
+    QVERIFY(stickSwitched(lineWith({{kR2d2.stick, 2012}}), kR2d2));
+    QVERIFY2(!stickSwitched(lineWith({{kR2d2.stick, 1500}}), kR2d2), "only the switch's high end hands the stick over");
+    const std::optional<StickChannels> stick = StickChannels{kThrottle, kRudder};
+    const Layout steering = steered(kR2d2, stick);
+    QCOMPARE(steering.pitch, kThrottle);
+    QCOMPARE(steering.yaw, kRudder);
+    QCOMPARE(steered(kR2d2, std::nullopt), kR2d2);
+
+    CameraSticks sticks;
+    QVERIFY(sticks.step(lineWith({{kThrottle, 1100}}), 0).isEmpty());
+    sticks.handStick(stick);
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 1200}}), 1000, steering).isEmpty(),
+             "taking the stick leaves the camera where it is, wherever the throttle sits");
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 988}}), 2000, steering) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}),
+             "throttle down points the camera down, as the pitch slider does");
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 988}, {kRudder, 2012}}), 3000, steering) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}),
+             "yaw over starts turning the camera from where it is");
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 988}, {kRudder, 2012}}), 3100, steering) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 2.0f}}),
+             "at the yaw slider's speed");
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 988}}), 3200, steering) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 2.0f}}),
+             "and stops where it got to when the stick springs back");
+    sticks.handStick(std::nullopt);
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 2012}}), 4000).isEmpty(),
+             "handed back, the left stick flies again and the camera stays put");
+    sticks.handStick(stick);
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 1600}}), 5000, steering).isEmpty(),
+             "taking it again does not jump the camera to wherever the throttle was flown");
+}
+
+void UsbRadioTest::_theDroneHoldsTheLeftStickCentredUntilEachStickPassesTheCentre_test()
+{
+    const StickChannels channels{3, 4};
+    Frame flown{};
+    flown.fill(1500);
+    flown[2] = 988;
+    flown[3] = 2012;
+    flown[16] = 2012;
+    const auto [taken, takenHeld] = handed(flown, channels, true, Held{});
+    QVERIFY2(taken[2] == 1500 && taken[3] == 1500 && taken[16] == 2012 && takenHeld == (Held{true, true}),
+             "while the camera has it the drone gets throttle and yaw centred, every other channel as the radio sends it");
+    const auto [back, backHeld] = handed(flown, channels, false, takenHeld);
+    QVERIFY2(back[2] == 1500 && back[3] == 1500 && backHeld == (Held{true, true}),
+             "handed back, a stick away from the centre still holds the drone");
+    Frame nearCentre = flown;
+    nearCentre[2] = 1530;
+    const auto [centred, centredHeld] = handed(nearCentre, channels, false, backHeld);
+    QVERIFY2(centred[2] == 1530 && centred[3] == 1500 && centredHeld == (Held{false, true}),
+             "each stick flies again once it reaches the centre");
+    const auto [untouched, untouchedHeld] = handed(flown, channels, false, Held{});
+    QVERIFY2(untouched == flown && untouchedHeld == (Held{false, false}), "with the switch down nothing changes");
+}
+
+void UsbRadioTest::_aModeWhereTheStickSetsTheThrottleKeepsTheStickOnTheDrone_test()
+{
+    constexpr uint32_t kStabilize = 0;
+    constexpr uint32_t kLoiter = 5;
+    QVERIFY(throttleFree(Kind::Copter, false, kStabilize));
+    QVERIFY(!throttleFree(Kind::Copter, false, kLoiter));
+    QVERIFY2(throttleFree(Kind::Unknown, true, 7u << 16), "PX4 Stabilized");
+    QVERIFY2(!throttleFree(Kind::Unknown, true, 3u << 16), "PX4 Position");
+    QVERIFY(stickRefusedText(QStringLiteral("Stabilize")).contains(QStringLiteral("in Stabilize")));
 }
 
 void UsbRadioTest::_aYawSliderLeftOffCentreTurnsNothingUntilItHasBeenBackToTheCentre_test()

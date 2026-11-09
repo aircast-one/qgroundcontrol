@@ -37,6 +37,9 @@ private slots:
     void _theLookSwitchAimsDownOrAheadWhenItFlips_test();
     void _yawAloneKeepsThePitchTheLookSwitchSet_test();
     void _theYawSliderTurnsAtTheSetSpeedAndHoldsAtTheCentre_test();
+    void _theStickSwitchHandsTheLeftStickToTheCamera_test();
+    void _theDroneHoldsTheLeftStickCentredUntilEachStickPassesTheCentre_test();
+    void _aModeWhereTheStickSetsTheThrottleKeepsTheStickOnTheDrone_test();
     void _aYawSliderLeftOffCentreTurnsNothingUntilItHasBeenBackToTheCentre_test();
     void _lookAheadTurnsTheCameraBackToStraightAhead_test();
 };

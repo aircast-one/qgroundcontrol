@@ -11,7 +11,7 @@ getmetatable("").__index = nil
 
 local function radio(screen)
   local sent, drawn, pages, inserted = {}, {}, {}, {}
-  local controls = { sf = 105, se = 104, rs = 99, ls = 98, s2 = 97, sg = 106, sh = 107, sb = 101, ["6pos"] = 108 }
+  local controls = { sf = 105, se = 104, rs = 99, ls = 98, s2 = 97, sg = 106, sh = 107, sb = 101, ["6pos"] = 108, s1 = 96, sc = 103, sd = 102 }
   local clock, inbox, cable = 0, "", true
   local env = setmetatable({
     SMLSIZE = 0, MIDSIZE = 0, INVERS = 0,
@@ -20,15 +20,15 @@ local function radio(screen)
     getTime = function() return clock end,
     getOutputValue = function(index) return ({ [0] = -1024, [1] = 1024, [3] = -512, [10] = -1024, [17] = 1024 })[index] or 0 end,
     getValue = function() return 8.3 end,
-    getSourceName = function(source) return "src" .. source end,
-    getFieldInfo = function(name) return controls[name] and { id = controls[name] } end,
+    getSourceName = function(source) return screen.stickSources and ({ [0] = "\200Ail", [1] = "\200Ele", [2] = "\200Thr", [3] = "\200Rud" })[source] or ("src" .. source) end,
+    getFieldInfo = (not screen.noInsert) and function(name) return controls[name] and { id = controls[name] } end or nil,
     setSerialBaudrate = function(baud) assert(baud == 115200) end,
     serialWrite = function(data) sent[#sent + 1] = data end,
     serialRead = function() local got = inbox; inbox = ""; return got end,
     usbConnected = function() return cable end,
     model = {
       getInfo = function() return { name = "VAMPIRE" } end,
-      getMix = function(channel) return inserted[channel] or (channel < (screen.mixes or 4) and { name = "m" .. channel, source = channel } or nil) end,
+      getMix = function(channel) return inserted[channel] or (channel < (screen.mixes or 4) and { name = screen.unnamed and "" or ("m" .. channel), source = channel } or nil) end,
       insertMix = function(channel, line, mix) assert(line == 0); inserted[channel] = mix end,
     },
     lcd = setmetatable({ RGB = function() return 0 end, clear = function() for k in pairs(drawn) do drawn[k] = nil end end },
@@ -73,8 +73,12 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
 
   if screen.w == 480 then
     assert(shows(r, "Waiting for the app") and shows(r, "Pick it under Radio on USB"), "silence says where in the app to pick the radio")
-    assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
-    assert(shows(r, "+20 unused channels") and not shows(r, "CH24"), "only the channels this model mixes are listed")
+    if screen.lvgl then
+      assert(shows(r, "m0") and shows(r, "CH1 src0") and shows(r, "-100%") and shows(r, "CH4 src3") and shows(r, "-50%"), "each row names what the channel does, the channel and the stick on it, and its value")
+    else
+      assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
+    end
+    assert(not shows(r, "CH24") and not shows(r, "CH24 src23"), "only the channels this model mixes are listed")
     assert(next(r.inserted) == nil, "nothing is set up before the app says which channels it reads")
     assert(shows(r, "RTN: stop sending sticks and exit"), "the way out is on the screen")
 
@@ -98,44 +102,86 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
 end
 
 local full = radio({ w = 480, h = 272, mixes = 24 })
-full.hear("@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5\n")
+full.hear("@F,1,C,1,2,3,4;18,20,21,22,24,11,12,5,19,23\n")
 full.script.run(0)
 assert(next(full.inserted) == nil, "a channel that already has a mix keeps it: nothing is added to a model mixing all 24")
 local fresh = radio({ w = 480, h = 272 })
 fresh.hear("@F,1\n")
 fresh.script.run(0)
-local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camREB", 99 }, [19] = { "camyaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 } }
+local wanted = { [10] = { "skld", 105 }, [11] = { "BOMARM", 104 }, [17] = { "camREB", 99 }, [19] = { "camyaw", 98 }, [20] = { "zoom", 97 }, [21] = { "camtyp", 106 }, [23] = { "termty", 107 }, [18] = { "campit", 96 }, [22] = { "cam90", 103, -100 }, [16] = { "stkcam", 102 } }
 for channel, mix in pairs(wanted) do
   local got = fresh.inserted[channel]
-  assert(got and got.name == mix[1] and got.source == mix[2] and got.weight == 100, "an empty CH" .. (channel + 1) .. " gets the R2D2 " .. mix[1] .. " mix")
+  assert(got and got.name == mix[1] and got.source == mix[2] and got.weight == (mix[3] or 100), "an empty CH" .. (channel + 1) .. " gets the R2D2 " .. mix[1] .. " mix, SC reversed so up reads high and looks ahead")
 end
 local count = 0
 for _ in pairs(fresh.inserted) do count = count + 1 end
-assert(count == 7, "an app that names no layout gets the R2D2 camera and payload channels, never the bay on CH5, which can be flight modes")
+assert(count == 10, "an app that names no layout gets the R2D2 camera and payload channels, S1, SC and the SD stick switch included, never the bay on CH5, which can be flight modes")
 local moved = radio({ w = 480, h = 272 })
-moved.hear("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0\n")
+moved.hear("@F,1,C,1,2,3,4;13,14,15,0,0,0,0,0,0,0\n")
 moved.script.run(0)
 assert(moved.inserted[12] and moved.inserted[12].name == "camREB" and moved.inserted[12].source == 99, "the app's pitch channel gets the right slider")
 assert(moved.inserted[13] and moved.inserted[13].name == "camyaw" and moved.inserted[14] and moved.inserted[14].name == "zoom", "and its yaw and zoom channels the left slider and S2")
 count = 0
 for _ in pairs(moved.inserted) do count = count + 1 end
 assert(count == 3, "a function the app turned off (channel 0) is not set up anywhere")
+local older = radio({ w = 480, h = 272 })
+older.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+older.script.run(0)
+assert(not older.inserted[18] and not older.inserted[22], "an app naming only eight channels leaves S1 and SC alone, like any function its layout leaves out")
 local onScreen = radio({ w = 480, h = 272, lvgl = true })
-onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+onScreen.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 onScreen.script.run(0)
-assert(shows(onScreen, string.format("CH%-2d %-5s %-6s %4d", 18, "src99", "camREB", 2012)), "a channel the script just set up appears on the screen")
+assert(shows(onScreen, "Pitch") and shows(onScreen, "CH18 src99") and shows(onScreen, "0\194\176"), "a channel the script just set up appears on the screen by what it does, its channel and control, and its value in the app's terms: the slider at its top points ahead")
+local unnamed = radio({ w = 480, h = 272, lvgl = true, mixes = 24, unnamed = true })
+unnamed.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
+unnamed.script.run(0)
+assert(next(unnamed.inserted) == nil, "existing mixes are left alone even when they have no name")
+assert(shows(unnamed, "Tilt") and shows(unnamed, "CH19 src18"), "a layout channel whose mix has no name shows the function's name")
+assert(shows(unnamed, "Look") and shows(unnamed, "CH23 src22"), "SC too")
 local his = radio({ w = 480, h = 272 })
-his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+his.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
 his.script.run(0)
 assert(his.inserted[9] and his.inserted[9].name == "phold" and his.inserted[9].source == 101, "a drone reading flight modes on CH10 gets SB there, like the R2D2 model")
 assert(his.inserted[4] and his.inserted[4].source == 108, "and the six-position switch on CH5 picks the bay")
+assert(shows(his, "10 of 10 app functions on the radio"), "the footer confirms every function the app reads has a control")
+local stick = radio({ w = 480, h = 272, lvgl = true })
+stick.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23,17\n")
+stick.script.run(0)
+assert(stick.inserted[16] and stick.inserted[16].name == "stkcam" and stick.inserted[16].source == 102, "an app reading the left stick camera switch on CH17 gets SD there")
+assert(shows(stick, "Stick") and shows(stick, "CH17 src102") and shows(stick, "drone"), "its row says who has the left stick: the drone while SD is low")
+local partial = radio({ w = 480, h = 272, lvgl = true, mixes = 24 })
+partial.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5\n")
+partial.script.run(0)
+assert(shows(partial, "not read") and shows(partial, "8 of 8 app functions on the radio"), "an app that names eight functions leaves S1 and SC rows marked as not read")
+local bare = radio({ w = 480, h = 272, lvgl = true, noInsert = true })
+bare.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23\n")
+bare.script.run(0)
+assert(shows(bare, "Tilt") and shows(bare, "no control on CH19") and shows(bare, "no control on CH18") and shows(bare, "0 of 10 app functions on the radio"), "a radio that cannot set channels up lists each function the app reads that has no control yet")
+local deaf = radio({ w = 480, h = 272 })
+deaf.script.run(0)
+assert(shows(deaf, "Pick it under Radio on USB"), "right after plugging in, the next step is in the app")
+deaf.at(900)
+deaf.script.run(0)
+assert(shows(deaf, "Pick it under Radio on USB") and shows(deaf, "No offer in the app? USB mode must be Serial (VCP): replug and pick it"), "a cable that stays silent keeps the app step and adds the radio's USB mode under it")
+deaf.hear("@F,1\n")
+deaf.script.run(0)
+assert(not shows(deaf, "No offer in the app? USB mode must be Serial (VCP): replug and pick it") and not shows(deaf, "Pick it under Radio on USB"), "and both go once the app answers")
+local told = radio({ w = 480, h = 272, lvgl = true })
+told.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|refused|Loiter,AltHold,PosHold,RTL,Auto,Land\n")
+told.script.run(0)
+assert(shows(told, "REFUSED"), "the arm row shows the app's verdict, not the switch")
+assert(shows(told, "RTL"), "the mode row names the flight mode the switch position selects: 1500 us is ArduPilot position 4")
+assert(shows(told, "CH1 src0"), "a stick row keeps its control beside the role")
+told.hear("@F,1,C,1,2,3,4,10;18,20,21,22,24,11,12,5,19,23|safe|\n")
+told.script.run(0)
+assert(shows(told, "safe") and shows(told, "mid"), "without mode names the switch position is shown")
 local stock = radio({ w = 480, h = 272 })
-stock.hear("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0\n")
+stock.hear("@F,1,C,1,2,3,4,5;18,20,21,22,24,11,12,0,19,23\n")
 stock.script.run(0)
 assert(stock.inserted[4] and stock.inserted[4].name == "phold", "a drone reading flight modes on CH5 gets SB there and no bay switch")
 count = 0
 for _ in pairs(stock.inserted) do count = count + 1 end
-assert(count == 8, "the seven R2D2 functions and the flight mode switch")
+assert(count == 10, "the nine R2D2 functions and the flight mode switch")
 local short = radio({ w = 480, h = 272 })
 short.hear("@F,1,C,1,2,3,4;13\n")
 short.script.run(0)
@@ -153,7 +199,7 @@ assert(shows(full, "CH24 src23 m23    1500") and not shows(full, "+0 unused chan
 for _, mixes in ipairs({ 7, 24 }) do
   local tx16s = radio({ w = 480, h = 272, lvgl = true, mixes = mixes })
   tx16s.script.run(0)
-  assert(shows(tx16s, string.format("CH%-2d %-5s %-6s %4d", mixes, "src" .. (mixes - 1), "m" .. (mixes - 1), 1500)))
+  assert(shows(tx16s, "m" .. (mixes - 1)) and shows(tx16s, "CH" .. mixes .. " src" .. (mixes - 1)))
   for _, call in ipairs(tx16s.drawn) do
     assert((call[3] or 0) <= 272 - 50 - 16, "a TX16S shows all " .. mixes .. " channels and the way out without scrolling")
   end
@@ -186,7 +232,10 @@ assert(shows(small, "Roll") and shows(small, "Pitc"), "the small screen shows th
 local colourLabels = radio({ w = 480, h = 320, lvgl = true })
 colourLabels.hear("@F,1,C,1,2,3,4\n")
 colourLabels.script.run(0)
-assert(shows(colourLabels, "CH1  Roll  m0      988"), "an LVGL radio labels its rows the same way")
+assert(shows(colourLabels, "Roll") and shows(colourLabels, "CH1 src0") and shows(colourLabels, "-100%"), "an LVGL radio names its rows by their role")
+local sticks = radio({ w = 480, h = 272, lvgl = true, stickSources = true })
+sticks.script.run(0)
+assert(shows(sticks, "Roll") and shows(sticks, "Pitch") and shows(sticks, "Thr") and shows(sticks, "Yaw"), "before the app speaks, a stick's row is named by the stick that feeds it, never by the model's mix name")
 
 local quiet = radio({ w = 480, h = 272 })
 quiet.script.run(0)

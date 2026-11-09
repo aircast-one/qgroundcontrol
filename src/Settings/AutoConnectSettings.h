@@ -47,4 +47,5 @@ public:
     DEFINE_SETTINGFACT(usbRadioTiltChannel)
     DEFINE_SETTINGFACT(usbRadioLookChannel)
     DEFINE_SETTINGFACT(usbRadioLookReversed)
+    DEFINE_SETTINGFACT(usbRadioStickChannel)
 };

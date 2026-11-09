@@ -117,7 +117,59 @@ Layout without(const Layout& layout, int channel)
 {
     const auto off = [channel](int at) { return channel > 0 && at == channel ? 0 : at; };
     return Layout{off(layout.pitch), off(layout.yaw), off(layout.zoom), off(layout.picture), off(layout.palette),
-                  off(layout.drop),  off(layout.arm), off(layout.bay),  off(layout.tilt),    off(layout.look)};
+                  off(layout.drop),  off(layout.arm), off(layout.bay),  off(layout.tilt),    off(layout.look),
+                  off(layout.stick)};
+}
+
+Layout steered(const Layout& layout, const std::optional<StickChannels>& stick)
+{
+    return stick ? Layout{(*stick)[0],  (*stick)[1], layout.zoom, layout.picture, layout.palette, layout.drop,
+                          layout.arm,   layout.bay,  layout.tilt, layout.look,    layout.stick}
+                 : layout;
+}
+
+bool stickSwitched(const Line& line, const Layout& layout)
+{
+    const std::optional<uint16_t> pwm = channel(line, layout.stick);
+    return pwm && *pwm > kPressedPwm;
+}
+
+std::pair<Frame, Held> handed(const Frame& frame, const StickChannels& channels, bool camera, const Held& held)
+{
+    const auto pwm = [&frame](int number) {
+        return number >= 1 && number <= kChannels ? std::optional<uint16_t>(frame[number - 1]) : std::nullopt;
+    };
+    const auto hold = [&](int at) {
+        const std::optional<uint16_t> now = pwm(channels[at]);
+        return now && (camera || (held[at] && std::abs(int(*now) - int(kStickCentrePwm)) > kHandbackPwm));
+    };
+    const Held holds{hold(0), hold(1)};
+    Frame centred{};
+    std::ranges::transform(std::views::iota(0, kChannels), centred.begin(), [&](int at) {
+        const bool kept = (holds[0] && channels[0] == at + 1) || (holds[1] && channels[1] == at + 1);
+        return kept ? static_cast<uint16_t>(kStickCentrePwm) : frame[at];
+    });
+    return {centred, holds};
+}
+
+bool throttleFree(Kind kind, bool px4, uint32_t customMode)
+{
+    constexpr std::array<uint32_t, 4> kCopter{0, 1, 11, 14};
+    constexpr std::array<uint32_t, 9> kPlane{0, 2, 3, 4, 5, 6, 7, 17, 23};
+    constexpr std::array<uint32_t, 4> kPx4Main{1, 5, 7, 8};
+    const auto among = [](const auto& modes, uint32_t mode) { return std::ranges::find(modes, mode) != modes.end(); };
+    return px4                  ? among(kPx4Main, (customMode >> 16) & 0xff)
+           : kind == Kind::Copter ? among(kCopter, customMode)
+           : kind == Kind::Plane  ? among(kPlane, customMode)
+                                  : false;
+}
+
+QString stickRefusedText(const QString& mode)
+{
+    return QCoreApplication::translate("UsbRadio",
+                                       "The left stick stays on the drone in %1, where it sets the throttle directly. "
+                                       "Switch to a mode that holds altitude to steer the camera with it.")
+        .arg(mode);
 }
 
 std::optional<Switches> switches(const Line& line, const Layout& layout)
@@ -290,6 +342,21 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     return moves;
 }
 
+void CameraSticks::handStick(const std::optional<StickChannels>& stick)
+{
+    if (stick == _stick) {
+        return;
+    }
+    const auto forget = [this](const std::optional<StickChannels>& channels) {
+        if (channels) {
+            std::ranges::for_each(*channels, [this](int number) { _acted.remove(number); });
+        }
+    };
+    forget(_stick);
+    forget(stick);
+    _stick = stick;
+}
+
 Frame released()
 {
     Frame frame{};
@@ -303,8 +370,8 @@ namespace {
 
 QByteArray layoutTail(const Layout& layout)
 {
-    const std::array channels{layout.pitch, layout.yaw, layout.zoom, layout.picture, layout.palette,
-                              layout.drop,  layout.arm, layout.bay,  layout.tilt,    layout.look};
+    const std::array channels{layout.pitch, layout.yaw, layout.zoom, layout.picture, layout.palette, layout.drop,
+                              layout.arm,   layout.bay, layout.tilt, layout.look,    layout.stick};
     return std::accumulate(channels.cbegin(), channels.cend(), QByteArray(";"), [](const QByteArray& tail, int number) {
         return tail + (tail.size() > 1 ? "," : "") + QByteArray::number(number);
     });
@@ -374,7 +441,7 @@ QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks, const Layo
 
 QStringList namedOn(const Layout& layout, int channel)
 {
-    const std::array<std::pair<int, const char*>, 10> functions{{{layout.pitch, "camera pitch"},
+    const std::array<std::pair<int, const char*>, 11> functions{{{layout.pitch, "camera pitch"},
                                                                  {layout.yaw, "camera yaw"},
                                                                  {layout.zoom, "zoom"},
                                                                  {layout.picture, "picture"},
@@ -383,7 +450,8 @@ QStringList namedOn(const Layout& layout, int channel)
                                                                  {layout.arm, "arm"},
                                                                  {layout.bay, "bay"},
                                                                  {layout.tilt, "tilt"},
-                                                                 {layout.look, "look"}}};
+                                                                 {layout.look, "look"},
+                                                                 {layout.stick, "left stick camera"}}};
     return std::accumulate(
         functions.cbegin(), functions.cend(), QStringList{},
         [channel](QStringList names, const std::pair<int, const char*>& function) {
@@ -742,7 +810,8 @@ UsbRadioProtocol::Layout UsbRadio::_layout() const
         number(settings->usbRadioZoomChannel()),    number(settings->usbRadioPictureChannel()),
         number(settings->usbRadioPaletteChannel()), number(settings->usbRadioDropChannel()),
         number(settings->usbRadioArmChannel()),     number(settings->usbRadioBayChannel()),
-        number(settings->usbRadioTiltChannel()),    number(settings->usbRadioLookChannel())};
+        number(settings->usbRadioTiltChannel()),    number(settings->usbRadioLookChannel()),
+        number(settings->usbRadioStickChannel())};
 }
 
 QString UsbRadio::_wanted() const
@@ -800,12 +869,33 @@ void UsbRadio::_read()
     const QList<Line> lines = _lines.feed(_port->readAll());
     if (!lines.isEmpty()) {
         _line = lines.last();
-        _advance(flightChannels(lines.last()));
-        _steer(lines.last());
+        const bool cameraHasStick = _cameraTakesStick(lines.last());
+        const Sticks flown = _flight().sticks;
+        const auto [frame, held] =
+            handed(flightChannels(lines.last()), StickChannels{flown.throttle, flown.yaw}, cameraHasStick, _held);
+        _held = held;
+        _advance(frame);
+        _steer(lines.last(), cameraHasStick);
     }
 }
 
-void UsbRadio::_steer(const Line& line)
+bool UsbRadio::_cameraTakesStick(const Line& line)
+{
+    const Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    const Flight flight = _flight();
+    const bool switched = vehicle && _target() && stickSwitched(line, without(_layout(), flight.modeChannel));
+    const std::optional<QString> refused =
+        switched && throttleFree(flight.kind, vehicle->px4Firmware(), vehicle->customMode())
+            ? std::optional<QString>(vehicle->flightMode())
+            : std::nullopt;
+    if (refused && refused != _refused) {
+        qgcApp()->showAppMessage(stickRefusedText(*refused));
+    }
+    _refused = refused;
+    return switched && !refused;
+}
+
+void UsbRadio::_steer(const Line& line, bool cameraHasStick)
 {
     Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
     if (!vehicle || !_target()) {
@@ -814,7 +904,11 @@ void UsbRadio::_steer(const Line& line)
     const Flight flight = _flight();
     const Layout settings = _layout();
     _warnOfClash(flight.vehicle, settings, flight.modeChannel);
-    const Layout layout = without(settings, flight.modeChannel);
+    const std::optional<StickChannels> stick =
+        cameraHasStick ? std::optional<StickChannels>(StickChannels{flight.sticks.throttle, flight.sticks.yaw})
+                       : std::nullopt;
+    const Layout layout = steered(without(settings, flight.modeChannel), stick);
+    _camera.handStick(stick);
     const std::optional<Switches> armed = switches(line, layout);
     MavlinkCameraControlInterface* const camera =
         vehicle->cameraManager() ? vehicle->cameraManager()->currentCameraInstance() : nullptr;

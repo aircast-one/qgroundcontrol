@@ -59,10 +59,16 @@ struct Layout
     int bay = 5;
     int tilt = 19;
     int look = 23;
+    int stick = 17;
     bool operator==(const Layout& other) const = default;
 };
 
+using StickChannels = std::array<int, 2>;
+using Held = std::array<bool, 2>;
+
 Layout without(const Layout& layout, int channel);
+Layout steered(const Layout& layout, const std::optional<StickChannels>& stick);
+bool stickSwitched(const Line& line, const Layout& layout);
 constexpr uint16_t kArmedPwm = 1750;
 constexpr uint16_t kSteadyPwm = 3;
 constexpr uint16_t kPressedPwm = 1500;
@@ -77,6 +83,7 @@ constexpr float kYawDeadbandPwm = 40.0f;
 constexpr qint64 kMaxTurnStepMs = 200;
 constexpr float kStickCentrePwm = 1500.0f;
 constexpr float kStickHalfSpanPwm = 512.0f;
+constexpr uint16_t kHandbackPwm = 50;
 constexpr std::array<int, 3> kPictures = {0, 1, 3};
 constexpr int kBayPositions = 6;
 
@@ -126,6 +133,9 @@ uint16_t pwm(int raw);
 std::optional<Line> parse(const QByteArray& line);
 Frame flightChannels(const Line& line);
 Frame released();
+std::pair<Frame, Held> handed(const Frame& frame, const StickChannels& channels, bool camera, const Held& held);
+bool throttleFree(Kind kind, bool px4, uint32_t customMode);
+QString stickRefusedText(const QString& mode);
 float between(float low, float high, uint16_t pwm);
 float turnRate(uint16_t pwm, float speed);
 
@@ -198,9 +208,11 @@ class CameraSticks
 public:
     QList<Move> step(const Line& line, qint64 nowMs, const Layout& layout = {}, Ready ready = {},
                      const Aiming& aiming = {});
+    void handStick(const std::optional<StickChannels>& stick);
 
 private:
     QHash<int, uint16_t> _acted;
+    std::optional<StickChannels> _stick;
     std::optional<qint64> _sentMs;
     std::optional<uint16_t> _dropBefore;
     std::optional<uint16_t> _bayBefore;
@@ -341,7 +353,8 @@ private:
     void _open(const QString& port);
     void _close();
     void _read();
-    void _steer(const UsbRadioProtocol::Line& line);
+    void _steer(const UsbRadioProtocol::Line& line, bool cameraHasStick);
+    bool _cameraTakesStick(const UsbRadioProtocol::Line& line);
     void _warnOfClash(int vehicle, const UsbRadioProtocol::Layout& layout, int modeChannel);
     void _apply(Vehicle* vehicle, const UsbRadioProtocol::Move& move, bool armed, int selectedBay) const;
     void _release(Vehicle* vehicle, int bay, bool pressed) const;
@@ -371,6 +384,8 @@ private:
     UsbRadioProtocol::CameraSticks _camera;
     UsbRadioProtocol::Radio _radio;
     std::optional<std::pair<int, int>> _clash;
+    std::optional<QString> _refused;
+    UsbRadioProtocol::Held _held{};
     QString _status;
     QString _state = UsbRadioProtocol::stateName(UsbRadioProtocol::State::Off);
     QHash<const LinkInterface*, UsbRadioProtocol::Sniffer> _sniffers;

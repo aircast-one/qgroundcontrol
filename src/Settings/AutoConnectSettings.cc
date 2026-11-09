@@ -62,6 +62,7 @@ DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioBayChannel)
 DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioTiltChannel)
 DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioLookChannel)
 DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioLookReversed)
+DECLARE_SETTINGSFACT(AutoConnectSettings, usbRadioStickChannel)
 
 DECLARE_SETTINGSFACT_NO_FUNC(AutoConnectSettings, autoConnectPixhawk)
 {
