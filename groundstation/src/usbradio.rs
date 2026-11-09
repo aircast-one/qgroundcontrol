@@ -24,7 +24,7 @@ const LINE_CHANNELS: usize = 24;
 const VALUES: std::ops::RangeInclusive<usize> = 4..=LINE_CHANNELS;
 const OVERRIDE_PWM: std::ops::RangeInclusive<i32> = 800..=2200;
 const SNIFF_LIMIT: usize = 16 * 1024;
-const STICK_CENTRE_PWM: u16 = 1500;
+const HELD_PWM: u16 = 1500;
 const HANDBACK_PWM: u16 = 50;
 pub const RADIO_FOUND: &str = "An EdgeTX radio is streaming its sticks on USB. Fly with it?";
 pub const USE: &str = "usbRadio.use";
@@ -69,9 +69,8 @@ pub fn handed(
 ) -> (Frame, [bool; 2]) {
     let pwm = |channel: usize| channel.checked_sub(1).and_then(|at| frame.get(at).copied());
     let holds: [bool; 2] = std::array::from_fn(|at| {
-        pwm(channels[at]).is_some_and(|pwm| {
-            camera || (held[at] && pwm.abs_diff(STICK_CENTRE_PWM) > HANDBACK_PWM)
-        })
+        pwm(channels[at])
+            .is_some_and(|pwm| camera || (held[at] && pwm.abs_diff(HELD_PWM) > HANDBACK_PWM))
     });
     let centred = std::array::from_fn(|at| {
         match channels
@@ -79,7 +78,7 @@ pub fn handed(
             .zip(holds)
             .any(|(channel, hold)| hold && *channel == at + 1)
         {
-            true => STICK_CENTRE_PWM,
+            true => HELD_PWM,
             false => frame[at],
         }
     });
