@@ -116,15 +116,15 @@ float between(float low, float high, uint16_t pwm)
 Layout without(const Layout& layout, int channel)
 {
     const auto off = [channel](int at) { return channel > 0 && at == channel ? 0 : at; };
-    return Layout{off(layout.pitch), off(layout.yaw), off(layout.zoom), off(layout.picture), off(layout.palette),
-                  off(layout.drop),  off(layout.arm), off(layout.bay),  off(layout.tilt),    off(layout.look),
-                  off(layout.stick)};
+    return Layout{off(layout.pitch),   off(layout.yaw),  off(layout.zoom), off(layout.picture),
+                  off(layout.palette), off(layout.drop), off(layout.arm),  off(layout.bay),
+                  off(layout.tilt),    off(layout.look), off(layout.stick)};
 }
 
 Layout steered(const Layout& layout, const std::optional<StickChannels>& stick)
 {
-    return stick ? Layout{(*stick)[0],  (*stick)[1], layout.zoom, layout.picture, layout.palette, layout.drop,
-                          layout.arm,   layout.bay,  layout.tilt, layout.look,    layout.stick}
+    return stick ? Layout{(*stick)[0], (*stick)[1], layout.zoom, layout.picture, layout.palette, layout.drop,
+                          layout.arm,  layout.bay,  layout.tilt, layout.look,    layout.stick}
                  : layout;
 }
 
@@ -158,7 +158,7 @@ bool throttleFree(Kind kind, bool px4, uint32_t customMode)
     constexpr std::array<uint32_t, 9> kPlane{0, 2, 3, 4, 5, 6, 7, 17, 23};
     constexpr std::array<uint32_t, 4> kPx4Main{1, 5, 7, 8};
     const auto among = [](const auto& modes, uint32_t mode) { return std::ranges::find(modes, mode) != modes.end(); };
-    return px4                  ? among(kPx4Main, (customMode >> 16) & 0xff)
+    return px4                    ? among(kPx4Main, (customMode >> 16) & 0xff)
            : kind == Kind::Copter ? among(kCopter, customMode)
            : kind == Kind::Plane  ? among(kPlane, customMode)
                                   : false;
