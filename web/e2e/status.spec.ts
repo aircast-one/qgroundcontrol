@@ -105,6 +105,7 @@ test('an indicator held and dragged lands where it is let go, its hide badge sit
     return found;
   };
   const left = async (locator: Locator) => (await box(locator)).x;
+  await expect(vehicle.getByRole('button', { name: /^(EKF variance|Vibration|HDOP) / }), 'the strip has its readings, so nothing shifts it while it is measured').toBeVisible({ timeout: 30_000 });
   expect(await left(timer)).toBeLessThan(await left(gps));
   const indicator = timer.locator('xpath=ancestor::div[@tabindex="0"][1]');
   const badge = await box(indicator.getByRole('button', { name: 'Hide' }));

@@ -48,6 +48,7 @@ import { ParameterForm } from '@/ui/ParameterForm';
 import { RemoteIdIndicatorCell } from '@/ui/RemoteIdIndicator';
 import { RtkIndicatorCell, RtkSettingsSheetContent, type RtkStatus, useRememberRtkStatus } from '@/ui/RtkIndicator';
 import { FactRow } from '@/ui/SettingsScreen';
+import { osdCellColour, osdCellText, osdRows, useOsdLines } from '@/ui/OsdDetails';
 import { FootNote } from '@/ui/SetupRow';
 import { useHasSetupPage } from '@/ui/SetupScreen';
 import { SETUP, parametersReady } from '@/ui/SetupView';
@@ -407,11 +408,19 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const rc = rcCell(state);
   const override = overrideCell(state);
   const telemetry = telemetryCell(state);
+  const osd = useOsdLines();
+  const osdLine = (id: string) => osd.find((it) => it.id === id) ?? null;
+  const osdCell = (id: string, shows: StripDetail): ReactNode => {
+    const line = osdLine(id);
+    return line === null ? null : <InlineCell text={osdCellText(line)} colour={osdCellColour(line)} icon={line.icon} onClick={open(shows)} />;
+  };
 
   const cells: readonly (readonly [string, ReactNode])[] = [
     ['battery', <BatteryCells batteries={batteries} headline={headline} live={live} voltage={voltage} timeLeft={timeLeft} current={current} onOpen={open(StripDetail.Battery)} />],
     ['flightTime', <FlightTimeSlot />],
     ['gps', gps === null ? null : <InlineCell text={fix === null ? NO_COUNT : satsText(fix, satellites)} colour={fix === null ? null : gpsColour(fix)} icon="ic_satellite_alt" onClick={open(StripDetail.Gps)} />],
+    ['health', osdCell('health', StripDetail.Health)],
+    ['video', osdCell('video', StripDetail.Video)],
     ['rc', rc === null ? null : <InlineCell text={rc.text} colour={rc.lost ? md('error') : null} icon="ic_gamepad" onClick={open(StripDetail.Rc)} />],
     ['rcOverride', override === null ? null : <InlineCell text={override.text} colour={aircast('warning')} onClick={() => void Qgc.invoke(CLEAR_RC_OVERRIDES)} />],
     ['telemetry', telemetry === null ? null : <InlineCell text={telemetry} colour={null} icon="ic_sensors" onClick={open(StripDetail.Telemetry)} />],
@@ -445,6 +454,10 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
     if (detail === StripDetail.Gps) return gpsDetail(gps);
     if (detail === StripDetail.Telemetry) return telemetryDetail(state?.telemetry ?? null);
     if (detail === StripDetail.Rc) return rcDetail(state);
+    if (detail === StripDetail.Health || detail === StripDetail.Video) {
+      const line = osdLine(detail === StripDetail.Health ? 'health' : 'video');
+      return line === null ? [] : osdRows(line);
+    }
     return linkDetail(vehicleLinks(linksJson), linkNames(linksJson), linksJson === null ? null : optText(linksJson, 'primary'));
   })();
 
@@ -669,13 +682,15 @@ const BatteryDisplaySettings = () => {
 export const CLEAR_RC_OVERRIDES = 'vehicle.clearRcChannelOverrides';
 export const POWER_SETUP_PAGE = 'Power';
 
-export type StripDetail = { readonly name: 'Battery' | 'Gps' | 'Links' | 'Telemetry' | 'Rc'; readonly ordinal: number };
+export type StripDetail = { readonly name: 'Battery' | 'Gps' | 'Links' | 'Telemetry' | 'Rc' | 'Health' | 'Video'; readonly ordinal: number };
 export const StripDetail = {
   Battery: { name: 'Battery', ordinal: 0 },
   Gps: { name: 'Gps', ordinal: 1 },
   Links: { name: 'Links', ordinal: 2 },
   Telemetry: { name: 'Telemetry', ordinal: 3 },
   Rc: { name: 'Rc', ordinal: 4 },
+  Health: { name: 'Health', ordinal: 5 },
+  Video: { name: 'Video', ordinal: 6 },
 } as const satisfies Record<string, StripDetail>;
 export const StripDetailEntries: readonly StripDetail[] = [StripDetail.Battery, StripDetail.Gps, StripDetail.Links, StripDetail.Telemetry, StripDetail.Rc];
 
@@ -694,6 +709,10 @@ export const instrumentTitle = (instrument: StripDetail): string => {
       return 'Telemetry RSSI status';
     case 'Rc':
       return 'RC RSSI status';
+    case 'Health':
+      return 'Flight health';
+    case 'Video':
+      return 'Video stream';
   }
 };
 
@@ -974,7 +993,7 @@ const BATTERY_COUNT_SIZE = 9;
 const BATTERY_COUNT_ROOM = 16;
 const BATTERY_GAP = 6;
 
-export const COMPACT_STATUS_CELLS = 4;
+export const COMPACT_STATUS_CELLS = 6;
 
 export const compactStatusText = (text: string): string => {
   const cut = text.indexOf(' · ');

@@ -39,7 +39,6 @@ import { useHasVehicle } from '@/ui/FlyState';
 import { gimbalSwitchWidth } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
-import { OsdDetails } from '@/ui/OsdDetails';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget } from '@/ui/OverlayLayout';
@@ -585,7 +584,6 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                         <TelemetryRow valuesShown chooser={false} compact stacked />
                       </LocalFlyOsd.Provider>
                     </div>
-                    <OsdDetails />
                   </div>
                 ) : null}
               </LocalFlyOsd.Provider>

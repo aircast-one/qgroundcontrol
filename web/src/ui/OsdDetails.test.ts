@@ -1,60 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { whepStats } from '@/core/whep';
-import { type OsdLine, bitrateText, ekfRatiosOf, ekfWorst, osdLines, percentText, playingStats, shownDetails } from '@/ui/OsdDetails';
+import { bitrateText, ekfRatiosOf, ekfWorst, osdCellText, osdLines, osdRows, percentText, playingStats } from '@/ui/OsdDetails';
 
-const quiet = { hdop: NaN, ekfRatios: [], vibration: null, contactLost: false, lossPercent: NaN, video: null, radio: null };
+const quiet = { hdop: NaN, ekfRatios: [], vibration: null, video: null };
 const counters = { bytes: 0, lost: 0, received: 0, dropped: 0, at: 0 };
 const healthyVideo = { fps: 30, kbps: 2200, jitterMs: 10, lossPercent: 0.4, skippedPerSecond: 0, counters };
-
-const shown = (lines: readonly OsdLine[], opened = false) => lines.map((line) => [line.icon, shownDetails(line, opened).map((it) => `${it.label} ${it.value}`).join(' · ')]);
 
 const everything = {
   hdop: 0.54,
   ekfRatios: [0.1, NaN, 0.32],
   vibration: { axes: [{ axis: 'X', value: 3.2, fraction: 0, severity: 'normal' }], clipping: [], warningLevel: 30, dangerLevel: 60, scaleMaximum: 90 } as never,
-  contactLost: false,
-  lossPercent: 0.4,
   video: healthyVideo,
-  radio: { text: 'Radio · live', state: 'live' as const },
 };
 
 describe('OsdDetailsTest', () => {
-  it('a healthy group shows its icon and one key reading', () => {
-    expect(shown(osdLines(everything))).toEqual([
-      ['ic_explore', 'EKF 0.32'],
-      ['ic_sensors', 'TLM LIVE'],
-      ['ic_videocam', 'VIDEO 30fps'],
-      ['ic_gamepad', 'RADIO LIVE'],
+  it('each status bar cell reads its worst reading first, then the rest in order', () => {
+    expect(osdLines(everything).map((line) => [line.icon, osdCellText(line)])).toEqual([
+      ['ic_explore', 'EKF variance 0.32 · Vibration 3.2 · HDOP 0.5'],
+      ['ic_videocam', 'Bitrate 2.2Mb/s · Frame rate 30fps · Jitter 10ms · Packet loss 0.4% · Skipped frames 0/s'],
     ]);
-  });
-
-  it('an opened group shows every reading it has', () => {
-    expect(shown(osdLines(everything), true)).toEqual([
-      ['ic_explore', 'EKF 0.32 · VIB 3.2 · HDOP 0.5'],
-      ['ic_sensors', 'TLM LIVE · TLM LOSS 0.4%'],
-      ['ic_videocam', 'VIDEO 30fps · BR 2.2Mb/s · JIT 10ms · PKT LOSS 0.4% · SKIP 0/s'],
-      ['ic_gamepad', 'RADIO LIVE'],
-    ]);
-  });
-
-  it('a group with something wrong opens by itself and colours the culprit', () => {
     const lines = osdLines({ ...everything, ekfRatios: [0.62], video: { ...healthyVideo, lossPercent: 12, skippedPerSecond: 2 } });
-    expect(shown(lines)).toEqual([
-      ['ic_explore', 'EKF 0.62 · VIB 3.2 · HDOP 0.5'],
-      ['ic_sensors', 'TLM LIVE'],
-      ['ic_videocam', 'VIDEO 30fps · BR 2.2Mb/s · JIT 10ms · PKT LOSS 12% · SKIP 2/s'],
-      ['ic_gamepad', 'RADIO LIVE'],
-    ]);
-    const video = lines[2]?.details ?? [];
-    expect(video.map((it) => it.tone)).toEqual([null, null, null, 'error', 'warning']);
-    expect(lines[0]?.details[0]?.tone).toBe('warning');
+    expect(lines.map(osdCellText)).toEqual(['EKF variance 0.62 · Vibration 3.2 · HDOP 0.5', 'Packet loss 12% · Skipped frames 2/s · Bitrate 2.2Mb/s · Frame rate 30fps · Jitter 10ms']);
+    expect(osdRows(lines[1]!).map((it) => it.severity)).toEqual([0, 0, 0, 2, 1]);
   });
 
-  it('a lost link and a missing video stand out, and silent sensors stay hidden', () => {
-    expect(osdLines({ ...quiet, contactLost: true })).toEqual([
-      { id: 'link', icon: 'ic_sensors', details: [{ label: 'TLM', value: 'LOST', tone: 'error' }] },
-      { id: 'video', icon: 'ic_videocam_off', details: [{ label: 'VIDEO', value: 'OFF', tone: 'warning' }] },
-    ]);
+  it('no video and no sensor readings leave no cells, so nothing says VIDEO OFF', () => {
+    expect(osdLines(quiet)).toEqual([]);
   });
 
   it('the strip reads whichever main video surface is still playing', () => {

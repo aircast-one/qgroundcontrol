@@ -1,15 +1,10 @@
-import { useState } from 'react';
 import type { Fact } from '@/bridge/Qgc';
 import { useQgcDouble, useQgcFacts, useQgcPath } from '@/bridge/QgcState';
 import type { WhepStats } from '@/core/whep';
 import { mutableStateMapOf, useValue } from '@/kotlin/State';
-import { Text } from '@/m3';
-import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
-import { aircast, md, withAlpha } from '@/theme/Colors';
-import { FLY_STATE, flyState } from './FlyState';
-import { USB_RADIO_VIEW, type UsbRadioBadge, usbRadioBadge, usbRadioTone } from './UsbRadioIndicator';
-import { OSD_LABEL_ALPHA } from './VehicleUi';
+import { aircast, md } from '@/theme/Colors';
+import { DetailRow } from './InstrumentDetail';
 import { VIBRATION_VIEW, type VibrationReading, vibrationReading, worstSeverity } from './VibrationScreen';
 
 export const mainVideoStats = mutableStateMapOf<symbol, WhepStats>();
@@ -24,17 +19,13 @@ export type OsdDetailsInput = {
   hdop: number;
   ekfRatios: readonly number[];
   vibration: VibrationReading | null;
-  contactLost: boolean;
-  lossPercent: number;
   video: WhepStats | null;
-  radio: UsbRadioBadge | null;
 };
 
 const EKF_RATIOS: ReadonlySet<string> = new Set(['velRatio', 'horizPosRatio', 'vertPosRatio', 'magRatio', 'haglRatio', 'tasRatio']);
 const ESTIMATOR_STATUS = 'vehicle.estimatorStatus';
 const EKF_WARNING = 0.5;
 const EKF_DANGER = 0.8;
-const ICON_SIZE = 20;
 const LOSS_WARNING = 2;
 const LOSS_DANGER = 10;
 const SKIP_WARNING = 1;
@@ -63,85 +54,52 @@ const hdopDetails = (hdop: number): OsdDetail[] => (Number.isFinite(hdop) && hdo
 
 const ekfDetails = (ratios: readonly number[]): OsdDetail[] => {
   const worst = ekfWorst(ratios);
-  return worst === null ? [] : detail('EKF', worst.toFixed(2), ekfTone(worst));
+  return worst === null ? [] : detail('EKF variance', worst.toFixed(2), ekfTone(worst));
 };
 
 const vibrationDetails = (vibration: VibrationReading | null): OsdDetail[] => {
   const values = (vibration?.axes ?? []).flatMap((it) => (it.value === null ? [] : [it.value]));
-  return vibration === null || values.length === 0 ? [] : detail('VIB', Math.max(...values).toFixed(1), severityTone(worstSeverity(vibration)));
+  return vibration === null || values.length === 0 ? [] : detail('Vibration', Math.max(...values).toFixed(1), severityTone(worstSeverity(vibration)));
 };
 
-const videoLine = (video: WhepStats | null): OsdLine =>
+const videoDetails = (video: WhepStats | null): OsdDetail[] =>
   video === null
-    ? { id: 'video', icon: 'ic_videocam_off', details: detail('VIDEO', 'OFF', 'warning') }
-    : {
-        id: 'video',
-        icon: 'ic_videocam',
-        details: [
-          ...detail('VIDEO', `${video.fps}fps`),
-          ...detail('BR', bitrateText(video.kbps)),
-          ...detail('JIT', `${video.jitterMs}ms`),
-          ...detail('PKT LOSS', percentText(video.lossPercent), rateTone(video.lossPercent, LOSS_WARNING, LOSS_DANGER)),
-          ...detail('SKIP', `${Math.round(video.skippedPerSecond)}/s`, rateTone(video.skippedPerSecond, SKIP_WARNING, SKIP_DANGER)),
-        ],
-      };
+    ? []
+    : [
+        ...detail('Bitrate', bitrateText(video.kbps)),
+        ...detail('Frame rate', `${video.fps}fps`),
+        ...detail('Jitter', `${video.jitterMs}ms`),
+        ...detail('Packet loss', percentText(video.lossPercent), rateTone(video.lossPercent, LOSS_WARNING, LOSS_DANGER)),
+        ...detail('Skipped frames', `${Math.round(video.skippedPerSecond)}/s`, rateTone(video.skippedPerSecond, SKIP_WARNING, SKIP_DANGER)),
+      ];
 
 export const osdLines = (input: OsdDetailsInput): readonly OsdLine[] =>
-  [
-    { id: 'health', icon: 'ic_explore', details: [...ekfDetails(input.ekfRatios), ...vibrationDetails(input.vibration), ...hdopDetails(input.hdop)] },
-    {
-      id: 'link',
-      icon: 'ic_sensors',
-      details: [...detail('TLM', input.contactLost ? 'LOST' : 'LIVE', input.contactLost ? 'error' : null), ...(Number.isFinite(input.lossPercent) ? detail('TLM LOSS', percentText(input.lossPercent)) : [])],
-    },
-    videoLine(input.video),
-    { id: 'radio', icon: 'ic_gamepad', details: input.radio === null ? [] : detail('RADIO', input.radio.state.toUpperCase(), usbRadioTone(input.radio.state)) },
-  ].filter((line): line is OsdLine => line.details.length > 0);
+  (
+    [
+      { id: 'health', icon: 'ic_explore', details: [...ekfDetails(input.ekfRatios), ...vibrationDetails(input.vibration), ...hdopDetails(input.hdop)] },
+      { id: 'video', icon: 'ic_videocam', details: videoDetails(input.video) },
+    ] satisfies readonly OsdLine[]
+  ).filter((line) => line.details.length > 0);
 
-const worstTone = (details: readonly OsdDetail[]): Tone => (details.some((it) => it.tone === 'error') ? 'error' : details.some((it) => it.tone === 'warning') ? 'warning' : null);
+const toneRank = (tone: Tone): number => (tone === 'error' ? 2 : tone === 'warning' ? 1 : 0);
 
-export const shownDetails = (line: OsdLine, opened: boolean): readonly OsdDetail[] => (opened || worstTone(line.details) !== null ? line.details : line.details.slice(0, 1));
+export const osdCellText = (line: OsdLine): string =>
+  line.details
+    .toSorted((a, b) => toneRank(b.tone) - toneRank(a.tone))
+    .map((it) => `${it.label} ${it.value}`)
+    .join(' · ');
 
-const toneColour = (tone: Tone): string => (tone === 'error' ? md('error') : tone === 'warning' ? aircast('warning') : aircast('outdoorForeground'));
-
-const toggled = (set: ReadonlySet<string>, id: string): ReadonlySet<string> => new Set(set.has(id) ? [...set].filter((it) => it !== id) : [...set, id]);
-
-export const OsdDetails = () => {
-  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
-  const ekfRatios = ekfRatiosOf(useQgcFacts(ESTIMATOR_STATUS));
-  const lines = osdLines({
-    hdop: useQgcDouble('vehicle.gps.hdop'),
-    ekfRatios,
-    vibration: vibrationReading(useQgcPath(VIBRATION_VIEW)),
-    contactLost: flyState(useQgcPath(FLY_STATE))?.contactLost === true,
-    lossPercent: useQgcDouble('vehicle.mavlinkLossPercent'),
-    video: playingStats(useValue(mainVideoStats)),
-    radio: usbRadioBadge(useQgcPath(USB_RADIO_VIEW)),
-  });
-  return (
-    <div data-osd-details className="osd-shadow flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-6 gap-y-1">
-      {lines.map((line) => (
-        <button
-          key={line.id}
-          type="button"
-          aria-label={`${line.id} readings`}
-          aria-expanded={opened.has(line.id)}
-          onClick={() => setOpened((was) => toggled(was, line.id))}
-          className="flex cursor-pointer items-center gap-3 whitespace-nowrap"
-        >
-          <Drawable name={line.icon} size={ICON_SIZE} style={{ color: toneColour(worstTone(line.details)) }} />
-          {shownDetails(line, opened.has(line.id)).map((it) => (
-            <span key={it.label} className="flex items-baseline gap-1">
-              <Text typography="labelLarge" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
-                {it.label}
-              </Text>
-              <Text typography="titleLarge" className="tabular-nums" color={toneColour(it.tone)} maxLines={1}>
-                {it.value}
-              </Text>
-            </span>
-          ))}
-        </button>
-      ))}
-    </div>
-  );
+export const osdCellColour = (line: OsdLine): string | null => {
+  const worst = Math.max(...line.details.map((it) => toneRank(it.tone)));
+  return worst >= 2 ? md('error') : worst === 1 ? aircast('warning') : null;
 };
+
+export const osdRows = (line: OsdLine): readonly DetailRow[] => line.details.map((it) => DetailRow({ label: it.label, value: it.value, severity: toneRank(it.tone) }));
+
+export const useOsdLines = (): readonly OsdLine[] =>
+  osdLines({
+    hdop: useQgcDouble('vehicle.gps.hdop'),
+    ekfRatios: ekfRatiosOf(useQgcFacts(ESTIMATOR_STATUS)),
+    vibration: vibrationReading(useQgcPath(VIBRATION_VIEW)),
+    video: playingStats(useValue(mainVideoStats)),
+  });

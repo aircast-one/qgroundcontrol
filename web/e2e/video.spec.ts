@@ -36,16 +36,18 @@ test('a WHEP camera plays in the Fly view', async ({ app }) => {
   await expect(app.getByText(/^Detections:/)).toHaveCount(0);
 });
 
-test('the Fly OSD reads the live video frame rate, and a tap shows its bitrate and loss rates', async ({ vehicle }) => {
-  const details = vehicle.locator('[data-osd-details]');
-  await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText('VIDEOOFF', { timeout: 30_000 });
+test('the status bar shows a video cell only while a stream plays: its bitrate, and a tap lists its frame rate and loss rates', async ({ vehicle }) => {
+  const bar = vehicle.locator('[data-status-row]');
+  await expect(bar.getByRole('button', { name: /^(EKF variance|Vibration|HDOP) / }).first(), 'the health cell is there from the start').toBeVisible({ timeout: 30_000 });
+  await expect(bar.getByRole('button', { name: /^Bitrate / }), 'no stream, no cell saying VIDEO OFF').toHaveCount(0);
   await addVideoSource(vehicle, /^WebRTC \(WHEP\)/, WHEP_STREAM);
-  await expect(details.getByText('VIDEO', { exact: true }).locator('..')).toHaveText(/^VIDEO[1-9]\d*fps$/, { timeout: 30_000 });
-  await expect(details.getByText('BR', { exact: true }), 'a healthy stream shows only its frame rate').toBeHidden();
-  await details.getByRole('button', { name: 'video readings' }).click();
-  await expect(details.getByText('BR', { exact: true }).locator('..')).toHaveText(/^BR[1-9]\d*(\.\d)?[kM]b\/s$/);
-  await expect(details.getByText('PKT LOSS', { exact: true }).locator('..')).toHaveText(/^PKT LOSS\d+(\.\d)?%$/);
-  await expect(details.getByText('SKIP', { exact: true }).locator('..')).toHaveText(/^SKIP\d+\/s$/);
+  const video = bar.getByRole('button', { name: /^Bitrate [1-9]\d*(\.\d)?[kM]b\/s/ });
+  await expect(video).toHaveText(/^[1-9]\d*(\.\d)?[kM]b\/s$/, { timeout: 30_000 });
+  await video.click();
+  const sheet = vehicle.getByRole('dialog').filter({ hasText: 'Video stream' });
+  await expect(sheet.getByText(/^[1-9]\d*fps$/)).toBeVisible();
+  await expect(sheet.getByText('Packet loss', { exact: true })).toBeVisible();
+  await expect(sheet.getByText('Skipped frames', { exact: true })).toBeVisible();
 });
 
 test('a stream the browser cannot play says so', async ({ app }) => {
