@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHROME_INSECURE_ORIGIN_FLAG, firstAnswered, secureOrigins, securePage, usbBlocked } from './UsbAccess';
+import { firstAnswered, secureOrigins, securePage, usbBlocked } from './UsbAccess';
 
 describe('UsbAccessTest', () => {
   it('a browser that reaches USB needs no note', () => {
@@ -10,14 +10,12 @@ describe('UsbAccessTest', () => {
     expect(usbBlocked(false, false, 'http://falcon.local/fly/?tab=1#links')?.secureUrl).toBe('https://falcon.local/fly/?tab=1#links');
   });
 
-  it('and names the Chrome flag with the origin to add, not the page', () => {
-    const note = usbBlocked(false, false, 'http://falcon.local/fly/')?.note ?? '';
-    expect(note).toContain(CHROME_INSECURE_ORIGIN_FLAG);
-    expect(note).toContain('add http://falcon.local,');
+  it('and says in one sentence why, without browser internals', () => {
+    expect(usbBlocked(false, false, 'http://falcon.local/fly/')?.note).toBe('The radio needs a secure page.');
   });
 
   it('a secure page without Web Serial asks for Chrome or Edge', () => {
-    expect(usbBlocked(false, true, 'https://fly.aircast.one/')).toEqual({ secureUrl: null, note: 'This browser cannot reach USB devices. Use Chrome or Edge, or connect over a WebSocket.' });
+    expect(usbBlocked(false, true, 'https://fly.aircast.one/')).toEqual({ secureUrl: null, note: 'Use Chrome or Edge to connect a radio over USB.' });
   });
 
   it('opens the page on the https name the device holds a certificate for, keeping where the pilot was', () => {
