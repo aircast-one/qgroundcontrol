@@ -15,11 +15,13 @@ import { BesidePopup, VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
 import { OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal } from '@/ui/GimbalIndicator';
-import { PWM_CENTER, PWM_MAX, PWM_MIN, rcSendDue } from '@/ui/RcControls';
+import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
 import { osdShadow } from '@/ui/Osd';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
 import { RecenterTarget, TiltReadout, recenter, recenterTarget, tiltText } from '@/ui/RecenterCamera';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM, SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
+import { type Offset } from '@/ui/FlyShell';
+import { CENTRED, ThumbPad } from '@/ui/VirtualJoystick';
 
 const FLY_VIEW_SETTINGS = 'settings.flyViewSettings';
 const RAIL_SLIDER_LENGTH = 140;
@@ -138,7 +140,7 @@ const PwmSlider = ({ label, channel, pwm, onPwm }: { label: string; channel: num
 };
 
 const sendTilt = (pitch: number) => void (async () => gimbalRefusal(await Qgc.call('gimbal.pitch', pitch)))();
-const sendYaw = (yaw: number) => void (async () => gimbalRefusal(await Qgc.call('gimbal.yaw', yaw)))();
+const sendStick = (x: number, y: number) => void (async () => gimbalRefusal(await Qgc.call('gimbal.stick', x, y)))();
 
 const GIMBAL_REFUSAL_MS = 4000;
 export const GIMBAL_TILT_MIN = -90;
@@ -183,6 +185,82 @@ const useRailDrag = (onSend: (value: number) => void) => {
 export type YawRail = { degrees: number | null; range: readonly [number, number]; onYaw: (yaw: number) => void };
 
 const FULL_TURN: readonly [number, number] = [-180, 180];
+const GIMBAL_STICK_SIZE = 120;
+
+export const stickDeflection = (stick: Offset): { x: number; y: number } => ({ x: coerceIn(stick.x * 2 - 1, -1, 1), y: coerceIn(1 - stick.y * 2, -1, 1) });
+
+const GimbalStick = () => {
+  const [stick, setStick] = useState<Offset>(CENTRED);
+  const latest = useRef<Offset>(CENTRED);
+  const lastSent = useRef(0);
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pushed = useRef(false);
+  const flush = () => {
+    pending.current = null;
+    lastSent.current = performance.now();
+    const { x, y } = stickDeflection(latest.current);
+    pushed.current = x !== 0 || y !== 0;
+    sendStick(x, y);
+  };
+  const send = (next: Offset, finished: boolean) => {
+    latest.current = next;
+    if (finished || rcSendDue(performance.now(), lastSent.current, false)) {
+      if (pending.current !== null) clearTimeout(pending.current);
+      return flush();
+    }
+    if (pending.current === null) pending.current = setTimeout(flush, RC_SEND_INTERVAL_MS - (performance.now() - lastSent.current));
+    return undefined;
+  };
+  useEffect(
+    () => () => {
+      if (pending.current !== null) clearTimeout(pending.current);
+      if (pushed.current) sendStick(0, 0);
+    },
+    [],
+  );
+  return (
+    <ThumbPad
+      stick={stick}
+      description="Camera joystick"
+      size={GIMBAL_STICK_SIZE}
+      padRef={() => undefined}
+      onHeld={() => undefined}
+      onMove={(next) => {
+        setStick(next);
+        send(next, false);
+      }}
+      onRelease={() => {
+        setStick(CENTRED);
+        send(CENTRED, true);
+      }}
+    />
+  );
+};
+
+const AimStick = ({ pitch, onRecenter, slider }: { pitch: number | null; onRecenter: (() => void) | null; slider: boolean }) => {
+  const [opener, setOpener] = useState<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const shown = coerceIn(pitch ?? 0, GIMBAL_TILT_MIN, GIMBAL_TILT_MAX);
+  if (slider)
+    return (
+      <div className="flex min-h-0 flex-col items-center gap-1">
+        <TiltReadout degrees={shown} onRecenter={onRecenter} />
+        <GimbalStick />
+      </div>
+    );
+  return (
+    <div ref={setOpener}>
+      <TiltReadout degrees={shown} onRecenter={null} onTap={() => setOpen(!open)} tapLabel="Aim the camera" />
+      {open && opener !== null ? (
+        <BesidePopup anchor={opener} onDismissRequest={() => setOpen(false)} below>
+          <Surface shape="full" color={withAlpha(Color.Black, TILT_POPUP_ALPHA)} className="p-1">
+            <GimbalStick />
+          </Surface>
+        </BesidePopup>
+      ) : null}
+    </div>
+  );
+};
 
 const AimSliders = ({ pitch, yaw, onRecenter, slider, onTilt }: { pitch: number | null; yaw: YawRail | null; onRecenter: (() => void) | null; slider: boolean; onTilt: (tilt: number) => void }) => {
   const tilt = useRailDrag(onTilt);
@@ -370,14 +448,10 @@ const RcCameraControlsShown = ({
             slider={tiltSlider}
             onTilt={(it) => aimSynthetic(it, syntheticPan ?? 0.0)}
           />
+        ) : gimbal !== null && gimbal.yawAxis ? (
+          <AimStick pitch={gimbal.pitchDegrees} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} />
         ) : gimbal !== null ? (
-          <AimSliders
-            pitch={gimbal.pitchDegrees}
-            yaw={gimbal.yawRange === null ? null : { degrees: gimbal.yawDegrees, range: gimbal.yawRange, onYaw: sendYaw }}
-            onRecenter={onRecenter(RecenterTarget.Gimbal)}
-            slider={tiltSlider}
-            onTilt={sendTilt}
-          />
+          <AimSliders pitch={gimbal.pitchDegrees} yaw={null} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} onTilt={sendTilt} />
         ) : null}
         {!gimbalManager && channels.tilt > 0 ? <PwmSlider label="Tilt" channel={channels.tilt} pwm={pwm.tilt} onPwm={setPwm.tilt} /> : null}
         {!gimbalManager && channels.pan > 0 ? <PwmSlider label="Pan" channel={channels.pan} pwm={pwm.pan} onPwm={setPwm.pan} /> : null}

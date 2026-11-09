@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BesideAnchor } from './CameraControlLayer';
+import { BelowAnchor, BesideAnchor } from './CameraControlLayer';
 
 describe('CameraControlLayerTest', () => {
   const window = { width: 1000, height: 500 };
@@ -19,5 +19,13 @@ describe('CameraControlLayerTest', () => {
 
   it("right to left the zoom slider opens on the chip's other side", () => {
     expect(placed([600, 230, 680, 270], 'Rtl')).toEqual({ x: 680, y: 150 });
+  });
+
+  it('the camera joystick opens under its chip, lined up with its far edge, and stays on screen', () => {
+    const under = (anchor: [number, number, number, number], direction: 'Ltr' | 'Rtl' = 'Ltr') =>
+      BelowAnchor.calculatePosition({ left: anchor[0], top: anchor[1], right: anchor[2], bottom: anchor[3] }, window, direction, popup);
+    expect(under([600, 30, 680, 70])).toEqual({ x: 580, y: 70 });
+    expect(under([600, 30, 680, 70], 'Rtl')).toEqual({ x: 600, y: 70 });
+    expect(under([600, 400, 680, 440])).toEqual({ x: 580, y: 300 });
   });
 });

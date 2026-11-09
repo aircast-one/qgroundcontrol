@@ -284,7 +284,7 @@ const ShownVirtualJoystick = ({ state, pad, className, trailing }: { state: Virt
 
 type Gesture = { pointer: number; origin: Offset; start: Offset; travel: number };
 
-const ThumbPad = ({
+export const ThumbPad = ({
   stick,
   description,
   size,
@@ -333,6 +333,7 @@ const ThumbPad = ({
       ref={padRef}
       role="img"
       aria-label={description}
+      data-gesture
       className="shrink-0 select-none"
       style={{ width: size, height: size, touchAction: 'none' }}
       onPointerDown={down}

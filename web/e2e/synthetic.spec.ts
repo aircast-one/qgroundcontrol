@@ -51,6 +51,8 @@ const grab = async (page: Page, drags: 'look' | 'gimbal') => {
   await dragAcross(page, (await canvas.boundingBox())!);
 };
 
+const gimbalPitch = async (page: Page) => ((await read(page, 'view.gimbal')) as { gimbals?: { pitch: number | null }[] } | null)?.gimbals?.[0]?.pitch ?? null;
+
 const gimbalYaw = async (page: Page) => ((await read(page, 'view.gimbal')) as { gimbals?: { bodyYaw: number | null }[] } | null)?.gimbals?.[0]?.bodyYaw ?? null;
 
 test('a mouse drag grabs the synthetic view like a map: pulled left and down, it turns right and looks up', async ({ vehicle }) => {
@@ -118,40 +120,26 @@ test('adding the first camera keeps the 3D view on screen where it was instead o
   expect(await shown!.evaluate((canvas) => canvas.isConnected), 'the canvas the pilot was looking at is still the one on screen').toBe(true);
 });
 
-test('with a gimbal and the synthetic view standing in for the camera, the tilt slider takes the drag: pulled down, the camera tilts down', async ({ app }) => {
+test('with a three-axis gimbal and the synthetic view standing in for the camera, the camera joystick takes the drag: held down it tilts down, held right it turns right', async ({ app }) => {
+  test.setTimeout(150_000);
   await connectMock(app, ['Enable camera', 'Enable gimbal']);
   const notice = app.getByRole('status', { name: /showing synthetic view$/ });
   await expect(notice).toBeVisible({ timeout: 30_000 });
-  const tilt = app.getByRole('slider', { name: 'Camera tilt' });
-  const thumb = tilt.locator('..');
-  const box = (await thumb.boundingBox())!;
+  const stick = app.getByRole('img', { name: 'Camera joystick' });
+  await expect(stick, 'the mock gimbal is found about 40 s after connecting').toBeVisible({ timeout: 90_000 });
+  await expect.poll(() => gimbalPitch(app), { timeout: 30_000 }).not.toBeNull();
+  const [pitchBefore, yawBefore] = [(await gimbalPitch(app))!, (await gimbalYaw(app))!];
+  const box = (await stick.boundingBox())!;
   const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
-  expect(await thumb.evaluate((it, [atX, atY]) => it.contains(document.elementFromPoint(atX, atY)), [x, y] as const), 'the pointer lands on the thumb').toBe(true);
-  const before = Number(await tilt.getAttribute('aria-valuenow'));
+  expect(await stick.evaluate((it, [atX, atY]) => it.contains(document.elementFromPoint(atX, atY)), [x, y] as const), 'the pointer lands on the joystick').toBe(true);
   await app.mouse.move(x, y);
   await app.mouse.down();
-  await app.mouse.move(x, y + 40, { steps: 10 });
+  await app.mouse.move(x, y + 60, { steps: 10 });
+  await expect.poll(async () => (await gimbalPitch(app))! - pitchBefore, { timeout: 10_000 }).toBeLessThan(-10);
+  await app.mouse.move(x + 60, y, { steps: 10 });
+  await expect.poll(async () => (await gimbalYaw(app))! - yawBefore, { timeout: 10_000 }).toBeGreaterThan(20);
   await app.mouse.up();
-  await expect.poll(async () => Number(await tilt.getAttribute('aria-valuenow')), { timeout: 10_000 }).toBeLessThan(before - 10);
   await expect(notice).toHaveCSS('user-select', 'none');
-});
-
-test('with a gimbal, the yaw slider under the tilt slider turns the camera: dragged right, the gimbal turns right', async ({ app }) => {
-  await connectMock(app, ['Enable camera', 'Enable gimbal']);
-  await expect(app.getByRole('status', { name: /showing synthetic view$/ })).toBeVisible({ timeout: 30_000 });
-  const yaw = app.getByRole('slider', { name: 'Camera yaw' });
-  await expect(yaw, 'the mock gimbal is found about 40 s after connecting').toBeVisible({ timeout: 90_000 });
-  await expect.poll(() => gimbalYaw(app), { timeout: 30_000 }).not.toBeNull();
-  const before = (await gimbalYaw(app))!;
-  const thumb = yaw.locator('..');
-  const box = (await thumb.boundingBox())!;
-  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
-  expect(await thumb.evaluate((it, [atX, atY]) => it.contains(document.elementFromPoint(atX, atY)), [x, y] as const), 'the pointer lands on the thumb').toBe(true);
-  await app.mouse.move(x, y);
-  await app.mouse.down();
-  await app.mouse.move(x + 40, y, { steps: 10 });
-  await app.mouse.up();
-  await expect.poll(async () => (await gimbalYaw(app))! - before, { timeout: 10_000 }).toBeGreaterThan(20);
 });
 
 const NO_VIDEO = 'No video from MockCam 1 · Stream 1-1 · showing synthetic view';

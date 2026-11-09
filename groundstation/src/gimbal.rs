@@ -11,6 +11,7 @@ pub const CMD_DO_GIMBAL_MANAGER_PITCHYAW: u16 = 1000;
 pub const CMD_DO_GIMBAL_MANAGER_CONFIGURE: u16 = 1001;
 
 pub const CAP_HAS_RETRACT: u32 = 1;
+pub const CAP_HAS_YAW_AXIS: u32 = 256;
 pub const CAP_HAS_YAW_LOCK: u32 = 1024;
 
 pub const FLAG_RETRACT: u32 = 1;

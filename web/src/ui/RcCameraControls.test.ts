@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { vehicleAltitudePath } from './ItemEditor';
-import { cameraRecording, rcCameraChannels } from './RcCameraControls';
+import { cameraRecording, rcCameraChannels, stickDeflection } from './RcCameraControls';
 
 describe('RcCameraControlsTest', () => {
+  it('the camera joystick reads right and up as positive, centred as still', () => {
+    expect(stickDeflection({ x: 0.5, y: 0.5 })).toEqual({ x: 0, y: 0 });
+    expect(stickDeflection({ x: 1, y: 0 })).toEqual({ x: 1, y: 1 });
+    expect(stickDeflection({ x: 0, y: 1 })).toEqual({ x: -1, y: -1 });
+  });
+
   it('a pan channel shared with tilt is dropped, as CameraControlLayer reads it', () => {
     expect(rcCameraChannels(7, 7, 0, 0, 0).pan).toBe(0);
     expect(rcCameraChannels(7, 8, 0, 0, 0).pan).toBe(8);

@@ -18,7 +18,7 @@ describe('RecenterCameraTest', () => {
     gimbals: [],
     pitchDegrees: pitch,
     yawDegrees: yaw,
-    yawRange: null,
+    yawAxis: false,
   });
 
   it('recenter shows only once the camera points away from centre', () => {

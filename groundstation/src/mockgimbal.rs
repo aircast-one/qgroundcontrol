@@ -19,6 +19,8 @@ pub struct Gimbal {
     yaw: f32,
     wanted_pitch: f32,
     wanted_yaw: f32,
+    pitch_rate: f32,
+    yaw_rate: f32,
     earth_yaw: Option<f32>,
     heading: f32,
     stepped_ms: Option<u64>,
@@ -37,6 +39,8 @@ impl Default for Gimbal {
             yaw: 0.0,
             wanted_pitch: 0.0,
             wanted_yaw: 0.0,
+            pitch_rate: 0.0,
+            yaw_rate: 0.0,
             earth_yaw: None,
             heading: 0.0,
             stepped_ms: None,
@@ -84,14 +88,25 @@ impl Gimbal {
         self.wanted_yaw = body_yaw(yaw);
     }
 
+    pub fn rates(&mut self, pitch: f32, yaw: f32) {
+        self.earth_yaw = None;
+        self.pitch_rate = pitch;
+        self.yaw_rate = yaw;
+    }
+
     pub fn hold(&mut self, vehicle_heading: f64, now_ms: u64) {
         self.heading = vehicle_heading as f32;
+        let seconds = self
+            .stepped_ms
+            .map(|at| now_ms.saturating_sub(at) as f32 / 1000.0);
+        let turned = seconds.unwrap_or(0.0);
+        self.wanted_pitch =
+            (self.wanted_pitch + self.pitch_rate * turned).clamp(PITCH_RANGE.0, PITCH_RANGE.1);
+        self.wanted_yaw = body_yaw(self.wanted_yaw + self.yaw_rate * turned);
         let wanted_yaw = self
             .earth_yaw
             .map_or(self.wanted_yaw, |earth| body_yaw(earth - self.heading));
-        let step = self.stepped_ms.map_or(f32::INFINITY, |at| {
-            SLEW_DPS * now_ms.saturating_sub(at) as f32 / 1000.0
-        });
+        let step = seconds.map_or(f32::INFINITY, |seconds| SLEW_DPS * seconds);
         self.stepped_ms = Some(now_ms);
         self.pitch += (self.wanted_pitch - self.pitch).clamp(-step, step);
         self.yaw = body_yaw(self.yaw + body_yaw(wanted_yaw - self.yaw).clamp(-step, step));
@@ -146,6 +161,8 @@ impl Gimbal {
                 match pitch.is_nan() && yaw.is_nan() {
                     true => reply(MavResult::MAV_RESULT_DENIED),
                     false => {
+                        self.pitch_rate = 0.0;
+                        self.yaw_rate = 0.0;
                         if !pitch.is_nan() {
                             self.wanted_pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
                         }
@@ -432,5 +449,26 @@ mod earth_frame_tests {
         );
         gimbal.hold(0.0, 1_000);
         assert_eq!(gimbal.aim(), (100.0, -90.0));
+    }
+
+    #[test]
+    fn the_gimbal_turns_at_the_rate_it_is_told_until_told_to_stop() {
+        let mut gimbal = Gimbal::default();
+        gimbal.hold(0.0, 0);
+        gimbal.rates(-10.0, 20.0);
+        gimbal.hold(0.0, 500);
+        gimbal.hold(0.0, 1_000);
+        assert_eq!(gimbal.aim(), (20.0, -10.0));
+        gimbal.rates(0.0, 0.0);
+        gimbal.hold(0.0, 2_000);
+        assert_eq!(
+            gimbal.aim(),
+            (20.0, -10.0),
+            "a zero rate holds it where it got to"
+        );
+        gimbal.rates(0.0, 30.0);
+        pitch_yaw(&mut gimbal, 0.0, 0.0, 0);
+        gimbal.hold(0.0, 3_000);
+        assert_eq!(gimbal.aim(), (0.0, 0.0), "an aim stops a turn");
     }
 }

@@ -1307,6 +1307,18 @@ impl Sim {
                     m.frame,
                 )
             }
+            MavMessage::GIMBAL_MANAGER_SET_ATTITUDE(m)
+                if self.mine(m.target_system) && m.q.iter().all(|q| q.is_nan()) =>
+            {
+                let rate = |radians: f32| match radians.is_finite() {
+                    true => radians.to_degrees(),
+                    false => 0.0,
+                };
+                if let Some(gimbal) = self.gimbal.as_mut() {
+                    gimbal.rates(rate(m.angular_velocity_y), rate(m.angular_velocity_z));
+                }
+                Vec::new()
+            }
             MavMessage::GIMBAL_MANAGER_SET_PITCHYAW(m) if self.mine(m.target_system) => {
                 let params = [
                     m.pitch.to_degrees(),

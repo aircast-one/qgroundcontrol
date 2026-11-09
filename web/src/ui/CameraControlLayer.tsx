@@ -275,7 +275,14 @@ export const BesideAnchor = {
   }),
 };
 
-export const BesidePopup = ({ anchor, onDismissRequest, children }: { anchor: HTMLElement; onDismissRequest: () => void; children: ReactNode }) => {
+export const BelowAnchor = {
+  calculatePosition: (anchorBounds: AnchorBounds, windowSize: PopupSize, layoutDirection: 'Ltr' | 'Rtl', popupContentSize: PopupSize): PopupOffset => ({
+    x: coerceIn(layoutDirection === 'Ltr' ? anchorBounds.right - popupContentSize.width : anchorBounds.left, 0, Math.max(windowSize.width - popupContentSize.width, 0)),
+    y: coerceIn(anchorBounds.bottom, 0, Math.max(windowSize.height - popupContentSize.height, 0)),
+  }),
+};
+
+export const BesidePopup = ({ anchor, onDismissRequest, children, below = false }: { anchor: HTMLElement; onDismissRequest: () => void; children: ReactNode; below?: boolean }) => {
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
   const [offset, setOffset] = useState<PopupOffset | null>(null);
   const dismiss = useUpdatedRef(onDismissRequest);
@@ -285,7 +292,7 @@ export const BesidePopup = ({ anchor, onDismissRequest, children }: { anchor: HT
       const bounds = anchor.getBoundingClientRect();
       const size = popup.getBoundingClientRect();
       setOffset(
-        BesideAnchor.calculatePosition(
+        (below ? BelowAnchor : BesideAnchor).calculatePosition(
           { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
           { width: window.innerWidth, height: window.innerHeight },
           getComputedStyle(anchor).direction === 'rtl' ? 'Rtl' : 'Ltr',
@@ -302,7 +309,7 @@ export const BesidePopup = ({ anchor, onDismissRequest, children }: { anchor: HT
       observer.disconnect();
       window.removeEventListener('resize', place);
     };
-  }, [anchor, popup]);
+  }, [anchor, popup, below]);
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       const target = event.target;

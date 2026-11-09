@@ -24,6 +24,8 @@ pub const GIMBAL_DRAG: &str = "gimbal.drag";
 pub const GIMBAL_PITCH: &str = "gimbal.pitch";
 pub const GIMBAL_YAW: &str = "gimbal.yaw";
 pub const GIMBAL_AIM: &str = "gimbal.aim";
+pub const GIMBAL_STICK: &str = "gimbal.stick";
+const STICK_SPEED_DEFAULT: f64 = 30.0;
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
     let fact = backend.value(&format!("settings.gimbalControllerSettings.{name}"));
@@ -67,6 +69,14 @@ fn held_pitch(snapshot: &Value) -> f64 {
         .unwrap_or(0.0)
 }
 
+pub fn stick_rates(x: f64, y: f64, speed: f64) -> (f64, f64) {
+    let curve = |deflection: f64| {
+        let held = deflection.clamp(-1.0, 1.0);
+        held * held.abs() * speed
+    };
+    (curve(y), curve(x))
+}
+
 fn yaw_range(gimbal: &Value) -> [f32; 2] {
     let limit = |key: &str| gimbal["limits"][key].as_f64().map(|v| v as f32);
     let (low, high) = limit("yawMin").zip(limit("yawMax")).map_or(
@@ -101,6 +111,7 @@ pub fn indicator(
         "pitchDegrees": active["pitch"].as_f64(),
         "bodyYawDegrees": active["bodyYaw"].as_f64(),
         "yawRange": yaw_range(&active),
+        "yawAxis": active["capabilityFlags"].as_u64().is_some_and(|flags| flags & u64::from(crate::gimbal::CAP_HAS_YAW_AXIS) != 0),
         "yawText": yaw,
         "yawLockLabel": if flag(&active, "yawLock") { "Yaw Follow" } else { "Yaw Lock" },
         "yawLocked": flag(&active, "yawLock"),
@@ -167,6 +178,7 @@ pub fn owns(path: &str) -> bool {
         GIMBAL_PITCH,
         GIMBAL_YAW,
         GIMBAL_AIM,
+        GIMBAL_STICK,
     ]
     .contains(&path)
 }
@@ -269,6 +281,32 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                 json!({ "ok": false, "refusal": "badAim", "reason": "An aim is a tilt and a yaw from the nose, in degrees." })
             }
         },
+        GIMBAL_STICK => {
+            let deflection = |i: usize| {
+                given
+                    .get(i)
+                    .and_then(Value::as_f64)
+                    .filter(|v| v.is_finite() && (-1.0..=1.0).contains(v))
+            };
+            match (deflection(0), deflection(1)) {
+                (Some(x), Some(y)) => {
+                    let speed = number_setting(backend, "cameraSlideSpeed")
+                        .filter(|speed| speed.is_finite() && *speed > 0.0)
+                        .unwrap_or(STICK_SPEED_DEFAULT);
+                    let (pitch, yaw) = stick_rates(x, y, speed);
+                    crate::guided::dispatch(
+                        backend,
+                        Some(op("rates", json!({ "pitch": pitch, "yaw": yaw }))),
+                        vehicle,
+                        &qt_path("sendRate"),
+                        "[]",
+                    )
+                }
+                _ => {
+                    json!({ "ok": false, "refusal": "badStick", "reason": "A stick is how far it is pushed right and up, from -1 to 1." })
+                }
+            }
+        }
         GIMBAL_RETRACT => crate::guided::dispatch(
             backend,
             Some(op("retract", Value::Null)),
@@ -393,6 +431,47 @@ mod tests {
 
     fn snapshot(gimbal: Value) -> Value {
         json!({ "gimbals": [gimbal] })
+    }
+
+    #[test]
+    fn the_stick_turns_slowly_near_its_centre_and_at_full_speed_at_its_edge() {
+        assert_eq!(stick_rates(0.0, 0.0, 30.0), (0.0, 0.0));
+        assert_eq!(
+            stick_rates(1.0, 0.0, 30.0),
+            (0.0, 30.0),
+            "all the way right turns right at full speed"
+        );
+        assert_eq!(
+            stick_rates(0.0, -1.0, 30.0),
+            (-30.0, 0.0),
+            "all the way down tilts down"
+        );
+        assert_eq!(
+            stick_rates(0.5, 0.0, 30.0),
+            (0.0, 7.5),
+            "halfway over turns at a quarter of the speed, so a small push is a small nudge"
+        );
+        assert_eq!(stick_rates(-0.5, 0.5, 30.0), (7.5, -7.5));
+    }
+
+    #[test]
+    fn only_a_gimbal_with_a_yaw_axis_counts_as_three_axis() {
+        let yaw_axis = |flags: Value| {
+            indicator(
+                &snapshot(json!({ "active": true, "capabilityFlags": flags })),
+                false,
+                false,
+                (true, false),
+            )["yawAxis"]
+                .clone()
+        };
+        assert_eq!(yaw_axis(json!(256 | 32 | 4)), json!(true));
+        assert_eq!(yaw_axis(json!(32 | 4)), json!(false), "roll and pitch only");
+        assert_eq!(
+            yaw_axis(Value::Null),
+            json!(false),
+            "a gimbal that has not said what it has"
+        );
     }
 
     #[test]

@@ -46,15 +46,14 @@ test('held upright, a drag up on the camera strip tilts the gimbal down without 
   const [cx, cy] = [at.x + at.width / 2, at.y + at.height / 2];
   expect(await opener.evaluate((it, [px, py]) => it.contains(document.elementFromPoint(px, py)), [cx, cy] as const), 'nothing covers it').toBe(true);
   await page.mouse.click(cx, cy);
-  const slider = page.getByRole('slider', { name: 'Camera tilt' });
-  await expect(slider).toBeVisible();
-  const track = (await slider.locator('xpath=ancestor::*[@data-gesture][1]').boundingBox())!;
-  const thumb = (await slider.locator('..').boundingBox())!;
-  await page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
+  const stick = page.getByRole('img', { name: 'Camera joystick' });
+  await expect(stick, 'the mock gimbal has a yaw axis, so it opens a joystick').toBeVisible();
+  const pad = (await stick.boundingBox())!;
+  await page.mouse.move(pad.x + pad.width / 2, pad.y + pad.height / 2);
   await page.mouse.down();
-  await page.mouse.move(thumb.x + thumb.width / 2, track.y + track.height + 40, { steps: 12 });
-  await page.mouse.up();
+  await page.mouse.move(pad.x + pad.width / 2, pad.y + pad.height + 40, { steps: 12 });
   await expect.poll(() => gimbalPitch(page), { timeout: 20_000 }).toBeLessThan(-88);
+  await page.mouse.up();
 });
 
 const editBar = (page: Page) => page.getByRole('button', { name: 'Reset layout' });

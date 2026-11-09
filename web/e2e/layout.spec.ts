@@ -24,6 +24,13 @@ const pastLongPress = (page: Page, since: number) => page.waitForFunction(([from
 
 const storedCameraPanel = (page: Page) => page.evaluate((key) => localStorage.getItem(key), CAMERA_PANEL_OFFSET);
 
+const gimbalAim = (page: Page) =>
+  page.evaluate(
+    async (module) =>
+      (((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal') as Promise<{ gimbals?: { pitch: number | null; bodyYaw: number | null }[] } | null>).then((it) => ({ pitch: it?.gimbals?.[0]?.pitch ?? null, yaw: it?.gimbals?.[0]?.bodyYaw ?? null })),
+    '/src/bridge/Qgc.ts',
+  );
+
 const withCamera = async (page: Page) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await connectMock(page, ['Enable camera', 'Enable gimbal']);
@@ -150,22 +157,30 @@ test('holding the flight mode chip, which stays where it is while editing, start
   await expect(vehicle.getByRole('menu'), 'a tap still opens it').toBeVisible();
 });
 
-test('a slow drag of the camera tilt slider tilts the camera and never starts layout editing', async ({ app }) => {
+test('a three-axis gimbal gets a camera joystick: held down it tilts, held right it turns, let go it stops, and it never starts layout editing', async ({ app }) => {
   test.setTimeout(120_000);
   await withCamera(app);
-  const tilt = app.getByRole('slider', { name: 'Camera tilt' });
-  await expect(tilt).toBeVisible({ timeout: 60_000 });
-  const [x, y] = await centre(tilt.locator('..'));
-  const before = Number(await tilt.getAttribute('aria-valuenow'));
+  const stick = app.getByRole('img', { name: 'Camera joystick' });
+  await expect(stick, 'the mock gimbal reports a yaw axis').toBeVisible({ timeout: 60_000 });
+  await expect(app.getByRole('slider', { name: 'Camera tilt' }), 'the joystick replaces the sliders').toHaveCount(0);
+  await expect.poll(async () => (await gimbalAim(app)).pitch, { timeout: 60_000 }).not.toBeNull();
+  const before = await gimbalAim(app);
+  const [x, y] = await centre(stick);
   await app.mouse.move(x, y);
   await app.mouse.down();
   const pressedAt = await app.evaluate(() => performance.now());
   await app.mouse.move(x, y + 20, { steps: 5 });
   await pastLongPress(app, pressedAt);
-  await app.mouse.move(x, y + 40, { steps: 5 });
+  await app.mouse.move(x, y + 60, { steps: 5 });
+  await expect.poll(async () => (await gimbalAim(app)).pitch!, { timeout: 20_000 }).toBeLessThan(before.pitch! - 10);
+  await app.mouse.move(x + 60, y, { steps: 5 });
+  await expect.poll(async () => (await gimbalAim(app)).yaw!, { timeout: 20_000 }).toBeGreaterThan((before.yaw ?? 0) + 10);
   await app.mouse.up();
-  await expect.poll(async () => Number(await tilt.getAttribute('aria-valuenow'))).toBeLessThan(before - 10);
   await expect(editBar(app), 'the drag held the pointer down past a long press, but it moved').toBeHidden();
+  const stopped = await gimbalAim(app);
+  const releasedAt = await app.evaluate(() => performance.now());
+  await app.waitForFunction(([from, wait]) => performance.now() - from > wait, [releasedAt, 1_500] as const);
+  expect(Math.abs((await gimbalAim(app)).yaw! - stopped.yaw!), 'let go, it stays where it got to').toBeLessThan(3);
 });
 
 test('the camera panel drags to a new place that is still there after a reload', async ({ app }) => {
