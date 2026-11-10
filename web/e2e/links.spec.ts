@@ -90,7 +90,7 @@ test('a browser that cannot reach USB says so once, instead of claiming nothing 
   await page.getByRole('button', { name: /How to connect/ }).click();
   await page.getByRole('button', { name: 'Add link…' }).click();
   await page.getByRole('button', { name: /^USB telemetry radio/ }).click();
-  await expect(page.getByText('This browser cannot reach USB devices. Use Chrome or Edge, or connect over a WebSocket.')).toBeVisible();
+  await expect(page.getByText('Use Chrome or Edge to connect a radio over USB.')).toBeVisible();
   await expect(page.getByText('Nothing is plugged in', { exact: false })).toBeHidden();
   await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeDisabled();
 });
