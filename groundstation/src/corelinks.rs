@@ -329,24 +329,17 @@ pub fn cloud_settings_valid(api_base: &str, device_id: &str) -> bool {
 fn create_websocket(name: &str, url: &str) -> bool {
     let url = url.trim();
     let scheme_ok = url.starts_with("ws://") || url.starts_with("wss://");
-    if name.is_empty()
-        || !scheme_ok
-        || !add(LinkConfig {
-            name: name.to_string(),
-            auto_connect: true,
-            high_latency: false,
-            kind: Kind::WebSocket {
-                url: url.to_string(),
-            },
-        })
-    {
+    if name.is_empty() || !scheme_ok {
         return false;
     }
-    let index = listed()
-        .iter()
-        .position(|e| e.config.name == name)
-        .unwrap_or(0);
-    connect(index)
+    replace_and_connect(LinkConfig {
+        name: name.to_string(),
+        auto_connect: true,
+        high_latency: false,
+        kind: Kind::WebSocket {
+            url: url.to_string(),
+        },
+    })
 }
 
 fn create_cloud(name: &str, api_base: &str, device_id: &str) -> bool {
