@@ -29,7 +29,7 @@ export default defineConfig(({ command }) => ({
     fs: { allow: [fileURLToPath(new URL('..', import.meta.url))] },
     proxy: aircastd
       ? {
-          '^/(device\\.json|mavlink|socket|files|proxy)\\b': {
+          '^/(device\\.json|mavlink|socket|files|proxy|settings)\\b': {
             target: aircastd,
             ws: true,
             changeOrigin: true,

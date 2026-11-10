@@ -33,6 +33,8 @@ const uplinkAt = (tick: number): number => (tick < 8 ? UPLINK_WIFI : tick < 16 ?
 const store = mkdtempSync(join(tmpdir(), 'aircastd-store-'));
 const seen = { uploads: [] as string[], firmware: [] as number[], relays: [] as string[], gcsHeartbeats: 0, tcpHeartbeats: 0, tracks: [] as string[], secure: [] as string[] };
 const tracker = { on: false };
+const settings = { text: '' };
+
 const scenes = new Map<string, { x: number; y: number }>([['e2e', { x: 0.4, y: 0.4 }], ['lens', { x: 0.4, y: 0.4 }]]);
 
 const body = (request: IncomingMessage): Promise<Buffer> =>
@@ -50,6 +52,14 @@ const json = (response: ServerResponse, status: number, value: unknown) => {
 const stored = (path: string): string | null => {
   const name = normalize(decodeURIComponent(path.replace(/^\/fly\/files\/?/, ''))).replace(/^(\.\.(\/|$))+/, '');
   return name.split('/').some((part) => part.startsWith('.')) ? null : join(store, name);
+};
+
+const deviceSettings = async (request: IncomingMessage, response: ServerResponse) => {
+  if (request.method !== 'PUT') return json(response, 200, { text: settings.text });
+  const sent = JSON.parse((await body(request)).toString()) as { text?: unknown };
+  if (typeof sent.text !== 'string') return json(response, 400, { error: 'settings are sent as {"text": "<ini>"}' });
+  settings.text = sent.text;
+  return response.writeHead(204).end();
 };
 
 const files = async (request: IncomingMessage, response: ServerResponse, url: URL) => {
@@ -244,6 +254,7 @@ const device = (named: { origin: string }, secure: boolean) => (request: Incomin
   if (url.pathname.startsWith('/api/views/')) return json(response, 404, { error: 'no such page' });
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });
   if (url.pathname.startsWith('/fly/files/') || url.pathname === '/fly/files') return void files(request, response, url);
+  if (url.pathname === '/fly/settings') return void deviceSettings(request, response);
   if (url.pathname === '/fly/proxy') return void proxy(request, response);
   if (url.pathname === '/api/telemetry/firmware' && request.method === 'POST') return void firmware(request, response);
   if (url.pathname === '/') return void response.writeHead(302, { Location: '/fly/' }).end();

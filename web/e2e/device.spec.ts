@@ -29,6 +29,13 @@ const test = base.extend<{ deviceAt: string; device: Page }>({
   },
 });
 
+const forgetDeviceSettings = async () => {
+  await fetch(`${DEVICE}/fly/settings`, { method: 'PUT', body: JSON.stringify({ text: '' }) });
+};
+
+test.beforeEach(forgetDeviceSettings);
+hosted.beforeEach(forgetDeviceSettings);
+
 const settingsPage = async (page: Page, tab: string, name: RegExp) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tablist').getByRole('tab', { name: tab }).click();
@@ -361,4 +368,20 @@ base('a device in fight mode records nothing, not even in the browser', async ({
   );
   expect(asked, 'the core refuses even when asked directly').not.toBe(true);
   await expect(page.getByRole('button', { name: 'Stop recording' })).toHaveCount(0);
+});
+
+test('settings live on the device, so another address or browser for it opens with them', async ({ device, browser }) => {
+  await device.getByRole('button', { name: 'Settings', exact: true }).click();
+  await device.getByRole('textbox', { name: 'Search settings' }).fill('ADS-B');
+  await device.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' }).click();
+  await expect(device.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' })).toBeChecked();
+  await expect.poll(async () => ((await (await fetch(`${DEVICE}/fly/settings`)).json()) as { text: string }).text, { timeout: 10_000 }).toContain('adsbServerConnectEnabled="true"');
+  const elsewhere = await browser.newContext();
+  const other = await elsewhere.newPage();
+  await other.goto(`${DEVICE.replace('localhost', '127.0.0.1')}/`);
+  await expect(other.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await other.getByRole('button', { name: 'Settings', exact: true }).click();
+  await other.getByRole('textbox', { name: 'Search settings' }).fill('ADS-B');
+  await expect(other.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' })).toBeChecked();
+  await elsewhere.close();
 });

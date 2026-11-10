@@ -1,4 +1,5 @@
 import { mutableStateOf } from '@/kotlin/State';
+import { DEVICE_RETRY_MS, latestWins, readDeviceSettings, sendDeviceSettings } from './deviceSettings';
 
 const SETTINGS_KEY = 'aircast.settings';
 const WEB_SERIAL_PREFIX = 'webserial-';
@@ -50,7 +51,7 @@ const connect = (): Promise<Worker> => {
       if ('loading' in data) return void (coreLoaded.value = data.loading);
       if ('event' in data) return eventListeners.forEach((listener) => listener(data.event.path, data.event.json));
       if ('serial' in data) return void serialOp(data.serial);
-      if ('settings' in data) return store(data.settings);
+      if ('settings' in data) return keep(data.settings);
       pending.get(data.id)?.(data.result);
       pending.delete(data.id);
     };
@@ -88,6 +89,21 @@ const store = (text: string) => {
   } catch {
     return;
   }
+};
+
+const device = { keepsSettings: false, save: latestWins(sendDeviceSettings, DEVICE_RETRY_MS) };
+
+const keep = (text: string) => {
+  store(text);
+  if (device.keepsSettings) void device.save(text);
+};
+
+const openSettings = async (): Promise<void> => {
+  const kept = await readDeviceSettings();
+  device.keepsSettings = kept !== null;
+  const text = kept || stored();
+  await call('settingsOpen', text);
+  if (kept === '' && text !== '') void device.save(text);
 };
 
 export const serialAvailable = (): boolean => typeof navigator !== 'undefined' && 'serial' in navigator;
@@ -173,7 +189,7 @@ const adoptOtherTabs = () =>
   });
 
 export const startCore = async (): Promise<void> => {
-  await call('settingsOpen', stored());
+  await openSettings();
   adoptOtherTabs();
   await call('setMockLinksAvailable', true);
   await refreshSerialPorts();
