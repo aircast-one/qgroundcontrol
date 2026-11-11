@@ -247,6 +247,7 @@ pub struct Gimbal {
     pub yaw_frame: Option<Frame>,
     pub commanded_pitch_rate: Option<f32>,
     pub commanded_yaw_rate: Option<f32>,
+    pub aimed_pitch: Option<f32>,
     pub yaw_lock: Option<bool>,
     pub retracted: Option<bool>,
     pub neutral: Option<bool>,
@@ -270,6 +271,7 @@ impl Default for Gimbal {
             yaw_frame: None,
             commanded_pitch_rate: None,
             commanded_yaw_rate: None,
+            aimed_pitch: None,
             yaw_lock: None,
             retracted: None,
             neutral: None,
@@ -751,6 +753,7 @@ impl Gimbals {
     fn stream_aim(&mut self, flags: u32, pitch: f32, yaw: f32, now_ms: u64) -> Vec<Out> {
         let stop = self.stop_rates();
         let (target, control) = self.control(now_ms);
+        self.aimed_at(target, Some(pitch));
         let aimed = target.map(|pair| Out::SetPitchYaw {
             component: pair.manager_compid,
             flags,
@@ -826,6 +829,9 @@ impl Gimbals {
                 gimbal.commanded_yaw_rate = yaw_rate
                     .filter(|r| r.is_finite())
                     .or(gimbal.commanded_yaw_rate);
+                gimbal.aimed_pitch = gimbal
+                    .aimed_pitch
+                    .filter(|_| gimbal.commanded_pitch_rate.is_none_or(|rate| rate == 0.0));
                 (
                     gimbal.commanded_pitch_rate.unwrap_or(0.0),
                     gimbal.commanded_yaw_rate.unwrap_or(0.0),
@@ -1135,6 +1141,7 @@ impl Gimbals {
     ) -> Vec<Out> {
         let stop = self.stop_rates();
         let (target, control) = self.control(now_ms);
+        self.aimed_at(target, Some(pitch));
         let Some(pair) = target else {
             return control.into_iter().chain(stop).collect();
         };
@@ -1143,6 +1150,12 @@ impl Gimbals {
             .chain(stop)
             .chain([self.pitch_yaw(pair, flags, Some(pitch), Some(yaw), show_error)])
             .collect()
+    }
+
+    fn aimed_at(&mut self, target: Option<PairId>, pitch: Option<f32>) {
+        if let Some(gimbal) = target.and_then(|pair| self.gimbals.get_mut(&pair)) {
+            gimbal.aimed_pitch = pitch;
+        }
     }
 
     fn stop_rates(&mut self) -> Vec<Out> {
@@ -1158,6 +1171,7 @@ impl Gimbals {
         let (target, control) = self.control(now_ms);
         let Some(pair) = target else { return control };
         let attitude = self.gimbals.get(&pair).and_then(|gimbal| gimbal.attitude);
+        self.aimed_at(target, attitude.map(|a| a.pitch));
         let yaw = attitude.map(|a| match Frame::of(flags) {
             Frame::Vehicle => a.body_yaw,
             Frame::Earth => a.absolute_yaw,
@@ -2466,6 +2480,35 @@ mod tests {
             Some(REASON_NO_ACTIVE_GIMBAL),
             "and with nothing to store into the core says so rather than returning silence"
         );
+    }
+
+    #[test]
+    fn the_pitch_last_aimed_at_is_kept_from_any_aim_and_forgotten_once_a_pitch_rate_moves_it() {
+        let aimed = |gimbals: &Gimbals| gimbals.get(pair()).unwrap().aimed_pitch;
+        let mut gimbals = discovered();
+        assert_eq!(aimed(&gimbals), None);
+        gimbals.aim(-30.0, 0.0, 2000);
+        assert_eq!(aimed(&gimbals), Some(-30.0), "a radio or Look aim");
+        gimbals.on_screen_control(0.0, -50.0, Screen::Drag { slide_speed: 10.0 }, 0.0, 2100);
+        assert_eq!(
+            aimed(&gimbals),
+            Some(-50.0),
+            "an on-screen drag from the reported level"
+        );
+        gimbals.set_rates(Some(0.0), Some(20.0), 2200);
+        assert_eq!(
+            aimed(&gimbals),
+            Some(-50.0),
+            "a yaw turn leaves the pitch where it was aimed"
+        );
+        gimbals.set_rates(Some(-10.0), None, 2300);
+        assert_eq!(
+            aimed(&gimbals),
+            None,
+            "a pitch rate moves it somewhere no aim named"
+        );
+        gimbals.center(2400);
+        assert_eq!(aimed(&gimbals), Some(0.0));
     }
 
     #[test]

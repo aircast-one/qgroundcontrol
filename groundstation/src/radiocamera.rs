@@ -214,13 +214,13 @@ pub struct Sticks {
     drop_before: Option<u16>,
     yaw: Option<f32>,
     turn: Option<f32>,
-    pitch: Option<f32>,
     yaw_centred: bool,
     pub layout: Layout,
     pub bay: i64,
     pub ready: Ready,
     pub reported_yaw: Option<f32>,
     pub reported_pitch: Option<f32>,
+    pub aimed_pitch: Option<f32>,
     pub yaw_speed: f32,
     pub look_reversed: bool,
     pub stick: Option<[usize; 2]>,
@@ -283,13 +283,13 @@ impl Sticks {
             drop_before: None,
             yaw: None,
             turn: None,
-            pitch: None,
             yaw_centred: false,
             layout: R2D2,
             bay: 1,
             ready: ALL_READY,
             reported_yaw: None,
             reported_pitch: None,
+            aimed_pitch: None,
             yaw_speed: YAW_SPEED_DEFAULT,
             look_reversed: false,
             stick: None,
@@ -310,7 +310,6 @@ impl Sticks {
             .filter(|rate| *rate != 0.0)
             .map(|_| Move::Turn(0.0));
         self.turn = None;
-        self.pitch = None;
         self.yaw_centred = false;
         stop
     }
@@ -357,7 +356,7 @@ impl Sticks {
         let turning = rate != 0.0;
         let yaw = self.yaw.or(self.reported_yaw).unwrap_or(0.0);
         let (lowest, highest) = STICK_PITCH_RANGE;
-        let from = self.pitch.or(self.reported_pitch);
+        let from = self.aimed_pitch.or(self.reported_pitch);
         let pointed = read(line, pitch_source).map(|pwm| {
             let at = between(STICK_PITCH_RANGE, pwm);
             let wanted = from
@@ -403,9 +402,9 @@ impl Sticks {
         let aims = aimed.is_some() || looked.is_some();
         let turned = (ready.gimbal && (changed || (aims && turning))).then_some(Move::Turn(rate));
         self.turn = turned.map_or(self.turn, |_| Some(rate));
-        self.pitch = match looked.or(aimed) {
+        self.aimed_pitch = match looked.or(aimed) {
             Some(Move::Aim { pitch, .. }) => Some(pitch),
-            _ => self.pitch,
+            _ => self.aimed_pitch,
         };
         self.yaw_centred = self.yaw_centred || slider == Some(0.0);
         self.yaw = match (looked, turning) {
@@ -488,7 +487,7 @@ impl Sticks {
 pub struct AimState {
     acted: [Option<u16>; 3],
     turn: Option<f32>,
-    pitch: Option<f32>,
+    aimed_pitch: Option<f32>,
 }
 
 impl Sticks {
@@ -503,7 +502,7 @@ impl Sticks {
                 .aim_channels()
                 .map(|channel| self.acted.get(&channel).copied()),
             turn: self.turn,
-            pitch: self.pitch,
+            aimed_pitch: self.aimed_pitch,
         }
     }
 
@@ -520,7 +519,7 @@ impl Sticks {
                 }
             });
         self.turn = state.turn;
-        self.pitch = state.pitch;
+        self.aimed_pitch = state.aimed_pitch;
     }
 }
 
@@ -569,7 +568,7 @@ fn ready() -> Ready {
     }
 }
 
-fn reported_attitude() -> Option<crate::gimbal::Attitude> {
+fn reported_gimbal() -> (Option<crate::gimbal::Attitude>, Option<f32>) {
     let hub = crate::hub::lock();
     hub.active()
         .and_then(|vehicle| {
@@ -578,7 +577,7 @@ fn reported_attitude() -> Option<crate::gimbal::Attitude> {
                 .active()
                 .and_then(|pair| vehicle.gimbals.get(pair))
         })
-        .and_then(|gimbal| gimbal.attitude)
+        .map_or((None, None), |gimbal| (gimbal.attitude, gimbal.aimed_pitch))
 }
 
 fn turning_settings() -> (f32, bool) {
@@ -701,7 +700,7 @@ pub fn stick_switched(line: &[u16], layout: Layout) -> bool {
 }
 
 pub fn heard(vehicle: u8, line: &[u16], layout: Layout, stick: Option<[usize; 2]>) {
-    let reported = reported_attitude();
+    let (reported, aimed_pitch) = reported_gimbal();
     let (yaw_speed, look_reversed) = turning_settings();
     if let Some(switches) = switches(line, crate::hub::now_ms(), layout) {
         crate::payloadrail::radio_heard(switches);
@@ -713,6 +712,7 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout, stick: Option<[usize; 2]
     sticks.ready = ready();
     sticks.reported_yaw = reported.map(|attitude| attitude.body_yaw);
     sticks.reported_pitch = reported.map(|attitude| attitude.pitch);
+    sticks.aimed_pitch = aimed_pitch;
     sticks.yaw_speed = yaw_speed;
     sticks.look_reversed = look_reversed;
     sticks.hand_stick(stick);
@@ -1406,7 +1406,7 @@ mod tests {
     }
 
     #[test]
-    fn with_nothing_aimed_the_knob_tilts_from_the_pitch_the_gimbal_reports() {
+    fn the_knob_tilts_from_the_last_aim_by_anyone_or_else_from_the_pitch_the_gimbal_reports() {
         let mut sticks = Sticks {
             reported_pitch: Some(-30.0),
             ..Sticks::default()
@@ -1419,15 +1419,14 @@ mod tests {
                 yaw: 0.0
             }]
         );
-        sticks.hand_back();
-        sticks.reported_pitch = Some(-60.0);
+        sticks.aimed_pitch = Some(-60.0);
         assert_eq!(
             sticks.step(&line(&[(TILT_CHANNEL, 1500)]), 2_000),
             vec![Move::Aim {
                 pitch: -82.5,
                 yaw: 0.0
             }],
-            "a radio handed back forgets the pitch it sent, since the app may have aimed the camera since"
+            "after an aim on screen the knob carries on from where the app pointed it"
         );
     }
 
