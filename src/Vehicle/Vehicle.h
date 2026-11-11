@@ -205,6 +205,7 @@ public:
     Q_PROPERTY(GimbalController*    gimbalController            READ gimbalController                                               CONSTANT)
     Q_PROPERTY(bool                 hasGripper                  READ hasGripper                                                     NOTIFY hasGripperChanged)
     Q_PROPERTY(int                  dropBoardBays               READ dropBoardBays                                                  NOTIFY hasGripperChanged)
+    Q_PROPERTY(QList<int>           dropBoardEmptyBays          READ dropBoardEmptyBays                                             NOTIFY dropBoardEmptyBaysChanged)
     Q_PROPERTY(bool                 isROIEnabled                READ isROIEnabled                                                   NOTIFY isROIEnabledChanged)
     Q_PROPERTY(CheckList            checkListState              READ checkListState             WRITE setCheckListState             NOTIFY checkListStateChanged)
     Q_PROPERTY(bool                 readyToFlyAvailable         READ readyToFlyAvailable                                            NOTIFY readyToFlyAvailableChanged)  ///< true: readyToFly signalling is available on this vehicle
@@ -412,6 +413,7 @@ public:
     VehicleSupports* supports() { return _vehicleSupports; }
     bool    hasGripper              () const;
     int     dropBoardBays           () const { return _dropBoardComponent ? kDropBoardBays : 0; }
+    QList<int> dropBoardEmptyBays   () const { return _dropBoardEmptyBays; }
     bool haveMRSpeedLimits() const { return _multirotor_speed_limits_available; }
     bool haveFWSpeedLimits() const { return _fixed_wing_airspeed_limits_available; }
 
@@ -800,6 +802,7 @@ signals:
     void haveMRSpeedLimChanged          ();
     void haveFWSpeedLimChanged          ();
     void hasGripperChanged              ();
+    void dropBoardEmptyBaysChanged      ();
 
     void firmwareVersionChanged         ();
     void latestStableFirmwareVersionChanged();
@@ -957,8 +960,9 @@ private:
     static constexpr int kDropBoardStaleMsecs = 10000;
     uint8_t         _dropBoardComponent = 0;
     QTimer          _dropBoardTimer;
+    QList<int>      _dropBoardEmptyBays;
     int             _dropAllNext = 0;
-    void            _heardDropBoard(uint8_t component);
+    void            _heardDropBoard(uint8_t component, float loaded);
     void            _dropAllFrom(int bay);
     static void     _dropAllResult(void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, MavCmdResultFailureCode_t failureCode);
     bool            _landing = false;

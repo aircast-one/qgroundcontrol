@@ -701,3 +701,25 @@ void UsbRadioTest::_aBayDropsOnItsOwnServoOnlyWhereTheDroneHasOne_test()
     QVERIFY2(!boardBay(0, 4), "no position picked drops nothing");
     QVERIFY(!bayServo(1, {}));
 }
+
+void UsbRadioTest::_r2d2SixPosPicksABayOnlyOnAStep_test()
+{
+    const std::array<int, 6> r2d2Raw{-179, -154, -127, -100, -73, -46};
+    QList<int> positions;
+    std::ranges::transform(r2d2Raw, std::back_inserter(positions), [](int raw) { return bay(pwm(raw)); });
+    QVERIFY2(positions == (QList<int>{1, 2, 3, 4, 5, 6}),
+             "R2D2's default model sends its 6POS in a narrow band below the centre, button 1 lowest");
+    const std::array<uint16_t, 3> offStep{1300, 1500, 1700};
+    QVERIFY2(std::ranges::all_of(offStep, [](uint16_t value) { return bay(value) == 0; }),
+             "a channel resting between positions picks no bay, so the drop switch drops nothing");
+}
+
+void UsbRadioTest::_theDropBoardsBeaconSaysWhichHoldersAreEmpty_test()
+{
+    QVERIFY2(!emptyBoardBays(0.0f, 4), "a board that has not dropped since it booted says 0 and knows nothing");
+    QCOMPARE(emptyBoardBays(14.0f, 4), std::optional<QList<int>>(QList<int>{4}));
+    QVERIFY2(emptyBoardBays(15.0f, 4) == std::optional<QList<int>>(QList<int>{}),
+             "a clip pushed into holder 4 sets its bit again");
+    QCOMPARE(emptyBoardBays(3.0f, 4), std::optional<QList<int>>(QList<int>{1, 2}));
+    QVERIFY2(!emptyBoardBays(16.0f, 4), "a mask wider than the board is not a mask");
+}

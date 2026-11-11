@@ -22,6 +22,8 @@ DelayButton {
     property real   fontWeight:     Font.Normal
     property real   pointSize:      ScreenTools.defaultFontPointSize
     property int    defaultDelay:   500
+    property color  borderColor:    qgcPal.buttonBorder
+    property real   borderWidth:    showBorder ? 1 : 0
 
     property alias wrapMode:            text.wrapMode
     property alias horizontalAlignment: text.horizontalAlignment
@@ -66,8 +68,8 @@ DelayButton {
         radius:         backRadius
         implicitWidth:  Math.max(control._showHelp ? helpText.contentWidth : 0, ScreenTools.implicitButtonWidth)
         implicitHeight: ScreenTools.implicitButtonHeight
-        border.width:   showBorder ? 1 : 0
-        border.color:   qgcPal.buttonBorder
+        border.width:   control.borderWidth
+        border.color:   control.borderColor
         color:          qgcPal.button
 
         Rectangle {

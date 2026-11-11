@@ -65,6 +65,7 @@
 #include "TerrainProtocolHandler.h"
 #include "TerrainQuery.h"
 #include "TrajectoryPoints.h"
+#include "UsbRadio.h"
 #include "VehicleLinkManager.h"
 #include "MAVLinkStreamConfig.h"
 #include "QGCMapCircle.h"
@@ -3147,13 +3148,18 @@ void Vehicle::triggerSimpleCamera()
                    1.0);                        // trigger camera
 }
 
-void Vehicle::_heardDropBoard(uint8_t component)
+void Vehicle::_heardDropBoard(uint8_t component, float loaded)
 {
     const bool appeared = _dropBoardComponent != component;
     _dropBoardComponent = component;
     _dropBoardTimer.start();
     if (appeared) {
         emit hasGripperChanged();
+    }
+    const std::optional<QList<int>> empty = UsbRadioProtocol::emptyBoardBays(loaded, kDropBoardBays);
+    if (empty && *empty != _dropBoardEmptyBays) {
+        _dropBoardEmptyBays = *empty;
+        emit dropBoardEmptyBaysChanged();
     }
 }
 
@@ -3399,7 +3405,7 @@ void Vehicle::_handleCommandLong(const mavlink_message_t& message)
         _handleCommandRequestOperatorControl(commandLong);
     }
     if (commandLong.command == MAV_CMD_DO_GRIPPER && message.compid != _defaultComponentId) {
-        _heardDropBoard(message.compid);
+        _heardDropBoard(message.compid, commandLong.param3);
     }
 }
 

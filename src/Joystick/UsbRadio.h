@@ -85,6 +85,8 @@ constexpr float kStickHalfSpanPwm = 512.0f;
 constexpr uint16_t kHandbackPwm = 50;
 constexpr std::array<int, 3> kPictures = {0, 1, 3};
 constexpr int kBayPositions = 6;
+constexpr float kR2d2SixPosLowPwm = 1411.0f;
+constexpr float kR2d2SixPosHighPwm = 1477.0f;
 
 enum class Flying
 {
@@ -176,6 +178,7 @@ struct BayServo
 
 std::optional<BayServo> bayServo(int bay, const QList<BayServo>& servos);
 std::optional<int> boardBay(int bay, int bays);
+std::optional<QList<int>> emptyBoardBays(float loaded, int bays);
 
 enum class Payload
 {
@@ -300,6 +303,7 @@ class UsbRadio : public QObject
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
     Q_PROPERTY(QString offerPort READ offerPort NOTIFY offerChanged)
     Q_PROPERTY(QString offerLabel READ offerLabel NOTIFY offerChanged)
+    Q_PROPERTY(int selectedBay READ selectedBay NOTIFY selectedBayChanged)
 
 public:
     explicit UsbRadio(QObject* parent = nullptr);
@@ -319,6 +323,8 @@ public:
 
     QString offerLabel() const { return _offerLabel; }
 
+    int selectedBay() const { return _selectedBay; }
+
     bool isRadioPort(const QString& port) const;
     UsbRadioProtocol::Verdict sniff(const LinkInterface* link, const QByteArray& bytes);
     void forgetLink(const LinkInterface* link);
@@ -336,6 +342,7 @@ signals:
     void statusChanged();
     void stateChanged();
     void offerChanged();
+    void selectedBayChanged();
 
 private:
     struct Flight
@@ -382,6 +389,7 @@ private:
     UsbRadioProtocol::CameraSticks _camera;
     UsbRadioProtocol::Radio _radio;
     std::optional<std::pair<int, int>> _clash;
+    int _selectedBay = 0;
     std::optional<QString> _refused;
     UsbRadioProtocol::Held _held{};
     QString _status;
