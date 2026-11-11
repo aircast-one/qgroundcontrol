@@ -203,6 +203,7 @@ struct Aiming
     float yawSpeed = kYawSpeedDefault;
     bool lookReversed = false;
     std::optional<float> reportedYaw;
+    std::optional<float> reportedPitch;
 };
 
 class CameraSticks
@@ -211,6 +212,7 @@ public:
     QList<Move> step(const Line& line, qint64 nowMs, const Layout& layout = {}, Ready ready = {},
                      const Aiming& aiming = {});
     void handStick(const std::optional<StickChannels>& stick);
+    void aimedAt(std::optional<float> pitch);
     std::optional<Move> handBack();
 
 private:
@@ -219,7 +221,7 @@ private:
     std::optional<qint64> _sentMs;
     std::optional<uint16_t> _dropBefore;
     std::optional<int> _pitchSource;
-    std::optional<float> _sliderPitch;
+    std::optional<float> _aimedPitch;
     std::optional<float> _yaw;
     std::optional<float> _turn;
     bool _yawCentred = false;

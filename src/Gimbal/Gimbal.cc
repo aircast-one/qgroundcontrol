@@ -43,6 +43,7 @@ const Gimbal &Gimbal::operator=(const Gimbal &other)
     _absoluteYawFact = other._absoluteYawFact;
     _deviceIdFact = other._deviceIdFact;
     _yawLock = other._yawLock;
+    _aimedPitch = other._aimedPitch;
     _haveControl = other._haveControl;
     _othersHaveControl = other._othersHaveControl;
 

@@ -284,10 +284,18 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const bool turning = rate != 0.0f;
     const float heading = _yaw ? *_yaw : aiming.reportedYaw.value_or(0.0f);
     const bool pitched = moved(layout.pitch) || moved(layout.tilt);
+    const std::optional<float> from = _aimedPitch ? _aimedPitch : aiming.reportedPitch;
+    const std::optional<float> wanted =
+        pitch ? std::optional<float>(between(kPitchDown, kPitchAhead, *pitch) +
+                                     (from && _acted.contains(source)
+                                          ? *from - between(kPitchDown, kPitchAhead, _acted.value(source))
+                                          : 0.0f))
+              : std::nullopt;
     const std::optional<float> aimPitch =
-        pitch ? std::optional<float>(between(kPitchDown, kPitchAhead, *pitch)) : std::nullopt;
-    const bool aimed = ready.gimbal && aimPitch && due && pitched &&
-                       (!_sliderPitch || std::abs(*_sliderPitch - *aimPitch) >= kPitchStepDeg);
+        wanted ? std::optional<float>(std::clamp(*wanted, kPitchDown, kPitchAhead)) : std::nullopt;
+    const auto unchanged = [&from](float pitch) { return from && std::abs(*from - pitch) < kPitchStepDeg; };
+    const bool aimed = ready.gimbal && aimPitch && due && pitched && !unchanged(*aimPitch);
+    const bool overrun = ready.gimbal && aimPitch && pitched && *aimPitch != *wanted && unchanged(*aimPitch);
     const bool looked = ready.gimbal && look && flipped(layout.look) && position(*look) != 1;
     const bool lookedAhead = looked && position(*look) == (aiming.lookReversed ? 0 : 2);
     const bool zoomed = ready.camera && zoom && due && moved(layout.zoom);
@@ -300,14 +308,14 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const bool dropped = high(drop) && high(dropWas) && _dropBefore && *_dropBefore <= kPressedPwm;
     const bool changed = _turn ? (*_turn != rate && (due || !turning)) : turning;
     const bool turned = ready.gimbal && (changed || ((aimed || looked) && turning));
-    const auto refresh = [this, &line, &layout, &ready, aimed, zoomed](int number) {
+    const auto refresh = [this, &line, &layout, &ready, aimed, overrun, zoomed](int number) {
         const std::optional<uint16_t> now = channel(line, number);
-        const bool keep =
-            !_acted.contains(number) || (number == layout.pitch || number == layout.yaw || number == layout.tilt ? aimed
-                                         : number == layout.zoom                                ? zoomed
-                                         : number == layout.picture || number == layout.palette ? ready.settings
-                                         : number == layout.look                                ? ready.gimbal
-                                                                                                : true);
+        const bool keep = !_acted.contains(number) ||
+                          (number == layout.pitch || number == layout.yaw || number == layout.tilt ? aimed || overrun
+                           : number == layout.zoom                                                 ? zoomed
+                           : number == layout.picture || number == layout.palette                  ? ready.settings
+                           : number == layout.look                                                 ? ready.gimbal
+                                                                                                   : true);
         if (now && keep) {
             _acted[number] = *now;
         }
@@ -316,10 +324,11 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     if (aimed) {
         moves << Move{Move::Kind::Aim, *aimPitch, heading};
         _pitchSource = source;
-        _sliderPitch = aimPitch;
+        _aimedPitch = aimPitch;
     }
     if (looked) {
         moves << Move{Move::Kind::Aim, lookedAhead ? kPitchAhead : kPitchDown, lookedAhead ? 0.0f : heading};
+        _aimedPitch = lookedAhead ? kPitchAhead : kPitchDown;
     }
     if (turned) {
         moves << Move{Move::Kind::Turn, 0.0f, 0.0f, rate};
@@ -347,6 +356,11 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
         _sentMs = nowMs;
     }
     return moves;
+}
+
+void CameraSticks::aimedAt(std::optional<float> pitch)
+{
+    _aimedPitch = pitch;
 }
 
 std::optional<Move> CameraSticks::handBack()
@@ -934,7 +948,9 @@ void UsbRadio::_steer(const Line& line, bool cameraHasStick)
     Gimbal* const gimbal = vehicle->gimbalController() ? vehicle->gimbalController()->activeGimbal() : nullptr;
     const Aiming aiming{autoConnect->usbRadioYawSpeed()->rawValue().toFloat(),
                         autoConnect->usbRadioLookReversed()->rawValue().toBool(),
-                        gimbal ? std::optional<float>(gimbal->bodyYaw()->rawValue().toFloat()) : std::nullopt};
+                        gimbal ? std::optional<float>(gimbal->bodyYaw()->rawValue().toFloat()) : std::nullopt,
+                        gimbal ? std::optional<float>(gimbal->absolutePitch()->rawValue().toFloat()) : std::nullopt};
+    _camera.aimedAt(gimbal ? gimbal->aimedPitch() : std::nullopt);
     const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout, ready, aiming);
     const int selectedBay = bayOf(line, layout);
     if (selectedBay != _selectedBay) {

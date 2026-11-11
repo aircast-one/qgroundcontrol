@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "FactGroup.h"
 #include "MAVLinkEnums.h"
 
@@ -40,6 +42,7 @@ public:
 
     float pitchRate() const { return _pitchRate; }
     float yawRate() const { return _yawRate; }
+    std::optional<float> aimedPitch() const { return _aimedPitch; }
     bool yawLock() const { return _yawLock; }
     bool retracted() const { return _retracted; }
     bool gimbalHaveControl() const { return _haveControl; }
@@ -54,6 +57,7 @@ public:
 
     void setPitchRate(float pitchRate) { if (pitchRate != _pitchRate) { _pitchRate = pitchRate; emit pitchRateChanged(); } }
     void setYawRate(float yawRate) { if (yawRate != _yawRate) { _yawRate = yawRate; emit yawRateChanged(); } }
+    void setAimedPitch(std::optional<float> pitch) { _aimedPitch = pitch; }
     void setYawLock(bool yawLock) { if (yawLock != _yawLock) { _yawLock = yawLock; emit yawLockChanged(); } }
     void setRetracted(bool retracted) { if (retracted != _retracted) { _retracted = retracted; emit retractedChanged(); } }
     void setGimbalHaveControl(bool set) { if (set != _haveControl) { _haveControl = set; emit gimbalHaveControlChanged(); } }
@@ -94,6 +98,7 @@ private:
 
     float _pitchRate = 0.f;
     float _yawRate = 0.f;
+    std::optional<float> _aimedPitch;
     bool _yawLock = false;
     bool _retracted = false;
     bool _haveControl = false;

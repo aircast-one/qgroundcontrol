@@ -594,6 +594,7 @@ void GimbalController::sendPitchBodyYaw(float pitch, float yaw, bool showError)
     }
 
     _rateSenderTimer.stop();
+    _activeGimbal->setAimedPitch(pitch);
     _activeGimbal->setAbsolutePitch(0.0f);
     _activeGimbal->setYawRate(0.0f);
 
@@ -621,6 +622,7 @@ void GimbalController::sendPitchAbsoluteYaw(float pitch, float yaw, bool showErr
     }
 
     _rateSenderTimer.stop();
+    _activeGimbal->setAimedPitch(pitch);
     _activeGimbal->setAbsolutePitch(0.0f);
     _activeGimbal->setYawRate(0.0f);
 
@@ -673,6 +675,9 @@ void GimbalController::sendRate()
     }
 
     _sendGimbalAttitudeRates(_activeGimbal->pitchRate(), _activeGimbal->yawRate());
+    if (_activeGimbal->pitchRate() != 0.f) {
+        _activeGimbal->setAimedPitch(std::nullopt);
+    }
 
     if ((_activeGimbal->pitchRate() == 0.f) && (_activeGimbal->yawRate() == 0.f)) {
         _rateSenderTimer.stop();
@@ -688,6 +693,9 @@ void GimbalController::sendGimbalRate(float pitch_rate_deg_s, float yaw_rate_deg
     }
 
     _sendGimbalAttitudeRates(pitch_rate_deg_s, yaw_rate_deg_s);
+    if (pitch_rate_deg_s != 0.f) {
+        _activeGimbal->setAimedPitch(std::nullopt);
+    }
 
     if (pitch_rate_deg_s == 0.f && yaw_rate_deg_s == 0.f) {
         _rateSenderTimer.stop();
@@ -758,6 +766,7 @@ void GimbalController::setGimbalYawLock(bool set)
 void GimbalController::sendPitchYawFlags(uint32_t flags)
 {
     const bool yaw_in_vehicle_frame = _yawInVehicleFrame(flags);
+    _activeGimbal->setAimedPitch(_activeGimbal->absolutePitch()->rawValue().toFloat());
 
     _vehicle->sendMavCommand(
         _activeGimbal->managerCompid()->rawValue().toUInt(),
