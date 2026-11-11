@@ -7583,6 +7583,9 @@ impl Vehicle {
             && header.component_id != crate::joystickhost::STANDBY_COMPONENT
         {
             self.drop_board = Some((header.component_id, now_ms));
+            if let Some(empty) = crate::payloadcheck::board_empties(command.param3) {
+                self.empty_bays = empty;
+            }
         }
         if let MavMessage::NAMED_VALUE_INT(value) = message
             && header.component_id == crate::joystickhost::STANDBY_COMPONENT
@@ -13775,6 +13778,59 @@ mod tests {
             .as_deref(),
             Some(crate::payloadcheck::DROP_BOARD_ONLY_DROPS),
             "the board drops on any DO_GRIPPER, so a grab is never sent to it"
+        );
+    }
+
+    #[test]
+    fn the_drop_boards_beacon_says_which_holders_are_loaded() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_LONG_DATA, MavCmd};
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let board = MavHeader {
+            component_id: 169,
+            ..autopilot
+        };
+        let now = now_ms();
+        hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), now, now);
+        let beacon = |hub: &mut Hub, loaded: f32| {
+            let message = MavMessage::COMMAND_LONG(COMMAND_LONG_DATA {
+                target_system: 255,
+                target_component: 190,
+                command: MavCmd::MAV_CMD_DO_GRIPPER,
+                param3: loaded,
+                param4: 3.12,
+                param5: 12.1,
+                ..Default::default()
+            });
+            hub.on_frame(origin(0), &board, &message, now, now);
+            hub.active().unwrap().empty_bays.clone()
+        };
+        assert!(
+            beacon(&mut hub, 0.0).is_empty(),
+            "a board that has not dropped since it booted says 0 and knows nothing"
+        );
+        assert_eq!(
+            beacon(&mut hub, 14.0),
+            [4].into_iter().collect(),
+            "holder 4's bit is 1, so 14 leaves it empty"
+        );
+        assert!(
+            beacon(&mut hub, 15.0).is_empty(),
+            "a clip pushed into holder 4 sets its bit again, and the circle shows it loaded"
+        );
+        assert_eq!(
+            beacon(&mut hub, 3.0),
+            [1, 2].into_iter().collect(),
+            "holder 1 is 8 and holder 2 is 4"
+        );
+        assert_eq!(
+            beacon(&mut hub, 0.0),
+            [1, 2].into_iter().collect(),
+            "0 after drops keeps what the app knew"
         );
     }
 
