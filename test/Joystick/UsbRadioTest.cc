@@ -476,47 +476,34 @@ void UsbRadioTest::_yawAloneKeepsThePitchTheLookSwitchSet_test()
     CameraSticks sticks;
     (void) sticks.step(lineWith({{kR2d2.pitch, 1500}, {kR2d2.yaw, 1500}, {kR2d2.look, 1500}}), 0);
     QCOMPARE(sticks.step(lineWith({{kR2d2.look, 2012}}), 10), (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}));
-    (void) sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 2012}}), 1000);
-    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 2012}}), 1100) ==
-                 (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 2.0f}}),
-             "turning keeps the pitch the look switch set");
-    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.pitch, 988}}), 2000) ==
-                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 2.0f}}),
-             "the pitch slider takes the pitch back and keeps the heading");
-    CameraSticks seeded;
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 2012}}), 1000) ==
+                 (QList<Move>{Move{Move::Kind::Turn, 0.0f, 0.0f, kYawSpeedDefault}}),
+             "turning sends only a rate, so the pitch the look switch set stays");
     const Aiming facingRight{kYawSpeedDefault, false, 30.0f};
-    (void) seeded.step(lineWith({}), 0, kR2d2, Ready{}, facingRight);
-    (void) seeded.step(lineWith({{kR2d2.yaw, 2012}}), 1000, kR2d2, Ready{}, facingRight);
-    QVERIFY2(seeded.step(lineWith({{kR2d2.yaw, 2012}}), 1100, kR2d2, Ready{}, facingRight) ==
-                 (QList<Move>{Move{Move::Kind::Aim, -45.0f, 32.0f}}),
-             "the first turn starts from where the gimbal says it points");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.pitch, 988}, {kR2d2.yaw, 2012}}), 2000, kR2d2, Ready{},
+                         facingRight) == (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 30.0f},
+                                                      Move{Move::Kind::Turn, 0.0f, 0.0f, kYawSpeedDefault}}),
+             "the pitch slider moving mid-turn takes the pitch back where the gimbal points, and the turn carries on");
 }
 
 void UsbRadioTest::_theYawSliderTurnsAtTheSetSpeedAndHoldsAtTheCentre_test()
 {
     CameraSticks sticks;
     QVERIFY(sticks.step(lineWith({}), 0).isEmpty());
-    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1000) == (QList<Move>{Move{Move::Kind::Aim, -45.0f, 0.0f}}),
-             "the slider leaving the centre starts the turn from where the camera is");
-    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1100) == (QList<Move>{Move{Move::Kind::Aim, -45.0f, 2.0f}}),
-             "all the way over it turns at the set speed, 20 degrees a second");
-    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1150).isEmpty(),
-             "between sends it keeps turning without a message");
-    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1530}}), 1200) == (QList<Move>{Move{Move::Kind::Aim, -45.0f, 3.0f}}),
-             "back in the centre's dead band it stops where it got to");
-    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1500}}), 1300).isEmpty(), "and holds there");
-    (void) sticks.step(lineWith({{kR2d2.yaw, 1224}}), 2000);
-    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1224}}), 2500) == (QList<Move>{Move{Move::Kind::Aim, -45.0f, 1.0f}}),
-             "halfway to the left turns left at half speed, and a gap between lines counts as no more than 200 ms");
-    CameraSticks fast;
-    const Aiming quick{900.0f, false, std::nullopt};
-    (void) fast.step(lineWith({}), 0, kR2d2, Ready{}, quick);
-    (void) fast.step(lineWith({{kR2d2.yaw, 2012}}), 1000, kR2d2, Ready{}, quick);
-    QVERIFY2(fast.step(lineWith({{kR2d2.yaw, 2012}}), 1200, kR2d2, Ready{}, quick) ==
-                 (QList<Move>{Move{Move::Kind::Aim, -45.0f, kYawLimit}}),
-             "it stops at the yaw limit");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1000) ==
+                 (QList<Move>{Move{Move::Kind::Turn, 0.0f, 0.0f, kYawSpeedDefault}}),
+             "all the way over it turns the camera at the set speed, as a rate the gimbal holds, so it turns smoothly");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2010}}), 1050).isEmpty(), "a small move waits for the resend period");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1100).isEmpty(), "held where it was it sends nothing more");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1224}}), 1200) ==
+                 (QList<Move>{Move{Move::Kind::Turn, 0.0f, 0.0f, turnRate(1224, kYawSpeedDefault)}}),
+             "halfway to the other side turns the other way, slower");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1530}}), 1250) == (QList<Move>{Move{Move::Kind::Turn}}),
+             "back in the centre's dead band it stops at once, without waiting for the resend period");
+    QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1500}}), 1400).isEmpty(), "and holds there");
     QCOMPARE(turnRate(1500 + 40, 20.0f), 0.0f);
     QCOMPARE(turnRate(1776, 20.0f), 10.0f);
+    QCOMPARE(turnRate(1224, 20.0f), -10.0f);
 }
 
 void UsbRadioTest::_theStickSwitchHandsTheLeftStickToTheCamera_test()
@@ -540,13 +527,11 @@ void UsbRadioTest::_theStickSwitchHandsTheLeftStickToTheCamera_test()
                  (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}),
              "throttle down points the camera down, as the pitch slider does");
     QVERIFY2(sticks.step(lineWith({{kThrottle, 988}, {kRudder, 2012}}), 3000, steering) ==
-                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 0.0f}}),
-             "yaw over starts turning the camera from where it is");
-    QVERIFY2(sticks.step(lineWith({{kThrottle, 988}, {kRudder, 2012}}), 3100, steering) ==
-                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 2.0f}}),
-             "at the yaw slider's speed");
-    QVERIFY2(sticks.step(lineWith({{kThrottle, 988}}), 3200, steering) ==
-                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 2.0f}}),
+                 (QList<Move>{Move{Move::Kind::Turn, 0.0f, 0.0f, kYawSpeedDefault}}),
+             "yaw over turns the camera at the yaw slider's speed");
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 988}, {kRudder, 2012}}), 3100, steering).isEmpty(),
+             "and keeps turning with nothing more sent");
+    QVERIFY2(sticks.step(lineWith({{kThrottle, 988}}), 3200, steering) == (QList<Move>{Move{Move::Kind::Turn}}),
              "and stops where it got to when the stick springs back");
     sticks.handStick(std::nullopt);
     QVERIFY2(sticks.step(lineWith({{kThrottle, 2012}}), 4000).isEmpty(),
@@ -606,18 +591,52 @@ void UsbRadioTest::_lookAheadTurnsTheCameraBackToStraightAhead_test()
 {
     CameraSticks sticks;
     (void) sticks.step(lineWith({}), 0);
-    (void) sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1000);
-    (void) sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1200);
-    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 988}}), 1300) ==
-                 (QList<Move>{Move{Move::Kind::Aim, -45.0f, 4.0f}, Move{Move::Kind::Aim, kPitchDown, 4.0f}}),
-             "down keeps the heading the slider turned to");
+    QCOMPARE(sticks.step(lineWith({{kR2d2.yaw, 2012}}), 1000),
+             (QList<Move>{Move{Move::Kind::Turn, 0.0f, 0.0f, kYawSpeedDefault}}));
+    QCOMPARE(sticks.step(lineWith({}), 1200), (QList<Move>{Move{Move::Kind::Turn}}));
+    const Aiming turnedRight{kYawSpeedDefault, false, 4.0f};
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 988}}), 1300, kR2d2, Ready{}, turnedRight) ==
+                 (QList<Move>{Move{Move::Kind::Aim, kPitchDown, 4.0f}}),
+             "down keeps the heading the gimbal reports the slider turned it to");
     QVERIFY2(
         sticks.step(lineWith({{kR2d2.look, 2012}}), 2000) == (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}),
         "ahead undoes every turn");
-    (void) sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 988}}), 3000);
-    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 988}}), 3100) ==
-                 (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, -2.0f}}),
+    QVERIFY2(sticks.step(lineWith({{kR2d2.look, 2012}, {kR2d2.yaw, 988}}), 3000) ==
+                 (QList<Move>{Move{Move::Kind::Turn, 0.0f, 0.0f, -kYawSpeedDefault}}),
              "and the next nudge turns from straight ahead");
+}
+
+void UsbRadioTest::_aPitchKnobRestingAtItsEndDoesNotKeepAimingTheGimbal_test()
+{
+    CameraSticks sticks;
+    (void) sticks.step(lineWith({{kR2d2.tilt, 1500}}), 0);
+    QCOMPARE(sticks.step(lineWith({{kR2d2.tilt, 2012}}), 1000),
+             (QList<Move>{Move{Move::Kind::Aim, kPitchAhead, 0.0f}}));
+    const std::array<uint16_t, 4> resting{2016, 2009, 2020, 2012};
+    const bool quiet = std::ranges::all_of(std::views::iota(0, 4), [&sticks, &resting](int at) {
+        return sticks.step(lineWith({{kR2d2.tilt, resting[at]}}), 1100 + at * 100).isEmpty();
+    });
+    QVERIFY2(quiet,
+             "a knob at its end stop wanders a few microseconds, but the pitch it means stays 0; re-aiming "
+             "seven times a second stopped every turn on the client's Topotek");
+    CameraSticks middle;
+    (void) middle.step(lineWith({{kR2d2.pitch, 1400}}), 0);
+    QCOMPARE(middle.step(lineWith({{kR2d2.pitch, 1500}}), 1000).size(), 1);
+    QVERIFY2(middle.step(lineWith({{kR2d2.pitch, 1504}}), 1100).isEmpty(),
+             "4 microseconds of noise is a third of a degree");
+    QCOMPARE(middle.step(lineWith({{kR2d2.pitch, 1510}}), 1200).size(), 1);
+}
+
+void UsbRadioTest::_aRadioThatStopsMidTurnStopsTheCamera_test()
+{
+    CameraSticks sticks;
+    (void) sticks.step(lineWith({}), 0);
+    const Line over = lineWith({{kR2d2.yaw, 2012}});
+    QCOMPARE(sticks.step(over, 1000).size(), 1);
+    QVERIFY2(sticks.handBack() == std::optional<Move>(Move{Move::Kind::Turn}),
+             "the gimbal repeats a rate until told otherwise, so a radio gone quiet stops the turn");
+    QVERIFY2(sticks.step(over, 2000).isEmpty(), "back again with the slider still over, it waits for the centre");
+    QVERIFY(!sticks.handBack().has_value());
 }
 
 namespace {

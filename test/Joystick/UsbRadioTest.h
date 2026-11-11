@@ -41,4 +41,6 @@ private slots:
     void _aModeWhereTheStickSetsTheThrottleKeepsTheStickOnTheDrone_test();
     void _aYawSliderLeftOffCentreTurnsNothingUntilItHasBeenBackToTheCentre_test();
     void _lookAheadTurnsTheCameraBackToStraightAhead_test();
+    void _aPitchKnobRestingAtItsEndDoesNotKeepAimingTheGimbal_test();
+    void _aRadioThatStopsMidTurnStopsTheCamera_test();
 };

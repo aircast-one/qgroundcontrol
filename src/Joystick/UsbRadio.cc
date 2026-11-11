@@ -226,8 +226,9 @@ QByteArray payloadName(Payload payload)
 float turnRate(uint16_t pwm, float speed)
 {
     const float off = float(pwm) - kStickCentrePwm;
-    const float past = std::max(std::abs(off) - kYawDeadbandPwm, 0.0f) / (kStickHalfSpanPwm - kYawDeadbandPwm);
-    return std::copysign(std::min(past, 1.0f), off) * speed;
+    const float past =
+        std::min(std::max(std::abs(off) - kYawDeadbandPwm, 0.0f) / (kStickHalfSpanPwm - kYawDeadbandPwm), 1.0f);
+    return std::copysign(past, off) * speed;
 }
 
 QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout, Ready ready, const Aiming& aiming)
@@ -260,12 +261,12 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const std::optional<float> slider = yaw ? std::optional<float>(turnRate(*yaw, aiming.yawSpeed)) : std::nullopt;
     const float rate = ready.gimbal && _yawCentred && slider ? *slider : 0.0f;
     const bool turning = rate != 0.0f;
-    const bool stopped = !turning && _turnedMs.has_value();
-    const qint64 elapsed = _turnedMs ? std::min(nowMs - *_turnedMs, kMaxTurnStepMs) : 0;
-    const float start = _yaw ? *_yaw : aiming.reportedYaw.value_or(0.0f);
-    const float heading = turning ? std::clamp(start + rate * float(elapsed) / 1000.0f, -kYawLimit, kYawLimit) : start;
+    const float heading = _yaw ? *_yaw : aiming.reportedYaw.value_or(0.0f);
     const bool pitched = moved(layout.pitch) || moved(layout.tilt);
-    const bool aimed = ready.gimbal && pitch && ((due && (pitched || turning)) || stopped);
+    const std::optional<float> aimPitch =
+        pitch ? std::optional<float>(between(kPitchDown, kPitchAhead, *pitch)) : std::nullopt;
+    const bool aimed = ready.gimbal && aimPitch && due && pitched &&
+                       (!_sliderPitch || std::abs(*_sliderPitch - *aimPitch) >= kPitchStepDeg);
     const bool looked = ready.gimbal && look && flipped(layout.look) && position(*look) != 1;
     const bool lookedAhead = looked && position(*look) == (aiming.lookReversed ? 0 : 2);
     const bool zoomed = ready.camera && zoom && due && moved(layout.zoom);
@@ -276,6 +277,8 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const std::optional<uint16_t> dropWas =
         _acted.contains(layout.drop) ? std::optional<uint16_t>(_acted[layout.drop]) : std::nullopt;
     const bool dropped = high(drop) && high(dropWas) && _dropBefore && *_dropBefore <= kPressedPwm;
+    const bool changed = _turn ? (*_turn != rate && (due || !turning)) : turning;
+    const bool turned = ready.gimbal && (changed || ((aimed || looked) && turning));
     const auto refresh = [this, &line, &layout, &ready, aimed, zoomed](int number) {
         const std::optional<uint16_t> now = channel(line, number);
         const bool keep =
@@ -290,15 +293,16 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     };
     QList<Move> moves;
     if (aimed) {
-        const float aimPitch = pitched || !_heldPitch ? between(kPitchDown, kPitchAhead, *pitch) : *_heldPitch;
-        moves << Move{Move::Kind::Aim, aimPitch, heading};
+        moves << Move{Move::Kind::Aim, *aimPitch, heading};
         _pitchSource = source;
-        _heldPitch = aimPitch;
+        _sliderPitch = aimPitch;
     }
     if (looked) {
-        const float lookPitch = lookedAhead ? kPitchAhead : kPitchDown;
-        moves << Move{Move::Kind::Aim, lookPitch, lookedAhead ? 0.0f : heading};
-        _heldPitch = lookPitch;
+        moves << Move{Move::Kind::Aim, lookedAhead ? kPitchAhead : kPitchDown, lookedAhead ? 0.0f : heading};
+    }
+    if (turned) {
+        moves << Move{Move::Kind::Turn, 0.0f, 0.0f, rate};
+        _turn = rate;
     }
     if (zoomed) {
         moves << Move{Move::Kind::Zoom, 0.0f, 0.0f, between(0.0f, 100.0f, *zoom)};
@@ -312,19 +316,25 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     if (dropped) {
         moves << Move{Move::Kind::Drop};
     }
-    _turnedMs = turning ? std::optional<qint64>(nowMs) : std::nullopt;
     _yawCentred = _yawCentred || (slider && *slider == 0.0f);
-    _yaw = looked              ? std::optional<float>(lookedAhead ? 0.0f : heading)
-           : (turning || _yaw) ? std::optional<float>(heading)
-                               : std::nullopt;
+    _yaw = turning ? std::nullopt : looked ? std::optional<float>(lookedAhead ? 0.0f : heading) : _yaw;
     _dropBefore = drop ? dropWas : _dropBefore;
     std::ranges::for_each(std::array{layout.drop, layout.arm, layout.bay, layout.pitch, layout.yaw, layout.zoom,
                                      layout.picture, layout.palette, layout.tilt, layout.look},
                           refresh);
-    if (aimed || zoomed) {
+    if (aimed || zoomed || turned) {
         _sentMs = nowMs;
     }
     return moves;
+}
+
+std::optional<Move> CameraSticks::handBack()
+{
+    const std::optional<Move> stop =
+        _turn && *_turn != 0.0f ? std::optional<Move>(Move{Move::Kind::Turn}) : std::nullopt;
+    _turn.reset();
+    _yawCentred = false;
+    return stop;
 }
 
 void CameraSticks::handStick(const std::optional<StickChannels>& stick)
@@ -937,6 +947,13 @@ void UsbRadio::_apply(Vehicle* vehicle, const Move& move, bool armed, int select
                 vehicle->gimbalController()->sendPitchBodyYaw(move.pitch, move.yaw, false);
             }
             return;
+        case Move::Kind::Turn:
+            if (GimbalController* const gimbals = vehicle->gimbalController(); gimbals && gimbals->activeGimbal()) {
+                gimbals->activeGimbal()->setPitchRate(0.0f);
+                gimbals->activeGimbal()->setYawRate(move.level);
+                gimbals->sendRate();
+            }
+            return;
         case Move::Kind::Zoom:
             if (camera) {
                 camera->setZoomLevel(move.level);
@@ -1124,6 +1141,11 @@ void UsbRadio::_advance(std::optional<Frame> fresh)
     std::ranges::for_each(step.sends,
                           [this, standbyNow](const Send& send) { _send(send.vehicle, standbyNow, send.frame); });
     if (step.handedBack) {
+        const std::optional<Move> stop = _camera.handBack();
+        Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
+        if (stop && vehicle) {
+            _apply(vehicle, *stop, false, 0);
+        }
         qCInfo(UsbRadioLog) << "Handed RC channels back for vehicle" << *step.handedBack
                             << (live ? "" : "(radio stopped sending)");
     }
