@@ -34,6 +34,7 @@ const YAW_DEADBAND_PWM: f32 = 40.0;
 const STICK_CENTRE_PWM: f32 = 1500.0;
 const STICK_HALF_SPAN_PWM: f32 = 512.0;
 pub const STEADY_PWM: u16 = 3;
+const PITCH_STEP_DEG: f32 = 0.5;
 pub const RESEND_MS: u64 = 100;
 const STICK_LOW_PWM: f32 = 988.0;
 const STICK_SPAN_PWM: f32 = 1024.0;
@@ -211,6 +212,7 @@ pub struct Sticks {
     drop_before: Option<u16>,
     yaw: Option<f32>,
     turn: Option<f32>,
+    slider_pitch: Option<f32>,
     yaw_centred: bool,
     pub layout: Layout,
     pub bay: i64,
@@ -266,6 +268,7 @@ impl Sticks {
             drop_before: None,
             yaw: None,
             turn: None,
+            slider_pitch: None,
             yaw_centred: false,
             layout: R2D2,
             bay: 1,
@@ -337,11 +340,16 @@ impl Sticks {
         let turning = rate != 0.0;
         let yaw = self.yaw.or(self.reported_yaw).unwrap_or(0.0);
         let aimed = read(line, pitch_source)
-            .filter(|_| ready.gimbal && due && moved(pitch_source))
-            .map(|pitch| Move::Aim {
-                pitch: between(STICK_PITCH_RANGE, pitch),
-                yaw,
-            });
+            .map(|pwm| between(STICK_PITCH_RANGE, pwm))
+            .filter(|pitch| {
+                ready.gimbal
+                    && due
+                    && moved(pitch_source)
+                    && self
+                        .slider_pitch
+                        .is_none_or(|was| (was - pitch).abs() >= PITCH_STEP_DEG)
+            })
+            .map(|pitch| Move::Aim { pitch, yaw });
         let ahead_at = if self.look_reversed { 0 } else { 2 };
         let looked = read(line, layout.look)
             .map(position)
@@ -370,6 +378,10 @@ impl Sticks {
         let aims = aimed.is_some() || looked.is_some();
         let turned = (ready.gimbal && (changed || (aims && turning))).then_some(Move::Turn(rate));
         self.turn = turned.map_or(self.turn, |_| Some(rate));
+        self.slider_pitch = match aimed {
+            Some(Move::Aim { pitch, .. }) => Some(pitch),
+            _ => self.slider_pitch,
+        };
         self.yaw_centred = self.yaw_centred || slider == Some(0.0);
         self.yaw = match (looked, turning) {
             (_, true) => None,
@@ -451,6 +463,7 @@ impl Sticks {
 pub struct AimState {
     acted: [Option<u16>; 3],
     turn: Option<f32>,
+    slider_pitch: Option<f32>,
 }
 
 impl Sticks {
@@ -465,6 +478,7 @@ impl Sticks {
                 .aim_channels()
                 .map(|channel| self.acted.get(&channel).copied()),
             turn: self.turn,
+            slider_pitch: self.slider_pitch,
         }
     }
 
@@ -481,6 +495,7 @@ impl Sticks {
                 }
             });
         self.turn = state.turn;
+        self.slider_pitch = state.slider_pitch;
     }
 }
 
@@ -867,6 +882,45 @@ mod tests {
             "back again with the slider still over, it waits for the centre before turning"
         );
         assert_eq!(sticks.hand_back(), None, "nothing turning, nothing to stop");
+    }
+
+    #[test]
+    fn a_pitch_input_resting_at_its_end_or_jittering_does_not_keep_aiming_the_gimbal() {
+        let mut sticks = Sticks::default();
+        sticks.step(&line(&[(TILT_CHANNEL, 1500)]), 0);
+        assert_eq!(
+            sticks.step(&line(&[(TILT_CHANNEL, 2012)]), 1_000),
+            vec![Move::Aim {
+                pitch: 0.0,
+                yaw: 0.0
+            }]
+        );
+        let resting: Vec<Move> = [2016, 2009, 2020, 2012]
+            .into_iter()
+            .zip((1..).map(|step| 1_000 + step * RESEND_MS))
+            .flat_map(|(pwm, at)| sticks.step(&line(&[(TILT_CHANNEL, pwm)]), at))
+            .collect();
+        assert!(
+            resting.is_empty(),
+            "a knob at its end stop wanders a few microseconds, but the pitch it means stays 0: re-aiming ten times a second stops every turn"
+        );
+        let mut middle = Sticks::default();
+        middle.step(&line(&[(PITCH_CHANNEL, 1400)]), 0);
+        assert_eq!(middle.step(&line(&[(PITCH_CHANNEL, 1500)]), 1_000).len(), 1);
+        assert!(
+            middle
+                .step(&line(&[(PITCH_CHANNEL, 1504)]), 1_100)
+                .is_empty(),
+            "4 microseconds of noise is a third of a degree"
+        );
+        assert_eq!(
+            middle.step(&line(&[(PITCH_CHANNEL, 1510)]), 1_200),
+            vec![Move::Aim {
+                pitch: between(STICK_PITCH_RANGE, 1510),
+                yaw: 0.0
+            }],
+            "a real move of a degree is sent"
+        );
     }
 
     #[test]
