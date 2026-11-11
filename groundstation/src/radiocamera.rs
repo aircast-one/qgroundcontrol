@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 const ARMED_PWM: u16 = 1750;
 const BAY_POSITIONS: f32 = 6.0;
+const R2D2_SIX_POS_PWM: (f32, f32) = (1411.0, 1477.0);
 pub const LAYOUT_SETTINGS: [&str; 11] = [
     "settings.autoConnectSettings.usbRadioPitchChannel",
     "settings.autoConnectSettings.usbRadioYawChannel",
@@ -248,8 +249,19 @@ fn turn_rate(pwm: u16, speed: f32) -> f32 {
     off.signum() * past.min(1.0) * speed
 }
 
-fn bay(pwm: u16) -> i64 {
-    (between((0.0, BAY_POSITIONS - 1.0), pwm).round() as i64) + 1
+fn bay(pwm: u16) -> Option<i64> {
+    [
+        R2D2_SIX_POS_PWM,
+        (STICK_LOW_PWM, STICK_LOW_PWM + STICK_SPAN_PWM),
+    ]
+    .into_iter()
+    .find_map(|(low, high)| {
+        let step = (high - low) / (BAY_POSITIONS - 1.0);
+        let at = ((f32::from(pwm) - low) / step).round();
+        ((0.0..BAY_POSITIONS).contains(&at)
+            && (f32::from(pwm) - (low + at * step)).abs() <= step / 3.0)
+            .then_some(at as i64 + 1)
+    })
 }
 
 fn position(pwm: u16) -> usize {
@@ -667,7 +679,7 @@ pub fn switches(
 ) -> Option<crate::payloadrail::RadioSwitches> {
     read(line, layout.arm).map(|arm| crate::payloadrail::RadioSwitches {
         armed: arm >= ARMED_PWM,
-        bay: read(line, layout.bay).map(bay),
+        bay: read(line, layout.bay).and_then(bay),
         at_ms: now_ms,
     })
 }
@@ -1072,8 +1084,18 @@ mod tests {
         );
         assert_eq!(
             [988, 1193, 1398, 1602, 1807, 2012].map(bay),
-            [1, 2, 3, 4, 5, 6],
+            [1, 2, 3, 4, 5, 6].map(Some),
             "EdgeTX spreads a 6POS switch evenly over the channel"
+        );
+        assert_eq!(
+            [-179, -154, -127, -100, -73, -46].map(|raw| bay(crate::usbradio::pwm(raw))),
+            [1, 2, 3, 4, 5, 6].map(Some),
+            "R2D2's default model sends its 6POS in a narrow band below the centre, button 1 lowest"
+        );
+        assert_eq!(
+            [1300, 1500, 1700].map(bay),
+            [None; 3],
+            "a channel resting between positions picks no bay, so the app's pick drops"
         );
         assert_eq!(
             (named(3, 4), named(4, 0), named(5, 4)),

@@ -4,6 +4,7 @@ import { lastAnswer, plugInR2d2Radio, readFlightModesOn, setRadioChannels } from
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
 const SIX_POS = [-1024, -614, -205, 205, 614, 1024] as const;
+const R2D2_SIX_POS = [-179, -154, -127, -100, -73, -46] as const;
 const SAFE = 'The payload is safe. Arm it first.';
 
 const fourServoBays = async (page: Page) => {
@@ -69,4 +70,11 @@ test("the lock and the radio's BOMARM switch both arm, the last one moved wins, 
   await setRadioChannels(page, { 12: 1024 });
   await expect(rail(page).getByRole('button', { name: 'Payload armed, tap to make safe' }), 'flipping it up arms').toBeVisible({ timeout: 30_000 });
   await expect(rail(page).getByRole('button', { name: 'Drop 3' })).toBeVisible();
+  await setRadioChannels(page, { 5: R2D2_SIX_POS[0] });
+  await expect(rail(page).getByRole('button', { name: 'Drop 1' }), "R2D2's default model sends button 1 of its 6POS as -179").toBeVisible({ timeout: 30_000 });
+  await setRadioChannels(page, { 5: R2D2_SIX_POS[3] });
+  await expect(rail(page).getByRole('button', { name: 'Drop 4' }), 'and button 4 as -100').toBeVisible({ timeout: 30_000 });
+  await setRadioChannels(page, { 5: 0 });
+  await rail(page).getByRole('button', { name: 'Bay 2, loaded' }).click();
+  await expect(rail(page).getByRole('button', { name: 'Drop 2' }), 'a channel between 6POS positions leaves the pick to the app').toBeVisible({ timeout: 30_000 });
 });
