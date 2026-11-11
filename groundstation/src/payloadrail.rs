@@ -119,6 +119,13 @@ impl Rail {
         }
     }
 
+    pub fn pick(&mut self, bay: i64, reloaded: bool, now_ms: u64) -> Result<(), &'static str> {
+        match (self.select(bay, now_ms), reloaded) {
+            (Err(_), true) => Ok(()),
+            (picked, _) => picked,
+        }
+    }
+
     pub fn select(&mut self, bay: i64, now_ms: u64) -> Result<(), &'static str> {
         match self.radio(now_ms).and_then(|radio| radio.bay) {
             Some(_) => Err(RADIO_SELECTS),
@@ -214,10 +221,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                         "[]",
                     )["ok"]
                         == json!(true);
-                match (rail().select(bay, now_ms), reloaded) {
-                    (Err(_), true) => settled(Ok(())),
-                    (picked, _) => settled(picked),
-                }
+                settled(rail().pick(bay, reloaded, now_ms))
             }
             None => refused("Name the bay to pick, from 1."),
         },
@@ -245,12 +249,14 @@ fn drop(backend: &dyn Backend) -> Value {
     let bays = crate::hub::lock()
         .active()
         .map_or(0, crate::hub::Vehicle::drop_bays);
-    let named = crate::radiocamera::named(bay, bays);
-    crate::guided::gripper(
-        backend,
-        DROP_BAY,
-        &json!([crate::guided::GRIPPER_RELEASE, named]).to_string(),
-    )
+    match crate::radiocamera::named(bay, bays) {
+        Some(named) => crate::guided::gripper(
+            backend,
+            DROP_BAY,
+            &json!([crate::guided::GRIPPER_RELEASE, named]).to_string(),
+        ),
+        None => refused(&format!("This drone has {bays} bays.")),
+    }
 }
 
 fn drop_all(backend: &dyn Backend) -> Value {
@@ -500,6 +506,30 @@ mod tests {
         );
         rail.seen(None);
         assert_eq!(rail.verdict(true, 1_000), SWITCH_OFF);
+    }
+
+    #[test]
+    fn tapping_an_empty_bay_marks_it_loaded_even_while_the_radio_picks_the_bay() {
+        let mut rail = Rail::default();
+        rail.heard(RadioSwitches {
+            armed: true,
+            bay: Some(3),
+            at_ms: 0,
+        });
+        assert_eq!(
+            rail.pick(2, true, 10),
+            Ok(()),
+            "the reload is taken although the 6POS keeps the pick"
+        );
+        assert_eq!(rail.selected(10).value, 3);
+        assert_eq!(
+            rail.pick(2, false, 10),
+            Err(RADIO_SELECTS),
+            "a loaded bay cannot be picked from the strip while the radio picks"
+        );
+        let mut app = Rail::default();
+        assert_eq!(app.pick(2, true, 10), Ok(()));
+        assert_eq!(app.selected(10), Owned { value: 2, by: APP });
     }
 
     #[test]

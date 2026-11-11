@@ -60,9 +60,9 @@ export const payloadNote = (rail: PayloadRail, refusal: string | null): string |
 
 export const lockLabel = (rail: PayloadRail): string => (rail.armed ? `Payload armed${rail.armedBy === 'radio' ? ' by radio' : ', tap to make safe'}` : `Payload safe${rail.armedBy === 'radio' ? ' by radio' : ', tap to arm'}`);
 
-export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}`;
+export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}${loaded ? '' : ', tap when reloaded'}`;
 
-const Tile = ({ label, enabled, ring, fill, hollow = false, onClick, children }: { label: string; enabled: boolean; ring: boolean; fill: string; hollow?: boolean; onClick: () => void; children: React.ReactNode }) => (
+const Tile = ({ label, enabled, ring, fill, hollow, onClick, children }: { label: string; enabled: boolean; ring: boolean; fill: string; hollow: boolean; onClick: () => void; children: React.ReactNode }) => (
   <Surface
     shape="full"
     color={fill}
@@ -104,25 +104,25 @@ export const PayloadRailStrip = () => {
     <div role="group" aria-label="Payload" className="flex flex-col items-center gap-1">
       <div className="flex items-start gap-2">
         <Labelled text={rail.armed ? 'Armed' : 'Safe'} tone={rail.armed ? md('error') : aircast('outdoorForeground')}>
-          <Tile label={lockLabel(rail)} enabled={rail.armedBy === 'app'} ring={false} fill={rail.armed ? md('error') : dim} onClick={() => run(ARM, !rail.armed)}>
+          <Tile label={lockLabel(rail)} enabled={rail.armedBy === 'app'} ring={false} fill={rail.armed ? md('error') : dim} hollow={false} onClick={() => run(ARM, !rail.armed)}>
             <Drawable name="ic_shield" size={24} className={osdShadow()} />
           </Tile>
         </Labelled>
         {rail.bays.map(({ bay, loaded }) => (
-          <Tile key={bay} label={bayTileLabel(rail, bay, loaded)} enabled={loaded} ring={rail.selected === bay} fill={loaded ? withAlpha(aircast('outdoorBackground'), 0.6) : 'transparent'} hollow={!loaded} onClick={() => run(SELECT, bay)}>
+          <Tile key={bay} label={bayTileLabel(rail, bay, loaded)} enabled ring={rail.selected === bay} fill={loaded ? withAlpha(aircast('outdoorBackground'), 0.6) : 'transparent'} hollow={!loaded} onClick={() => run(SELECT, bay)}>
             <Text typography="titleLarge" color={aircast('outdoorForeground')} className={osdShadow()}>
               {bay}
             </Text>
           </Tile>
         ))}
         <Labelled text={rail.dropLabel} tone={aircast('outdoorForeground')}>
-          <Tile label={rail.dropLabel} enabled={rail.dropReady} ring={false} fill={rail.dropReady ? md('error') : dim} onClick={() => run(DROP)}>
+          <Tile label={rail.dropLabel} enabled={rail.dropReady} ring={false} fill={rail.dropReady ? md('error') : dim} hollow={false} onClick={() => run(DROP)}>
             <Drawable name="ic_drop" size={28} className={osdShadow()} />
           </Tile>
         </Labelled>
         {rail.dropAll ? (
           <Labelled text="Drop all" tone={aircast('outdoorForeground')}>
-            <Tile label="Drop all" enabled={rail.dropAllReady} ring={false} fill={rail.dropAllReady ? md('error') : dim} onClick={() => run(DROP_ALL)}>
+            <Tile label="Drop all" enabled={rail.dropAllReady} ring={false} fill={rail.dropAllReady ? md('error') : dim} hollow={false} onClick={() => run(DROP_ALL)}>
               <Text typography="titleMedium" color={aircast('outdoorForeground')} className={osdShadow()}>
                 All
               </Text>

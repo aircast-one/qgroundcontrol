@@ -495,17 +495,17 @@ fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
 
 fn through_the_app(step: Move, servo_bays: Option<i64>) -> Option<Move> {
     match step {
-        Move::Drop { bay } => servo_bays.map(|bays| Move::Drop {
-            bay: named(bay, bays),
-        }),
+        Move::Drop { bay } => servo_bays
+            .and_then(|bays| named(bay, bays))
+            .map(|bay| Move::Drop { bay }),
         other => Some(other),
     }
 }
 
-pub fn named(bay: i64, servo_bays: i64) -> i64 {
-    match (1..=servo_bays).contains(&bay) {
-        true => bay,
-        false => 0,
+pub fn named(bay: i64, bays: i64) -> Option<i64> {
+    match bays {
+        0 => Some(0),
+        _ => (1..=bays).contains(&bay).then_some(bay),
     }
 }
 
@@ -1086,8 +1086,8 @@ mod tests {
         );
         assert_eq!(
             (named(3, 4), named(4, 0), named(5, 4)),
-            (3, 0, 0),
-            "a bay the drone does not have, or a gripper that is not per bay, drops the next bay instead"
+            (Some(3), Some(0), None),
+            "a gripper that is not per bay drops itself; a bay the drone does not have drops nothing"
         );
         let mut plugged_in_high = Sticks::default();
         assert!(
@@ -1206,8 +1206,23 @@ mod tests {
     #[test]
     fn a_drop_names_a_bay_only_where_the_drone_has_it() {
         assert_eq!(
+            through_the_app(Move::Drop { bay: 3 }, Some(4)),
+            Some(Move::Drop { bay: 3 })
+        );
+        assert_eq!(
             through_the_app(Move::Drop { bay: 5 }, Some(4)),
-            Some(Move::Drop { bay: 0 })
+            None,
+            "6POS position 5 on a four-holder basket drops nothing, not the next holder"
+        );
+        assert_eq!(
+            through_the_app(Move::Drop { bay: 5 }, Some(0)),
+            Some(Move::Drop { bay: 0 }),
+            "one gripper drops whatever the 6POS says"
+        );
+        assert_eq!(
+            through_the_app(Move::Drop { bay: 1 }, None),
+            None,
+            "a drone with no payload leaves the radio to the flight controller"
         );
     }
 
