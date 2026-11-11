@@ -62,12 +62,12 @@ export const lockLabel = (rail: PayloadRail): string => (rail.armed ? `Payload a
 
 export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}`;
 
-const Tile = ({ label, enabled, ring, fill, onClick, children }: { label: string; enabled: boolean; ring: boolean; fill: string; onClick: () => void; children: React.ReactNode }) => (
+const Tile = ({ label, enabled, ring, fill, hollow = false, onClick, children }: { label: string; enabled: boolean; ring: boolean; fill: string; hollow?: boolean; onClick: () => void; children: React.ReactNode }) => (
   <Surface
     shape="full"
     color={fill}
     contentColor={aircast('outdoorForeground')}
-    border={ring ? `3px solid ${aircast('outdoorAccent')}` : `1px solid ${withAlpha(aircast('outdoorForeground'), 0.5)}`}
+    border={ring ? `3px ${hollow ? 'dashed' : 'solid'} ${aircast('outdoorAccent')}` : `${hollow ? '2px dashed' : '1px solid'} ${withAlpha(aircast('outdoorForeground'), 0.5)}`}
     className="flex shrink-0 cursor-pointer items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-primary"
     style={{ width: TILE, height: TILE, opacity: enabled ? 1 : DISABLED_ALPHA }}
     onClick={onClick}
@@ -109,7 +109,7 @@ export const PayloadRailStrip = () => {
           </Tile>
         </Labelled>
         {rail.bays.map(({ bay, loaded }) => (
-          <Tile key={bay} label={bayTileLabel(rail, bay, loaded)} enabled={loaded} ring={rail.selected === bay} fill={loaded ? withAlpha(aircast('outdoorBackground'), 0.6) : 'transparent'} onClick={() => run(SELECT, bay)}>
+          <Tile key={bay} label={bayTileLabel(rail, bay, loaded)} enabled={loaded} ring={rail.selected === bay} fill={loaded ? withAlpha(aircast('outdoorBackground'), 0.6) : 'transparent'} hollow={!loaded} onClick={() => run(SELECT, bay)}>
             <Text typography="titleLarge" color={aircast('outdoorForeground')} className={osdShadow()}>
               {bay}
             </Text>

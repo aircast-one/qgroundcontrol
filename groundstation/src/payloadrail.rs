@@ -204,13 +204,33 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             .and_then(Value::as_i64)
             .filter(|bay| *bay >= 1)
         {
-            Some(bay) => settled(rail().select(bay, now_ms)),
+            Some(bay) => {
+                let reloaded = empty(bay)
+                    && crate::guided::dispatch(
+                        backend,
+                        Some(json!({ "action": "bayLoaded", "bay": bay })),
+                        crate::guided::active_id(backend),
+                        SELECT_BAY,
+                        "[]",
+                    )["ok"]
+                        == json!(true);
+                match (rail().select(bay, now_ms), reloaded) {
+                    (Err(_), true) => settled(Ok(())),
+                    (picked, _) => settled(picked),
+                }
+            }
             None => refused("Name the bay to pick, from 1."),
         },
         DROP_BAY => drop(backend),
         DROP_ALL => drop_all(backend),
         _ => refused("Unknown payload rail action."),
     }
+}
+
+fn empty(bay: i64) -> bool {
+    crate::hub::lock()
+        .active()
+        .is_some_and(|vehicle| vehicle.empty_bays.contains(&bay))
 }
 
 fn drop(backend: &dyn Backend) -> Value {
@@ -265,7 +285,7 @@ pub fn rail_json(
     let drop_offered = drop_offer.is_ok();
     let loaded = |bay: i64| !empty.contains(&bay);
     let has_selected = (1..=bays).contains(&selected.value);
-    let drop_ready = shown && armed.value && drop_offered && has_selected && loaded(selected.value);
+    let drop_ready = shown && armed.value && drop_offered && has_selected;
     let drop_label = match has_selected {
         true => format!("Drop {}", selected.value),
         false => format!("No bay {}", selected.value),
@@ -292,7 +312,6 @@ pub fn rail_json(
                 .err()
                 .filter(|reason| !reason.is_empty())
                 .map_or("Drop is not offered now.", String::as_str)),
-            _ if !loaded(selected.value) => json!(format!("Bay {} is empty.", selected.value)),
             _ => Value::Null,
         },
     })
@@ -484,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn the_rail_offers_drop_only_armed_on_a_loaded_bay_the_drone_has() {
+    fn the_rail_offers_drop_armed_on_any_bay_the_drone_has_and_shows_which_are_empty() {
         let armed = Owned {
             value: true,
             by: APP,
@@ -502,9 +521,14 @@ mod tests {
         assert_eq!(shown["dropLabel"], "Drop 1");
         assert_eq!(shown["bays"][1], json!({ "bay": 2, "loaded": false }));
         assert_eq!(shown["reason"], Value::Null);
+        let reloaded_unseen = rail_json(4, &[2], armed, on(2), Ok(()), true, false);
         assert_eq!(
-            rail_json(4, &[2], armed, on(2), Ok(()), true, false)["reason"],
-            "Bay 2 is empty."
+            (
+                reloaded_unseen["dropReady"].clone(),
+                reloaded_unseen["reason"].clone()
+            ),
+            (json!(true), Value::Null),
+            "a bay counted empty still drops: the basket cannot say it was reloaded"
         );
         assert_eq!(
             rail_json(4, &[], safe, on(1), Ok(()), true, false)["reason"],

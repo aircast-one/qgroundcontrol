@@ -3960,6 +3960,11 @@ impl Vehicle {
             return Err(reason.to_string());
         }
         match action.get("action").and_then(Value::as_str) {
+            Some("bayLoaded") => {
+                let bay = action.get("bay").and_then(Value::as_i64).unwrap_or(0);
+                self.empty_bays.remove(&bay);
+                return Ok(Vec::new());
+            }
             Some("rcOverride") => {
                 let whole = |key: &str| action.get(key).and_then(Value::as_i64);
                 let (Some(channel), Some(pwm)) = (
@@ -4596,7 +4601,6 @@ impl Vehicle {
             None => self.gripper_released_ms,
         };
         self.empty_bays = match answered.empties() {
-            _ if self.drop_board_at(now_ms).is_some() => Default::default(),
             Some(true) if answered.bay > 0 && self.empty_bays.contains(&answered.bay) => {
                 [answered.bay].into_iter().collect()
             }
@@ -13747,9 +13751,19 @@ mod tests {
             now,
             now,
         );
+        assert_eq!(
+            hub.active().unwrap().empty_bays,
+            [2].into_iter().collect(),
+            "the board's ack shows its holder as dropped"
+        );
+        assert!(
+            hub.guided(None, &json!({ "action": "bayLoaded", "bay": 2 }), 1)
+                .is_ok_and(|frames| frames.is_empty()),
+            "marking a holder loaded again sends nothing"
+        );
         assert!(
             hub.active().unwrap().empty_bays.is_empty(),
-            "the board cannot say a holder was loaded again, so the app never marks one empty"
+            "the pilot marks a reloaded holder loaded again"
         );
         assert_eq!(
             hub.guided(
