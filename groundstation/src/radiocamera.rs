@@ -213,12 +213,13 @@ pub struct Sticks {
     drop_before: Option<u16>,
     yaw: Option<f32>,
     turn: Option<f32>,
-    slider_pitch: Option<f32>,
+    pitch: Option<f32>,
     yaw_centred: bool,
     pub layout: Layout,
     pub bay: i64,
     pub ready: Ready,
     pub reported_yaw: Option<f32>,
+    pub reported_pitch: Option<f32>,
     pub yaw_speed: f32,
     pub look_reversed: bool,
     pub stick: Option<[usize; 2]>,
@@ -280,12 +281,13 @@ impl Sticks {
             drop_before: None,
             yaw: None,
             turn: None,
-            slider_pitch: None,
+            pitch: None,
             yaw_centred: false,
             layout: R2D2,
             bay: 1,
             ready: ALL_READY,
             reported_yaw: None,
+            reported_pitch: None,
             yaw_speed: YAW_SPEED_DEFAULT,
             look_reversed: false,
             stick: None,
@@ -306,6 +308,7 @@ impl Sticks {
             .filter(|rate| *rate != 0.0)
             .map(|_| Move::Turn(0.0));
         self.turn = None;
+        self.pitch = None;
         self.yaw_centred = false;
         stop
     }
@@ -351,17 +354,25 @@ impl Sticks {
             .unwrap_or(0.0);
         let turning = rate != 0.0;
         let yaw = self.yaw.or(self.reported_yaw).unwrap_or(0.0);
-        let aimed = read(line, pitch_source)
-            .map(|pwm| between(STICK_PITCH_RANGE, pwm))
-            .filter(|pitch| {
-                ready.gimbal
-                    && due
-                    && moved(pitch_source)
-                    && self
-                        .slider_pitch
-                        .is_none_or(|was| (was - pitch).abs() >= PITCH_STEP_DEG)
-            })
+        let (lowest, highest) = STICK_PITCH_RANGE;
+        let from = self.pitch.or(self.reported_pitch);
+        let pointed = read(line, pitch_source).map(|pwm| {
+            let at = between(STICK_PITCH_RANGE, pwm);
+            let wanted = from
+                .zip(self.acted.get(&pitch_source))
+                .map_or(at, |(from, was)| {
+                    at + (from - between(STICK_PITCH_RANGE, *was))
+                });
+            (wanted.clamp(lowest, highest), wanted)
+        });
+        let unchanged = |pitch: f32| from.is_some_and(|was| (was - pitch).abs() < PITCH_STEP_DEG);
+        let aimed = pointed
+            .map(|(pitch, _)| pitch)
+            .filter(|pitch| ready.gimbal && due && moved(pitch_source) && !unchanged(*pitch))
             .map(|pitch| Move::Aim { pitch, yaw });
+        let overrun = ready.gimbal
+            && moved(pitch_source)
+            && pointed.is_some_and(|(pitch, wanted)| pitch != wanted && unchanged(pitch));
         let ahead_at = if self.look_reversed { 0 } else { 2 };
         let looked = read(line, layout.look)
             .map(position)
@@ -390,9 +401,9 @@ impl Sticks {
         let aims = aimed.is_some() || looked.is_some();
         let turned = (ready.gimbal && (changed || (aims && turning))).then_some(Move::Turn(rate));
         self.turn = turned.map_or(self.turn, |_| Some(rate));
-        self.slider_pitch = match aimed {
+        self.pitch = match looked.or(aimed) {
             Some(Move::Aim { pitch, .. }) => Some(pitch),
-            _ => self.slider_pitch,
+            _ => self.pitch,
         };
         self.yaw_centred = self.yaw_centred || slider == Some(0.0);
         self.yaw = match (looked, turning) {
@@ -443,7 +454,7 @@ impl Sticks {
             !self.acted.contains_key(channel)
                 || match *channel {
                     c if c == layout.pitch || c == layout.yaw || c == layout.tilt => {
-                        aimed.is_some()
+                        aimed.is_some() || overrun
                     }
                     c if c == layout.zoom => zoomed.is_some(),
                     c if c == layout.picture || c == layout.palette => ready.settings,
@@ -475,7 +486,7 @@ impl Sticks {
 pub struct AimState {
     acted: [Option<u16>; 3],
     turn: Option<f32>,
-    slider_pitch: Option<f32>,
+    pitch: Option<f32>,
 }
 
 impl Sticks {
@@ -490,7 +501,7 @@ impl Sticks {
                 .aim_channels()
                 .map(|channel| self.acted.get(&channel).copied()),
             turn: self.turn,
-            slider_pitch: self.slider_pitch,
+            pitch: self.pitch,
         }
     }
 
@@ -507,7 +518,7 @@ impl Sticks {
                 }
             });
         self.turn = state.turn;
-        self.slider_pitch = state.slider_pitch;
+        self.pitch = state.pitch;
     }
 }
 
@@ -556,7 +567,7 @@ fn ready() -> Ready {
     }
 }
 
-fn reported_yaw() -> Option<f32> {
+fn reported_attitude() -> Option<crate::gimbal::Attitude> {
     let hub = crate::hub::lock();
     hub.active()
         .and_then(|vehicle| {
@@ -566,7 +577,6 @@ fn reported_yaw() -> Option<f32> {
                 .and_then(|pair| vehicle.gimbals.get(pair))
         })
         .and_then(|gimbal| gimbal.attitude)
-        .map(|attitude| attitude.body_yaw)
 }
 
 fn turning_settings() -> (f32, bool) {
@@ -689,7 +699,7 @@ pub fn stick_switched(line: &[u16], layout: Layout) -> bool {
 }
 
 pub fn heard(vehicle: u8, line: &[u16], layout: Layout, stick: Option<[usize; 2]>) {
-    let reported = reported_yaw();
+    let reported = reported_attitude();
     let (yaw_speed, look_reversed) = turning_settings();
     if let Some(switches) = switches(line, crate::hub::now_ms(), layout) {
         crate::payloadrail::radio_heard(switches);
@@ -699,7 +709,8 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout, stick: Option<[usize; 2]
     sticks.layout = layout;
     sticks.bay = crate::payloadrail::selected();
     sticks.ready = ready();
-    sticks.reported_yaw = reported;
+    sticks.reported_yaw = reported.map(|attitude| attitude.body_yaw);
+    sticks.reported_pitch = reported.map(|attitude| attitude.pitch);
     sticks.yaw_speed = yaw_speed;
     sticks.look_reversed = look_reversed;
     sticks.hand_stick(stick);
@@ -1276,7 +1287,7 @@ mod tests {
     }
 
     #[test]
-    fn the_tilt_knob_points_the_gimbal_like_the_pitch_slider_and_the_last_one_moved_wins() {
+    fn the_tilt_knob_and_the_pitch_slider_each_tilt_the_camera_on_from_where_the_other_left_it() {
         let mut sticks = Sticks::default();
         assert!(
             sticks.step(&line(&[(TILT_CHANNEL, 1500)]), 0).is_empty(),
@@ -1288,23 +1299,104 @@ mod tests {
                 pitch: -90.0,
                 yaw: 0.0
             }],
-            "the knob at its bottom points straight down"
+            "with no pitch known yet, the knob at its bottom points straight down"
         );
         assert_eq!(
-            sticks.step(&line(&[(TILT_CHANNEL, 988), (PITCH_CHANNEL, 2012)]), 2000),
+            sticks.step(&line(&[(TILT_CHANNEL, 988), (PITCH_CHANNEL, 1756)]), 2000),
             vec![Move::Aim {
-                pitch: 0.0,
+                pitch: -67.5,
                 yaw: 0.0
             }],
-            "the slider moving afterwards takes the gimbal with it"
+            "the slider a quarter up tilts the camera a quarter up from there"
         );
         assert_eq!(
-            sticks.step(&line(&[(TILT_CHANNEL, 1500), (PITCH_CHANNEL, 2012)]), 3000),
+            sticks.step(&line(&[(TILT_CHANNEL, 1244), (PITCH_CHANNEL, 1756)]), 3000),
             vec![Move::Aim {
                 pitch: -45.0,
                 yaw: 0.0
             }],
-            "and the knob moving again takes it back"
+            "and the knob a quarter up tilts it on from where the slider left it"
+        );
+    }
+
+    #[test]
+    fn after_look_the_knob_tilts_from_where_look_pointed_instead_of_jumping_back() {
+        let mut sticks = Sticks::default();
+        sticks.step(&line(&[(TILT_CHANNEL, 1756)]), 0);
+        assert_eq!(
+            sticks.step(&line(&[(LOOK_CHANNEL, 988), (TILT_CHANNEL, 1756)]), 1_000),
+            vec![Move::Aim {
+                pitch: LOOK_DOWN_PITCH,
+                yaw: 0.0
+            }]
+        );
+        assert_eq!(
+            sticks.step(&line(&[(LOOK_CHANNEL, 988), (TILT_CHANNEL, 2012)]), 2_000),
+            vec![Move::Aim {
+                pitch: -67.5,
+                yaw: 0.0
+            }],
+            "a quarter turn up raises the camera a quarter from straight down, not to the knob's own 0"
+        );
+        assert_eq!(
+            sticks.step(&line(&[(LOOK_CHANNEL, 2012), (TILT_CHANNEL, 2012)]), 3_000),
+            vec![Move::Aim {
+                pitch: LOOK_AHEAD_PITCH,
+                yaw: 0.0
+            }]
+        );
+        assert_eq!(
+            sticks.step(&line(&[(LOOK_CHANNEL, 2012), (TILT_CHANNEL, 1756)]), 4_000),
+            vec![Move::Aim {
+                pitch: -22.5,
+                yaw: 0.0
+            }],
+            "after Look ahead a quarter turn down lowers it a quarter from ahead"
+        );
+    }
+
+    #[test]
+    fn turning_the_knob_on_past_where_the_camera_stops_is_not_owed_back() {
+        let mut sticks = Sticks::default();
+        sticks.step(&line(&[(TILT_CHANNEL, 1500)]), 0);
+        sticks.step(&line(&[(LOOK_CHANNEL, 988)]), 1_000);
+        assert!(
+            sticks.step(&line(&[(TILT_CHANNEL, 988)]), 2_000).is_empty(),
+            "the camera is already straight down, so turning the knob down moves nothing"
+        );
+        assert_eq!(
+            sticks.step(&line(&[(TILT_CHANNEL, 1244)]), 3_000),
+            vec![Move::Aim {
+                pitch: -67.5,
+                yaw: 0.0
+            }],
+            "and the first turn back up raises it at once"
+        );
+    }
+
+    #[test]
+    fn with_nothing_aimed_the_knob_tilts_from_the_pitch_the_gimbal_reports() {
+        let mut sticks = Sticks {
+            reported_pitch: Some(-30.0),
+            ..Sticks::default()
+        };
+        sticks.step(&line(&[(TILT_CHANNEL, 1500)]), 0);
+        assert_eq!(
+            sticks.step(&line(&[(TILT_CHANNEL, 1756)]), 1_000),
+            vec![Move::Aim {
+                pitch: -7.5,
+                yaw: 0.0
+            }]
+        );
+        sticks.hand_back();
+        sticks.reported_pitch = Some(-60.0);
+        assert_eq!(
+            sticks.step(&line(&[(TILT_CHANNEL, 1500)]), 2_000),
+            vec![Move::Aim {
+                pitch: -82.5,
+                yaw: 0.0
+            }],
+            "a radio handed back forgets the pitch it sent, since the app may have aimed the camera since"
         );
     }
 
@@ -1419,12 +1511,12 @@ mod tests {
             ),
             vec![
                 Move::Aim {
-                    pitch: -90.0,
+                    pitch: -45.0,
                     yaw: 2.0
                 },
                 Move::Turn(20.0)
             ],
-            "the pitch slider moving mid-turn takes the pitch back where the gimbal is, and the turn carries on"
+            "the pitch slider moving mid-turn tilts from where Look left it, at the yaw the gimbal is at, and the turn carries on"
         );
     }
     #[test]
