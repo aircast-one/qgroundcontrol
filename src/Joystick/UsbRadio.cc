@@ -180,7 +180,16 @@ std::optional<Switches> switches(const Line& line, const Layout& layout)
 
 int bay(uint16_t pwm)
 {
-    return static_cast<int>(std::lround(between(0.0f, kBayPositions - 1.0f, pwm))) + 1;
+    const std::array<std::pair<float, float>, 2> scales{{{kR2d2SixPosLowPwm, kR2d2SixPosHighPwm}, {988.0f, 2012.0f}}};
+    const auto onStep = [pwm](const std::pair<float, float>& scale) -> std::optional<int> {
+        const float step = (scale.second - scale.first) / (kBayPositions - 1);
+        const float at = std::round((static_cast<float>(pwm) - scale.first) / step);
+        const bool near = at >= 0.0f && at < kBayPositions &&
+                          std::abs(static_cast<float>(pwm) - (scale.first + at * step)) <= step / 3.0f;
+        return near ? std::optional<int>(static_cast<int>(at) + 1) : std::nullopt;
+    };
+    const auto found = std::ranges::find_if(scales, [&onStep](const auto& scale) { return onStep(scale).has_value(); });
+    return found != scales.end() ? *onStep(*found) : 0;
 }
 
 int bayOf(const Line& line, const Layout& layout)
@@ -198,6 +207,18 @@ std::optional<BayServo> bayServo(int bay, const QList<BayServo>& servos)
 std::optional<int> boardBay(int bay, int bays)
 {
     return bay >= 1 && bay <= bays ? std::optional<int>(bay) : std::nullopt;
+}
+
+std::optional<QList<int>> emptyBoardBays(float loaded, int bays)
+{
+    const int mask = static_cast<int>(std::lround(loaded));
+    if (mask < 1 || mask >= (1 << bays)) {
+        return std::nullopt;
+    }
+    QList<int> empty;
+    std::ranges::copy_if(std::views::iota(1, bays + 1), std::back_inserter(empty),
+                         [mask, bays](int bay) { return (mask & (1 << (bays - bay))) == 0; });
+    return empty;
 }
 
 Payload payload(std::optional<Switches> switches, bool flown, bool gripper)
@@ -916,6 +937,10 @@ void UsbRadio::_steer(const Line& line, bool cameraHasStick)
                         gimbal ? std::optional<float>(gimbal->bodyYaw()->rawValue().toFloat()) : std::nullopt};
     const QList<Move> moves = _camera.step(line, _clock.elapsed(), layout, ready, aiming);
     const int selectedBay = bayOf(line, layout);
+    if (selectedBay != _selectedBay) {
+        _selectedBay = selectedBay;
+        emit selectedBayChanged();
+    }
     std::ranges::for_each(moves, [this, vehicle, &armed, selectedBay](const Move& move) {
         _apply(vehicle, move, armed && armed->armed, selectedBay);
     });

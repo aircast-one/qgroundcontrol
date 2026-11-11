@@ -29,6 +29,8 @@ private slots:
     void _theSixPosOnlyPicksTheBayAndTheDropSwitchDropsIt_test();
     void _whileThePayloadIsSafeTheSixPosOnlyPicksTheBay_test();
     void _aBayDropsOnItsOwnServoOnlyWhereTheDroneHasOne_test();
+    void _r2d2SixPosPicksABayOnlyOnAStep_test();
+    void _theDropBoardsBeaconSaysWhichHoldersAreEmpty_test();
     void _cameraAndPayloadChannelsAreSettingsWithTheR2d2LayoutAsDefault_test();
     void _aFunctionOnTheFlightModeChannelIsOff_test();
     void _aSliderMovedBeforeTheGimbalIsFoundAimsOnceItIs_test();
