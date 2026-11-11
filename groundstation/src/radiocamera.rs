@@ -30,7 +30,8 @@ pub const TURN_SETTINGS: [&str; 2] = [
     "settings.autoConnectSettings.usbRadioYawSpeed",
     "settings.autoConnectSettings.usbRadioLookReversed",
 ];
-pub const YAW_SPEED_DEFAULT: f32 = 20.0;
+pub const YAW_SPEED_DEFAULT: f32 = 60.0;
+const YAW_EXPO: f32 = 0.7;
 const YAW_DEADBAND_PWM: f32 = 40.0;
 const STICK_CENTRE_PWM: f32 = 1500.0;
 const STICK_HALF_SPAN_PWM: f32 = 512.0;
@@ -246,8 +247,9 @@ fn between((low, high): (f32, f32), pwm: u16) -> f32 {
 
 fn turn_rate(pwm: u16, speed: f32) -> f32 {
     let off = f32::from(pwm) - STICK_CENTRE_PWM;
-    let past = (off.abs() - YAW_DEADBAND_PWM).max(0.0) / (STICK_HALF_SPAN_PWM - YAW_DEADBAND_PWM);
-    off.signum() * past.min(1.0) * speed
+    let past = ((off.abs() - YAW_DEADBAND_PWM).max(0.0) / (STICK_HALF_SPAN_PWM - YAW_DEADBAND_PWM))
+        .min(1.0);
+    off.signum() * (past * (1.0 - YAW_EXPO) + past.powi(3) * YAW_EXPO) * speed
 }
 
 fn bay(pwm: u16) -> Option<i64> {
@@ -776,7 +778,7 @@ mod tests {
         );
         assert_eq!(
             sticks.step(&line(&[(THROTTLE, 988), (RUDDER, 2012)]), 3_000),
-            vec![Move::Turn(20.0)],
+            vec![Move::Turn(YAW_SPEED_DEFAULT)],
             "yaw over turns the camera at the yaw slider's speed"
         );
         assert!(
@@ -862,8 +864,8 @@ mod tests {
         assert!(sticks.step(&line(&[]), 0).is_empty());
         assert_eq!(
             sticks.step(&line(&[(YAW_CHANNEL, 2012)]), 1_000),
-            vec![Move::Turn(20.0)],
-            "all the way over it turns the camera at the set speed, 20 degrees a second, as a rate the gimbal holds"
+            vec![Move::Turn(YAW_SPEED_DEFAULT)],
+            "all the way over it turns the camera at the set speed, as a rate the gimbal holds"
         );
         assert!(
             sticks.step(&line(&[(YAW_CHANNEL, 2010)]), 1_050).is_empty(),
@@ -875,7 +877,7 @@ mod tests {
         );
         assert_eq!(
             sticks.step(&line(&[(YAW_CHANNEL, 1224)]), 1_200),
-            vec![Move::Turn(-10.0)],
+            vec![Move::Turn(turn_rate(1224, YAW_SPEED_DEFAULT))],
             "halfway to the other side turns the other way at half speed"
         );
         assert_eq!(
@@ -894,7 +896,10 @@ mod tests {
         let mut sticks = Sticks::default();
         sticks.step(&line(&[]), 0);
         let over = line(&[(YAW_CHANNEL, 2012)]);
-        assert_eq!(sticks.step(&over, 1_000), vec![Move::Turn(20.0)]);
+        assert_eq!(
+            sticks.step(&over, 1_000),
+            vec![Move::Turn(YAW_SPEED_DEFAULT)]
+        );
         assert_eq!(
             sticks.hand_back(),
             Some(Move::Turn(0.0)),
@@ -947,16 +952,42 @@ mod tests {
     }
 
     #[test]
+    fn the_yaw_slider_nudges_near_the_centre_and_swings_fast_all_the_way_over() {
+        assert_eq!(
+            turn_rate(2012, 60.0),
+            60.0,
+            "all the way over is the full speed"
+        );
+        assert!(
+            (turn_rate(1776, 60.0) - 14.25).abs() < 0.01,
+            "halfway over is about a quarter of it"
+        );
+        assert!(
+            turn_rate(1600, 60.0) < 3.0,
+            "a fifth of the way over only nudges the camera"
+        );
+        assert_eq!(
+            turn_rate(1500 + 40, 60.0),
+            0.0,
+            "the dead band turns nothing"
+        );
+        assert_eq!(turn_rate(988, 60.0), -60.0);
+    }
+
+    #[test]
     fn a_turn_the_gimbal_refused_is_sent_again_from_the_next_line() {
         let mut sticks = Sticks::default();
         sticks.step(&line(&[]), 0);
         let before = sticks.aim_state();
         let over = line(&[(YAW_CHANNEL, 2012)]);
-        assert_eq!(sticks.step(&over, 1_000), vec![Move::Turn(20.0)]);
+        assert_eq!(
+            sticks.step(&over, 1_000),
+            vec![Move::Turn(YAW_SPEED_DEFAULT)]
+        );
         sticks.restore_aim(before);
         assert_eq!(
             sticks.step(&over, 1_200),
-            vec![Move::Turn(20.0)],
+            vec![Move::Turn(YAW_SPEED_DEFAULT)],
             "a turn the gimbal did not take is not taken as sent"
         );
     }
@@ -1452,7 +1483,7 @@ mod tests {
         sticks.step(&line(&[]), 0);
         assert_eq!(
             sticks.step(&line(&[(YAW_CHANNEL, 2012)]), 1_000),
-            vec![Move::Turn(20.0)]
+            vec![Move::Turn(YAW_SPEED_DEFAULT)]
         );
         assert_eq!(sticks.step(&line(&[]), 1_200), vec![Move::Turn(0.0)]);
         sticks.reported_yaw = Some(4.0);
@@ -1474,7 +1505,7 @@ mod tests {
         );
         assert_eq!(
             sticks.step(&line(&[(LOOK_CHANNEL, 2012), (YAW_CHANNEL, 988)]), 3_000),
-            vec![Move::Turn(-20.0)],
+            vec![Move::Turn(-YAW_SPEED_DEFAULT)],
             "and the next nudge turns from straight ahead"
         );
     }
@@ -1496,7 +1527,7 @@ mod tests {
         );
         assert_eq!(
             sticks.step(&line(&[(LOOK_CHANNEL, 2012), (YAW_CHANNEL, 2012)]), 2_000),
-            vec![Move::Turn(20.0)],
+            vec![Move::Turn(YAW_SPEED_DEFAULT)],
             "turning the yaw slider sends only a rate, so the pitch Look chose stays, not the pitch slider's -45"
         );
         sticks.reported_yaw = Some(2.0);
@@ -1514,7 +1545,7 @@ mod tests {
                     pitch: -45.0,
                     yaw: 2.0
                 },
-                Move::Turn(20.0)
+                Move::Turn(YAW_SPEED_DEFAULT)
             ],
             "the pitch slider moving mid-turn tilts from where Look left it, at the yaw the gimbal is at, and the turn carries on"
         );

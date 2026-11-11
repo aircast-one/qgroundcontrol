@@ -24,8 +24,8 @@ test('the R2D2 camera sliders point the gimbal and the zoom knob sets the zoom',
   const gimbal = page.getByRole('button', { name: /· P: -?[\d.]+ ·/ });
   await expect(gimbal, 'the right slider a quarter down tilts the camera a quarter of the way down from where it pointed, straight ahead').toHaveAccessibleName(/P: -22\.5/, { timeout: 20_000 });
 
-  await setRadioChannels(page, { 20: 1024 });
-  await expect(gimbal, 'the left slider all the way up keeps turning the camera right, 20 degrees a second, east of north on a mock facing north').toHaveAccessibleName(/Az: [1-9]\d\.\d/, { timeout: 20_000 });
+  await setRadioChannels(page, { 20: 512 });
+  await expect(gimbal, 'the left slider halfway up keeps turning the camera right, at about a quarter of the yaw speed, east of north on a mock facing north').toHaveAccessibleName(/Az: [1-9]\d\.\d/, { timeout: 20_000 });
   await setRadioChannels(page, { 20: 0, 23: 1024 });
   await expect(gimbal, 'with the slider back in the centre, the look switch up points the camera ahead').toHaveAccessibleName(/P: -?0\.0 /, { timeout: 20_000 });
   await expect(gimbal, 'and undoes the turn').toHaveAccessibleName(/Az: (-?0\.0|360\.0)/, { timeout: 20_000 });

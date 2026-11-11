@@ -112,11 +112,11 @@
         {
             "name": "usbRadioYawSpeed",
             "shortDesc": "Camera yaw speed",
-            "longDesc": "How fast the yaw channel turns the camera with its slider all the way over. Halfway over turns it at half this speed.",
+            "longDesc": "How fast the yaw channel turns the camera with its slider all the way over. A small move nudges the camera slowly and the speed rises toward this as the slider goes further over: halfway is about a quarter of it.",
             "type": "uint8",
             "min": 1,
             "max": 180,
-            "default": 20,
+            "default": 60,
             "units": "deg/s",
             "label": "Camera yaw speed"
         },
