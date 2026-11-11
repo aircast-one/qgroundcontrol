@@ -77,10 +77,9 @@ constexpr uint16_t kSwitchHighPwm = 1750;
 constexpr qint64 kCameraResendMs = 100;
 constexpr float kPitchDown = -90.0f;
 constexpr float kPitchAhead = 0.0f;
-constexpr float kYawLimit = 180.0f;
 constexpr float kYawSpeedDefault = 20.0f;
 constexpr float kYawDeadbandPwm = 40.0f;
-constexpr qint64 kMaxTurnStepMs = 200;
+constexpr float kPitchStepDeg = 0.5f;
 constexpr float kStickCentrePwm = 1500.0f;
 constexpr float kStickHalfSpanPwm = 512.0f;
 constexpr uint16_t kHandbackPwm = 50;
@@ -144,6 +143,7 @@ struct Move
     enum class Kind
     {
         Aim,
+        Turn,
         Zoom,
         Picture,
         NextPalette,
@@ -208,6 +208,7 @@ public:
     QList<Move> step(const Line& line, qint64 nowMs, const Layout& layout = {}, Ready ready = {},
                      const Aiming& aiming = {});
     void handStick(const std::optional<StickChannels>& stick);
+    std::optional<Move> handBack();
 
 private:
     QHash<int, uint16_t> _acted;
@@ -215,9 +216,9 @@ private:
     std::optional<qint64> _sentMs;
     std::optional<uint16_t> _dropBefore;
     std::optional<int> _pitchSource;
-    std::optional<float> _heldPitch;
+    std::optional<float> _sliderPitch;
     std::optional<float> _yaw;
-    std::optional<qint64> _turnedMs;
+    std::optional<float> _turn;
     bool _yawCentred = false;
 };
 
