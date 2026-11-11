@@ -276,16 +276,6 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const std::optional<uint16_t> dropWas =
         _acted.contains(layout.drop) ? std::optional<uint16_t>(_acted[layout.drop]) : std::nullopt;
     const bool dropped = high(drop) && high(dropWas) && _dropBefore && *_dropBefore <= kPressedPwm;
-    const auto was = [this](int number) {
-        return _acted.contains(number) ? std::optional<uint16_t>(_acted[number]) : std::nullopt;
-    };
-    const auto armedPwm = [](std::optional<uint16_t> pwm) { return pwm && *pwm >= kArmedPwm; };
-    const std::optional<uint16_t> arm = channel(line, layout.arm);
-    const std::optional<uint16_t> armWas = was(layout.arm);
-    const std::optional<uint16_t> bayNow = channel(line, layout.bay);
-    const std::optional<uint16_t> bayWas = was(layout.bay);
-    const bool pressedBay = bayNow && bayWas && _bayBefore && armedPwm(arm) && armedPwm(armWas) &&
-                            armedPwm(_armBefore) && bay(*bayWas) == bay(*bayNow) && bay(*_bayBefore) != bay(*bayNow);
     const auto refresh = [this, &line, &layout, &ready, aimed, zoomed](int number) {
         const std::optional<uint16_t> now = channel(line, number);
         const bool keep =
@@ -319,11 +309,8 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     if (palette) {
         moves << Move{Move::Kind::NextPalette};
     }
-    if (dropped && !pressedBay) {
+    if (dropped) {
         moves << Move{Move::Kind::Drop};
-    }
-    if (pressedBay) {
-        moves << Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, bay(*bayNow)};
     }
     _turnedMs = turning ? std::optional<qint64>(nowMs) : std::nullopt;
     _yawCentred = _yawCentred || (slider && *slider == 0.0f);
@@ -331,8 +318,6 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
            : (turning || _yaw) ? std::optional<float>(heading)
                                : std::nullopt;
     _dropBefore = drop ? dropWas : _dropBefore;
-    _bayBefore = bayNow ? bayWas : _bayBefore;
-    _armBefore = arm ? armWas : _armBefore;
     std::ranges::for_each(std::array{layout.drop, layout.arm, layout.bay, layout.pitch, layout.yaw, layout.zoom,
                                      layout.picture, layout.palette, layout.tilt, layout.look},
                           refresh);
@@ -976,17 +961,12 @@ void UsbRadio::_apply(Vehicle* vehicle, const Move& move, bool armed, int select
                 qCInfo(UsbRadioLog) << "The drop switch was flipped while BOMARM is safe; nothing dropped";
                 return;
             }
-            _release(vehicle, selectedBay, false);
-            return;
-        case Move::Kind::DropBay:
-            if (armed) {
-                _release(vehicle, move.value, true);
-            }
+            _release(vehicle, selectedBay);
             return;
     }
 }
 
-void UsbRadio::_release(Vehicle* vehicle, int bay, bool pressed) const
+void UsbRadio::_release(Vehicle* vehicle, int bay) const
 {
     const QList<BayServo> servos = _bayServos(vehicle);
     if (const std::optional<BayServo> servo = bayServo(bay, servos)) {
@@ -1002,7 +982,7 @@ void UsbRadio::_release(Vehicle* vehicle, int bay, bool pressed) const
         qCInfo(UsbRadioLog) << "The drop module has no bay" << bay << "; nothing dropped";
         return;
     }
-    if (!servos.isEmpty() || pressed) {
+    if (!servos.isEmpty()) {
         qCInfo(UsbRadioLog) << "The drone has no servo for bay" << bay << "; nothing dropped";
         return;
     }

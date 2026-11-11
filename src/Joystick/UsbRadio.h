@@ -147,8 +147,7 @@ struct Move
         Zoom,
         Picture,
         NextPalette,
-        Drop,
-        DropBay
+        Drop
     };
     Kind kind = Kind::Aim;
     float pitch = 0.0f;
@@ -215,8 +214,6 @@ private:
     std::optional<StickChannels> _stick;
     std::optional<qint64> _sentMs;
     std::optional<uint16_t> _dropBefore;
-    std::optional<uint16_t> _bayBefore;
-    std::optional<uint16_t> _armBefore;
     std::optional<int> _pitchSource;
     std::optional<float> _heldPitch;
     std::optional<float> _yaw;
@@ -357,7 +354,7 @@ private:
     bool _cameraTakesStick(const UsbRadioProtocol::Line& line);
     void _warnOfClash(int vehicle, const UsbRadioProtocol::Layout& layout, int modeChannel);
     void _apply(Vehicle* vehicle, const UsbRadioProtocol::Move& move, bool armed, int selectedBay) const;
-    void _release(Vehicle* vehicle, int bay, bool pressed) const;
+    void _release(Vehicle* vehicle, int bay) const;
     QList<UsbRadioProtocol::BayServo> _bayServos(const Vehicle* vehicle) const;
     void _advance(std::optional<UsbRadioProtocol::Frame> fresh);
     void _send(int vehicle, bool standby, const UsbRadioProtocol::Frame& frame) const;

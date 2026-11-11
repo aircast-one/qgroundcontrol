@@ -632,28 +632,19 @@ QList<Move> stepAll(CameraSticks& sticks, const QList<std::pair<uint16_t, std::p
 
 }  // namespace
 
-void UsbRadioTest::_withBomarmArmedPressingASixPosPositionDropsThatBayOnce_test()
+void UsbRadioTest::_theSixPosOnlyPicksTheBayAndTheDropSwitchDropsIt_test()
 {
     CameraSticks sticks;
     const QList<Move> moves = stepAll(sticks, {{988, {2012, 1398}},
                                                {988, {2012, 1398}},
-                                               {988, {2012, 1398}},
-                                               {988, {2012, 988}},
                                                {988, {2012, 988}},
                                                {988, {2012, 988}},
                                                {988, {2012, 1602}},
-                                               {988, {2012, 1602}}});
-    QCOMPARE(moves, (QList<Move>{Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, 1},
-                                 Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, 4}}));
-}
-
-void UsbRadioTest::_aSixPosPressAndTheDropSwitchTogetherDropTheBayOnce_test()
-{
-    CameraSticks sticks;
-    const QList<Move> moves = stepAll(
-        sticks,
-        {{988, {2012, 988}}, {988, {2012, 988}}, {2012, {2012, 1398}}, {2012, {2012, 1398}}, {2012, {2012, 1398}}});
-    QCOMPARE(moves, (QList<Move>{Move{Move::Kind::DropBay, 0.0f, 0.0f, 0.0f, 3}}));
+                                               {988, {2012, 1602}},
+                                               {2012, {2012, 1602}},
+                                               {2012, {2012, 1602}},
+                                               {2012, {2012, 1602}}});
+    QCOMPARE(moves, (QList<Move>{Move{Move::Kind::Drop}}));
 }
 
 void UsbRadioTest::_whileThePayloadIsSafeTheSixPosOnlyPicksTheBay_test()
