@@ -137,6 +137,7 @@ fn rail() -> MutexGuard<'static, Rail> {
 
 pub fn radio_heard(switches: RadioSwitches) {
     if rail().heard(switches) {
+        log::info!(target: "radio", "BOMARM {} and the 6POS on bay {:?}", if switches.armed { "armed" } else { "safe" }, switches.bay);
         CHANGED_FLAG.store(true, Ordering::Relaxed);
     }
 }

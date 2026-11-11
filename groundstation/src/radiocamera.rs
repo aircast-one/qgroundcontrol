@@ -493,9 +493,15 @@ fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
 
 fn through_the_app(step: Move, servo_bays: Option<i64>) -> Option<Move> {
     match step {
-        Move::Drop { bay } => servo_bays
-            .and_then(|bays| named(bay, bays))
-            .map(|bay| Move::Drop { bay }),
+        Move::Drop { bay } => {
+            let drop = servo_bays
+                .and_then(|bays| named(bay, bays))
+                .map(|bay| Move::Drop { bay });
+            if drop.is_none() {
+                log::info!(target: "radio", "the drop switch dropped nothing: the drone has no bay {bay} (its bays: {servo_bays:?})");
+            }
+            drop
+        }
         other => Some(other),
     }
 }
@@ -625,11 +631,12 @@ fn steer_other(vehicle: u8, step: Move) {
             );
         }
         Move::Drop { bay } => {
-            guided(
+            let sent = guided(
                 vehicle,
                 json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
                 Some(crate::noticeboard::PAYLOAD),
             );
+            log::info!(target: "radio", "the drop switch dropped bay {bay}: sent {sent}");
         }
         Move::Picture(value) => setting(crate::camsettings::set_setting(
             &json!([PICTURE_SETTING, value]).to_string(),

@@ -166,13 +166,17 @@ pub fn silenced(kind: &str, text: &str) -> bool {
 
 pub fn post_from_vehicle(kind: &str, text: &str) -> bool {
     let title = application_name();
-    !crate::qthost::present()
+    let posted = !crate::qthost::present()
         && !silenced(kind, text)
         && match kind {
             BRIEF => post_with(MESSAGE, &title, text, Lane::Brief),
             PAYLOAD => post_with(MESSAGE, &title, text, Lane::Payload),
             _ => post(kind, &title, text),
-        }
+        };
+    if posted {
+        log::info!(target: "notice", "{kind}: {text}");
+    }
+    posted
 }
 
 pub fn lock() -> MutexGuard<'static, Board> {
