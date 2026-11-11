@@ -32,6 +32,7 @@ describe('PayloadRail', () => {
     expect(lockLabel({ ...radio, armed: false, armedBy: 'app' })).toBe('Payload safe, tap to arm');
     expect(lockLabel({ ...radio, armedBy: 'app' })).toBe('Payload armed, tap to make safe');
     expect(bayTileLabel(radio, 3, true)).toBe('Bay 3, loaded, selected');
-    expect(bayTileLabel(radio, 2, false)).toBe('Bay 2, empty, tap when reloaded');
+    expect(bayTileLabel(radio, 2, false)).toBe('Bay 2, empty');
+    expect(bayTileLabel({ ...radio, armed: false }, 2, false)).toBe('Bay 2, empty, tap when reloaded');
   });
 });

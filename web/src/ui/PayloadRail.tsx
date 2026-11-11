@@ -60,7 +60,7 @@ export const payloadNote = (rail: PayloadRail, refusal: string | null): string |
 
 export const lockLabel = (rail: PayloadRail): string => (rail.armed ? `Payload armed${rail.armedBy === 'radio' ? ' by radio' : ', tap to make safe'}` : `Payload safe${rail.armedBy === 'radio' ? ' by radio' : ', tap to arm'}`);
 
-export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}${loaded ? '' : ', tap when reloaded'}`;
+export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}${loaded || rail.armed ? '' : ', tap when reloaded'}`;
 
 const Tile = ({ label, enabled, ring, fill, hollow, onClick, children }: { label: string; enabled: boolean; ring: boolean; fill: string; hollow: boolean; onClick: () => void; children: React.ReactNode }) => (
   <Surface

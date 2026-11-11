@@ -119,6 +119,10 @@ impl Rail {
         }
     }
 
+    pub fn reloads(&self, empty: bool, now_ms: u64) -> bool {
+        empty && !self.armed(now_ms).value
+    }
+
     pub fn pick(&mut self, bay: i64, reloaded: bool, now_ms: u64) -> Result<(), &'static str> {
         match (self.select(bay, now_ms), reloaded) {
             (Err(_), true) => Ok(()),
@@ -212,7 +216,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             .filter(|bay| *bay >= 1)
         {
             Some(bay) => {
-                let reloaded = empty(bay)
+                let reloaded = rail().reloads(empty(bay), now_ms)
                     && crate::guided::dispatch(
                         backend,
                         Some(json!({ "action": "bayLoaded", "bay": bay })),
@@ -229,6 +233,13 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         DROP_ALL => drop_all(backend),
         _ => refused("Unknown payload rail action."),
     }
+}
+
+fn bay_count(bays: i64) -> String {
+    format!(
+        "This drone has {bays} {}.",
+        if bays == 1 { "bay" } else { "bays" }
+    )
 }
 
 fn empty(bay: i64) -> bool {
@@ -255,7 +266,7 @@ fn drop(backend: &dyn Backend) -> Value {
             DROP_BAY,
             &json!([crate::guided::GRIPPER_RELEASE, named]).to_string(),
         ),
-        None => refused(&format!("This drone has {bays} bays.")),
+        None => refused(&bay_count(bays)),
     }
 }
 
@@ -312,7 +323,7 @@ pub fn rail_json(
         "reason": match (shown, armed.value, has_selected, drop_offered) {
             (false, ..) => Value::Null,
             (_, false, ..) => json!(SAFE),
-            (_, _, false, _) => json!(format!("This drone has {bays} bays.")),
+            (_, _, false, _) => json!(bay_count(bays)),
             (_, _, _, false) => json!(drop_offer
                 .as_ref()
                 .err()
@@ -530,6 +541,30 @@ mod tests {
         let mut app = Rail::default();
         assert_eq!(app.pick(2, true, 10), Ok(()));
         assert_eq!(app.selected(10), Owned { value: 2, by: APP });
+    }
+
+    #[test]
+    fn an_empty_bay_is_marked_reloaded_only_while_the_payload_is_safe() {
+        let mut rail = Rail::default();
+        assert!(
+            rail.reloads(true, 0),
+            "on the ground, safe, a tap says the clip is back"
+        );
+        assert!(
+            !rail.reloads(false, 0),
+            "a loaded bay has nothing to reload"
+        );
+        rail.heard(RadioSwitches {
+            armed: true,
+            bay: Some(1),
+            at_ms: 0,
+        });
+        assert!(
+            !rail.reloads(true, 10),
+            "armed, a tap on a dropped bay only picks it: nobody reloads in flight"
+        );
+        assert_eq!(bay_count(1), "This drone has 1 bay.");
+        assert_eq!(bay_count(4), "This drone has 4 bays.");
     }
 
     #[test]
