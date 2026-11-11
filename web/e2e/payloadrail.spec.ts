@@ -1,11 +1,10 @@
 import type { Page } from '@playwright/test';
 import { connectMock, expect, openApp, test } from './fixtures';
-import { plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
+import { lastAnswer, plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
 const SIX_POS = [-1024, -614, -205, 205, 614, 1024] as const;
 const SAFE = 'The payload is safe. Arm it first.';
-const RADIO_ARMS = "The radio's BOMARM switch arms the payload while it streams.";
 
 const fourServoBays = async (page: Page) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -45,7 +44,7 @@ test('the payload rail arms, picks a bay and drops it, and refuses a drop while 
   await expect(page.getByRole('dialog').getByText(/^Bay 2 dropped \d+ s ago$/)).toBeVisible({ timeout: 30_000 });
 });
 
-test("the radio's BOMARM switch arms the rail and its 6POS switch picks the bay", async ({ page }) => {
+test("the lock and the radio's BOMARM switch both arm, the last one moved wins, and the 6POS switch picks the bay", async ({ page }) => {
   test.setTimeout(180_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
   await page.addLocatorHandler(page.getByText('Configuration tasks remain before this vehicle is ready to fly.', { exact: false }), () => page.getByRole('button', { name: 'Later', exact: true }).click());
@@ -60,11 +59,14 @@ test("the radio's BOMARM switch arms the rail and its 6POS switch picks the bay"
   await expect(page.getByText('Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
 
-  await expect(rail(page).getByRole('button', { name: 'Payload safe by radio' })).toBeVisible({ timeout: 30_000 });
+  await rail(page).getByRole('button', { name: 'Payload safe, tap to arm' }).click({ timeout: 30_000 });
+  await expect(rail(page).getByRole('button', { name: 'Payload armed, tap to make safe' }), 'a tap arms while the radio streams with its switch down').toBeVisible();
+  await expect.poll(() => lastAnswer(page), { message: 'the radio is told the payload is armed', timeout: 10_000 }).toContain('|armed|');
   await setRadioChannels(page, { 12: 1024, 5: SIX_POS[2] });
-  await expect(rail(page).getByRole('button', { name: 'Payload armed by radio' })).toBeVisible({ timeout: 30_000 });
-  await expect(rail(page).getByRole('button', { name: 'Bay 3, loaded, selected' })).toBeVisible();
-  await rail(page).getByRole('button', { name: 'Payload armed by radio' }).click();
-  await expect(rail(page).getByText(RADIO_ARMS)).toBeVisible();
+  await expect(rail(page).getByRole('button', { name: 'Bay 3, loaded, selected' })).toBeVisible({ timeout: 30_000 });
+  await setRadioChannels(page, { 12: -1024 });
+  await expect(rail(page).getByRole('button', { name: 'Payload safe, tap to arm' }), 'flipping the switch down makes it safe').toBeVisible({ timeout: 30_000 });
+  await setRadioChannels(page, { 12: 1024 });
+  await expect(rail(page).getByRole('button', { name: 'Payload armed, tap to make safe' }), 'flipping it up arms').toBeVisible({ timeout: 30_000 });
   await expect(rail(page).getByRole('button', { name: 'Drop 3' })).toBeVisible();
 });

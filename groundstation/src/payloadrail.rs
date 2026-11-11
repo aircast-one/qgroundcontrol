@@ -20,7 +20,6 @@ pub const DEPS: &[&str] = &[
     RAIL_CHANGED,
 ];
 pub const SAFE: &str = "The payload is safe. Arm it first.";
-pub const RADIO_ARMS: &str = "The radio's BOMARM switch arms the payload while it streams.";
 pub const RADIO_SELECTS: &str = "The radio's 6POS switch picks the bay while it streams.";
 pub const RADIO_STALE_MS: u64 = crate::usbradio::STALE_AFTER_MS;
 pub const RADIO: &str = "radio";
@@ -29,6 +28,8 @@ pub const SWITCH_ARMED: &str = "armed";
 pub const SWITCH_SAFE: &str = "safe";
 pub const SWITCH_REFUSED: &str = "refused";
 pub const SWITCH_OFF: &str = "off";
+pub const ARMED_PULSE: u16 = 2012;
+pub const SAFE_PULSE: u16 = 988;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RadioSwitches {
@@ -57,17 +58,8 @@ impl Rail {
             .filter(|radio| now_ms.saturating_sub(radio.at_ms) <= RADIO_STALE_MS)
     }
 
-    pub fn armed(&self, now_ms: u64) -> Owned<bool> {
-        match self.radio(now_ms) {
-            Some(radio) => Owned {
-                value: radio.armed,
-                by: RADIO,
-            },
-            None => Owned {
-                value: self.armed,
-                by: APP,
-            },
-        }
+    pub fn armed(&self) -> bool {
+        self.armed
     }
 
     pub fn selected(&self, now_ms: u64) -> Owned<i64> {
@@ -84,43 +76,33 @@ impl Rail {
     }
 
     pub fn heard(&mut self, switches: RadioSwitches) -> bool {
-        let changed = self
-            .radio
-            .is_none_or(|was| (was.armed, was.bay) != (switches.armed, switches.bay));
-        self.radio = Some(switches);
-        changed
+        let was = self.radio.replace(switches);
+        self.armed = match was {
+            Some(was) if was.armed != switches.armed => switches.armed,
+            _ => self.armed,
+        };
+        was.is_none_or(|was| (was.armed, was.bay) != (switches.armed, switches.bay))
     }
 
     pub fn seen(&mut self, switches: Option<RadioSwitches>) {
         self.seen = switches;
     }
 
-    pub fn verdict(&self, has_payload: bool, now_ms: u64) -> &'static str {
-        match self.seen {
-            None => SWITCH_OFF,
-            Some(RadioSwitches { armed: false, .. }) => SWITCH_SAFE,
-            Some(_) => match self.armed(now_ms) {
-                Owned {
-                    value: true,
-                    by: RADIO,
-                } if has_payload => SWITCH_ARMED,
-                _ => SWITCH_REFUSED,
-            },
+    pub fn verdict(&self, has_payload: bool) -> &'static str {
+        match (self.seen, self.armed && has_payload) {
+            (None, _) => SWITCH_OFF,
+            (Some(_), true) => SWITCH_ARMED,
+            (Some(RadioSwitches { armed: true, .. }), false) => SWITCH_REFUSED,
+            (Some(_), false) => SWITCH_SAFE,
         }
     }
 
-    pub fn arm(&mut self, armed: bool, now_ms: u64) -> Result<(), &'static str> {
-        match self.radio(now_ms) {
-            Some(_) => Err(RADIO_ARMS),
-            None => {
-                self.armed = armed;
-                Ok(())
-            }
-        }
+    pub fn arm(&mut self, armed: bool) {
+        self.armed = armed;
     }
 
-    pub fn reloads(&self, empty: bool, now_ms: u64) -> bool {
-        empty && !self.armed(now_ms).value
+    pub fn reloads(&self, empty: bool) -> bool {
+        empty && !self.armed
     }
 
     pub fn pick(&mut self, bay: i64, reloaded: bool, now_ms: u64) -> Result<(), &'static str> {
@@ -165,7 +147,7 @@ pub fn radio_seen(switches: Option<RadioSwitches>) {
 
 pub fn verdict() -> &'static str {
     let has_payload = shown();
-    rail().verdict(has_payload, crate::hub::now_ms())
+    rail().verdict(has_payload)
 }
 
 fn shown() -> bool {
@@ -179,7 +161,14 @@ pub fn take_changed() -> bool {
 }
 
 pub fn armed() -> bool {
-    rail().armed(crate::hub::now_ms()).value
+    rail().armed()
+}
+
+pub fn pulse(armed: bool) -> u16 {
+    match armed {
+        true => ARMED_PULSE,
+        false => SAFE_PULSE,
+    }
 }
 
 pub fn selected() -> i64 {
@@ -206,17 +195,17 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
     let now_ms = crate::hub::now_ms();
     match path {
-        ARM_RAIL => settled(rail().arm(
-            given.first().and_then(Value::as_bool).unwrap_or(false),
-            now_ms,
-        )),
+        ARM_RAIL => {
+            rail().arm(given.first().and_then(Value::as_bool).unwrap_or(false));
+            settled(Ok(()))
+        }
         SELECT_BAY => match given
             .first()
             .and_then(Value::as_i64)
             .filter(|bay| *bay >= 1)
         {
             Some(bay) => {
-                let reloaded = rail().reloads(empty(bay), now_ms)
+                let reloaded = rail().reloads(empty(bay))
                     && crate::guided::dispatch(
                         backend,
                         Some(json!({ "action": "bayLoaded", "bay": bay })),
@@ -252,7 +241,7 @@ fn drop(backend: &dyn Backend) -> Value {
     let (armed, bay) = {
         let rail = rail();
         let now_ms = crate::hub::now_ms();
-        (rail.armed(now_ms).value, rail.selected(now_ms).value)
+        (rail.armed(), rail.selected(now_ms).value)
     };
     if !armed {
         return refused(SAFE);
@@ -293,7 +282,7 @@ fn has_drop_board() -> bool {
 pub fn rail_json(
     bays: i64,
     empty: &[i64],
-    armed: Owned<bool>,
+    armed: bool,
     selected: Owned<i64>,
     drop_offer: Result<(), String>,
     shown: bool,
@@ -302,7 +291,7 @@ pub fn rail_json(
     let drop_offered = drop_offer.is_ok();
     let loaded = |bay: i64| !empty.contains(&bay);
     let has_selected = (1..=bays).contains(&selected.value);
-    let drop_ready = shown && armed.value && drop_offered && has_selected;
+    let drop_ready = shown && armed && drop_offered && has_selected;
     let drop_label = match has_selected {
         true => format!("Drop {}", selected.value),
         false => format!("No bay {}", selected.value),
@@ -311,16 +300,15 @@ pub fn rail_json(
         "kind": "object",
         "class": "PayloadRail",
         "shown": shown,
-        "armed": armed.value,
-        "armedBy": armed.by,
+        "armed": armed,
         "selected": selected.value,
         "selectedBy": selected.by,
         "bays": (1..=bays).map(|bay| json!({ "bay": bay, "loaded": loaded(bay) })).collect::<Vec<_>>(),
         "dropReady": drop_ready,
         "dropAll": shown && drop_all,
-        "dropAllReady": shown && drop_all && armed.value && drop_offered,
+        "dropAllReady": shown && drop_all && armed && drop_offered,
         "dropLabel": drop_label,
-        "reason": match (shown, armed.value, has_selected, drop_offered) {
+        "reason": match (shown, armed, has_selected, drop_offered) {
             (false, ..) => Value::Null,
             (_, false, ..) => json!(SAFE),
             (_, _, false, _) => json!(bay_count(bays)),
@@ -358,7 +346,7 @@ pub fn view(backend: &dyn Backend, _args: &[String]) -> Value {
     rail_json(
         bays,
         &empty,
-        rail.armed(now_ms),
+        rail.armed(),
         rail.selected(now_ms),
         drop_offer,
         shown,
@@ -376,26 +364,26 @@ mod tests {
         at_ms: 1_000,
     };
 
+    fn switch(armed: bool, at_ms: u64) -> RadioSwitches {
+        RadioSwitches {
+            armed,
+            bay: None,
+            at_ms,
+        }
+    }
+
     #[test]
     fn drop_all_is_offered_only_for_a_drop_board_and_only_while_armed() {
-        let armed = Owned {
-            value: true,
-            by: APP,
-        };
-        let safe = Owned {
-            value: false,
-            by: APP,
-        };
         let on = |bay| Owned {
             value: bay,
             by: APP,
         };
-        let board = rail_json(4, &[], armed, on(1), Ok(()), true, true);
+        let board = rail_json(4, &[], true, on(1), Ok(()), true, true);
         assert_eq!(
             (board["dropAll"].as_bool(), board["dropAllReady"].as_bool()),
             (Some(true), Some(true))
         );
-        let locked = rail_json(4, &[], safe, on(1), Ok(()), true, true);
+        let locked = rail_json(4, &[], false, on(1), Ok(()), true, true);
         assert_eq!(
             (
                 locked["dropAll"].as_bool(),
@@ -403,7 +391,7 @@ mod tests {
             ),
             (Some(true), Some(false))
         );
-        let gripper = rail_json(4, &[], armed, on(1), Ok(()), true, false);
+        let gripper = rail_json(4, &[], true, on(1), Ok(()), true, false);
         assert_eq!(
             gripper["dropAll"].as_bool(),
             Some(false),
@@ -412,32 +400,51 @@ mod tests {
     }
 
     #[test]
-    fn a_radio_with_no_bay_switch_arms_and_leaves_the_bay_to_the_app() {
+    fn the_last_change_arms_or_safes_whether_it_came_from_the_radio_or_the_app() {
         let mut rail = Rail::default();
-        assert_eq!(rail.select(2, 0), Ok(()));
-        rail.heard(RadioSwitches { bay: None, ..LIVE });
-        assert_eq!(
-            rail.armed(1_100),
-            Owned {
-                value: true,
-                by: RADIO
-            }
+        rail.heard(switch(true, 0));
+        assert!(
+            !rail.armed(),
+            "a radio plugged in with its switch up arms nothing until the switch moves"
         );
-        assert_eq!(rail.selected(1_100), Owned { value: 2, by: APP });
-        assert_eq!(rail.select(3, 1_100), Ok(()));
-        assert_eq!(rail.arm(false, 1_100), Err(RADIO_ARMS));
+        rail.heard(switch(false, 100));
+        rail.heard(switch(true, 200));
+        assert!(rail.armed(), "flipping the switch up arms");
+        rail.arm(false);
+        rail.heard(switch(true, 300));
+        assert!(
+            !rail.armed(),
+            "a tap makes it safe, and the switch left up does not undo it"
+        );
+        rail.arm(true);
+        rail.heard(switch(true, 400));
+        rail.heard(switch(false, 500));
+        assert!(!rail.armed(), "flipping the switch down makes it safe");
+        rail.arm(true);
+        rail.heard(switch(false, 600));
+        assert!(rail.armed(), "a tap arms while the switch stays down");
+        assert!(
+            Rail {
+                radio: None,
+                ..rail
+            }
+            .armed(),
+            "the arm outlives the radio going quiet"
+        );
     }
 
     #[test]
-    fn the_radio_owns_the_switches_while_it_streams_and_the_app_takes_over_when_it_stops() {
+    fn a_radio_with_no_bay_switch_leaves_the_bay_to_the_app() {
         let mut rail = Rail::default();
-        assert_eq!(
-            rail.armed(0),
-            Owned {
-                value: false,
-                by: APP
-            }
-        );
+        assert_eq!(rail.select(2, 0), Ok(()));
+        rail.heard(RadioSwitches { bay: None, ..LIVE });
+        assert_eq!(rail.selected(1_100), Owned { value: 2, by: APP });
+        assert_eq!(rail.select(3, 1_100), Ok(()));
+    }
+
+    #[test]
+    fn the_radio_picks_the_bay_while_it_streams_and_the_app_takes_over_when_it_stops() {
+        let mut rail = Rail::default();
         assert_eq!(
             rail.selected(0),
             Owned { value: 1, by: APP },
@@ -449,46 +456,27 @@ mod tests {
         );
         assert!(!rail.heard(LIVE), "the same switches again are not");
         assert_eq!(
-            rail.armed(1_100),
-            Owned {
-                value: true,
-                by: RADIO
-            }
-        );
-        assert_eq!(
             rail.selected(1_100),
             Owned {
                 value: 3,
                 by: RADIO
             }
         );
-        assert_eq!(rail.arm(false, 1_100), Err(RADIO_ARMS));
         assert_eq!(rail.select(2, 1_100), Err(RADIO_SELECTS));
+        let quiet = 1_000 + RADIO_STALE_MS + 1;
         assert_eq!(
-            rail.armed(1_000 + RADIO_STALE_MS + 1),
-            Owned {
-                value: false,
-                by: APP
-            },
-            "half a second of silence hands the switches to the app"
+            rail.select(2, quiet),
+            Ok(()),
+            "half a second of silence hands the bay to the app"
         );
-        assert_eq!(rail.arm(true, 2_000), Ok(()));
-        assert_eq!(rail.select(2, 2_000), Ok(()));
-        assert_eq!(
-            rail.armed(2_000),
-            Owned {
-                value: true,
-                by: APP
-            }
-        );
-        assert_eq!(rail.selected(2_000), Owned { value: 2, by: APP });
+        assert_eq!(rail.selected(quiet), Owned { value: 2, by: APP });
     }
 
     #[test]
-    fn the_rail_tells_the_radio_what_it_made_of_the_arm_switch() {
+    fn the_radio_is_told_the_payload_state_and_when_its_switch_disagrees() {
         let mut rail = Rail::default();
         assert_eq!(
-            rail.verdict(true, 1_000),
+            rail.verdict(true),
             SWITCH_OFF,
             "a radio with no arm channel has nothing to arm with"
         );
@@ -496,27 +484,27 @@ mod tests {
             armed: false,
             ..LIVE
         }));
-        assert_eq!(rail.verdict(true, 1_000), SWITCH_SAFE);
+        assert_eq!(rail.verdict(true), SWITCH_SAFE);
+        rail.arm(true);
+        assert_eq!(
+            rail.verdict(true),
+            SWITCH_ARMED,
+            "armed from the app, the radio shows armed with its switch down"
+        );
+        assert_eq!(
+            rail.verdict(false),
+            SWITCH_SAFE,
+            "with no payload nothing is armed"
+        );
         rail.seen(Some(LIVE));
+        rail.arm(false);
         assert_eq!(
-            rail.verdict(true, 1_000),
+            rail.verdict(true),
             SWITCH_REFUSED,
-            "the switch is up but the rail never heard it: the radio is not flying the vehicle"
-        );
-        rail.heard(LIVE);
-        assert_eq!(rail.verdict(true, 1_000), SWITCH_ARMED);
-        assert_eq!(
-            rail.verdict(false, 1_000),
-            SWITCH_REFUSED,
-            "with no payload the arm is not taken"
-        );
-        assert_eq!(
-            rail.verdict(true, 1_000 + RADIO_STALE_MS + 1),
-            SWITCH_REFUSED,
-            "a stale arm is the app's, not the radio's"
+            "the switch is up but the payload is safe"
         );
         rail.seen(None);
-        assert_eq!(rail.verdict(true, 1_000), SWITCH_OFF);
+        assert_eq!(rail.verdict(true), SWITCH_OFF);
     }
 
     #[test]
@@ -547,20 +535,13 @@ mod tests {
     fn an_empty_bay_is_marked_reloaded_only_while_the_payload_is_safe() {
         let mut rail = Rail::default();
         assert!(
-            rail.reloads(true, 0),
+            rail.reloads(true),
             "on the ground, safe, a tap says the clip is back"
         );
+        assert!(!rail.reloads(false), "a loaded bay has nothing to reload");
+        rail.arm(true);
         assert!(
-            !rail.reloads(false, 0),
-            "a loaded bay has nothing to reload"
-        );
-        rail.heard(RadioSwitches {
-            armed: true,
-            bay: Some(1),
-            at_ms: 0,
-        });
-        assert!(
-            !rail.reloads(true, 10),
+            !rail.reloads(true),
             "armed, a tap on a dropped bay only picks it: nobody reloads in flight"
         );
         assert_eq!(bay_count(1), "This drone has 1 bay.");
@@ -569,24 +550,16 @@ mod tests {
 
     #[test]
     fn the_rail_offers_drop_armed_on_any_bay_the_drone_has_and_shows_which_are_empty() {
-        let armed = Owned {
-            value: true,
-            by: APP,
-        };
-        let safe = Owned {
-            value: false,
-            by: APP,
-        };
         let on = |bay: i64| Owned {
             value: bay,
             by: RADIO,
         };
-        let shown = rail_json(4, &[2], armed, on(1), Ok(()), true, false);
+        let shown = rail_json(4, &[2], true, on(1), Ok(()), true, false);
         assert_eq!(shown["dropReady"], true);
         assert_eq!(shown["dropLabel"], "Drop 1");
         assert_eq!(shown["bays"][1], json!({ "bay": 2, "loaded": false }));
         assert_eq!(shown["reason"], Value::Null);
-        let reloaded_unseen = rail_json(4, &[2], armed, on(2), Ok(()), true, false);
+        let reloaded_unseen = rail_json(4, &[2], true, on(2), Ok(()), true, false);
         assert_eq!(
             (
                 reloaded_unseen["dropReady"].clone(),
@@ -596,10 +569,10 @@ mod tests {
             "a bay counted empty still drops: the basket cannot say it was reloaded"
         );
         assert_eq!(
-            rail_json(4, &[], safe, on(1), Ok(()), true, false)["reason"],
+            rail_json(4, &[], false, on(1), Ok(()), true, false)["reason"],
             SAFE
         );
-        let past = rail_json(4, &[], armed, on(6), Ok(()), true, false);
+        let past = rail_json(4, &[], true, on(6), Ok(()), true, false);
         assert_eq!(
             (
                 past["dropReady"].clone(),
@@ -613,15 +586,15 @@ mod tests {
             )
         );
         assert_eq!(
-            rail_json(4, &[], armed, on(1), Err(String::new()), true, false)["reason"],
+            rail_json(4, &[], true, on(1), Err(String::new()), true, false)["reason"],
             "Drop is not offered now."
         );
         assert_eq!(
-            rail_json(4, &[], armed, on(1), Err("No signal.".into()), true, false)["reason"],
+            rail_json(4, &[], true, on(1), Err("No signal.".into()), true, false)["reason"],
             "No signal.",
             "the deck's own reason is shown when it has one"
         );
-        let hidden = rail_json(1, &[], armed, on(1), Ok(()), false, false);
+        let hidden = rail_json(1, &[], true, on(1), Ok(()), false, false);
         assert_eq!(
             (
                 hidden["shown"].clone(),

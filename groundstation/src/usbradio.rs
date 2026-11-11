@@ -61,6 +61,13 @@ pub fn sticks(line: &Line) -> Frame {
     std::array::from_fn(|at| line[at])
 }
 
+pub fn armed_as_the_app(frame: Frame, arm_channel: usize, armed: bool) -> Frame {
+    std::array::from_fn(|at| match (at + 1 == arm_channel, frame[at]) {
+        (true, pwm) if pwm != u16::MAX => crate::payloadrail::pulse(armed),
+        (_, pwm) => pwm,
+    })
+}
+
 pub fn handed(
     frame: Frame,
     channels: [usize; 2],
@@ -741,7 +748,11 @@ fn heard_on(port: &str, lines: Vec<Line>) {
                 camera.then_some([throttle, yaw]),
             );
         }
-        advance(Some(hand_over(sticks(line), [throttle, yaw], camera)));
+        advance(Some(armed_as_the_app(
+            hand_over(sticks(line), [throttle, yaw], camera),
+            layout.without(mode_channel).arm,
+            crate::payloadrail::armed(),
+        )));
     }
 }
 
@@ -843,6 +854,29 @@ pub fn maintain() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_arm_channel_carries_the_apps_arm_so_a_dropper_reading_it_follows_the_app() {
+        let frame: Frame = std::array::from_fn(|_| 1500);
+        assert_eq!(armed_as_the_app(frame, 12, true)[11], 2012);
+        assert_eq!(armed_as_the_app(frame, 12, false)[11], 988);
+        assert_eq!(
+            armed_as_the_app(frame, 12, true)[10],
+            1500,
+            "only the arm channel changes"
+        );
+        assert_eq!(
+            armed_as_the_app(frame, 0, true),
+            frame,
+            "an arm switch that is off, as when flight modes use its channel, is left alone"
+        );
+        let short: Frame = std::array::from_fn(|at| if at < 8 { 1500 } else { u16::MAX });
+        assert_eq!(
+            armed_as_the_app(short, 12, true),
+            short,
+            "a radio that sends no arm channel is not given one"
+        );
+    }
 
     const LINE: &str = "$-1024,1024,0,-512,-1024,-1024,0,0,0,0,-1024,0,0,0,0,-160,0,1024,8,-40,-160,0,0,-1024,\r\n";
 

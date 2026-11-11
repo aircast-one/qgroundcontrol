@@ -24,7 +24,6 @@ export type PayloadRailOwner = 'radio' | 'app';
 export type PayloadRail = {
   readonly shown: boolean;
   readonly armed: boolean;
-  readonly armedBy: PayloadRailOwner;
   readonly selected: number;
   readonly selectedBy: PayloadRailOwner;
   readonly bays: readonly { readonly bay: number; readonly loaded: boolean }[];
@@ -43,7 +42,6 @@ export const payloadRailOf = (json: Json | null): PayloadRail | null =>
     : {
         shown: true,
         armed: optBoolean(json, 'armed'),
-        armedBy: owner(optText(json, 'armedBy')),
         selected: optInt(json, 'selected'),
         selectedBy: owner(optText(json, 'selectedBy')),
         bays: jsonObjects(optJSONArray(json, 'bays'))
@@ -58,7 +56,7 @@ export const payloadRailOf = (json: Json | null): PayloadRail | null =>
 
 export const payloadNote = (rail: PayloadRail, refusal: string | null): string | null => refusal ?? (rail.dropReady || !rail.armed ? null : rail.reason);
 
-export const lockLabel = (rail: PayloadRail): string => (rail.armed ? `Payload armed${rail.armedBy === 'radio' ? ' by radio' : ', tap to make safe'}` : `Payload safe${rail.armedBy === 'radio' ? ' by radio' : ', tap to arm'}`);
+export const lockLabel = (rail: PayloadRail): string => (rail.armed ? 'Payload armed, tap to make safe' : 'Payload safe, tap to arm');
 
 export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}${loaded || rail.armed ? '' : ', tap when reloaded'}`;
 
@@ -104,7 +102,7 @@ export const PayloadRailStrip = () => {
     <div role="group" aria-label="Payload" className="flex flex-col items-center gap-1">
       <div className="flex items-start gap-2">
         <Labelled text={rail.armed ? 'Armed' : 'Safe'} tone={rail.armed ? md('error') : aircast('outdoorForeground')}>
-          <Tile label={lockLabel(rail)} enabled={rail.armedBy === 'app'} ring={false} fill={rail.armed ? md('error') : dim} hollow={false} onClick={() => run(ARM, !rail.armed)}>
+          <Tile label={lockLabel(rail)} enabled ring={false} fill={rail.armed ? md('error') : dim} hollow={false} onClick={() => run(ARM, !rail.armed)}>
             <Drawable name="ic_shield" size={24} className={osdShadow()} />
           </Tile>
         </Labelled>
