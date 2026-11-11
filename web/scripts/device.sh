@@ -14,6 +14,7 @@ WORK="$(mktemp -d -t qgc-device)"
 LOGS="$(mktemp -d -t qgc-device-logs)"
 trap 'rm -rf "$WORK"' EXIT
 VERSION="$(git -C "$QGC" describe --tags --always --dirty)"
+export VITE_APP_VERSION="${VERSION#aircast-v}"
 START=$SECONDS
 
 step() {
@@ -37,6 +38,7 @@ web() (
 )
 
 echo "QGroundControl $VERSION → $DEVICE"
+[ -n "${OTEL_BETA_INGEST_TOKEN:-}" ] || echo "  OTEL_BETA_INGEST_TOKEN is not set: this build sends no logs to Aircast support (the token is in aircast-secrets vault/infra/dokploy/monitoring.json)" >&2
 step device "$AIRCASTD/scripts/qgc-web-sync.sh" "$DEVICE" --check
 step core "$WEB/build-core.sh"
 step web web
