@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { DebugRelay } from '@/app/DebugRelay';
+import { DeviceLink } from '@/app/DeviceLink';
 import { HostPlatform } from '@/app/HostPlatform';
 import { Qgc } from '@/bridge/Qgc';
 import { MainActivity } from '@/app/MainActivity';
@@ -16,10 +17,6 @@ window.addEventListener('contextmenu', (event) => {
   if (!keepsBrowserMenu(event.target)) event.preventDefault();
 });
 
-Qgc.start();
-void HostPlatform.start();
-if (import.meta.env.DEV) DebugRelay.start(window.location.search);
-
 const CoreLoading = () => {
   const percent = useValue(coreLoaded);
   return (
@@ -32,5 +29,13 @@ const CoreLoading = () => {
 
 const root = createRoot(document.getElementById('root')!);
 root.render(<StrictMode><CoreLoading /></StrictMode>);
-await coreReady();
-root.render(<StrictMode><MainActivity /></StrictMode>);
+const handoff = await DeviceLink.handoff();
+if (handoff !== null) {
+  location.replace(handoff);
+} else {
+  Qgc.start();
+  void HostPlatform.start();
+  if (import.meta.env.DEV) DebugRelay.start(window.location.search);
+  await coreReady();
+  root.render(<StrictMode><MainActivity /></StrictMode>);
+}

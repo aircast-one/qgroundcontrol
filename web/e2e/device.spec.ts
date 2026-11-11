@@ -5,6 +5,7 @@ const DEVICE = 'http://localhost:18780';
 const SILENT = 'http://localhost:18788';
 const FIGHT = 'http://localhost:18789';
 const UPLINKED = 'http://localhost:18792';
+const TAILNET = 'http://localhost:18793';
 const UPGRADING = 'localhost:18786';
 const SECURE = 'localhost:18785';
 const PLAIN_UPGRADING = 'http://aircast-device.test:18786';
@@ -279,6 +280,19 @@ test('a pilot looking for the RTSP and telemetry links finds them by search and 
   await device.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   await device.getByRole('button', { name: /^Ground station links.*RTSP video, MAVLink telemetry/ }).click();
   await expect(device.getByText('rtsp://e2e-device:8554/e2e')).toBeVisible();
+});
+
+base('a page opened over the tailnet hands off to the hosted app, which flies the device over its https address', async ({ page, baseURL }) => {
+  await page.goto(`${TAILNET}/`);
+  await page.waitForURL(`${baseURL}/**`, { timeout: 30_000 });
+  await expect.poll(async () => (await stats()).secure, { timeout: 60_000 }).toContain('/api/views/aircraft/events');
+  await expect.poll(() => new URL(page.url()).hash).toBe('');
+});
+
+base('a page opened over the tailnet with #local stays on the device', async ({ page }) => {
+  await page.goto(`${TAILNET}/#local`);
+  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  expect(new URL(page.url()).origin).toBe(TAILNET);
 });
 
 base('a page the device served over http flies from there, even when the device names an https address', async ({ page }) => {

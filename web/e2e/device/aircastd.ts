@@ -21,6 +21,7 @@ export const OFFLINE_PORT = 18787;
 export const SILENT_PORT = 18788;
 export const FIGHT_PORT = 18789;
 export const UPLINK_PORT = 18792;
+export const TAILNET_PORT = 18793;
 const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
 const VITE = Number(process.env.E2E_PORT ?? 8800);
 const HOME = { lat: 47.3977, lon: 8.5456 };
@@ -230,11 +231,11 @@ const app = (request: IncomingMessage, response: ServerResponse) => {
   request.pipe(upstream);
 };
 
-const device = (named: { origin: string }, secure: boolean) => (request: IncomingMessage, response: ServerResponse) => {
+const device = (named: { origin: string }, secure: boolean, hosted?: string) => (request: IncomingMessage, response: ServerResponse) => {
   const url = new URL(request.url ?? '/', `http://localhost:${DEVICE_PORT}`);
   if (secure) seen.secure = [...seen.secure, url.pathname];
   if (url.pathname === '/api/tls') return json(response, 200, named);
-  if (url.pathname === '/fly/device.json') return json(response, 200, { name: 'e2e-device', cameras: [{ name: 'e2e', url: 'http://localhost:18889/e2e/whep' }] });
+  if (url.pathname === '/fly/device.json') return json(response, 200, { name: 'e2e-device', cameras: [{ name: 'e2e', url: 'http://localhost:18889/e2e/whep' }], app: hosted });
   const streamed = /^\/api\/streams\/(e2e|lens)\/detections\/stream$/.exec(url.pathname);
   if (streamed !== null) return detections(response, streamed[1]);
   if (url.pathname.startsWith('/api/streams/e2e/track')) return void track(request, response, url);
@@ -274,6 +275,7 @@ const offline = createServer(device({ origin: 'https://10.255.255.1' }, false));
 const silent = createServer(device({ origin: '' }, false));
 const fight = createServer(device({ origin: '' }, false));
 const uplinked = createServer(device({ origin: '' }, false));
+const tailnet = createServer(device({ origin: SECURE_ORIGIN }, false, `http://localhost:${VITE}`));
 
 const pipeTcp = (socket: WebSocket, address: string) => {
   const [host, port] = [address.slice(0, address.lastIndexOf(':')).replace(/^\[|\]$/g, ''), Number(address.slice(address.lastIndexOf(':') + 1))];
@@ -338,7 +340,7 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
   upstream.on('error', () => socket.destroy());
   socket.on('error', () => upstream.destroy());
 };
-[http, upgrading, https, offline, silent, fight, uplinked].forEach((server) => server.on('upgrade', upgrade));
+[http, upgrading, https, offline, silent, fight, uplinked, tailnet].forEach((server) => server.on('upgrade', upgrade));
 
 const sbs1 = (icao: string, lat: number, lon: number): string =>
   ['MSG', '3', '1', '1', icao, '1', '', '', '', '', '', '4000', '', '', String(lat), String(lon), '', '', '', '', '', '0'].join(',') + '\r\n';
@@ -391,3 +393,4 @@ offline.listen(OFFLINE_PORT);
 silent.listen(SILENT_PORT);
 fight.listen(FIGHT_PORT);
 uplinked.listen(UPLINK_PORT);
+tailnet.listen(TAILNET_PORT);

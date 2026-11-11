@@ -33,13 +33,13 @@ export const secureOrigins = (answer: unknown): string[] => {
 
 export const firstAnswered = (origins: readonly string[], answered: readonly boolean[]): string | null => origins.find((_, at) => answered[at]) ?? null;
 
-const answers = (origin: string): Promise<boolean> =>
+export const answers = (origin: string): Promise<boolean> =>
   fetch(new URL(DEVICE_TLS, origin), { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(PROBE_MS) }).then(
     () => true,
     () => false,
   );
 
-const trustedOrigin = async (): Promise<string | null> => {
+export const trustedOrigin = async (): Promise<string | null> => {
   const origins = secureOrigins(
     await fetch(DEVICE_TLS, { cache: 'no-store', signal: AbortSignal.timeout(PROBE_MS) })
       .then((response) => (response.ok ? response.json() : null))
