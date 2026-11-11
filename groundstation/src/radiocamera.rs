@@ -1099,6 +1099,37 @@ mod tests {
     }
 
     #[test]
+    fn with_the_drop_switch_held_down_picking_another_bay_drops_nothing() {
+        let mut sticks = Sticks {
+            bay: 1,
+            ..Sticks::default()
+        };
+        let at = |bay: u16, drop: u16| {
+            line(&[
+                (ARM_CHANNEL, 2012),
+                (BAY_CHANNEL, bay),
+                (DROP_CHANNEL, drop),
+            ])
+        };
+        let moves: Vec<Move> = [
+            (988, 988),
+            (988, 988),
+            (988, 2012),
+            (988, 2012),
+            (988, 2012),
+            (1194, 2012),
+            (1194, 2012),
+            (1194, 2012),
+            (1194, 2012),
+        ]
+        .into_iter()
+        .zip((0..).step_by(10))
+        .flat_map(|((bay, drop), now)| sticks.step(&at(bay, drop), LIMITS, now))
+        .collect();
+        assert_eq!(moves, vec![Move::Drop { bay: 1 }]);
+    }
+
+    #[test]
     fn the_6pos_only_picks_the_bay_and_the_drop_switch_drops_it() {
         let mut sticks = Sticks {
             bay: 3,
