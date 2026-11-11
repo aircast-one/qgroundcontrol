@@ -712,6 +712,7 @@ fn advance(fresh: Option<Frame>) {
         )
     });
     if let Some((vehicle, _)) = step.handed_back {
+        crate::radiocamera::handed_back(vehicle);
         crate::noticeboard::post_from_vehicle(
             crate::noticeboard::BRIEF,
             &why_handed_back(live, vehicle),
