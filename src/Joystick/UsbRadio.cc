@@ -228,7 +228,7 @@ float turnRate(uint16_t pwm, float speed)
     const float off = float(pwm) - kStickCentrePwm;
     const float past =
         std::min(std::max(std::abs(off) - kYawDeadbandPwm, 0.0f) / (kStickHalfSpanPwm - kYawDeadbandPwm), 1.0f);
-    return std::copysign(past, off) * speed;
+    return std::copysign(past * (1.0f - kYawExpo) + past * past * past * kYawExpo, off) * speed;
 }
 
 QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& layout, Ready ready, const Aiming& aiming)
