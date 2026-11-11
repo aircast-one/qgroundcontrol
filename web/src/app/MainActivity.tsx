@@ -40,6 +40,7 @@ import { ControlRequestPrompt } from '@/ui/ControlRequestPrompt';
 import { DeepLinkSetupPrompt } from '@/ui/DeepLinkSetupPrompt';
 import { DeviceCameraHost } from '@/ui/DeviceCameraHost';
 import { BetaDiagnosticsDialog } from '@/ui/BetaDiagnosticsDialog';
+import { HandoffDialog } from '@/ui/HandoffDialog';
 import { FirstRunDialog } from '@/ui/FirstRunDialog';
 import type { FlyDeckLayout } from '@/ui/FlyDeck';
 import { FlyPortrait } from '@/ui/FlyPortrait';
@@ -679,6 +680,7 @@ export const AircastShell = () => {
               {onFly ? <ResumeFailedPrompt dismissed={resumeDismissed} onDismissed={setResumeDismissed} /> : null}
               <FirstRunDialog />
               <BetaDiagnosticsDialog />
+              <HandoffDialog />
               <DeepLinkSetupPrompt />
 
               <Fragment key={popEpoch}>

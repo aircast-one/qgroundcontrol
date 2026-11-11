@@ -22,6 +22,8 @@ export const SILENT_PORT = 18788;
 export const FIGHT_PORT = 18789;
 export const UPLINK_PORT = 18792;
 export const TAILNET_PORT = 18793;
+export const TAILNET_NO_APP_PORT = 18794;
+export const TAILNET_NO_DEVICE_PORT = 18795;
 const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
 const VITE = Number(process.env.E2E_PORT ?? 8800);
 const HOME = { lat: 47.3977, lon: 8.5456 };
@@ -276,6 +278,8 @@ const silent = createServer(device({ origin: '' }, false));
 const fight = createServer(device({ origin: '' }, false));
 const uplinked = createServer(device({ origin: '' }, false));
 const tailnet = createServer(device({ origin: SECURE_ORIGIN }, false, `http://localhost:${VITE}`));
+const tailnetNoApp = createServer(device({ origin: SECURE_ORIGIN }, false, 'http://localhost:1'));
+const tailnetNoDevice = createServer(device({ origin: 'https://10.255.255.1' }, false, `http://localhost:${VITE}`));
 
 const pipeTcp = (socket: WebSocket, address: string) => {
   const [host, port] = [address.slice(0, address.lastIndexOf(':')).replace(/^\[|\]$/g, ''), Number(address.slice(address.lastIndexOf(':') + 1))];
@@ -340,7 +344,7 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
   upstream.on('error', () => socket.destroy());
   socket.on('error', () => upstream.destroy());
 };
-[http, upgrading, https, offline, silent, fight, uplinked, tailnet].forEach((server) => server.on('upgrade', upgrade));
+[http, upgrading, https, offline, silent, fight, uplinked, tailnet, tailnetNoApp, tailnetNoDevice].forEach((server) => server.on('upgrade', upgrade));
 
 const sbs1 = (icao: string, lat: number, lon: number): string =>
   ['MSG', '3', '1', '1', icao, '1', '', '', '', '', '', '4000', '', '', String(lat), String(lon), '', '', '', '', '', '0'].join(',') + '\r\n';
@@ -394,3 +398,5 @@ silent.listen(SILENT_PORT);
 fight.listen(FIGHT_PORT);
 uplinked.listen(UPLINK_PORT);
 tailnet.listen(TAILNET_PORT);
+tailnetNoApp.listen(TAILNET_NO_APP_PORT);
+tailnetNoDevice.listen(TAILNET_NO_DEVICE_PORT);

@@ -11,6 +11,7 @@ pub const LOG_CLEAR: &str = "appLog.clear";
 pub const LOG_SAVE: &str = "appLog.save";
 pub const SET_CATEGORY: &str = "appLog.setCategory";
 pub const RESET_CATEGORIES: &str = "appLog.resetCategories";
+pub const LOG_RECORD: &str = "appLog.record";
 const FILTER_GROUP: &str = "LoggingFilters";
 const CATEGORY_SEPARATOR: &str = "::";
 const MAX_LOG_ENTRIES: usize = 100_000;
@@ -505,6 +506,20 @@ fn entry_json(entry: &Entry) -> Value {
     })
 }
 
+pub fn record(args: &str) -> Value {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let (Some(category), Some(message)) = (
+        args.get(0)
+            .and_then(Value::as_str)
+            .filter(|c| !c.is_empty()),
+        args.get(1).and_then(Value::as_str),
+    ) else {
+        return json!({ "ok": false, "reason": "appLog.record takes a category name and a message" });
+    };
+    log::info!(target: category, "{message}");
+    json!({ "ok": true })
+}
+
 pub fn log_view(_backend: &dyn Backend, args: &[String]) -> Value {
     let filter = Filter {
         level: args.first().and_then(|a| a.parse().ok()).unwrap_or(0),
@@ -689,6 +704,27 @@ mod tests {
             !passes(&filter(0, "", "(", true), &warn),
             "an invalid pattern matches nothing"
         );
+    }
+
+    #[test]
+    fn a_head_records_an_entry_under_its_own_category() {
+        install();
+        assert_eq!(
+            record(r#"["applog-head-test","handoff outcome=connected"]"#)["ok"],
+            true
+        );
+        let view = log_view(
+            &Nothing,
+            &[
+                "0".into(),
+                "applog-head-test".into(),
+                String::new(),
+                "0".into(),
+            ],
+        );
+        assert_eq!(view["entries"][0]["message"], "I handoff outcome=connected");
+        assert_eq!(record(r#"["","no category"]"#)["ok"], false);
+        assert_eq!(record("not json")["ok"], false);
     }
 
     #[test]

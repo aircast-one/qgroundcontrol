@@ -6,6 +6,9 @@ const SILENT = 'http://localhost:18788';
 const FIGHT = 'http://localhost:18789';
 const UPLINKED = 'http://localhost:18792';
 const TAILNET = 'http://localhost:18793';
+const TAILNET_NO_APP = 'http://localhost:18794';
+const TAILNET_NO_DEVICE = 'http://localhost:18795';
+const NOBODY_SECURE = 'https://localhost:18796';
 const UPGRADING = 'localhost:18786';
 const SECURE = 'localhost:18785';
 const PLAIN_UPGRADING = 'http://aircast-device.test:18786';
@@ -282,17 +285,72 @@ test('a pilot looking for the RTSP and telemetry links finds them by search and 
   await expect(device.getByText('rtsp://e2e-device:8554/e2e')).toBeVisible();
 });
 
-base('a page opened over the tailnet hands off to the hosted app, which flies the device over its https address', async ({ page, baseURL }) => {
+const handoffPrompt = (page: Page) => page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Connect to this device?' }) });
+
+const passWelcome = (page: Page) =>
+  page.addLocatorHandler(page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) }), (welcome) => welcome.getByRole('button', { name: 'Continue' }).click());
+
+const deviceTab = async (page: Page) => {
+  await openMenu(page, 'Settings');
+  await page.getByRole('tablist').getByRole('tab', { name: 'Device' }).click();
+};
+
+const flies = async (page: Page, at: string) => {
+  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  expect(new URL(page.url()).origin).toBe(at);
+};
+
+base('a page opened over the tailnet hands off to the hosted app, which asks once, then flies the device over its https address', async ({ page, baseURL }) => {
+  await passWelcome(page);
   await page.goto(`${TAILNET}/`);
   await page.waitForURL(`${baseURL}/**`, { timeout: 30_000 });
-  await expect.poll(async () => (await stats()).secure, { timeout: 60_000 }).toContain('/api/views/aircraft/events');
+  await handoffPrompt(page).getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(handoffPrompt(page)).toBeHidden({ timeout: 30_000 });
   await expect.poll(() => new URL(page.url()).hash).toBe('');
+  await deviceTab(page);
+  await expect(page.getByText(SECURE, { exact: true })).toBeVisible({ timeout: 30_000 });
+
+  await page.goto(`${TAILNET}/`);
+  await page.waitForURL(`${baseURL}/**`, { timeout: 30_000 });
+  await expect.poll(() => new URL(page.url()).hash, { timeout: 30_000 }).toBe('');
+  await expect(handoffPrompt(page)).toHaveCount(0);
+});
+
+base('a link that names a device is only followed once the pilot agrees', async ({ page, baseURL }) => {
+  await passWelcome(page);
+  await page.goto(`${baseURL}/#connect=${encodeURIComponent(`https://${SECURE}`)}`);
+  await handoffPrompt(page).getByRole('button', { name: 'Not now' }).click();
+  await expect.poll(() => new URL(page.url()).hash).toBe('');
+  await deviceTab(page);
+  await expect(page.getByRole('textbox', { name: 'Device address' })).toBeVisible();
+});
+
+base('a device a link names that does not answer is said so, and the link is kept to try again', async ({ page, baseURL }) => {
+  await passWelcome(page);
+  await page.goto(`${baseURL}/#connect=${encodeURIComponent(NOBODY_SECURE)}`);
+  await handoffPrompt(page).getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(handoffPrompt(page).getByRole('button', { name: 'Try again' })).toBeVisible({ timeout: 30_000 });
+  expect(new URL(page.url()).hash).toContain('connect=');
 });
 
 base('a page opened over the tailnet with #local stays on the device', async ({ page }) => {
   await page.goto(`${TAILNET}/#local`);
-  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
-  expect(new URL(page.url()).origin).toBe(TAILNET);
+  await flies(page, TAILNET);
+});
+
+base('a page opened over the tailnet stays on the device when the hosted app does not answer, and logs why', async ({ page }) => {
+  await page.goto(`${TAILNET_NO_APP}/`);
+  await flies(page, TAILNET_NO_APP);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+  await page.getByRole('button', { name: /^Console/ }).click();
+  await page.getByPlaceholder('Search…').fill('handoff');
+  await expect(page.getByText('handoff stayed reason=app-unreachable page=localhost:18794')).toBeVisible({ timeout: 30_000 });
+});
+
+base('a page opened over the tailnet stays on the device when its https address does not answer', async ({ page }) => {
+  await page.goto(`${TAILNET_NO_DEVICE}/`);
+  await flies(page, TAILNET_NO_DEVICE);
 });
 
 base('a page the device served over http flies from there, even when the device names an https address', async ({ page }) => {

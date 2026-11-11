@@ -261,6 +261,7 @@ pub fn owns(path: &str) -> bool {
             crate::applog::LOG_SAVE,
             crate::applog::SET_CATEGORY,
             crate::applog::RESET_CATEGORIES,
+            crate::applog::LOG_RECORD,
         ]
         .contains(&path)
         || crate::offlinemaps::owns(path)
@@ -533,6 +534,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         _ if crate::actuators::owns(path) => crate::actuators::test_action(backend, path, args),
         crate::applog::SET_CATEGORY => crate::applog::set_category(args),
         crate::applog::RESET_CATEGORIES => crate::applog::reset_categories(),
+        crate::applog::LOG_RECORD => crate::applog::record(args),
         crate::applog::LOG_SAVE => match serde_json::from_str::<Value>(args)
             .ok()
             .and_then(|a| a.get(0)?.as_str().map(str::to_string))

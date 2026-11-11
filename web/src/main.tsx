@@ -30,12 +30,13 @@ const CoreLoading = () => {
 const root = createRoot(document.getElementById('root')!);
 root.render(<StrictMode><CoreLoading /></StrictMode>);
 const handoff = await DeviceLink.handoff();
-if (handoff !== null) {
-  location.replace(handoff);
+if ('to' in handoff) {
+  location.replace(handoff.to);
 } else {
   Qgc.start();
   void HostPlatform.start();
   if (import.meta.env.DEV) DebugRelay.start(window.location.search);
   await coreReady();
+  DeviceLink.recordStay(handoff);
   root.render(<StrictMode><MainActivity /></StrictMode>);
 }

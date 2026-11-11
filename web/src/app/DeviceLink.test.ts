@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectAsked, deviceBase, deviceCameras, deviceLinkName, deviceSocket, handoffUrl, handsOff, withoutConnect } from './DeviceLink';
+import { connectAsked, deviceBase, deviceCameras, deviceLinkName, deviceSocket, handoffOf, handoffUrl, offeredApp, withoutConnect } from './DeviceLink';
 
 describe('the link to the device serving this page', () => {
   it('reaches telemetry beside the page, on the address the browser already used', () => {
@@ -26,27 +26,38 @@ describe('the link to the device serving this page', () => {
 });
 
 describe('handing a tailnet browser to the hosted app', () => {
+  const app = 'https://fly.aircast.one';
   const origin = 'https://100-64-0-15.falcon-gb3v.d.aircast.one';
 
-  it('hands off only when the device names an app and the page was not asked to stay', () => {
-    expect(handsOff({ app: 'https://fly.aircast.one' }, '')).toBe(true);
-    expect(handsOff({ app: 'https://fly.aircast.one' }, '#local')).toBe(false);
-    expect(handsOff({ app: 'https://fly.aircast.one' }, '#device=%2Fflights&local')).toBe(false);
-    expect(handsOff({ name: 'falcon' }, '')).toBe(false);
-    expect(handsOff(null, '')).toBe(false);
+  it('takes the hosted app only when the device names one', () => {
+    expect(offeredApp({ app })).toBe(app);
+    expect(offeredApp({ app: '' })).toBeNull();
+    expect(offeredApp({ name: 'falcon' })).toBeNull();
+    expect(offeredApp(null)).toBeNull();
+  });
+
+  it('hands over only when both the device and the hosted app answered, and says which did not', () => {
+    expect(handoffOf(app, origin, true, '')).toEqual({ to: handoffUrl(app, origin, '') });
+    expect(handoffOf(app, null, true, '')).toEqual({ stay: 'device-unreachable' });
+    expect(handoffOf(app, origin, false, '')).toEqual({ stay: 'app-unreachable' });
   });
 
   it('opens the hosted app at its root, asked to connect to the device and keeping the device page asked for', () => {
-    const url = handoffUrl('https://fly.aircast.one', origin, '#device=%2Fflights%3Fflight%3D7');
+    const url = handoffUrl(app, origin, '#device=%2Fflights%3Fflight%3D7');
     expect(url.startsWith('https://fly.aircast.one/#')).toBe(true);
     expect(connectAsked(new URL(url).hash)).toBe(origin);
     expect(new URLSearchParams(new URL(url).hash.slice(1)).get('device')).toBe('/flights?flight=7');
   });
 
-  it('forgets the connect request once taken, leaving the rest of the hash', () => {
-    const hash = new URL(handoffUrl('https://fly.aircast.one', origin, '#device=%2Fflights')).hash;
-    expect(withoutConnect(hash)).toBe('#device=%2Fflights');
-    expect(withoutConnect(new URL(handoffUrl('https://fly.aircast.one', origin, '')).hash)).toBe('');
+  it('takes a connect request only for a bare https origin', () => {
+    expect(connectAsked(`#connect=${encodeURIComponent('http://192.168.1.100')}`)).toBeNull();
+    expect(connectAsked(`#connect=${encodeURIComponent('https://falcon.local/fly/')}`)).toBeNull();
+    expect(connectAsked('#connect=javascript%3Aalert(1)')).toBeNull();
     expect(connectAsked('#device=%2Fflights')).toBeNull();
+  });
+
+  it('forgets the connect request once answered, leaving the rest of the hash', () => {
+    expect(withoutConnect(new URL(handoffUrl(app, origin, '#device=%2Fflights')).hash)).toBe('#device=%2Fflights');
+    expect(withoutConnect(new URL(handoffUrl(app, origin, '')).hash)).toBe('');
   });
 });

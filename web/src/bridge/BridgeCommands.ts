@@ -57,6 +57,7 @@ const GIMBAL_CONTROL = 'gimbal.control';
 const FIRST_RUN_SHOWN = 'firstRun.markShown';
 const BETA_DIAGNOSTICS_ACCEPT = 'betaDiagnostics.accept';
 const BETA_DIAGNOSTICS_DISMISS = 'betaDiagnostics.dismiss';
+const APP_LOG_RECORD = 'appLog.record';
 const SUBTITLES_INSTRUMENTS = 'subtitles.setInstruments';
 const HOST_ACKNOWLEDGE = 'host.acknowledgeThrough';
 
@@ -139,6 +140,7 @@ export const AppCommands = {
   markFirstRunShown: (): Promise<boolean> => Qgc.invoke(FIRST_RUN_SHOWN),
   acceptBetaDiagnostics: (): Promise<boolean> => Qgc.invoke(BETA_DIAGNOSTICS_ACCEPT),
   dismissBetaDiagnostics: (): Promise<boolean> => Qgc.invoke(BETA_DIAGNOSTICS_DISMISS),
+  recordLog: (category: string, message: string): Promise<boolean> => Qgc.invoke(APP_LOG_RECORD, category, message),
   setSubtitleInstruments: (vehicleClass: string, instruments: string[]): Promise<boolean> => Qgc.invoke(SUBTITLES_INSTRUMENTS, vehicleClass, instruments.join(',')),
   acknowledgeNoticesThrough: (through: number): Promise<boolean> => Qgc.invoke(HOST_ACKNOWLEDGE, through),
 };

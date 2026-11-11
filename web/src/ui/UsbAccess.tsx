@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { isJson, optText } from '@/bridge/Json';
+import { trustedOrigin } from '@/app/DeviceOrigin';
 import { requestSerialPort, serialAvailable } from '@/core/client';
 import { Button, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
@@ -7,9 +7,6 @@ import { md } from '@/theme/Colors';
 export const USB_RADIO_BLOCK = 'Radio on USB (EdgeTX script)';
 export const USB_RADIO_PORT = 'settings.autoConnectSettings.usbRadioPort';
 export const OPEN_OVER_HTTPS = 'Open over https to use USB…';
-
-const DEVICE_TLS = '/api/tls';
-const PROBE_MS = 2000;
 
 export type UsbBlocked = { secureUrl: string | null; note: string };
 
@@ -24,28 +21,6 @@ export const usbBlocked = (canReachUsb: boolean, secure: boolean, href: string):
   if (canReachUsb) return null;
   if (secure) return { secureUrl: null, note: 'Use Chrome or Edge to connect a radio over USB.' };
   return { secureUrl: securePage(href, null), note: 'The radio needs a secure page.' };
-};
-
-export const secureOrigins = (answer: unknown): string[] => {
-  const json = isJson(answer) ? answer : null;
-  return [optText(json, 'origin'), optText(json, 'fallback')].filter((origin) => origin.startsWith('https://'));
-};
-
-export const firstAnswered = (origins: readonly string[], answered: readonly boolean[]): string | null => origins.find((_, at) => answered[at]) ?? null;
-
-export const answers = (origin: string): Promise<boolean> =>
-  fetch(new URL(DEVICE_TLS, origin), { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(PROBE_MS) }).then(
-    () => true,
-    () => false,
-  );
-
-export const trustedOrigin = async (): Promise<string | null> => {
-  const origins = secureOrigins(
-    await fetch(DEVICE_TLS, { cache: 'no-store', signal: AbortSignal.timeout(PROBE_MS) })
-      .then((response) => (response.ok ? response.json() : null))
-      .catch(() => null),
-  );
-  return firstAnswered(origins, await Promise.all(origins.map(answers)));
 };
 
 export const openOverHttps = async (): Promise<void> => {
