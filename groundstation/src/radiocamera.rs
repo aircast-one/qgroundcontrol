@@ -525,33 +525,6 @@ impl Sticks {
 
 static STICKS: Mutex<Sticks> = Mutex::new(Sticks::new());
 
-fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
-    let payload = vehicle.payload(crate::hub::now_ms());
-    (payload != crate::payload::Payload::None).then(|| payload.bays())
-}
-
-fn through_the_app(step: Move, servo_bays: Option<i64>) -> Option<Move> {
-    match step {
-        Move::Drop { bay } => {
-            let drop = servo_bays
-                .and_then(|bays| named(bay, bays))
-                .map(|bay| Move::Drop { bay });
-            if drop.is_none() {
-                log::info!(target: "radio", "the drop switch dropped nothing: the drone has no bay {bay} (its bays: {servo_bays:?})");
-            }
-            drop
-        }
-        other => Some(other),
-    }
-}
-
-pub fn named(bay: i64, bays: i64) -> Option<i64> {
-    match bays {
-        0 => Some(0),
-        _ => (1..=bays).contains(&bay).then_some(bay),
-    }
-}
-
 fn ready() -> Ready {
     let (gimbal, camera) = crate::hub::lock()
         .active()
@@ -662,20 +635,20 @@ fn steer_other(vehicle: u8, step: Move) {
                 None,
             );
         }
-        Move::Drop { .. } if !crate::payloadrail::armed() => {
-            crate::noticeboard::post_from_vehicle(
-                crate::noticeboard::PAYLOAD,
-                crate::payloadrail::SAFE,
-            );
-        }
-        Move::Drop { bay } => {
-            let sent = guided(
-                vehicle,
-                json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
-                Some(crate::noticeboard::PAYLOAD),
-            );
-            log::info!(target: "radio", "the drop switch dropped bay {bay}: sent {sent}");
-        }
+        Move::Drop { bay } => match crate::payloadrail::drop_bay(bay) {
+            Ok(bay) => {
+                let sent = guided(
+                    vehicle,
+                    json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
+                    Some(crate::noticeboard::PAYLOAD),
+                );
+                log::info!(target: "radio", "the drop switch dropped bay {bay}: sent {sent}");
+            }
+            Err(reason) => {
+                log::info!(target: "radio", "the drop switch dropped nothing: {reason}");
+                crate::noticeboard::post_from_vehicle(crate::noticeboard::PAYLOAD, &reason);
+            }
+        },
         Move::Picture(value) => setting(crate::camsettings::set_setting(
             &json!([PICTURE_SETTING, value]).to_string(),
         )),
@@ -705,7 +678,6 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout, stick: Option<[usize; 2]
     if let Some(switches) = switches(line, crate::hub::now_ms(), layout) {
         crate::payloadrail::radio_heard(switches);
     }
-    let servo_bays = crate::hub::lock().active().and_then(bays_through_the_app);
     let mut sticks = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
     sticks.layout = layout;
     sticks.bay = crate::payloadrail::selected();
@@ -717,11 +689,7 @@ pub fn heard(vehicle: u8, line: &[u16], layout: Layout, stick: Option<[usize; 2]
     sticks.look_reversed = look_reversed;
     sticks.hand_stick(stick);
     let before = sticks.aim_state();
-    let moves: Vec<Move> = sticks
-        .step(line, crate::hub::now_ms())
-        .into_iter()
-        .filter_map(|step| through_the_app(step, servo_bays))
-        .collect();
+    let moves = sticks.step(line, crate::hub::now_ms());
     if !steer(vehicle, &moves) {
         sticks.restore_aim(before);
     }
@@ -1139,11 +1107,6 @@ mod tests {
             [None; 3],
             "a channel resting between positions picks no bay, so the app's pick drops"
         );
-        assert_eq!(
-            (named(3, 4), named(4, 0), named(5, 4)),
-            (Some(3), Some(0), None),
-            "a gripper that is not per bay drops itself; a bay the drone does not have drops nothing"
-        );
         let mut plugged_in_high = Sticks::default();
         assert!(
             plugged_in_high
@@ -1255,29 +1218,6 @@ mod tests {
         assert!(
             moves.is_empty(),
             "a position picked while safe, or together with arming, does not drop: {moves:?}"
-        );
-    }
-
-    #[test]
-    fn a_drop_names_a_bay_only_where_the_drone_has_it() {
-        assert_eq!(
-            through_the_app(Move::Drop { bay: 3 }, Some(4)),
-            Some(Move::Drop { bay: 3 })
-        );
-        assert_eq!(
-            through_the_app(Move::Drop { bay: 5 }, Some(4)),
-            None,
-            "6POS position 5 on a four-holder basket drops nothing, not the next holder"
-        );
-        assert_eq!(
-            through_the_app(Move::Drop { bay: 5 }, Some(0)),
-            Some(Move::Drop { bay: 0 }),
-            "one gripper drops whatever the 6POS says"
-        );
-        assert_eq!(
-            through_the_app(Move::Drop { bay: 1 }, None),
-            None,
-            "a drone with no payload leaves the radio to the flight controller"
         );
     }
 
