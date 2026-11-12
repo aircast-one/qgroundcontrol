@@ -336,7 +336,7 @@ const BatteryCells = ({
   const compact = useContext(LocalCompactStatus);
   const narrow = useContext(LocalNarrowStatus);
   if (batteries.length === 0) return null;
-  const extras = narrow ? [] : ([[voltage, 'battery voltage'], [timeLeft, 'flight time left'], [current, 'current draw']] as const).filter(([value]) => value !== '');
+  const extras = narrow ? [] : batteryExtras(batteries, voltage, timeLeft, current);
   const limiting = limitingBattery(batteries);
   return (
     <div className="flex items-center" style={{ gap: BATTERY_GAP }}>
@@ -854,6 +854,15 @@ export const batteryPercent = (text: string): number | null => {
   const digits = reading.endsWith('%') ? reading.slice(0, -1) : reading;
   return /^[+-]?\d+$/.test(digits) ? coerceIn(Number(digits), 0, 100) : null;
 };
+
+export const batteryExtras = (batteries: readonly BatteryReading[], voltage: string, timeLeft: string, current: string): readonly (readonly [string, string])[] =>
+  (
+    [
+      [batteries.some((it) => batteryPercent(it.text) !== null) ? voltage : '', 'battery voltage'],
+      [timeLeft, 'flight time left'],
+      [current, 'current draw'],
+    ] as const
+  ).filter(([value]) => value !== '');
 
 export const batteryPercentNow = async (): Promise<number | null> => {
   const first = batteryReadings(await Qgc.get(BATTERY_VIEW))[0];

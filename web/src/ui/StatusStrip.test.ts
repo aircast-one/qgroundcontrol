@@ -7,6 +7,7 @@ import {
   FixLevel,
   RingSegment,
   RingZone,
+  batteryExtras,
   batteryLevelOf,
   batteryPercent,
   batteryReadings,
@@ -274,5 +275,20 @@ describe('FlightTimeReadTest', () => {
   it('the seconds are the value of the fact the core answers with', () => {
     expect(flightTimeSeconds(json('{"kind":"fact","value":10.325}'))).toBe(10.325);
     expect(flightTimeSeconds(json('{"kind":"fact","value":null}'))).toBeNull();
+  });
+});
+
+describe('batteryExtras', () => {
+  const reading = (text: string) => ({ text, level: BatteryLevel.Normal, packs: 1 });
+
+  it('adds the voltage beside a percentage', () => {
+    expect(batteryExtras([reading('76%')], '50.2V', '', '0.8A')).toEqual([
+      ['50.2V', 'battery voltage'],
+      ['0.8A', 'current draw'],
+    ]);
+  });
+
+  it('leaves the voltage out when the battery already reads in volts', () => {
+    expect(batteryExtras([reading('50.21V')], '50.2V', '', '0.8A')).toEqual([['0.8A', 'current draw']]);
   });
 });
