@@ -375,7 +375,9 @@ struct AircastShell: View {
             }
             PreflightChecklistReset(checklist: flyScreen.checklist, available: vehicleNow)
             FirstRunDialog()
-            BetaDiagnosticsDialog()
+            if AppDialogsState.shared.appMessages.isEmpty {
+                BetaDiagnosticsDialog()
+            }
             DeepLinkSetupPrompt()
             GimbalTakeControlDialog()
             AppDialogsHost()

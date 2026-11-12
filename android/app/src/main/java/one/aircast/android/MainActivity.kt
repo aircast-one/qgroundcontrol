@@ -707,7 +707,7 @@ fun AircastShell(hostView: android.view.View?) {
                 var resumeDismissed by remember { mutableStateOf<Int?>(null) }
                 if (onFly) ResumeFailedPrompt(resumeDismissed) { resumeDismissed = it }
                 FirstRunDialog()
-                BetaDiagnosticsDialog()
+                if (appMessages.isEmpty()) BetaDiagnosticsDialog()
                 one.aircast.android.ui.DeepLinkSetupPrompt()
 
                 key(popEpoch) {
