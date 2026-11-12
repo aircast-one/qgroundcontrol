@@ -1,18 +1,18 @@
 #include "BluetoothWorkerTest.h"
 
-#include "BluetoothBleWorker.h"
-#include "BluetoothClassicWorker.h"
-#include "BluetoothConfiguration.h"
-#include "BluetoothWorker.h"
-
 #include <QtBluetooth/QBluetoothServiceDiscoveryAgent>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QTimer>
 #include <QtTest/QSignalSpy>
 
-static QTimer *_findServiceDiscoveryTimer(const BluetoothWorker *worker)
+#include "BluetoothBleWorker.h"
+#include "BluetoothClassicWorker.h"
+#include "BluetoothConfiguration.h"
+#include "BluetoothWorker.h"
+
+static QTimer* _findServiceDiscoveryTimer(const BluetoothWorker* worker)
 {
-    for (QTimer *timer : worker->findChildren<QTimer *>()) {
+    for (QTimer* timer : worker->findChildren<QTimer*>()) {
         if (timer && timer->isSingleShot() && (timer->interval() == 30000)) {
             return timer;
         }
@@ -25,19 +25,16 @@ void BluetoothWorkerTest::init()
 {
     UnitTest::init();
 
-    // Qt's Bluetooth stack and the QGC workers emit environment-dependent warnings when
-    // BlueZ is unavailable or no adapter is present (e.g. headless CI). These are
-    // infrastructure noise, not behavior under test.
     ignoreLogMessage("default", QtWarningMsg,
                      QRegularExpression(QStringLiteral("Cannot find a compatible running Bluez")));
     ignoreLogMessage("qt.bluetooth", QtWarningMsg,
                      QRegularExpression(QStringLiteral("LE controller has invalid adapter")));
-    ignoreLogMessage("qt.bluetooth.bluez", QtInfoMsg,
-                     QRegularExpression(QStringLiteral("Missing CAP_NET_ADMIN")));
-    ignoreLogMessage("qt.bluetooth.bluez", QtWarningMsg,
-                     QRegularExpression(QStringLiteral(
-                         "Cannot open HCI socket|Cannot determine bluetoothd version|"
-                         "Disabling Qt Bluetooth LE feature|Cannot find Bluez 5 adapter")));
+    ignoreLogMessage("qt.bluetooth.bluez", QtInfoMsg, QRegularExpression(QStringLiteral("Missing CAP_NET_ADMIN")));
+    ignoreLogMessage(
+        "qt.bluetooth.bluez", QtWarningMsg,
+        QRegularExpression(QStringLiteral(
+            "Cannot open HCI socket|Cannot determine bluetoothd version|"
+            "Disabling Qt Bluetooth LE feature|Cannot find Bluez 5 adapter|HCIGETCONNLIST|Cannot find hci dev")));
     ignoreLogMessage("Comms.Bluetooth.BluetoothBleWorker", QtWarningMsg,
                      QRegularExpression(QStringLiteral("BLE Controller error")));
     ignoreLogMessage("Comms.Bluetooth.BluetoothClassicWorker", QtWarningMsg,
@@ -52,7 +49,7 @@ void BluetoothWorkerTest::_testFactoryCreatesClassicWorker()
 
     std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
     QVERIFY(worker);
-    QVERIFY(qobject_cast<BluetoothClassicWorker *>(worker.get()));
+    QVERIFY(qobject_cast<BluetoothClassicWorker*>(worker.get()));
 }
 
 void BluetoothWorkerTest::_testFactoryCreatesBleWorker()
@@ -62,7 +59,7 @@ void BluetoothWorkerTest::_testFactoryCreatesBleWorker()
 
     std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
     QVERIFY(worker);
-    QVERIFY(qobject_cast<BluetoothBleWorker *>(worker.get()));
+    QVERIFY(qobject_cast<BluetoothBleWorker*>(worker.get()));
 }
 
 void BluetoothWorkerTest::_testInitialState()
@@ -81,11 +78,11 @@ void BluetoothWorkerTest::_testWriteEmptyDataEmitsNothing()
     QSignalSpy errorSpy(worker.get(), &BluetoothWorker::errorOccurred);
     QSignalSpy dataSpy(worker.get(), &BluetoothWorker::dataSent);
 
-    expectLogMessage("Comms.Bluetooth.BluetoothWorker", QtWarningMsg, QRegularExpression("Write called with empty data"));
+    expectLogMessage("Comms.Bluetooth.BluetoothWorker", QtWarningMsg,
+                     QRegularExpression("Write called with empty data"));
     worker->writeData(QByteArray());
     verifyExpectedLogMessage();
 
-    // Empty data should be silently dropped — no error, no dataSent
     QCOMPARE(errorSpy.count(), 0);
     QCOMPARE(dataSpy.count(), 0);
 }
@@ -107,16 +104,10 @@ void BluetoothWorkerTest::_testConnectWhileConnectedWarns()
 {
     BluetoothConfiguration config("TestBT_doubleConnect");
 
-    // Use BLE worker — Classic would attempt a real socket
     config.setMode(BluetoothConfiguration::BluetoothMode::ModeLowEnergy);
     std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
 
-    // Force _connected = true via connectLink/disconnect cycle isn't possible without
-    // real hardware, but we can verify the guard path doesn't crash.
-    // First connect attempt will fail (no device), but should not crash.
     worker->connectLink();
-    // Second call exercises the "already connected" guard when _connected is false —
-    // it just proceeds, which is fine.
     worker->connectLink();
 
     QVERIFY2(true, "double connectLink must not crash");
@@ -128,13 +119,10 @@ void BluetoothWorkerTest::_testDisconnectResetsReconnectState()
 
     std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
 
-    // Call connectLink to set intentionalDisconnect = false internally
     worker->connectLink();
 
-    // Now disconnect — should reset state cleanly
     worker->disconnectLink();
 
-    // Verify worker is not connected
     QVERIFY(!worker->isConnected());
 }
 
@@ -144,15 +132,16 @@ void BluetoothWorkerTest::_testClassicDiscoveryTimerStopsOnFinished()
     config.setMode(BluetoothConfiguration::BluetoothMode::ModeClassic);
 
     std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
-    auto *classicWorker = qobject_cast<BluetoothClassicWorker *>(worker.get());
+    auto* classicWorker = qobject_cast<BluetoothClassicWorker*>(worker.get());
     QVERIFY(classicWorker);
 
-    QTimer *serviceTimer = _findServiceDiscoveryTimer(worker.get());
+    QTimer* serviceTimer = _findServiceDiscoveryTimer(worker.get());
     QVERIFY(serviceTimer);
     serviceTimer->start();
     QVERIFY(serviceTimer->isActive());
 
-    expectLogMessage("Comms.Bluetooth.BluetoothClassicWorker", QtWarningMsg, QRegularExpression("No suitable classic service found"));
+    expectLogMessage("Comms.Bluetooth.BluetoothClassicWorker", QtWarningMsg,
+                     QRegularExpression("No suitable classic service found"));
     QVERIFY(QMetaObject::invokeMethod(classicWorker, "_onClassicServiceDiscoveryFinished", Qt::DirectConnection));
     verifyExpectedLogMessage();
     QVERIFY(!serviceTimer->isActive());
@@ -164,10 +153,10 @@ void BluetoothWorkerTest::_testClassicDiscoveryTimerStopsOnCanceled()
     config.setMode(BluetoothConfiguration::BluetoothMode::ModeClassic);
 
     std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
-    auto *classicWorker = qobject_cast<BluetoothClassicWorker *>(worker.get());
+    auto* classicWorker = qobject_cast<BluetoothClassicWorker*>(worker.get());
     QVERIFY(classicWorker);
 
-    QTimer *serviceTimer = _findServiceDiscoveryTimer(worker.get());
+    QTimer* serviceTimer = _findServiceDiscoveryTimer(worker.get());
     QVERIFY(serviceTimer);
     serviceTimer->start();
     QVERIFY(serviceTimer->isActive());
@@ -184,18 +173,19 @@ void BluetoothWorkerTest::_testClassicDiscoveryTimerStopsOnError()
     config.setMode(BluetoothConfiguration::BluetoothMode::ModeClassic);
 
     std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
-    auto *classicWorker = qobject_cast<BluetoothClassicWorker *>(worker.get());
+    auto* classicWorker = qobject_cast<BluetoothClassicWorker*>(worker.get());
     QVERIFY(classicWorker);
 
-    QTimer *serviceTimer = _findServiceDiscoveryTimer(worker.get());
+    QTimer* serviceTimer = _findServiceDiscoveryTimer(worker.get());
     QVERIFY(serviceTimer);
     serviceTimer->start();
     QVERIFY(serviceTimer->isActive());
 
-    expectLogMessage("Comms.Bluetooth.BluetoothClassicWorker", QtWarningMsg, QRegularExpression("Service discovery error:"));
-    QVERIFY(QMetaObject::invokeMethod(classicWorker, "_onClassicServiceDiscoveryError", Qt::DirectConnection,
-                                      Q_ARG(QBluetoothServiceDiscoveryAgent::Error,
-                                            QBluetoothServiceDiscoveryAgent::Error::UnknownError)));
+    expectLogMessage("Comms.Bluetooth.BluetoothClassicWorker", QtWarningMsg,
+                     QRegularExpression("Service discovery error:"));
+    QVERIFY(QMetaObject::invokeMethod(
+        classicWorker, "_onClassicServiceDiscoveryError", Qt::DirectConnection,
+        Q_ARG(QBluetoothServiceDiscoveryAgent::Error, QBluetoothServiceDiscoveryAgent::Error::UnknownError)));
     verifyExpectedLogMessage();
     QVERIFY(!serviceTimer->isActive());
 }
@@ -208,7 +198,6 @@ void BluetoothWorkerTest::_testDestroyClassicWorker()
     {
         std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
         worker->setupConnection();
-        // destroyed here — must not crash
     }
     QVERIFY2(true, "classic worker destruction must not crash");
 }
@@ -221,7 +210,6 @@ void BluetoothWorkerTest::_testDestroyBleWorker()
     {
         std::unique_ptr<BluetoothWorker> worker(BluetoothWorker::create(&config));
         worker->setupConnection();
-        // destroyed here — must not crash
     }
     QVERIFY2(true, "BLE worker destruction must not crash");
 }
