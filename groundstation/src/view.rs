@@ -900,6 +900,11 @@ pub const VIEWS: &[View] = &[
         compute: crate::payloadrail::view,
     },
     View {
+        path: crate::sixpos::SIX_POS_VIEW,
+        deps: crate::sixpos::DEPS,
+        compute: crate::sixpos::view,
+    },
+    View {
         path: "view.usbRadio",
         deps: &[],
         compute: crate::usbradio::indicator_view,
@@ -1659,6 +1664,7 @@ mod deps_cover_reads {
         ("settingsini", include_str!("settingsini.rs")),
         ("settingsstore", include_str!("settingsstore.rs")),
         ("simcamera", include_str!("simcamera.rs")),
+        ("sixpos", include_str!("sixpos.rs")),
         ("setup", include_str!("setup.rs")),
         ("vehicleconfig", include_str!("vehicleconfig.rs")),
         ("shp", include_str!("shp.rs")),

@@ -31,6 +31,7 @@ import { NtripMountpointBrowser, NtripStatusSection } from '@/ui/NtripStatusSect
 import { OFFLINE_MAPS_GROUP, OfflineMapsSection } from '@/ui/OfflineMaps';
 import { OsmFilePicker } from '@/ui/OsmFilePicker';
 import { PacketRadioSection } from '@/ui/PacketRadioSection';
+import { SixPosSection } from '@/ui/SixPosSection';
 import { paletteNamed } from '@/ui/Palette';
 import { bitmaskRaw, bitmaskSummary, controlIsUnderstood, factFromControl, sliderSnapped, sliderValue } from '@/ui/ParameterForm';
 import { ValueDetailsSheet } from '@/ui/ParameterLinks';
@@ -694,6 +695,7 @@ const SettingsControls = ({
                       <FactRuns facts={block.facts.slice(0, 1)} onWrite={onWrite} />
                       <UsbAccess />
                       <FactRuns facts={block.facts.slice(1)} onWrite={onWrite} />
+                      <SixPosSection />
                     </>
                   ) : (
                     <FactRuns facts={block.facts} onWrite={onWrite} />

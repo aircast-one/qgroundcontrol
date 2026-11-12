@@ -67,6 +67,7 @@ pub struct Layout {
     pub tilt: usize,
     pub look: usize,
     pub stick: usize,
+    pub six_pos: Option<[u16; crate::sixpos::POSITIONS]>,
 }
 
 pub const R2D2: Layout = Layout {
@@ -81,6 +82,7 @@ pub const R2D2: Layout = Layout {
     tilt: 19,
     look: 23,
     stick: 17,
+    six_pos: None,
 };
 
 const FUNCTION_NAMES: [&str; 11] = [
@@ -125,6 +127,7 @@ impl Layout {
             tilt: off(self.tilt),
             look: off(self.look),
             stick: off(self.stick),
+            six_pos: self.six_pos,
         }
     }
 
@@ -185,6 +188,7 @@ pub fn layout() -> Layout {
         tilt,
         look,
         stick,
+        six_pos: crate::sixpos::learned(),
     }
 }
 
@@ -252,7 +256,14 @@ fn turn_rate(pwm: u16, speed: f32) -> f32 {
     off.signum() * (past * (1.0 - YAW_EXPO) + past.powi(3) * YAW_EXPO) * speed
 }
 
-fn bay(pwm: u16) -> Option<i64> {
+fn bay(pwm: u16, learned: Option<[u16; crate::sixpos::POSITIONS]>) -> Option<i64> {
+    match learned {
+        Some(table) => crate::sixpos::decode(pwm, table),
+        None => known_bay(pwm),
+    }
+}
+
+fn known_bay(pwm: u16) -> Option<i64> {
     [
         R2D2_SIX_POS_PWM,
         (STICK_LOW_PWM, STICK_LOW_PWM + STICK_SPAN_PWM),
@@ -663,7 +674,7 @@ pub fn switches(
 ) -> Option<crate::payloadrail::RadioSwitches> {
     read(line, layout.arm).map(|arm| crate::payloadrail::RadioSwitches {
         armed: arm >= ARMED_PWM,
-        bay: read(line, layout.bay).and_then(bay),
+        bay: read(line, layout.bay).and_then(|pwm| bay(pwm, layout.six_pos)),
         at_ms: now_ms,
     })
 }
@@ -1093,19 +1104,25 @@ mod tests {
             "a new selection drops next"
         );
         assert_eq!(
-            [988, 1193, 1398, 1602, 1807, 2012].map(bay),
+            [988, 1193, 1398, 1602, 1807, 2012].map(known_bay),
             [1, 2, 3, 4, 5, 6].map(Some),
             "EdgeTX spreads a 6POS switch evenly over the channel"
         );
         assert_eq!(
-            [-179, -154, -127, -100, -73, -46].map(|raw| bay(crate::usbradio::pwm(raw))),
+            [-179, -154, -127, -100, -73, -46].map(|raw| known_bay(crate::usbradio::pwm(raw))),
             [1, 2, 3, 4, 5, 6].map(Some),
             "R2D2's default model sends its 6POS in a narrow band below the centre, button 1 lowest"
         );
         assert_eq!(
-            [1300, 1500, 1700].map(bay),
+            [1300, 1500, 1700].map(known_bay),
             [None; 3],
             "a channel resting between positions picks no bay, so the app's pick drops"
+        );
+        let learned = Some([1300, 1350, 1400, 1450, 1500, 1550]);
+        assert_eq!(
+            [1300, 1500, 1425].map(|pwm| bay(pwm, learned)),
+            [Some(1), Some(5), None],
+            "a learned 6POS reads only its own steps, not the scales it replaces"
         );
         let mut plugged_in_high = Sticks::default();
         assert!(
@@ -1503,6 +1520,7 @@ mod tests {
             tilt: 0,
             look: 0,
             stick: 0,
+            six_pos: None,
         };
         let mut sticks = Sticks {
             layout: moved,

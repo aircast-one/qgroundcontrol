@@ -282,6 +282,7 @@ const PAGES: &[Page] = &[
 ];
 
 const HIDDEN: &[&str] = &[
+    "usbRadioSixPos",
     "virtualJoystickAutoCenterThrottle",
     "androidUsePosixSerial",
     "keepSceneAlive",

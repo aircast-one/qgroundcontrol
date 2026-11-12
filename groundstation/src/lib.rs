@@ -284,6 +284,7 @@ pub mod shp;
 pub mod signing;
 pub mod signingkeys;
 pub mod simcamera;
+pub mod sixpos;
 pub mod speech;
 pub mod speed;
 pub mod standardmodes;

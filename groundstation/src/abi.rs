@@ -517,6 +517,11 @@ pub(crate) fn pump_once() {
                     .iter()
                     .for_each(|(path, json)| announce(path, json));
             }
+            if crate::sixpos::take_changed() {
+                CORE.on_event(crate::sixpos::SIX_POS_CHANGED, "null")
+                    .iter()
+                    .for_each(|(path, json)| announce(path, json));
+            }
             if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
                 CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null")
                     .iter()

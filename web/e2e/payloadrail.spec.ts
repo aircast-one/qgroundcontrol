@@ -78,3 +78,36 @@ test("the lock and the radio's BOMARM switch both arm, the last one moved wins, 
   await rail(page).getByRole('button', { name: 'Bay 2, loaded' }).click();
   await expect(rail(page).getByRole('button', { name: 'Drop 2' }), 'a channel between 6POS positions leaves the pick to the app').toBeVisible({ timeout: 30_000 });
 });
+
+test("a radio whose 6POS neither EdgeTX nor R2D2 reads picks no bay until it is learned, then picks each button's bay", async ({ page }) => {
+  test.setTimeout(180_000);
+  const ladder = [-32, -16, 0, 16, 32, 48] as const;
+  await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
+  await page.addLocatorHandler(page.getByText('Configuration tasks remain before this vehicle is ready to fly.', { exact: false }), () => page.getByRole('button', { name: 'Later', exact: true }).click());
+  await plugInR2d2Radio(page);
+  await openApp(page);
+  await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Use', exact: true }).click();
+  await connectMock(page, [], 'APM ArduCopter Vehicle');
+  await fourServoBays(page);
+  await readFlightModesOn(page, 10);
+  await setRadioChannels(page, { 5: ladder[3] });
+  await rail(page).getByRole('button', { name: 'Bay 2, loaded' }).click({ timeout: 30_000 });
+  await expect(rail(page).getByRole('button', { name: 'Bay 2, loaded, selected' }), 'a 6POS value on no known step leaves the pick to the app').toBeVisible({ timeout: 30_000 });
+
+  await setRadioChannels(page, { 5: ladder[0] });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
+  await page.getByRole('button', { name: 'Learn 6POS' }).click();
+  for (const [at, raw] of ladder.entries()) {
+    await setRadioChannels(page, { 5: raw });
+    await expect(page.getByText(at === ladder.length - 1 ? "The radio's 6POS is learned" : `${at + 1} of 6 positions heard`)).toBeVisible({ timeout: 10_000 });
+  }
+  await expect(page.getByText("The radio's 6POS is learned: 1484,1492,1500,1508,1516,1524.")).toBeVisible();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+
+  await setRadioChannels(page, { 5: ladder[3] });
+  await expect(rail(page).getByRole('button', { name: 'Bay 4, loaded, selected' }), 'button 4 of the learned 6POS picks bay 4').toBeVisible({ timeout: 30_000 });
+  await setRadioChannels(page, { 5: ladder[0] });
+  await expect(rail(page).getByRole('button', { name: 'Bay 1, loaded, selected' }), 'and button 1 picks bay 1').toBeVisible({ timeout: 30_000 });
+});

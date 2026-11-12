@@ -181,6 +181,14 @@
             "label": "Payload bay channel"
         },
         {
+            "name": "usbRadioSixPos",
+            "shortDesc": "The radio's learned 6POS positions",
+            "longDesc": "The channel value each 6POS button sends, buttons 1 to 6, learned by pressing each one. Empty reads the 6POS as EdgeTX or R2D2 send it.",
+            "type": "string",
+            "default": "",
+            "label": "6POS positions"
+        },
+        {
             "name": "usbRadioTiltChannel",
             "shortDesc": "Camera tilt knob channel",
             "longDesc": "A knob that tilts the camera like the pitch channel: its lowest value points straight down, its highest straight ahead. Whichever of the two moved last steers. The radio's script sets an empty channel up for it. 0 turns it off.",

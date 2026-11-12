@@ -769,6 +769,7 @@ fn heard_on(port: &str, lines: Vec<Line>) {
             .map_or(DEFAULT_CHANNELS, |roles| roles.channels)
             .map(usize::from);
         let (layout, conflicts) = bound_layout();
+        crate::sixpos::heard(line, layout.bay, crate::hub::now_ms());
         let camera = target().is_some()
             && camera_takes_stick(crate::radiocamera::stick_switched(line, layout));
         crate::payloadrail::radio_seen(crate::radiocamera::switches(
