@@ -3,6 +3,15 @@ use crate::payloadcheck::{DROP_ALL_NEEDS_BOARD, DROP_BOARD_BAYS, DROP_BOARD_ONLY
 
 pub const RELEASE: f64 = 0.0;
 
+pub fn board_empties(loaded: f32) -> Option<std::collections::BTreeSet<i64>> {
+    let mask = loaded.round() as i64;
+    (1..1 << DROP_BOARD_BAYS).contains(&mask).then(|| {
+        (1..=DROP_BOARD_BAYS)
+            .filter(|bay| mask & (1 << (DROP_BOARD_BAYS - bay)) == 0)
+            .collect()
+    })
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     None,

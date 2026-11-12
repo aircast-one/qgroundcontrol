@@ -646,20 +646,20 @@ fn steer_other(vehicle: u8, step: Move) {
                 None,
             );
         }
-        Move::Drop { bay } => match crate::payloadrail::drop_bay(bay) {
-            Ok(bay) => {
-                let sent = guided(
-                    vehicle,
-                    json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
-                    Some(crate::noticeboard::PAYLOAD),
-                );
-                log::info!(target: "radio", "the drop switch dropped bay {bay}: sent {sent}");
+        Move::Drop { bay } => {
+            match crate::payloadrail::drop_decision(bay, crate::payloadrail::RADIO) {
+                Ok(bay) => {
+                    guided(
+                        vehicle,
+                        json!({ "action": "gripper", "gripAction": crate::guided::GRIPPER_RELEASE, "bay": bay }),
+                        Some(crate::noticeboard::PAYLOAD),
+                    );
+                }
+                Err(reason) => {
+                    crate::noticeboard::post_from_vehicle(crate::noticeboard::PAYLOAD, &reason);
+                }
             }
-            Err(reason) => {
-                log::info!(target: "radio", "the drop switch dropped nothing: {reason}");
-                crate::noticeboard::post_from_vehicle(crate::noticeboard::PAYLOAD, &reason);
-            }
-        },
+        }
         Move::Picture(value) => setting(crate::camsettings::set_setting(
             &json!([PICTURE_SETTING, value]).to_string(),
         )),

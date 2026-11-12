@@ -175,15 +175,6 @@ pub const DROP_BOARD_STALE_MS: u64 = 10_000;
 pub const DROP_BOARD_ONLY_DROPS: &str = "The drop module on this drone only drops.";
 pub const DROP_ALL_NEEDS_BOARD: &str = "Drop all is for a drop module that answers each bay.";
 
-pub fn board_empties(loaded: f32) -> Option<std::collections::BTreeSet<i64>> {
-    let mask = loaded.round() as i64;
-    (1..1 << DROP_BOARD_BAYS).contains(&mask).then(|| {
-        (1..=DROP_BOARD_BAYS)
-            .filter(|bay| mask & (1 << (DROP_BOARD_BAYS - bay)) == 0)
-            .collect()
-    })
-}
-
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Setup {
     pub device_bays: i64,

@@ -47,6 +47,13 @@ pub enum Event {
     Pick { bay: i64, reloaded: bool },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    Changed,
+    Unchanged,
+    Refused(&'static str),
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Rail {
     armed: bool,
@@ -84,7 +91,7 @@ impl Rail {
         }
     }
 
-    pub fn apply(self, event: Event, now_ms: u64) -> (Rail, Result<bool, &'static str>) {
+    pub fn apply(self, event: Event, now_ms: u64) -> (Rail, Outcome) {
         match event {
             Event::Radio(switches) => (
                 Rail {
@@ -95,28 +102,32 @@ impl Rail {
                     radio: Some(switches),
                     ..self
                 },
-                Ok(self
+                match self
                     .radio
-                    .is_none_or(|was| (was.armed, was.bay) != (switches.armed, switches.bay))),
+                    .is_none_or(|was| (was.armed, was.bay) != (switches.armed, switches.bay))
+                {
+                    true => Outcome::Changed,
+                    false => Outcome::Unchanged,
+                },
             ),
             Event::Seen(switches) => (
                 Rail {
                     seen: switches,
                     ..self
                 },
-                Ok(false),
+                Outcome::Unchanged,
             ),
-            Event::Arm(armed) => (Rail { armed, ..self }, Ok(true)),
+            Event::Arm(armed) => (Rail { armed, ..self }, Outcome::Changed),
             Event::Pick { bay, reloaded } => {
                 match (self.radio(now_ms).and_then(|radio| radio.bay), reloaded) {
-                    (Some(_), true) => (self, Ok(true)),
-                    (Some(_), false) => (self, Err(RADIO_SELECTS)),
+                    (Some(_), true) => (self, Outcome::Changed),
+                    (Some(_), false) => (self, Outcome::Refused(RADIO_SELECTS)),
                     (None, _) => (
                         Rail {
                             selected: bay.max(1),
                             ..self
                         },
-                        Ok(true),
+                        Outcome::Changed,
                     ),
                 }
             }
@@ -164,7 +175,7 @@ fn rail() -> MutexGuard<'static, Rail> {
     RAIL.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn apply(event: Event) -> Result<bool, &'static str> {
+fn apply(event: Event) -> Outcome {
     let mut rail = rail();
     let (next, outcome) = rail.apply(event, crate::hub::now_ms());
     *rail = next;
@@ -172,14 +183,14 @@ fn apply(event: Event) -> Result<bool, &'static str> {
 }
 
 pub fn radio_heard(switches: RadioSwitches) {
-    if apply(Event::Radio(switches)) == Ok(true) {
-        log::info!(target: "radio", "BOMARM {} and the 6POS on bay {:?}", if switches.armed { "armed" } else { "safe" }, switches.bay);
+    if apply(Event::Radio(switches)) == Outcome::Changed {
+        log::info!(target: "radio", "event=radio_payload_switches armed={} bay={:?}", switches.armed, switches.bay);
         CHANGED_FLAG.store(true, Ordering::Relaxed);
     }
 }
 
 pub fn radio_seen(switches: Option<RadioSwitches>) {
-    let _ = apply(Event::Seen(switches));
+    apply(Event::Seen(switches));
 }
 
 pub fn verdict() -> &'static str {
@@ -220,11 +231,11 @@ fn refused(reason: &str) -> Value {
     json!({ "ok": false, "reason": reason })
 }
 
-fn settled(outcome: Result<bool, &'static str>) -> Value {
+fn settled(outcome: Outcome) -> Value {
     CHANGED_FLAG.store(true, Ordering::Relaxed);
     match outcome {
-        Ok(_) => json!({ "ok": true }),
-        Err(reason) => refused(reason),
+        Outcome::Changed | Outcome::Unchanged => json!({ "ok": true }),
+        Outcome::Refused(reason) => refused(reason),
     }
 }
 
@@ -272,17 +283,32 @@ fn empty(bay: i64) -> bool {
         .is_some_and(|vehicle| vehicle.empty_bays.contains(&bay))
 }
 
-pub fn drop_bay(bay: i64) -> Result<i64, String> {
+pub fn drop_decision(bay: i64, source: &'static str) -> Result<i64, String> {
     let now_ms = crate::hub::now_ms();
-    let bays = crate::hub::lock().active().and_then(|vehicle| {
+    let (vehicle, bays) = crate::hub::lock().active().map_or((None, None), |vehicle| {
         let payload = vehicle.payload(now_ms);
-        (payload != crate::payload::Payload::None).then(|| payload.bays())
+        (
+            Some(vehicle.id),
+            (payload != crate::payload::Payload::None).then(|| payload.bays()),
+        )
     });
-    rail().drop_bay(bay, bays)
+    let (armed, decision) = {
+        let rail = rail();
+        (rail.armed(), rail.drop_bay(bay, bays))
+    };
+    log::info!(
+        target: "payload",
+        "event=drop source={source} vehicle={vehicle:?} bay={bay} bays={bays:?} armed={armed} outcome={}",
+        match &decision {
+            Ok(dropped) => format!("drop bay {dropped}"),
+            Err(reason) => format!("refused: {reason}"),
+        }
+    );
+    decision
 }
 
 fn drop(backend: &dyn Backend) -> Value {
-    match drop_bay(selected()) {
+    match drop_decision(selected(), APP) {
         Ok(bay) => crate::guided::gripper(
             backend,
             DROP_BAY,
@@ -475,12 +501,12 @@ mod tests {
             reloaded: false,
         };
         let (rail, picked) = Rail::default().apply(pick(2), 0);
-        assert_eq!(picked, Ok(true));
+        assert_eq!(picked, Outcome::Changed);
         let rail = rail
             .apply(Event::Radio(RadioSwitches { bay: None, ..LIVE }), 1_000)
             .0;
         assert_eq!(rail.selected(1_100), Owned { value: 2, by: APP });
-        assert_eq!(rail.apply(pick(3), 1_100).1, Ok(true));
+        assert_eq!(rail.apply(pick(3), 1_100).1, Outcome::Changed);
     }
 
     #[test]
@@ -495,9 +521,13 @@ mod tests {
             "the app starts on bay 1"
         );
         let (rail, first) = Rail::default().apply(Event::Radio(LIVE), 1_000);
-        assert_eq!(first, Ok(true), "the first line from the radio is a change");
+        assert_eq!(
+            first,
+            Outcome::Changed,
+            "the first line from the radio is a change"
+        );
         let (rail, again) = rail.apply(Event::Radio(LIVE), 1_000);
-        assert_eq!(again, Ok(false), "the same switches again are not");
+        assert_eq!(again, Outcome::Unchanged, "the same switches again are not");
         assert_eq!(
             rail.selected(1_100),
             Owned {
@@ -505,12 +535,12 @@ mod tests {
                 by: RADIO
             }
         );
-        assert_eq!(rail.apply(pick, 1_100).1, Err(RADIO_SELECTS));
+        assert_eq!(rail.apply(pick, 1_100).1, Outcome::Refused(RADIO_SELECTS));
         let quiet = 1_000 + RADIO_STALE_MS + 1;
         let (rail, picked) = rail.apply(pick, quiet);
         assert_eq!(
             picked,
-            Ok(true),
+            Outcome::Changed,
             "half a second of silence hands the bay to the app"
         );
         assert_eq!(rail.selected(quiet), Owned { value: 2, by: APP });
@@ -569,17 +599,17 @@ mod tests {
         let (rail, reload) = rail.apply(pick(2, true), 10);
         assert_eq!(
             reload,
-            Ok(true),
+            Outcome::Changed,
             "the reload is taken although the 6POS keeps the pick"
         );
         assert_eq!(rail.selected(10).value, 3);
         assert_eq!(
             rail.apply(pick(2, false), 10).1,
-            Err(RADIO_SELECTS),
+            Outcome::Refused(RADIO_SELECTS),
             "a loaded bay cannot be picked from the strip while the radio picks"
         );
         let (app, picked) = Rail::default().apply(pick(2, true), 10);
-        assert_eq!(picked, Ok(true));
+        assert_eq!(picked, Outcome::Changed);
         assert_eq!(app.selected(10), Owned { value: 2, by: APP });
     }
 

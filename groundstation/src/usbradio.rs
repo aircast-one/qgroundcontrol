@@ -395,6 +395,17 @@ fn hand_over(frame: Frame, channels: [usize; 2], camera: bool) -> Frame {
     frame
 }
 
+pub fn fresh_conflicts<'a>(
+    was: &[(u8, usize)],
+    vehicle: u8,
+    conflicts: &'a [crate::dronefacts::Conflict],
+) -> Vec<&'a crate::dronefacts::Conflict> {
+    conflicts
+        .iter()
+        .filter(|conflict| !was.contains(&(vehicle, conflict.channel)))
+        .collect()
+}
+
 fn warn_of_conflicts(vehicle: u8, conflicts: &[crate::dronefacts::Conflict]) {
     let now: Vec<(u8, usize)> = conflicts
         .iter()
@@ -404,9 +415,8 @@ fn warn_of_conflicts(vehicle: u8, conflicts: &[crate::dronefacts::Conflict]) {
         &mut *CLASH.lock().unwrap_or_else(PoisonError::into_inner),
         now,
     );
-    conflicts
-        .iter()
-        .filter(|conflict| !was.contains(&(vehicle, conflict.channel)))
+    fresh_conflicts(&was, vehicle, conflicts)
+        .into_iter()
         .for_each(|conflict| {
             crate::noticeboard::post_from_vehicle(
                 crate::noticeboard::BRIEF,
@@ -430,25 +440,62 @@ fn option_label(param: &str, value: u16) -> Option<String> {
         .and_then(|entry| entry["label"].as_str().map(str::to_string))
 }
 
-fn active_facts() -> crate::dronefacts::DroneFacts {
+const FACTS_FRESH_MS: u64 = 1_000;
+
+static FACTS: Mutex<Option<(Option<u8>, u64, crate::dronefacts::DroneFacts)>> = Mutex::new(None);
+
+fn read_facts() -> (Option<u8>, crate::dronefacts::DroneFacts) {
     let hub = crate::hub::lock();
-    hub.active()
-        .filter(|v| !v.on_high_latency_link())
-        .map_or_else(Default::default, |vehicle| {
-            crate::dronefacts::DroneFacts::read(
-                vehicle.vehicle_type,
-                vehicle.autopilot == crate::modes::AUTOPILOT_PX4,
-                |name| {
-                    vehicle
-                        .parameter_exact(vehicle.component, name)
-                        .map(|value| value.as_f64())
-                },
+    hub.active().filter(|v| !v.on_high_latency_link()).map_or(
+        (None, Default::default()),
+        |vehicle| {
+            (
+                Some(vehicle.id),
+                crate::dronefacts::DroneFacts::read(
+                    vehicle.vehicle_type,
+                    vehicle.autopilot == crate::modes::AUTOPILOT_PX4,
+                    |name| {
+                        vehicle
+                            .parameter_exact(vehicle.component, name)
+                            .map(|value| value.as_f64())
+                    },
+                ),
             )
-        })
+        },
+    )
+}
+
+fn active_facts() -> crate::dronefacts::DroneFacts {
+    let now = crate::hub::now_ms();
+    let active = crate::hub::lock()
+        .active()
+        .filter(|v| !v.on_high_latency_link())
+        .map(|v| v.id);
+    let mut cached = FACTS.lock().unwrap_or_else(PoisonError::into_inner);
+    match cached.as_ref() {
+        Some((vehicle, at, facts))
+            if *vehicle == active && now.saturating_sub(*at) < FACTS_FRESH_MS =>
+        {
+            facts.clone()
+        }
+        _ => {
+            let (vehicle, facts) = read_facts();
+            *cached = Some((vehicle, now, facts.clone()));
+            facts
+        }
+    }
 }
 
 fn bound_layout() -> (crate::radiocamera::Layout, Vec<crate::dronefacts::Conflict>) {
     crate::dronefacts::bind(crate::radiocamera::layout(), &active_facts())
+}
+
+pub fn streaming() -> bool {
+    radio().live(crate::hub::now_ms())
+}
+
+pub fn bay_channels() -> (usize, usize) {
+    (crate::radiocamera::layout().bay, bound_layout().0.bay)
 }
 
 fn active_roles() -> Option<Roles> {
@@ -769,7 +816,7 @@ fn heard_on(port: &str, lines: Vec<Line>) {
             .map_or(DEFAULT_CHANNELS, |roles| roles.channels)
             .map(usize::from);
         let (layout, conflicts) = bound_layout();
-        crate::sixpos::heard(line, layout.bay, crate::hub::now_ms());
+        crate::sixpos::heard(line, layout.bay, layout.six_pos, crate::hub::now_ms());
         let camera = target().is_some()
             && camera_takes_stick(crate::radiocamera::stick_switched(line, layout));
         crate::payloadrail::radio_seen(crate::radiocamera::switches(
@@ -1124,6 +1171,35 @@ mod tests {
 
     fn names(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn a_conflict_is_told_once_per_vehicle_and_again_after_it_cleared() {
+        let conflict = |channel| crate::dronefacts::Conflict {
+            channel,
+            names: vec!["bay"],
+            claim: crate::dronefacts::Claim::FlightModes,
+        };
+        let now = [conflict(5), conflict(11)];
+        let channels = |fresh: Vec<&crate::dronefacts::Conflict>| {
+            fresh.iter().map(|c| c.channel).collect::<Vec<_>>()
+        };
+        assert_eq!(channels(fresh_conflicts(&[], 1, &now)), vec![5, 11]);
+        assert_eq!(
+            channels(fresh_conflicts(&[(1, 5), (1, 11)], 1, &now)),
+            Vec::<usize>::new(),
+            "the same conflicts on the next line are not told again"
+        );
+        assert_eq!(
+            channels(fresh_conflicts(&[(1, 5)], 1, &now)),
+            vec![11],
+            "a new one is"
+        );
+        assert_eq!(
+            channels(fresh_conflicts(&[(1, 5), (1, 11)], 2, &now)),
+            vec![5, 11],
+            "another vehicle hears them from the start"
+        );
     }
 
     #[test]

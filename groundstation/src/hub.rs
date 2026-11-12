@@ -6613,29 +6613,29 @@ impl Vehicle {
             .map(|(component, _)| component)
     }
 
-    pub fn device_bays_at(&self, now_ms: u64) -> i64 {
+    fn device_dropper_bays_at(&self, now_ms: u64) -> i64 {
         self.device_dropper
             .filter(|(bays, at)| {
                 *bays > 0
                     && now_ms.saturating_sub(*at) <= crate::payloadcheck::DEVICE_DROPPER_STALE_MS
             })
-            .map(|(bays, _)| i64::from(bays))
-            .or_else(|| {
-                self.drop_board_at(now_ms)
-                    .map(|_| crate::payloadcheck::DROP_BOARD_BAYS)
-            })
-            .unwrap_or(0)
+            .map_or(0, |(bays, _)| i64::from(bays))
+    }
+
+    pub fn device_bays_at(&self, now_ms: u64) -> i64 {
+        match self.device_dropper_bays_at(now_ms) {
+            0 => self
+                .drop_board_at(now_ms)
+                .map_or(0, |_| crate::payloadcheck::DROP_BOARD_BAYS),
+            bays => bays,
+        }
     }
 
     pub fn payload(&self, now_ms: u64) -> crate::payload::Payload {
         crate::payload::Payload::detect(
             self.drop_board_at(now_ms),
             self.payload_servos(),
-            self.device_dropper
-                .filter(|(_, at)| {
-                    now_ms.saturating_sub(*at) <= crate::payloadcheck::DEVICE_DROPPER_STALE_MS
-                })
-                .map_or(0, |(bays, _)| i64::from(bays)),
+            self.device_dropper_bays_at(now_ms),
             crate::vehiclefacade::has_gripper(self.autopilot, |name| {
                 self.parameter(self.component, name).map(|p| p.as_f64())
             }),
@@ -7566,7 +7566,7 @@ impl Vehicle {
             && header.component_id != crate::joystickhost::STANDBY_COMPONENT
         {
             self.drop_board = Some((header.component_id, now_ms));
-            if let Some(empty) = crate::payloadcheck::board_empties(command.param3) {
+            if let Some(empty) = crate::payload::board_empties(command.param3) {
                 self.empty_bays = empty;
             }
         }
@@ -13676,6 +13676,62 @@ mod tests {
             )
             .is_some(),
             "Vehicle::_handleStatusText drops it only when _healthAndArmingChecksSupported(component)"
+        );
+    }
+
+    #[test]
+    fn a_drop_board_takes_the_drops_and_the_bay_count_even_with_servos_set_up_per_bay() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_LONG_DATA, MavCmd};
+        crate::payloadcheck::CONFIGURED.set(Some(
+            (9..=10)
+                .map(|output| crate::payloadcheck::Servo {
+                    output,
+                    release: 1900.0,
+                    hold: 1100.0,
+                })
+                .collect(),
+        ));
+        let mut hub = Hub::with_payload_lock(PayloadLock::ARMED);
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let now = now_ms();
+        hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), now, now);
+        assert_eq!(hub.active().unwrap().drop_bays(), 2, "two servos, two bays");
+        let beacon = MavMessage::COMMAND_LONG(COMMAND_LONG_DATA {
+            target_system: 255,
+            target_component: 190,
+            command: MavCmd::MAV_CMD_DO_GRIPPER,
+            ..Default::default()
+        });
+        hub.on_frame(
+            origin(0),
+            &MavHeader {
+                component_id: 169,
+                ..autopilot
+            },
+            &beacon,
+            now,
+            now,
+        );
+        assert_eq!(
+            hub.active().unwrap().drop_bays(),
+            4,
+            "the board's four holders are counted, not the servos it overrides"
+        );
+        let sent = hub
+            .guided(
+                None,
+                &json!({ "action": "gripper", "gripAction": 0, "bay": 3 }),
+                1,
+            )
+            .unwrap();
+        crate::payloadcheck::CONFIGURED.set(None);
+        assert!(
+            sent.iter().any(|(_, bytes)| matches!(decode(bytes), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_GRIPPER && c.target_component == 169 && c.param1 == 3.0)),
+            "and bay 3, which no servo has, drops on the board"
         );
     }
 
