@@ -173,6 +173,21 @@ export const trackingReading = (view: Json | null): TrackingReading | null => {
 
 export const CAMERA_TRACKING_ARMED = 'vehicle.cameraManager.currentCameraInstance.trackingEnabled';
 
+export const CAMERA_START_PURSUIT = 'vehicle.cameraManager.currentCameraInstance.startPursuit';
+export const CAMERA_STOP_PURSUIT = 'vehicle.cameraManager.currentCameraInstance.stopPursuit';
+
+export type PursuitReading = { engaged: boolean; ready: boolean; reason: string };
+
+export const pursuitReading = (view: Json | null): PursuitReading | null => {
+  const pursuit = optJSONObject(view, 'pursuit');
+  if (pursuit === null) return null;
+  return {
+    engaged: optBoolean(pursuit, 'engaged'),
+    ready: optBoolean(pursuit, 'ready'),
+    reason: optText(pursuit, 'reason'),
+  };
+};
+
 export const trackingToggleLabel = (reading: TrackingReading): string => (reading.requested ? 'Stop tracking' : 'Track something');
 
 export const trackingCanAim = (reading: TrackingReading | null): boolean => reading !== null && reading.requested && reading.shapes.length > 0;

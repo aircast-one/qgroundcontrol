@@ -47,12 +47,17 @@ impl Source {
     pub fn track_url(&self) -> String {
         format!("{}/track", self.base())
     }
+
+    pub fn pursue_url(&self) -> String {
+        format!("{}/pursue", self.base())
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Frame {
     pub boxes: Vec<Value>,
     pub track: Value,
+    pub pursuit: Value,
     pub received_ms: u64,
     pub captured_ms: u64,
     pub grounds: Vec<Seen>,
@@ -200,6 +205,7 @@ pub fn frame_from(payload: &Value, received_ms: u64, assumed_latency_ms: u64) ->
     Frame {
         boxes,
         track: payload.get("track").cloned().unwrap_or(Value::Null),
+        pursuit: payload.get("pursuit").cloned().unwrap_or(Value::Null),
         received_ms,
         captured_ms: received_ms.saturating_sub(latency_ms),
         grounds: Vec::new(),
@@ -293,6 +299,14 @@ impl Feed {
         self.source.clone().map(|source| (source, target))
     }
 
+    pub fn pursuit(&self, now_ms: u64) -> Value {
+        self.frame
+            .as_ref()
+            .filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)
+            .map(|f| f.pursuit.clone())
+            .unwrap_or(Value::Null)
+    }
+
     pub fn snapshot(&self, now_ms: u64) -> Value {
         let age_ms = self
             .frame
@@ -309,6 +323,7 @@ impl Feed {
             "ageMs": age_ms,
             "boxes": if stale { Vec::new() } else { self.frame.as_ref().map(|f| f.boxes.clone()).unwrap_or_default() },
             "track": if stale { Value::Null } else { self.frame.as_ref().map(|f| f.track.clone()).unwrap_or(Value::Null) },
+            "pursuit": if stale { Value::Null } else { self.frame.as_ref().map(|f| f.pursuit.clone()).unwrap_or(Value::Null) },
             "error": self.error.as_ref().filter(|_| self.heard).map(|_| DETECTOR_LOST),
             "cause": self.error,
         })
@@ -441,7 +456,9 @@ pub fn maintain(backend: &dyn Backend) {
 
 pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
     maintain(backend);
-    lock().snapshot(crate::hub::now_ms())
+    let mut view = lock().snapshot(crate::hub::now_ms());
+    view["pursuit"] = crate::devicetrack::offered_by(backend, view["pursuit"].take());
+    view
 }
 
 #[cfg(test)]
@@ -598,6 +615,31 @@ mod tests {
     }
 
     #[test]
+    fn the_pursuit_state_rides_the_detections_payload_to_the_heads() {
+        let mut feed = Feed::default();
+        let generation = feed.generation;
+        let payload = event_payload(
+            r#"data: {"boxes":[],"ageMs":0,"pursuit":{"engaged":true,"ready":true,"reason":""}}"#,
+        )
+        .unwrap();
+        assert!(feed.receive(generation, frame_from(&payload, 1_000, 0)));
+        assert_eq!(
+            feed.pursuit(1_100),
+            json!({ "engaged": true, "ready": true, "reason": "" }),
+            "the pursuit object from aircastd reaches the heads via the feed"
+        );
+        assert_eq!(
+            feed.snapshot(1_100)["pursuit"],
+            json!({ "engaged": true, "ready": true, "reason": "" })
+        );
+        assert_eq!(
+            feed.pursuit(1_000 + STALE_MS + 1),
+            Value::Null,
+            "a stale feed reports no pursuit"
+        );
+    }
+
+    #[test]
     fn a_box_the_detector_put_no_score_on_says_so_rather_than_saying_zero() {
         let mut feed = Feed::default();
         let generation = feed.generation;
@@ -663,7 +705,7 @@ mod tests {
         assert!(feed.retarget(None));
         assert_eq!(
             feed.snapshot(7_000),
-            json!({ "kind": "object", "class": "Detections", "available": false, "host": null, "camera": null, "stale": true, "ageMs": null, "boxes": [], "track": null, "error": null, "cause": null })
+            json!({ "kind": "object", "class": "Detections", "available": false, "host": null, "camera": null, "stale": true, "ageMs": null, "boxes": [], "track": null, "pursuit": null, "error": null, "cause": null })
         );
     }
 

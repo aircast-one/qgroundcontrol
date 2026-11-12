@@ -151,8 +151,25 @@ internal const val ZOOM_HIGHEST = 100.0
 internal const val CAMERA_ZOOM = "vehicle.cameraManager.currentCameraInstance.zoomLevel"
 internal const val CAMERA_START_TRACKING = "vehicle.cameraManager.currentCameraInstance.startTracking"
 internal const val CAMERA_STOP_TRACKING = "vehicle.cameraManager.currentCameraInstance.stopTracking"
+internal const val CAMERA_START_PURSUIT = "vehicle.cameraManager.currentCameraInstance.startPursuit"
+internal const val CAMERA_STOP_PURSUIT = "vehicle.cameraManager.currentCameraInstance.stopPursuit"
 
 internal data class TrackingBox(val x: Double, val y: Double, val width: Double, val height: Double)
+
+internal data class PursuitReading(
+    val engaged: Boolean,
+    val ready: Boolean,
+    val reason: String,
+)
+
+internal fun pursuitReading(view: JSONObject?): PursuitReading? =
+    view?.optJSONObject("pursuit")?.let {
+        PursuitReading(
+            engaged = it.optBoolean("engaged"),
+            ready = it.optBoolean("ready"),
+            reason = it.optText("reason"),
+        )
+    }
 
 internal data class TrackingReading(
     val supported: Boolean,
@@ -160,6 +177,7 @@ internal data class TrackingReading(
     val reported: Boolean,
     val shapes: List<String>,
     val box: TrackingBox?,
+    val pursuit: PursuitReading? = null,
 )
 
 internal fun trackingReading(view: JSONObject?): TrackingReading? {
@@ -179,6 +197,7 @@ internal fun trackingReading(view: JSONObject?): TrackingReading? {
         box = rect?.let {
             TrackingBox(it.optDouble("x"), it.optDouble("y"), it.optDouble("width"), it.optDouble("height"))
         }?.takeIf { it.width > 0.0 && it.height > 0.0 },
+        pursuit = pursuitReading(view),
     )
 }
 
