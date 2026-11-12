@@ -293,7 +293,7 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
               : std::nullopt;
     const std::optional<float> aimPitch =
         wanted ? std::optional<float>(std::clamp(*wanted, kPitchDown, kPitchAhead)) : std::nullopt;
-    const auto unchanged = [&from](float pitch) { return from && std::abs(*from - pitch) < kPitchStepDeg; };
+    const auto unchanged = [&from](float angle) { return from && std::abs(*from - angle) < kPitchStepDeg; };
     const bool aimed = ready.gimbal && aimPitch && due && pitched && !unchanged(*aimPitch);
     const bool overrun = ready.gimbal && aimPitch && pitched && *aimPitch != *wanted && unchanged(*aimPitch);
     const bool looked = ready.gimbal && look && flipped(layout.look) && position(*look) != 1;
