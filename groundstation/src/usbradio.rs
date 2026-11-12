@@ -352,7 +352,7 @@ pub fn echo(
     fitted(&head, modes)
 }
 
-static CLASH: Mutex<Option<(u8, usize)>> = Mutex::new(None);
+static CLASH: Mutex<Vec<(u8, usize)>> = Mutex::new(Vec::new());
 static REFUSED: Mutex<Option<String>> = Mutex::new(None);
 static HELD: Mutex<[bool; 2]> = Mutex::new([false; 2]);
 
@@ -395,19 +395,60 @@ fn hand_over(frame: Frame, channels: [usize; 2], camera: bool) -> Frame {
     frame
 }
 
-fn warn_of_clash(vehicle: u8, layout: crate::radiocamera::Layout, mode_channel: usize) {
-    let names = layout.named_on(mode_channel);
-    let clash = (!names.is_empty()).then_some((vehicle, mode_channel));
+fn warn_of_conflicts(vehicle: u8, conflicts: &[crate::dronefacts::Conflict]) {
+    let now: Vec<(u8, usize)> = conflicts
+        .iter()
+        .map(|conflict| (vehicle, conflict.channel))
+        .collect();
     let was = std::mem::replace(
         &mut *CLASH.lock().unwrap_or_else(PoisonError::into_inner),
-        clash,
+        now,
     );
-    if clash.is_some() && clash != was {
-        crate::noticeboard::post_from_vehicle(
-            crate::noticeboard::BRIEF,
-            &crate::radiocamera::clash_notice(mode_channel, &names),
-        );
-    }
+    conflicts
+        .iter()
+        .filter(|conflict| !was.contains(&(vehicle, conflict.channel)))
+        .for_each(|conflict| {
+            crate::noticeboard::post_from_vehicle(
+                crate::noticeboard::BRIEF,
+                &crate::dronefacts::notice(conflict, option_label),
+            );
+        });
+}
+
+fn option_label(param: &str, value: u16) -> Option<String> {
+    let hub = crate::hub::lock();
+    let meta = hub.active()?.parameter_meta(param, None)?;
+    meta["enums"]
+        .as_array()?
+        .iter()
+        .find(|entry| {
+            entry["value"]
+                .as_f64()
+                .or_else(|| entry["value"].as_str().and_then(|text| text.parse().ok()))
+                == Some(f64::from(value))
+        })
+        .and_then(|entry| entry["label"].as_str().map(str::to_string))
+}
+
+fn active_facts() -> crate::dronefacts::DroneFacts {
+    let hub = crate::hub::lock();
+    hub.active()
+        .filter(|v| !v.on_high_latency_link())
+        .map_or_else(Default::default, |vehicle| {
+            crate::dronefacts::DroneFacts::read(
+                vehicle.vehicle_type,
+                vehicle.autopilot == crate::modes::AUTOPILOT_PX4,
+                |name| {
+                    vehicle
+                        .parameter_exact(vehicle.component, name)
+                        .map(|value| value.as_f64())
+                },
+            )
+        })
+}
+
+fn bound_layout() -> (crate::radiocamera::Layout, Vec<crate::dronefacts::Conflict>) {
+    crate::dronefacts::bind(crate::radiocamera::layout(), &active_facts())
 }
 
 fn active_roles() -> Option<Roles> {
@@ -469,7 +510,7 @@ fn answer(now_ms: u64, live: bool) {
         let line = echo(
             flying(),
             active_roles(),
-            crate::radiocamera::layout(),
+            bound_layout().0,
             crate::payloadrail::verdict(),
             &active_modes(),
         );
@@ -724,34 +765,24 @@ fn advance(fresh: Option<Frame>) {
 fn heard_on(port: &str, lines: Vec<Line>) {
     if let Some(line) = lines.last() {
         detection().radios.insert(port.to_string());
-        let roles = active_roles();
-        let mode_channel = roles.map_or(0, |roles| usize::from(roles.mode_channel));
-        let [_, _, throttle, yaw] = roles
+        let [_, _, throttle, yaw] = active_roles()
             .map_or(DEFAULT_CHANNELS, |roles| roles.channels)
             .map(usize::from);
-        let layout = crate::radiocamera::layout();
+        let (layout, conflicts) = bound_layout();
         let camera = target().is_some()
-            && camera_takes_stick(crate::radiocamera::stick_switched(
-                line,
-                layout.without(mode_channel),
-            ));
+            && camera_takes_stick(crate::radiocamera::stick_switched(line, layout));
         crate::payloadrail::radio_seen(crate::radiocamera::switches(
             line,
             crate::hub::now_ms(),
-            layout.without(mode_channel),
+            layout,
         ));
         if let Some((vehicle, _)) = target() {
-            warn_of_clash(vehicle, layout, mode_channel);
-            crate::radiocamera::heard(
-                vehicle,
-                line,
-                layout.without(mode_channel),
-                camera.then_some([throttle, yaw]),
-            );
+            warn_of_conflicts(vehicle, &conflicts);
+            crate::radiocamera::heard(vehicle, line, layout, camera.then_some([throttle, yaw]));
         }
         advance(Some(armed_as_the_app(
             hand_over(sticks(line), [throttle, yaw], camera),
-            layout.without(mode_channel).arm,
+            layout.arm,
             crate::payloadrail::armed(),
         )));
     }

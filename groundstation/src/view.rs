@@ -1521,6 +1521,7 @@ mod deps_cover_reads {
         ("deviceviews", include_str!("deviceviews.rs")),
         ("deviceforms", include_str!("deviceforms.rs")),
         ("devicewizard", include_str!("devicewizard.rs")),
+        ("dronefacts", include_str!("dronefacts.rs")),
         ("dropcal", include_str!("dropcal.rs")),
         ("dropsim", include_str!("dropsim.rs")),
         ("dropzone", include_str!("dropzone.rs")),
