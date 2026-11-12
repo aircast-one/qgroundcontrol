@@ -82,6 +82,7 @@ pub fn offered(version: &str, shown: &str, enabled: bool, has_token: bool) -> bo
     has_token
         && !enabled
         && beta(version)
+        && crate::firstrun::shown_ids(shown).contains(&crate::firstrun::INITIAL_SETUP_PROMPT_ID)
         && !crate::firstrun::shown_ids(shown).contains(&PROMPT_ID)
 }
 
@@ -292,21 +293,28 @@ mod tests {
     #[test]
     fn the_offer_goes_only_to_beta_builds_that_can_send_and_have_not_answered() {
         assert!(offered("5.6.5-beta.36", "1,3", false, true));
-        assert!(offered("v5.6.5-beta.36", "", false, true));
+        assert!(offered("v5.6.5-beta.36", "3", false, true));
+        assert!(
+            !offered("5.6.5-beta.36", "", false, true),
+            "it waits for the first-run preferences, so the two never open together"
+        );
         assert!(
             !offered("5.6.5", "", false, true),
             "a stable build is never asked"
         );
-        assert!(!offered("5.6.5-beta.36", "", true, true), "already sharing");
+        assert!(
+            !offered("5.6.5-beta.36", "3", true, true),
+            "already sharing"
+        );
         assert!(
             !offered("5.6.5-beta.36", "3,1000", false, true),
             "already answered"
         );
         assert!(
-            !offered("5.6.5-beta.36", "", false, false),
+            !offered("5.6.5-beta.36", "3", false, false),
             "nothing to authenticate with"
         );
-        assert!(!offered("dev", "", false, true));
+        assert!(!offered("dev", "3", false, true));
     }
 
     #[test]

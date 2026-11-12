@@ -679,7 +679,7 @@ export const AircastShell = () => {
               <MissionCompleteDialog />
               {onFly ? <ResumeFailedPrompt dismissed={resumeDismissed} onDismissed={setResumeDismissed} /> : null}
               <FirstRunDialog />
-              <BetaDiagnosticsDialog />
+              {appMessages[0] === undefined ? <BetaDiagnosticsDialog /> : null}
               <HandoffDialog />
               <DeepLinkSetupPrompt />
 

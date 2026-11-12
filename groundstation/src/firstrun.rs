@@ -10,7 +10,7 @@ pub const DEPS: &[&str] = &[
 ];
 
 pub const MARK_SHOWN: &str = "firstRun.markShown";
-const INITIAL_SETUP_PROMPT_ID: i64 = 3;
+pub const INITIAL_SETUP_PROMPT_ID: i64 = 3;
 const SHOWN_PATH: &str = "settings.appSettings.firstRunPromptIdsShown";
 const PREFERENCES: [(&str, &str); 2] = [
     ("preferredFirmwareClass", "Preferred Firmware"),
