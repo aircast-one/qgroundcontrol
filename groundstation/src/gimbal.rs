@@ -291,6 +291,18 @@ impl Default for Gimbal {
 }
 
 impl Gimbal {
+    pub fn reachable_yaw(&self, yaw: f32) -> f32 {
+        let wrapped = wrap180(yaw);
+        match (self.limits[4], self.limits[5]) {
+            (Some(min), Some(max))
+                if min < max && max - min < 360.0 && !(min..=max).contains(&wrapped) =>
+            {
+                yaw.clamp(min, max)
+            }
+            _ => wrapped,
+        }
+    }
+
     pub fn supports_retract(&self) -> Option<bool> {
         self.capability_flags
             .map(|flags| flags & CAP_HAS_RETRACT != 0)
@@ -716,6 +728,12 @@ impl Gimbals {
         }]
     }
 
+    fn reachable_yaw(&self, yaw: f32) -> f32 {
+        self.active
+            .and_then(|pair| self.gimbals.get(&pair))
+            .map_or(wrap180(yaw), |gimbal| gimbal.reachable_yaw(yaw))
+    }
+
     pub fn send_pitch_body_yaw(
         &mut self,
         pitch: f32,
@@ -723,16 +741,18 @@ impl Gimbals {
         show_error: bool,
         now_ms: u64,
     ) -> Vec<Out> {
+        let yaw = self.reachable_yaw(yaw);
         self.send_angles(
             FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME,
             pitch,
-            wrap180(yaw),
+            yaw,
             show_error,
             now_ms,
         )
     }
 
     pub fn aim(&mut self, pitch: f32, body_yaw: f32, now_ms: u64) -> Vec<Out> {
+        let body_yaw = self.reachable_yaw(body_yaw);
         self.stream_aim(
             FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME,
             pitch,
@@ -902,7 +922,7 @@ impl Gimbals {
         let (pan, tilt) = match screen {
             Screen::Point { h_fov, v_fov } => {
                 let (yaw_off, tilt_to) = aim_through_lens(pan_pct, tilt_pct, h_fov, v_fov, pitch);
-                (body_yaw + yaw_off, tilt_to)
+                (self.reachable_yaw(body_yaw + yaw_off), tilt_to)
             }
             Screen::Drag { slide_speed } => {
                 let (from_yaw, from_pitch) = self
@@ -916,7 +936,7 @@ impl Gimbals {
                     });
                 let tilt = tilt_pct * slide_speed * 0.1 + from_pitch;
                 (
-                    wrap180(pan_pct * slide_speed * 0.1 + from_yaw),
+                    self.reachable_yaw(pan_pct * slide_speed * 0.1 + from_yaw),
                     tilt.max(pitch_min.unwrap_or(tilt))
                         .min(pitch_max.unwrap_or(tilt)),
                 )
@@ -974,7 +994,7 @@ impl Gimbals {
         };
         let (pitch, body_yaw, locked) = origin;
         let (yaw_off, tilt) = aim_through_lens(pan_pct, tilt_pct, h_fov, v_fov, pitch);
-        let pan = wrap180(body_yaw + yaw_off);
+        let pan = self.reachable_yaw(body_yaw + yaw_off);
         let sent = match locked {
             true => self.send_pitch_absolute_yaw(tilt, pan + heading, false, now_ms),
             false => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
@@ -2624,6 +2644,71 @@ mod tests {
         assert!(
             (after_center - 10.0).abs() < 0.01,
             "another aim in between ends the drag, so the next one starts from the reported angle"
+        );
+    }
+
+    fn stopped_at(body_yaw: f32, flags: u32) -> Gimbals {
+        let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
+        gimbals.set_ready(true);
+        gimbals.on_manager_information(
+            ManagerInformation {
+                compid: MANAGER,
+                device_id: DEVICE,
+                capability_flags: CAP_HAS_YAW_LOCK,
+                limits_rad: Some([
+                    f32::NAN,
+                    f32::NAN,
+                    (-90.0_f32).to_radians(),
+                    90.0_f32.to_radians(),
+                    (-145.0_f32).to_radians(),
+                    145.0_f32.to_radians(),
+                ]),
+            },
+            0,
+        );
+        gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 2000);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, flags, yawed(body_yaw)), 0.0, 2000);
+        gimbals
+    }
+
+    #[test]
+    fn a_tap_past_a_yaw_stop_holds_at_that_stop_instead_of_swinging_to_the_other() {
+        let point = Screen::Point {
+            h_fov: 90.0,
+            v_fov: 60.0,
+        };
+        let mut gimbals = stopped_at(-140.0, FLAG_YAW_IN_VEHICLE_FRAME);
+        let left = angles(&gimbals.on_screen_control(-1.0, 0.0, point, 0.0, 2000));
+        assert!(
+            (left[1] + 145.0).abs() < 0.01,
+            "45 degrees left of -140 is -185, beyond the -145 stop, so it holds at -145 rather than wrapping to +175 and swinging to +145: {}",
+            left[1]
+        );
+        let right = angles(&gimbals.on_screen_control(1.0, 0.0, point, 0.0, 2000));
+        assert!(
+            (right[1] + 95.0).abs() < 0.01,
+            "a tap to the right still turns right: {}",
+            right[1]
+        );
+        let dragged = angles(&gimbals.drag_to(-1.0, 0.0, true, 90.0, 60.0, 0.0, 2000));
+        assert!(
+            (dragged[1] + 145.0).abs() < 0.01,
+            "a drag past the stop holds there too: {}",
+            dragged[1]
+        );
+        let around = angles(&gimbals.send_pitch_body_yaw(0.0, -250.0, false, 2000));
+        assert!(
+            (around[1] - 110.0).abs() < 0.01,
+            "a bearing the gimbal can reach the other way round is still reached: {}",
+            around[1]
+        );
+
+        let mut locked = stopped_at(-140.0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK);
+        let held = angles(&locked.on_screen_control(-1.0, 0.0, point, 117.0, 2000));
+        assert!(
+            (held[1] + 28.0).abs() < 0.01,
+            "locked, the stop is held in the earth frame: -145 of body yaw plus the 117 degree heading: {}",
+            held[1]
         );
     }
 
