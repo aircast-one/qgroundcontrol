@@ -15,6 +15,7 @@ import { CameraSwitch, useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
+import { ApproximateAimNote } from '@/ui/GimbalIndicator';
 import {
   A11yActions,
   AnimatedVisibility,
@@ -339,6 +340,11 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                 </div>
               </div>
               <TrafficBanner className="px-3 pb-2" />
+              {split ? (
+                <div className="flex justify-center px-3 pb-2">
+                  <ApproximateAimNote />
+                </div>
+              ) : null}
             </div>
           </>
         )}

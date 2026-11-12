@@ -36,7 +36,7 @@ import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
-import { gimbalSwitchWidth } from '@/ui/GimbalIndicator';
+import { ApproximateAimNote, gimbalSwitchWidth } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
@@ -517,6 +517,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                           </div>
                         </LocalCompactStatus.Provider>
                         <HeadingTape className="self-center" />
+                        {view === FlyView.Video ? <ApproximateAimNote /> : null}
                         <TrafficBanner />
                         <div className="flex items-center gap-2 overflow-x-auto">{keyRow}</div>
                       </div>

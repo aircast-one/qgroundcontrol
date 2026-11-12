@@ -13,6 +13,7 @@ import { Color, md, withAlpha } from '@/theme/Colors';
 import { JOYSTICK_VIEW } from '@/ui/JoystickScreen';
 import { APPROXIMATE_AIM, LENS_VIEW, lensReading } from '@/ui/Lens';
 import { FactRow, type SettingsBlock, type SettingsSectionRows, sentenceCase, settingsPagePath, settingsSections } from '@/ui/SettingsScreen';
+import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 
 export const GIMBAL_INDICATOR_PATH = 'view.gimbalIndicator';
 export const OTHERS_HAVE_CONTROL = 'othersHaveControl';
@@ -368,11 +369,20 @@ const pointIn = (event: PointerEvent<HTMLDivElement>): Point & { width: number; 
   return { x: event.clientX - box.left, y: event.clientY - box.top, width: box.width, height: box.height };
 };
 
+export const ApproximateAimNote = () => {
+  const control = onScreenGimbal(useQgcPath(GIMBAL_INDICATOR_PATH));
+  const approximate = lensReading(useQgcPath(LENS_VIEW))?.approximate === true;
+  const decoding = videoReading(useQgcPath(VIDEO_VIEW))?.decoding === true;
+  return control !== null && !control.stick && control.enabled && !control.clickAndDrag && approximate && decoding ? (
+    <Text typography="labelMedium" color="#ffffff" className="pointer-events-none self-center rounded-lg bg-black/55 px-2.5 py-1.5 text-center">
+      {APPROXIMATE_AIM}
+    </Text>
+  ) : null;
+};
+
 export const GimbalScreenControl = ({ className }: { className?: string }) => {
   const view = useQgcPath(GIMBAL_INDICATOR_PATH);
   const control = useMemo(() => onScreenGimbal(view), [view]);
-  const lensJson = useQgcPath(LENS_VIEW);
-  const approximate = useMemo(() => lensReading(lensJson)?.approximate === true, [lensJson]);
   const drag = useRef<Point | null>(null);
   const dragBegun = useRef(false);
   const wheel = useRef<Swipe | null>(null);
@@ -436,13 +446,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
           send(pan, tilt, true);
         }}
         onPointerCancel={release}
-      >
-        {points && approximate ? (
-          <Text typography="labelMedium" color="#ffffff" className="pointer-events-none absolute start-1/2 top-[72px] -translate-x-1/2 rounded-lg bg-black/55 px-2.5 py-1.5 whitespace-nowrap">
-            {APPROXIMATE_AIM}
-          </Text>
-        ) : null}
-      </div>
+      />
     );
   }
 
