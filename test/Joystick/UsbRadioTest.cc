@@ -545,8 +545,10 @@ void UsbRadioTest::_theYawSliderTurnsAtTheSetSpeedAndHoldsAtTheCentre_test()
              "back in the centre's dead band it stops at once, without waiting for the resend period");
     QVERIFY2(sticks.step(lineWith({{kR2d2.yaw, 1500}}), 1400).isEmpty(), "and holds there");
     QCOMPARE(turnRate(1500 + 40, 20.0f), 0.0f);
-    QCOMPARE(turnRate(1776, 20.0f), 10.0f);
-    QCOMPARE(turnRate(1224, 20.0f), -10.0f);
+    QVERIFY2(qFuzzyCompare(turnRate(2012, 60.0f), 60.0f), "all the way over is the full speed");
+    QVERIFY2(qFuzzyCompare(turnRate(1776, 60.0f), 14.25f), "halfway over is about a quarter of it");
+    QVERIFY2(turnRate(1600, 60.0f) < 3.0f, "a fifth of the way over only nudges the camera");
+    QVERIFY(qFuzzyCompare(turnRate(988, 60.0f), -60.0f));
 }
 
 void UsbRadioTest::_theStickSwitchHandsTheLeftStickToTheCamera_test()
