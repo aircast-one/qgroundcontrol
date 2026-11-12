@@ -1360,6 +1360,16 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ],
     ),
     (
+        REMOTE_LOGGING,
+        &[
+            ("", &["remoteLoggingEnabled"]),
+            (
+                ADVANCED_BLOCK,
+                &["remoteLoggingEndpoint", "remoteLoggingToken"],
+            ),
+        ],
+    ),
+    (
         "viewer3DSettings",
         &[
             ("General", &["enabled", "mapProvider"]),
@@ -3326,6 +3336,51 @@ mod tests {
         assert!(
             bespoke.is_empty(),
             "these pages claim more than one bespoke block and a head has one slot for it: {bespoke:?}"
+        );
+    }
+
+    #[test]
+    fn sharing_logs_is_one_switch_with_its_collector_folded_under_advanced() {
+        let control = |name: &str| json!({ "name": name });
+        let names = |block: &Value| -> Vec<String> {
+            block["controls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c["name"].as_str().unwrap().to_string())
+                .collect()
+        };
+        let share = subsections(
+            REMOTE_LOGGING,
+            &[
+                control("remoteLoggingEnabled"),
+                control("remoteLoggingEndpoint"),
+                control("remoteLoggingToken"),
+            ],
+        );
+        assert_eq!(share.len(), 2);
+        assert_eq!(
+            (share[0]["title"].as_str(), names(&share[0])),
+            (Some(""), vec!["remoteLoggingEnabled".to_string()])
+        );
+        assert_eq!(
+            (share[1]["title"].as_str(), names(&share[1])),
+            (
+                Some(ADVANCED_BLOCK),
+                vec![
+                    "remoteLoggingEndpoint".to_string(),
+                    "remoteLoggingToken".to_string()
+                ]
+            )
+        );
+        let disk = subsections(
+            DISK_LOGGING,
+            &[control("diskLoggingEnabled"), control("saveFormat")],
+        );
+        assert_eq!(
+            disk.iter().map(|b| b["title"].clone()).collect::<Vec<_>>(),
+            vec![json!("")],
+            "saving to disk stays one plain block, with no Other or Advanced heading"
         );
     }
 

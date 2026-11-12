@@ -382,6 +382,9 @@ pub const ORDER: &[(&str, &[&str])] = &[
     (
         "LogManager",
         &[
+            "remoteLoggingEnabled",
+            "remoteLoggingEndpoint",
+            "remoteLoggingToken",
             "diskLoggingEnabled",
             "diskLoggingMaxFileSizeMB",
             "diskLoggingMaxBackupFiles",

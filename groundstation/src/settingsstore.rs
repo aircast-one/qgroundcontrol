@@ -1647,6 +1647,31 @@ mod tests {
     }
 
     #[test]
+    fn every_setting_a_group_declares_is_listed_so_its_page_can_show_it() {
+        let unlisted: Vec<String> = EXTRA_GROUPS
+            .iter()
+            .flat_map(|(group, json)| {
+                let listed = crate::settingsorder::ORDER
+                    .iter()
+                    .find(|(name, _)| name == group)
+                    .map_or(&[][..], |(_, names)| *names);
+                serde_json::from_str::<Value>(json).unwrap()["QGC.MetaData.Facts"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter_map(|fact| fact["name"].as_str().map(str::to_string))
+                    .filter(|name| !listed.contains(&name.as_str()))
+                    .map(|name| format!("{group}.{name}"))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(
+            unlisted.is_empty(),
+            "an unlisted setting is dropped from its group, so no page can show it: {unlisted:?}"
+        );
+    }
+
+    #[test]
     fn under_a_qt_host_only_the_updater_s_own_keys_are_handed_to_qsettings() {
         super::persist_through_host(record);
         super::written("AppUpdate/skipped", "5.6.5-beta.22");

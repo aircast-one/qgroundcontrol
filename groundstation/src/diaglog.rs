@@ -16,6 +16,9 @@ const ENDPOINT_PATH: &str = "settings.logManagerSettings.remoteLoggingEndpoint";
 const TOKEN_PATH: &str = "settings.logManagerSettings.remoteLoggingToken";
 const SHOWN_PATH: &str = "settings.appSettings.firstRunPromptIdsShown";
 const PROMPT_ID: i64 = 1000;
+pub const OFFER_TEXT: &str = "Share this app's log with Aircast so we can fix the problems you hit. It holds connection health, warnings and errors: no video, passwords or positions. You can turn this off any time under Settings › App logging.";
+pub const SHARING_ON: &str =
+    "Sharing logs with Aircast. Turn it off any time under Settings › App logging.";
 const BUILT_IN_TOKEN: Option<&str> = option_env!("OTEL_BETA_INGEST_TOKEN");
 const SERVICE_NAME: &str = "aircast-qgc";
 const SEND_EVERY: Duration = Duration::from_secs(5);
@@ -101,16 +104,15 @@ pub fn beta_diagnostics_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .get("value")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let endpoint = endpoint();
     json!({
         "kind": "object",
         "class": "BetaDiagnostics",
         "show": offered(&crate::mavlinklog::application_version(), &shown_text(backend), enabled, token().is_some()),
         "title": "Help us debug this beta",
-        "text": format!("Share this app's log with Aircast so we can fix the problems you hit. Logs stream to {endpoint} and carry no video or passwords. You can turn this off any time under Settings › App Logging."),
+        "text": OFFER_TEXT,
         "accept": "Share logs",
-        "dismiss": "Not now",
-        "endpoint": endpoint,
+        "dismiss": "No thanks",
+        "endpoint": endpoint(),
     })
 }
 
@@ -140,6 +142,7 @@ pub fn accept(backend: &dyn Backend) -> Value {
         return written;
     }
     ON.store(true, Ordering::Relaxed);
+    crate::noticeboard::post_from_vehicle(crate::noticeboard::BRIEF, SHARING_ON);
     mark_shown(backend)
 }
 
