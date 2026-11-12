@@ -2734,52 +2734,20 @@ impl Vehicle {
             "dropAll" if !self.payload_lock.armed() => {
                 Plan::Refused(crate::payloadrail::SAFE.into())
             }
-            "dropAll" => match self.drop_board_at(now_ms()) {
-                Some(board) => guidedcmd::drop_all_on(board, crate::payloadcheck::DROP_BOARD_BAYS),
-                None => Plan::Refused(crate::payloadcheck::DROP_ALL_NEEDS_BOARD.into()),
-            },
+            "dropAll" => self.payload(now_ms()).drop_all(),
             "gripper" if releases_while_safe(number("gripAction"), self.payload_lock.armed()) => {
                 Plan::Refused(crate::payloadrail::SAFE.into())
             }
-            "gripper" if self.drop_board_at(now_ms()).is_some() => {
-                match number("gripAction") == GRIPPER_RELEASE_ACTION {
-                    true => guidedcmd::drop_on(
-                        self.drop_board_at(now_ms()).unwrap_or_default(),
-                        action.get("bay").and_then(Value::as_f64).unwrap_or(0.0),
-                    ),
-                    false => Plan::Refused(crate::payloadcheck::DROP_BOARD_ONLY_DROPS.into()),
-                }
-            }
-            "gripper" if !self.payload_servos().is_empty() => {
-                match crate::payloadcheck::servo_command(
-                    &self.payload_servos(),
-                    number("gripAction"),
-                    action
-                        .get("bay")
-                        .and_then(Value::as_f64)
-                        .map(|bay| bay as i64)
-                        .unwrap_or(0),
-                ) {
-                    Ok((output, pwm)) => guidedcmd::set_servo(output, pwm),
-                    Err(reason) => Plan::Refused(reason),
-                }
-            }
-            "gripper" if number("gripAction") == GRIPPER_RELEASE_ACTION => {
-                match crate::payloadcheck::release_refusal(
-                    &self.payload_setup(),
-                    self.gripper_released_ms,
-                    wall_ms(),
-                ) {
-                    Some(reason) => Plan::Refused(reason),
-                    None => guidedcmd::gripper(
-                        number("gripAction"),
-                        action.get("bay").and_then(Value::as_f64).unwrap_or(0.0),
-                    ),
-                }
-            }
-            "gripper" => guidedcmd::gripper(
+            "gripper" => self.payload(now_ms()).grip(
                 number("gripAction"),
                 action.get("bay").and_then(Value::as_f64).unwrap_or(0.0),
+                || {
+                    crate::payloadcheck::release_refusal(
+                        &self.payload_setup(),
+                        self.gripper_released_ms,
+                        wall_ms(),
+                    )
+                },
             ),
             "cancelRoi" => guidedcmd::cancel_roi(&state),
             "resetParameters" => guidedcmd::reset_parameters(),
@@ -6659,8 +6627,23 @@ impl Vehicle {
             .unwrap_or(0)
     }
 
+    pub fn payload(&self, now_ms: u64) -> crate::payload::Payload {
+        crate::payload::Payload::detect(
+            self.drop_board_at(now_ms),
+            self.payload_servos(),
+            self.device_dropper
+                .filter(|(_, at)| {
+                    now_ms.saturating_sub(*at) <= crate::payloadcheck::DEVICE_DROPPER_STALE_MS
+                })
+                .map_or(0, |(bays, _)| i64::from(bays)),
+            crate::vehiclefacade::has_gripper(self.autopilot, |name| {
+                self.parameter(self.component, name).map(|p| p.as_f64())
+            }),
+        )
+    }
+
     pub fn drop_bays(&self) -> i64 {
-        (self.payload_servos().len() as i64).max(self.device_bays_at(now_ms()))
+        self.payload(now_ms()).bays()
     }
 
     pub fn payload_setup(&self) -> crate::payloadcheck::Setup {

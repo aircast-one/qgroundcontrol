@@ -217,6 +217,7 @@ pub mod paramnames;
 pub mod paramremap;
 pub mod params;
 pub mod paramtools;
+pub mod payload;
 pub mod payloadcheck;
 pub mod payloadfall;
 pub mod payloadrail;

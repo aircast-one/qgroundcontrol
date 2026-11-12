@@ -153,7 +153,7 @@ pub fn verdict() -> &'static str {
 
 fn shown() -> bool {
     crate::hub::lock().active().is_some_and(|vehicle| {
-        vehicle.payload_setup().enabled || !vehicle.payload_servos().is_empty()
+        vehicle.payload(crate::hub::now_ms()) != crate::payload::Payload::None
     })
 }
 
@@ -277,7 +277,7 @@ fn has_drop_board() -> bool {
     let now_ms = crate::hub::now_ms();
     crate::hub::lock()
         .active()
-        .is_some_and(|vehicle| vehicle.drop_board_at(now_ms).is_some())
+        .is_some_and(|vehicle| vehicle.payload(now_ms).drops_all())
 }
 
 pub fn rail_json(

@@ -526,8 +526,8 @@ impl Sticks {
 static STICKS: Mutex<Sticks> = Mutex::new(Sticks::new());
 
 fn bays_through_the_app(vehicle: &crate::hub::Vehicle) -> Option<i64> {
-    let bays = vehicle.drop_bays();
-    (vehicle.payload_setup().enabled || bays > 0).then_some(bays)
+    let payload = vehicle.payload(crate::hub::now_ms());
+    (payload != crate::payload::Payload::None).then(|| payload.bays())
 }
 
 fn through_the_app(step: Move, servo_bays: Option<i64>) -> Option<Move> {
