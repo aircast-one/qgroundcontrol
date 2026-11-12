@@ -1,5 +1,8 @@
 #pragma once
 
+#include <QtTest/QSignalSpy>
+#include <memory>
+
 #include "BaseClasses/VehicleTestManualConnect.h"
 
 class ParameterManagerTest : public VehicleTestManualConnect
@@ -33,6 +36,9 @@ private slots:
 private:
     void _ignoreParamResponseTimeouts();
     void _noFailureWorker(MockConfiguration::FailureMode_t failureMode);
+    void _startPX4MockLinkSpyingLoadProgress(MockConfiguration::FailureMode_t failureMode);
     void _setParamWithFailureMode(MockLink::ParamSetFailureMode_t failureMode, bool expectSuccess,
                                   const QString& paramName, MAV_AUTOPILOT autopilot);
+
+    std::unique_ptr<QSignalSpy> _loadProgress;
 };

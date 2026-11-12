@@ -245,6 +245,7 @@ bool AppUpdater::install()
         case AppUpdateInstall::Way::RunInstaller:
         case AppUpdateInstall::Way::ReplaceBundle:
         case AppUpdateInstall::Way::ReplaceAppImage:
+#if QT_CONFIG(process)
             if (!QProcess::startDetached(plan.program, plan.arguments)) {
                 _setState(QString(kFailed), tr("Could not start the installer."));
                 return false;
@@ -252,6 +253,9 @@ bool AppUpdater::install()
             _setState(QString(kInstalling));
             QCoreApplication::quit();
             return true;
+#else
+            return false;
+#endif
     }
     return false;
 }

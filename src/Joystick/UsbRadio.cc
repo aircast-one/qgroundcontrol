@@ -279,8 +279,8 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     const std::optional<uint16_t> zoom = channel(line, layout.zoom);
     const std::optional<uint16_t> picture = channel(line, layout.picture);
     const std::optional<uint16_t> look = channel(line, layout.look);
-    const std::optional<float> slider = yaw ? std::optional<float>(turnRate(*yaw, aiming.yawSpeed)) : std::nullopt;
-    const float rate = ready.gimbal && _yawCentred && slider ? *slider : 0.0f;
+    const float slider = yaw ? turnRate(*yaw, aiming.yawSpeed) : 0.0f;
+    const float rate = ready.gimbal && _yawCentred ? slider : 0.0f;
     const bool turning = rate != 0.0f;
     const float heading = _yaw ? *_yaw : aiming.reportedYaw.value_or(0.0f);
     const bool pitched = moved(layout.pitch) || moved(layout.tilt);
@@ -293,7 +293,7 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
               : std::nullopt;
     const std::optional<float> aimPitch =
         wanted ? std::optional<float>(std::clamp(*wanted, kPitchDown, kPitchAhead)) : std::nullopt;
-    const auto unchanged = [&from](float pitch) { return from && std::abs(*from - pitch) < kPitchStepDeg; };
+    const auto unchanged = [&from](float angle) { return from && std::abs(*from - angle) < kPitchStepDeg; };
     const bool aimed = ready.gimbal && aimPitch && due && pitched && !unchanged(*aimPitch);
     const bool overrun = ready.gimbal && aimPitch && pitched && *aimPitch != *wanted && unchanged(*aimPitch);
     const bool looked = ready.gimbal && look && flipped(layout.look) && position(*look) != 1;
@@ -346,7 +346,7 @@ QList<Move> CameraSticks::step(const Line& line, qint64 nowMs, const Layout& lay
     if (dropped) {
         moves << Move{Move::Kind::Drop};
     }
-    _yawCentred = _yawCentred || (slider && *slider == 0.0f);
+    _yawCentred = _yawCentred || (yaw && slider == 0.0f);
     _yaw = turning ? std::nullopt : looked ? std::optional<float>(lookedAhead ? 0.0f : heading) : _yaw;
     _dropBefore = drop ? dropWas : _dropBefore;
     std::ranges::for_each(std::array{layout.drop, layout.arm, layout.bay, layout.pitch, layout.yaw, layout.zoom,

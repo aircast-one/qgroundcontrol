@@ -63,21 +63,21 @@ jobs:
             runs_on: ${{ github.repository_owner == 'mavlink' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && format('runs-on={0}/runner=windows-x64-builder', github.run_id) || 'windows-2022' }}
             host: windows
             arch: win64_msvc2022_64
-            package: QGroundControl-installer-AMD64
+            package: AircastQGC-installer-AMD64
             gstreamer: true
 
           - variant: arm64
             runs_on: windows-11-arm
             host: windows_arm64
             arch: win64_msvc2022_arm64
-            package: QGroundControl-installer-ARM64
+            package: AircastQGC-installer-ARM64
             gstreamer: true
 
           - variant: arm64-cross
             runs_on: ${{ github.repository_owner == 'mavlink' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && format('runs-on={0}/runner=windows-x64-builder', github.run_id) || 'windows-2022' }}
             host: windows
             arch: win64_msvc2022_arm64_cross_compiled
-            package: QGroundControl-installer-AMD64-ARM64
+            package: AircastQGC-installer-AMD64-ARM64
             gstreamer: false
 
     defaults:
@@ -158,7 +158,7 @@ jobs:
         if: matrix.build_type == 'Release' && matrix.arch != 'win64_msvc2022_arm64_cross_compiled'
         uses: ./.github/actions/verify-executable
         with:
-          binary-path: ${{ runner.temp }}/build/${{ matrix.build_type }}/QGroundControl.exe
+          binary-path: ${{ runner.temp }}/build/${{ matrix.build_type }}/AircastQGC.exe
           type: exe
           build-dir: ${{ runner.temp }}/build
 
@@ -181,9 +181,9 @@ jobs:
           $installDir = "${{ runner.temp }}\qgc-install-test"
           Write-Host "Installing $($installerExe.Name) to $installDir"
           Start-Process -FilePath $installerExe.FullName -ArgumentList "/S", "/D=$installDir" -Wait -NoNewWindow
-          $binary = Join-Path $installDir "bin\QGroundControl.exe"
+          $binary = Join-Path $installDir "bin\AircastQGC.exe"
           if (-not (Test-Path $binary)) {
-            Write-Error "QGroundControl.exe not found at $binary after install"
+            Write-Error "AircastQGC.exe not found at $binary after install"
             Get-ChildItem -Path $installDir -Recurse | Select-Object FullName
             exit 1
           }
@@ -219,7 +219,7 @@ jobs:
         env:
           PATH: ${{ env.QGC_VERIFY_INSTALLED_PATH || env.PATH }}
         with:
-          binary-path: ${{ runner.temp }}\qgc-install-test\bin\QGroundControl.exe
+          binary-path: ${{ runner.temp }}\qgc-install-test\bin\AircastQGC.exe
           type: exe
 
       - name: Attest and Upload

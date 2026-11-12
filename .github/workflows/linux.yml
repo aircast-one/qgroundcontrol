@@ -55,12 +55,12 @@ jobs:
         include:
           - arch: linux_gcc_arm64
             runs_on: ${{ github.repository_owner == 'mavlink' && format('runs-on={0}/runner=linux-arm64-builder', github.run_id) || 'ubuntu-24.04-arm' }}
-            package: QGroundControl-aarch64
+            package: AircastQGC-aarch64
             host: linux_arm64
 
           - arch: linux_gcc_64
             runs_on: ${{ github.repository_owner == 'mavlink' && format('runs-on={0}/runner=linux-x64-builder-60gb', github.run_id) || 'ubuntu-24.04' }}
-            package: QGroundControl-x86_64
+            package: AircastQGC-x86_64
             host: linux
 
     defaults:
@@ -139,13 +139,13 @@ jobs:
       - name: Verify Executable
         uses: ./.github/actions/verify-executable
         with:
-          binary-path: ${{ runner.temp }}/build/Release/QGroundControl
+          binary-path: ${{ runner.temp }}/build/Release/AircastQGC
 
       - name: Analyze binary size
         if: matrix.arch == 'linux_gcc_64'
         uses: ./.github/actions/size-analysis
         with:
-          binary-path: ${{ runner.temp }}/build/Release/QGroundControl
+          binary-path: ${{ runner.temp }}/build/Release/AircastQGC
           output-file: ${{ runner.temp }}/build/metrics.json
 
       - name: Upload metrics artifact
