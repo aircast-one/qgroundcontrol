@@ -9,7 +9,7 @@ import { CircularProgressIndicator, Text } from '@/m3';
 import { Color, aircast, withAlpha } from '@/theme/Colors';
 import { type CameraEntry, CameraStatus, type CamerasReading } from '@/ui/Cameras';
 import { useCamerasReading } from '@/ui/CameraSwitch';
-import { gimbalRefusal } from '@/ui/GimbalIndicator';
+import { reportGimbalRefusal } from '@/ui/GimbalIndicator';
 import { osdShadow } from '@/ui/Osd';
 import { type PicturePress, type PictureSpot, PictureMark, usePictureHold } from '@/ui/PictureHold';
 import { SyntheticSurface, nativeChosen, nativeDraw } from '@/ui/SyntheticSurface';
@@ -238,7 +238,7 @@ export const SyntheticView = ({
   const aimGimbal = (tilt: number, yaw: number) => {
     lastAim.current = [tilt, yaw];
     lastAimAt.current = uptimeMillis();
-    void (async () => gimbalRefusal(await Qgc.call(GIMBAL_AIM_COMMAND, tilt, yaw)))();
+    void (async () => reportGimbalRefusal(await Qgc.call(GIMBAL_AIM_COMMAND, tilt, yaw)))();
   };
   const look = useRef({ aim: [DEFAULT_TILT_DEG, 0.0] as Aim, start: [0.0, 0.0] as Aim, moved: { x: 0, y: 0 }, sentAt: 0, size: { width: 1, height: 1 } });
   const gimbalTarget = (): Aim => syntheticLook(look.current.start, look.current.moved, look.current.size, fov.current);
@@ -273,7 +273,7 @@ export const SyntheticView = ({
             const [tilt, yaw] = gimbalTarget();
             aimGimbal(tilt, yaw);
           },
-          onDoubleTap: () => void (async () => gimbalRefusal(await Qgc.call(GIMBAL_CENTER_COMMAND)))(),
+          onDoubleTap: () => void (async () => reportGimbalRefusal(await Qgc.call(GIMBAL_CENTER_COMMAND)))(),
         }
       : null;
   const gestures = usePointerGestures(aiming);

@@ -48,7 +48,7 @@ import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET 
 import { EDIT_BAR_LAYER, FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
 import { FLY_STATE, VEHICLE_FLIGHT_DISTANCE, disarmNotice, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
-import { GimbalTakeControlDialog } from '@/ui/GimbalIndicator';
+import { GimbalTakeControlDialog, gimbalRefused } from '@/ui/GimbalIndicator';
 import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners, showLatest } from '@/ui/HostNotices';
 import { LogReplayBar } from '@/ui/LogReplayBar';
 import { Map3dView } from '@/ui/Map3dView';
@@ -386,6 +386,12 @@ export const AircastShell = () => {
 
   const desktop = useDesktopLayout();
   const snackbars = useSnackbarHostState();
+  const refusedGimbal = useValue(gimbalRefused);
+  useLaunchedEffect([refusedGimbal], async () => {
+    if (refusedGimbal === null) return;
+    await snackbars.showSnackbar(refusedGimbal);
+    gimbalRefused.value = null;
+  });
   useLaunchedEffect([mapHoldHint], async (scope) => {
     if (mapHoldHint !== MapHoldHint.Due) return;
     await snackbars.showSnackbar(mapHoldHintText(desktop));

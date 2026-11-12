@@ -19,6 +19,8 @@ export const OTHERS_HAVE_CONTROL = 'othersHaveControl';
 
 export const gimbalAsksForControl = mutableStateOf(false);
 
+export const gimbalRefused = mutableStateOf<string | null>(null);
+
 export const serialAsks = (seen: number | null, serial: number): boolean => seen !== null && serial > seen;
 
 export const gimbalRefusal = (answer: Json | null): string | null => {
@@ -27,6 +29,11 @@ export const gimbalRefusal = (answer: Json | null): string | null => {
     return null;
   }
   return refusal(answer);
+};
+
+export const reportGimbalRefusal = (answer: Json | null): void => {
+  const reason = gimbalRefusal(answer);
+  if (reason !== null && gimbalRefused.value === null) gimbalRefused.value = reason;
 };
 
 export type GimbalChoice = { name: string; managerCompid: number; deviceId: number; active: boolean };
@@ -375,8 +382,8 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
   }, []);
   if (control === null || control.stick) return null;
 
-  const send = (pan: number, tilt: number, point: boolean) => void (async () => gimbalRefusal(await Qgc.call('gimbal.onScreen', pan, tilt, point)))();
-  const sendDrag = (pan: number, tilt: number, begin: boolean) => void (async () => gimbalRefusal(await Qgc.call('gimbal.drag', pan, tilt, begin)))();
+  const send = (pan: number, tilt: number, point: boolean) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.onScreen', pan, tilt, point)))();
+  const sendDrag = (pan: number, tilt: number, begin: boolean) => void (async () => reportGimbalRefusal(await Qgc.call('gimbal.drag', pan, tilt, begin)))();
 
   const release = () => {
     if (press.current !== null) clearInterval(press.current.repeating);

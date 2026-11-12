@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { makeFact } from '@/bridge/Qgc';
 import type { SettingsSectionRows } from './SettingsScreen';
-import { aimFraction, grabFraction, swiped, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
+import { aimFraction, grabFraction, swiped, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalRefused, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, reportGimbalRefusal, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
 
 describe('GimbalIndicatorTest', () => {
   it('the cell reads status, pitch and yaw as the toolbar does', () => {
@@ -91,6 +91,22 @@ describe('GimbalTakeControlTest', () => {
     expect(gimbalRefusal(parseJson('{"ok":false,"refusal":"othersHaveControl","reason":"Command not sent. Another user has control of the gimbal."}'))).toBeNull();
     expect(gimbalAsksForControl.value).toBe(true);
     expect(gimbalRefusal(parseJson('{"ok":false,"refusal":"notReady","reason":"The gimbal is not ready yet."}'))).toBe('The gimbal is not ready yet.');
+    gimbalAsksForControl.value = false;
+  });
+
+  it('a tap the core refuses is shown, not dropped, and a burst of refusals shows the first until it is dismissed', () => {
+    gimbalRefused.value = null;
+    reportGimbalRefusal(parseJson('{"ok":true}'));
+    expect(gimbalRefused.value).toBeNull();
+    reportGimbalRefusal(parseJson('{"ok":false,"refusal":"attitudeUnknown","reason":"The gimbal has not reported where it points."}'));
+    expect(gimbalRefused.value).toBe('The gimbal has not reported where it points.');
+    reportGimbalRefusal(parseJson('{"ok":false,"refusal":"notReady","reason":"The gimbal is not ready yet."}'));
+    expect(gimbalRefused.value).toBe('The gimbal has not reported where it points.');
+    gimbalRefused.value = null;
+    gimbalAsksForControl.value = false;
+    reportGimbalRefusal(parseJson('{"ok":false,"refusal":"othersHaveControl","reason":"Command not sent. Another user has control of the gimbal."}'));
+    expect(gimbalRefused.value, 'someone else holding the gimbal asks to take control instead').toBeNull();
+    expect(gimbalAsksForControl.value).toBe(true);
     gimbalAsksForControl.value = false;
   });
 
