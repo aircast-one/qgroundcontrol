@@ -56,6 +56,7 @@ import { MapClickMenu, MapHoldHint, type MapPoint, RoiSheet, SetWaypointSheet, m
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { MissionCompleteDialog } from '@/ui/MissionCompleteDialog';
 import { MissionProgressCard } from '@/ui/MissionProgressCard';
+import { MotorLoadWidget } from '@/ui/MotorLoadWidget';
 import { ObstacleArc } from '@/ui/ObstacleArc';
 import { ObstacleReadout } from '@/ui/ObstacleReadout';
 import { OrbitReadout } from '@/ui/OrbitReadout';
@@ -576,6 +577,9 @@ export const AircastShell = () => {
     <>
       <LayoutWidget widgetKey="messageBanner" hideable={false}>
         <VehicleMessageBanner />
+      </LayoutWidget>
+      <LayoutWidget widgetKey="motorLoad" className="self-start">
+        <MotorLoadWidget />
       </LayoutWidget>
       <LayoutWidget widgetKey="fleet">
         <FleetCard />
