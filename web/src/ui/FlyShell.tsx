@@ -160,6 +160,24 @@ export const AnimatedVisibility = ({ visible, from = null, className, style, chi
 
 const ZERO_SIZE = Size(0, 0);
 
+const HudReadings = ({ style, startInset }: { style: CSSProperties; startInset: number }) => (
+  <LocalFlyOsd.Provider value>
+    <TelemetryRow
+      valuesShown
+      chooser={false}
+      compact
+      column={(side, readings) => (
+        <div
+          className={`absolute ${side === 'start' ? 'start-0' : 'end-0'} flex flex-col justify-end-safe ${osdShadow()} ${PASS_THROUGH}`}
+          style={{ ...style, ...(side === 'start' ? { paddingInlineStart: startInset } : { paddingInlineEnd: AircastSpace.s3 }) }}
+        >
+          {readings}
+        </div>
+      )}
+    />
+  </LocalFlyOsd.Provider>
+);
+
 export const useElementSize = (): { ref: RefCallback<HTMLElement>; size: Size; node: RefObject<HTMLElement | null> } => {
   const [size, setSize] = useState<Size>(ZERO_SIZE);
   const node = useRef<HTMLElement | null>(null);
@@ -604,19 +622,14 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 {hasVehicle && !deciding && view === FlyView.Video ? (
                   <>
                     <HudLadders shellHeight={box.size.height} />
-                    <div
-                      className={`absolute end-0 flex flex-col justify-end-safe ${osdShadow()} ${PASS_THROUGH}`}
+                    <HudReadings
+                      startInset={ACTION_RAIL_CLEARANCE + AircastSpace.s3}
                       style={{
                         zIndex: layer(2),
                         top: `calc(env(safe-area-inset-top, 0px) + ${STATUS_ROW_HEIGHT + AircastSpace.s6}px)`,
                         bottom: `calc(50% + ${RAIL_SHUTTER_ROOM / 2 + AircastSpace.s4}px)`,
-                        paddingInlineEnd: AircastSpace.s3,
                       }}
-                    >
-                      <LocalFlyOsd.Provider value>
-                        <TelemetryRow valuesShown chooser={false} compact column />
-                      </LocalFlyOsd.Provider>
-                    </div>
+                    />
                   </>
                 ) : hasVehicle && !deciding ? (
                   <div
@@ -650,6 +663,28 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           </LocalFlyOsd.Provider>
         </>
       )}
+      {fullScreen && hasVehicle && view === FlyView.Video ? (
+        <LocalFlyOsd.Provider value>
+          <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(FULL_SCREEN_LAYER + 0.5), ...CUTOUT_PADDING }}>
+            <div className="absolute inset-x-0 top-0" style={{ height: TOP_SCRIM_HEIGHT, background: `linear-gradient(to bottom, ${withAlpha(Color.Black, TOP_SCRIM_ALPHA)}, transparent)` }} />
+            <div className="relative size-full">
+              <div className="flex flex-col gap-2 px-3" style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${AircastSpace.s2}px)` }}>
+                <LocalCompactStatus.Provider value>
+                  <div data-status-row className="flex w-full items-center gap-2" style={{ minHeight: STATUS_ROW_HEIGHT }}>
+                    {status}
+                  </div>
+                </LocalCompactStatus.Provider>
+                <HeadingTape className="self-center" />
+              </div>
+              <HudLadders shellHeight={box.size.height} />
+              <HudReadings startInset={AircastSpace.s3} style={{ top: '50%', translate: '0 -50%' }} />
+              <div className="absolute inset-x-0 flex justify-center" style={{ bottom: AircastSpace.s3 }}>
+                <PayloadRailStrip />
+              </div>
+            </div>
+          </div>
+        </LocalFlyOsd.Provider>
+      ) : null}
       {stickPad !== null ? (
         <LocalFlyOsd.Provider value={view === FlyView.Video}>
           <LocalAvoidedByVideoMessage.Provider value>

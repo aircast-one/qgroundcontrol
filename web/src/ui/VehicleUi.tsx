@@ -124,6 +124,8 @@ export const Instrument = (fields: { label: string; reading: string; id?: string
 export const displayFor = (displays: ReadonlyMap<string, ValueDisplay>, instrument: Instrument): ValueDisplay =>
   displays.get(instrument.id) ?? ValueDisplay({ icon: instrument.defaultIcon });
 
+export type HudSide = 'start' | 'end';
+
 export const hudIcon = (display: ValueDisplay, instrument: Instrument): string | null =>
   displayIcon(display, instrument.raw) ?? (display.text.trim() === '' && instrument.defaultIcon.trim() !== '' ? instrument.defaultIcon : null);
 
@@ -205,7 +207,7 @@ export const TelemetryRow = ({
   chooser = true,
   compact = false,
   stacked = false,
-  column = false,
+  column = null,
 }: {
   className?: string;
   columns?: number | null;
@@ -213,7 +215,7 @@ export const TelemetryRow = ({
   chooser?: boolean;
   compact?: boolean;
   stacked?: boolean;
-  column?: boolean;
+  column?: ((side: HudSide, readings: ReactNode) => ReactNode) | null;
 }) => {
   const flyScreen = useContext(LocalFlyScreenState);
   const classView = useQgcPath(INSTRUMENTS_VIEW);
@@ -345,16 +347,17 @@ export const TelemetryRow = ({
         </div>
       );
     };
-    if (column) {
+    const speeds = shown.filter((it) => osdIsSpeed(it.label));
+    const places = shown.filter((it) => !osdIsSpeed(it.label));
+    if (column !== null) {
       return (
         <>
           {sheets}
-          <div className={`flex flex-col items-end gap-0.5 ${className ?? ''}`}>{shown.map(hudReading)}</div>
+          {places.length > 0 ? column('start', <div className={`flex flex-col items-start gap-0.5 ${className ?? ''}`}>{places.map(hudReading)}</div>) : null}
+          {speeds.length > 0 ? column('end', <div className={`flex flex-col items-end gap-0.5 ${className ?? ''}`}>{speeds.map(hudReading)}</div>) : null}
         </>
       );
     }
-    const speeds = shown.filter((it) => osdIsSpeed(it.label));
-    const places = shown.filter((it) => !osdIsSpeed(it.label));
     return (
       <>
         {sheets}
