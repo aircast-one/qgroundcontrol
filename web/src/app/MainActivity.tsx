@@ -45,7 +45,7 @@ import { FirstRunDialog } from '@/ui/FirstRunDialog';
 import type { FlyDeckLayout } from '@/ui/FlyDeck';
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
-import { EDIT_BAR_LAYER, FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
+import { EDIT_BAR_LAYER, FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useElementSize, useFlyIsPortrait } from '@/ui/FlyShell';
 import { FLY_STATE, VEHICLE_FLIGHT_DISTANCE, disarmNotice, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog, gimbalRefused } from '@/ui/GimbalIndicator';
@@ -61,7 +61,7 @@ import { ObstacleArc } from '@/ui/ObstacleArc';
 import { ObstacleReadout } from '@/ui/ObstacleReadout';
 import { OrbitReadout } from '@/ui/OrbitReadout';
 import { useAppDarkTheme } from '@/ui/Palette';
-import { LayoutGroup, LayoutWidget, OverlayEditBar, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
+import { BADGE_SIZE, LayoutGroup, LayoutWidget, OverlayEditBar, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
 import { PlanTab } from '@/ui/PlanTab';
 import { RcControlsLayer } from '@/ui/RcControlsLayer';
 import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
@@ -257,6 +257,7 @@ export const AircastShell = () => {
   const portrait = useFlyIsPortrait();
   const landscape = !portrait;
   const layoutEditing = useValue(overlayLayout.editing);
+  const editBar = useElementSize();
   const layoutLocked = useValue(overlayLayout.locked);
   const guidedPanelOpen = useValue(flyScreen.guidedPanels) > 0;
   const requestedSheet = useValue(flyScreen.requestedSheet);
@@ -626,9 +627,12 @@ export const AircastShell = () => {
           ) : null}
           <div className="flex min-w-0 flex-1 flex-col">
             {!onFly ? <AlertHost hostState={alerts} className="p-3 pt-[max(12px,env(safe-area-inset-top))]" /> : null}
-            <div className={`relative min-h-0 flex-1 overflow-hidden ${contentInsets}`}>
+            <div
+              className={`relative min-h-0 flex-1 overflow-hidden motion-safe:transition-[padding] motion-safe:duration-200 motion-safe:ease-out ${contentInsets}`}
+              style={onFly ? { paddingTop: layoutEditing && !flyLandscape ? BADGE_SIZE / 2 : 0, paddingBottom: editBar.size.height } : undefined}
+            >
               {onFly && !settingsOpen ? (
-                <div className="absolute bottom-0 left-1/2 w-full max-w-[560px] -translate-x-1/2" style={{ zIndex: EDIT_BAR_LAYER }}>
+                <div ref={editBar.ref} className="absolute bottom-0 left-1/2 w-full max-w-[560px] -translate-x-1/2" style={{ zIndex: EDIT_BAR_LAYER }}>
                   <OverlayEditBar className="p-2 pb-[calc(8px+env(safe-area-inset-bottom))]" />
                 </div>
               ) : null}

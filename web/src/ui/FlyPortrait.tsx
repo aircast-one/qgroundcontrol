@@ -277,16 +277,18 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                     >
                       <div className="flex min-h-0 shrink flex-col items-start gap-2 overflow-hidden">{overlays}</div>
                       {split ? null : (
-                        <div className="pt-2">
+                        <LayoutWidget widgetKey="compass" movable={false} hideable={false} className="self-start pt-2">
                           <OsdCompassDial size={PORTRAIT_DIAL_SIZE} />
-                        </div>
+                        </LayoutWidget>
                       )}
                     </div>
                     <div
                       className={`absolute end-0 top-0 flex h-full flex-col items-end ${ANIMATED_PADDING}`}
                       style={{ paddingInlineEnd: AircastSpace.s3, paddingTop: buttonsTop, paddingBottom: MAP_SCALE_CLEARANCE + railLift }}
                     >
-                      <MapButtons view={view} split={split} hasVideo={hasVideo} onView={onView} />
+                      <LayoutWidget widgetKey="mapButtons" movable={false} hideable={false}>
+                        <MapButtons view={view} split={split} hasVideo={hasVideo} onView={onView} />
+                      </LayoutWidget>
                       <div className="flex-1" />
                       {split ? null : <div className="pt-2">{rail(false)}</div>}
                     </div>
@@ -434,10 +436,14 @@ const TelemetryOsd = ({ onSmaller, onFullScreen }: { onSmaller: () => void; onFu
   const hasVehicle = useHasVehicle();
   return (
     <div className="flex w-full items-center gap-3 px-3 py-2" style={{ background: `linear-gradient(to bottom, transparent, ${withAlpha(Color.Black, SCRIM_ALPHA)})` }}>
-      <OsdCompassDial size={PORTRAIT_OSD_DIAL} />
-      <div className={`flex min-w-0 flex-1 items-center overflow-hidden ${osdShadow()}`}>
-        <LocalFlyOsd.Provider value>{hasVehicle ? <TelemetryRow valuesShown chooser={false} compact stacked /> : <TelemetryPlaceholder />}</LocalFlyOsd.Provider>
-      </div>
+      <LayoutWidget widgetKey="compass" movable={false} hideable={false}>
+        <OsdCompassDial size={PORTRAIT_OSD_DIAL} />
+      </LayoutWidget>
+      <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} badgeSpot="onTopLeading" className="min-w-0">
+        <div className={`flex min-w-0 items-center overflow-hidden ${osdShadow()}`}>
+          <LocalFlyOsd.Provider value>{hasVehicle ? <TelemetryRow valuesShown chooser={false} compact stacked /> : <TelemetryPlaceholder />}</LocalFlyOsd.Provider>
+        </div>
+      </LayoutWidget>
       <A11yActions
         actions={[
           ['Make the video small', onSmaller],

@@ -7,7 +7,7 @@ import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { MaterialIcon } from '@/res/Icon';
-import { md } from '@/theme/Colors';
+import { Color, md, withAlpha } from '@/theme/Colors';
 import { LocalAvoidedByVideoMessage, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
@@ -21,6 +21,8 @@ const HIDDEN_ALPHA = 0.35;
 const JIGGLE_DEGREES = 1.2;
 const JIGGLE_MILLIS = 120;
 const JIGGLE_SPREAD = 0x1f;
+const JIGGLE_REACH_PX = 4;
+const JIGGLE_ANGLE = '--aircast-jiggle';
 export const BADGE_SIZE = 24;
 const LONG_PRESS_TIMEOUT_MS = 400;
 const TOUCH_SLOP = 8;
@@ -276,16 +278,23 @@ const JIGGLE_STYLE_ID = 'aircast-overlay-jiggle';
 
 const reducedMotion = (): boolean => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export const useJiggleAngle = (key: string, on: boolean): CSSProperties => {
+export const jiggleDegrees = (size: Size): number => {
+  const reach = Math.hypot(size.width, size.height) / 2;
+  return reach <= 0 ? JIGGLE_DEGREES : Math.min(JIGGLE_DEGREES, (JIGGLE_REACH_PX / reach) * (180 / Math.PI));
+};
+
+export const useJiggleAngle = (key: string, on: boolean, size: Size): CSSProperties => {
   useEffect(() => {
     if (!on || document.getElementById(JIGGLE_STYLE_ID)) return;
     const style = Object.assign(document.createElement('style'), {
       id: JIGGLE_STYLE_ID,
-      textContent: `@keyframes ${JIGGLE_STYLE_ID} { from { rotate: ${-JIGGLE_DEGREES}deg } to { rotate: ${JIGGLE_DEGREES}deg } }`,
+      textContent: `@keyframes ${JIGGLE_STYLE_ID} { from { rotate: calc(-1 * var(${JIGGLE_ANGLE})) } to { rotate: var(${JIGGLE_ANGLE}) } }`,
     });
     document.head.append(style);
   }, [on]);
-  return on && !reducedMotion() ? { animation: `${JIGGLE_STYLE_ID} ${JIGGLE_MILLIS + (hashCode(key) & JIGGLE_SPREAD)}ms ease-in-out infinite alternate` } : {};
+  return on && !reducedMotion()
+    ? ({ animation: `${JIGGLE_STYLE_ID} ${JIGGLE_MILLIS + (hashCode(key) & JIGGLE_SPREAD)}ms ease-in-out infinite alternate`, [JIGGLE_ANGLE]: `${jiggleDegrees(size)}deg` } as CSSProperties)
+    : {};
 };
 
 export const clampedInto = (bounds: Bounds, area: Bounds, dx: number, dy: number): Offset => [
@@ -333,6 +342,13 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, className }: { wi
 };
 
 const BADGE = 'absolute grid place-items-center';
+
+const EDIT_FRAME: CSSProperties = {
+  outline: `1px solid ${withAlpha(Color.White, 0.7)}`,
+  outlineOffset: -1,
+  boxShadow: `0 0 0 1px ${withAlpha(Color.Black, 0.35)}`,
+  borderRadius: radius('medium'),
+};
 
 export type BadgeSpot = 'inside' | 'aboveTopTrailing' | 'onTopLeading';
 
@@ -401,15 +417,15 @@ export const LayoutWidget = ({
     parent?.((count) => count + 1);
     return () => parent?.((count) => count - 1);
   }, [parent]);
-  const [shown, setShown] = useState(false);
+  const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   const sized = useCallback((node: HTMLElement | null) => {
     if (!node || typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(() => setShown(node.offsetWidth > 0 && node.offsetHeight > 0));
+    const observer = new ResizeObserver(() => setSize((was) => (was.width === node.offsetWidth && was.height === node.offsetHeight ? was : { width: node.offsetWidth, height: node.offsetHeight })));
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const decorated = editing && shown && nested === 0;
-  const jiggle = useJiggleAngle(widgetKey, decorated);
+  const decorated = editing && size.width > 0 && size.height > 0 && nested === 0;
+  const jiggle = useJiggleAngle(widgetKey, decorated, size);
   if (hidden && !editing) return null;
   const [x, y] = movable ? (offsets.get(placedKey) ?? NO_OFFSET) : NO_OFFSET;
   const [cx, cy] = movable ? correction : NO_OFFSET;
@@ -421,12 +437,14 @@ export const LayoutWidget = ({
         <div
           ref={sized}
           className={osd ? osdShadow() : undefined}
-          style={{ opacity: hidden ? HIDDEN_ALPHA : 1, ...(decorated ? { outline: `1px solid ${md('outline')}`, outlineOffset: -1, borderRadius: radius('medium') } : {}) }}
+          style={{ opacity: hidden ? HIDDEN_ALPHA : 1, ...(decorated ? EDIT_FRAME : {}) }}
         >
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
         {decorated && (movable || carried !== null) ? (
           <LayoutDragArea widgetKey={carried?.key ?? widgetKey} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} className="absolute inset-0" />
+        ) : decorated ? (
+          <div data-gesture className="absolute inset-0" />
         ) : null}
         {decorated && hideable ? (
           <Surface

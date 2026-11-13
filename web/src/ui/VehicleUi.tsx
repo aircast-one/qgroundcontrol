@@ -642,14 +642,24 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
         {confirmTrack}
         {deckTelemetry ? (
           <div className="flex w-full justify-center">
-            <TelemetryRow valuesShown chooser={false} compact />
+            <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} badgeSpot="onTopLeading">
+              <TelemetryRow valuesShown chooser={false} compact />
+            </LayoutWidget>
           </div>
         ) : null}
-        {!deciding && readiness !== null ? <DeckReadiness readiness={readiness} /> : null}
+        {!deciding && readiness !== null ? (
+          <LayoutWidget widgetKey="readiness" movable={false} hideable={false}>
+            <DeckReadiness readiness={readiness} />
+          </LayoutWidget>
+        ) : null}
         {pending === null ? (
-          <div ref={room.ref} className="flex flex-col gap-3">
-            {bottomFit.centreInline ? null : centreBox}
-            <DeckRow deck={deck} entries={entries} more={more} center={bottomFit.centreInline ? centreBox : null} />
+          <div ref={room.ref}>
+            <LayoutWidget widgetKey="flightActions" movable={false} hideable={false}>
+              <div className="flex flex-col gap-3">
+                {bottomFit.centreInline ? null : centreBox}
+                <DeckRow deck={deck} entries={entries} more={more} center={bottomFit.centreInline ? centreBox : null} />
+              </div>
+            </LayoutWidget>
           </div>
         ) : null}
       </div>

@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { RESET_ARM_MILLIS, ResetTap, clampedInto, droppedOrder, hiddenKeys, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
+import { RESET_ARM_MILLIS, ResetTap, clampedInto, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
 
 describe('OverlayLayoutTest', () => {
+  it('a small widget jiggles the full angle and a wide one turns less, so no corner swings more than a few pixels', () => {
+    expect(jiggleDegrees({ width: 48, height: 48 })).toBe(1.2);
+    const wide = { width: 1100, height: 200 };
+    expect(((Math.hypot(wide.width, wide.height) / 2) * jiggleDegrees(wide) * Math.PI) / 180).toBeCloseTo(4);
+  });
+
   it('hidden widgets are read from the stored rig keys only', () => {
     const stored = { 'OverlayRigHidden-orbit': true, 'OverlayRigHidden-traffic': false, other: true };
     expect(hiddenKeys(stored)).toEqual(new Set(['orbit']));

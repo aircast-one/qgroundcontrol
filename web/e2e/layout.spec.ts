@@ -99,29 +99,54 @@ test('only widgets without layout widgets inside them jiggle, so the status pill
   expect((await jiggling()).nested, 'a jiggling widget inside another jiggling widget').toBe(0);
 });
 
-const stillWhileEditing = (page: Page) =>
+const editAudit = (page: Page) =>
   page.evaluate(() => {
     const jiggling = document
       .getAnimations()
       .filter((it): it is CSSAnimation => it instanceof CSSAnimation && it.animationName === 'aircast-overlay-jiggle')
       .map((it) => (it.effect instanceof KeyframeEffect ? it.effect.target : null))
       .filter((it): it is Element => it !== null);
-    return [...document.querySelectorAll('button, [role=button], [role=group], [role=img], [role=region]')]
+    const name = (it: Element) => it.getAttribute('aria-label') ?? it.querySelector('[aria-label]')?.getAttribute('aria-label') ?? it.textContent?.trim() ?? it.tagName;
+    const bar = document.querySelector('[role=toolbar]')?.getBoundingClientRect() ?? null;
+    const still = [...document.querySelectorAll('button, [role=button], [role=group], [role=img], [role=region]')]
       .filter((it) => {
         const box = it.getBoundingClientRect();
-        return box.width > 0 && box.height > 0 && box.width < innerWidth - 1 && it.closest('[role=toolbar]') === null;
+        return box.width > 1 && box.height > 1 && box.width < innerWidth - 1 && it.closest('[role=toolbar]') === null;
       })
       .filter((it) => !jiggling.some((widget) => widget.contains(it)) && !jiggling.some((widget) => it.contains(widget)))
-      .map((it) => it.getAttribute('aria-label') ?? it.textContent?.trim() ?? it.tagName);
+      .map(name);
+    const underBar = jiggling
+      .filter((it) => {
+        const box = it.getBoundingClientRect();
+        return bar !== null && box.left < bar.right && box.right > bar.left && box.top < bar.bottom && box.bottom > bar.top;
+      })
+      .map(name);
+    return { still, underBar };
   });
 
-test('in layout edit everything on the fly screen jiggles, not only the overlays', async ({ app }) => {
-  await app.emulateMedia({ reducedMotion: 'no-preference' });
-  await connectMock(app, ['Enable camera', 'Enable gimbal']);
-  await expect(app.getByRole('button', { name: 'Start recording' })).toBeVisible();
-  await expect(app.getByRole('group', { name: 'Payload' })).toBeVisible();
-  await editLayout(app);
-  await expect.poll(() => stillWhileEditing(app)).toEqual([]);
+(
+  [
+    ['landscape', 1280, 800],
+    ['portrait', 412, 860],
+  ] as const
+).forEach(([orientation, width, height]) =>
+  test(`in ${orientation} layout edit everything on the fly screen jiggles, and the edit bar covers none of it`, async ({ app }) => {
+    await app.emulateMedia({ reducedMotion: 'no-preference' });
+    await app.setViewportSize({ width, height });
+    await connectMock(app, ['Enable camera', 'Enable gimbal']);
+    await expect(app.getByRole('group', { name: 'Payload' })).toBeVisible();
+    await editLayout(app);
+    await expect.poll(() => editAudit(app)).toEqual({ still: [], underBar: [] });
+  }),
+);
+
+test('while editing the layout a tap on an always-shown control does nothing', async ({ vehicle }) => {
+  await editLayout(vehicle);
+  const [x, y] = await centre(vehicle.getByRole('button', { name: 'More', exact: true }));
+  await vehicle.mouse.click(x, y);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(vehicle)).toBeHidden();
+  await expect(vehicle.getByRole('dialog')).toHaveCount(0);
 });
 
 test('the message banner hugs its text, so its jiggle swings a few pixels and not the width of the screen', async ({ app }) => {

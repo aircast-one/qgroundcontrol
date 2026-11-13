@@ -406,7 +406,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const thumbStyle = thumbPlace(thumb);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
-  const pipJiggle = useJiggleAngle('pip', editing && thumbShown && !fullScreen);
+  const pipJiggle = useJiggleAngle('pip', editing && thumbShown && !fullScreen, thumb);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
   const frame = useRememberVideoFrame(videoTarget, false);
   const cameras = useRememberCameraStepper();
@@ -583,7 +583,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     className={`absolute inset-x-0 bottom-0 flex items-end gap-6 ${osdShadow()} ${PASS_THROUGH}`}
                     style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideThumb + AircastSpace.s3 * 2, paddingInlineEnd: osdEndRoom, paddingBottom: AircastSpace.s3 }}
                   >
-                    <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="shrink-0">
+                    <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} badgeSpot="onTopLeading" className="shrink-0">
                       <LocalFlyOsd.Provider value>
                         <TelemetryRow valuesShown chooser={false} compact stacked />
                       </LocalFlyOsd.Provider>
