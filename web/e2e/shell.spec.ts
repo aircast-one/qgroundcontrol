@@ -59,10 +59,17 @@ test('with no aircraft and no video the Fly screen opens on the map, not an empt
   await expect(app.getByRole('button', { name: 'Add a camera to see video' })).toBeHidden();
 });
 
-test('on a desktop Fly stays full screen with no rail, and the map inset is a real preview', async ({ vehicle }) => {
+test('on a desktop Fly stays full screen with no rail, and the map inset starts as a button and shows as a real preview', async ({ vehicle }) => {
   await expect(vehicle.getByRole('navigation')).toHaveCount(0);
   await expect(vehicle.getByRole('button', { name: 'Menu' })).toBeVisible();
-  await expect.poll(async () => (await vehicle.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(320);
+  const inset = async () => (await vehicle.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0;
+  await expect.poll(inset).toBe(48);
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Edit layout').click();
+  await vehicle.getByRole('button', { name: 'Show', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await expect.poll(inset).toBeGreaterThanOrEqual(320);
 });
 
 test('the menu takes the app full screen and back, for a browser whose F11 does nothing', async ({ app }) => {

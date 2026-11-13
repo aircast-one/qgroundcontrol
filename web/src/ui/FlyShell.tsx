@@ -42,7 +42,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { LayoutWidget, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
+import { LayoutWidget, MINIMAP_KEY, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -401,7 +401,10 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const videoIsPip = view === FlyView.Map;
   const videoShown = view !== FlyView.ThreeD && (view !== FlyView.Map || hasPicture);
   const thumbShown = mapIsPip || (videoIsPip && hasPicture);
-  const thumb = thumbSize(useDesktopLayout());
+  const hiddenWidgets = useValue(layout.hidden);
+  const minimapCollapsed = mapIsPip && hiddenWidgets.has(MINIMAP_KEY) && !editing;
+  const pipThumb = thumbSize(useDesktopLayout());
+  const thumb = minimapCollapsed ? Size(MAP_LAYERS_SIZE, MAP_LAYERS_SIZE) : pipThumb;
   const thumbStyle = thumbPlace(thumb);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
@@ -440,7 +443,11 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       {view !== FlyView.ThreeD
         ? map(
             mapIsPip
-              ? { className: 'absolute overflow-hidden rounded-shape-md', style: { ...thumbStyle, zIndex: layer(1), border: `2px solid ${md('onSurface')}`, ...pipJiggle }, 'aria-hidden': fullScreen || undefined }
+              ? {
+                  className: `absolute overflow-hidden ${minimapCollapsed ? 'rounded-full' : 'rounded-shape-md'}`,
+                  style: { ...thumbStyle, zIndex: layer(1), ...(minimapCollapsed ? {} : { border: `2px solid ${md('onSurface')}` }), ...pipJiggle },
+                  'aria-hidden': fullScreen || undefined,
+                }
               : { className: 'absolute inset-0', 'aria-hidden': fullScreen || undefined },
           )
         : null}
@@ -457,18 +464,34 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       {fullScreen ? null : (
         <>
           <div className="pointer-events-none absolute inset-x-0 top-0" style={{ height: TOP_SCRIM_HEIGHT, background: `linear-gradient(to bottom, ${withAlpha(Color.Black, TOP_SCRIM_ALPHA)}, transparent)` }} />
-          {mapIsPip ? (
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label="Map"
-              aria-description="Show the map"
-              inert={editing}
+          {minimapCollapsed ? (
+            <Surface
               onClick={showMap}
-              onKeyDown={activate(showMap)}
-              className="absolute cursor-pointer overflow-hidden rounded-shape-md"
-              style={{ ...thumbStyle, zIndex: layer(2), ...pipJiggle }}
-            />
+              shape="full"
+              color={md('surfaceContainerHigh')}
+              contentColor={md('onSurface')}
+              label="Map"
+              className="grid place-items-center"
+              style={{ ...thumbStyle, zIndex: layer(2) }}
+            >
+              <Drawable name="ic_map" />
+            </Surface>
+          ) : mapIsPip ? (
+            <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2), ...pipJiggle }}>
+              <LayoutWidget widgetKey={MINIMAP_KEY} movable={false}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Map"
+                  aria-description="Show the map"
+                  inert={editing}
+                  onClick={showMap}
+                  onKeyDown={activate(showMap)}
+                  className="cursor-pointer overflow-hidden rounded-shape-md"
+                  style={{ width: thumb.width, height: thumb.height }}
+                />
+              </LayoutWidget>
+            </div>
           ) : null}
           {videoIsPip && hasPicture ? (
             <div
