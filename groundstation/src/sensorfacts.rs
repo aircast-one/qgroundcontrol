@@ -21,7 +21,7 @@ pub struct EscFacts {
     pub voltage: f32,
     pub count: u8,
     pub connection_type: u8,
-    pub info: u8,
+    pub info: u32,
     pub failure_flags: u16,
     pub error_count: u32,
     pub temperature: i16,
@@ -33,8 +33,72 @@ pub struct Escs {
     pub by_id: std::collections::BTreeMap<u32, EscFacts>,
 }
 
+type ArduPilotEscBlock = (u32, [u16; 4], [u16; 4], [u16; 4], [u16; 4], [u8; 4]);
+
+fn ardupilot_esc_block(message: &MavMessage) -> Option<ArduPilotEscBlock> {
+    match message {
+        MavMessage::ESC_TELEMETRY_1_TO_4(d) => {
+            Some((0, d.voltage, d.current, d.rpm, d.count, d.temperature))
+        }
+        MavMessage::ESC_TELEMETRY_5_TO_8(d) => {
+            Some((4, d.voltage, d.current, d.rpm, d.count, d.temperature))
+        }
+        MavMessage::ESC_TELEMETRY_9_TO_12(d) => {
+            Some((8, d.voltage, d.current, d.rpm, d.count, d.temperature))
+        }
+        MavMessage::ESC_TELEMETRY_13_TO_16(d) => {
+            Some((12, d.voltage, d.current, d.rpm, d.count, d.temperature))
+        }
+        MavMessage::ESC_TELEMETRY_17_TO_20(d) => {
+            Some((16, d.voltage, d.current, d.rpm, d.count, d.temperature))
+        }
+        MavMessage::ESC_TELEMETRY_21_TO_24(d) => {
+            Some((20, d.voltage, d.current, d.rpm, d.count, d.temperature))
+        }
+        MavMessage::ESC_TELEMETRY_25_TO_28(d) => {
+            Some((24, d.voltage, d.current, d.rpm, d.count, d.temperature))
+        }
+        MavMessage::ESC_TELEMETRY_29_TO_32(d) => {
+            Some((28, d.voltage, d.current, d.rpm, d.count, d.temperature))
+        }
+        _ => None,
+    }
+}
+
 impl Escs {
+    fn apply_ardupilot(
+        &mut self,
+        (first, voltage, current, rpm, count, temperature): ArduPilotEscBlock,
+    ) -> bool {
+        (0..4usize)
+            .filter(|slot| count[*slot] > 0)
+            .for_each(|slot| {
+                let esc = self.by_id.entry(first + slot as u32).or_default();
+                *esc = EscFacts {
+                    rpm: i32::from(rpm[slot]),
+                    voltage: f32::from(voltage[slot]) / 100.0,
+                    current: f32::from(current[slot]) / 100.0,
+                    temperature: i16::from(temperature[slot]) * 100,
+                    telemetry: true,
+                    ..esc.clone()
+                };
+            });
+        let reporting = self.by_id.len();
+        let online = ((1u64 << reporting) - 1) as u32;
+        self.by_id.values_mut().for_each(|esc| {
+            *esc = EscFacts {
+                count: reporting as u8,
+                info: online,
+                ..esc.clone()
+            };
+        });
+        true
+    }
+
     pub fn apply(&mut self, message: &MavMessage) -> bool {
+        if let Some(block) = ardupilot_esc_block(message) {
+            return self.apply_ardupilot(block);
+        }
         let first = match message {
             MavMessage::ESC_INFO(_) => 0,
             MavMessage::ESC_STATUS(d) => u32::from(d.index),
@@ -51,7 +115,7 @@ impl Escs {
                 *esc = EscFacts {
                     count: d.count,
                     connection_type: d.connection_type as u8,
-                    info: d.info,
+                    info: u32::from(d.info),
                     failure_flags: d.failure_flags[slot],
                     error_count: d.error_count[slot],
                     temperature: d.temperature[slot],

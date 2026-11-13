@@ -149,4 +149,52 @@ mod tests {
         );
         assert_eq!(summary(&[])["shown"], false);
     }
+
+    #[test]
+    fn ardupilot_esc_telemetry_lists_only_the_escs_that_report() {
+        use mavlink::dialects::ardupilotmega::{
+            ESC_TELEMETRY_1_TO_4_DATA, ESC_TELEMETRY_5_TO_8_DATA, MavMessage,
+        };
+        let mut escs = crate::sensorfacts::Escs::default();
+        escs.apply(&MavMessage::ESC_TELEMETRY_1_TO_4(
+            ESC_TELEMETRY_1_TO_4_DATA {
+                voltage: [5010, 5000, 0, 0],
+                current: [250, 0, 0, 0],
+                rpm: [4200, 4100, 0, 0],
+                count: [12, 3, 0, 0],
+                temperature: [41, 40, 0, 0],
+                ..Default::default()
+            },
+        ));
+        escs.apply(&MavMessage::ESC_TELEMETRY_5_TO_8(
+            ESC_TELEMETRY_5_TO_8_DATA {
+                rpm: [0, 3900, 0, 0],
+                count: [0, 7, 0, 0],
+                ..Default::default()
+            },
+        ));
+        let listed = crate::vehiclefact::esc_list(&escs);
+        let shown = summary(listed["elements"].as_array().unwrap());
+        assert_eq!(
+            (shown["onlineCount"].as_i64(), shown["healthText"].as_str()),
+            (Some(3), Some("OK"))
+        );
+        assert_eq!(
+            shown["motors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|motor| motor["title"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["Motor 1", "Motor 2", "Motor 6"]
+        );
+        assert_eq!(
+            (
+                escs.by_id[&0].voltage,
+                escs.by_id[&0].current,
+                escs.by_id[&0].temperature
+            ),
+            (50.1, 2.5, 4100)
+        );
+    }
 }
