@@ -59,7 +59,7 @@ import {
   takeoverChangeable,
   takeoverLine,
 } from './OperatorControl';
-import { OSD_SCRIM } from './Osd';
+import { OSD_SCRIM, osdShadow, useOsdBackdrop } from './Osd';
 import { factFromControl } from './ParameterForm';
 import { CONNECTIONS_PAGE, FactRow, factSubtitle } from './SettingsScreen';
 import { FootNote } from './SetupRow';
@@ -192,6 +192,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
 
   const tone = blocker !== null ? ChipTone.Error : chipTone(fly, lost);
   const titleColour = statusTitleColour(tone, disconnected && (offlineNow?.links ?? []).some((it: OfflineLink) => it.failed));
+  const noteBackdrop = useOsdBackdrop(OSD_SCRIM);
   const searching = disconnected && offlineNow?.busy === true;
   const title = lost ? signalLostTitle(silentFor, failsafe, narrow) : gotoProgress !== '' && !choices.ambiguous ? gotoProgress : activeVehicleTitle(choices, subtitle);
   const note = narrow ? null : osdStatusNote(title);
@@ -256,9 +257,9 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
                 <Surface
                   onClick={() => (blocker !== null ? setWhy(true) : setStatusSettings(true))}
                   shape="small"
-                  color={OSD_SCRIM}
+                  color={noteBackdrop}
                   contentColor={noteColour(tone)}
-                  className="min-w-0 px-[14px] py-2"
+                  className={`min-w-0 px-[14px] py-2 ${osdShadow()}`}
                 >
                   <Text typography="labelLarge" maxLines={1} ellipsis className="block">{note}</Text>
                 </Surface>

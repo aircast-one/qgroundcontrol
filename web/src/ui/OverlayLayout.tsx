@@ -383,14 +383,12 @@ export const LayoutWidget = ({
   movable = true,
   hideable = true,
   dragsWith,
-  shadowed = true,
   className,
   children,
 }: {
   widgetKey: string;
   movable?: boolean;
   hideable?: boolean;
-  shadowed?: boolean;
   dragsWith?: string;
   className?: string;
   children?: ReactNode;
@@ -430,7 +428,7 @@ export const LayoutWidget = ({
       <div ref={avoided ? avoidedRef : undefined} className="relative" style={jiggle}>
         <div
           ref={sized}
-          className={osd && shadowed ? osdShadow() : undefined}
+          className={osd ? osdShadow() : undefined}
           style={{ opacity: hidden ? HIDDEN_ALPHA : 1 }}
         >
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>

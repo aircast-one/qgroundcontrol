@@ -13,7 +13,7 @@ import { CAMERA_SHEET } from '@/ui/CameraControlLayer';
 import { CAMERAS_VIEW, type CameraEntry, CameraStatus, CamerasReading, camerasReading } from '@/ui/Cameras';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { GIMBAL_INDICATOR_PATH, onScreenGimbal } from '@/ui/GimbalIndicator';
-import { OSD_CONTROL_SIZE, OSD_SCRIM } from '@/ui/Osd';
+import { OSD_CONTROL_SIZE, OSD_SCRIM, useOsdBackdrop } from '@/ui/Osd';
 import { GIMBAL_SHEET } from '@/ui/RcCameraControls';
 import { shownCameraStatus, useSyntheticPage } from '@/ui/SyntheticView';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
@@ -97,6 +97,7 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
   const settings = cameraMenuSheets().filter(([sheet]) => offered.includes(sheet));
   const [open, setOpen] = useState(false);
   const white = aircast('outdoorForeground');
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
   const page = useSyntheticPage();
   const hidden = (switchState === null && splitTo === null && settings.length === 0) || shown === null;
   if (hidden && open) setOpen(false);
@@ -106,7 +107,7 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
       <Surface
         onClick={() => setOpen(true)}
         shape="small"
-        color={OSD_SCRIM}
+        color={backdrop}
         contentColor={white}
         label={`Cameras, showing ${shown.title}`}
         style={{ height: OSD_CONTROL_SIZE }}

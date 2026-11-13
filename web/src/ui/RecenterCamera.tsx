@@ -4,7 +4,7 @@ import { roundToInt } from '@/kotlin/Std';
 import { Drawable } from '@/res/Icon';
 import { Color, aircast } from '@/theme/Colors';
 import { type GimbalIndicatorState, gimbalRefusal } from '@/ui/GimbalIndicator';
-import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
+import { osdShadow } from '@/ui/Osd';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM } from '@/ui/SyntheticView';
 
 const GIMBAL_CENTER = 'gimbal.center';
@@ -48,15 +48,15 @@ export const TiltReadout = ({ degrees, onRecenter, onTap = null, tapLabel = null
     <Surface
       onClick={action ?? undefined}
       shape="small"
-      color={onRecenter !== null ? OSD_SCRIM : Color.Transparent}
+      color={Color.Transparent}
       contentColor={aircast('outdoorForeground')}
       label={description}
       title={action !== null ? (actionLabel ?? undefined) : undefined}
-      className="inline-flex items-center justify-center gap-1"
+      className={`inline-flex items-center justify-center gap-1 ${osdShadow()}`}
       style={{ minWidth: TILT_READOUT_WIDTH, height: TILT_READOUT_HEIGHT, paddingInline: TILT_READOUT_PADDING }}
     >
       {onRecenter !== null ? <Drawable name="ic_my_location" size={RECENTER_GLYPH} /> : null}
-      <Text typography="labelMedium" className={onRecenter === null ? osdShadow() : undefined}>
+      <Text typography="labelMedium">
         Tilt {text}
       </Text>
     </Surface>

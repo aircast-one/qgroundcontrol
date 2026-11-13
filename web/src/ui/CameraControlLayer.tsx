@@ -56,7 +56,7 @@ import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { useHasVehicle } from '@/ui/FlyState';
 import { LensSection } from '@/ui/LensSection';
-import { OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow } from '@/ui/Osd';
+import { OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { factFromControl } from '@/ui/ParameterForm';
 import { RailSlider, RcCameraControls } from '@/ui/RcCameraControls';
 import { FactRow } from '@/ui/SettingsScreen';
@@ -72,8 +72,8 @@ export const SHOW_PHOTO_VIDEO_CONTROL = 'settings.flyViewSettings.showPhotoVideo
 export const CAMERA_CONTROL_KEY = 'cameraControl';
 const CAMERA_SHUTTER_KEY = 'cameraShutter';
 
-const CameraElement = ({ widgetKey, shadowed = true, children }: { widgetKey: string; shadowed?: boolean; children: ReactNode }) => (
-  <LayoutWidget widgetKey={widgetKey} movable={false} dragsWith={CAMERA_CONTROL_KEY} shadowed={shadowed}>
+const CameraElement = ({ widgetKey, children }: { widgetKey: string; children: ReactNode }) => (
+  <LayoutWidget widgetKey={widgetKey} movable={false} dragsWith={CAMERA_CONTROL_KEY}>
     {children}
   </LayoutWidget>
 );
@@ -174,7 +174,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
                 style={{ maxWidth: CAMERA_RAIL_MAX_WIDTH }}
                 above={
                   zoomLabel !== null ? (
-                    <CameraElement widgetKey="cameraZoom" shadowed={false}>
+                    <CameraElement widgetKey="cameraZoom">
                       <ZoomChip camera={camera} label={zoomLabel} />
                     </CameraElement>
                   ) : null
@@ -207,7 +207,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
         ) : (
           <div className="flex items-center" style={{ gap: CAMERA_CLUSTER_GAP }}>
             {zoomLabel !== null ? (
-              <CameraElement widgetKey="cameraZoom" shadowed={false}>
+              <CameraElement widgetKey="cameraZoom">
                 <ZoomChip camera={camera} label={zoomLabel} />
               </CameraElement>
             ) : null}
@@ -240,9 +240,10 @@ const ZoomChip = ({ camera, label }: { camera: CameraReading; label: string }) =
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const foreground = aircast('outdoorForeground');
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
   return (
     <div ref={setAnchor} className="relative">
-      <Surface onClick={() => setOpen(!open)} shape="small" color={OSD_SCRIM} contentColor={foreground} label={`Zoom ${label}`} style={{ height: OSD_CONTROL_SIZE }}>
+      <Surface onClick={() => setOpen(!open)} shape="small" color={backdrop} contentColor={foreground} label={`Zoom ${label}`} style={{ height: OSD_CONTROL_SIZE }}>
         <span className="flex h-full items-center gap-1 px-3">
           <Drawable name="ic_search" size={16} />
           <Text typography="labelLarge">{label}</Text>

@@ -12,7 +12,7 @@ import { MaterialIcon } from '@/res/Icon';
 import { Color, md } from '@/theme/Colors';
 import { JOYSTICK_VIEW } from '@/ui/JoystickScreen';
 import { APPROXIMATE_AIM, LENS_VIEW, lensReading } from '@/ui/Lens';
-import { OSD_CONTROL_SIZE, OSD_SCRIM } from '@/ui/Osd';
+import { OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { FactRow, type SettingsBlock, type SettingsSectionRows, sentenceCase, settingsPagePath, settingsSections } from '@/ui/SettingsScreen';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 
@@ -334,8 +334,8 @@ export const GimbalModeSwitch = ({ className }: { className?: string }) => {
         event.stopPropagation();
         chooseVideoGimbalMode(next.mode);
       }}
-      className={`flex items-center gap-1.5 rounded-shape-sm ps-3 pe-4 ${className ?? ''}`}
-      style={{ height: OSD_CONTROL_SIZE, background: OSD_SCRIM, color: Color.White }}
+      className={`flex items-center gap-1.5 rounded-shape-sm ps-3 pe-4 ${osdShadow()} ${className ?? ''}`}
+      style={{ height: OSD_CONTROL_SIZE, color: Color.White }}
     >
       <MaterialIcon name={current.icon} filled size={18} />
       <Text typography="labelLarge" color={Color.White}>
