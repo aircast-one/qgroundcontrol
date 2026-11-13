@@ -133,8 +133,6 @@ pub mod inspector;
 pub mod inspectorchart;
 pub mod instrumentgroups;
 pub mod instruments;
-#[cfg(test)]
-mod pursuitbench;
 pub mod itemcamera;
 pub mod itemfacts;
 pub mod itemposition;
@@ -239,6 +237,8 @@ pub mod preflight;
 pub mod presets;
 pub mod proximity;
 pub mod pumpguard;
+#[cfg(test)]
+mod pursuitbench;
 pub mod px4airframe;
 pub mod px4meta;
 pub mod px4tuning;
