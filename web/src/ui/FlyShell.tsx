@@ -32,7 +32,7 @@ import type { DrawableName } from '@/res/drawables';
 import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { FleetPanel } from '@/ui/ActiveVehicle';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
-import { AttitudeLadders } from '@/ui/AttitudeLadders';
+import { HudLadders } from '@/ui/HudLadders';
 import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
@@ -580,7 +580,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 ) : null}
                 {hasVehicle && !deciding && view === FlyView.Video ? (
                   <>
-                    <AttitudeLadders shellHeight={box.size.height} />
+                    <HudLadders shellHeight={box.size.height} />
                     <div
                       className={`absolute end-0 flex flex-col justify-end-safe ${osdShadow()} ${PASS_THROUGH}`}
                       style={{

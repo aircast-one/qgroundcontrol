@@ -3,7 +3,7 @@ import { useQgcPath } from '@/bridge/QgcState';
 import { Surface } from '@/m3/Surface';
 import { Color, aircast, withAlpha } from '@/theme/Colors';
 import { ATTITUDE_PATH, attitude } from '@/ui/AttitudeInstrument';
-import { osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
+import { osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
 const TAPE_SPAN_DEGREES = 120;
 const TICK_STEP = 10;
@@ -54,8 +54,8 @@ export const HeadingTape = ({ className }: { className?: string }) => {
   const view = useQgcPath(ATTITUDE_PATH);
   const reading = useMemo(() => attitude(view), [view]);
   const backdrop = useOsdBackdrop(TAPE_BACKDROP);
-  const ink = useOsdTint(Color.White, aircast('osdInk'));
   if (reading === null) return null;
+  const ink = Color.White;
   const heading = headingReadout(reading.heading);
   const homeBearing = reading.homeBearing ?? reading.headingToHome;
   return (

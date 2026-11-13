@@ -326,7 +326,7 @@ export const TelemetryRow = ({
     const hudReading = (instrument: Instrument) => {
       const display = displayFor(displays, instrument);
       const icon = hudIcon(display, instrument);
-      const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('osdInk');
+      const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
       return (
         <div key={`${instrument.id}|${instrument.label}`} className="flex items-center gap-1.5">
           {icon !== null ? (
