@@ -99,6 +99,17 @@ test('only widgets without layout widgets inside them jiggle, so the status pill
   expect((await jiggling()).nested, 'a jiggling widget inside another jiggling widget').toBe(0);
 });
 
+test('the message banner hugs its text, so its jiggle swings a few pixels and not the width of the screen', async ({ app }) => {
+  await connectMock(app, ['Send status text + voice']);
+  const dismiss = app.getByRole('button', { name: 'Dismiss messages', exact: true });
+  await expect(dismiss).toBeVisible();
+  await editLayout(app);
+  const banner = app.getByRole('button').filter({ has: dismiss });
+  const [bannerBox, dismissBox] = await Promise.all([banner.boundingBox(), dismiss.boundingBox()]);
+  if (bannerBox === null || dismissBox === null) throw new Error('the banner is not on screen');
+  expect(bannerBox.x + bannerBox.width - (dismissBox.x + dismissBox.width), 'room past the dismiss button').toBeLessThan(24);
+});
+
 test('while editing the layout the video takes no input, and it does again after Done', async ({ app }) => {
   await withCamera(app);
   const [x, y] = await app.evaluate(() => [Math.round(innerWidth * 0.4), Math.round(innerHeight * 0.6)] as const);

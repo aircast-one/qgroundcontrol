@@ -380,7 +380,7 @@ export const AircastShell = () => {
     </LayoutWidget>
   );
   const flyRcControlsLayer = (
-    <LayoutWidget widgetKey="rcControls">
+    <LayoutWidget widgetKey="rcControls" className="self-stretch">
       <RcControlsLayer />
     </LayoutWidget>
   );
@@ -578,7 +578,7 @@ export const AircastShell = () => {
       <LayoutWidget widgetKey="messageBanner" hideable={false}>
         <VehicleMessageBanner />
       </LayoutWidget>
-      <LayoutWidget widgetKey="motorLoad" className="self-start">
+      <LayoutWidget widgetKey="motorLoad">
         <MotorLoadWidget />
       </LayoutWidget>
       <LayoutWidget widgetKey="fleet">

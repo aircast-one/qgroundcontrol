@@ -527,7 +527,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     </div>
                   }
                   overlays={
-                    <div className="flex w-full flex-col gap-2 overflow-hidden" style={{ paddingInlineStart: insets.overlaysStart, paddingInlineEnd: insets.overlaysEnd }}>
+                    <div className="flex w-full flex-col items-start gap-2 overflow-hidden" style={{ paddingInlineStart: insets.overlaysStart, paddingInlineEnd: insets.overlaysEnd }}>
                       <LocalAvoidedByVideoMessage.Provider value>{overlays}</LocalAvoidedByVideoMessage.Provider>
                     </div>
                   }

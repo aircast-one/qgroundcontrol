@@ -275,7 +275,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                       className={`flex h-full flex-col justify-between ${ANIMATED_PADDING}`}
                       style={{ paddingInlineStart: AircastSpace.s3, paddingTop: overlaysTop, paddingInlineEnd: AircastSpace.s3, paddingBottom: MAP_ATTRIBUTION_CLEARANCE + compassLift }}
                     >
-                      <div className="flex min-h-0 shrink flex-col gap-2 overflow-hidden">{overlays}</div>
+                      <div className="flex min-h-0 shrink flex-col items-start gap-2 overflow-hidden">{overlays}</div>
                       {split ? null : (
                         <div className="pt-2">
                           <OsdCompassDial size={PORTRAIT_DIAL_SIZE} />
