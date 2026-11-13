@@ -12782,7 +12782,7 @@ mod tests {
     }
 
     #[test]
-    fn a_drop_or_an_auto_intercept_run_while_the_payload_is_safe_is_refused_up_front() {
+    fn a_drop_or_an_auto_pursuit_run_while_the_payload_is_safe_is_refused_up_front() {
         let mut hub = Hub::with_payload_lock(PayloadLock::SAFE);
         let header = MavHeader {
             system_id: 1,

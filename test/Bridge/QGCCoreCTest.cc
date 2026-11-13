@@ -1540,8 +1540,8 @@ const char *const kViewPaths[] = {
     "view.deepLinkSetup", "view.device(aircraft)", "view.deviceWizard", "view.deviceRender(front,1700000000,1700000300)", "view.rcControls",
     "view.videoPreview(http://127.0.0.1:8889/whep/front)", "view.lens", "view.joystickSetup", "view.usbRadio",
     "view.dropSim(47.397,8.546,50,10,0,0,47.398,8.546,0,0)", "view.dropLead(47.397,8.546,50,10,0,0,47.398,8.546,0,0)",
-    "view.dropIntercept(47.397,8.546,10,47.398,8.546,0,0)", "view.gimbalGroundPoint(47.397,8.546,50,0,-45)",
-    "view.gimbalDropLead(47.397,8.546,50,10,0,0,0,-45)", "view.autodropStatus", "view.autoIntercept",
+    "view.dropPursuit(47.397,8.546,10,47.398,8.546,0,0)", "view.gimbalGroundPoint(47.397,8.546,50,0,-45)",
+    "view.gimbalDropLead(47.397,8.546,50,10,0,0,0,-45)", "view.autodropStatus", "view.autoPursuit",
 };
 
 QList<QByteArray> viewPathsWithFixtures()

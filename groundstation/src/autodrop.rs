@@ -1182,7 +1182,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_intercept_never_starts_until_the_pilot_turns_it_on_but_can_always_be_stopped() {
+    fn auto_pursuit_never_starts_until_the_pilot_turns_it_on_but_can_always_be_stopped() {
         assert_eq!(run(&TurnedOff, "[]")["reason"], TURNED_OFF);
         assert_eq!(run(&TurnedOff, r#"["manual"]"#)["reason"], TURNED_OFF);
         assert_ne!(

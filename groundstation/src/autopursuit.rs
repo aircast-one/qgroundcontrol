@@ -2,8 +2,8 @@ use serde_json::{Value, json};
 
 use crate::router::Backend;
 
-pub const DROP: &str = "vehicle.autoInterceptDrop";
-pub const PICK_ANOTHER: &str = "vehicle.autoInterceptPickAnother";
+pub const DROP: &str = "vehicle.autoPursuitDrop";
+pub const PICK_ANOTHER: &str = "vehicle.autoPursuitPickAnother";
 pub const PICK: &str = "vehicle.cameraManager.currentCameraInstance.startTracking";
 pub const TRACKING_ARMED: &str = "vehicle.cameraManager.currentCameraInstance.trackingEnabled";
 pub const STOP_TRACKING: &str = "vehicle.cameraManager.currentCameraInstance.stopTracking";
@@ -212,7 +212,7 @@ pub fn shown(status: &Value, target: &Value, tracking: &Value) -> Value {
     let (headline, problem, ids) = line.unwrap_or_default();
     json!({
         "kind": "object",
-        "class": "AutoIntercept",
+        "class": "AutoPursuit",
         "visible": !headline.is_empty(),
         "tone": if problem { "problem" } else { "info" },
         "headline": headline,
@@ -248,7 +248,7 @@ pub fn view(backend: &dyn Backend, _args: &[String]) -> Value {
 pub fn turned_off() -> Value {
     json!({
         "kind": "object",
-        "class": "AutoIntercept",
+        "class": "AutoPursuit",
         "visible": false,
         "tone": "info",
         "headline": "",
@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_intercept_says_what_it_chases_why_it_waits_how_it_ended_and_what_to_do_next() {
+    fn auto_pursuit_says_what_it_chases_why_it_waits_how_it_ended_and_what_to_do_next() {
         let idle = shown(&json!({"state":"idle"}), &Value::Null, &Value::Null);
         assert_eq!(idle["visible"], false, "idle has nothing to say");
         let lock = json!({"supported":true,"requested":true,"reported":true,"shapes":["point"]});

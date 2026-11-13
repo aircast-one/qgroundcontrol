@@ -10,60 +10,60 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace AircastQGC.Controls;
 
-public sealed record InterceptConfirm(string Title, string Text);
+public sealed record PursuitConfirm(string Title, string Text);
 
-public sealed record InterceptAction(string Label, string Path, string Args, InterceptConfirm? Confirm)
+public sealed record PursuitAction(string Label, string Path, string Args, PursuitConfirm? Confirm)
 {
-    internal static InterceptAction? Read(JsonNode? node) =>
+    internal static PursuitAction? Read(JsonNode? node) =>
         node is JsonObject json && MapUiJson.Text(json["path"]) is { Length: > 0 } path
-            ? new InterceptAction(
+            ? new PursuitAction(
                 MapUiJson.Text(json["label"]),
                 path,
                 (json["args"] as JsonArray ?? []).ToJsonString(),
                 json["confirm"] is JsonObject confirm
-                    ? new InterceptConfirm(MapUiJson.Text(confirm["title"]), MapUiJson.Text(confirm["text"]))
+                    ? new PursuitConfirm(MapUiJson.Text(confirm["title"]), MapUiJson.Text(confirm["text"]))
                     : null)
             : null;
 
     internal string? Run() => MapUiJson.RefusalOf(Bridge.Invoke(Path, JsonNode.Parse(Args) as JsonArray));
 }
 
-internal sealed record AutoInterceptView(
-    bool Visible, bool Problem, string Headline, IReadOnlyList<InterceptAction> Actions, InterceptAction? Entry, string? Hint)
+internal sealed record AutoPursuitView(
+    bool Visible, bool Problem, string Headline, IReadOnlyList<PursuitAction> Actions, PursuitAction? Entry, string? Hint)
 {
-    internal const string Path = "view.autoIntercept";
+    internal const string Path = "view.autoPursuit";
 
-    internal static AutoInterceptView Read(JsonObject view) => new(
+    internal static AutoPursuitView Read(JsonObject view) => new(
         MapUiJson.Flag(view["visible"]),
         MapUiJson.Text(view["tone"]) == "problem",
         MapUiJson.Text(view["headline"]),
-        MapUiJson.Objects(view["actions"]).Select(InterceptAction.Read).OfType<InterceptAction>().ToList(),
-        InterceptAction.Read(view["entry"]),
+        MapUiJson.Objects(view["actions"]).Select(PursuitAction.Read).OfType<PursuitAction>().ToList(),
+        PursuitAction.Read(view["entry"]),
         MapUiJson.Text(view["hint"]) is { Length: > 0 } hint ? hint : null);
 }
 
-public sealed partial class AutoInterceptStatus : UserControl
+public sealed partial class AutoPursuitStatus : UserControl
 {
     private const string InfoGlyph = "";
     private const string ProblemGlyph = "";
 
-    private readonly string _client = $"auto-intercept.{Guid.NewGuid():N}";
+    private readonly string _client = $"auto-pursuit.{Guid.NewGuid():N}";
     private readonly FontIcon _icon = FormLook.Glyph(InfoGlyph, 14, "AccentBrush");
     private readonly TextBlock _headline = FormLook.Text("", "FontSizeBody", "TextPrimaryBrush", true);
     private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
     private readonly TextBlock _hintText = FormLook.Caption("", "TextPrimaryBrush");
     private readonly Border _pill;
     private readonly Border _hint;
-    private IReadOnlyList<InterceptAction> _actions = [];
-    private InterceptAction? _entry;
+    private IReadOnlyList<PursuitAction> _actions = [];
+    private PursuitAction? _entry;
 
     public event EventHandler<GuidedAsk>? ConfirmRequested;
 
     public event EventHandler<string>? Refused;
 
-    public event EventHandler<InterceptAction?>? EntryChanged;
+    public event EventHandler<PursuitAction?>? EntryChanged;
 
-    public AutoInterceptStatus()
+    public AutoPursuitStatus()
     {
         _headline.VerticalAlignment = VerticalAlignment.Center;
         _icon.VerticalAlignment = VerticalAlignment.Center;
@@ -90,8 +90,8 @@ public sealed partial class AutoInterceptStatus : UserControl
         Visibility = Visibility.Collapsed;
         Loaded += (_, _) =>
         {
-            BridgeWatch.Watch(_client, [AutoInterceptView.Path], Render);
-            Render(Bridge.Get(AutoInterceptView.Path));
+            BridgeWatch.Watch(_client, [AutoPursuitView.Path], Render);
+            Render(Bridge.Get(AutoPursuitView.Path));
         };
         Unloaded += (_, _) =>
         {
@@ -99,7 +99,7 @@ public sealed partial class AutoInterceptStatus : UserControl
         };
     }
 
-    public void Run(InterceptAction action)
+    public void Run(PursuitAction action)
     {
         if (action.Confirm is { } confirm) ConfirmRequested?.Invoke(this, new GuidedAsk(confirm.Title, confirm.Text, action.Run));
         else Ui.Off(this, action.Run, Refuse);
@@ -112,7 +112,7 @@ public sealed partial class AutoInterceptStatus : UserControl
 
     private void Render(JsonObject view)
     {
-        var shown = AutoInterceptView.Read(view);
+        var shown = AutoPursuitView.Read(view);
         _pill.Visibility = Ui.Shown(shown.Visible);
         _pill.Background = Ui.Token(shown.Problem ? "CautionBgBrush" : "LayerBrush");
         _icon.Glyph = shown.Problem ? ProblemGlyph : InfoGlyph;

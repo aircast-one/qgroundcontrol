@@ -15,7 +15,7 @@ use crate::apmsubmotors;
 use crate::applog;
 use crate::attitude;
 use crate::autodrop;
-use crate::autointercept;
+use crate::autopursuit;
 use crate::autotune;
 use crate::battery;
 use crate::calibration;
@@ -197,7 +197,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
         "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<climbSpeed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
     ),
     (
-        "view.dropIntercept",
+        "view.dropPursuit",
         "<lat>,<lon>,<speed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
     ),
     (
@@ -1075,9 +1075,9 @@ pub const VIEWS: &[View] = &[
         compute: dropsim::drop_lead_view,
     },
     View {
-        path: "view.dropIntercept",
+        path: "view.dropPursuit",
         deps: &[],
-        compute: dropsim::intercept_view,
+        compute: dropsim::pursuit_view,
     },
     View {
         path: "view.gimbalGroundPoint",
@@ -1100,9 +1100,9 @@ pub const VIEWS: &[View] = &[
         compute: autodrop::status_view,
     },
     View {
-        path: "view.autoIntercept",
+        path: "view.autoPursuit",
         deps: &[],
-        compute: autointercept::view,
+        compute: autopursuit::view,
     },
     View {
         path: "view.geoToNed",
@@ -1290,7 +1290,7 @@ impl View {
             "view.viewer3dVehicle" => viewer3d::vehicle_deps(),
             "view.syntheticOverlays" => crate::synthview::overlay_deps(),
             "view.videoAr" => crate::videoar::deps(),
-            "view.autoIntercept" => autointercept::deps(),
+            "view.autoPursuit" => autopursuit::deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }
@@ -1391,7 +1391,7 @@ mod deps_cover_reads {
         ("appupdate", include_str!("appupdate.rs")),
         ("autoconnect", include_str!("autoconnect.rs")),
         ("autodrop", include_str!("autodrop.rs")),
-        ("autointercept", include_str!("autointercept.rs")),
+        ("autopursuit", include_str!("autopursuit.rs")),
         ("battery", include_str!("battery.rs")),
         ("batteryfacts", include_str!("batteryfacts.rs")),
         ("buildings", include_str!("buildings.rs")),

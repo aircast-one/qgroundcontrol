@@ -43,7 +43,7 @@ class Eyes:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="The device's visual tracker on virtual camera frames, one JSON request per line, for interceptbench's closed loop"
+        description="The device's visual tracker on virtual camera frames, one JSON request per line, for pursuitbench's closed loop"
     )
     parser.add_argument("--sidecar", required=True)
     parser.add_argument("--fps", type=float, default=15)

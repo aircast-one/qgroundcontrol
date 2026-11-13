@@ -7,7 +7,7 @@ const PROOF = process.env.INTERCEPT_PROOF;
 
 const offeredConfirm = (page: Page) =>
   page.evaluate(
-    async (module) => ((await import(module)) as { Qgc: { path: (path: string) => { entry?: { confirm?: { text?: string } | null } } | null } }).Qgc.path('view.autoIntercept')?.entry?.confirm?.text ?? '',
+    async (module) => ((await import(module)) as { Qgc: { path: (path: string) => { entry?: { confirm?: { text?: string } | null } } | null } }).Qgc.path('view.autoPursuit')?.entry?.confirm?.text ?? '',
     '/src/bridge/Qgc.ts',
   );
 

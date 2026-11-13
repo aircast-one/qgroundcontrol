@@ -65,15 +65,15 @@ final class GuidedActionsTests: XCTestCase {
     }
 }
 
-final class AutoInterceptViewTests: XCTestCase {
+final class AutoPursuitViewTests: XCTestCase {
     func testTheCoresViewBecomesThePillItsButtonsAndTheMenuEntry() {
-        let shown = autoIntercept(JSON.parse(#"{"class":"AutoIntercept","visible":true,"tone":"problem","headline":"Couldn't line up a safe drop in 90 s — holding position","actions":[{"id":"tryAgain","label":"Try again","path":"vehicle.autoInterceptDrop","args":[],"confirm":{"title":"Auto Intercept","text":"Chase the car"}},{"id":"pickAnother","label":"Pick another target","path":"vehicle.autoInterceptPickAnother","args":[],"confirm":null}],"entry":{"id":"stop","label":"Stop Auto Intercept","path":"vehicle.autoInterceptDrop","args":["stop"],"confirm":null},"hint":null,"picking":false}"#))!
+        let shown = autoPursuit(JSON.parse(#"{"class":"AutoPursuit","visible":true,"tone":"problem","headline":"Couldn't line up a safe drop in 90 s — holding position","actions":[{"id":"tryAgain","label":"Try again","path":"vehicle.autoPursuitDrop","args":[],"confirm":{"title":"Auto Intercept","text":"Chase the car"}},{"id":"pickAnother","label":"Pick another target","path":"vehicle.autoPursuitPickAnother","args":[],"confirm":null}],"entry":{"id":"stop","label":"Stop Auto Intercept","path":"vehicle.autoPursuitDrop","args":["stop"],"confirm":null},"hint":null,"picking":false}"#))!
         XCTAssertTrue(shown.problem)
         XCTAssertEqual(shown.actions.map(\.label), ["Try again", "Pick another target"])
-        XCTAssertEqual(shown.actions.first?.confirm, InterceptConfirm(title: "Auto Intercept", text: "Chase the car"))
+        XCTAssertEqual(shown.actions.first?.confirm, PursuitConfirm(title: "Auto Intercept", text: "Chase the car"))
         XCTAssertNil(shown.actions.last?.confirm)
         XCTAssertEqual(shown.entry?.args, [.string("stop")])
         XCTAssertNil(shown.hint)
-        XCTAssertNil(autoIntercept(JSON.parse(#"{"class":"Other"}"#)))
+        XCTAssertNil(autoPursuit(JSON.parse(#"{"class":"Other"}"#)))
     }
 }

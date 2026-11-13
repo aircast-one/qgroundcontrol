@@ -36,7 +36,7 @@ fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
     val cameraJson by qgcPath(CAMERA_VIEW)
     val videoJson by qgcPath(VIDEO_VIEW)
     val tracking = remember(cameraJson) { trackingReading(cameraJson) }
-    val hint by qgcDerived(AUTO_INTERCEPT) { autoIntercept(it)?.hint }
+    val hint by qgcDerived(AUTO_PURSUIT) { autoPursuit(it)?.hint }
     val source = remember(videoJson) { videoReading(videoJson)?.sourceSize }
     val box = tracking?.box
     val density = LocalDensity.current

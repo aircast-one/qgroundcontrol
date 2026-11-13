@@ -774,7 +774,7 @@ mod tests {
 
     #[test]
     #[ignore = "the full bench takes minutes; run with --release -- --ignored --nocapture"]
-    fn intercept_bench() {
+    fn pursuit_bench() {
         let env = |name: &str| std::env::var(name).ok().and_then(|v| v.parse::<f64>().ok());
         let runs = env("BENCH_RUNS").map_or(200, |n| n as u64);
         let detector = Detector {

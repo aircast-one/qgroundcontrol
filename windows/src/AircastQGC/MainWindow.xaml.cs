@@ -139,12 +139,12 @@ public sealed partial class MainWindow : Window
         Shell.VehiclePicker.HandedOver += (_, notice) => Tell(notice);
 
         GuidedStrip.ActionRequested += (_, offer) => GuidedCard.Show(offer);
-        Intercept.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
-        Intercept.Refused += (_, reason) => Warn(reason);
+        Pursuit.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
+        Pursuit.Refused += (_, reason) => Warn(reason);
         Chase.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
         Chase.Refused += (_, reason) => Warn(reason);
-        Intercept.EntryChanged += (_, entry) =>
-            GuidedStrip.ShowExtra(entry is null ? null : (entry.Label, "\uE81D", () => Intercept.Run(entry)));
+        Pursuit.EntryChanged += (_, entry) =>
+            GuidedStrip.ShowExtra(entry is null ? null : (entry.Label, "\uE81D", () => Pursuit.Run(entry)));
         GuidedStrip.CutRequested += (_, offer) =>
         {
             if (GuidedCard.Show(offer)) GuidedCard.Confirm();

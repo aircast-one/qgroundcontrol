@@ -63,7 +63,7 @@ MODELS = {
     "FirmwareJob": ["view.firmwareUpgrade", "view.firmwarePorts"],
     "FlyDetail": "view.gps",
     "ItemSpeed": ["view.itemFacts(1)", "view.missionItems"],
-    "AutoIntercept": "view.autoIntercept",
+    "AutoPursuit": "view.autoPursuit",
     "TerrainDownload": "view.terrainDownload",
 }
 

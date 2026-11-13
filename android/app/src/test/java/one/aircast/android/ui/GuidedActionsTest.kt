@@ -53,22 +53,22 @@ class GuidedActionsTest {
 
     @Test
     fun `auto intercept is drawn from the core's view as it comes`() {
-        val shown = autoIntercept(
+        val shown = autoPursuit(
             JSONObject(
-                """{"class":"AutoIntercept","visible":true,"tone":"problem","headline":"Couldn't line up a safe drop in 90 s — holding position",
-                   "actions":[{"id":"tryAgain","label":"Try again","path":"vehicle.autoInterceptDrop","args":[],"confirm":{"title":"Auto Intercept","text":"Chase the car"}},
-                              {"id":"pickAnother","label":"Pick another target","path":"vehicle.autoInterceptPickAnother","args":[],"confirm":null}],
-                   "entry":{"id":"stop","label":"Stop Auto Intercept","path":"vehicle.autoInterceptDrop","args":["stop"],"confirm":null},
+                """{"class":"AutoPursuit","visible":true,"tone":"problem","headline":"Couldn't line up a safe drop in 90 s — holding position",
+                   "actions":[{"id":"tryAgain","label":"Try again","path":"vehicle.autoPursuitDrop","args":[],"confirm":{"title":"Auto Intercept","text":"Chase the car"}},
+                              {"id":"pickAnother","label":"Pick another target","path":"vehicle.autoPursuitPickAnother","args":[],"confirm":null}],
+                   "entry":{"id":"stop","label":"Stop Auto Intercept","path":"vehicle.autoPursuitDrop","args":["stop"],"confirm":null},
                    "hint":null,"picking":false}""",
             ),
         )!!
         assertEquals("Couldn't line up a safe drop in 90 s — holding position", shown.headline)
         assertTrue(shown.problem)
         assertEquals(listOf("Try again", "Pick another target"), shown.actions.map { it.label })
-        assertEquals(InterceptConfirm("Auto Intercept", "Chase the car"), shown.actions[0].confirm)
+        assertEquals(PursuitConfirm("Auto Intercept", "Chase the car"), shown.actions[0].confirm)
         assertNull(shown.actions[1].confirm)
         assertEquals(listOf<Any?>("stop"), shown.entry?.args)
         assertNull(shown.hint)
-        assertNull("another view is not this one", autoIntercept(JSONObject("""{"class":"Detections"}""")))
+        assertNull("another view is not this one", autoPursuit(JSONObject("""{"class":"Detections"}""")))
     }
 }

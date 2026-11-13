@@ -26,7 +26,7 @@ pub mod ashtechbase;
 pub mod attitude;
 pub mod autoconnect;
 pub mod autodrop;
-pub mod autointercept;
+pub mod autopursuit;
 pub mod autotune;
 pub mod background;
 pub mod battery;
@@ -134,7 +134,7 @@ pub mod inspectorchart;
 pub mod instrumentgroups;
 pub mod instruments;
 #[cfg(test)]
-mod interceptbench;
+mod pursuitbench;
 pub mod itemcamera;
 pub mod itemfacts;
 pub mod itemposition;

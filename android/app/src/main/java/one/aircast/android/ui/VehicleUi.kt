@@ -126,41 +126,41 @@ internal fun checklistStateValue(passed: Boolean): Int = if (passed) CHECKLIST_P
 internal fun offerWithdrawn(offerId: String?, offers: Map<String, GuidedOffer>): Boolean =
     offerId != null && offers[offerId]?.shown != true
 
-internal const val AUTO_INTERCEPT = "view.autoIntercept"
+internal const val AUTO_PURSUIT = "view.autoPursuit"
 
-internal data class InterceptConfirm(val title: String, val text: String)
+internal data class PursuitConfirm(val title: String, val text: String)
 
-internal data class InterceptAction(val id: String, val label: String, val path: String, val args: List<Any?>, val confirm: InterceptConfirm?)
+internal data class PursuitAction(val id: String, val label: String, val path: String, val args: List<Any?>, val confirm: PursuitConfirm?)
 
-internal data class AutoIntercept(
+internal data class AutoPursuit(
     val visible: Boolean,
     val problem: Boolean,
     val headline: String,
-    val actions: List<InterceptAction>,
-    val entry: InterceptAction?,
+    val actions: List<PursuitAction>,
+    val entry: PursuitAction?,
     val hint: String?,
     val picking: Boolean,
 )
 
-private fun interceptAction(json: JSONObject?): InterceptAction? = json?.let { action ->
+private fun pursuitAction(json: JSONObject?): PursuitAction? = json?.let { action ->
     val args = action.optJSONArray("args")
-    InterceptAction(
+    PursuitAction(
         id = action.optText("id"),
         label = action.optText("label"),
         path = action.optText("path"),
         args = (0 until (args?.length() ?: 0)).map { args?.opt(it) },
-        confirm = action.optJSONObject("confirm")?.let { InterceptConfirm(it.optText("title"), it.optText("text")) },
+        confirm = action.optJSONObject("confirm")?.let { PursuitConfirm(it.optText("title"), it.optText("text")) },
     )
 }
 
-internal fun autoIntercept(view: JSONObject?): AutoIntercept? = view?.takeIf { it.optText("class") == "AutoIntercept" }?.let { shown ->
+internal fun autoPursuit(view: JSONObject?): AutoPursuit? = view?.takeIf { it.optText("class") == "AutoPursuit" }?.let { shown ->
     val actions = shown.optJSONArray("actions")
-    AutoIntercept(
+    AutoPursuit(
         visible = shown.optBoolean("visible"),
         problem = shown.optText("tone") == "problem",
         headline = shown.optText("headline"),
-        actions = (0 until (actions?.length() ?: 0)).mapNotNull { interceptAction(actions?.optJSONObject(it)) },
-        entry = interceptAction(shown.optJSONObject("entry")),
+        actions = (0 until (actions?.length() ?: 0)).mapNotNull { pursuitAction(actions?.optJSONObject(it)) },
+        entry = pursuitAction(shown.optJSONObject("entry")),
         hint = shown.optText("hint").ifBlank { null },
         picking = shown.optBoolean("picking"),
     )
@@ -439,8 +439,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val extras = remember(offers) { moreActions(offers) }
     val gripper = remember(extras) { gripperOffers(extras) }
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
-    val intercept by qgcDerived(AUTO_INTERCEPT, ::autoIntercept)
-    val autodropStatus = intercept?.takeIf { it.visible }
+    val pursuit by qgcDerived(AUTO_PURSUIT, ::autoPursuit)
+    val autodropStatus = pursuit?.takeIf { it.visible }
     val payload = remember(actionsJson) { payloadOf(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
     val routeRecorder by qgcDerived(ROUTE_RECORDER_VIEW, ::routeRecorder)
@@ -478,7 +478,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             sent(action)
         }
     }
-    val onAutodrop: (InterceptAction) -> Unit = { picked ->
+    val onAutodrop: (PursuitAction) -> Unit = { picked ->
         val args = picked.args.toTypedArray()
         when (val confirm = picked.confirm) {
             null -> offMainDetached { Qgc.invoke(picked.path, *args) }
@@ -688,7 +688,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         MoreActionsSheet(
             tiles = listOfNotNull(
                 armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } },
-                intercept?.entry?.let { entry -> MoreTile(entry.label, R.drawable.ic_search, true) { onAutodrop(entry) } },
+                pursuit?.entry?.let { entry -> MoreTile(entry.label, R.drawable.ic_search, true) { onAutodrop(entry) } },
             ) +
                 deckRest.filter { it.id != CHECKLIST && it.id != RELEASE }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
                 listOfNotNull(
@@ -819,7 +819,7 @@ private fun RefusalLine(message: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun AutodropStatusLine(shown: AutoIntercept, onAction: (InterceptAction) -> Unit) {
+private fun AutodropStatusLine(shown: AutoPursuit, onAction: (PursuitAction) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             shown.headline,

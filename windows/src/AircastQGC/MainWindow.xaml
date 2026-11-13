@@ -66,7 +66,7 @@
                     </StackPanel>
                     <controls:OrbitReadout HorizontalAlignment="Center" />
                     <controls:RouteRecording x:Name="RouteRec" HorizontalAlignment="Center" />
-                    <controls:AutoInterceptStatus x:Name="Intercept" HorizontalAlignment="Center" />
+                    <controls:AutoPursuitStatus x:Name="Pursuit" HorizontalAlignment="Center" />
                     <controls:ChaseControl x:Name="Chase" HorizontalAlignment="Center" />
                     <InfoBar x:Name="Notice" Severity="Error" IsClosable="True" IsOpen="False"
                              HorizontalAlignment="Center" MaxWidth="480" />

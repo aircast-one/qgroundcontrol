@@ -366,7 +366,7 @@ pub fn lead_in(release: Release, target: Target, air: Air) -> Lead {
 pub struct Intercept {
     pub heading_deg: f64,
     pub speed_mps: f64,
-    pub time_to_intercept_s: f64,
+    pub time_to_pursuit_s: f64,
     pub lead_point: Point,
 }
 
@@ -375,7 +375,7 @@ impl Intercept {
         json!({
             "headingDegrees": self.heading_deg,
             "speedMetersPerSecond": self.speed_mps,
-            "timeToInterceptSeconds": self.time_to_intercept_s,
+            "timeToPursuitSeconds": self.time_to_pursuit_s,
             "leadPoint": {"lat": self.lead_point.lat, "lon": self.lead_point.lon},
         })
     }
@@ -418,7 +418,7 @@ pub fn intercept(drone_position: Point, speed_mps: f64, target: Target) -> Optio
     Some(Intercept {
         heading_deg: lead_e.atan2(lead_n).to_degrees().rem_euclid(360.0),
         speed_mps,
-        time_to_intercept_s: t,
+        time_to_pursuit_s: t,
         lead_point: Point {
             lat: lead_lat,
             lon: lead_lon,
@@ -481,7 +481,7 @@ pub fn drop_lead_view(_backend: &dyn Backend, args: &[String]) -> Value {
     lead(release, target).json()
 }
 
-pub fn intercept_view(_backend: &dyn Backend, args: &[String]) -> Value {
+pub fn pursuit_view(_backend: &dyn Backend, args: &[String]) -> Value {
     let Some(v) = numbers(args, 7) else {
         return crate::read::refused(
             "this needs seven numbers: drone latitude, longitude, speed, then target latitude, longitude, north speed and east speed",
@@ -768,16 +768,16 @@ mod tests {
         let solved = intercept(drone, 10.0, target).expect("3 m/s is outrun by a 10 m/s chaser");
 
         assert!(
-            (solved.time_to_intercept_s - 100.0 / 7.0).abs() < 1e-6,
+            (solved.time_to_pursuit_s - 100.0 / 7.0).abs() < 1e-6,
             "closing speed is 10-3=7 m/s over the initial 100m gap, got {}",
-            solved.time_to_intercept_s
+            solved.time_to_pursuit_s
         );
         assert!(
             solved.heading_deg.min(360.0 - solved.heading_deg) < 1e-6,
             "the target never leaves the north line, so the lead point is still due north, got {}",
             solved.heading_deg
         );
-        let closing = solved.speed_mps * solved.time_to_intercept_s;
+        let closing = solved.speed_mps * solved.time_to_pursuit_s;
         let (lead_n, _, _) = geo_to_ned(
             solved.lead_point.lat,
             solved.lead_point.lon,
@@ -786,7 +786,7 @@ mod tests {
         );
         assert!(
             (closing - lead_n).abs() < 1e-6,
-            "flying speed_mps for time_to_intercept_s should land exactly on the lead point"
+            "flying speed_mps for time_to_pursuit_s should land exactly on the lead point"
         );
     }
 
@@ -827,7 +827,7 @@ mod tests {
         };
 
         let solved = intercept(drone, 10.0, target).expect("already there");
-        assert!(solved.time_to_intercept_s.abs() < 1e-9);
+        assert!(solved.time_to_pursuit_s.abs() < 1e-9);
     }
 
     #[test]
@@ -853,7 +853,7 @@ mod tests {
             "a target crossing east of a straight-north bearing has to be led east of it, got {}",
             solved.heading_deg
         );
-        let closing = solved.speed_mps * solved.time_to_intercept_s;
+        let closing = solved.speed_mps * solved.time_to_pursuit_s;
         let (lead_n, lead_e, _) = geo_to_ned(
             solved.lead_point.lat,
             solved.lead_point.lon,
@@ -862,7 +862,7 @@ mod tests {
         );
         assert!(
             (closing - lead_n.hypot(lead_e)).abs() < 1e-6,
-            "flying speed_mps for time_to_intercept_s should land exactly on the lead point"
+            "flying speed_mps for time_to_pursuit_s should land exactly on the lead point"
         );
     }
 

@@ -24,7 +24,7 @@ import { LocalFlyScreenState, OpenOnRequest } from './FlyScreenState';
 import { AnimatedVisibility, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
-import { AUTO_INTERCEPT, type AutoIntercept, GUIDED_ACTIONS, type GuidedOffer, type InterceptAction, type Payload, SINGLE_GRIPPER, autoIntercept, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
+import { AUTO_PURSUIT, type AutoPursuit, GUIDED_ACTIONS, type GuidedOffer, type PursuitAction, type Payload, SINGLE_GRIPPER, autoPursuit, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
 import { type GuidedValueKind, GuidedValueFlow, type OpenGuidedValue, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
 import { holdLabel } from './HoldToConfirm';
@@ -415,8 +415,8 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const useChecklist = useMemo(() => preflightOffered(preflightJson), [preflightJson]);
   const actionsJson = useQgcPath(GUIDED_ACTIONS);
   const offers = useMemo(() => guidedOffers(actionsJson), [actionsJson]);
-  const interceptJson = useQgcPath(AUTO_INTERCEPT);
-  const intercept = useMemo(() => autoIntercept(interceptJson), [interceptJson]);
+  const pursuitJson = useQgcPath(AUTO_PURSUIT);
+  const pursuit = useMemo(() => autoPursuit(pursuitJson), [pursuitJson]);
   const extras = useMemo(() => moreActions(offers), [offers]);
   const gripper = useMemo(() => gripperOffers(extras), [extras]);
   const resumeFrom = useMemo(() => resumeFromSequence(actionsJson), [actionsJson]);
@@ -457,7 +457,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       sent(action);
     }
   };
-  const onIntercept = (picked: InterceptAction) =>
+  const onPursuit = (picked: PursuitAction) =>
     picked.confirm === null
       ? void Qgc.invoke(picked.path, ...picked.args)
       : ask(GuidedAction({ name: picked.confirm.title, confirm: picked.confirm.text, destructive: false, answer: () => Qgc.refusalOf(picked.path, ...picked.args) }));
@@ -574,7 +574,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       <SentNotice name={sentName ?? ''} onDismiss={() => setSentName(null)} />
     ) : null;
   const refusalLine = refusal !== null ? <RefusalLine message={refusal} onDismiss={() => setRefusal(null)} /> : null;
-  const interceptLine = intercept?.visible === true ? <InterceptLine intercept={intercept} onAction={onIntercept} /> : null;
+  const pursuitLine = pursuit?.visible === true ? <PursuitLine pursuit={pursuit} onAction={onPursuit} /> : null;
   const decidingCard = refusal !== null || confirming !== null || showingSent;
 
   const decisions = (
@@ -605,11 +605,11 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
           </div>
         </div>
       ) : null}
-      {!decidingCard && interceptLine !== null ? (
+      {!decidingCard && pursuitLine !== null ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
           <div className="pointer-events-auto w-full p-3" style={{ maxWidth: DECISION_CARD_WIDTH }}>
             <Surface shape="extraLarge" color={md('surfaceContainerLow')}>
-              <div className="px-4 py-2">{interceptLine}</div>
+              <div className="px-4 py-2">{pursuitLine}</div>
             </Surface>
           </div>
         </div>
@@ -619,7 +619,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
           <div className="pointer-events-auto w-full p-3" style={{ maxWidth: DECISION_CARD_WIDTH }}>
             <Surface shape="extraLarge" color={md('surfaceContainerLow')}>
               <div className="flex flex-col gap-3 p-4">
-                {interceptLine}
+                {pursuitLine}
                 {refusalLine}
                 {confirmTrack}
               </div>
@@ -632,7 +632,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   ) : (
     <>
       <div className={`flex flex-col gap-3 p-4 ${className ?? ''}`}>
-        {interceptLine}
+        {pursuitLine}
         {refusalLine}
         {confirmTrack}
         {deckTelemetry ? (
@@ -670,7 +670,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
           },
         }),
         ...(!armed ? [MoreTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
-        ...[intercept?.entry ?? null].flatMap((entry) => (entry === null ? [] : [MoreTile({ label: entry.label, icon: 'ic_search', enabled: true, onClick: () => onIntercept(entry) })])),
+        ...[pursuit?.entry ?? null].flatMap((entry) => (entry === null ? [] : [MoreTile({ label: entry.label, icon: 'ic_search', enabled: true, onClick: () => onPursuit(entry) })])),
         ...extras
           .filter((it) => !entries.some((entry) => entry.id === it.id) && !GRIPPER_ACTIONS.includes(it.id))
           .map((offer) =>
@@ -814,12 +814,12 @@ export const RangeHint = ({ text }: { text: string }) => (
 
 const flightModeNow = async (): Promise<string> => flyState(await Qgc.get(FLY_STATE))?.mode ?? '';
 
-const InterceptLine = ({ intercept, onAction }: { intercept: AutoIntercept; onAction: (action: InterceptAction) => void }) => (
+const PursuitLine = ({ pursuit, onAction }: { pursuit: AutoPursuit; onAction: (action: PursuitAction) => void }) => (
   <div className="flex w-full flex-wrap items-center gap-2">
-    <Text typography="bodyMedium" color={intercept.problem ? md('error') : md('onSurfaceVariant')} className="flex-1">
-      {intercept.headline}
+    <Text typography="bodyMedium" color={pursuit.problem ? md('error') : md('onSurfaceVariant')} className="flex-1">
+      {pursuit.headline}
     </Text>
-    {intercept.actions.map((action) => (
+    {pursuit.actions.map((action) => (
       <TextButton key={action.id} onClick={() => onAction(action)}>
         {action.label}
       </TextButton>

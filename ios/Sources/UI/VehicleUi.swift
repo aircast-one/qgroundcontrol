@@ -18,51 +18,51 @@ struct GuidedAction {
     var run: () -> Void = {}
 }
 
-let AUTO_INTERCEPT = "view.autoIntercept"
+let AUTO_PURSUIT = "view.autoPursuit"
 
-struct InterceptConfirm: Equatable {
+struct PursuitConfirm: Equatable {
     let title: String
     let text: String
 }
 
-struct InterceptAction: Equatable {
+struct PursuitAction: Equatable {
     let id: String
     let label: String
     let path: String
     let args: [JSON]
-    let confirm: InterceptConfirm?
+    let confirm: PursuitConfirm?
 }
 
-struct AutoIntercept: Equatable {
+struct AutoPursuit: Equatable {
     let visible: Bool
     let problem: Bool
     let headline: String
-    let actions: [InterceptAction]
-    let entry: InterceptAction?
+    let actions: [PursuitAction]
+    let entry: PursuitAction?
     let hint: String?
     let picking: Bool
 }
 
-private func interceptAction(_ json: JSON) -> InterceptAction? {
+private func pursuitAction(_ json: JSON) -> PursuitAction? {
     json.objectOrNil.map { action in
-        InterceptAction(
+        PursuitAction(
             id: action["id"].string,
             label: action["label"].string,
             path: action["path"].string,
             args: action["args"].array,
-            confirm: action["confirm"].objectOrNil.map { InterceptConfirm(title: $0["title"].string, text: $0["text"].string) }
+            confirm: action["confirm"].objectOrNil.map { PursuitConfirm(title: $0["title"].string, text: $0["text"].string) }
         )
     }
 }
 
-func autoIntercept(_ view: JSON?) -> AutoIntercept? {
-    guard let view, view["class"].string == "AutoIntercept" else { return nil }
-    return AutoIntercept(
+func autoPursuit(_ view: JSON?) -> AutoPursuit? {
+    guard let view, view["class"].string == "AutoPursuit" else { return nil }
+    return AutoPursuit(
         visible: view["visible"].bool,
         problem: view["tone"].string == "problem",
         headline: view["headline"].string,
-        actions: view["actions"].array.compactMap(interceptAction),
-        entry: interceptAction(view["entry"]),
+        actions: view["actions"].array.compactMap(pursuitAction),
+        entry: pursuitAction(view["entry"]),
         hint: view["hint"].textOrNil?.nonBlank,
         picking: view["picking"].bool
     )
@@ -475,7 +475,7 @@ struct FlightActions<Center: View>: View {
     @QgcPath(MAP_CLICK_PATH) private var mapClickJson
     @QgcPath(PREFLIGHT) private var preflightJson
     @QgcPath(GUIDED_ACTIONS) private var actionsJson
-    @QgcPath(AUTO_INTERCEPT) private var interceptJson
+    @QgcPath(AUTO_PURSUIT) private var pursuitJson
     @QgcPath(ROUTE_RECORDER_VIEW) private var routeRecorderJson
     @QgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups")) private var automaticMissionPopups
     @State private var room: CGSize = .zero
@@ -486,7 +486,7 @@ struct FlightActions<Center: View>: View {
     private var state: FlyState? { flyState(stateJson) }
     private var armed: Bool { state?.armed == true }
     private var offers: [String: GuidedOffer] { guidedOffers(actionsJson) }
-    private var intercept: AutoIntercept? { autoIntercept(interceptJson) }
+    private var pursuit: AutoPursuit? { autoPursuit(pursuitJson) }
 
     var body: some View {
         flightActions
@@ -589,7 +589,7 @@ struct FlightActions<Center: View>: View {
         }
     }
 
-    private func onIntercept(_ picked: InterceptAction) {
+    private func onPursuit(_ picked: PursuitAction) {
         let args = picked.args.map(\.any)
         guard let confirm = picked.confirm else {
             offMain { Qgc.invoke(picked.path, arguments: args) }
@@ -687,7 +687,7 @@ struct FlightActions<Center: View>: View {
             route,
             MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
             armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
-            intercept?.entry.map { entry in MoreTile(label: entry.label, icon: .search, enabled: true, onClick: { onIntercept(entry) }) },
+            pursuit?.entry.map { entry in MoreTile(label: entry.label, icon: .search, enabled: true, onClick: { onPursuit(entry) }) },
         ].compactMap { $0 }
         let offered = extras.filter { !entryIds.contains($0.id) && !GRIPPER_ACTIONS.contains($0.id) }.map { offer in
             MoreTile(label: offer.title, icon: guidedIcon(offer.id), enabled: offer.ready, warning: offer.destructive, onClick: {
@@ -720,8 +720,8 @@ struct FlightActions<Center: View>: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
                 let decidingCard = flyScreen.refusal != nil || actions.pending != nil || showingSent
-                if !decidingCard, let shown = intercept, shown.visible {
-                    InterceptLine(shown: shown, onAction: onIntercept)
+                if !decidingCard, let shown = pursuit, shown.visible {
+                    PursuitLine(shown: shown, onAction: onPursuit)
                         .padding(.horizontal, Space.s4)
                         .padding(.vertical, Space.s2)
                         .background(theme.colors.surfaceContainerLow, in: RoundedRectangle(cornerRadius: Corner.extraLarge))
@@ -731,8 +731,8 @@ struct FlightActions<Center: View>: View {
                 }
                 if decidingCard {
                     VStack(alignment: .leading, spacing: Space.s3) {
-                        if let shown = intercept, shown.visible {
-                            InterceptLine(shown: shown, onAction: onIntercept)
+                        if let shown = pursuit, shown.visible {
+                            PursuitLine(shown: shown, onAction: onPursuit)
                         }
                         if let message = flyScreen.refusal {
                             Text(message).font(.bodyMedium).foregroundStyle(theme.colors.error)
@@ -748,8 +748,8 @@ struct FlightActions<Center: View>: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(alignment: .leading, spacing: Space.s3) {
-                if let shown = intercept, shown.visible {
-                    InterceptLine(shown: shown, onAction: onIntercept)
+                if let shown = pursuit, shown.visible {
+                    PursuitLine(shown: shown, onAction: onPursuit)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if let message = flyScreen.refusal {
@@ -851,9 +851,9 @@ extension FlightActions where Center == EmptyView {
 
 private let DECISION_CARD_WIDTH: CGFloat = 460
 
-private struct InterceptLine: View {
-    let shown: AutoIntercept
-    let onAction: (InterceptAction) -> Void
+private struct PursuitLine: View {
+    let shown: AutoPursuit
+    let onAction: (PursuitAction) -> Void
     @Environment(\.theme) private var theme
 
     var body: some View {

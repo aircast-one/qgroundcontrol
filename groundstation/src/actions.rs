@@ -56,7 +56,7 @@ const GUIDED_TAKEOFF: &str = "vehicle.guidedModeTakeoff";
 const GUIDED_ALTITUDE: &str = "vehicle.guidedModeChangeAltitude";
 const PAUSE_VEHICLE: &str = "vehicle.pauseVehicle";
 const GRIPPER: &str = "vehicle.sendGripperAction";
-const AUTO_INTERCEPT_DROP: &str = "vehicle.autoInterceptDrop";
+const AUTO_PURSUIT_DROP: &str = "vehicle.autoPursuitDrop";
 const FIX_PAYLOAD: &str = "vehicle.fixPayload";
 const RESUME_MISSION: &str = "planFly.missionController.resumeMission";
 const PLAN_SEND: &str = "plan.sendToVehicle";
@@ -179,8 +179,8 @@ pub const OWNED: &[&str] = &[
     GUIDED_ALTITUDE,
     PAUSE_VEHICLE,
     GRIPPER,
-    AUTO_INTERCEPT_DROP,
-    crate::autointercept::PICK_ANOTHER,
+    AUTO_PURSUIT_DROP,
+    crate::autopursuit::PICK_ANOTHER,
     FIX_PAYLOAD,
     RESUME_MISSION,
     PLAN_SEND,
@@ -717,8 +717,8 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             crate::guided::invoke_valued(backend, crate::guided::Valued::Pause, path, args)
         }
         GRIPPER => crate::guided::gripper(backend, path, args),
-        AUTO_INTERCEPT_DROP => crate::autodrop::run(backend, args),
-        crate::autointercept::PICK_ANOTHER => crate::autointercept::pick_another(backend),
+        AUTO_PURSUIT_DROP => crate::autodrop::run(backend, args),
+        crate::autopursuit::PICK_ANOTHER => crate::autopursuit::pick_another(backend),
         FIX_PAYLOAD => crate::guided::fix_payload(backend, path, args),
         RESUME_MISSION => {
             crate::guided::invoke_valued(backend, crate::guided::Valued::Resume, path, args)
@@ -2509,10 +2509,10 @@ mod tests {
         assert!(!owns("plan.missionController.insertSimpleMissionItem"));
         assert!(!owns("mission.insertion"));
         assert!(
-            owns(AUTO_INTERCEPT_DROP),
+            owns(AUTO_PURSUIT_DROP),
             "a path matched in run()'s table but missing from OWNED falls through to the host \
              and answers \"no host\" instead of ever reaching the handler - this caught exactly \
-             that for vehicle.autoInterceptDrop once already"
+             that for vehicle.autoPursuitDrop once already"
         );
         assert!(
             owns(MARK_TARGET),

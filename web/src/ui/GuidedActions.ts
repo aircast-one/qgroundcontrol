@@ -1,29 +1,29 @@
 import { type Json, isNull, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 
 export const GUIDED_ACTIONS = 'view.guidedActions';
-export const AUTO_INTERCEPT = 'view.autoIntercept';
+export const AUTO_PURSUIT = 'view.autoPursuit';
 
-export type InterceptConfirm = { readonly title: string; readonly text: string };
+export type PursuitConfirm = { readonly title: string; readonly text: string };
 
-export type InterceptAction = {
+export type PursuitAction = {
   readonly id: string;
   readonly label: string;
   readonly path: string;
   readonly args: readonly unknown[];
-  readonly confirm: InterceptConfirm | null;
+  readonly confirm: PursuitConfirm | null;
 };
 
-export type AutoIntercept = {
+export type AutoPursuit = {
   readonly visible: boolean;
   readonly problem: boolean;
   readonly headline: string;
-  readonly actions: readonly InterceptAction[];
-  readonly entry: InterceptAction | null;
+  readonly actions: readonly PursuitAction[];
+  readonly entry: PursuitAction | null;
   readonly hint: string | null;
   readonly picking: boolean;
 };
 
-const interceptAction = (action: Json): InterceptAction => {
+const pursuitAction = (action: Json): PursuitAction => {
   const confirm = optJSONObject(action, 'confirm');
   return {
     id: optText(action, 'id'),
@@ -34,16 +34,16 @@ const interceptAction = (action: Json): InterceptAction => {
   };
 };
 
-export const autoIntercept = (view: Json | null): AutoIntercept | null => {
-  if (view === null || optText(view, 'class') !== 'AutoIntercept') return null;
+export const autoPursuit = (view: Json | null): AutoPursuit | null => {
+  if (view === null || optText(view, 'class') !== 'AutoPursuit') return null;
   const entry = optJSONObject(view, 'entry');
   const hint = optText(view, 'hint');
   return {
     visible: optBoolean(view, 'visible'),
     problem: optText(view, 'tone') === 'problem',
     headline: optText(view, 'headline'),
-    actions: jsonObjects(optJSONArray(view, 'actions')).map(interceptAction),
-    entry: entry === null ? null : interceptAction(entry),
+    actions: jsonObjects(optJSONArray(view, 'actions')).map(pursuitAction),
+    entry: entry === null ? null : pursuitAction(entry),
     hint: hint.trim() === '' ? null : hint,
     picking: optBoolean(view, 'picking'),
   };

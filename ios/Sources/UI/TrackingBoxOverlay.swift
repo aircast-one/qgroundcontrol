@@ -5,7 +5,7 @@ private let TRACK_COLOUR = Color(hex: 0x00E5FF)
 struct TrackingBoxOverlay: View {
     @QgcPath(CAMERA_VIEW) private var cameraJson
     @QgcPath(VIDEO_VIEW) private var videoJson
-    @QgcPath(AUTO_INTERCEPT) private var interceptJson
+    @QgcPath(AUTO_PURSUIT) private var pursuitJson
 
     var body: some View {
         if let tracking = trackingReading(cameraJson) {
@@ -22,7 +22,7 @@ struct TrackingBoxOverlay: View {
                                 }
                             )
                     }
-                    if let hint = autoIntercept(interceptJson)?.hint {
+                    if let hint = autoPursuit(pursuitJson)?.hint {
                         Text(hint)
                             .font(.labelMedium)
                             .foregroundStyle(.white)
