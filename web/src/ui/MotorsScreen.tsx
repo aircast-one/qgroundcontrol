@@ -44,10 +44,9 @@ export const motorRefusal = (gate: MotorGate): string | null =>
         ? 'The vehicle has stopped answering. Check the link before testing a motor.'
         : null;
 
-export const spin = (motor: number, percent: number): void => {
-  const seconds = percent === 0 ? 0 : TIMEOUT_SECONDS;
-  void VehicleCommands.motorTest(motor, percent, seconds, true);
-};
+export const spin = (motor: number, percent: number): Promise<string | null> => VehicleCommands.motorTestRefusal(motor, percent, percent === 0 ? 0 : TIMEOUT_SECONDS, true);
+
+export const firstRefusal = (refusals: readonly (string | null)[]): string | null => refusals.find((it) => it !== null) ?? null;
 
 export const motorLabel = (motor: number, letters: boolean): string => (letters ? String.fromCharCode('A'.charCodeAt(0) + (motor - 1)) : String(motor));
 
@@ -63,6 +62,8 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
   const motors = motorCount(reported);
   const [propsOff, setPropsOff] = useState(false);
   const [throttle, setThrottle] = useState(0);
+  const [testRefusal, setTestRefusal] = useState<string | null>(null);
+  const spinAll = (spun: readonly number[], at: number) => void Promise.all(spun.map((it) => spin(it, at))).then((refusals) => setTestRefusal(firstRefusal(refusals)));
   const setupJson = useQgcPath(SETUP);
   const letters = useMemo(() => setupReadiness(setupJson)?.firmware === 'apm', [setupJson]);
   const testable = canTest(gate, propsOff);
@@ -84,9 +85,9 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
           {countNotice}
         </Text>
       ) : null}
-      {refusal !== null ? (
+      {(refusal ?? testRefusal) !== null ? (
         <Text typography="bodyMedium" color={md('error')}>
-          {refusal}
+          {refusal ?? testRefusal}
         </Text>
       ) : null}
 
@@ -117,7 +118,7 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
       {chunked(motorNumbers(motors), 2).map((pair) => (
         <div key={pair[0]} className="flex gap-3">
           {pair.map((motor) => (
-            <Surface key={motor} onClick={() => spin(motor, percent)} enabled={testable} shape="large" color={md('surfaceContainer')} className="flex-1">
+            <Surface key={motor} onClick={() => spinAll([motor], percent)} enabled={testable} shape="large" color={md('surfaceContainer')} className="flex-1">
               <span className="flex w-full flex-col items-center py-5">
                 <Text typography="bodyLarge">{`Motor ${motorLabel(motor, letters)}`}</Text>
                 <Text typography="labelMedium" color={md('onSurfaceVariant')}>
@@ -131,10 +132,10 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
       ))}
 
       <div className="flex flex-wrap gap-2">
-        <FilledTonalButton onClick={() => motorNumbers(motors).map((it) => spin(it, percent))} enabled={testable}>
+        <FilledTonalButton onClick={() => spinAll(motorNumbers(motors), percent)} enabled={testable}>
           All
         </FilledTonalButton>
-        <OutlinedButton onClick={() => motorNumbers(motors).map((it) => spin(it, 0))} enabled={canStop(gate)}>
+        <OutlinedButton onClick={() => spinAll(motorNumbers(motors), 0)} enabled={canStop(gate)}>
           Stop
         </OutlinedButton>
       </div>

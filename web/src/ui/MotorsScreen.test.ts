@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Json } from '@/bridge/Json';
-import { canStop, canTest, motorGate, motorLabel, motorRefusal } from '@/ui/MotorsScreen';
+import { canStop, canTest, firstRefusal, motorGate, motorLabel, motorRefusal } from '@/ui/MotorsScreen';
 
 const frame = ({ connected = true, armed = false, contactLost = false as boolean | null } = {}): Json => ({
   kind: 'object',
@@ -52,5 +52,10 @@ describe('MotorGateTest', () => {
   it('ArduPilot motors are tested by letter', () => {
     expect(motorLabel(3, true)).toBe('C');
     expect(motorLabel(3, false)).toBe('3');
+  });
+
+  it('a motor that would not spin says why, so a click is never silent', () => {
+    expect(firstRefusal([null, 'The vehicle did not take the motor test.', 'The vehicle did not answer.'])).toBe('The vehicle did not take the motor test.');
+    expect(firstRefusal([null, null])).toBeNull();
   });
 });

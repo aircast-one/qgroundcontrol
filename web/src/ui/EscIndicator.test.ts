@@ -6,11 +6,12 @@ describe('EscIndicatorTest', () => {
   it("the cell and page read the core's ESC summary", () => {
     const summary = escSummary(
       parseJson(
-        '{"shown":true,"onlineCount":4,"healthy":true,"healthText":"OK","healthyMotorsText":"4/4","totalErrors":3,' +
+        '{"shown":true,"onlineCount":4,"healthy":true,"healthText":"OK","healthyMotorsText":"4/4","totalErrors":3,"hint":"ESC 8 matches no motor",' +
           '"motors":[{"title":"Motor 1","healthy":true,"rpm":"4200 rpm","temperature":"","voltage":"16 V","current":"","errors":"1"}]}',
       ),
     )!;
     expect(escCellText(summary)).toBe('ESC 4 OK');
+    expect(summary.hint).toBe('ESC 8 matches no motor');
     expect(summary.motors[0]!.title).toBe('Motor 1');
     expect(summary.motors[0]!.rows[0]).toEqual(['RPM', '4200 rpm']);
     expect(escSummary(parseJson('{"shown":false}'))).toBeNull();

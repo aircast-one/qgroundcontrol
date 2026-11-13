@@ -51,6 +51,7 @@ export const VehicleCommands = {
   forceArm: (): Promise<boolean> => Qgc.invoke(VEHICLE_FORCE_ARM),
   emergencyStop: (): Promise<boolean> => Qgc.invoke(VEHICLE_EMERGENCY_STOP),
   motorTest: (motor: number, percent: number, seconds: number, inOrder: boolean): Promise<boolean> => Qgc.invoke(VEHICLE_MOTOR_TEST, motor, percent, seconds, inOrder),
+  motorTestRefusal: (motor: number, percent: number, seconds: number, inOrder: boolean): Promise<string | null> => Qgc.refusalOf(VEHICLE_MOTOR_TEST, motor, percent, seconds, inOrder),
   overrideRcChannel: (channel: number, pwm: number): Promise<boolean> => Qgc.invoke(VEHICLE_RC_OVERRIDE, channel, pwm),
   releaseRcChannel: (channel: number): Promise<boolean> => Qgc.invoke(VEHICLE_RC_RELEASE, channel),
   clearRcOverrides: (): Promise<boolean> => Qgc.invoke(VEHICLE_RC_CLEAR),

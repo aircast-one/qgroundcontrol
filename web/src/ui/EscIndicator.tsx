@@ -15,6 +15,7 @@ export type EscSummary = {
   healthText: string;
   healthyMotorsText: string;
   totalErrors: number;
+  hint: string;
   motors: readonly EscMotor[];
 };
 
@@ -26,6 +27,7 @@ export const escSummary = (view: Json | null): EscSummary | null =>
         healthText: optText(view, 'healthText'),
         healthyMotorsText: optText(view, 'healthyMotorsText'),
         totalErrors: optInt(view, 'totalErrors'),
+        hint: optText(view, 'hint'),
         motors: jsonObjects(optJSONArray(view, 'motors')).map((motor) => ({
           title: optText(motor, 'title'),
           healthy: optBoolean(motor, 'healthy'),
@@ -63,6 +65,11 @@ export const EscIndicatorCell = () => {
             <Text typography="titleMedium">ESC Status Overview</Text>
             <Text typography="bodyMedium">{`Healthy Motors  ${summary.healthyMotorsText}`}</Text>
             <Text typography="bodyMedium">{`Total Errors  ${summary.totalErrors}`}</Text>
+            {summary.hint !== '' ? (
+              <Text typography="bodySmall" color={aircast('warning')}>
+                {summary.hint}
+              </Text>
+            ) : null}
             <div className="max-h-[420px] overflow-auto">
               {summary.motors.map((motor) => (
                 <div key={motor.title} className="flex flex-col py-1.5">
