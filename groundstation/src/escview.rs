@@ -136,7 +136,7 @@ fn hint(wiring: &Wiring) -> String {
         .find(|(motor, _)| motor.is_none())
         .map(|(_, output)| {
             format!(
-                "ESC {output} reports on output {output}, which drives no motor. ArduPilot numbers ESCs by servo output: shift DroneCAN ESCs with CAN_D1_UC_ESC_OF so each one matches its motor's output."
+                "ESC {output} matches no motor: its output drives none and the frame has fewer motors. Number each ESC after its motor, or shift DroneCAN ESCs with CAN_D1_UC_ESC_OF onto their motors' outputs."
             )
         })
         .unwrap_or_default()
@@ -223,21 +223,24 @@ fn ardupilot_wiring(backend: &dyn Backend, escs: &[Value]) -> Option<Wiring> {
     flag(&vehicle, "apmFirmware").then(|| {
         let offset = parameter(backend, "ESC_TLM_MAV_OFS").unwrap_or(0);
         let outputs: Vec<i64> = escs.iter().map(|esc| raw(esc, "id") + offset + 1).collect();
+        let angles = if flag(&vehicle, "multiRotor") {
+            motor_angles(
+                parameter(backend, "FRAME_CLASS"),
+                parameter(backend, "FRAME_TYPE"),
+            )
+        } else {
+            &[]
+        };
+        let motor_count = angles.len() as i64;
         Wiring {
-            angles: if flag(&vehicle, "multiRotor") {
-                motor_angles(
-                    parameter(backend, "FRAME_CLASS"),
-                    parameter(backend, "FRAME_TYPE"),
-                )
-            } else {
-                &[]
-            },
+            angles,
             motors: outputs
                 .iter()
                 .map(|output| {
                     parameter(backend, &format!("SERVO{output}_FUNCTION"))
                         .filter(|f| (FIRST_MOTOR_FUNCTION..=LAST_MOTOR_FUNCTION).contains(f))
                         .map(|f| f - FIRST_MOTOR_FUNCTION + 1)
+                        .or_else(|| (*output <= motor_count).then_some(*output))
                 })
                 .collect(),
             outputs,
@@ -405,14 +408,20 @@ mod tests {
     #[test]
     fn an_ardupilot_esc_lands_on_the_motor_its_servo_output_drives() {
         use mavlink::dialects::ardupilotmega::{
-            ESC_TELEMETRY_1_TO_4_DATA, ESC_TELEMETRY_13_TO_16_DATA, MavMessage,
+            ESC_TELEMETRY_1_TO_4_DATA, ESC_TELEMETRY_5_TO_8_DATA, ESC_TELEMETRY_13_TO_16_DATA,
+            MavMessage,
         };
         let mut escs = crate::sensorfacts::Escs::default();
         escs.apply(&MavMessage::ESC_TELEMETRY_1_TO_4(
             ESC_TELEMETRY_1_TO_4_DATA {
-                voltage: [4980, 0, 0, 0],
-                count: [5, 0, 0, 0],
-                temperature: [23, 0, 0, 0],
+                count: [0, 5, 0, 0],
+                temperature: [0, 23, 0, 0],
+                ..Default::default()
+            },
+        ));
+        escs.apply(&MavMessage::ESC_TELEMETRY_5_TO_8(
+            ESC_TELEMETRY_5_TO_8_DATA {
+                count: [0, 0, 0, 4],
                 ..Default::default()
             },
         ));
@@ -432,8 +441,8 @@ mod tests {
                 .iter()
                 .map(|motor| motor["title"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec!["ESC 1", "Motor 5"],
-            "ESC 13 is on SERVO13 = Motor 5; ESC 1 is on SERVO1, which drives nothing"
+            vec!["Motor 2", "ESC 8", "Motor 5"],
+            "ESC 13 is on SERVO13 = Motor 5; ESC 2's output drives nothing, so it is Motor 2; a hexa has no motor 8"
         );
         let frame = shown["frame"].as_array().unwrap();
         assert_eq!(
@@ -453,12 +462,42 @@ mod tests {
             ),
             (Some(true), Some("50.4"), Some("elevated"), Some("elevated"))
         );
-        assert_eq!(frame[0]["reporting"], false);
+        assert_eq!(
+            (
+                frame[0]["reporting"].as_bool(),
+                frame[1]["reporting"].as_bool()
+            ),
+            (Some(false), Some(true))
+        );
         assert!(
             shown["hint"]
                 .as_str()
                 .unwrap()
-                .starts_with("ESC 1 reports on output 1")
+                .starts_with("ESC 8 matches no motor")
         );
+    }
+
+    #[test]
+    fn a_hobbywing_esc_numbered_after_its_motor_lands_there_without_an_offset() {
+        use mavlink::dialects::ardupilotmega::{ESC_TELEMETRY_5_TO_8_DATA, MavMessage};
+        let mut escs = crate::sensorfacts::Escs::default();
+        escs.apply(&MavMessage::ESC_TELEMETRY_5_TO_8(
+            ESC_TELEMETRY_5_TO_8_DATA {
+                voltage: [4970, 0, 0, 0],
+                count: [2757, 0, 0, 0],
+                temperature: [23, 0, 0, 0],
+                ..Default::default()
+            },
+        ));
+        let shown = esc_view(&Vampire { escs }, &[]);
+        let frame = shown["frame"].as_array().unwrap();
+        assert_eq!(
+            frame
+                .iter()
+                .map(|m| m["reporting"].as_bool().unwrap())
+                .collect::<Vec<_>>(),
+            vec![false, false, false, false, true, false]
+        );
+        assert_eq!(shown["hint"], "");
     }
 }
