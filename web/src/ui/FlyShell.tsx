@@ -32,6 +32,7 @@ import type { DrawableName } from '@/res/drawables';
 import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { FleetPanel } from '@/ui/ActiveVehicle';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
+import { AttitudeLadders } from '@/ui/AttitudeLadders';
 import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
@@ -577,7 +578,24 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     style={{ zIndex: layer(1), marginInlineEnd: AircastSpace.s3, marginBottom: switchBottom + corner.size.height + AircastSpace.s2 }}
                   />
                 ) : null}
-                {hasVehicle && !deciding ? (
+                {hasVehicle && !deciding && view === FlyView.Video ? (
+                  <>
+                    <AttitudeLadders shellHeight={box.size.height} />
+                    <div
+                      className={`absolute end-0 flex flex-col justify-end-safe ${osdShadow()} ${PASS_THROUGH}`}
+                      style={{
+                        zIndex: layer(2),
+                        top: `calc(env(safe-area-inset-top, 0px) + ${STATUS_ROW_HEIGHT + AircastSpace.s6}px)`,
+                        bottom: `calc(50% + ${RAIL_SHUTTER_ROOM / 2 + AircastSpace.s4}px)`,
+                        paddingInlineEnd: AircastSpace.s3,
+                      }}
+                    >
+                      <LocalFlyOsd.Provider value>
+                        <TelemetryRow valuesShown chooser={false} compact column />
+                      </LocalFlyOsd.Provider>
+                    </div>
+                  </>
+                ) : hasVehicle && !deciding ? (
                   <div
                     ref={osd.ref}
                     className={`absolute inset-x-0 bottom-0 flex items-end gap-6 ${osdShadow()} ${PASS_THROUGH}`}
@@ -598,7 +616,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               <div className="relative size-full">
                 {actions(FlyDeckLayout.Rail)}
                 {hasVehicle && !deciding ? (
-                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
+                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, (view === FlyView.Video ? 0 : osd.size.height) + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
                     <LayoutWidget widgetKey="payload" movable={false} hideable={false}>
                       <PayloadRailStrip />
                     </LayoutWidget>

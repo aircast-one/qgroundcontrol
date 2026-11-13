@@ -49,6 +49,7 @@
   --aircast-outdoor-foreground: #ffffff;
   --aircast-outdoor-accent: #ffd60a;
   --aircast-on-outdoor-accent: #000000;
+  --aircast-osd-ink: #ffb020;
   color-scheme: light;
 }
 

@@ -11,7 +11,7 @@ export type MdRole =
 export type AircastRole =
   | 'success' | 'onSuccess' | 'successContainer' | 'warning' | 'onWarning' | 'warningContainer'
   | 'mission' | 'alert' | 'mapLand' | 'mapWater' | 'mapRoad'
-  | 'outdoorBackground' | 'outdoorForeground' | 'outdoorAccent' | 'onOutdoorAccent';
+  | 'outdoorBackground' | 'outdoorForeground' | 'outdoorAccent' | 'onOutdoorAccent' | 'osdInk';
 
 const kebab = (name: string) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 
