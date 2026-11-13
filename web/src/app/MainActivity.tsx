@@ -568,7 +568,7 @@ export const AircastShell = () => {
   const flyRail = (splitRoom: boolean) => (
     <div className="flex flex-col items-end">
       {!splitRoom ? (
-        <LayoutWidget widgetKey="cameraSwitch">
+        <LayoutWidget widgetKey="cameraSwitch" shadowed={false}>
           <div className="pb-2">
             <CameraSwitch splitRoom={false} />
           </div>
@@ -636,7 +636,7 @@ export const AircastShell = () => {
                   map={flyMap}
                   keyRow={flyObstacleArc}
                   cameraSwitch={(splitRoom, modifier) => (
-                    <LayoutWidget widgetKey="cameraSwitch">
+                    <LayoutWidget widgetKey="cameraSwitch" shadowed={false}>
                       <div {...modifier}>
                         <CameraSwitch splitRoom={splitRoom} />
                       </div>

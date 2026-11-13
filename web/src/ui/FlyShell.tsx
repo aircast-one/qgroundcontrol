@@ -402,7 +402,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
     };
   }, []);
   const cornerStack = stickInCorner && stickSlot.size.height > 0 ? corner.size.height + stickSlot.size.height + AircastSpace.s2 * 2 : corner.size.width > 0 ? corner.size.height + AircastSpace.s2 : 0;
-  const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitch > 0 ? gimbalSwitch + AircastSpace.s2 * 2 : AircastSpace.s3;
+  const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitch > 0 ? gimbalSwitch + AircastSpace.s3 + AircastSpace.s2 : AircastSpace.s3;
   const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : switchEnd + (corner.size.width > 0 ? corner.size.width + AircastSpace.s2 : 0);
   const insets = stickInsets(stickPad, fullScreen, box.letterbox, cutoutStart, cutoutEnd, controls.size.width);
   const ornamentEnd = insets.ornamentEnd;
@@ -499,13 +499,13 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                   <Surface
                     onClick={showMap}
                     shape="full"
-                    color={OSD_SCRIM}
+                    color={Color.Transparent}
                     contentColor={aircast('outdoorForeground')}
                     label="Map"
                     className="grid place-items-center"
                     style={{ width: thumb.width, height: thumb.height }}
                   >
-                    <Drawable name="ic_map" />
+                    <Drawable name="ic_map" className={osdShadow()} />
                   </Surface>
                 </div>
               </MinimapWidget>
@@ -893,12 +893,13 @@ export const MenuDestination = (fields: MenuDestination): MenuDestination => ({ 
 
 export const FlyTabMenu = ({ destinations }: { destinations: readonly MenuDestination[] }) => {
   const [open, setOpen] = useState(false);
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
   return (
     <div className="relative">
       <Surface
         onClick={() => setOpen(true)}
         shape="full"
-        color={OSD_SCRIM}
+        color={backdrop}
         contentColor={aircast('outdoorForeground')}
         label="Menu"
         className="grid place-items-center"

@@ -327,7 +327,7 @@ const MainPane = ({
           </>
         ) : null}
       </div>
-      {expanded && decoding ? <GimbalModeSwitch className="absolute end-2 bottom-2" /> : null}
+      {expanded && decoding ? <GimbalModeSwitch className="absolute end-3 bottom-3" /> : null}
       {!decoding && synthetic && !expanded ? (
         <SyntheticThumb className="absolute inset-0" />
       ) : !decoding && synthetic ? (

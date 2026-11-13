@@ -72,8 +72,8 @@ export const SHOW_PHOTO_VIDEO_CONTROL = 'settings.flyViewSettings.showPhotoVideo
 export const CAMERA_CONTROL_KEY = 'cameraControl';
 const CAMERA_SHUTTER_KEY = 'cameraShutter';
 
-const CameraElement = ({ widgetKey, children }: { widgetKey: string; children: ReactNode }) => (
-  <LayoutWidget widgetKey={widgetKey} movable={false} dragsWith={CAMERA_CONTROL_KEY}>
+const CameraElement = ({ widgetKey, shadowed = true, children }: { widgetKey: string; shadowed?: boolean; children: ReactNode }) => (
+  <LayoutWidget widgetKey={widgetKey} movable={false} dragsWith={CAMERA_CONTROL_KEY} shadowed={shadowed}>
     {children}
   </LayoutWidget>
 );
@@ -174,7 +174,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
                 style={{ maxWidth: CAMERA_RAIL_MAX_WIDTH }}
                 above={
                   zoomLabel !== null ? (
-                    <CameraElement widgetKey="cameraZoom">
+                    <CameraElement widgetKey="cameraZoom" shadowed={false}>
                       <ZoomChip camera={camera} label={zoomLabel} />
                     </CameraElement>
                   ) : null
@@ -207,7 +207,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
         ) : (
           <div className="flex items-center" style={{ gap: CAMERA_CLUSTER_GAP }}>
             {zoomLabel !== null ? (
-              <CameraElement widgetKey="cameraZoom">
+              <CameraElement widgetKey="cameraZoom" shadowed={false}>
                 <ZoomChip camera={camera} label={zoomLabel} />
               </CameraElement>
             ) : null}
