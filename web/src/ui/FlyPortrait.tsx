@@ -305,7 +305,9 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                 >
                   {deciding ? null : (
                     <div className="flex justify-center px-3 pb-2">
-                      <PayloadRailStrip />
+                      <LayoutWidget widgetKey="payload" movable={false} hideable={false}>
+                        <PayloadRailStrip />
+                      </LayoutWidget>
                     </div>
                   )}
                   <LocalDeckTelemetry.Provider value={!split}>{actions(FlyDeckLayout.Bottom)}</LocalDeckTelemetry.Provider>

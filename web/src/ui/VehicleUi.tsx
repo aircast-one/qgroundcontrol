@@ -55,6 +55,7 @@ import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapCl
 import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
+import { LayoutWidget } from './OverlayLayout';
 import { ParameterForm } from './ParameterForm';
 import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
@@ -596,12 +597,16 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     <div className={`relative size-full ${className ?? ''}`}>
       {pending === null && guidedValue === null && editingLoiter === null ? (
         <div className="absolute inset-y-0 left-0 flex flex-col" style={{ paddingLeft: 12, paddingBottom: RAIL_LIFT }}>
-          <div ref={room.ref} role="group" aria-label={FLIGHT_ACTIONS} className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
-            {deck.flatMap(([id, primary]) => {
-              const entry = entries.find((it) => it.id === id);
-              return entry === undefined ? [] : [<RailDeckButton key={id} entry={entry} primary={primary} labelled={armed && railFit.labelled} />];
-            })}
-            <RailDeckButton entry={more} primary={false} />
+          <div ref={room.ref} role="group" aria-label={FLIGHT_ACTIONS} className="flex min-h-0 flex-1 flex-col items-center justify-center">
+            <LayoutWidget widgetKey="flightActions" movable={false} hideable={false}>
+              <div className="flex flex-col items-center gap-2">
+                {deck.flatMap(([id, primary]) => {
+                  const entry = entries.find((it) => it.id === id);
+                  return entry === undefined ? [] : [<RailDeckButton key={id} entry={entry} primary={primary} labelled={armed && railFit.labelled} />];
+                })}
+                <RailDeckButton entry={more} primary={false} />
+              </div>
+            </LayoutWidget>
           </div>
         </div>
       ) : null}

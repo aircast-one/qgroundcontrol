@@ -41,7 +41,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { LayoutWidget } from '@/ui/OverlayLayout';
+import { LayoutWidget, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -406,6 +406,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const thumbStyle = thumbPlace(thumb);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
+  const pipJiggle = useJiggleAngle('pip', editing && thumbShown && !fullScreen);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
   const frame = useRememberVideoFrame(videoTarget, false);
   const cameras = useRememberCameraStepper();
@@ -440,7 +441,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       {view !== FlyView.ThreeD
         ? map(
             mapIsPip
-              ? { className: 'absolute overflow-hidden rounded-shape-md', style: { ...thumbStyle, zIndex: layer(1), border: `2px solid ${md('onSurface')}` }, 'aria-hidden': fullScreen || undefined }
+              ? { className: 'absolute overflow-hidden rounded-shape-md', style: { ...thumbStyle, zIndex: layer(1), border: `2px solid ${md('onSurface')}`, ...pipJiggle }, 'aria-hidden': fullScreen || undefined }
               : { className: 'absolute inset-0', 'aria-hidden': fullScreen || undefined },
           )
         : null}
@@ -449,7 +450,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           {
             ...videoGestureProps,
             className: `pointer-events-auto overflow-hidden bg-black ${pipNow ? 'rounded-shape-md' : ''}`,
-            style: { ...videoFrame(videoTarget, () => frame.value, cameras.nudge), touchAction: 'none', ...(pipNow || fullScreen || cornerStack === 0 ? {} : ({ [VIDEO_CORNER_ROOM]: `${cornerStack}px` } as CSSProperties)) },
+            style: { ...videoFrame(videoTarget, () => frame.value, cameras.nudge), touchAction: 'none', ...(pipNow ? pipJiggle : {}), ...(pipNow || fullScreen || cornerStack === 0 ? {} : ({ [VIDEO_CORNER_ROOM]: `${cornerStack}px` } as CSSProperties)) },
           },
           !pipNow,
         )}
@@ -467,7 +468,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               onClick={showMap}
               onKeyDown={activate(showMap)}
               className="absolute cursor-pointer overflow-hidden rounded-shape-md"
-              style={{ ...thumbStyle, zIndex: layer(2) }}
+              style={{ ...thumbStyle, zIndex: layer(2), ...pipJiggle }}
             />
           ) : null}
           {videoIsPip && hasPicture ? (
@@ -480,7 +481,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               onClick={showVideo}
               onKeyDown={activate(showVideo)}
               className="absolute cursor-pointer overflow-hidden rounded-shape-md"
-              style={{ ...thumbStyle, zIndex: layer(3), border: `2px solid ${md('onSurface')}` }}
+              style={{ ...thumbStyle, zIndex: layer(3), border: `2px solid ${md('onSurface')}`, ...pipJiggle }}
             />
           ) : null}
           <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(1), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING }}>
@@ -516,7 +517,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                             {status}
                           </div>
                         </LocalCompactStatus.Provider>
-                        <HeadingTape className="self-center" />
+                        <LayoutWidget widgetKey="headingTape" movable={false} hideable={false} className="self-center">
+                          <HeadingTape />
+                        </LayoutWidget>
                         {view === FlyView.Video ? <ApproximateAimNote /> : null}
                         <TrafficBanner />
                         <div className="flex items-center gap-2 overflow-x-auto">{keyRow}</div>
@@ -580,11 +583,11 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     className={`absolute inset-x-0 bottom-0 flex items-end gap-6 ${osdShadow()} ${PASS_THROUGH}`}
                     style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideThumb + AircastSpace.s3 * 2, paddingInlineEnd: osdEndRoom, paddingBottom: AircastSpace.s3 }}
                   >
-                    <div className="shrink-0">
+                    <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="shrink-0">
                       <LocalFlyOsd.Provider value>
                         <TelemetryRow valuesShown chooser={false} compact stacked />
                       </LocalFlyOsd.Provider>
-                    </div>
+                    </LayoutWidget>
                   </div>
                 ) : null}
               </LocalFlyOsd.Provider>
@@ -596,7 +599,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 {actions(FlyDeckLayout.Rail)}
                 {hasVehicle && !deciding ? (
                   <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
-                    <PayloadRailStrip />
+                    <LayoutWidget widgetKey="payload" movable={false} hideable={false}>
+                      <PayloadRailStrip />
+                    </LayoutWidget>
                   </div>
                 ) : null}
               </div>

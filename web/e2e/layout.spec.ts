@@ -99,6 +99,31 @@ test('only widgets without layout widgets inside them jiggle, so the status pill
   expect((await jiggling()).nested, 'a jiggling widget inside another jiggling widget').toBe(0);
 });
 
+const stillWhileEditing = (page: Page) =>
+  page.evaluate(() => {
+    const jiggling = document
+      .getAnimations()
+      .filter((it): it is CSSAnimation => it instanceof CSSAnimation && it.animationName === 'aircast-overlay-jiggle')
+      .map((it) => (it.effect instanceof KeyframeEffect ? it.effect.target : null))
+      .filter((it): it is Element => it !== null);
+    return [...document.querySelectorAll('button, [role=button], [role=group], [role=img], [role=region]')]
+      .filter((it) => {
+        const box = it.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && box.width < innerWidth - 1 && it.closest('[role=toolbar]') === null;
+      })
+      .filter((it) => !jiggling.some((widget) => widget.contains(it)) && !jiggling.some((widget) => it.contains(widget)))
+      .map((it) => it.getAttribute('aria-label') ?? it.textContent?.trim() ?? it.tagName);
+  });
+
+test('in layout edit everything on the fly screen jiggles, not only the overlays', async ({ app }) => {
+  await app.emulateMedia({ reducedMotion: 'no-preference' });
+  await connectMock(app, ['Enable camera', 'Enable gimbal']);
+  await expect(app.getByRole('button', { name: 'Start recording' })).toBeVisible();
+  await expect(app.getByRole('group', { name: 'Payload' })).toBeVisible();
+  await editLayout(app);
+  await expect.poll(() => stillWhileEditing(app)).toEqual([]);
+});
+
 test('the message banner hugs its text, so its jiggle swings a few pixels and not the width of the screen', async ({ app }) => {
   await connectMock(app, ['Send status text + voice']);
   const dismiss = app.getByRole('button', { name: 'Dismiss messages', exact: true });

@@ -276,7 +276,7 @@ const JIGGLE_STYLE_ID = 'aircast-overlay-jiggle';
 
 const reducedMotion = (): boolean => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const useJiggleAngle = (key: string, on: boolean): CSSProperties => {
+export const useJiggleAngle = (key: string, on: boolean): CSSProperties => {
   useEffect(() => {
     if (!on || document.getElementById(JIGGLE_STYLE_ID)) return;
     const style = Object.assign(document.createElement('style'), {
@@ -467,7 +467,7 @@ const EditBar = ({ className }: { className?: string }) => {
   });
   return (
     <Surface className={`w-full ${className ?? ''}`} shape="large" color={md('surfaceContainerHigh')} shadow>
-      <div className="flex items-center px-2 py-1">
+      <div role="toolbar" aria-label="Edit layout" className="flex items-center px-2 py-1">
         <TextButton
           onClick={() => {
             const next = nextValueSize(valueSize);

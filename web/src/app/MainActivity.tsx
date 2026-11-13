@@ -538,13 +538,15 @@ export const AircastShell = () => {
 
   const flyStatus = (
     <>
-      <FlyTabMenu
-        destinations={[
-          ...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })),
-          { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings },
-          ...(browserFullScreenSupported() ? [{ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen' as const, current: false, onSelect: () => void toggleBrowserFullScreen().catch(() => undefined) }] : []),
-        ]}
-      />
+      <LayoutWidget widgetKey="menu" movable={false} hideable={false}>
+        <FlyTabMenu
+          destinations={[
+            ...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })),
+            { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings },
+            ...(browserFullScreenSupported() ? [{ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen' as const, current: false, onSelect: () => void toggleBrowserFullScreen().catch(() => undefined) }] : []),
+          ]}
+        />
+      </LayoutWidget>
       <div className={`flex items-center justify-start ${layoutEditing ? 'grow shrink-0' : 'min-w-0 flex-1'}`}>
         <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false} className="min-w-0">
           <VehicleStateChip />
@@ -558,7 +560,9 @@ export const AircastShell = () => {
       <div className="min-w-0" {...statusPillHold}>
         <StatusPill />
       </div>
-      <FlySettingsButton />
+      <LayoutWidget widgetKey="settings" movable={false} hideable={false}>
+        <FlySettingsButton />
+      </LayoutWidget>
     </>
   );
   const flyRail = (splitRoom: boolean) => (
