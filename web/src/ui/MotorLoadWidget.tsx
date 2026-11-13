@@ -10,6 +10,7 @@ export type MotorLoad = {
   angle: number;
   reporting: boolean;
   current: string;
+  rpm: string;
   temperature: string;
   temperatureLevel: Level;
   currentLevel: Level;
@@ -37,6 +38,7 @@ export const motorLoads = (view: Json | null): readonly MotorLoad[] =>
         angle: optDouble(motor, 'angle', 0),
         reporting: optBoolean(motor, 'reporting'),
         current: optText(motor, 'current'),
+        rpm: optText(motor, 'rpm'),
         temperature: optText(motor, 'temperature'),
         temperatureLevel: level(motor, 'temperatureLevel'),
         currentLevel: level(motor, 'currentLevel'),
@@ -57,7 +59,7 @@ const Rotor = ({ load }: { load: MotorLoad }) => {
   const [x, y] = place(load.angle);
   return (
     <g>
-      <title>{load.reporting ? `Motor ${load.motor}: ${load.current} A, ${load.temperature}` : `Motor ${load.motor}: no ESC data`}</title>
+      <title>{load.reporting ? `Motor ${load.motor}: ${load.current} A, ${load.rpm} rpm, ${load.temperature}` : `Motor ${load.motor}: no ESC data`}</title>
       <circle cx={x} cy={y} r={RING + RING_WIDTH} fill={ROTOR_FILL} />
       <circle cx={x} cy={y} r={RING} fill="none" stroke={withAlpha(Color.White, 0.18)} strokeWidth={RING_WIDTH} strokeDasharray={load.reporting ? undefined : '3 3'} />
       {load.reporting ? (
@@ -73,9 +75,20 @@ const Rotor = ({ load }: { load: MotorLoad }) => {
           transform={`rotate(-90 ${x} ${y})`}
         />
       ) : null}
-      <text x={x} y={y} dy="0.35em" textAnchor="middle" fontSize={11} fontWeight={600} fill={load.reporting ? labelColour(load.currentLevel) : withAlpha(Color.White, 0.5)}>
-        {load.reporting ? load.current : '–'}
-      </text>
+      {load.reporting ? (
+        <>
+          <text x={x} y={y} dy="-0.05em" textAnchor="middle" fontSize={11} fontWeight={600} fill={labelColour(load.currentLevel)}>
+            {load.current}
+          </text>
+          <text x={x} y={y} dy="1.05em" textAnchor="middle" fontSize={7.5} fill={withAlpha(Color.White, 0.7)}>
+            {load.rpm}
+          </text>
+        </>
+      ) : (
+        <text x={x} y={y} dy="0.35em" textAnchor="middle" fontSize={11} fontWeight={600} fill={withAlpha(Color.White, 0.5)}>
+          –
+        </text>
+      )}
     </g>
   );
 };

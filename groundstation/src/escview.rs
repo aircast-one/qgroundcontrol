@@ -114,12 +114,14 @@ fn frame(escs: &[Value], wiring: &Wiring) -> Vec<Value> {
                 .and_then(|at| escs.get(at));
             let temperature = esc.map_or(0.0, |e| reading(e, "temperature") / 100.0);
             let current = esc.map_or(0.0, |e| reading(e, "current"));
+            let rpm = esc.map_or(0.0, |e| reading(e, "rpm"));
             json!({
                 "motor": motor,
                 "angle": angle,
                 "reporting": esc.is_some(),
                 "temperature": format!("{temperature:.0} C"),
                 "current": format!("{current:.1}"),
+                "rpm": format!("{rpm:.0}"),
                 "temperatureLevel": level(temperature, TEMPERATURE_ELEVATED_C, TEMPERATURE_CRITICAL_C),
                 "currentLevel": level(current, CURRENT_ELEVATED_A, CURRENT_CRITICAL_A),
                 "fill": (temperature / TEMPERATURE_CRITICAL_C).clamp(0.0, 1.0),
@@ -428,6 +430,7 @@ mod tests {
         escs.apply(&MavMessage::ESC_TELEMETRY_13_TO_16(
             ESC_TELEMETRY_13_TO_16_DATA {
                 current: [5040, 0, 0, 0],
+                rpm: [4200, 0, 0, 0],
                 count: [9, 0, 0, 0],
                 temperature: [75, 0, 0, 0],
                 ..Default::default()
@@ -457,10 +460,17 @@ mod tests {
             (
                 five["reporting"].as_bool(),
                 five["current"].as_str(),
+                five["rpm"].as_str(),
                 five["currentLevel"].as_str(),
                 five["temperatureLevel"].as_str()
             ),
-            (Some(true), Some("50.4"), Some("elevated"), Some("elevated"))
+            (
+                Some(true),
+                Some("50.4"),
+                Some("4200"),
+                Some("elevated"),
+                Some("elevated")
+            )
         );
         assert_eq!(
             (
