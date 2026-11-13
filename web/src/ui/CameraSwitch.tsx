@@ -105,7 +105,7 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
     <div className={`relative ${className ?? ''}`}>
       <Surface
         onClick={() => setOpen(true)}
-        shape="full"
+        shape="small"
         color={OSD_SCRIM}
         contentColor={white}
         label={`Cameras, showing ${shown.title}`}

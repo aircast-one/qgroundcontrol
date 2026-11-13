@@ -129,7 +129,7 @@ export const PayloadRailStrip = () => {
         ) : null}
       </div>
       {note === null ? null : (
-        <Text typography="bodyMedium" color={aircast('outdoorForeground')} maxLines={2} className="rounded-full px-3 py-1.5" style={{ background: OSD_SCRIM }}>
+        <Text typography="bodyMedium" color={aircast('outdoorForeground')} maxLines={2} className="rounded-shape-sm px-3 py-1.5" style={{ background: OSD_SCRIM }}>
           {note}
         </Text>
       )}

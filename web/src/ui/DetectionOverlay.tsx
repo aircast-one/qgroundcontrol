@@ -17,7 +17,7 @@ const DISABLED_CONTENT_ALPHA = 0.6;
 const BORDER_ALPHA = 0.4;
 
 const Pill = ({ onClick, color, contentColor, border, label, children }: { onClick?: () => void; color: string; contentColor: string; border?: string; label: string; children: string }) => (
-  <Surface onClick={onClick} shape="full" color={color} contentColor={contentColor} border={border} className={`pointer-events-auto flex min-w-[140px] items-center justify-center px-6 py-3 ${osdShadow()}`} label={label}>
+  <Surface onClick={onClick} shape="small" color={color} contentColor={contentColor} border={border} className={`pointer-events-auto flex min-w-[140px] items-center justify-center px-6 py-3 ${osdShadow()}`} label={label}>
     <Text typography="titleMedium" maxLines={1}>
       {children}
     </Text>
@@ -25,7 +25,7 @@ const Pill = ({ onClick, color, contentColor, border, label, children }: { onCli
 );
 
 const OverlayNote = ({ background, color, children }: { background: string; color: string; children: string }) => (
-  <Text typography="labelSmall" color={color} className={`rounded-full px-2.5 py-0.5 ${osdShadow()}`} style={{ background }}>
+  <Text typography="labelSmall" color={color} className={`rounded-shape-sm px-2.5 py-0.5 ${osdShadow()}`} style={{ background }}>
     {children}
   </Text>
 );

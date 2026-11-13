@@ -242,7 +242,7 @@ const ZoomChip = ({ camera, label }: { camera: CameraReading; label: string }) =
   const foreground = aircast('outdoorForeground');
   return (
     <div ref={setAnchor} className="relative">
-      <Surface onClick={() => setOpen(!open)} shape="full" color={OSD_SCRIM} contentColor={foreground} label={`Zoom ${label}`} style={{ height: OSD_CONTROL_SIZE }}>
+      <Surface onClick={() => setOpen(!open)} shape="small" color={OSD_SCRIM} contentColor={foreground} label={`Zoom ${label}`} style={{ height: OSD_CONTROL_SIZE }}>
         <span className="flex h-full items-center gap-1 px-3">
           <Drawable name="ic_search" size={16} />
           <Text typography="labelLarge">{label}</Text>

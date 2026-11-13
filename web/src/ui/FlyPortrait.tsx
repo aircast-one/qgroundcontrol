@@ -420,7 +420,7 @@ const VideoTab = ({ showSwipe, onShow }: { showSwipe: VideoSwipe; onShow: () => 
     <div {...swipes} className="pointer-events-auto" style={{ touchAction: 'none' }}>
       <Surface
         onClick={onShow}
-        shape="full"
+        shape="small"
         color={OSD_SCRIM}
         contentColor={aircast('outdoorForeground')}
         label="Show the video"

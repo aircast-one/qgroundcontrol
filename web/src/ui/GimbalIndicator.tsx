@@ -334,7 +334,7 @@ export const GimbalModeSwitch = ({ className }: { className?: string }) => {
         event.stopPropagation();
         chooseVideoGimbalMode(next.mode);
       }}
-      className={`flex items-center gap-1.5 rounded-full ps-3 pe-4 ${className ?? ''}`}
+      className={`flex items-center gap-1.5 rounded-shape-sm ps-3 pe-4 ${className ?? ''}`}
       style={{ height: OSD_CONTROL_SIZE, background: OSD_SCRIM, color: Color.White }}
     >
       <MaterialIcon name={current.icon} filled size={18} />
@@ -375,7 +375,7 @@ export const ApproximateAimNote = () => {
   const approximate = lensReading(useQgcPath(LENS_VIEW))?.approximate === true;
   const decoding = videoReading(useQgcPath(VIDEO_VIEW))?.decoding === true;
   return control !== null && !control.stick && control.enabled && !control.clickAndDrag && approximate && decoding ? (
-    <Text typography="labelMedium" color={Color.White} className="pointer-events-none self-center rounded-full px-3 py-1.5 text-center" style={{ background: OSD_SCRIM }}>
+    <Text typography="labelMedium" color={Color.White} className="pointer-events-none self-center rounded-shape-sm px-3 py-1.5 text-center" style={{ background: OSD_SCRIM }}>
       {APPROXIMATE_AIM}
     </Text>
   ) : null;

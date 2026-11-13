@@ -255,7 +255,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
               <StopPropagation className="flex min-w-0 shrink">
                 <Surface
                   onClick={() => (blocker !== null ? setWhy(true) : setStatusSettings(true))}
-                  shape="full"
+                  shape="small"
                   color={OSD_SCRIM}
                   contentColor={noteColour(tone)}
                   className="min-w-0 px-[14px] py-2"

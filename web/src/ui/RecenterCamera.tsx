@@ -47,7 +47,7 @@ export const TiltReadout = ({ degrees, onRecenter, onTap = null, tapLabel = null
   return (
     <Surface
       onClick={action ?? undefined}
-      shape="full"
+      shape="small"
       color={onRecenter !== null ? OSD_SCRIM : Color.Transparent}
       contentColor={aircast('outdoorForeground')}
       label={description}
