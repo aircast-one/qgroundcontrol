@@ -84,7 +84,7 @@ export const MotorLoadWidget = () => {
   const loads = useQgcDerived(ESC_PATH, motorLoads);
   if (loads.length === 0) return null;
   return (
-    <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label="Motor load" className="rounded-shape-md" style={{ background: withAlpha(Color.Black, 0.35) }}>
+    <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label="Motor load">
       {loads.map((load) => {
         const [x, y] = place(load.angle);
         return <line key={load.motor} x1={CENTRE} y1={CENTRE} x2={x} y2={y} stroke={withAlpha(Color.White, 0.35)} strokeWidth={3} />;
