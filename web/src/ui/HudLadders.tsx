@@ -101,7 +101,7 @@ const Ladder = ({ side, scale, value, height, icon, label }: { side: Side; scale
           style={{ top: ladderY(value, scale, height), transform: 'translateY(-50%)', ...(start ? { right: LADDER_WIDTH - edge + LONG_TICK + 2 } : { left: edge + LONG_TICK + 2 }), color: ink }}
         >
           <Drawable name={icon} size={16} style={{ fill: ink }} />
-          <span className="text-label-large tabular-nums">{scale.readout(value)}</span>
+          <span className="text-title-medium font-bold tabular-nums">{scale.readout(value)}</span>
           <svg width={10} height={12} viewBox="0 0 10 12" aria-hidden className="block">
             <path d={start ? 'M 0 6 L 10 6 M 10 0 L 10 12' : 'M 10 6 L 0 6 M 0 0 L 0 12'} strokeWidth={2} style={{ stroke: ink }} />
           </svg>

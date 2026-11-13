@@ -2,14 +2,13 @@ import { Qgc } from '@/bridge/Qgc';
 import { Surface, Text } from '@/m3';
 import { roundToInt } from '@/kotlin/Std';
 import { Drawable } from '@/res/Icon';
-import { Color, aircast, withAlpha } from '@/theme/Colors';
+import { Color, aircast } from '@/theme/Colors';
 import { type GimbalIndicatorState, gimbalRefusal } from '@/ui/GimbalIndicator';
-import { osdShadow } from '@/ui/Osd';
+import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM } from '@/ui/SyntheticView';
 
 const GIMBAL_CENTER = 'gimbal.center';
 const OFF_CENTRE_DEG = 2.0;
-const RECENTER_SCRIM_ALPHA = 0.55;
 const TILT_READOUT_WIDTH = 64;
 const TILT_READOUT_HEIGHT = 44;
 const RECENTER_GLYPH = 14;
@@ -49,7 +48,7 @@ export const TiltReadout = ({ degrees, onRecenter, onTap = null, tapLabel = null
     <Surface
       onClick={action ?? undefined}
       shape="full"
-      color={onRecenter !== null ? withAlpha(Color.Black, RECENTER_SCRIM_ALPHA) : Color.Transparent}
+      color={onRecenter !== null ? OSD_SCRIM : Color.Transparent}
       contentColor={aircast('outdoorForeground')}
       label={description}
       title={action !== null ? (actionLabel ?? undefined) : undefined}

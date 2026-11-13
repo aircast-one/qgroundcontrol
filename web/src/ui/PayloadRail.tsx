@@ -6,8 +6,8 @@ import { useLaunchedEffect } from '@/kotlin/Compose';
 import { delay } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
 import { Drawable } from '@/res/Icon';
-import { Color, aircast, md, withAlpha } from '@/theme/Colors';
-import { osdShadow } from '@/ui/Osd';
+import { aircast, md, withAlpha } from '@/theme/Colors';
+import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 
 export const PAYLOAD_RAIL_VIEW = 'view.payloadRail';
 const ARM = 'payloadRail.arm';
@@ -129,7 +129,7 @@ export const PayloadRailStrip = () => {
         ) : null}
       </div>
       {note === null ? null : (
-        <Text typography="bodyMedium" color={aircast('outdoorForeground')} maxLines={2} className="rounded-full px-3 py-1" style={{ background: withAlpha(Color.Black, 0.65) }}>
+        <Text typography="bodyMedium" color={aircast('outdoorForeground')} maxLines={2} className="rounded-full px-3 py-1.5" style={{ background: OSD_SCRIM }}>
           {note}
         </Text>
       )}

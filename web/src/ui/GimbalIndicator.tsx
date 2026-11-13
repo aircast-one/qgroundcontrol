@@ -9,9 +9,10 @@ import { coerceIn } from '@/kotlin/Std';
 import { AlertDialog, Button, FilterChip, OutlinedButton, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { MaterialIcon } from '@/res/Icon';
-import { Color, md, withAlpha } from '@/theme/Colors';
+import { Color, md } from '@/theme/Colors';
 import { JOYSTICK_VIEW } from '@/ui/JoystickScreen';
 import { APPROXIMATE_AIM, LENS_VIEW, lensReading } from '@/ui/Lens';
+import { OSD_CONTROL_SIZE, OSD_SCRIM } from '@/ui/Osd';
 import { FactRow, type SettingsBlock, type SettingsSectionRows, sentenceCase, settingsPagePath, settingsSections } from '@/ui/SettingsScreen';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 
@@ -333,11 +334,11 @@ export const GimbalModeSwitch = ({ className }: { className?: string }) => {
         event.stopPropagation();
         chooseVideoGimbalMode(next.mode);
       }}
-      className={`flex items-center gap-1.5 rounded-full py-1.5 ps-2 pe-3 ${className ?? ''}`}
-      style={{ background: withAlpha(Color.Black, 0.6), color: Color.White }}
+      className={`flex items-center gap-1.5 rounded-full ps-3 pe-4 ${className ?? ''}`}
+      style={{ height: OSD_CONTROL_SIZE, background: OSD_SCRIM, color: Color.White }}
     >
       <MaterialIcon name={current.icon} filled size={18} />
-      <Text typography="labelMedium" color={Color.White}>
+      <Text typography="labelLarge" color={Color.White}>
         {current.label}
       </Text>
     </button>
@@ -374,7 +375,7 @@ export const ApproximateAimNote = () => {
   const approximate = lensReading(useQgcPath(LENS_VIEW))?.approximate === true;
   const decoding = videoReading(useQgcPath(VIDEO_VIEW))?.decoding === true;
   return control !== null && !control.stick && control.enabled && !control.clickAndDrag && approximate && decoding ? (
-    <Text typography="labelMedium" color="#ffffff" className="pointer-events-none self-center rounded-lg bg-black/55 px-2.5 py-1.5 text-center">
+    <Text typography="labelMedium" color={Color.White} className="pointer-events-none self-center rounded-full px-3 py-1.5 text-center" style={{ background: OSD_SCRIM }}>
       {APPROXIMATE_AIM}
     </Text>
   ) : null;

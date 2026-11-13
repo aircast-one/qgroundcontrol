@@ -26,7 +26,7 @@ import {
   vehicleTelemetryLine,
 } from '@/map/VehiclePicker';
 import { Drawable, MaterialIcon } from '@/res/Icon';
-import { Color, aircast, md, withAlpha } from '@/theme/Colors';
+import { aircast, md } from '@/theme/Colors';
 import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack } from './ConfirmTrack';
 import { StopPropagation, activate, useFlyIsPortrait } from './FlyShell';
@@ -59,6 +59,7 @@ import {
   takeoverChangeable,
   takeoverLine,
 } from './OperatorControl';
+import { OSD_SCRIM } from './Osd';
 import { factFromControl } from './ParameterForm';
 import { CONNECTIONS_PAGE, FactRow, factSubtitle } from './SettingsScreen';
 import { FootNote } from './SetupRow';
@@ -67,8 +68,6 @@ import { VehicleMessagesSheet, WARNINGS, armingBlocker, armingChecks, chipBlocke
 import { VehicleStatusSheet } from './VehicleStatusSheet';
 import { FlightModeMenu, GuidedAction } from './VehicleUi';
 import { TAP } from '@/kotlin/Platform';
-
-const STATUS_BAR_SCRIM_ALPHA = 0.55;
 
 const statusTitleColour = (tone: ChipTone, linkFailed: boolean): string => {
   if (linkFailed || tone === ChipTone.Error) return md('error');
@@ -256,8 +255,8 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
               <StopPropagation className="flex min-w-0 shrink">
                 <Surface
                   onClick={() => (blocker !== null ? setWhy(true) : setStatusSettings(true))}
-                  shape="small"
-                  color={withAlpha(Color.Black, STATUS_BAR_SCRIM_ALPHA)}
+                  shape="full"
+                  color={OSD_SCRIM}
                   contentColor={noteColour(tone)}
                   className="min-w-0 px-[14px] py-2"
                 >

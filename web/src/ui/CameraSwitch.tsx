@@ -7,23 +7,19 @@ import { useUpdatedRef } from '@/kotlin/Compose';
 import { mutableStateOf, useValue } from '@/kotlin/State';
 import { DropdownMenu, DropdownMenuItem, HorizontalDivider, Surface, Text } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
-import { Color, aircast, md, withAlpha } from '@/theme/Colors';
+import { aircast, md } from '@/theme/Colors';
 import { CAMERA_VIEW, trackingCanAim, trackingReading } from '@/ui/CameraControl';
 import { CAMERA_SHEET } from '@/ui/CameraControlLayer';
 import { CAMERAS_VIEW, type CameraEntry, CameraStatus, CamerasReading, camerasReading } from '@/ui/Cameras';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { GIMBAL_INDICATOR_PATH, onScreenGimbal } from '@/ui/GimbalIndicator';
-import { useOsdBackdrop } from '@/ui/Osd';
+import { OSD_CONTROL_SIZE, OSD_SCRIM } from '@/ui/Osd';
 import { GIMBAL_SHEET } from '@/ui/RcCameraControls';
 import { shownCameraStatus, useSyntheticPage } from '@/ui/SyntheticView';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 
-const SWITCH_SCRIM_ALPHA = 0.55;
-const SWITCH_BORDER_ALPHA = 0.4;
 const SWITCH_DOT = 8;
-const SWITCH_BORDER = 1;
 const CHIP_PAD_HORIZONTAL = 12;
-const CHIP_PAD_VERTICAL = 8;
 const CHIP_GAP = 6;
 const CHIP_LABEL_MAX = 96;
 const CHIP_GLYPH = 18;
@@ -101,7 +97,6 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
   const settings = cameraMenuSheets().filter(([sheet]) => offered.includes(sheet));
   const [open, setOpen] = useState(false);
   const white = aircast('outdoorForeground');
-  const backdrop = useOsdBackdrop(withAlpha(Color.Black, SWITCH_SCRIM_ALPHA));
   const page = useSyntheticPage();
   const hidden = (switchState === null && splitTo === null && settings.length === 0) || shown === null;
   if (hidden && open) setOpen(false);
@@ -111,12 +106,12 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
       <Surface
         onClick={() => setOpen(true)}
         shape="full"
-        color={backdrop}
+        color={OSD_SCRIM}
         contentColor={white}
-        border={`${SWITCH_BORDER}px solid ${withAlpha(white, SWITCH_BORDER_ALPHA)}`}
         label={`Cameras, showing ${shown.title}`}
+        style={{ height: OSD_CONTROL_SIZE }}
       >
-        <span className="flex items-center" style={{ paddingInline: CHIP_PAD_HORIZONTAL, paddingBlock: CHIP_PAD_VERTICAL, gap: CHIP_GAP }}>
+        <span className="flex h-full items-center" style={{ paddingInline: CHIP_PAD_HORIZONTAL, gap: CHIP_GAP }}>
           <CameraStatusDot status={shownCameraStatus(shown, true, page)} />
           <Text typography="labelLarge" maxLines={1} ellipsis style={{ maxWidth: CHIP_LABEL_MAX }}>
             {shown.short}

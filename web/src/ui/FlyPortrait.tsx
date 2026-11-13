@@ -42,7 +42,7 @@ import {
   viewer3dEnabled,
 } from '@/ui/FlyShell';
 import { useHasVehicle } from '@/ui/FlyState';
-import { LocalFlyOsd, osdShadow } from '@/ui/Osd';
+import { LocalFlyOsd, OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget, badgeRoom } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
@@ -70,7 +70,6 @@ import { VIDEO_VIEW, type VideoReading, videoReading } from '@/ui/VideoView';
 import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
 
 const VIDEO_ASPECT = 16 / 9;
-const MAP_BUTTON_SCRIM_ALPHA = 0.55;
 const PORTRAIT_PIP_WIDTH = 160;
 const PORTRAIT_PIP_HEIGHT = 90;
 const PORTRAIT_DIAL_SIZE = 72;
@@ -422,7 +421,7 @@ const VideoTab = ({ showSwipe, onShow }: { showSwipe: VideoSwipe; onShow: () => 
       <Surface
         onClick={onShow}
         shape="full"
-        color={withAlpha(Color.Black, SCRIM_ALPHA)}
+        color={OSD_SCRIM}
         contentColor={aircast('outdoorForeground')}
         label="Show the video"
         className="flex items-center gap-1 px-3"
@@ -550,7 +549,7 @@ const MapButtonSurface = ({ label, onClick, children }: { label: string; onClick
   <Surface
     onClick={onClick}
     shape="full"
-    color={withAlpha(Color.Black, MAP_BUTTON_SCRIM_ALPHA)}
+    color={OSD_SCRIM}
     contentColor={aircast('outdoorForeground')}
     label={label}
     className="grid place-items-center"

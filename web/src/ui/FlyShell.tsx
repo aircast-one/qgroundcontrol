@@ -39,7 +39,7 @@ import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { ApproximateAimNote, gimbalSwitchWidth } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
-import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget, MINIMAP_KEY, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
@@ -69,7 +69,6 @@ import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
 
 const FLY_STORE = 'fly';
 const FLY_VIEW_KEY = 'view';
-export const FLY_SCRIM_ALPHA = 0.55;
 export const STATUS_ROW_HEIGHT = 32;
 const PAYLOAD_STRIP_CLEARANCE = 64;
 const ACTION_RAIL_CLEARANCE = 72;
@@ -433,7 +432,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const hiddenWidgets = useValue(layout.hidden);
   const minimapCollapsed = mapIsPip && hiddenWidgets.has(MINIMAP_KEY);
   const pipThumb = thumbSize(useDesktopLayout());
-  const thumb = minimapCollapsed ? Size(MAP_LAYERS_SIZE, MAP_LAYERS_SIZE) : pipThumb;
+  const thumb = minimapCollapsed ? Size(OSD_CONTROL_SIZE, OSD_CONTROL_SIZE) : pipThumb;
   const thumbStyle = thumbPlace(thumb, minimapCollapsed ? 0 : BOTTOM_LEAD);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
@@ -474,7 +473,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
             mapIsPip
               ? {
                   className: `absolute overflow-hidden ${minimapCollapsed ? 'rounded-full' : 'rounded-shape-md'}`,
-                  style: { ...thumbStyle, zIndex: layer(1), ...(minimapCollapsed ? {} : { border: `2px solid ${md('onSurface')}` }), ...pipJiggle },
+                  style: { ...thumbStyle, zIndex: layer(1), ...(minimapCollapsed ? { opacity: 0 } : { border: `2px solid ${md('onSurface')}` }), ...pipJiggle },
                   'aria-hidden': fullScreen || undefined,
                 }
               : { className: 'absolute inset-0', 'aria-hidden': fullScreen || undefined },
@@ -500,8 +499,8 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                   <Surface
                     onClick={showMap}
                     shape="full"
-                    color={md('surfaceContainerHigh')}
-                    contentColor={md('onSurface')}
+                    color={OSD_SCRIM}
+                    contentColor={aircast('outdoorForeground')}
                     label="Map"
                     className="grid place-items-center"
                     style={{ width: thumb.width, height: thumb.height }}
@@ -894,13 +893,12 @@ export const MenuDestination = (fields: MenuDestination): MenuDestination => ({ 
 
 export const FlyTabMenu = ({ destinations }: { destinations: readonly MenuDestination[] }) => {
   const [open, setOpen] = useState(false);
-  const backdrop = useOsdBackdrop(withAlpha(Color.Black, FLY_SCRIM_ALPHA));
   return (
     <div className="relative">
       <Surface
         onClick={() => setOpen(true)}
         shape="full"
-        color={backdrop}
+        color={OSD_SCRIM}
         contentColor={aircast('outdoorForeground')}
         label="Menu"
         className="grid place-items-center"

@@ -1,5 +1,9 @@
 import { createContext, useContext } from 'react';
-import { Color } from '@/theme/Colors';
+import { Color, withAlpha } from '@/theme/Colors';
+
+export const OSD_SCRIM = withAlpha(Color.Black, 0.55);
+
+export const OSD_CONTROL_SIZE = 48;
 
 export const LocalFlyOsd = createContext(false);
 
