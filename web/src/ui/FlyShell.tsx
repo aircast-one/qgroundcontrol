@@ -313,9 +313,9 @@ const DESKTOP_PIP = Size(320, 180);
 
 export const thumbSize = (desktop: boolean): Size => (desktop ? DESKTOP_PIP : Size(MINIMAP_THUMB, MINIMAP_THUMB));
 
-const thumbPlace = (size: Size): CSSProperties => ({
+const thumbPlace = (size: Size, lead: number): CSSProperties => ({
   position: 'absolute',
-  left: `calc(env(safe-area-inset-left, 0px) + ${BOTTOM_LEAD + AircastSpace.s3}px)`,
+  left: `calc(env(safe-area-inset-left, 0px) + ${lead + AircastSpace.s3}px)`,
   bottom: AircastSpace.s3,
   width: size.width,
   height: size.height,
@@ -423,7 +423,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const minimapCollapsed = mapIsPip && hiddenWidgets.has(MINIMAP_KEY) && !editing;
   const pipThumb = thumbSize(useDesktopLayout());
   const thumb = minimapCollapsed ? Size(MAP_LAYERS_SIZE, MAP_LAYERS_SIZE) : pipThumb;
-  const thumbStyle = thumbPlace(thumb);
+  const thumbStyle = thumbPlace(thumb, minimapCollapsed ? 0 : BOTTOM_LEAD);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
   const pipJiggle = useJiggleAngle('pip', editing && thumbShown && !fullScreen, thumb);
