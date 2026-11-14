@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { connectOffered, DeviceLink } from '@/app/DeviceLink';
+import { useQgcPath } from '@/bridge/QgcState';
 import { useValue } from '@/kotlin/State';
 import { AlertDialog, Button, TextButton } from '@/m3';
+import { FIRST_RUN_PATH, firstRun } from '@/ui/FirstRunDialog';
 
 export const HANDOFF_TITLE = 'Connect to this device?';
 
@@ -10,9 +12,10 @@ export const handoffText = (origin: string): string =>
 
 export const HandoffDialog = () => {
   const origin = useValue(connectOffered);
+  const welcoming = firstRun(useQgcPath(FIRST_RUN_PATH)) !== null;
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
-  if (origin === null) return null;
+  if (origin === null || welcoming) return null;
   const connect = () => {
     setBusy(true);
     void DeviceLink.acceptHandoff(origin).then((refused) => {
