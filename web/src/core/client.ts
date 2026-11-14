@@ -1,5 +1,6 @@
 import { mutableStateOf } from '@/kotlin/State';
 import { DEVICE_RETRY_MS, latestWins, readDeviceSettings, sendDeviceSettings } from './deviceSettings';
+import { desktop, desktopCall, desktopEvents } from './desktop';
 
 const SETTINGS_KEY = 'aircast.settings';
 const WEB_SERIAL_PREFIX = 'webserial-';
@@ -19,7 +20,9 @@ const eventListeners = new Set<EventListener>();
 const serialPorts = new Map<string, SerialPort>();
 const serialSessions = new Map<number, { port: SerialPort; writer: Promise<WritableStreamDefaultWriter<Uint8Array> | null>; reader: ReadableStreamDefaultReader<Uint8Array> | null }>();
 
-const connection: { worker: Worker | null; ready: Promise<Worker> | null } = { worker: null, ready: null };
+const connection: { worker: Worker | null; ready: Promise<Worker> | null; desktop: Promise<unknown> | null } = { worker: null, ready: null, desktop: null };
+
+const deliver = (path: string, json: string) => eventListeners.forEach((listener) => listener(path, json));
 
 export const coreLoaded = mutableStateOf(0);
 
@@ -49,7 +52,7 @@ const connect = (): Promise<Worker> => {
         return resolve(worker);
       }
       if ('loading' in data) return void (coreLoaded.value = data.loading);
-      if ('event' in data) return eventListeners.forEach((listener) => listener(data.event.path, data.event.json));
+      if ('event' in data) return deliver(data.event.path, data.event.json);
       if ('serial' in data) return void serialOp(data.serial);
       if ('settings' in data) return keep(data.settings);
       pending.get(data.id)?.(data.result);
@@ -60,7 +63,7 @@ const connect = (): Promise<Worker> => {
 };
 
 export const callTransferring = <T = unknown>(name: string, transfer: Transferable[], ...args: unknown[]): Promise<T> =>
-  connect().then((worker) => new Promise<T>((resolve) => {
+  desktop ? desktopCall<T>(name, args) : connect().then((worker) => new Promise<T>((resolve) => {
     const id = String(calls.next++);
     pending.set(id, resolve as (result: unknown) => void);
     worker.postMessage({ id, call: name, args }, transfer);
@@ -68,7 +71,7 @@ export const callTransferring = <T = unknown>(name: string, transfer: Transferab
 
 export const call = <T = unknown>(name: string, ...args: unknown[]): Promise<T> => callTransferring<T>(name, [], ...args);
 
-export const coreReady = (): Promise<unknown> => connect();
+export const coreReady = (): Promise<unknown> => (desktop ? (connection.desktop ??= desktopEvents(deliver)) : connect());
 
 export const onCoreEvent = (listener: EventListener): (() => void) => {
   eventListeners.add(listener);
@@ -106,7 +109,7 @@ const openSettings = async (): Promise<void> => {
   if (kept === '' && text !== '') void device.save(text);
 };
 
-export const serialAvailable = (): boolean => typeof navigator !== 'undefined' && 'serial' in navigator;
+export const serialAvailable = (): boolean => desktop || (typeof navigator !== 'undefined' && 'serial' in navigator);
 
 const portLine = (port: SerialPort, index: number): [string, string] => {
   const { usbVendorId, usbProductId } = port.getInfo();
@@ -117,7 +120,7 @@ const portLine = (port: SerialPort, index: number): [string, string] => {
 };
 
 export const refreshSerialPorts = async (): Promise<void> => {
-  if (!serialAvailable()) return;
+  if (desktop || !serialAvailable()) return;
   const ports = await navigator.serial.getPorts();
   const lines = ports.map(portLine);
   serialPorts.clear();
@@ -126,6 +129,7 @@ export const refreshSerialPorts = async (): Promise<void> => {
 };
 
 export const requestSerialPort = async (): Promise<void> => {
+  if (desktop) return;
   await navigator.serial.requestPort();
   await refreshSerialPorts();
 };
@@ -188,7 +192,14 @@ const adoptOtherTabs = () =>
     if (key === SETTINGS_KEY && newValue !== null) void call('settingsAdopt', newValue);
   });
 
+const startDesktopCore = async (): Promise<void> => {
+  await coreReady();
+  await call('setMockLinksAvailable', true);
+  await call('linksStart');
+};
+
 export const startCore = async (): Promise<void> => {
+  if (desktop) return startDesktopCore();
   await openSettings();
   adoptOtherTabs();
   await call('setMockLinksAvailable', true);

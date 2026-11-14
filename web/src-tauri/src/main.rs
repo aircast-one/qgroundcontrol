@@ -1,0 +1,237 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod video;
+
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
+use std::sync::Mutex;
+use std::sync::mpsc;
+use std::time::Duration;
+
+use groundstation::nativehost::{
+    qgc_bridge_free, qgc_bridge_get, qgc_bridge_get_fields, qgc_bridge_invoke, qgc_bridge_set,
+    qgc_bridge_set_event_handler, qgc_bridge_watch_client, qgc_handle_deep_link,
+    qgc_map_tile_fetch, qgc_shutdown, qgc_start,
+};
+use serde_json::Value;
+use tauri::{AppHandle, Emitter, RunEvent, ipc::Response};
+
+unsafe extern "C" {
+    fn qgc_core_guided(action_json: *const c_char) -> *mut c_char;
+    fn qgc_core_link_open(config_json: *const c_char) -> *mut c_char;
+    fn qgc_core_link_close(id: u32, reason: *const c_char) -> bool;
+    fn qgc_core_links_start();
+    fn qgc_core_gcs_position_source(token: *const c_char);
+}
+
+const EVENT_FLUSH: Duration = Duration::from_millis(16);
+
+static EVENTS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
+fn text(value: &str) -> CString {
+    CString::new(value).unwrap_or_default()
+}
+
+fn read(raw: *const c_char) -> String {
+    if raw.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(raw) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+fn taken(raw: *mut c_char) -> String {
+    let owned = read(raw);
+    if !raw.is_null() {
+        unsafe { qgc_bridge_free(raw) };
+    }
+    owned
+}
+
+unsafe extern "C" fn event(path: *const c_char, json: *const c_char) {
+    EVENTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push((read(path), read(json)));
+}
+
+fn forward_events(app: AppHandle) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(EVENT_FLUSH);
+            let batch = std::mem::take(
+                &mut *EVENTS
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+            if !batch.is_empty() {
+                let _ = app.emit("core-events", batch);
+            }
+        }
+    });
+}
+
+fn string_at(args: &[Value], index: usize) -> String {
+    match args.get(index) {
+        Some(Value::String(value)) => value.clone(),
+        Some(Value::Null) | None => String::new(),
+        Some(other) => other.to_string(),
+    }
+}
+
+fn number_at(args: &[Value], index: usize) -> f64 {
+    args.get(index).and_then(Value::as_f64).unwrap_or(f64::NAN)
+}
+
+fn reading(value: f64) -> Option<f64> {
+    value.is_finite().then_some(value)
+}
+
+#[tauri::command(async)]
+fn core(name: String, args: Vec<Value>) -> Value {
+    let at = |index| text(&string_at(&args, index));
+    match name.as_str() {
+        "get" => taken(unsafe { qgc_bridge_get(at(0).as_ptr()) }).into(),
+        "getFields" => {
+            taken(unsafe { qgc_bridge_get_fields(at(0).as_ptr(), at(1).as_ptr()) }).into()
+        }
+        "getMany" => args
+            .first()
+            .and_then(Value::as_array)
+            .map(|paths| {
+                paths
+                    .iter()
+                    .map(|path| {
+                        Value::from(taken(unsafe {
+                            qgc_bridge_get(text(path.as_str().unwrap_or_default()).as_ptr())
+                        }))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+            .into(),
+        "set" => taken(unsafe { qgc_bridge_set(at(0).as_ptr(), at(1).as_ptr()) }).into(),
+        "invoke" => taken(unsafe { qgc_bridge_invoke(at(0).as_ptr(), at(1).as_ptr()) }).into(),
+        "guided" => taken(unsafe { qgc_core_guided(at(0).as_ptr()) }).into(),
+        "deviceInvoke" => {
+            groundstation::deviceviews::run(&string_at(&args, 0), &string_at(&args, 1))
+                .to_string()
+                .into()
+        }
+        "watchClient" => {
+            unsafe { qgc_bridge_watch_client(at(0).as_ptr(), at(1).as_ptr()) };
+            Value::Null
+        }
+        "linkOpen" => taken(unsafe { qgc_core_link_open(at(0).as_ptr()) }).into(),
+        "linkClose" => unsafe {
+            qgc_core_link_close(
+                args.first().and_then(Value::as_u64).unwrap_or(0) as u32,
+                at(1).as_ptr(),
+            )
+        }
+        .into(),
+        "linksStart" => {
+            unsafe { qgc_core_links_start() };
+            Value::Null
+        }
+        "setMockLinksAvailable" => {
+            groundstation::mocklink::set_available(
+                args.first().and_then(Value::as_bool).unwrap_or(false),
+            );
+            Value::Null
+        }
+        "gcsPositionSource" => {
+            unsafe { qgc_core_gcs_position_source(at(0).as_ptr()) };
+            Value::Null
+        }
+        "gcsPositionUpdate" => {
+            groundstation::gcsposition::report(groundstation::gcsposition::Update {
+                latitude: reading(number_at(&args, 0)),
+                longitude: reading(number_at(&args, 1)),
+                altitude: reading(number_at(&args, 2)),
+                horizontal_accuracy_m: reading(number_at(&args, 3)),
+                vertical_accuracy_m: reading(number_at(&args, 4)),
+                direction_deg: reading(number_at(&args, 5)),
+                direction_accuracy_deg: reading(number_at(&args, 6)),
+                ground_speed_m_s: reading(number_at(&args, 7)),
+            });
+            Value::Null
+        }
+        "gcsPositionError" => {
+            groundstation::gcsposition::report_error(
+                args.first().and_then(Value::as_i64).unwrap_or(0),
+            );
+            Value::Null
+        }
+        "notifyDeepLink" => {
+            unsafe { qgc_handle_deep_link(at(0).as_ptr()) };
+            Value::Null
+        }
+        _ => Value::Null,
+    }
+}
+
+unsafe extern "C" fn tile_arrived(bytes: *const u8, length: c_int, context: *mut c_void) {
+    let sender = unsafe { Box::from_raw(context.cast::<mpsc::Sender<Vec<u8>>>()) };
+    let tile = match (bytes.is_null(), usize::try_from(length)) {
+        (false, Ok(length)) => unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec(),
+        _ => Vec::new(),
+    };
+    let _ = sender.send(tile);
+}
+
+#[tauri::command(async)]
+fn map_tile(map_type: String, x: i32, y: i32, zoom: i32) -> Response {
+    let (sender, arrived) = mpsc::channel::<Vec<u8>>();
+    let context = Box::into_raw(Box::new(sender)).cast::<c_void>();
+    unsafe {
+        qgc_map_tile_fetch(
+            text(&map_type).as_ptr(),
+            x,
+            y,
+            zoom,
+            Some(tile_arrived),
+            context,
+        )
+    };
+    Response::new(arrived.recv().unwrap_or_default())
+}
+
+fn start_core() {
+    let arguments: Vec<CString> = std::env::args()
+        .chain(["--no-autoconnect".to_string()])
+        .map(|argument| text(&argument))
+        .collect();
+    let pointers: Vec<*const c_char> = arguments.iter().map(|a| a.as_ptr()).collect();
+    unsafe {
+        qgc_bridge_set_event_handler(Some(event));
+        qgc_start(
+            c_int::try_from(pointers.len()).unwrap_or(0),
+            pointers.as_ptr(),
+        );
+    }
+}
+
+fn main() {
+    start_core();
+    tauri::Builder::default()
+        .manage(video::Streams::default())
+        .setup(|app| {
+            forward_events(app.handle().clone());
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            core,
+            map_tile,
+            video::video_open,
+            video::video_close
+        ])
+        .build(tauri::generate_context!())
+        .expect("the Aircast window failed to open")
+        .run(|_, event| {
+            if let RunEvent::Exit = event {
+                qgc_shutdown();
+            }
+        });
+}
