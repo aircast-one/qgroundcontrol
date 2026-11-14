@@ -464,6 +464,25 @@ pub extern "C" fn qgc_synthetic_attach(
     }
 }
 
+#[cfg(native_synthetic)]
+pub fn synthetic_offscreen(
+    key: usize,
+    size: (u32, u32),
+    orbit: bool,
+    deliver: crate::synthetic::host::Deliver,
+) -> bool {
+    crate::synthetic::host::attach_offscreen(
+        crate::synthetic::host::Offscreen { key, size, deliver },
+        std::sync::Arc::new(crate::synthetic::corefeed::CoreFeed),
+        orbit,
+    )
+}
+
+#[cfg(native_synthetic)]
+pub fn synthetic_offscreen_release(key: usize) {
+    crate::synthetic::host::release(key);
+}
+
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
 pub extern "C" fn qgc_synthetic_release(surface: *mut c_void) {
