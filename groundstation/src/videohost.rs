@@ -732,6 +732,7 @@ fn object(host: &Host) -> Value {
         "nativePipeline": pipeline_for(host, MAIN_CHANNEL),
         "pipPipeline": pipeline_for(host, PIP_CHANNEL),
         "whepEndpoints": (0..VIDEO_CHANNELS).map(|channel| whep_for(host, channel)).collect::<Vec<_>>(),
+        "streamUris": (0..VIDEO_CHANNELS).map(|channel| stream_for(host, channel)).collect::<Vec<_>>(),
         "whepRestarts": host.channels.iter().map(|channel| channel.restarts).collect::<Vec<_>>(),
         "deviceCamera": crate::videostate::device_camera(&uri),
         "nativeRecording": host.recording_file,
@@ -823,14 +824,23 @@ pub fn follow_previews(paths: &std::collections::BTreeSet<String>) {
     );
 }
 
-fn whep_for(host: &Host, channel: usize) -> Option<String> {
+fn stream_for(host: &Host, channel: usize) -> Option<String> {
     (host.channels[channel].wanted && host.state.has_video())
-        .then(|| whep_endpoint(&host.state.desired_uri(CHANNEL_RECEIVERS[channel])))
-        .flatten()
+        .then(|| host.state.desired_uri(CHANNEL_RECEIVERS[channel]))
+}
+
+fn whep_for(host: &Host, channel: usize) -> Option<String> {
+    stream_for(host, channel).and_then(|uri| whep_endpoint(&uri))
 }
 
 pub fn whep_endpoints() -> Value {
     get("video.whepEndpoints")
+        .and_then(|value| value.get("value").cloned())
+        .unwrap_or(Value::Null)
+}
+
+pub fn stream_uris() -> Value {
+    get("video.streamUris")
         .and_then(|value| value.get("value").cloned())
         .unwrap_or(Value::Null)
 }
@@ -1653,6 +1663,11 @@ mod tests {
             object(&host)["whepEndpoints"],
             json!([null, null]),
             "only a WHEP source has an endpoint a browser can play"
+        );
+        assert_eq!(
+            object(&host)["streamUris"],
+            json!(["udp://0.0.0.0:5600", null]),
+            "a desktop head pulls any wanted stream itself"
         );
         assert_eq!(object(&host)["whepRestarts"], json!([0, 0]));
         restart(&mut host, 0);
