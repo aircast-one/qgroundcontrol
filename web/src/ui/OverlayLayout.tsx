@@ -1,13 +1,13 @@
 import { type CSSProperties, type Dispatch, type HTMLAttributes, type PointerEvent, type ReactNode, type RefObject, type SetStateAction, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
-import { Button, Surface, TextButton, radius } from '@/m3';
+import { Button, Surface, TextButton } from '@/m3';
 import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type SharedPreferences, getSharedPreferences, TAP } from '@/kotlin/Platform';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { MaterialIcon } from '@/res/Icon';
-import { Color, md, withAlpha } from '@/theme/Colors';
+import { md } from '@/theme/Colors';
 import { LocalAvoidedByVideoMessage, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
@@ -343,13 +343,6 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, className }: { wi
 
 const BADGE = 'absolute grid place-items-center';
 
-const EDIT_FRAME: CSSProperties = {
-  outline: `1px solid ${withAlpha(Color.White, 0.7)}`,
-  outlineOffset: -1,
-  boxShadow: `0 0 0 1px ${withAlpha(Color.Black, 0.35)}`,
-  borderRadius: radius('medium'),
-};
-
 export type BadgeSpot = 'inside' | 'aboveTopTrailing' | 'onTopLeading';
 
 const BADGE_SPOTS: Readonly<Record<BadgeSpot, CSSProperties>> = {
@@ -437,7 +430,7 @@ export const LayoutWidget = ({
         <div
           ref={sized}
           className={osd ? osdShadow() : undefined}
-          style={{ opacity: hidden ? HIDDEN_ALPHA : 1, ...(decorated ? EDIT_FRAME : {}) }}
+          style={{ opacity: hidden ? HIDDEN_ALPHA : 1 }}
         >
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
