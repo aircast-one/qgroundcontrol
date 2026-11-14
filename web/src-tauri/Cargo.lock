@@ -34,11 +34,13 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "groundstation",
+ "mpeg2ts",
  "percent-encoding",
  "retina",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
  "url",
 ]
 
@@ -2579,6 +2581,12 @@ checksum = "50e73e22289737589d1575517eefead53c7bbd7e11546437f97b3859694c1a08"
 dependencies = [
  "four-cc",
 ]
+
+[[package]]
+name = "mpeg2ts"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83c1d679004305ea6e44eb53526da5816934a05b4b5b3b9a470e708a41d70a18"
 
 [[package]]
 name = "mpeg4-audio-const"

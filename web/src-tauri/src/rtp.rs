@@ -1,0 +1,246 @@
+use crate::annexb::{Codec, START};
+
+const REORDER_WINDOW: usize = 8;
+
+pub struct Depacketizer {
+    codec: Codec,
+    next: Option<u16>,
+    held: Vec<(u16, Vec<u8>)>,
+    timestamp: Option<u32>,
+    unit: Vec<u8>,
+    fragment: Option<Vec<u8>>,
+}
+
+struct Packet<'a> {
+    timestamp: u32,
+    marker: bool,
+    payload: &'a [u8],
+}
+
+fn parse(packet: &[u8]) -> Option<Packet<'_>> {
+    let first = *packet.first()?;
+    (first >> 6 == 2).then_some(())?;
+    let csrc_end = 12 + 4 * usize::from(first & 0x0f);
+    let start = match first & 0x10 {
+        0 => csrc_end,
+        _ => {
+            let words =
+                u16::from_be_bytes(packet.get(csrc_end + 2..csrc_end + 4)?.try_into().ok()?);
+            csrc_end + 4 + 4 * usize::from(words)
+        }
+    };
+    let padding = match first & 0x20 {
+        0 => 0,
+        _ => usize::from(*packet.last()?),
+    };
+    Some(Packet {
+        timestamp: u32::from_be_bytes(packet.get(4..8)?.try_into().ok()?),
+        marker: packet[1] & 0x80 != 0,
+        payload: packet.get(start..packet.len().checked_sub(padding)?)?,
+    })
+}
+
+fn aggregated(units: &[u8]) -> Vec<&[u8]> {
+    std::iter::successors(Some(units), |rest| {
+        let size = usize::from(u16::from_be_bytes(rest.get(..2)?.try_into().ok()?));
+        rest.get(2 + size..)
+    })
+    .filter_map(|rest| {
+        let size = usize::from(u16::from_be_bytes(rest.get(..2)?.try_into().ok()?));
+        rest.get(2..2 + size)
+    })
+    .filter(|nal| !nal.is_empty())
+    .collect()
+}
+
+impl Depacketizer {
+    pub fn new(codec: Codec) -> Self {
+        Self {
+            codec,
+            next: None,
+            held: Vec::new(),
+            timestamp: None,
+            unit: Vec::new(),
+            fragment: None,
+        }
+    }
+
+    pub fn push(&mut self, packet: &[u8]) -> Vec<Vec<u8>> {
+        let Some(sequence) = packet
+            .get(2..4)
+            .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
+        else {
+            return Vec::new();
+        };
+        let ahead = self
+            .next
+            .map_or(0, |next| sequence.wrapping_sub(next) as i16);
+        if ahead < 0 || self.held.iter().any(|(held, _)| *held == sequence) {
+            return Vec::new();
+        }
+        self.held.push((sequence, packet.to_vec()));
+        let lost = self.held.len() > REORDER_WINDOW;
+        if lost {
+            let next = self.next.unwrap_or(sequence);
+            self.next = self
+                .held
+                .iter()
+                .map(|(held, _)| *held)
+                .min_by_key(|held| held.wrapping_sub(next));
+            self.fragment = None;
+        }
+        self.drain()
+    }
+
+    fn drain(&mut self) -> Vec<Vec<u8>> {
+        let next = self.next.unwrap_or_else(|| self.held[0].0);
+        match self.held.iter().position(|(held, _)| *held == next) {
+            None => Vec::new(),
+            Some(at) => {
+                let (_, packet) = self.held.swap_remove(at);
+                self.next = Some(next.wrapping_add(1));
+                let units = parse(&packet)
+                    .map(|parsed| self.take(&parsed))
+                    .unwrap_or_default();
+                [units, self.drain()].concat()
+            }
+        }
+    }
+
+    fn take(&mut self, packet: &Packet<'_>) -> Vec<Vec<u8>> {
+        let before = match self.timestamp {
+            Some(timestamp) if timestamp != packet.timestamp => self.finish(),
+            _ => None,
+        };
+        self.timestamp = Some(packet.timestamp);
+        let nals = self.depacketize(packet.payload);
+        self.unit = [
+            std::mem::take(&mut self.unit),
+            nals.iter()
+                .flat_map(|nal| [&START[..], nal].concat())
+                .collect(),
+        ]
+        .concat();
+        let after = packet.marker.then(|| self.finish()).flatten();
+        before.into_iter().chain(after).collect()
+    }
+
+    fn finish(&mut self) -> Option<Vec<u8>> {
+        self.timestamp = None;
+        Some(std::mem::take(&mut self.unit)).filter(|unit| !unit.is_empty())
+    }
+
+    fn depacketize(&mut self, payload: &[u8]) -> Vec<Vec<u8>> {
+        let Some(&first) = payload.first() else {
+            return Vec::new();
+        };
+        match self.codec {
+            Codec::H264 => match first & 0x1f {
+                1..=23 => vec![payload.to_vec()],
+                24 => aggregated(&payload[1..])
+                    .into_iter()
+                    .map(<[u8]>::to_vec)
+                    .collect(),
+                28 => payload.get(1).map_or_else(Vec::new, |&header| {
+                    self.fragmented(header, &[(first & 0xe0) | (header & 0x1f)], &payload[2..])
+                }),
+                _ => Vec::new(),
+            },
+            Codec::H265 => match (first >> 1) & 0x3f {
+                0..=47 => vec![payload.to_vec()],
+                48 => payload.get(2..).map_or_else(Vec::new, |units| {
+                    aggregated(units).into_iter().map(<[u8]>::to_vec).collect()
+                }),
+                49 => match payload.get(..3) {
+                    Some(&[_, second, header]) => self.fragmented(
+                        header,
+                        &[(first & 0x81) | ((header & 0x3f) << 1), second],
+                        &payload[3..],
+                    ),
+                    _ => Vec::new(),
+                },
+                _ => Vec::new(),
+            },
+        }
+    }
+
+    fn fragmented(&mut self, header: u8, nal_header: &[u8], data: &[u8]) -> Vec<Vec<u8>> {
+        let (starts, ends) = (header & 0x80 != 0, header & 0x40 != 0);
+        self.fragment = match (starts, self.fragment.take()) {
+            (true, _) => Some([nal_header, data].concat()),
+            (false, Some(begun)) => Some([begun, data.to_vec()].concat()),
+            (false, None) => None,
+        };
+        match ends {
+            true => self.fragment.take().into_iter().collect(),
+            false => Vec::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn packet(sequence: u16, timestamp: u32, marker: bool, payload: &[u8]) -> Vec<u8> {
+        [
+            &[0x80, if marker { 0xe0 } else { 0x60 }][..],
+            &sequence.to_be_bytes(),
+            &timestamp.to_be_bytes(),
+            &[0, 0, 0, 1],
+            payload,
+        ]
+        .concat()
+    }
+
+    #[test]
+    fn reordered_fragments_rebuild_one_access_unit_and_a_lost_one_is_skipped() {
+        let mut h264 = Depacketizer::new(Codec::H264);
+        let parameters = packet(10, 90, false, &[0x18, 0, 2, 0x67, 0x42, 0, 2, 0x68, 0xce]);
+        let first = packet(11, 90, false, &[0x7c, 0x85, 0xaa]);
+        let last = packet(12, 90, true, &[0x7c, 0x45, 0xbb]);
+        assert!(h264.push(&parameters).is_empty());
+        assert!(
+            h264.push(&last).is_empty(),
+            "the end waits for the fragment before it"
+        );
+        assert_eq!(
+            h264.push(&first),
+            [[
+                &START[..],
+                &[0x67, 0x42],
+                &START,
+                &[0x68, 0xce],
+                &START,
+                &[0x65, 0xaa, 0xbb]
+            ]
+            .concat()]
+        );
+        assert!(h264.push(&first).is_empty(), "a late copy is dropped");
+        let units: Vec<Vec<u8>> = (14..14 + REORDER_WINDOW as u16 + 1)
+            .flat_map(|sequence| {
+                h264.push(&packet(
+                    sequence,
+                    u32::from(sequence) * 100,
+                    true,
+                    &[0x41, 0x9a],
+                ))
+            })
+            .collect();
+        assert_eq!(
+            units.len(),
+            REORDER_WINDOW + 1,
+            "packet 13 never came, so the window moves past it"
+        );
+
+        let mut h265 = Depacketizer::new(Codec::H265);
+        assert!(
+            h265.push(&packet(1, 9, false, &[0x62, 0x01, 0x93, 0x11]))
+                .is_empty()
+        );
+        assert_eq!(
+            h265.push(&packet(2, 9, true, &[0x62, 0x01, 0x53, 0x22])),
+            [[&START[..], &[0x26, 0x01, 0x11, 0x22]].concat()]
+        );
+    }
+}

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -12,7 +13,15 @@ use retina::client::{
 use retina::codec::{CodecItem, ParametersRef, VideoParameters};
 use tauri::async_runtime::JoinHandle;
 use tauri::ipc::{Channel, InvokeResponseBody};
+use tokio::io::AsyncReadExt;
+use tokio::net::{TcpStream, UdpSocket};
 use url::Url;
+
+use crate::annexb::{self, Codec};
+use crate::mpegts::Demuxer;
+use crate::rtp::Depacketizer;
+
+const DATAGRAM: usize = 65_536;
 
 const CONFIG: u8 = 0;
 const FRAME: u8 = 1;
@@ -81,7 +90,7 @@ fn send_config(
     )
 }
 
-async fn pull(url: &Url, sink: &Channel<InvokeResponseBody>) -> Result<(), String> {
+async fn rtsp(url: &Url, sink: &Channel<InvokeResponseBody>) -> Result<(), String> {
     let failed = |error: retina::Error| error.to_string();
     let (bare, credentials) = without_credentials(url);
     let options = SessionOptions::default()
@@ -129,6 +138,106 @@ async fn pull(url: &Url, sink: &Channel<InvokeResponseBody>) -> Result<(), Strin
     Err("The camera ended the stream.".to_string())
 }
 
+fn forward(
+    sink: &Channel<InvokeResponseBody>,
+    codec: Codec,
+    unit: &[u8],
+    announced: &mut Option<String>,
+) -> Result<(), String> {
+    if let Some(found) =
+        annexb::codec_of(codec, unit).filter(|found| announced.as_ref() != Some(found))
+    {
+        send(sink, config(&found, (0, 0), &[]))?;
+        *announced = Some(found);
+    }
+    send(sink, frame(annexb::keyed(codec, unit), now_ms(), unit))
+}
+
+fn endpoint(url: &Url) -> Result<(IpAddr, u16), String> {
+    let port = url.port().ok_or("The stream address has no port.")?;
+    let host = url.host_str().unwrap_or_default().trim_matches(['[', ']']);
+    Ok((
+        host.parse().unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+        port,
+    ))
+}
+
+async fn listen(url: &Url) -> Result<UdpSocket, String> {
+    let (address, port) = endpoint(url)?;
+    let bound = if address.is_multicast() {
+        IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+    } else {
+        address
+    };
+    let socket = UdpSocket::bind((bound, port))
+        .await
+        .map_err(|error| format!("Port {port} cannot be opened: {error}"))?;
+    if let IpAddr::V4(group) = address.is_multicast().then_some(address).unwrap_or(bound) {
+        if group.is_multicast() {
+            socket
+                .join_multicast_v4(group, Ipv4Addr::UNSPECIFIED)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(socket)
+}
+
+async fn rtp(url: &Url, codec: Codec, sink: &Channel<InvokeResponseBody>) -> Result<(), String> {
+    let socket = listen(url).await?;
+    let mut depacketizer = Depacketizer::new(codec);
+    let mut announced = None;
+    let mut datagram = vec![0; DATAGRAM];
+    loop {
+        let size = socket
+            .recv(&mut datagram)
+            .await
+            .map_err(|error| error.to_string())?;
+        depacketizer
+            .push(&datagram[..size])
+            .iter()
+            .try_for_each(|unit| forward(sink, codec, unit, &mut announced))?;
+    }
+}
+
+async fn transport_stream(url: &Url, sink: &Channel<InvokeResponseBody>) -> Result<(), String> {
+    let mut demuxer = Demuxer::default();
+    let mut announced = None;
+    let mut received = vec![0; DATAGRAM];
+    let mut deliver = |bytes: &[u8]| {
+        demuxer
+            .push(bytes)
+            .iter()
+            .try_for_each(|(codec, unit)| forward(sink, *codec, unit, &mut announced))
+    };
+    match url.scheme() {
+        "tcp" => {
+            let mut stream = TcpStream::connect(endpoint(url)?)
+                .await
+                .map_err(|error| error.to_string())?;
+            loop {
+                match stream
+                    .read(&mut received)
+                    .await
+                    .map_err(|error| error.to_string())?
+                {
+                    0 => return Err("The camera closed the connection.".to_string()),
+                    size => deliver(&received[..size])?,
+                }
+            }
+        }
+        _ => {
+            let socket = listen(url).await?;
+            loop {
+                let size = socket
+                    .recv(&mut received)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                deliver(&received[..size])?;
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub fn video_open(
     url: String,
@@ -138,7 +247,13 @@ pub fn video_open(
     let url = Url::parse(&url).map_err(|error| error.to_string())?;
     let id = streams.next.fetch_add(1, Ordering::Relaxed);
     let task = tauri::async_runtime::spawn(async move {
-        let reason = pull(&url, &frames).await.err().unwrap_or_default();
+        let played = match url.scheme() {
+            "udp" => rtp(&url, Codec::H264, &frames).await,
+            "udp265" => rtp(&url, Codec::H265, &frames).await,
+            "mpegts" | "tcp" => transport_stream(&url, &frames).await,
+            _ => rtsp(&url, &frames).await,
+        };
+        let reason = played.err().unwrap_or_default();
         let _ = send(&frames, ended(&reason));
     });
     streams

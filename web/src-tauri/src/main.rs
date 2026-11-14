@@ -1,5 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod annexb;
+mod mpegts;
+mod rtp;
 mod video;
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
