@@ -1,4 +1,4 @@
-import { type HTMLAttributes, type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type HTMLAttributes, type KeyboardEvent, type PointerEvent, type ReactNode, createContext, useEffect, useRef, useState } from 'react';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { vibrate } from '@/kotlin/Platform';
 import { coerceAtLeast, coerceIn } from '@/kotlin/Std';
@@ -35,11 +35,13 @@ export type DeckEntry = {
   warning: boolean;
   onHold: (() => void) | null;
   onClick: () => void;
+  short: string | null;
 };
 
-export const DeckEntry = (fields: Omit<DeckEntry, 'warning' | 'onHold'> & Partial<Pick<DeckEntry, 'warning' | 'onHold'>>): DeckEntry => ({
+export const DeckEntry = (fields: Omit<DeckEntry, 'warning' | 'onHold' | 'short'> & Partial<Pick<DeckEntry, 'warning' | 'onHold' | 'short'>>): DeckEntry => ({
   warning: false,
   onHold: null,
+  short: null,
   ...fields,
 });
 
@@ -288,7 +290,7 @@ export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: De
             <Drawable name={entry.icon} label={entry.label} size={RAIL_INSET_ICON_SIZE} className={osdShadow()} />
             <span aria-hidden>
               <Text typography="labelSmall" color={aircast('outdoorForeground')} maxLines={1} className={osdShadow()} style={{ fontSize: RAIL_INSET_LABEL_SIZE, lineHeight: `${RAIL_INSET_LABEL_SIZE + 2}px` }}>
-                {railLabel(entry.label)}
+                {entry.short ?? railLabel(entry.label)}
               </Text>
             </span>
           </span>
@@ -297,7 +299,7 @@ export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: De
     </Surface>
     {labelled ? (
       <Text typography="labelSmall" color={aircast('outdoorForeground')} maxLines={1} className={osdShadow()}>
-        {railLabel(entry.label)}
+        {entry.short ?? railLabel(entry.label)}
       </Text>
     ) : null}
   </div>
@@ -309,6 +311,12 @@ const MORE_TILE_HEIGHT = 80;
 export type MoreTile = { label: string; icon: DrawableName; enabled: boolean; warning: boolean; onClick: () => void };
 
 export const MoreTile = (fields: Omit<MoreTile, 'warning'> & Partial<Pick<MoreTile, 'warning'>>): MoreTile => ({ warning: false, ...fields });
+
+export type MenuSection = { title: string; tiles: readonly MoreTile[] };
+
+export const LocalFlyDestinations = createContext<readonly MoreTile[]>([]);
+
+export const FLY_MENU = 'Menu';
 
 export const guidedIcon = (id: string): DrawableName => {
   switch (id) {
@@ -341,42 +349,54 @@ export const guidedIcon = (id: string): DrawableName => {
 const chunked = <T,>(items: readonly T[], size: number): readonly (readonly T[])[] =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, row) => items.slice(row * size, row * size + size));
 
-export const MoreActionsSheet = ({ tiles, onDismiss, footer }: { tiles: readonly MoreTile[]; onDismiss: () => void; footer: ReactNode }) => (
-  <AircastSheet onDismissRequest={onDismiss}>
-    <div className="flex flex-col gap-3 overflow-y-auto px-4 pb-6">
-      <div className="flex flex-col px-2">
-        <Text typography="titleLarge">More actions</Text>
-        <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-          Everything that changes what the drone does
-        </Text>
+const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MoreTile[]; onDismiss: () => void }) => (
+  <div className="flex flex-col gap-3">
+    {chunked(tiles, MORE_COLUMNS).map((row, at) => (
+      <div key={at} className="flex gap-3">
+        {row.map((tile) => (
+          <Surface
+            key={tile.label}
+            onClick={() => {
+              onDismiss();
+              tile.onClick();
+            }}
+            enabled={tile.enabled}
+            shape="large"
+            color={md('surfaceContainerHigh')}
+            contentColor={tile.warning ? md('error') : md('onSurface')}
+            className="flex flex-1 basis-0 flex-col items-center justify-center gap-2 px-1"
+            style={{ height: MORE_TILE_HEIGHT, opacity: tile.enabled ? 1 : DISABLED_ALPHA }}
+          >
+            <Drawable name={tile.icon} size={24} />
+            <Text typography="labelMedium" maxLines={2} textAlign="center">
+              {sentenceCase(tile.label)}
+            </Text>
+          </Surface>
+        ))}
+        {Array.from({ length: MORE_COLUMNS - row.length }, (_, gap) => (
+          <div key={`gap-${gap}`} className="flex-1 basis-0" />
+        ))}
       </div>
-      {chunked(tiles, MORE_COLUMNS).map((row, at) => (
-        <div key={at} className="flex gap-3">
-          {row.map((tile) => (
-            <Surface
-              key={tile.label}
-              onClick={() => {
-                onDismiss();
-                tile.onClick();
-              }}
-              enabled={tile.enabled}
-              shape="large"
-              color={md('surfaceContainerHigh')}
-              contentColor={tile.warning ? md('error') : md('onSurface')}
-              className="flex flex-1 basis-0 flex-col items-center justify-center gap-2 px-1"
-              style={{ height: MORE_TILE_HEIGHT, opacity: tile.enabled ? 1 : DISABLED_ALPHA }}
-            >
-              <Drawable name={tile.icon} size={24} />
-              <Text typography="labelMedium" maxLines={2} textAlign="center">
-                {sentenceCase(tile.label)}
-              </Text>
-            </Surface>
-          ))}
-          {Array.from({ length: MORE_COLUMNS - row.length }, (_, gap) => (
-            <div key={`gap-${gap}`} className="flex-1 basis-0" />
-          ))}
-        </div>
-      ))}
+    ))}
+  </div>
+);
+
+export const FlyMenuSheet = ({ sections, onDismiss, footer }: { sections: readonly MenuSection[]; onDismiss: () => void; footer: ReactNode }) => (
+  <AircastSheet onDismissRequest={onDismiss}>
+    <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-6">
+      <Text typography="titleLarge" className="px-2">
+        {FLY_MENU}
+      </Text>
+      {sections
+        .filter((section) => section.tiles.length > 0)
+        .map((section) => (
+          <section key={section.title} aria-label={section.title} className="flex flex-col gap-2">
+            <Text typography="labelLarge" color={md('onSurfaceVariant')} className="px-2">
+              {section.title}
+            </Text>
+            <TileGrid tiles={section.tiles} onDismiss={onDismiss} />
+          </section>
+        ))}
       {footer}
     </div>
   </AircastSheet>

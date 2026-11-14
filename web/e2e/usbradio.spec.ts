@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, openApp, test } from './fixtures';
+import { expect, openApp, openMenu, test } from './fixtures';
 import { lastAnswer, plugInR2d2Radio, setRadioChannels, setRadioStreaming } from './r2d2';
 import { type Sitl, connectSitl, startSitl } from './sitl';
 
@@ -31,7 +31,7 @@ const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it
 const DETECTED_RADIO = 'EdgeTX radio (webserial-0)';
 
 const openRadioSettings = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
   await expect(page.getByText('Radio on USB (EdgeTX script)')).toBeVisible();
 };
@@ -51,7 +51,7 @@ test('a radio streaming the script is found by what it sends, offered once, and 
   await page.getByRole('button', { name: 'Use', exact: true }).click();
 
   await connectSitl(page, running().ws);
-  await page.getByRole('button', { name: 'All status' }).click();
+  await openMenu(page, 'All status');
   await expect(indicator(page, 'Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
   await expect(indicator(page, 'Radio · live')).toBeHidden();
@@ -80,6 +80,6 @@ test('a radio streaming the script is found by what it sends, offered once, and 
   await expect.poll(channel(ROLL), { message: 'picked again', timeout: 20_000 }).toBeGreaterThan(1900);
   await setRadioStreaming(page, false);
   await expect.poll(channel(ROLL), { message: 'a radio that stops streaming hands the channels back', timeout: 10_000 }).toBeLessThan(1600);
-  await page.getByRole('button', { name: 'All status' }).click();
+  await openMenu(page, 'All status');
   await expect(indicator(page, 'Radio · stopped'), 'still chosen, but its sticks are handed back').toBeVisible({ timeout: 10_000 });
 });

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { APP, expect, test } from './fixtures';
+import { APP, expect, openMenu, test } from './fixtures';
 
 const VEHICLE = 'ws://localhost:18760';
 
@@ -11,12 +11,12 @@ const secondTab = async (app: Page): Promise<Page> => {
 };
 
 const openGeneral = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
 };
 
 const openLinks = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   const row = page.getByRole('button', { name: /^Links/ });
   await expect(async () => {

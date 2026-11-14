@@ -1,4 +1,4 @@
-import { connectMock, expect, flightMode, openApp, test } from './fixtures';
+import { connectMock, expect, flightMode, openApp, openMenu, test } from './fixtures';
 import { plugInR2d2Radio, setRadioChannels } from './r2d2';
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
@@ -14,13 +14,13 @@ test('the R2D2 camera sliders point the gimbal and the zoom knob sets the zoom',
 
   await connectMock(page, ['Enable camera', 'Enable gimbal']);
   await expect(page.getByRole('button', { name: /^Zoom \d+%$/ })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'All status' }).click();
+  await openMenu(page, 'All status');
   await expect(page.getByRole('button', { name: /· P: -?[\d.]+ ·/ }), 'a mock with a camera takes about half a minute to report its gimbal').toBeVisible({ timeout: 60_000 });
   await page.keyboard.press('Escape');
 
   await setRadioChannels(page, { 18: -512, 21: 1024 });
   await expect(page.getByRole('button', { name: 'Zoom 100%' }), 'the zoom knob turned all the way is full zoom').toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: 'All status' }).click();
+  await openMenu(page, 'All status');
   const gimbal = page.getByRole('button', { name: /· P: -?[\d.]+ ·/ });
   await expect(gimbal, 'the right slider a quarter down tilts the camera a quarter of the way down from where it pointed, straight ahead').toHaveAccessibleName(/P: -22\.5/, { timeout: 20_000 });
 
@@ -45,7 +45,7 @@ test('the SD switch hands the left stick to the camera in a mode that holds alti
   await page.getByRole('button', { name: 'Use', exact: true }).click();
 
   await connectMock(page, ['Enable camera', 'Enable gimbal'], 'APM ArduCopter Vehicle');
-  await page.getByRole('button', { name: 'All status' }).click();
+  await openMenu(page, 'All status');
   const gimbal = page.getByRole('button', { name: /· P: -?[\d.]+ ·/ });
   await expect(gimbal, 'a mock with a camera takes about half a minute to report its gimbal').toBeVisible({ timeout: 60_000 });
   await page.keyboard.press('Escape');
@@ -57,7 +57,7 @@ test('the SD switch hands the left stick to the camera in a mode that holds alti
   await expect(flightMode(page)).toHaveAccessibleName(/^Loiter/);
 
   await setRadioChannels(page, { 3: -512 });
-  await page.getByRole('button', { name: 'All status' }).click();
+  await openMenu(page, 'All status');
   await expect(gimbal, 'in Loiter the throttle a quarter down tilts the camera a quarter of the way down from ahead, as the right slider does').toHaveAccessibleName(/P: -22\.5/, { timeout: 20_000 });
   await setRadioChannels(page, { 4: 1024 });
   await expect(gimbal, 'and yaw over turns it right').toHaveAccessibleName(/Az: [1-9]\d\.\d/, { timeout: 20_000 });

@@ -9,14 +9,14 @@ import { coerceIn, format, roundToInt } from '@/kotlin/Std';
 import { AlertDialog, ListItem, Surface, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { useSilentSeconds } from '@/map/Silence';
-import { Drawable, MaterialIcon } from '@/res/Icon';
+import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { useAdvancedUiShown } from '@/ui/AdvancedUi';
 import { AircastLinkCell } from '@/ui/AircastLinkIndicator';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { EscIndicatorCell } from '@/ui/EscIndicator';
-import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
+import { LocalFlyScreenState, OpenOnRequest, STATUS_ALL_SHEET } from '@/ui/FlyScreenState';
 import { useFlyIsPortrait } from '@/ui/FlyShell';
 import { FLY_STATE, type FlyState, type TelemetryLink, flyState, useHasVehicle } from '@/ui/FlyState';
 import { GcsBatteryCell, type GcsBatteryReading, useRememberGcsBattery } from '@/ui/GcsBatteryIndicator';
@@ -463,7 +463,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
 
   return (
     <>
-      <OpenOnRequest name="status-all" open={() => setAllStatus(true)} />
+      <OpenOnRequest name={STATUS_ALL_SHEET} open={() => setAllStatus(true)} />
       <div
         className={`flex items-center overflow-x-auto ${className ?? ''}`}
         style={{ ...style, opacity: live ? 1 : 0.45, ...badgeRoom(editing, true) }}
@@ -483,13 +483,6 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
             </div>
           </LeadingGap>
         ))}
-        {compact && !narrow ? (
-          <LeadingGap gap={STRIP_GAP}>
-            <button type="button" aria-label="All status" onClick={() => setAllStatus(true)} className="flex">
-              <MaterialIcon name="keyboard_arrow_right" filled className="rtl:-scale-x-100" />
-            </button>
-          </LeadingGap>
-        ) : null}
       </div>
       {allStatus ? (
         <AircastSheet onDismissRequest={() => setAllStatus(false)}>

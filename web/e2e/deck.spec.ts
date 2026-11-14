@@ -1,37 +1,40 @@
 import type { Locator, Page } from '@playwright/test';
 import { connectMock, dropFromStrip, expect, flightMode, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
-test('more actions lists every deck command', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
-  const sheet = vehicle.getByRole('dialog').filter({ hasText: 'More actions' });
-  await expect(sheet).toBeVisible();
-  await expect(sheet.getByText('Choose readings')).toBeVisible();
-  await expect(sheet.getByText('Edit layout')).toBeVisible();
-  await expect(sheet.getByText('Payload')).toBeVisible();
+test('one menu holds where to go, what the aircraft can do and how the screen is laid out', async ({ vehicle }) => {
+  await expect(vehicle.getByRole('button', { name: 'Settings', exact: true }), 'settings live in the menu, not beside it').toHaveCount(0);
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
+  const sheet = vehicle.getByRole('dialog');
+  const section = (name: string) => sheet.getByRole('region', { name });
+  await expect(section('Go to').getByRole('button', { name: 'Plan', exact: true })).toBeVisible();
+  await expect(section('Go to').getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(section('Aircraft').getByRole('button', { name: 'All status', exact: true })).toBeVisible();
+  await expect(section('Aircraft').getByRole('button', { name: 'Payload', exact: true })).toBeVisible();
+  await expect(section('Screen').getByRole('button', { name: 'Choose readings', exact: true })).toBeVisible();
+  await expect(section('Screen').getByRole('button', { name: 'Edit layout', exact: true })).toBeVisible();
 });
 
 test('edit layout from more actions starts and ends layout editing', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
   await expect(vehicle.getByRole('button', { name: 'Layout options' })).toBeVisible();
   await vehicle.getByRole('button', { name: 'Done' }).click();
   await expect(vehicle.getByRole('button', { name: 'Layout options' })).toBeHidden();
 });
 
-test('the layout edit controls take the menu and settings places, leave the map and video alone, and the size grows the on-screen readouts', async ({ vehicle }) => {
+test('the layout edit controls replace the menu, leave the map and video alone, and the size grows the on-screen readouts', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const map = vehicle.getByRole('region', { name: 'Map' });
   const mapPip = (await map.boundingBox())!;
   const readout = telemetry(vehicle, 'H').filter({ visible: true }).first().locator('span').last();
   const height = () => readout.evaluate((it) => it.getBoundingClientRect().height);
   const before = await height();
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
   const options = vehicle.getByRole('button', { name: 'Layout options' });
   await expect(options).toBeVisible();
   await expect(vehicle.getByRole('button', { name: 'Done' })).toBeVisible();
-  await expect(vehicle.getByRole('button', { name: 'Menu' })).toBeHidden();
-  await expect(vehicle.getByRole('button', { name: 'Settings' })).toBeHidden();
+  await expect(vehicle.getByRole('button', { name: 'Menu', exact: true })).toBeHidden();
   expect(await map.boundingBox(), 'nothing moves to make room for the edit controls').toEqual(mapPip);
 
   await vehicle.mouse.click(mapPip.x + mapPip.width / 2, mapPip.y + mapPip.height / 2);
@@ -44,12 +47,12 @@ test('the layout edit controls take the menu and settings places, leave the map 
   await expect.poll(height).toBeCloseTo(before * 1.25, 0);
   await vehicle.keyboard.press('Escape');
   await vehicle.getByRole('button', { name: 'Done' }).click();
-  await expect(vehicle.getByRole('button', { name: 'Settings' })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: 'Menu', exact: true })).toBeVisible();
   expect(await map.boundingBox(), 'the map stayed in its corner').toEqual(mapPip);
 });
 
 test('reset layout in the layout options asks for a second tap before it resets', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
   await vehicle.getByRole('button', { name: 'Layout options' }).click();
   await vehicle.getByRole('menuitem', { name: 'Reset layout' }).click();
@@ -59,9 +62,9 @@ test('reset layout in the layout options asks for a second tap before it resets'
 });
 
 test('choose readings opens the readings chooser', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Choose readings').click();
-  await expect(vehicle.getByRole('dialog').filter({ hasNotText: 'More actions' })).toBeVisible();
+  await expect(vehicle.getByRole('dialog').filter({ hasNotText: 'Go to' })).toBeVisible();
 });
 
 test('map layers switches the base map', async ({ vehicle: app }) => {
@@ -75,7 +78,7 @@ test('map layers switches the base map', async ({ vehicle: app }) => {
 });
 
 test('the payload sheet offers drop and grab and reports what the aircraft answered', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   await expect(vehicle.getByText('No payload command sent yet')).toBeVisible();
   await vehicle.getByRole('dialog').getByRole('button', { name: 'Grab', exact: true }).click();
@@ -96,7 +99,7 @@ test('in flight the payload strip is the only drop: the deck offers none, and th
 
 type Target = { name: string; left: number; top: number; right: number; bottom: number; clipped: boolean };
 
-const FLIGHT_ACTIONS = [/pause/i, /return/i, /land/i, /^More$/];
+const FLIGHT_ACTIONS = [/pause/i, /return/i, /land/i, /^Stop motors$/];
 
 const flyWithFourBays = async (app: Page): Promise<Locator> => {
   await app.evaluate(async (module) => {

@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, openMenu, test } from './fixtures';
 
 const PAGES: readonly (readonly [string, string, string?])[] = [
   ['Transmission', 'Video sources'],
@@ -17,7 +17,7 @@ const PAGES: readonly (readonly [string, string, string?])[] = [
 
 PAGES.map(([tab, page, title = page]) =>
   test(`${tab} › ${page} opens and goes back`, async ({ vehicle }) => {
-    await vehicle.getByRole('button', { name: 'Settings', exact: true }).click();
+    await openMenu(vehicle, 'Settings');
     await vehicle.getByRole('tablist').getByRole('tab', { name: tab }).click();
     const row = vehicle.getByRole('button', { name: new RegExp(`^${page.replace(/[/]/g, '\\/')}`) });
     await expect(async () => {
@@ -31,7 +31,7 @@ PAGES.map(([tab, page, title = page]) =>
 );
 
 test('a setup row clicked before the tab pager settles opens its page and stays there', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(vehicle, 'Settings');
   await expect(vehicle.getByRole('button', { name: /^Aircraft setup/ })).toBeVisible();
   await vehicle.clock.install();
   await vehicle.clock.pauseAt(await vehicle.evaluate(() => Date.now() + 1_000));

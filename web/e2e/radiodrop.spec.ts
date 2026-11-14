@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, openApp, test } from './fixtures';
+import { connectMock, expect, openApp, openMenu, test } from './fixtures';
 import { plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
@@ -17,7 +17,7 @@ const flyWithRadio = async (page: Page) => {
   await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Use', exact: true }).click();
   await connectMock(page, [], 'APM ArduCopter Vehicle');
-  await page.getByRole('button', { name: 'All status' }).click();
+  await openMenu(page, 'All status');
   await expect(page.getByText('Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
   await flip(page, { 12: 1024 });
@@ -25,7 +25,7 @@ const flyWithRadio = async (page: Page) => {
 
 
 const openPayload = async (page: Page) => {
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('dialog').getByText('Payload').click();
   return page.getByRole('dialog');
 };
@@ -52,7 +52,7 @@ test('the six-position switch picks which bay the drop switch drops', async ({ p
   await flyWithRadio(page);
   await expect(page.getByText("The drone reads flight modes on CH5, so the radio's bay switch is off.", { exact: false }), 'a stock copter reads flight modes on the bay channel, and the app says so').toBeVisible({ timeout: 30_000 });
   await readFlightModesOn(page, 10);
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByPlaceholder('Search settings').fill('bay');
   const bays = page.getByRole('textbox', { name: /^How many payload bays/ });
   await bays.fill('4');

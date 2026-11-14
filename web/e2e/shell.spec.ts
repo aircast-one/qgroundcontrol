@@ -65,9 +65,10 @@ test('on a desktop Fly stays full screen with no rail, and the map inset starts 
   const inset = async () => (await vehicle.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0;
   await expect.poll(inset).toBe(48);
   const left = async (name: string) => (await vehicle.getByRole('button', { name, exact: true }).boundingBox())?.x ?? -1;
-  expect(await left('Map'), 'the map button lines up with the action rail').toBe(await left('More'));
+  const rail = await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button').first().boundingBox();
+  expect(await left('Map'), 'the map button lines up with the action rail').toBe(rail?.x ?? -2);
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
   await vehicle.getByRole('button', { name: 'Show', exact: true }).click();
   await vehicle.getByRole('button', { name: 'Done' }).click();

@@ -4,9 +4,9 @@ import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { HorizontalDivider, IconButton, ScrollableTabRow, SnackbarHost, Tab, Text, TextButton, useSnackbarHostState } from '@/m3';
 import { type DrawableName } from '@/res/drawables';
 import { Drawable } from '@/res/Icon';
-import { AircastSpace, aircast, md, withAlpha } from '@/theme/Colors';
+import { AircastSpace, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
-import { osdShadow } from '@/ui/Osd';
+
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SETTINGS_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 import { SetupScreen } from '@/ui/SetupScreen';
@@ -439,13 +439,3 @@ const SideTabs = ({ groups, selected, onPick }: { groups: readonly SettingsGroup
 const SETTINGS_SHEET_LAYER = 10;
 const SETTINGS_PANEL_ALPHA = 0.9;
 
-export const FlySettingsButton = () => {
-  const navigation = useContext(LocalAppNavigation);
-  return (
-    <IconButton onClick={() => (navigation.settingsOpen.value = true)} label="Settings">
-      <Text typography="titleLarge" color={aircast('outdoorForeground')} className={osdShadow()}>
-        ⋯
-      </Text>
-    </IconButton>
-  );
-};

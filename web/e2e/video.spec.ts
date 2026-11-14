@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flyNow, telemetry, test } from './fixtures';
+import { connectMock, expect, flyNow, openMenu, telemetry, test } from './fixtures';
 
 const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
 
@@ -8,7 +8,7 @@ const coreView = (page: Page, path: string) =>
   page.evaluate(async ([module, watched]) => ((await import(module)) as { Qgc: { path: (path: string) => unknown } }).Qgc.path(watched), ['/src/bridge/Qgc.ts', path] as const);
 
 const addVideoSource = async (page: Page, type: RegExp, address: string) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   const row = page.getByRole('button', { name: /^Video sources/ });
   await expect(async () => {
