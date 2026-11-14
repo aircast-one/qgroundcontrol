@@ -7,7 +7,7 @@ test('the status sheet arms the aircraft without starting layout editing', async
   await expect(sheet.getByText('Ground control comm loss failsafe'), 'the sheet has its failsafe settings, so it stops growing around the slider').toBeVisible();
   await slideAcross(vehicle, sheet.getByRole('button', { name: 'Slide to arm' }));
   await expect(vehicle.getByText('Arm the vehicle.')).toBeVisible();
-  await expect(vehicle.getByRole('button', { name: 'Reset layout' })).toBeHidden();
+  await expect(vehicle.getByRole('button', { name: 'Layout options' })).toBeHidden();
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to arm' }));
   await expect(vehicle.getByRole('button', { name: /Change flight mode$/ }).first()).toContainText('Armed');
 });
@@ -67,7 +67,7 @@ const editLayout = async (page: Page) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('dialog').getByText('Edit layout').click();
-  await expect(page.getByRole('button', { name: 'Reset layout' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Layout options' })).toBeVisible();
 };
 
 const fitsAndKeepsTheFlightMode = async (page: Page) => {

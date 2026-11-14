@@ -1,17 +1,17 @@
 import { type CSSProperties, type Dispatch, type HTMLAttributes, type PointerEvent, type ReactNode, type RefObject, type SetStateAction, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
-import { Button, Surface, TextButton } from '@/m3';
+import { Button, DropdownMenu, DropdownMenuItem, Surface } from '@/m3';
 import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type SharedPreferences, getSharedPreferences, TAP } from '@/kotlin/Platform';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
-import { MaterialIcon } from '@/res/Icon';
-import { md } from '@/theme/Colors';
-import { LocalAvoidedByVideoMessage, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
+import { Drawable, MaterialIcon } from '@/res/Icon';
+import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
+import { FLY_SCRIM_ALPHA, LocalAvoidedByVideoMessage, STATUS_ROW_HEIGHT, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
-import { LocalFlyOsd, osdShadow } from '@/ui/Osd';
+import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
 const LAYOUT_STORE = 'fly-overlay-layout';
 const HIDDEN_PREFIX = 'OverlayRigHidden-';
@@ -463,13 +463,12 @@ export const LayoutWidget = ({
   );
 };
 
-const EditBar = ({ className }: { className?: string }) => {
+export const LayoutOptionsMenu = () => {
   const layout = useContext(LocalFlyScreenState).layout;
   const valueSize = useValue(layout.valueSize);
-  useBackHandler(true, () => {
-    layout.editing.value = false;
-  });
   const vehicleClass = instrumentVehicleClass(useQgcPath(INSTRUMENTS_VIEW));
+  const backdrop = useOsdBackdrop(withAlpha(Color.Black, FLY_SCRIM_ALPHA));
+  const [open, setOpen] = useState(false);
   const [armed, setArmed] = useState(false);
   useLaunchedEffect([armed], async (scope) => {
     if (!armed) return;
@@ -477,41 +476,56 @@ const EditBar = ({ className }: { className?: string }) => {
     if (scope.isActive()) setArmed(false);
   });
   return (
-    <Surface className={`w-full ${className ?? ''}`} shape="large" color={md('surfaceContainerHigh')} shadow>
-      <div role="toolbar" aria-label="Edit layout" className="flex items-center px-2 py-1">
-        <TextButton
+    <div className="relative">
+      <Surface
+        onClick={() => setOpen(true)}
+        shape="full"
+        color={backdrop}
+        contentColor={aircast('outdoorForeground')}
+        label="Layout options"
+        className="grid place-items-center"
+        style={{ width: STATUS_ROW_HEIGHT + AircastSpace.s2, height: STATUS_ROW_HEIGHT + AircastSpace.s2 }}
+      >
+        <Drawable name="ic_tune" size={22} />
+      </Surface>
+      <DropdownMenu expanded={open} onDismissRequest={() => setOpen(false)}>
+        <DropdownMenuItem
+          text={valueSizePillText(valueSize)}
+          closeOnClick={false}
           onClick={() => {
             const next = nextValueSize(valueSize);
             layout.valueSize.value = next;
             writeValueSize(vehicleClass, next);
           }}
-        >
-          {valueSizePillText(valueSize)}
-        </TextButton>
-        <TextButton
-          contentColor={armed ? md('error') : undefined}
+        />
+        <DropdownMenuItem
+          text={resetPillText(armed)}
+          color={armed ? md('error') : undefined}
+          closeOnClick={false}
           onClick={() => {
             const tap = resetTap(armed);
             if (tap.reset) layout.reset();
             setArmed(tap.armed);
+            if (tap.reset) setOpen(false);
           }}
-        >
-          {resetPillText(armed)}
-        </TextButton>
-        <span className="flex-1" />
-        <Button
-          onClick={() => {
-            layout.editing.value = false;
-          }}
-        >
-          Done
-        </Button>
-      </div>
-    </Surface>
+        />
+      </DropdownMenu>
+    </div>
   );
 };
 
-export const OverlayEditBar = ({ className }: { className?: string }) => {
-  const editing = useValue(useContext(LocalFlyScreenState).layout.editing);
-  return editing ? <EditBar className={className} /> : null;
+export const LayoutDoneButton = () => {
+  const layout = useContext(LocalFlyScreenState).layout;
+  useBackHandler(true, () => {
+    layout.editing.value = false;
+  });
+  return (
+    <Button
+      onClick={() => {
+        layout.editing.value = false;
+      }}
+    >
+      Done
+    </Button>
+  );
 };

@@ -45,7 +45,7 @@ import { FirstRunDialog } from '@/ui/FirstRunDialog';
 import type { FlyDeckLayout } from '@/ui/FlyDeck';
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
-import { EDIT_BAR_LAYER, FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useElementSize, useFlyIsPortrait } from '@/ui/FlyShell';
+import { FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
 import { FLY_STATE, VEHICLE_FLIGHT_DISTANCE, disarmNotice, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog, gimbalRefused } from '@/ui/GimbalIndicator';
@@ -61,7 +61,7 @@ import { ObstacleArc } from '@/ui/ObstacleArc';
 import { ObstacleReadout } from '@/ui/ObstacleReadout';
 import { OrbitReadout } from '@/ui/OrbitReadout';
 import { useAppDarkTheme } from '@/ui/Palette';
-import { BADGE_SIZE, LayoutGroup, LayoutWidget, OverlayEditBar, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
+import { LayoutDoneButton, LayoutGroup, LayoutOptionsMenu, LayoutWidget, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
 import { PlanTab } from '@/ui/PlanTab';
 import { RcControlsLayer } from '@/ui/RcControlsLayer';
 import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
@@ -257,7 +257,6 @@ export const AircastShell = () => {
   const portrait = useFlyIsPortrait();
   const landscape = !portrait;
   const layoutEditing = useValue(overlayLayout.editing);
-  const editBar = useElementSize();
   const layoutLocked = useValue(overlayLayout.locked);
   const guidedPanelOpen = useValue(flyScreen.guidedPanels) > 0;
   const requestedSheet = useValue(flyScreen.requestedSheet);
@@ -539,7 +538,9 @@ export const AircastShell = () => {
 
   const flyStatus = (
     <>
-      <LayoutWidget widgetKey="menu" movable={false} hideable={false}>
+      {layoutEditing ? (
+        <LayoutOptionsMenu />
+      ) : (
         <FlyTabMenu
           destinations={[
             ...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })),
@@ -547,7 +548,7 @@ export const AircastShell = () => {
             ...(browserFullScreenSupported() ? [{ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen' as const, current: false, onSelect: () => void toggleBrowserFullScreen().catch(() => undefined) }] : []),
           ]}
         />
-      </LayoutWidget>
+      )}
       <div className={`flex items-center justify-start ${layoutEditing ? 'grow shrink-0' : 'min-w-0 flex-1'}`}>
         <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false} className="min-w-0">
           <VehicleStateChip />
@@ -561,9 +562,7 @@ export const AircastShell = () => {
       <div className="min-w-0" {...statusPillHold}>
         <StatusPill />
       </div>
-      <LayoutWidget widgetKey="settings" movable={false} hideable={false}>
-        <FlySettingsButton />
-      </LayoutWidget>
+      {layoutEditing ? <LayoutDoneButton /> : <FlySettingsButton />}
     </>
   );
   const flyRail = (splitRoom: boolean) => (
@@ -627,15 +626,7 @@ export const AircastShell = () => {
           ) : null}
           <div className="flex min-w-0 flex-1 flex-col">
             {!onFly ? <AlertHost hostState={alerts} className="p-3 pt-[max(12px,env(safe-area-inset-top))]" /> : null}
-            <div
-              className={`relative min-h-0 flex-1 overflow-hidden motion-safe:transition-[padding] motion-safe:duration-200 motion-safe:ease-out ${contentInsets}`}
-              style={onFly ? { paddingTop: layoutEditing && !flyLandscape ? BADGE_SIZE / 2 : 0, paddingBottom: editBar.size.height } : undefined}
-            >
-              {onFly && !settingsOpen ? (
-                <div ref={editBar.ref} className="absolute bottom-0 left-1/2 w-full max-w-[560px] -translate-x-1/2" style={{ zIndex: EDIT_BAR_LAYER }}>
-                  <OverlayEditBar className="p-2 pb-[calc(8px+env(safe-area-inset-bottom))]" />
-                </div>
-              ) : null}
+            <div className={`relative min-h-0 flex-1 overflow-hidden ${contentInsets}`}>
               {onFly && flyLandscape ? (
                 <FlyScreen
                   view={shownFlyView}

@@ -68,8 +68,8 @@ import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
 
 const FLY_STORE = 'fly';
 const FLY_VIEW_KEY = 'view';
-const FLY_SCRIM_ALPHA = 0.55;
-const STATUS_ROW_HEIGHT = 32;
+export const FLY_SCRIM_ALPHA = 0.55;
+export const STATUS_ROW_HEIGHT = 32;
 const PAYLOAD_STRIP_CLEARANCE = 64;
 const ACTION_RAIL_CLEARANCE = 72;
 const STOP_CLEARANCE = 56;
@@ -105,8 +105,6 @@ export const PASS_THROUGH =
   'pointer-events-none [&_button]:pointer-events-auto [&_a]:pointer-events-auto [&_input]:pointer-events-auto [&_textarea]:pointer-events-auto [&_[role=button]]:pointer-events-auto [&_[role=slider]]:pointer-events-auto [&_[role=switch]]:pointer-events-auto [&_[role=tab]]:pointer-events-auto [&_[data-gesture]]:pointer-events-auto';
 
 const layer = (z: number): number => Math.round(z * 2);
-
-export const EDIT_BAR_LAYER = layer(STICK_LAYER + 0.5);
 
 const stopPropagation = (event: SyntheticEvent) => event.stopPropagation();
 

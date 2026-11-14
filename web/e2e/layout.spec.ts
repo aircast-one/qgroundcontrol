@@ -10,7 +10,7 @@ const centre = async (target: Locator): Promise<readonly [number, number]> => {
   return [box.x + box.width / 2, box.y + box.height / 2];
 };
 
-const editBar = (page: Page): Locator => page.getByRole('button', { name: 'Reset layout' });
+const editBar = (page: Page): Locator => page.getByRole('button', { name: 'Layout options' });
 
 const holdUntilEditing = async (page: Page, target: Locator) => {
   const [x, y] = await centre(target);
@@ -99,30 +99,25 @@ test('only widgets without layout widgets inside them jiggle, so the status pill
   expect((await jiggling()).nested, 'a jiggling widget inside another jiggling widget').toBe(0);
 });
 
-const editAudit = (page: Page) =>
-  page.evaluate(() => {
+const EDIT_CONTROLS = ['Layout options', 'Done'];
+
+const stillWhileEditing = (page: Page) =>
+  page.evaluate((controls) => {
     const jiggling = document
       .getAnimations()
       .filter((it): it is CSSAnimation => it instanceof CSSAnimation && it.animationName === 'aircast-overlay-jiggle')
       .map((it) => (it.effect instanceof KeyframeEffect ? it.effect.target : null))
       .filter((it): it is Element => it !== null);
     const name = (it: Element) => it.getAttribute('aria-label') ?? it.querySelector('[aria-label]')?.getAttribute('aria-label') ?? it.textContent?.trim() ?? it.tagName;
-    const bar = document.querySelector('[role=toolbar]')?.getBoundingClientRect() ?? null;
-    const still = [...document.querySelectorAll('button, [role=button], [role=group], [role=img], [role=region]')]
+    return [...document.querySelectorAll('button, [role=button], [role=group], [role=img], [role=region]')]
       .filter((it) => {
         const box = it.getBoundingClientRect();
-        return box.width > 1 && box.height > 1 && box.width < innerWidth - 1 && it.closest('[role=toolbar]') === null;
+        return box.width > 1 && box.height > 1 && box.width < innerWidth - 1;
       })
       .filter((it) => !jiggling.some((widget) => widget.contains(it)) && !jiggling.some((widget) => it.contains(widget)))
-      .map(name);
-    const underBar = jiggling
-      .filter((it) => {
-        const box = it.getBoundingClientRect();
-        return bar !== null && box.left < bar.right && box.right > bar.left && box.top < bar.bottom && box.bottom > bar.top;
-      })
-      .map(name);
-    return { still, underBar };
-  });
+      .map(name)
+      .filter((it) => !controls.includes(it));
+  }, EDIT_CONTROLS);
 
 (
   [
@@ -130,13 +125,17 @@ const editAudit = (page: Page) =>
     ['portrait', 412, 860],
   ] as const
 ).forEach(([orientation, width, height]) =>
-  test(`in ${orientation} layout edit everything on the fly screen jiggles, and the edit bar covers none of it`, async ({ app }) => {
+  test(`in ${orientation} layout edit everything on the fly screen jiggles where it stands`, async ({ app }) => {
     await app.emulateMedia({ reducedMotion: 'no-preference' });
     await app.setViewportSize({ width, height });
     await connectMock(app, ['Enable camera', 'Enable gimbal']);
-    await expect(app.getByRole('group', { name: 'Payload' })).toBeVisible();
+    const payload = app.getByRole('group', { name: 'Payload' });
+    await expect(payload).toBeVisible();
+    const [x, y] = await centre(payload);
     await editLayout(app);
-    await expect.poll(() => editAudit(app)).toEqual({ still: [], underBar: [] });
+    await expect.poll(() => stillWhileEditing(app)).toEqual([]);
+    const [editingX, editingY] = await centre(payload);
+    expect([Math.round(editingX), Math.round(editingY)], 'the payload strip stays where it was').toEqual([Math.round(x), Math.round(y)]);
   }),
 );
 

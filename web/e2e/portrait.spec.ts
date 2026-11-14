@@ -57,7 +57,7 @@ test('held upright, a drag up on the camera strip tilts the gimbal down without 
   await page.mouse.up();
 });
 
-const editBar = (page: Page) => page.getByRole('button', { name: 'Reset layout' });
+const editBar = (page: Page) => page.getByRole('button', { name: 'Layout options' });
 
 const battery = (page: Page) => page.getByRole('button', { name: /^Battery \d+%/ }).first();
 

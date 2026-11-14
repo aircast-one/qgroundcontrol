@@ -38,13 +38,15 @@ export type DropdownMenuItemProps = {
   enabled?: boolean;
   color?: string;
   checked?: boolean;
+  closeOnClick?: boolean;
 };
 
-export const DropdownMenuItem = ({ text, onClick, leadingIcon, trailingIcon, enabled = true, color, checked }: DropdownMenuItemProps) => (
+export const DropdownMenuItem = ({ text, onClick, leadingIcon, trailingIcon, enabled = true, color, checked, closeOnClick }: DropdownMenuItemProps) => (
   <Menu.Item
     {...(checked === undefined ? {} : { role: 'menuitemcheckbox', 'aria-checked': checked })}
     disabled={!enabled}
     onClick={onClick}
+    closeOnClick={closeOnClick}
     className="flex min-h-12 cursor-pointer items-center gap-3 px-3 text-label-large outline-none data-[disabled]:cursor-default data-[disabled]:opacity-40 data-[highlighted]:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
     style={{ color }}
   >

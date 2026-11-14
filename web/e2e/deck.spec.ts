@@ -13,43 +13,49 @@ test('more actions lists every deck command', async ({ vehicle }) => {
 test('edit layout from more actions starts and ends layout editing', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
-  await expect(vehicle.getByRole('button', { name: 'Reset layout' })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: 'Layout options' })).toBeVisible();
   await vehicle.getByRole('button', { name: 'Done' }).click();
-  await expect(vehicle.getByRole('button', { name: 'Reset layout' })).toBeHidden();
+  await expect(vehicle.getByRole('button', { name: 'Layout options' })).toBeHidden();
 });
 
-const paintedOnTopAcross = (control: Locator): Promise<readonly boolean[]> =>
-  control.evaluate((it) => {
-    const everything = Object.assign(document.createElement('style'), { textContent: '* { pointer-events: auto !important; }' });
-    document.head.append(everything);
-    const box = it.getBoundingClientRect();
-    const y = box.top + box.height / 2;
-    const onTop = [box.left + 4, box.left + box.width / 2, box.right - 4].map((x) => it.contains(document.elementFromPoint(x, y)));
-    everything.remove();
-    return onTop;
-  });
-
-test('the layout edit bar sits above every fly overlay, leaves the map and video alone, and its size grows the on-screen readouts', async ({ vehicle }) => {
+test('the layout edit controls take the menu and settings places, leave the map and video alone, and the size grows the on-screen readouts', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
-  const mapPip = (await vehicle.getByRole('region', { name: 'Map' }).boundingBox())!;
+  const map = vehicle.getByRole('region', { name: 'Map' });
+  const mapPip = (await map.boundingBox())!;
   const readout = telemetry(vehicle, 'H').filter({ visible: true }).first().locator('span').last();
   const height = () => readout.evaluate((it) => it.getBoundingClientRect().height);
   const before = await height();
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
-  const size = vehicle.getByRole('button', { name: /^Size: / });
-  const controls = [size, vehicle.getByRole('button', { name: 'Reset layout' }), vehicle.getByRole('button', { name: 'Done' })];
-  await Promise.all(controls.map((it) => expect(it).toBeVisible()));
-  expect(await Promise.all(controls.map(paintedOnTopAcross))).toEqual(controls.map(() => [true, true, true]));
+  const options = vehicle.getByRole('button', { name: 'Layout options' });
+  await expect(options).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: 'Done' })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: 'Menu' })).toBeHidden();
+  await expect(vehicle.getByRole('button', { name: 'Settings' })).toBeHidden();
+  expect(await map.boundingBox(), 'nothing moves to make room for the edit controls').toEqual(mapPip);
 
   await vehicle.mouse.click(mapPip.x + mapPip.width / 2, mapPip.y + mapPip.height / 2);
+  await options.click();
+  const size = vehicle.getByRole('menuitem', { name: /^Size: / });
   await expect(size).toHaveText('Size: Default');
   await size.click();
   await size.click();
   await expect(size).toHaveText('Size: Medium');
   await expect.poll(height).toBeCloseTo(before * 1.25, 0);
+  await vehicle.keyboard.press('Escape');
   await vehicle.getByRole('button', { name: 'Done' }).click();
-  expect(await vehicle.getByRole('region', { name: 'Map' }).boundingBox(), 'the map stayed in its corner').toEqual(mapPip);
+  await expect(vehicle.getByRole('button', { name: 'Settings' })).toBeVisible();
+  expect(await map.boundingBox(), 'the map stayed in its corner').toEqual(mapPip);
+});
+
+test('reset layout in the layout options asks for a second tap before it resets', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Edit layout').click();
+  await vehicle.getByRole('button', { name: 'Layout options' }).click();
+  await vehicle.getByRole('menuitem', { name: 'Reset layout' }).click();
+  await vehicle.getByRole('menuitem', { name: /again to reset$/ }).click();
+  await expect(vehicle.getByRole('menu')).toBeHidden();
+  await expect(vehicle.getByRole('button', { name: 'Layout options' }), 'still editing after the reset').toBeVisible();
 });
 
 test('choose readings opens the readings chooser', async ({ vehicle }) => {
