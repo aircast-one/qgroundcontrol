@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { armPayload, connectMock, dropFromStrip, expect, flightMode, itemCount, openAircraftSetup, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
+import { armPayload, connectMock, dropFromStrip, expect, flightMode, itemCount, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -103,7 +103,7 @@ test('a pilot flying by hand drops from the payload strip, and a drop that canno
 });
 
 const BAY_OUTPUTS = [9, 10, 11, 12] as const;
-const GRIP_RELEASE_PWM = '1100';
+const GRIP_RELEASE_PWM = 1100;
 
 const fourServoBays = async (page: Page) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -116,16 +116,17 @@ const fourServoBays = async (page: Page) => {
   await page.getByRole('button', { name: 'Close settings' }).click();
 };
 
-const servoPwm = (page: Page, output: number) => page.getByRole('progressbar', { name: `Servo ${output} position` }).locator('..');
+const bayPwms = (page: Page): Promise<readonly (number | null)[]> =>
+  page.evaluate(
+    async ([module, outputs]) => {
+      const { Qgc } = (await import(module)) as { Qgc: { get: (path: string) => Promise<{ servos?: { index: number; pwm: number | null }[] } | null> } };
+      const servos = (await Qgc.get('view.apmServos'))?.servos ?? [];
+      return outputs.map((output) => servos.find((it) => it.index === output)?.pwm ?? null);
+    },
+    ['/src/bridge/Qgc.ts', BAY_OUTPUTS] as const,
+  );
 
-const expectBaysReleased = async (page: Page) => {
-  await openAircraftSetup(page);
-  await page.getByRole('button', { name: /^Servo outputs/ }).click();
-  await BAY_OUTPUTS.reduce(async (previous, output) => {
-    await previous;
-    await expect(servoPwm(page, output)).toContainText(GRIP_RELEASE_PWM, { timeout: 15_000 });
-  }, Promise.resolve());
-};
+const expectBaysReleased = (page: Page) => expect.poll(() => bayPwms(page), { timeout: 30_000 }).toEqual(BAY_OUTPUTS.map(() => GRIP_RELEASE_PWM));
 
 test('four bays on their own servos drop one after another by hand, each from its own output', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
