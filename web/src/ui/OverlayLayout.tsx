@@ -93,7 +93,7 @@ export class OverlayLayoutState {
 
   reset(): void {
     Object.keys(storedLayout()).forEach((name) => this.prefs.remove(name));
-    this.hidden.value = new Set();
+    this.hidden.value = hiddenKeys({});
     this.indicatorOrder.value = [];
     this.offsets.value = new Map();
   }
@@ -165,12 +165,17 @@ export const droppedOrder = (keys: readonly string[], centres: ReadonlyMap<strin
   );
 };
 
+export const MINIMAP_KEY = 'minimap';
+
+const HIDDEN_BY_DEFAULT: readonly string[] = [MINIMAP_KEY];
+
 export const hiddenKeys = (stored: Readonly<Record<string, unknown>>): Set<string> =>
-  new Set(
-    Object.entries(stored)
+  new Set([
+    ...HIDDEN_BY_DEFAULT.filter((key) => stored[HIDDEN_PREFIX + key] !== false),
+    ...Object.entries(stored)
       .filter(([key, value]) => key.startsWith(HIDDEN_PREFIX) && value === true)
       .map(([key]) => key.slice(HIDDEN_PREFIX.length)),
-  );
+  ]);
 
 export const withHidden = (hidden: ReadonlySet<string>, key: string, hide: boolean): Set<string> =>
   hide ? new Set([...hidden, key]) : new Set([...hidden].filter((it) => it !== key));

@@ -32,6 +32,7 @@ import type { DrawableName } from '@/res/drawables';
 import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { FleetPanel } from '@/ui/ActiveVehicle';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
+import { HudLadders } from '@/ui/HudLadders';
 import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
@@ -41,7 +42,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { LayoutWidget, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
+import { LayoutWidget, MINIMAP_KEY, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -158,6 +159,35 @@ export const AnimatedVisibility = ({ visible, from = null, className, style, chi
 };
 
 const ZERO_SIZE = Size(0, 0);
+
+const MinimapWidget = ({ editing, children }: { editing: boolean; children: ReactNode }) =>
+  editing ? (
+    <LayoutWidget widgetKey={MINIMAP_KEY} movable={false}>
+      {children}
+    </LayoutWidget>
+  ) : (
+    children
+  );
+
+const HudReadings = ({ style, startInset }: { style: CSSProperties; startInset: number }) => (
+  <LocalFlyOsd.Provider value>
+    <TelemetryRow
+      valuesShown
+      chooser={false}
+      compact
+      column={(side, readings) => (
+        <div
+          className={`absolute ${side === 'start' ? 'start-0' : 'end-0'} flex flex-col justify-end-safe ${PASS_THROUGH}`}
+          style={{ ...style, ...(side === 'start' ? { paddingInlineStart: startInset } : { paddingInlineEnd: AircastSpace.s3 }) }}
+        >
+          <LayoutWidget widgetKey={side === 'start' ? 'readingsStart' : 'readingsEnd'} movable={false} hideable={false}>
+            {readings}
+          </LayoutWidget>
+        </div>
+      )}
+    />
+  </LocalFlyOsd.Provider>
+);
 
 export const useElementSize = (): { ref: RefCallback<HTMLElement>; size: Size; node: RefObject<HTMLElement | null> } => {
   const [size, setSize] = useState<Size>(ZERO_SIZE);
@@ -294,9 +324,9 @@ const DESKTOP_PIP = Size(320, 180);
 
 export const thumbSize = (desktop: boolean): Size => (desktop ? DESKTOP_PIP : Size(MINIMAP_THUMB, MINIMAP_THUMB));
 
-const thumbPlace = (size: Size): CSSProperties => ({
+const thumbPlace = (size: Size, lead: number): CSSProperties => ({
   position: 'absolute',
-  left: `calc(env(safe-area-inset-left, 0px) + ${BOTTOM_LEAD + AircastSpace.s3}px)`,
+  left: `calc(env(safe-area-inset-left, 0px) + ${lead + AircastSpace.s3}px)`,
   bottom: AircastSpace.s3,
   width: size.width,
   height: size.height,
@@ -400,11 +430,14 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const videoIsPip = view === FlyView.Map;
   const videoShown = view !== FlyView.ThreeD && (view !== FlyView.Map || hasPicture);
   const thumbShown = mapIsPip || (videoIsPip && hasPicture);
-  const thumb = thumbSize(useDesktopLayout());
-  const thumbStyle = thumbPlace(thumb);
+  const hiddenWidgets = useValue(layout.hidden);
+  const minimapCollapsed = mapIsPip && hiddenWidgets.has(MINIMAP_KEY);
+  const pipThumb = thumbSize(useDesktopLayout());
+  const thumb = minimapCollapsed ? Size(MAP_LAYERS_SIZE, MAP_LAYERS_SIZE) : pipThumb;
+  const thumbStyle = thumbPlace(thumb, minimapCollapsed ? 0 : BOTTOM_LEAD);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
-  const pipJiggle = useJiggleAngle('pip', editing && thumbShown && !fullScreen, thumb);
+  const pipJiggle = useJiggleAngle(mapIsPip ? MINIMAP_KEY : 'pip', editing && thumbShown && !fullScreen, thumb);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
   const frame = useRememberVideoFrame(videoTarget, false);
   const cameras = useRememberCameraStepper();
@@ -439,7 +472,11 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       {view !== FlyView.ThreeD
         ? map(
             mapIsPip
-              ? { className: 'absolute overflow-hidden rounded-shape-md', style: { ...thumbStyle, zIndex: layer(1), border: `2px solid ${md('onSurface')}`, ...pipJiggle }, 'aria-hidden': fullScreen || undefined }
+              ? {
+                  className: `absolute overflow-hidden ${minimapCollapsed ? 'rounded-full' : 'rounded-shape-md'}`,
+                  style: { ...thumbStyle, zIndex: layer(1), ...(minimapCollapsed ? {} : { border: `2px solid ${md('onSurface')}` }), ...pipJiggle },
+                  'aria-hidden': fullScreen || undefined,
+                }
               : { className: 'absolute inset-0', 'aria-hidden': fullScreen || undefined },
           )
         : null}
@@ -456,18 +493,40 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       {fullScreen ? null : (
         <>
           <div className="pointer-events-none absolute inset-x-0 top-0" style={{ height: TOP_SCRIM_HEIGHT, background: `linear-gradient(to bottom, ${withAlpha(Color.Black, TOP_SCRIM_ALPHA)}, transparent)` }} />
-          {mapIsPip ? (
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label="Map"
-              aria-description="Show the map"
-              inert={editing}
-              onClick={showMap}
-              onKeyDown={activate(showMap)}
-              className="absolute cursor-pointer overflow-hidden rounded-shape-md"
-              style={{ ...thumbStyle, zIndex: layer(2), ...pipJiggle }}
-            />
+          {minimapCollapsed ? (
+            <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2) }}>
+              <MinimapWidget editing={editing}>
+                <div inert={editing}>
+                  <Surface
+                    onClick={showMap}
+                    shape="full"
+                    color={md('surfaceContainerHigh')}
+                    contentColor={md('onSurface')}
+                    label="Map"
+                    className="grid place-items-center"
+                    style={{ width: thumb.width, height: thumb.height }}
+                  >
+                    <Drawable name="ic_map" />
+                  </Surface>
+                </div>
+              </MinimapWidget>
+            </div>
+          ) : mapIsPip ? (
+            <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2) }}>
+              <LayoutWidget widgetKey={MINIMAP_KEY} movable={false}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Map"
+                  aria-description="Show the map"
+                  inert={editing}
+                  onClick={showMap}
+                  onKeyDown={activate(showMap)}
+                  className="cursor-pointer overflow-hidden rounded-shape-md"
+                  style={{ width: thumb.width, height: thumb.height }}
+                />
+              </LayoutWidget>
+            </div>
           ) : null}
           {videoIsPip && hasPicture ? (
             <div
@@ -577,7 +636,19 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     style={{ zIndex: layer(1), marginInlineEnd: AircastSpace.s3, marginBottom: switchBottom + corner.size.height + AircastSpace.s2 }}
                   />
                 ) : null}
-                {hasVehicle && !deciding ? (
+                {hasVehicle && !deciding && view === FlyView.Video ? (
+                  <>
+                    <HudLadders shellHeight={box.size.height} />
+                    <HudReadings
+                      startInset={ACTION_RAIL_CLEARANCE + AircastSpace.s3}
+                      style={{
+                        zIndex: layer(2),
+                        top: `calc(env(safe-area-inset-top, 0px) + ${STATUS_ROW_HEIGHT + AircastSpace.s6}px)`,
+                        bottom: `calc(50% + ${RAIL_SHUTTER_ROOM / 2 + AircastSpace.s4}px)`,
+                      }}
+                    />
+                  </>
+                ) : hasVehicle && !deciding ? (
                   <div
                     ref={osd.ref}
                     className={`absolute inset-x-0 bottom-0 flex items-end gap-6 ${osdShadow()} ${PASS_THROUGH}`}
@@ -598,7 +669,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               <div className="relative size-full">
                 {actions(FlyDeckLayout.Rail)}
                 {hasVehicle && !deciding ? (
-                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
+                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, (view === FlyView.Video ? 0 : osd.size.height) + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
                     <LayoutWidget widgetKey="payload" movable={false} hideable={false}>
                       <PayloadRailStrip />
                     </LayoutWidget>
@@ -609,6 +680,28 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           </LocalFlyOsd.Provider>
         </>
       )}
+      {fullScreen && hasVehicle && view === FlyView.Video ? (
+        <LocalFlyOsd.Provider value>
+          <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(FULL_SCREEN_LAYER + 0.5), ...CUTOUT_PADDING }}>
+            <div className="absolute inset-x-0 top-0" style={{ height: TOP_SCRIM_HEIGHT, background: `linear-gradient(to bottom, ${withAlpha(Color.Black, TOP_SCRIM_ALPHA)}, transparent)` }} />
+            <div className="relative size-full">
+              <div className="flex flex-col gap-2 px-3" style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${AircastSpace.s2}px)` }}>
+                <LocalCompactStatus.Provider value>
+                  <div data-status-row className="flex w-full items-center gap-2" style={{ minHeight: STATUS_ROW_HEIGHT }}>
+                    {status}
+                  </div>
+                </LocalCompactStatus.Provider>
+                <HeadingTape className="self-center" />
+              </div>
+              <HudLadders shellHeight={box.size.height} />
+              <HudReadings startInset={AircastSpace.s3} style={{ top: '50%', translate: '0 -50%' }} />
+              <div className="absolute inset-x-0 flex justify-center" style={{ bottom: AircastSpace.s3 }}>
+                <PayloadRailStrip />
+              </div>
+            </div>
+          </div>
+        </LocalFlyOsd.Provider>
+      ) : null}
       {stickPad !== null ? (
         <LocalFlyOsd.Provider value={view === FlyView.Video}>
           <LocalAvoidedByVideoMessage.Provider value>
