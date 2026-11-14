@@ -26,7 +26,7 @@ test('auto intercept on a marked point asks with the core words, then the pill f
   await expect.poll(() => offeredConfirm(vehicle)).toMatch(/^Chase the marked point/);
   const asked = vehicle.getByText(/^Chase the marked point/);
   await expect(async () => {
-    await vehicle.getByRole('button', { name: 'More' }).click();
+    await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
     await vehicle.getByRole('button', { name: 'Auto Intercept' }).click();
     await expect(asked)
       .toBeVisible({ timeout: 1_000 })

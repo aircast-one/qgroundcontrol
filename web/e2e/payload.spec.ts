@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { armPayload, connectMock, dropFromStrip, expect, flightMode, itemCount, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
+import { armPayload, connectMock, dropFromStrip, expect, flightMode, itemCount, openMenu, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -21,7 +21,7 @@ test('a mission whose second drop would not fall says why and turns on auto-clos
   await vehicle.keyboard.press('Escape');
   await expect(vehicle.getByRole('button', { name: 'Slide to start mission' })).toBeHidden();
 
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   const panel = vehicle.getByRole('dialog').filter({ hasText: STAYS_OPEN });
   await expect(panel.getByRole('button', { name: 'Turn on auto-close' })).toBeVisible();
@@ -49,7 +49,7 @@ test('a drop after the last waypoint falls and ends the mission', async ({ app: 
   await expect(progress).toBeVisible({ timeout: 30_000 });
   await expect(progress).toBeHidden({ timeout: 240_000 });
   await armPayload(vehicle);
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   await slideAcross(vehicle, vehicle.getByRole('dialog').getByRole('button', { name: 'Slide to drop' }));
   await expect(vehicle.getByText('The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.')).toBeVisible();
@@ -58,7 +58,7 @@ test('a drop after the last waypoint falls and ends the mission', async ({ app: 
 test('a second drop while the gripper is still open is refused rather than counted', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await armPayload(vehicle);
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   const sheet = vehicle.getByRole('dialog');
   await slideAcross(vehicle, sheet.getByRole('button', { name: 'Slide to drop' }));
@@ -106,7 +106,7 @@ const BAY_OUTPUTS = [9, 10, 11, 12] as const;
 const GRIP_RELEASE_PWM = 1100;
 
 const fourServoBays = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByPlaceholder('Search settings').fill('bay');
   const bays = page.getByRole('textbox', { name: /^How many payload bays/ });
   await bays.fill('4');
@@ -137,7 +137,7 @@ test('four bays on their own servos drop one after another by hand, each from it
   await vehicle.getByRole('menu').getByRole('menuitem', { name: 'Loiter' }).click();
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Loiter/);
   await armPayload(vehicle);
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   const sheet = vehicle.getByRole('dialog');
   await expect(sheet.getByText('Bay 2 · output 10', { exact: true })).toBeVisible();
@@ -184,7 +184,7 @@ test('a planned four-drop mission on servo bays uploads, flies and drops each ba
   await vehicle.getByRole('button', { name: 'Fly', exact: true }).last().click();
   await showMapFull(vehicle);
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to start mission' }));
-  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   const sheet = vehicle.getByRole('dialog');
   await [1, 2, 3, 4].reduce(async (previous, bay) => {

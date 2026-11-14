@@ -19,8 +19,8 @@ import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnlessRefused } from './ConfirmTrack';
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
-import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, MoreActionsSheet, MoreTile, NO_SIGNAL_CODE, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel } from './FlyDeck';
-import { LocalFlyScreenState, OpenOnRequest } from './FlyScreenState';
+import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, LocalFlyDestinations, MoreTile, NO_SIGNAL_CODE, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel } from './FlyDeck';
+import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET } from './FlyScreenState';
 import { AnimatedVisibility, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
@@ -429,6 +429,7 @@ export const scaledNumber = (scale: number): CSSProperties => ({
 
 export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center = null }: { className?: string; layout?: FlyDeckLayout; center?: ReactNode }) => {
   const flyScreen = useContext(LocalFlyScreenState);
+  const destinations = useContext(LocalFlyDestinations);
   const deckTelemetry = useContext(LocalDeckTelemetry);
   const stateJson = useQgcPath(FLY_STATE);
   const state = useMemo(() => flyState(stateJson), [stateJson]);
@@ -582,18 +583,43 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     if (available && gripper.length === 0) setShowGripper(false);
   }, [gripper.length === 0, available]);
 
+  const screen: readonly MoreTile[] = [
+    MoreTile({
+      label: 'Choose readings',
+      icon: 'ic_tune',
+      enabled: true,
+      onClick: () => {
+        flyScreen.choosingReadings.value = true;
+      },
+    }),
+    ...(!armed ? [MoreTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
+  ];
+  const closeMenu = () => setShowMore(false);
+
   if (!available) {
     return (
       <>
         <PreflightChecklistReset checklist={checklist} available={available} />
+        <OpenOnRequest name={MENU_SHEET} open={() => setShowMore(true)} />
         {!rail ? <OfflineDeck className={className} /> : null}
+        {showMore ? (
+          <FlyMenuSheet
+            sections={[
+              { title: 'Go to', tiles: destinations },
+              { title: 'Screen', tiles: screen },
+            ]}
+            onDismiss={closeMenu}
+            footer={null}
+          />
+        ) : null}
       </>
     );
   }
 
   const deciding = pending !== null || guidedValue !== null || editingLoiter !== null;
   const confirming = pending;
-  const more = DeckEntry({ id: 'more', label: 'More', icon: 'ic_more_vert', enabled: true, onClick: () => setShowMore(true) });
+  const stop = armedStopOffer(offers, armed);
+  const stopEntry = stop === null ? null : DeckEntry({ id: 'stopMotors', label: STOP_MOTORS, short: 'Stop', icon: 'ic_warning', enabled: true, warning: true, onClick: () => setPending(emergencyStopAction(stop)) });
   const centreBox = (
     <div ref={centre.ref} className="shrink-0 self-center empty:hidden">
       {center}
@@ -642,7 +668,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
                   const entry = entries.find((it) => it.id === id);
                   return entry === undefined ? [] : [<RailDeckButton key={id} entry={entry} primary={primary} labelled={armed && railFit.labelled} />];
                 })}
-                <RailDeckButton entry={more} primary={false} />
+                {stopEntry !== null ? <RailDeckButton entry={stopEntry} primary={false} /> : null}
               </div>
             </LayoutWidget>
           </div>
@@ -695,7 +721,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
             <LayoutWidget widgetKey="flightActions" movable={false} hideable={false}>
               <div className="flex flex-col gap-3">
                 {bottomFit.centreInline ? null : centreBox}
-                <DeckRow deck={deck} entries={entries} more={more} center={bottomFit.centreInline ? centreBox : null} />
+                <DeckRow deck={deck} entries={entries} extra={stopEntry} center={bottomFit.centreInline ? centreBox : null} />
               </div>
             </LayoutWidget>
           </div>
@@ -706,23 +732,20 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   );
 
   const checklistPast = checklistOffered(armed);
-  const stop = armedStopOffer(offers, armed);
-  const tiles: readonly MoreTile[] = showMore
+  const aircraft: readonly MoreTile[] = showMore
     ? [
-        ...(stop !== null ? [MoreTile({ label: STOP_MOTORS, icon: 'ic_warning', enabled: true, warning: true, onClick: () => setPending(emergencyStopAction(stop)) })] : []),
+        MoreTile({
+          label: 'All status',
+          icon: 'ic_sensors',
+          enabled: true,
+          onClick: () => {
+            flyScreen.requestedSheet.value = STATUS_ALL_SHEET;
+          },
+        }),
         ...deckRest.filter((it) => it.id !== CHECKLIST && it.id !== RELEASE).map((it) => MoreTile({ label: it.label, icon: it.icon, enabled: it.enabled, warning: it.warning, onClick: it.onClick })),
         ...(preflightOffered(preflightJson) ? [MoreTile({ label: 'Checklist', icon: 'ic_check_circle', enabled: checklistPast === null, onClick: () => checklist.open() })] : []),
         ...(loiter !== null ? [MoreTile({ label: loiter.title, icon: 'ic_my_location', enabled: true, onClick: () => setEditingLoiter(loiter) })] : []),
         ...(gripper.length > 0 ? [MoreTile({ label: 'Payload', icon: 'ic_payload', enabled: gripper.some((it: GuidedOffer) => it.ready), onClick: () => setShowGripper(true) })] : []),
-        MoreTile({
-          label: 'Choose readings',
-          icon: 'ic_tune',
-          enabled: true,
-          onClick: () => {
-            flyScreen.choosingReadings.value = true;
-          },
-        }),
-        ...(!armed ? [MoreTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
         ...[pursuit?.entry ?? null].flatMap((entry) => (entry === null ? [] : [MoreTile({ label: entry.label, icon: 'ic_search', enabled: true, onClick: () => onPursuit(entry) })])),
         ...extras
           .filter((it) => !entries.some((entry) => entry.id === it.id) && !GRIPPER_ACTIONS.includes(it.id))
@@ -744,32 +767,37 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
           ),
       ]
     : [];
+  const sections = [
+    { title: 'Go to', tiles: destinations },
+    { title: 'Aircraft', tiles: aircraft },
+    { title: 'Screen', tiles: screen },
+  ];
 
   return (
     <>
       <PreflightChecklistReset checklist={checklist} available={available} />
       <PreflightChecklist checklist={checklist} deciding={deciding} />
-      <OpenOnRequest name="more" open={() => setShowMore(true)} />
+      <OpenOnRequest name={MENU_SHEET} open={() => setShowMore(true)} />
       {body}
       {showMore ? (
-        <MoreActionsSheet tiles={tiles} onDismiss={() => setShowMore(false)} footer={<FlyViewMavlinkActions onSent={() => setShowMore(false)} />} />
+        <FlyMenuSheet sections={sections} onDismiss={closeMenu} footer={<FlyViewMavlinkActions onSent={closeMenu} />} />
       ) : null}
       {showGripper && gripper.length > 0 ? <GripperPanel offers={gripper} payload={payload} onDismiss={() => setShowGripper(false)} /> : null}
     </>
   );
 };
 
-const DeckRow = ({ deck, entries, more, center }: { deck: DeckIds; entries: readonly DeckEntry[]; more: DeckEntry; center: ReactNode }) => {
+const DeckRow = ({ deck, entries, extra, center }: { deck: DeckIds; entries: readonly DeckEntry[]; extra: DeckEntry | null; center: ReactNode }) => {
   const buttons: readonly (readonly [DeckEntry, boolean])[] = [
     ...deck.flatMap(([id, primary]) => {
       const entry = entries.find((it) => it.id === id);
       return entry === undefined ? [] : [[entry, primary] as const];
     }),
-    [more, false] as const,
+    ...(extra === null ? [] : [[extra, false] as const]),
   ];
   const leading = Math.trunc((buttons.length + 1) / 2);
   const button = ([entry, primary]: readonly [DeckEntry, boolean]) => (
-    <DeckButton key={entry.id} entry={entry} primary={primary} buttons={buttons.length} className={entry === more && deck.length > 0 ? 'w-16 shrink-0' : 'min-w-0 flex-1'} />
+    <DeckButton key={entry.id} entry={entry} primary={primary} buttons={buttons.length} className="min-w-0 flex-1" />
   );
   return (
     <div role="group" aria-label={FLIGHT_ACTIONS} className="flex items-center gap-[10px]">

@@ -1,11 +1,11 @@
-import { expect, openApp, test } from './fixtures';
+import { expect, openApp, openMenu, test } from './fixtures';
 import { plugInR2d2Radio } from './r2d2';
 
 const RADIO_PORT = /0483:5740/;
 import type { Page } from '@playwright/test';
 
 const openLinks = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   const row = page.getByRole('button', { name: /^Links / });
   await expect(async () => {
@@ -58,7 +58,7 @@ test('a WebSocket link is saved and reconnects by itself after the page reloads'
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   await app.reload();
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   await app.getByRole('button', { name: /^Links/ }).first().click();
   await expect(app.getByText('ws://localhost:18760', { exact: false }).first()).toBeVisible();
