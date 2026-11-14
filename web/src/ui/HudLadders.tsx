@@ -10,7 +10,7 @@ import { LayoutWidget } from '@/ui/OverlayLayout';
 export const THROTTLE_PATH = 'vehicle.throttlePct';
 const LADDER_MIN = 110;
 const LADDER_MAX = 260;
-const LADDER_SHARE = 0.32;
+const LADDER_SHARE = 0.3;
 const LADDER_PAD = 8;
 const LONG_TICK = 22;
 const MID_TICK = 16;
@@ -18,7 +18,7 @@ const SHORT_TICK = 10;
 const TICK_EDGE = 26;
 const LADDER_WIDTH = 52;
 const CROSSHAIR = 44;
-const LADDER_OFFSET = '28%';
+const LADDER_REACH = 0.38;
 
 export type LadderScale = {
   readonly top: number;
@@ -56,6 +56,8 @@ export const ladderMarks = (scale: LadderScale): readonly number[] =>
   Array.from({ length: (scale.top - scale.bottom) / scale.step + 1 }, (_, index) => scale.top - index * scale.step);
 
 export const ladderHeight = (shellHeight: number): number => Math.round(Math.min(LADDER_MAX, Math.max(LADDER_MIN, shellHeight * LADDER_SHARE)));
+
+export const ladderReach = (shellHeight: number): number => Math.round(shellHeight * LADDER_REACH);
 
 export const ladderY = (value: number, scale: LadderScale, height: number): number =>
   LADDER_PAD + ((scale.top - Math.min(scale.top, Math.max(scale.bottom, value))) / (scale.top - scale.bottom)) * (height - 2 * LADDER_PAD);
@@ -125,17 +127,18 @@ export const HudLadders = ({ shellHeight }: { shellHeight: number }) => {
   const throttle = useQgcDouble(THROTTLE_PATH);
   if (reading === null) return null;
   const height = ladderHeight(shellHeight);
+  const reach = `calc(50% - ${ladderReach(shellHeight)}px)`;
   return (
     <div role="group" aria-label="Sight" className="pointer-events-none absolute inset-0">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
         <Crosshair />
       </div>
-      <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: LADDER_OFFSET }}>
+      <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: reach }}>
         <LayoutWidget widgetKey="pitchLadder" movable={false}>
           <Ladder side="start" scale={PITCH_SCALE} value={reading.pitch} height={height} icon="ic_height" label="Pitch" />
         </LayoutWidget>
       </div>
-      <div className="absolute top-1/2 translate-x-1/2 -translate-y-1/2" style={{ right: LADDER_OFFSET }}>
+      <div className="absolute top-1/2 translate-x-1/2 -translate-y-1/2" style={{ right: reach }}>
         <LayoutWidget widgetKey="throttleLadder" movable={false}>
           <Ladder side="end" scale={THROTTLE_SCALE} value={Number.isNaN(throttle) ? null : throttle} height={height} icon="ic_speed" label="Throttle" />
         </LayoutWidget>
