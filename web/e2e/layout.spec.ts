@@ -236,7 +236,7 @@ test('holding the flight mode chip, which stays where it is while editing, start
   await expect(vehicle.getByRole('menu')).toHaveCount(0);
   await vehicle.getByRole('button', { name: 'Done' }).click();
   await expect(editBar(vehicle)).toBeHidden();
-  await flightMode(vehicle).click();
+  await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).click();
   await expect(vehicle.getByRole('menu'), 'a tap still opens it').toBeVisible();
 });
 
