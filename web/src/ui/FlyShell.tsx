@@ -401,8 +401,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       release?.();
     };
   }, []);
-  const cornerStack = stickInCorner && stickSlot.size.height > 0 ? corner.size.height + stickSlot.size.height + AircastSpace.s2 * 2 : corner.size.width > 0 ? corner.size.height + AircastSpace.s2 : 0;
-  const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitch > 0 ? gimbalSwitch + AircastSpace.s3 + AircastSpace.s2 : AircastSpace.s3;
+  const gimbalRoom = view !== FlyView.Map && gimbalSwitch > 0 ? OSD_CONTROL_SIZE + AircastSpace.s2 : 0;
+  const cornerStack = gimbalRoom + (stickInCorner && stickSlot.size.height > 0 ? corner.size.height + stickSlot.size.height + AircastSpace.s2 * 2 : corner.size.width > 0 ? corner.size.height + AircastSpace.s2 : 0);
+  const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : AircastSpace.s3;
   const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : switchEnd + (corner.size.width > 0 ? corner.size.width + AircastSpace.s2 : 0);
   const insets = stickInsets(stickPad, fullScreen, box.letterbox, cutoutStart, cutoutEnd, controls.size.width);
   const ornamentEnd = insets.ornamentEnd;
@@ -420,7 +421,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const mapAboveOsd = view === FlyView.Map && stickPad === null && hasVehicle && !deciding ? osd.size.height : 0;
   const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : mapAboveOsd;
   const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE + mapAboveOsd;
-  const switchBottom = view === FlyView.Map ? mapButtonsBottom : AircastSpace.s3;
+  const switchBottom = view === FlyView.Map ? mapButtonsBottom : AircastSpace.s3 + gimbalRoom;
   const syntheticChosen = useRememberSyntheticChosen();
   const [layers, setLayers] = useState(false);
   useEffect(() => setLayers(false), [view]);
@@ -668,7 +669,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               <div className="relative size-full">
                 {actions(FlyDeckLayout.Rail)}
                 {hasVehicle && !deciding ? (
-                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, (view === FlyView.Video ? 0 : osd.size.height) + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
+                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: (view === FlyView.Video ? AircastSpace.s3 : Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2)) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
                     <LayoutWidget widgetKey="payload" movable={false} hideable={false}>
                       <PayloadRailStrip />
                     </LayoutWidget>
