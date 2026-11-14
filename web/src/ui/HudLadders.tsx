@@ -19,6 +19,8 @@ const TICK_EDGE = 26;
 const LADDER_WIDTH = 52;
 const CROSSHAIR = 44;
 const LADDER_REACH = 0.38;
+const COMPACT_HEIGHT = 500;
+const COMPACT_GAP = 10;
 
 export type LadderScale = {
   readonly top: number;
@@ -58,6 +60,8 @@ export const ladderMarks = (scale: LadderScale): readonly number[] =>
 export const ladderHeight = (shellHeight: number): number => Math.round(Math.min(LADDER_MAX, Math.max(LADDER_MIN, shellHeight * LADDER_SHARE)));
 
 export const ladderReach = (shellHeight: number): number => Math.round(shellHeight * LADDER_REACH);
+
+export const compactHud = (shellHeight: number): boolean => shellHeight < COMPACT_HEIGHT;
 
 export const ladderY = (value: number, scale: LadderScale, height: number): number =>
   LADDER_PAD + ((scale.top - Math.min(scale.top, Math.max(scale.bottom, value))) / (scale.top - scale.bottom)) * (height - 2 * LADDER_PAD);
@@ -101,7 +105,7 @@ const Ladder = ({ side, scale, value, height, icon, label }: { side: Side; scale
           style={{ top: ladderY(value, scale, height), transform: 'translateY(-50%)', ...(start ? { right: LADDER_WIDTH - edge + LONG_TICK + 2 } : { left: edge + LONG_TICK + 2 }), color: ink }}
         >
           <Drawable name={icon} size={16} style={{ fill: ink }} />
-          <span className="text-label-large tabular-nums">{scale.readout(value)}</span>
+          <span className="text-title-medium font-bold tabular-nums">{scale.readout(value)}</span>
           <svg width={10} height={12} viewBox="0 0 10 12" aria-hidden className="block">
             <path d={start ? 'M 0 6 L 10 6 M 10 0 L 10 12' : 'M 10 6 L 0 6 M 0 0 L 0 12'} strokeWidth={2} style={{ stroke: ink }} />
           </svg>
@@ -121,11 +125,42 @@ export const Crosshair = () => {
   );
 };
 
+const Readout = ({ scale, value, icon, label }: { scale: LadderScale; value: number; icon: DrawableName; label: string }) => {
+  const ink = aircast('outdoorForeground');
+  return (
+    <div role="img" aria-label={`${label} ${scale.readout(value)}`} className="flex items-center gap-1 whitespace-nowrap" style={{ color: ink }}>
+      <Drawable name={icon} size={16} style={{ fill: ink }} />
+      <span className="text-title-medium font-bold tabular-nums">{scale.readout(value)}</span>
+    </div>
+  );
+};
+
+const CompactSight = ({ pitch, throttle }: { pitch: number; throttle: number | null }) => (
+  <div role="group" aria-label="Sight" className="pointer-events-none absolute inset-0">
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+      <Crosshair />
+    </div>
+    <div className="absolute top-1/2 -translate-y-1/2" style={{ right: `calc(50% + ${CROSSHAIR / 2 + COMPACT_GAP}px)` }}>
+      <LayoutWidget widgetKey="pitchLadder" movable={false}>
+        <Readout scale={PITCH_SCALE} value={pitch} icon="ic_height" label="Pitch" />
+      </LayoutWidget>
+    </div>
+    {throttle !== null ? (
+      <div className="absolute top-1/2 -translate-y-1/2" style={{ left: `calc(50% + ${CROSSHAIR / 2 + COMPACT_GAP}px)` }}>
+        <LayoutWidget widgetKey="throttleLadder" movable={false}>
+          <Readout scale={THROTTLE_SCALE} value={throttle} icon="ic_speed" label="Throttle" />
+        </LayoutWidget>
+      </div>
+    ) : null}
+  </div>
+);
+
 export const HudLadders = ({ shellHeight }: { shellHeight: number }) => {
   const view = useQgcPath(ATTITUDE_PATH);
   const reading = useMemo(() => attitude(view), [view]);
   const throttle = useQgcDouble(THROTTLE_PATH);
   if (reading === null) return null;
+  if (compactHud(shellHeight)) return <CompactSight pitch={reading.pitch} throttle={Number.isNaN(throttle) ? null : throttle} />;
   const height = ladderHeight(shellHeight);
   const reach = `calc(50% - ${ladderReach(shellHeight)}px)`;
   return (

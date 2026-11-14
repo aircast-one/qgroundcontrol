@@ -2,6 +2,9 @@ import { type Json, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, op
 import { useQgcDerived } from '@/bridge/QgcState';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { ESC_PATH } from '@/ui/EscIndicator';
+import { useScreenSize } from '@/ui/FlyShell';
+import { compactHud } from '@/ui/HudLadders';
+import { osdShadow } from '@/ui/Osd';
 
 export type Level = 'normal' | 'elevated' | 'critical';
 
@@ -17,14 +20,12 @@ export type MotorLoad = {
   fill: number;
 };
 
-const SIZE = 132;
-const CENTRE = SIZE / 2;
-const ARM = 44;
-const RING = 16;
-const RING_WIDTH = 3.5;
-const BODY = 9;
-const CIRCUMFERENCE = 2 * Math.PI * RING;
-const ROTOR_FILL = '#141414';
+type Frame = { readonly size: number; readonly arm: number; readonly ring: number; readonly rpm: boolean };
+
+const FULL_FRAME: Frame = { size: 120, arm: 42, ring: 16, rpm: true };
+const COMPACT_FRAME: Frame = { size: 88, arm: 30, ring: 12, rpm: false };
+const RING_WIDTH = 2;
+const BODY = 6;
 
 const level = (json: Json, key: string): Level => {
   const text = optText(json, key);
@@ -46,36 +47,37 @@ export const motorLoads = (view: Json | null): readonly MotorLoad[] =>
       }))
     : [];
 
-const ringColour = (load: Level): string => (load === 'critical' ? md('error') : load === 'elevated' ? aircast('warning') : withAlpha(aircast('success'), 0.75));
+const ringColour = (load: Level): string => (load === 'critical' ? md('error') : load === 'elevated' ? aircast('warning') : withAlpha(Color.White, 0.85));
 
 const labelColour = (load: Level): string => (load === 'critical' ? md('error') : load === 'elevated' ? aircast('warning') : Color.White);
 
-const place = (angle: number): readonly [number, number] => {
+const place = (frame: Frame, angle: number, reach: number = frame.arm): readonly [number, number] => {
   const radians = (angle * Math.PI) / 180;
-  return [CENTRE + ARM * Math.sin(radians), CENTRE - ARM * Math.cos(radians)];
+  const centre = frame.size / 2;
+  return [centre + reach * Math.sin(radians), centre - reach * Math.cos(radians)];
 };
 
-const Rotor = ({ load }: { load: MotorLoad }) => {
-  const [x, y] = place(load.angle);
+const Rotor = ({ frame, load }: { frame: Frame; load: MotorLoad }) => {
+  const [x, y] = place(frame, load.angle);
+  const circumference = 2 * Math.PI * frame.ring;
   return (
     <g>
       <title>{load.reporting ? `Motor ${load.motor}: ${load.current} A, ${load.rpm} rpm, ${load.temperature}` : `Motor ${load.motor}: no ESC data`}</title>
-      <circle cx={x} cy={y} r={RING + RING_WIDTH} fill={ROTOR_FILL} />
-      <circle cx={x} cy={y} r={RING} fill="none" stroke={withAlpha(Color.White, 0.18)} strokeWidth={RING_WIDTH} strokeDasharray={load.reporting ? undefined : '3 3'} />
+      <circle cx={x} cy={y} r={frame.ring} fill="none" stroke={withAlpha(Color.White, 0.3)} strokeWidth={RING_WIDTH} strokeDasharray={load.reporting ? undefined : '3 3'} />
       {load.reporting ? (
         <circle
           cx={x}
           cy={y}
-          r={RING}
+          r={frame.ring}
           fill="none"
           stroke={ringColour(load.temperatureLevel)}
           strokeWidth={RING_WIDTH}
           strokeLinecap="round"
-          strokeDasharray={`${load.fill * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
+          strokeDasharray={`${load.fill * circumference} ${circumference}`}
           transform={`rotate(-90 ${x} ${y})`}
         />
       ) : null}
-      {load.reporting ? (
+      {load.reporting && frame.rpm ? (
         <>
           <text x={x} y={y} dy="-0.05em" textAnchor="middle" fontSize={11} fontWeight={600} fill={labelColour(load.currentLevel)}>
             {load.current}
@@ -84,6 +86,10 @@ const Rotor = ({ load }: { load: MotorLoad }) => {
             {load.rpm}
           </text>
         </>
+      ) : load.reporting ? (
+        <text x={x} y={y} dy="0.35em" textAnchor="middle" fontSize={10} fontWeight={600} fill={labelColour(load.currentLevel)}>
+          {load.current}
+        </text>
       ) : (
         <text x={x} y={y} dy="0.35em" textAnchor="middle" fontSize={11} fontWeight={600} fill={withAlpha(Color.White, 0.5)}>
           –
@@ -95,18 +101,21 @@ const Rotor = ({ load }: { load: MotorLoad }) => {
 
 export const MotorLoadWidget = () => {
   const loads = useQgcDerived(ESC_PATH, motorLoads);
+  const frame = compactHud(useScreenSize().height) ? COMPACT_FRAME : FULL_FRAME;
   if (loads.length === 0) return null;
+  const centre = frame.size / 2;
   return (
-    <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label="Motor load">
+    <svg width={frame.size} height={frame.size} viewBox={`0 0 ${frame.size} ${frame.size}`} role="img" aria-label="Motor load" className={osdShadow()}>
       {loads.map((load) => {
-        const [x, y] = place(load.angle);
-        return <line key={load.motor} x1={CENTRE} y1={CENTRE} x2={x} y2={y} stroke={withAlpha(Color.White, 0.35)} strokeWidth={3} />;
+        const [x1, y1] = place(frame, load.angle, BODY);
+        const [x2, y2] = place(frame, load.angle, frame.arm - frame.ring - RING_WIDTH / 2);
+        return <line key={load.motor} x1={x1} y1={y1} x2={x2} y2={y2} stroke={withAlpha(Color.White, 0.5)} strokeWidth={1.5} />;
       })}
       {loads.map((load) => (
-        <Rotor key={load.motor} load={load} />
+        <Rotor key={load.motor} frame={frame} load={load} />
       ))}
-      <circle cx={CENTRE} cy={CENTRE} r={BODY} fill={withAlpha(Color.Black, 0.7)} stroke={withAlpha(Color.White, 0.6)} strokeWidth={2} />
-      <path d={`M ${CENTRE} ${CENTRE - BODY - 9} l -5 7 h 10 z`} fill={withAlpha(Color.White, 0.8)} />
+      <circle cx={centre} cy={centre} r={BODY} fill="none" stroke={withAlpha(Color.White, 0.8)} strokeWidth={1.5} />
+      <path d={`M ${centre} ${centre - BODY - 8} l -4 6 h 8 z`} fill={withAlpha(Color.White, 0.8)} />
     </svg>
   );
 };

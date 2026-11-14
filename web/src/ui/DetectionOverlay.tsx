@@ -7,18 +7,17 @@ import { Color, aircast, argb, md, withAlpha } from '@/theme/Colors';
 import { CAMERA_START_PURSUIT, CAMERA_STOP_PURSUIT, type PursuitReading, pursuitReading } from '@/ui/CameraControl';
 import { DETECTIONS, detectionTrouble, detections, visibleBoxes } from '@/ui/Detections';
 import { useElementSize } from '@/ui/FlyShell';
-import { osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { VIDEO_VIEW, paintedRect, videoReading } from '@/ui/VideoView';
 
 const BOX_COLOUR = argb(0xff4dd0e1);
 const TARGET_COLOUR = argb(0xffffd54f);
 const REFUSAL_MS = 4000;
-const SCRIM_ALPHA = 0.55;
 const DISABLED_CONTENT_ALPHA = 0.6;
 const BORDER_ALPHA = 0.4;
 
 const Pill = ({ onClick, color, contentColor, border, label, children }: { onClick?: () => void; color: string; contentColor: string; border?: string; label: string; children: string }) => (
-  <Surface onClick={onClick} shape="full" color={color} contentColor={contentColor} border={border} className={`pointer-events-auto flex min-w-[140px] items-center justify-center px-6 py-3 ${osdShadow()}`} label={label}>
+  <Surface onClick={onClick} shape="small" color={color} contentColor={contentColor} border={border} className={`pointer-events-auto flex min-w-[140px] items-center justify-center px-6 py-3 ${osdShadow()}`} label={label}>
     <Text typography="titleMedium" maxLines={1}>
       {children}
     </Text>
@@ -26,7 +25,7 @@ const Pill = ({ onClick, color, contentColor, border, label, children }: { onCli
 );
 
 const OverlayNote = ({ background, color, children }: { background: string; color: string; children: string }) => (
-  <Text typography="labelSmall" color={color} className={`rounded-full px-2.5 py-0.5 ${osdShadow()}`} style={{ background }}>
+  <Text typography="labelSmall" color={color} className={`rounded-shape-sm px-2.5 py-0.5 ${osdShadow()}`} style={{ background }}>
     {children}
   </Text>
 );
@@ -34,7 +33,7 @@ const OverlayNote = ({ background, color, children }: { background: string; colo
 const ChaseOsd = ({ reading }: { reading: PursuitReading }) => {
   const [confirming, setConfirming] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
-  const scrim = useOsdBackdrop(withAlpha(Color.Black, SCRIM_ALPHA));
+  const scrim = OSD_SCRIM;
   const foreground = aircast('outdoorForeground');
   useEffect(() => {
     if (refused === null) return undefined;

@@ -8,10 +8,10 @@ import { Map3d } from '@/map/Map3d';
 import { type SavedCamera, readCamera } from '@/map/MapCamera';
 import { FlightMapPosition, type TrackPoint } from '@/map/VehicleMap';
 import { Drawable } from '@/res/Icon';
-import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
+import { AircastSpace, aircast, md } from '@/theme/Colors';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { Offset, PASS_THROUGH, type Rect, minus } from '@/ui/FlyShell';
-import { osdShadow } from '@/ui/Osd';
+import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { groundPoint } from '@/ui/PictureHold';
 import { SyntheticSurface, nativeDraw } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, syntheticAvailable } from '@/ui/SyntheticView';
@@ -34,7 +34,6 @@ const TURN_PER_VIEW_WIDTH_DEG = 180.0;
 const WHEEL_ZOOM_RATE = 1.0 / 450.0;
 const WHEEL_LINE_PX = 16.0;
 const DOM_DELTA_LINE = 1;
-const CONTROL_SCRIM_ALPHA = 0.55;
 const CONTROL_SIZE = 40;
 const CONTROL_ICON = 20;
 export const BACK_TO_AIRCRAFT = 'Back to aircraft';
@@ -160,7 +159,7 @@ const Compass = ({ heading, view }: { heading: number; view: RefObject<HTMLDivEl
       aria-label={COMPASS_LABEL}
       title={COMPASS_LABEL}
       className="grid touch-none place-items-center rounded-full"
-      style={{ width: CONTROL_SIZE, height: CONTROL_SIZE, background: withAlpha(Color.Black, CONTROL_SCRIM_ALPHA), color: aircast('outdoorForeground') }}
+      style={{ width: CONTROL_SIZE, height: CONTROL_SIZE, background: OSD_SCRIM, color: aircast('outdoorForeground') }}
     >
       <svg width={CONTROL_ICON} height={CONTROL_ICON} viewBox={`0 0 ${CONTROL_ICON} ${CONTROL_ICON}`} aria-hidden style={{ transform: `rotate(${-heading}deg)` }}>
         <path d={needle(NORTH)} style={{ fill: md('error') }} />
@@ -173,7 +172,7 @@ const Compass = ({ heading, view }: { heading: number; view: RefObject<HTMLDivEl
 const Hint = () => (
   <Surface
     shape="full"
-    color={withAlpha(Color.Black, CONTROL_SCRIM_ALPHA)}
+    color={OSD_SCRIM}
     contentColor={aircast('outdoorForeground')}
     style={{ paddingInline: AircastSpace.s3, paddingBlock: AircastSpace.s2 }}
   >
@@ -185,7 +184,7 @@ const BackToAircraft = () => (
   <Surface
     onClick={() => send(MAP3D_FOLLOW)}
     shape="full"
-    color={withAlpha(Color.Black, CONTROL_SCRIM_ALPHA)}
+    color={OSD_SCRIM}
     contentColor={aircast('outdoorForeground')}
     className="inline-flex items-center"
     style={{ gap: AircastSpace.s2, paddingInline: AircastSpace.s3, paddingBlock: AircastSpace.s2 }}

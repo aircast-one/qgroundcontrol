@@ -26,7 +26,7 @@ import {
   vehicleTelemetryLine,
 } from '@/map/VehiclePicker';
 import { Drawable, MaterialIcon } from '@/res/Icon';
-import { Color, aircast, md, withAlpha } from '@/theme/Colors';
+import { aircast, md } from '@/theme/Colors';
 import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack } from './ConfirmTrack';
 import { StopPropagation, activate, useFlyIsPortrait } from './FlyShell';
@@ -59,6 +59,7 @@ import {
   takeoverChangeable,
   takeoverLine,
 } from './OperatorControl';
+import { OSD_SCRIM, osdShadow, useOsdBackdrop } from './Osd';
 import { factFromControl } from './ParameterForm';
 import { CONNECTIONS_PAGE, FactRow, factSubtitle } from './SettingsScreen';
 import { FootNote } from './SetupRow';
@@ -67,8 +68,6 @@ import { VehicleMessagesSheet, WARNINGS, armingBlocker, armingChecks, chipBlocke
 import { VehicleStatusSheet } from './VehicleStatusSheet';
 import { FlightModeMenu, GuidedAction } from './VehicleUi';
 import { TAP } from '@/kotlin/Platform';
-
-const STATUS_BAR_SCRIM_ALPHA = 0.55;
 
 const statusTitleColour = (tone: ChipTone, linkFailed: boolean): string => {
   if (linkFailed || tone === ChipTone.Error) return md('error');
@@ -193,6 +192,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
 
   const tone = blocker !== null ? ChipTone.Error : chipTone(fly, lost);
   const titleColour = statusTitleColour(tone, disconnected && (offlineNow?.links ?? []).some((it: OfflineLink) => it.failed));
+  const noteBackdrop = useOsdBackdrop(OSD_SCRIM);
   const searching = disconnected && offlineNow?.busy === true;
   const title = lost ? signalLostTitle(silentFor, failsafe, narrow) : gotoProgress !== '' && !choices.ambiguous ? gotoProgress : activeVehicleTitle(choices, subtitle);
   const note = narrow ? null : osdStatusNote(title);
@@ -257,9 +257,9 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
                 <Surface
                   onClick={() => (blocker !== null ? setWhy(true) : setStatusSettings(true))}
                   shape="small"
-                  color={withAlpha(Color.Black, STATUS_BAR_SCRIM_ALPHA)}
+                  color={noteBackdrop}
                   contentColor={noteColour(tone)}
-                  className="min-w-0 px-[14px] py-2"
+                  className={`min-w-0 px-[14px] py-2 ${osdShadow()}`}
                 >
                   <Text typography="labelLarge" maxLines={1} ellipsis className="block">{note}</Text>
                 </Surface>

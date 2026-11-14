@@ -39,7 +39,7 @@ import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { ApproximateAimNote, gimbalSwitchWidth } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
-import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget, MINIMAP_KEY, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
@@ -69,7 +69,6 @@ import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
 
 const FLY_STORE = 'fly';
 const FLY_VIEW_KEY = 'view';
-export const FLY_SCRIM_ALPHA = 0.55;
 export const STATUS_ROW_HEIGHT = 32;
 const PAYLOAD_STRIP_CLEARANCE = 64;
 const ACTION_RAIL_CLEARANCE = 72;
@@ -402,8 +401,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       release?.();
     };
   }, []);
-  const cornerStack = stickInCorner && stickSlot.size.height > 0 ? corner.size.height + stickSlot.size.height + AircastSpace.s2 * 2 : corner.size.width > 0 ? corner.size.height + AircastSpace.s2 : 0;
-  const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : gimbalSwitch > 0 ? gimbalSwitch + AircastSpace.s2 * 2 : AircastSpace.s3;
+  const gimbalRoom = view !== FlyView.Map && gimbalSwitch > 0 ? OSD_CONTROL_SIZE + AircastSpace.s2 : 0;
+  const cornerStack = gimbalRoom + (stickInCorner && stickSlot.size.height > 0 ? corner.size.height + stickSlot.size.height + AircastSpace.s2 * 2 : corner.size.width > 0 ? corner.size.height + AircastSpace.s2 : 0);
+  const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : AircastSpace.s3;
   const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : switchEnd + (corner.size.width > 0 ? corner.size.width + AircastSpace.s2 : 0);
   const insets = stickInsets(stickPad, fullScreen, box.letterbox, cutoutStart, cutoutEnd, controls.size.width);
   const ornamentEnd = insets.ornamentEnd;
@@ -421,7 +421,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const mapAboveOsd = view === FlyView.Map && stickPad === null && hasVehicle && !deciding ? osd.size.height : 0;
   const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : mapAboveOsd;
   const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE + mapAboveOsd;
-  const switchBottom = view === FlyView.Map ? mapButtonsBottom : AircastSpace.s3;
+  const switchBottom = view === FlyView.Map ? mapButtonsBottom : AircastSpace.s3 + gimbalRoom;
   const syntheticChosen = useRememberSyntheticChosen();
   const [layers, setLayers] = useState(false);
   useEffect(() => setLayers(false), [view]);
@@ -433,7 +433,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const hiddenWidgets = useValue(layout.hidden);
   const minimapCollapsed = mapIsPip && hiddenWidgets.has(MINIMAP_KEY);
   const pipThumb = thumbSize(useDesktopLayout());
-  const thumb = minimapCollapsed ? Size(MAP_LAYERS_SIZE, MAP_LAYERS_SIZE) : pipThumb;
+  const thumb = minimapCollapsed ? Size(OSD_CONTROL_SIZE, OSD_CONTROL_SIZE) : pipThumb;
   const thumbStyle = thumbPlace(thumb, minimapCollapsed ? 0 : BOTTOM_LEAD);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
@@ -474,7 +474,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
             mapIsPip
               ? {
                   className: `absolute overflow-hidden ${minimapCollapsed ? 'rounded-full' : 'rounded-shape-md'}`,
-                  style: { ...thumbStyle, zIndex: layer(1), ...(minimapCollapsed ? {} : { border: `2px solid ${md('onSurface')}` }), ...pipJiggle },
+                  style: { ...thumbStyle, zIndex: layer(1), ...(minimapCollapsed ? { opacity: 0 } : { border: `2px solid ${md('onSurface')}` }), ...pipJiggle },
                   'aria-hidden': fullScreen || undefined,
                 }
               : { className: 'absolute inset-0', 'aria-hidden': fullScreen || undefined },
@@ -500,13 +500,13 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                   <Surface
                     onClick={showMap}
                     shape="full"
-                    color={md('surfaceContainerHigh')}
-                    contentColor={md('onSurface')}
+                    color={Color.Transparent}
+                    contentColor={aircast('outdoorForeground')}
                     label="Map"
                     className="grid place-items-center"
                     style={{ width: thumb.width, height: thumb.height }}
                   >
-                    <Drawable name="ic_map" />
+                    <Drawable name="ic_map" className={osdShadow()} />
                   </Surface>
                 </div>
               </MinimapWidget>
@@ -669,7 +669,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               <div className="relative size-full">
                 {actions(FlyDeckLayout.Rail)}
                 {hasVehicle && !deciding ? (
-                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: Math.max(PAYLOAD_STRIP_CLEARANCE, (view === FlyView.Video ? 0 : osd.size.height) + AircastSpace.s2) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
+                  <div className="absolute inset-x-0 flex justify-center" style={{ bottom: (view === FlyView.Video ? AircastSpace.s3 : Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2)) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}>
                     <LayoutWidget widgetKey="payload" movable={false} hideable={false}>
                       <PayloadRailStrip />
                     </LayoutWidget>
@@ -894,7 +894,7 @@ export const MenuDestination = (fields: MenuDestination): MenuDestination => ({ 
 
 export const FlyTabMenu = ({ destinations }: { destinations: readonly MenuDestination[] }) => {
   const [open, setOpen] = useState(false);
-  const backdrop = useOsdBackdrop(withAlpha(Color.Black, FLY_SCRIM_ALPHA));
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
   return (
     <div className="relative">
       <Surface

@@ -18,7 +18,7 @@ import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal, onScreenGimbal, reportGimbalRefusal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
-import { osdShadow } from '@/ui/Osd';
+import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
 import { RecenterTarget, TiltReadout, recenter, recenterTarget, tiltText } from '@/ui/RecenterCamera';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM, SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
@@ -151,7 +151,6 @@ const GIMBAL_IDLE_MS = 3000;
 const GIMBAL_TRACK_ALPHA = 0.8;
 const GIMBAL_REST_ALPHA = 0.25;
 const TILT_IDLE_ALPHA = 0.45;
-const TILT_POPUP_ALPHA = 0.55;
 
 const TILT_COLORS: RailSliderColors = {
   thumb: Color.White,
@@ -256,7 +255,7 @@ const AimStick = ({ pitch, onRecenter, slider }: { pitch: number | null; onRecen
       <TiltReadout degrees={shown} onRecenter={null} onTap={() => setOpen(!open)} tapLabel="Aim the camera" />
       {open && opener !== null ? (
         <BesidePopup anchor={opener} onDismissRequest={() => setOpen(false)} below>
-          <Surface shape="full" color={withAlpha(Color.Black, TILT_POPUP_ALPHA)} className="p-1">
+          <Surface shape="full" color={OSD_SCRIM} className="p-1">
             <GimbalStick />
           </Surface>
         </BesidePopup>
@@ -335,7 +334,7 @@ const AimSliders = ({ pitch, yaw, onRecenter, slider, onTilt }: { pitch: number 
       />
       {open && opener !== null ? (
         <BesidePopup anchor={opener} onDismissRequest={() => setOpen(false)}>
-          <Surface shape={yawRail === null ? 'full' : 'large'} color={withAlpha(Color.Black, TILT_POPUP_ALPHA)} className="flex flex-col items-center p-1">
+          <Surface shape={yawRail === null ? 'full' : 'large'} color={OSD_SCRIM} className="flex flex-col items-center p-1">
             <div style={{ height: RAIL_SLIDER_LENGTH }}>{rail}</div>
             {yawRail}
           </Surface>

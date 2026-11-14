@@ -56,7 +56,7 @@ import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { useHasVehicle } from '@/ui/FlyState';
 import { LensSection } from '@/ui/LensSection';
-import { osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { factFromControl } from '@/ui/ParameterForm';
 import { RailSlider, RcCameraControls } from '@/ui/RcCameraControls';
 import { FactRow } from '@/ui/SettingsScreen';
@@ -64,7 +64,6 @@ import { SectionHeader } from '@/ui/SetupRow';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 
 const REFUSAL_MS = 4000;
-const ZOOM_CHIP_BORDER_ALPHA = 0.4;
 
 const MANAGER = 'vehicle.cameraManager';
 export const CAMERA_SHEET = 'camera';
@@ -78,7 +77,6 @@ const CameraElement = ({ widgetKey, children }: { widgetKey: string; children: R
     {children}
   </LayoutWidget>
 );
-const CAMERA_SCRIM_ALPHA = 0.55;
 const SHUTTER_SIZE = 56;
 const SHUTTER_STOP_SIZE = 20;
 const SHUTTER_DOT_SIZE = 26;
@@ -242,11 +240,11 @@ const ZoomChip = ({ camera, label }: { camera: CameraReading; label: string }) =
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const foreground = aircast('outdoorForeground');
-  const backdrop = useOsdBackdrop(withAlpha(Color.Black, CAMERA_SCRIM_ALPHA));
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
   return (
     <div ref={setAnchor} className="relative">
-      <Surface onClick={() => setOpen(!open)} shape="full" color={backdrop} contentColor={foreground} border={`1px solid ${withAlpha(foreground, ZOOM_CHIP_BORDER_ALPHA)}`} label={`Zoom ${label}`}>
-        <span className="flex items-center gap-1 px-2.5 py-1.5">
+      <Surface onClick={() => setOpen(!open)} shape="small" color={backdrop} contentColor={foreground} label={`Zoom ${label}`} style={{ height: OSD_CONTROL_SIZE }}>
+        <span className="flex h-full items-center gap-1 px-3">
           <Drawable name="ic_search" size={16} />
           <Text typography="labelLarge">{label}</Text>
         </span>
