@@ -160,6 +160,15 @@ export const AnimatedVisibility = ({ visible, from = null, className, style, chi
 
 const ZERO_SIZE = Size(0, 0);
 
+const MinimapWidget = ({ editing, children }: { editing: boolean; children: ReactNode }) =>
+  editing ? (
+    <LayoutWidget widgetKey={MINIMAP_KEY} movable={false}>
+      {children}
+    </LayoutWidget>
+  ) : (
+    children
+  );
+
 const HudReadings = ({ style, startInset }: { style: CSSProperties; startInset: number }) => (
   <LocalFlyOsd.Provider value>
     <TelemetryRow
@@ -168,10 +177,12 @@ const HudReadings = ({ style, startInset }: { style: CSSProperties; startInset: 
       compact
       column={(side, readings) => (
         <div
-          className={`absolute ${side === 'start' ? 'start-0' : 'end-0'} flex flex-col justify-end-safe ${osdShadow()} ${PASS_THROUGH}`}
+          className={`absolute ${side === 'start' ? 'start-0' : 'end-0'} flex flex-col justify-end-safe ${PASS_THROUGH}`}
           style={{ ...style, ...(side === 'start' ? { paddingInlineStart: startInset } : { paddingInlineEnd: AircastSpace.s3 }) }}
         >
-          {readings}
+          <LayoutWidget widgetKey={side === 'start' ? 'readingsStart' : 'readingsEnd'} movable={false} hideable={false}>
+            {readings}
+          </LayoutWidget>
         </div>
       )}
     />
@@ -420,13 +431,13 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const videoShown = view !== FlyView.ThreeD && (view !== FlyView.Map || hasPicture);
   const thumbShown = mapIsPip || (videoIsPip && hasPicture);
   const hiddenWidgets = useValue(layout.hidden);
-  const minimapCollapsed = mapIsPip && hiddenWidgets.has(MINIMAP_KEY) && !editing;
+  const minimapCollapsed = mapIsPip && hiddenWidgets.has(MINIMAP_KEY);
   const pipThumb = thumbSize(useDesktopLayout());
   const thumb = minimapCollapsed ? Size(MAP_LAYERS_SIZE, MAP_LAYERS_SIZE) : pipThumb;
   const thumbStyle = thumbPlace(thumb, minimapCollapsed ? 0 : BOTTOM_LEAD);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
-  const pipJiggle = useJiggleAngle('pip', editing && thumbShown && !fullScreen, thumb);
+  const pipJiggle = useJiggleAngle(mapIsPip ? MINIMAP_KEY : 'pip', editing && thumbShown && !fullScreen, thumb);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
   const frame = useRememberVideoFrame(videoTarget, false);
   const cameras = useRememberCameraStepper();
@@ -483,19 +494,25 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
         <>
           <div className="pointer-events-none absolute inset-x-0 top-0" style={{ height: TOP_SCRIM_HEIGHT, background: `linear-gradient(to bottom, ${withAlpha(Color.Black, TOP_SCRIM_ALPHA)}, transparent)` }} />
           {minimapCollapsed ? (
-            <Surface
-              onClick={showMap}
-              shape="full"
-              color={md('surfaceContainerHigh')}
-              contentColor={md('onSurface')}
-              label="Map"
-              className="grid place-items-center"
-              style={{ ...thumbStyle, zIndex: layer(2) }}
-            >
-              <Drawable name="ic_map" />
-            </Surface>
+            <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2) }}>
+              <MinimapWidget editing={editing}>
+                <div inert={editing}>
+                  <Surface
+                    onClick={showMap}
+                    shape="full"
+                    color={md('surfaceContainerHigh')}
+                    contentColor={md('onSurface')}
+                    label="Map"
+                    className="grid place-items-center"
+                    style={{ width: thumb.width, height: thumb.height }}
+                  >
+                    <Drawable name="ic_map" />
+                  </Surface>
+                </div>
+              </MinimapWidget>
+            </div>
           ) : mapIsPip ? (
-            <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2), ...pipJiggle }}>
+            <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2) }}>
               <LayoutWidget widgetKey={MINIMAP_KEY} movable={false}>
                 <div
                   role="button"

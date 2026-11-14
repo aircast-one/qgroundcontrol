@@ -5,6 +5,7 @@ import type { DrawableName } from '@/res/drawables';
 import { aircast } from '@/theme/Colors';
 import { ATTITUDE_PATH, attitude } from '@/ui/AttitudeInstrument';
 import { osdShadow } from '@/ui/Osd';
+import { LayoutWidget } from '@/ui/OverlayLayout';
 
 export const THROTTLE_PATH = 'vehicle.throttlePct';
 const LADDER_MIN = 110;
@@ -73,7 +74,7 @@ const Ladder = ({ side, scale, value, height, icon, label }: { side: Side; scale
   const edge = start ? TICK_EDGE : LADDER_WIDTH - TICK_EDGE;
   return (
     <div className="relative" style={{ width: LADDER_WIDTH, height }}>
-      <svg width={LADDER_WIDTH} height={height} viewBox={`0 0 ${LADDER_WIDTH} ${height}`} aria-hidden className={`block overflow-visible ${osdShadow()}`}>
+      <svg width={LADDER_WIDTH} height={height} viewBox={`0 0 ${LADDER_WIDTH} ${height}`} aria-hidden className="block overflow-visible">
         {ladderMarks(scale).map((mark) => {
           const y = ladderY(mark, scale, height);
           const tick = ladderTick(mark, scale);
@@ -94,7 +95,7 @@ const Ladder = ({ side, scale, value, height, icon, label }: { side: Side; scale
         <div
           role="img"
           aria-label={`${label} ${scale.readout(value)}`}
-          className={`absolute flex items-center gap-1 whitespace-nowrap ${start ? 'flex-row' : 'flex-row-reverse'} ${osdShadow()}`}
+          className={`absolute flex items-center gap-1 whitespace-nowrap ${start ? 'flex-row' : 'flex-row-reverse'}`}
           style={{ top: ladderY(value, scale, height), transform: 'translateY(-50%)', ...(start ? { right: LADDER_WIDTH - edge + LONG_TICK + 2 } : { left: edge + LONG_TICK + 2 }), color: ink }}
         >
           <Drawable name={icon} size={16} style={{ fill: ink }} />
@@ -130,10 +131,14 @@ export const HudLadders = ({ shellHeight }: { shellHeight: number }) => {
         <Crosshair />
       </div>
       <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: LADDER_OFFSET }}>
-        <Ladder side="start" scale={PITCH_SCALE} value={reading.pitch} height={height} icon="ic_height" label="Pitch" />
+        <LayoutWidget widgetKey="pitchLadder" movable={false}>
+          <Ladder side="start" scale={PITCH_SCALE} value={reading.pitch} height={height} icon="ic_height" label="Pitch" />
+        </LayoutWidget>
       </div>
       <div className="absolute top-1/2 translate-x-1/2 -translate-y-1/2" style={{ right: LADDER_OFFSET }}>
-        <Ladder side="end" scale={THROTTLE_SCALE} value={Number.isNaN(throttle) ? null : throttle} height={height} icon="ic_speed" label="Throttle" />
+        <LayoutWidget widgetKey="throttleLadder" movable={false}>
+          <Ladder side="end" scale={THROTTLE_SCALE} value={Number.isNaN(throttle) ? null : throttle} height={height} icon="ic_speed" label="Throttle" />
+        </LayoutWidget>
       </div>
     </div>
   );
