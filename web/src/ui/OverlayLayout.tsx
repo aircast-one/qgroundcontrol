@@ -23,7 +23,7 @@ const JIGGLE_MILLIS = 120;
 const JIGGLE_SPREAD = 0x1f;
 const JIGGLE_REACH_PX = 4;
 const JIGGLE_ANGLE = '--aircast-jiggle';
-export const BADGE_SIZE = 24;
+export const BADGE_SIZE = 18;
 const LONG_PRESS_TIMEOUT_MS = 400;
 const TOUCH_SLOP = 8;
 export const RESET_ARM_MILLIS = 4000;
@@ -341,7 +341,7 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, className }: { wi
   );
 };
 
-const BADGE = 'absolute grid place-items-center';
+const BADGE = "absolute grid place-items-center after:absolute after:-inset-[3px] after:content-['']";
 
 export type BadgeSpot = 'inside' | 'aboveTopTrailing' | 'onTopLeading';
 
@@ -450,12 +450,12 @@ export const LayoutWidget = ({
             shadow
             label={hidden ? 'Show' : 'Hide'}
           >
-            <MaterialIcon name={hidden ? 'add' : 'close'} filled size={BADGE_SIZE - 8} />
+            <MaterialIcon name={hidden ? 'add' : 'close'} filled size={BADGE_SIZE - 6} />
           </Surface>
         ) : null}
         {decorated && !hideable ? (
           <Surface className={BADGE} style={place} shape="full" color={md('surfaceContainerHighest')} contentColor={md('onSurfaceVariant')} shadow>
-            <MaterialIcon name="lock" filled size={BADGE_SIZE - 10} label="Always shown" />
+            <MaterialIcon name="lock" filled size={BADGE_SIZE - 7} label="Always shown" />
           </Surface>
         ) : null}
       </div>
