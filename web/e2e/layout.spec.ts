@@ -152,6 +152,7 @@ const stillWhileEditing = (page: Page) =>
     await connectMock(app, ['Enable camera', 'Enable gimbal']);
     const payload = app.getByRole('group', { name: 'Payload' });
     await expect(payload).toBeVisible();
+    await expect(app.getByRole('button', { name: /^Cameras, showing/ }), 'the camera has arrived, so the screen has its final layout').toBeVisible({ timeout: 30_000 });
     const [x, y] = await centre(payload);
     await editLayout(app);
     await expect.poll(() => stillWhileEditing(app)).toEqual([]);
