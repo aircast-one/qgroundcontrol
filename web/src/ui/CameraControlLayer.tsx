@@ -74,7 +74,7 @@ export const CAMERA_CONTROL_KEY = 'cameraControl';
 const CAMERA_SHUTTER_KEY = 'cameraShutter';
 
 const CameraElement = ({ widgetKey, children }: { widgetKey: string; children: ReactNode }) => (
-  <LayoutWidget widgetKey={widgetKey} movable={false} badgeSpot="onTopLeading" dragsWith={CAMERA_CONTROL_KEY}>
+  <LayoutWidget widgetKey={widgetKey} movable={false} dragsWith={CAMERA_CONTROL_KEY}>
     {children}
   </LayoutWidget>
 );

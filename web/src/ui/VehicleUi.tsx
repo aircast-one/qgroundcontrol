@@ -642,7 +642,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
         {confirmTrack}
         {deckTelemetry ? (
           <div className="flex w-full justify-center">
-            <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} badgeSpot="onTopLeading">
+            <LayoutWidget widgetKey="telemetry" movable={false} hideable={false}>
               <TelemetryRow valuesShown chooser={false} compact />
             </LayoutWidget>
           </div>

@@ -343,15 +343,12 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, className }: { wi
 
 const BADGE = "absolute grid place-items-center after:absolute after:-inset-[3px] after:content-['']";
 
-export type BadgeSpot = 'inside' | 'aboveTopTrailing' | 'onTopLeading';
+const BADGE_RISE = (BADGE_SIZE * 3) / 4;
 
-const BADGE_SPOTS: Readonly<Record<BadgeSpot, CSSProperties>> = {
-  inside: { top: 0, insetInlineEnd: -BADGE_SIZE / 2 },
-  aboveTopTrailing: { top: (-BADGE_SIZE * 3) / 4, insetInlineEnd: -BADGE_SIZE / 2 },
-  onTopLeading: { top: -BADGE_SIZE / 2, insetInlineStart: -BADGE_SIZE / 2 },
-};
+const BADGE_PLACE: CSSProperties = { width: BADGE_SIZE, height: BADGE_SIZE, top: -BADGE_RISE, insetInlineStart: -BADGE_SIZE / 2 };
 
-const badgePlace = (spot: BadgeSpot): CSSProperties => ({ width: BADGE_SIZE, height: BADGE_SIZE, ...BADGE_SPOTS[spot] });
+export const badgeRoom = (editing: boolean, leading: boolean): CSSProperties =>
+  editing ? { paddingTop: BADGE_RISE, marginTop: -BADGE_RISE, ...(leading ? { paddingInlineStart: BADGE_SIZE / 2, marginInlineStart: -BADGE_SIZE / 2 } : {}) } : {};
 
 const LocalLayoutParent = createContext<Dispatch<SetStateAction<number>> | null>(null);
 
@@ -380,7 +377,6 @@ export const LayoutWidget = ({
   widgetKey,
   movable = true,
   hideable = true,
-  badgeSpot = 'inside',
   dragsWith,
   className,
   children,
@@ -388,7 +384,6 @@ export const LayoutWidget = ({
   widgetKey: string;
   movable?: boolean;
   hideable?: boolean;
-  badgeSpot?: BadgeSpot;
   dragsWith?: string;
   className?: string;
   children?: ReactNode;
@@ -423,7 +418,6 @@ export const LayoutWidget = ({
   const [x, y] = movable ? (offsets.get(placedKey) ?? NO_OFFSET) : NO_OFFSET;
   const [cx, cy] = movable ? correction : NO_OFFSET;
   const carried = dragsWith !== undefined && group !== null ? { key: dragsWith, ...group } : null;
-  const place = badgePlace(badgeSpot);
   return (
     <div ref={movable ? kept : undefined} className={className} style={{ translate: `${x + cx}px ${y + cy}px` }} {...hold}>
       <div ref={avoided ? avoidedRef : undefined} className="relative" style={jiggle}>
@@ -443,7 +437,7 @@ export const LayoutWidget = ({
           <Surface
             onClick={() => layout.setHidden(widgetKey, !hidden)}
             className={BADGE}
-            style={place}
+            style={BADGE_PLACE}
             shape="full"
             color={hidden ? md('primary') : md('inverseSurface')}
             contentColor={hidden ? md('onPrimary') : md('inverseOnSurface')}
@@ -451,11 +445,6 @@ export const LayoutWidget = ({
             label={hidden ? 'Show' : 'Hide'}
           >
             <MaterialIcon name={hidden ? 'add' : 'close'} filled size={BADGE_SIZE - 6} />
-          </Surface>
-        ) : null}
-        {decorated && !hideable ? (
-          <Surface className={BADGE} style={place} shape="full" color={md('surfaceContainerHighest')} contentColor={md('onSurfaceVariant')} shadow>
-            <MaterialIcon name="lock" filled size={BADGE_SIZE - 7} label="Always shown" />
           </Surface>
         ) : null}
       </div>

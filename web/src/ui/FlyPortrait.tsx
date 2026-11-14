@@ -44,7 +44,7 @@ import {
 import { useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, osdShadow } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { LayoutWidget } from '@/ui/OverlayLayout';
+import { LayoutWidget, badgeRoom } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
@@ -135,6 +135,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const tucked = useValue(flyScreen.videoTucked);
   const corner = useValue(flyScreen.pipCorner);
   const deciding = useValue(flyScreen.guidedPanels) > 0;
+  const editing = useValue(flyScreen.layout.editing);
   const room = pipRoom(thumbnail, tucked);
   const roomAt = (at: PipCorner): number => (corner === at ? room : 0);
   const buttonsTop = AircastSpace.s3 + roomAt(PipCorner.TopEnd);
@@ -242,7 +243,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
               <div className="flex w-full flex-col" style={{ paddingTop: videoTop, height: videoTop + videoHeight }}>
                 <LocalFlyOsd.Provider value>
                   <div className="flex items-center justify-between gap-2 p-2">
-                    <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
+                    <div className="flex min-w-0 items-center gap-2 overflow-x-auto" style={badgeRoom(editing, true)}>
                       <LayoutWidget widgetKey="cameraSwitch" movable={false}>
                         <CameraSwitch splitRoom />
                       </LayoutWidget>
@@ -275,7 +276,9 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                       className={`flex h-full flex-col justify-between ${ANIMATED_PADDING}`}
                       style={{ paddingInlineStart: AircastSpace.s3, paddingTop: overlaysTop, paddingInlineEnd: AircastSpace.s3, paddingBottom: MAP_ATTRIBUTION_CLEARANCE + compassLift }}
                     >
-                      <div className="flex min-h-0 shrink flex-col items-start gap-2 overflow-hidden">{overlays}</div>
+                      <div className="flex min-h-0 shrink flex-col items-start gap-2 overflow-hidden" style={badgeRoom(editing, true)}>
+                        {overlays}
+                      </div>
                       {split ? null : (
                         <LayoutWidget widgetKey="compass" movable={false} hideable={false} className="self-start pt-2">
                           <OsdCompassDial size={PORTRAIT_DIAL_SIZE} />
@@ -439,7 +442,7 @@ const TelemetryOsd = ({ onSmaller, onFullScreen }: { onSmaller: () => void; onFu
       <LayoutWidget widgetKey="compass" movable={false} hideable={false}>
         <OsdCompassDial size={PORTRAIT_OSD_DIAL} />
       </LayoutWidget>
-      <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} badgeSpot="onTopLeading" className="min-w-0">
+      <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="min-w-0">
         <div className={`flex min-w-0 items-center overflow-hidden ${osdShadow()}`}>
           <LocalFlyOsd.Provider value>{hasVehicle ? <TelemetryRow valuesShown chooser={false} compact stacked /> : <TelemetryPlaceholder />}</LocalFlyOsd.Provider>
         </div>

@@ -101,6 +101,27 @@ test('only widgets without layout widgets inside them jiggle, so the status pill
 
 const EDIT_CONTROLS = ['Layout options', 'Done'];
 
+const clippedBadges = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[aria-label=Hide]')]
+      .filter((badge) => {
+        const widget = badge.parentElement?.getBoundingClientRect();
+        return widget !== undefined && badge.parentElement?.contains(document.elementFromPoint(widget.left + widget.width / 2, widget.top + widget.height / 2)) === true;
+      })
+      .filter((badge) => {
+        const box = badge.getBoundingClientRect();
+        const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+        const edges = [
+          [x, box.top + 1.5],
+          [x, box.bottom - 1.5],
+          [box.left + 1.5, y],
+          [box.right - 1.5, y],
+        ];
+        return edges.some(([px, py]) => !badge.contains(document.elementFromPoint(px, py)));
+      })
+      .map((badge) => badge.parentElement?.querySelector('[aria-label]:not([aria-label=Hide])')?.getAttribute('aria-label') ?? badge.parentElement?.textContent?.trim() ?? '?'),
+  );
+
 const stillWhileEditing = (page: Page) =>
   page.evaluate((controls) => {
     const jiggling = document
@@ -134,6 +155,8 @@ const stillWhileEditing = (page: Page) =>
     const [x, y] = await centre(payload);
     await editLayout(app);
     await expect.poll(() => stillWhileEditing(app)).toEqual([]);
+    await expect.poll(() => clippedBadges(app), { message: 'a hide badge cut off or under something' }).toEqual([]);
+    await expect(app.getByLabel('Always shown')).toHaveCount(0);
     const [editingX, editingY] = await centre(payload);
     expect([Math.round(editingX), Math.round(editingY)], 'the payload strip stays where it was').toEqual([Math.round(x), Math.round(y)]);
   }),

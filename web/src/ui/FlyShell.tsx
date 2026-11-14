@@ -41,7 +41,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { LayoutWidget, useJiggleAngle } from '@/ui/OverlayLayout';
+import { LayoutWidget, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -520,7 +520,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                         </LayoutWidget>
                         {view === FlyView.Video ? <ApproximateAimNote /> : null}
                         <TrafficBanner />
-                        <div className="flex items-center gap-2 overflow-x-auto">{keyRow}</div>
+                        <div className="flex items-center gap-2 overflow-x-auto" style={badgeRoom(editing, true)}>
+                          {keyRow}
+                        </div>
                       </div>
                       <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
                         <BatteryReturnBar />
@@ -528,7 +530,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     </div>
                   }
                   overlays={
-                    <div className="flex w-full flex-col items-start gap-2 overflow-hidden" style={{ paddingInlineStart: insets.overlaysStart, paddingInlineEnd: insets.overlaysEnd }}>
+                    <div className="flex w-full flex-col items-start gap-2 overflow-hidden" style={{ ...badgeRoom(editing, false), paddingInlineStart: insets.overlaysStart, paddingInlineEnd: insets.overlaysEnd }}>
                       <LocalAvoidedByVideoMessage.Provider value>{overlays}</LocalAvoidedByVideoMessage.Provider>
                     </div>
                   }
@@ -581,7 +583,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     className={`absolute inset-x-0 bottom-0 flex items-end gap-6 ${osdShadow()} ${PASS_THROUGH}`}
                     style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideThumb + AircastSpace.s3 * 2, paddingInlineEnd: osdEndRoom, paddingBottom: AircastSpace.s3 }}
                   >
-                    <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} badgeSpot="onTopLeading" className="shrink-0">
+                    <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="shrink-0">
                       <LocalFlyOsd.Provider value>
                         <TelemetryRow valuesShown chooser={false} compact stacked />
                       </LocalFlyOsd.Provider>

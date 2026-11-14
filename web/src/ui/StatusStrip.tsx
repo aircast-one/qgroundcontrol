@@ -43,7 +43,7 @@ import {
 import { JoystickIndicatorCell } from '@/ui/JoystickIndicator';
 import { USB_RADIO_VIEW, usbRadioBadge, usbRadioTone } from '@/ui/UsbRadioIndicator';
 import { useOsdBackdrop } from '@/ui/Osd';
-import { BADGE_SIZE, LayoutWidget, droppedOrder, movedAmongShown, orderedKeys, swallowReleaseClick } from '@/ui/OverlayLayout';
+import { LayoutWidget, badgeRoom, droppedOrder, movedAmongShown, orderedKeys, swallowReleaseClick } from '@/ui/OverlayLayout';
 import { ParameterForm } from '@/ui/ParameterForm';
 import { RemoteIdIndicatorCell } from '@/ui/RemoteIdIndicator';
 import { RtkIndicatorCell, RtkSettingsSheetContent, type RtkStatus, useRememberRtkStatus } from '@/ui/RtkIndicator';
@@ -466,7 +466,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
       <OpenOnRequest name="status-all" open={() => setAllStatus(true)} />
       <div
         className={`flex items-center overflow-x-auto ${className ?? ''}`}
-        style={{ ...style, opacity: live ? 1 : 0.45, ...(editing ? { paddingTop: BADGE_SIZE, marginTop: -BADGE_SIZE, paddingInlineEnd: BADGE_SIZE / 2 } : {}) }}
+        style={{ ...style, opacity: live ? 1 : 0.45, ...badgeRoom(editing, true) }}
       >
         {keys.map((key) => (
           <LeadingGap key={key} gap={shown.has(key) ? stripGap(narrow) : 0}>
@@ -475,7 +475,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
               className={editing ? 'relative touch-none' : 'relative'}
               style={dragged?.key === key ? { translate: `${dragged.dx}px 0`, zIndex: 1 } : undefined}
             >
-              <LayoutWidget widgetKey={`indicator-${key}`} movable={false} badgeSpot="aboveTopTrailing">
+              <LayoutWidget widgetKey={`indicator-${key}`} movable={false}>
                 <IndicatorSlot name={key} onShown={seen}>
                   {byKey.get(key) ?? null}
                 </IndicatorSlot>
