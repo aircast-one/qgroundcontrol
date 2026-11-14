@@ -1,9 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod annexb;
+mod files;
 mod mpegts;
+mod record;
 mod rtp;
+mod synthetic;
 mod video;
+#[cfg(windows)]
+mod webview2;
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::sync::Mutex;
@@ -16,7 +21,11 @@ use groundstation::nativehost::{
     qgc_map_tile_fetch, qgc_shutdown, qgc_start,
 };
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, RunEvent, ipc::Response};
+use tauri::utils::config::BackgroundThrottlingPolicy;
+use tauri::webview::{DownloadEvent, NewWindowResponse};
+use tauri::{
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, ipc::Response,
+};
 
 unsafe extern "C" {
     fn qgc_core_guided(action_json: *const c_char) -> *mut c_char;
@@ -220,15 +229,49 @@ fn main() {
     start_core();
     tauri::Builder::default()
         .manage(video::Streams::default())
+        .manage(synthetic::Views::default())
         .setup(|app| {
             forward_events(app.handle().clone());
+            let downloads = app.path().download_dir().ok();
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                .title("Aircast")
+                .inner_size(1440.0, 900.0)
+                .min_inner_size(900.0, 600.0)
+                .background_throttling(BackgroundThrottlingPolicy::Disabled)
+                .on_download(move |_, event| {
+                    if let (DownloadEvent::Requested { destination, .. }, Some(folder)) =
+                        (event, downloads.as_ref())
+                    {
+                        *destination = folder.join(destination.file_name().unwrap_or_default());
+                    }
+                    true
+                })
+                .on_new_window(|url, _| {
+                    let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+                    NewWindowResponse::Deny
+                })
+                .build()?;
+            #[cfg(windows)]
+            webview2::allow_location(&window)?;
+            let _ = window;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             core,
             map_tile,
             video::video_open,
-            video::video_close
+            video::video_close,
+            video::video_record,
+            files::staged_root,
+            files::staged_write,
+            files::staged_read,
+            files::staged_remove,
+            files::staged_remove_prefixed,
+            files::staged_list,
+            files::saved_read,
+            synthetic::synthetic_open,
+            synthetic::synthetic_resize,
+            synthetic::synthetic_close
         ])
         .build(tauri::generate_context!())
         .expect("the Aircast window failed to open")

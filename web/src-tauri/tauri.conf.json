@@ -10,17 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "Aircast",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 900,
-        "minHeight": 600,
-        "backgroundThrottling": "disabled"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
@@ -38,6 +28,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "installerHooks": "windows/hooks.nsh"
+      }
+    }
   }
 }

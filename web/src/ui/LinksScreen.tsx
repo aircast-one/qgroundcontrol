@@ -3,7 +3,7 @@ import { AccountCommands, LinkCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath, useQgcValue } from '@/bridge/QgcState';
-import { stageFile, unstage, unstageAll } from '@/core/files';
+import { stageFile, stagedLocation, unstage, unstageAll } from '@/core/files';
 import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
@@ -173,7 +173,7 @@ const replayFolder = (link: string): string => `/${REPLAY_LINK_FOLDER}/${fileSaf
 export const stagedReplayLog = async (link: string, file: File): Promise<string | null> => {
   const cleaned = file.name.replace(/[/\\]/g, '_');
   const path = `${replayFolder(link)}${cleaned.trim() === '' ? 'replay.tlog' : cleaned}`;
-  return (await stageFile(path, file).catch(() => false)) ? path : null;
+  return (await stageFile(path, file).catch(() => false)) ? stagedLocation(path) : null;
 };
 
 export const pruneReplayFolder = (link: string, keep: string): Promise<void> => unstageAll(replayFolder(link), keep);

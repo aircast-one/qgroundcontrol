@@ -6,6 +6,14 @@ pub enum Codec {
 
 pub const START: [u8; 4] = [0, 0, 0, 1];
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Unit {
+    pub codec: Codec,
+    pub data: Vec<u8>,
+    pub packets: u16,
+    pub lost: u16,
+}
+
 pub fn nals(stream: &[u8]) -> Vec<&[u8]> {
     let starts: Vec<usize> = stream
         .windows(3)

@@ -1,6 +1,8 @@
 import { mutableStateOf } from '@/kotlin/State';
 import { DEVICE_RETRY_MS, latestWins, readDeviceSettings, sendDeviceSettings } from './deviceSettings';
-import { desktop, desktopCall, desktopEvents } from './desktop';
+import { desktopCall, desktopEvents } from './desktop';
+
+const desktop: boolean = import.meta.env.DESKTOP === true;
 
 const SETTINGS_KEY = 'aircast.settings';
 const WEB_SERIAL_PREFIX = 'webserial-';
@@ -42,8 +44,8 @@ const reloadForThisBuild = () => {
 };
 
 const connect = (): Promise<Worker> => {
-  connection.ready ??= new Promise<Worker>((resolve) => {
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  connection.ready ??= import('./coreWorker').then(({ coreWorker }) => new Promise<Worker>((resolve) => {
+    const worker = coreWorker();
     connection.worker = worker;
     worker.onerror = reloadForThisBuild;
     worker.onmessage = ({ data }: MessageEvent<Message>) => {
@@ -58,7 +60,7 @@ const connect = (): Promise<Worker> => {
       pending.get(data.id)?.(data.result);
       pending.delete(data.id);
     };
-  });
+  }));
   return connection.ready;
 };
 

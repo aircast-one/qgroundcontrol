@@ -1,5 +1,5 @@
 import { startCore } from '@/core/client';
-import { restoreKeptFiles } from '@/core/files';
+import { prepareStaging } from '@/core/files';
 import { DeviceLink } from './DeviceLink';
 import { GcsLocation } from './GcsLocation';
 
@@ -11,7 +11,7 @@ export const HostPlatform = {
     state.started = true;
     await startCore();
     void DeviceLink.start();
-    await restoreKeptFiles();
+    await prepareStaging();
     GcsLocation.start();
   },
 

@@ -1,4 +1,4 @@
-use crate::annexb::{Codec, START};
+use crate::annexb::{Codec, START, Unit};
 
 const REORDER_WINDOW: usize = 8;
 
@@ -9,6 +9,8 @@ pub struct Depacketizer {
     timestamp: Option<u32>,
     unit: Vec<u8>,
     fragment: Option<Vec<u8>>,
+    packets: u16,
+    lost: u16,
 }
 
 struct Packet<'a> {
@@ -62,10 +64,12 @@ impl Depacketizer {
             timestamp: None,
             unit: Vec::new(),
             fragment: None,
+            packets: 0,
+            lost: 0,
         }
     }
 
-    pub fn push(&mut self, packet: &[u8]) -> Vec<Vec<u8>> {
+    pub fn push(&mut self, packet: &[u8]) -> Vec<Unit> {
         let Some(sequence) = packet
             .get(2..4)
             .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
@@ -79,20 +83,23 @@ impl Depacketizer {
             return Vec::new();
         }
         self.held.push((sequence, packet.to_vec()));
-        let lost = self.held.len() > REORDER_WINDOW;
-        if lost {
+        if self.held.len() > REORDER_WINDOW {
             let next = self.next.unwrap_or(sequence);
-            self.next = self
+            let resumed = self
                 .held
                 .iter()
                 .map(|(held, _)| *held)
                 .min_by_key(|held| held.wrapping_sub(next));
+            self.lost = self
+                .lost
+                .saturating_add(resumed.map_or(0, |resumed| resumed.wrapping_sub(next)));
+            self.next = resumed;
             self.fragment = None;
         }
         self.drain()
     }
 
-    fn drain(&mut self) -> Vec<Vec<u8>> {
+    fn drain(&mut self) -> Vec<Unit> {
         let next = self.next.unwrap_or_else(|| self.held[0].0);
         match self.held.iter().position(|(held, _)| *held == next) {
             None => Vec::new(),
@@ -102,17 +109,18 @@ impl Depacketizer {
                 let units = parse(&packet)
                     .map(|parsed| self.take(&parsed))
                     .unwrap_or_default();
-                [units, self.drain()].concat()
+                units.into_iter().chain(self.drain()).collect()
             }
         }
     }
 
-    fn take(&mut self, packet: &Packet<'_>) -> Vec<Vec<u8>> {
+    fn take(&mut self, packet: &Packet<'_>) -> Vec<Unit> {
         let before = match self.timestamp {
             Some(timestamp) if timestamp != packet.timestamp => self.finish(),
             _ => None,
         };
         self.timestamp = Some(packet.timestamp);
+        self.packets = self.packets.saturating_add(1);
         let nals = self.depacketize(packet.payload);
         self.unit = [
             std::mem::take(&mut self.unit),
@@ -125,9 +133,15 @@ impl Depacketizer {
         before.into_iter().chain(after).collect()
     }
 
-    fn finish(&mut self) -> Option<Vec<u8>> {
+    fn finish(&mut self) -> Option<Unit> {
         self.timestamp = None;
-        Some(std::mem::take(&mut self.unit)).filter(|unit| !unit.is_empty())
+        let unit = Unit {
+            codec: self.codec,
+            data: std::mem::take(&mut self.unit),
+            packets: std::mem::take(&mut self.packets),
+            lost: std::mem::take(&mut self.lost),
+        };
+        (!unit.data.is_empty()).then_some(unit)
     }
 
     fn depacketize(&mut self, payload: &[u8]) -> Vec<Vec<u8>> {
@@ -206,18 +220,23 @@ mod tests {
         );
         assert_eq!(
             h264.push(&first),
-            [[
-                &START[..],
-                &[0x67, 0x42],
-                &START,
-                &[0x68, 0xce],
-                &START,
-                &[0x65, 0xaa, 0xbb]
-            ]
-            .concat()]
+            [Unit {
+                codec: Codec::H264,
+                data: [
+                    &START[..],
+                    &[0x67, 0x42],
+                    &START,
+                    &[0x68, 0xce],
+                    &START,
+                    &[0x65, 0xaa, 0xbb]
+                ]
+                .concat(),
+                packets: 3,
+                lost: 0,
+            }]
         );
         assert!(h264.push(&first).is_empty(), "a late copy is dropped");
-        let units: Vec<Vec<u8>> = (14..14 + REORDER_WINDOW as u16 + 1)
+        let units: Vec<Unit> = (14..14 + REORDER_WINDOW as u16 + 1)
             .flat_map(|sequence| {
                 h264.push(&packet(
                     sequence,
@@ -232,6 +251,7 @@ mod tests {
             REORDER_WINDOW + 1,
             "packet 13 never came, so the window moves past it"
         );
+        assert_eq!(units[0].lost, 1, "and the next frame reports it lost");
 
         let mut h265 = Depacketizer::new(Codec::H265);
         assert!(
@@ -239,8 +259,8 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(
-            h265.push(&packet(2, 9, true, &[0x62, 0x01, 0x53, 0x22])),
-            [[&START[..], &[0x26, 0x01, 0x11, 0x22]].concat()]
+            h265.push(&packet(2, 9, true, &[0x62, 0x01, 0x53, 0x22]))[0].data,
+            [&START[..], &[0x26, 0x01, 0x11, 0x22]].concat()
         );
     }
 }

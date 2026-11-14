@@ -3,7 +3,7 @@ import { type Json, opt, optBoolean, optJSONObject, optText, parseJson } from '@
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { call } from '@/core/client';
-import { stageFile, unstage } from '@/core/files';
+import { stageFile, stagedLocation, unstage } from '@/core/files';
 
 export const DEVICE_CONNECT = 'device.connect';
 export const DEVICE_DISCONNECT = 'device.disconnect';
@@ -79,7 +79,7 @@ const stagedAt = (part: DevicePart, file: File): string => `${UPLOAD_STAGE}/${pa
 export const deviceUpload = async (method: DeviceMethod, path: string, parts: readonly DevicePart[]): Promise<DeviceAnswer> => {
   const files = parts.flatMap((part) => (part.file === undefined ? [] : [[stagedAt(part, part.file), part.file] as const]));
   await Promise.all(files.map(([at, file]) => stageFile(at, file).catch(() => false)));
-  const answer = await deviceInvoke(DEVICE_UPLOAD, method, path, parts.map((part) => (part.file === undefined ? { name: part.name, value: part.value ?? '' } : { name: part.name, file: stagedAt(part, part.file) })));
+  const answer = await deviceInvoke(DEVICE_UPLOAD, method, path, parts.map((part) => (part.file === undefined ? { name: part.name, value: part.value ?? '' } : { name: part.name, file: stagedLocation(stagedAt(part, part.file)) })));
   await Promise.all(files.map(([at]) => unstage(at).catch(() => false)));
   return deviceAnswer(answer);
 };

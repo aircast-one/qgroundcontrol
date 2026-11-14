@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcBool, useQgcFacts } from '@/bridge/QgcState';
 import { type Json, isNull, jsonObjects, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
-import { stageFile } from '@/core/files';
+import { stageFile, stagedLocation } from '@/core/files';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { delay, replaceFirstCharUpper, same } from '@/kotlin/Std';
@@ -241,7 +241,7 @@ export const FirmwareScreen = ({ className }: { className?: string }) => {
   const known = FIRMWARE_SOURCES.find(([it]) => it === source);
   const label = (entry: readonly [string, string]) => sourceLabel(entry[0], entry[1], job?.px4StableVersion ?? '', job?.px4BetaVersion ?? '');
   const chibios = source.startsWith('ardupilot:') ? (upgradeSettings.find((it) => it.name === APM_CHIBIOS) ?? null) : null;
-  const choice = firmwareChoice(source, file === null ? null : `${STAGED_PREFIX}${file.name}`);
+  const choice = firmwareChoice(source, file === null ? null : stagedLocation(`${STAGED_PREFIX}${file.name}`));
   const warning = firmwareWarning(source);
   const refuse = (block: () => Promise<string | null>) =>
     void (async () => {

@@ -5,7 +5,7 @@ use mpeg2ts::es::StreamType;
 use mpeg2ts::time::Timestamp;
 use mpeg2ts::ts::{Pid, ReadTsPacket, TsPacketReader, TsPayload};
 
-use crate::annexb::Codec;
+use crate::annexb::{Codec, Unit};
 
 pub const PACKET: usize = 188;
 const SYNC: u8 = 0x47;
@@ -32,6 +32,9 @@ pub struct Demuxer {
     pts: Option<Timestamp>,
     pes_left: Option<usize>,
     split: bool,
+    counter: Option<u8>,
+    packets: u16,
+    lost: u16,
 }
 
 impl Default for Demuxer {
@@ -46,12 +49,15 @@ impl Default for Demuxer {
             pts: None,
             pes_left: None,
             split: false,
+            counter: None,
+            packets: 0,
+            lost: 0,
         }
     }
 }
 
 impl Demuxer {
-    pub fn push(&mut self, bytes: &[u8]) -> Vec<(Codec, Vec<u8>)> {
+    pub fn push(&mut self, bytes: &[u8]) -> Vec<Unit> {
         let joined = [std::mem::take(&mut self.pending), bytes.to_vec()].concat();
         let synced = &joined[joined
             .iter()
@@ -65,7 +71,7 @@ impl Demuxer {
             .collect()
     }
 
-    fn packet(&mut self, packet: &[u8]) -> Vec<(Codec, Vec<u8>)> {
+    fn packet(&mut self, packet: &[u8]) -> Vec<Unit> {
         let held = &self.feed.0;
         *held.lock().unwrap_or_else(PoisonError::into_inner) = packet.to_vec();
         let read = self.reader.read_ts_packet();
@@ -77,6 +83,15 @@ impl Demuxer {
             .video
             .filter(|(pid, _)| *pid == parsed.header.pid)
             .map(|(_, codec)| codec);
+        if video.is_some() {
+            let counter = parsed.header.continuity_counter.as_u8();
+            let skipped = match self.counter {
+                Some(last) if last != counter => counter.wrapping_sub(last).wrapping_sub(1) & 0x0f,
+                _ => 0,
+            };
+            self.lost = self.lost.saturating_add(u16::from(skipped));
+            self.counter = Some(counter);
+        }
         match (parsed.payload, video) {
             (Some(TsPayload::Pmt(pmt)), _) => {
                 self.video = self.video.or_else(|| {
@@ -91,8 +106,8 @@ impl Demuxer {
             (Some(TsPayload::PesStart(pes)), Some(codec)) => {
                 let continues = pes.header.pts.is_none() || pes.header.pts == self.pts;
                 self.split |= continues && self.pts.is_some();
-                let before = (!continues && !self.unit.is_empty())
-                    .then(|| (codec, std::mem::take(&mut self.unit)));
+                let before = (!continues && !self.unit.is_empty()).then(|| self.unit(codec));
+                self.packets = self.packets.saturating_add(1);
                 self.pts = pes.header.pts.or(self.pts);
                 self.unit.extend_from_slice(&pes.data);
                 let header = 3 + [
@@ -109,6 +124,7 @@ impl Demuxer {
                 before.into_iter().chain(self.complete(codec)).collect()
             }
             (Some(TsPayload::PesContinuation(bytes)), Some(codec)) => {
+                self.packets = self.packets.saturating_add(1);
                 self.unit.extend_from_slice(&bytes);
                 self.pes_left = self.pes_left.map(|left| left.saturating_sub(bytes.len()));
                 self.complete(codec).into_iter().collect()
@@ -117,9 +133,17 @@ impl Demuxer {
         }
     }
 
-    fn complete(&mut self, codec: Codec) -> Option<(Codec, Vec<u8>)> {
-        (!self.split && self.pes_left == Some(0) && !self.unit.is_empty())
-            .then(|| (codec, std::mem::take(&mut self.unit)))
+    fn complete(&mut self, codec: Codec) -> Option<Unit> {
+        (!self.split && self.pes_left == Some(0) && !self.unit.is_empty()).then(|| self.unit(codec))
+    }
+
+    fn unit(&mut self, codec: Codec) -> Unit {
+        Unit {
+            codec,
+            data: std::mem::take(&mut self.unit),
+            packets: std::mem::take(&mut self.packets),
+            lost: std::mem::take(&mut self.lost),
+        }
     }
 }
 
@@ -216,10 +240,10 @@ mod tests {
         );
         let units = demuxer.push(&second);
         assert_eq!(units.len(), 1);
-        assert_eq!(units[0].0, Codec::H265);
-        assert!(units[0].1.starts_with(&[0, 0, 0, 1, 0x26, 0x01]));
+        assert_eq!(units[0].codec, Codec::H265);
+        assert!(units[0].data.starts_with(&[0, 0, 0, 1, 0x26, 0x01]));
         assert_eq!(
-            super::super::annexb::nals(&units[0].1).len(),
+            super::super::annexb::nals(&units[0].data).len(),
             2,
             "both slices are in the one access unit"
         );

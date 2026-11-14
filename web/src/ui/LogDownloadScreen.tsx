@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, isJson, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
-import { stagedFile } from '@/core/files';
+import { savedFile } from '@/core/files';
+import { desktop } from '@/core/desktop';
 import { createDocument } from '@/kotlin/Platform';
 import { AlertDialog, Checkbox, ExtendedFloatingActionButton, FilledTonalButton, LinearProgressIndicator, OutlinedButton, Surface, Text, TextButton } from '@/m3';
 import { sentenceCase } from '@/map/SentenceCase';
@@ -65,7 +66,7 @@ export const logSections = (entries: readonly LogEntry[]): (readonly [string, re
   (
     [
       ['On the vehicle', entries.filter((it) => !it.saved)],
-      ['In this browser', entries.filter((it) => it.saved)],
+      [desktop ? 'On this computer' : 'In this browser', entries.filter((it) => it.saved)],
     ] as const
   ).filter(([, section]) => section.length > 0);
 
@@ -178,7 +179,7 @@ const EraseConfirmDialog = ({ erase, onConfirm, onDismiss }: { erase: EraseKind;
 );
 
 const saveToDevice = async (path: string): Promise<void> => {
-  const file = await stagedFile(path);
+  const file = await savedFile(path);
   if (file !== null) createDocument(file.name, 'application/octet-stream', file);
 };
 

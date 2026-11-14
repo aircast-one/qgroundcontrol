@@ -3,7 +3,7 @@ import { VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { desktop } from '@/core/desktop';
-import { playNative, playsNatively } from '@/core/nativeVideo';
+import { type NativePlayer, playNative, playsNatively } from '@/core/nativeVideo';
 import { recordStream } from '@/core/recorder';
 import { type WhepReport, playWhep } from '@/core/whep';
 import { useUpdatedRef } from '@/kotlin/Compose';
@@ -407,6 +407,7 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
   const recordingFile = channel === MAIN_VIDEO_CHANNEL ? nativeRecordingFile(view) : null;
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const player = useRef<NativePlayer | null>(null);
   useEffect(() => {
     if (channel !== PIP_VIDEO_CHANNEL) return undefined;
     pipSurfaces.created();
@@ -422,13 +423,21 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
       if (main && reading.running && reading.stats !== null) mainVideoStats.set(surface, reading.stats);
       else if (main) mainVideoStats.remove(surface);
     };
-    const stop = native !== null && painted !== null ? playNative(painted, native, report) : endpoint !== null && element !== null ? playWhep(element, endpoint, report) : null;
+    const nativePlayer = native !== null && painted !== null ? playNative(painted, native, report) : null;
+    player.current = nativePlayer;
+    const stop = nativePlayer?.stop ?? (endpoint !== null && element !== null ? playWhep(element, endpoint, report) : null);
     return () => {
       stop?.();
+      player.current = null;
       mainVideoStats.remove(surface);
     };
   }, [endpoint, native, channel, restarts]);
   useEffect(() => {
+    const nativePlayer = player.current;
+    if (recordingFile !== null && nativePlayer !== null) {
+      void nativePlayer.record(recordingFile).then((active) => VideoCommands.reportRecording(active));
+      return () => void nativePlayer.record(null).then(() => VideoCommands.reportRecording(false));
+    }
     const stream = video.current?.srcObject;
     if (recordingFile === null || !(stream instanceof MediaStream)) return undefined;
     const stop = recordStream(stream, recordingFile, (recording) => createDocument(recording.name, recording.type, recording));
@@ -437,7 +446,7 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
       stop();
       void VideoCommands.reportRecording(false);
     };
-  }, [recordingFile]);
+  }, [recordingFile, native]);
   return native !== null ? (
     <canvas ref={canvas} className={`block bg-black object-fill ${className ?? ''}`} />
   ) : (
