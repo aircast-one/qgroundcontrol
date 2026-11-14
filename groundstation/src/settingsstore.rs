@@ -1164,8 +1164,7 @@ pub fn telemetry_save_path() -> Option<String> {
 }
 
 pub fn default_save_path(application: &str) -> Option<std::path::PathBuf> {
-    let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
-    Some(home.join("Documents").join(application))
+    Some(std::env::home_dir()?.join("Documents").join(application))
 }
 
 #[derive(Clone, Debug, PartialEq)]
