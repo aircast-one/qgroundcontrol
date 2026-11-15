@@ -3,6 +3,7 @@
 mod annexb;
 mod files;
 mod ingest;
+mod matroska;
 mod mpegts;
 mod record;
 mod rtp;
