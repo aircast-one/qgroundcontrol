@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSyncExternalStore } from 'react';
+import { commandFailed } from '@/core/desktopCommands';
 
 const appWindow = { full: false };
 
@@ -10,7 +11,7 @@ const subscribeToWindow = (changed: () => void) => {
     changed();
   };
   const stop = listen<boolean>('full-screen', ({ payload }) => adopt(payload));
-  void invoke<boolean>('full_screen').then(adopt);
+  void invoke<boolean>('full_screen').then(adopt, commandFailed('full_screen'));
   return () => void stop.then((unlisten) => unlisten());
 };
 

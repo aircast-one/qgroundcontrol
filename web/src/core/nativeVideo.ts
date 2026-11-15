@@ -1,4 +1,5 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { sendCommand } from './desktopCommands';
 import type { WhepCounters, WhepReport, WhepStats } from './whep';
 
 export type NativeMessage =
@@ -163,7 +164,7 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
   const opened = invoke<number>('video_open', { url: uri, frames }).then(
     (id) => {
       session.id = id;
-      if (session.closed) void invoke('video_close', { id });
+      if (session.closed) sendCommand('video_close', { id });
       return id;
     },
     (error: unknown) => {
@@ -185,7 +186,7 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
       session.closed = true;
       clearInterval(timer);
       sizing.reject(new Error('The stream stopped before its first frame.'));
-      if (session.id !== null) void invoke('video_close', { id: session.id });
+      if (session.id !== null) sendCommand('video_close', { id: session.id });
       if (decoders.current.state !== 'closed') decoders.current.close();
     },
     restart: async () => {
