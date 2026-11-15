@@ -223,7 +223,7 @@ test('a device page offers its synthetic view on every visit, even after it was 
     await expect(device.getByRole('menuitem', { name: /Synthetic view/ })).toBeVisible();
     await device.keyboard.press('Escape');
   };
-  await device.addLocatorHandler(device.getByRole('dialog').filter({ hasText: /transfer failed/ }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
+  await device.addLocatorHandler(device.getByRole('dialog').filter({ hasText: /transfer failed|did not take the go-to point/ }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
   await offered();
   const sources = device.getByRole('button', { name: /^Video sources/ });
   const synthetic = device.getByRole('button', { name: /Synthetic view/ });

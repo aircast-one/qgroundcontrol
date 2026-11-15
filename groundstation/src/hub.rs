@@ -631,6 +631,8 @@ pub fn transfer_failed_text(plan: &str, error: &str) -> String {
     )
 }
 
+pub const GO_TO_NOT_TAKEN: &str = "The aircraft did not take the go-to point. Try again.";
+
 fn transfer_failed(kind: u8, error: &str) -> String {
     let name = match kind {
         plantransfer::PLAN_FENCE => "GeoFence",
@@ -1319,11 +1321,13 @@ impl Vehicle {
                 {
                     self.plans[plan].due = None;
                     if !success {
-                        crate::noticeboard::post(
-                            crate::noticeboard::MESSAGE,
-                            "",
-                            &transfer_failed(kind, &error),
-                        );
+                        if self.reposition_supported != Some(true) {
+                            crate::noticeboard::post(
+                                crate::noticeboard::MESSAGE,
+                                "",
+                                GO_TO_NOT_TAKEN,
+                            );
+                        }
                         self.note(error);
                     }
                     Vec::new()
@@ -15734,6 +15738,80 @@ mod tests {
             hub.guided_snapshot(None)["guided"]["errors"],
             json!([]),
             "a go-to the vehicle accepted is not reported as a failed transfer"
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn a_first_go_to_says_it_was_not_taken_only_when_the_vehicle_refused_the_reposition_too() {
+        use mavlink::dialects::ardupilotmega::{
+            COMMAND_ACK_DATA, GLOBAL_POSITION_INT_DATA, MavCmd, MavResult,
+        };
+        let go_to_failures = || {
+            crate::noticeboard::get("host").map_or(0, |host| {
+                host["notices"].as_array().map_or(0, |notices| {
+                    notices
+                        .iter()
+                        .filter(|it| it["text"] == GO_TO_NOT_TAKEN)
+                        .count()
+                })
+            })
+        };
+        let first_go_to = |reposition: MavResult| {
+            let autopilot = MavHeader {
+                system_id: 1,
+                component_id: 1,
+                sequence: 0,
+            };
+            let mut hub = Hub::default();
+            connect_copter(&mut hub, &autopilot);
+            hub.on_frame(
+                origin(4),
+                &autopilot,
+                &copter_heartbeat(4, true),
+                1_000_000,
+                1_000,
+            );
+            let position = MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA {
+                lat: 474000000,
+                lon: 85000000,
+                alt: 520_000,
+                relative_alt: 20_000,
+                ..Default::default()
+            });
+            hub.on_frame(origin(4), &autopilot, &position, 1_100_000, 1_100);
+            let before = go_to_failures();
+            let goto = hub
+                .guided(
+                    None,
+                    &json!({ "action": "goto", "latitude": 47.4009, "longitude": 8.5 }),
+                    1_200,
+                )
+                .unwrap();
+            assert!(
+                goto.iter().any(|(_, bytes)| matches!(decode(bytes), MavMessage::MISSION_ITEM(i) if i.current == 2)),
+                "the first go-to still carries the guided mode item, as QGC sends it"
+            );
+            let answer = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+                command: MavCmd::MAV_CMD_DO_REPOSITION,
+                result: reposition,
+                ..Default::default()
+            });
+            hub.on_frame(origin(4), &autopilot, &answer, 1_300_000, 1_300);
+            (1..=12).for_each(|n| {
+                hub.tick(1_300 + n * plantransfer::ACK_TIMEOUT_MS);
+            });
+            go_to_failures() - before
+        };
+        assert_eq!(
+            first_go_to(MavResult::MAV_RESULT_ACCEPTED),
+            0,
+            "a vehicle that flew the reposition and never answered the guided item did take the go-to point"
+        );
+        assert_eq!(
+            first_go_to(MavResult::MAV_RESULT_UNSUPPORTED),
+            1,
+            "with the reposition refused, the unanswered guided item is the go-to that failed"
         );
     }
 

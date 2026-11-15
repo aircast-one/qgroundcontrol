@@ -23,7 +23,7 @@ test('in flight the map menu flies to the clicked point', async ({ vehicle }) =>
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to go to location' }));
   await expect(vehicle.getByText('Going to point')).toBeVisible();
   await expect(vehicle.getByText(/^Arrived/)).toBeVisible({ timeout: 90_000 });
-  await expect(vehicle.getByText(/transfer failed/)).toBeHidden();
+  await expect(vehicle.getByText(/transfer failed|did not take the go-to point/)).toBeHidden();
 });
 
 test('in flight an ArduCopter flies to the clicked point without saying the transfer failed', async ({ app: vehicle }) => {
@@ -39,7 +39,7 @@ test('in flight an ArduCopter flies to the clicked point without saying the tran
     await expect(slide).toBeHidden({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
   await expect(vehicle.getByText(/^Arrived/)).toBeVisible({ timeout: 90_000 });
-  await expect(vehicle.getByText(/transfer failed/)).toBeHidden();
+  await expect(vehicle.getByText(/transfer failed|did not take the go-to point/)).toBeHidden();
 });
 
 test('in flight the map menu offers an orbit with a radius range', async ({ vehicle }) => {
