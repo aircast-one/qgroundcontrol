@@ -1,8 +1,8 @@
-import { connectMock, expect, telemetry, test } from './fixtures';
+import { connectMock, expect, openMenu, telemetry, test } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const openGeneral = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
 };
 
@@ -35,13 +35,13 @@ test('the enforce checklist switch unlocks only with the checklist on', async ({
 });
 
 test('settings search finds a setting by name', async ({ app }) => {
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   await app.getByPlaceholder('Search settings').fill('mute');
   await expect(app.getByText('Mute all audio output')).toBeVisible();
 });
 
 test('settings search finds the payload bays by what operators call a drop', async ({ app }) => {
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   const search = app.getByPlaceholder('Search settings');
   await ['gripper', 'drop', 'release'].reduce(async (previous, word) => {
     await previous;
@@ -51,7 +51,7 @@ test('settings search finds the payload bays by what operators call a drop', asy
 });
 
 test('turning on the ADS-B server connection keeps the core running', async ({ app }) => {
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   await app.getByPlaceholder('Search settings').fill('ADS-B');
   const adsb = app.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' });
   await adsb.click();
@@ -61,7 +61,7 @@ test('turning on the ADS-B server connection keeps the core running', async ({ a
 });
 
 test('turning on the on-screen sticks shows both sticks on the Fly screen', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(vehicle, 'Settings');
   await vehicle.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
   const sticks = vehicle.getByRole('switch', { name: 'Enabled' });
   await sticks.click();
@@ -82,7 +82,7 @@ test('imperial units turn the Fly telemetry into feet', async ({ vehicle }) => {
 });
 
 test('the radio on USB settings sit with the other stick inputs and let the browser grant the radio its serial port', async ({ app }) => {
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   await app.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
   await expect(app.getByText('Radio on USB (EdgeTX script)', { exact: false })).toBeVisible();
   await expect(app.getByRole('button', { name: 'Allow a USB port' })).toBeVisible();

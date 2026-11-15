@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flyNow, telemetry, test } from './fixtures';
+import { connectMock, expect, flightMode, flyNow, openMenu, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
 
@@ -8,7 +8,7 @@ const coreView = (page: Page, path: string) =>
   page.evaluate(async ([module, watched]) => ((await import(module)) as { Qgc: { path: (path: string) => unknown } }).Qgc.path(watched), ['/src/bridge/Qgc.ts', path] as const);
 
 const addVideoSource = async (page: Page, type: RegExp, address: string) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   const row = page.getByRole('button', { name: /^Video sources/ });
   await expect(async () => {
@@ -347,9 +347,41 @@ test('a two-finger swipe on the video scrolls the picture and moves the camera',
   await expect.poll(async () => ((await gimbalAim(app)())?.yaw ?? before.yaw) - before.yaw, { timeout: 10_000 }).toBeGreaterThan(5);
 });
 
+const showPicture = async (page: Page) => {
+  await addVideoSource(page, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await expect(page.locator('[data-status-row]').getByRole('button', { name: /^Bitrate / }), 'the picture is decoding').toBeVisible({ timeout: 30_000 });
+};
+
+test('in full screen stop motors stays on the rail, and stopping asks for a slide before it cuts the motors', async ({ vehicle }) => {
+  test.setTimeout(150_000);
+  await showPicture(vehicle);
+  const mapButton = vehicle.getByRole('button', { name: 'Map', exact: true });
+  await expect(async () => {
+    await vehicle.mouse.dblclick(640, 560);
+    await expect(mapButton).toBeHidden({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Stop motors', exact: true }).click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to emergency stop' }));
+  await expect(vehicle.getByRole('button', { name: /^Not fully ready$|^Ready to fly$/ }).first(), 'the motors are cut').toBeVisible({ timeout: 30_000 });
+  await expect(mapButton, 'still in full screen').toBeHidden();
+});
+
+test('a phone held sideways shows the sight as bare pitch and throttle readouts, and a larger screen brings the scales back', async ({ vehicle }) => {
+  await vehicle.setViewportSize({ width: 844, height: 390 });
+  await showPicture(vehicle);
+  const sight = vehicle.getByRole('group', { name: 'Sight' });
+  await expect(sight.getByRole('img', { name: /^Pitch -?\d+°$/ })).toBeVisible();
+  await expect(sight.getByRole('img', { name: /^Throttle \d+%$/ })).toBeVisible();
+  await expect(sight.locator('text'), 'no ladder scales on a short screen').toHaveCount(0);
+  await vehicle.setViewportSize({ width: 1280, height: 720 });
+  await expect(sight.locator('text').first()).toBeVisible();
+  await expect(sight.getByRole('img', { name: /^Pitch -?\d+°$/ })).toBeVisible();
+});
+
 test('a double tap leaves only the picture and its flight readings, and another brings the controls back', async ({ vehicle }) => {
-  await addVideoSource(vehicle, /^WebRTC \(WHEP\)/, WHEP_STREAM);
-  await expect(vehicle.locator('[data-status-row]').getByRole('button', { name: /^Bitrate / }), 'the picture is decoding').toBeVisible({ timeout: 30_000 });
+  await showPicture(vehicle);
   const sight = vehicle.getByRole('group', { name: 'Sight' });
   const mapButton = vehicle.getByRole('button', { name: 'Map', exact: true });
   await expect(sight).toBeVisible();

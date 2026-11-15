@@ -44,7 +44,7 @@ const bottomOf = async (target: Locator): Promise<number> => {
 };
 
 const editLayout = async (page: Page) => {
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('dialog').getByText('Edit layout').click();
   await expect(editBar(page)).toBeVisible();
 };
@@ -164,11 +164,12 @@ const stillWhileEditing = (page: Page) =>
 );
 
 test('while editing the layout a tap on an always-shown control does nothing', async ({ vehicle }) => {
+  const [x, y] = await centre(vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button').first());
   await editLayout(vehicle);
-  const [x, y] = await centre(vehicle.getByRole('button', { name: 'More', exact: true }));
   await vehicle.mouse.click(x, y);
   await vehicle.getByRole('button', { name: 'Done' }).click();
   await expect(editBar(vehicle)).toBeHidden();
+  await expect(vehicle.getByText('Height above launch'), 'the tap did not open the takeoff panel').toHaveCount(0);
   await expect(vehicle.getByRole('dialog')).toHaveCount(0);
 });
 

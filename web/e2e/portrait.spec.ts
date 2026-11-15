@@ -78,7 +78,7 @@ const land = async (page: Page) => {
 };
 
 const expectLayoutEditable = async (page: Page) => {
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('dialog').getByText('Edit layout').click();
   await expect(editBar(page)).toBeVisible();
   await page.getByRole('button', { name: 'Done' }).click();
@@ -97,8 +97,8 @@ test('held upright, the layout locks once the aircraft is armed and unlocks when
   await expect(flightMode(page)).toHaveAccessibleName(/^(Takeoff|Hold)\b/, { timeout: 60_000 });
   await pressAndHold(page, battery(page), () => expect(flightMode(page)).toHaveAccessibleName(/^Hold\b/, { timeout: 60_000 }));
   await expect(editBar(page), 'a hold through the climb does not edit the layout').toBeHidden();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  const more = page.getByRole('dialog').filter({ hasText: 'More actions' });
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  const more = page.getByRole('dialog').filter({ hasText: 'Go to' });
   await expect(more.getByText('Choose readings')).toBeVisible();
   await expect(more.getByText('Edit layout')).toHaveCount(0);
   await page.keyboard.press('Escape');

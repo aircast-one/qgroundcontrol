@@ -5,7 +5,13 @@ export const OSD_SCRIM = withAlpha(Color.Black, 0.55);
 
 export const OSD_CONTROL_SIZE = 48;
 
+const COMPACT_HUD_HEIGHT = 500;
+
+export const compactHud = (shellHeight: number): boolean => shellHeight < COMPACT_HUD_HEIGHT;
+
 export const LocalFlyOsd = createContext(false);
+
+export const LocalCompactHud = createContext(false);
 
 export const useOsdBackdrop = (color: string): string => (useContext(LocalFlyOsd) ? Color.Transparent : color);
 

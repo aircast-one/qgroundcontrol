@@ -1,5 +1,5 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { flyNow, openMenu, test as hosted } from './fixtures';
+import { flyNow, mapOrMapButton, openMenu, test as hosted } from './fixtures';
 
 const DEVICE = 'http://localhost:18780';
 const SILENT = 'http://localhost:18788';
@@ -26,7 +26,7 @@ const test = base.extend<{ deviceAt: string; device: Page }>({
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'did not respond to request for parameters' }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
     await page.goto(`${deviceAt}/`);
-    await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+    await expect(mapOrMapButton(page)).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
     await use(page);
     expect(errors, 'uncaught page errors').toEqual([]);
@@ -41,7 +41,7 @@ test.beforeEach(forgetDeviceSettings);
 hosted.beforeEach(forgetDeviceSettings);
 
 const settingsPage = async (page: Page, tab: string, name: RegExp) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: tab }).click();
   const row = page.getByRole('button', { name }).first();
   await expect(async () => {
@@ -57,7 +57,7 @@ const typeSetting = async (page: Page, label: string, value: string) => {
 };
 
 test('a device page reads an ADS-B server on its network through the device', async ({ device }) => {
-  await device.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(device, 'Settings');
   await device.getByPlaceholder('Search settings').fill('ADS-B');
   await device.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' }).click();
   await expect.poll(async () => (await stats()).relays.some((query) => query.includes(`tcp=127.0.0.1%3A${SBS1}`)), { timeout: 30_000 }).toBe(true);
@@ -179,7 +179,7 @@ test.describe('an aircraft that names its uplink', () => {
 
   test('the link cell names the uplink in use and its sheet lists every switch, newest first, with no modem rows when there is no modem', async ({ device }) => {
     await flyNow(device);
-    await device.getByRole('button', { name: 'All status' }).click();
+    await openMenu(device, 'All status');
     const cell = device.getByRole('button', { name: 'Starlink', exact: true });
     await expect(cell).toBeVisible({ timeout: 30_000 });
     await cell.click();
@@ -227,7 +227,7 @@ test('a device page offers its synthetic view on every visit, even after it was 
   await offered();
   const sources = device.getByRole('button', { name: /^Video sources/ });
   const synthetic = device.getByRole('button', { name: /Synthetic view/ });
-  await device.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(device, 'Settings');
   await device.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   await expect(async () => {
     if (await sources.isVisible()) await sources.click();
@@ -275,7 +275,7 @@ hosted('an app served elsewhere moves to the https address the device names, so 
 });
 
 test('a pilot looking for the RTSP and telemetry links finds them by search and from the Transmission tab', async ({ device }) => {
-  await device.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(device, 'Settings');
   await device.getByRole('textbox', { name: 'Search settings' }).fill('rtsp');
   await device.getByRole('button', { name: /^Ground station links/ }).click();
   await expect(device.getByText('rtsp://e2e-device:8554/e2e')).toBeVisible();
@@ -341,7 +341,7 @@ base('a page opened over the tailnet with #local stays on the device', async ({ 
 base('a page opened over the tailnet stays on the device when the hosted app does not answer, and logs why', async ({ page }) => {
   await page.goto(`${TAILNET_NO_APP}/`);
   await flies(page, TAILNET_NO_APP);
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
   await page.getByRole('button', { name: /^Console/ }).click();
   await page.getByPlaceholder('Search…').fill('handoff');
@@ -355,7 +355,7 @@ base('a page opened over the tailnet stays on the device when its https address 
 
 base('a page the device served over http flies from there, even when the device names an https address', async ({ page }) => {
   await page.goto(`http://${UPGRADING}/`);
-  await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await expect(mapOrMapButton(page)).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   expect(new URL(page.url()).origin).toBe(`http://${UPGRADING}`);
 });
@@ -363,11 +363,11 @@ base('a page the device served over http flies from there, even when the device 
 base('a page the device served over plain http, where Chrome hides USB, opens on the https name the device holds a certificate for when asked', async ({ page }) => {
   await page.goto(`${PLAIN_UPGRADING}/`);
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
   await expect(page.getByRole('button', { name: 'Allow a USB port' })).toHaveCount(0);
   await Promise.all([page.waitForURL(`https://${SECURE}/**`), page.getByRole('button', { name: 'Open over https' }).click()]);
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
   await expect(page.getByRole('button', { name: 'Allow a USB port' })).toBeVisible();
 });
@@ -375,7 +375,7 @@ base('a page the device served over plain http, where Chrome hides USB, opens on
 base('a page the device served stays on http when its https name never answers, as it must once the cloud is gone', async ({ page }) => {
   const started = Date.now();
   await page.goto('http://localhost:18787/');
-  await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await expect(mapOrMapButton(page)).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   expect(new URL(page.url()).origin).toBe('http://localhost:18787');
   expect(Date.now() - started).toBeLessThan(30_000);
@@ -443,7 +443,7 @@ base('a device in fight mode records nothing, not even in the browser', async ({
 });
 
 test('settings live on the device, so another address or browser for it opens with them', async ({ device, browser }) => {
-  await device.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(device, 'Settings');
   await device.getByRole('textbox', { name: 'Search settings' }).fill('ADS-B');
   await device.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' }).click();
   await expect(device.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' })).toBeChecked();
@@ -451,8 +451,8 @@ test('settings live on the device, so another address or browser for it opens wi
   const elsewhere = await browser.newContext();
   const other = await elsewhere.newPage();
   await other.goto(`${DEVICE.replace('localhost', '127.0.0.1')}/`);
-  await expect(other.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
-  await other.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(mapOrMapButton(other)).toBeVisible({ timeout: 60_000 });
+  await openMenu(other, 'Settings');
   await other.getByRole('textbox', { name: 'Search settings' }).fill('ADS-B');
   await expect(other.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' })).toBeChecked();
   await elsewhere.close();

@@ -1,4 +1,4 @@
-import { connectMock, expect, openAircraftSetup, test } from './fixtures';
+import { connectMock, expect, openAircraftSetup, openMenu, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -12,7 +12,7 @@ test('ArduPilot setup names the frame and failsafe actions from the parameter me
 
 test('ArduPilot follow takes another connected vehicle as its lead', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   await app.getByRole('button', { name: /^Links / }).click();
   await app.getByRole('button', { name: 'Add link…' }).click();

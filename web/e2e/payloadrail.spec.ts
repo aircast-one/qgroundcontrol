@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, openApp, test } from './fixtures';
+import { connectMock, expect, openApp, openMenu, test } from './fixtures';
 import { lastAnswer, plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
@@ -8,7 +8,7 @@ const R2D2_SIX_POS = [-179, -154, -127, -100, -73, -46] as const;
 const SAFE = 'The payload is safe. Arm it first.';
 
 const fourServoBays = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByPlaceholder('Search settings').fill('bay');
   const bays = page.getByRole('textbox', { name: /^How many payload bays/ });
   await bays.fill('4');
@@ -40,7 +40,7 @@ test('the payload rail arms, picks a bay and drops it, and refuses a drop while 
   await expect(rail(page).getByRole('button', { name: 'Bay 2, loaded, selected' })).toBeVisible();
   await rail(page).getByRole('button', { name: 'Drop 2' }).click();
   await expect(rail(page).getByRole('button', { name: 'Bay 2, empty, selected' }), 'the dropped bay reads empty').toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('dialog').getByText('Payload').click();
   await expect(page.getByRole('dialog').getByText(/^Bay 2 dropped \d+ s ago$/)).toBeVisible({ timeout: 30_000 });
 });
@@ -56,7 +56,7 @@ test("the lock and the radio's BOMARM switch both arm, the last one moved wins, 
   await connectMock(page, [], 'APM ArduCopter Vehicle');
   await fourServoBays(page);
   await readFlightModesOn(page, 10);
-  await page.getByRole('button', { name: 'All status' }).click();
+  await openMenu(page, 'All status');
   await expect(page.getByText('Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
 
@@ -96,7 +96,7 @@ test("a radio whose 6POS neither EdgeTX nor R2D2 reads picks no bay until it is 
   await expect(rail(page).getByRole('button', { name: 'Bay 2, loaded, selected' }), 'a 6POS value on no known step leaves the pick to the app').toBeVisible({ timeout: 30_000 });
 
   await setRadioChannels(page, { 5: ladder[0] });
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
   await page.getByRole('button', { name: 'Learn 6POS' }).click();
   for (const [at, raw] of ladder.entries()) {

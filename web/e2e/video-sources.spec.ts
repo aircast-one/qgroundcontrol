@@ -1,7 +1,7 @@
-import { expect, test } from './fixtures';
+import { expect, openMenu, test } from './fixtures';
 
 test('a WHEP video source can be added and is listed', async ({ app }) => {
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   const row = app.getByRole('button', { name: /^Video sources/ });
   await expect(async () => {
