@@ -1,5 +1,5 @@
 import { type Locator, type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, slideAcross, test, vehicleStatus } from './fixtures';
+import { connectMock, expect, flightMode, openMenu, slideAcross, test, vehicleStatus } from './fixtures';
 
 test('the status sheet arms the aircraft without starting layout editing', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
@@ -53,7 +53,7 @@ test('at desktop width the status pill shows battery time, current draw and sate
 
 test('all status lists the gimbal and Tilt 90 points it as far down as it goes', async ({ app }) => {
   await connectMock(app, ['Enable gimbal']);
-  await app.getByRole('button', { name: 'All status' }).click();
+  await openMenu(app, 'All status');
   const gimbal = app.getByRole('button', { name: /· P: -?[\d.]+ ·/ });
   await expect(gimbal).toBeVisible({ timeout: 30_000 });
   const left = async (locator: Locator) => (await locator.boundingBox())?.x ?? Number.NaN;
@@ -65,7 +65,7 @@ test('all status lists the gimbal and Tilt 90 points it as far down as it goes',
 
 const editLayout = async (page: Page) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('dialog').getByText('Edit layout').click();
   await expect(page.getByRole('button', { name: 'Layout options' })).toBeVisible();
 };

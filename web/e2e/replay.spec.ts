@@ -1,11 +1,11 @@
 import { type Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openMenu, test } from './fixtures';
 import { flightLog } from './tlog';
 
 const HOME = { lat: 47.3977, lon: 8.5456 };
 
 const showReplayBar = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByPlaceholder('Search settings').fill('replay');
   const bar = page.getByRole('switch', { name: /replay/i });
   await bar.click();
@@ -44,7 +44,7 @@ test('a saved replay link still plays its log after a reload', async ({ app }) =
   await replayLink(app);
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   await app.reload();
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
   const links = app.getByRole('button', { name: /^Links/ });
   await expect(async () => {

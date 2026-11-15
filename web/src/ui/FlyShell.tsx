@@ -23,7 +23,7 @@ import { useUpdatedRef } from '@/kotlin/Compose';
 import { getSharedPreferences } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
 import { coerceAtLeast, same } from '@/kotlin/Std';
-import { DropdownMenu, DropdownMenuItem, Surface, Text } from '@/m3';
+import { Surface, Text } from '@/m3';
 import { Map3d, useMap3dShown } from '@/map/Map3d';
 import { MapLayersSheet } from '@/map/MapLayersSheet';
 import { Viewer3DPane } from '@/map/Viewer3D';
@@ -34,8 +34,8 @@ import { FleetPanel } from '@/ui/ActiveVehicle';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { HudLadders } from '@/ui/HudLadders';
 import { useRememberDragAims } from '@/ui/CameraSwitch';
-import { FlyDeckLayout } from '@/ui/FlyDeck';
-import { LocalFlyScreenState } from '@/ui/FlyScreenState';
+import { FLY_MENU, FlyDeckLayout } from '@/ui/FlyDeck';
+import { LocalFlyScreenState, MENU_SHEET } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { ApproximateAimNote, gimbalSwitchWidth } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
@@ -889,41 +889,22 @@ export const useAvoidedByVideoMessage = (key: string): RefCallback<HTMLElement> 
   );
 };
 
-export type MenuDestination = { label: string; icon: DrawableName; current: boolean; onSelect: () => void };
-export const MenuDestination = (fields: MenuDestination): MenuDestination => ({ ...fields });
-
-export const FlyTabMenu = ({ destinations }: { destinations: readonly MenuDestination[] }) => {
-  const [open, setOpen] = useState(false);
+export const FlyMenuButton = () => {
+  const flyScreen = useContext(LocalFlyScreenState);
   const backdrop = useOsdBackdrop(OSD_SCRIM);
   return (
-    <div className="relative">
-      <Surface
-        onClick={() => setOpen(true)}
-        shape="full"
-        color={backdrop}
-        contentColor={aircast('outdoorForeground')}
-        label="Menu"
-        className="grid place-items-center"
-        style={{ width: STATUS_ROW_HEIGHT + AircastSpace.s2, height: STATUS_ROW_HEIGHT + AircastSpace.s2 }}
-      >
-        <MaterialIcon name="menu" filled size={22} />
-      </Surface>
-      <DropdownMenu expanded={open} onDismissRequest={() => setOpen(false)}>
-        {destinations.map((destination) => {
-          const tint = destination.current ? md('primary') : md('onSurface');
-          return (
-            <DropdownMenuItem
-              key={destination.label}
-              text={<Text typography="labelLarge" color={tint}>{destination.label}</Text>}
-              leadingIcon={<Drawable name={destination.icon} style={{ color: tint }} />}
-              onClick={() => {
-                setOpen(false);
-                if (!destination.current) destination.onSelect();
-              }}
-            />
-          );
-        })}
-      </DropdownMenu>
-    </div>
+    <Surface
+      onClick={() => {
+        flyScreen.requestedSheet.value = MENU_SHEET;
+      }}
+      shape="full"
+      color={backdrop}
+      contentColor={aircast('outdoorForeground')}
+      label={FLY_MENU}
+      className={`grid place-items-center ${osdShadow()}`}
+      style={{ width: STATUS_ROW_HEIGHT + AircastSpace.s2, height: STATUS_ROW_HEIGHT + AircastSpace.s2 }}
+    >
+      <MaterialIcon name="more_horiz" filled size={24} />
+    </Surface>
   );
 };

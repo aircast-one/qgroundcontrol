@@ -42,10 +42,10 @@ import { DeviceCameraHost } from '@/ui/DeviceCameraHost';
 import { BetaDiagnosticsDialog } from '@/ui/BetaDiagnosticsDialog';
 import { HandoffDialog } from '@/ui/HandoffDialog';
 import { FirstRunDialog } from '@/ui/FirstRunDialog';
-import type { FlyDeckLayout } from '@/ui/FlyDeck';
+import { type FlyDeckLayout, LocalFlyDestinations, MoreTile } from '@/ui/FlyDeck';
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
-import { FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
+import { FleetCard, FlyMenuButton, FlyScreen, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
 import { FLY_STATE, VEHICLE_FLIGHT_DISTANCE, disarmNotice, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog, gimbalRefused } from '@/ui/GimbalIndicator';
@@ -66,7 +66,7 @@ import { PlanTab } from '@/ui/PlanTab';
 import { RcControlsLayer } from '@/ui/RcControlsLayer';
 import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
 import { SettingsGroup } from '@/ui/SettingsScreen';
-import { FlySettingsButton, SettingsSheet } from '@/ui/SettingsSheet';
+import { SettingsSheet } from '@/ui/SettingsSheet';
 import { StatusPill, batteryPercentNow, flightTimeNow } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
@@ -536,19 +536,15 @@ export const AircastShell = () => {
     navigation.settingsOpen.value = true;
   };
 
+  const flyDestinations: readonly MoreTile[] = [
+    ...tabs.filter((it) => it !== Tab.Fly).map((it) => MoreTile({ label: it.label, icon: it.icon, enabled: true, onClick: () => selectTab(it) })),
+    MoreTile({ label: 'Settings', icon: 'ic_settings', enabled: true, onClick: openSettings }),
+    ...(browserFullScreenSupported() ? [MoreTile({ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen', enabled: true, onClick: () => void toggleBrowserFullScreen().catch(() => undefined) })] : []),
+  ];
+
   const flyStatus = (
     <>
-      {layoutEditing ? (
-        <LayoutOptionsMenu />
-      ) : (
-        <FlyTabMenu
-          destinations={[
-            ...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })),
-            { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings },
-            ...(browserFullScreenSupported() ? [{ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen' as const, current: false, onSelect: () => void toggleBrowserFullScreen().catch(() => undefined) }] : []),
-          ]}
-        />
-      )}
+      {layoutEditing ? <LayoutOptionsMenu /> : null}
       <div className={`flex items-center justify-start ${layoutEditing ? 'grow shrink-0' : 'min-w-0 flex-1'}`}>
         <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false} className="min-w-0">
           <VehicleStateChip />
@@ -562,7 +558,7 @@ export const AircastShell = () => {
       <div className="min-w-0" {...statusPillHold}>
         <StatusPill />
       </div>
-      {layoutEditing ? <LayoutDoneButton /> : <FlySettingsButton />}
+      {layoutEditing ? <LayoutDoneButton /> : <FlyMenuButton />}
     </>
   );
   const flyRail = (splitRoom: boolean) => (
@@ -615,6 +611,7 @@ export const AircastShell = () => {
       <GimbalTakeControlDialog />
       {appMessages[0] !== undefined ? <AppMessageDialog message={appMessages[0]} onOpenSetup={() => navigation.openAircraft()} onDismiss={() => setAppMessages((messages) => messages.slice(1))} /> : null}
       <LocalImmersive.Provider value={flyLandscape}>
+        <LocalFlyDestinations.Provider value={flyDestinations}>
         <div className="flex h-full w-full bg-surface text-on-surface">
           {landscape && !flyLandscape ? (
             <NavigationRail className="h-full pt-[max(12px,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
@@ -719,6 +716,7 @@ export const AircastShell = () => {
             </div>
           </div>
         </div>
+        </LocalFlyDestinations.Provider>
       </LocalImmersive.Provider>
     </AircastTheme>
   );

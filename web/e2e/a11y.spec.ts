@@ -13,7 +13,7 @@ test('every form control on Fly, Plan and the settings tabs has an accessible na
   await openPlanAtVehicle(vehicle);
   await tapPlanMission(vehicle);
   expect(await unnamedControls(vehicle)).toEqual([]);
-  await vehicle.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(vehicle, 'Settings');
   const tabs = await vehicle.getByRole('tablist').getByRole('tab').allTextContents();
   await tabs.reduce(
     (done, tab) =>

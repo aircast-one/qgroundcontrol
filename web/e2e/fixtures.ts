@@ -18,8 +18,8 @@ export const openApp = async (page: Page, { firstRun = true } = {}) => {
 export const openMenu = async (page: Page, item: string) => {
   const rail = page.getByRole('navigation').getByRole('button', { name: item, exact: true });
   if (await rail.isVisible()) return rail.click();
-  await page.getByRole('button', { name: 'Menu' }).click();
-  await page.getByRole('menuitem', { name: item }).click();
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: item, exact: true }).click();
 };
 
 export type MockOption = 'Enable camera' | 'Enable gimbal' | 'Enable proximity sensors' | 'Send status text + voice';
@@ -136,7 +136,7 @@ export const tapPlanMission = async (page: Page) => {
 };
 
 export const openAircraftSetup = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
   const entry = page.getByRole('button', { name: 'Aircraft setup' });
   await expect(async () => {

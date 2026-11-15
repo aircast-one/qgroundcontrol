@@ -1,9 +1,9 @@
-import { connectMock, expect, test } from './fixtures';
+import { connectMock, expect, openMenu, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
 test('an enforced preflight checklist pops up on connect, ticks off and resets', async ({ app }) => {
-  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app, 'Settings');
   await app.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
   await app.getByRole('switch', { name: 'Use preflight checklist' }).click();
   await app.getByRole('switch', { name: 'Enforce preflight checklist' }).click();
