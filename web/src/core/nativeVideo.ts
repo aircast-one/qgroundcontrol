@@ -83,7 +83,7 @@ export const decoderStep = (decoding: Decoding, event: DecoderEvent): readonly [
 };
 
 export const recordOutcome = (file: string | null, request: number, latest: number, playing: boolean): RecordOutcome =>
-  request !== latest || !playing ? 'superseded' : file === null ? 'stopped' : 'recording';
+  request !== latest ? 'superseded' : file === null || !playing ? 'stopped' : 'recording';
 
 export const arrivalJitterMs = (arrivals: readonly number[]): number => {
   const gaps = arrivals.slice(1).map((at, index) => at - arrivals[index]!);
@@ -201,8 +201,9 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
       const id = await opened;
       if (id === null) throw new Error(session.playback.error || NOT_OPENED);
       const size = file === null ? NOT_RECORDING : (session.size ?? (await firstFrame.catch(() => null)));
-      const outcome = recordOutcome(file, request, session.requests, size !== null && !session.closed);
-      if (outcome === 'superseded' || size === null) return 'superseded';
+      const playing = size !== null && !session.closed;
+      const outcome = recordOutcome(file, request, session.requests, playing);
+      if (outcome === 'superseded' || !playing) return outcome;
       await invoke('video_record', { id, file, width: size.width, height: size.height });
       return outcome;
     },

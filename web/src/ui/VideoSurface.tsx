@@ -452,7 +452,7 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
       );
       return () =>
         void nativePlayer.record(null).then(
-          () => VideoCommands.reportRecording(false),
+          (outcome) => (outcome === 'superseded' ? undefined : VideoCommands.reportRecording(false)),
           () => VideoCommands.reportRecording(false),
         );
     }

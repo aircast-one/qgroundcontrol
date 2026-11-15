@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -14,6 +15,8 @@ const LONGEST_SEGMENT: i64 = 10 * 90_000;
 const STALL: i64 = 45_000;
 const FRAME_STEP: i64 = 3_000;
 const LARGEST_GAP: i64 = 10 * 90_000;
+const REORDERED_WITHIN: i64 = 45_000;
+const REORDER_DEPTH: usize = 4;
 const KEYFRAMES_WITHOUT_PARAMETERS: u32 = 3;
 const FRAME_RATE_UNUSED_BY_FRAGMENTS: f64 = 30.0;
 
@@ -43,6 +46,12 @@ struct Clock {
     last: i64,
 }
 
+struct Pending {
+    at: i64,
+    sample: Vec<u8>,
+    key: bool,
+}
+
 struct Started {
     muxer: FragmentedMuxer,
     codec: Codec,
@@ -57,8 +66,11 @@ pub struct Recording {
     seen: Parameters,
     keyframes_without_parameters: u32,
     clock: Option<Clock>,
+    pending: VecDeque<Pending>,
+    presented: BinaryHeap<Reverse<i64>>,
+    decoded: i64,
     flushed: i64,
-    previous: i64,
+    previous: Option<i64>,
     frames: u64,
     bytes: u64,
 }
@@ -217,7 +229,9 @@ impl Clock {
 
     fn placed(self, timestamp: u64) -> (Self, i64) {
         let stamped = i64::try_from(timestamp).unwrap_or(i64::MAX) - self.base + self.offset;
-        let jumped = stamped <= self.last || stamped - self.last > LARGEST_GAP;
+        let behind = self.last - stamped;
+        let reordered = behind > 0 && behind < REORDERED_WITHIN;
+        let jumped = !reordered && (behind >= 0 || -behind > LARGEST_GAP);
         let at = if jumped {
             self.last + FRAME_STEP
         } else {
@@ -226,7 +240,7 @@ impl Clock {
         (
             Self {
                 offset: self.offset + (at - stamped),
-                last: at,
+                last: self.last.max(at),
                 ..self
             },
             at,
@@ -248,8 +262,11 @@ impl Recording {
             seen: Parameters::default(),
             keyframes_without_parameters: 0,
             clock: None,
+            pending: VecDeque::new(),
+            presented: BinaryHeap::new(),
+            decoded: 0,
             flushed: 0,
-            previous: 0,
+            previous: None,
             frames: 0,
             bytes: 0,
         })
@@ -315,11 +332,41 @@ impl Recording {
             .unwrap_or_else(|| Clock::starting(timestamp))
             .placed(timestamp);
         self.clock = Some(clock);
-        let after_stall = self.frames > 0 && at - self.previous > STALL;
-        let due = at - self.flushed >= if key { SEGMENT } else { LONGEST_SEGMENT };
-        self.previous = at;
+        self.frames += 1;
+        let header_pps = self
+            .started
+            .as_ref()
+            .map(|started| started.parameters.header_pps().to_vec())
+            .unwrap_or_default();
+        self.pending.push_back(Pending {
+            at,
+            sample: sample(codec, nals, &header_pps),
+            key,
+        });
+        self.presented.push(Reverse(at));
+        match self.pending.len() > REORDER_DEPTH {
+            true => self.decode_oldest(),
+            false => Ok(()),
+        }
+    }
+
+    fn decode_oldest(&mut self) -> std::io::Result<()> {
+        let Some(frame) = self.pending.pop_front() else {
+            return Ok(());
+        };
+        let decoded = self
+            .presented
+            .pop()
+            .map_or(frame.at, |Reverse(earliest)| earliest)
+            .max(self.decoded);
+        let after_stall = self
+            .previous
+            .is_some_and(|previous| decoded - previous > STALL);
+        let due = decoded - self.flushed >= if frame.key { SEGMENT } else { LONGEST_SEGMENT };
+        self.previous = Some(decoded);
+        self.decoded = decoded;
         if due && !after_stall {
-            self.flushed = at;
+            self.flushed = decoded;
             if let Some(segment) = self
                 .started
                 .as_mut()
@@ -328,18 +375,17 @@ impl Recording {
                 self.append(&segment)?;
             }
         }
-        self.frames += 1;
-        let at = u64::try_from(at).unwrap_or(0);
+        let stamp = |time: i64| u64::try_from(time).unwrap_or(0);
         self.started.as_mut().map_or(Ok(()), |started| {
-            let header_pps = started.parameters.header_pps().to_vec();
             started
                 .muxer
-                .write_video(at, at, &sample(codec, nals, &header_pps), key)
+                .write_video(stamp(frame.at), stamp(decoded), &frame.sample, frame.key)
                 .map_err(|error| std::io::Error::other(error.to_string()))
         })
     }
 
     pub fn finish(mut self) -> std::io::Result<Written> {
+        (0..self.pending.len()).try_for_each(|_| self.decode_oldest())?;
         if let Some(segment) = self
             .started
             .as_mut()
@@ -483,6 +529,48 @@ mod tests {
     }
 
     #[test]
+    fn b_frames_keep_their_presentation_times_and_the_recording_its_length() {
+        let shown_in_decode_order = [0, 3, 1, 2, 6, 4, 5, 9, 7, 8];
+        let placed: Vec<i64> = shown_in_decode_order
+            .iter()
+            .scan(Clock::starting(500_000), |clock, frame| {
+                let (next, at) = clock.placed(500_000 + frame * 3_000);
+                *clock = next;
+                Some(at)
+            })
+            .collect();
+        assert_eq!(
+            placed,
+            shown_in_decode_order.map(|frame| i64::try_from(frame).unwrap() * 3_000),
+            "a frame shown before the one decoded ahead of it is not a jump"
+        );
+        let path = scratch("bframes");
+        let key = unit(&[&SPS, &PPS, &[0x65, 0x88]]);
+        let delta = unit(&[&[0x41, 0x9a]]);
+        let mut recording = Recording::create(&path, (1280, 720)).unwrap();
+        (0..10u64)
+            .flat_map(|group| shown_in_decode_order.map(|frame| group * 10 + frame))
+            .try_for_each(|frame| {
+                let nals = if frame % 30 == 0 { &key } else { &delta };
+                recording.write(
+                    Codec::H264,
+                    &annexb::nals(nals),
+                    frame % 30 == 0,
+                    500_000 + frame * 3_000,
+                )
+            })
+            .unwrap();
+        let written = recording.finish().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(written.frames, 100);
+        assert!(
+            (written.seconds - 99.0 * 3_000.0 / 90_000.0).abs() < 0.01,
+            "the camera's 3.3 s stay 3.3 s rather than growing with every reordered frame ({}s)",
+            written.seconds
+        );
+    }
+
+    #[test]
     fn a_stall_stays_inside_a_fragment_so_the_file_keeps_its_length() {
         let path = scratch("stall");
         let key = unit(&[&SPS, &PPS, &[0x65, 0x88]]);
@@ -495,9 +583,12 @@ mod tests {
                 .count()
         };
         let mut recording = Recording::create(&path, (1280, 720)).unwrap();
+        let resumed = 40 * 3_000 + 4 * 90_000;
+        let decoded = REORDER_DEPTH as u64;
         let frames: Vec<(bool, u64)> = std::iter::once((true, 0))
             .chain((1..40).map(|frame| (false, frame * 3_000)))
-            .chain([(true, 40 * 3_000 + 4 * 90_000)])
+            .chain([(true, resumed)])
+            .chain((1..=decoded).map(|frame| (false, resumed + frame * 3_000)))
             .collect();
         frames.iter().for_each(|&(is_key, at)| {
             let nals = if is_key { &key } else { &delta };
@@ -510,8 +601,7 @@ mod tests {
             0,
             "the keyframe after a 4 s stall does not start a fragment, since muxide would close the gap there"
         );
-        let resumed = 40 * 3_000 + 4 * 90_000;
-        (1..=30).for_each(|frame| {
+        (decoded + 1..=30).for_each(|frame| {
             recording
                 .write(
                     Codec::H264,
@@ -524,6 +614,16 @@ mod tests {
         recording
             .write(Codec::H264, &annexb::nals(&key), true, resumed + 31 * 3_000)
             .unwrap();
+        (32..32 + decoded).for_each(|frame| {
+            recording
+                .write(
+                    Codec::H264,
+                    &annexb::nals(&delta),
+                    false,
+                    resumed + frame * 3_000,
+                )
+                .unwrap();
+        });
         assert_eq!(
             moofs(&path),
             1,

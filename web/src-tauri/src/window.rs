@@ -2,12 +2,14 @@ use std::ffi::CString;
 use std::sync::Mutex;
 use std::sync::PoisonError;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use groundstation::nativehost::{qgc_bridge_free, qgc_bridge_get};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Runtime, WebviewWindow};
 
 const CLOSE_CHECKS: &str = "view.closeChecks";
+const UNANSWERED: Duration = Duration::from_secs(2);
 
 static CLOSING: AtomicBool = AtomicBool::new(false);
 static PROMPT: Mutex<Prompt> = Mutex::new(Prompt::Idle);
@@ -15,7 +17,7 @@ static PROMPT: Mutex<Prompt> = Mutex::new(Prompt::Idle);
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Prompt {
     Idle,
-    Asked,
+    Asked(Instant),
     Shown,
 }
 
@@ -25,11 +27,12 @@ pub enum Close {
     Ask,
 }
 
-pub fn close_decision(prompt: Prompt, prompts: usize) -> (Close, Prompt) {
+pub fn close_decision(prompt: Prompt, prompts: usize, now: Instant) -> (Close, Prompt) {
     match (prompts, prompt) {
         (0, _) => (Close::Go, Prompt::Idle),
-        (_, Prompt::Asked) => (Close::Go, Prompt::Idle),
-        _ => (Close::Ask, Prompt::Asked),
+        (_, Prompt::Asked(at)) if now.duration_since(at) >= UNANSWERED => (Close::Go, Prompt::Idle),
+        (_, Prompt::Asked(at)) => (Close::Ask, Prompt::Asked(at)),
+        _ => (Close::Ask, Prompt::Asked(now)),
     }
 }
 
@@ -68,8 +71,8 @@ pub fn holds_close<R: Runtime>(app: &AppHandle<R>) -> bool {
     }
     let asked = close_prompts(&close_checks());
     let mut held = prompt();
-    let (close, next) = close_decision(*held, asked.len());
-    if *held == Prompt::Asked && close == Close::Go {
+    let (close, next) = close_decision(*held, asked.len(), Instant::now());
+    if matches!(*held, Prompt::Asked(_)) && close == Close::Go {
         log::warn!(target: "desktop.window", "event=close_prompt_unanswered reasons={}", asked.len());
         CLOSING.store(true, Ordering::Relaxed);
     }
@@ -182,18 +185,30 @@ mod tests {
     }
 
     #[test]
-    fn a_prompt_the_page_never_showed_lets_the_next_close_through() {
-        assert_eq!(close_decision(Prompt::Idle, 0), (Close::Go, Prompt::Idle));
-        assert_eq!(close_decision(Prompt::Idle, 1), (Close::Ask, Prompt::Asked));
+    fn a_prompt_the_page_never_showed_lets_a_later_close_through() {
+        let asked = Instant::now();
         assert_eq!(
-            close_decision(Prompt::Shown, 1),
-            (Close::Ask, Prompt::Asked),
+            close_decision(Prompt::Idle, 0, asked),
+            (Close::Go, Prompt::Idle)
+        );
+        assert_eq!(
+            close_decision(Prompt::Idle, 1, asked),
+            (Close::Ask, Prompt::Asked(asked))
+        );
+        assert_eq!(
+            close_decision(Prompt::Shown, 1, asked),
+            (Close::Ask, Prompt::Asked(asked)),
             "a close while the dialog is up asks again"
         );
         assert_eq!(
-            close_decision(Prompt::Asked, 1),
+            close_decision(Prompt::Asked(asked), 1, asked + UNANSWERED / 4),
+            (Close::Ask, Prompt::Asked(asked)),
+            "a held Cmd+Q or a double click lands before the page can answer, so it asks again"
+        );
+        assert_eq!(
+            close_decision(Prompt::Asked(asked), 1, asked + UNANSWERED),
             (Close::Go, Prompt::Idle),
-            "a page that never answered the last prompt cannot hold the window, so a second close goes through"
+            "a page that never answered the prompt cannot hold the window, so a later close goes through"
         );
     }
 }
