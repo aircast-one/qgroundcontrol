@@ -30,6 +30,9 @@ test('the installed app opens on the welcome screen and goes on to the Fly scree
   await expect(welcome).toBeHidden();
   const menu = app().getByRole('button', { name: 'Menu', exact: true });
   const rail = app().getByRole('navigation').getByRole('button', { name: 'Settings', exact: true });
+  const betaOffer = app().getByRole('dialog', { name: 'Help us debug this beta' }).getByRole('button', { name: 'No thanks' });
+  await expect(menu.or(rail).or(betaOffer).first()).toBeVisible();
+  if (await betaOffer.isVisible()) await betaOffer.click();
   await expect(menu.or(rail).first()).toBeVisible();
 });
 

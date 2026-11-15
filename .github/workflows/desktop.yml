@@ -103,7 +103,7 @@ jobs:
           NOTARY_USER: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
           NOTARY_TEAM: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
           NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
-          OTEL_BETA_INGEST_TOKEN: ${{ secrets.OTEL_BETA_INGEST_TOKEN }}
+          OTEL_BETA_INGEST_TOKEN: ${{ inputs.short_version != '' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
         run: |
           set -euo pipefail
           if [ -n "$P12" ] && [ "$RELEASING" == "true" ]; then
@@ -211,7 +211,7 @@ jobs:
       - name: Build installer
         working-directory: web
         env:
-          OTEL_BETA_INGEST_TOKEN: ${{ secrets.OTEL_BETA_INGEST_TOKEN }}
+          OTEL_BETA_INGEST_TOKEN: ${{ inputs.short_version != '' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
         run: |
           $config = Join-Path $env:RUNNER_TEMP 'version.json'
           @{ version = $env:SHORT.TrimStart('v'); build = @{ beforeBuildCommand = 'npx vite build' } } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $config
