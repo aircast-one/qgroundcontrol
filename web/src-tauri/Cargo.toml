@@ -22,5 +22,8 @@ tauri-plugin-window-state = "=2.4.1"
 tokio = { version = "1", features = ["net", "io-util", "sync", "rt-multi-thread"] }
 log = "0.4"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+
 [target.'cfg(windows)'.dependencies]
 webview2-com = "=0.38.2"

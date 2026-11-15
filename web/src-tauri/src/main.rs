@@ -291,7 +291,7 @@ fn main() {
             #[cfg(windows)]
             webview2::allow_location(&_window)?;
             #[cfg(target_os = "macos")]
-            window::guard_quit(app.handle())?;
+            window::guard_terminate(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

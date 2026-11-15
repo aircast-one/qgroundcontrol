@@ -108,41 +108,54 @@ pub fn close_anyway<R: Runtime>(app: AppHandle<R>) {
 }
 
 #[cfg(target_os = "macos")]
-pub fn guard_quit<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-    const QUIT: &str = "guarded-quit";
-    const APPLICATION_MENU: usize = 0;
-    let name = app.package_info().name.clone();
-    let about = AboutMetadata {
-        name: Some(name.clone()),
-        version: Some(app.package_info().version.to_string()),
-        ..Default::default()
-    };
-    let application = Submenu::with_items(
-        app,
-        &name,
-        true,
-        &[
-            &PredefinedMenuItem::about(app, None, Some(about))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::services(app, None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::hide(app, None)?,
-            &PredefinedMenuItem::hide_others(app, None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, QUIT, format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?,
-        ],
-    )?;
-    let menu = Menu::default(app)?;
-    menu.remove_at(APPLICATION_MENU)?;
-    menu.insert(&application, APPLICATION_MENU)?;
-    app.set_menu(menu)?;
-    app.on_menu_event(|app, event| {
-        if event.id() == QUIT && !holds_close(app) {
-            app.exit(0);
+mod terminate {
+    use std::sync::OnceLock;
+
+    use objc2::ffi::class_addMethod;
+    use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
+    use objc2::sel;
+
+    const TERMINATE_CANCEL: usize = 0;
+    const TERMINATE_NOW: usize = 1;
+
+    type Holds = Box<dyn Fn() -> bool + Send + Sync>;
+
+    static HOLDS: OnceLock<Holds> = OnceLock::new();
+
+    extern "C-unwind" fn should_terminate(_: &AnyObject, _: Sel, _: *mut AnyObject) -> usize {
+        match HOLDS.get().is_some_and(|holds| holds()) {
+            true => TERMINATE_CANCEL,
+            false => TERMINATE_NOW,
         }
-    });
-    Ok(())
+    }
+
+    pub fn guard(holds: Holds) -> Result<(), String> {
+        let _ = HOLDS.set(holds);
+        let delegate = AnyClass::get(c"TaoAppDelegateParent")
+            .ok_or("The app delegate class is missing, so a Quit cannot be held.")?;
+        let answer: extern "C-unwind" fn(&AnyObject, Sel, *mut AnyObject) -> usize =
+            should_terminate;
+        let added = unsafe {
+            class_addMethod(
+                std::ptr::from_ref(delegate).cast_mut(),
+                sel!(applicationShouldTerminate:),
+                std::mem::transmute::<_, Imp>(answer),
+                c"Q@:@".as_ptr(),
+            )
+        };
+        added
+            .as_bool()
+            .then_some(())
+            .ok_or_else(|| "The app delegate already answers Quit.".to_string())
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn guard_terminate<R: Runtime>(app: &AppHandle<R>) {
+    let app = app.clone();
+    if let Err(reason) = terminate::guard(Box::new(move || holds_close(&app))) {
+        log::warn!(target: "desktop.window", "event=quit_unguarded reason=\"{reason}\"");
+    }
 }
 
 #[tauri::command]

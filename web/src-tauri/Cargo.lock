@@ -37,6 +37,7 @@ dependencies = [
  "log",
  "mpeg2ts",
  "muxide",
+ "objc2",
  "percent-encoding",
  "retina",
  "serde_json",
