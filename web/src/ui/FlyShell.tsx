@@ -47,6 +47,7 @@ import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, VIDEO_CORNER_ROOM, useRememberSyntheticAims, useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
+import { UpdateBanner } from '@/ui/AppUpdates';
 import { TrafficBanner } from '@/ui/TrafficBanner';
 import { HudReadings, TelemetryRow } from '@/ui/VehicleUi';
 import {
@@ -607,6 +608,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                           </LayoutWidget>
                           {view === FlyView.Video ? <ApproximateAimNote /> : null}
                           <TrafficBanner />
+                          <UpdateBanner />
                           <div className="flex items-center gap-2 overflow-x-auto" style={badgeRoom(editing, true)}>
                             {keyRow}
                           </div>

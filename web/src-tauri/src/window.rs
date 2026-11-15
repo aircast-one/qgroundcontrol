@@ -1,10 +1,8 @@
-use std::ffi::CString;
 use std::sync::Mutex;
 use std::sync::PoisonError;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use groundstation::nativehost::{qgc_bridge_free, qgc_bridge_get};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Runtime, WebviewWindow};
 
@@ -40,36 +38,36 @@ fn prompt() -> std::sync::MutexGuard<'static, Prompt> {
     PROMPT.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn close_checks() -> Value {
-    let path = CString::new(CLOSE_CHECKS).unwrap_or_default();
-    let raw = unsafe { qgc_bridge_get(path.as_ptr()) };
-    if raw.is_null() {
-        return Value::Null;
-    }
-    let text = unsafe { std::ffi::CStr::from_ptr(raw) }
-        .to_string_lossy()
-        .into_owned();
-    unsafe { qgc_bridge_free(raw) };
-    serde_json::from_str(&text).unwrap_or(Value::Null)
-}
-
-pub fn close_prompts(checks: &Value) -> Vec<String> {
+fn prompt_messages(checks: &Value, wanted: impl Fn(&Value) -> bool) -> Vec<String> {
     checks["prompts"]
         .as_array()
         .map(|prompts| {
             prompts
                 .iter()
+                .filter(|prompt| wanted(prompt))
                 .filter_map(|prompt| prompt["message"].as_str().map(str::to_string))
                 .collect()
         })
         .unwrap_or_default()
 }
 
+pub fn close_prompts(checks: &Value) -> Vec<String> {
+    prompt_messages(checks, |_| true)
+}
+
+pub fn work_lost(checks: &Value) -> Vec<String> {
+    prompt_messages(checks, |prompt| prompt["losesWork"] == true)
+}
+
+pub fn work_at_risk() -> Vec<String> {
+    work_lost(&crate::bridge::core_value(CLOSE_CHECKS))
+}
+
 pub fn holds_close<R: Runtime>(app: &AppHandle<R>) -> bool {
     if CLOSING.load(Ordering::Relaxed) {
         return false;
     }
-    let asked = close_prompts(&close_checks());
+    let asked = close_prompts(&crate::bridge::core_value(CLOSE_CHECKS));
     let mut held = prompt();
     let (close, next) = close_decision(*held, asked.len(), Instant::now());
     if matches!(*held, Prompt::Asked(_)) && close == Close::Go {
@@ -103,6 +101,10 @@ pub fn close_prompt_dismissed() {
 #[tauri::command]
 pub fn close_anyway<R: Runtime>(app: AppHandle<R>) {
     log::info!(target: "desktop.window", "event=closed_anyway");
+    quit_now(&app);
+}
+
+pub fn quit_now<R: Runtime>(app: &AppHandle<R>) {
     CLOSING.store(true, Ordering::Relaxed);
     app.exit(0);
 }
@@ -133,13 +135,13 @@ mod terminate {
         let _ = HOLDS.set(holds);
         let delegate = AnyClass::get(c"TaoAppDelegateParent")
             .ok_or("The app delegate class is missing, so a Quit cannot be held.")?;
-        let answer: extern "C-unwind" fn(&AnyObject, Sel, *mut AnyObject) -> usize =
-            should_terminate;
+        type Answer = extern "C-unwind" fn(&AnyObject, Sel, *mut AnyObject) -> usize;
+        let answer: Answer = should_terminate;
         let added = unsafe {
             class_addMethod(
                 std::ptr::from_ref(delegate).cast_mut(),
                 sel!(applicationShouldTerminate:),
-                std::mem::transmute::<_, Imp>(answer),
+                std::mem::transmute::<Answer, Imp>(answer),
                 c"Q@:@".as_ptr(),
             )
         };
@@ -192,6 +194,14 @@ mod tests {
                 "Parameter writes are still pending."
             ],
             "a live connection asks too, so a Cmd+Q in flight is never silent"
+        );
+        assert_eq!(
+            work_lost(&checks),
+            [
+                "The mission has unsaved changes.",
+                "Parameter writes are still pending."
+            ],
+            "an update asks to save these first, as installing closes the app"
         );
         assert!(close_prompts(&json!({ "prompts": [] })).is_empty());
         assert!(close_prompts(&Value::Null).is_empty());

@@ -1,0 +1,9 @@
+{
+  "identifier": "one.aircast.mac",
+  "bundle": {
+    "macOS": {
+      "entitlements": "macos/Aircast.entitlements",
+      "hardenedRuntime": true
+    }
+  }
+}

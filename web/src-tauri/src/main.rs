@@ -1,13 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod annexb;
+mod bridge;
 mod files;
+#[cfg(any(target_os = "macos", test))]
+mod folders;
 mod ingest;
 mod matroska;
 mod mpegts;
 mod record;
 mod rtp;
 mod synthetic;
+mod update;
 mod video;
 #[cfg(windows)]
 mod webview2;
@@ -234,17 +238,26 @@ fn inside_the_app(url: &url::Url, dev: Option<&url::Url>) -> bool {
         || dev.is_some_and(|dev| dev.origin() == url.origin())
 }
 
+#[cfg(target_os = "macos")]
+fn native_head_arguments(given: &[String]) -> Vec<String> {
+    std::env::home_dir().map_or_else(Vec::new, |home| {
+        let inis = folders::ini_names(&folders::settings_folder(&home));
+        folders::mac_head_arguments(&home, given, &inis)
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_head_arguments(_: &[String]) -> Vec<String> {
+    Vec::new()
+}
+
 fn start_core(version: &str) {
-    let arguments: Vec<CString> = std::env::args()
-        .chain(
-            [
-                "--no-autoconnect",
-                "--no-app-update",
-                "--app-version",
-                version,
-            ]
-            .map(str::to_string),
-        )
+    let given: Vec<String> = std::env::args().collect();
+    let head = native_head_arguments(&given);
+    let arguments: Vec<CString> = given
+        .into_iter()
+        .chain(head)
+        .chain(["--no-autoconnect", "--app-version", version].map(str::to_string))
         .filter_map(|argument| text(&argument).ok())
         .collect();
     let pointers: Vec<*const c_char> = arguments.iter().map(|a| a.as_ptr()).collect();
@@ -332,6 +345,7 @@ fn main() {
             synthetic::synthetic_resize,
             synthetic::synthetic_close,
             window::close_anyway,
+            update::install_update,
             window::close_prompt_shown,
             window::close_prompt_dismissed,
             window::full_screen,
