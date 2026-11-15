@@ -188,12 +188,12 @@ async fn listen(url: &Url) -> Result<UdpSocket, String> {
     let socket = UdpSocket::bind((bound, port))
         .await
         .map_err(|error| format!("Port {port} cannot be opened: {error}"))?;
-    if let IpAddr::V4(group) = address.is_multicast().then_some(address).unwrap_or(bound) {
-        if group.is_multicast() {
-            socket
-                .join_multicast_v4(group, Ipv4Addr::UNSPECIFIED)
-                .map_err(|error| error.to_string())?;
-        }
+    if let IpAddr::V4(group) = address
+        && group.is_multicast()
+    {
+        socket
+            .join_multicast_v4(group, Ipv4Addr::UNSPECIFIED)
+            .map_err(|error| error.to_string())?;
     }
     Ok(socket)
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { trustedOrigin } from '@/app/DeviceOrigin';
 import { requestSerialPort, serialAvailable } from '@/core/client';
+import { desktop } from '@/core/desktop';
 import { Button, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
 
@@ -50,6 +51,7 @@ const OpenOverHttps = ({ note }: { note: string }) => {
 };
 
 export const UsbAccess = () => {
+  if (desktop) return null;
   const blocked = usbBlocked(serialAvailable(), window.isSecureContext, window.location.href);
   if (blocked === null) {
     return (

@@ -9,6 +9,7 @@ mod synthetic;
 mod video;
 #[cfg(windows)]
 mod webview2;
+mod window;
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::sync::Mutex;
@@ -24,7 +25,8 @@ use serde_json::Value;
 use tauri::utils::config::BackgroundThrottlingPolicy;
 use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{
-    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, ipc::Response,
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    ipc::Response,
 };
 
 unsafe extern "C" {
@@ -228,6 +230,7 @@ fn start_core() {
 fn main() {
     start_core();
     tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(video::Streams::default())
         .manage(synthetic::Views::default())
         .setup(|app| {
@@ -253,6 +256,8 @@ fn main() {
                 .build()?;
             #[cfg(windows)]
             webview2::allow_location(&window)?;
+            #[cfg(target_os = "macos")]
+            window::guard_quit(app.handle())?;
             let _ = window;
             Ok(())
         })
@@ -271,13 +276,25 @@ fn main() {
             files::saved_read,
             synthetic::synthetic_open,
             synthetic::synthetic_resize,
-            synthetic::synthetic_close
+            synthetic::synthetic_close,
+            window::close_anyway,
+            window::full_screen,
+            window::toggle_full_screen
         ])
+        .on_window_event(|shown, event| match event {
+            WindowEvent::CloseRequested { api, .. } if window::holds_close(shown.app_handle()) => {
+                api.prevent_close();
+            }
+            WindowEvent::Resized(_) => {
+                let _ = shown.emit("full-screen", shown.is_fullscreen().unwrap_or(false));
+            }
+            _ => {}
+        })
         .build(tauri::generate_context!())
         .expect("the Aircast window failed to open")
-        .run(|_, event| {
-            if let RunEvent::Exit = event {
-                qgc_shutdown();
-            }
+        .run(|app, event| match event {
+            RunEvent::ExitRequested { api, .. } if window::holds_close(app) => api.prevent_exit(),
+            RunEvent::Exit => qgc_shutdown(),
+            _ => {}
         });
 }

@@ -1,4 +1,5 @@
 import { AppCommands, CameraCommands, DeviceCommands, LinkCommands } from '@/bridge/BridgeCommands';
+import { desktop } from '@/core/desktop';
 import { isJson } from '@/bridge/Json';
 import { Qgc, refusal } from '@/bridge/Qgc';
 import { mutableStateOf } from '@/kotlin/State';
@@ -59,6 +60,8 @@ export const deviceSocket = (page: string): string => {
   return url.href;
 };
 
+const DEVICE_MAVLINK_PORT = 14550;
+
 export const deviceBase = (page: string): string => new URL('.', page).href;
 
 export const deviceLinkName = (device: Device, hostname: string): string => `Aircast ${device.name?.trim() || hostname}`;
@@ -97,7 +100,7 @@ const linkDevice = async (): Promise<void> => {
   const host = new URL(origin).hostname;
   await Promise.all([
     CameraCommands.adoptDevice(host, deviceCameras(device)),
-    LinkCommands.createWebSocket(deviceLinkName(device, host), deviceSocket(resolveDeviceUrl(origin, '/fly/'))),
+    desktop ? LinkCommands.createUdpTo(deviceLinkName(device, host), host, DEVICE_MAVLINK_PORT) : LinkCommands.createWebSocket(deviceLinkName(device, host), deviceSocket(resolveDeviceUrl(origin, '/fly/'))),
   ]);
 };
 

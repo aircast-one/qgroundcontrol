@@ -20,6 +20,7 @@ import { ChoiceField } from '@/ui/SettingsScreen';
 import { AdvancedToggle, FootNote, LocalPageHeading, OverridePageHeading, PageTopBar, SectionHeader, SetupRow } from '@/ui/SetupRow';
 import { USB_RADIO_PORT, UsbAccess } from '@/ui/UsbAccess';
 import { serialAvailable } from '@/core/client';
+import { desktop } from '@/core/desktop';
 
 export const LINKS_VIEW = 'view.links';
 const LINKS_PATH = 'links.linkConfigurations';
@@ -210,7 +211,8 @@ const servedLinkTypes = (view: Json | null): readonly LinkType[] => {
   return [...(creatable.length === 0 ? CREATABLE_LINK_TYPES : creatable), ...bluetooth, ...[LinkType.LogReplay, LinkType.Mock].filter((it) => served.has(it))];
 };
 
-export const addableLinkTypes = (view: Json | null): readonly LinkType[] => [LinkType.WebSocket, ...servedLinkTypes(view).filter((it) => optBoolean(view, 'throughDevice') || !SOCKET_LINK_TYPES.has(it))];
+export const addableLinkTypes = (view: Json | null, nativeSockets: boolean = desktop): readonly LinkType[] =>
+  nativeSockets ? servedLinkTypes(view) : [LinkType.WebSocket, ...servedLinkTypes(view).filter((it) => optBoolean(view, 'throughDevice') || !SOCKET_LINK_TYPES.has(it))];
 
 export const PARITY_CHOICES: readonly (readonly [string, number])[] = [
   ['None', 0],

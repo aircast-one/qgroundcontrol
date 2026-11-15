@@ -551,6 +551,10 @@ describe('AddableLinkTypesTest', () => {
     expect(webSocketUrlError('192.168.1.10')).toBe('Enter an address such as ws://192.168.1.10:5760.');
   });
 
+  it('the desktop app opens UDP and TCP sockets itself, so it offers them and no WebSocket the native core cannot open', () => {
+    expect(addableLinkTypes(links('["serial","udp","tcp","logReplay"]'), true)).toEqual([LinkType.Udp, LinkType.Tcp, LinkType.Serial, LinkType.LogReplay]);
+  });
+
   it('the WebSocket link starts on the Aircast cloud simulator, so the browser app flies something out of the box', () => {
     expect(DEFAULT_WEBSOCKET_URL).toBe('wss://sitl.aircast.one/ws/mavlink');
     expect(webSocketUrlError(DEFAULT_WEBSOCKET_URL)).toBeNull();
