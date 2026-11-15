@@ -464,8 +464,19 @@ mod tests {
         .concat()
     }
 
-    fn announced_after_sending(port: u16, hearing: &mpsc::Receiver<Vec<u8>>) -> bool {
+    fn announced_after_sending(port: u16, hearing: &mpsc::Receiver<Vec<u8>>) -> Result<(), String> {
         sent_until(port, hearing, CONFIG, || true)
+    }
+
+    fn described(message: &[u8]) -> String {
+        let text = String::from_utf8_lossy(message.get(1..).unwrap_or_default());
+        match message.first() {
+            Some(&CONFIG) => format!("config {text}"),
+            Some(&FRAME) => "frame".to_string(),
+            Some(&ENDED) => format!("ended: {text}"),
+            Some(&RECORDING_STOPPED) => format!("recording stopped: {text}"),
+            _ => "nothing".to_string(),
+        }
     }
 
     fn sent_until(
@@ -473,9 +484,9 @@ mod tests {
         hearing: &mpsc::Receiver<Vec<u8>>,
         kind: u8,
         done: impl Fn() -> bool,
-    ) -> bool {
+    ) -> Result<(), String> {
         let camera = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-        (0..ATTEMPTS).any(|attempt| {
+        let outcome = (0..ATTEMPTS).try_fold(Vec::new(), |heard: Vec<String>, attempt| {
             let sequence = u16::try_from(attempt * 3).unwrap();
             [
                 rtp(sequence, false, &[0x67, 0x42, 0xc0, 0x1f, 0xda]),
@@ -486,11 +497,20 @@ mod tests {
             .for_each(|packet| {
                 camera.send_to(packet, ("127.0.0.1", port)).unwrap();
             });
-            hearing
-                .recv_timeout(WAIT)
-                .is_ok_and(|message| message[0] == kind)
-                && done()
-        })
+            match hearing.recv_timeout(WAIT) {
+                Ok(message) if message[0] == kind && done() => std::ops::ControlFlow::Break(()),
+                Ok(message) if heard.len() < 8 => {
+                    std::ops::ControlFlow::Continue([heard, vec![described(&message)]].concat())
+                }
+                _ => std::ops::ControlFlow::Continue(heard),
+            }
+        });
+        match outcome {
+            std::ops::ControlFlow::Break(()) => Ok(()),
+            std::ops::ControlFlow::Continue(heard) => Err(format!(
+                "after {ATTEMPTS} sends the stream answered with {heard:?}"
+            )),
+        }
     }
 
     fn free_port() -> u16 {
@@ -535,7 +555,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert!(announced_after_sending(port, &hearing));
+            announced_after_sending(port, &hearing).unwrap();
             let recorder = locked(&streams.running)[&id].recorder.clone();
             let file =
                 std::env::temp_dir().join(format!("aircast-restart-{}.mp4", std::process::id()));
@@ -546,18 +566,16 @@ mod tests {
                     .as_ref()
                     .map_or(0, |it| it.written().frames)
             };
-            assert!(sent_until(port, &hearing, FRAME, || frames() > 0));
+            sent_until(port, &hearing, FRAME, || frames() > 0).unwrap();
             let before = frames();
             streams.restart(id).unwrap();
             hearing.try_iter().for_each(drop);
-            assert!(
-                announced_after_sending(port, &hearing),
-                "a fresh session announces the codec again, so the camera was reconnected"
-            );
-            assert!(
-                sent_until(port, &hearing, FRAME, || frames() > before),
-                "frames from the reconnected camera go on into the same recording"
-            );
+            announced_after_sending(port, &hearing).unwrap_or_else(|heard| {
+                panic!("a fresh session announces the codec again, so the camera was reconnected: {heard}")
+            });
+            sent_until(port, &hearing, FRAME, || frames() > before).unwrap_or_else(|heard| {
+                panic!("frames from the reconnected camera go on into the same recording: {heard}")
+            });
             streams.close(id).unwrap();
             assert!(std::fs::metadata(&file).unwrap().len() > 0);
             std::fs::remove_file(&file).unwrap();
@@ -599,10 +617,9 @@ mod tests {
             assert!(streams.restart(id).is_err());
             let (sink, hearing) = listening_sink();
             let reopened = streams.open(url, sink).await.unwrap();
-            assert!(
-                announced_after_sending(port, &hearing),
-                "the port is free for the next stream, so nothing from the restart kept it"
-            );
+            announced_after_sending(port, &hearing).unwrap_or_else(|heard| {
+                panic!("the port is free for the next stream, so nothing from the restart kept it: {heard}")
+            });
             streams.close(reopened).unwrap();
         });
     }
