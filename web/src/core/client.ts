@@ -43,7 +43,11 @@ const reloadForThisBuild = () => {
 };
 
 const connect = (): Promise<Worker> => {
-  connection.ready ??= import('./coreWorker').then(({ coreWorker }) => new Promise<Worker>((resolve) => {
+  connection.ready ??= import('./coreWorker').catch((error: unknown) => {
+    connection.ready = null;
+    reloadForThisBuild();
+    throw error;
+  }).then(({ coreWorker }) => new Promise<Worker>((resolve) => {
     const worker = coreWorker();
     connection.worker = worker;
     worker.onerror = reloadForThisBuild;

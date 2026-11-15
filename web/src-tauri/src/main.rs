@@ -314,6 +314,8 @@ fn main() {
             synthetic::synthetic_resize,
             synthetic::synthetic_close,
             window::close_anyway,
+            window::close_prompt_shown,
+            window::close_prompt_dismissed,
             window::full_screen,
             window::toggle_full_screen
         ])

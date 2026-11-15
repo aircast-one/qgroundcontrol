@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -9,6 +10,8 @@ use crate::annexb::{self, Codec};
 
 const TIMESCALE: u64 = 90_000;
 const SEGMENT: i64 = 90_000;
+const LONGEST_SEGMENT: i64 = 10 * 90_000;
+const STALL: i64 = 45_000;
 const FRAME_STEP: i64 = 3_000;
 const LARGEST_GAP: i64 = 10 * 90_000;
 const KEYFRAMES_WITHOUT_PARAMETERS: u32 = 3;
@@ -30,7 +33,7 @@ pub struct Written {
 struct Parameters {
     vps: Option<Vec<u8>>,
     sps: Option<Vec<u8>>,
-    pps: Option<Vec<u8>>,
+    pps: BTreeMap<u32, Vec<u8>>,
 }
 
 #[derive(Clone, Copy)]
@@ -55,6 +58,7 @@ pub struct Recording {
     keyframes_without_parameters: u32,
     clock: Option<Clock>,
     flushed: i64,
+    previous: i64,
     frames: u64,
     bytes: u64,
 }
@@ -69,12 +73,42 @@ pub fn inside_folder(folder: &Path, file: &Path) -> Result<PathBuf, String> {
         .parent()
         .filter(|_| lexically_inside)
         .ok_or_else(|| format!("{} is outside the video folder.", file.display()))?;
-    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let canonical = |path: &Path| path.canonicalize().map_err(|error| error.to_string());
-    canonical(parent)?
-        .starts_with(canonical(folder)?)
-        .then(|| file.to_path_buf())
-        .ok_or_else(|| format!("{} leaves the video folder.", file.display()))
+    let folder = canonical(folder)?;
+    let leaves = |path: &Path| -> Result<(), String> {
+        canonical(path)?
+            .starts_with(&folder)
+            .then_some(())
+            .ok_or_else(|| format!("{} leaves the video folder.", file.display()))
+    };
+    leaves(
+        parent
+            .ancestors()
+            .find(|ancestor| ancestor.exists())
+            .ok_or_else(|| format!("{} has no folder to go in.", file.display()))?,
+    )?;
+    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    leaves(parent)?;
+    Ok(file.to_path_buf())
+}
+
+fn pps_id(codec: Codec, pps: &[u8]) -> Option<u32> {
+    let header = match codec {
+        Codec::H264 => 1,
+        Codec::H265 => 2,
+    };
+    let rbsp = annexb::unescaped(pps.get(header..)?);
+    let bits = rbsp
+        .iter()
+        .flat_map(|byte| (0..8).rev().map(move |shift| (byte >> shift) & 1));
+    let zeros = bits.clone().take_while(|bit| *bit == 0).count();
+    let value = bits
+        .skip(zeros + 1)
+        .take(zeros)
+        .fold(0u64, |read, bit| (read << 1) | u64::from(bit));
+    (zeros < 32)
+        .then(|| (1u64 << zeros) - 1 + value)
+        .and_then(|id| u32::try_from(id).ok())
 }
 
 fn kinds(codec: Codec) -> (Option<u8>, u8, u8) {
@@ -90,13 +124,17 @@ fn parameter_set(codec: Codec, nals: &[&[u8]], kind: u8) -> Option<Vec<u8>> {
         .map(|nal| nal.to_vec())
 }
 
-fn sample(codec: Codec, nals: &[&[u8]]) -> Vec<u8> {
+fn sample(codec: Codec, nals: &[&[u8]], header_pps: &[u8]) -> Vec<u8> {
+    let (_, _, pps) = kinds(codec);
     let in_band = match codec {
         Codec::H264 => 7..=9,
         Codec::H265 => 32..=35,
     };
     nals.iter()
-        .filter(|nal| !in_band.contains(&annexb::nal_type(codec, nal)))
+        .filter(|nal| {
+            let kind = annexb::nal_type(codec, nal);
+            !in_band.contains(&kind) || (kind == pps && **nal != header_pps)
+        })
         .flat_map(|nal| {
             [
                 &u32::try_from(nal.len()).unwrap_or(0).to_be_bytes()[..],
@@ -115,12 +153,34 @@ impl Parameters {
                 .and_then(|kind| parameter_set(codec, nals, kind))
                 .or_else(|| self.vps.clone()),
             sps: parameter_set(codec, nals, sps).or_else(|| self.sps.clone()),
-            pps: parameter_set(codec, nals, pps).or_else(|| self.pps.clone()),
+            pps: self
+                .pps
+                .clone()
+                .into_iter()
+                .chain(
+                    nals.iter()
+                        .filter(|nal| annexb::nal_type(codec, nal) == pps)
+                        .filter_map(|nal| pps_id(codec, nal).map(|id| (id, nal.to_vec()))),
+                )
+                .collect(),
         }
     }
 
     fn complete(&self, codec: Codec) -> bool {
-        self.sps.is_some() && self.pps.is_some() && (codec == Codec::H264 || self.vps.is_some())
+        self.sps.is_some() && !self.pps.is_empty() && (codec == Codec::H264 || self.vps.is_some())
+    }
+
+    fn header_pps(&self) -> &[u8] {
+        self.pps.values().next().map_or(&[], Vec::as_slice)
+    }
+
+    fn still(&self, now: &Self) -> bool {
+        self.vps == now.vps
+            && self.sps == now.sps
+            && self
+                .pps
+                .iter()
+                .all(|(id, pps)| now.pps.get(id) == Some(pps))
     }
 }
 
@@ -128,20 +188,22 @@ fn muxer(
     codec: Codec,
     parameters: &Parameters,
     (width, height): (u32, u32),
-) -> Option<FragmentedMuxer> {
+) -> Result<FragmentedMuxer, String> {
     let video = match codec {
         Codec::H264 => VideoCodec::H264,
         Codec::H265 => VideoCodec::H265,
     };
     let builder = MuxerBuilder::new(std::io::sink())
         .video(video, width, height, FRAME_RATE_UNUSED_BY_FRAGMENTS)
-        .with_sps(parameters.sps.clone()?)
-        .with_pps(parameters.pps.clone()?);
+        .with_sps(parameters.sps.clone().ok_or(NO_PARAMETERS)?)
+        .with_pps(parameters.header_pps().to_vec());
     let builder = match &parameters.vps {
         Some(vps) => builder.with_vps(vps.clone()),
         None => builder,
     };
-    builder.new_with_fragment().ok()
+    builder
+        .new_with_fragment()
+        .map_err(|error| format!("The recording could not start: {error}"))
 }
 
 impl Clock {
@@ -187,6 +249,7 @@ impl Recording {
             keyframes_without_parameters: 0,
             clock: None,
             flushed: 0,
+            previous: 0,
             frames: 0,
             bytes: 0,
         })
@@ -220,8 +283,7 @@ impl Recording {
                 false => Ok(()),
             };
         }
-        let mut muxer =
-            muxer(codec, &self.seen, self.size).ok_or_else(|| refused(NO_PARAMETERS))?;
+        let mut muxer = muxer(codec, &self.seen, self.size).map_err(|reason| refused(&reason))?;
         let init = muxer.init_segment();
         self.started = Some(Started {
             muxer,
@@ -240,7 +302,7 @@ impl Recording {
     ) -> std::io::Result<()> {
         self.seen = self.seen.updated(codec, nals);
         if let Some(started) = &self.started
-            && (started.codec != codec || started.parameters != self.seen)
+            && (started.codec != codec || !started.parameters.still(&self.seen))
         {
             return Err(refused(FORMAT_CHANGED));
         }
@@ -253,7 +315,10 @@ impl Recording {
             .unwrap_or_else(|| Clock::starting(timestamp))
             .placed(timestamp);
         self.clock = Some(clock);
-        if key && at - self.flushed >= SEGMENT {
+        let after_stall = self.frames > 0 && at - self.previous > STALL;
+        let due = at - self.flushed >= if key { SEGMENT } else { LONGEST_SEGMENT };
+        self.previous = at;
+        if due && !after_stall {
             self.flushed = at;
             if let Some(segment) = self
                 .started
@@ -266,9 +331,10 @@ impl Recording {
         self.frames += 1;
         let at = u64::try_from(at).unwrap_or(0);
         self.started.as_mut().map_or(Ok(()), |started| {
+            let header_pps = started.parameters.header_pps().to_vec();
             started
                 .muxer
-                .write_video(at, at, &sample(codec, nals), key)
+                .write_video(at, at, &sample(codec, nals, &header_pps), key)
                 .map_err(|error| std::io::Error::other(error.to_string()))
         })
     }
@@ -281,7 +347,12 @@ impl Recording {
         {
             self.append(&segment)?;
         }
-        Ok(self.written())
+        let written = self.written();
+        if written.frames == 0 {
+            drop(self.file);
+            std::fs::remove_file(&written.file)?;
+        }
+        Ok(written)
     }
 }
 
@@ -340,7 +411,7 @@ mod tests {
         assert_eq!(&bytes[4..8], b"ftyp");
         assert!(has(b"moov") && has(b"moof") && has(b"mdat"));
         assert_eq!(
-            sample(Codec::H264, &annexb::nals(&key)),
+            sample(Codec::H264, &annexb::nals(&key), &PPS),
             [0, 0, 0, 3, 0x65, 0x88, 0x84],
             "parameter sets live in the init segment, not the samples"
         );
@@ -409,6 +480,118 @@ mod tests {
             [0, 1_500, 1_500 + FRAME_STEP, 1_500 + 2 * FRAME_STEP],
             "a burst after a stall keeps the camera's spacing, and a new session's clock is joined on"
         );
+    }
+
+    #[test]
+    fn a_stall_stays_inside_a_fragment_so_the_file_keeps_its_length() {
+        let path = scratch("stall");
+        let key = unit(&[&SPS, &PPS, &[0x65, 0x88]]);
+        let delta = unit(&[&[0x41, 0x9a]]);
+        let moofs = |path: &Path| {
+            std::fs::read(path)
+                .unwrap()
+                .windows(4)
+                .filter(|window| *window == b"moof")
+                .count()
+        };
+        let mut recording = Recording::create(&path, (1280, 720)).unwrap();
+        let frames: Vec<(bool, u64)> = std::iter::once((true, 0))
+            .chain((1..40).map(|frame| (false, frame * 3_000)))
+            .chain([(true, 40 * 3_000 + 4 * 90_000)])
+            .collect();
+        frames.iter().for_each(|&(is_key, at)| {
+            let nals = if is_key { &key } else { &delta };
+            recording
+                .write(Codec::H264, &annexb::nals(nals), is_key, at)
+                .unwrap();
+        });
+        assert_eq!(
+            moofs(&path),
+            0,
+            "the keyframe after a 4 s stall does not start a fragment, since muxide would close the gap there"
+        );
+        let resumed = 40 * 3_000 + 4 * 90_000;
+        (1..=30).for_each(|frame| {
+            recording
+                .write(
+                    Codec::H264,
+                    &annexb::nals(&delta),
+                    false,
+                    resumed + frame * 3_000,
+                )
+                .unwrap();
+        });
+        recording
+            .write(Codec::H264, &annexb::nals(&key), true, resumed + 31 * 3_000)
+            .unwrap();
+        assert_eq!(
+            moofs(&path),
+            1,
+            "the next keyframe a second on flushes as usual"
+        );
+        let written = recording.finish().unwrap();
+        assert!(
+            written.seconds > 5.0,
+            "the stall is kept in the recording's length"
+        );
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn a_camera_with_several_picture_parameter_sets_keeps_recording() {
+        let path = scratch("pps");
+        let second_pps = [0x68, 0x53, 0x88, 0x80];
+        assert_eq!(
+            (pps_id(Codec::H264, &PPS), pps_id(Codec::H264, &second_pps)),
+            (Some(0), Some(1))
+        );
+        let mut recording = Recording::create(&path, (1280, 720)).unwrap();
+        recording
+            .write(
+                Codec::H264,
+                &annexb::nals(&unit(&[&SPS, &PPS, &[0x65, 0x88]])),
+                true,
+                0,
+            )
+            .unwrap();
+        let other = unit(&[&second_pps, &[0x41, 0x9a]]);
+        assert!(
+            recording
+                .write(Codec::H264, &annexb::nals(&other), false, 3_000)
+                .is_ok(),
+            "a new PPS id is not a format change"
+        );
+        assert_eq!(
+            sample(Codec::H264, &annexb::nals(&other), &PPS)[..8],
+            [0, 0, 0, 4, 0x68, 0x53, 0x88, 0x80],
+            "a PPS the file header does not hold travels in the sample"
+        );
+        recording.finish().unwrap();
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn a_recording_that_never_got_a_frame_leaves_no_file() {
+        let path = scratch("empty");
+        let recording = Recording::create(&path, (1280, 720)).unwrap();
+        assert_eq!(recording.finish().unwrap().frames, 0);
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_inside_the_video_folder_cannot_lead_a_recording_out_of_it() {
+        let base = std::env::temp_dir().join(format!("aircast-video-link-{}", std::process::id()));
+        let (folder, outside) = (base.join("Video"), base.join("outside"));
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, folder.join("link")).unwrap();
+        assert!(inside_folder(&folder, &folder.join("link/new/clip.mp4")).is_err());
+        assert!(
+            !outside.join("new").exists(),
+            "no folder is made outside before the request is refused"
+        );
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

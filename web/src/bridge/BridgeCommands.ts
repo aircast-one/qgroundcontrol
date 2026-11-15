@@ -11,7 +11,7 @@ const LINKS_CONFIGURATIONS = 'links.linkConfigurations';
 const LINK_SUBJECT = 'The link';
 const LINKS_CREATE_CLOUD = 'links.createAircastCloudLink';
 const LINKS_CREATE_WEBSOCKET = 'links.createWebSocketLink';
-const LINKS_CREATE_AND_CONNECT = 'links.createAndConnectLink';
+const LINKS_CREATE_DEVICE_UDP = 'links.createDeviceUdpLink';
 const LINKS_CREATE_REPLAY = 'links.createLogReplayConfiguration';
 const LINKS_CREATE_BLUETOOTH = 'links.createBluetoothLink';
 const LINKS_CREATE_SERIAL = 'links.createSerialConfiguration';
@@ -73,7 +73,7 @@ export const LinkCommands = {
   disconnect: (index: number): Promise<string | null> => Qgc.refusalOfSubject(LINK_SUBJECT, `${LINKS_CONFIGURATIONS}.${index}.link.disconnect`),
   createAircastCloud: async (name: string, apiBase: string, deviceId: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_CLOUD, name, apiBase, deviceId)) === true,
   createWebSocket: async (name: string, url: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_WEBSOCKET, name, url)) === true,
-  createUdpTo: async (name: string, host: string, port: number): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_AND_CONNECT, 'udp', name, host, port, [])) === true,
+  createDeviceUdp: async (name: string, host: string, port: number): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_DEVICE_UDP, name, host, port)) === true,
   createLogReplay: async (name: string, log: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_REPLAY, name, log)) === true,
   createBluetooth: async (name: string, deviceName: string, address: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_BLUETOOTH, name, deviceName, address)) === true,
   createSerial: async (name: string, port: string, baud: number): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_SERIAL, name, port, baud)) === true,

@@ -1,4 +1,6 @@
 use std::ffi::CString;
+use std::sync::Mutex;
+use std::sync::PoisonError;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use groundstation::nativehost::{qgc_bridge_free, qgc_bridge_get};
@@ -8,6 +10,32 @@ use tauri::{AppHandle, Emitter, Runtime, WebviewWindow};
 const CLOSE_CHECKS: &str = "view.closeChecks";
 
 static CLOSING: AtomicBool = AtomicBool::new(false);
+static PROMPT: Mutex<Prompt> = Mutex::new(Prompt::Idle);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Prompt {
+    Idle,
+    Asked,
+    Shown,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Close {
+    Go,
+    Ask,
+}
+
+pub fn close_decision(prompt: Prompt, prompts: usize) -> (Close, Prompt) {
+    match (prompts, prompt) {
+        (0, _) => (Close::Go, Prompt::Idle),
+        (_, Prompt::Asked) => (Close::Go, Prompt::Idle),
+        _ => (Close::Ask, Prompt::Asked),
+    }
+}
+
+fn prompt() -> std::sync::MutexGuard<'static, Prompt> {
+    PROMPT.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn close_checks() -> Value {
     let path = CString::new(CLOSE_CHECKS).unwrap_or_default();
@@ -39,15 +67,34 @@ pub fn holds_close<R: Runtime>(app: &AppHandle<R>) -> bool {
         return false;
     }
     let asked = close_prompts(&close_checks());
-    if asked.is_empty() {
+    let mut held = prompt();
+    let (close, next) = close_decision(*held, asked.len());
+    if *held == Prompt::Asked && close == Close::Go {
+        log::warn!(target: "desktop.window", "event=close_prompt_unanswered reasons={}", asked.len());
+        CLOSING.store(true, Ordering::Relaxed);
+    }
+    *held = next;
+    drop(held);
+    if close == Close::Go {
         return false;
     }
     log::info!(target: "desktop.window", "event=close_held reasons={}", asked.len());
     if let Err(error) = app.emit("close-blocked", asked) {
         log::warn!(target: "desktop.window", "event=close_prompt_failed reason=\"{error}\"");
+        *prompt() = Prompt::Idle;
         return false;
     }
     true
+}
+
+#[tauri::command]
+pub fn close_prompt_shown() {
+    *prompt() = Prompt::Shown;
+}
+
+#[tauri::command]
+pub fn close_prompt_dismissed() {
+    *prompt() = Prompt::Idle;
 }
 
 #[tauri::command]
@@ -132,5 +179,21 @@ mod tests {
         );
         assert!(close_prompts(&json!({ "prompts": [] })).is_empty());
         assert!(close_prompts(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn a_prompt_the_page_never_showed_lets_the_next_close_through() {
+        assert_eq!(close_decision(Prompt::Idle, 0), (Close::Go, Prompt::Idle));
+        assert_eq!(close_decision(Prompt::Idle, 1), (Close::Ask, Prompt::Asked));
+        assert_eq!(
+            close_decision(Prompt::Shown, 1),
+            (Close::Ask, Prompt::Asked),
+            "a close while the dialog is up asks again"
+        );
+        assert_eq!(
+            close_decision(Prompt::Asked, 1),
+            (Close::Go, Prompt::Idle),
+            "a page that never answered the last prompt cannot hold the window, so a second close goes through"
+        );
     }
 }

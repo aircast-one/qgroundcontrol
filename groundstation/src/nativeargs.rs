@@ -236,11 +236,10 @@ mod tests {
             "--app-name".to_string(),
             "Aircast QGC Daily".to_string(),
         ]);
-        assert!(
-            chosen
-                .settings
-                .ends_with(".config/aircast.one/Aircast QGC Daily.ini")
-        );
+        assert!(chosen.settings.ends_with(match cfg!(windows) {
+            true => "Aircast/Aircast QGC Daily.ini",
+            false => ".config/aircast.one/Aircast QGC Daily.ini",
+        }));
         assert!(
             chosen.autoconnect && chosen.debug_port.is_none()
                 || std::env::var("QGC_DEBUG_API_PORT").is_ok()
@@ -252,7 +251,10 @@ mod tests {
             chosen
                 .folders()
                 .first()
-                .is_some_and(|folder| folder.ends_with(".config/aircast.one")),
+                .is_some_and(|folder| folder.ends_with(match cfg!(windows) {
+                    true => "Aircast",
+                    false => ".config/aircast.one",
+                })),
             "the folder the settings file goes in is made at start, since only some heads make it themselves"
         );
         if cfg!(target_os = "macos") {

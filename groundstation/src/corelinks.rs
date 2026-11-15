@@ -342,6 +342,19 @@ fn create_websocket(name: &str, url: &str) -> bool {
     })
 }
 
+pub fn device_udp(name: &str, host: &str, port: i64) -> Option<LinkConfig> {
+    created("udp", name, host, port)
+        .filter(|_| !host.trim().is_empty())
+        .map(|config| LinkConfig {
+            auto_connect: true,
+            ..config
+        })
+}
+
+fn create_device_udp(name: &str, host: &str, port: i64) -> bool {
+    device_udp(name, host, port).is_some_and(replace_and_connect)
+}
+
 fn create_cloud(name: &str, api_base: &str, device_id: &str) -> bool {
     if name.is_empty() || !cloud_settings_valid(api_base, device_id) {
         return false;
@@ -1459,6 +1472,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "links.createBluetoothLink" => json!(create_bluetooth(&text(0), &text(1), &text(2))),
         "links.createAircastCloudLink" => json!(create_cloud(&text(0), &text(1), &text(2))),
         "links.createWebSocketLink" => json!(create_websocket(&text(0), &text(1))),
+        "links.createDeviceUdpLink" => json!(create_device_udp(&text(0), &text(1), whole(2))),
         START_MOCK_LINK => json!(start_mock(&text(0), &given)),
         STOP_ONE_MOCK_LINK => json!(stop_one_mock()),
         crate::platformbluetooth::SCAN => return crate::platformbluetooth::scan(args),
@@ -1644,6 +1658,19 @@ mod tests {
         );
         assert_eq!(created("tcp", "Bench", "10.0.0.5", 0), None);
         assert_eq!(created("bluetooth", "B", "x", 1), None);
+        assert_eq!(
+            device_udp("Aircast falcon", "falcon.local", 14550)
+                .map(|config| (config.auto_connect, config.kind)),
+            Some((
+                true,
+                Kind::Udp {
+                    local_port: 14550,
+                    hosts: vec![("falcon.local".into(), 14550)]
+                }
+            )),
+            "a paired device's link connects by itself at the next start, as the browser's WebSocket link does"
+        );
+        assert_eq!(device_udp("Aircast falcon", " ", 14550), None);
         let udp = created("UDP", "Field", "192.168.4.1", 14550).unwrap();
         assert_eq!(
             udp.kind,

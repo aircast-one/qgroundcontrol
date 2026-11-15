@@ -15,7 +15,7 @@ fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
 }
 
 fn inside(root: &Path, path: &str) -> Result<PathBuf, String> {
-    let relative = Path::new(path.trim_start_matches('/'));
+    let relative = Path::new(path.trim_start_matches(['/', '\\']));
     relative
         .components()
         .all(|part| matches!(part, Component::Normal(_)))
@@ -221,6 +221,11 @@ mod tests {
             Path::new("/data/staged/replay-links/link_1/flight.tlog")
         );
         assert!(inside(root, "/scripts/../../etc/passwd").is_err());
+        assert_eq!(
+            inside(root, "\\saving.plan").unwrap(),
+            Path::new("/data/staged/saving.plan"),
+            "a Windows path the page cut at the staging root starts with a backslash"
+        );
         assert!(inside(root, "/").is_ok());
     }
 

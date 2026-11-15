@@ -60,6 +60,7 @@ export const deviceSocket = (page: string): string => {
 };
 
 const DEVICE_MAVLINK_PORT = 14550;
+const DEVICE_LOG = 'device';
 
 export type DeviceMavlink = { kind: 'udp'; host: string; port: number } | { kind: 'webSocket'; url: string };
 
@@ -67,7 +68,7 @@ export const deviceMavlink = (nativeSockets: boolean, origin: string): DeviceMav
   nativeSockets ? { kind: 'udp', host: new URL(origin).hostname, port: DEVICE_MAVLINK_PORT } : { kind: 'webSocket', url: deviceSocket(resolveDeviceUrl(origin, '/fly/')) };
 
 const linkOver = (name: string, mavlink: DeviceMavlink): Promise<boolean> =>
-  mavlink.kind === 'udp' ? LinkCommands.createUdpTo(name, mavlink.host, mavlink.port) : LinkCommands.createWebSocket(name, mavlink.url);
+  mavlink.kind === 'udp' ? LinkCommands.createDeviceUdp(name, mavlink.host, mavlink.port) : LinkCommands.createWebSocket(name, mavlink.url);
 
 export const deviceBase = (page: string): string => new URL('.', page).href;
 
@@ -107,7 +108,7 @@ const linkDevice = async (): Promise<void> => {
   const host = new URL(origin).hostname;
   await Promise.all([
     CameraCommands.adoptDevice(host, deviceCameras(device)),
-    linkOver(deviceLinkName(device, host), deviceMavlink(__DESKTOP__, origin)),
+    linkOver(deviceLinkName(device, host), deviceMavlink(__DESKTOP__, origin)).then((linked) => (linked ? true : AppCommands.recordLog(DEVICE_LOG, `event=device_link_refused host=${host}`))),
   ]);
 };
 
