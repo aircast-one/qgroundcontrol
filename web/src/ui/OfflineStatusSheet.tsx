@@ -70,7 +70,7 @@ export const offlineGuide = (status: OfflineStatus | null, hint: string, noCamer
     ? { ...NO_CAMERA_GUIDE, onDevice, camera: true, links, busy: false }
     : {
         title: status === null ? LOOKING_TITLE : sentenceCase(status.title),
-        text: status !== null && (onDevice || links.length > 0) ? status.footnote : hint,
+        text: status !== null && (onDevice || links.some((link) => link.connected || link.failed)) ? status.footnote : hint,
         onDevice,
         camera: false,
         links,
@@ -82,11 +82,21 @@ const OfflineLinkRow = ({ link, busy }: { link: OfflineLink; busy: boolean }) =>
   <ListItem
     headlineContent={link.text}
     supportingContent={
-      <span className="whitespace-pre-line" style={{ color: link.failed ? md('error') : md('onSurfaceVariant') }}>
-        {link.description}
-      </span>
+      link.description === '' ? undefined : (
+        <span className="whitespace-pre-line" style={{ color: link.failed ? md('error') : md('onSurfaceVariant') }}>
+          {link.description}
+        </span>
+      )
     }
-    trailingContent={link.connected && busy ? <CircularProgressIndicator size={16} strokeWidth={2} /> : link.retry ? <Text typography="labelMedium">Retry</Text> : null}
+    trailingContent={
+      link.connected ? (
+        busy ? (
+          <CircularProgressIndicator size={16} strokeWidth={2} />
+        ) : null
+      ) : (
+        <span className="inline-flex h-10 items-center rounded-full bg-secondary-container px-6 text-label-large text-on-secondary-container">{link.retry ? 'Retry' : 'Connect'}</span>
+      )
+    }
     onClick={() => void (link.connected ? LinkCommands.disconnect(link.index) : LinkCommands.connect(`@${OFFLINE_LINKS_PATH}.${link.index}`))}
   />
 );
@@ -193,16 +203,29 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
             <OfflineLinkRow key={link.index} link={link} busy={status.busy} />
           ))}
           <HorizontalDivider />
-          <ListItem headlineContent="Connection settings" onClick={() => openConnectionSettings(navigation, onDismiss)} />
-          {status.onDevice ? null : (
-            <ListItem
-              headlineContent="New drone? Flash an Aircast card"
-              onClick={() => {
-                navigation.settingsPage.value = FLASHER_PAGE;
-                onDismiss();
-              }}
-            />
-          )}
+          <div className="px-sheet pt-2">
+            {status.onDevice ? (
+              <TextButton onClick={() => openConnectionSettings(navigation, onDismiss)}>Connection settings</TextButton>
+            ) : status.noLinks ? (
+              <TextButton
+                onClick={() => {
+                  navigation.settingsPage.value = FLASHER_PAGE;
+                  onDismiss();
+                }}
+              >
+                New drone? Flash an Aircast card
+              </TextButton>
+            ) : (
+              <TextButton
+                onClick={() => {
+                  openAddLink(navigation);
+                  onDismiss();
+                }}
+              >
+                Add link
+              </TextButton>
+            )}
+          </div>
         </div>
       ) : null}
     </AircastSheet>

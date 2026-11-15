@@ -82,7 +82,8 @@ struct OfflineStatusSheet: View {
                                     subtitle: link.description.isBlank
                                         ? nil
                                         : Text(link.description).foregroundStyle(link.failed ? theme.colors.error : Color.secondary),
-                                    status: link.retry && !link.connected ? "Retry" : "",
+                                    status: link.connected ? "" : link.retry ? "Retry" : "Connect",
+                                    statusColor: theme.colors.primary,
                                     chevron: false
                                 )
                                 .overlay(alignment: .trailing) {
@@ -96,11 +97,16 @@ struct OfflineStatusSheet: View {
                     } footer: {
                         footnote(shown)
                     }
-                    Section {
-                        Button { openConnectionSettings(navigation, onDismiss) } label: {
-                            NativeRowLabel(title: "Connection settings")
+                    if !shown.noLinks {
+                        Section {
+                            Button {
+                                openAddLink(navigation)
+                                onDismiss()
+                            } label: {
+                                NativeRowLabel(title: "Add link", chevron: false)
+                            }
+                            .listRowButton()
                         }
-                        .listRowButton()
                     }
                 }
             }

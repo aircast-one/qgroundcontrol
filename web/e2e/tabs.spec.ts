@@ -56,7 +56,7 @@ test('a link saved in one tab is listed in the other, and survives that tab savi
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
 
   await openLinks(second);
-  await expect(second.getByText(VEHICLE)).toBeVisible();
+  await expect(second.getByRole('button', { name: 'More actions for localhost:18760' })).toBeVisible();
   await addWebSocket(second, 'ws://localhost:18799');
   await expect(second.getByRole('button', { name: 'More actions for localhost:18799' })).toBeVisible();
 

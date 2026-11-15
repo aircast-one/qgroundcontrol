@@ -102,7 +102,7 @@ public sealed class StatusStrip : UserControl
         _batterySheet = new Sheet("Battery", () => null, BatteryParts, closed: () => _batteryParts = null, refreshed: BatteryRefresh);
         _gpsSheet = new Sheet("Vehicle GPS status", GpsBody, () => [StatusLook.Link("RTK GPS settings", () => Then(_gpsSheet, () => _rtkSettingsSheet.ShowAt(Anchor(StatusKeys.Gps)))), StatusLook.Footnote(StatusText.Footnote)]);
         _linksSheet = new Sheet("Links to this aircraft", LinksBody, () => [StatusLook.Footnote(StatusText.Footnote), StatusLook.Action("Connection settings", () => Then(_linksSheet, FlyRequests.OpenConnections))]);
-        _offlineSheet = new Sheet("Connect a vehicle", OfflineBody, OfflineFooter, opened: () => _offlineView = Bridge.Get(OfflinePath), key: () => _offlineView.ToJsonString());
+        _offlineSheet = new Sheet("Connect a vehicle", OfflineBody, opened: () => _offlineView = Bridge.Get(OfflinePath), key: () => _offlineView.ToJsonString());
         var rcSheet = new Sheet("RC RSSI status", () => Detail(Fly.RcRows), Footnote);
         var telemetrySheet = new Sheet("Telemetry RSSI status", () => Detail(Fly.Telemetry?.Rows ?? []), Footnote);
         var escSheet = new Sheet("ESC Status Overview", EscBody);
@@ -451,19 +451,15 @@ public sealed class StatusStrip : UserControl
             shown.NoLinks ? StatusLook.Action("Add link…", () => Then(_offlineSheet, FlyRequests.OpenConnections), Look.Accent) : null,
             .. shown.Links.Select(link => (UIElement?)StatusLook.ListRow(
                 StatusLook.Chevron(
-                    Ui.Column([StatusLook.Line(link.Text), StatusLook.Line(link.Description, link.Failed ? StatusTone.Critical : StatusTone.Muted, small: true)], 2),
+                    Ui.Column([StatusLook.Line(link.Text), link.Description.Length == 0 ? null : StatusLook.Line(link.Description, link.Failed ? StatusTone.Critical : StatusTone.Muted, small: true)], 2),
                     link.Connected ? new ProgressRing { IsActive = true, Width = 16, Height = 16, MinWidth = 16, MinHeight = 16 }
-                    : link.Retry ? Ui.Caption("Retry", "AccentTextBrush") : null),
+                    : Ui.Caption(link.Retry ? "Retry" : "Connect", "AccentTextBrush")),
                 link.Text,
                 () => Ui.Off(() => _ = link.Connected ? LinkCommands.Disconnect(link.Index) : LinkCommands.Connect($"@{LinkModel.Configurations}.{link.Index}")))),
+            shown.NoLinks ? null : new Border { Height = 1, Background = Ui.Token("DividerBrush"), Margin = new Thickness(0, 4, 0, 4) },
+            shown.NoLinks ? null : StatusLook.Action("Add link", () => Then(_offlineSheet, FlyRequests.OpenConnections)),
         ], 8);
     }
-
-    private IEnumerable<UIElement?> OfflineFooter() =>
-    [
-        new Border { Height = 1, Background = Ui.Token("DividerBrush"), Margin = new Thickness(0, 4, 0, 4) },
-        StatusLook.Action("Connection settings", () => Then(_offlineSheet, FlyRequests.OpenConnections)),
-    ];
 
     private UIElement? EscBody() => EscSummary.Parse(View(EscPath)) is not EscSummary esc ? null : Ui.Column(
     [

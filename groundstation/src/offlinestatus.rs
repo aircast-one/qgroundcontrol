@@ -35,10 +35,10 @@ fn connecting_stalled(name: &str, now: u64) -> bool {
 }
 
 fn auto_connect(backend: &dyn Backend, name: &str) -> bool {
-    crate::read::value_number(
+    crate::read::truthy(
         &backend.value(&format!("settings.autoConnectSettings.{name}.rawValue")),
+        "value",
     )
-    .is_none_or(|v| v != 0.0)
 }
 
 pub struct Offline {
@@ -101,17 +101,17 @@ pub fn offline(
             format!("Couldn't connect to {failed_name}. Check its address in Connection Settings.")
         }
         _ if !failed_name.is_empty() => format!(
-            "Couldn't connect to {failed_name}. Check the drone is powered on and on the same network, then tap it to retry."
+            "Couldn't connect to {failed_name}. Check the drone is powered on and on the same network, then tap Retry."
         ),
         _ if !watching => "Automatic connection is off.".to_string(),
-        _ if no_links => format!("Looking for a vehicle on {watched_links}…"),
-        _ => format!("Auto-connect watches {watched_links}. Tap a link to connect."),
+        _ => format!("Looking for a vehicle on {watched_links}…"),
     };
+    let looking = watching && connecting.is_empty() && failed_name.is_empty();
     Offline {
         title: title.to_string(),
         main_status: main_status.to_string(),
         footnote,
-        busy: (!connecting.is_empty() && !stalled) || (no_links && watching),
+        busy: (!connecting.is_empty() && !stalled) || looking,
         no_links,
         edit_address,
         on_device,
@@ -171,20 +171,28 @@ pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "noLinks": shown.no_links,
         "editAddress": shown.edit_address,
         "onDevice": shown.on_device,
-        "links": links.iter().filter(|l| l["dynamic"] != true).map(|l| {
-            let error = l["lastError"].as_str().unwrap_or("");
-            let summary = l["summary"].as_str().unwrap_or("");
-            let connected = l["connected"] == true;
-            let name = l["name"].as_str().unwrap_or("");
-            json!({
-                "index": l["index"],
-                "text": if connected { name.to_string() } else { format!("Connect to {name}") },
-                "description": if error.is_empty() { summary.to_string() } else { format!("{summary}\n{error}") },
-                "retry": !error.is_empty() && !connected,
-                "failed": !error.is_empty(),
-                "connected": connected,
-            })
-        }).collect::<Vec<_>>(),
+        "links": links.iter().filter(|l| l["dynamic"] != true).map(offline_link).collect::<Vec<_>>(),
+    })
+}
+
+fn offline_link(link: &Value) -> Value {
+    let error = link["lastError"].as_str().unwrap_or("");
+    let summary = link["summary"].as_str().unwrap_or("");
+    let connected = link["connected"] == true;
+    let name = link["name"].as_str().unwrap_or("");
+    let address = if name.contains(summary) { "" } else { summary };
+    let description = [address, error]
+        .into_iter()
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    json!({
+        "index": link["index"],
+        "text": name,
+        "description": description,
+        "retry": !error.is_empty() && !connected,
+        "failed": !error.is_empty(),
+        "connected": connected,
     })
 }
 
@@ -197,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn the_footnote_follows_the_offline_page() {
+    fn the_footnote_says_what_auto_connect_is_doing() {
         let all = ["USB", "SiK radio", "Wi\u{2011}Fi"];
         let looking = offline(&[], &all, |_| false);
         assert_eq!(
@@ -215,7 +223,13 @@ mod tests {
         let idle = offline(&[link("Drone", false, "", "")], &["USB"], |_| false);
         assert_eq!(
             (idle.footnote.as_str(), idle.busy),
-            ("Auto-connect watches USB. Tap a link to connect.", false)
+            ("Looking for a vehicle on USB…", true),
+            "saved links do not stop auto-connect from looking"
+        );
+        let off = offline(&[link("Drone", false, "", "")], &[], |_| false);
+        assert_eq!(
+            (off.footnote.as_str(), off.busy),
+            ("Automatic connection is off.", false)
         );
         let connecting = offline(&[link("Drone", true, "", "")], &all, |name| name == "Drone");
         assert_eq!(
@@ -246,7 +260,8 @@ mod tests {
             "Couldn't connect to Drone. Check its address in Connection Settings."
         );
         let retry = offline(&[link("Drone", false, "timeout", "retry")], &all, |_| false);
-        assert!(retry.footnote.ends_with("then tap it to retry."));
+        assert!(retry.footnote.ends_with("then tap Retry."));
+        assert!(!retry.busy, "a failed link shows its error, not a spinner");
         let dynamic = offline(
             &[json!({ "name": "UDP", "dynamic": true, "connected": true })],
             &all,
@@ -337,6 +352,50 @@ mod tests {
             ]),
             "Connecting…",
             "a connecting link outranks a failed one"
+        );
+    }
+
+    #[test]
+    fn a_link_row_names_the_link_once_and_shows_its_error() {
+        let row = |name: &str, summary: &str, error: &str| {
+            offline_link(
+                &json!({ "index": 0, "name": name, "summary": summary, "lastError": error, "connected": false }),
+            )
+        };
+        let named_by_address = row("TCP sitl.aircast.one:5760", "sitl.aircast.one:5760", "");
+        assert_eq!(
+            (&named_by_address["text"], &named_by_address["description"]),
+            (&json!("TCP sitl.aircast.one:5760"), &json!(""))
+        );
+        assert_eq!(row("Drone", "UDP 14550", "")["description"], "UDP 14550");
+        let refused = row("Drone", "TCP 10.0.0.2:5760", "refused");
+        assert_eq!(refused["description"], "TCP 10.0.0.2:5760\nrefused");
+        assert_eq!(refused["retry"], true);
+    }
+
+    #[test]
+    fn auto_connect_turned_off_is_not_listed_as_watched() {
+        struct Settings;
+        impl Backend for Settings {
+            fn get(&self, path: &str) -> String {
+                let on = !path.contains("autoConnectUDP");
+                json!({ "kind": "value", "value": on }).to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(
+            offline_status_view(&Settings, &[])["footnote"],
+            "Looking for a vehicle on USB, SiK radio…",
+            "settings are JSON booleans, so false must read as off"
         );
     }
 

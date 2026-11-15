@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import one.aircast.map.AircastSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,32 +106,30 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
                 Button(onClick = { openAddLink(navigation); onDismiss() }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) { Text("Add link\u2026") }
             }
             shown.links.forEach { link ->
+                val toggle = {
+                    offMainDetached {
+                        if (link.connected) LinkCommands.disconnect(link.index)
+                        else LinkCommands.connect("@$OFFLINE_LINKS_PATH.${link.index}")
+                    }
+                }
                 ListItem(
                     headlineContent = { Text(link.text) },
-                    supportingContent = { Text(link.description, color = if (link.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) },
+                    supportingContent = link.description.takeIf { it.isNotBlank() }?.let { description ->
+                        { Text(description, color = if (link.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
+                    },
                     trailingContent = {
-                        when {
-                            link.connected -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                            link.retry -> Text("Retry", style = MaterialTheme.typography.labelMedium)
-                        }
+                        if (link.connected) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else FilledTonalButton(onClick = { toggle() }) { Text(if (link.retry) "Retry" else "Connect") }
                     },
-                    modifier = Modifier.clickable {
-                        offMainDetached {
-                            if (link.connected) LinkCommands.disconnect(link.index)
-                            else LinkCommands.connect("@$OFFLINE_LINKS_PATH.${link.index}")
-                        }
-                    },
+                    modifier = Modifier.clickable { toggle() },
                 )
             }
             HorizontalDivider()
-            ListItem(
-                headlineContent = { Text("Connection settings") },
-                modifier = Modifier.clickable { openConnectionSettings(navigation, onDismiss) },
-            )
-            ListItem(
-                headlineContent = { Text("New drone? Flash an Aircast card") },
-                modifier = Modifier.clickable { navigation.settingsPage = FLASHER_PAGE; onDismiss() },
-            )
+            if (shown.noLinks) {
+                TextButton(onClick = { navigation.settingsPage = FLASHER_PAGE; onDismiss() }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("New drone? Flash an Aircast card") }
+            } else {
+                TextButton(onClick = { openAddLink(navigation); onDismiss() }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Add link") }
+            }
         }
     }
 }
