@@ -74,6 +74,8 @@ export const vehicleStatus = async (page: Page) => {
   return page.getByRole('dialog');
 };
 
+export const mapOrMapButton = (page: Page): Locator => page.getByRole('region', { name: 'Map' }).or(page.getByRole('button', { name: 'Map', exact: true })).first();
+
 export const showMapFull = async (page: Page) => {
   const map = page.getByRole('region', { name: 'Map' });
   const toMap = page.getByRole('button', { name: /^(Map|Mini-map)$/ }).first();

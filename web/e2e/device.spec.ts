@@ -1,5 +1,5 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { flyNow, openMenu, test as hosted } from './fixtures';
+import { flyNow, mapOrMapButton, openMenu, test as hosted } from './fixtures';
 
 const DEVICE = 'http://localhost:18780';
 const SILENT = 'http://localhost:18788';
@@ -26,7 +26,7 @@ const test = base.extend<{ deviceAt: string; device: Page }>({
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'did not respond to request for parameters' }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
     await page.goto(`${deviceAt}/`);
-    await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+    await expect(mapOrMapButton(page)).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
     await use(page);
     expect(errors, 'uncaught page errors').toEqual([]);
@@ -355,7 +355,7 @@ base('a page opened over the tailnet stays on the device when its https address 
 
 base('a page the device served over http flies from there, even when the device names an https address', async ({ page }) => {
   await page.goto(`http://${UPGRADING}/`);
-  await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await expect(mapOrMapButton(page)).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   expect(new URL(page.url()).origin).toBe(`http://${UPGRADING}`);
 });
@@ -375,7 +375,7 @@ base('a page the device served over plain http, where Chrome hides USB, opens on
 base('a page the device served stays on http when its https name never answers, as it must once the cloud is gone', async ({ page }) => {
   const started = Date.now();
   await page.goto('http://localhost:18787/');
-  await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await expect(mapOrMapButton(page)).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   expect(new URL(page.url()).origin).toBe('http://localhost:18787');
   expect(Date.now() - started).toBeLessThan(30_000);
@@ -451,7 +451,7 @@ test('settings live on the device, so another address or browser for it opens wi
   const elsewhere = await browser.newContext();
   const other = await elsewhere.newPage();
   await other.goto(`${DEVICE.replace('localhost', '127.0.0.1')}/`);
-  await expect(other.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await expect(mapOrMapButton(other)).toBeVisible({ timeout: 60_000 });
   await openMenu(other, 'Settings');
   await other.getByRole('textbox', { name: 'Search settings' }).fill('ADS-B');
   await expect(other.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' })).toBeChecked();
