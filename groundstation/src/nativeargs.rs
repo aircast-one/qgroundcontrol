@@ -24,8 +24,26 @@ pub struct Options {
     pub autoconnect: bool,
     pub debug_port: Option<u16>,
     pub application_version: Option<String>,
+    pub app_update: bool,
     pub debug_build: bool,
     pub device: Option<String>,
+}
+
+impl Options {
+    pub fn folders(&self) -> Vec<std::path::PathBuf> {
+        [
+            self.settings.parent().map(std::path::Path::to_path_buf),
+            self.map_cache
+                .as_deref()
+                .and_then(|cache| std::path::Path::new(cache).parent())
+                .map(std::path::Path::to_path_buf),
+            self.save_path.as_deref().map(std::path::PathBuf::from),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .collect()
+    }
 }
 
 fn windows_app_data() -> Option<std::path::PathBuf> {
@@ -84,6 +102,7 @@ pub fn options(arguments: &[String]) -> Options {
             .or_else(|| std::env::var("QGC_DEBUG_API_PORT").ok())
             .and_then(|p| p.parse().ok()),
         application_version: option("--app-version"),
+        app_update: !arguments.iter().any(|a| a == "--no-app-update"),
         debug_build: arguments.iter().any(|a| a == "--debug-build"),
         device: option("--device"),
         application,
@@ -227,6 +246,15 @@ mod tests {
                 || std::env::var("QGC_DEBUG_API_PORT").is_ok()
         );
         assert!(!options(&["app".to_string(), "--no-autoconnect".to_string()]).autoconnect);
+        assert!(chosen.app_update);
+        assert!(!options(&["app".to_string(), "--no-app-update".to_string()]).app_update);
+        assert!(
+            chosen
+                .folders()
+                .first()
+                .is_some_and(|folder| folder.ends_with(".config/aircast.one")),
+            "the folder the settings file goes in is made at start, since only some heads make it themselves"
+        );
         if cfg!(target_os = "macos") {
             assert!(
                 chosen.map_cache.is_some_and(|p| p.ends_with(

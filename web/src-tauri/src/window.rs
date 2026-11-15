@@ -22,13 +22,12 @@ fn close_checks() -> Value {
     serde_json::from_str(&text).unwrap_or(Value::Null)
 }
 
-pub fn work_lost_on_leaving(checks: &Value) -> Vec<String> {
+pub fn close_prompts(checks: &Value) -> Vec<String> {
     checks["prompts"]
         .as_array()
         .map(|prompts| {
             prompts
                 .iter()
-                .filter(|prompt| prompt["losesWork"].as_bool() == Some(true))
                 .filter_map(|prompt| prompt["message"].as_str().map(str::to_string))
                 .collect()
         })
@@ -39,12 +38,12 @@ pub fn holds_close<R: Runtime>(app: &AppHandle<R>) -> bool {
     if CLOSING.load(Ordering::Relaxed) {
         return false;
     }
-    let lost = work_lost_on_leaving(&close_checks());
-    if lost.is_empty() {
+    let asked = close_prompts(&close_checks());
+    if asked.is_empty() {
         return false;
     }
-    log::info!(target: "desktop.window", "event=close_held reasons={}", lost.len());
-    if let Err(error) = app.emit("close-blocked", lost) {
+    log::info!(target: "desktop.window", "event=close_held reasons={}", asked.len());
+    if let Err(error) = app.emit("close-blocked", asked) {
         log::warn!(target: "desktop.window", "event=close_prompt_failed reason=\"{error}\"");
         return false;
     }
@@ -116,20 +115,22 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn only_prompts_the_core_marks_as_losing_work_hold_the_window_open() {
+    fn every_close_prompt_holds_the_window_open_as_the_native_heads_do() {
         let checks = json!({ "prompts": [
             { "id": "activeConnections", "message": "The vehicle is connected.", "losesWork": false },
             { "id": "unsavedMission", "message": "The mission has unsaved changes.", "losesWork": true },
             { "id": "pendingWrites", "message": "Parameter writes are still pending.", "losesWork": true },
         ]});
         assert_eq!(
-            work_lost_on_leaving(&checks),
+            close_prompts(&checks),
             [
+                "The vehicle is connected.",
                 "The mission has unsaved changes.",
                 "Parameter writes are still pending."
-            ]
+            ],
+            "a live connection asks too, so a Cmd+Q in flight is never silent"
         );
-        assert!(work_lost_on_leaving(&json!({ "prompts": [] })).is_empty());
-        assert!(work_lost_on_leaving(&Value::Null).is_empty());
+        assert!(close_prompts(&json!({ "prompts": [] })).is_empty());
+        assert!(close_prompts(&Value::Null).is_empty());
     }
 }

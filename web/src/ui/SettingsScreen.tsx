@@ -1,6 +1,6 @@
 import { type CSSProperties, Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc } from '@/bridge/Qgc';
-import { requestSerialPort, serialAvailable } from '@/core/client';
+import { requestSerialPort, webSerialAvailable } from '@/core/client';
 import { settingControl, useQgcPath } from '@/bridge/QgcState';
 import { type Json, jsonObjects, optBoolean, optDouble, optJSONArray, optText } from '@/bridge/Json';
 import { useBackHandler, useKeyedState, useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
@@ -1192,7 +1192,7 @@ export const choiceOptions = (fact: Fact, webSerial: boolean, secure = true): re
 
 const EnumField = ({ fact, style, write }: { fact: Fact; style: CSSProperties; write: (block: () => Promise<boolean>) => void }) => {
   const notice = useContext(LocalChangeNotice);
-  const options = choiceOptions(fact, serialAvailable(), window.isSecureContext);
+  const options = choiceOptions(fact, webSerialAvailable(), window.isSecureContext);
   const choose = (index: number): Promise<boolean> => {
     const raw = fact.enumValues[index];
     const rawChoice = fact.rawChoice && raw !== undefined ? toLongOrNull(raw) : null;

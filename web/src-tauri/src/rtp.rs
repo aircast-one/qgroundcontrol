@@ -1,4 +1,4 @@
-use crate::annexb::{Codec, START, Unit};
+use crate::annexb::{Codec, START, Unit, unwrapped};
 
 const REORDER_WINDOW: usize = 8;
 const RESTART_GAP: u16 = 4_096;
@@ -13,6 +13,7 @@ pub struct Depacketizer {
     packets: u16,
     lost: u16,
     behind: usize,
+    clock: Option<u64>,
 }
 
 struct Packet<'a> {
@@ -69,6 +70,7 @@ impl Depacketizer {
             packets: 0,
             lost: 0,
             behind: 0,
+            clock: None,
         }
     }
 
@@ -152,12 +154,17 @@ impl Depacketizer {
     }
 
     fn finish(&mut self) -> Option<Unit> {
-        self.timestamp = None;
+        let clock = self
+            .timestamp
+            .take()
+            .map(|raw| unwrapped(self.clock, u64::from(raw), 32));
+        self.clock = clock.or(self.clock);
         let unit = Unit {
             codec: self.codec,
             data: std::mem::take(&mut self.unit),
             packets: std::mem::take(&mut self.packets),
             lost: std::mem::take(&mut self.lost),
+            timestamp: clock.unwrap_or_default(),
         };
         (!unit.data.is_empty()).then_some(unit)
     }
@@ -291,6 +298,7 @@ mod tests {
                 .concat(),
                 packets: 3,
                 lost: 0,
+                timestamp: 90,
             }]
         );
         assert!(h264.push(&first).is_empty(), "a late copy is dropped");

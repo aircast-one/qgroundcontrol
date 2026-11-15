@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Decoding, decoderStep, nativeMessage, nativeStats, playbackStep, playsNatively, startingPlayback } from './nativeVideo';
+import { type Decoding, decoderStep, nativeMessage, nativeStats, playbackStep, playsNatively, recordOutcome, startingPlayback } from './nativeVideo';
 
 const bytes = (...values: number[]): ArrayBuffer => new Uint8Array(values).buffer;
 
@@ -22,7 +22,7 @@ describe('nativeStats', () => {
   it('fills the video stats pill from what the shell counted over the last half second', () => {
     const before = { bytes: 0, lost: 0, received: 0, dropped: 0, at: 1000 };
     const now = { bytes: 62_500, lost: 5, received: 95, dropped: 2, at: 1500 };
-    expect(nativeStats(before, now, 15, [0, 33, 66, 109, 133])).toEqual({ fps: 30, kbps: 1000, jitterMs: 5, lossPercent: 5, skippedPerSecond: 4, counters: now });
+    expect(nativeStats(before, now, 15, [0, 33, 66, 109, 133])).toEqual({ fps: 30, kbps: 1000, jitterMs: 5, lossPercent: 5, lostPerSecond: 10, skippedPerSecond: 4, counters: now });
   });
 
   it('leaves packet loss unknown for a source that does not count its packets, rather than calling every loss 100%', () => {
@@ -63,5 +63,14 @@ describe('playbackStep', () => {
   it('a restart brings back a decoder that gave up, so the core retrying the stream can recover the picture', () => {
     const givenUp: Decoding = { playback: { ...startingPlayback, error: 'bad frame' }, failures: 6 };
     expect(decoderStep(givenUp, { kind: 'restarted' })).toEqual([{ playback: startingPlayback, failures: 0 }, true]);
+  });
+});
+
+describe('recordOutcome', () => {
+  it('a newer record or stop request supersedes one still waiting for the first frame, so a stopped recording never starts late', () => {
+    expect(recordOutcome('/v/a.mp4', 1, 2, true)).toBe('superseded');
+    expect(recordOutcome('/v/a.mp4', 2, 2, true)).toBe('recording');
+    expect(recordOutcome(null, 3, 3, true)).toBe('stopped');
+    expect(recordOutcome('/v/a.mp4', 4, 4, false)).toBe('superseded');
   });
 });

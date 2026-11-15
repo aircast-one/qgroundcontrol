@@ -24,7 +24,7 @@ use groundstation::nativehost::{
 use serde_json::Value;
 use tauri::async_runtime::spawn_blocking;
 use tauri::utils::config::BackgroundThrottlingPolicy;
-use tauri::webview::{DownloadEvent, NewWindowResponse};
+use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
 use tauri::{
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
     ipc::Response,
@@ -49,8 +49,9 @@ fn events() -> MutexGuard<'static, Vec<(String, String)>> {
     EVENTS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn text(value: &str) -> CString {
-    CString::new(value).unwrap_or_default()
+fn text(value: &str) -> Result<CString, String> {
+    CString::new(value)
+        .map_err(|_| format!("{value:?} holds a NUL byte, which the core cannot take."))
 }
 
 fn read(raw: *const c_char) -> String {
@@ -119,40 +120,38 @@ async fn core(name: String, args: Vec<Value>) -> Result<Value, String> {
 fn core_call(name: &str, args: &[Value]) -> Result<Value, String> {
     let at = |index| text(&string_at(args, index));
     Ok(match name {
-        "get" => taken(unsafe { qgc_bridge_get(at(0).as_ptr()) }).into(),
+        "get" => taken(unsafe { qgc_bridge_get(at(0)?.as_ptr()) }).into(),
         "getFields" => {
-            taken(unsafe { qgc_bridge_get_fields(at(0).as_ptr(), at(1).as_ptr()) }).into()
+            taken(unsafe { qgc_bridge_get_fields(at(0)?.as_ptr(), at(1)?.as_ptr()) }).into()
         }
         "getMany" => args
             .first()
             .and_then(Value::as_array)
-            .map(|paths| {
+            .map_or(Ok(Vec::new()), |paths| {
                 paths
                     .iter()
                     .map(|path| {
-                        Value::from(taken(unsafe {
-                            qgc_bridge_get(text(path.as_str().unwrap_or_default()).as_ptr())
-                        }))
+                        let path = text(path.as_str().unwrap_or_default())?;
+                        Ok(Value::from(taken(unsafe { qgc_bridge_get(path.as_ptr()) })))
                     })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default()
+                    .collect::<Result<Vec<_>, String>>()
+            })?
             .into(),
-        "set" => taken(unsafe { qgc_bridge_set(at(0).as_ptr(), at(1).as_ptr()) }).into(),
-        "invoke" => taken(unsafe { qgc_bridge_invoke(at(0).as_ptr(), at(1).as_ptr()) }).into(),
-        "guided" => taken(unsafe { qgc_core_guided(at(0).as_ptr()) }).into(),
+        "set" => taken(unsafe { qgc_bridge_set(at(0)?.as_ptr(), at(1)?.as_ptr()) }).into(),
+        "invoke" => taken(unsafe { qgc_bridge_invoke(at(0)?.as_ptr(), at(1)?.as_ptr()) }).into(),
+        "guided" => taken(unsafe { qgc_core_guided(at(0)?.as_ptr()) }).into(),
         "deviceInvoke" => groundstation::deviceviews::run(&string_at(args, 0), &string_at(args, 1))
             .to_string()
             .into(),
         "watchClient" => {
-            unsafe { qgc_bridge_watch_client(at(0).as_ptr(), at(1).as_ptr()) };
+            unsafe { qgc_bridge_watch_client(at(0)?.as_ptr(), at(1)?.as_ptr()) };
             Value::Null
         }
-        "linkOpen" => taken(unsafe { qgc_core_link_open(at(0).as_ptr()) }).into(),
+        "linkOpen" => taken(unsafe { qgc_core_link_open(at(0)?.as_ptr()) }).into(),
         "linkClose" => unsafe {
             qgc_core_link_close(
                 args.first().and_then(Value::as_u64).unwrap_or(0) as u32,
-                at(1).as_ptr(),
+                at(1)?.as_ptr(),
             )
         }
         .into(),
@@ -167,7 +166,7 @@ fn core_call(name: &str, args: &[Value]) -> Result<Value, String> {
             Value::Null
         }
         "gcsPositionSource" => {
-            unsafe { qgc_core_gcs_position_source(at(0).as_ptr()) };
+            unsafe { qgc_core_gcs_position_source(at(0)?.as_ptr()) };
             Value::Null
         }
         "gcsPositionUpdate" => {
@@ -190,7 +189,7 @@ fn core_call(name: &str, args: &[Value]) -> Result<Value, String> {
             Value::Null
         }
         "notifyDeepLink" => {
-            unsafe { qgc_handle_deep_link(at(0).as_ptr()) };
+            unsafe { qgc_handle_deep_link(at(0)?.as_ptr()) };
             Value::Null
         }
         unknown => return Err(format!("The core has no call named {unknown}.")),
@@ -209,20 +208,12 @@ unsafe extern "C" fn tile_arrived(bytes: *const u8, length: c_int, context: *mut
 }
 
 #[tauri::command]
-async fn map_tile(map_type: String, x: i32, y: i32, zoom: i32) -> Response {
+async fn map_tile(map_type: String, x: i32, y: i32, zoom: i32) -> Result<Response, String> {
+    let map_type = text(&map_type)?;
     let (sender, arrived) = oneshot::channel::<Vec<u8>>();
     let context = Box::into_raw(Box::new(sender)).cast::<c_void>();
-    unsafe {
-        qgc_map_tile_fetch(
-            text(&map_type).as_ptr(),
-            x,
-            y,
-            zoom,
-            Some(tile_arrived),
-            context,
-        )
-    };
-    Response::new(arrived.await.unwrap_or_default())
+    unsafe { qgc_map_tile_fetch(map_type.as_ptr(), x, y, zoom, Some(tile_arrived), context) };
+    Ok(Response::new(arrived.await.unwrap_or_default()))
 }
 
 fn open_link(url: &url::Url) {
@@ -235,8 +226,19 @@ fn open_link(url: &url::Url) {
     }
 }
 
-fn start_core() {
-    let arguments: Vec<CString> = std::env::args().map(|argument| text(&argument)).collect();
+fn start_core(version: &str) {
+    let arguments: Vec<CString> = std::env::args()
+        .chain(
+            [
+                "--no-autoconnect",
+                "--no-app-update",
+                "--app-version",
+                version,
+            ]
+            .map(str::to_string),
+        )
+        .filter_map(|argument| text(&argument).ok())
+        .collect();
     let pointers: Vec<*const c_char> = arguments.iter().map(|a| a.as_ptr()).collect();
     unsafe {
         qgc_bridge_set_event_handler(Some(event));
@@ -248,7 +250,8 @@ fn start_core() {
 }
 
 fn main() {
-    start_core();
+    let context = tauri::generate_context!();
+    start_core(&context.package_info().version.to_string());
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(video::Streams::default())
@@ -273,6 +276,17 @@ fn main() {
                     open_link(&url);
                     NewWindowResponse::Deny
                 })
+                .on_page_load(|shown, loading| {
+                    if loading.event() == PageLoadEvent::Started {
+                        let app = shown.app_handle().clone();
+                        let streams = app.state::<video::Streams>().playing();
+                        let views = app.state::<synthetic::Views>().forget_all();
+                        spawn_blocking(move || {
+                            app.state::<video::Streams>().close_each(streams);
+                            synthetic::Views::release_each(views);
+                        });
+                    }
+                })
                 .build()?;
             #[cfg(windows)]
             webview2::allow_location(&_window)?;
@@ -288,12 +302,14 @@ fn main() {
             video::video_restart,
             video::video_record,
             files::staged_root,
+            files::staged_prepare,
             files::staged_write,
             files::staged_read,
             files::staged_remove,
             files::staged_remove_prefixed,
             files::staged_list,
             files::saved_read,
+            files::saved_list,
             synthetic::synthetic_open,
             synthetic::synthetic_resize,
             synthetic::synthetic_close,
@@ -315,11 +331,15 @@ fn main() {
             }
             _ => {}
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("the Aircast window failed to open")
         .run(|app, event| match event {
             RunEvent::ExitRequested { api, .. } if window::holds_close(app) => api.prevent_exit(),
-            RunEvent::Exit => qgc_shutdown(),
+            RunEvent::Exit => {
+                let streams = app.state::<video::Streams>();
+                streams.close_each(streams.playing());
+                qgc_shutdown();
+            }
             _ => {}
         });
 }

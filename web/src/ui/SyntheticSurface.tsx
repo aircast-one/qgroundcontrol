@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { type Json, optBoolean, optString } from '@/bridge/Json';
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { AppCommands } from '@/bridge/BridgeCommands';
 import { call, callTransferring } from '@/core/client';
 import { coerceAtLeast, roundToInt } from '@/kotlin/Std';
 import { SyntheticDraw } from '@/ui/SyntheticView';
@@ -16,6 +17,10 @@ export const nativeDraw = (view: Json | null): SyntheticDraw => {
   return draw === 'drawn' ? SyntheticDraw.Drawn : draw === 'failed' ? SyntheticDraw.Failed : SyntheticDraw.Loading;
 };
 
+const SYNTHETIC_LOG = 'desktop.synthetic';
+
+const logged = (event: string) => (error: unknown) => void AppCommands.recordLog(SYNTHETIC_LOG, `event=${event} reason="${String(error)}"`);
+
 const paintJpeg = (canvas: HTMLCanvasElement) => {
   const context = canvas.getContext('2d');
   const order = { arrived: 0, painted: 0 };
@@ -30,15 +35,18 @@ const paintJpeg = (canvas: HTMLCanvasElement) => {
         context?.drawImage(picture, 0, 0);
       }
       picture.close();
-    });
+    }, logged('frame_undecodable'));
   };
 };
 
 const nativeHandoff = {
-  surfaceCreated: (canvas: HTMLCanvasElement, width: number, height: number, orbit: boolean): Promise<number> =>
-    invoke<number>('synthetic_open', { width, height, orbit, frames: new Channel<ArrayBuffer>(paintJpeg(canvas)) }),
-  surfaceChanged: (surface: Promise<number>, width: number, height: number) => void surface.then((key) => invoke('synthetic_resize', { key, width, height })),
-  surfaceDestroyed: (surface: Promise<number>) => void surface.then((key) => invoke('synthetic_close', { key })),
+  surfaceCreated: (canvas: HTMLCanvasElement, width: number, height: number, orbit: boolean): Promise<number> => {
+    const opened = invoke<number>('synthetic_open', { width, height, orbit, frames: new Channel<ArrayBuffer>(paintJpeg(canvas)) });
+    opened.catch(logged('open_refused'));
+    return opened;
+  },
+  surfaceChanged: (surface: Promise<number>, width: number, height: number) => void surface.then((key) => invoke('synthetic_resize', { key, width, height })).catch(logged('resize_refused')),
+  surfaceDestroyed: (surface: Promise<number>) => void surface.then((key) => invoke('synthetic_close', { key })).catch(logged('close_refused')),
 };
 
 const workerHandoff = {

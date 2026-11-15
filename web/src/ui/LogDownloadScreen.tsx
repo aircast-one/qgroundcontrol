@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AppCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, isJson, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
@@ -177,10 +178,13 @@ const EraseConfirmDialog = ({ erase, onConfirm, onDismiss }: { erase: EraseKind;
   />
 );
 
-const saveToDevice = async (path: string): Promise<void> => {
-  const file = await savedFile(path);
-  if (file !== null) createDocument(file.name, 'application/octet-stream', file);
-};
+const LOG_NOT_SAVED = 'The log could not be saved';
+
+const saveToDevice = (path: string): Promise<void> =>
+  savedFile(path).then(
+    (file) => (file === null ? undefined : createDocument(file.name, 'application/octet-stream', file)),
+    (error: unknown) => void AppCommands.notice(LOG_NOT_SAVED, String(error)),
+  );
 
 const LogRow = ({ entry, enabled, onToggle }: { entry: LogEntry; enabled: boolean; onToggle: (checked: boolean) => void }) => {
   const selectable = enabled && entry.received;

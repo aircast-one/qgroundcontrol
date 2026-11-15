@@ -1,7 +1,7 @@
 import { useContext, useState } from 'react';
 import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { stageFile, stagedFile, unstageAll } from '@/core/files';
+import { stageFile, stagedFile, stagedLocation, stagedOutput, unstageAll } from '@/core/files';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { createDocument, getSharedPreferences, openDocument, openDocuments } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
@@ -132,7 +132,7 @@ const importMessage = async (documents: readonly File[], pattern: string): Promi
   const copied = await labelled.reduce<Promise<boolean>>(async (ok, [document, name]) => (await ok) && stageFile(cachePath(boundaryCacheName(name)), document), Promise.resolve(true));
   if (!copied) return 'That file could not be read.';
   const before = (await visualItems()).length;
-  await Qgc.invoke(`${MISSION_ROOT}.insertComplexMissionItemFromKMLOrSHP`, pattern, staged, before, true);
+  await Qgc.invoke(`${MISSION_ROOT}.insertComplexMissionItemFromKMLOrSHP`, pattern, stagedLocation(staged), before, true);
   const after = await visualItems();
   if (after.length <= before) return `${label ?? 'That file'} added nothing to the plan.`;
   if (!importedNothing(lastDistance(after))) return null;
@@ -190,7 +190,7 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
       const named = withExtension(target, PLAN_EXTENSION);
       const staged = cachePath(SAVE_CACHE);
       await unstageAll(staged);
-      const written = await planSave(staged);
+      const written = await planSave(await stagedOutput(staged));
       if (written === null) return result.current('The plan could not be saved.');
       const saved = await stagedFile(written);
       if (saved === null || !copyOut(saved, named)) return result.current('The plan was written but could not be copied out.');
@@ -204,7 +204,7 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
       if (chosen === null) return;
       const staged = cachePath(OPEN_FOLDER, openedFileName(chosen.name));
       await unstageAll(cachePath(OPEN_FOLDER));
-      const [failure, loaded] = (await stageFile(staged, chosen)) ? await planLoad(staged).then((it) => [loadFailureMessage(it), it === true] as const) : (['That file could not be read.', false] as const);
+      const [failure, loaded] = (await stageFile(staged, chosen)) ? await planLoad(stagedLocation(staged)).then((it) => [loadFailureMessage(it), it === true] as const) : (['That file could not be read.', false] as const);
       if (!loaded) {
         if (failure !== null) result.current(failure);
         return;
@@ -219,7 +219,7 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
     void (async () => {
       const staged = cachePath(KML_CACHE);
       await unstageAll(staged);
-      await Qgc.invoke(`${PLAN_ROOT}.saveToKml`, staged);
+      await Qgc.invoke(`${PLAN_ROOT}.saveToKml`, await stagedOutput(staged));
       const exported = await stagedFile(staged);
       result.current(
         exported === null || exported.size === 0

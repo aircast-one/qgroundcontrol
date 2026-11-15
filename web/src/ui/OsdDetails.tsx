@@ -69,7 +69,9 @@ const videoDetails = (video: WhepStats | null): OsdDetail[] =>
         ...detail('Bitrate', bitrateText(video.kbps)),
         ...detail('Frame rate', `${video.fps}fps`),
         ...detail('Jitter', `${video.jitterMs}ms`),
-        ...(video.lossPercent === null ? [] : detail('Packet loss', percentText(video.lossPercent), rateTone(video.lossPercent, LOSS_WARNING, LOSS_DANGER))),
+        ...(video.lossPercent === null
+          ? detail('Packets lost', `${Math.round(video.lostPerSecond)}/s`)
+          : detail('Packet loss', percentText(video.lossPercent), rateTone(video.lossPercent, LOSS_WARNING, LOSS_DANGER))),
         ...detail('Skipped frames', `${Math.round(video.skippedPerSecond)}/s`, rateTone(video.skippedPerSecond, SKIP_WARNING, SKIP_DANGER)),
       ];
 

@@ -4,7 +4,7 @@ import { bitrateText, ekfRatiosOf, ekfWorst, osdCellText, osdLines, osdRows, per
 
 const quiet = { hdop: NaN, ekfRatios: [], vibration: null, video: null };
 const counters = { bytes: 0, lost: 0, received: 0, dropped: 0, at: 0 };
-const healthyVideo = { fps: 30, kbps: 2200, jitterMs: 10, lossPercent: 0.4, skippedPerSecond: 0, counters };
+const healthyVideo = { fps: 30, kbps: 2200, jitterMs: 10, lossPercent: 0.4, lostPerSecond: 0, skippedPerSecond: 0, counters };
 
 const everything = {
   hdop: 0.54,
@@ -19,9 +19,14 @@ describe('OsdDetailsTest', () => {
       ['ic_explore', 'EKF variance 0.32 · Vibration 3.2 · HDOP 0.5'],
       ['ic_videocam', 'Bitrate 2.2Mb/s · Frame rate 30fps · Jitter 10ms · Packet loss 0.4% · Skipped frames 0/s'],
     ]);
-    const lines = osdLines({ ...everything, ekfRatios: [0.62], video: { ...healthyVideo, lossPercent: 12, skippedPerSecond: 2 } });
+    const lines = osdLines({ ...everything, ekfRatios: [0.62], video: { ...healthyVideo, lossPercent: 12, lostPerSecond: 0, skippedPerSecond: 2 } });
     expect(lines.map(osdCellText)).toEqual(['EKF variance 0.62 · Vibration 3.2 · HDOP 0.5', 'Packet loss 12% · Skipped frames 2/s · Bitrate 2.2Mb/s · Frame rate 30fps · Jitter 10ms']);
     expect(osdRows(lines[1]!).map((it) => it.severity)).toEqual([0, 0, 0, 2, 1]);
+  });
+
+  it('a camera that reports lost packets but not how many arrived shows the loss as a rate', () => {
+    const rtsp = osdLines({ ...everything, video: { ...healthyVideo, lossPercent: null, lostPerSecond: 3.4 } });
+    expect(osdCellText(rtsp[1]!)).toBe('Bitrate 2.2Mb/s · Frame rate 30fps · Jitter 10ms · Packets lost 3/s · Skipped frames 0/s');
   });
 
   it('no video and no sensor readings leave no cells, so nothing says VIDEO OFF', () => {

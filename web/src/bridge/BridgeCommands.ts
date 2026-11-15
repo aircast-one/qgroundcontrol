@@ -114,8 +114,7 @@ export const VideoCommands = {
   reportPlayback: (channel: number, { running, frames, width, height, error, restarted }: WhepReport): Promise<boolean> =>
     Qgc.invoke(VIDEO_REPORT_NATIVE, running, frames, width, height, error, null, restarted, channel),
   reportRecording: (active: boolean): Promise<boolean> => Qgc.invoke(VIDEO_REPORT_RECORDING, active),
-  reportRecordingFailed: (reason: string): Promise<boolean[]> =>
-    Promise.all([Qgc.invoke(VIDEO_REPORT_RECORDING, false), Qgc.invoke(HOST_POST_NOTICE, MESSAGE_NOTICE, RECORDING_STOPPED_TITLE, reason)]),
+  reportRecordingFailed: (reason: string): Promise<boolean[]> => Promise.all([Qgc.invoke(VIDEO_REPORT_RECORDING, false), AppCommands.notice(RECORDING_STOPPED_TITLE, reason)]),
   turnStreamOn: (): Promise<boolean> => Qgc.set(VIDEO_STREAM_ENABLED, true),
 };
 
@@ -148,6 +147,7 @@ export const AppCommands = {
   acceptBetaDiagnostics: (): Promise<boolean> => Qgc.invoke(BETA_DIAGNOSTICS_ACCEPT),
   dismissBetaDiagnostics: (): Promise<boolean> => Qgc.invoke(BETA_DIAGNOSTICS_DISMISS),
   recordLog: (category: string, message: string): Promise<boolean> => Qgc.invoke(APP_LOG_RECORD, category, message),
+  notice: (title: string, text: string): Promise<boolean> => Qgc.invoke(HOST_POST_NOTICE, MESSAGE_NOTICE, title, text),
   setSubtitleInstruments: (vehicleClass: string, instruments: string[]): Promise<boolean> => Qgc.invoke(SUBTITLES_INSTRUMENTS, vehicleClass, instruments.join(',')),
   acknowledgeNoticesThrough: (through: number): Promise<boolean> => Qgc.invoke(HOST_ACKNOWLEDGE, through),
 };

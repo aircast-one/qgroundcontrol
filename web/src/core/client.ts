@@ -110,7 +110,9 @@ const openSettings = async (): Promise<void> => {
   if (kept === '' && text !== '') void device.save(text);
 };
 
-export const serialAvailable = (): boolean => __DESKTOP__ || (typeof navigator !== 'undefined' && 'serial' in navigator);
+export const webSerialAvailable = (): boolean => !__DESKTOP__ && typeof navigator !== 'undefined' && 'serial' in navigator;
+
+export const serialAvailable = (): boolean => __DESKTOP__ || webSerialAvailable();
 
 const portLine = (port: SerialPort, index: number): [string, string] => {
   const { usbVendorId, usbProductId } = port.getInfo();
@@ -121,7 +123,7 @@ const portLine = (port: SerialPort, index: number): [string, string] => {
 };
 
 export const refreshSerialPorts = async (): Promise<void> => {
-  if (__DESKTOP__ || !serialAvailable()) return;
+  if (!webSerialAvailable()) return;
   const ports = await navigator.serial.getPorts();
   const lines = ports.map(portLine);
   serialPorts.clear();
