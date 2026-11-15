@@ -762,12 +762,14 @@ pub fn persist() {
         return;
     };
     let staged = path.with_extension("ini.saving");
-    let written = std::fs::File::create(&staged).and_then(|mut file| {
-        std::io::Write::write_all(&mut file, text.as_bytes())?;
-        file.sync_all()
-    });
-    if written.is_ok() {
-        let _ = std::fs::rename(&staged, &path);
+    let written = std::fs::File::create(&staged)
+        .and_then(|mut file| {
+            std::io::Write::write_all(&mut file, text.as_bytes())?;
+            file.sync_all()
+        })
+        .and_then(|()| std::fs::rename(&staged, &path));
+    if let Err(error) = written {
+        log::warn!(target: "settings", "event=settings_not_saved file=\"{}\" reason=\"{error}\"", path.display());
     }
 }
 

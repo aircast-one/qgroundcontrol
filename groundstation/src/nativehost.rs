@@ -230,6 +230,13 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     crate::mocklink::set_available(cfg!(debug_assertions) || chosen.debug_build);
     DEBUG_BUILD.fetch_or(chosen.debug_build, std::sync::atomic::Ordering::Relaxed);
     crate::applog::install();
+    chosen
+        .folders()
+        .iter()
+        .filter_map(|folder| std::fs::create_dir_all(folder).err().map(|error| (folder, error)))
+        .for_each(|(folder, error)| {
+            log::warn!(target: "settings", "event=folder_not_created folder=\"{}\" reason=\"{error}\"", folder.display());
+        });
     unsafe {
         crate::abi::qgc_core_set_application_name(text(&chosen.application).as_ptr());
         crate::abi::qgc_core_settings_open(text(&chosen.settings.to_string_lossy()).as_ptr());
@@ -242,8 +249,12 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     );
     crate::hostdevice::adopt(chosen.device.as_deref());
     crate::telemetrylog::recover_lost();
-    if let Some(version) = &chosen.application_version {
-        unsafe { crate::abi::qgc_core_set_application_version(text(version).as_ptr()) };
+    match (&chosen.application_version, chosen.app_update) {
+        (Some(version), true) => unsafe {
+            crate::abi::qgc_core_set_application_version(text(version).as_ptr())
+        },
+        (Some(version), false) => crate::mavlinklog::set_application_version(version),
+        (None, _) => {}
     }
     crate::mavlinklog::configure_hub();
     if let Some(cache) = &chosen.map_cache {

@@ -1,5 +1,5 @@
 import { type HTMLAttributes, type PointerEvent, useContext, useEffect, useMemo, useRef } from 'react';
-import { VideoCommands } from '@/bridge/BridgeCommands';
+import { AppCommands, VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { type NativePlayer, playNative, playsNatively } from '@/core/nativeVideo';
@@ -35,6 +35,8 @@ import { VideoArOverlay } from '@/ui/VideoAr';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VideoStatsPill } from '@/ui/VideoStatsPill';
 import { VIDEO_VIEW, type SourceSize, type VideoReading, nativeRecordingFile, streamUri, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
+
+const VIDEO_LOG = 'desktop.video';
 
 export const CAMERA_STEP_ZOOM = 'vehicle.cameraManager.currentCameraInstance.stepZoom';
 
@@ -438,14 +440,21 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
     const nativePlayer = player.current;
     if (nativePlayer === null || restarts === restartsSeen.current) return undefined;
     restartsSeen.current = restarts;
-    void nativePlayer.restart();
+    void nativePlayer.restart().catch((error: unknown) => AppCommands.recordLog(VIDEO_LOG, `event=restart_refused reason="${String(error)}"`));
     return undefined;
   }, [restarts]);
   useEffect(() => {
     const nativePlayer = player.current;
     if (recordingFile !== null && nativePlayer !== null) {
-      void nativePlayer.record(recordingFile).then((active) => VideoCommands.reportRecording(active));
-      return () => void nativePlayer.record(null).then(() => VideoCommands.reportRecording(false));
+      void nativePlayer.record(recordingFile).then(
+        (outcome) => (outcome === 'recording' ? VideoCommands.reportRecording(true) : undefined),
+        (error: unknown) => VideoCommands.reportRecordingFailed(String(error)),
+      );
+      return () =>
+        void nativePlayer.record(null).then(
+          () => VideoCommands.reportRecording(false),
+          () => VideoCommands.reportRecording(false),
+        );
     }
     const stream = video.current?.srcObject;
     if (recordingFile === null || !(stream instanceof MediaStream)) return undefined;

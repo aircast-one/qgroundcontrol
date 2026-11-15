@@ -16,8 +16,11 @@ pub fn allow_location<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()
             request.PermissionKind(&mut kind)?;
             let mut asking = Default::default();
             request.Uri(&mut asking)?;
+            let asked_origin = url::Url::parse(&take_pwstr(asking))
+                .map(|asked| asked.origin().ascii_serialization())
+                .ok();
             if kind == COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION
-                && take_pwstr(asking).starts_with(&origin)
+                && asked_origin.as_deref() == Some(origin.as_str())
             {
                 request.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
             }

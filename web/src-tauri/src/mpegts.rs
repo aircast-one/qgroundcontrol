@@ -5,7 +5,7 @@ use mpeg2ts::es::StreamType;
 use mpeg2ts::time::Timestamp;
 use mpeg2ts::ts::{Pid, ReadTsPacket, TsPacketReader, TsPayload};
 
-use crate::annexb::{Codec, Unit};
+use crate::annexb::{Codec, Unit, unwrapped};
 
 pub const PACKET: usize = 188;
 const SYNC: u8 = 0x47;
@@ -37,6 +37,7 @@ pub struct Demuxer {
     counter: Option<u8>,
     packets: u16,
     lost: u16,
+    clock: Option<u64>,
 }
 
 impl Default for Demuxer {
@@ -54,6 +55,7 @@ impl Default for Demuxer {
             counter: None,
             packets: 0,
             lost: 0,
+            clock: None,
         }
     }
 }
@@ -157,11 +159,14 @@ impl Demuxer {
     }
 
     fn unit(&mut self, codec: Codec) -> Unit {
+        let clock = self.pts.map(|pts| unwrapped(self.clock, pts.as_u64(), 33));
+        self.clock = clock.or(self.clock);
         Unit {
             codec,
             data: std::mem::take(&mut self.unit),
             packets: std::mem::take(&mut self.packets),
             lost: std::mem::take(&mut self.lost),
+            timestamp: clock.unwrap_or_default(),
         }
     }
 }

@@ -7,7 +7,9 @@ export type NativeMessage =
   | { kind: 'ended'; reason: string }
   | { kind: 'recordingStopped'; reason: string };
 
-export type NativePlayer = { stop: () => void; restart: () => Promise<void>; record: (file: string | null) => Promise<boolean> };
+export type RecordOutcome = 'recording' | 'stopped' | 'superseded';
+
+export type NativePlayer = { stop: () => void; restart: () => Promise<void>; record: (file: string | null) => Promise<RecordOutcome> };
 
 export type Playback = { config: VideoDecoderConfig | null; keyed: boolean; error: string };
 
@@ -33,6 +35,7 @@ const REPORT_MS = 500;
 const MAX_DECODER_FAILURES = 5;
 const ENDED_WITHOUT_REASON = 'The camera ended the stream.';
 const NOT_RECORDING: FrameSize = { width: 0, height: 0 };
+const NOT_OPENED = 'The stream did not open.';
 
 const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 
@@ -79,6 +82,9 @@ export const decoderStep = (decoding: Decoding, event: DecoderEvent): readonly [
   }
 };
 
+export const recordOutcome = (file: string | null, request: number, latest: number, playing: boolean): RecordOutcome =>
+  request !== latest || !playing ? 'superseded' : file === null ? 'stopped' : 'recording';
+
 export const arrivalJitterMs = (arrivals: readonly number[]): number => {
   const gaps = arrivals.slice(1).map((at, index) => at - arrivals[index]!);
   const mean = gaps.reduce((sum, gap) => sum + gap, 0) / Math.max(gaps.length, 1);
@@ -94,6 +100,7 @@ export const nativeStats = (before: WhepCounters, now: WhepCounters, decoded: nu
     kbps: Math.round(((now.bytes - before.bytes) * 8) / elapsedMs),
     jitterMs: arrivalJitterMs(arrivals),
     lossPercent: received > 0 ? (100 * lost) / (lost + received) : null,
+    lostPerSecond: (1000 * lost) / elapsedMs,
     skippedPerSecond: (1000 * (now.dropped - before.dropped)) / elapsedMs,
     counters: now,
   };
@@ -101,7 +108,7 @@ export const nativeStats = (before: WhepCounters, now: WhepCounters, decoded: nu
 
 export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (reading: WhepReport) => void, recordingStopped: (reason: string) => void): NativePlayer => {
   const context = canvas.getContext('2d');
-  const session = { id: null as number | null, closed: false, frames: 0, failures: 0, first: true, playback: startingPlayback };
+  const session = { id: null as number | null, closed: false, frames: 0, failures: 0, first: true, playback: startingPlayback, size: null as FrameSize | null, requests: 0 };
   const totals = { bytes: 0, lost: 0, received: 0, dropped: 0, arrivals: [] as number[], reported: { bytes: 0, lost: 0, received: 0, dropped: 0, at: performance.now() } as WhepCounters, reportedFrames: 0 };
   const sizing: { resolve: (size: FrameSize) => void; reject: (reason: Error) => void } = { resolve: () => undefined, reject: () => undefined };
   const firstFrame = new Promise<FrameSize>((resolve, reject) => Object.assign(sizing, { resolve, reject }));
@@ -110,7 +117,8 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
     if (canvas.width !== frame.displayWidth) canvas.width = frame.displayWidth;
     if (canvas.height !== frame.displayHeight) canvas.height = frame.displayHeight;
     context?.drawImage(frame, 0, 0);
-    sizing.resolve({ width: frame.displayWidth, height: frame.displayHeight });
+    session.size = { width: frame.displayWidth, height: frame.displayHeight };
+    sizing.resolve(session.size);
     frame.close();
     session.frames += 1;
     decoderEvent({ kind: 'decoded' });
@@ -133,7 +141,7 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
     if (!session.closed) decoderEvent({ kind: 'failed', reason });
   };
   const apply = (decoder: VideoDecoder, step: PlaybackStep) => {
-    if (step.kind === 'configure') decoder.configure(step.config);
+    if (step.kind === 'configure' && decoder.state !== 'closed') decoder.configure(step.config);
     else if (step.kind === 'decode') decoder.decode(new EncodedVideoChunk({ type: step.key ? 'key' : 'delta', timestamp: Math.round(performance.now() * 1000), data: step.data }));
     else if (step.kind === 'skip') totals.dropped += 1;
     else if (step.kind === 'recordingStopped') recordingStopped(step.reason);
@@ -141,7 +149,7 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
   const frames = new Channel<ArrayBuffer>((buffer) => {
     const message = nativeMessage(buffer);
     const decoder = decoders.current;
-    if (message === null || decoder.state === 'closed') return;
+    if (message === null) return;
     if (message.kind === 'frame') {
       totals.bytes += message.data.length;
       totals.received += message.packets;
@@ -188,13 +196,15 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
       await invoke('video_restart', { id });
     },
     record: async (file) => {
+      session.requests += 1;
+      const request = session.requests;
       const id = await opened;
-      const size = file === null ? NOT_RECORDING : await firstFrame.catch(() => null);
-      if (id === null || size === null || session.closed) return false;
-      return invoke('video_record', { id, file, width: size.width, height: size.height }).then(
-        () => file !== null,
-        () => false,
-      );
+      if (id === null) throw new Error(session.playback.error || NOT_OPENED);
+      const size = file === null ? NOT_RECORDING : (session.size ?? (await firstFrame.catch(() => null)));
+      const outcome = recordOutcome(file, request, session.requests, size !== null && !session.closed);
+      if (outcome === 'superseded' || size === null) return 'superseded';
+      await invoke('video_record', { id, file, width: size.width, height: size.height });
+      return outcome;
     },
   };
 };

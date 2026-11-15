@@ -4,8 +4,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use tauri::async_runtime::JoinHandle;
+use tauri::async_runtime::{JoinHandle, spawn_blocking};
 use tauri::ipc::{Channel, InvokeResponseBody};
+use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::watch;
 use url::Url;
 
@@ -152,17 +153,23 @@ impl Live {
         }
         let key = annexb::keyed(unit.codec, &nals);
         self.keyed |= key;
-        self.record(unit.codec, &nals, key)?;
+        self.record(unit.codec, &nals, key, unit.timestamp)?;
         self.tally = self.tally.counted(unit, key);
         send(&self.sink, frame(key, now_ms(), unit))
     }
 
-    fn record(&self, codec: Codec, nals: &[&[u8]], key: bool) -> Result<(), String> {
+    fn record(
+        &self,
+        codec: Codec,
+        nals: &[&[u8]],
+        key: bool,
+        timestamp: u64,
+    ) -> Result<(), String> {
         let mut recording = locked(&self.recorder);
         let Some(failed) = recording
             .as_mut()
             .filter(|_| self.keyed)
-            .and_then(|written| written.write(codec, nals, key).err())
+            .and_then(|written| written.write(codec, nals, key, timestamp).err())
         else {
             return Ok(());
         };
@@ -252,7 +259,7 @@ fn stop_recording(id: u32, recorder: &Recorder) -> Result<(), String> {
 
 impl Streams {
     async fn open(&self, url: Url, sink: Sink) -> u32 {
-        let closing = std::mem::take(&mut *locked(&self.closing));
+        let closing = locked(&self.closing).clone();
         futures::future::join_all(closing.into_iter().map(settled)).await;
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (recorder, stopping) = (Recorder::default(), StopReason::default());
@@ -312,6 +319,18 @@ impl Streams {
         Ok(())
     }
 
+    pub fn playing(&self) -> Vec<u32> {
+        locked(&self.running).keys().copied().collect()
+    }
+
+    pub fn close_each(&self, ids: Vec<u32>) {
+        ids.into_iter()
+            .filter_map(|id| self.close(id).err().map(|error| (id, error)))
+            .for_each(|(id, error)| {
+                log::warn!(target: "desktop.video", "event=close_failed stream={id} reason=\"{error}\"");
+            });
+    }
+
     fn record(&self, id: u32, file: Option<&Path>, size: (u32, u32)) -> Result<(), String> {
         let recorder = locked(&self.running)
             .get(&id)
@@ -341,25 +360,37 @@ pub async fn video_open(
     Ok(streams.open(url, frames).await)
 }
 
-#[tauri::command]
-pub fn video_close(id: u32, streams: tauri::State<'_, Streams>) -> Result<(), String> {
-    streams.close(id)
+async fn off_the_window<R: Runtime, T: Send + 'static>(
+    app: AppHandle<R>,
+    work: impl FnOnce(&Streams) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    spawn_blocking(move || work(&app.state::<Streams>()))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn video_restart(id: u32, streams: tauri::State<'_, Streams>) -> Result<(), String> {
-    streams.restart(id)
+pub async fn video_close<R: Runtime>(app: AppHandle<R>, id: u32) -> Result<(), String> {
+    off_the_window(app, move |streams| streams.close(id)).await
 }
 
 #[tauri::command]
-pub fn video_record(
+pub async fn video_restart<R: Runtime>(app: AppHandle<R>, id: u32) -> Result<(), String> {
+    off_the_window(app, move |streams| streams.restart(id)).await
+}
+
+#[tauri::command]
+pub async fn video_record<R: Runtime>(
+    app: AppHandle<R>,
     id: u32,
     file: Option<String>,
     width: u32,
     height: u32,
-    streams: tauri::State<'_, Streams>,
 ) -> Result<(), String> {
-    streams.record(id, file.as_deref().map(Path::new), (width, height))
+    off_the_window(app, move |streams| {
+        streams.record(id, file.as_deref().map(Path::new), (width, height))
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -395,12 +426,17 @@ mod tests {
     }
 
     fn announced_after_sending(port: u16, hearing: &mpsc::Receiver<Vec<u8>>) -> bool {
+        heard_after_sending(port, hearing, CONFIG)
+    }
+
+    fn heard_after_sending(port: u16, hearing: &mpsc::Receiver<Vec<u8>>, kind: u8) -> bool {
         let camera = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         (0..ATTEMPTS).any(|attempt| {
-            let sequence = u16::try_from(attempt * 2).unwrap();
+            let sequence = u16::try_from(attempt * 3).unwrap();
             [
                 rtp(sequence, false, &[0x67, 0x42, 0xc0, 0x1f, 0xda]),
-                rtp(sequence + 1, true, &[0x65, 0x88, 0x84]),
+                rtp(sequence + 1, false, &[0x68, 0xce, 0x3c, 0x80]),
+                rtp(sequence + 2, true, &[0x65, 0x88, 0x84]),
             ]
             .iter()
             .for_each(|packet| {
@@ -408,7 +444,7 @@ mod tests {
             });
             hearing
                 .recv_timeout(WAIT)
-                .is_ok_and(|message| message[0] == CONFIG)
+                .is_ok_and(|message| message[0] == kind)
         })
     }
 
@@ -431,7 +467,8 @@ mod tests {
                     codec: Codec::H264,
                     data: vec![9],
                     packets: 3,
-                    lost: 2
+                    lost: 2,
+                    timestamp: 0
                 }
             ),
             [1, 1, 0x3f, 0xf8, 0, 0, 0, 0, 0, 0, 0, 3, 0, 2, 9]
@@ -454,17 +491,28 @@ mod tests {
                 .await;
             assert!(announced_after_sending(port, &hearing));
             let recorder = locked(&streams.running)[&id].recorder.clone();
+            let file =
+                std::env::temp_dir().join(format!("aircast-restart-{}.mp4", std::process::id()));
+            *locked(&recorder) = Some(Recording::create(&file, (1280, 720)).unwrap());
+            hearing.try_iter().for_each(drop);
+            assert!(heard_after_sending(port, &hearing, FRAME));
+            let frames =
+                |held: &Recorder| locked(held).as_ref().map_or(0, |it| it.written().frames);
+            let before = frames(&recorder);
             streams.restart(id).unwrap();
             hearing.try_iter().for_each(drop);
             assert!(
                 announced_after_sending(port, &hearing),
                 "a fresh session announces the codec again, so the camera was reconnected"
             );
+            assert!(heard_after_sending(port, &hearing, FRAME));
             assert!(
-                Arc::ptr_eq(&recorder, &locked(&streams.running)[&id].recorder),
-                "the recording outlives the reconnect"
+                before > 0 && frames(&recorder) > before,
+                "frames from the reconnected camera go on into the same recording"
             );
             streams.close(id).unwrap();
+            assert!(std::fs::metadata(&file).unwrap().len() > 0);
+            std::fs::remove_file(&file).unwrap();
         });
     }
 

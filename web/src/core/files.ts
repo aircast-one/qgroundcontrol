@@ -16,6 +16,8 @@ export const stagingPath = (path: string, root: string = staging.root): string =
 
 export const stagedLocation = (path: string, root: string = staging.root): string => (__DESKTOP__ ? `${root}${stagingPath(path, root)}` : path);
 
+export const stagedOutput = (path: string): Promise<string> => (__DESKTOP__ ? invoke<string>('staged_prepare', { path: stagingPath(path) }) : Promise.resolve(path));
+
 const bytesOf = async (file: Blob): Promise<Uint8Array> => new Uint8Array(await file.arrayBuffer());
 
 export const stageFile = async (path: string, file: Blob): Promise<boolean> => {
@@ -31,8 +33,9 @@ const fileOf = (bytes: Uint8Array | ArrayBuffer | undefined, name: string): File
 export const stagedFile = async (path: string, name: string = path.slice(path.lastIndexOf('/') + 1)): Promise<File | null> =>
   fileOf(__DESKTOP__ ? await invoke<ArrayBuffer>('staged_read', { path: stagingPath(path) }) : await call<Uint8Array | undefined>('vfsRead', path), name);
 
-export const savedFile = async (path: string): Promise<File | null> =>
-  __DESKTOP__ ? fileOf(await invoke<ArrayBuffer>('saved_read', { path }).catch(() => undefined), path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)) : stagedFile(path);
+const leafName = (path: string): string => path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+
+export const savedFile = async (path: string): Promise<File | null> => (__DESKTOP__ ? fileOf(await invoke<ArrayBuffer>('saved_read', { path }), leafName(path)) : stagedFile(path));
 
 export const unstage = async (path: string): Promise<boolean> => {
   if (__DESKTOP__) return invoke<boolean>('staged_remove', { path: stagingPath(path) });
@@ -48,6 +51,8 @@ export const unstageAll = async (prefix: string, keep?: string): Promise<void> =
 };
 
 export type StagedEntry = { name: string; size: number; dir: boolean; modified?: number };
+
+export const listSaved = async (dir: string): Promise<readonly StagedEntry[]> => (__DESKTOP__ ? invoke<StagedEntry[]>('saved_list', { path: dir }) : listStaged(dir));
 
 export const listStaged = async (dir: string): Promise<readonly StagedEntry[]> =>
   __DESKTOP__ ? invoke<StagedEntry[]>('staged_list', { dir: stagingPath(dir) }) : (JSON.parse((await call<string | undefined>('vfsList', dir)) ?? '[]') as StagedEntry[]);

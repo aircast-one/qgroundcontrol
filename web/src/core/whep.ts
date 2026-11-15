@@ -1,5 +1,5 @@
 export type WhepCounters = { bytes: number; lost: number; received: number; dropped: number; at: number };
-export type WhepStats = { fps: number; kbps: number; jitterMs: number; lossPercent: number | null; skippedPerSecond: number; counters: WhepCounters };
+export type WhepStats = { fps: number; kbps: number; jitterMs: number; lossPercent: number | null; lostPerSecond: number; skippedPerSecond: number; counters: WhepCounters };
 export type WhepReport = { running: boolean; frames: number; width: number; height: number; error: string; restarted: boolean; stats: WhepStats | null };
 type InboundVideo = { timestamp: number; framesPerSecond?: number; bytesReceived?: number; jitter?: number; packetsLost?: number; packetsReceived?: number; framesDropped?: number };
 
@@ -41,6 +41,7 @@ export const whepStats = (inbound: InboundVideo, oldest: WhepCounters | null): W
     kbps: elapsedMs > 0 ? Math.round(((counters.bytes - since.bytes) * 8) / elapsedMs) : 0,
     jitterMs: Math.round((inbound.jitter ?? 0) * 1000),
     lossPercent: packets > 0 ? (100 * lost) / packets : 0,
+    lostPerSecond: elapsedMs > 0 ? (1000 * lost) / elapsedMs : 0,
     skippedPerSecond: elapsedMs > 0 ? (1000 * (counters.dropped - since.dropped)) / elapsedMs : 0,
     counters,
   };

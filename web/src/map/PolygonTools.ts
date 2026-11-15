@@ -11,7 +11,7 @@ import { PLAN_ITEMS } from './PlanBridge';
 import type { Survey } from './SurveyBridge';
 import { metresBetween } from './TerrainProfile';
 import { type TrackPoint, featureCollection, geoJsonSource, lineFeature, setGeoJson } from './VehicleMap';
-import { stageFile, unstageAll } from '@/core/files';
+import { stageFile, stagedLocation, unstageAll } from '@/core/files';
 
 const DEFAULT_SHAPE_FRACTION = 0.75;
 const DEFAULT_SHAPE_MAX_METRES = 3000.0;
@@ -197,7 +197,7 @@ export const importShapeFiles = async (files: readonly File[], target: ShapeTarg
   if (extension === null) return UNREADABLE;
   const copied = await stagedShapes(named);
   const staged = `/${SHAPE_FOLDER}/${SHAPE_PREFIX}${extension}`;
-  const view = `view.${target.line ? 'lineFile' : 'areaFile'}(${staged})`;
+  const view = `view.${target.line ? 'lineFile' : 'areaFile'}(${stagedLocation(staged)})`;
   const [vertices, error] = copied ? fileShape(await MapBridge.read(view), target) : ([[], UNREADABLE] as const);
   if (error.trim() !== '') return error;
   return (await replaceShape(target, vertices)) ? null : target.missing;

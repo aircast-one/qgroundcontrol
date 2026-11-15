@@ -14,6 +14,20 @@ pub struct Views {
     shown: Mutex<HashMap<usize, (bool, Deliver)>>,
 }
 
+impl Views {
+    fn shown(&self) -> std::sync::MutexGuard<'_, HashMap<usize, (bool, Deliver)>> {
+        self.shown.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub fn forget_all(&self) -> Vec<usize> {
+        self.shown().drain().map(|(key, _)| key).collect()
+    }
+
+    pub fn release_each(keys: Vec<usize>) {
+        keys.into_iter().for_each(synthetic_offscreen_release);
+    }
+}
+
 fn attach(key: usize, size: (u32, u32), orbit: bool, deliver: Deliver) -> Result<(), String> {
     synthetic_offscreen(key, size, orbit, deliver)
         .then_some(())
@@ -46,11 +60,7 @@ pub async fn synthetic_open(
         }
     });
     attached(key, (width, height), orbit, deliver.clone()).await?;
-    views
-        .shown
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert(key, (orbit, deliver));
+    views.shown().insert(key, (orbit, deliver));
     Ok(key)
 }
 
@@ -61,25 +71,21 @@ pub async fn synthetic_resize(
     height: u32,
     views: tauri::State<'_, Views>,
 ) -> Result<(), String> {
-    let shown = views
-        .shown
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(&key)
-        .cloned();
-    match shown {
-        Some((orbit, deliver)) => attached(key, (width, height), orbit, deliver).await,
-        None => Ok(()),
+    let Some((orbit, deliver)) = views.shown().get(&key).cloned() else {
+        return Ok(());
+    };
+    attached(key, (width, height), orbit, deliver).await?;
+    if views.shown().contains_key(&key) {
+        return Ok(());
     }
+    spawn_blocking(move || synthetic_offscreen_release(key))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub async fn synthetic_close(key: usize, views: tauri::State<'_, Views>) -> Result<(), String> {
-    views
-        .shown
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .remove(&key);
+    views.shown().remove(&key);
     spawn_blocking(move || synthetic_offscreen_release(key))
         .await
         .map_err(|error| error.to_string())

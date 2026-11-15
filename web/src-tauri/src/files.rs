@@ -42,16 +42,28 @@ fn written(target: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::write(target, bytes).map_err(failed)
 }
 
-fn removed_except(folder: &Path, kept: Option<&Path>) -> Result<Vec<String>, String> {
-    let entries = match std::fs::read_dir(folder) {
+fn removed_prefixed(root: &Path, prefix: &str, kept: Option<&Path>) -> Result<Vec<String>, String> {
+    let (folder, stem) = prefix.rsplit_once('/').unwrap_or(("", prefix));
+    let folder = inside(root, folder)?;
+    let entries = match std::fs::read_dir(&folder) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         listed => listed.map_err(failed)?,
     };
     Ok(entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| Some(path.as_path()) != kept)
+        .map(|entry| entry.map(|entry| entry.path()).map_err(failed))
+        .filter(|path| {
+            path.as_ref().map_or(true, |path| {
+                Some(path.as_path()) != kept
+                    && path
+                        .file_name()
+                        .is_some_and(|name| name.to_string_lossy().starts_with(stem))
+            })
+        })
         .filter_map(|path| {
+            let path = match path {
+                Ok(path) => path,
+                Err(unreadable) => return Some(unreadable),
+            };
             match path.is_dir() {
                 true => std::fs::remove_dir_all(&path),
                 false => std::fs::remove_file(&path),
@@ -70,9 +82,14 @@ fn listed(folder: &Path) -> Result<Value, String> {
         listed => listed.map_err(failed)?,
     };
     Ok(entries
-        .flatten()
         .filter_map(|entry| {
-            let meta = entry.metadata().ok()?;
+            let entry = entry
+                .inspect_err(|error| log::warn!(target: "desktop.files", "event=entry_unreadable folder=\"{}\" reason=\"{error}\"", folder.display()))
+                .ok()?;
+            let meta = entry
+                .metadata()
+                .inspect_err(|error| log::warn!(target: "desktop.files", "event=entry_unreadable file=\"{}\" reason=\"{error}\"", entry.path().display()))
+                .ok()?;
             let modified = meta
                 .modified()
                 .ok()
@@ -88,7 +105,7 @@ fn listed(folder: &Path) -> Result<Value, String> {
         .collect())
 }
 
-fn saved(path: &str) -> Result<Vec<u8>, String> {
+fn inside_saves(path: &str) -> Result<PathBuf, String> {
     let saves = groundstation::settingsstore::save_root()
         .map(PathBuf::from)
         .ok_or("The app has no save folder.")?;
@@ -96,9 +113,8 @@ fn saved(path: &str) -> Result<Vec<u8>, String> {
     let saves = saves.canonicalize().map_err(failed)?;
     wanted
         .starts_with(&saves)
-        .then_some(())
-        .ok_or_else(|| format!("{path} is outside the save folder."))?;
-    std::fs::read(wanted).map_err(failed)
+        .then_some(wanted)
+        .ok_or_else(|| format!("{path} is outside the save folder."))
 }
 
 #[tauri::command]
@@ -131,9 +147,29 @@ pub async fn staged_read<R: Runtime>(app: AppHandle<R>, path: String) -> Result<
 }
 
 #[tauri::command]
+pub async fn staged_prepare<R: Runtime>(app: AppHandle<R>, path: String) -> Result<String, String> {
+    let target = inside(&root(&app)?, &path)?;
+    off_the_window(move || {
+        if let Some(folder) = target.parent() {
+            std::fs::create_dir_all(folder).map_err(failed)?;
+        }
+        Ok(target.to_string_lossy().into_owned())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn staged_remove<R: Runtime>(app: AppHandle<R>, path: String) -> Result<bool, String> {
     let target = inside(&root(&app)?, &path)?;
-    off_the_window(move || Ok(std::fs::remove_file(target).is_ok())).await
+    off_the_window(move || match std::fs::remove_file(&target) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => {
+            log::warn!(target: "desktop.files", "event=staged_not_removed file=\"{}\" reason=\"{error}\"", target.display());
+            Ok(false)
+        }
+    })
+    .await
 }
 
 #[tauri::command]
@@ -144,8 +180,8 @@ pub async fn staged_remove_prefixed<R: Runtime>(
 ) -> Result<(), String> {
     let root = root(&app)?;
     let kept = keep.map(|path| inside(&root, &path)).transpose()?;
-    let folder = inside(&root, &prefix)?;
-    let refused = off_the_window(move || removed_except(&folder, kept.as_deref())).await?;
+    let stem = prefix.clone();
+    let refused = off_the_window(move || removed_prefixed(&root, &stem, kept.as_deref())).await?;
     if let Some(first) = refused.first() {
         log::warn!(target: "desktop.files", "event=staged_cleanup_incomplete prefix=\"{prefix}\" refused={} first=\"{first}\"", refused.len());
     }
@@ -160,7 +196,17 @@ pub async fn staged_list<R: Runtime>(app: AppHandle<R>, dir: String) -> Result<V
 
 #[tauri::command]
 pub async fn saved_read(path: String) -> Result<Response, String> {
-    off_the_window(move || saved(&path).map(Response::new)).await
+    off_the_window(move || {
+        std::fs::read(inside_saves(&path)?)
+            .map(Response::new)
+            .map_err(failed)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn saved_list(path: String) -> Result<Value, String> {
+    off_the_window(move || listed(&inside_saves(&path)?)).await
 }
 
 #[cfg(test)]
@@ -190,9 +236,23 @@ mod tests {
         written(&kept, b"kept").unwrap();
         written(&stale, b"stale").unwrap();
         written(&locked.join("inside.tlog"), b"held").unwrap();
+        written(&folder.join("shape.dbf"), b"part").unwrap();
+        written(&folder.join("shapes.txt"), b"other").unwrap();
         let mode = |bits| std::os::unix::fs::PermissionsExt::from_mode(bits);
         std::fs::set_permissions(&locked, mode(0o555)).unwrap();
-        let refused = removed_except(&folder, Some(&kept)).unwrap();
+        let root = folder.parent().unwrap();
+        let named =
+            |name: &str| format!("/{}/{name}", folder.file_name().unwrap().to_string_lossy());
+        assert!(
+            removed_prefixed(root, &named("shape."), None)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            !folder.join("shape.dbf").exists() && folder.join("shapes.txt").exists(),
+            "a prefix matches file names, as the browser's file store does, not whole folders"
+        );
+        let refused = removed_prefixed(root, &named(""), Some(&kept)).unwrap();
         std::fs::set_permissions(&locked, mode(0o755)).unwrap();
         assert!(kept.exists() && !stale.exists());
         assert_eq!(
@@ -202,7 +262,7 @@ mod tests {
         );
         assert!(refused[0].contains("locked"));
         assert!(
-            removed_except(&folder.join("missing"), None)
+            removed_prefixed(root, "/missing/", None)
                 .unwrap()
                 .is_empty()
         );

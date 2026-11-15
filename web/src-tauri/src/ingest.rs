@@ -90,11 +90,12 @@ async fn rtsp(
         .map_err(failed)?;
     while let Some(item) = frames.next().await {
         if let CodecItem::VideoFrame(shown) = item.map_err(failed)? {
-            let lost = shown.loss();
+            let (lost, timestamp) = (shown.loss(), shown.timestamp().timestamp());
             deliver(&Unit {
                 codec,
                 packets: 0,
                 lost,
+                timestamp: u64::try_from(timestamp).unwrap_or_default(),
                 data: shown.into_data(),
             })?;
         }

@@ -1,6 +1,7 @@
 import { Qgc } from '@/bridge/Qgc';
 import { mutableStateOf } from '@/kotlin/State';
 import { delay, format } from '@/kotlin/Std';
+import { stagedLocation } from '@/core/files';
 import { type GeoTagTree, documentName, hasTaggedFolder, holdsImages, publishTagged, stageImages, stageLog, taggedOutputDir } from '@/ui/GeoTagStaging';
 import { GEOTAG_ROOT, type GeoTagState, geoTagState } from '@/ui/GeoTagView';
 
@@ -54,7 +55,7 @@ export const GeoTagRun = {
     withFiles(async () => {
       const staged = await stageLog(file, documentName(file));
       GeoTagRun.note.value = staged === null ? 'That file could not be read.' : null;
-      if (staged !== null) await Qgc.set(`${GEOTAG_ROOT}.logFile`, staged);
+      if (staged !== null) await Qgc.set(`${GEOTAG_ROOT}.logFile`, stagedLocation(staged));
       await GeoTagRun.refresh();
     });
   },
@@ -65,7 +66,7 @@ export const GeoTagRun = {
       const [path, count] = await stageImages(tree);
       GeoTagRun.note.value =
         count === 0 ? 'That folder holds no JPEG, TIFF or DNG images.' : GeoTagRun.outputTree.value === null && (await hasTaggedFolder(tree)) ? GEOTAG_ALREADY_TAGGED : null;
-      await Qgc.set(`${GEOTAG_ROOT}.imageDirectory`, path);
+      await Qgc.set(`${GEOTAG_ROOT}.imageDirectory`, stagedLocation(path));
       await GeoTagRun.refresh();
     });
   },
@@ -88,7 +89,7 @@ export const GeoTagRun = {
     withFiles(async () => {
       GeoTagRun.note.value = null;
       const output = await taggedOutputDir();
-      await Qgc.set(`${GEOTAG_ROOT}.saveDirectory`, output.absolutePath);
+      await Qgc.set(`${GEOTAG_ROOT}.saveDirectory`, stagedLocation(output.absolutePath));
       await Qgc.invoke(`${GEOTAG_ROOT}.startTagging`);
       await GeoTagRun.refresh();
       await whileInProgress();

@@ -1,4 +1,4 @@
-import { listStaged, stageFile, stagedFile, unstageAll } from '@/core/files';
+import { listSaved, listStaged, stageFile, stagedFile, unstageAll } from '@/core/files';
 import { createDocument } from '@/kotlin/Platform';
 import { DEFAULT_GEOTAG_OUTPUT } from '@/ui/GeoTagRun';
 import { isGeoTagImage } from '@/ui/GeoTagView';
@@ -135,7 +135,7 @@ export const documentName = (file: File): string => file.name;
 export const downloadedLogs = async (logSavePath: string): Promise<readonly DownloadedLog[]> => {
   if (logSavePath.trim() === '') return [];
   const folder = logSavePath.replace(/\/+$/, '');
-  return (await listStaged(folder))
+  return (await listSaved(folder))
     .filter((it) => !it.dir && LOG_EXTENSIONS.has(extension(it.name)))
     .map((it) => ({ name: it.name, absolutePath: `${folder}/${it.name}`, lastModified: it.modified ?? 0 }))
     .toSorted((a, b) => b.lastModified - a.lastModified || b.name.localeCompare(a.name));

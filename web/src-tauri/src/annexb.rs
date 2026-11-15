@@ -12,6 +12,24 @@ pub struct Unit {
     pub data: Vec<u8>,
     pub packets: u16,
     pub lost: u16,
+    pub timestamp: u64,
+}
+
+pub fn unwrapped(previous: Option<u64>, raw: u64, bits: u32) -> u64 {
+    let span = 1u64 << bits;
+    let half = span / 2;
+    previous.map_or(raw, |previous| {
+        let candidates = [
+            previous / span * span + raw,
+            (previous / span + 1) * span + raw,
+            (previous / span).saturating_sub(1) * span + raw,
+        ];
+        candidates
+            .into_iter()
+            .min_by_key(|candidate| candidate.abs_diff(previous))
+            .filter(|candidate| candidate.abs_diff(previous) < half)
+            .unwrap_or(previous / span * span + raw)
+    })
 }
 
 pub fn nals(stream: &[u8]) -> Vec<&[u8]> {
@@ -146,6 +164,23 @@ mod tests {
             Some("hev1.1.6.L93.90")
         );
         assert!(keyed(Codec::H265, &nals(&h265)));
+    }
+
+    #[test]
+    fn a_wrapping_camera_clock_keeps_counting_up() {
+        let near_top = u64::from(u32::MAX) - 1_000;
+        assert_eq!(unwrapped(None, near_top, 32), near_top);
+        assert_eq!(
+            unwrapped(Some(near_top), 2_000, 32),
+            (1u64 << 32) + 2_000,
+            "an RTP timestamp that wraps past 2^32 continues upward"
+        );
+        assert_eq!(
+            unwrapped(Some((1u64 << 32) + 2_000), u64::from(u32::MAX) - 500, 32),
+            u64::from(u32::MAX) - 500,
+            "a late frame from before the wrap stays before it"
+        );
+        assert_eq!(unwrapped(Some(90_000), 93_000, 33), 93_000);
     }
 
     #[test]
