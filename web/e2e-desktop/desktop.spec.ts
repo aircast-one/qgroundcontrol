@@ -1,4 +1,5 @@
 import { type Browser, chromium, expect, type Page, test } from '@playwright/test';
+import { openMenu } from '../e2e/fixtures';
 
 const CDP = process.env.DESKTOP_CDP ?? 'http://127.0.0.1:9222';
 const DEBUG_API = process.env.DESKTOP_DEBUG_API ?? 'http://127.0.0.1:28777';
@@ -23,11 +24,13 @@ test.afterAll(async () => {
   await shared.browser?.close();
 });
 
-test('the installed app opens on the welcome screen and goes on to the map', async () => {
+test('the installed app opens on the welcome screen and goes on to the Fly screen', async () => {
   const welcome = app().getByRole('dialog').filter({ has: app().getByRole('heading', { name: 'Welcome to Aircast' }) });
   await welcome.getByRole('button', { name: 'Continue' }).click();
   await expect(welcome).toBeHidden();
-  await expect(app().getByRole('region', { name: 'Map' })).toBeVisible();
+  const menu = app().getByRole('button', { name: 'Menu', exact: true });
+  const rail = app().getByRole('navigation').getByRole('button', { name: 'Settings', exact: true });
+  await expect(menu.or(rail).first()).toBeVisible();
 });
 
 test('a vehicle reaches the page through the native core', async () => {
@@ -37,7 +40,7 @@ test('a vehicle reaches the page through the native core', async () => {
 });
 
 test('general settings show the version and its update channel', async () => {
-  await app().getByRole('button', { name: 'Settings', exact: true }).click();
+  await openMenu(app(), 'Settings');
   await app().getByRole('tablist').getByRole('tab', { name: 'General' }).click();
   await expect(app().getByText('Aircast version', { exact: true })).toBeVisible();
   await expect(app().getByText(/ · (beta|stable) channel$/)).toBeVisible();

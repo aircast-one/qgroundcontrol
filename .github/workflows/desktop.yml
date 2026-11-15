@@ -271,6 +271,13 @@ jobs:
           exit $code
 
       - uses: actions/upload-artifact@v7
+        if: failure() && matrix.arch == 'x64'
+        with:
+          name: desktop-e2e-results
+          path: web/test-results
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v7
         with:
           name: qgc-windows-native-${{ matrix.arch }}
           path: out/*-setup.exe
