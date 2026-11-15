@@ -11,7 +11,7 @@ tauri-build = { version = "=2.6.3", features = [] }
 groundstation = { path = "../../groundstation", features = ["native-host", "synthetic"] }
 tauri = { version = "=2.11.5", features = [] }
 serde_json = "1"
-retina = "0.4.22"
+retina = { git = "https://github.com/aircast-one/retina", rev = "3784c62565b939167708416936cb00adb07b2dc3" }
 futures = "0.3"
 url = "2"
 percent-encoding = "2"
