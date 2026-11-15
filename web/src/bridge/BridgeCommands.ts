@@ -11,6 +11,7 @@ const LINKS_CONFIGURATIONS = 'links.linkConfigurations';
 const LINK_SUBJECT = 'The link';
 const LINKS_CREATE_CLOUD = 'links.createAircastCloudLink';
 const LINKS_CREATE_WEBSOCKET = 'links.createWebSocketLink';
+const LINKS_CREATE_AND_CONNECT = 'links.createAndConnectLink';
 const LINKS_CREATE_REPLAY = 'links.createLogReplayConfiguration';
 const LINKS_CREATE_BLUETOOTH = 'links.createBluetoothLink';
 const LINKS_CREATE_SERIAL = 'links.createSerialConfiguration';
@@ -39,6 +40,9 @@ const VIDEO_PICTURE_IN_PICTURE = 'settings.videoSettings.multiViewEnabled';
 const VIDEO_PIP_SHOWN = 'video.setPipShown';
 const VIDEO_REPORT_NATIVE = 'video.reportNative';
 const VIDEO_REPORT_RECORDING = 'video.reportRecording';
+const HOST_POST_NOTICE = 'host.postNotice';
+const MESSAGE_NOTICE = 'message';
+const RECORDING_STOPPED_TITLE = 'Recording stopped';
 const VIDEO_STREAM_ENABLED = 'settings.videoSettings.streamEnabled';
 const CAMERAS_ADD = 'cameras.add';
 const CAMERAS_UPDATE = 'cameras.update';
@@ -69,6 +73,7 @@ export const LinkCommands = {
   disconnect: (index: number): Promise<string | null> => Qgc.refusalOfSubject(LINK_SUBJECT, `${LINKS_CONFIGURATIONS}.${index}.link.disconnect`),
   createAircastCloud: async (name: string, apiBase: string, deviceId: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_CLOUD, name, apiBase, deviceId)) === true,
   createWebSocket: async (name: string, url: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_WEBSOCKET, name, url)) === true,
+  createUdpTo: async (name: string, host: string, port: number): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_AND_CONNECT, 'udp', name, host, port, [])) === true,
   createLogReplay: async (name: string, log: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_REPLAY, name, log)) === true,
   createBluetooth: async (name: string, deviceName: string, address: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_BLUETOOTH, name, deviceName, address)) === true,
   createSerial: async (name: string, port: string, baud: number): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_SERIAL, name, port, baud)) === true,
@@ -109,6 +114,8 @@ export const VideoCommands = {
   reportPlayback: (channel: number, { running, frames, width, height, error, restarted }: WhepReport): Promise<boolean> =>
     Qgc.invoke(VIDEO_REPORT_NATIVE, running, frames, width, height, error, null, restarted, channel),
   reportRecording: (active: boolean): Promise<boolean> => Qgc.invoke(VIDEO_REPORT_RECORDING, active),
+  reportRecordingFailed: (reason: string): Promise<boolean[]> =>
+    Promise.all([Qgc.invoke(VIDEO_REPORT_RECORDING, false), Qgc.invoke(HOST_POST_NOTICE, MESSAGE_NOTICE, RECORDING_STOPPED_TITLE, reason)]),
   turnStreamOn: (): Promise<boolean> => Qgc.set(VIDEO_STREAM_ENABLED, true),
 };
 

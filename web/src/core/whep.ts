@@ -1,5 +1,5 @@
 export type WhepCounters = { bytes: number; lost: number; received: number; dropped: number; at: number };
-export type WhepStats = { fps: number; kbps: number; jitterMs: number; lossPercent: number; skippedPerSecond: number; counters: WhepCounters };
+export type WhepStats = { fps: number; kbps: number; jitterMs: number; lossPercent: number | null; skippedPerSecond: number; counters: WhepCounters };
 export type WhepReport = { running: boolean; frames: number; width: number; height: number; error: string; restarted: boolean; stats: WhepStats | null };
 type InboundVideo = { timestamp: number; framesPerSecond?: number; bytesReceived?: number; jitter?: number; packetsLost?: number; packetsReceived?: number; framesDropped?: number };
 

@@ -50,6 +50,7 @@ const OpenOverHttps = ({ note }: { note: string }) => {
 };
 
 export const UsbAccess = () => {
+  if (__DESKTOP__) return null;
   const blocked = usbBlocked(serialAvailable(), window.isSecureContext, window.location.href);
   if (blocked === null) {
     return (

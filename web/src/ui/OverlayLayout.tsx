@@ -274,7 +274,7 @@ export const useHoldToEditLayout = (): HTMLAttributes<HTMLElement> => {
 
 const hashCode = (text: string): number => Array.from({ length: text.length }, (_, index) => text.charCodeAt(index)).reduce((hash, char) => (Math.imul(hash, 31) + char) | 0, 0);
 
-const JIGGLE_STYLE_ID = 'aircast-overlay-jiggle';
+const JIGGLE_KEYFRAMES = 'aircast-overlay-jiggle';
 
 const reducedMotion = (): boolean => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -283,19 +283,10 @@ export const jiggleDegrees = (size: Size): number => {
   return reach <= 0 ? JIGGLE_DEGREES : Math.min(JIGGLE_DEGREES, (JIGGLE_REACH_PX / reach) * (180 / Math.PI));
 };
 
-export const useJiggleAngle = (key: string, on: boolean, size: Size): CSSProperties => {
-  useEffect(() => {
-    if (!on || document.getElementById(JIGGLE_STYLE_ID)) return;
-    const style = Object.assign(document.createElement('style'), {
-      id: JIGGLE_STYLE_ID,
-      textContent: `@keyframes ${JIGGLE_STYLE_ID} { from { rotate: calc(-1 * var(${JIGGLE_ANGLE})) } to { rotate: var(${JIGGLE_ANGLE}) } }`,
-    });
-    document.head.append(style);
-  }, [on]);
-  return on && !reducedMotion()
-    ? ({ animation: `${JIGGLE_STYLE_ID} ${JIGGLE_MILLIS + (hashCode(key) & JIGGLE_SPREAD)}ms ease-in-out infinite alternate`, [JIGGLE_ANGLE]: `${jiggleDegrees(size)}deg` } as CSSProperties)
+export const useJiggleAngle = (key: string, on: boolean, size: Size): CSSProperties =>
+  on && !reducedMotion()
+    ? ({ animation: `${JIGGLE_KEYFRAMES} ${JIGGLE_MILLIS + (hashCode(key) & JIGGLE_SPREAD)}ms ease-in-out infinite alternate`, [JIGGLE_ANGLE]: `${jiggleDegrees(size)}deg` } as CSSProperties)
     : {};
-};
 
 export const clampedInto = (bounds: Bounds, area: Bounds, dx: number, dy: number): Offset => [
   coerceIn(dx, area.left - bounds.left, coerceAtLeast(area.right - bounds.right, area.left - bounds.left)),

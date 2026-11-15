@@ -15,7 +15,7 @@ const core = join(root, 'src/core/pkg/groundstation_bg.wasm');
 export default defineConfig(({ command }) => ({
   plugins: [react(), tailwindcss(), iconFont(root)],
   base: './',
-  define: { 'import.meta.env.CORE_BYTES': existsSync(core) ? statSync(core).size : 0 },
+  define: { 'import.meta.env.CORE_BYTES': existsSync(core) ? statSync(core).size : 0, __DESKTOP__: JSON.stringify(Boolean(process.env.TAURI_ENV_PLATFORM)) },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

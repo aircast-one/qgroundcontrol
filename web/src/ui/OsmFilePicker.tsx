@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
-import { stageFile, unstageAll } from '@/core/files';
+import { stageFile, stagedLocation, unstageAll } from '@/core/files';
 import { settingControl, useQgcBool } from '@/bridge/QgcState';
 import { openDocument } from '@/kotlin/Platform';
 import { OutlinedButton, Text } from '@/m3';
@@ -23,7 +23,7 @@ const stagedOsm = async (file: File): Promise<Staged> => {
   const shown = file.name.replace(/[/\\]/g, '_');
   if (!osmFileAccepted(shown)) return { kind: 'NotOsm' };
   const copied = await stageFile(stagedPath(shown), file).catch(() => false);
-  return copied ? { kind: 'Copied', path: stagedPath(shown) } : { kind: 'Unreadable' };
+  return copied ? { kind: 'Copied', path: stagedLocation(stagedPath(shown)) } : { kind: 'Unreadable' };
 };
 
 const keepOnly = (path: string): Promise<void> => unstageAll(`/${OSM_FOLDER}/`, path).catch(() => undefined);

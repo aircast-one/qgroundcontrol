@@ -124,7 +124,7 @@ const ConnectLinks = ({ view, choice, onPick, onOpen }: { view: ConnectView; cho
       <>
         <DeviceSection title="Your ground station">
           <GcsChooser choices={view.choices} choice={choice} onPick={onPick} />
-          <DeviceText text="QGroundControl and Mission Planner play the RTSP link; a browser, OBS or Aircast QGC play WebRTC. This browser remembers your answer." />
+          <DeviceText text={`QGroundControl and Mission Planner play the RTSP link; a browser, OBS or Aircast QGC play WebRTC. ${__DESKTOP__ ? 'Aircast' : 'This browser'} remembers your answer.`} />
           <DeviceText text={view.scope} />
           <DeviceDisclosure title="How to connect a ground station">
             <DeviceText text="Each link below says where to paste it in your app; video and telemetry are two separate links." />

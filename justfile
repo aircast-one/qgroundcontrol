@@ -132,6 +132,16 @@ web DEVICE=env("AIRCAST_DEVICE", ""):
 device DEVICE=env("AIRCAST_DEVICE", ""):
     @./web/scripts/device.sh "{{DEVICE}}"
 
+# Run the desktop head: the web UI in a native window over the native core, with hot reload
+desktop:
+    cd web && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; }
+    cd web && npx tauri dev
+
+# Bundle the desktop head for this machine: Aircast.app on macOS, a setup .exe on Windows
+desktop-bundle:
+    ./web/build-core.sh
+    cd web && npm ci && npx tauri build
+
 # Type-check, unit-test and bundle the web head
 web-checks:
     ./web/build-core.sh

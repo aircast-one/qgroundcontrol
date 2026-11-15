@@ -2,8 +2,9 @@ import { type HTMLAttributes, type PointerEvent, useContext, useEffect, useMemo,
 import { VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
+import { type NativePlayer, playNative, playsNatively } from '@/core/nativeVideo';
 import { recordStream } from '@/core/recorder';
-import { playWhep } from '@/core/whep';
+import { type WhepReport, playWhep } from '@/core/whep';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { createDocument } from '@/kotlin/Platform';
 import { same } from '@/kotlin/Std';
@@ -33,7 +34,7 @@ import { TrackingBoxOverlay } from '@/ui/TrackingBoxOverlay';
 import { VideoArOverlay } from '@/ui/VideoAr';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VideoStatsPill } from '@/ui/VideoStatsPill';
-import { VIDEO_VIEW, type SourceSize, type VideoReading, nativeRecordingFile, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
+import { VIDEO_VIEW, type SourceSize, type VideoReading, nativeRecordingFile, streamUri, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
 
 export const CAMERA_STEP_ZOOM = 'vehicle.cameraManager.currentCameraInstance.stepZoom';
 
@@ -399,9 +400,15 @@ const pipSurfaces = new PipSurfaces((shown) => void VideoCommands.setPipShown(sh
 export const VideoChannelSurface = ({ channel, className }: { channel: number; className?: string }) => {
   const view = useQgcPath(VIDEO_VIEW);
   const endpoint = whepEndpoint(view, channel);
+  const stream = __DESKTOP__ ? streamUri(view, channel) : null;
+  const native = stream !== null && playsNatively(stream) ? stream : null;
   const restarts = whepRestarts(view, channel);
+  const whepRestart = native === null ? restarts : null;
   const recordingFile = channel === MAIN_VIDEO_CHANNEL ? nativeRecordingFile(view) : null;
   const video = useRef<HTMLVideoElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const player = useRef<NativePlayer | null>(null);
+  const restartsSeen = useRef(restarts);
   useEffect(() => {
     if (channel !== PIP_VIDEO_CHANNEL) return undefined;
     pipSurfaces.created();
@@ -409,20 +416,37 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
   }, [channel]);
   useEffect(() => {
     const element = video.current;
-    if (endpoint === null || element === null) return undefined;
+    const painted = canvas.current;
     const main = channel === MAIN_VIDEO_CHANNEL;
     const surface = Symbol('main video');
-    const stop = playWhep(element, endpoint, (reading) => {
+    const report = (reading: WhepReport) => {
       void VideoCommands.reportPlayback(channel, reading);
       if (main && reading.running && reading.stats !== null) mainVideoStats.set(surface, reading.stats);
       else if (main) mainVideoStats.remove(surface);
-    });
+    };
+    const nativePlayer = native !== null && painted !== null ? playNative(painted, native, report, (reason) => void VideoCommands.reportRecordingFailed(reason)) : null;
+    player.current = nativePlayer;
+    restartsSeen.current = restarts;
+    const stop = nativePlayer?.stop ?? (endpoint !== null && element !== null ? playWhep(element, endpoint, report) : null);
     return () => {
-      stop();
+      stop?.();
+      player.current = null;
       mainVideoStats.remove(surface);
     };
-  }, [endpoint, channel, restarts]);
+  }, [endpoint, native, channel, whepRestart]);
   useEffect(() => {
+    const nativePlayer = player.current;
+    if (nativePlayer === null || restarts === restartsSeen.current) return undefined;
+    restartsSeen.current = restarts;
+    void nativePlayer.restart();
+    return undefined;
+  }, [restarts]);
+  useEffect(() => {
+    const nativePlayer = player.current;
+    if (recordingFile !== null && nativePlayer !== null) {
+      void nativePlayer.record(recordingFile).then((active) => VideoCommands.reportRecording(active));
+      return () => void nativePlayer.record(null).then(() => VideoCommands.reportRecording(false));
+    }
     const stream = video.current?.srcObject;
     if (recordingFile === null || !(stream instanceof MediaStream)) return undefined;
     const stop = recordStream(stream, recordingFile, (recording) => createDocument(recording.name, recording.type, recording));
@@ -431,8 +455,12 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
       stop();
       void VideoCommands.reportRecording(false);
     };
-  }, [recordingFile]);
-  return <video ref={video} muted playsInline autoPlay className={`block bg-black object-fill ${className ?? ''}`} />;
+  }, [recordingFile, native]);
+  return native !== null ? (
+    <canvas ref={canvas} className={`block bg-black object-fill ${className ?? ''}`} />
+  ) : (
+    <video ref={video} muted playsInline autoPlay className={`block bg-black object-fill ${className ?? ''}`} />
+  );
 };
 
 const NO_VIDEO_FULL_HEIGHT = 230;

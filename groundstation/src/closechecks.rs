@@ -37,6 +37,10 @@ pub struct State {
     pub pending_writes: bool,
 }
 
+pub fn loses_work(id: &str) -> bool {
+    matches!(id, "unsavedMission" | "pendingWrites")
+}
+
 pub fn prompts(state: &State) -> Vec<(&'static str, &'static str)> {
     [
         (state.dirty_for_save && (state.dirty_for_upload || !state.vehicle))
@@ -94,7 +98,7 @@ pub fn close_checks_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "CloseChecks",
-        "prompts": prompts(&state).iter().map(|(id, message)| json!({ "id": id, "message": message })).collect::<Vec<_>>(),
+        "prompts": prompts(&state).iter().map(|(id, message)| json!({ "id": id, "message": message, "losesWork": loses_work(id) })).collect::<Vec<_>>(),
     })
 }
 
@@ -144,6 +148,15 @@ mod tests {
                 pending_writes: false
             })
             .is_empty()
+        );
+    }
+
+    #[test]
+    fn only_an_unsaved_plan_and_pending_writes_lose_work_on_closing() {
+        assert_eq!(
+            ["unsavedMission", "pendingWrites", "activeConnections"].map(loses_work),
+            [true, true, false],
+            "an open connection asks before closing, but nothing is lost, so a desktop window closes without holding"
         );
     }
 }

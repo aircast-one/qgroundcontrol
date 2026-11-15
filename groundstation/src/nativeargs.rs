@@ -28,25 +28,37 @@ pub struct Options {
     pub device: Option<String>,
 }
 
+fn windows_app_data() -> Option<std::path::PathBuf> {
+    cfg!(windows)
+        .then(|| std::env::var_os("LOCALAPPDATA"))
+        .flatten()
+        .map(|local| std::path::PathBuf::from(local).join(DEFAULT_ORGANIZATION_NAME))
+}
+
 fn default_settings_path(application: &str) -> std::path::PathBuf {
-    let home = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_default();
-    home.join(".config")
-        .join(DEFAULT_ORGANIZATION)
-        .join(format!("{application}.ini"))
+    windows_app_data().map_or_else(
+        || {
+            std::env::home_dir()
+                .unwrap_or_default()
+                .join(".config")
+                .join(DEFAULT_ORGANIZATION)
+                .join(format!("{application}.ini"))
+        },
+        |app_data| app_data.join(format!("{application}.ini")),
+    )
 }
 
 fn default_map_cache(application: &str) -> Option<String> {
-    let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
-    cfg!(target_os = "macos").then(|| {
-        home.join("Library/Caches")
+    let cache = match windows_app_data() {
+        Some(app_data) => app_data.join("QGCMapCache"),
+        None if cfg!(target_os = "macos") => std::env::home_dir()?
+            .join("Library/Caches")
             .join(DEFAULT_ORGANIZATION_NAME)
             .join(application)
-            .join("QGCMapCache/qgcMapCache.db")
-            .to_string_lossy()
-            .into_owned()
-    })
+            .join("QGCMapCache"),
+        None => return None,
+    };
+    Some(cache.join("qgcMapCache.db").to_string_lossy().into_owned())
 }
 
 pub fn options(arguments: &[String]) -> Options {

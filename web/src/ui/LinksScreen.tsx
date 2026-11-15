@@ -3,7 +3,7 @@ import { AccountCommands, LinkCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath, useQgcValue } from '@/bridge/QgcState';
-import { stageFile, unstage, unstageAll } from '@/core/files';
+import { stageFile, stagedLocation, unstage, unstageAll } from '@/core/files';
 import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
@@ -173,7 +173,7 @@ const replayFolder = (link: string): string => `/${REPLAY_LINK_FOLDER}/${fileSaf
 export const stagedReplayLog = async (link: string, file: File): Promise<string | null> => {
   const cleaned = file.name.replace(/[/\\]/g, '_');
   const path = `${replayFolder(link)}${cleaned.trim() === '' ? 'replay.tlog' : cleaned}`;
-  return (await stageFile(path, file).catch(() => false)) ? path : null;
+  return (await stageFile(path, file).catch(() => false)) ? stagedLocation(path) : null;
 };
 
 export const pruneReplayFolder = (link: string, keep: string): Promise<void> => unstageAll(replayFolder(link), keep);
@@ -210,7 +210,8 @@ const servedLinkTypes = (view: Json | null): readonly LinkType[] => {
   return [...(creatable.length === 0 ? CREATABLE_LINK_TYPES : creatable), ...bluetooth, ...[LinkType.LogReplay, LinkType.Mock].filter((it) => served.has(it))];
 };
 
-export const addableLinkTypes = (view: Json | null): readonly LinkType[] => [LinkType.WebSocket, ...servedLinkTypes(view).filter((it) => optBoolean(view, 'throughDevice') || !SOCKET_LINK_TYPES.has(it))];
+export const addableLinkTypes = (view: Json | null, nativeSockets: boolean): readonly LinkType[] =>
+  nativeSockets ? servedLinkTypes(view) : [LinkType.WebSocket, ...servedLinkTypes(view).filter((it) => optBoolean(view, 'throughDevice') || !SOCKET_LINK_TYPES.has(it))];
 
 export const PARITY_CHOICES: readonly (readonly [string, number])[] = [
   ['None', 0],
@@ -961,7 +962,7 @@ const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void;
   const [transmitter, setTransmitter] = useState(false);
   const linksJson = useQgcPath(LINKS_VIEW);
   const ports = useMemo(() => serialPortChoices(linksJson), [linksJson]);
-  const offered = useMemo(() => addableLinkTypes(linksJson), [linksJson]);
+  const offered = useMemo(() => addableLinkTypes(linksJson, __DESKTOP__), [linksJson]);
   const [cloudOffered, setCloudOffered] = useState(false);
   useLaunchedEffect([], async (scope) => {
     const offeredNow = accountState(await AccountCommands.state()) !== null;

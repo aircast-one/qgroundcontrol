@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { type Json, optBoolean, optString } from '@/bridge/Json';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import { call, callTransferring } from '@/core/client';
 import { coerceAtLeast, roundToInt } from '@/kotlin/Std';
 import { SyntheticDraw } from '@/ui/SyntheticView';
@@ -15,7 +16,32 @@ export const nativeDraw = (view: Json | null): SyntheticDraw => {
   return draw === 'drawn' ? SyntheticDraw.Drawn : draw === 'failed' ? SyntheticDraw.Failed : SyntheticDraw.Loading;
 };
 
-const surfaceHandoff = {
+const paintJpeg = (canvas: HTMLCanvasElement) => {
+  const context = canvas.getContext('2d');
+  const order = { arrived: 0, painted: 0 };
+  return (jpeg: ArrayBuffer) => {
+    order.arrived += 1;
+    const sequence = order.arrived;
+    void createImageBitmap(new Blob([jpeg], { type: 'image/jpeg' })).then((picture) => {
+      if (sequence > order.painted) {
+        order.painted = sequence;
+        if (canvas.width !== picture.width) canvas.width = picture.width;
+        if (canvas.height !== picture.height) canvas.height = picture.height;
+        context?.drawImage(picture, 0, 0);
+      }
+      picture.close();
+    });
+  };
+};
+
+const nativeHandoff = {
+  surfaceCreated: (canvas: HTMLCanvasElement, width: number, height: number, orbit: boolean): Promise<number> =>
+    invoke<number>('synthetic_open', { width, height, orbit, frames: new Channel<ArrayBuffer>(paintJpeg(canvas)) }),
+  surfaceChanged: (surface: Promise<number>, width: number, height: number) => void surface.then((key) => invoke('synthetic_resize', { key, width, height })),
+  surfaceDestroyed: (surface: Promise<number>) => void surface.then((key) => invoke('synthetic_close', { key })),
+};
+
+const workerHandoff = {
   surfaceCreated: (canvas: HTMLCanvasElement, width: number, height: number, orbit: boolean): Promise<number> => {
     const surface = canvas.transferControlToOffscreen();
     return callTransferring<number>('syntheticAttach', [surface], surface, width, height, orbit);
@@ -23,6 +49,8 @@ const surfaceHandoff = {
   surfaceChanged: (surface: Promise<number>, width: number, height: number) => void surface.then((key) => call('syntheticResize', key, width, height)),
   surfaceDestroyed: (surface: Promise<number>) => void surface.then((key) => call('syntheticRelease', key)),
 };
+
+const surfaceHandoff = __DESKTOP__ ? nativeHandoff : workerHandoff;
 
 export const SyntheticSurface = ({ className, orbit = false }: { className?: string; orbit?: boolean }) => {
   const host = useRef<HTMLDivElement>(null);

@@ -19,6 +19,37 @@ const SUMMARY_EVERY: Duration = Duration::from_secs(10);
 const RELEASE_WAIT: Duration = Duration::from_secs(2);
 const KEEP_UNSEEN: Duration = Duration::from_secs(60);
 const WARM_PER_TICK: usize = 6;
+const OFFSCREEN_QUALITY: u8 = 80;
+const OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+
+pub type Deliver = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
+
+pub struct Offscreen {
+    pub key: usize,
+    pub size: (u32, u32),
+    pub deliver: Deliver,
+}
+
+pub enum View {
+    Native(Window),
+    Offscreen(Offscreen),
+}
+
+impl View {
+    fn key(&self) -> usize {
+        match self {
+            View::Native(window) => window.key(),
+            View::Offscreen(offscreen) => offscreen.key,
+        }
+    }
+
+    fn size(&self) -> (u32, u32) {
+        match self {
+            View::Native(window) => window.size(),
+            View::Offscreen(offscreen) => offscreen.size,
+        }
+    }
+}
 
 pub trait Feed: Send + Sync {
     fn pose(&self) -> Option<serde_json::Value>;
@@ -33,7 +64,7 @@ pub trait Feed: Send + Sync {
 }
 
 enum Command {
-    Attach(Window, bool),
+    Attach(View, bool),
     Release(usize, SyncSender<()>),
     Wake,
 }
@@ -50,6 +81,14 @@ fn running() -> MutexGuard<'static, Option<Running>> {
 }
 
 pub fn attach(window: Window, feed: Arc<dyn Feed>, orbit: bool) -> bool {
+    attach_view(View::Native(window), feed, orbit)
+}
+
+pub fn attach_offscreen(offscreen: Offscreen, feed: Arc<dyn Feed>, orbit: bool) -> bool {
+    attach_view(View::Offscreen(offscreen), feed, orbit)
+}
+
+fn attach_view(view: View, feed: Arc<dyn Feed>, orbit: bool) -> bool {
     let mut running = running();
     if running
         .as_ref()
@@ -67,12 +106,9 @@ pub fn attach(window: Window, feed: Arc<dyn Feed>, orbit: bool) -> bool {
             }
         }
     }
-    running.as_ref().is_some_and(|current| {
-        current
-            .commands
-            .send(Command::Attach(window, orbit))
-            .is_ok()
-    })
+    running
+        .as_ref()
+        .is_some_and(|current| current.commands.send(Command::Attach(view, orbit)).is_ok())
 }
 
 pub fn wake() {
@@ -156,8 +192,8 @@ fn serve(commands: &Receiver<Command>, feed: &dyn Feed) {
             commands.recv().map_err(|_| RecvTimeoutError::Disconnected)
         };
         match next {
-            Ok(Command::Attach(window, orbit)) => {
-                kept = show(window, orbit, kept.take(), commands, feed);
+            Ok(Command::Attach(view, orbit)) => {
+                kept = show(view, orbit, kept.take(), commands, feed);
             }
             Ok(Command::Release(_, done)) => acknowledge(&done),
             Ok(Command::Wake) => {}
@@ -178,19 +214,22 @@ fn serve(commands: &Receiver<Command>, feed: &dyn Feed) {
 
 struct Acquired {
     gpu: Gpu,
-    surface: wgpu::Surface<'static>,
+    surface: Option<wgpu::Surface<'static>>,
     session: Option<Session>,
     token: Throttled<Option<String>>,
     unseen: Option<Duration>,
 }
 
-fn acquire(first: &Window, kept: Option<Kept>) -> Result<Acquired, String> {
-    let reused = kept.and_then(|kept| match kept.surface_for(first) {
-        Ok(surface) => Some((kept, surface)),
-        Err(reason) => {
-            kept.drop_world("reuse_failed", &reason);
-            None
-        }
+fn acquire(first: &View, kept: Option<Kept>) -> Result<Acquired, String> {
+    let reused = kept.and_then(|kept| match first {
+        View::Offscreen(_) => Some((kept, None)),
+        View::Native(window) => match kept.surface_for(window) {
+            Ok(surface) => Some((kept, Some(surface))),
+            Err(reason) => {
+                kept.drop_world("reuse_failed", &reason);
+                None
+            }
+        },
     });
     match reused {
         Some((kept, surface)) => Ok(Acquired {
@@ -301,14 +340,17 @@ struct Gpu {
 }
 
 impl Gpu {
-    fn new(first: &Window) -> Result<(Self, wgpu::Surface<'static>), String> {
+    fn new(first: &View) -> Result<(Self, Option<wgpu::Surface<'static>>), String> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: super::window::BACKENDS,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
-        let surface = surface_for(&instance, first)?;
+        let surface = match first {
+            View::Native(window) => Some(surface_for(&instance, window)?),
+            View::Offscreen(_) => None,
+        };
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            compatible_surface: Some(&surface),
+            compatible_surface: surface.as_ref(),
             ..Default::default()
         }))
         .map_err(|error| format!("no GPU adapter for the window: {error}"))?;
@@ -317,14 +359,19 @@ impl Gpu {
             ..Default::default()
         }))
         .map_err(|error| format!("the GPU refused a device: {error}"))?;
-        let capabilities = surface.get_capabilities(&adapter);
-        let format = capabilities
-            .formats
-            .iter()
-            .copied()
-            .find(wgpu::TextureFormat::is_srgb)
-            .or_else(|| capabilities.formats.first().copied())
-            .ok_or("the window offers no colour format")?;
+        let format = match surface.as_ref() {
+            None => OFFSCREEN_FORMAT,
+            Some(surface) => {
+                let capabilities = surface.get_capabilities(&adapter);
+                capabilities
+                    .formats
+                    .iter()
+                    .copied()
+                    .find(wgpu::TextureFormat::is_srgb)
+                    .or_else(|| capabilities.formats.first().copied())
+                    .ok_or("the window offers no colour format")?
+            }
+        };
         let renderer = Renderer::with_device(device.clone(), queue, format);
         let info = adapter.get_info();
         let software = info.device_type == wgpu::DeviceType::Cpu;
@@ -351,25 +398,25 @@ impl Gpu {
 
 struct Shown {
     orbit: bool,
-    surface: wgpu::Surface<'static>,
+    surface: Option<wgpu::Surface<'static>>,
     size: (u32, u32),
     targets: Option<Targets>,
     drawn: bool,
-    window: Window,
+    view: View,
     acquire_slowest: Duration,
     draw_slowest: Duration,
     present: wgpu::PresentMode,
 }
 
 impl Shown {
-    fn new(window: Window, surface: wgpu::Surface<'static>, orbit: bool) -> Self {
+    fn new(view: View, surface: Option<wgpu::Surface<'static>>, orbit: bool) -> Self {
         Self {
             orbit,
             surface,
             size: (0, 0),
             targets: None,
             drawn: false,
-            window,
+            view,
             acquire_slowest: Duration::ZERO,
             draw_slowest: Duration::ZERO,
             present: wgpu::PresentMode::Fifo,
@@ -377,18 +424,29 @@ impl Shown {
     }
 
     fn fit(&mut self, gpu: &Gpu) {
-        let size = self.window.size();
+        let size = self.view.size();
         if size == self.size || size.0 == 0 || size.1 == 0 {
             return;
         }
-        let Some(config) = self
+        if let Some(present) = self
             .surface
-            .get_default_config(&gpu.adapter, size.0, size.1)
-        else {
-            return;
-        };
-        self.present = match self
-            .surface
+            .as_ref()
+            .and_then(|surface| Self::configure(gpu, surface, size))
+        {
+            self.present = present;
+        }
+        self.targets = Some(gpu.renderer.targets(size.0, size.1));
+        self.size = size;
+        self.drawn = false;
+    }
+
+    fn configure(
+        gpu: &Gpu,
+        surface: &wgpu::Surface<'static>,
+        size: (u32, u32),
+    ) -> Option<wgpu::PresentMode> {
+        let config = surface.get_default_config(&gpu.adapter, size.0, size.1)?;
+        let present = match surface
             .get_capabilities(&gpu.adapter)
             .present_modes
             .contains(&wgpu::PresentMode::Mailbox)
@@ -396,22 +454,59 @@ impl Shown {
             true => wgpu::PresentMode::Mailbox,
             false => wgpu::PresentMode::Fifo,
         };
-        let desired_maximum_frame_latency = match self.present {
+        let desired_maximum_frame_latency = match present {
             wgpu::PresentMode::Mailbox => 1,
             _ => config.desired_maximum_frame_latency,
         };
-        self.surface.configure(
+        surface.configure(
             &gpu.device,
             &wgpu::SurfaceConfiguration {
                 format: gpu.format,
-                present_mode: self.present,
+                present_mode: present,
                 desired_maximum_frame_latency,
                 ..config
             },
         );
-        self.targets = Some(gpu.renderer.targets(size.0, size.1));
-        self.size = size;
-        self.drawn = false;
+        Some(present)
+    }
+
+    fn picture(
+        &mut self,
+        gpu: &mut Gpu,
+        frame: Option<&Frame>,
+        overlays: Option<&Overlays>,
+        deliver: &Deliver,
+    ) -> Result<bool, String> {
+        let (Some(targets), (width, height)) = (self.targets.as_ref(), self.size) else {
+            return Ok(false);
+        };
+        let Some(painted) =
+            frame.and_then(|frame| frame.painted(self.orbit, overlays, width, height))
+        else {
+            return Ok(false);
+        };
+        let drawing = Instant::now();
+        let image = gpu.renderer.picture(
+            &painted.camera,
+            painted.backfill,
+            &painted.meshes,
+            targets,
+            width,
+            height,
+        )?;
+        let mut jpeg = Vec::new();
+        jpeg_encoder::Encoder::new(&mut jpeg, OFFSCREEN_QUALITY)
+            .encode(
+                image.as_raw(),
+                u16::try_from(width).unwrap_or(u16::MAX),
+                u16::try_from(height).unwrap_or(u16::MAX),
+                jpeg_encoder::ColorType::Rgba,
+            )
+            .map_err(|error| error.to_string())?;
+        deliver(jpeg);
+        self.draw_slowest = self.draw_slowest.max(drawing.elapsed());
+        self.drawn = true;
+        Ok(painted.pictured)
     }
 
     fn paint(
@@ -420,11 +515,15 @@ impl Shown {
         frame: Option<&Frame>,
         overlays: Option<&Overlays>,
     ) -> Result<bool, String> {
-        if self.targets.is_none() {
-            return Ok(false);
+        if let View::Offscreen(offscreen) = &self.view {
+            let deliver = offscreen.deliver.clone();
+            return self.picture(gpu, frame, overlays, &deliver);
         }
+        let Some(surface) = self.surface.as_ref().filter(|_| self.targets.is_some()) else {
+            return Ok(false);
+        };
         let acquiring = Instant::now();
-        let acquired = self.surface.get_current_texture();
+        let acquired = surface.get_current_texture();
         self.acquire_slowest = self.acquire_slowest.max(acquiring.elapsed());
         let texture = match acquired {
             wgpu::CurrentSurfaceTexture::Success(texture)
@@ -437,7 +536,9 @@ impl Shown {
                 return Ok(false);
             }
             wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface = surface_for(&gpu.instance, &self.window)?;
+                if let View::Native(window) = &self.view {
+                    self.surface = Some(surface_for(&gpu.instance, window)?);
+                }
                 self.size = (0, 0);
                 return Ok(false);
             }
@@ -625,24 +726,27 @@ fn start_session(token: &str, detail: Detail) -> Option<Session> {
 
 fn apply(command: Command, shown: &mut Vec<Shown>, gpu: &Gpu) {
     match command {
-        Command::Attach(window, orbit) => match shown
+        Command::Attach(view, orbit) => match shown
             .iter_mut()
-            .find(|existing| existing.window.key() == window.key())
+            .find(|existing| existing.view.key() == view.key())
         {
             Some(existing) => {
-                existing.window = window;
+                existing.view = view;
                 existing.orbit = orbit;
                 existing.drawn = false;
             }
-            None => match surface_for(&gpu.instance, &window) {
-                Ok(surface) => shown.push(Shown::new(window, surface, orbit)),
-                Err(reason) => {
-                    log::error!(target: "synthetic", "event=attach_failed window={:#x} reason=\"{reason}\"", window.key())
-                }
+            None => match &view {
+                View::Offscreen(_) => shown.push(Shown::new(view, None, orbit)),
+                View::Native(window) => match surface_for(&gpu.instance, window) {
+                    Ok(surface) => shown.push(Shown::new(view, Some(surface), orbit)),
+                    Err(reason) => {
+                        log::error!(target: "synthetic", "event=attach_failed window={:#x} reason=\"{reason}\"", window.key())
+                    }
+                },
             },
         },
         Command::Release(key, done) => {
-            shown.retain(|existing| existing.window.key() != key);
+            shown.retain(|existing| existing.view.key() != key);
             acknowledge(&done);
         }
         Command::Wake => {}
@@ -650,7 +754,7 @@ fn apply(command: Command, shown: &mut Vec<Shown>, gpu: &Gpu) {
 }
 
 fn show(
-    first: Window,
+    first: View,
     orbit: bool,
     kept: Option<Kept>,
     commands: &Receiver<Command>,

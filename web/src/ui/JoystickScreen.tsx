@@ -106,6 +106,8 @@ export const functionLabel = (id: string): string => FUNCTION_LABELS[id] ?? id;
 
 const thisSite = (): string => (typeof location === 'undefined' ? 'this site' : location.host);
 
+const keptWhere = (): string => (__DESKTOP__ ? 'on this computer' : `in this browser for ${thisSite()}`);
+
 export type JoystickPage = {
   names: readonly string[];
   active: string | null;
@@ -199,7 +201,7 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
           <Text>Enable</Text>
           {!read.vehicle ? <Text color={md('onSurfaceVariant')}>Not currently available</Text> : null}
         </div>
-        <Text color={read.calibrated ? md('onSurface') : md('error')}>{read.calibrated ? `Calibrated · saved in this browser for ${thisSite()}` : 'Calibrate before enabling'}</Text>
+        <Text color={read.calibrated ? md('onSurface') : md('error')}>{read.calibrated ? `Calibrated · saved ${keptWhere()}` : 'Calibrate before enabling'}</Text>
         {read.sendingText !== null ? <Text color={read.commanding ? md('primary') : md('error')}>{read.sendingText}</Text> : null}
         {refusal !== null ? <Text color={md('error')}>{refusal}</Text> : null}
 
@@ -398,7 +400,7 @@ const CalibrationPanel = ({ page, onStep }: { page: JoystickPage; onStep: (op: s
       {cal.warning !== null ? <Text color={md('error')}>{cal.warning}</Text> : null}
       {cal.checking ? (
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          {`Save keeps this calibration in this browser for ${thisSite()}.`}
+          {`Save keeps this calibration ${keptWhere()}.`}
         </Text>
       ) : null}
       <div className="flex gap-2">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
-import { stageFile, stagedFile, unstage } from '@/core/files';
+import { stageFile, stagedFile, stagedLocation, unstage } from '@/core/files';
 import { createDocument, openDocument } from '@/kotlin/Platform';
 import { AlertDialog, Checkbox, LinearProgressIndicator, OutlinedButton, RadioButton, Text, TextButton } from '@/m3';
 import type { OfflineSet } from '@/ui/OfflineMaps';
@@ -62,7 +62,7 @@ export const TileSetTransfer = ({ sets, onRefusal }: { sets: readonly OfflineSet
 
   const exportSets = async () => {
     setRunning(Transfer.Exporting);
-    const refused = await Qgc.refusalOf(OFFLINE_EXPORT, ...exportArguments(stagePath(EXPORT_STAGE), chosen));
+    const refused = await Qgc.refusalOf(OFFLINE_EXPORT, ...exportArguments(stagedLocation(stagePath(EXPORT_STAGE)), chosen));
     const refusal = refused ?? (await savedExport());
     await discard(EXPORT_STAGE);
     finish(refusal);
@@ -73,7 +73,7 @@ export const TileSetTransfer = ({ sets, onRefusal }: { sets: readonly OfflineSet
     if (source === null) return;
     setRunning(Transfer.Importing);
     const copied = await stagedImport(source);
-    const refusal = copied ? await Qgc.refusalOf(OFFLINE_IMPORT, stagePath(IMPORT_STAGE), replace) : UNREADABLE;
+    const refusal = copied ? await Qgc.refusalOf(OFFLINE_IMPORT, stagedLocation(stagePath(IMPORT_STAGE)), replace) : UNREADABLE;
     await discard(IMPORT_STAGE);
     finish(refusal);
   };

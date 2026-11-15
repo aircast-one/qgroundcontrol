@@ -14,7 +14,6 @@ export const LinearProgressIndicator = ({ progress, color = md('primary'), track
       className={`absolute inset-y-0 left-0 rounded-full ${progress === undefined ? 'w-1/3 animate-[m3-indeterminate_1.4s_ease-in-out_infinite]' : 'transition-transform'}`}
       style={progress === undefined ? { background: color } : { background: color, width: '100%', transformOrigin: 'left', transform: `scaleX(${Math.max(0, Math.min(1, progress))})` }}
     />
-    <style>{'@keyframes m3-indeterminate { from { transform: translateX(-100%) } to { transform: translateX(300%) } }'}</style>
   </div>
 );
 
