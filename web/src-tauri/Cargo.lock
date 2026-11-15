@@ -4571,7 +4571,7 @@ dependencies = [
 [[package]]
 name = "retina"
 version = "0.4.22"
-source = "git+https://github.com/aircast-one/retina?rev=3784c62565b939167708416936cb00adb07b2dc3#3784c62565b939167708416936cb00adb07b2dc3"
+source = "git+https://github.com/aircast-one/retina?rev=8db66fa03b3a897794c3b2c14f13c237a2617caf#8db66fa03b3a897794c3b2c14f13c237a2617caf"
 dependencies = [
  "base64 0.22.1",
  "bitstream-io",
