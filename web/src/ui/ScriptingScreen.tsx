@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { type Json, jsonStrings, optBoolean, optDouble, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
-import { stageFile, stagedFile, stagedLocation, unstage } from '@/core/files';
+import { stageFile, stagedFile, stagedLocation, stagedOutput, unstage } from '@/core/files';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { createDocument, openDocument } from '@/kotlin/Platform';
 import { delay } from '@/kotlin/Std';
@@ -106,7 +106,7 @@ export const ScriptingScreen = ({ className }: { className?: string }) => {
   const download = async (name: string) => {
     const stage = `download-${name}`;
     await discard(stage);
-    const refused = scriptRefusal('Lua Download', await Qgc.refusalOf(SCRIPTING_DOWNLOAD, name, stagedLocation(stagePath(stage)), name), 'Download failed');
+    const refused = scriptRefusal('Lua Download', await Qgc.refusalOf(SCRIPTING_DOWNLOAD, name, await stagedOutput(stagePath(stage)), name), 'Download failed');
     setRefusal(refused);
     if (refused === null) await whileBusy();
     const saved = refused === null ? await staged(stage) : null;

@@ -19,7 +19,7 @@ mpeg2ts = "0.6.1"
 muxide = "0.5.0"
 tauri-plugin-opener = "=2.5.5"
 tauri-plugin-window-state = "=2.4.1"
-tokio = { version = "1", features = ["net", "io-util", "sync"] }
+tokio = { version = "1", features = ["net", "io-util", "sync", "rt-multi-thread"] }
 log = "0.4"
 
 [target.'cfg(windows)'.dependencies]

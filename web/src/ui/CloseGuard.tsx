@@ -21,19 +21,26 @@ const BrowserCloseGuard = () => {
 };
 
 const DesktopCloseGuard = () => {
-  const [lost, setLost] = useState<readonly string[] | null>(null);
+  const [asked, setAsked] = useState<readonly string[] | null>(null);
   useEffect(() => {
-    const stop = listen<string[]>('close-blocked', ({ payload }) => setLost(payload));
+    const stop = listen<string[]>('close-blocked', ({ payload }) => setAsked(payload));
     return () => void stop.then((unlisten) => unlisten());
   }, []);
-  if (lost === null) return null;
+  useEffect(() => {
+    if (asked !== null) void invoke('close_prompt_shown');
+  }, [asked]);
+  const keepWorking = () => {
+    setAsked(null);
+    void invoke('close_prompt_dismissed');
+  };
+  if (asked === null) return null;
   return (
     <AlertDialog
-      onDismissRequest={() => setLost(null)}
+      onDismissRequest={keepWorking}
       title="Close Aircast?"
-      text={lost.join(' ')}
+      text={asked.join(' ')}
       confirmButton={<TextButton onClick={() => void invoke('close_anyway')}>Close anyway</TextButton>}
-      dismissButton={<TextButton onClick={() => setLost(null)}>Keep working</TextButton>}
+      dismissButton={<TextButton onClick={keepWorking}>Keep working</TextButton>}
     />
   );
 };

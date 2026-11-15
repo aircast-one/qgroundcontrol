@@ -76,7 +76,7 @@ fn is_sps(codec: Codec, nal: &[u8]) -> bool {
         }
 }
 
-fn unescaped(nal: &[u8]) -> Vec<u8> {
+pub fn unescaped(nal: &[u8]) -> Vec<u8> {
     nal.iter()
         .enumerate()
         .filter(|&(at, &byte)| !(byte == 3 && at >= 2 && nal[at - 2..at] == [0, 0]))

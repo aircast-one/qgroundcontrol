@@ -20,10 +20,17 @@ const ENDED: u8 = 2;
 const RECORDING_STOPPED: u8 = 3;
 
 const CLOSED: &str = "closed";
+const NOT_PLAYING: &str = "The stream is no longer playing.";
 const RESTARTED: &str = "restarted";
 const DROPPED: &str = "dropped";
 
-type Recorder = Arc<Mutex<Option<Recording>>>;
+#[derive(Default)]
+struct Slot {
+    recording: Option<Recording>,
+    closed: bool,
+}
+
+type Recorder = Arc<Mutex<Slot>>;
 type Sink = Channel<InvokeResponseBody>;
 type StopReason = Arc<OnceLock<&'static str>>;
 type Finished = watch::Receiver<()>;
@@ -153,9 +160,9 @@ impl Live {
         }
         let key = annexb::keyed(unit.codec, &nals);
         self.keyed |= key;
-        self.record(unit.codec, &nals, key, unit.timestamp)?;
         self.tally = self.tally.counted(unit, key);
-        send(&self.sink, frame(key, now_ms(), unit))
+        send(&self.sink, frame(key, now_ms(), unit))?;
+        tokio::task::block_in_place(|| self.record(unit.codec, &nals, key, unit.timestamp))
     }
 
     fn record(
@@ -165,18 +172,19 @@ impl Live {
         key: bool,
         timestamp: u64,
     ) -> Result<(), String> {
-        let mut recording = locked(&self.recorder);
-        let Some(failed) = recording
+        let mut slot = locked(&self.recorder);
+        let Some(failed) = slot
+            .recording
             .as_mut()
             .filter(|_| self.keyed)
             .and_then(|written| written.write(codec, nals, key, timestamp).err())
         else {
             return Ok(());
         };
-        let written = recording.take().map(|stopped| stopped.written());
-        drop(recording);
-        if let Some(written) = written {
-            log_recording(self.id, "recording_failed", &written, &failed.to_string());
+        let stopped = slot.recording.take();
+        drop(slot);
+        if let Some(stopped) = stopped {
+            finished(self.id, stopped, "recording_failed", &failed.to_string());
         }
         send(&self.sink, recording_stopped(&failed.to_string()))
     }
@@ -206,7 +214,7 @@ impl Drop for Live {
             self.tally.lost,
             self.tally.bytes,
             self.started.elapsed().as_secs_f64(),
-            locked(&self.recorder).is_some(),
+            locked(&self.recorder).recording.is_some(),
         );
     }
 }
@@ -248,13 +256,32 @@ fn play(
     (task, finished)
 }
 
-fn stop_recording(id: u32, recorder: &Recorder) -> Result<(), String> {
-    let Some(recording) = locked(recorder).take() else {
-        return Ok(());
-    };
-    let written = recording.finish().map_err(|error| error.to_string())?;
-    log_recording(id, "recording_stopped", &written, "");
-    Ok(())
+fn started(id: u32, file: &Path, size: (u32, u32)) -> Result<Recording, String> {
+    let folder =
+        groundstation::settingsstore::video_save_path().ok_or("The app has no video folder.")?;
+    let target = inside_folder(Path::new(&folder), file)?;
+    let recording = Recording::create(&target, size).map_err(|error| error.to_string())?;
+    log::info!(target: "desktop.video", "event=recording_started stream={id} file=\"{}\" width={} height={}", target.display(), size.0, size.1);
+    Ok(recording)
+}
+
+fn finished(id: u32, recording: Recording, event: &str, reason: &str) {
+    match recording.finish() {
+        Ok(written) => log_recording(id, event, &written, reason),
+        Err(error) => {
+            log::warn!(target: "desktop.video", "event=recording_not_finished stream={id} reason=\"{error}\"");
+        }
+    }
+}
+
+fn close_recording(id: u32, recorder: &Recorder) {
+    let mut slot = locked(recorder);
+    slot.closed = true;
+    let stopped = slot.recording.take();
+    drop(slot);
+    if let Some(stopped) = stopped {
+        finished(id, stopped, "recording_stopped", "");
+    }
 }
 
 impl Streams {
@@ -288,14 +315,13 @@ impl Streams {
         let pending = still_running([std::mem::take(&mut *closing), stream.sessions].concat());
         *closing = pending;
         drop(closing);
-        stop_recording(id, &stream.recorder)
+        close_recording(id, &stream.recorder);
+        Ok(())
     }
 
     fn restart(&self, id: u32) -> Result<(), String> {
         let mut running = locked(&self.running);
-        let stream = running
-            .remove(&id)
-            .ok_or("The stream is no longer playing.")?;
+        let stream = running.remove(&id).ok_or(NOT_PLAYING)?;
         stream.stopping.get_or_init(|| RESTARTED);
         stream.task.abort();
         let stopping = StopReason::default();
@@ -335,18 +361,22 @@ impl Streams {
         let recorder = locked(&self.running)
             .get(&id)
             .map(|stream| stream.recorder.clone())
-            .ok_or("The stream is no longer playing.")?;
-        stop_recording(id, &recorder)?;
-        let Some(file) = file else {
-            return Ok(());
+            .ok_or(NOT_PLAYING)?;
+        let mut slot = locked(&recorder);
+        if slot.closed {
+            return Err(NOT_PLAYING.to_string());
+        }
+        let previous = slot.recording.take();
+        let (recording, refused) = match file.map(|file| started(id, file, size)).transpose() {
+            Ok(recording) => (recording, None),
+            Err(reason) => (None, Some(reason)),
         };
-        let folder = groundstation::settingsstore::video_save_path()
-            .ok_or("The app has no video folder.")?;
-        let target = inside_folder(Path::new(&folder), file)?;
-        let recording = Recording::create(&target, size).map_err(|error| error.to_string())?;
-        log::info!(target: "desktop.video", "event=recording_started stream={id} file=\"{}\" width={} height={}", target.display(), size.0, size.1);
-        *locked(&recorder) = Some(recording);
-        Ok(())
+        slot.recording = recording;
+        drop(slot);
+        if let Some(previous) = previous {
+            finished(id, previous, "recording_stopped", "");
+        }
+        refused.map_or(Ok(()), Err)
     }
 }
 
@@ -493,11 +523,15 @@ mod tests {
             let recorder = locked(&streams.running)[&id].recorder.clone();
             let file =
                 std::env::temp_dir().join(format!("aircast-restart-{}.mp4", std::process::id()));
-            *locked(&recorder) = Some(Recording::create(&file, (1280, 720)).unwrap());
+            locked(&recorder).recording = Some(Recording::create(&file, (1280, 720)).unwrap());
             hearing.try_iter().for_each(drop);
             assert!(heard_after_sending(port, &hearing, FRAME));
-            let frames =
-                |held: &Recorder| locked(held).as_ref().map_or(0, |it| it.written().frames);
+            let frames = |held: &Recorder| {
+                locked(held)
+                    .recording
+                    .as_ref()
+                    .map_or(0, |it| it.written().frames)
+            };
             let before = frames(&recorder);
             streams.restart(id).unwrap();
             hearing.try_iter().for_each(drop);
@@ -523,9 +557,14 @@ mod tests {
             let port = free_port();
             let url = Url::parse(&format!("udp://127.0.0.1:{port}")).unwrap();
             let id = streams.open(url.clone(), listening_sink().0).await;
+            let recorder = locked(&streams.running)[&id].recorder.clone();
             streams.restart(id).unwrap();
             streams.close(id).unwrap();
             assert!(locked(&streams.running).is_empty());
+            assert!(
+                locked(&recorder).closed,
+                "a recording that starts while the stream closes finds the slot closed instead of being left running"
+            );
             assert!(streams.restart(id).is_err());
             let (sink, hearing) = listening_sink();
             let reopened = streams.open(url, sink).await;

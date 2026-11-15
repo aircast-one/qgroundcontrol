@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { del, entries, set } from 'idb-keyval';
+import { AppCommands } from '@/bridge/BridgeCommands';
 import { call } from './client';
 
 
@@ -20,9 +21,16 @@ export const stagedOutput = (path: string): Promise<string> => (__DESKTOP__ ? in
 
 const bytesOf = async (file: Blob): Promise<Uint8Array> => new Uint8Array(await file.arrayBuffer());
 
+const FILES_LOG = 'desktop.files';
+
+const loggedAs = <T,>(event: string, path: string, outcome: T) => (error: unknown): T => {
+  void AppCommands.recordLog(FILES_LOG, `event=${event} path="${path}" reason="${String(error)}"`);
+  return outcome;
+};
+
 export const stageFile = async (path: string, file: Blob): Promise<boolean> => {
   const bytes = await bytesOf(file);
-  if (__DESKTOP__) return bytes.length > 0 && invoke('staged_write', bytes, { headers: { path: encodeURIComponent(stagingPath(path)) } }).then(() => true);
+  if (__DESKTOP__) return bytes.length > 0 && invoke('staged_write', bytes, { headers: { path: encodeURIComponent(stagingPath(path)) } }).then(() => true, loggedAs('stage_failed', path, false));
   const staged = bytes.length > 0 && (await call<boolean>('vfsWrite', path, bytes));
   if (staged && kept(path)) await set(path, bytes).catch(() => undefined);
   return staged;
@@ -31,7 +39,7 @@ export const stageFile = async (path: string, file: Blob): Promise<boolean> => {
 const fileOf = (bytes: Uint8Array | ArrayBuffer | undefined, name: string): File | null => (bytes === undefined ? null : new File([bytes as Uint8Array<ArrayBuffer>], name));
 
 export const stagedFile = async (path: string, name: string = path.slice(path.lastIndexOf('/') + 1)): Promise<File | null> =>
-  fileOf(__DESKTOP__ ? await invoke<ArrayBuffer>('staged_read', { path: stagingPath(path) }) : await call<Uint8Array | undefined>('vfsRead', path), name);
+  fileOf(__DESKTOP__ ? await invoke<ArrayBuffer>('staged_read', { path: stagingPath(path) }).catch(loggedAs('staged_unreadable', path, undefined)) : await call<Uint8Array | undefined>('vfsRead', path), name);
 
 const leafName = (path: string): string => path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
 

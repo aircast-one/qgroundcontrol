@@ -156,7 +156,7 @@ mod tests {
         assert_eq!(
             ["unsavedMission", "pendingWrites", "activeConnections"].map(loses_work),
             [true, true, false],
-            "an open connection asks before closing, but nothing is lost, so a desktop window closes without holding"
+            "an open connection asks before closing but loses nothing, so a browser tab leaves without asking"
         );
     }
 }
