@@ -55,6 +55,7 @@ on:
 
 env:
   SHORT: ${{ inputs.short_version || 'v0.0.0-dev' }}
+  RELEASING: ${{ inputs.short_version != '' }}
 
 jobs:
   macos:
@@ -105,11 +106,11 @@ jobs:
           OTEL_BETA_INGEST_TOKEN: ${{ secrets.OTEL_BETA_INGEST_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -n "$P12" ]; then
+          if [ -n "$P12" ] && [ "$RELEASING" == "true" ]; then
             export APPLE_CERTIFICATE="$P12" APPLE_CERTIFICATE_PASSWORD="$P12_PASSWORD" APPLE_SIGNING_IDENTITY="$IDENTITY"
             export APPLE_ID="$NOTARY_USER" APPLE_PASSWORD="$NOTARY_PASSWORD" APPLE_TEAM_ID="$NOTARY_TEAM"
           else
-            echo "::warning::MACOS_CERT_P12_BASE64 is not set, so the macOS app is signed ad hoc and not notarized"
+            echo "This build is signed ad hoc and not notarized: only a release or a manual run signs it."
           fi
           npx tauri build --bundles app,dmg --config "{\"version\":\"${SHORT#v}\"}"
           mkdir -p ../out
@@ -117,7 +118,7 @@ jobs:
 
       - name: Verify DMG
         env:
-          SIGNED: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+          SIGNED: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && inputs.short_version != '' }}
         run: |
           set -euo pipefail
           apple_retry() { for attempt in 1 2 3 4 5 6; do "$@" && return 0; echo "Apple check failed (attempt $attempt of 6), retrying in 20 s: $*"; sleep 20; done; return 1; }
