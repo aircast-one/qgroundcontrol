@@ -1,6 +1,6 @@
 use crate::annexb::{Codec, START, Unit, unwrapped};
 
-const REORDER_WINDOW: usize = 8;
+pub const REORDER_WINDOW: usize = 8;
 const RESTART_GAP: u16 = 4_096;
 
 pub struct Depacketizer {

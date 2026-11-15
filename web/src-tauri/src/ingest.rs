@@ -4,7 +4,7 @@ use futures::StreamExt;
 use percent_encoding::percent_decode_str;
 use retina::client::{
     Credentials, PlayOptions, ReceiverReportPolicy, Session, SessionOptions, SetupOptions,
-    Transport,
+    Transport, UdpTransportOptions,
 };
 use retina::codec::{CodecItem, FrameFormat};
 use tokio::io::AsyncReadExt;
@@ -13,9 +13,10 @@ use url::Url;
 
 use crate::annexb::{Codec, Unit};
 use crate::mpegts::Demuxer;
-use crate::rtp::Depacketizer;
+use crate::rtp::{Depacketizer, REORDER_WINDOW};
 
 const DATAGRAM: usize = 65_536;
+const REORDER_DELAY: std::time::Duration = std::time::Duration::from_millis(20);
 const ANY_HOST: &str = "0.0.0.0";
 
 pub fn without_credentials(url: &Url) -> (Url, Option<Credentials>) {
@@ -53,7 +54,10 @@ async fn rtsp(
             Url::parse(&url.as_str().replacen("rtspt://", "rtsp://", 1))
                 .map_err(|error| error.to_string())?,
         ),
-        _ => (Transport::Udp(Default::default()), url.clone()),
+        _ => (
+            Transport::Udp(UdpTransportOptions::default().reorder(REORDER_WINDOW, REORDER_DELAY)),
+            url.clone(),
+        ),
     };
     let (bare, credentials) = without_credentials(&url);
     let options = SessionOptions::default()
