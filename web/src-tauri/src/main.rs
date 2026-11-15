@@ -3,7 +3,7 @@
 mod annexb;
 mod bridge;
 mod files;
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 mod folders;
 mod ingest;
 mod matroska;
