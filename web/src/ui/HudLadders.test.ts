@@ -47,9 +47,10 @@ describe('HudLaddersTest', () => {
     expect(ladderReach(1600, 800)).toBe(304);
   });
 
-  it('a near-square or upright window pulls the ladders in by its width, so they stay clear of the side columns', () => {
-    expect(ladderReach(800, 800)).toBe(240);
-    expect(ladderReach(768, 1024)).toBe(230);
+  it('a narrow window pulls the ladders in by its width, so their readouts stay clear of the rail and camera column', () => {
+    expect(ladderReach(1000, 880)).toBe(230);
+    expect(ladderReach(1024, 768)).toBe(242);
+    expect(ladderReach(560, 600)).toBe(44);
   });
 
   it('a phone held sideways drops the ladders for bare readouts beside the crosshair; a tablet or monitor keeps them', () => {

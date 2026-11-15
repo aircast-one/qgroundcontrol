@@ -19,7 +19,7 @@ const TICK_EDGE = 26;
 const LADDER_WIDTH = 52;
 const CROSSHAIR = 44;
 const LADDER_REACH = 0.38;
-const LADDER_WIDTH_REACH = 0.3;
+const LADDER_EDGE_ROOM = 270;
 const COMPACT_GAP = 10;
 
 export type LadderScale = {
@@ -59,7 +59,7 @@ export const ladderMarks = (scale: LadderScale): readonly number[] =>
 
 export const ladderHeight = (shellHeight: number): number => Math.round(Math.min(LADDER_MAX, Math.max(LADDER_MIN, shellHeight * LADDER_SHARE)));
 
-export const ladderReach = (shellWidth: number, shellHeight: number): number => Math.round(Math.min(shellHeight * LADDER_REACH, shellWidth * LADDER_WIDTH_REACH));
+export const ladderReach = (shellWidth: number, shellHeight: number): number => Math.round(Math.max(CROSSHAIR, Math.min(shellHeight * LADDER_REACH, shellWidth / 2 - LADDER_EDGE_ROOM)));
 
 export const ladderY = (value: number, scale: LadderScale, height: number): number =>
   LADDER_PAD + ((scale.top - Math.min(scale.top, Math.max(scale.bottom, value))) / (scale.top - scale.bottom)) * (height - 2 * LADDER_PAD);
