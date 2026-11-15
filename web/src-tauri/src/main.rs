@@ -41,6 +41,7 @@ unsafe extern "C" {
 
 const EVENT_FLUSH: Duration = Duration::from_millis(16);
 const LINK_SCHEMES: [&str; 2] = ["http", "https"];
+const APP_HOST: &str = "tauri.localhost";
 
 static EVENTS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 static EVENTS_ARRIVED: Condvar = Condvar::new();
@@ -226,6 +227,12 @@ fn open_link(url: &url::Url) {
     }
 }
 
+fn inside_the_app(url: &url::Url, dev: Option<&url::Url>) -> bool {
+    url.scheme() == "tauri"
+        || url.host_str() == Some(APP_HOST)
+        || dev.is_some_and(|dev| dev.origin() == url.origin())
+}
+
 fn start_core(version: &str) {
     let arguments: Vec<CString> = std::env::args()
         .chain(
@@ -259,6 +266,9 @@ fn main() {
         .setup(|app| {
             forward_events(app.handle().clone());
             let downloads = app.path().download_dir().ok();
+            let dev = tauri::is_dev()
+                .then(|| app.config().build.dev_url.clone())
+                .flatten();
             let _window = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("Aircast")
                 .inner_size(1440.0, 900.0)
@@ -275,6 +285,13 @@ fn main() {
                 .on_new_window(|url, _| {
                     open_link(&url);
                     NewWindowResponse::Deny
+                })
+                .on_navigation(move |url| {
+                    let inside = inside_the_app(url, dev.as_ref());
+                    if !inside {
+                        open_link(url);
+                    }
+                    inside
                 })
                 .on_page_load(|shown, loading| {
                     if loading.event() == PageLoadEvent::Started {
@@ -344,4 +361,27 @@ fn main() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_window_stays_on_the_app_and_other_pages_open_outside() {
+        let url = |text: &str| url::Url::parse(text).unwrap();
+        let dev = url("http://localhost:8800");
+        assert!(inside_the_app(&url("tauri://localhost/plan"), None));
+        assert!(inside_the_app(&url("http://tauri.localhost/fly"), None));
+        assert!(inside_the_app(
+            &url("http://localhost:8800/fly"),
+            Some(&dev)
+        ));
+        assert!(!inside_the_app(&url("http://localhost:8800/fly"), None));
+        assert!(!inside_the_app(
+            &url("https://docs.qgroundcontrol.com/"),
+            Some(&dev)
+        ));
+        assert!(!inside_the_app(&url("http://localhost:8801/"), Some(&dev)));
+    }
 }
