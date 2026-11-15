@@ -4,7 +4,7 @@ import { type Json, has, jsonObjects, optBoolean, optInt, optJSONArray, optStrin
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useTicker } from '@/kotlin/Compose';
-import { Button, CircularProgressIndicator, HorizontalDivider, ListItem, Surface, Text } from '@/m3';
+import { Button, CircularProgressIndicator, HorizontalDivider, ListItem, Surface, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { sentenceCase } from '@/map/SentenceCase';
 import { Drawable } from '@/res/Icon';
@@ -59,19 +59,37 @@ export const openAddLink = (navigation: AppNavigationState): void => {
   navigation.settingsPage.value = CONNECTIONS_SETTINGS_PAGE;
 };
 
-export type OfflineGuide = { title: string; text: string; onDevice: boolean; camera: boolean };
+export type OfflineGuide = { title: string; text: string; onDevice: boolean; camera: boolean; links: readonly OfflineLink[]; busy: boolean };
 
 export const NO_CAMERA_GUIDE = { title: 'No camera yet', text: 'Add a camera and its picture shows here.' };
 
-export const offlineGuide = (status: OfflineStatus | null, hint: string, noCamera = false): OfflineGuide =>
-  noCamera
-    ? { ...NO_CAMERA_GUIDE, onDevice: status?.onDevice === true, camera: true }
+export const offlineGuide = (status: OfflineStatus | null, hint: string, noCamera = false): OfflineGuide => {
+  const onDevice = status?.onDevice === true;
+  const links = onDevice || noCamera ? [] : (status?.links ?? []);
+  return noCamera
+    ? { ...NO_CAMERA_GUIDE, onDevice, camera: true, links, busy: false }
     : {
         title: status === null ? LOOKING_TITLE : sentenceCase(status.title),
-        text: status?.onDevice === true ? status.footnote : hint,
-        onDevice: status?.onDevice === true,
+        text: status !== null && (onDevice || links.length > 0) ? status.footnote : hint,
+        onDevice,
         camera: false,
+        links,
+        busy: status?.busy === true,
       };
+};
+
+const OfflineLinkRow = ({ link, busy }: { link: OfflineLink; busy: boolean }) => (
+  <ListItem
+    headlineContent={link.text}
+    supportingContent={
+      <span className="whitespace-pre-line" style={{ color: link.failed ? md('error') : md('onSurfaceVariant') }}>
+        {link.description}
+      </span>
+    }
+    trailingContent={link.connected && busy ? <CircularProgressIndicator size={16} strokeWidth={2} /> : link.retry ? <Text typography="labelMedium">Retry</Text> : null}
+    onClick={() => void (link.connected ? LinkCommands.disconnect(link.index) : LinkCommands.connect(`@${OFFLINE_LINKS_PATH}.${link.index}`))}
+  />
+);
 
 export const OfflineGuideCard = ({ inVideo }: { inVideo: boolean }) => {
   const navigation = useContext(LocalAppNavigation);
@@ -96,7 +114,18 @@ export const OfflineGuideCard = ({ inVideo }: { inVideo: boolean }) => {
           <Text typography="bodyMedium" textAlign="center" color={md('onSurfaceVariant')}>
             {guide.text}
           </Text>
-          <Button onClick={open}>{label}</Button>
+          {guide.links.length > 0 ? (
+            <>
+              <div className="-mx-6 w-[calc(100%+3rem)]">
+                {guide.links.map((link) => (
+                  <OfflineLinkRow key={link.index} link={link} busy={guide.busy} />
+                ))}
+              </div>
+              <TextButton onClick={open}>{label}</TextButton>
+            </>
+          ) : (
+            <Button onClick={open}>{label}</Button>
+          )}
         </div>
       </Surface>
     </div>
@@ -161,17 +190,7 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
             </div>
           ) : null}
           {status.links.map((link) => (
-            <ListItem
-              key={link.index}
-              headlineContent={link.text}
-              supportingContent={
-                <span className="whitespace-pre-line" style={{ color: link.failed ? md('error') : md('onSurfaceVariant') }}>
-                  {link.description}
-                </span>
-              }
-              trailingContent={link.connected && status.busy ? <CircularProgressIndicator size={16} strokeWidth={2} /> : link.retry ? <Text typography="labelMedium">Retry</Text> : null}
-              onClick={() => void (link.connected ? LinkCommands.disconnect(link.index) : LinkCommands.connect(`@${OFFLINE_LINKS_PATH}.${link.index}`))}
-            />
+            <OfflineLinkRow key={link.index} link={link} busy={status.busy} />
           ))}
           <HorizontalDivider />
           <ListItem headlineContent="Connection settings" onClick={() => openConnectionSettings(navigation, onDismiss)} />

@@ -839,7 +839,9 @@ const OFFLINE_DECK = (): readonly DeckEntry[] => [
 const OfflineDeck = ({ className }: { className?: string }) => {
   const navigation = useContext(LocalAppNavigation);
   const flyScreen = useContext(LocalFlyScreenState);
-  const onDevice = offlineStatus(useQgcPath(OFFLINE_STATUS_VIEW))?.onDevice === true;
+  const status = offlineStatus(useQgcPath(OFFLINE_STATUS_VIEW));
+  const onDevice = status?.onDevice === true;
+  const saved = (status?.links.length ?? 0) > 0;
   return (
     <div className={`flex gap-[10px] p-4 ${className ?? ''}`}>
       {OFFLINE_DECK().map((entry) => (
@@ -859,7 +861,9 @@ const OfflineDeck = ({ className }: { className?: string }) => {
         entry={
           onDevice
             ? DeckEntry({ id: 'checkDevice', label: CHECK_DEVICE, icon: 'ic_developer_board', enabled: true, onClick: openDeviceTelemetry })
-            : DeckEntry({ id: 'addLink', label: 'Add a link', icon: 'ic_link', enabled: true, onClick: () => openAddLink(navigation) })
+            : saved
+              ? DeckEntry({ id: 'connect', label: 'Connect', icon: 'ic_link', enabled: true, onClick: () => (flyScreen.requestedSheet.value = OFFLINE_SHEET) })
+              : DeckEntry({ id: 'addLink', label: 'Add a link', icon: 'ic_link', enabled: true, onClick: () => openAddLink(navigation) })
         }
         primary
         className="min-w-0 flex-1"
