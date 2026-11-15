@@ -32,7 +32,7 @@ export const chooseCameraJoystick = (page: Page) =>
     await Qgc.set('settings.gimbalControllerSettings.onScreenStick', true);
   }, '/src/bridge/Qgc.ts');
 
-export const connectMock = async (page: Page, options: readonly MockOption[] = [], vehicle: MockVehicle | null = null) => {
+export const startMock = async (page: Page, options: readonly MockOption[] = [], vehicle: MockVehicle | null = null) => {
   await page.getByRole('button', { name: /How to connect/ }).click();
   await page.getByRole('button', { name: 'Add link…' }).click();
   await page.getByRole('button', { name: /^Simulated vehicle/ }).click();
@@ -42,6 +42,10 @@ export const connectMock = async (page: Page, options: readonly MockOption[] = [
   }
   await options.reduce((done, name) => done.then(() => page.getByRole('checkbox', { name }).check()), Promise.resolve());
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+};
+
+export const connectMock = async (page: Page, options: readonly MockOption[] = [], vehicle: MockVehicle | null = null) => {
+  await startMock(page, options, vehicle);
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
 };
 
