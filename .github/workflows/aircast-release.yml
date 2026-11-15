@@ -464,132 +464,20 @@ jobs:
             --submission_information '{"add_id_info_uses_idfa": false}' \
             --force true
 
-  build-macos-native:
+  build-desktop:
     needs: setup
-    runs-on: macos-26
-    # A cold MapLibre cache builds MapLibre's macOS SDK from source (see ios-native.yml).
-    timeout-minutes: 150
-    defaults:
-      run:
-        shell: bash
-    env:
-      MACOS_SIGN: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.setup.outputs.version }}
-          persist-credentials: false
-
-      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: latest-stable
-
-      - name: Rust toolchain
-        uses: ./.github/actions/rust-toolchain
-        with:
-          cache: 'true'
-          targets: aarch64-apple-darwin
-
-      - name: Install XcodeGen and Bazelisk
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip
-          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
-          brew install bazelisk
-
-      - name: MapLibre version
-        id: maplibre-version
-        run: echo "version=$(sed -n 's/^MAPLIBRE_VERSION=//p' ios/fetch-deps-macos.sh)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore MapLibre for macOS
-        id: maplibre
-        uses: actions/cache/restore@v5
-        with:
-          path: ios/Vendor/macos
-          key: maplibre-macos-${{ steps.maplibre-version.outputs.version }}
-          restore-keys: maplibre-macos-
-
-      - name: Dependencies
-        working-directory: ios
-        run: ./fetch-deps-macos.sh
-
-      - name: Save MapLibre for macOS
-        if: steps.maplibre.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ios/Vendor/macos
-          key: maplibre-macos-${{ steps.maplibre-version.outputs.version }}
-
-      - name: Import Code Signing Certificate
-        if: env.MACOS_SIGN == 'true'
-        uses: apple-actions/import-codesign-certs@v7
-        with:
-          p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          p12-password: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
-
-      # The full version (5.6.5-beta.22) goes into CFBundleShortVersionString: the in-app updater compares it with
-      # the release tags and picks the stable or beta channel from it.
-      - name: Build
-        working-directory: ios
-        env:
-          SHORT: ${{ needs.setup.outputs.short_version }}
-          OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
-        run: |
-          xcodegen generate
-          status=0
-          xcodebuild -project Aircast.xcodeproj -scheme AircastMac -configuration Release \
-            -destination 'platform=macOS,arch=arm64' -derivedDataPath "$RUNNER_TEMP/mac-derived" \
-            CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="${SHORT#v}" build > "$RUNNER_TEMP/mac-build.log" 2>&1 || status=$?
-          grep -E "error:|warning: unable|BUILD (SUCCEEDED|FAILED)" "$RUNNER_TEMP/mac-build.log" || true
-          [ "$status" -eq 0 ] || grep -E -A40 "Undefined symbols|duplicate symbol|ld: (library|framework) not found" "$RUNNER_TEMP/mac-build.log" | head -200 || true
-          exit "$status"
-
-      - name: Package, sign and notarize
-        env:
-          SHORT: ${{ needs.setup.outputs.short_version }}
-          SIGN_IDENTITY: ${{ env.MACOS_SIGN == 'true' && secrets.MACOS_SIGNING_IDENTITY || '' }}
-          NOTARY_USER: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
-          NOTARY_TEAM: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
-        run: |
-          set -euo pipefail
-          sign=()
-          if [ -n "$SIGN_IDENTITY" ]; then
-            sign=(--sign "$SIGN_IDENTITY")
-          else
-            echo "::warning::MACOS_CERT_P12_BASE64 is not set, so the macOS app is signed ad hoc and not notarized"
-          fi
-          mkdir -p out
-          ios/package-macos.sh ${sign[@]+"${sign[@]}"} \
-            "$RUNNER_TEMP/mac-derived/Build/Products/Release/Aircast.app" "out/AircastQGCNative-${SHORT}.dmg"
-
-      - name: Verify DMG
-        env:
-          SHORT: ${{ needs.setup.outputs.short_version }}
-          SIGNED: ${{ env.MACOS_SIGN }}
-        run: |
-          set -euo pipefail
-          apple_retry() { for attempt in 1 2 3 4 5 6; do "$@" && return 0; echo "Apple check failed (attempt $attempt of 6), retrying in 20 s: $*"; sleep 20; done; return 1; }
-          mount="$RUNNER_TEMP/aircast-dmg"
-          mkdir -p "$mount"
-          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "out/AircastQGCNative-${SHORT}.dmg"
-          trap 'hdiutil detach "$mount" -force || true' EXIT
-          app="$mount/Aircast.app"
-          test -x "$app/Contents/MacOS/Aircast"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Contents/Info.plist"
-          ios/package-macos.sh --verify "$app"
-          codesign --verify --deep --strict --verbose=2 "$app"
-          if [ "$SIGNED" == "true" ]; then
-            apple_retry spctl --assess --type execute --verbose=2 "$app"
-            apple_retry xcrun stapler validate "$app"
-          fi
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: qgc-macos-native
-          path: out/*.dmg
-          if-no-files-found: error
+    uses: ./.github/workflows/desktop.yml  # zizmor: ignore[self-repository]
+    with:
+      ref: ${{ needs.setup.outputs.version }}
+      short_version: ${{ needs.setup.outputs.short_version }}
+    secrets:
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+      MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+      MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+      OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
 
   build-windows:
     needs: setup
@@ -752,15 +640,6 @@ jobs:
           path: out/*.exe
           if-no-files-found: error
 
-  build-windows-native:
-    needs: setup
-    uses: ./.github/workflows/windows-native.yml  # zizmor: ignore[self-repository]
-    with:
-      ref: ${{ needs.setup.outputs.version }}
-      short_version: ${{ needs.setup.outputs.short_version }}
-    secrets:
-      OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
-
   build-linux:
     needs: setup
     runs-on: ubuntu-24.04
@@ -915,7 +794,7 @@ jobs:
                 -d @-
 
   publish:
-    needs: [setup, build-android, build-android-core, build-macos-native, build-windows, build-windows-native, build-linux, build-web]
+    needs: [setup, build-android, build-android-core, build-desktop, build-windows, build-linux, build-web]
     if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -933,9 +812,8 @@ jobs:
           RESULTS: |
             Android ${{ needs.build-android.result }}
             Android-core ${{ needs.build-android-core.result }}
-            macOS-native ${{ needs.build-macos-native.result }}
+            Desktop ${{ needs.build-desktop.result }}
             Windows ${{ needs.build-windows.result }}
-            Windows-native ${{ needs.build-windows-native.result }}
             Linux ${{ needs.build-linux.result }}
         run: |
           MISSING=$(echo "$RESULTS" | awk 'NF && $2 != "success" { printf "%s%s", sep, $1; sep=", " }')
@@ -1075,10 +953,9 @@ jobs:
       - build-android
       - build-android-core
       - build-ios
-      - build-macos-native
+      - build-desktop
       - build-windows
       - build-windows-arm64
-      - build-windows-native
       - build-linux
       - build-web
       - publish
@@ -1092,10 +969,9 @@ jobs:
           ANDROID: ${{ needs.build-android.result }}
           ANDROID_CORE: ${{ needs.build-android-core.result }}
           IOS: ${{ needs.build-ios.result }}
-          MACOS_NATIVE: ${{ needs.build-macos-native.result }}
+          DESKTOP: ${{ needs.build-desktop.result }}
           WINDOWS: ${{ needs.build-windows.result }}
           WINDOWS_ARM64: ${{ needs.build-windows-arm64.result }}
-          WINDOWS_NATIVE: ${{ needs.build-windows-native.result }}
           LINUX: ${{ needs.build-linux.result }}
           WEB: ${{ needs.build-web.result }}
           REPO: ${{ github.repository }}
@@ -1106,10 +982,9 @@ jobs:
             echo "- **Android:** $ANDROID"
             echo "- **Android core head:** $ANDROID_CORE"
             echo "- **iOS:** $IOS"
-            echo "- **macOS:** $MACOS_NATIVE"
+            echo "- **Desktop (macOS, Windows arm64 + x64):** $DESKTOP"
             echo "- **Windows:** $WINDOWS"
             echo "- **Windows ARM64:** $WINDOWS_ARM64 (non-blocking)"
-            echo "- **Windows native (WinUI, arm64 + x64):** $WINDOWS_NATIVE"
             echo "- **Linux:** $LINUX"
             echo "- **Web:** $WEB"
             echo "- **Release:** https://github.com/$REPO/releases/tag/$VERSION"

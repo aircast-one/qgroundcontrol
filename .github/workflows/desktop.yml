@@ -1,0 +1,271 @@
+name: Desktop
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build"
+        required: true
+        type: string
+      short_version:
+        description: "Version used in the artifact names (e.g. v5.6.6-beta.1)"
+        required: true
+        type: string
+    secrets:
+      MACOS_CERT_P12_BASE64:
+        required: false
+      MACOS_CERT_P12_PASSWORD:
+        required: false
+      MACOS_SIGNING_IDENTITY:
+        required: false
+      MACOS_NOTARIZATION_USERNAME:
+        required: false
+      MACOS_NOTARIZATION_TEAM_ID:
+        required: false
+      MACOS_NOTARIZATION_PASSWORD:
+        required: false
+      OTEL_BETA_INGEST_TOKEN:
+        required: false
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'groundstation/**'
+      - '.github/workflows/desktop.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'groundstation/**'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build"
+        required: false
+        default: main
+        type: string
+      short_version:
+        description: "Version used in the artifact names"
+        required: false
+        default: v0.0.0-dev
+        type: string
+
+env:
+  SHORT: ${{ inputs.short_version || 'v0.0.0-dev' }}
+
+jobs:
+  macos:
+    name: Desktop (macOS)
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain  # zizmor: ignore[self-repository]
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: ArduPilot parameter metadata
+        run: git clone --depth 1 https://github.com/ArduPilot/ParameterRepository .cache/CPM/ardupilotparams/main
+
+      - name: Web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Shell tests
+        working-directory: web/src-tauri
+        run: cargo test --release
+
+      - name: Build, sign and notarize
+        working-directory: web
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+          IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          NOTARY_USER: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          NOTARY_TEAM: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          OTEL_BETA_INGEST_TOKEN: ${{ secrets.OTEL_BETA_INGEST_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "$P12" ]; then
+            export APPLE_CERTIFICATE="$P12" APPLE_CERTIFICATE_PASSWORD="$P12_PASSWORD" APPLE_SIGNING_IDENTITY="$IDENTITY"
+            export APPLE_ID="$NOTARY_USER" APPLE_PASSWORD="$NOTARY_PASSWORD" APPLE_TEAM_ID="$NOTARY_TEAM"
+          else
+            echo "::warning::MACOS_CERT_P12_BASE64 is not set, so the macOS app is signed ad hoc and not notarized"
+          fi
+          npx tauri build --bundles app,dmg --config "{\"version\":\"${SHORT#v}\"}"
+          mkdir -p ../out
+          cp src-tauri/target/release/bundle/dmg/*.dmg "../out/AircastQGCNative-${SHORT}.dmg"
+
+      - name: Verify DMG
+        env:
+          SIGNED: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+        run: |
+          set -euo pipefail
+          apple_retry() { for attempt in 1 2 3 4 5 6; do "$@" && return 0; echo "Apple check failed (attempt $attempt of 6), retrying in 20 s: $*"; sleep 20; done; return 1; }
+          mount="$RUNNER_TEMP/aircast-dmg"
+          mkdir -p "$mount"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "out/AircastQGCNative-${SHORT}.dmg"
+          trap 'hdiutil detach "$mount" -force || true' EXIT
+          app="$mount/Aircast.app"
+          test -x "$app/Contents/MacOS/aircast-desktop"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = one.aircast.mac
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "${SHORT#v}"
+          test -L "$mount/Applications"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          if [ "$SIGNED" == "true" ]; then
+            apple_retry spctl --assess --type execute --verbose=2 "$app"
+            apple_retry xcrun stapler validate "$app"
+          fi
+
+      - name: Boot test
+        run: |
+          set -euo pipefail
+          home="$RUNNER_TEMP/aircast-home"
+          mkdir -p "$home"
+          HOME="$home" web/src-tauri/target/release/bundle/macos/Aircast.app/Contents/MacOS/aircast-desktop --port 28777 --debug-build &
+          app=$!
+          for _ in $(seq 60); do
+            curl -sf http://127.0.0.1:28777/links >/dev/null && break
+            sleep 1
+          done
+          kill -0 "$app"
+          curl -sf http://127.0.0.1:28777/links
+          test -f "$home/Library/Application Support/settings/Aircast/Aircast QGC.ini"
+          kill "$app"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qgc-macos-native
+          path: out/*.dmg
+          if-no-files-found: error
+
+  windows:
+    name: Desktop (Windows ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+          - arch: x64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain  # zizmor: ignore[self-repository]
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: ArduPilot parameter metadata
+        run: git clone --depth 1 https://github.com/ArduPilot/ParameterRepository .cache/CPM/ardupilotparams/main
+
+      - name: Web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Shell tests
+        working-directory: web/src-tauri
+        run: cargo test --release
+
+      - name: Build installer
+        working-directory: web
+        env:
+          OTEL_BETA_INGEST_TOKEN: ${{ secrets.OTEL_BETA_INGEST_TOKEN }}
+        run: |
+          $config = Join-Path $env:RUNNER_TEMP 'version.json'
+          @{ version = $env:SHORT.TrimStart('v') } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $config
+          npx tauri build --bundles nsis --config $config
+          if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
+          New-Item -ItemType Directory -Force -Path ..\out | Out-Null
+          $setup = Get-ChildItem src-tauri\target\release\bundle\nsis\*-setup.exe | Select-Object -First 1
+          Copy-Item $setup.FullName "..\out\AircastQGCNative-$env:SHORT-windows-$env:ARCH-setup.exe"
+          Get-ChildItem ..\out
+
+      - name: Upgrade from the released app
+        if: matrix.arch == 'x64'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=20" | ConvertFrom-Json
+          $asset = $releases | ForEach-Object { $_.assets } | Where-Object { $_.name -match '^AircastQGCNative-.*-windows-x64-setup\.exe$' } | Select-Object -First 1
+          if ($null -eq $asset) { throw "No released Windows installer to upgrade from" }
+          $released = Join-Path $env:RUNNER_TEMP $asset.name
+          Invoke-WebRequest $asset.browser_download_url -OutFile $released
+          Start-Process $released -ArgumentList '/S' -Wait
+          Start-Sleep -Seconds 10
+          Get-Process AircastQGC, aircast-desktop -ErrorAction SilentlyContinue | Stop-Process -Force
+          $data = Join-Path $env:LOCALAPPDATA 'Aircast'
+          New-Item -ItemType Directory -Force -Path $data | Out-Null
+          Add-Content (Join-Path $data 'Aircast QGC.ini') "`n[UpgradeCheck]`nkept=true"
+          Start-Process "out\AircastQGCNative-$env:SHORT-windows-$env:ARCH-setup.exe" -ArgumentList '/S' -Wait
+          $nativeKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AircastQGCNative'
+          $deadline = (Get-Date).AddSeconds(90)
+          while ((Get-Date) -lt $deadline -and ((Test-Path $nativeKey) -or -not (Get-Process aircast-desktop -ErrorAction SilentlyContinue))) { Start-Sleep -Seconds 2 }
+          if (Test-Path $nativeKey) { throw "The WinUI app is still installed" }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\AircastQGCNative\AircastQGC.exe')) { throw "The WinUI app's files are still there" }
+          if (-not (Test-Path (Join-Path $data 'aircast-desktop.exe'))) { throw "The desktop app is not installed" }
+          if (-not (Select-String -Path (Join-Path $data 'Aircast QGC.ini') -Pattern 'kept=true' -Quiet)) { throw "The settings did not survive the upgrade" }
+          if (-not (Get-Process aircast-desktop -ErrorAction SilentlyContinue)) { throw "The silent install did not reopen the app" }
+          Get-Process aircast-desktop | Stop-Process -Force
+          "Upgraded $($asset.name) to the desktop app: settings kept, old app removed, app reopened"
+
+      - name: Desktop e2e
+        if: matrix.arch == 'x64'
+        working-directory: web
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Aircast\aircast-desktop.exe'
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
+          $app = Start-Process $exe -ArgumentList '--port', '28777', '--debug-build', '--app-name', 'e2e' -PassThru
+          $deadline = (Get-Date).AddSeconds(90)
+          while ((Get-Date) -lt $deadline) {
+            try { Invoke-RestMethod http://127.0.0.1:9222/json/version | Out-Null; break } catch { Start-Sleep -Seconds 1 }
+          }
+          npx playwright test -c e2e-desktop/playwright.config.ts
+          $code = $LASTEXITCODE
+          Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          exit $code
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qgc-windows-native-${{ matrix.arch }}
+          path: out/*-setup.exe
+          if-no-files-found: error
