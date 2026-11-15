@@ -2,8 +2,7 @@ use serde_json::Value;
 
 use crate::router::Backend;
 
-pub const SETUP_INCOMPLETE: &str =
-    "Configuration tasks remain before this vehicle is ready to fly. Setup shows what is left.";
+pub const SETUP_INCOMPLETE_TAIL: &str = "before this vehicle can fly.";
 pub const HITL_ENABLED: &str =
     "Warning: Hardware In The Loop (HITL) simulation is enabled for this vehicle.";
 
@@ -50,15 +49,54 @@ fn serial_port_description(link: crate::transport::LinkId) -> Option<String> {
         .map(|port| port.description)
 }
 
-pub fn parameters_ready_notices(setup_ready: bool, px4: bool, hitl: bool) -> Vec<&'static str> {
-    [
-        (!setup_ready, SETUP_INCOMPLETE),
-        (px4 && hitl, HITL_ENABLED),
-    ]
-    .into_iter()
-    .filter(|(due, _)| *due)
-    .map(|(_, text)| text)
-    .collect()
+fn listed(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+pub fn setup_incomplete(outstanding: &[String], faults: &[String]) -> String {
+    match (outstanding, faults) {
+        ([], []) => {
+            format!("This vehicle reports nothing to set up. Check Setup {SETUP_INCOMPLETE_TAIL}")
+        }
+        ([], [_]) => format!(
+            "{} reports a fault. Check it in Setup {SETUP_INCOMPLETE_TAIL}",
+            listed(faults)
+        ),
+        ([], _) => format!(
+            "{} report faults. Check them in Setup {SETUP_INCOMPLETE_TAIL}",
+            listed(faults)
+        ),
+        ([_], _) => format!(
+            "{} needs setup {SETUP_INCOMPLETE_TAIL}",
+            listed(outstanding)
+        ),
+        _ => format!("{} need setup {SETUP_INCOMPLETE_TAIL}", listed(outstanding)),
+    }
+}
+
+pub fn is_setup_incomplete(text: &str) -> bool {
+    text.ends_with(SETUP_INCOMPLETE_TAIL)
+}
+
+pub fn parameters_ready_notices(setup_left: Option<String>, px4: bool, hitl: bool) -> Vec<String> {
+    setup_left
+        .into_iter()
+        .chain((px4 && hitl).then(|| HITL_ENABLED.to_string()))
+        .collect()
+}
+
+fn names(view: &Value, list: &str, keep: impl Fn(&Value) -> bool) -> Vec<String> {
+    view[list]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|item| keep(item))
+        .filter_map(|item| item["name"].as_str().or(item.as_str()).map(str::to_string))
+        .collect()
 }
 
 pub fn announce(backend: &dyn Backend) {
@@ -69,19 +107,22 @@ pub fn announce(backend: &dyn Backend) {
     let Some(announce) = crate::hub::lock().take_parameters_announce() else {
         return;
     };
-    let setup_ready = crate::setup::setup_view(backend, &[])
-        .get("ready")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
+    let setup = crate::setup::setup_view(backend, &[]);
+    let setup_left = (!setup.get("ready").and_then(Value::as_bool).unwrap_or(true)).then(|| {
+        setup_incomplete(
+            &names(&setup, "components", |c| c["needsAttention"] == true),
+            &names(&setup, "sensorFaults", |_| true),
+        )
+    });
     let bad_cube = announce
         .cube_black_link
         .and_then(serial_port_description)
         .is_some_and(|description| is_cube_black(&description));
-    parameters_ready_notices(setup_ready, announce.px4, announce.hitl)
+    parameters_ready_notices(setup_left, announce.px4, announce.hitl)
         .into_iter()
-        .chain(bad_cube.then_some(BAD_CUBE_BLACK))
+        .chain(bad_cube.then(|| BAD_CUBE_BLACK.to_string()))
         .for_each(|text| {
-            crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, text);
+            crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, &text);
         });
     report_missing_names(&crate::vehiclefacade::setup_complete_missing_parameters());
 }
@@ -139,19 +180,59 @@ mod tests {
 
     #[test]
     fn parameters_ready_warns_like_the_autopilot_plugins_prechecks() {
+        let left = setup_incomplete(&["Radio".into()], &[]);
         assert_eq!(
-            parameters_ready_notices(false, false, false),
-            [SETUP_INCOMPLETE]
+            parameters_ready_notices(Some(left.clone()), false, false),
+            [left]
         );
         assert_eq!(
-            parameters_ready_notices(true, true, true),
+            parameters_ready_notices(None, true, true),
             [HITL_ENABLED],
             "PX4AutoPilotPlugin warns about SYS_HITL"
         );
         assert!(
-            parameters_ready_notices(true, false, true).is_empty(),
+            parameters_ready_notices(None, false, true).is_empty(),
             "only PX4 reads SYS_HITL"
         );
-        assert!(parameters_ready_notices(true, true, false).is_empty());
+        assert!(parameters_ready_notices(None, true, false).is_empty());
+    }
+
+    #[test]
+    fn the_setup_notice_names_what_is_left_so_the_pilot_knows_what_to_do() {
+        let named = |outstanding: &[&str], faults: &[&str]| {
+            let owned = |names: &[&str]| names.iter().map(|it| it.to_string()).collect::<Vec<_>>();
+            setup_incomplete(&owned(outstanding), &owned(faults))
+        };
+        assert_eq!(
+            named(&["Radio"], &[]),
+            "Radio needs setup before this vehicle can fly."
+        );
+        assert_eq!(
+            named(&["Radio", "Sensors"], &["GPS"]),
+            "Radio and Sensors need setup before this vehicle can fly."
+        );
+        assert_eq!(
+            named(&["Frame", "Radio", "Sensors"], &[]),
+            "Frame, Radio and Sensors need setup before this vehicle can fly."
+        );
+        assert_eq!(
+            named(&[], &["GPS"]),
+            "GPS reports a fault. Check it in Setup before this vehicle can fly."
+        );
+        assert_eq!(
+            named(&[], &["GPS", "Gyro"]),
+            "GPS and Gyro report faults. Check them in Setup before this vehicle can fly."
+        );
+        assert!(
+            [
+                named(&["Radio"], &[]),
+                named(&[], &["GPS"]),
+                named(&[], &[])
+            ]
+            .iter()
+            .all(|it| is_setup_incomplete(it)),
+            "every form opens Setup"
+        );
+        assert!(!is_setup_incomplete(HITL_ENABLED));
     }
 }

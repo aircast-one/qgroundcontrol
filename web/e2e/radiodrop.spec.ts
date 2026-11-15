@@ -11,7 +11,7 @@ const flip = async (page: Page, raw: Readonly<Record<number, number>>) => {
 };
 const flyWithRadio = async (page: Page) => {
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
-  await page.addLocatorHandler(page.getByText('Configuration tasks remain before this vehicle is ready to fly.', { exact: false }), () => page.getByRole('button', { name: 'Later', exact: true }).click());
+  await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
   await plugInR2d2Radio(page);
   await openApp(page);
   await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });

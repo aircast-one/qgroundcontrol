@@ -623,7 +623,7 @@ fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
                 name: name.to_string(),
                 class_name: component.get("class").and_then(Value::as_str).unwrap_or_default().to_string(),
                 known: known_component(&component),
-                needs_attention: flag(&component, "requiresSetup") && !flag(&component, "setupComplete"),
+                needs_attention: !flag(&component, "setupComplete"),
                 blocked_reason: blocked_by(&component, armed, flying, rover),
                 setup_complete: flag(&component, "setupComplete"),
             })
@@ -725,6 +725,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "setupComplete": (connected && parameters_ready).then(|| incomplete || setup_complete_of(&named)),
         "headline": headline,
         "detail": detail,
+        "sensorFaults": faults,
         "components": components.iter().map(|c| json!({
             "name": c.name,
             "className": c.class_name,
@@ -1623,8 +1624,8 @@ mod components {
         );
         assert_eq!(
             (read[3].name.as_str(), read[3].needs_attention),
-            ("Camera", false),
-            "a component that does not require setup is never outstanding"
+            ("Camera", true),
+            "AutoPilotPlugin::_recalcSetupComplete holds the vehicle back on any component not set up, so Setup flags it too, or Open Setup lands somewhere else"
         );
     }
 

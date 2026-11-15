@@ -1,6 +1,18 @@
-import { connectMock, expect, openAircraftSetup, openMenu, test } from './fixtures';
+import { connectMock, expect, openAircraftSetup, openApp, openMenu, test } from './fixtures';
+import { plugInRadio } from './radio';
 
 test.describe.configure({ timeout: 120_000 });
+
+test('a vehicle that connects with setup left says what is left, and Open Setup opens it', async ({ page }) => {
+  await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
+  await plugInRadio(page);
+  await openApp(page);
+  await connectMock(page, [], 'APM ArduCopter Vehicle');
+  await expect(page.getByRole('dialog').getByText('Joystick needs setup before this vehicle can fly.', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Open Setup', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Joystick', exact: true }).or(page.getByText('Calibrate before enabling'))).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Calibrate', exact: true })).toBeVisible();
+});
 
 test('ArduPilot setup names the frame and failsafe actions from the parameter metadata', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');

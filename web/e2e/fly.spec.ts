@@ -69,7 +69,7 @@ test.describe('against ArduPilot', () => {
 
   test('a takeoff the aircraft refuses to arm for says why, once', async ({ app }) => {
     test.setTimeout(300_000);
-    await app.addLocatorHandler(app.getByText('Configuration tasks remain before this vehicle is ready to fly.', { exact: false }), () => app.getByRole('button', { name: 'Later', exact: true }).click());
+    await app.addLocatorHandler(app.getByText(/ before this vehicle can fly\.$/), () => app.getByRole('button', { name: 'Later', exact: true }).click());
     await connectSitl(app, sitl.running?.ws ?? '');
     await expect.poll(async () => (await core(app, 'vehicle.homePosition')).valid, { timeout: 180_000 }).toBe(true);
     await expect

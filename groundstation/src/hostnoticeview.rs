@@ -92,7 +92,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
             let text = n["text"].as_str().unwrap_or_default();
             match text {
                 crate::noticeboard::REBOOT_VEHICLE_TEXT => json!({ "title": title, "text": format!("{text} Click Ok to reboot the vehicle now."), "action": "rebootVehicle" }),
-                crate::connectnotices::SETUP_INCOMPLETE => json!({ "title": title, "text": text, "action": "openSetup" }),
+                text if crate::connectnotices::is_setup_incomplete(text) => json!({ "title": title, "text": text, "action": "openSetup" }),
                 crate::usbradio::RADIO_FOUND => json!({ "title": title, "text": text, "action": "useRadio" }),
                 _ => json!({ "title": title, "text": text, "action": "" }),
             }
@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn the_setup_incomplete_notice_offers_to_open_setup() {
         let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
-            { "id": 1, "kind": "message", "title": "", "text": crate::connectnotices::SETUP_INCOMPLETE },
+            { "id": 1, "kind": "message", "title": "", "text": crate::connectnotices::setup_incomplete(&["Radio".into()], &[]) },
         ] }));
         assert_eq!(
             host_notices_view(&host, &[])["dialogs"][0]["action"],

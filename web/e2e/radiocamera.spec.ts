@@ -6,7 +6,7 @@ const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it
 test('the R2D2 camera sliders point the gimbal and the zoom knob sets the zoom', async ({ page }) => {
   test.setTimeout(180_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
-  await page.addLocatorHandler(page.getByText('Configuration tasks remain before this vehicle is ready to fly.', { exact: false }), () => page.getByRole('button', { name: 'Later', exact: true }).click());
+  await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
   await plugInR2d2Radio(page);
   await openApp(page);
   await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
@@ -38,7 +38,7 @@ test('the R2D2 camera sliders point the gimbal and the zoom knob sets the zoom',
 test('the SD switch hands the left stick to the camera in a mode that holds altitude, and hands it back', async ({ page }) => {
   test.setTimeout(180_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
-  await page.addLocatorHandler(page.getByText('Configuration tasks remain before this vehicle is ready to fly.', { exact: false }), () => page.getByRole('button', { name: 'Later', exact: true }).click());
+  await page.addLocatorHandler(page.getByText(/ before this vehicle can fly\.$/), () => page.getByRole('button', { name: 'Later', exact: true }).click());
   await plugInR2d2Radio(page);
   await openApp(page);
   await expect(page.getByText(RADIO_FOUND)).toBeVisible({ timeout: 30_000 });
