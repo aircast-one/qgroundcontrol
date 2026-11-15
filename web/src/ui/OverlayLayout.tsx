@@ -7,11 +7,11 @@ import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { Drawable, MaterialIcon } from '@/res/Icon';
-import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
-import { FLY_SCRIM_ALPHA, LocalAvoidedByVideoMessage, STATUS_ROW_HEIGHT, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
+import { AircastSpace, aircast, md } from '@/theme/Colors';
+import { LocalAvoidedByVideoMessage, STATUS_ROW_HEIGHT, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
-import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
 const LAYOUT_STORE = 'fly-overlay-layout';
 const HIDDEN_PREFIX = 'OverlayRigHidden-';
@@ -461,7 +461,7 @@ export const LayoutOptionsMenu = () => {
   const layout = useContext(LocalFlyScreenState).layout;
   const valueSize = useValue(layout.valueSize);
   const vehicleClass = instrumentVehicleClass(useQgcPath(INSTRUMENTS_VIEW));
-  const backdrop = useOsdBackdrop(withAlpha(Color.Black, FLY_SCRIM_ALPHA));
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
   const [open, setOpen] = useState(false);
   const [armed, setArmed] = useState(false);
   useLaunchedEffect([armed], async (scope) => {
