@@ -19,6 +19,7 @@
     "vite.config.ts",
     "playwright.config.ts",
     "scripts",
-    "e2e"
+    "e2e",
+    "e2e-desktop"
   ]
 }
