@@ -118,7 +118,12 @@ impl UdpLink {
         mut sink: impl FnMut(&[u8]) + Send + 'static,
         lost: impl FnOnce(String) + Send + 'static,
     ) -> io::Result<UdpLink> {
-        let socket = bind_shared(config.local_port)?;
+        let socket = bind_shared(config.local_port).or_else(|taken| {
+            match taken.kind() == io::ErrorKind::AddrInUse && !config.targets.is_empty() {
+                true => bind_shared(0),
+                false => Err(taken),
+            }
+        })?;
         let configured = Mutex::new(resolved(&config.targets));
         let session = Arc::new(Mutex::new(BTreeMap::new()));
         let stop = Arc::new(AtomicBool::new(false));
@@ -256,6 +261,54 @@ mod tests {
         let (len, from) = peer.recv_from(&mut back).unwrap();
         assert_eq!((&back[..len], from.port()), (frame.as_slice(), port));
         link.close();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_that_calls_its_server_opens_on_a_free_port_when_its_own_is_taken() {
+        let holder = UdpSocket::bind("0.0.0.0:0").unwrap();
+        let taken = holder.local_addr().unwrap().port();
+        let server = UdpSocket::bind("127.0.0.1:0").unwrap();
+        server
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let (tx, rx) = mpsc::channel();
+        let link = UdpLink::open(
+            &UdpConfig {
+                local_port: taken,
+                targets: vec![("127.0.0.1".into(), server.local_addr().unwrap().port())],
+            },
+            BTreeSet::new(),
+            move |bytes| tx.send(bytes.to_vec()).unwrap(),
+            |_| {},
+        )
+        .expect("another program on the port does not stop a link that calls out");
+        assert_ne!(link.local_port(), taken);
+        let frame = heartbeat();
+        assert_eq!(link.write(&frame), 1);
+        let mut heard = [0u8; 64];
+        let (len, from) = server.recv_from(&mut heard).unwrap();
+        assert_eq!(&heard[..len], frame.as_slice());
+        server.send_to(&frame, from).unwrap();
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            frame,
+            "the server answers the port the link really sent from"
+        );
+        link.close();
+        assert!(
+            UdpLink::open(
+                &UdpConfig {
+                    local_port: taken,
+                    targets: vec![],
+                },
+                BTreeSet::new(),
+                |_| {},
+                |_| {},
+            )
+            .is_err(),
+            "a link that only listens is no use on another port, so it still fails"
+        );
     }
 
     #[test]
