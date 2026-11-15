@@ -245,7 +245,7 @@ jobs:
           if (Test-Path $nativeKey) { throw "The WinUI app is still installed" }
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\AircastQGCNative\AircastQGC.exe')) { throw "The WinUI app's files are still there" }
           if (-not (Test-Path (Join-Path $data 'aircast-desktop.exe'))) { throw "The desktop app is not installed" }
-          if (-not (Select-String -Path (Join-Path $data 'Aircast QGC.ini') -Pattern 'kept=true' -Quiet)) {
+          if (-not (Select-String -Path (Join-Path $data 'Aircast QGC.ini') -Pattern 'kept="?true' -Quiet)) {
             Get-ChildItem $data | Format-Table Name, Length, LastWriteTime | Out-String | Write-Host
             Get-Content (Join-Path $data 'Aircast QGC.ini') -ErrorAction SilentlyContinue | Write-Host
             throw "The settings did not survive the upgrade"
