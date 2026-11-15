@@ -76,9 +76,10 @@ export const vehicleStatus = async (page: Page) => {
 
 export const showMapFull = async (page: Page) => {
   const map = page.getByRole('region', { name: 'Map' });
+  const toMap = page.getByRole('button', { name: /^(Map|Mini-map)$/ }).first();
   const full = async () => (await map.count()) > 0 && ((await map.boundingBox())?.width ?? 0) >= (page.viewportSize()?.width ?? 0) * 0.9;
   await expect(async () => {
-    if (!(await full())) await page.getByRole('button', { name: /^(Map|Mini-map)$/ }).first().click();
+    if (!(await full()) && (await toMap.count()) > 0) await toMap.click();
     expect(await full()).toBe(true);
   }).toPass({ timeout: 20_000 });
 };
