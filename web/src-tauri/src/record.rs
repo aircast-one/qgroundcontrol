@@ -1,13 +1,14 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 
 use muxide::api::{MuxerBuilder, VideoCodec};
 use muxide::fragmented::FragmentedMuxer;
 
 use crate::annexb::{self, Codec};
+use crate::matroska::{self, Matroska};
 
 const TIMESCALE: u64 = 90_000;
 const SEGMENT: i64 = 90_000;
@@ -19,6 +20,8 @@ const REORDERED_WITHIN: i64 = 45_000;
 const REORDER_DEPTH: usize = 4;
 const KEYFRAMES_WITHOUT_PARAMETERS: u32 = 3;
 const FRAME_RATE_UNUSED_BY_FRAGMENTS: f64 = 30.0;
+const QUICKTIME_BRAND: &[u8; 4] = b"qt  ";
+const BRAND_AT: std::ops::Range<usize> = 8..12;
 
 const FORMAT_CHANGED: &str = "The camera changed its picture format, so the recording stopped.";
 const NO_PARAMETERS: &str =
@@ -52,8 +55,29 @@ struct Pending {
     key: bool,
 }
 
-struct Started {
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Container {
+    Mp4,
+    QuickTime,
+    Matroska,
+}
+
+struct Fragments {
     muxer: FragmentedMuxer,
+    pending: VecDeque<Pending>,
+    presented: BinaryHeap<Reverse<i64>>,
+    decoded: i64,
+    flushed: i64,
+    previous: Option<i64>,
+}
+
+enum Writer {
+    Fragments(Box<Fragments>),
+    Matroska(Matroska),
+}
+
+struct Started {
+    writer: Writer,
     codec: Codec,
     parameters: Parameters,
 }
@@ -61,16 +85,12 @@ struct Started {
 pub struct Recording {
     path: PathBuf,
     file: File,
+    container: Container,
     size: (u32, u32),
     started: Option<Started>,
     seen: Parameters,
     keyframes_without_parameters: u32,
     clock: Option<Clock>,
-    pending: VecDeque<Pending>,
-    presented: BinaryHeap<Reverse<i64>>,
-    decoded: i64,
-    flushed: i64,
-    previous: Option<i64>,
     frames: u64,
     bytes: u64,
 }
@@ -252,21 +272,132 @@ fn refused(reason: &str) -> std::io::Error {
     std::io::Error::other(reason.to_string())
 }
 
-impl Recording {
-    pub fn create(path: &Path, size: (u32, u32)) -> std::io::Result<Self> {
-        Ok(Self {
-            path: path.to_path_buf(),
-            file: OpenOptions::new().write(true).create_new(true).open(path)?,
-            size,
-            started: None,
-            seen: Parameters::default(),
-            keyframes_without_parameters: 0,
-            clock: None,
+fn container_of(path: &Path) -> Container {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("mkv") => Container::Matroska,
+        Some("mov") => Container::QuickTime,
+        _ => Container::Mp4,
+    }
+}
+
+fn configuration_record(init: &[u8], codec: Codec) -> Option<Vec<u8>> {
+    let tag: &[u8] = match codec {
+        Codec::H264 => b"avcC",
+        Codec::H265 => b"hvcC",
+    };
+    let at = init.windows(tag.len()).position(|window| window == tag)?;
+    let size = usize::try_from(u32::from_be_bytes(init.get(at - 4..at)?.try_into().ok()?)).ok()?;
+    init.get(at + tag.len()..at - 4 + size).map(<[u8]>::to_vec)
+}
+
+fn branded(init: Vec<u8>, brand: &[u8; 4]) -> Vec<u8> {
+    init.iter()
+        .enumerate()
+        .map(|(at, byte)| match at.checked_sub(BRAND_AT.start) {
+            Some(index) if BRAND_AT.contains(&at) => brand[index],
+            _ => *byte,
+        })
+        .collect()
+}
+
+fn muxing_failed(error: impl std::fmt::Display) -> std::io::Error {
+    std::io::Error::other(error.to_string())
+}
+
+impl Fragments {
+    fn new(muxer: FragmentedMuxer) -> Self {
+        Self {
+            muxer,
             pending: VecDeque::new(),
             presented: BinaryHeap::new(),
             decoded: 0,
             flushed: 0,
             previous: None,
+        }
+    }
+
+    fn frame(&mut self, frame: Pending) -> std::io::Result<Vec<u8>> {
+        self.presented.push(Reverse(frame.at));
+        self.pending.push_back(frame);
+        match self.pending.len() > REORDER_DEPTH {
+            true => self.decode_oldest(),
+            false => Ok(Vec::new()),
+        }
+    }
+
+    fn decode_oldest(&mut self) -> std::io::Result<Vec<u8>> {
+        let Some(frame) = self.pending.pop_front() else {
+            return Ok(Vec::new());
+        };
+        let decoded = self
+            .presented
+            .pop()
+            .map_or(frame.at, |Reverse(earliest)| earliest)
+            .max(self.decoded);
+        let after_stall = self
+            .previous
+            .is_some_and(|previous| decoded - previous > STALL);
+        let due = decoded - self.flushed >= if frame.key { SEGMENT } else { LONGEST_SEGMENT };
+        self.previous = Some(decoded);
+        self.decoded = decoded;
+        let segment = match due && !after_stall {
+            true => {
+                self.flushed = decoded;
+                self.muxer.flush_segment().unwrap_or_default()
+            }
+            false => Vec::new(),
+        };
+        let stamp = |time: i64| u64::try_from(time).unwrap_or(0);
+        self.muxer
+            .write_video(stamp(frame.at), stamp(decoded), &frame.sample, frame.key)
+            .map_err(muxing_failed)?;
+        Ok(segment)
+    }
+
+    fn ended(&mut self) -> std::io::Result<Vec<u8>> {
+        let drained = (0..self.pending.len())
+            .map(|_| self.decode_oldest())
+            .collect::<std::io::Result<Vec<_>>>()?;
+        Ok([
+            drained.concat(),
+            self.muxer.flush_segment().unwrap_or_default(),
+        ]
+        .concat())
+    }
+}
+
+impl Writer {
+    fn frame(&mut self, frame: Pending) -> std::io::Result<Vec<u8>> {
+        match self {
+            Self::Fragments(fragments) => fragments.frame(frame),
+            Self::Matroska(matroska) => matroska.frame(frame.at, frame.key, &frame.sample),
+        }
+    }
+
+    fn ended(&mut self) -> std::io::Result<Vec<u8>> {
+        match self {
+            Self::Fragments(fragments) => fragments.ended(),
+            Self::Matroska(matroska) => matroska.ended(),
+        }
+    }
+}
+
+impl Recording {
+    pub fn create(path: &Path, size: (u32, u32)) -> std::io::Result<Self> {
+        Ok(Self {
+            path: path.to_path_buf(),
+            file: OpenOptions::new().write(true).create_new(true).open(path)?,
+            container: container_of(path),
+            size,
+            started: None,
+            seen: Parameters::default(),
+            keyframes_without_parameters: 0,
+            clock: None,
             frames: 0,
             bytes: 0,
         })
@@ -302,12 +433,25 @@ impl Recording {
         }
         let mut muxer = muxer(codec, &self.seen, self.size).map_err(|reason| refused(&reason))?;
         let init = muxer.init_segment();
+        let (writer, header) = match self.container {
+            Container::Mp4 => (Writer::Fragments(Box::new(Fragments::new(muxer))), init),
+            Container::QuickTime => (
+                Writer::Fragments(Box::new(Fragments::new(muxer))),
+                branded(init, QUICKTIME_BRAND),
+            ),
+            Container::Matroska => {
+                let configuration =
+                    configuration_record(&init, codec).ok_or_else(|| refused(NO_PARAMETERS))?;
+                let (matroska, header) = Matroska::start(codec, configuration, self.size)?;
+                (Writer::Matroska(matroska), header)
+            }
+        };
         self.started = Some(Started {
-            muxer,
+            writer,
             codec,
             parameters: self.seen.clone(),
         });
-        self.append(&init)
+        self.append(&header)
     }
 
     pub fn write(
@@ -333,65 +477,31 @@ impl Recording {
             .placed(timestamp);
         self.clock = Some(clock);
         self.frames += 1;
-        let header_pps = self
-            .started
-            .as_ref()
-            .map(|started| started.parameters.header_pps().to_vec())
-            .unwrap_or_default();
-        self.pending.push_back(Pending {
-            at,
-            sample: sample(codec, nals, &header_pps),
-            key,
-        });
-        self.presented.push(Reverse(at));
-        match self.pending.len() > REORDER_DEPTH {
-            true => self.decode_oldest(),
-            false => Ok(()),
-        }
-    }
-
-    fn decode_oldest(&mut self) -> std::io::Result<()> {
-        let Some(frame) = self.pending.pop_front() else {
+        let Some(started) = self.started.as_mut() else {
             return Ok(());
         };
-        let decoded = self
-            .presented
-            .pop()
-            .map_or(frame.at, |Reverse(earliest)| earliest)
-            .max(self.decoded);
-        let after_stall = self
-            .previous
-            .is_some_and(|previous| decoded - previous > STALL);
-        let due = decoded - self.flushed >= if frame.key { SEGMENT } else { LONGEST_SEGMENT };
-        self.previous = Some(decoded);
-        self.decoded = decoded;
-        if due && !after_stall {
-            self.flushed = decoded;
-            if let Some(segment) = self
-                .started
-                .as_mut()
-                .and_then(|started| started.muxer.flush_segment())
-            {
-                self.append(&segment)?;
-            }
-        }
-        let stamp = |time: i64| u64::try_from(time).unwrap_or(0);
-        self.started.as_mut().map_or(Ok(()), |started| {
-            started
-                .muxer
-                .write_video(stamp(frame.at), stamp(decoded), &frame.sample, frame.key)
-                .map_err(|error| std::io::Error::other(error.to_string()))
-        })
+        let frame = Pending {
+            at,
+            sample: sample(codec, nals, started.parameters.header_pps()),
+            key,
+        };
+        let bytes = started.writer.frame(frame)?;
+        self.append(&bytes)
     }
 
     pub fn finish(mut self) -> std::io::Result<Written> {
-        (0..self.pending.len()).try_for_each(|_| self.decode_oldest())?;
-        if let Some(segment) = self
+        let ending = self
             .started
             .as_mut()
-            .and_then(|started| started.muxer.flush_segment())
+            .map_or(Ok(Vec::new()), |started| started.writer.ended())?;
+        self.append(&ending)?;
+        if let Some(Writer::Matroska(matroska)) =
+            self.started.as_ref().map(|started| &started.writer)
         {
-            self.append(&segment)?;
+            let length = self.written().seconds * 1_000.0;
+            self.file
+                .seek(SeekFrom::Start(matroska.duration_at() as u64))?;
+            self.file.write_all(&matroska::duration(length))?;
         }
         let written = self.written();
         if written.frames == 0 {
@@ -668,6 +778,67 @@ mod tests {
         );
         recording.finish().unwrap();
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn the_file_format_setting_picks_the_container_the_file_really_has() {
+        let recorded = |name: &str| {
+            let path = std::env::temp_dir().join(format!("aircast-{}-{name}", std::process::id()));
+            let key = unit(&[&SPS, &PPS, &[0x65, 0x88, 0x84]]);
+            let delta = unit(&[&[0x41, 0x9a, 0x02]]);
+            let mut recording = Recording::create(&path, (1280, 720)).unwrap();
+            (0..60u64)
+                .try_for_each(|frame| {
+                    let nals = if frame % 30 == 0 { &key } else { &delta };
+                    recording.write(
+                        Codec::H264,
+                        &annexb::nals(nals),
+                        frame % 30 == 0,
+                        frame * 3_000,
+                    )
+                })
+                .unwrap();
+            let written = recording.finish().unwrap();
+            let bytes = std::fs::read(&path).unwrap();
+            std::fs::remove_file(&path).unwrap();
+            (written, bytes)
+        };
+        assert_eq!(
+            [
+                container_of(Path::new("/v/a.mkv")),
+                container_of(Path::new("/v/a.MOV")),
+                container_of(Path::new("/v/a.mp4"))
+            ],
+            [Container::Matroska, Container::QuickTime, Container::Mp4]
+        );
+        let (_, mp4) = recorded("container.mp4");
+        let (_, mov) = recorded("container.mov");
+        assert_eq!((&mp4[4..8], &mov[4..8]), (&b"ftyp"[..], &b"ftyp"[..]));
+        assert_ne!(&mp4[BRAND_AT], QUICKTIME_BRAND);
+        assert_eq!(
+            &mov[BRAND_AT], QUICKTIME_BRAND,
+            "a .mov file carries the QuickTime brand"
+        );
+        let (written, mkv) = recorded("container.mkv");
+        assert_eq!(
+            &mkv[..4],
+            [0x1a, 0x45, 0xdf, 0xa3],
+            "a .mkv file starts with an EBML header"
+        );
+        let has = |pattern: &[u8]| mkv.windows(pattern.len()).any(|window| window == pattern);
+        assert!(has(b"matroska") && has(b"V_MPEG4/ISO/AVC") && has(&SPS));
+        assert!(
+            has(&matroska::duration(written.seconds * 1_000.0)),
+            "the finished file states its length"
+        );
+        let clusters = mkv
+            .windows(4)
+            .filter(|window| *window == [0x1f, 0x43, 0xb6, 0x75])
+            .count();
+        assert_eq!(
+            clusters, 2,
+            "a new cluster starts at the keyframe a second on"
+        );
     }
 
     #[test]
