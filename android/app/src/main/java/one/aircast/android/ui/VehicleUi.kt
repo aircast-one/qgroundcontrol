@@ -742,6 +742,8 @@ private val OFFLINE_DECK = listOf(
 private fun OfflineDeck(modifier: Modifier) {
     val navigation = LocalAppNavigation.current
     val flyScreen = LocalFlyScreenState.current
+    val offlineJson by qgcPath(OFFLINE_STATUS_VIEW)
+    val saved = remember(offlineJson) { offlineStatus(offlineJson)?.links?.isNotEmpty() == true }
     Row(modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OFFLINE_DECK.map { entry ->
             Box(Modifier.weight(1f)) {
@@ -749,7 +751,12 @@ private fun OfflineDeck(modifier: Modifier) {
                 Box(Modifier.matchParentSize().clickable(onClickLabel = "Find out how to connect") { flyScreen.requestedSheet = OFFLINE_SHEET })
             }
         }
-        DeckButton(DeckEntry("addLink", "Add a link", R.drawable.ic_link, enabled = true) { openAddLink(navigation) }, primary = true, Modifier.weight(1f))
+        DeckButton(
+            if (saved) DeckEntry("connect", "Connect", R.drawable.ic_link, enabled = true) { flyScreen.requestedSheet = OFFLINE_SHEET }
+            else DeckEntry("addLink", "Add a link", R.drawable.ic_link, enabled = true) { openAddLink(navigation) },
+            primary = true,
+            Modifier.weight(1f),
+        )
     }
 }
 

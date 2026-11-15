@@ -1416,8 +1416,10 @@ private let OFFLINE_DECK = [
 private struct OfflineDeck: View {
     @Environment(AppNavigationState.self) private var navigation
     @Environment(FlyScreenState.self) private var flyScreen
+    @QgcPath(OFFLINE_STATUS_VIEW) private var offlineJson
 
     var body: some View {
+        let saved = offlineStatus(offlineJson)?.links.isEmpty == false
         HStack(spacing: 10) {
             ForEach(OFFLINE_DECK, id: \.id) { entry in
                 DeckButton(entry: entry, primary: false)
@@ -1429,7 +1431,12 @@ private struct OfflineDeck: View {
                             .tapButton { flyScreen.requestedSheet = OFFLINE_SHEET }
                     }
             }
-            DeckButton(entry: DeckEntry(id: "addLink", label: "Add a link", icon: .link, enabled: true) { openAddLink(navigation) }, primary: true)
+            DeckButton(
+                entry: saved
+                    ? DeckEntry(id: "connect", label: "Connect", icon: .link, enabled: true) { flyScreen.requestedSheet = OFFLINE_SHEET }
+                    : DeckEntry(id: "addLink", label: "Add a link", icon: .link, enabled: true) { openAddLink(navigation) },
+                primary: true
+            )
                 .frame(maxWidth: .infinity)
         }
         .padding(Space.s4)
