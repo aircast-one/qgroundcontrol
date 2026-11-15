@@ -7,11 +7,11 @@ import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { Drawable, MaterialIcon } from '@/res/Icon';
-import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
-import { FLY_SCRIM_ALPHA, LocalAvoidedByVideoMessage, STATUS_ROW_HEIGHT, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
+import { AircastSpace, aircast, md } from '@/theme/Colors';
+import { LocalAvoidedByVideoMessage, STATUS_ROW_HEIGHT, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
-import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
 const LAYOUT_STORE = 'fly-overlay-layout';
 const HIDDEN_PREFIX = 'OverlayRigHidden-';
@@ -93,7 +93,7 @@ export class OverlayLayoutState {
 
   reset(): void {
     Object.keys(storedLayout()).forEach((name) => this.prefs.remove(name));
-    this.hidden.value = new Set();
+    this.hidden.value = hiddenKeys({});
     this.indicatorOrder.value = [];
     this.offsets.value = new Map();
   }
@@ -165,12 +165,17 @@ export const droppedOrder = (keys: readonly string[], centres: ReadonlyMap<strin
   );
 };
 
+export const MINIMAP_KEY = 'minimap';
+
+const HIDDEN_BY_DEFAULT: readonly string[] = [MINIMAP_KEY];
+
 export const hiddenKeys = (stored: Readonly<Record<string, unknown>>): Set<string> =>
-  new Set(
-    Object.entries(stored)
+  new Set([
+    ...HIDDEN_BY_DEFAULT.filter((key) => stored[HIDDEN_PREFIX + key] !== false),
+    ...Object.entries(stored)
       .filter(([key, value]) => key.startsWith(HIDDEN_PREFIX) && value === true)
       .map(([key]) => key.slice(HIDDEN_PREFIX.length)),
-  );
+  ]);
 
 export const withHidden = (hidden: ReadonlySet<string>, key: string, hide: boolean): Set<string> =>
   hide ? new Set([...hidden, key]) : new Set([...hidden].filter((it) => it !== key));
@@ -447,7 +452,7 @@ export const LayoutOptionsMenu = () => {
   const layout = useContext(LocalFlyScreenState).layout;
   const valueSize = useValue(layout.valueSize);
   const vehicleClass = instrumentVehicleClass(useQgcPath(INSTRUMENTS_VIEW));
-  const backdrop = useOsdBackdrop(withAlpha(Color.Black, FLY_SCRIM_ALPHA));
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
   const [open, setOpen] = useState(false);
   const [armed, setArmed] = useState(false);
   useLaunchedEffect([armed], async (scope) => {

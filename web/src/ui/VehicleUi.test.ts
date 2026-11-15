@@ -6,6 +6,7 @@ import { CHECKLIST, HOLD_TO_TAKE_OFF, TAKE_OFF } from './FlyDeck';
 import { Readiness } from './FlyState';
 import { GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers } from './GuidedActions';
 import type { GuidedValueKind } from './GuidedValueFlow';
+import { ValueDisplay } from './InstrumentDisplay';
 import { PAUSE } from './MoreActions';
 import {
   FlightDeckContext,
@@ -13,6 +14,7 @@ import {
   Instrument,
   checklistStateValue,
   flightDeckEntries,
+  hudIcon,
   instruments,
   offerWithdrawn,
   operatorDistance,
@@ -222,5 +224,16 @@ describe('GuidedOffersTest', () => {
 
   it("the checklist result is written as Vehicle's CheckListPassed or CheckListFailed", () => {
     expect([checklistStateValue(true), checklistStateValue(false)]).toEqual([1, 2]);
+  });
+});
+
+describe('HudIconTest', () => {
+  const height = Instrument({ label: 'Altitude', reading: '12 m', id: 'vehicle/altitudeRelative', defaultIcon: 'arrow-thick-up.svg' });
+
+  it('the video HUD draws a reading with its default icon unless the pilot named it', () => {
+    expect(hudIcon(ValueDisplay({ icon: height.defaultIcon }), height)).toBe('arrow-thick-up.svg');
+    expect(hudIcon(ValueDisplay({ text: 'ALT' }), height)).toBeNull();
+    expect(hudIcon(ValueDisplay({ showIcon: true, icon: 'home.svg' }), height)).toBe('home.svg');
+    expect(hudIcon(ValueDisplay(), Instrument({ label: 'From you', reading: '40 m' }))).toBeNull();
   });
 });

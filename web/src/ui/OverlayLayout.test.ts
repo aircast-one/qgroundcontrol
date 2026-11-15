@@ -12,7 +12,12 @@ describe('OverlayLayoutTest', () => {
 
   it('hidden widgets are read from the stored rig keys only', () => {
     const stored = { 'OverlayRigHidden-orbit': true, 'OverlayRigHidden-traffic': false, other: true };
-    expect(hiddenKeys(stored)).toEqual(new Set(['orbit']));
+    expect(hiddenKeys(stored)).toEqual(new Set(['minimap', 'orbit']));
+  });
+
+  it('the minimap starts hidden and stays shown once the pilot shows it', () => {
+    expect(hiddenKeys({})).toEqual(new Set(['minimap']));
+    expect(hiddenKeys({ 'OverlayRigHidden-minimap': false })).toEqual(new Set());
   });
 
   it('hiding and showing toggles one key', () => {
@@ -43,7 +48,7 @@ describe('OverlayLayoutTest', () => {
   it('the stored layout yields hidden widgets, offsets and the indicator order', () => {
     const stored = { 'OverlayRigOffset-instrumentPanel': '10.0,20.0', 'OverlayRigHidden-orbit': true, FlyViewIndicatorOrder: 'gps,battery' };
     expect(storedOffsets(stored)).toEqual(new Map([['instrumentPanel', [10, 20]]]));
-    expect(hiddenKeys(stored)).toEqual(new Set(['orbit']));
+    expect(hiddenKeys(stored)).toEqual(new Set(['minimap', 'orbit']));
     expect(storedIndicatorOrder(stored)).toEqual(['gps', 'battery']);
   });
 

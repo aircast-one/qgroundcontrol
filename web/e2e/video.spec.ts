@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flyNow, test } from './fixtures';
+import { connectMock, expect, flyNow, telemetry, test } from './fixtures';
 
 const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
 
@@ -345,4 +345,22 @@ test('a two-finger swipe on the video scrolls the picture and moves the camera',
   await app.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await Array.from({ length: 10 }).reduce<Promise<void>>((done) => done.then(() => app.mouse.wheel(20, 0)), Promise.resolve());
   await expect.poll(async () => ((await gimbalAim(app)())?.yaw ?? before.yaw) - before.yaw, { timeout: 10_000 }).toBeGreaterThan(5);
+});
+
+test('a double tap leaves only the picture and its flight readings, and another brings the controls back', async ({ vehicle }) => {
+  await addVideoSource(vehicle, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await expect(vehicle.locator('[data-status-row]').getByRole('button', { name: /^Bitrate / }), 'the picture is decoding').toBeVisible({ timeout: 30_000 });
+  const sight = vehicle.getByRole('group', { name: 'Sight' });
+  const mapButton = vehicle.getByRole('button', { name: 'Map', exact: true });
+  await expect(sight).toBeVisible();
+  await expect(mapButton).toBeVisible();
+  const doubleTapUntil = (shown: boolean) =>
+    expect(async () => {
+      await vehicle.mouse.dblclick(640, 560);
+      await expect(mapButton).toBeVisible({ visible: shown, timeout: 2_000 });
+    }).toPass({ timeout: 15_000 });
+  await doubleTapUntil(false);
+  await expect(sight).toBeVisible();
+  await expect(telemetry(vehicle, 'H')).toBeVisible();
+  await doubleTapUntil(true);
 });

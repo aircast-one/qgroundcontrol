@@ -50,7 +50,7 @@ import {
   withInstrument,
   writeChosen,
 } from './InstrumentChoice';
-import { ValueDisplay, ValueDisplayDialog, ValueLabel, displayColour, readDisplays, writeDisplay } from './InstrumentDisplay';
+import { ValueDisplay, ValueDisplayDialog, ValueIcon, ValueLabel, displayColour, displayIcon, readDisplays, writeDisplay } from './InstrumentDisplay';
 import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapClickUnits } from './MapClickMenu';
 import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
@@ -123,6 +123,11 @@ export const Instrument = (fields: { label: string; reading: string; id?: string
 
 export const displayFor = (displays: ReadonlyMap<string, ValueDisplay>, instrument: Instrument): ValueDisplay =>
   displays.get(instrument.id) ?? ValueDisplay({ icon: instrument.defaultIcon });
+
+export type HudSide = 'start' | 'end';
+
+export const hudIcon = (display: ValueDisplay, instrument: Instrument): string | null =>
+  displayIcon(display, instrument.raw) ?? (display.text.trim() === '' && instrument.defaultIcon.trim() !== '' ? instrument.defaultIcon : null);
 
 export const rowWidth = (count: number): number => (count <= 4 ? count : Math.trunc((count + 1) / 2));
 
@@ -202,6 +207,7 @@ export const TelemetryRow = ({
   chooser = true,
   compact = false,
   stacked = false,
+  column = null,
 }: {
   className?: string;
   columns?: number | null;
@@ -209,6 +215,7 @@ export const TelemetryRow = ({
   chooser?: boolean;
   compact?: boolean;
   stacked?: boolean;
+  column?: ((side: HudSide, readings: ReactNode) => ReactNode) | null;
 }) => {
   const flyScreen = useContext(LocalFlyScreenState);
   const classView = useQgcPath(INSTRUMENTS_VIEW);
@@ -318,8 +325,39 @@ export const TelemetryRow = ({
         </Text>
       </div>
     );
+    const hudReading = (instrument: Instrument) => {
+      const display = displayFor(displays, instrument);
+      const icon = hudIcon(display, instrument);
+      const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
+      return (
+        <div key={`${instrument.id}|${instrument.label}`} className="flex items-center gap-1.5">
+          {icon !== null ? (
+            <>
+              <ValueIcon name={icon} tint={tint} size={16} />
+              <span className="sr-only">{osdLabel(instrument.label)}</span>
+            </>
+          ) : (
+            <Text typography="labelLarge" color={tint} maxLines={1}>
+              {osdLabel(instrument.label)}
+            </Text>
+          )}
+          <Text typography="titleMedium" fontWeight={700} className="tabular-nums" maxLines={1} style={{ zoom: valueSize.scale }} color={tint}>
+            {`${instrument.value}${instrument.units}`}
+          </Text>
+        </div>
+      );
+    };
     const speeds = shown.filter((it) => osdIsSpeed(it.label));
     const places = shown.filter((it) => !osdIsSpeed(it.label));
+    if (column !== null) {
+      return (
+        <>
+          {sheets}
+          {places.length > 0 ? column('start', <div className={`flex flex-col items-start gap-0.5 ${className ?? ''}`}>{places.map(hudReading)}</div>) : null}
+          {speeds.length > 0 ? column('end', <div className={`flex flex-col items-end gap-0.5 ${className ?? ''}`}>{speeds.map(hudReading)}</div>) : null}
+        </>
+      );
+    }
     return (
       <>
         {sheets}
