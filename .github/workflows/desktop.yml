@@ -111,6 +111,7 @@ jobs:
             export APPLE_ID="$NOTARY_USER" APPLE_PASSWORD="$NOTARY_PASSWORD" APPLE_TEAM_ID="$NOTARY_TEAM"
           else
             echo "This build is signed ad hoc and not notarized: only a release or a manual run signs it."
+            export APPLE_SIGNING_IDENTITY=-
           fi
           npx tauri build --bundles app,dmg --config "{\"version\":\"${SHORT#v}\",\"build\":{\"beforeBuildCommand\":\"npx vite build\"}}"
           mkdir -p ../out
@@ -231,13 +232,13 @@ jobs:
           if ($null -eq $asset) { throw "No released Windows installer to upgrade from" }
           $released = Join-Path $env:RUNNER_TEMP $asset.name
           Invoke-WebRequest $asset.browser_download_url -OutFile $released
-          Start-Process $released -ArgumentList '/S' -Wait
+          (Start-Process $released -ArgumentList '/S' -PassThru).WaitForExit()
           Start-Sleep -Seconds 10
           Get-Process AircastQGC, aircast-desktop -ErrorAction SilentlyContinue | Stop-Process -Force
           $data = Join-Path $env:LOCALAPPDATA 'Aircast'
           New-Item -ItemType Directory -Force -Path $data | Out-Null
           Add-Content (Join-Path $data 'Aircast QGC.ini') "`n[UpgradeCheck]`nkept=true"
-          Start-Process "out\AircastQGCNative-$env:SHORT-windows-$env:ARCH-setup.exe" -ArgumentList '/S' -Wait
+          (Start-Process "out\AircastQGCNative-$env:SHORT-windows-$env:ARCH-setup.exe" -ArgumentList '/S' -PassThru).WaitForExit()
           $nativeKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AircastQGCNative'
           $deadline = (Get-Date).AddSeconds(90)
           while ((Get-Date) -lt $deadline -and ((Test-Path $nativeKey) -or -not (Get-Process aircast-desktop -ErrorAction SilentlyContinue))) { Start-Sleep -Seconds 2 }
