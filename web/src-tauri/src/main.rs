@@ -279,7 +279,7 @@ fn main() {
                 .on_page_load(|shown, loading| {
                     if loading.event() == PageLoadEvent::Started {
                         let app = shown.app_handle().clone();
-                        let streams = app.state::<video::Streams>().playing();
+                        let streams = app.state::<video::Streams>().page_left();
                         let views = app.state::<synthetic::Views>().forget_all();
                         spawn_blocking(move || {
                             app.state::<video::Streams>().close_each(streams);
@@ -339,7 +339,7 @@ fn main() {
             RunEvent::ExitRequested { api, .. } if window::holds_close(app) => api.prevent_exit(),
             RunEvent::Exit => {
                 let streams = app.state::<video::Streams>();
-                streams.close_each(streams.playing());
+                streams.close_each(streams.page_left());
                 qgc_shutdown();
             }
             _ => {}

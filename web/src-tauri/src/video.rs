@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -21,6 +21,7 @@ const RECORDING_STOPPED: u8 = 3;
 
 const CLOSED: &str = "closed";
 const NOT_PLAYING: &str = "The stream is no longer playing.";
+const PAGE_LEFT: &str = "The page reloaded before the stream opened.";
 const RESTARTED: &str = "restarted";
 const DROPPED: &str = "dropped";
 
@@ -47,6 +48,7 @@ struct Stream {
 #[derive(Default)]
 pub struct Streams {
     next: AtomicU32,
+    page: AtomicU64,
     running: Mutex<HashMap<u32, Stream>>,
     closing: Mutex<Vec<Finished>>,
 }
@@ -285,13 +287,18 @@ fn close_recording(id: u32, recorder: &Recorder) {
 }
 
 impl Streams {
-    async fn open(&self, url: Url, sink: Sink) -> u32 {
+    async fn open(&self, url: Url, sink: Sink) -> Result<u32, String> {
+        let page = self.page.load(Ordering::Relaxed);
         let closing = locked(&self.closing).clone();
         futures::future::join_all(closing.into_iter().map(settled)).await;
+        let mut running = locked(&self.running);
+        if self.page.load(Ordering::Relaxed) != page {
+            return Err(PAGE_LEFT.to_string());
+        }
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (recorder, stopping) = (Recorder::default(), StopReason::default());
         let (task, finished) = play(id, (&url, &sink, &recorder, &stopping), Vec::new());
-        locked(&self.running).insert(
+        running.insert(
             id,
             Stream {
                 task,
@@ -302,7 +309,7 @@ impl Streams {
                 recorder,
             },
         );
-        id
+        Ok(id)
     }
 
     fn close(&self, id: u32) -> Result<(), String> {
@@ -345,8 +352,10 @@ impl Streams {
         Ok(())
     }
 
-    pub fn playing(&self) -> Vec<u32> {
-        locked(&self.running).keys().copied().collect()
+    pub fn page_left(&self) -> Vec<u32> {
+        let running = locked(&self.running);
+        self.page.fetch_add(1, Ordering::Relaxed);
+        running.keys().copied().collect()
     }
 
     pub fn close_each(&self, ids: Vec<u32>) {
@@ -387,7 +396,7 @@ pub async fn video_open(
     streams: tauri::State<'_, Streams>,
 ) -> Result<u32, String> {
     let url = Url::parse(&url).map_err(|error| error.to_string())?;
-    Ok(streams.open(url, frames).await)
+    streams.open(url, frames).await
 }
 
 async fn off_the_window<R: Runtime, T: Send + 'static>(
@@ -456,10 +465,15 @@ mod tests {
     }
 
     fn announced_after_sending(port: u16, hearing: &mpsc::Receiver<Vec<u8>>) -> bool {
-        heard_after_sending(port, hearing, CONFIG)
+        sent_until(port, hearing, CONFIG, || true)
     }
 
-    fn heard_after_sending(port: u16, hearing: &mpsc::Receiver<Vec<u8>>, kind: u8) -> bool {
+    fn sent_until(
+        port: u16,
+        hearing: &mpsc::Receiver<Vec<u8>>,
+        kind: u8,
+        done: impl Fn() -> bool,
+    ) -> bool {
         let camera = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         (0..ATTEMPTS).any(|attempt| {
             let sequence = u16::try_from(attempt * 3).unwrap();
@@ -475,6 +489,7 @@ mod tests {
             hearing
                 .recv_timeout(WAIT)
                 .is_ok_and(|message| message[0] == kind)
+                && done()
         })
     }
 
@@ -518,30 +533,29 @@ mod tests {
                     Url::parse(&format!("udp://127.0.0.1:{port}")).unwrap(),
                     sink,
                 )
-                .await;
+                .await
+                .unwrap();
             assert!(announced_after_sending(port, &hearing));
             let recorder = locked(&streams.running)[&id].recorder.clone();
             let file =
                 std::env::temp_dir().join(format!("aircast-restart-{}.mp4", std::process::id()));
             locked(&recorder).recording = Some(Recording::create(&file, (1280, 720)).unwrap());
-            hearing.try_iter().for_each(drop);
-            assert!(heard_after_sending(port, &hearing, FRAME));
-            let frames = |held: &Recorder| {
-                locked(held)
+            let frames = || {
+                locked(&recorder)
                     .recording
                     .as_ref()
                     .map_or(0, |it| it.written().frames)
             };
-            let before = frames(&recorder);
+            assert!(sent_until(port, &hearing, FRAME, || frames() > 0));
+            let before = frames();
             streams.restart(id).unwrap();
             hearing.try_iter().for_each(drop);
             assert!(
                 announced_after_sending(port, &hearing),
                 "a fresh session announces the codec again, so the camera was reconnected"
             );
-            assert!(heard_after_sending(port, &hearing, FRAME));
             assert!(
-                before > 0 && frames(&recorder) > before,
+                sent_until(port, &hearing, FRAME, || frames() > before),
                 "frames from the reconnected camera go on into the same recording"
             );
             streams.close(id).unwrap();
@@ -551,12 +565,29 @@ mod tests {
     }
 
     #[test]
+    fn a_stream_still_opening_when_the_page_reloads_is_not_left_playing() {
+        tauri::async_runtime::block_on(async {
+            let streams = Streams::default();
+            let (closed, closing) = watch::channel(());
+            locked(&streams.closing).push(closing);
+            let url = Url::parse(&format!("udp://127.0.0.1:{}", free_port())).unwrap();
+            let opening = streams.open(url, listening_sink().0);
+            futures::pin_mut!(opening);
+            assert!(futures::poll!(&mut opening).is_pending());
+            assert!(streams.page_left().is_empty());
+            drop(closed);
+            assert_eq!(opening.await, Err(PAGE_LEFT.to_string()));
+            assert!(locked(&streams.running).is_empty());
+        });
+    }
+
+    #[test]
     fn a_close_that_lands_during_a_restart_leaves_nothing_playing() {
         tauri::async_runtime::block_on(async {
             let streams = Streams::default();
             let port = free_port();
             let url = Url::parse(&format!("udp://127.0.0.1:{port}")).unwrap();
-            let id = streams.open(url.clone(), listening_sink().0).await;
+            let id = streams.open(url.clone(), listening_sink().0).await.unwrap();
             let recorder = locked(&streams.running)[&id].recorder.clone();
             streams.restart(id).unwrap();
             streams.close(id).unwrap();
@@ -567,7 +598,7 @@ mod tests {
             );
             assert!(streams.restart(id).is_err());
             let (sink, hearing) = listening_sink();
-            let reopened = streams.open(url, sink).await;
+            let reopened = streams.open(url, sink).await.unwrap();
             assert!(
                 announced_after_sending(port, &hearing),
                 "the port is free for the next stream, so nothing from the restart kept it"

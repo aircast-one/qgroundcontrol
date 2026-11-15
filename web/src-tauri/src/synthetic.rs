@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use groundstation::nativehost::{synthetic_offscreen, synthetic_offscreen_release};
@@ -11,6 +11,7 @@ type Deliver = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
 #[derive(Default)]
 pub struct Views {
     next: AtomicUsize,
+    page: AtomicU64,
     shown: Mutex<HashMap<usize, (bool, Deliver)>>,
 }
 
@@ -20,7 +21,18 @@ impl Views {
     }
 
     pub fn forget_all(&self) -> Vec<usize> {
-        self.shown().drain().map(|(key, _)| key).collect()
+        let mut shown = self.shown();
+        self.page.fetch_add(1, Ordering::Relaxed);
+        shown.drain().map(|(key, _)| key).collect()
+    }
+
+    fn keep(&self, key: usize, page: u64, view: (bool, Deliver)) -> bool {
+        let mut shown = self.shown();
+        let current = self.page.load(Ordering::Relaxed) == page;
+        if current {
+            shown.insert(key, view);
+        }
+        current
     }
 
     pub fn release_each(keys: Vec<usize>) {
@@ -53,6 +65,7 @@ pub async fn synthetic_open(
     frames: Channel<InvokeResponseBody>,
     views: tauri::State<'_, Views>,
 ) -> Result<usize, String> {
+    let page = views.page.load(Ordering::Relaxed);
     let key = views.next.fetch_add(1, Ordering::Relaxed) + 1;
     let deliver: Deliver = Arc::new(move |jpeg| {
         if let Err(error) = frames.send(InvokeResponseBody::Raw(jpeg)) {
@@ -60,8 +73,13 @@ pub async fn synthetic_open(
         }
     });
     attached(key, (width, height), orbit, deliver.clone()).await?;
-    views.shown().insert(key, (orbit, deliver));
-    Ok(key)
+    if views.keep(key, page, (orbit, deliver)) {
+        return Ok(key);
+    }
+    spawn_blocking(move || synthetic_offscreen_release(key))
+        .await
+        .map_err(|error| error.to_string())?;
+    Err("The page reloaded before the 3D view opened.".to_string())
 }
 
 #[tauri::command]

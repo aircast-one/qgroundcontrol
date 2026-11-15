@@ -71,6 +71,11 @@ describe('recordOutcome', () => {
     expect(recordOutcome('/v/a.mp4', 1, 2, true)).toBe('superseded');
     expect(recordOutcome('/v/a.mp4', 2, 2, true)).toBe('recording');
     expect(recordOutcome(null, 3, 3, true)).toBe('stopped');
-    expect(recordOutcome('/v/a.mp4', 4, 4, false)).toBe('superseded');
+    expect(recordOutcome(null, 4, 5, true)).toBe('superseded');
+  });
+
+  it('a stream that is no longer playing records nothing, so a stop after it closed still reports the recording stopped', () => {
+    expect(recordOutcome('/v/a.mp4', 6, 6, false)).toBe('stopped');
+    expect(recordOutcome(null, 7, 7, false)).toBe('stopped');
   });
 });

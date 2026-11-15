@@ -17,8 +17,6 @@ export const stagingPath = (path: string, root: string = staging.root): string =
 
 export const stagedLocation = (path: string, root: string = staging.root): string => (__DESKTOP__ ? `${root}${stagingPath(path, root)}` : path);
 
-export const stagedOutput = (path: string): Promise<string> => (__DESKTOP__ ? invoke<string>('staged_prepare', { path: stagingPath(path) }) : Promise.resolve(path));
-
 const bytesOf = async (file: Blob): Promise<Uint8Array> => new Uint8Array(await file.arrayBuffer());
 
 const FILES_LOG = 'desktop.files';
@@ -27,6 +25,9 @@ const loggedAs = <T,>(event: string, path: string, outcome: T) => (error: unknow
   void AppCommands.recordLog(FILES_LOG, `event=${event} path="${path}" reason="${String(error)}"`);
   return outcome;
 };
+
+export const stagedOutput = (path: string): Promise<string> =>
+  __DESKTOP__ ? invoke<string>('staged_prepare', { path: stagingPath(path) }).catch(loggedAs('staging_unprepared', path, stagedLocation(path))) : Promise.resolve(path);
 
 export const stageFile = async (path: string, file: Blob): Promise<boolean> => {
   const bytes = await bytesOf(file);
