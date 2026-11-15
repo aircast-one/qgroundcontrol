@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PITCH_SCALE, THROTTLE_SCALE, compactHud, ladderHeight, ladderLabel, ladderMarks, ladderReach, ladderTick, ladderY } from './HudLadders';
+import { compactHud } from './Osd';
+import { PITCH_SCALE, THROTTLE_SCALE, ladderHeight, ladderLabel, ladderMarks, ladderReach, ladderTick, ladderY } from './HudLadders';
 
 describe('HudLaddersTest', () => {
   it('pitch runs from 30 above to 30 below in fives, labelled every ten without a sign, level marked longest', () => {
@@ -42,8 +43,13 @@ describe('HudLaddersTest', () => {
   });
 
   it('the ladders stand closer to the crosshair on a short phone screen than on a monitor', () => {
-    expect(ladderReach(390)).toBe(148);
-    expect(ladderReach(800)).toBe(304);
+    expect(ladderReach(844, 390)).toBe(148);
+    expect(ladderReach(1600, 800)).toBe(304);
+  });
+
+  it('a near-square or upright window pulls the ladders in by its width, so they stay clear of the side columns', () => {
+    expect(ladderReach(800, 800)).toBe(240);
+    expect(ladderReach(768, 1024)).toBe(230);
   });
 
   it('a phone held sideways drops the ladders for bare readouts beside the crosshair; a tablet or monitor keeps them', () => {

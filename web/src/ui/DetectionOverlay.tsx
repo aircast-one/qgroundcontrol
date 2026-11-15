@@ -33,7 +33,6 @@ const OverlayNote = ({ background, color, children }: { background: string; colo
 const ChaseOsd = ({ reading }: { reading: PursuitReading }) => {
   const [confirming, setConfirming] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
-  const scrim = OSD_SCRIM;
   const foreground = aircast('outdoorForeground');
   useEffect(() => {
     if (refused === null) return undefined;
@@ -48,7 +47,7 @@ const ChaseOsd = ({ reading }: { reading: PursuitReading }) => {
     <div className="flex flex-col items-center gap-1">
       <Pill
         onClick={reading.ready ? () => setConfirming(true) : undefined}
-        color={reading.ready ? md('primary') : scrim}
+        color={reading.ready ? md('primary') : OSD_SCRIM}
         contentColor={reading.ready ? md('onPrimary') : withAlpha(foreground, DISABLED_CONTENT_ALPHA)}
         border={reading.ready ? undefined : `1px solid ${withAlpha(foreground, BORDER_ALPHA)}`}
         label="Chase the locked target"
@@ -56,7 +55,7 @@ const ChaseOsd = ({ reading }: { reading: PursuitReading }) => {
         Chase
       </Pill>
       {!reading.ready && reading.reason.trim() !== '' ? (
-        <OverlayNote background={scrim} color={foreground}>
+        <OverlayNote background={OSD_SCRIM} color={foreground}>
           {reading.reason}
         </OverlayNote>
       ) : null}

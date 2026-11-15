@@ -1,4 +1,4 @@
-import { type HTMLAttributes, type KeyboardEvent, type PointerEvent, type ReactNode, createContext, useEffect, useRef, useState } from 'react';
+import { type HTMLAttributes, type KeyboardEvent, type PointerEvent, type ReactNode, createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { vibrate } from '@/kotlin/Platform';
 import { coerceAtLeast, coerceIn } from '@/kotlin/Std';
@@ -235,8 +235,8 @@ export const bottomDeck = (deck: DeckIds, width: number, centre: number): { deck
 };
 
 export const railDeck = (deck: DeckIds, height: number): { deck: DeckIds; labelled: boolean } => {
-  const labelled = height <= 0 || deck.length * (RAIL_BUTTON_SIZE + RAIL_LABEL_HEIGHT + RAIL_GAP) + RAIL_BUTTON_SIZE <= height;
-  return { deck: fitting(deck, height, RAIL_BUTTON_SIZE + (labelled ? RAIL_LABEL_HEIGHT : 0) + RAIL_GAP, RAIL_BUTTON_SIZE), labelled };
+  const labelled = height <= 0 || deck.length * (OSD_CONTROL_SIZE + RAIL_LABEL_HEIGHT + RAIL_GAP) + OSD_CONTROL_SIZE <= height;
+  return { deck: fitting(deck, height, OSD_CONTROL_SIZE + (labelled ? RAIL_LABEL_HEIGHT : 0) + RAIL_GAP, OSD_CONTROL_SIZE), labelled };
 };
 
 export const CROWDED_DECK = 5;
@@ -262,7 +262,6 @@ export const DeckButton = ({ entry, primary, className, buttons = 0 }: { entry: 
   </Surface>
 );
 
-const RAIL_BUTTON_SIZE = 48;
 const RAIL_ICON_SIZE = 24;
 const RAIL_PRIMARY_ICON_SIZE = 32;
 const RAIL_INSET_ICON_SIZE = 20;
@@ -305,16 +304,22 @@ export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: De
   </div>
 );
 
-const MORE_COLUMNS = 4;
-const MORE_TILE_HEIGHT = 80;
+const MENU_COLUMNS = 4;
+const MENU_TILE_HEIGHT = 80;
 
-export type MoreTile = { label: string; icon: DrawableName; enabled: boolean; warning: boolean; onClick: () => void };
+export type MenuTile = { label: string; icon: DrawableName; enabled: boolean; warning: boolean; onClick: () => void };
 
-export const MoreTile = (fields: Omit<MoreTile, 'warning'> & Partial<Pick<MoreTile, 'warning'>>): MoreTile => ({ warning: false, ...fields });
+export const MenuTile = (fields: Omit<MenuTile, 'warning'> & Partial<Pick<MenuTile, 'warning'>>): MenuTile => ({ warning: false, ...fields });
 
-export type MenuSection = { title: string; tiles: readonly MoreTile[] };
+export type MenuSection = { title: string; tiles: readonly MenuTile[] };
 
-export const LocalFlyDestinations = createContext<readonly MoreTile[]>([]);
+export const LocalFlyDestinations = createContext<readonly MenuTile[] | null>(null);
+
+export const useFlyDestinations = (): readonly MenuTile[] => {
+  const destinations = useContext(LocalFlyDestinations);
+  if (destinations === null) throw new Error('the Fly menu is mounted outside LocalFlyDestinations');
+  return destinations;
+};
 
 export const FLY_MENU = 'Menu';
 
@@ -349,9 +354,9 @@ export const guidedIcon = (id: string): DrawableName => {
 const chunked = <T,>(items: readonly T[], size: number): readonly (readonly T[])[] =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, row) => items.slice(row * size, row * size + size));
 
-const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MoreTile[]; onDismiss: () => void }) => (
+const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MenuTile[]; onDismiss: () => void }) => (
   <div className="flex flex-col gap-3">
-    {chunked(tiles, MORE_COLUMNS).map((row, at) => (
+    {chunked(tiles, MENU_COLUMNS).map((row, at) => (
       <div key={at} className="flex gap-3">
         {row.map((tile) => (
           <Surface
@@ -365,7 +370,7 @@ const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MoreTile[]; onDismiss:
             color={md('surfaceContainerHigh')}
             contentColor={tile.warning ? md('error') : md('onSurface')}
             className="flex flex-1 basis-0 flex-col items-center justify-center gap-2 px-1"
-            style={{ height: MORE_TILE_HEIGHT, opacity: tile.enabled ? 1 : DISABLED_ALPHA }}
+            style={{ height: MENU_TILE_HEIGHT, opacity: tile.enabled ? 1 : DISABLED_ALPHA }}
           >
             <Drawable name={tile.icon} size={24} />
             <Text typography="labelMedium" maxLines={2} textAlign="center">
@@ -373,7 +378,7 @@ const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MoreTile[]; onDismiss:
             </Text>
           </Surface>
         ))}
-        {Array.from({ length: MORE_COLUMNS - row.length }, (_, gap) => (
+        {Array.from({ length: MENU_COLUMNS - row.length }, (_, gap) => (
           <div key={`gap-${gap}`} className="flex-1 basis-0" />
         ))}
       </div>

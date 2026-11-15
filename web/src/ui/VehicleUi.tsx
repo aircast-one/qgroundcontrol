@@ -12,16 +12,16 @@ import { AircastSheet } from '@/map/AircastSheet';
 import { sentenceCase } from '@/map/SentenceCase';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
-import { aircast, argb, md, withAlpha } from '@/theme/Colors';
+import { AircastSpace, aircast, argb, md, withAlpha } from '@/theme/Colors';
 import { useRememberActiveVehicleId } from './ActiveVehicle';
 import { useAdvancedUiShown } from './AdvancedUi';
 import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnlessRefused } from './ConfirmTrack';
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
-import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, LocalFlyDestinations, MoreTile, NO_SIGNAL_CODE, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel } from './FlyDeck';
+import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET } from './FlyScreenState';
-import { AnimatedVisibility, useElementSize } from './FlyShell';
+import { AnimatedVisibility, PASS_THROUGH, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
 import { AUTO_PURSUIT, type AutoPursuit, GUIDED_ACTIONS, type GuidedOffer, type PursuitAction, type Payload, SINGLE_GRIPPER, autoPursuit, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
@@ -56,6 +56,7 @@ import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
 import { LayoutWidget } from './OverlayLayout';
+import { LocalFlyOsd } from './Osd';
 import { ParameterForm } from './ParameterForm';
 import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
@@ -200,23 +201,7 @@ const colourOf = (display: ValueDisplay, raw: number | null): string | null => {
   return colour === null ? null : argb(colour);
 };
 
-export const TelemetryRow = ({
-  className,
-  columns = null,
-  valuesShown = true,
-  chooser = true,
-  compact = false,
-  stacked = false,
-  column = null,
-}: {
-  className?: string;
-  columns?: number | null;
-  valuesShown?: boolean;
-  chooser?: boolean;
-  compact?: boolean;
-  stacked?: boolean;
-  column?: ((side: HudSide, readings: ReactNode) => ReactNode) | null;
-}) => {
+const useTelemetryReadings = () => {
   const flyScreen = useContext(LocalFlyScreenState);
   const classView = useQgcPath(INSTRUMENTS_VIEW);
   const vehicleClass = instrumentVehicleClass(classView);
@@ -312,6 +297,25 @@ export const TelemetryRow = ({
     </>
   );
 
+  return { flyScreen, shown, displays, silent, stale, valueSize, sheets, setStyling };
+};
+
+export const TelemetryRow = ({
+  className,
+  columns = null,
+  valuesShown = true,
+  chooser = true,
+  compact = false,
+  stacked = false,
+}: {
+  className?: string;
+  columns?: number | null;
+  valuesShown?: boolean;
+  chooser?: boolean;
+  compact?: boolean;
+  stacked?: boolean;
+}) => {
+  const { flyScreen, shown, displays, silent, stale, valueSize, sheets, setStyling } = useTelemetryReadings();
   if (shown.length === 0) return sheets;
 
   if (compact) {
@@ -325,39 +329,8 @@ export const TelemetryRow = ({
         </Text>
       </div>
     );
-    const hudReading = (instrument: Instrument) => {
-      const display = displayFor(displays, instrument);
-      const icon = hudIcon(display, instrument);
-      const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
-      return (
-        <div key={`${instrument.id}|${instrument.label}`} className="flex items-center gap-1.5">
-          {icon !== null ? (
-            <>
-              <ValueIcon name={icon} tint={tint} size={16} />
-              <span className="sr-only">{osdLabel(instrument.label)}</span>
-            </>
-          ) : (
-            <Text typography="labelLarge" color={tint} maxLines={1}>
-              {osdLabel(instrument.label)}
-            </Text>
-          )}
-          <Text typography="titleMedium" fontWeight={700} className="tabular-nums" maxLines={1} style={{ zoom: valueSize.scale }} color={tint}>
-            {`${instrument.value}${instrument.units}`}
-          </Text>
-        </div>
-      );
-    };
     const speeds = shown.filter((it) => osdIsSpeed(it.label));
     const places = shown.filter((it) => !osdIsSpeed(it.label));
-    if (column !== null) {
-      return (
-        <>
-          {sheets}
-          {places.length > 0 ? column('start', <div className={`flex flex-col items-start gap-0.5 ${className ?? ''}`}>{places.map(hudReading)}</div>) : null}
-          {speeds.length > 0 ? column('end', <div className={`flex flex-col items-end gap-0.5 ${className ?? ''}`}>{speeds.map(hudReading)}</div>) : null}
-        </>
-      );
-    }
     return (
       <>
         {sheets}
@@ -420,6 +393,56 @@ export const TelemetryRow = ({
   );
 };
 
+const HudReading = ({ instrument, display, silent, scale }: { instrument: Instrument; display: ValueDisplay; silent: boolean; scale: number }) => {
+  const icon = hudIcon(display, instrument);
+  const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
+  return (
+    <div className="flex items-center gap-1.5">
+      {icon !== null ? (
+        <>
+          <span aria-hidden className="contents">
+            <ValueIcon name={icon} tint={tint} size={16} />
+          </span>
+          <span className="sr-only">{osdLabel(instrument.label)}</span>
+        </>
+      ) : (
+        <Text typography="labelLarge" color={tint} maxLines={1}>
+          {osdLabel(instrument.label)}
+        </Text>
+      )}
+      <Text typography="titleMedium" fontWeight={700} className="tabular-nums" maxLines={1} style={{ zoom: scale }} color={tint}>
+        {`${instrument.value}${instrument.units}`}
+      </Text>
+    </div>
+  );
+};
+
+export const HudReadings = ({ style, startInset }: { style: CSSProperties; startInset: number }) => {
+  const { shown, displays, silent, valueSize, sheets } = useTelemetryReadings();
+  const column = (side: HudSide, readings: readonly Instrument[]) =>
+    readings.length === 0 ? null : (
+      <div
+        className={`absolute ${side === 'start' ? 'start-0' : 'end-0'} flex flex-col justify-end-safe ${PASS_THROUGH}`}
+        style={{ ...style, ...(side === 'start' ? { paddingInlineStart: startInset } : { paddingInlineEnd: AircastSpace.s3 }) }}
+      >
+        <LayoutWidget widgetKey={side === 'start' ? 'readingsStart' : 'readingsEnd'} movable={false} hideable={false}>
+          <div className={`flex flex-col gap-0.5 ${side === 'start' ? 'items-start' : 'items-end'}`}>
+            {readings.map((it) => (
+              <HudReading key={`${it.id}|${it.label}`} instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} />
+            ))}
+          </div>
+        </LayoutWidget>
+      </div>
+    );
+  return (
+    <LocalFlyOsd.Provider value>
+      {sheets}
+      {column('start', shown.filter((it) => !osdIsSpeed(it.label)))}
+      {column('end', shown.filter((it) => osdIsSpeed(it.label)))}
+    </LocalFlyOsd.Provider>
+  );
+};
+
 export const scaledNumber = (scale: number): CSSProperties => ({
   fontSize: 22 * scale,
   lineHeight: `${26.4 * scale}px`,
@@ -429,7 +452,7 @@ export const scaledNumber = (scale: number): CSSProperties => ({
 
 export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center = null }: { className?: string; layout?: FlyDeckLayout; center?: ReactNode }) => {
   const flyScreen = useContext(LocalFlyScreenState);
-  const destinations = useContext(LocalFlyDestinations);
+  const destinations = useFlyDestinations();
   const deckTelemetry = useContext(LocalDeckTelemetry);
   const stateJson = useQgcPath(FLY_STATE);
   const state = useMemo(() => flyState(stateJson), [stateJson]);
@@ -445,7 +468,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const setRefusal = (message: string | null) => {
     flyScreen.refusal.value = message;
   };
-  const [showMore, setShowMore] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showGripper, setShowGripper] = useState(false);
   const [editingLoiter, setEditingLoiter] = useState<LoiterOffer | null>(null);
   const mapClickJson = useQgcPath(MAP_CLICK_PATH);
@@ -583,8 +606,8 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     if (available && gripper.length === 0) setShowGripper(false);
   }, [gripper.length === 0, available]);
 
-  const screen: readonly MoreTile[] = [
-    MoreTile({
+  const screen: readonly MenuTile[] = [
+    MenuTile({
       label: 'Choose readings',
       icon: 'ic_tune',
       enabled: true,
@@ -592,17 +615,17 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
         flyScreen.choosingReadings.value = true;
       },
     }),
-    ...(!armed ? [MoreTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
+    ...(!armed ? [MenuTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
   ];
-  const closeMenu = () => setShowMore(false);
+  const closeMenu = () => setMenuOpen(false);
 
   if (!available) {
     return (
       <>
         <PreflightChecklistReset checklist={checklist} available={available} />
-        <OpenOnRequest name={MENU_SHEET} open={() => setShowMore(true)} />
+        <OpenOnRequest name={MENU_SHEET} open={() => setMenuOpen(true)} />
         {!rail ? <OfflineDeck className={className} /> : null}
-        {showMore ? (
+        {menuOpen ? (
           <FlyMenuSheet
             sections={[
               { title: 'Go to', tiles: destinations },
@@ -732,9 +755,9 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   );
 
   const checklistPast = checklistOffered(armed);
-  const aircraft: readonly MoreTile[] = showMore
+  const aircraft: readonly MenuTile[] = menuOpen
     ? [
-        MoreTile({
+        MenuTile({
           label: 'All status',
           icon: 'ic_sensors',
           enabled: true,
@@ -742,15 +765,15 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
             flyScreen.requestedSheet.value = STATUS_ALL_SHEET;
           },
         }),
-        ...deckRest.filter((it) => it.id !== CHECKLIST && it.id !== RELEASE).map((it) => MoreTile({ label: it.label, icon: it.icon, enabled: it.enabled, warning: it.warning, onClick: it.onClick })),
-        ...(preflightOffered(preflightJson) ? [MoreTile({ label: 'Checklist', icon: 'ic_check_circle', enabled: checklistPast === null, onClick: () => checklist.open() })] : []),
-        ...(loiter !== null ? [MoreTile({ label: loiter.title, icon: 'ic_my_location', enabled: true, onClick: () => setEditingLoiter(loiter) })] : []),
-        ...(gripper.length > 0 ? [MoreTile({ label: 'Payload', icon: 'ic_payload', enabled: gripper.some((it: GuidedOffer) => it.ready), onClick: () => setShowGripper(true) })] : []),
-        ...[pursuit?.entry ?? null].flatMap((entry) => (entry === null ? [] : [MoreTile({ label: entry.label, icon: 'ic_search', enabled: true, onClick: () => onPursuit(entry) })])),
+        ...deckRest.filter((it) => it.id !== CHECKLIST && it.id !== RELEASE).map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: it.enabled, warning: it.warning, onClick: it.onClick })),
+        ...(preflightOffered(preflightJson) ? [MenuTile({ label: 'Checklist', icon: 'ic_check_circle', enabled: checklistPast === null, onClick: () => checklist.open() })] : []),
+        ...(loiter !== null ? [MenuTile({ label: loiter.title, icon: 'ic_my_location', enabled: true, onClick: () => setEditingLoiter(loiter) })] : []),
+        ...(gripper.length > 0 ? [MenuTile({ label: 'Payload', icon: 'ic_payload', enabled: gripper.some((it: GuidedOffer) => it.ready), onClick: () => setShowGripper(true) })] : []),
+        ...[pursuit?.entry ?? null].flatMap((entry) => (entry === null ? [] : [MenuTile({ label: entry.label, icon: 'ic_search', enabled: true, onClick: () => onPursuit(entry) })])),
         ...extras
           .filter((it) => !entries.some((entry) => entry.id === it.id) && !GRIPPER_ACTIONS.includes(it.id))
           .map((offer) =>
-            MoreTile({
+            MenuTile({
               label: offer.title,
               icon: guidedIcon(offer.id),
               enabled: offer.ready,
@@ -777,9 +800,9 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     <>
       <PreflightChecklistReset checklist={checklist} available={available} />
       <PreflightChecklist checklist={checklist} deciding={deciding} />
-      <OpenOnRequest name={MENU_SHEET} open={() => setShowMore(true)} />
+      <OpenOnRequest name={MENU_SHEET} open={() => setMenuOpen(true)} />
       {body}
-      {showMore ? (
+      {menuOpen ? (
         <FlyMenuSheet sections={sections} onDismiss={closeMenu} footer={<FlyViewMavlinkActions onSent={closeMenu} />} />
       ) : null}
       {showGripper && gripper.length > 0 ? <GripperPanel offers={gripper} payload={payload} onDismiss={() => setShowGripper(false)} /> : null}

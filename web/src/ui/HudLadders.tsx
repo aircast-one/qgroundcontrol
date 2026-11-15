@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import { useQgcDouble, useQgcPath } from '@/bridge/QgcState';
 import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { aircast } from '@/theme/Colors';
 import { ATTITUDE_PATH, attitude } from '@/ui/AttitudeInstrument';
-import { osdShadow } from '@/ui/Osd';
+import { LocalCompactHud, osdShadow } from '@/ui/Osd';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 
 export const THROTTLE_PATH = 'vehicle.throttlePct';
@@ -19,7 +19,7 @@ const TICK_EDGE = 26;
 const LADDER_WIDTH = 52;
 const CROSSHAIR = 44;
 const LADDER_REACH = 0.38;
-const COMPACT_HEIGHT = 500;
+const LADDER_WIDTH_REACH = 0.3;
 const COMPACT_GAP = 10;
 
 export type LadderScale = {
@@ -59,9 +59,7 @@ export const ladderMarks = (scale: LadderScale): readonly number[] =>
 
 export const ladderHeight = (shellHeight: number): number => Math.round(Math.min(LADDER_MAX, Math.max(LADDER_MIN, shellHeight * LADDER_SHARE)));
 
-export const ladderReach = (shellHeight: number): number => Math.round(shellHeight * LADDER_REACH);
-
-export const compactHud = (shellHeight: number): boolean => shellHeight < COMPACT_HEIGHT;
+export const ladderReach = (shellWidth: number, shellHeight: number): number => Math.round(Math.min(shellHeight * LADDER_REACH, shellWidth * LADDER_WIDTH_REACH));
 
 export const ladderY = (value: number, scale: LadderScale, height: number): number =>
   LADDER_PAD + ((scale.top - Math.min(scale.top, Math.max(scale.bottom, value))) / (scale.top - scale.bottom)) * (height - 2 * LADDER_PAD);
@@ -73,6 +71,16 @@ export const ladderTick = (value: number, scale: LadderScale): number => (value 
 export const ladderLabel = (value: number, scale: LadderScale): string | null => (labelled(value, scale) ? scale.label(value) : null);
 
 type Side = 'start' | 'end';
+
+const Readout = ({ scale, value, icon, label }: { scale: LadderScale; value: number; icon: DrawableName; label: string }) => {
+  const ink = aircast('outdoorForeground');
+  return (
+    <div role="img" aria-label={`${label} ${scale.readout(value)}`} className="flex items-center gap-1 whitespace-nowrap" style={{ color: ink }}>
+      <Drawable name={icon} size={16} style={{ fill: ink }} />
+      <span className="text-title-medium font-bold tabular-nums">{scale.readout(value)}</span>
+    </div>
+  );
+};
 
 const Ladder = ({ side, scale, value, height, icon, label }: { side: Side; scale: LadderScale; value: number | null; height: number; icon: DrawableName; label: string }) => {
   const ink = aircast('outdoorForeground');
@@ -99,13 +107,10 @@ const Ladder = ({ side, scale, value, height, icon, label }: { side: Side; scale
       </svg>
       {value !== null ? (
         <div
-          role="img"
-          aria-label={`${label} ${scale.readout(value)}`}
-          className={`absolute flex items-center gap-1 whitespace-nowrap ${start ? 'flex-row' : 'flex-row-reverse'}`}
-          style={{ top: ladderY(value, scale, height), transform: 'translateY(-50%)', ...(start ? { right: LADDER_WIDTH - edge + LONG_TICK + 2 } : { left: edge + LONG_TICK + 2 }), color: ink }}
+          className={`absolute flex items-center gap-1 ${start ? 'flex-row' : 'flex-row-reverse'}`}
+          style={{ top: ladderY(value, scale, height), transform: 'translateY(-50%)', ...(start ? { right: LADDER_WIDTH - edge + LONG_TICK + 2 } : { left: edge + LONG_TICK + 2 }) }}
         >
-          <Drawable name={icon} size={16} style={{ fill: ink }} />
-          <span className="text-title-medium font-bold tabular-nums">{scale.readout(value)}</span>
+          <Readout scale={scale} value={value} icon={icon} label={label} />
           <svg width={10} height={12} viewBox="0 0 10 12" aria-hidden className="block">
             <path d={start ? 'M 0 6 L 10 6 M 10 0 L 10 12' : 'M 10 6 L 0 6 M 0 0 L 0 12'} strokeWidth={2} style={{ stroke: ink }} />
           </svg>
@@ -122,16 +127,6 @@ export const Crosshair = () => {
     <svg width={CROSSHAIR} height={CROSSHAIR} viewBox={`0 0 ${CROSSHAIR} ${CROSSHAIR}`} aria-hidden className={`block ${osdShadow()}`}>
       <path d={`M 0 ${half} H ${CROSSHAIR} M ${half} 0 V ${CROSSHAIR}`} strokeWidth={2} style={{ stroke: ink }} />
     </svg>
-  );
-};
-
-const Readout = ({ scale, value, icon, label }: { scale: LadderScale; value: number; icon: DrawableName; label: string }) => {
-  const ink = aircast('outdoorForeground');
-  return (
-    <div role="img" aria-label={`${label} ${scale.readout(value)}`} className="flex items-center gap-1 whitespace-nowrap" style={{ color: ink }}>
-      <Drawable name={icon} size={16} style={{ fill: ink }} />
-      <span className="text-title-medium font-bold tabular-nums">{scale.readout(value)}</span>
-    </div>
   );
 };
 
@@ -155,14 +150,16 @@ const CompactSight = ({ pitch, throttle }: { pitch: number; throttle: number | n
   </div>
 );
 
-export const HudLadders = ({ shellHeight }: { shellHeight: number }) => {
+export const HudLadders = ({ shellWidth, shellHeight }: { shellWidth: number; shellHeight: number }) => {
   const view = useQgcPath(ATTITUDE_PATH);
   const reading = useMemo(() => attitude(view), [view]);
-  const throttle = useQgcDouble(THROTTLE_PATH);
+  const throttleReading = useQgcDouble(THROTTLE_PATH);
+  const compact = useContext(LocalCompactHud);
   if (reading === null) return null;
-  if (compactHud(shellHeight)) return <CompactSight pitch={reading.pitch} throttle={Number.isNaN(throttle) ? null : throttle} />;
+  const throttle = Number.isNaN(throttleReading) ? null : throttleReading;
+  if (compact) return <CompactSight pitch={reading.pitch} throttle={throttle} />;
   const height = ladderHeight(shellHeight);
-  const reach = `calc(50% - ${ladderReach(shellHeight)}px)`;
+  const reach = `calc(50% - ${ladderReach(shellWidth, shellHeight)}px)`;
   return (
     <div role="group" aria-label="Sight" className="pointer-events-none absolute inset-0">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -175,7 +172,7 @@ export const HudLadders = ({ shellHeight }: { shellHeight: number }) => {
       </div>
       <div className="absolute top-1/2 translate-x-1/2 -translate-y-1/2" style={{ right: reach }}>
         <LayoutWidget widgetKey="throttleLadder" movable={false}>
-          <Ladder side="end" scale={THROTTLE_SCALE} value={Number.isNaN(throttle) ? null : throttle} height={height} icon="ic_speed" label="Throttle" />
+          <Ladder side="end" scale={THROTTLE_SCALE} value={throttle} height={height} icon="ic_speed" label="Throttle" />
         </LayoutWidget>
       </div>
     </div>

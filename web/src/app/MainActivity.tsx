@@ -42,7 +42,7 @@ import { DeviceCameraHost } from '@/ui/DeviceCameraHost';
 import { BetaDiagnosticsDialog } from '@/ui/BetaDiagnosticsDialog';
 import { HandoffDialog } from '@/ui/HandoffDialog';
 import { FirstRunDialog } from '@/ui/FirstRunDialog';
-import { type FlyDeckLayout, LocalFlyDestinations, MoreTile } from '@/ui/FlyDeck';
+import { type FlyDeckLayout, LocalFlyDestinations, MenuTile } from '@/ui/FlyDeck';
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
 import { FleetCard, FlyMenuButton, FlyScreen, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
@@ -536,10 +536,10 @@ export const AircastShell = () => {
     navigation.settingsOpen.value = true;
   };
 
-  const flyDestinations: readonly MoreTile[] = [
-    ...tabs.filter((it) => it !== Tab.Fly).map((it) => MoreTile({ label: it.label, icon: it.icon, enabled: true, onClick: () => selectTab(it) })),
-    MoreTile({ label: 'Settings', icon: 'ic_settings', enabled: true, onClick: openSettings }),
-    ...(browserFullScreenSupported() ? [MoreTile({ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen', enabled: true, onClick: () => void toggleBrowserFullScreen().catch(() => undefined) })] : []),
+  const flyDestinations: readonly MenuTile[] = [
+    ...tabs.filter((it) => it !== Tab.Fly).map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: true, onClick: () => selectTab(it) })),
+    MenuTile({ label: 'Settings', icon: 'ic_settings', enabled: true, onClick: openSettings }),
+    ...(browserFullScreenSupported() ? [MenuTile({ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen', enabled: true, onClick: () => void toggleBrowserFullScreen().catch(() => undefined) })] : []),
   ];
 
   const flyStatus = (
@@ -612,110 +612,110 @@ export const AircastShell = () => {
       {appMessages[0] !== undefined ? <AppMessageDialog message={appMessages[0]} onOpenSetup={() => navigation.openAircraft()} onDismiss={() => setAppMessages((messages) => messages.slice(1))} /> : null}
       <LocalImmersive.Provider value={flyLandscape}>
         <LocalFlyDestinations.Provider value={flyDestinations}>
-        <div className="flex h-full w-full bg-surface text-on-surface">
-          {landscape && !flyLandscape ? (
-            <NavigationRail className="h-full pt-[max(12px,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
-              {tabs.map((entry) => (
-                <NavigationRailItem key={entry.name} selected={tab === entry && !settingsOpen} onClick={() => selectTab(entry)} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
-              ))}
-              <NavigationRailItem selected={settingsOpen} onClick={openSettings} icon={<Drawable name="ic_settings" label="Settings" />} label="Settings" />
-            </NavigationRail>
-          ) : null}
-          <div className="flex min-w-0 flex-1 flex-col">
-            {!onFly ? <AlertHost hostState={alerts} className="p-3 pt-[max(12px,env(safe-area-inset-top))]" /> : null}
-            <div className={`relative min-h-0 flex-1 overflow-hidden ${contentInsets}`}>
-              {onFly && flyLandscape ? (
-                <FlyScreen
-                  view={shownFlyView}
-                  onView={setFlyView}
-                  status={flyStatus}
-                  video={flyVideo}
-                  map={flyMap}
-                  keyRow={flyObstacleArc}
-                  cameraSwitch={(splitRoom, modifier) => (
-                    <LayoutWidget widgetKey="cameraSwitch">
-                      <div {...modifier}>
-                        <CameraSwitch splitRoom={splitRoom} />
-                      </div>
-                    </LayoutWidget>
-                  )}
-                  cameraControls={flyCameraControlLayer}
-                  overlays={flyOverlays}
-                  actions={flightActions}
-                  fullScreen={fullScreen}
-                  onFullScreen={enterFullScreen}
-                  onExitFullScreen={exitFullScreen}
-                />
-              ) : null}
-              {onFly && !flyLandscape ? (
-                <FlyPortrait
-                  view={shownFlyView}
-                  onView={setFlyView}
-                  status={flyStatus}
-                  video={flyVideo}
-                  map={flyMap}
-                  keyRow={flyObstacleArc}
-                  rail={flyRail}
-                  overlays={flyOverlays}
-                  actions={flightActions}
-                  fullScreen={fullScreen}
-                  onFullScreen={enterFullScreen}
-                  onExitFullScreen={exitFullScreen}
-                />
-              ) : null}
-              {onFly ? <ConnectingCard className="absolute inset-x-0 top-1/2 z-10 -translate-y-1/2" /> : null}
-              {onFly ? (
-                <div className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4" style={{ top: `calc(env(safe-area-inset-top) + ${FLY_NOTICE_TOP}px)` }}>
-                  <div className="w-full" style={{ maxWidth: FLY_NOTICE_MAX_WIDTH }}>
+          <div className="flex h-full w-full bg-surface text-on-surface">
+            {landscape && !flyLandscape ? (
+              <NavigationRail className="h-full pt-[max(12px,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
+                {tabs.map((entry) => (
+                  <NavigationRailItem key={entry.name} selected={tab === entry && !settingsOpen} onClick={() => selectTab(entry)} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
+                ))}
+                <NavigationRailItem selected={settingsOpen} onClick={openSettings} icon={<Drawable name="ic_settings" label="Settings" />} label="Settings" />
+              </NavigationRail>
+            ) : null}
+            <div className="flex min-w-0 flex-1 flex-col">
+              {!onFly ? <AlertHost hostState={alerts} className="p-3 pt-[max(12px,env(safe-area-inset-top))]" /> : null}
+              <div className={`relative min-h-0 flex-1 overflow-hidden ${contentInsets}`}>
+                {onFly && flyLandscape ? (
+                  <FlyScreen
+                    view={shownFlyView}
+                    onView={setFlyView}
+                    status={flyStatus}
+                    video={flyVideo}
+                    map={flyMap}
+                    keyRow={flyObstacleArc}
+                    cameraSwitch={(splitRoom, modifier) => (
+                      <LayoutWidget widgetKey="cameraSwitch">
+                        <div {...modifier}>
+                          <CameraSwitch splitRoom={splitRoom} />
+                        </div>
+                      </LayoutWidget>
+                    )}
+                    cameraControls={flyCameraControlLayer}
+                    overlays={flyOverlays}
+                    actions={flightActions}
+                    fullScreen={fullScreen}
+                    onFullScreen={enterFullScreen}
+                    onExitFullScreen={exitFullScreen}
+                  />
+                ) : null}
+                {onFly && !flyLandscape ? (
+                  <FlyPortrait
+                    view={shownFlyView}
+                    onView={setFlyView}
+                    status={flyStatus}
+                    video={flyVideo}
+                    map={flyMap}
+                    keyRow={flyObstacleArc}
+                    rail={flyRail}
+                    overlays={flyOverlays}
+                    actions={flightActions}
+                    fullScreen={fullScreen}
+                    onFullScreen={enterFullScreen}
+                    onExitFullScreen={exitFullScreen}
+                  />
+                ) : null}
+                {onFly ? <ConnectingCard className="absolute inset-x-0 top-1/2 z-10 -translate-y-1/2" /> : null}
+                {onFly ? (
+                  <div className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4" style={{ top: `calc(env(safe-area-inset-top) + ${FLY_NOTICE_TOP}px)` }}>
+                    <div className="w-full" style={{ maxWidth: FLY_NOTICE_MAX_WIDTH }}>
+                      <SnackbarHost hostState={snackbars} />
+                    </div>
+                  </div>
+                ) : null}
+
+                {mapClickAt !== null && onFly ? <MapClickMenu point={mapClickAt} anchor={mapClickAnchor} only={picturePressed?.actions ?? null} onDismiss={closeMapClick} /> : null}
+                {waypointTapped !== null && onFly ? <SetWaypointSheet sequence={waypointTapped} onDismiss={() => setWaypointTapped(null)} /> : null}
+                {roiTapped !== null && onFly ? <RoiSheet at={roiTapped} onDismiss={() => setRoiTapped(null)} /> : null}
+                {settingsOpen ? (
+                  <RequestedSettingsSheet
+                    onClose={() => {
+                      navigation.settingsOpen.value = false;
+                    }}
+                  />
+                ) : null}
+                <MissionCompleteDialog />
+                {onFly ? <ResumeFailedPrompt dismissed={resumeDismissed} onDismissed={setResumeDismissed} /> : null}
+                <FirstRunDialog />
+                {appMessages[0] === undefined ? <BetaDiagnosticsDialog /> : null}
+                <HandoffDialog />
+                <DeepLinkSetupPrompt />
+
+                <Fragment key={popEpoch}>
+                  {tab === Tab.Plan ? (
+                    <Surface className="absolute inset-0" contentColor={md('onSurface')}>
+                      <PlanTab onFly={() => setTab(Tab.Fly)} />
+                    </Surface>
+                  ) : null}
+                  {tab === Tab.Analyze ? <AnalyzeScreen page={analyzePage} onSelect={setAnalyzePage} className="absolute inset-0" /> : null}
+                </Fragment>
+                {!onFly ? (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-4 z-40 flex justify-center px-4">
                     <SnackbarHost hostState={snackbars} />
                   </div>
-                </div>
-              ) : null}
-
-              {mapClickAt !== null && onFly ? <MapClickMenu point={mapClickAt} anchor={mapClickAnchor} only={picturePressed?.actions ?? null} onDismiss={closeMapClick} /> : null}
-              {waypointTapped !== null && onFly ? <SetWaypointSheet sequence={waypointTapped} onDismiss={() => setWaypointTapped(null)} /> : null}
-              {roiTapped !== null && onFly ? <RoiSheet at={roiTapped} onDismiss={() => setRoiTapped(null)} /> : null}
-              {settingsOpen ? (
-                <RequestedSettingsSheet
-                  onClose={() => {
-                    navigation.settingsOpen.value = false;
-                  }}
-                />
-              ) : null}
-              <MissionCompleteDialog />
-              {onFly ? <ResumeFailedPrompt dismissed={resumeDismissed} onDismissed={setResumeDismissed} /> : null}
-              <FirstRunDialog />
-              {appMessages[0] === undefined ? <BetaDiagnosticsDialog /> : null}
-              <HandoffDialog />
-              <DeepLinkSetupPrompt />
-
-              <Fragment key={popEpoch}>
-                {tab === Tab.Plan ? (
-                  <Surface className="absolute inset-0" contentColor={md('onSurface')}>
-                    <PlanTab onFly={() => setTab(Tab.Fly)} />
-                  </Surface>
                 ) : null}
-                {tab === Tab.Analyze ? <AnalyzeScreen page={analyzePage} onSelect={setAnalyzePage} className="absolute inset-0" /> : null}
-              </Fragment>
-              {!onFly ? (
-                <div className="pointer-events-none absolute inset-x-0 bottom-4 z-40 flex justify-center px-4">
-                  <SnackbarHost hostState={snackbars} />
-                </div>
-              ) : null}
-            </div>
-            <div className="flex flex-col">
-              <LogReplayBar />
-              {!landscape && !onFly ? (
-                <NavigationBar>
-                  {tabs.map((entry) => (
-                    <NavigationBarItem key={entry.name} selected={tab === entry && !settingsOpen} onClick={() => selectTab(entry)} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
-                  ))}
-                  <NavigationBarItem selected={settingsOpen} onClick={openSettings} icon={<Drawable name="ic_settings" label="Settings" />} label="Settings" />
-                </NavigationBar>
-              ) : null}
+              </div>
+              <div className="flex flex-col">
+                <LogReplayBar />
+                {!landscape && !onFly ? (
+                  <NavigationBar>
+                    {tabs.map((entry) => (
+                      <NavigationBarItem key={entry.name} selected={tab === entry && !settingsOpen} onClick={() => selectTab(entry)} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
+                    ))}
+                    <NavigationBarItem selected={settingsOpen} onClick={openSettings} icon={<Drawable name="ic_settings" label="Settings" />} label="Settings" />
+                  </NavigationBar>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
         </LocalFlyDestinations.Provider>
       </LocalImmersive.Provider>
     </AircastTheme>

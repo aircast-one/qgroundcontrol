@@ -44,7 +44,7 @@ const unprovided = new Proxy({} as FlyScreenState, {
 export const LocalFlyScreenState = createContext<FlyScreenState>(unprovided);
 
 export const TRAFFIC_SHEET = 'traffic';
-export const MENU_SHEET = 'more';
+export const MENU_SHEET = 'menu';
 export const STATUS_ALL_SHEET = 'status-all';
 
 export const REQUESTABLE_SHEETS: ReadonlySet<string> = new Set([MENU_SHEET, 'readings', 'camera', 'gimbal', 'status', STATUS_ALL_SHEET, 'modes', TRAFFIC_SHEET]);

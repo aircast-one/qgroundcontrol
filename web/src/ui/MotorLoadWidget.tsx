@@ -1,10 +1,9 @@
+import { useContext } from 'react';
 import { type Json, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { useQgcDerived } from '@/bridge/QgcState';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { ESC_PATH } from '@/ui/EscIndicator';
-import { useScreenSize } from '@/ui/FlyShell';
-import { compactHud } from '@/ui/HudLadders';
-import { osdShadow } from '@/ui/Osd';
+import { LocalCompactHud, osdShadow } from '@/ui/Osd';
 
 export type Level = 'normal' | 'elevated' | 'critical';
 
@@ -101,7 +100,7 @@ const Rotor = ({ frame, load }: { frame: Frame; load: MotorLoad }) => {
 
 export const MotorLoadWidget = () => {
   const loads = useQgcDerived(ESC_PATH, motorLoads);
-  const frame = compactHud(useScreenSize().height) ? COMPACT_FRAME : FULL_FRAME;
+  const frame = useContext(LocalCompactHud) ? COMPACT_FRAME : FULL_FRAME;
   if (loads.length === 0) return null;
   const centre = frame.size / 2;
   return (

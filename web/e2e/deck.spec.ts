@@ -24,7 +24,7 @@ test('edit layout from more actions starts and ends layout editing', async ({ ve
 
 test('the layout edit controls replace the menu, leave the map and video alone, and the size grows the on-screen readouts', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
-  const map = vehicle.getByRole('region', { name: 'Map' });
+  const map = vehicle.getByRole('button', { name: 'Map', exact: true, includeHidden: true });
   const mapPip = (await map.boundingBox())!;
   const readout = telemetry(vehicle, 'H').filter({ visible: true }).first().locator('span').last();
   const height = () => readout.evaluate((it) => it.getBoundingClientRect().height);

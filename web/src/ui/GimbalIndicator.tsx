@@ -302,17 +302,13 @@ export const GimbalVideoMode = () => {
   );
 };
 
-export const gimbalSwitchWidth = mutableStateOf(0);
+export const gimbalSwitchShown = mutableStateOf(false);
 
-const reportSwitchWidth = (element: HTMLElement | null) => {
+const reportSwitchShown = (element: HTMLElement | null) => {
   if (element === null) return undefined;
-  const observer = new ResizeObserver(() => {
-    gimbalSwitchWidth.value = element.offsetWidth;
-  });
-  observer.observe(element);
+  gimbalSwitchShown.value = true;
   return () => {
-    observer.disconnect();
-    gimbalSwitchWidth.value = 0;
+    gimbalSwitchShown.value = false;
   };
 };
 
@@ -324,7 +320,7 @@ export const GimbalModeSwitch = ({ className }: { className?: string }) => {
   const next = modeChoice(nextVideoGimbalMode(current.mode));
   return (
     <button
-      ref={reportSwitchWidth}
+      ref={reportSwitchShown}
       type="button"
       aria-label={`Video gimbal mode, ${current.label}`}
       aria-description={`Switch to ${next.label}`}

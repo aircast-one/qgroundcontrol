@@ -76,7 +76,7 @@ export const vehicleStatus = async (page: Page) => {
 
 export const showMapFull = async (page: Page) => {
   const map = page.getByRole('region', { name: 'Map' });
-  const full = async () => ((await map.boundingBox())?.width ?? 0) >= (page.viewportSize()?.width ?? 0) * 0.9;
+  const full = async () => (await map.count()) > 0 && ((await map.boundingBox())?.width ?? 0) >= (page.viewportSize()?.width ?? 0) * 0.9;
   await expect(async () => {
     if (!(await full())) await page.getByRole('button', { name: /^(Map|Mini-map)$/ }).first().click();
     expect(await full()).toBe(true);

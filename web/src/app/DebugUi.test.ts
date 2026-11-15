@@ -20,6 +20,6 @@ describe('DebugUiTest', () => {
     expect(message(debugCommand('rotate', null))).toBe(`cmd must be one of ${DEBUG_COMMANDS}`);
     expect(message(debugCommand('orientation', 'sideways'))).toBe('orientation must be one of landscape, reverse-landscape, portrait, auto');
     expect(message(debugCommand('tab', 'Home'))).toBe('tab must be one of Fly, Plan, Analyze');
-    expect(message(debugCommand('open', ''))).toBe('open needs a sheet (more, readings, camera, gimbal, status, status-all, modes, traffic, settings) or a flight action id, e.g. takeoff, rtl, land');
+    expect(message(debugCommand('open', ''))).toBe('open needs a sheet (menu, readings, camera, gimbal, status, status-all, modes, traffic, settings) or a flight action id, e.g. takeoff, rtl, land');
   });
 });
