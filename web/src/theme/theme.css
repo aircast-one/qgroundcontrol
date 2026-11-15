@@ -172,3 +172,16 @@
   body { background: var(--md-background); color: var(--md-on-surface); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
   button { cursor: pointer; }
 }
+
+@keyframes aircast-overlay-jiggle {
+  from { rotate: calc(-1 * var(--aircast-jiggle)); }
+  to { rotate: var(--aircast-jiggle); }
+}
+
+@keyframes m3-indeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+.base-ui-disable-scrollbar { scrollbar-width: none; }
+.base-ui-disable-scrollbar::-webkit-scrollbar { display: none; }

@@ -18,6 +18,10 @@ export type PlaybackStep =
   | { kind: 'recordingStopped'; reason: string }
   | { kind: 'none' };
 
+export type Decoding = { playback: Playback; failures: number };
+
+export type DecoderEvent = { kind: 'decoded' } | { kind: 'failed'; reason: string } | { kind: 'restarted' };
+
 type FrameSize = { width: number; height: number };
 
 const CONFIG = 0;
@@ -61,10 +65,19 @@ export const playbackStep = (playback: Playback, message: NativeMessage, configu
   }
 };
 
-export const decoderFailed = (playback: Playback, failures: number, reason: string): readonly [Playback, boolean] =>
-  failures > MAX_DECODER_FAILURES ? [{ ...playback, keyed: false, error: reason }, false] : [{ ...playback, keyed: false }, true];
-
-export const restarted = (playback: Playback): Playback => ({ ...playback, keyed: false, error: '' });
+export const decoderStep = (decoding: Decoding, event: DecoderEvent): readonly [Decoding, boolean] => {
+  switch (event.kind) {
+    case 'decoded':
+      return [{ ...decoding, failures: 0 }, false];
+    case 'restarted':
+      return [{ playback: { ...decoding.playback, keyed: false, error: '' }, failures: 0 }, true];
+    case 'failed': {
+      const failures = decoding.failures + 1;
+      const givenUp = failures > MAX_DECODER_FAILURES;
+      return [{ playback: { ...decoding.playback, keyed: false, error: givenUp ? event.reason : decoding.playback.error }, failures }, !givenUp];
+    }
+  }
+};
 
 export const arrivalJitterMs = (arrivals: readonly number[]): number => {
   const gaps = arrivals.slice(1).map((at, index) => at - arrivals[index]!);
@@ -100,7 +113,7 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
     sizing.resolve({ width: frame.displayWidth, height: frame.displayHeight });
     frame.close();
     session.frames += 1;
-    session.failures = 0;
+    decoderEvent({ kind: 'decoded' });
   };
   const fresh = (): VideoDecoder => {
     const made = new VideoDecoder({ output, error: (error) => recover(error.message) });
@@ -108,12 +121,16 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
     return made;
   };
   const decoders = { current: fresh() };
+  const decoderEvent = (event: DecoderEvent) => {
+    const [decoding, rebuild] = decoderStep({ playback: session.playback, failures: session.failures }, event);
+    session.playback = decoding.playback;
+    session.failures = decoding.failures;
+    if (!rebuild) return;
+    if (decoders.current.state !== 'closed') decoders.current.close();
+    decoders.current = fresh();
+  };
   const recover = (reason: string) => {
-    if (session.closed) return;
-    session.failures += 1;
-    const [playback, rebuild] = decoderFailed(session.playback, session.failures, reason);
-    session.playback = playback;
-    if (rebuild) decoders.current = fresh();
+    if (!session.closed) decoderEvent({ kind: 'failed', reason });
   };
   const apply = (decoder: VideoDecoder, step: PlaybackStep) => {
     if (step.kind === 'configure') decoder.configure(step.config);
@@ -166,7 +183,7 @@ export const playNative = (canvas: HTMLCanvasElement, uri: string, report: (read
     restart: async () => {
       const id = await opened;
       if (id === null || session.closed) return;
-      session.playback = restarted(session.playback);
+      decoderEvent({ kind: 'restarted' });
       session.first = true;
       await invoke('video_restart', { id });
     },

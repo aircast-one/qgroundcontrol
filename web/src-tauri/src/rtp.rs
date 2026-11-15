@@ -1,6 +1,7 @@
 use crate::annexb::{Codec, START, Unit};
 
 const REORDER_WINDOW: usize = 8;
+const RESTART_GAP: u16 = 4_096;
 
 pub struct Depacketizer {
     codec: Codec,
@@ -109,9 +110,10 @@ impl Depacketizer {
                 .iter()
                 .map(|(held, _)| *held)
                 .min_by_key(|held| held.wrapping_sub(next));
+            let gap = resumed.map_or(0, |resumed| resumed.wrapping_sub(next));
             self.lost = self
                 .lost
-                .saturating_add(resumed.map_or(0, |resumed| resumed.wrapping_sub(next)));
+                .saturating_add(if gap < RESTART_GAP { gap } else { 0 });
             self.next = resumed;
             self.fragment = None;
         }
@@ -245,6 +247,21 @@ mod tests {
         assert!(
             h264.push(&frame(40_002)).is_empty(),
             "a stray packet from the old sequence waits in the reorder window instead of playing"
+        );
+    }
+
+    #[test]
+    fn a_sender_that_restarts_far_ahead_is_followed_without_counting_the_jump_as_loss() {
+        let mut h264 = Depacketizer::new(Codec::H264);
+        let frame = |sequence: u16| packet(sequence, u32::from(sequence), true, &[0x41, 0x9a]);
+        assert_eq!(h264.push(&frame(100)).len(), 1);
+        let units: Vec<Unit> = (30_000..30_000 + REORDER_WINDOW as u16 + 1)
+            .flat_map(|sequence| h264.push(&frame(sequence)))
+            .collect();
+        assert_eq!(units.len(), REORDER_WINDOW + 1);
+        assert_eq!(
+            units[0].lost, 0,
+            "a jump of thousands of packets is a new sender, not a burst of loss"
         );
     }
 

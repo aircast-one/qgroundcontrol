@@ -2,6 +2,7 @@
 
 mod annexb;
 mod files;
+mod ingest;
 mod mpegts;
 mod record;
 mod rtp;

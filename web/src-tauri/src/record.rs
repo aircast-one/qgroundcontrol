@@ -12,12 +12,23 @@ const TIMESCALE: f64 = 90_000.0;
 const SEGMENT: Duration = Duration::from_secs(1);
 const FRAME_RATE_UNUSED_BY_FRAGMENTS: f64 = 30.0;
 
+#[derive(Debug, PartialEq)]
+pub struct Written {
+    pub file: PathBuf,
+    pub frames: u64,
+    pub bytes: u64,
+    pub seconds: f64,
+}
+
 pub struct Recording {
+    path: PathBuf,
     file: File,
     size: (u32, u32),
     muxer: Option<FragmentedMuxer>,
     started: Option<Instant>,
     flushed: Instant,
+    frames: u64,
+    bytes: u64,
 }
 
 pub fn inside_folder(folder: &Path, file: &Path) -> Result<PathBuf, String> {
@@ -80,28 +91,48 @@ fn muxer(codec: Codec, nals: &[&[u8]], (width, height): (u32, u32)) -> Option<Fr
 impl Recording {
     pub fn create(path: &Path, size: (u32, u32)) -> std::io::Result<Self> {
         Ok(Self {
+            path: path.to_path_buf(),
             file: OpenOptions::new().write(true).create_new(true).open(path)?,
             size,
             muxer: None,
             started: None,
             flushed: Instant::now(),
+            frames: 0,
+            bytes: 0,
         })
+    }
+
+    fn append(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.file.write_all(bytes)?;
+        self.bytes += bytes.len() as u64;
+        Ok(())
+    }
+
+    pub fn written(&self) -> Written {
+        Written {
+            file: self.path.clone(),
+            frames: self.frames,
+            bytes: self.bytes,
+            seconds: self
+                .started
+                .map_or(0.0, |started| started.elapsed().as_secs_f64()),
+        }
     }
 
     pub fn write(&mut self, codec: Codec, nals: &[&[u8]], key: bool) -> std::io::Result<()> {
         if self.muxer.is_none() && key {
             self.muxer = muxer(codec, nals, self.size);
-            if let Some(started) = self.muxer.as_mut() {
-                self.file.write_all(&started.init_segment())?;
+            if let Some(init) = self.muxer.as_mut().map(FragmentedMuxer::init_segment) {
+                self.append(&init)?;
             }
         }
-        let Some(muxer) = self.muxer.as_mut() else {
+        if self.muxer.is_none() {
             return Ok(());
-        };
+        }
         if key && self.flushed.elapsed() >= SEGMENT {
             self.flushed = Instant::now();
-            if let Some(segment) = muxer.flush_segment() {
-                self.file.write_all(&segment)?;
+            if let Some(segment) = self.muxer.as_mut().and_then(FragmentedMuxer::flush_segment) {
+                self.append(&segment)?;
             }
         }
         let at = (self
@@ -110,16 +141,19 @@ impl Recording {
             .elapsed()
             .as_secs_f64()
             * TIMESCALE) as u64;
-        muxer
-            .write_video(at, at, &sample(codec, nals), key)
-            .map_err(|error| std::io::Error::other(error.to_string()))
+        self.frames += 1;
+        self.muxer.as_mut().map_or(Ok(()), |muxer| {
+            muxer
+                .write_video(at, at, &sample(codec, nals), key)
+                .map_err(|error| std::io::Error::other(error.to_string()))
+        })
     }
 
-    pub fn finish(mut self) -> std::io::Result<()> {
-        match self.muxer.as_mut().and_then(FragmentedMuxer::flush_segment) {
-            Some(segment) => self.file.write_all(&segment),
-            None => Ok(()),
+    pub fn finish(mut self) -> std::io::Result<Written> {
+        if let Some(segment) = self.muxer.as_mut().and_then(FragmentedMuxer::flush_segment) {
+            self.append(&segment)?;
         }
+        Ok(self.written())
     }
 }
 
@@ -151,7 +185,17 @@ mod tests {
         recording
             .write(Codec::H264, &annexb::nals(&delta), false)
             .unwrap();
-        recording.finish().unwrap();
+        let written = recording.finish().unwrap();
+        assert_eq!(
+            (written.file.as_path(), written.frames),
+            (path.as_path(), 2),
+            "the delta before the first keyframe is not recorded"
+        );
+        assert_eq!(
+            written.bytes,
+            std::fs::metadata(&path).unwrap().len(),
+            "the summary counts every byte in the file"
+        );
         assert!(
             Recording::create(&path, (1280, 720)).is_err(),
             "a recording never overwrites a file that is already there"

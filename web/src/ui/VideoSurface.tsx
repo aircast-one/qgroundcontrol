@@ -424,7 +424,7 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
       if (main && reading.running && reading.stats !== null) mainVideoStats.set(surface, reading.stats);
       else if (main) mainVideoStats.remove(surface);
     };
-    const nativePlayer = native !== null && painted !== null ? playNative(painted, native, report, () => void VideoCommands.reportRecording(false)) : null;
+    const nativePlayer = native !== null && painted !== null ? playNative(painted, native, report, (reason) => void VideoCommands.reportRecordingFailed(reason)) : null;
     player.current = nativePlayer;
     restartsSeen.current = restarts;
     const stop = nativePlayer?.stop ?? (endpoint !== null && element !== null ? playWhep(element, endpoint, report) : null);

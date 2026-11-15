@@ -40,6 +40,9 @@ const VIDEO_PICTURE_IN_PICTURE = 'settings.videoSettings.multiViewEnabled';
 const VIDEO_PIP_SHOWN = 'video.setPipShown';
 const VIDEO_REPORT_NATIVE = 'video.reportNative';
 const VIDEO_REPORT_RECORDING = 'video.reportRecording';
+const HOST_POST_NOTICE = 'host.postNotice';
+const MESSAGE_NOTICE = 'message';
+const RECORDING_STOPPED_TITLE = 'Recording stopped';
 const VIDEO_STREAM_ENABLED = 'settings.videoSettings.streamEnabled';
 const CAMERAS_ADD = 'cameras.add';
 const CAMERAS_UPDATE = 'cameras.update';
@@ -111,6 +114,8 @@ export const VideoCommands = {
   reportPlayback: (channel: number, { running, frames, width, height, error, restarted }: WhepReport): Promise<boolean> =>
     Qgc.invoke(VIDEO_REPORT_NATIVE, running, frames, width, height, error, null, restarted, channel),
   reportRecording: (active: boolean): Promise<boolean> => Qgc.invoke(VIDEO_REPORT_RECORDING, active),
+  reportRecordingFailed: (reason: string): Promise<boolean[]> =>
+    Promise.all([Qgc.invoke(VIDEO_REPORT_RECORDING, false), Qgc.invoke(HOST_POST_NOTICE, MESSAGE_NOTICE, RECORDING_STOPPED_TITLE, reason)]),
   turnStreamOn: (): Promise<boolean> => Qgc.set(VIDEO_STREAM_ENABLED, true),
 };
 

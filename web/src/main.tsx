@@ -1,3 +1,4 @@
+import { CSPProvider } from '@base-ui/react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { DebugRelay } from '@/app/DebugRelay';
@@ -38,5 +39,11 @@ if ('to' in handoff) {
   if (import.meta.env.DEV) DebugRelay.start(window.location.search);
   await coreReady();
   DeviceLink.recordStay(handoff);
-  root.render(<StrictMode><MainActivity /></StrictMode>);
+  root.render(
+    <StrictMode>
+      <CSPProvider disableStyleElements>
+        <MainActivity />
+      </CSPProvider>
+    </StrictMode>,
+  );
 }

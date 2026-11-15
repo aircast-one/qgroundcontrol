@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decoderFailed, nativeMessage, nativeStats, playbackStep, playsNatively, restarted, startingPlayback } from './nativeVideo';
+import { type Decoding, decoderStep, nativeMessage, nativeStats, playbackStep, playsNatively, startingPlayback } from './nativeVideo';
 
 const bytes = (...values: number[]): ArrayBuffer => new Uint8Array(values).buffer;
 
@@ -51,11 +51,17 @@ describe('playbackStep', () => {
     expect(playbackStep(startingPlayback, { kind: 'ended', reason: '' }, true)[0].error).toBe('The camera ended the stream.');
   });
 
-  it('rebuilds a failed decoder a few times and then reports the error, and a restart clears it', () => {
-    const keyed = { ...startingPlayback, keyed: true };
-    expect(decoderFailed(keyed, 1, 'bad frame')).toEqual([{ ...startingPlayback, keyed: false }, true]);
-    const [given, rebuild] = decoderFailed(keyed, 6, 'bad frame');
-    expect([given.error, rebuild]).toEqual(['bad frame', false]);
-    expect(restarted(given)).toEqual({ ...startingPlayback });
+  it('rebuilds a failed decoder a few times, then gives up and reports the error, and a decoded frame resets the count', () => {
+    const playing: Decoding = { playback: { ...startingPlayback, keyed: true }, failures: 0 };
+    const [once, rebuildOnce] = decoderStep(playing, { kind: 'failed', reason: 'bad frame' });
+    expect([once, rebuildOnce]).toEqual([{ playback: startingPlayback, failures: 1 }, true]);
+    expect(decoderStep(once, { kind: 'decoded' })[0].failures).toBe(0);
+    const failing = Array.from({ length: 6 }).reduce<readonly [Decoding, boolean]>(([decoding]) => decoderStep(decoding, { kind: 'failed', reason: 'bad frame' }), [playing, true]);
+    expect([failing[0].playback.error, failing[1]]).toEqual(['bad frame', false]);
+  });
+
+  it('a restart brings back a decoder that gave up, so the core retrying the stream can recover the picture', () => {
+    const givenUp: Decoding = { playback: { ...startingPlayback, error: 'bad frame' }, failures: 6 };
+    expect(decoderStep(givenUp, { kind: 'restarted' })).toEqual([{ playback: startingPlayback, failures: 0 }, true]);
   });
 });

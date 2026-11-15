@@ -79,14 +79,11 @@ fn aligned(bytes: &[u8]) -> (Vec<&[u8]>, &[u8]) {
 }
 
 fn payload_len(packet: &[u8]) -> usize {
-    let adaptation = packet[3] & 0x20 != 0;
-    PACKET
-        - HEADER
-        - if adaptation {
-            1 + usize::from(packet[4])
-        } else {
-            0
-        }
+    let adaptation = match packet[3] & 0x20 {
+        0 => 0,
+        _ => 1 + usize::from(packet[4]),
+    };
+    (PACKET - HEADER).saturating_sub(adaptation)
 }
 
 impl Demuxer {
