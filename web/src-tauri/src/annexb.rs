@@ -60,12 +60,10 @@ fn is_sps(codec: Codec, nal: &[u8]) -> bool {
 
 fn unescaped(nal: &[u8]) -> Vec<u8> {
     nal.iter()
-        .fold(Vec::with_capacity(nal.len()), |kept, &byte| {
-            match (byte, kept.as_slice()) {
-                (3, [.., 0, 0]) => kept,
-                _ => [kept, vec![byte]].concat(),
-            }
-        })
+        .enumerate()
+        .filter(|&(at, &byte)| !(byte == 3 && at >= 2 && nal[at - 2..at] == [0, 0]))
+        .map(|(_, &byte)| byte)
+        .collect()
 }
 
 fn codec_string(codec: Codec, sps: &[u8]) -> Option<String> {
@@ -97,15 +95,14 @@ fn codec_string(codec: Codec, sps: &[u8]) -> Option<String> {
     }
 }
 
-pub fn codec_of(codec: Codec, unit: &[u8]) -> Option<String> {
-    nals(unit)
-        .into_iter()
+pub fn codec_of(codec: Codec, nals: &[&[u8]]) -> Option<String> {
+    nals.iter()
         .find(|nal| is_sps(codec, nal))
         .and_then(|sps| codec_string(codec, sps))
 }
 
-pub fn keyed(codec: Codec, unit: &[u8]) -> bool {
-    nals(unit).into_iter().any(|nal| is_key(codec, nal))
+pub fn keyed(codec: Codec, nals: &[&[u8]]) -> bool {
+    nals.iter().any(|nal| is_key(codec, nal))
 }
 
 #[cfg(test)]
@@ -130,18 +127,33 @@ mod tests {
                 &[0x65, 0x88]
             ]
         );
-        assert_eq!(codec_of(Codec::H264, &h264).as_deref(), Some("avc1.42c01f"));
-        assert!(keyed(Codec::H264, &h264));
-        assert!(!keyed(Codec::H264, &[&START[..], &[0x41, 0x9a]].concat()));
+        assert_eq!(
+            codec_of(Codec::H264, &nals(&h264)).as_deref(),
+            Some("avc1.42c01f")
+        );
+        assert!(keyed(Codec::H264, &nals(&h264)));
+        assert!(!keyed(
+            Codec::H264,
+            &nals(&[&START[..], &[0x41, 0x9a]].concat())
+        ));
 
         let sps = [
             0x42, 0x01, 0x01, 0x01, 0x60, 0, 0, 0, 0x90, 0, 0, 3, 0, 0, 0, 0x5d, 0xa0,
         ];
         let h265 = [&START[..], &sps, &START, &[0x26, 0x01, 0xaf]].concat();
         assert_eq!(
-            codec_of(Codec::H265, &h265).as_deref(),
+            codec_of(Codec::H265, &nals(&h265)).as_deref(),
             Some("hev1.1.6.L93.90")
         );
-        assert!(keyed(Codec::H265, &h265));
+        assert!(keyed(Codec::H265, &nals(&h265)));
+    }
+
+    #[test]
+    fn emulation_prevention_bytes_are_removed_where_the_raw_stream_has_two_zeros() {
+        assert_eq!(
+            unescaped(&[0x42, 0, 0, 3, 0, 3, 0, 0, 3, 1]),
+            [0x42, 0, 0, 0, 3, 0, 0, 1],
+            "a 3 after 00 03 00 is data, because the zero run restarts after an escape"
+        );
     }
 }

@@ -2,7 +2,6 @@ import { mutableStateOf } from '@/kotlin/State';
 import { DEVICE_RETRY_MS, latestWins, readDeviceSettings, sendDeviceSettings } from './deviceSettings';
 import { desktopCall, desktopEvents } from './desktop';
 
-const desktop: boolean = import.meta.env.DESKTOP === true;
 
 const SETTINGS_KEY = 'aircast.settings';
 const WEB_SERIAL_PREFIX = 'webserial-';
@@ -65,7 +64,7 @@ const connect = (): Promise<Worker> => {
 };
 
 export const callTransferring = <T = unknown>(name: string, transfer: Transferable[], ...args: unknown[]): Promise<T> =>
-  desktop ? desktopCall<T>(name, args) : connect().then((worker) => new Promise<T>((resolve) => {
+  __DESKTOP__ ? desktopCall<T>(name, args) : connect().then((worker) => new Promise<T>((resolve) => {
     const id = String(calls.next++);
     pending.set(id, resolve as (result: unknown) => void);
     worker.postMessage({ id, call: name, args }, transfer);
@@ -73,7 +72,7 @@ export const callTransferring = <T = unknown>(name: string, transfer: Transferab
 
 export const call = <T = unknown>(name: string, ...args: unknown[]): Promise<T> => callTransferring<T>(name, [], ...args);
 
-export const coreReady = (): Promise<unknown> => (desktop ? (connection.desktop ??= desktopEvents(deliver)) : connect());
+export const coreReady = (): Promise<unknown> => (__DESKTOP__ ? (connection.desktop ??= desktopEvents(deliver)) : connect());
 
 export const onCoreEvent = (listener: EventListener): (() => void) => {
   eventListeners.add(listener);
@@ -111,7 +110,7 @@ const openSettings = async (): Promise<void> => {
   if (kept === '' && text !== '') void device.save(text);
 };
 
-export const serialAvailable = (): boolean => desktop || (typeof navigator !== 'undefined' && 'serial' in navigator);
+export const serialAvailable = (): boolean => __DESKTOP__ || (typeof navigator !== 'undefined' && 'serial' in navigator);
 
 const portLine = (port: SerialPort, index: number): [string, string] => {
   const { usbVendorId, usbProductId } = port.getInfo();
@@ -122,7 +121,7 @@ const portLine = (port: SerialPort, index: number): [string, string] => {
 };
 
 export const refreshSerialPorts = async (): Promise<void> => {
-  if (desktop || !serialAvailable()) return;
+  if (__DESKTOP__ || !serialAvailable()) return;
   const ports = await navigator.serial.getPorts();
   const lines = ports.map(portLine);
   serialPorts.clear();
@@ -131,7 +130,7 @@ export const refreshSerialPorts = async (): Promise<void> => {
 };
 
 export const requestSerialPort = async (): Promise<void> => {
-  if (desktop) return;
+  if (__DESKTOP__) return;
   await navigator.serial.requestPort();
   await refreshSerialPorts();
 };
@@ -201,7 +200,7 @@ const startDesktopCore = async (): Promise<void> => {
 };
 
 export const startCore = async (): Promise<void> => {
-  if (desktop) return startDesktopCore();
+  if (__DESKTOP__) return startDesktopCore();
   await openSettings();
   adoptOtherTabs();
   await call('setMockLinksAvailable', true);

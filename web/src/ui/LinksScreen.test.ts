@@ -508,43 +508,43 @@ describe('AddableLinkTypesTest', () => {
 
   it('a build without serial support stops offering serial', () => {
     expect(
-      addableLinkTypes(links('["udp","tcp"]')),
+      addableLinkTypes(links('["udp","tcp"]'), false),
       'linkTypeTable() wraps serial in QGC_NO_SERIAL_LINK, and createSerialConfiguration returns false on such a build - the chip was hardcoded, so it offered a link type that could only ever fail',
     ).toEqual([LinkType.WebSocket]);
   });
 
   it('a type this head cannot create is not offered just because the core lists it', () => {
     expect(
-      addableLinkTypes(links('["serial","udp","tcp","bluetooth"]')),
+      addableLinkTypes(links('["serial","udp","tcp","bluetooth"]'), false),
       'createAndConnectLink handles udp and tcp and returns false for anything else, and Bluetooth is only offered where the core has a Bluetooth host',
     ).toEqual([LinkType.WebSocket, LinkType.Serial]);
   });
 
   it('a page served by an Aircast device offers UDP and TCP, carried by the device', () => {
     const paired = json('{"kind":"object","class":"Links","links":[],"linkTypeIds":["serial","udp","tcp"],"throughDevice":true}');
-    expect(addableLinkTypes(paired)).toEqual([LinkType.WebSocket, LinkType.Udp, LinkType.Tcp, LinkType.Serial]);
+    expect(addableLinkTypes(paired, false)).toEqual([LinkType.WebSocket, LinkType.Udp, LinkType.Tcp, LinkType.Serial]);
   });
 
   it('a core too old to serve the list keeps all three rather than offering none', () => {
-    expect(addableLinkTypes(json('{"kind":"object"}'))).toEqual([LinkType.WebSocket, LinkType.Serial]);
-    expect(addableLinkTypes(null)).toEqual([LinkType.WebSocket, LinkType.Serial]);
-    expect(addableLinkTypes(links('[]'))).toEqual([LinkType.WebSocket, LinkType.Serial]);
+    expect(addableLinkTypes(json('{"kind":"object"}'), false)).toEqual([LinkType.WebSocket, LinkType.Serial]);
+    expect(addableLinkTypes(null, false)).toEqual([LinkType.WebSocket, LinkType.Serial]);
+    expect(addableLinkTypes(links('[]'), false)).toEqual([LinkType.WebSocket, LinkType.Serial]);
     expect(CREATABLE_LINK_TYPES).toEqual([LinkType.Udp, LinkType.Tcp, LinkType.Serial]);
   });
 
   it('bluetooth is offered when the core has a bluetooth host', () => {
     const view = json(`{"kind":"object","linkTypeIds":["serial","udp","tcp","bluetooth"],
             "bluetooth":{"available":true,"scanning":false,"devices":[{"name":"HC-05","address":"98:D3:31:F6:12:34"}]}}`);
-    expect(addableLinkTypes(view)).toEqual([LinkType.WebSocket, LinkType.Serial, LinkType.Bluetooth]);
+    expect(addableLinkTypes(view, false)).toEqual([LinkType.WebSocket, LinkType.Serial, LinkType.Bluetooth]);
     expect(bluetoothState(view).devices).toEqual([{ name: 'HC-05', address: '98:D3:31:F6:12:34' }]);
   });
 
   it('log replay is offered when the core lists it, after the live links', () => {
-    expect(addableLinkTypes(links('["serial","udp","tcp","logReplay"]'))).toEqual([LinkType.WebSocket, LinkType.Serial, LinkType.LogReplay]);
+    expect(addableLinkTypes(links('["serial","udp","tcp","logReplay"]'), false)).toEqual([LinkType.WebSocket, LinkType.Serial, LinkType.LogReplay]);
   });
 
   it('a browser reaches the aircraft over a MAVLink WebSocket, since it cannot open UDP or TCP sockets', () => {
-    expect(addableLinkTypes(links('["serial","udp","tcp"]'))[0]).toBe(LinkType.WebSocket);
+    expect(addableLinkTypes(links('["serial","udp","tcp"]'), false)[0]).toBe(LinkType.WebSocket);
     expect(webSocketUrlError('ws://192.168.1.10:5760')).toBeNull();
     expect(webSocketUrlError('wss://bridge.example/mavlink')).toBeNull();
     expect(webSocketUrlError('http://192.168.1.10:5760')).toBe('A MAVLink WebSocket address starts with ws:// or wss://.');

@@ -2,7 +2,6 @@ import { type HTMLAttributes, type PointerEvent, useContext, useEffect, useMemo,
 import { VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
-import { desktop } from '@/core/desktop';
 import { type NativePlayer, playNative, playsNatively } from '@/core/nativeVideo';
 import { recordStream } from '@/core/recorder';
 import { type WhepReport, playWhep } from '@/core/whep';
@@ -401,13 +400,15 @@ const pipSurfaces = new PipSurfaces((shown) => void VideoCommands.setPipShown(sh
 export const VideoChannelSurface = ({ channel, className }: { channel: number; className?: string }) => {
   const view = useQgcPath(VIDEO_VIEW);
   const endpoint = whepEndpoint(view, channel);
-  const stream = desktop ? streamUri(view, channel) : null;
+  const stream = __DESKTOP__ ? streamUri(view, channel) : null;
   const native = stream !== null && playsNatively(stream) ? stream : null;
   const restarts = whepRestarts(view, channel);
+  const whepRestart = native === null ? restarts : null;
   const recordingFile = channel === MAIN_VIDEO_CHANNEL ? nativeRecordingFile(view) : null;
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const player = useRef<NativePlayer | null>(null);
+  const restartsSeen = useRef(restarts);
   useEffect(() => {
     if (channel !== PIP_VIDEO_CHANNEL) return undefined;
     pipSurfaces.created();
@@ -423,15 +424,23 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
       if (main && reading.running && reading.stats !== null) mainVideoStats.set(surface, reading.stats);
       else if (main) mainVideoStats.remove(surface);
     };
-    const nativePlayer = native !== null && painted !== null ? playNative(painted, native, report) : null;
+    const nativePlayer = native !== null && painted !== null ? playNative(painted, native, report, () => void VideoCommands.reportRecording(false)) : null;
     player.current = nativePlayer;
+    restartsSeen.current = restarts;
     const stop = nativePlayer?.stop ?? (endpoint !== null && element !== null ? playWhep(element, endpoint, report) : null);
     return () => {
       stop?.();
       player.current = null;
       mainVideoStats.remove(surface);
     };
-  }, [endpoint, native, channel, restarts]);
+  }, [endpoint, native, channel, whepRestart]);
+  useEffect(() => {
+    const nativePlayer = player.current;
+    if (nativePlayer === null || restarts === restartsSeen.current) return undefined;
+    restartsSeen.current = restarts;
+    void nativePlayer.restart();
+    return undefined;
+  }, [restarts]);
   useEffect(() => {
     const nativePlayer = player.current;
     if (recordingFile !== null && nativePlayer !== null) {

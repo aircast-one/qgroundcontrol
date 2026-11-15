@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { desktop } from '@/core/desktop';
 import { type Json, type JsonArray, isNull, jsonObjects, jsonStrings, opt, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type FactSlider, Qgc } from '@/bridge/Qgc';
 import { useQgcDerived } from '@/bridge/QgcState';
@@ -107,7 +106,7 @@ export const functionLabel = (id: string): string => FUNCTION_LABELS[id] ?? id;
 
 const thisSite = (): string => (typeof location === 'undefined' ? 'this site' : location.host);
 
-const keptWhere = (): string => (desktop ? 'on this computer' : `in this browser for ${thisSite()}`);
+const keptWhere = (): string => (__DESKTOP__ ? 'on this computer' : `in this browser for ${thisSite()}`);
 
 export type JoystickPage = {
   names: readonly string[];

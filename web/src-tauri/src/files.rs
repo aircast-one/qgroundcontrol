@@ -70,49 +70,54 @@ pub fn staged_remove_prefixed<R: Runtime>(
     let root = root(&app)?;
     let kept = keep.map(|path| inside(&root, &path)).transpose()?;
     let folder = inside(&root, &prefix)?;
-    std::fs::read_dir(&folder)
-        .map(|entries| {
-            entries
-                .flatten()
-                .map(|entry| entry.path())
-                .filter(|path| Some(path) != kept.as_ref())
-                .for_each(|path| {
-                    let _ = match path.is_dir() {
-                        true => std::fs::remove_dir_all(path),
-                        false => std::fs::remove_file(path),
-                    };
-                })
+    let entries = match std::fs::read_dir(&folder) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        listed => listed.map_err(failed)?,
+    };
+    let refused: Vec<String> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| Some(path) != kept.as_ref())
+        .filter_map(|path| {
+            match path.is_dir() {
+                true => std::fs::remove_dir_all(&path),
+                false => std::fs::remove_file(&path),
+            }
+            .err()
+            .map(|error| format!("{}: {error}", path.display()))
         })
-        .or_else(|error| match error.kind() {
-            std::io::ErrorKind::NotFound => Ok(()),
-            _ => Err(failed(error)),
-        })
+        .collect();
+    refused
+        .is_empty()
+        .then_some(())
+        .ok_or_else(|| refused.join("; "))
 }
 
 #[tauri::command]
 pub fn staged_list<R: Runtime>(app: AppHandle<R>, dir: String) -> Result<Value, String> {
-    let entries = std::fs::read_dir(inside(&root(&app)?, &dir)?)
-        .map(|entries| {
-            entries
-                .flatten()
-                .filter_map(|entry| {
-                    let meta = entry.metadata().ok()?;
-                    let modified = meta
-                        .modified()
-                        .ok()
-                        .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
-                        .map(|since| since.as_millis());
-                    Some(json!({
-                        "name": entry.file_name().to_string_lossy(),
-                        "size": meta.len(),
-                        "dir": meta.is_dir(),
-                        "modified": modified,
-                    }))
-                })
-                .collect::<Vec<_>>()
+    let entries = match std::fs::read_dir(inside(&root(&app)?, &dir)?) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Value::Array(Vec::new()));
+        }
+        listed => listed.map_err(failed)?,
+    };
+    Ok(entries
+        .flatten()
+        .filter_map(|entry| {
+            let meta = entry.metadata().ok()?;
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
+                .map(|since| since.as_millis());
+            Some(json!({
+                "name": entry.file_name().to_string_lossy(),
+                "size": meta.len(),
+                "dir": meta.is_dir(),
+                "modified": modified,
+            }))
         })
-        .unwrap_or_default();
-    Ok(Value::Array(entries))
+        .collect())
 }
 
 #[tauri::command]

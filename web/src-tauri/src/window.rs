@@ -6,7 +6,6 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Runtime, WebviewWindow};
 
 const CLOSE_CHECKS: &str = "view.closeChecks";
-const LOST_ON_LEAVING: [&str; 2] = ["unsavedMission", "pendingWrites"];
 
 static CLOSING: AtomicBool = AtomicBool::new(false);
 
@@ -29,11 +28,7 @@ pub fn work_lost_on_leaving(checks: &Value) -> Vec<String> {
         .map(|prompts| {
             prompts
                 .iter()
-                .filter(|prompt| {
-                    prompt["id"]
-                        .as_str()
-                        .is_some_and(|id| LOST_ON_LEAVING.contains(&id))
-                })
+                .filter(|prompt| prompt["losesWork"].as_bool() == Some(true))
                 .filter_map(|prompt| prompt["message"].as_str().map(str::to_string))
                 .collect()
         })
@@ -48,32 +43,50 @@ pub fn holds_close<R: Runtime>(app: &AppHandle<R>) -> bool {
     if lost.is_empty() {
         return false;
     }
-    let _ = app.emit("close-blocked", lost);
+    log::info!(target: "desktop.window", "event=close_held reasons={}", lost.len());
+    if let Err(error) = app.emit("close-blocked", lost) {
+        log::warn!(target: "desktop.window", "event=close_prompt_failed reason=\"{error}\"");
+        return false;
+    }
     true
 }
 
 #[tauri::command]
 pub fn close_anyway<R: Runtime>(app: AppHandle<R>) {
+    log::info!(target: "desktop.window", "event=closed_anyway");
     CLOSING.store(true, Ordering::Relaxed);
     app.exit(0);
 }
 
 #[cfg(target_os = "macos")]
 pub fn guard_quit<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem};
+    use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
     const QUIT: &str = "guarded-quit";
+    const APPLICATION_MENU: usize = 0;
+    let name = app.package_info().name.clone();
+    let about = AboutMetadata {
+        name: Some(name.clone()),
+        version: Some(app.package_info().version.to_string()),
+        ..Default::default()
+    };
+    let application = Submenu::with_items(
+        app,
+        &name,
+        true,
+        &[
+            &PredefinedMenuItem::about(app, None, Some(about))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, QUIT, format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?,
+        ],
+    )?;
     let menu = Menu::default(app)?;
-    if let Some(application) = menu.items()?.first().and_then(|item| item.as_submenu()) {
-        let last = application.items()?.len().saturating_sub(1);
-        application.remove_at(last)?;
-        application.append(&MenuItem::with_id(
-            app,
-            QUIT,
-            format!("Quit {}", app.package_info().name),
-            true,
-            Some("CmdOrCtrl+Q"),
-        )?)?;
-    }
+    menu.remove_at(APPLICATION_MENU)?;
+    menu.insert(&application, APPLICATION_MENU)?;
     app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
         if event.id() == QUIT && !holds_close(app) {
@@ -103,11 +116,11 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn only_unsaved_missions_and_pending_writes_hold_the_window_open() {
+    fn only_prompts_the_core_marks_as_losing_work_hold_the_window_open() {
         let checks = json!({ "prompts": [
-            { "id": "armed", "message": "The vehicle is armed." },
-            { "id": "unsavedMission", "message": "The mission has unsaved changes." },
-            { "id": "pendingWrites", "message": "Parameter writes are still pending." },
+            { "id": "activeConnections", "message": "The vehicle is connected.", "losesWork": false },
+            { "id": "unsavedMission", "message": "The mission has unsaved changes.", "losesWork": true },
+            { "id": "pendingWrites", "message": "Parameter writes are still pending.", "losesWork": true },
         ]});
         assert_eq!(
             work_lost_on_leaving(&checks),

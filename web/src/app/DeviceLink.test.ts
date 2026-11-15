@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { connectAsked, deviceBase, deviceCameras, deviceLinkName, deviceSocket, handoffOf, handoffUrl, offeredApp, withoutConnect } from './DeviceLink';
+import { connectAsked, deviceBase, deviceCameras, deviceLinkName, deviceMavlink, deviceSocket, handoffOf, handoffUrl, offeredApp, withoutConnect } from './DeviceLink';
 
 describe('the link to the device serving this page', () => {
   it('reaches telemetry beside the page, on the address the browser already used', () => {
     expect(deviceSocket('http://falcon.local/fly/')).toBe('ws://falcon.local/fly/mavlink');
     expect(deviceSocket('http://192.168.1.100/fly/index.html?x=1#y')).toBe('ws://192.168.1.100/fly/mavlink');
     expect(deviceSocket('https://falcon.tail.ts.net/fly/')).toBe('wss://falcon.tail.ts.net/fly/mavlink');
+  });
+
+  it('the desktop app reaches a paired device over UDP on its MAVLink port, and a browser over the WebSocket beside its page', () => {
+    expect(deviceMavlink(true, 'https://falcon.local')).toEqual({ kind: 'udp', host: 'falcon.local', port: 14550 });
+    expect(deviceMavlink(false, 'https://falcon.local')).toEqual({ kind: 'webSocket', url: 'wss://falcon.local/fly/mavlink' });
   });
 
   it('pairs the core with the folder the device served the page from', () => {

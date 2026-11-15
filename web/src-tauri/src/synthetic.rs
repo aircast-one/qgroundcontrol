@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use groundstation::nativehost::{synthetic_offscreen, synthetic_offscreen_release};
+use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
 type Deliver = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
@@ -19,8 +20,19 @@ fn attach(key: usize, size: (u32, u32), orbit: bool, deliver: Deliver) -> Result
         .ok_or_else(|| "The 3D view could not start.".to_string())
 }
 
-#[tauri::command(async)]
-pub fn synthetic_open(
+async fn attached(
+    key: usize,
+    size: (u32, u32),
+    orbit: bool,
+    deliver: Deliver,
+) -> Result<(), String> {
+    spawn_blocking(move || attach(key, size, orbit, deliver))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn synthetic_open(
     width: u32,
     height: u32,
     orbit: bool,
@@ -29,9 +41,11 @@ pub fn synthetic_open(
 ) -> Result<usize, String> {
     let key = views.next.fetch_add(1, Ordering::Relaxed) + 1;
     let deliver: Deliver = Arc::new(move |jpeg| {
-        let _ = frames.send(InvokeResponseBody::Raw(jpeg));
+        if let Err(error) = frames.send(InvokeResponseBody::Raw(jpeg)) {
+            log::debug!(target: "desktop.synthetic", "event=frame_not_delivered view={key} reason=\"{error}\"");
+        }
     });
-    attach(key, (width, height), orbit, deliver.clone())?;
+    attached(key, (width, height), orbit, deliver.clone()).await?;
     views
         .shown
         .lock()
@@ -40,8 +54,8 @@ pub fn synthetic_open(
     Ok(key)
 }
 
-#[tauri::command(async)]
-pub fn synthetic_resize(
+#[tauri::command]
+pub async fn synthetic_resize(
     key: usize,
     width: u32,
     height: u32,
@@ -54,17 +68,19 @@ pub fn synthetic_resize(
         .get(&key)
         .cloned();
     match shown {
-        Some((orbit, deliver)) => attach(key, (width, height), orbit, deliver),
+        Some((orbit, deliver)) => attached(key, (width, height), orbit, deliver).await,
         None => Ok(()),
     }
 }
 
-#[tauri::command(async)]
-pub fn synthetic_close(key: usize, views: tauri::State<'_, Views>) {
+#[tauri::command]
+pub async fn synthetic_close(key: usize, views: tauri::State<'_, Views>) -> Result<(), String> {
     views
         .shown
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .remove(&key);
-    synthetic_offscreen_release(key);
+    spawn_blocking(move || synthetic_offscreen_release(key))
+        .await
+        .map_err(|error| error.to_string())
 }

@@ -3,8 +3,6 @@ import { listen } from '@tauri-apps/api/event';
 
 type EventListener = (path: string, json: string) => void;
 
-export const desktop: boolean = import.meta.env.DESKTOP === true;
-
 const tile = async (mapType: string, x: number, y: number, zoom: number): Promise<Uint8Array | undefined> => {
   const bytes = new Uint8Array(await invoke<ArrayBuffer>('map_tile', { mapType, x, y, zoom }));
   return bytes.length > 0 ? bytes : undefined;

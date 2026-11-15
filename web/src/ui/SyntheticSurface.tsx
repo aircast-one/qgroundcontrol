@@ -16,17 +16,22 @@ export const nativeDraw = (view: Json | null): SyntheticDraw => {
   return draw === 'drawn' ? SyntheticDraw.Drawn : draw === 'failed' ? SyntheticDraw.Failed : SyntheticDraw.Loading;
 };
 
-const desktop: boolean = import.meta.env.DESKTOP === true;
-
 const paintJpeg = (canvas: HTMLCanvasElement) => {
   const context = canvas.getContext('2d');
-  return (jpeg: ArrayBuffer) =>
+  const order = { arrived: 0, painted: 0 };
+  return (jpeg: ArrayBuffer) => {
+    order.arrived += 1;
+    const sequence = order.arrived;
     void createImageBitmap(new Blob([jpeg], { type: 'image/jpeg' })).then((picture) => {
-      if (canvas.width !== picture.width) canvas.width = picture.width;
-      if (canvas.height !== picture.height) canvas.height = picture.height;
-      context?.drawImage(picture, 0, 0);
+      if (sequence > order.painted) {
+        order.painted = sequence;
+        if (canvas.width !== picture.width) canvas.width = picture.width;
+        if (canvas.height !== picture.height) canvas.height = picture.height;
+        context?.drawImage(picture, 0, 0);
+      }
       picture.close();
     });
+  };
 };
 
 const nativeHandoff = {
@@ -45,7 +50,7 @@ const workerHandoff = {
   surfaceDestroyed: (surface: Promise<number>) => void surface.then((key) => call('syntheticRelease', key)),
 };
 
-const surfaceHandoff = desktop ? nativeHandoff : workerHandoff;
+const surfaceHandoff = __DESKTOP__ ? nativeHandoff : workerHandoff;
 
 export const SyntheticSurface = ({ className, orbit = false }: { className?: string; orbit?: boolean }) => {
   const host = useRef<HTMLDivElement>(null);

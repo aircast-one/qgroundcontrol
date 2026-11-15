@@ -9,6 +9,8 @@ use crate::annexb::{Codec, Unit};
 
 pub const PACKET: usize = 188;
 const SYNC: u8 = 0x47;
+const HEADER: usize = 4;
+const PES_PREFIX: usize = 6;
 
 #[derive(Clone, Default)]
 struct Feed(Arc<Mutex<Vec<u8>>>);
@@ -56,17 +58,44 @@ impl Default for Demuxer {
     }
 }
 
+fn packet_at(bytes: &[u8], from: usize) -> Option<usize> {
+    (from..bytes.len())
+        .find(|&at| bytes[at] == SYNC && bytes.get(at + PACKET).is_none_or(|next| *next == SYNC))
+}
+
+fn aligned(bytes: &[u8]) -> (Vec<&[u8]>, &[u8]) {
+    let starts: Vec<usize> =
+        std::iter::successors(packet_at(bytes, 0), |&at| packet_at(bytes, at + PACKET)).collect();
+    let whole = starts
+        .iter()
+        .filter(|&&at| at + PACKET <= bytes.len())
+        .map(|&at| &bytes[at..at + PACKET])
+        .collect();
+    let rest = starts
+        .last()
+        .filter(|&&at| at + PACKET > bytes.len())
+        .map_or(&[][..], |&at| &bytes[at..]);
+    (whole, rest)
+}
+
+fn payload_len(packet: &[u8]) -> usize {
+    let adaptation = packet[3] & 0x20 != 0;
+    PACKET
+        - HEADER
+        - if adaptation {
+            1 + usize::from(packet[4])
+        } else {
+            0
+        }
+}
+
 impl Demuxer {
     pub fn push(&mut self, bytes: &[u8]) -> Vec<Unit> {
         let joined = [std::mem::take(&mut self.pending), bytes.to_vec()].concat();
-        let synced = &joined[joined
-            .iter()
-            .position(|byte| *byte == SYNC)
-            .unwrap_or(joined.len())..];
-        let whole = synced.len() - synced.len() % PACKET;
-        self.pending = synced[whole..].to_vec();
-        synced[..whole]
-            .chunks(PACKET)
+        let (packets, rest) = aligned(&joined);
+        self.pending = rest.to_vec();
+        packets
+            .into_iter()
             .flat_map(|packet| self.packet(packet))
             .collect()
     }
@@ -110,16 +139,9 @@ impl Demuxer {
                 self.packets = self.packets.saturating_add(1);
                 self.pts = pes.header.pts.or(self.pts);
                 self.unit.extend_from_slice(&pes.data);
-                let header = 3 + [
-                    pes.header.pts.map(|_| 5),
-                    pes.header.dts.map(|_| 5),
-                    pes.header.escr.map(|_| 6),
-                ]
-                .into_iter()
-                .flatten()
-                .sum::<usize>();
                 self.pes_left = (pes.pes_packet_len > 0).then(|| {
-                    usize::from(pes.pes_packet_len).saturating_sub(header + pes.data.len())
+                    (PES_PREFIX + usize::from(pes.pes_packet_len))
+                        .saturating_sub(payload_len(packet))
                 });
                 before.into_iter().chain(self.complete(codec)).collect()
             }
@@ -256,6 +278,36 @@ mod tests {
                 .len(),
             1,
             "a PES that says how long it is goes out as soon as it is whole, without waiting for the next frame"
+        );
+    }
+
+    #[test]
+    fn a_stream_that_loses_bytes_mid_packet_finds_the_next_packet_again() {
+        let pat = written(
+            TsPayload::Pat(Pat {
+                transport_stream_id: 1,
+                version_number: VersionNumber::new(),
+                table: vec![ProgramAssociation {
+                    program_num: 1,
+                    program_map_pid: Pid::new(0x100).unwrap(),
+                }],
+            }),
+            0,
+        );
+        let packets = [&pat[..], &pat, &pat].concat();
+        let torn = [&packets[..PACKET], &packets[PACKET + 50..]].concat();
+        let (whole, rest) = aligned(&torn);
+        assert_eq!(
+            (whole, rest.len()),
+            (vec![&packets[2 * PACKET..]], 0),
+            "after the torn packet, the next packet that a sync byte follows is found again"
+        );
+        let stray = [&[0x47, 0x47, 1][..], &packets].concat();
+        let (whole, rest) = aligned(&stray);
+        assert_eq!(
+            (whole.len(), rest.len()),
+            (3, 0),
+            "a stray sync byte is not a packet start"
         );
     }
 }

@@ -20,7 +20,6 @@ import { ChoiceField } from '@/ui/SettingsScreen';
 import { AdvancedToggle, FootNote, LocalPageHeading, OverridePageHeading, PageTopBar, SectionHeader, SetupRow } from '@/ui/SetupRow';
 import { USB_RADIO_PORT, UsbAccess } from '@/ui/UsbAccess';
 import { serialAvailable } from '@/core/client';
-import { desktop } from '@/core/desktop';
 
 export const LINKS_VIEW = 'view.links';
 const LINKS_PATH = 'links.linkConfigurations';
@@ -211,7 +210,7 @@ const servedLinkTypes = (view: Json | null): readonly LinkType[] => {
   return [...(creatable.length === 0 ? CREATABLE_LINK_TYPES : creatable), ...bluetooth, ...[LinkType.LogReplay, LinkType.Mock].filter((it) => served.has(it))];
 };
 
-export const addableLinkTypes = (view: Json | null, nativeSockets: boolean = desktop): readonly LinkType[] =>
+export const addableLinkTypes = (view: Json | null, nativeSockets: boolean): readonly LinkType[] =>
   nativeSockets ? servedLinkTypes(view) : [LinkType.WebSocket, ...servedLinkTypes(view).filter((it) => optBoolean(view, 'throughDevice') || !SOCKET_LINK_TYPES.has(it))];
 
 export const PARITY_CHOICES: readonly (readonly [string, number])[] = [
@@ -963,7 +962,7 @@ const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void;
   const [transmitter, setTransmitter] = useState(false);
   const linksJson = useQgcPath(LINKS_VIEW);
   const ports = useMemo(() => serialPortChoices(linksJson), [linksJson]);
-  const offered = useMemo(() => addableLinkTypes(linksJson), [linksJson]);
+  const offered = useMemo(() => addableLinkTypes(linksJson, __DESKTOP__), [linksJson]);
   const [cloudOffered, setCloudOffered] = useState(false);
   useLaunchedEffect([], async (scope) => {
     const offeredNow = accountState(await AccountCommands.state()) !== null;

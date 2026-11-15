@@ -11,6 +11,7 @@ pub struct Depacketizer {
     fragment: Option<Vec<u8>>,
     packets: u16,
     lost: u16,
+    behind: usize,
 }
 
 struct Packet<'a> {
@@ -66,7 +67,17 @@ impl Depacketizer {
             fragment: None,
             packets: 0,
             lost: 0,
+            behind: 0,
         }
+    }
+
+    fn resync(&mut self) {
+        self.next = None;
+        self.held.clear();
+        self.timestamp = None;
+        self.unit.clear();
+        self.fragment = None;
+        self.behind = 0;
     }
 
     pub fn push(&mut self, packet: &[u8]) -> Vec<Unit> {
@@ -79,9 +90,17 @@ impl Depacketizer {
         let ahead = self
             .next
             .map_or(0, |next| sequence.wrapping_sub(next) as i16);
-        if ahead < 0 || self.held.iter().any(|(held, _)| *held == sequence) {
+        if ahead < 0 {
+            self.behind += 1;
+            if self.behind <= REORDER_WINDOW {
+                return Vec::new();
+            }
+            self.resync();
+        }
+        if self.held.iter().any(|(held, _)| *held == sequence) {
             return Vec::new();
         }
+        self.behind = 0;
         self.held.push((sequence, packet.to_vec()));
         if self.held.len() > REORDER_WINDOW {
             let next = self.next.unwrap_or(sequence);
@@ -122,13 +141,10 @@ impl Depacketizer {
         self.timestamp = Some(packet.timestamp);
         self.packets = self.packets.saturating_add(1);
         let nals = self.depacketize(packet.payload);
-        self.unit = [
-            std::mem::take(&mut self.unit),
+        self.unit.extend(
             nals.iter()
-                .flat_map(|nal| [&START[..], nal].concat())
-                .collect(),
-        ]
-        .concat();
+                .flat_map(|nal| START.iter().chain(nal.iter()).copied()),
+        );
         let after = packet.marker.then(|| self.finish()).flatten();
         before.into_iter().chain(after).collect()
     }
@@ -205,6 +221,31 @@ mod tests {
             payload,
         ]
         .concat()
+    }
+
+    #[test]
+    fn a_sender_that_restarts_behind_the_old_sequence_is_followed_after_the_reorder_window() {
+        let mut h264 = Depacketizer::new(Codec::H264);
+        let frame = |sequence: u16| packet(sequence, u32::from(sequence), true, &[0x41, 0x9a]);
+        assert_eq!(h264.push(&frame(40_000)).len(), 1);
+        assert_eq!(h264.push(&frame(40_001)).len(), 1);
+        let restarted: Vec<usize> = (20_000..20_000 + REORDER_WINDOW as u16 + 3)
+            .map(|sequence| h264.push(&frame(sequence)).len())
+            .collect();
+        assert_eq!(
+            restarted[..REORDER_WINDOW],
+            [0; REORDER_WINDOW],
+            "a few packets from behind are late copies and are dropped"
+        );
+        assert_eq!(
+            restarted[REORDER_WINDOW..],
+            [1, 1, 1],
+            "more than a reorder window of them is a new sequence, and video resumes"
+        );
+        assert!(
+            h264.push(&frame(40_002)).is_empty(),
+            "a stray packet from the old sequence waits in the reorder window instead of playing"
+        );
     }
 
     #[test]

@@ -1,5 +1,4 @@
 import { AppCommands, CameraCommands, DeviceCommands, LinkCommands } from '@/bridge/BridgeCommands';
-import { desktop } from '@/core/desktop';
 import { isJson } from '@/bridge/Json';
 import { Qgc, refusal } from '@/bridge/Qgc';
 import { mutableStateOf } from '@/kotlin/State';
@@ -62,6 +61,14 @@ export const deviceSocket = (page: string): string => {
 
 const DEVICE_MAVLINK_PORT = 14550;
 
+export type DeviceMavlink = { kind: 'udp'; host: string; port: number } | { kind: 'webSocket'; url: string };
+
+export const deviceMavlink = (nativeSockets: boolean, origin: string): DeviceMavlink =>
+  nativeSockets ? { kind: 'udp', host: new URL(origin).hostname, port: DEVICE_MAVLINK_PORT } : { kind: 'webSocket', url: deviceSocket(resolveDeviceUrl(origin, '/fly/')) };
+
+const linkOver = (name: string, mavlink: DeviceMavlink): Promise<boolean> =>
+  mavlink.kind === 'udp' ? LinkCommands.createUdpTo(name, mavlink.host, mavlink.port) : LinkCommands.createWebSocket(name, mavlink.url);
+
 export const deviceBase = (page: string): string => new URL('.', page).href;
 
 export const deviceLinkName = (device: Device, hostname: string): string => `Aircast ${device.name?.trim() || hostname}`;
@@ -100,7 +107,7 @@ const linkDevice = async (): Promise<void> => {
   const host = new URL(origin).hostname;
   await Promise.all([
     CameraCommands.adoptDevice(host, deviceCameras(device)),
-    desktop ? LinkCommands.createUdpTo(deviceLinkName(device, host), host, DEVICE_MAVLINK_PORT) : LinkCommands.createWebSocket(deviceLinkName(device, host), deviceSocket(resolveDeviceUrl(origin, '/fly/'))),
+    linkOver(deviceLinkName(device, host), deviceMavlink(__DESKTOP__, origin)),
   ]);
 };
 

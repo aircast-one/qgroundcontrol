@@ -3,7 +3,6 @@ import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, isJson, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { savedFile } from '@/core/files';
-import { desktop } from '@/core/desktop';
 import { createDocument } from '@/kotlin/Platform';
 import { AlertDialog, Checkbox, ExtendedFloatingActionButton, FilledTonalButton, LinearProgressIndicator, OutlinedButton, Surface, Text, TextButton } from '@/m3';
 import { sentenceCase } from '@/map/SentenceCase';
@@ -66,7 +65,7 @@ export const logSections = (entries: readonly LogEntry[]): (readonly [string, re
   (
     [
       ['On the vehicle', entries.filter((it) => !it.saved)],
-      [desktop ? 'On this computer' : 'In this browser', entries.filter((it) => it.saved)],
+      [__DESKTOP__ ? 'On this computer' : 'In this browser', entries.filter((it) => it.saved)],
     ] as const
   ).filter(([, section]) => section.length > 0);
 
