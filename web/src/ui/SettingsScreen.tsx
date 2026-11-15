@@ -46,6 +46,7 @@ import { LocalChangeNotice, SafeChoiceMenu, SliderValueRow, inlineSlider, opensA
 import { AppLogPage } from '@/ui/AppLogPage';
 import { PilotSettings, SensorChecks, pilotSearchHits, pilotWorded } from '@/ui/PilotSettings';
 import { GENERAL_PAGE, ResetAllSettingsRow } from '@/ui/ResetAllSettings';
+import { UpdatesCard } from '@/ui/AppUpdates';
 import { UnitsSection, unitSystemLabel } from '@/ui/UnitsSection';
 import { OPEN_OVER_HTTPS, USB_RADIO_BLOCK, UsbAccess, openOverHttps } from '@/ui/UsbAccess';
 
@@ -465,6 +466,7 @@ const SettingsTab = ({
         </SettingsCard>
       ) : null}
       <PilotSettings group={group} />
+      {group === SettingsGroup.General ? <UpdatesCard /> : null}
       {group === SettingsGroup.Safety ? <SensorChecks onCalibrate={() => onOpenSetup(SENSORS)} /> : null}
       {foldsInline ? (
         <>
