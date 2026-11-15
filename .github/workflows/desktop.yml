@@ -112,7 +112,7 @@ jobs:
           else
             echo "This build is signed ad hoc and not notarized: only a release or a manual run signs it."
           fi
-          npx tauri build --bundles app,dmg --config "{\"version\":\"${SHORT#v}\"}"
+          npx tauri build --bundles app,dmg --config "{\"version\":\"${SHORT#v}\",\"build\":{\"beforeBuildCommand\":\"npx vite build\"}}"
           mkdir -p ../out
           cp src-tauri/target/release/bundle/dmg/*.dmg "../out/AircastQGCNative-${SHORT}.dmg"
 
@@ -213,7 +213,7 @@ jobs:
           OTEL_BETA_INGEST_TOKEN: ${{ secrets.OTEL_BETA_INGEST_TOKEN }}
         run: |
           $config = Join-Path $env:RUNNER_TEMP 'version.json'
-          @{ version = $env:SHORT.TrimStart('v') } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $config
+          @{ version = $env:SHORT.TrimStart('v'); build = @{ beforeBuildCommand = 'npx vite build' } } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $config
           npx tauri build --bundles nsis --config $config
           if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
           New-Item -ItemType Directory -Force -Path ..\out | Out-Null

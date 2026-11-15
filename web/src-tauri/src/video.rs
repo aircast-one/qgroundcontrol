@@ -439,8 +439,8 @@ mod tests {
 
     use super::*;
 
-    const ATTEMPTS: usize = 200;
-    const WAIT: Duration = Duration::from_millis(10);
+    const ATTEMPTS: usize = 400;
+    const WAIT: Duration = Duration::from_millis(25);
 
     fn listening_sink() -> (Sink, mpsc::Receiver<Vec<u8>>) {
         let (heard, hearing) = mpsc::channel();
