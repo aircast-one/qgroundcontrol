@@ -1,10 +1,5 @@
 import SwiftUI
 
-// Rows the device pages share inside a NativeForm (see Support/NativeUI.swift). Each falls back to the
-// hand-drawn look outside one, so a view used on both kinds of page keeps working.
-
-// A collapsible group inside a device section: a native DisclosureGroup whose rows join the section, with the
-// group's summary under its title and its badge trailing. Outside a NativeForm it is DeviceDisclosure.
 struct DeviceGroup<Content: View>: View {
     let title: String
     let summary: String
@@ -44,8 +39,6 @@ struct DeviceGroup<Content: View>: View {
     }
 }
 
-// A device action that deletes, removes or resets: a red button (role .destructive) that always asks first, with
-// ActionButton's request, success notice, refusal line and onDone.
 struct DeviceDestructiveButton: View {
     let label: String
     let request: DeviceRequest
@@ -73,7 +66,6 @@ struct DeviceDestructiveButton: View {
     }
 }
 
-// The red minus that takes one entry out of an editable list (an endpoint, a relay server).
 struct DeviceRemoveButton: View {
     let label: String
     let action: () -> Void
@@ -88,6 +80,5 @@ struct DeviceRemoveButton: View {
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(label)
-        .macTooltip(label)
     }
 }

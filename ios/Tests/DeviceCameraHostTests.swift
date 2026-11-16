@@ -1,6 +1,4 @@
-#if os(iOS)
 import UIKit
-#endif
 import XCTest
 @testable import Aircast
 
@@ -15,12 +13,10 @@ final class DeviceCameraHostTests: XCTestCase {
     }
 
     func testTheScreenTurnIsReadTheWayTheCoreCountsIt() {
-        #if os(iOS)
         XCTAssertEqual(interfaceDegrees(.portrait), 0)
         XCTAssertEqual(interfaceDegrees(.landscapeRight), 90)
         XCTAssertEqual(interfaceDegrees(.portraitUpsideDown), 180)
         XCTAssertEqual(interfaceDegrees(.landscapeLeft), 270)
-        #endif
         XCTAssertEqual(deviceCameraTurn(0, displayDegrees: 0), 90)
         XCTAssertEqual(deviceCameraTurn(1, displayDegrees: 90), 0)
     }

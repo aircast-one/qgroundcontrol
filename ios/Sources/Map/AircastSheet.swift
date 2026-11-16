@@ -1,9 +1,5 @@
 import SwiftUI
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 extension EnvironmentValues {
     @Entry var immersive = false
@@ -70,21 +66,10 @@ final class SheetStack {
 final class PresenterProbe {
     weak var view: PlatformView?
 
-    #if os(iOS)
     var presenter: UIViewController? {
         view.flatMap { start in sequence(first: start as UIResponder) { $0.next }.lazy.compactMap { $0 as? UIViewController }.first }
     }
-    #elseif os(macOS)
-    // A Mac presents sheets and alerts on the window, so the window is what has to be free.
-    var presenter: NSWindow? { view?.window }
-    #endif
 }
-
-#if os(macOS)
-private final class PassThroughView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-#endif
 
 struct PresenterProbeView: PlatformViewRepresentable {
     typealias Coordinator = Void
@@ -92,14 +77,9 @@ struct PresenterProbeView: PlatformViewRepresentable {
     let probe: PresenterProbe
 
     func makePlatformView(context: Context) -> PlatformView {
-        #if os(iOS)
         let view = UIView()
         view.isUserInteractionEnabled = false
         view.isAccessibilityElement = false
-        #elseif os(macOS)
-        let view: NSView = PassThroughView()
-        view.setAccessibilityElement(false)
-        #endif
         probe.view = view
         return view
     }
@@ -111,19 +91,11 @@ extension View {
     func invisibleAnchor() -> some View { frame(width: 0, height: 0).accessibilityHidden(true) }
 }
 
-#if os(iOS)
 @MainActor
 func presenterFree(_ controller: UIViewController?) -> Bool {
     guard let controller, controller.viewIfLoaded?.window != nil else { return false }
     return controller.presentedViewController == nil && !controller.isBeingPresented && !controller.isBeingDismissed
 }
-#elseif os(macOS)
-@MainActor
-func presenterFree(_ window: NSWindow?) -> Bool {
-    guard let window, window.isVisible else { return false }
-    return window.attachedSheet == nil
-}
-#endif
 
 @MainActor
 func presenterFreed(_ probe: PresenterProbe) async -> Bool {
@@ -155,7 +127,6 @@ private struct QueuedSheet<Sheet: View>: ViewModifier {
                     .onChange(of: id) { from, to in stack.moved(from, to, depth, dialog: dialog) }
                     .onDisappear { stack.disappeared(id) }
                     .environment(\.sheetDepth, depth + 1)
-                    // A sheet opened from a row of a NativeForm lays out on its own, not as rows of that form.
                     .environment(\.LocalNativeList, false)
             }
     }
@@ -203,39 +174,8 @@ private struct SheetBody<Content: View>: View {
             .presentationBackground(theme.colors.surfaceContainerLow)
             .statusBarHidden(immersive)
             .persistentSystemOverlays(immersive ? .hidden : .automatic)
-            #if os(macOS)
-            .modifier(DismissOnOutsideClick())
-            #endif
     }
 }
-
-#if os(macOS)
-private struct DismissOnOutsideClick: ViewModifier {
-    @Environment(\.dismiss) private var dismiss
-    @State private var probe = PresenterProbe()
-    @State private var monitor: Any?
-
-    func body(content: Content) -> some View {
-        content
-            .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
-            .onAppear {
-                monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [probe, dismiss] event in
-                    let clicked = event.windowNumber
-                    let behind = MainActor.assumeIsolated { clickedBehind(probe.presenter, clicked) }
-                    if behind { dismiss() }
-                    return behind ? nil : event
-                }
-            }
-            .onDisappear { monitor.map(NSEvent.removeMonitor) }
-    }
-}
-
-@MainActor
-func clickedBehind(_ sheet: NSWindow?, _ clicked: Int) -> Bool {
-    guard let sheet, sheet.attachedSheet == nil else { return false }
-    return sheet.sheetParent?.windowNumber == clicked
-}
-#endif
 
 struct AircastSheet<Content: View>: View {
     let onDismissRequest: () -> Void

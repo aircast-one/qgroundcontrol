@@ -1,9 +1,5 @@
 import SwiftUI
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 import UniformTypeIdentifiers
 
 let MAVLINK_GROUP = "mavlinkSettings"
@@ -77,29 +73,12 @@ func canAddKey(_ name: String, _ raw: Bool, _ secret: String, _ minPassphrase: I
     !name.isEmpty && (raw ? isHexKey(secret) : secret.count >= minPassphrase)
 }
 
-#if os(iOS)
 private func copyForAWhile(_ hex: String) {
     UIPasteboard.general.setItems(
         [[UTType.plainText.identifier: hex]],
         options: [.expirationDate: Date().addingTimeInterval(Double(CLIPBOARD_WIPE_MS) / 1000), .localOnly: true]
     )
 }
-#elseif os(macOS)
-// The Mac pasteboard has no expiry, so the key is wiped after the same while unless something else was copied since.
-// Marked transient and concealed, so clipboard managers and Universal Clipboard leave it alone.
-private func copyForAWhile(_ hex: String) {
-    let board = NSPasteboard.general
-    board.clearContents()
-    board.setString(hex, forType: .string)
-    board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
-    board.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
-    let copied = board.changeCount
-    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(CLIPBOARD_WIPE_MS)) {
-        guard NSPasteboard.general.changeCount == copied else { return }
-        NSPasteboard.general.clearContents()
-    }
-}
-#endif
 
 private let SIGNING_TITLE = "MAVLink 2 signing"
 private let SIGNING_SECURE_NOTE = "Signing keys should only be sent to the vehicle over secure links (e.g. USB)."
@@ -133,8 +112,6 @@ struct SigningKeysSection: View {
         }
     }
 
-    // Inside a NativeForm: a section of its own — the secure-link note (which carries the read and the dialogs),
-    // the active key, a row per key with Enable or Disable and its Export and Delete, and Add key.
     @ViewBuilder private var native: some View {
         if !loaded || read != nil {
             Section {
@@ -203,7 +180,6 @@ struct SigningKeysSection: View {
         }
     }
 
-    // The read and every dialog, on the one view that is always there.
     @MainActor private func prompts<Content: View>(_ content: Content) -> some View {
         content
             .task(id: revision) { await reload() }

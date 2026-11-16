@@ -1,7 +1,5 @@
 import Observation
-#if os(iOS)
 import UIKit
-#endif
 import XCTest
 @testable import Aircast
 

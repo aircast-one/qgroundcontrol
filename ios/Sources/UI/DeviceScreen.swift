@@ -2,8 +2,6 @@ import SwiftUI
 
 private func checkState(_ level: Int) -> SetupState { level == DeviceLevel.Ready ? .Done : .NeedsAttention }
 
-// The Device tab's first page in Settings: the device's status and its pages, or the address to connect to. A
-// page opened here is pushed onto the Settings NavigationStack (onOpen), where DevicePageScreen draws it.
 struct DeviceHomeScreen: View {
     let onOpen: (String) -> Void
     @DeviceView("aircraft") private var reading
@@ -28,11 +26,8 @@ struct DeviceHomeScreen: View {
     }
 }
 
-// The device stack inside the Settings NavigationStack: the device hrefs above the Device tab, in order.
-// onOpenFrom replaces the top page with returnTo and opens href above it, as the device's own pages expect.
 func deviceRoutesOpenedFrom(_ hrefs: [String], _ href: String, _ returnTo: String) -> [String] { openedFrom(hrefs, href, returnTo) }
 
-// One device page pushed onto the Settings NavigationStack; an href with no screen here shows the device's home.
 struct DevicePageScreen: View {
     let href: String
     let onOpen: (String) -> Void
@@ -191,14 +186,11 @@ private struct HealthSection: View {
     }
 }
 
-// A device page's own layout (phase 2 moves these into NativeForm); the Settings NavigationStack draws its bar.
 private struct NativeDevicePage: View {
     let entry: DeviceScreenEntry
     let props: DeviceScreenProps
 
     var body: some View {
-        // Each page is its own NativeForm, which scrolls itself: a Form inside a ScrollView collapses to nothing.
-        // The reader stays so pages can scroll to a row (?flight=, #section) through LocalDeviceScroll.
         ScrollViewReader { proxy in
             entry.screen(props)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -251,7 +243,6 @@ struct DeviceStatusChip: View {
             .buttonStyle(.plain)
             .foregroundStyle(theme.aircast.outdoorForeground)
             .accessibilityLabel("\(shown.name): \(shown.headline)")
-            .macTooltip("\(shown.name): \(shown.headline)")
         }
     }
 }

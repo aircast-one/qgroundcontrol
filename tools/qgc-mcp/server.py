@@ -38,8 +38,6 @@ DEVICE_API_PORT = 8777
 CORE = REPO / "groundstation"
 COREHOST = CORE / "target/debug/corehost"
 ACTUATOR_GUARD = "QGC_DEBUG_API_ALLOW_ACTUATORS"
-MACOS_BUILD = REPO / "build-macos/mcp"
-MACOS_APP = MACOS_BUILD / "Build/Products/Debug/Aircast.app/Contents/MacOS/Aircast"
 IOS_PROJECT = REPO / "ios"
 IOS_BUILD = REPO / "build-ios/mcp"
 IOS_SIMULATOR = "Aircast MCP"
@@ -284,61 +282,6 @@ def run_corehost(actuators: bool = False) -> str:
 def stop_corehost() -> str:
     """Stop the core started by run_corehost."""
     return "stopped" if _stop("corehost") else "was not running"
-
-
-@mcp.tool()
-def run_app_macos(actuators: bool = False) -> str:
-    """Build and (re)start the native macOS app (Swift over the Rust core, Xcode target
-    AircastMac in ios/) on a free debug port and attach every tool to it. It keeps its own
-    settings ("Aircast QGC MCP"), so the operator's links and preferences are untouched.
-
-    actuators=True lets write/invoke act on a real (non-mock) vehicle: SITL only, props off."""
-    steps = [
-        ([str(IOS_PROJECT / "fetch-deps-macos.sh")], IOS_PROJECT),
-        (["xcodegen", "generate", "--quiet"], IOS_PROJECT),
-    ]
-    failed = next(
-        (
-            r
-            for r in (subprocess.run(a, cwd=c, capture_output=True, text=True) for a, c in steps)
-            if r.returncode
-        ),
-        None,
-    )
-    if failed is not None:
-        return f"preparing the project failed:\n{_failed(failed)}"
-    built = subprocess.run(
-        [
-            "xcodebuild",
-            "-project",
-            "Aircast.xcodeproj",
-            "-scheme",
-            "AircastMac",
-            "-configuration",
-            "Debug",
-            "-destination",
-            "platform=macOS,arch=arm64",
-            "-derivedDataPath",
-            str(MACOS_BUILD),
-            "build",
-        ],
-        cwd=IOS_PROJECT,
-        capture_output=True,
-        text=True,
-        timeout=3600,
-    )
-    if built.returncode != 0:
-        return f"build failed:\n{_failed(built)}"
-    port = _free_port()
-    argv = [str(MACOS_APP), "--app-name", "Aircast QGC MCP", "--debug-build"]
-    log = Path(TMP_DIR) / "qgc-macos.log"
-    return _start("macos", argv, _env(actuators, QGC_DEBUG_API_PORT=str(port)), log, port)
-
-
-@mcp.tool()
-def stop_app_macos() -> str:
-    """Stop the macOS app started by run_app_macos."""
-    return "stopped" if _stop("macos") else "was not running"
 
 
 def _runtime_version(runtime: str) -> tuple[int, ...]:

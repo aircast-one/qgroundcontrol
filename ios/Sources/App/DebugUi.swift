@@ -1,21 +1,12 @@
 import Foundation
 import os
-#if os(iOS)
 import UIKit
-#endif
 
 let DEBUG_UI_ACTION = "debug-ui"
 private let DEBUG_UI_STATE_FILE = "debug-ui-state.json"
 private let debugUiLog = Logger(subsystem: "one.aircast.app", category: "DebugUi")
 
-#if os(iOS)
 typealias DebugOrientation = UIInterfaceOrientationMask
-#else
-// A Mac window has no orientation; the command still parses so the same debug scripts run, and does nothing.
-enum DebugOrientation: Equatable {
-    case landscapeRight, landscapeLeft, portrait, all
-}
-#endif
 
 enum DebugCommand: Equatable {
     case ShowTab(Tab)
@@ -79,11 +70,9 @@ enum DebugUi {
     }
 
     static func orient(_ orientations: DebugOrientation) {
-        #if os(iOS)
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .forEach { $0.requestGeometryUpdate(.iOS(interfaceOrientations: orientations)) }
-        #endif
     }
 }
 

@@ -431,7 +431,6 @@ private struct LinkRowItem: View {
         .rowPadding(horizontal: 16, vertical: 12)
         .frame(maxWidth: .infinity, minHeight: nativeList ? nil : Metrics.rowLarge)
         .contentShape(Rectangle())
-        .macHover()
     }
 }
 
@@ -563,7 +562,6 @@ private func udpPortOrDefault(_ value: JSON) -> String {
     return String(port)
 }
 
-// A link editor's text field: a native form row, its label on the left and the value typed on the right.
 private struct LinkTextField: View {
     let label: String
     let value: String
@@ -626,8 +624,6 @@ private struct EditLinkFields: View {
     }
 }
 
-// Editing a saved link: a sheet with its own navigation bar — Cancel on the left, Save on the right — over an
-// inset-grouped form of the link's fields, its servers and an Advanced group.
 private struct EditLinkSheet: View {
     let row: LinkRow
     let onDismiss: () -> Void
@@ -638,7 +634,6 @@ private struct EditLinkSheet: View {
             EditLinkPage(row: row, onDismiss: onDismiss, onSaved: onSaved)
         }
         .presentationDetents([.large])
-        .nativeSheetFrame()
     }
 }
 
@@ -880,9 +875,6 @@ private func addLink(_ draft: LinkDraft, _ name: String, _ udpDefault: String, _
     return outcome
 }
 
-// Adding a link: a sheet with its own NavigationStack. Its first page lists the kinds of link (Cancel on the left);
-// picking one pushes that kind's form, with Cancel on the left, the kind as a picker at the top and Connect on the
-// right.
 private struct AddLinkSheet: View {
     let onDismiss: () -> Void
     let onAdded: () -> Void
@@ -918,7 +910,6 @@ private struct AddLinkSheet: View {
                 }
         }
         .presentationDetents([.large])
-        .nativeSheetFrame()
         .task { cloudOffered = await offMain { accountState(AccountCommands.state()) != nil } }
     }
 
@@ -945,7 +936,6 @@ private struct AddLinkSheet: View {
     }
 }
 
-// A new link's own fields, as rows and sections of the add form.
 private struct NewLinkFields: View {
     let draft: LinkDraft
     let hostError: String?
@@ -1172,8 +1162,6 @@ struct LinksScreen<Footer: View>: View {
     @State private var editing: LinkRow?
     @State private var opened = 0
 
-    // The links page: a native list of connected and saved links, "+" in the navigation bar to add one, and the
-    // add and edit forms as sheets with their own navigation bars.
     var body: some View {
         list
             .toolbar {
@@ -1182,7 +1170,6 @@ struct LinksScreen<Footer: View>: View {
                         Label("Add link\u{2026}", systemImage: Icon.add.rawValue)
                     }
                     .accessibilityLabel("Add link")
-                    .macTooltip("Add link")
                 }
             }
             .queuedSheet(isPresented: $adding) {
@@ -1332,7 +1319,6 @@ private struct UdpServers: View {
     }
 }
 
-// A UDP link's servers as a form section: each server a row with Remove, then a row to type and add another.
 private struct ServerList: View {
     let servers: [String]
     let typed: String

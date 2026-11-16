@@ -259,7 +259,6 @@ struct VehicleStateChip: View {
                     .padding(.horizontal, Space.s4)
                     .frame(minHeight: Metrics.row)
                     .contentShape(Rectangle())
-                    .macHover()
                     .onTapGesture {
                         picking = false
                         navigation.settingsPage = CONNECTIONS_PAGE
@@ -459,7 +458,6 @@ private struct VehicleRows: View {
             .padding(.vertical, Space.s2)
             .frame(minHeight: Metrics.rowLarge)
             .contentShape(Rectangle())
-            .macHover()
             .onTapGesture {
                 guard !choice.active else { return }
                 let id = choice.id

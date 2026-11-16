@@ -10,11 +10,7 @@ private let TAB_ICON_SIZE: CGFloat = 18
 private let TAB_INDICATOR_WIDTH: CGFloat = 56
 private let TAB_INDICATOR_HEIGHT: CGFloat = 32
 private let noticeLog = Logger(subsystem: "one.aircast.app", category: "HostNotices")
-#if os(macOS)
-private let SHELL_NAVIGATION_RAIL = false
-#else
 private let SHELL_NAVIGATION_RAIL = true
-#endif
 
 func reselectClearsAnalyze(_ current: Tab, _ tapped: Tab) -> Bool { current == tapped && tapped == .Analyze }
 
@@ -209,7 +205,7 @@ struct AircastShell: View {
         let flyLandscape = onFly && landscape
         let tabs = visibleTabs(advanced)
         let systemPalette = paletteFollowsSystem(paletteControl)
-        macChrome(tabs: tabs, shellEvents(landscape: landscape, HStack(spacing: 0) {
+        shellEvents(landscape: landscape, HStack(spacing: 0) {
             if landscape && !flyLandscape && SHELL_NAVIGATION_RAIL {
                 NavigationRail(tabs: tabs, tab: tab, settingsOpen: navigation.settingsOpen, onSelect: selectTab, onSettings: { navigation.settingsOpen = true })
             }
@@ -232,64 +228,8 @@ struct AircastShell: View {
         .background { HostNoticeWatch(acknowledgedThrough: acknowledgedThrough, onNotices: noticesArrived) }
         .background { DeviceCameraHost() }
         .aircastTheme(dark: darkBars)
-        .windowStyle(paletteWindowStyle(systemPalette, darkBars))))
+        .windowStyle(paletteWindowStyle(systemPalette, darkBars)))
     }
-
-    private func macChrome<Shell: View>(tabs: [Tab], _ shell: Shell) -> some View {
-        #if os(macOS)
-        return shell.macShellChrome(MacShellChrome(
-            tabs: tabs,
-            current: navigation.settingsOpen ? nil : tab,
-            fullScreen: fullScreen,
-            escape: shellEscape(settingsOpen: navigation.settingsOpen, editingLayout: flyScreen.layout.editing, fullScreen: fullScreen),
-            onSelect: macSelectTab,
-            onSettings: { navigation.settingsOpen = true },
-            onEscape: macEscape,
-            onFlightAction: macFlightAction,
-            onFlightActions: macFlightActions
-        ))
-        #else
-        return shell
-        #endif
-    }
-
-    #if os(macOS)
-    private func macSelectTab(_ entry: Tab) {
-        if navigation.settingsOpen {
-            if refuseNavigation() { return }
-            navigation.settingsOpen = false
-            if tab == entry { return }
-        }
-        selectTab(entry)
-    }
-
-    private func macEscape(_ target: ShellEscape) {
-        switch target {
-        case .CloseSettings: navigation.settingsOpen = false
-        case .EndLayoutEdit: flyScreen.layout.editing = false
-        case .LeaveFullScreen: videoFullScreen = false
-        }
-    }
-
-    private func macFlightAction(_ id: String) {
-        guard showFlyForMenu() else { return }
-        flyScreen.deckRequest = id
-    }
-
-    private func macFlightActions() {
-        guard showFlyForMenu() else { return }
-        flyScreen.requestedSheet = FLIGHT_ACTIONS_SHEET
-    }
-
-    private func showFlyForMenu() -> Bool {
-        guard flyNow?.connected == true else { return false }
-        if (tab != .Fly || navigation.settingsOpen) && refuseNavigation() { return false }
-        navigation.settingsOpen = false
-        videoFullScreen = false
-        tab = .Fly
-        return true
-    }
-    #endif
 
     private func shellEvents<Shell: View>(landscape: Bool, _ shell: Shell) -> some View {
         shell

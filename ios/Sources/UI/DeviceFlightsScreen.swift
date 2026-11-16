@@ -29,8 +29,6 @@ struct DeviceFlightsScreen: View {
                 FootNote(text: DEVICE_WAITING)
             }
         }
-        // A link to one flight (?flight=…) opens it and scrolls to it once it is listed; the page does this because a
-        // list only builds the rows on screen.
         .task(id: linkedListed) {
             guard let linked = linkedListed else { return }
             try? await Task.sleep(for: .milliseconds(100))
@@ -51,7 +49,6 @@ private struct FlightRow: View {
     let onLanes: ([String]) -> Void
     @State private var active: Int?
 
-    // Each flight is its own section: a disclosure row whose lines, chart and files open beneath it.
     var body: some View {
         Section {
             DeviceGroup(flight.title, summary: flight.summary, badge: flight.badge, initiallyOpen: flight.open || linked) {
@@ -70,7 +67,6 @@ private struct FlightBody: View {
     let onLanes: ([String]) -> Void
     @State private var alertsOnly = false
 
-    // The rows under an open flight: the filter, one row per part of the run, the chart (drawn by hand), the files.
     var body: some View {
         if hasLines(flight) {
             Picker("Show", selection: $alertsOnly) {
@@ -204,10 +200,9 @@ private struct SortieShareRow: View {
             }
             if !render.url.isEmpty {
                 PlanFlowRow(spacing: 4, lineSpacing: 4) {
-                    Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
+                    Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()) }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Show the share link as a QR code")
-                        .macTooltip("Show the share link as a QR code")
                     LinkButton(href: render.url, text: "Open the share version", look: .Text, external: true)
                     Button("Copy link") { copyToClipboard(render.url, notice) }.buttonStyle(.text)
                 }

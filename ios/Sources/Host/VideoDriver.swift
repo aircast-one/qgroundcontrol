@@ -1,9 +1,7 @@
 import Foundation
 import os
 import QGCCore
-#if os(iOS)
 import UIKit
-#endif
 
 private let RECORDING_TASK = "aircast:recording"
 private let VIDEO_PREVIEWS = "video.previews"
@@ -12,7 +10,6 @@ enum VideoDriver {
     private static let interval = 0.5
     private static let main = Int32(QGC_VIDEO_MAIN)
     private static let pip = Int32(QGC_VIDEO_PIP)
-    // Channels after the main and picture-in-picture ones play the camera previews the core hands out (view.videoPreview).
     private static let firstPreview = pip + 1
     private static let channels: [Int32] = Array(main..<Int32(QGC_VIDEO_CHANNELS))
     private static let queue = DispatchQueue(label: "one.aircast.video-driver")
@@ -138,7 +135,6 @@ enum VideoDriver {
     }
 }
 
-#if os(iOS)
 @MainActor
 private enum RecordingKeepAlive {
     static var task = UIBackgroundTaskIdentifier.invalid
@@ -158,16 +154,3 @@ private enum RecordingKeepAlive {
         task = .invalid
     }
 }
-#elseif os(macOS)
-// A Mac app is not suspended in the background; holding an activity keeps App Nap from throttling the recording.
-@MainActor
-private enum RecordingKeepAlive {
-    static func hold(_ recording: Bool) {
-        if recording {
-            MacActivity.begin(RECORDING_TASK, keepDisplayOn: false)
-        } else {
-            MacActivity.end(RECORDING_TASK)
-        }
-    }
-}
-#endif

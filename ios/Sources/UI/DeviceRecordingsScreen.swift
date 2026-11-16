@@ -131,7 +131,6 @@ private struct SegmentRow: View {
         Task { @MainActor in _ = await action.run(request, success: "Recording deleted.", notice: notice) }
     }
 
-    // One recording: its start and details, Download, and a red trash button.
     var body: some View {
         HStack(spacing: Space.s2) {
             VStack(alignment: .leading, spacing: 2) {
@@ -143,12 +142,11 @@ private struct SegmentRow: View {
                 LinkButton(href: resolveDeviceUrl(origin, segment.url), text: "Download", look: .Text, icon: .download)
             }
             Button(role: .destructive) { asking = true } label: {
-                Image(systemName: "trash").frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle())
+                Image(systemName: "trash").frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .disabled(action.busy)
             .accessibilityLabel("Delete the recording from \(segment.started)")
-            .macTooltip("Delete the recording from \(segment.started)")
         }
         .deviceConfirm(
             ActionConfirm(title: "Delete this recording?", text: "Delete the recording from \(segment.started)?", confirm: "Delete"),

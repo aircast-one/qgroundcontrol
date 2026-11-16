@@ -1,9 +1,5 @@
 import MapLibre
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 let GOTO_MAP_CLICK_VIEW = "view.mapClick"
 private let GOTO_SOURCE = "aircast-goto"
@@ -96,11 +92,7 @@ func attachGotoRadiusDrag(_ map: MLNMapView, _ edits: FlyMapEdits, _ shown: @esc
     map.addGestureRecognizer(CircleGrabGesture(map: map, edits: edits, shown: shown))
 }
 
-#if os(iOS)
 private typealias CircleGrabBase = UILongPressGestureRecognizer
-#elseif os(macOS)
-private typealias CircleGrabBase = NSGestureRecognizer
-#endif
 
 private final class CircleGrabGesture: CircleGrabBase, MapGestureDelegate {
     private weak var map: MLNMapView?
@@ -114,22 +106,11 @@ private final class CircleGrabGesture: CircleGrabBase, MapGestureDelegate {
         self.edits = edits
         self.shown = shown
         super.init(target: nil, action: nil)
-        #if os(iOS)
         minimumPressDuration = 0
         allowableMovement = .greatestFiniteMagnitude
         delegate = self
         addTarget(self, action: #selector(tracked))
-        #elseif os(macOS)
-        delaysPrimaryMouseButtonEvents = false
-        delegate = self
-        #endif
     }
-
-    #if os(macOS)
-    required init?(coder: NSCoder) {
-        return nil
-    }
-    #endif
 
     private var dragging: Bool { [.GotoRadius, .OrbitRadius, .OrbitCentre].contains(grab) }
 
@@ -191,7 +172,6 @@ private final class CircleGrabGesture: CircleGrabBase, MapGestureDelegate {
         map?.isPitchEnabled = enabled
     }
 
-    #if os(iOS)
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard let map, state == .possible else { return false }
         grab = grabbed(touch.location(in: map))
@@ -202,32 +182,6 @@ private final class CircleGrabGesture: CircleGrabBase, MapGestureDelegate {
         guard let map else { return }
         track(location(in: map), state)
     }
-    #elseif os(macOS)
-    // A mouse press on a handle or arrow drives the same began / changed / ended track the iOS long press reports.
-    override func mouseDown(with event: NSEvent) {
-        guard let map, state == .possible else { return }
-        let at = map.screenLocation(event)
-        grab = grabbed(at)
-        guard grab != .None else {
-            state = .failed
-            return
-        }
-        state = .began
-        track(at, .began)
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let map, state == .began || state == .changed else { return }
-        state = .changed
-        track(map.screenLocation(event), .changed)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard let map, state == .began || state == .changed else { return }
-        track(map.screenLocation(event), .ended)
-        state = .ended
-    }
-    #endif
 
     private func track(_ at: CGPoint, _ phase: MapGestureRecognizer.State) {
         switch phase {
@@ -246,10 +200,6 @@ private final class CircleGrabGesture: CircleGrabBase, MapGestureDelegate {
         }
     }
 }
-
-#if os(macOS)
-extension CircleGrabGesture: MapExclusiveGesture {}
-#endif
 
 enum GotoBridge {
     static func read() -> GotoLocation? { gotoLocation(Qgc.get(GOTO_MAP_CLICK_VIEW)) }

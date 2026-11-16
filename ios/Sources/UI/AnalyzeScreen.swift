@@ -12,11 +12,7 @@ enum AnalyzeSection: CaseIterable {
     }
 }
 
-#if os(macOS)
-private let FIRMWARE_DESCRIPTION = "Flash a board through its bootloader over USB"
-#else
 private let FIRMWARE_DESCRIPTION = "Latest releases; iOS cannot flash a board over USB"
-#endif
 
 enum AnalyzePage: CaseIterable, Hashable {
     case LogDownload, GeoTag, Vibration, Inspector, Console, Messages, Firmware
@@ -99,7 +95,6 @@ func analyzeNote(_ page: AnalyzePage, _ connected: Bool, _ vibration: String?) -
     connected && page == .Vibration ? vibration : nil
 }
 
-// The Analyze tools as a native list: a section per kind, each tool a row with its live status.
 private struct AnalyzePageList: View {
     @Binding var selection: AnalyzePage?
     @Environment(\.theme) private var theme
@@ -152,9 +147,6 @@ private struct AnalyzePageList: View {
 
 private let TOAST_SHORT_MS = 2000
 
-// Analyze: a NavigationSplitView — the tools in the sidebar and the open tool as the detail on a wide screen; on a
-// phone it collapses to a list that pushes the tool with the system back and swipe-back. The selection is the
-// shell's analyzePage; leaving a tool while BlocksNavigation holds (a log download) is refused with a notice.
 struct AnalyzeScreen: View {
     let page: AnalyzePage?
     let onSelect: (AnalyzePage?) -> Void

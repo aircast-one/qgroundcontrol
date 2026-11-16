@@ -377,12 +377,7 @@ private struct Viewer3DMap: PlatformViewRepresentable {
         view.delegate = context.coordinator
         view.isRotateEnabled = true
         view.isPitchEnabled = true
-        #if os(iOS)
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
-        #elseif os(macOS)
-        let tap = NSClickGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
-        tap.delaysPrimaryMouseButtonEvents = false
-        #endif
         tap.delegate = context.coordinator
         view.addGestureRecognizer(tap)
         offMain {
@@ -395,14 +390,12 @@ private struct Viewer3DMap: PlatformViewRepresentable {
     func updatePlatformView(_ view: MLNMapView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.apply(view)
-        #if os(iOS)
         let slack = max(0, (MINIMUM_TOUCH_TARGET - view.attributionButton.intrinsicContentSize.width) / 2)
         view.attributionButtonMargins = CGPoint(x: ORNAMENT_MARGIN - slack, y: ORNAMENT_MARGIN - slack)
         view.updateConstraintsIfNeeded()
         view.attributionButton.constraints
             .filter { $0.firstAttribute == .width || $0.firstAttribute == .height }
             .forEach { $0.constant = MINIMUM_TOUCH_TARGET }
-        #endif
     }
 
     final class Coordinator: NSObject, MLNMapViewDelegate, MapGestureDelegate {
@@ -425,17 +418,9 @@ private struct Viewer3DMap: PlatformViewRepresentable {
             apply(mapView)
         }
 
-        #if os(iOS)
         func mapViewRegionIsChanging(_ mapView: MLNMapView) { place(mapView) }
 
         func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) { place(mapView) }
-        #elseif os(macOS)
-        @objc(mapViewCameraIsChanging:)
-        func mapViewCameraIsChanging(_ mapView: MLNMapView) { place(mapView) }
-
-        @objc(mapView:cameraDidChangeAnimated:)
-        func mapView(_ mapView: MLNMapView, cameraDidChangeAnimated animated: Bool) { place(mapView) }
-        #endif
 
         func gestureRecognizer(_ gestureRecognizer: MapGestureRecognizer, shouldRecognizeSimultaneouslyWith other: MapGestureRecognizer) -> Bool {
             true

@@ -87,7 +87,6 @@ struct Spin {
     }
 }
 
-#if os(iOS)
 private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
     private var twoFingered = false
     private var spin = Spin()
@@ -178,111 +177,6 @@ private final class Map3dTouches: UIView, UIGestureRecognizerDelegate {
         if press.state == .began { onPress(press.location(in: self), bounds.size) }
     }
 }
-#elseif os(macOS)
-private let WHEEL_ZOOM_STEP = 1.1
-
-private final class Map3dTouches: NSView {
-    override var isFlipped: Bool { true }
-    private var spin = Spin()
-    private let onTouch: () -> Void
-    private let onPress: (CGPoint, CGSize) -> Void
-
-    init(onTouch: @escaping () -> Void, onPress: @escaping (CGPoint, CGSize) -> Void) {
-        self.onTouch = onTouch
-        self.onPress = onPress
-        super.init(frame: .zero)
-        let pan = NSPanGestureRecognizer(target: self, action: #selector(panned(_:)))
-        let tilt = NSPanGestureRecognizer(target: self, action: #selector(tilted(_:)))
-        tilt.buttonMask = 0x2
-        let follow = NSClickGestureRecognizer(target: self, action: #selector(followed))
-        follow.numberOfClicksRequired = 2
-        let gestures: [NSGestureRecognizer] = [
-            pan,
-            tilt,
-            NSMagnificationGestureRecognizer(target: self, action: #selector(pinched(_:))),
-            NSRotationGestureRecognizer(target: self, action: #selector(turned(_:))),
-            follow,
-            mapPressRecognizer(self, #selector(pressed(_:))),
-        ]
-        gestures.forEach { addGestureRecognizer($0) }
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    private func follow(_ gesture: NSGestureRecognizer) {
-        switch gesture.state {
-        case .began: spin.began()
-        case .ended, .cancelled: if spin.ended() { spin.release(bounds.height) }
-        default: break
-        }
-    }
-
-    @objc private func panned(_ pan: NSPanGestureRecognizer) {
-        if pan.state == .ended {
-            let velocity = pan.velocity(in: self)
-            send(MAP3D_FLING, velocity.x, velocity.y, bounds.width)
-        }
-        guard pan.state == .changed else { return }
-        let moved = pan.translation(in: self)
-        pan.setTranslation(.zero, in: self)
-        if moved != .zero { send(MAP3D_PAN, moved.x, moved.y, bounds.width) }
-    }
-
-    @objc private func tilted(_ pan: NSPanGestureRecognizer) {
-        follow(pan)
-        guard pan.state == .changed else { return }
-        let moved = pan.translation(in: self)
-        pan.setTranslation(.zero, in: self)
-        spin.raise.add(-moved.y)
-        if moved.y != 0 { send(MAP3D_TILT, -moved.y, bounds.height) }
-    }
-
-    @objc private func pinched(_ pinch: NSMagnificationGestureRecognizer) {
-        if pinch.state == .began { onTouch() }
-        follow(pinch)
-        guard pinch.state == .changed, pinch.magnification != 0 else { return }
-        spin.pinch.add(log(1 + pinch.magnification))
-        send(MAP3D_ZOOM, 1 + pinch.magnification)
-        pinch.magnification = 0
-    }
-
-    @objc private func turned(_ rotation: NSRotationGestureRecognizer) {
-        if rotation.state == .began { onTouch() }
-        follow(rotation)
-        guard rotation.state == .changed, rotation.rotation != 0 else { return }
-        spin.twist.add(-rotation.rotation * 180 / .pi)
-        send(MAP3D_TURN, -rotation.rotation * 180 / .pi)
-        rotation.rotation = 0
-    }
-
-    @objc private func followed() { send(MAP3D_FOLLOW) }
-
-    @objc private func pressed(_ press: NSPressGestureRecognizer) {
-        if press.state == .began { onPress(press.location(in: self), bounds.size) }
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        onTouch()
-        send(MAP3D_STOP)
-        super.mouseDown(with: event)
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        onTouch()
-        send(MAP3D_STOP)
-        super.rightMouseDown(with: event)
-    }
-
-    override func scrollWheel(with event: NSEvent) {
-        onTouch()
-        if event.hasPreciseScrollingDeltas {
-            if event.scrollingDeltaY != 0 { send(MAP3D_TILT, -event.scrollingDeltaY, bounds.height) }
-        } else if event.scrollingDeltaY != 0 {
-            send(MAP3D_ZOOM, pow(WHEEL_ZOOM_STEP, Double(event.scrollingDeltaY)))
-        }
-    }
-}
-#endif
 
 private struct Map3dGestures: PlatformViewRepresentable {
     typealias Coordinator = Void

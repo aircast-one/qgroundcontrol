@@ -159,7 +159,6 @@ struct CamerasEditor: View {
                     Label("Add a video source", systemImage: "plus")
                 }
                 .disabled(!editable || busy)
-                .macTooltip("Add a video source")
             }
         }
         .background { sheet(reading, cameras, kinds, storedNow, busy) }
@@ -217,8 +216,6 @@ struct CamerasEditor: View {
     }
 }
 
-// A video source as a native row: its state, name and address, "On screen" for the one shown, and (for one stored
-// here) the disclosure chevron that opens its editor.
 private struct CameraRow: View {
     let camera: CameraEntry
     let onEdit: (() -> Void)?
@@ -335,7 +332,6 @@ private struct CameraSheet: View {
                     .pagePrimaryAction("Save", enabled: canSave, action: save)
                 }
                 .presentationDetents([.large])
-                .nativeSheetFrame()
             }
         .task(id: ClassifyKey(url: draft.url, needsUrl: draft.needsUrl)) {
             guard !draft.url.isBlank, draft.needsUrl else { return }

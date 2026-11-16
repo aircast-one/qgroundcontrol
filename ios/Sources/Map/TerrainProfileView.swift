@@ -1,9 +1,5 @@
 import SwiftUI
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 private let TERRAIN_COLOUR = Color(hex: 0x8D6E63)
 private let PLANNED_COLOUR = Color(hex: 0x4FC3F7)

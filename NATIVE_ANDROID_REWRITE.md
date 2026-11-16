@@ -3,8 +3,7 @@
 Goal: replace QGC's Qt Quick UI with native Jetpack Compose on Android, **one view at a time, in a
 shipping app**, keeping the C++ flight core untouched.
 
-Sibling of `NATIVE_MACOS_REWRITE.md`. One core, two bridges, two native apps. Every path the Compose
-UI needs is added to `QGCBridgeCore`, never to a platform head.
+Every path the Compose UI needs is added to `QGCBridgeCore`, never to a platform head.
 
 ## Status — the UI is native throughout; what is left is hardware, not porting
 

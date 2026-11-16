@@ -167,8 +167,6 @@ struct OfflineMapsSection: View {
         }
     }
 
-    // Inside a NativeForm: a section with a row per tile set (opening its dialog) and Add new set — the row that is
-    // always there carries the poll and the dialogs — then import and export in a section of their own.
     @ViewBuilder private var native: some View {
         let available = maps?.available == true
         Section {
@@ -220,7 +218,6 @@ struct OfflineMapsSection: View {
         }
     }
 
-    // The poll and every dialog, on the one view that is always there.
     @MainActor private func dialogs<Content: View>(_ content: Content) -> some View {
         content
         .task(id: polls) {
@@ -376,7 +373,6 @@ private struct OfflineSetDialog: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .nativeSheetFrame()
         .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
         .onDisappear { scope.cancel() }
         .alert("Confirm delete", isPresented: $confirming) {
@@ -472,7 +468,6 @@ private struct OfflineSetEditor: View {
                 if let region, let mapType { onDownload(chosenName.trimmed, mapType, region, minZoom, maxZoom, fetchElevation) }
             }
         }
-        .nativeSheetFrame()
         .task {
             let (type, low, high) = await offMain {
                 (currentMapType(), zoomSetting(MIN_ZOOM_PATH, DEFAULT_MIN_ZOOM), zoomSetting(MAX_ZOOM_PATH, DEFAULT_MAX_ZOOM))

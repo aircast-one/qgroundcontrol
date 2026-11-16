@@ -1,9 +1,5 @@
 import MapLibre
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 private let TRANSECT_ARROW_SOURCE = "aircast-transect-arrows"
 private let TRANSECT_ARROW_LAYER = "aircast-transect-arrow-layer"

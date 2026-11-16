@@ -1,65 +1,6 @@
 import SwiftUI
 
-// NATIVE UI — how list and form screens are built (iOS and the Mac app share these).
-//
-// List and form screens use the platform's own containers so they read as iOS (and, unchanged, as a Mac grouped
-// form). The Fly and Plan maps stay map-first; only their sheets and panels follow these rules.
-//
-// Page / navigation
-//   • A page lives in its host's NavigationStack (Settings: SettingsSheet; Analyze: AnalyzeScreen's
-//     NavigationSplitView; link editors: their own sheet stack). Never draw a top bar or a back arrow.
-//   • Title: the host's `.nativePage(title)` (inline; `large: true` for a tab's first page). A sheet's own root
-//     uses `.navigationTitle` + `.navigationBarTitleDisplayMode(.inline)`. `PageTopBar(title:…)` still compiles
-//     and now only lends its title to the host's nativePage.
-//   • Push with `.navigationDestination(item:)` / `.navigationDestination(isPresented:)` bound to the screen's
-//     EXISTING state (e.g. `openComponent`), or append to the host's route path. Declare destinations on the
-//     page root, never inside a Form/List/Lazy* (they are ignored there). The system draws back + swipe-back.
-//   • Every pushed page gets `.nativePage(title)` from its host: the inline title, and the BlocksNavigation guard
-//     (calibration, log download, flashing hide back/swipe-back and explain why instead). Pages themselves do
-//     not set navigationTitle; to retitle from inside, or to step back through the page's own sub-steps first,
-//     place `OverridePageHeading(title:onBack:)` in the page.
-//
-// Containers
-//   • `NativeForm { … }` — the inset-grouped Form every list/form page uses (sets LocalNativeList so the shared
-//     row primitives below drop their hand-drawn padding/borders; makes plain Buttons borderless so several
-//     buttons in one row stay independent).
-//   • Section: `Section { rows } header: { SectionHeader(text: "Sensors") } footer: { Text(note) }` — SectionHeader
-//     renders as plain header text inside a NativeForm. A device section: `DeviceSection(title:badge:) { rows }`
-//     becomes a real Section inside a NativeForm by itself.
-//   • A composite view not yet converted (draws its own headers/padding): put it in a section with
-//     `.legacyFormRow()` so it renders as before, edge to edge, on the grouped background.
-//   • Explanatory text under a section: the section footer, or `FormNote(text)` as a free-standing note row.
-//
-// Rows
-//   • Disclosure row (opens a page or sheet): `SetupRow(title:status:state:onClick:icon:subtitle:)` — icon badge,
-//     title, secondary subtitle, trailing status, chevron. Inside a NavigationSplitView sidebar / List(selection:)
-//     use `NavigationLink(value:) { NativeRowLabel(…, chevron: false) }` instead.
-//   • Value row (read-only): `LabeledContent("Firmware", value: text)` (DeviceFact does this in a NativeForm).
-//   • Editable text: `FieldRow(label:value:prompt:keyboard:error:onChange:)` — label left, value right-aligned,
-//     the keyboard type kept, the validation error as red secondary text under the row. DeviceTextField and
-//     the settings FactRow field do the same inside a NativeForm.
-//   • Choice: `ChoiceField(label:value:options:onPick:)` (a menu row inside a NativeForm) or a native `Picker`.
-//     On/off: `Toggle`. Numbers with steps: `Stepper` or the FactRow value sheet.
-//   • Collapsible group (Advanced): `DisclosureGroup("Advanced", isExpanded:) { rows }` inside a Section, or
-//     `AdvancedToggle` as its own row followed by the extra sections.
-//
-// Actions
-//   • Page primary action (Connect, Save, Start): `.pagePrimaryAction("Connect", enabled:) { … }` — the trailing
-//     nav-bar button. Never a full-width pill at the bottom of the page.
-//   • Cancel / close of a modal: `.pageCancelAction { … }` (leading, replaces back). One dismiss control per screen.
-//   • An action inside the content: a standard `Button(…).buttonStyle(.borderedProminent)` (or `.bordered`)
-//     at its regular size, or a tinted text Button row in its own Section.
-//   • Destructive: `Button(role: .destructive)` as a row in its own Section, keeping its existing confirmation
-//     alert / dialog (and hold-to-confirm for flight actions) untouched.
-//
-// Sheets
-//   • `.queuedSheet(isPresented:) { NavigationStack { NativeForm { … }.navigationTitle(…)
-//     .pageCancelAction { … }.pagePrimaryAction(…) { … } }.presentationDetents([.medium, .large])
-//     .nativeSheetFrame() }` — a navigation bar with Cancel left and the primary action right; detents on iOS,
-//     a sized sheet with its buttons on the Mac.
-
 extension EnvironmentValues {
-    // True inside a NativeForm: the shared row primitives leave padding, borders and backgrounds to the list.
     @Entry var LocalNativeList = false
 }
 
@@ -89,14 +30,12 @@ private struct LegacyRowPadding: ViewModifier {
 }
 
 extension View {
-    // The padding a row draws for itself on a hand-laid-out page; none inside a NativeForm, whose rows are inset.
     func rowPadding(_ insets: EdgeInsets) -> some View { modifier(LegacyRowPadding(insets: insets)) }
 
     func rowPadding(horizontal: CGFloat = 0, vertical: CGFloat = 0) -> some View {
         rowPadding(EdgeInsets(top: vertical, leading: horizontal, bottom: vertical, trailing: horizontal))
     }
 
-    // A composite view that still lays itself out by hand, shown inside a NativeForm as it always looked.
     func legacyFormRow() -> some View {
         environment(\.LocalNativeList, false)
             .listRowInsets(EdgeInsets())
@@ -105,7 +44,6 @@ extension View {
     }
 }
 
-// The rounded-square glyph at the start of a native row, as iOS Settings draws them, in Aircast's colours.
 struct NativeRowIcon: View {
     let icon: Icon
     var tint: Color? = nil
@@ -125,8 +63,6 @@ let NATIVE_ICON_SIZE: CGFloat = 29
 private let NATIVE_ICON_GLYPH: CGFloat = 15
 private let NATIVE_ICON_CORNER: CGFloat = 7
 
-// A native row's content: icon badge, title, secondary subtitle, trailing status and (for rows that open a page
-// from a Button) the disclosure chevron. SetupRow draws this inside a NativeForm.
 struct NativeRowLabel: View {
     let title: String
     var subtitle: Text? = nil
@@ -170,19 +106,11 @@ struct NativeRowLabel: View {
 }
 
 extension View {
-    // A whole-row button inside a list: the row highlights on iOS; on the Mac a grouped form would draw a push
-    // button, so it stays a plain row with a hover tint.
     func listRowButton() -> some View {
-        #if os(macOS)
-        return buttonStyle(.plain).macHover()
-        #else
         return buttonStyle(.automatic)
-        #endif
     }
 }
 
-// An inline labelled text field: the label on the left, the value typed on the right, as iOS Settings > Wi-Fi >
-// Configure IP. The error (or a hint) shows under the row in secondary text.
 struct FieldRow: View {
     let label: String
     let value: String
@@ -232,8 +160,6 @@ struct FieldRow: View {
 
     @ViewBuilder private var field: some View {
         let text = Binding(get: { value }, set: onChange)
-        // The label is drawn by LabeledContent; the field keeps it only for accessibility (an empty prompt, so
-        // iOS does not repeat the label as the placeholder, and hidden labels, so the Mac does not draw it twice).
         Group {
             if secure {
                 SecureField(label, text: text, prompt: Text(prompt))
@@ -245,7 +171,6 @@ struct FieldRow: View {
     }
 }
 
-// Free-standing explanatory text between sections, drawn like a section footer.
 struct FormNote: View {
     let text: String
     var color: Color? = nil
@@ -261,8 +186,6 @@ struct FormNote: View {
 }
 
 extension View {
-    // The page's primary action as the trailing navigation-bar button (Connect, Save, Start), in place of a
-    // full-width button at the foot of the page.
     func pagePrimaryAction(_ title: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
         toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -271,7 +194,6 @@ extension View {
         }
     }
 
-    // A modal page's Cancel, leading, in place of the back button: the screen's one dismiss control.
     func pageCancelAction(_ title: String = "Cancel", action: @escaping () -> Void) -> some View {
         navigationBarBackButtonHidden(true)
             .toolbar {
@@ -281,28 +203,9 @@ extension View {
             }
     }
 
-    // A modal sheet's size on the Mac, where a sheet is only as big as its content asks; nothing on iOS.
-    func nativeSheetFrame() -> some View {
-        #if os(macOS)
-        return frame(minWidth: NATIVE_SHEET_MIN_WIDTH, minHeight: NATIVE_SHEET_MIN_HEIGHT)
-        #else
-        return self
-        #endif
-    }
-
-    // A pushed page's navigation bar: its title (inline, or large for a tab's first page), the slot through which
-    // OverridePageHeading / PageTopBar inside the page retitle it or step back through their own sub-steps, and
-    // the BlocksNavigation guard — while a calibration, log download or flash holds, back and swipe-back are
-    // replaced by a back that explains why instead of leaving.
     func nativePage(_ title: String, large: Bool = false) -> some View { modifier(NativePage(title: title, large: large)) }
 }
 
-#if os(macOS)
-private let NATIVE_SHEET_MIN_WIDTH: CGFloat = 480
-private let NATIVE_SHEET_MIN_HEIGHT: CGFloat = 440
-#endif
-
-// The back button's own look, for the stand-ins that replace it.
 struct NavigationBackLabel: View {
     var body: some View {
         HStack(spacing: 4) {
@@ -312,7 +215,6 @@ struct NavigationBackLabel: View {
     }
 }
 
-// Whether a page's back is replaced, and by what: BlocksNavigation's refusal wins over a page's own step back.
 enum PageBack: Equatable {
     case System
     case Refused(String)

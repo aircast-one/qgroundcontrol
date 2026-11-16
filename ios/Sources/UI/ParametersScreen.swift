@@ -194,7 +194,6 @@ private struct ParameterRow: View {
             }
         }
         .contentShape(Rectangle())
-        .macHover()
         .onTapGesture { forcing = true }
         .background {
             if forcing {
@@ -298,12 +297,7 @@ func parameterFact(_ name: String, _ quantity: String? = nil) -> Fact? {
 }
 
 extension View {
-    // The parameter list: a lazy List (thousands of rows, each watching its value), inset-grouped like a NativeForm.
     fileprivate func parameterListStyle() -> some View {
-        #if os(macOS)
-        return listStyle(.inset)
-        #else
         return listStyle(.insetGrouped)
-        #endif
     }
 }

@@ -1,9 +1,5 @@
 import SwiftUI
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 private let NOTICE_MILLIS = 4000
 private let HEADER_ALPHA = 0.94
@@ -89,7 +85,6 @@ func corePrompt(_ view: JSON?) -> CorePrompt? {
     }
 }
 
-#if os(iOS)
 private final class CorePromptAlert: UIAlertController {
     var prompt: CorePrompt?
     var onGone: () -> Void = {}
@@ -166,84 +161,9 @@ private final class TopmostPrompter {
         }
     }
 }
-#elseif os(macOS)
-// The Mac shows the core's prompt as an alert sheet on the frontmost window (or the sheet already on it), the way
-// iOS presents it on the topmost controller: re-shown if it closes unanswered, replaced when the prompt changes.
-@MainActor
-private func settledTopmostWindow() -> NSWindow? {
-    let app = NSApplication.shared
-    guard let root = app.keyWindow ?? app.mainWindow ?? app.windows.first(where: \.isVisible) else { return nil }
-    let top = sequence(first: root, next: \.attachedSheet).reduce(root) { _, next in next }
-    return top.isVisible ? top : nil
-}
-
-@MainActor
-private final class TopmostPrompter {
-    private var wanted: CorePrompt?
-    private var answered: CorePrompt?
-    private var shown: (prompt: CorePrompt, alert: NSAlert, host: NSWindow)?
-    private var retrying = false
-
-    func show(_ prompt: CorePrompt?) {
-        wanted = prompt
-        if prompt != answered { answered = nil }
-        guard prompt != shown?.prompt else { return }
-        if let open = shown {
-            shown = nil
-            open.host.endSheet(open.alert.window, returnCode: .abort)
-        }
-        guard let prompt, prompt != answered else { return }
-        guard let host = settledTopmostWindow() else { return retry() }
-        // NSAlert makes its first button the default one, so the preferred choice leads.
-        let choices = prompt.choices.filter(\.preferred) + prompt.choices.filter { !$0.preferred }
-        let alert = NSAlert()
-        alert.messageText = prompt.title
-        alert.informativeText = prompt.text
-        choices.forEach { choice in
-            let button = alert.addButton(withTitle: choice.label)
-            if choice.cancel && !choice.preferred { button.keyEquivalent = "\u{1b}" }
-        }
-        shown = (prompt, alert, host)
-        alert.beginSheetModal(for: host) { [weak self] response in
-            MainActor.assumeIsolated { self?.closed(alert, response, choices) }
-        }
-    }
-
-    private func closed(_ alert: NSAlert, _ response: NSApplication.ModalResponse, _ choices: [CorePromptChoice]) {
-        guard let open = shown, open.alert === alert else { return }
-        shown = nil
-        let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-        guard choices.indices.contains(index) else { return gone() }
-        answered = open.prompt
-        let invoke = choices[index].invoke
-        offMain { Qgc.invoke(invoke) }
-    }
-
-    private func retry() {
-        guard !retrying else { return }
-        retrying = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
-            retrying = false
-            show(wanted)
-        }
-    }
-
-    private func gone() {
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(PROMPT_REPRESENT_MILLIS))
-            show(wanted)
-        }
-    }
-}
-#endif
 
 private let PROMPT_REPRESENT_MILLIS = 400
-#if os(macOS)
-private let PLAN_MENU_ROW_HEIGHT: CGFloat = Metrics.rowCompact
-#else
 private let PLAN_MENU_ROW_HEIGHT: CGFloat = 44
-#endif
 private let PLAN_MENU_MIN_WIDTH: CGFloat = 220
 private let PLAN_MENU_MAX_WIDTH: CGFloat = 280
 
@@ -291,9 +211,6 @@ struct PlanTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { dialogs }
         .modifier(PlanFileDialogs(files: files, onResult: { notice = $0 }))
-        #if os(macOS)
-        .planFileMenu(fileMenu)
-        #endif
         .onAppear { PlanUndoTracking.mounted(1) }
         .onDisappear {
             PlanUndoTracking.mounted(-1)
@@ -310,22 +227,6 @@ struct PlanTab: View {
             if !Task.isCancelled { notice = nil }
         }
     }
-
-    #if os(macOS)
-    // The File menu's Open / Save / Save As, run as the plan menu runs them.
-    private var fileMenu: PlanFileMenu {
-        let can = planActions(planStatus)
-        let dirty = planIsDirty(planStatus)
-        let files = files
-        return PlanFileMenu(
-            canOpen: can.open,
-            canSave: can.save,
-            open: { if dirty { pending = .Open } else { files.open() } },
-            save: { files.save() },
-            saveAs: { files.saveAs() }
-        )
-    }
-    #endif
 
     @ViewBuilder
     private var dialogs: some View {
@@ -447,13 +348,12 @@ struct PlanTab: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 primary(bar)
                 Button { menuOpen = true } label: {
-                    Image(.moreVert).frame(width: 40, height: 40).contentShape(Circle()).macHover(Circle())
+                    Image(.moreVert).frame(width: 40, height: 40).contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.colors.onSurface)
                 .background(theme.colors.surfaceContainer.opacity(HEADER_ALPHA), in: Circle())
                 .accessibilityLabel("Plan menu")
-                .macTooltip("Plan menu")
                 .popover(isPresented: $menuOpen) {
                     ViewThatFits(in: .vertical) {
                         planMenu(history, can, dirty, containsItems)
@@ -544,7 +444,6 @@ struct PlanTab: View {
             .padding(.horizontal, Space.s3)
             .frame(maxWidth: .infinity, minHeight: PLAN_MENU_ROW_HEIGHT, alignment: .leading)
             .contentShape(Rectangle())
-            .macHover()
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -595,7 +494,6 @@ private struct PlanActionPill: View {
             }
             .background(container)
             .clipShape(Capsule())
-            .macHover(Capsule(), tint: content)
         }
         .buttonStyle(.plain)
         .fixedSize()

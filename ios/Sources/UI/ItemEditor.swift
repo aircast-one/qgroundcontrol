@@ -233,7 +233,6 @@ private struct ItemEditorContent: View {
                     .padding(.horizontal, 12)
                     .frame(minHeight: Metrics.rowCompact)
                     .contentShape(Rectangle())
-                    .macHover()
                 }
                 .buttonStyle(.plain)
             }
@@ -508,7 +507,6 @@ private struct ItemEditorContent: View {
             .frame(minHeight: Metrics.rowCompact)
             .padding(.horizontal, Space.s5)
             .contentShape(Rectangle())
-            .macHover()
         }
         .buttonStyle(.plain)
     }

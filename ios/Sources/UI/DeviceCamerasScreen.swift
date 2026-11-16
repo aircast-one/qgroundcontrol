@@ -62,8 +62,6 @@ private struct CamerasBody: View {
         let selected = shownCamera(shown)
         let canAdd = shown != .Add
         let fixing = selected?.live == false
-        // The camera tabs (a custom strip) and Add / Watch in the cloud lead the page; then the picked camera, the
-        // wall of every camera, or the add wizard, each in its own section; the topic pages close it.
         if !view.cameras.isEmpty || (!fixing && (canAdd || !view.cloudLink.isEmpty)) {
             Section {
                 if !view.cameras.isEmpty {
@@ -170,7 +168,6 @@ private struct CameraTile: View {
     let onPick: () -> Void
     @Environment(\.theme) private var theme
 
-    // One camera on the wall: its section holds the name, the live picture (drawn by hand) and Record to disk.
     var body: some View {
         Section {
             VStack(alignment: .leading, spacing: Space.s2) {
@@ -312,7 +309,6 @@ private struct CameraLinks: View {
     @Environment(\.theme) private var theme
     @Environment(\.LocalNativeList) private var nativeList
 
-    // In a NativeForm the heading and each link are rows of the camera's section.
     var body: some View {
         if camera.live && nativeList {
             Text("Every way to watch this camera").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondary)
@@ -363,10 +359,9 @@ private struct CopyButton: View {
             }
             .buttonStyle(.bordered)
             if copy.qr {
-                Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
+                Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show \(title) as a QR code")
-                    .macTooltip("Show \(title) as a QR code")
             }
         }
         .sheet(isPresented: $showingQr) { QrDialog(title: title, text: copy.text) { showingQr = false } }

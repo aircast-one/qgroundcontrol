@@ -7,14 +7,8 @@ func openingGroup(_ requested: String?) -> SettingsGroup { requested.map { pageL
 private let SETTINGS_SHEET_LAYER: Double = 10
 private let SETTINGS_PANEL_ALPHA = 0.9
 
-#if os(iOS)
 private let SETTINGS_SEARCH_PLACEMENT = SearchFieldPlacement.navigationBarDrawer(displayMode: .always)
-#else
-private let SETTINGS_SEARCH_PLACEMENT = SearchFieldPlacement.automatic
-#endif
 
-// One page pushed above the tabs in the Settings NavigationStack: a settings page by title, aircraft setup, or a
-// device page by href (the Device tab's own stack).
 enum SettingsRoute: Hashable {
     case Page(String)
     case Setup
@@ -37,7 +31,6 @@ private func shownOnOpen(_ page: String?, _ group: SettingsGroup) -> String? {
     page.flatMap { pageLook($0).group == group && !pageLook($0).inline ? $0 : nil }
 }
 
-// The stack a requested page opens: its page pushed above its tab, or nothing for a page the tab draws inline.
 func requestedRoutes(_ page: String?, _ group: SettingsGroup) -> [SettingsRoute] {
     shownOnOpen(page, group).map { [.Page($0)] } ?? []
 }
@@ -51,7 +44,6 @@ func deviceHrefs(_ path: [SettingsRoute]) -> [String] {
     }
 }
 
-// The path with its device pages replaced by hrefs, in order, on top.
 func withDeviceHrefs(_ path: [SettingsRoute], _ hrefs: [String]) -> [SettingsRoute] {
     path.filter { route in
         guard case .Device = route else { return true }
@@ -59,13 +51,8 @@ func withDeviceHrefs(_ path: [SettingsRoute], _ hrefs: [String]) -> [SettingsRou
     } + hrefs.map { SettingsRoute.Device($0) }
 }
 
-// Where an open from a tab goes: the Device tab opens device pages, every other tab settings pages.
 func tabRoute(_ group: SettingsGroup, _ opened: String) -> SettingsRoute { group == .Device ? .Device(opened) : .Page(opened) }
 
-// Settings: a NavigationStack over the tabs (General, Safety … Device) with search in the navigation bar. Every
-// drill-in — a page, aircraft setup and the pages inside it, a device page — is a push onto this one stack, so it
-// gets the system back button and swipe-back; deep links and programmatic opens (navigation.settingsPage,
-// openAircraft, addLinkRequested) set the stack.
 struct SettingsSheet: View {
     let requested: String?
     let onClose: () -> Void
@@ -349,10 +336,8 @@ struct FlySettingsButton: View {
                 .osdShadow()
                 .frame(width: 48, height: 48)
                 .contentShape(Rectangle())
-                .macHover(Circle(), tint: theme.aircast.outdoorForeground)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Settings")
-        .macTooltip("Settings")
     }
 }

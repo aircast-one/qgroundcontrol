@@ -19,7 +19,6 @@ struct SectionHeader: View {
 
     var body: some View {
         if nativeList {
-            // Inside a NativeForm this is a Section's header: the list styles the text.
             HStack(spacing: Space.s2) {
                 if !image.isBlank {
                     Image(sectionImageAsset(image))
@@ -70,13 +69,12 @@ struct SetupRow: View {
         if nativeList {
             nativeRow
         } else if let onClick {
-            Button(action: onClick) { row.macHover() }.buttonStyle(.plain)
+            Button(action: onClick) { row }.buttonStyle(.plain)
         } else {
             row
         }
     }
 
-    // Inside a NativeForm: a native disclosure row, the list drawing its insets, highlight and separators.
     @ViewBuilder private var nativeRow: some View {
         let label = NativeRowLabel(
             title: title,
@@ -146,8 +144,6 @@ struct SetupRow: View {
     }
 }
 
-// A page's own heading, lent to the host that draws the navigation bar (nativePage): the title, and a back that
-// steps through the page's own sub-steps instead of leaving it (nil keeps the system back).
 struct PageHeading {
     let title: String
     let back: (() -> Void)?
@@ -163,8 +159,6 @@ extension EnvironmentValues {
     @Entry var LocalPageHeading: PageHeadingSlot? = nil
 }
 
-// Retitles the page it sits in and makes the navigation bar's back call onBack (a step back inside the page)
-// rather than leave the page. Needs a host page set up with nativePage(_:).
 struct OverridePageHeading: View {
     let title: String
     let onBack: () -> Void
@@ -187,7 +181,6 @@ struct AdvancedToggle: View {
 
     var body: some View {
         if nativeList {
-            // A row of its own in a NativeForm; the extra sections it reveals follow it.
             Button(action: onToggle) {
                 HStack {
                     Text(open ? "Hide \(label.lowercasedFirst)" : label)
@@ -212,9 +205,6 @@ struct AdvancedToggle: View {
     }
 }
 
-// Formerly a hand-drawn bar with a back arrow. The host's NavigationStack now draws the bar, its back button and
-// swipe-back; this only lends the page its title (through the host's nativePage). backLabel and onBack are kept
-// so existing call sites compile; the system back pops the page.
 struct PageTopBar: View {
     let title: String
     let backLabel: String

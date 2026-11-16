@@ -113,7 +113,6 @@ struct TileSetTransfer: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .nativeSheetFrame()
     }
 
     private func pickImport(_ mode: Bool) {

@@ -135,34 +135,6 @@ struct MapClickRequest: Equatable {
     var refused: String? = nil
 }
 
-#if os(macOS)
-enum FlyMenuChoice: Equatable {
-    case SetWaypoint(sequence: Int)
-    case Action(MapClickAction)
-}
-
-func flyMenuWaypoint(_ hit: MapHit?, _ items: [MissionItem]) -> Int? {
-    guard case .Waypoint(let index)? = hit else { return nil }
-    return items.first { $0.index == index }?.sequence
-}
-
-func flyMenuChoices(_ actions: [MapClickAction], _ waypoint: Int?) -> [FlyMenuChoice] {
-    (waypoint.map { [FlyMenuChoice.SetWaypoint(sequence: $0)] } ?? []) + actions.map { FlyMenuChoice.Action($0) }
-}
-
-func flyMenuTitle(_ choice: FlyMenuChoice) -> String {
-    switch choice {
-    case .SetWaypoint(let sequence): "Set current waypoint to \(waypointTarget(sequence))\u{2026}"
-    case .Action(let action): sentenceCase(action.label) + (opensClickSheet(action) ? "\u{2026}" : "")
-    }
-}
-
-func sendMapClick(_ action: MapClickAction, _ point: MapPoint) -> String? {
-    guard !opensClickSheet(action) else { return "\(sentenceCase(action.title)) needs confirming first." }
-    return send(action, point, nil)
-}
-#endif
-
 private struct RadiusField: View {
     let label: String
     let text: Binding<String>

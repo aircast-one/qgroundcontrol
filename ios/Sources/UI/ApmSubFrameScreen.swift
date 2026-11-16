@@ -1,7 +1,5 @@
 import SwiftUI
-#if os(iOS)
 import UIKit
-#endif
 
 let APM_SUB_FRAME_SCREEN = "apmSubFrame"
 let APM_SUB_FRAME_VIEW = "view.apmSubFrame"

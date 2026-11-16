@@ -124,7 +124,6 @@ private struct WifiWizard: View {
         if joining {
             WifiJoining(join: join, reopen: reopen, onBack: back)
         } else {
-            // Rows inside the Join group: scan, the networks found (tap one to fill the name), name, password, Connect.
             HStack(spacing: Space.s3) {
                 DeviceHint(text: "Pick a nearby network or type its name. Scanning is limited while the hotspot is on, so typing is usually fastest.")
                 Button(scanning ? "Scanning…" : "Scan", action: scan)
@@ -139,7 +138,6 @@ private struct WifiWizard: View {
                     NetworkRow(network: network, picked: !ssid.isEmpty && ssid == network.ssid) { pick(network) }
                 }
             }
-            // .password gives the plain keyboard without autocapitalisation or autocorrect, which an SSID needs.
             DeviceTextField(
                 label: "Network name (SSID)",
                 value: ssid,
@@ -179,7 +177,6 @@ private struct NetworkRow: View {
 
     var body: some View {
         if nativeList {
-            // A native row: the name (and whether it is the one in use), its signal and lock; a check on the picked one.
             Button(action: onPick) {
                 HStack(spacing: Space.s3) {
                     Image(systemName: "checkmark")
@@ -233,7 +230,6 @@ private struct NetworkRow: View {
             .frame(maxWidth: .infinity, minHeight: Metrics.rowCompact)
             .overlay(RoundedRectangle(cornerRadius: Corner.medium).stroke(theme.colors.outlineVariant))
             .contentShape(RoundedRectangle(cornerRadius: Corner.medium))
-            .macHover(RoundedRectangle(cornerRadius: Corner.medium))
         }
         .buttonStyle(.plain)
         .padding(.horizontal, DEVICE_LIST_PADDING)
@@ -247,8 +243,6 @@ private struct WifiJoining: View {
     @Environment(\.theme) private var theme
     @Environment(\.LocalNativeList) private var nativeList
 
-    // Rows while the device switches networks: what happened, how to reach it again (with the address to reconnect
-    // to), and Back to the form.
     var body: some View {
         let muted = nativeList ? Color.secondary : theme.colors.onSurfaceVariant
         Text(join.status).font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading).rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)

@@ -174,11 +174,10 @@ struct CameraControlLayer: View {
     @ViewBuilder private func above(_ camera: CameraReading) -> some View {
         cameraElement("cameraSettings") {
             Button { state.details = true } label: {
-                Image(.settings).font(.system(size: 20)).frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle()).macHover(Circle(), tint: .white)
+                Image(.settings).font(.system(size: 20)).frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Camera settings")
-            .macTooltip("Camera settings")
         }
         if let label = zoomText(camera) {
             cameraElement("cameraZoom") {
@@ -225,12 +224,11 @@ struct CameraControlLayer: View {
             let state = state
             Task { state.refused = await offMain { Qgc.refusalOf(CAMERA_SET_MODE, mode) } }
         } label: {
-            Image(toVideo ? .videocam : .photoCamera).font(.system(size: 22)).osdShadow().frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle()).macHover(Circle(), tint: .white)
+            Image(toVideo ? .videocam : .photoCamera).font(.system(size: 22)).osdShadow().frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!(toVideo ? panel.selectVideoEnabled : panel.selectPhotoEnabled))
         .accessibilityLabel(toVideo ? "Switch to video" : "Switch to photo")
-        .macTooltip(toVideo ? "Switch to video" : "Switch to photo")
     }
 }
 
@@ -296,8 +294,6 @@ private struct CentredRailLayout: Layout {
         return subviews.prefix(3).map { $0.sizeThatFits(room) }
     }
 
-    // With no shutter to centre on (the portrait rail), the groups simply stack: centring an empty slot doubled the
-    // taller half and left a tall dark box holding a tilt angle and two buttons.
     private func stacked(_ sizes: [CGSize]) -> [CGFloat] {
         var top: CGFloat = 0
         return sizes.map { size in
@@ -486,7 +482,6 @@ private struct SheetRadioRow: View {
             .frame(minHeight: Metrics.row)
             .padding(.horizontal, 16)
             .contentShape(Rectangle())
-            .macHover()
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])

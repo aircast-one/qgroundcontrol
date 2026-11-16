@@ -413,10 +413,9 @@ private struct TelemetryReadings: View {
             .accessibilityAddTraits(instrument.id.isBlank ? [] : .isButton)
         case .chooser:
             Button { flyScreen.choosingReadings = true } label: {
-                Image(.tune).foregroundStyle(theme.colors.onSurfaceVariant).frame(width: Metrics.iconButton, height: Metrics.iconButton).macHover(Circle())
+                Image(.tune).foregroundStyle(theme.colors.onSurfaceVariant).frame(width: Metrics.iconButton, height: Metrics.iconButton)
             }
             .accessibilityLabel("Readings")
-            .macTooltip("Readings")
         }
     }
 }
@@ -1143,7 +1142,6 @@ struct FlightModeMenu: View {
         .padding(.horizontal, Space.s3)
         .frame(minHeight: Metrics.rowCompact)
         .background(mode.current ? theme.colors.secondaryContainer : Color.clear)
-        .macHover()
         .opacity(mode.hidden ? HIDDEN_MODE_ALPHA : 1)
         .opacity(modes.canSet ? 1 : DISABLED_ALPHA)
         .contentShape(Rectangle())
@@ -1160,7 +1158,6 @@ struct FlightModeMenu: View {
                 .frame(minHeight: Metrics.rowCompact)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
-                .macHover()
         }
         .buttonStyle(.plain)
     }
@@ -1204,7 +1201,6 @@ private struct InstrumentSheet: View {
                                 .padding(.horizontal, Space.s4)
                                 .frame(minHeight: Metrics.row)
                                 .contentShape(Rectangle())
-                                .macHover()
                                 .onTapGesture { onToggle(fact.path) }
                                 .accessibilityElement(children: .combine)
                                 .accessibilityAddTraits(chosen.contains(fact.path) ? [.isButton, .isSelected] : .isButton)

@@ -38,13 +38,7 @@ final class PaletteDefault {
     var awaiting = false
 }
 
-#if os(iOS)
 typealias PaletteWindowStyle = UIUserInterfaceStyle
-#elseif os(macOS)
-enum PaletteWindowStyle: Equatable {
-    case unspecified, light, dark
-}
-#endif
 
 func paletteWindowStyle(_ followsSystem: Bool, _ dark: Bool) -> PaletteWindowStyle {
     followsSystem ? .unspecified : dark ? .dark : .light
@@ -52,20 +46,10 @@ func paletteWindowStyle(_ followsSystem: Bool, _ dark: Bool) -> PaletteWindowSty
 
 @MainActor
 private func applyPaletteWindowStyle(_ style: PaletteWindowStyle) {
-    #if os(iOS)
     UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }
         .flatMap(\.windows)
         .forEach { $0.overrideUserInterfaceStyle = style }
-    #elseif os(macOS)
-    // nil hands the appearance back to the system, so later light/dark changes show, as .unspecified does on iOS.
-    let appearance: NSAppearance? = switch style {
-    case .unspecified: nil
-    case .light: NSAppearance(named: .aqua)
-    case .dark: NSAppearance(named: .darkAqua)
-    }
-    NSApplication.shared.appearance = appearance
-    #endif
 }
 
 extension View {

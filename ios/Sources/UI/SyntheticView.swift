@@ -86,26 +86,14 @@ private func tileMimeType(_ tile: Data) -> String {
     tile.starts(with: PNG_SIGNATURE) ? "image/png" : "image/jpeg"
 }
 
-#if os(macOS)
-// The page only draws; clicks, drags and scrolls go to the SwiftUI gestures around it, as with user interaction off on iOS.
-private final class PassiveWebView: WKWebView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-#endif
-
 func syntheticWebView(_ delegate: WKNavigationDelegate) -> WKWebView {
     let configuration = WKWebViewConfiguration()
     configuration.setURLSchemeHandler(SyntheticSchemeHandler(), forURLScheme: SYNTHETIC_SCHEME)
-    #if os(iOS)
     let web = WKWebView(frame: .zero, configuration: configuration)
     web.isOpaque = false
     web.backgroundColor = .black
     web.scrollView.isScrollEnabled = false
     web.isUserInteractionEnabled = false
-    #elseif os(macOS)
-    let web = PassiveWebView(frame: .zero, configuration: configuration)
-    web.underPageBackgroundColor = .black
-    #endif
     web.isInspectable = CoreHost.isDebugBuild
     web.navigationDelegate = delegate
     URL(string: SYNTHETIC_PAGE).map { web.load(URLRequest(url: $0)) }

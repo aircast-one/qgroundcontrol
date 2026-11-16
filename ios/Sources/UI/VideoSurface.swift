@@ -1,10 +1,6 @@
 import QGCCore
 import SwiftUI
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 let CAMERA_STEP_ZOOM = "vehicle.cameraManager.currentCameraInstance.stepZoom"
 
@@ -350,8 +346,6 @@ private final class FrameTicker: NSObject {
     @objc func tick() { view?.drawFrame() }
 }
 
-// Shows one core video channel: decoded frames are copied off the core and set as the backing layer's contents on
-// every display refresh. The same on iOS (UIView) and macOS (layer-backed NSView, as the native macOS head does).
 final class VideoChannelLayerView: PlatformView {
     private let channel: Int32
     private var link: CADisplayLink?
@@ -362,33 +356,17 @@ final class VideoChannelLayerView: PlatformView {
     init(channel: Int) {
         self.channel = Int32(channel)
         super.init(frame: .zero)
-        #if os(iOS)
         backgroundColor = .black
         isUserInteractionEnabled = false
         layer.contentsGravity = .resizeAspect
-        #elseif os(macOS)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
-        layer?.contentsGravity = .resizeAspect
-        #endif
     }
 
     required init?(coder: NSCoder) { nil }
 
-    #if os(iOS)
     override func didMoveToWindow() {
         super.didMoveToWindow()
         windowChanged()
     }
-    #elseif os(macOS)
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        windowChanged()
-    }
-
-    // Clicks and drags fall through to the SwiftUI gestures around the picture, as with isUserInteractionEnabled off.
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    #endif
 
     private func windowChanged() {
         let onScreen = window != nil
@@ -400,11 +378,7 @@ final class VideoChannelLayerView: PlatformView {
 
     private func start() {
         guard link == nil else { return }
-        #if os(iOS)
         let made = CADisplayLink(target: FrameTicker(self), selector: #selector(FrameTicker.tick))
-        #elseif os(macOS)
-        let made = displayLink(target: FrameTicker(self), selector: #selector(FrameTicker.tick))
-        #endif
         made.preferredFrameRateRange = CAFrameRateRange(minimum: 10, maximum: 30, preferred: 30)
         made.add(to: .main, forMode: .common)
         link = made
@@ -428,11 +402,7 @@ final class VideoChannelLayerView: PlatformView {
                 self.copying = false
                 guard let image else { return }
                 self.shownFrames = frames
-                #if os(iOS)
                 self.layer.contents = image
-                #elseif os(macOS)
-                self.layer?.contents = image
-                #endif
             }
         }
     }

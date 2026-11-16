@@ -174,9 +174,6 @@ struct FlyMap: View {
     @State private var style = FlyMapStyle.last
     @Environment(FlyScreenState.self) private var flyScreen
     @Environment(FlyMapEdits.self) private var mapEdits
-    #if os(macOS)
-    @MapPath(MAP_CLICK_PATH) private var clickJson
-    #endif
     private var state: FlyMapState { flyScreen.flyMap }
 
     var body: some View {
@@ -269,44 +266,8 @@ struct FlyMap: View {
     }
 
     private var mapContextMenu: MapContextMenu? {
-        #if os(macOS)
-        return { hit, latitude, longitude in flyContextMenu(hit, MapPoint(latitude: latitude, longitude: longitude)) }
-        #else
         return nil
-        #endif
     }
-
-    #if os(macOS)
-    private func flyContextMenu(_ hit: MapHit?, _ point: MapPoint) -> [MapMenuEntry]? {
-        let waypoint = onMissionItemClick == nil ? nil : flyMenuWaypoint(hit, state.plan.items)
-        guard clickJson != nil || waypoint != nil else { return nil }
-        let choices = flyMenuChoices(mapClickActions(clickJson), waypoint)
-        guard !choices.isEmpty else { return [] }
-        let commands = choices.map { choice in MapMenuEntry(flyMenuTitle(choice)) { chooseFromMenu(choice, point) } }
-        let place = coordinateLines(point).enumerated().map { at, line in MapMenuEntry(line, enabled: false, startsGroup: at == 0) }
-        return commands + place
-    }
-
-    private func chooseFromMenu(_ choice: FlyMenuChoice, _ point: MapPoint) {
-        switch choice {
-        case .SetWaypoint(let sequence):
-            onMissionItemClick?(sequence)
-        case .Action(let action) where opensClickSheet(action):
-            mapEdits.clickRequest = MapClickRequest(point: point, actionId: action.id)
-            onMapClick?(point.latitude, point.longitude)
-        case .Action(let action):
-            let edits = mapEdits
-            let reopen = onMapClick
-            Task { @MainActor in
-                let refusal = await offMain { sendMapClick(action, point) }
-                if refusal == nil && action.id == LOOK_3D_ACTION { Map3d.shared.show(true) }
-                guard let refusal else { return }
-                edits.clickRequest = MapClickRequest(point: point, actionId: action.id, refused: refusal)
-                reopen?(point.latitude, point.longitude)
-            }
-        }
-    }
-    #endif
 
     private func zoomForPip() {
         guard let at = state.centre, pip != state.camera.zoomedForPip else { return }

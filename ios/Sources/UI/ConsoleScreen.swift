@@ -141,7 +141,6 @@ struct ConsoleScreen: View {
                 }
             }
 
-            // The input as a native compose bar: history steps, the command field and Send.
             HStack(alignment: .bottom, spacing: Space.s2) {
                 ForEach(CONSOLE_HISTORY_STEPS, id: \.step) { entry in
                     Button { recall(entry.step) } label: {
@@ -151,7 +150,6 @@ struct ConsoleScreen: View {
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel(entry.label)
-                    .macTooltip(entry.label)
                 }
                 ConsoleField(field: field, onEdit: edit)
                     .lineLimit(1...4)
@@ -168,7 +166,6 @@ struct ConsoleScreen: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Send")
-                .macTooltip("Send")
             }
             .padding(.horizontal, Space.s3)
             .padding(.vertical, Space.s2)

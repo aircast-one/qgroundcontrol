@@ -1,9 +1,5 @@
 import MapLibre
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 let GIMBAL_AZIMUTH_VIEW = "view.gimbalAzimuth"
 private let GIMBAL_SOURCE = "aircast-gimbal-azimuth"

@@ -1,9 +1,5 @@
 import MapLibre
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 let CROWDED_ITEMS = 40
 let CROWDED_RADIUS = 4.0

@@ -1,7 +1,5 @@
 import SwiftUI
-#if os(iOS)
 import UIKit
-#endif
 import UniformTypeIdentifiers
 
 struct DeviceBadge: Equatable, Hashable {
@@ -230,15 +228,13 @@ struct CopyRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if qr {
-                Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
+                Button { showingQr = true } label: { Image(.qrCode2).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show \(label) as a QR code")
-                    .macTooltip("Show \(label) as a QR code")
             }
-            Button { copyToClipboard(text, notice) } label: { Image(.contentCopy).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()).macHover(Circle()) }
+            Button { copyToClipboard(text, notice) } label: { Image(.contentCopy).frame(width: Metrics.iconButton, height: Metrics.iconButton).contentShape(Rectangle()) }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Copy \(label)")
-                .macTooltip("Copy \(label)")
         }
         .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
         .sheet(isPresented: $showingQr) { QrDialog(title: label, text: text) { showingQr = false } }
@@ -473,7 +469,6 @@ struct DeviceTextField: View {
 
     var body: some View {
         if nativeList && lines <= 1 && !label.isEmpty {
-            // A native form row: the label on the left, the value typed on the right.
             FieldRow(
                 label: label,
                 value: value,
@@ -770,7 +765,6 @@ struct DeviceDisclosure<Content: View>: View {
                 .rowPadding(horizontal: DEVICE_LIST_PADDING, vertical: 8)
                 .frame(maxWidth: .infinity, minHeight: Metrics.row)
                 .contentShape(Rectangle())
-                .macHover()
             }
             .buttonStyle(.plain)
             .accessibilityLabel(open ? "Collapse \(title)" : "Expand \(title)")
@@ -887,7 +881,6 @@ struct Fold<Content: View>: View {
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, minHeight: Metrics.rowCompact)
                 .contentShape(Rectangle())
-                .macHover()
             }
             .buttonStyle(.plain)
             .accessibilityLabel(open ? "Collapse \(title)" : "Expand \(title)")

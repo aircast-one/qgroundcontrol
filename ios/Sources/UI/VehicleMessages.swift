@@ -147,11 +147,10 @@ struct VehicleMessageBanner: View {
             }
             .accessibilityHidden(true)
             Button { offMain { VehicleCommands.resetAllMessages() } } label: {
-                Image(.close).font(.system(size: 16)).frame(width: 32, height: 32).minimumTouchTarget().macHover(Circle(), tint: content)
+                Image(.close).font(.system(size: 16)).frame(width: 32, height: 32).minimumTouchTarget()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss messages")
-            .macTooltip("Dismiss messages")
         }
         .foregroundStyle(content)
         .padding(.horizontal, 12)
@@ -245,7 +244,6 @@ private struct VehicleMessageLog: View {
     }
 }
 
-// What the vehicle has said, newest first, as a native list; Clear in the navigation bar.
 struct VehicleMessagesPage: View {
     @QgcPath(MESSAGES) private var messagesJson
 
@@ -328,10 +326,9 @@ struct AppSnackbar: View {
                 Text(data.message)
                     .font(.labelLarge)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button { data.dismiss() } label: { Image(.close).frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall).contentShape(Rectangle()).macHover(Circle(), tint: theme.colors.onErrorContainer) }
+                Button { data.dismiss() } label: { Image(.close).frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Dismiss")
-                    .macTooltip("Dismiss")
             }
             .foregroundStyle(theme.colors.onErrorContainer)
             .padding(.leading, 16)

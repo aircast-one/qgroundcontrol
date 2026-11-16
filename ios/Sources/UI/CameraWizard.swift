@@ -1,7 +1,5 @@
 import SwiftUI
-#if os(iOS)
 import UIKit
-#endif
 import UniformTypeIdentifiers
 
 private let BOX_CORNER: CGFloat = 12
@@ -299,8 +297,6 @@ struct CameraWizard: View {
         .padding(.vertical, nativeList ? Space.s2 : 0)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(view.isNew ? "New camera" : "Set up \(view.name)")
-        // The wizard is one form row, so its session hooks live on it; a list re-runs a row's task each time the row
-        // scrolls back into view, so the session opens only once.
         .task {
             guard session < 0 else { return }
             session = await openWizard(view, scan)
@@ -571,7 +567,6 @@ struct CameraWizard: View {
     }
 }
 
-// A fold inside the wizard: a native DisclosureGroup in a NativeForm, the hand-drawn Fold elsewhere.
 private struct WizardFold<Content: View>: View {
     let title: String
     let open: Bool
@@ -653,7 +648,6 @@ private struct WizardField: View {
 
     var body: some View {
         if nativeList {
-            // As FieldRow: the label left, the value typed on the right, the hint or error underneath.
             VStack(alignment: .leading, spacing: Space.s1) {
                 LabeledContent {
                     input.multilineTextAlignment(.trailing)

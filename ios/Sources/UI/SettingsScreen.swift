@@ -1,8 +1,6 @@
 import Combine
 import SwiftUI
-#if os(iOS)
 import UIKit
-#endif
 
 private let SETTINGS_VIEW = "view.settings"
 private let SEARCH_SETTLE_MS = 250
@@ -329,8 +327,6 @@ private struct AircraftSetupRow: View {
     }
 }
 
-// One settings tab, the root of its page in the Settings sheet's NavigationStack. Opening a page (or, on the
-// Device tab, a device page) pushes it onto that stack through onOpen.
 struct SettingsScreen: View {
     let group: SettingsGroup
     let everyPage: [SettingsPageEntry]
@@ -351,7 +347,6 @@ struct SettingsScreen: View {
     }
 }
 
-// A settings page pushed from a tab or from search.
 struct SettingsPageScreen: View {
     let page: SettingsPageEntry
 
@@ -367,8 +362,6 @@ let LIST_DETAIL_MIN_WIDTH: CGFloat = 840
 let LIST_PANE_WIDTH: CGFloat = 380
 let DETAIL_PANE_MAX_WIDTH: CGFloat = 720
 
-// A tab's pages in order, with each run of pages that open on their own screen gathered into one section and each
-// page drawn inline on the tab kept apart.
 struct PageRun: Equatable, Identifiable {
     let inline: Bool
     let pages: [SettingsPageEntry]
@@ -453,11 +446,6 @@ private struct SettingsTab: View {
                     Section { TabSetupRows(group: group, onOpenSetup: onOpenSetup) }
                 }
             }
-            #if os(macOS)
-            if group == .General {
-                UpdatesSection()
-            }
-            #endif
         }
         .task(id: InlineLoad(titles: pages.filter(drawnInline).map(\.title), reloads: reloads)) {
             let titles = pages.filter(drawnInline).map(\.title)
@@ -473,8 +461,6 @@ private struct SettingsTab: View {
     }
 }
 
-// A page drawn on its tab rather than behind a row: its own sections, under the page's name unless the page is the
-// tab's home. The tab reads the sections (sections nil until then) so they can sit in the tab's form.
 private struct InlinePage: View {
     let page: SettingsPageEntry
     let group: SettingsGroup
@@ -500,7 +486,6 @@ func borrowedTitle(_ sections: [SettingsSectionRows]) -> String {
     sections.flatMap(\.blocks).map { sentenceCase($0.title) }.filter { !$0.isBlank }.distinct().joined(separator: " \u{00b7} ")
 }
 
-// The name of a page drawn inline on its tab: a heading above the page's sections, on the form's background.
 private struct PageHeader: View {
     let icon: Icon
     let title: String
@@ -672,9 +657,6 @@ private struct SettingsPageBody: View {
     }
 }
 
-// A page's settings. On a hand-laid-out page, headings and rows in a column; inside a NativeForm, a Section per
-// block under its heading, with the composite editors some sections carry (NTRIP, MAVLink, offline maps…) kept in
-// sections of their own as they still draw themselves.
 private struct SettingsControls: View {
     let page: SettingsPageEntry
     let sections: [SettingsSectionRows]
@@ -688,20 +670,12 @@ private struct SettingsControls: View {
             if home && page.showsNtrip {
                 NtripStatusSection(onWrite: onWrite)
             }
-            #if os(macOS)
-            if home && page.showsPacketRadio {
-                PacketRadioSection(onWrite: onWrite)
-            }
-            #endif
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
                 nativeSection(section)
             }
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 if home && page.showsNtrip { NtripStatusSection(onWrite: onWrite) }
-                #if os(macOS)
-                if home && page.showsPacketRadio { PacketRadioSection(onWrite: onWrite) }
-                #endif
                 ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
                     sectionView(section)
                 }
@@ -740,7 +714,6 @@ private struct SettingsControls: View {
         }
     }
 
-    // A section whose rows the head draws (MAVLink actions) keeps its heading above that editor.
     @ViewBuilder private func nativeExtras(_ section: SettingsSectionRows) -> some View {
         let drawnByTheHead = section.blocks.allSatisfy { $0.facts.isEmpty }
         let heading = drawnByTheHead && blockHeadings ? section.blocks.first.map { blockHeading(page.title, section, $0) } ?? "" : ""
@@ -892,11 +865,9 @@ private struct FactTitle: View {
                         .foregroundStyle(helpOpen ? theme.colors.primary : theme.colors.onSurfaceVariant)
                         .frame(width: Metrics.iconButtonSmall, height: Metrics.iconButtonSmall)
                         .contentShape(Rectangle())
-                        .macHover(Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(helpOpen ? "Hide help" : "Help")
-                .macTooltip(helpOpen ? "Hide help" : "Help")
             }
         }
     }
@@ -1070,7 +1041,6 @@ struct FactRow: View {
                     .rowPadding(horizontal: 16, vertical: 10)
                     .frame(maxWidth: .infinity, minHeight: nativeList ? nil : Metrics.row)
                     .contentShape(Rectangle())
-                    .macHover()
                 }
                 .buttonStyle(.plain)
             }
@@ -1360,7 +1330,6 @@ struct ChoiceField: View {
 
     var body: some View {
         if nativeList, let label {
-            // A form row: the label on the left, the choice as a menu on the right.
             LabeledContent {
                 Menu { menuItems } label: {
                     HStack(spacing: Space.s1) {
@@ -1603,7 +1572,6 @@ private struct FactTextField: View {
             .contentShape(Rectangle())
             .onTapGesture { if fact.enabled { focused = true } }
             .overlay {
-                // In a form the row is the field, as iOS draws one; elsewhere the outlined box.
                 if !nativeList {
                     RoundedRectangle(cornerRadius: Corner.extraSmall)
                         .stroke(rejection != nil ? theme.colors.error : focused ? theme.colors.primary : theme.colors.outline, lineWidth: focused ? 2 : 1)

@@ -369,7 +369,6 @@ struct LayoutWidget<Content: View>: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(hidden ? "Show" : "Hide")
-            .macTooltip(hidden ? "Show" : "Hide")
         } else {
             Image(.lock)
                 .font(.system(size: 11, weight: .bold))

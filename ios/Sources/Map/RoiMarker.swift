@@ -1,9 +1,5 @@
 import MapLibre
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 let ROI_GUIDED_VIEW = "view.guidedActions"
 private let ROI_SOURCE = "aircast-roi"

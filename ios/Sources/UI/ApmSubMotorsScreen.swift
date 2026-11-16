@@ -1,7 +1,5 @@
 import SwiftUI
-#if os(iOS)
 import UIKit
-#endif
 
 let APM_SUB_MOTORS_SCREEN = "apmSubMotors"
 let APM_SUB_MOTORS_VIEW = "view.apmSubMotors"

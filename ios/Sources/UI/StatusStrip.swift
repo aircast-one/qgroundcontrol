@@ -255,7 +255,6 @@ private struct VehicleStatusReadings: View {
                 Image(.chevronRight)
                     .minimumTouchTarget()
                     .accessibilityLabel("All status")
-                    .macTooltip("All status")
                     .tapButton { allStatus = true }
                     .padding(.leading, STRIP_GAP)
                     .zIndex(-1)
@@ -733,7 +732,6 @@ private struct BatteryRing: View {
                     .trim(from: 0, to: CGFloat(percent) / 100)
                     .stroke(colour ?? theme.aircast.success, style: StrokeStyle(lineWidth: BATTERY_RING_STROKE, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                // The % sign says what the ring counts: a bare "0" in a circle read as a counter of something.
                 (Text("\(percent)").monospacedDigit() + Text("%").font(.system(size: BATTERY_COUNT_SIZE, weight: .medium)))
                     .font(.labelSmall)
                     .lineLimit(1)
