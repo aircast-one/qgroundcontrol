@@ -1037,8 +1037,10 @@ export const COMPACT_STATUS_CELLS = 6;
 
 export const compactStatusText = (text: string): string => {
   const cut = text.indexOf(' · ');
-  const head = cut < 0 ? text : text.slice(0, cut);
-  return head.split(' ').findLast((token) => /\p{Nd}/u.test(token)) ?? '';
+  const tokens = (cut < 0 ? text : text.slice(0, cut)).split(' ');
+  const at = tokens.findLastIndex((token) => /\p{Nd}/u.test(token));
+  const rate = tokens[at + 1]?.includes('/') === true ? tokens[at + 1] : null;
+  return at < 0 ? '' : [tokens[at], rate].filter((it) => it !== null).join(' ');
 };
 
 export type OverrideCell = { text: string };

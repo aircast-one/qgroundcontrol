@@ -194,6 +194,8 @@ describe('CompactStatusTest', () => {
     expect(compactStatusText('12 sats · 2D only')).toBe('12');
     expect(compactStatusText('-70 dBm')).toBe('-70');
     expect(compactStatusText('No signal RC')).toBe('');
+    expect(compactStatusText('Bitrate 2.2 Mb/s · Frame rate 30 fps')).toBe('2.2 Mb/s');
+    expect(compactStatusText('Vibration 60.0 m/s² · HDOP 0.5')).toBe('60.0 m/s²');
   });
 
   it('a narrow status pill keeps only the battery so nothing is cut in half', () => {

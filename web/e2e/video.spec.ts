@@ -41,11 +41,11 @@ test('the status bar shows a video cell only while a stream plays: its bitrate, 
   await expect(bar.getByRole('button', { name: /^(EKF variance|Vibration|HDOP) / }).first(), 'the health cell is there from the start').toBeVisible({ timeout: 30_000 });
   await expect(bar.getByRole('button', { name: /^Bitrate / }), 'no stream, no cell saying VIDEO OFF').toHaveCount(0);
   await addVideoSource(vehicle, /^WebRTC \(WHEP\)/, WHEP_STREAM);
-  const video = bar.getByRole('button', { name: /^Bitrate [1-9]\d*(\.\d)?[kM]b\/s/ });
-  await expect(video).toHaveText(/^[1-9]\d*(\.\d)?[kM]b\/s$/, { timeout: 30_000 });
+  const video = bar.getByRole('button', { name: /^Bitrate [1-9]\d*(\.\d)? [kM]b\/s/ });
+  await expect(video).toHaveText(/^[1-9]\d*(\.\d)? [kM]b\/s$/, { timeout: 30_000 });
   await video.click();
   const sheet = vehicle.getByRole('dialog').filter({ hasText: 'Video stream' });
-  await expect(sheet.getByText(/^[1-9]\d*fps$/)).toBeVisible();
+  await expect(sheet.getByText(/^[1-9]\d* fps$/)).toBeVisible();
   await expect(sheet.getByText('Packet loss', { exact: true })).toBeVisible();
   await expect(sheet.getByText('Skipped frames', { exact: true })).toBeVisible();
 });
@@ -127,7 +127,7 @@ test('the gimbal sheet chooses what a drag on the video does and opens every gim
   await expect(app.getByRole('button', { name: 'Click to point' })).toHaveAttribute('aria-pressed', 'true');
   await app.getByRole('button', { name: 'Drag to move' }).click();
   await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(app.getByText('Drag the picture like a map; what you grab stays under your finger.')).toBeVisible();
+  await expect(app.getByText('Drag the picture like a map; what you grab stays where you hold it.')).toBeVisible();
   await app.getByRole('button', { name: 'Gimbal settings', exact: true }).click();
   await expect(app.getByText('Show gimbal azimuth indicator in map')).toBeVisible();
 });

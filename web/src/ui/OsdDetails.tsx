@@ -59,7 +59,7 @@ const ekfDetails = (ratios: readonly number[]): OsdDetail[] => {
   return worst === null ? [] : detail('EKF variance', worst.toFixed(2), ekfTone(worst));
 };
 
-const withUnits = (value: number, units: string | undefined): string => [value.toFixed(0), units ?? ''].join(' ').trim();
+const withUnits = (value: number, units: string | undefined): string => withUnit(value.toFixed(0), units ?? '');
 
 export const vibrationHint = (tone: Tone, vibration: VibrationReading): string => {
   const units = vibration.units as string | undefined;
@@ -73,7 +73,7 @@ const vibrationDetails = (vibration: VibrationReading | null): OsdDetail[] => {
   if (vibration === null || values.length === 0) return [];
   const tone = severityTone(worstSeverity(vibration));
   const units = (vibration.units as string | undefined) ?? '';
-  return detail('Vibration', `${Math.max(...values).toFixed(1)}${units.trim()}`, tone).map((it) => ({ ...it, hint: vibrationHint(tone, vibration) }));
+  return detail('Vibration', withUnit(Math.max(...values).toFixed(1), units), tone).map((it) => ({ ...it, hint: vibrationHint(tone, vibration) }));
 };
 
 const videoDetails = (video: WhepStats | null): OsdDetail[] =>

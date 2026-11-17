@@ -33,8 +33,8 @@ describe('OsdDetailsTest', () => {
   it('vibration says its unit, the level it is judged against and what to do about it', () => {
     const shaking = { ...everything, vibration: { units: 'm/s²', axes: [{ axis: 'Z', value: 60, fraction: 0, severity: 'danger' }], clipCounts: [], warningLevel: 30, dangerLevel: 60, scaleMaximum: 90 } };
     const health = osdLines(shaking)[0]!;
-    expect(osdCellText(health)).toBe('Vibration 60.0m/s² · EKF variance 0.32 · HDOP 0.5');
-    expect(osdRows(health)[1]).toMatchObject({ label: 'Vibration', value: '60.0m/s²', severity: 2 });
+    expect(osdCellText(health)).toBe('Vibration 60.0 m/s² · EKF variance 0.32 · HDOP 0.5');
+    expect(osdRows(health)[1]).toMatchObject({ label: 'Vibration', value: '60.0 m/s²', severity: 2 });
     expect(osdRows(health)[1]?.hint).toMatch(/^At or over the 60 m\/s² danger level\. /);
   });
 
@@ -42,8 +42,8 @@ describe('OsdDetailsTest', () => {
     const ready = FlyState({ connected: true, armed: false, contactLost: false, state: 'disarmed', stateText: 'Ready to fly', staleNotice: '', mode: 'Stabilize', rcSupported: true, rcRequired: true, rcSignalText: 'No signal', rcSignal: 0, rcOverride: false, telemetry: null, summaryDetail: 'All checks passed.' });
     const shaking = osdLines({ ...everything, vibration: { units: 'm/s²', axes: [{ axis: 'Z', value: 60, fraction: 0, severity: 'danger' }], clipCounts: [], warningLevel: 30, dangerLevel: 60, scaleMaximum: 90 } });
     const red = redIndicators(shaking, ready);
-    expect(red).toEqual(['Vibration 60.0m/s²', RC_NO_SIGNAL]);
-    expect(withRedIndicators(ready, red)).toMatchObject({ nominal: false, stateText: NOT_FULLY_READY, summaryDetail: 'Vibration 60.0m/s². RC has no signal. Tap a red reading to see how to fix it.' });
+    expect(red).toEqual(['Vibration 60.0 m/s²', RC_NO_SIGNAL]);
+    expect(withRedIndicators(ready, red)).toMatchObject({ nominal: false, stateText: NOT_FULLY_READY, summaryDetail: 'Vibration 60.0 m/s². RC has no signal. Tap a red reading to see how to fix it.' });
     expect(withRedIndicators({ ...ready, armed: true }, red)?.stateText, 'in the air the chip keeps saying what the aircraft is doing').toBe('Ready to fly');
     expect(redIndicators(osdLines(everything), { ...ready, rcRequired: false })).toEqual([]);
   });
