@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { surveyAreaFeatures, surveyTransectFeatures } from './MissionLayers';
-import { SHAPE_AREA, SHAPE_LINE, SurveyBridge } from './SurveyBridge';
+import { SHAPE_AREA, SHAPE_LINE, SurveyBridge, withThousands } from './SurveyBridge';
 
 const point = (latitude: number, longitude: number) => `{"latitude":${latitude},"longitude":${longitude}}`;
 
@@ -92,5 +92,12 @@ describe('SurveyBridgeTest', () => {
 
   it('an absent plan yields nothing', async () => {
     expect((await found(null)).length).toBe(0);
+  });
+
+  it('survey figures group their thousands and leave decimals alone', () => {
+    expect(withThousands('8912345 m²')).toBe('8,912,345 m²');
+    expect(withThousands('14599')).toBe('14,599');
+    expect(withThousands('1234.5678 m')).toBe('1,234.5678 m');
+    expect(withThousands('2.1 s')).toBe('2.1 s');
   });
 });

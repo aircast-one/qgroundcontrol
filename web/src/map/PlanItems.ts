@@ -9,6 +9,7 @@ import { type Survey, SurveyBridge, type SurveyStats } from './SurveyBridge';
 import { metresBetween } from './TerrainProfile';
 import type { TrackPoint } from './VehicleMap';
 import { TAP } from '@/kotlin/Platform';
+import { format } from '@/kotlin/Std';
 
 export const NO_POSITION = 'no position';
 export const AFTER_THE_ROUTE_ENDS = 'after the route ends';
@@ -69,7 +70,7 @@ export const surveyTiles = (item: MissionItem, stats: SurveyStats | null): reado
     : ([
         ['AREA', stats.areaText],
         ['DISTANCE', item.kind !== KIND_STRUCTURE ? stats.distanceText : ''],
-        ['PHOTOS', item.cameraShots > 0 ? item.cameraShots.toString() : ''],
+        ['PHOTOS', item.cameraShots > 0 ? format('%,d', item.cameraShots) : ''],
         ['INTERVAL', stats.intervalText],
       ] as const).filter((it) => it[1].trim() !== '');
 
@@ -304,6 +305,6 @@ export const cameraText = (stats: SurveyStats | null): string | null => {
   return parts.length === 0 ? null : parts.join(' · ');
 };
 
-export const photosText = (shots: number): string | null => (shots <= 0 ? null : shots === 1 ? '1 photo' : `${shots} photos`);
+export const photosText = (shots: number): string | null => (shots <= 0 ? null : shots === 1 ? '1 photo' : format('%,d photos', shots));
 
 export const holdText = (seconds: number): string | null => (Number.isNaN(seconds) || seconds <= 0.0 ? null : `holds ${Math.trunc(seconds)} s`);

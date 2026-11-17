@@ -49,7 +49,7 @@ describe('PlanItemsTest', () => {
     expect(surveyTiles(survey, stats)).toEqual([
       ['AREA', '90049 m²'],
       ['DISTANCE', '4123 m'],
-      ['PHOTOS', '1043'],
+      ['PHOTOS', '1,043'],
       ['INTERVAL', '2.0 s'],
     ]);
     expect(sheetDetail(survey, stats)).toBe('50 m');
@@ -58,7 +58,7 @@ describe('PlanItemsTest', () => {
       surveyTiles({ ...item(5, 5, 'Structure Scan', 50.0, KIND_STRUCTURE), cameraShots: 40 }, { ...stats, areaText: '' }).map((it) => it[0]),
       "StructureScanEditor's stats have no Distance row",
     ).toEqual(['PHOTOS', 'INTERVAL']);
-    expect(sheetDetail(survey, null)).toBe('50 m · 1043 photos');
+    expect(sheetDetail(survey, null)).toBe('50 m · 1,043 photos');
   });
 
   it('a row carries the number, the name, the altitude and the marker colour', () => {

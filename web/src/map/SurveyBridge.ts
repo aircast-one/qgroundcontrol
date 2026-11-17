@@ -152,9 +152,12 @@ export const statisticsRows = (stats: SurveyStats): readonly (readonly [string, 
   ['Photo interval', stats.intervalText],
 ];
 
+export const withThousands = (text: string): string =>
+  text.replace(/\d+/g, (digits: string, at: number) => (text[at - 1] === '.' ? digits : digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')));
+
 const stated = (view: Json, key: string): string => {
   const text = optText(view, key);
-  return text === ABSENT ? '' : text;
+  return text === ABSENT ? '' : withThousands(text);
 };
 
 export const surveyStats = (view: Json | null): SurveyStats | null => {
