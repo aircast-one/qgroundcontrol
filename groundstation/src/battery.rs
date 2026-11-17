@@ -129,7 +129,7 @@ pub fn text(pack: &Pack) -> String {
         (Some(p), _, _) if p > PERCENT_ROUNDS_TO_FULL => "100%".to_string(),
         (Some(_), _, _) => pack.percent_text.clone(),
         (None, Some(_), _) => pack.voltage_text.clone(),
-        (None, None, state) if state != CHARGE_UNDEFINED => pack.charge_label.clone(),
+        (None, None, state) if severity(state) > 0 => pack.charge_label.clone(),
         _ => "n/a".to_string(),
     }
 }
@@ -138,7 +138,7 @@ pub fn secondary_text(pack: &Pack) -> String {
     match (&pack.time_remaining_text, pack.voltage, pack.charge_state) {
         (Some(t), _, _) => t.clone(),
         (None, Some(_), _) => pack.voltage_text.clone(),
-        (None, None, state) if state != CHARGE_UNDEFINED => pack.charge_label.clone(),
+        (None, None, state) if severity(state) > 0 => pack.charge_label.clone(),
         _ => "n/a".to_string(),
     }
 }
@@ -1661,6 +1661,16 @@ mod tests {
             ..bare
         };
         assert_eq!(text(&empty), "n/a");
+        let calm = Pack {
+            charge_state: CHARGE_OK,
+            charge_label: "Ok".into(),
+            ..empty
+        };
+        assert_eq!(
+            (text(&calm), secondary_text(&calm)),
+            ("n/a".to_string(), "n/a".to_string()),
+            "ArduPilot reports Ok at any charge until a failsafe trips, so the chip never shows it as a reading"
+        );
     }
 
     #[test]
