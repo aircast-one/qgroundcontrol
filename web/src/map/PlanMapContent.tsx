@@ -2,16 +2,16 @@ import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useS
 import { type Json, has, isNull, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { useEscapeHandler, useLaunchedEffect } from '@/kotlin/Compose';
 import { openDocuments } from '@/kotlin/Platform';
-import { delay, format, same } from '@/kotlin/Std';
-import { MutableState, useValue } from '@/kotlin/State';
-import { AlertDialog, Button, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, OutlinedTextField, Slider, Surface, Switch, Text, TextButton, stepsFor } from '@/m3';
+import { delay, format } from '@/kotlin/Std';
+import { useValue } from '@/kotlin/State';
+import { AlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, OutlinedTextField, Slider, Surface, Switch, Text, TextButton, stepsFor } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
-import { aircast, md, withAlpha } from '@/theme/Colors';
+import { md, withAlpha } from '@/theme/Colors';
 import { AircastSheet } from './AircastSheet';
 import { LATITUDE_LIMIT, LONGITUDE_LIMIT, RALLY_ALTITUDE_DECIMALS, SURFACE_DISTANCE_DECIMALS, altitudeFieldText, metresPerUnit, parsedAltitude, parsedCoordinate as parsedCoordinateWithin, parsedSurfaceDistance } from './AltitudeEntry';
 import { BreachReturnDialog } from './BreachReturnDialog';
-import { PLAN_UNDO, invokeOk, setOk, settingJson } from './BridgeCalls';
+import { invokeOk, setOk, settingJson } from './BridgeCalls';
 import {
   type BreachReturn,
   FENCE_POLYGONS,
@@ -45,7 +45,7 @@ import {
 import { type LandingPattern, landingText } from './LandingPattern';
 import { MapBridge, useMapPath } from './MapBridge';
 import type { MapHit } from './MissionEditing';
-import { AT_END, BEFORE_THE_REST, HOME_ITEM, insertMissionItem, removeMissionItem } from './MissionKinds';
+import { AT_END, BEFORE_THE_REST, HOME_ITEM, insertMissionItem } from './MissionKinds';
 import { MISSION_SPLIT_PATH, legSplit } from './MissionLayers';
 import { missionSummaryText } from './MissionSummary';
 import { OperatorBridge, operatorPoint } from './OperatorPosition';
@@ -82,7 +82,6 @@ import {
   altitudeWithFrame,
   cameraText,
   insertAfter,
-  itemCountText,
   itemRows,
   itemTitle,
   layersText,
@@ -91,7 +90,6 @@ import {
   patternName,
   rallyAltitudeIsEditable,
   rallyAltitudeLabel,
-  selectionAfterRemove,
   selectionSequence,
   sheetDetail,
   surveyTiles,
@@ -113,7 +111,6 @@ import {
   panelDrag,
   placedPattern,
   planStats,
-  repositionMission,
   selectionTitle,
   startsFromAircraft,
   tapCloses,
@@ -142,21 +139,21 @@ import {
 import { currentMapType, qgcRasterStyle } from './QgcTileSource';
 import { ScaleBarView } from './ScaleBarView';
 import { fenceDetail, selectedFence, selectedLanding, selectedSurvey, selectionSurvives } from './SelectionValidity';
-import { sentenceCase } from './SentenceCase';
 import { GRID_ANGLE_MAX, type Survey, SurveyBridge, type SurveyStats, fitSurveyArea, gridAngleShown, insetRing, surveyStatsFor } from './SurveyBridge';
 import { TERRAIN_VIEW, type TerrainProfile, collidingItems, collisionLegs, terrainProfile } from './TerrainProfile';
 import { ELEVATION_PROVIDER, SHOW_MISSION_ITEM_STATUS, TerrainProfileView, missionItemStatusShown } from './TerrainProfileView';
-import { UploadOutcome, uploadMessage, uploadOutcome } from './UploadOutcome';
-import { VEHICLES_VIEW, uploadHeading, vehicleChoices } from './VehiclePicker';
+import { VEHICLES_VIEW, vehicleChoices } from './VehiclePicker';
 import { TrackPoint, VehicleMap, isPlottable } from './VehicleMap';
-import { PlanFocus, UPLOADED, type UploadGate, freshPlanView, notReadyToSend, planSupport, syncRefusal, uploadGate, uploadLabel, uploadStep, vehicleSyncState } from './VehicleSync';
-import { usePlanAction } from './PlanShortcuts';
+import { PlanFocus, planSupport } from './VehicleSync';
+import { FAILURE_MESSAGE_MS, type OnBridge, type Say, usePlanEditing, usePlanFeedback } from './PlanEditing';
+import { PlanItemList } from './PlanItemList';
+import { type PlanUpload, usePlanUpload } from './PlanUpload';
+import { firstWhere, useRemembered } from './Remembered';
 import { WaypointSettings } from './WaypointPanel';
 import { ZOOM_IN_FOR_PATTERN, zoomedOutForTemplates } from '@/ui/PlanTemplates';
 
 const PLAN_POLL_MS = 700;
 const FIELD_ZOOM = 16;
-const FAILURE_MESSAGE_MS = 2500;
 const PANEL_MAX_FRACTION = 0.5;
 const SIDE_PANEL_WIDTH = 380;
 const NARROW_SIDE_PANEL_WIDTH = 320;
@@ -168,41 +165,10 @@ export const SUMMARY_MAX_FRACTION = 0.74;
 
 const WAITING_FOR_QGC = 'Waiting for QGroundControl';
 const CHECKING_TERRAIN = 'Checking the terrain…';
-const CONVERTED = 'Plan converted to this vehicle. Check it, then upload.';
-const FAR_FROM_AIRCRAFT_TEXT = 'The aircraft is not where this route begins. Move the plan, with its fence and rally points, so it starts at the aircraft, or upload it as it is.';
 const VIEW_CORNERS = 4;
 const PATTERN_KINDS: ReadonlySet<string> = new Set([KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE]);
 
 const NO_POINTS: readonly TrackPoint[] = [];
-
-class Remembered<T> extends MutableState<T> {
-  override get value(): T {
-    return super.value;
-  }
-
-  override set value(next: T) {
-    if (!same(super.value, next)) super.value = next;
-  }
-}
-
-const useRemembered = <T,>(initial: T): MutableState<T> => {
-  const [state] = useState(() => new Remembered(initial));
-  useValue(state);
-  return state;
-};
-
-const firstWhere = <T,>(state: MutableState<T>, predicate: (value: T) => boolean): Promise<T> =>
-  new Promise((resolve) => {
-    if (predicate(state.value)) {
-      resolve(state.value);
-      return;
-    }
-    const unsubscribe = state.subscribe(() => {
-      if (!predicate(state.value)) return;
-      unsubscribe();
-      resolve(state.value);
-    });
-  });
 
 const subscribeResize = (listener: () => void) => {
   window.addEventListener('resize', listener);
@@ -233,17 +199,6 @@ const subscribeVisibility = (listener: () => void) => {
 
 const useDocumentStarted = (): boolean => useSyncExternalStore(subscribeVisibility, () => document.visibilityState !== 'hidden', () => true);
 
-const sendPlan = (say: (message: string | null) => void, done: () => void, pauseFirst = false): void => {
-  say('Uploading to vehicle');
-  void (async () => {
-    if (pauseFirst) await PlanBridge.pauseVehicle();
-    const outcome = uploadOutcome(await PlanBridge.sendToVehicle());
-    say(uploadMessage(outcome));
-    if (outcome === UploadOutcome.NotStarted) await delay(FAILURE_MESSAGE_MS);
-    done();
-  })();
-};
-
 const FenceHeading = ({ text }: { text: string }) => (
   <Text typography="titleSmall" className="block w-full px-1 pb-1 pt-2">
     {text}
@@ -265,17 +220,7 @@ export const fenceWindow = (visible: readonly TrackPoint[], at: TrackPoint): rea
     : [TrackPoint(at.latitude + FALLBACK_FENCE_DEGREES, at.longitude - FALLBACK_FENCE_DEGREES), TrackPoint(at.latitude - FALLBACK_FENCE_DEGREES, at.longitude + FALLBACK_FENCE_DEGREES)];
 };
 
-export type PlanUpload = { readonly enabled: boolean; readonly emphasised: boolean; readonly label: string; readonly shown: boolean; readonly onClick: () => void; readonly done: boolean };
-
-export const PlanUpload = (fields: { enabled: boolean; emphasised: boolean; label: string; shown: boolean; onClick: () => void }): PlanUpload => ({ ...fields, done: fields.label === UPLOADED });
-
 export type PlanBar = { readonly upload: PlanUpload; readonly stats: readonly PlanStat[]; readonly warning: string | null; readonly note: string | null };
-
-type BridgeOptions = { label?: string | null; done?: string | null; then?: (() => void) | null };
-
-type OnBridge = (work: () => Promise<boolean>, options?: BridgeOptions) => void;
-
-type Say = (message: string) => void;
 
 const hitKey = (hit: MapHit | null): string => JSON.stringify(hit);
 
@@ -304,7 +249,6 @@ export const PlanMapContent = ({
     shownStyle.value = mapStyle;
   }, [mapStyle]);
   const fitRequest = useRemembered(0);
-  const edits = useRemembered(0);
   const fitOnly = useRemembered<readonly TrackPoint[] | null>(null);
   const positioning = useRemembered<readonly [MapHit, TrackPoint] | null>(null);
   const items = useRemembered<readonly MissionItem[]>([]);
@@ -338,21 +282,8 @@ export const PlanMapContent = ({
   useEscapeHandler(selected.value !== null, () => {
     selected.value = null;
   });
-  const busy = useRemembered<string | null>(null);
-  const removals = useRemembered(0);
-  const removeItem = (item: MissionItem): void => {
-    void (async () => {
-      busy.value = `Removing #${item.sequence}`;
-      const outcome = await removeMissionItem(item.index);
-      if (outcome.ok) removals.value += 1;
-      selected.value = outcome.ok ? selectionAfterRemove(item.index, allItems.value.length) : null;
-      busy.value = outcome.ok ? null : outcome.reason;
-      if (!outcome.ok) {
-        await delay(FAILURE_MESSAGE_MS);
-        busy.value = null;
-      }
-    })();
-  };
+  const feedback = usePlanFeedback();
+  const { busy, edits, say, onBridge, onRefusal } = feedback;
   const centre = useRemembered<TrackPoint | null>(null);
   const zoom = useRemembered(0.0);
   const [controlsRef, controlsHeightPx] = useMeasuredHeight();
@@ -365,14 +296,6 @@ export const PlanMapContent = ({
 
   const kindsView = useMapPath('view.missionKinds');
   const insertable = useMemo(() => missionKinds(kindsView), [kindsView]);
-
-  const say: Say = (message) => {
-    busy.value = message;
-    void (async () => {
-      await delay(FAILURE_MESSAGE_MS);
-      busy.value = null;
-    })();
-  };
 
   const addMissionItem = (kindId: string, label: string, at: TrackPoint | null, index: number = AT_END): void => {
     void (async () => {
@@ -401,76 +324,16 @@ export const PlanMapContent = ({
     })();
   };
 
-  const onRefusal = (work: () => Promise<string | null>, label: string | null = null): void => {
-    busy.value = label;
-    void (async () => {
-      const refusal = await work();
-      busy.value = refusal;
-      if (refusal !== null) await delay(FAILURE_MESSAGE_MS);
-      busy.value = null;
-    })();
-  };
-
-  const onBridge: OnBridge = (work, { label = null, done = null, then = null } = {}) => {
-    busy.value = label;
-    void (async () => {
-      const ok = await work();
-      if (!ok) {
-        busy.value = `${label ?? 'That'} did not work`;
-        await delay(FAILURE_MESSAGE_MS);
-        busy.value = null;
-        return;
-      }
-      if (then !== null) {
-        edits.value += 1;
-        then();
-      }
-      busy.value = done;
-      if (done !== null) {
-        await delay(FAILURE_MESSAGE_MS);
-        busy.value = null;
-      }
-    })();
-  };
-
   const planStatus = useMapPath('view.plan');
-  const planHasItems = optBoolean(planStatus, 'containsItems');
   const globalFrame = has(planStatus, 'globalAltitudeFrame') && !isNull(planStatus, 'globalAltitudeFrame') ? optInt(planStatus, 'globalAltitudeFrame') : null;
   const planOffline = optBoolean(planStatus, 'offline');
-  const planDirty = optBoolean(planStatus, 'dirty');
-  const planSyncing = optText(optJSONObject(planStatus, 'sync'), 'state') === 'busy';
   const support = useMemo(() => planSupport(planStatus), [planStatus]);
   const canUndo = optBoolean(planStatus, 'canUndo');
-  const deleteSelected = (): void => {
-    const hit = selected.value;
-    const item = hit?.kind === 'Waypoint' ? allItems.value.find((it) => it.index === hit.index && it.index > HOME_ITEM) : undefined;
-    if (item !== undefined) removeItem(item);
-    else if (hit?.kind === 'Rally') {
-      const count = rally.value.length;
-      onBridge(() => FenceBridge.removeRallyPoint(hit.index), { label: 'Removing the rally point', then: () => (selected.value = rallyAfterRemove(hit.index, count)) });
-    } else if (hit?.kind === 'Circle' || hit?.kind === 'CircleCentre' || hit?.kind === 'CircleRadius') {
-      onBridge(() => FenceBridge.deleteCircle(hit.index), { label: 'Removing the circular fence', then: () => (selected.value = null) });
-    }
-  };
-  const moveItem = (index: number, later: boolean): void => {
-    onRefusal(async () => {
-      const refusal = await PlanBridge.reorder(index, later);
-      if (refusal === null) {
-        edits.value += 1;
-        selected.value = { kind: 'Waypoint', index: later ? index + 1 : index - 1 };
-      }
-      return refusal;
-    });
-  };
-  usePlanAction('deleteSelected', deleteSelected);
-  usePlanAction('undo', () => {
-    if (canUndo) onBridge(() => invokeOk(PLAN_UNDO));
-  });
+  const { removals, deleteSelected, moveItem, undo } = usePlanEditing({ feedback, selected, allItems: allItems.value, rallyCount: rally.value.length, canUndo });
   const templates = optJSONObject(planStatus, 'templates');
   const homeSet = templates === null || optBoolean(templates, 'homeSet');
   const addable = (kind: string): boolean => kindAllows(insertable, kind) || !homeSet;
   const addablePattern = (kind: MissionKind): boolean => kind.enabled || !homeSet;
-  const uploadAsk = useRemembered<UploadGate | null>(null);
   const vehiclesJson = useMapPath(VEHICLES_VIEW);
   const flown = useMemo(() => vehicleChoices(vehiclesJson).active, [vehiclesJson]);
   const latitude = flown?.latitude ?? NaN;
@@ -644,52 +507,22 @@ export const PlanMapContent = ({
     await poll();
   });
 
-  const syncState = vehicleSyncState(planOffline, planSyncing);
-  const uploadBlocked = syncRefusal(syncState, 'upload to') !== null;
   const aircraftAt = isPlottable(latitude, longitude) && !planOffline ? TrackPoint(latitude, longitude) : null;
   const farAway = farFromAircraft(aircraftAt, allItems.value);
   const farText = farAway === null ? null : startsFromAircraft(farAway, optBoolean(missionSummaryView, 'imperial'));
-  const farAsk = useRemembered(false);
-
-  const sendUpload = (): void => {
-    const refusal = syncRefusal(vehicleSyncState(planOffline, planSyncing), 'upload to');
-    if (refusal !== null) {
-      say(refusal);
-      return;
-    }
-    void (async () => {
-      const view = await freshPlanView();
-      const step = uploadStep(uploadGate(view), notReadyToSend(view));
-      switch (step.kind) {
-        case 'Refuse':
-          PlanFocus.notReady(view);
-          say(step.reason);
-          return;
-        case 'Confirm':
-          uploadAsk.value = step.gate;
-          return;
-        case 'Send':
-          sendPlan(
-            (message) => {
-              busy.value = message;
-            },
-            () => {
-              busy.value = null;
-            },
-          );
-      }
-    })();
-  };
-
-  const upload = (): void => {
-    if (farAway !== null) farAsk.value = true;
-    else sendUpload();
-  };
-
-  const uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems, optBoolean(optJSONObject(planStatus, 'sync'), 'downloading'));
-  const uploadEnabled = planHasItems && !planOffline && !planSyncing;
-  const uploadEmphasised = uploadEnabled && !uploadBlocked;
-  const planUpload = PlanUpload({ enabled: uploadEnabled, emphasised: uploadEmphasised, label: uploadText, shown: !planOffline, onClick: upload });
+  const { planUpload, dialogs: uploadDialogs } = usePlanUpload({
+    planStatus,
+    aircraftAt,
+    farAway,
+    farText,
+    feedback,
+    onMoved: (at) => {
+      follow.value = false;
+      centreOn.value = at;
+      centreMinZoom.value = null;
+      centreRequest.value += 1;
+    },
+  });
 
   const chosen = selected.value;
   const ownerKey = ownerOf(chosen);
@@ -1043,7 +876,7 @@ export const PlanMapContent = ({
       </PlanRail>
 
       <PlanRail className="absolute" style={{ right: 8, top: railTop, maxHeight: railMaxHeight }}>
-        <RailButton icon="plan_undo" label="Undo" enabled={canUndo} onClick={() => onBridge(() => invokeOk(PLAN_UNDO))} />
+        <RailButton icon="plan_undo" label="Undo" enabled={canUndo} onClick={undo} />
         <CenterMenu
           launch={(() => {
             const start = allItems.value.find((it) => it.sequence === 0);
@@ -1075,94 +908,7 @@ export const PlanMapContent = ({
         />
       </PlanRail>
 
-      {farAsk.value && aircraftAt !== null ? (
-        <AlertDialog
-          onDismissRequest={() => {
-            farAsk.value = false;
-          }}
-          title={farText ?? ''}
-          text={FAR_FROM_AIRCRAFT_TEXT}
-          confirmButton={
-            <Button
-              onClick={() => {
-                farAsk.value = false;
-                onBridge(() => repositionMission(aircraftAt), {
-                  label: 'Moving the plan to the aircraft',
-                  done: 'Plan moved to the aircraft',
-                  then: () => {
-                    follow.value = false;
-                    centreOn.value = aircraftAt;
-                    centreMinZoom.value = null;
-                    centreRequest.value += 1;
-                  },
-                });
-              }}
-            >
-              Move it to the aircraft
-            </Button>
-          }
-          dismissButton={
-            <TextButton
-              onClick={() => {
-                farAsk.value = false;
-                sendUpload();
-              }}
-            >
-              Upload anyway
-            </TextButton>
-          }
-        />
-      ) : null}
-
-      {uploadAsk.value === null ? null : (
-        <AlertDialog
-          onDismissRequest={() => {
-            uploadAsk.value = null;
-          }}
-          title={uploadHeading(uploadAsk.value, vehicleChoices(vehiclesJson))}
-          text={uploadAsk.value.refusal}
-          confirmButton={
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <TextButton
-                onClick={() => {
-                  const pauses = uploadAsk.value?.pausesFirst ?? false;
-                  uploadAsk.value = null;
-                  sendPlan(
-                    (next) => {
-                      busy.value = next;
-                    },
-                    () => {
-                      busy.value = null;
-                    },
-                    pauses,
-                  );
-                }}
-              >
-                {uploadAsk.value.proceedTitle.trim() === '' ? 'Upload' : uploadAsk.value.proceedTitle}
-              </TextButton>
-              {uploadAsk.value.convertible ? (
-                <Button
-                  onClick={() => {
-                    uploadAsk.value = null;
-                    onBridge(() => PlanBridge.convertToVehicle(), { label: 'Converting the plan', done: CONVERTED, then: () => undefined });
-                  }}
-                >
-                  Convert to this vehicle
-                </Button>
-              ) : null}
-            </div>
-          }
-          dismissButton={
-            <TextButton
-              onClick={() => {
-                uploadAsk.value = null;
-              }}
-            >
-              Cancel
-            </TextButton>
-          }
-        />
-      )}
+      {uploadDialogs}
 
       {patternWanted.value.length === 0 ? null : (
         <AlertDialog
@@ -1384,19 +1130,7 @@ export const PlanMapContent = ({
                 </>
               )}
               {listedInPanel ? (
-                <>
-                  <ItemListHeading rows={rows} summary={missionSummaryText(missionSummaryView)} className="px-3 py-1" />
-                  {rows.map((row) => (
-                    <ItemRowView
-                      key={row.index}
-                      row={row}
-                      selected={chosen?.kind === 'Waypoint' && chosen.index === row.index}
-                      onClick={() => pickRow(row)}
-                      onMove={row.index === HOME_ITEM ? null : (later) => moveItem(row.index, later)}
-                      onDelete={null}
-                    />
-                  ))}
-                </>
+                <PlanItemList rows={rows} summary={missionSummaryText(missionSummaryView)} selected={chosen?.kind === 'Waypoint' ? chosen.index : null} headingClassName="px-3 py-1" onPick={pickRow} onMove={moveItem} onDelete={null} />
               ) : null}
 
               {traced === null ? null : (
@@ -1606,7 +1340,7 @@ export const PlanMapContent = ({
               ) : null}
 
               {chosenItem === null ? null : (
-                <Fragment key={removals.value}>
+                <Fragment key={removals}>
                   {itemPanel?.(chosenItem.index, chosenItem.placed ? TrackPoint(chosenItem.latitude, chosenItem.longitude) : null, advancedDetail(chosenItem))}
                 </Fragment>
               )}
@@ -1622,21 +1356,19 @@ export const PlanMapContent = ({
             listOpen.value = false;
           }}
         >
-          <ItemListHeading rows={rows} summary={missionSummaryText(missionSummaryView)} className="px-6 py-2" />
           <div className="flex w-full flex-col pb-6">
-            {rows.map((row) => (
-              <ItemRowView
-                key={row.index}
-                row={row}
-                selected={chosen?.kind === 'Waypoint' && chosen.index === row.index}
-                onClick={() => {
-                  pickRow(row);
-                  listOpen.value = false;
-                }}
-                onMove={row.index === HOME_ITEM ? null : (later) => moveItem(row.index, later)}
-                onDelete={row.index === HOME_ITEM ? null : deleteSelected}
-              />
-            ))}
+            <PlanItemList
+              rows={rows}
+              summary={missionSummaryText(missionSummaryView)}
+              selected={chosen?.kind === 'Waypoint' ? chosen.index : null}
+              headingClassName="px-6 py-2"
+              onPick={(row) => {
+                pickRow(row);
+                listOpen.value = false;
+              }}
+              onMove={moveItem}
+              onDelete={deleteSelected}
+            />
           </div>
         </AircastSheet>
       ) : null}
@@ -1645,8 +1377,6 @@ export const PlanMapContent = ({
 };
 
 const SURVEY_FIT_INSET = 0.8;
-
-const ITEM_MARKER_SIZE = 40;
 
 const GridAngle = ({ index, onBridge }: { index: number; onBridge: OnBridge }) => {
   const [angle, setAngle] = useState<number | null>(null);
@@ -1796,70 +1526,6 @@ const RallyAltitudeField = ({ point, say, onBridge }: { point: RallyPoint; say: 
     />
   );
 };
-
-const ItemListHeading = ({ rows, summary, className }: { rows: readonly ItemRow[]; summary: string; className?: string }) => (
-  <div className={`flex flex-col ${className ?? ''}`}>
-    <Text typography="titleMedium">{itemCountText(rows.filter((it) => it.index !== HOME_ITEM).length)}</Text>
-    {summary.trim() === '' ? null : (
-      <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-        {summary}
-      </Text>
-    )}
-  </div>
-);
-
-const ItemRowView = ({
-  row,
-  selected,
-  onClick,
-  onMove,
-  onDelete,
-}: {
-  row: ItemRow;
-  selected: boolean;
-  onClick: () => void;
-  onMove: ((later: boolean) => void) | null;
-  onDelete: (() => void) | null;
-}) => (
-  <div className="flex w-full items-center" style={{ background: selected ? md('secondaryContainer') : md('surfaceContainerLow'), color: selected ? md('onSecondaryContainer') : md('onSurface') }}>
-    <Surface onClick={onClick} color="transparent" contentColor="inherit" className="flex min-h-[72px] min-w-0 flex-1 items-center gap-4 pb-2 pl-4 pr-3 pt-2">
-      <span
-        className="flex shrink-0 items-center justify-center rounded-full"
-        style={{ width: ITEM_MARKER_SIZE, height: ITEM_MARKER_SIZE, ...(row.readyForSave ? { background: row.colour } : { border: `1px solid ${aircast('warning')}` }) }}
-      >
-        <Text typography="labelLarge" color={row.readyForSave ? md('surface') : aircast('warning')} maxLines={1}>
-          {row.number}
-        </Text>
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <Text typography="titleMedium" maxLines={1}>
-          {sentenceCase(row.name)}
-        </Text>
-        {row.detail.trim() === '' ? null : (
-          <Text typography="bodyMedium" color={md('onSurfaceVariant')} maxLines={2}>
-            {row.detail}
-          </Text>
-        )}
-      </span>
-      {selected ? null : <MaterialIcon name="keyboard_arrow_right" filled style={{ color: md('onSurfaceVariant') }} />}
-    </Surface>
-    {selected && onMove !== null ? (
-      <>
-        <IconButton onClick={() => onMove(false)} label={`Move ${sentenceCase(row.name).toLowerCase()} ${row.number} up`}>
-          <MaterialIcon name="arrow_upward" filled />
-        </IconButton>
-        <IconButton onClick={() => onMove(true)} label={`Move ${sentenceCase(row.name).toLowerCase()} ${row.number} down`}>
-          <MaterialIcon name="arrow_downward" filled />
-        </IconButton>
-      </>
-    ) : null}
-    {selected && onDelete !== null ? (
-      <IconButton onClick={onDelete} label={`Delete ${sentenceCase(row.name).toLowerCase()} ${row.number}`}>
-        <MaterialIcon name="delete" filled style={{ color: md('error') }} />
-      </IconButton>
-    ) : null}
-  </div>
-);
 
 export const MAP_TYPES_VIEW = 'view.mapTypes';
 
