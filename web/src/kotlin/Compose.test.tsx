@@ -25,7 +25,10 @@ const Screen = ({ onPage }: { onPage: (page: string) => void }) => {
 const popped = () => new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
 
 describe('Escape and Back', () => {
-  afterEach(cleanup);
+  afterEach(async () => {
+    cleanup();
+    await waitFor(() => expect(historyDepth(history.state)).toBe(0));
+  });
 
   it('Escape only closes or deselects, and never leaves a page', async () => {
     const view = render(<Screen onPage={() => undefined} />);
