@@ -442,6 +442,9 @@ pub fn summary_detail(
         listed(|enabled, _| !enabled),
     );
     match (armed, in_air) {
+        (true, true) if !faults.is_empty() => {
+            format!("{faults} not working. Land as soon as it is safe.")
+        }
         (true, true) => "Motors are armed and the vehicle is in the air.".to_string(),
         (true, false) => "Motors are armed. Keep clear of the propellers.".to_string(),
         _ if check_issues > 0 => format!("{check_issues} check(s) need attention before arming."),
@@ -584,6 +587,18 @@ mod tests {
         assert_eq!(
             summary_detail(true, true, 3, &[], None, None),
             "Motors are armed and the vehicle is in the air."
+        );
+        assert_eq!(
+            summary_detail(
+                true,
+                true,
+                0,
+                &sensors(&[("Propulsion", true, false), ("Geofence", false, false)]),
+                None,
+                None
+            ),
+            "Propulsion not working. Land as soon as it is safe.",
+            "in the air a fault leads the summary instead of hiding behind the armed line"
         );
         assert_eq!(
             summary_detail(true, false, 0, &[], None, None),

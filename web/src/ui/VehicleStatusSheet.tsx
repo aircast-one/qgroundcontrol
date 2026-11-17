@@ -12,7 +12,7 @@ import { useAdvancedUiShown } from './AdvancedUi';
 import { LocalAppNavigation } from './AppNavigation';
 import { SENSOR_HEALTH, sensorHealth } from './CalibrationView';
 import { LocalFlyScreenState } from './FlyScreenState';
-import { FLY_STATE, type FlyState, flyState } from './FlyState';
+import { FLY_STATE, type FlyState, flyState, inAir, useInAir } from './FlyState';
 import { PayloadFixButton } from './GripperPanel';
 import type { GuidedOffer, PayloadProblem } from './GuidedActions';
 import { HoldToConfirm } from './HoldToConfirm';
@@ -21,7 +21,7 @@ import { ParameterForm } from './ParameterForm';
 import { EDIT_PARAMETER_TITLE, LinkedText, ParameterEditDialog } from './ParameterLinks';
 import { AIRCRAFT_SETUP } from './SettingsScreen';
 import { SETUP_OVERVIEW_PAGE, SETUP_PARAMETERS_PAGE } from './SetupScreen';
-import { type ArmingCheck, MESSAGES, MessageLine, WARNINGS, armingChecks, vehicleMessages } from './VehicleMessages';
+import { type ArmingCheck, MESSAGES, MessageSeverity, WARNINGS, armingChecks, severitySummary, vehicleMessages } from './VehicleMessages';
 
 const SENSOR_FAULT_STATE = 'unhealthy';
 
@@ -57,11 +57,7 @@ export const armControls = (state: FlyState, forceOpen: boolean): ArmControls =>
     !state.armed && forceOpen,
   );
 
-export const SENSOR_HEALTHY_STATE = 'healthy';
-
-export const messagesToggleText = (shown: boolean): string => (shown ? 'Hide messages' : 'Show messages');
-
-export const shownSensors = <T extends { state: string }>(sensors: readonly T[], showAll: boolean): readonly T[] => (showAll ? sensors : sensors.filter((it) => it.state !== SENSOR_HEALTHY_STATE));
+export const shownSensors = <T extends { state: string }>(sensors: readonly T[], showAll: boolean): readonly T[] => (showAll ? sensors : sensors.filter((it) => it.state === SENSOR_FAULT_STATE));
 
 const ChevronRight = ({ size = 24 }: { size?: number }) => <MaterialIcon name="keyboard_arrow_right" filled size={size} style={{ color: md('onSurfaceVariant') }} />;
 
@@ -71,22 +67,19 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
   const health = useMemo(() => sensorHealth(healthJson), [healthJson]);
   const [showAll, setShowAll] = useState(false);
   const advanced = useAdvancedUiShown();
+  const airborne = useInAir();
   const open = (page: string) => {
     navigation.setupPage.value = page;
     onDismiss();
   };
   const reading = health !== null && !optBoolean(healthJson, 'healthChecksSupported') && health.available && health.sensors.length > 0 ? health : null;
-  const normal = reading === null ? 0 : reading.sensors.filter((it) => it.state === SENSOR_HEALTHY_STATE).length;
+  const more = reading === null ? 0 : reading.sensors.length - shownSensors(reading.sensors, false).length;
 
   return (
     <AircastSheet onDismissRequest={onDismiss} label="Vehicle status">
       <div className="flex w-full flex-col gap-1 pb-4">
         <StatusSummary />
-        <button type="button" onClick={onMessages} className="flex w-full items-center gap-3 px-sheet py-3 text-left">
-          <Drawable name="ic_notifications" size={24} />
-          <Text className="flex-1">Messages</Text>
-          <ChevronRight />
-        </button>
+        <MessagesRow onClick={onMessages} />
         <ArmSection onDismiss={onDismiss} />
         {reading !== null ? (
           <>
@@ -95,32 +88,43 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
             </Text>
             {shownSensors(reading.sensors, showAll).map((sensor) => {
               const fault = sensor.state === SENSOR_FAULT_STATE;
-              return (
-                <button key={sensor.name} type="button" onClick={() => open(SETUP_OVERVIEW_PAGE)} className="flex w-full items-center gap-2 px-sheet py-1.5 text-left">
+              const look = 'flex w-full items-center gap-2 px-sheet py-1.5 text-left';
+              const row = (
+                <>
                   <Text typography="bodyMedium" className="flex-1" color={fault ? md('onSurface') : md('onSurfaceVariant')}>
                     {sensor.name}
                   </Text>
                   <Text typography="bodySmall" color={fault ? md('error') : md('onSurfaceVariant')}>
                     {sensor.label}
                   </Text>
+                </>
+              );
+              return airborne ? (
+                <div key={sensor.name} className={look}>
+                  {row}
+                </div>
+              ) : (
+                <button key={sensor.name} type="button" onClick={() => open(SETUP_OVERVIEW_PAGE)} className={look}>
+                  {row}
                   <ChevronRight size={18} />
                 </button>
               );
             })}
-            {normal > 0 ? (
+            {more > 0 ? (
               <TextButton onClick={() => setShowAll(!showAll)} className="mx-3 self-start">
-                {showAll ? 'Show less' : `Show ${normal} more`}
+                {showAll ? 'Show less' : `Show ${more} more`}
               </TextButton>
             ) : null}
           </>
         ) : null}
-        <StatusMessages />
         <OverallStatus />
-        <TextButton onClick={() => open(SETUP_OVERVIEW_PAGE)} className="mx-3 self-start">
-          {AIRCRAFT_SETUP}
-        </TextButton>
+        {airborne ? null : (
+          <TextButton onClick={() => open(SETUP_OVERVIEW_PAGE)} className="mx-3 self-start">
+            {AIRCRAFT_SETUP}
+          </TextButton>
+        )}
         <ParameterForm page={STATUS_SETTINGS_PAGE} />
-        {advanced
+        {advanced && !airborne
           ? [['Vehicle parameters', SETUP_PARAMETERS_PAGE] as const].map(([label, page]) => (
               <div key={page} className="flex w-full items-center px-sheet py-0.5">
                 <Text typography="bodyMedium" className="flex-1">
@@ -135,33 +139,22 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
   );
 };
 
-const StatusMessages = () => {
+const MessagesRow = ({ onClick }: { onClick: () => void }) => {
   const messagesJson = useQgcPath(MESSAGES);
-  const lines = useMemo(() => vehicleMessages(messagesJson).toReversed(), [messagesJson]);
-  const [shown, setShown] = useState(false);
+  const lines = useMemo(() => vehicleMessages(messagesJson), [messagesJson]);
   useLaunchedEffect([], () => void VehicleCommands.resetAllMessages());
-  if (lines.length === 0) return null;
+  const tone = lines.some((it) => it.level === MessageSeverity.Error) ? md('error') : lines.some((it) => it.level === MessageSeverity.Warning) ? aircast('warning') : md('onSurfaceVariant');
   return (
-    <>
-      <div className="flex w-full items-center px-sheet">
-        <Text typography="titleSmall" className="flex-1">
-          Messages
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-sheet py-3 text-left">
+      <Drawable name="ic_notifications" size={24} />
+      <Text className="flex-1">Messages</Text>
+      {lines.length > 0 ? (
+        <Text typography="bodySmall" color={tone}>
+          {severitySummary(lines)}
         </Text>
-        {shown ? <TextButton onClick={() => void VehicleCommands.clearMessages()}>Clear</TextButton> : null}
-      </div>
-      <TextButton onClick={() => setShown(!shown)} className="mx-3 self-start">
-        {messagesToggleText(shown)}
-      </TextButton>
-      {shown ? (
-        <div className="px-sheet">
-          {lines.map((message, at) => (
-            <MessageLine key={at} level={message.level} time={message.time}>
-              <Text typography="bodyMedium">{message.text}</Text>
-            </MessageLine>
-          ))}
-        </div>
       ) : null}
-    </>
+      <ChevronRight />
+    </button>
   );
 };
 
@@ -261,7 +254,7 @@ const StatusSummary = () => {
 const ArmSection = ({ onDismiss }: { onDismiss: () => void }) => {
   const stateJson = useQgcPath(FLY_STATE);
   const state = useMemo(() => flyState(stateJson), [stateJson]);
-  return state !== null && state.connected ? <ArmButtons state={state} onDismiss={onDismiss} /> : null;
+  return state !== null && state.connected && !inAir(state) ? <ArmButtons state={state} onDismiss={onDismiss} /> : null;
 };
 
 const ArmButtons = ({ state, onDismiss }: { state: FlyState; onDismiss: () => void }) => {

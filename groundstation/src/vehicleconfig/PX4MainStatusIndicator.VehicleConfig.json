@@ -2,8 +2,7 @@
     "fileType": "VehicleConfig",
     "version": 1,
     "params": {
-        "_requiredNavDllAct": { "name": "NAV_DLL_ACT", "required": true },
-        "_requiredComDlLossT": { "name": "COM_DL_LOSS_T", "required": true }
+        "_requiredNavDllAct": { "name": "NAV_DLL_ACT", "required": true }
     },
     "sections": [
         {
@@ -13,11 +12,6 @@
                     "param": "NAV_DLL_ACT",
                     "label": "Vehicle Action",
                     "control": "combobox"
-                },
-                {
-                    "param": "COM_DL_LOSS_T",
-                    "label": "Loss Timeout",
-                    "control": "slider"
                 }
             ]
         }

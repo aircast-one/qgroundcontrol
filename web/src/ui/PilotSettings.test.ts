@@ -85,6 +85,7 @@ describe('PilotSettingsTest', () => {
     expect(pilotChoice('Hold mode')).toBe('Hover');
     expect(pilotChoice('Return mode')).toBe('Return home');
     expect(pilotChoice('Terminate')).toBe('Stop motors');
+    expect(pilotChoice('Disabled/NoAction'), 'ArduPilot words its off choice differently').toBe('Do nothing');
     expect(pilotChoice('Enabled always RTL')).toBe('Enabled always RTL');
   });
 

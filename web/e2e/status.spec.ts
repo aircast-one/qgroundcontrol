@@ -1,5 +1,5 @@
 import { type Locator, type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, openMenu, slideAcross, test, vehicleStatus } from './fixtures';
+import { connectMock, expect, flightMode, openMenu, slideAcross, takeOff, test, vehicleStatus } from './fixtures';
 
 test('the status sheet arms the aircraft without starting layout editing', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
@@ -15,16 +15,29 @@ test('the status sheet arms the aircraft without starting layout editing', async
 test('the status sheet scrolls as one page, with no scroll box nested inside it', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   const sheet = await vehicleStatus(app);
-  await expect(sheet.getByText('Failsafe options bitmask')).toBeVisible();
+  await expect(sheet.getByText('Signal lost')).toBeVisible();
   const nested = await sheet.evaluate((root) => [...root.querySelectorAll('*')].filter((it) => it.scrollHeight > it.clientHeight + 1 && ['auto', 'scroll'].includes(getComputedStyle(it).overflowY)).length);
   expect(nested, 'the failsafe settings scroll inside the sheet instead of with it').toBe(0);
+});
+
+test('in the air the status sheet drops the disarm slide and every way off the Fly screen', async ({ vehicle }) => {
+  test.setTimeout(120_000);
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  const sheet = await vehicleStatus(vehicle);
+  await expect(sheet.getByText('Signal lost'), 'the sheet has rendered its last section').toBeVisible();
+  await expect(sheet.getByRole('button', { name: /^Slide to/ }), 'in the air this slide cut the motors').toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Setup', exact: true })).toHaveCount(0);
+  await sheet.getByRole('button', { name: /^Show \d+ more$/ }).click();
+  await expect(sheet.getByText('GPS', { exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: /^GPS / }), 'a sensor row no longer opens setup mid-flight').toHaveCount(0);
 });
 
 test('the status sheet lists sensor health and opens the message log', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
   await sheet.getByRole('button', { name: 'Show 1 more' }).click();
   await expect(sheet.getByRole('button', { name: 'GPS Normal' }), 'the simulated vehicle reported its GPS switched off over a 12-satellite fix').toBeVisible();
-  await sheet.getByRole('button', { name: 'Messages', exact: true }).click();
+  await sheet.getByRole('button', { name: /^Messages/ }).click();
   const log = vehicle.getByRole('dialog').filter({ hasText: 'messages from the vehicle' });
   await expect(log).toBeVisible();
   await log.getByRole('button', { name: 'Close' }).click();
@@ -34,7 +47,8 @@ test('the status sheet lists sensor health and opens the message log', async ({ 
 test('status text from the vehicle fills the message log and clear empties it', async ({ app }) => {
   await connectMock(app, ['Send status text + voice']);
   const sheet = await vehicleStatus(app);
-  await sheet.getByRole('button', { name: 'Messages', exact: true }).click();
+  await expect(sheet.getByRole('button', { name: /^Messages \d+ errors? · \d+ warnings?/ }), 'the row says how bad the log is before it is opened').toBeVisible();
+  await sheet.getByRole('button', { name: /^Messages/ }).click();
   const log = app.getByRole('dialog').filter({ hasText: /errors? · \d+ warnings?/ });
   await expect(log.getByText('Status text critical')).toBeVisible();
   await expect(log.getByText('Status text info')).toBeVisible();
@@ -42,7 +56,7 @@ test('status text from the vehicle fills the message log and clear empties it', 
   await log.getByRole('button', { name: 'Clear' }).click();
   await expect(log).toBeHidden();
   const again = await vehicleStatus(app);
-  await again.getByRole('button', { name: 'Messages', exact: true }).click();
+  await again.getByRole('button', { name: /^Messages/ }).click();
   await expect(app.getByText('The vehicle has not said anything yet.')).toBeVisible();
 });
 

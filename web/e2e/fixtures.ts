@@ -98,7 +98,7 @@ export const flyNow = async (page: Page) => {
 };
 
 export const vehicleStatus = async (page: Page) => {
-  await page.getByRole('button', { name: /^Not fully ready$|^Ready to fly$|^Armed$/ }).first().click();
+  await page.getByRole('button', { name: /^Not fully ready$|^Ready to fly$|^Armed$|^Flying$/ }).first().click();
   return page.getByRole('dialog');
 };
 

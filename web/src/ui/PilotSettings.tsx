@@ -10,7 +10,7 @@ import { CALIBRATION, type CalibrationRoutine, type CalibrationState, calibratio
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
 import { parameterFact, parameterPath } from '@/ui/ParametersScreen';
 import { factNumber } from '@/ui/Px4TuningScreen';
-import { SectionHeader, SettingsCard, SetupRow } from '@/ui/SetupRow';
+import { SectionHeader, SettingsCard, SetupRow, SetupState } from '@/ui/SetupRow';
 import { SETUP, parametersReady } from '@/ui/SetupView';
 import { CONNECTIONS_PAGE, FactRow, SettingsGroup, SettingsGroupEntries, sentenceCase } from '@/ui/SettingsScreen';
 import { LocalChangeNotice, VALUE_OFF, valueText } from '@/ui/ValueRow';
@@ -378,22 +378,27 @@ const PilotValueRow = ({ shown, setting }: { shown: Fact; setting: PilotSetting 
   );
 };
 
+const DO_NOTHING = 'Do nothing';
+
 export const PilotLinkRow = ({ name, owner }: { name: string; owner: PilotOwner }) => {
   const navigation = useContext(LocalAppNavigation);
   const live = useQgcPath(parameterPath(name, owner.setting.quantity));
   const fact = useProduceState<Fact | null>(null, [name, live], async (set) => set(await parameterFact(name, owner.setting.quantity)));
+  const status = fact === null ? '' : fact.isEnum ? pilotChoice(fact.enumStrings[fact.enumIndex] ?? fact.valueString) : valueText(fact);
   return (
     <SetupRow
       title={owner.setting.label}
       subtitle={`In Settings › ${owner.group.title}`}
-      status={fact === null ? '' : fact.isEnum ? pilotChoice(fact.enumStrings[fact.enumIndex] ?? fact.valueString) : valueText(fact)}
+      status={status}
+      state={status === DO_NOTHING ? SetupState.NeedsAttention : SetupState.Neutral}
       onClick={() => navigation.openSettingsTab(owner.group)}
     />
   );
 };
 
 const PILOT_CHOICES: ReadonlyMap<string, string> = new Map([
-  ['Disabled', 'Do nothing'],
+  ['Disabled', DO_NOTHING],
+  ['Disabled/NoAction', DO_NOTHING],
   ['Hold mode', 'Hover'],
   ['Loiter mode', 'Hover'],
   ['Return mode', 'Return home'],

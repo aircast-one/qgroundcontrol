@@ -1,26 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { FlyState, flyState } from './FlyState';
+import { FlyState, flyState, inAir } from './FlyState';
 import { GuidedOffer } from './GuidedActions';
-import { ARM_UNAVAILABLE, ArmControls, armControls, deckRequestRefusal, expandedAfterTap, messagesToggleText, shownSensors, statusSummary } from './VehicleStatusSheet';
+import { ARM_UNAVAILABLE, ArmControls, armControls, deckRequestRefusal, expandedAfterTap, shownSensors, statusSummary } from './VehicleStatusSheet';
 import { ArmingCheck } from './VehicleMessages';
 
 describe('VehicleStatusSheetTest', () => {
-  it('the status sheet lists faulty sensors until asked for the rest', () => {
+  it('the status sheet lists only faulty sensors until asked for the rest, so a switched-off one does not read as a fault', () => {
     const sensors = [
       { name: 'Gyro', state: 'unhealthy', label: 'Error' },
       { name: 'Baro', state: 'healthy', label: 'Normal' },
+      { name: 'Geofence', state: 'disabled', label: 'Disabled' },
     ];
     expect(shownSensors(sensors, false).map((it) => it.name)).toEqual(['Gyro']);
-    expect(shownSensors(sensors, true).map((it) => it.name)).toEqual(['Gyro', 'Baro']);
+    expect(shownSensors(sensors, true).map((it) => it.name)).toEqual(['Gyro', 'Baro', 'Geofence']);
   });
 
-  const state = ({ armed = false, nominal = true, fault = false, canArm = true }: { armed?: boolean; nominal?: boolean; fault?: boolean; canArm?: boolean } = {}) =>
+  const state = ({ armed = false, nominal = true, fault = false, canArm = true, phase = '' }: { armed?: boolean; nominal?: boolean; fault?: boolean; canArm?: boolean; phase?: string } = {}) =>
     FlyState({
       connected: true,
       armed,
       contactLost: false,
-      state: '',
+      state: phase,
       stateText: '',
       staleNotice: '',
       mode: '',
@@ -34,9 +35,10 @@ describe('VehicleStatusSheetTest', () => {
       canArm,
     });
 
-  it('the messages card starts collapsed and toggles like the MainStatusIndicator disclosure', () => {
-    expect(messagesToggleText(false)).toBe('Show messages');
-    expect(messagesToggleText(true)).toBe('Hide messages');
+  it('the sheet counts the aircraft in the air while it flies or lands, and only then drops the disarm slide', () => {
+    expect(['flying', 'landing'].map((phase) => inAir(state({ armed: true, phase })))).toEqual([true, true]);
+    expect(['armed', 'disarmed', ''].map((phase) => inAir(state({ armed: true, phase })))).toEqual([false, false, false]);
+    expect(inAir(null)).toBe(false);
   });
 
   it("the status drawer's arm controls follow MainStatusIndicator", () => {

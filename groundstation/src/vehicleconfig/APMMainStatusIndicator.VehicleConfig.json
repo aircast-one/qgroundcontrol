@@ -10,23 +10,6 @@
                     "label": "Vehicle Action",
                     "control": "combobox",
                     "optional": true
-                },
-                {
-                    "param": "FS_GCS_TIMEOUT",
-                    "label": "Loss Timeout",
-                    "control": "slider",
-                    "optional": true
-                }
-            ]
-        },
-        {
-            "title": "Failsafe Options",
-            "controls": [
-                {
-                    "param": "FS_OPTIONS",
-                    "label": "Failsafe Options",
-                    "control": "bitmask",
-                    "optional": true
                 }
             ]
         }

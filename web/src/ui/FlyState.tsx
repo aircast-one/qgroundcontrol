@@ -206,3 +206,9 @@ export const useHasVehicle = (): boolean => useQgcDerived(FLY_STATE, connectedOf
 const armedOf = (json: Json | null): boolean => flyState(json)?.armed === true;
 
 export const useArmed = (): boolean => useQgcDerived(FLY_STATE, armedOf);
+
+export const inAir = (state: FlyState | null): boolean => state?.state === 'flying' || state?.state === 'landing';
+
+const inAirOf = (json: Json | null): boolean => inAir(flyState(json));
+
+export const useInAir = (): boolean => useQgcDerived(FLY_STATE, inAirOf);

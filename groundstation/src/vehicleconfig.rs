@@ -3266,7 +3266,7 @@ mod tests {
     }
 
     #[test]
-    fn the_status_dropdown_edits_the_comm_loss_failsafe() {
+    fn the_status_sheet_shows_the_comm_loss_action_without_editors() {
         let labels = |fake: &Fake, px4: bool| -> Vec<String> {
             page(fake, STATUS_SETTINGS, px4)["sections"]
                 .as_array()
@@ -3281,8 +3281,8 @@ mod tests {
                 &Fake::new(&[("FS_GCS_ENABLE", 1.0), ("FS_GCS_TIMEOUT", 5.0)]),
                 false
             ),
-            ["Vehicle Action", "Loss Timeout"],
-            "APMMainStatusIndicator offers only what the build carries"
+            ["Vehicle Action"],
+            "no timeout slider or options bitmask to nudge while scrolling"
         );
         assert_eq!(
             labels(
@@ -3292,7 +3292,7 @@ mod tests {
                 },
                 true
             ),
-            ["Vehicle Action", "Loss Timeout"]
+            ["Vehicle Action"]
         );
     }
 
