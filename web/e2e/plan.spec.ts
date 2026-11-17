@@ -59,7 +59,7 @@ test('a waypoint deletes from the plan through its editor', async ({ app }) => {
   await app.keyboard.press('ControlOrMeta+z');
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBeLessThan(drawn);
   await app.keyboard.press('ControlOrMeta+Shift+z');
-  await expect.poll(() => itemCount(app), { timeout: 30_000 }, 'an undo and redo close the burst of taps, so each delete below is its own undo step').toBe(drawn);
+  await expect.poll(() => itemCount(app), { timeout: 30_000, message: 'an undo and redo close the burst of taps, so each delete below is its own undo step' }).toBe(drawn);
   await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
   await app.getByRole('button', { name: 'Delete waypoint 3' }).click();
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 1);
@@ -89,6 +89,11 @@ test('a waypoint moves down the list and back up', async ({ app }) => {
   await expect(app.getByRole('button', { name: /^4 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
   await app.getByRole('button', { name: 'Move waypoint 4 up' }).click();
   await expect(app.getByRole('button', { name: /^3 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
+  await app.getByRole('button', { name: /^2 Waypoint / }).click();
+  await expect(app.getByRole('button', { name: 'Move waypoint 2 down' })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Move waypoint 2 up' }), 'nothing trades places with the takeoff').toHaveCount(0);
+  await app.getByRole('button', { name: /^1 Takeoff/ }).click();
+  await expect(app.getByRole('button', { name: /^Move takeoff/ }), 'the takeoff keeps its place').toHaveCount(0);
 });
 
 test('a typed altitude past the limit says it was capped', async ({ app }) => {

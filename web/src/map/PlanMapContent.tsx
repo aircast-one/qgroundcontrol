@@ -144,7 +144,7 @@ import { ELEVATION_PROVIDER, SHOW_MISSION_ITEM_STATUS, TerrainProfileView, missi
 import { VEHICLES_VIEW, vehicleChoices } from './VehiclePicker';
 import { TrackPoint, VehicleMap, isPlottable } from './VehicleMap';
 import { PlanFocus, planSupport } from './VehicleSync';
-import { FAILURE_MESSAGE_MS, type OnBridge, type Say, usePlanEditing, usePlanFeedback } from './PlanEditing';
+import { FAILURE_MESSAGE_MS, type OnBridge, type Say, itemMoves, usePlanEditing, usePlanFeedback } from './PlanEditing';
 import { usePlanShortcuts } from './PlanShortcuts';
 import { PlanItemList } from './PlanItemList';
 import { type PlanUpload, usePlanUpload } from './PlanUpload';
@@ -1151,7 +1151,16 @@ export const PlanMapContent = ({
                 </>
               )}
               {listedInPanel ? (
-                <PlanItemList rows={rows} summary={missionSummaryText(missionSummaryView)} selected={chosen?.kind === 'Waypoint' ? chosen.index : null} headingClassName="px-3 py-1" onPick={pickRow} onMove={moveItem} onDelete={null} />
+                <PlanItemList
+                  rows={rows}
+                  summary={missionSummaryText(missionSummaryView)}
+                  selected={chosen?.kind === 'Waypoint' ? chosen.index : null}
+                  headingClassName="px-3 py-1"
+                  movesOf={(index) => itemMoves(allItems.value, index)}
+                  onPick={pickRow}
+                  onMove={moveItem}
+                  onDelete={null}
+                />
               ) : null}
 
               {traced === null ? null : (
@@ -1388,6 +1397,7 @@ export const PlanMapContent = ({
                 pickRow(row);
                 listOpen.value = false;
               }}
+              movesOf={(index) => itemMoves(allItems.value, index)}
               onMove={moveItem}
               onDelete={removing ? null : (deletion?.run ?? null)}
             />

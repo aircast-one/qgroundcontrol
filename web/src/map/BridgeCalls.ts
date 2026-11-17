@@ -18,4 +18,6 @@ export const PLAN_UNDO = 'plan.undo';
 
 export const invokeOk = async (path: string, args = '[]'): Promise<boolean> => optBoolean(parseJson(await call<string>('invoke', path, args)), 'ok');
 
-export const invokeRefusal = async (path: string, args: string, fallback: string): Promise<string | null> => refusalIn(parseJson(await call<string>('invoke', path, args)), fallback);
+export const invokeAnswer = async (path: string, args: string): Promise<Json | null> => parseJson(await call<string>('invoke', path, args));
+
+export const invokeRefusal = async (path: string, args: string, fallback: string): Promise<string | null> => refusalIn(await invokeAnswer(path, args), fallback);

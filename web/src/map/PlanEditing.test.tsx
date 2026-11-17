@@ -3,8 +3,8 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { call } from '@/core/client';
 import type { MapHit } from './MissionEditing';
-import { MissionItem } from './PlanBridge';
-import { deletableSelection, usePlanEditing, usePlanFeedback } from './PlanEditing';
+import { MAV_CMD_NAV_RETURN_TO_LAUNCH, MissionItem, reorderOf } from './PlanBridge';
+import { deletableSelection, itemMoves, usePlanEditing, usePlanFeedback } from './PlanEditing';
 import { useRemembered } from './Remembered';
 
 vi.mock('@/core/client', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/core/client')>()), call: vi.fn() }));
@@ -18,7 +18,7 @@ const items = [item(0, 'Mission Start'), item(1), item(2), item(3)];
 const useEditing = (hit: MapHit | null) => {
   const feedback = usePlanFeedback();
   const selected = useRemembered<MapHit | null>(hit);
-  return { feedback, editing: usePlanEditing({ feedback, selected, allItems: items, rallyCount: 2 }) };
+  return { feedback, selected, editing: usePlanEditing({ feedback, selected, allItems: items, rallyCount: 2 }) };
 };
 
 const answered = (reply: string) => called.mockImplementation(() => Promise.resolve(reply as never));
@@ -42,6 +42,44 @@ describe('one deletable selection names and removes what can be deleted', () => 
   });
 });
 
+describe('an item offers only the moves the core makes', () => {
+  const mission = [
+    MissionItem({ ...item(0, 'Mission Start'), kind: 'settings' }),
+    MissionItem({ ...item(1, 'Takeoff'), kind: 'takeoff' }),
+    MissionItem({ ...item(2), kind: 'waypoint' }),
+    MissionItem({ ...item(3), kind: 'waypoint' }),
+    MissionItem({ ...item(4), kind: 'waypoint' }),
+    MissionItem({ ...item(5, 'Land'), kind: 'land' }),
+  ];
+
+  it('the takeoff and the landing keep their places, and nothing trades places with them', () => {
+    expect([1, 2, 3, 4, 5].map((it) => itemMoves(mission, it))).toEqual([
+      { earlier: false, later: false },
+      { earlier: false, later: true },
+      { earlier: true, later: true },
+      { earlier: true, later: false },
+      { earlier: false, later: false },
+    ]);
+  });
+
+  it('a return keeps its place, and the ends of the mission go no further', () => {
+    const route = [...mission.slice(0, 5), MissionItem({ ...item(5, 'Return'), kind: 'command', commandId: MAV_CMD_NAV_RETURN_TO_LAUNCH })];
+    expect([itemMoves(route, 4), itemMoves(route, 5), itemMoves(items, 1), itemMoves(items, 3), itemMoves(items, 9)]).toEqual([
+      { earlier: true, later: false },
+      { earlier: false, later: false },
+      { earlier: false, later: true },
+      { earlier: true, later: false },
+      { earlier: false, later: false },
+    ]);
+  });
+
+  it("a move lands where the core says, and a refusal is the core's sentence", () => {
+    expect(reorderOf({ kind: 'object', ok: true, index: 4 })).toEqual({ refusal: null, index: 4 });
+    expect(reorderOf({ kind: 'object', ok: false, reason: 'The takeoff, landing and return keep their places in the mission.' })).toEqual({ refusal: 'The takeoff, landing and return keep their places in the mission.' });
+    expect(reorderOf(null)).toEqual({ refusal: 'The item could not be moved.' });
+  });
+});
+
 describe('plan editing', () => {
   afterEach(() => {
     cleanup();
@@ -61,6 +99,17 @@ describe('plan editing', () => {
     await act(async () => (await reply)('{"ok":true,"index":2}'));
     expect(view.result.current.editing.removing).toBe(false);
     expect(view.result.current.editing.removals).toBe(1);
+  });
+
+  it('a moved item stays selected at the index the core returns, and a refusal is shown', async () => {
+    answered('{"ok":true,"index":7}');
+    const view = renderHook(() => useEditing({ kind: 'Waypoint', index: 3 }));
+    await act(async () => view.result.current.editing.moveItem(3, false));
+    expect(called).toHaveBeenLastCalledWith('invoke', 'core.plan.moveItem', '[3,-1]');
+    expect(view.result.current.selected.value).toEqual({ kind: 'Waypoint', index: 7 });
+    answered('{"ok":false,"reason":"The takeoff, landing and return keep their places in the mission."}');
+    await act(async () => view.result.current.editing.moveItem(2, false));
+    expect(view.result.current.feedback.busy.value).toBe('The takeoff, landing and return keep their places in the mission.');
   });
 
   it('undo and redo report a failure the same way', async () => {

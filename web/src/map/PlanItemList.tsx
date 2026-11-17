@@ -2,6 +2,7 @@ import { IconButton, Surface, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { HOME_ITEM } from './MissionKinds';
+import type { ItemMoves } from './PlanEditing';
 import { type ItemRow, itemCountText } from './PlanItems';
 import { sentenceCase } from './SentenceCase';
 
@@ -22,13 +23,15 @@ const ItemRowView = ({
   row,
   selected,
   onClick,
+  moves,
   onMove,
   onDelete,
 }: {
   row: ItemRow;
   selected: boolean;
   onClick: () => void;
-  onMove: ((later: boolean) => void) | null;
+  moves: ItemMoves;
+  onMove: (later: boolean) => void;
   onDelete: (() => void) | null;
 }) => (
   <div className="flex w-full items-center" style={{ background: selected ? md('secondaryContainer') : md('surfaceContainerLow'), color: selected ? md('onSecondaryContainer') : md('onSurface') }}>
@@ -53,15 +56,15 @@ const ItemRowView = ({
       </span>
       {selected ? null : <MaterialIcon name="keyboard_arrow_right" filled style={{ color: md('onSurfaceVariant') }} />}
     </Surface>
-    {selected && onMove !== null ? (
-      <>
-        <IconButton onClick={() => onMove(false)} label={`Move ${sentenceCase(row.name).toLowerCase()} ${row.number} up`}>
-          <MaterialIcon name="arrow_upward" filled />
-        </IconButton>
-        <IconButton onClick={() => onMove(true)} label={`Move ${sentenceCase(row.name).toLowerCase()} ${row.number} down`}>
-          <MaterialIcon name="arrow_downward" filled />
-        </IconButton>
-      </>
+    {selected && moves.earlier ? (
+      <IconButton onClick={() => onMove(false)} label={`Move ${sentenceCase(row.name).toLowerCase()} ${row.number} up`}>
+        <MaterialIcon name="arrow_upward" filled />
+      </IconButton>
+    ) : null}
+    {selected && moves.later ? (
+      <IconButton onClick={() => onMove(true)} label={`Move ${sentenceCase(row.name).toLowerCase()} ${row.number} down`}>
+        <MaterialIcon name="arrow_downward" filled />
+      </IconButton>
     ) : null}
     {selected && onDelete !== null ? (
       <IconButton onClick={onDelete} label={`Delete ${sentenceCase(row.name).toLowerCase()} ${row.number}`}>
@@ -76,6 +79,7 @@ export const PlanItemList = ({
   summary,
   selected,
   headingClassName,
+  movesOf,
   onPick,
   onMove,
   onDelete,
@@ -84,6 +88,7 @@ export const PlanItemList = ({
   summary: string;
   selected: number | null;
   headingClassName: string;
+  movesOf: (index: number) => ItemMoves;
   onPick: (row: ItemRow) => void;
   onMove: (index: number, later: boolean) => void;
   onDelete: (() => void) | null;
@@ -96,7 +101,8 @@ export const PlanItemList = ({
         row={row}
         selected={selected === row.index}
         onClick={() => onPick(row)}
-        onMove={row.index === HOME_ITEM ? null : (later) => onMove(row.index, later)}
+        moves={movesOf(row.index)}
+        onMove={(later) => onMove(row.index, later)}
         onDelete={row.index === HOME_ITEM ? null : onDelete}
       />
     ))}

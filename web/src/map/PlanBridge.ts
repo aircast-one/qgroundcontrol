@@ -1,7 +1,7 @@
 import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { coerceAtLeast, replaceFirstCharUpper } from '@/kotlin/Std';
 import { altitudeModePath } from './AltitudeModes';
-import { coordinateJson, invokeOk, invokeRefusal, setOk, setRefusal, settingJson } from './BridgeCalls';
+import { coordinateJson, invokeAnswer, invokeOk, refusalIn, setOk, setRefusal, settingJson } from './BridgeCalls';
 import { type LandingPattern, landingPattern } from './LandingPattern';
 import { MapBridge } from './MapBridge';
 import { removeMissionItem } from './MissionKinds';
@@ -250,6 +250,14 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
 
 export const missionItems = (json: Json | null): readonly MissionItem[] => allMissionItems(json).filter((it) => it.placed);
 
+export type Reorder = { readonly refusal: null; readonly index: number } | { readonly refusal: string };
+
+export const reorderOf = (answer: Json | null): Reorder => {
+  const refusal = refusalIn(answer, 'The item could not be moved.');
+  const index = optInt(answer, 'index', -1);
+  return refusal === null && index >= 0 ? { refusal, index } : { refusal: refusal ?? 'The item could not be moved.' };
+};
+
 export const PlanBridge = {
   rawItems: (): Promise<Json | null> => MapBridge.read(PLAN_VIEW),
 
@@ -259,7 +267,7 @@ export const PlanBridge = {
 
   convertToVehicle: (): Promise<boolean> => invokeOk(CONVERT_TO_VEHICLE),
 
-  reorder: (index: number, later: boolean): Promise<string | null> => invokeRefusal(MOVE_ITEM, `[${index},${later ? 1 : -1}]`, 'The item could not be moved.'),
+  reorder: async (index: number, later: boolean): Promise<Reorder> => reorderOf(await invokeAnswer(MOVE_ITEM, `[${index},${later ? 1 : -1}]`)),
 
   pauseVehicle: (): Promise<boolean> => invokeOk('vehicle.pauseVehicle'),
 

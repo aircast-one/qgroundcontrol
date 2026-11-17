@@ -5,7 +5,7 @@ import { PLAN_UNDO, invokeOk } from './BridgeCalls';
 import { FenceBridge, rallyAfterRemove } from './FenceBridge';
 import type { MapHit } from './MissionEditing';
 import { HOME_ITEM, removeMissionItem } from './MissionKinds';
-import { type MissionItem, PlanBridge } from './PlanBridge';
+import { KIND_LAND, KIND_TAKEOFF, MAV_CMD_NAV_RETURN_TO_LAUNCH, type MissionItem, PlanBridge } from './PlanBridge';
 import { itemTitle, selectionAfterRemove } from './PlanItems';
 import { useRemembered } from './Remembered';
 
@@ -81,6 +81,20 @@ export const deletableSelection = (selected: MapHit | null, items: readonly Miss
   }
 };
 
+export type ItemMoves = { readonly earlier: boolean; readonly later: boolean };
+
+const STAYS: ItemMoves = { earlier: false, later: false };
+
+export const pinsOrder = (item: MissionItem): boolean => item.kind === KIND_TAKEOFF || item.kind === KIND_LAND || item.commandId === MAV_CMD_NAV_RETURN_TO_LAUNCH;
+
+export const itemMoves = (items: readonly MissionItem[], index: number): ItemMoves => {
+  const movable = (at: number): boolean => {
+    const item = items.find((it) => it.index === at);
+    return item !== undefined && item.index !== HOME_ITEM && !pinsOrder(item);
+  };
+  return movable(index) ? { earlier: movable(index - 1), later: movable(index + 1) } : STAYS;
+};
+
 export type PlanEditing = {
   readonly removals: number;
   readonly removing: boolean;
@@ -151,12 +165,12 @@ export const usePlanEditing = ({
 
   const moveItem = (index: number, later: boolean): void => {
     onRefusal(async () => {
-      const refusal = await PlanBridge.reorder(index, later);
-      if (refusal === null) {
+      const moved = await PlanBridge.reorder(index, later);
+      if (moved.refusal === null) {
         edits.value += 1;
-        selected.value = { kind: 'Waypoint', index: later ? index + 1 : index - 1 };
+        selected.value = { kind: 'Waypoint', index: moved.index };
       }
-      return refusal;
+      return moved.refusal;
     });
   };
 
