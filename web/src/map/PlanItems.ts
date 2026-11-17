@@ -50,8 +50,12 @@ export const rallyAltitudeIsEditable = (point: RallyPoint): boolean => !Number.i
 export const itemSeal = (item: MissionItem): string =>
   item.index === HOME_ITEM ? HOME_SEAL : waypointLabel(item.sequence, false, item.complexPattern ? '' : item.abbreviation);
 
+export const LAUNCH_NAME = 'Launch';
+
+const itemName = (item: MissionItem): string | null => (item.index === HOME_ITEM ? LAUNCH_NAME : blankToNull(item.command));
+
 export const itemTitle = (item: MissionItem): string => {
-  const name = sentenceCase(blankToNull(item.command) ?? 'Item');
+  const name = sentenceCase(itemName(item) ?? 'Item');
   const seal = itemSeal(item);
   return /^\p{Nd}*$/u.test(seal) ? `${name} ${seal}` : name;
 };
@@ -77,7 +81,7 @@ export const itemRows = (items: readonly MissionItem[], stats: ReadonlyMap<numbe
     ItemRow({
       index: item.index,
       number: item.readyForSave ? sequenceLabel(item) : NOT_READY_SEAL,
-      name: blankToNull(item.command) ?? `Item ${item.sequence}`,
+      name: itemName(item) ?? `Item ${item.sequence}`,
       detail: itemDetail(item, stats.get(item.index) ?? null),
       colour: waypointColour(item.kind, item.commandId),
       placed: item.placed,

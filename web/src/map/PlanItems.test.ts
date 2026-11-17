@@ -17,6 +17,7 @@ import {
   itemCountText,
   itemDetail,
   itemRows,
+  itemTitle,
   legText,
   missionItemIndex,
   movedText,
@@ -73,6 +74,12 @@ describe('PlanItemsTest', () => {
     const rows = itemRows([item(0, 0, 'Mission Start', 50.0, 'settings'), item(1, 1, 'Takeoff', 50.0, 'takeoff', 22), item(2, 2, 'Return To Launch', 50.0, 'command', MAV_CMD_NAV_RETURN_TO_LAUNCH)]);
 
     expect(rows.map((it) => it.colour)).toEqual([START_COLOUR, TAKEOFF_COLOUR, RETURN_COLOUR]);
+  });
+
+  it('item 0 is the launch, whatever command name the core gives the mission settings it carries', () => {
+    const home = item(0, 0, 'Initial Camera Settings', 481.0, 'settings');
+    expect(itemRows([home])[0]!.name).toBe('Launch');
+    expect(itemTitle(home)).toBe('Launch');
   });
 
   it('a pattern spanning heights shows the band, having no single altitude', () => {
