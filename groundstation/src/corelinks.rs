@@ -541,6 +541,9 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
                 ..config.clone()
             });
         }
+        (Kind::WebSocket { .. }, "url") => Kind::WebSocket {
+            url: text.filter(|url| url.starts_with("ws://") || url.starts_with("wss://"))?,
+        },
         (Kind::Tcp { port, .. }, "host") => Kind::Tcp {
             host: text?,
             port: *port,
@@ -1723,6 +1726,26 @@ mod tests {
             edited(&tcp, "localPort", &json!(1)),
             None,
             "a field the kind does not carry is not written"
+        );
+        let socket = LinkConfig {
+            name: "127.0.0.1:9".into(),
+            auto_connect: true,
+            high_latency: false,
+            kind: Kind::WebSocket {
+                url: "ws://127.0.0.1:9/mavlink".into(),
+            },
+        };
+        assert_eq!(
+            edited(&socket, "url", &json!(" ws://127.0.0.1:5760 ")).map(|it| it.kind),
+            Some(Kind::WebSocket {
+                url: "ws://127.0.0.1:5760".into()
+            }),
+            "a mistyped WebSocket address is corrected on the link itself"
+        );
+        assert_eq!(
+            edited(&socket, "url", &json!("http://127.0.0.1:5760")),
+            None,
+            "only a ws:// or wss:// address replaces it"
         );
         let scanned = vec![("HC-05".to_string(), "98:D3:31:F6:12:34".to_string())];
         assert_eq!(

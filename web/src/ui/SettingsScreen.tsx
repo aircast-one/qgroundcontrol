@@ -120,12 +120,12 @@ export const pageTitle = (title: string): string => PAGE_TITLES.get(title) ?? se
 
 const linksOf = (view: Json | null): Json[] => jsonObjects(optJSONArray(view, 'links'));
 
-export const activeLinkCount = (view: Json | null): number => linksOf(view).filter((link) => optBoolean(link, 'connected')).length;
+export const activeLinkCount = (view: Json | null): number => linksOf(view).filter((link) => optBoolean(link, 'heardVehicle')).length;
 
 export const activeLinksGlance = (view: Json | null): string => [
   ...new Set(
     linksOf(view)
-      .filter((link) => optBoolean(link, 'connected'))
+      .filter((link) => optBoolean(link, 'heardVehicle'))
       .map((link) => (notBlank(optText(link, 'summary')) ? optText(link, 'summary') : optText(link, 'name')))
       .filter(notBlank),
   ),

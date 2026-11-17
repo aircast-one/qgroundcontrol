@@ -50,7 +50,7 @@ export const LinkTypeEntries: readonly LinkType[] = [LinkType.Udp, LinkType.Tcp,
 export const linkTypeFrom = (id: string): LinkType => LinkTypeEntries.find((it) => it.id === id && it !== LinkType.Other) ?? LinkType.Other;
 
 export type LinkEditing = {
-  readonly name: 'HostAndPort' | 'PortOnly' | 'Serial' | 'LogFile' | 'Device' | 'None';
+  readonly name: 'HostAndPort' | 'PortOnly' | 'Serial' | 'LogFile' | 'Device' | 'Url' | 'None';
   readonly ordinal: number;
   readonly id: string;
 };
@@ -61,10 +61,11 @@ export const LinkEditing = {
   Serial: { name: 'Serial', ordinal: 2, id: 'serial' },
   LogFile: { name: 'LogFile', ordinal: 3, id: 'logFile' },
   Device: { name: 'Device', ordinal: 4, id: 'device' },
-  None: { name: 'None', ordinal: 5, id: '' },
+  Url: { name: 'Url', ordinal: 5, id: 'url' },
+  None: { name: 'None', ordinal: 6, id: '' },
 } as const satisfies Record<string, LinkEditing>;
 
-export const LinkEditingEntries: readonly LinkEditing[] = [LinkEditing.HostAndPort, LinkEditing.PortOnly, LinkEditing.Serial, LinkEditing.LogFile, LinkEditing.Device, LinkEditing.None];
+export const LinkEditingEntries: readonly LinkEditing[] = [LinkEditing.HostAndPort, LinkEditing.PortOnly, LinkEditing.Serial, LinkEditing.LogFile, LinkEditing.Device, LinkEditing.Url, LinkEditing.None];
 
 export const linkEditingFrom = (id: string): LinkEditing => LinkEditingEntries.find((it) => it.id === id && it !== LinkEditing.None) ?? LinkEditing.None;
 
@@ -83,6 +84,7 @@ export type LinkRow = {
   errorRemedy: string;
   editing: LinkEditing;
   host: string;
+  url: string;
   port: number;
   portName: string;
   baud: number;
@@ -99,6 +101,7 @@ export const LinkRow = (fields: Pick<LinkRow, 'index' | 'name' | 'statusLine' | 
   errorRemedy: '',
   editing: LinkEditing.None,
   host: '',
+  url: '',
   port: 0,
   portName: '',
   baud: 0,
@@ -136,6 +139,7 @@ export const linkRows = (view: Json | null): readonly LinkRow[] =>
       errorRemedy: optText(link, 'errorRemedy'),
       editing: linkEditingFrom(optText(link, 'editing')),
       host: optText(link, 'host'),
+      url: optText(link, 'url'),
       port: optInt(link, 'port'),
       portName: optText(link, 'portName'),
       baud: optInt(link, 'baud'),
@@ -180,7 +184,17 @@ export const pruneReplayFolder = (link: string, keep: string): Promise<void> => 
 
 const discardStagedLog = async (staged: string): Promise<void> => void (await unstage(staged));
 
-export const linkIsEditable = (row: LinkRow): boolean => !row.connected && row.editing !== LinkEditing.None;
+export const linkIsEditable = (row: LinkRow): boolean => !row.heard && row.editing !== LinkEditing.None;
+
+export type LinkSection = { title: string; rows: readonly LinkRow[]; auto: readonly AutoLink[] };
+
+export const LINK_WAITING = 'Waiting for a vehicle';
+
+export const linkSections = (rows: readonly LinkRow[], auto: readonly AutoLink[]): readonly LinkSection[] => [
+  { title: 'Connected', rows: rows.filter((it) => it.connected && it.heard), auto: auto.filter((it) => it.heard) },
+  { title: LINK_WAITING, rows: rows.filter((it) => it.connected && !it.heard), auto: auto.filter((it) => !it.heard) },
+  { title: 'Saved', rows: rows.filter((it) => !it.connected), auto: [] },
+];
 
 export const CREATABLE_LINK_TYPES: readonly LinkType[] = [LinkType.Udp, LinkType.Tcp, LinkType.Serial];
 export const REPLAY_LINK_NAME = 'Log Replay';
@@ -246,20 +260,22 @@ export const editWrites = (
           ['host', host],
           ['port', port],
         ]
-      : editing === LinkEditing.PortOnly
-        ? [['localPort', port]]
-        : editing === LinkEditing.LogFile
-          ? [['filename', logFile]]
-          : editing === LinkEditing.Serial
-            ? [
-                ['portName', portName],
-                ['baud', baud],
-                ['dataBits', framing.dataBits],
-                ['stopBits', framing.stopBits],
-                ['parity', framing.parity],
-                ['flowControl', framing.flowControl],
-              ]
-            : [];
+      : editing === LinkEditing.Url
+        ? [['url', host.trim()]]
+        : editing === LinkEditing.PortOnly
+          ? [['localPort', port]]
+          : editing === LinkEditing.LogFile
+            ? [['filename', logFile]]
+            : editing === LinkEditing.Serial
+              ? [
+                  ['portName', portName],
+                  ['baud', baud],
+                  ['dataBits', framing.dataBits],
+                  ['stopBits', framing.stopBits],
+                  ['parity', framing.parity],
+                  ['flowControl', framing.flowControl],
+                ]
+              : [];
   return [...common, ...specific];
 };
 
@@ -418,12 +434,12 @@ const LinkRowItem = ({ row, onConnect, onDisconnect, onRemove, onEdit }: { row: 
         onClick={() => setMenuOpen(true)}
         className="flex min-h-[72px] w-full items-center gap-4 px-4 py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
       >
-        <LinkIconBadge type={row.type} lit={row.connected} />
+        <LinkIconBadge type={row.type} lit={row.heard} />
         <span className="flex min-w-0 flex-1 flex-col">
           <Text typography="bodyLarge" maxLines={1} ellipsis>
             {row.name}
           </Text>
-          {!(row.connected && row.statusLine === CONNECTED_STATUS) ? (
+          {!(row.heard && row.statusLine === CONNECTED_STATUS) ? (
             <Text typography="bodyMedium" color={row.goneQuiet ? md('error') : md('onSurfaceVariant')}>
               {row.statusLine}
             </Text>
@@ -441,7 +457,7 @@ const LinkRowItem = ({ row, onConnect, onDisconnect, onRemove, onEdit }: { row: 
             </>
           ) : null}
         </span>
-        {row.connected ? (
+        {row.connected && row.heard ? (
           <Text typography="labelLarge" color={aircast('success')}>
             {CONNECTED_STATUS}
           </Text>
@@ -582,7 +598,7 @@ export type LinkEdit = {
 
 export const linkEdit = (row: LinkRow): LinkEdit => ({
   name: row.name,
-  host: row.host,
+  host: row.editing === LinkEditing.Url ? row.url : row.host,
   port: String(row.port),
   portName: row.portName,
   baud: row.baud > 0 ? row.baud : DEFAULT_BAUD,
@@ -601,11 +617,16 @@ export const editError = (editing: LinkEditing, edit: LinkEdit, udpDefault: stri
   if (editing === LinkEditing.LogFile) return edit.logFile.trim() === '' ? 'Choose a log file.' : null;
   if (editing === LinkEditing.PortOnly) return linkFormError(LinkType.Udp, '', edit.port, udpDefault);
   if (editing === LinkEditing.HostAndPort) return inPortRange(editedPort(editing, edit.port, udpDefault)) ? null : 'Port must be a number between 1 and 65535.';
+  if (editing === LinkEditing.Url) return webSocketUrlError(edit.host);
   return null;
 };
 
 export const editSuggestion = (row: LinkRow, edit: LinkEdit, device: BluetoothDeviceChoice | null, ports: readonly SerialPortChoice[]): string =>
-  row.editing === LinkEditing.Device ? (device?.name ?? row.name) : editedLinkSuggestion(row.editing, edit.host, edit.port, portLabel(ports, edit.portName));
+  row.editing === LinkEditing.Device
+    ? (device?.name ?? row.name)
+    : row.editing === LinkEditing.Url
+      ? webSocketLinkName(edit.host)
+      : editedLinkSuggestion(row.editing, edit.host, edit.port, portLabel(ports, edit.portName));
 
 export const EDIT_WHILE_CONNECTED = 'Disconnect this link to change it.';
 
@@ -697,6 +718,20 @@ const EditLinkFields = ({
   if (editing === LinkEditing.Serial) {
     return <SerialPortFields ports={ports} bauds={bauds} portName={edit.portName} baud={edit.baud} enabled={enabled} onPort={(it) => onEdit({ ...edit, portName: it })} onBaud={(it) => onEdit({ ...edit, baud: it })} />;
   }
+  if (editing === LinkEditing.Url) {
+    return (
+      <OutlinedTextField
+        value={edit.host}
+        onValueChange={(it) => onEdit({ ...edit, host: it })}
+        label="WebSocket address"
+        placeholder={WEBSOCKET_EXAMPLE}
+        enabled={enabled}
+        keyboardType="uri"
+        autoCorrect={false}
+        className="w-full"
+      />
+    );
+  }
   if (editing === LinkEditing.HostAndPort) {
     return (
       <>
@@ -746,7 +781,7 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
   }, [linksJson]);
   const ports = useMemo(() => serialPortChoices(linksJson), [linksJson]);
   const udpDefault = udpDefaultOf(useQgcValue(UDP_LISTEN_PORT));
-  const editable = linkRows(linksJson).find((it) => it.index === row.index)?.connected !== true;
+  const editable = linkRows(linksJson).find((it) => it.index === row.index)?.heard !== true;
   const about = linkKind(row.type).about;
   const listenPort = String(editedPort(row.editing, edit.port, udpDefault));
   const serverError = error !== null && error === serverFormError(server, listenPort) ? error : null;
@@ -759,9 +794,17 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
     if (invalid !== null) return;
     void (async () => {
       const rows = await currentRows();
-      if (rows.find((it) => it.index === row.index)?.connected !== false) {
+      const current = rows.find((it) => it.index === row.index);
+      if (current === undefined || current.heard) {
         setError(EDIT_WHILE_CONNECTED);
         return;
+      }
+      if (current.connected) {
+        await LinkCommands.disconnect(row.index);
+        if (!(await settledWithin(Date.now() + LINK_SETTLE_MS, async () => rowConnected(await currentRows(), row.index) === false))) {
+          setError(linkFailure('stop', false));
+          return;
+        }
       }
       const typedName = edit.name.trim();
       const resolved = typedName === '' ? uniqueLinkName(editSuggestion(row, edit, device, ports), rows.filter((it) => it.index !== row.index).map((it) => it.name)) : typedName;
@@ -1118,7 +1161,9 @@ const NewLinkAdvanced = ({ draft, suggestedName, ports, onDraft }: { draft: Link
   </>
 );
 
-export const DEFAULT_WEBSOCKET_URL = 'wss://sitl.aircast.one/ws/mavlink';
+export const SIMULATOR_WEBSOCKET_URL = 'wss://sitl.aircast.one/ws/mavlink';
+
+export const WEBSOCKET_EXAMPLE = 'Example: ws://192.168.1.10:5760';
 
 export const WEBSOCKET_NOT_SAVED = 'The WebSocket link could not be saved.';
 
@@ -1140,7 +1185,7 @@ export const webSocketUrlError = (typed: string): string | null => {
 };
 
 const WebSocketLinkPage = ({ onBack, onAdded, className }: { onBack: () => void; onAdded: () => void; className?: string }) => {
-  const [typed, setTyped] = useState(DEFAULT_WEBSOCKET_URL);
+  const [typed, setTyped] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const kind = linkKind(LinkType.WebSocket);
@@ -1165,8 +1210,20 @@ const WebSocketLinkPage = ({ onBack, onAdded, className }: { onBack: () => void;
         <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
           {kind.about}
         </Text>
-        <OutlinedTextField value={typed} onValueChange={setTyped} label="WebSocket address" keyboardType="uri" autoCorrect={false} isError={error !== null} supportingText={error ?? undefined} onDone={connect} singleLine />
-        <div className="flex justify-end">
+        <OutlinedTextField
+          value={typed}
+          onValueChange={setTyped}
+          label="WebSocket address"
+          placeholder={WEBSOCKET_EXAMPLE}
+          keyboardType="uri"
+          autoCorrect={false}
+          isError={error !== null}
+          supportingText={error ?? undefined}
+          onDone={connect}
+          singleLine
+        />
+        <div className="flex flex-wrap justify-between gap-2">
+          <TextButton onClick={() => setTyped(SIMULATOR_WEBSOCKET_URL)}>Use the Aircast simulator</TextButton>
           <Button onClick={connect} enabled={!busy}>
             Connect
           </Button>
@@ -1319,11 +1376,6 @@ export const LinksScreen = ({ className, footer = null }: { className?: string; 
   if (adding) return <AddLinkPage onDismiss={() => setAdding(false)} onAdded={() => setAdding(false)} className={className} />;
   if (editing !== null) return <EditLinkPage row={editing} onDismiss={() => setEditing(null)} onSaved={() => setEditing(null)} className={className} />;
 
-  const groups: readonly (readonly [string, readonly LinkRow[]])[] = [
-    ['Connected', rows.filter((it) => it.connected)],
-    ['Saved', rows.filter((it) => !it.connected)],
-  ];
-
   return (
     <div className={`relative flex h-full w-full flex-col ${className ?? ''}`}>
       {notice !== null ? (
@@ -1333,32 +1385,30 @@ export const LinksScreen = ({ className, footer = null }: { className?: string; 
       ) : null}
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">
         {rows.length === 0 && auto.length === 0 ? <FootNote text="No links saved. A USB cable or telemetry radio connects by itself; add a link for Wi-Fi or a network connection." /> : null}
-        {groups.map(([title, group]) => (
-          <div key={`head${title}`} className="flex flex-col">
-            {group.length > 0 || (title === 'Connected' && auto.length > 0) ? <SectionHeader text={title} /> : null}
-            {group.map((row) => (
+        {linkSections(rows, auto).map((section) => (
+          <div key={`head${section.title}`} className="flex flex-col">
+            {section.rows.length > 0 || section.auto.length > 0 ? <SectionHeader text={section.title} /> : null}
+            {section.rows.map((row) => (
               <LinkRowItem
                 key={`link${row.name}`}
                 row={row}
                 onConnect={() => attempt('connect', async () => rowConnected(await currentRows(), row.index) === true, () => LinkCommands.connect(`@${LINKS_PATH}.${row.index}`))}
-                onDisconnect={() => (hasVehicle ? setConfirmingDisconnect(row) : disconnect(row))}
+                onDisconnect={() => (hasVehicle && row.heard ? setConfirmingDisconnect(row) : disconnect(row))}
                 onRemove={() => setConfirmingRemove(row)}
                 onEdit={() => setEditing(row)}
               />
             ))}
-            {title === 'Connected'
-              ? auto.map((link) => (
-                  <AutoLinkItem
-                    key={`auto${link.name}`}
-                    link={link}
-                    onStop={
-                      link.type === LinkType.Mock
-                        ? () => attempt('stop', async () => autoLinks(await Qgc.get(LINKS_VIEW)).every((it) => it.name !== link.name), () => LinkCommands.disconnect(link.index))
-                        : null
-                    }
-                  />
-                ))
-              : null}
+            {section.auto.map((link) => (
+              <AutoLinkItem
+                key={`auto${link.name}`}
+                link={link}
+                onStop={
+                  link.type === LinkType.Mock
+                    ? () => attempt('stop', async () => autoLinks(await Qgc.get(LINKS_VIEW)).every((it) => it.name !== link.name), () => LinkCommands.disconnect(link.index))
+                    : null
+                }
+              />
+            ))}
           </div>
         ))}
         <Button onClick={() => setAdding(true)} className="mx-5 my-2 self-start">

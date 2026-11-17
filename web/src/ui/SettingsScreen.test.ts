@@ -306,7 +306,7 @@ describe('SettingsViewTest', () => {
   });
 
   it('theConnectionsRowCountsConnectedLinks', () => {
-    const view = { links: [{ connected: true }, { connected: false }, { connected: true }] };
+    const view = { links: [{ connected: true, heardVehicle: true }, { connected: false }, { connected: true, heardVehicle: true }, { connected: true, heardVehicle: false }] };
     expect(activeLinkCount(view)).toBe(2);
     expect(activeLinksText(2)).toBe('2 active');
     expect(activeLinksText(0)).toBe('');
@@ -332,9 +332,10 @@ describe('SettingsViewTest', () => {
   it('theConnectionsRowNamesItsLiveLinks', () => {
     const view = {
       links: [
-        { name: 'UDP Link', connected: true, summary: 'UDP port 14550' },
+        { name: 'UDP Link', connected: true, heardVehicle: true, summary: 'UDP port 14550' },
         { name: 'Spare', connected: false, summary: 'COM3' },
-        { name: 'TCP 127.0.0.1:5771', connected: true, summary: '' },
+        { name: 'Retrying', connected: true, heardVehicle: false, summary: 'ws://127.0.0.1:9' },
+        { name: 'TCP 127.0.0.1:5771', connected: true, heardVehicle: true, summary: '' },
       ],
     };
     expect(activeLinksGlance(view)).toBe('UDP port 14550 · TCP 127.0.0.1:5771');

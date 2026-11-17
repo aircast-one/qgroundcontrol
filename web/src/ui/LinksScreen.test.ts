@@ -37,6 +37,8 @@ import {
   linkFormErrorField,
   linkIcon,
   linkIsEditable,
+  linkSections,
+  LINK_WAITING,
   linkKind,
   linkRows,
   linkTypeFrom,
@@ -58,7 +60,7 @@ import {
   withServer,
   withTypedServer,
   webSocketUrlError,
-  DEFAULT_WEBSOCKET_URL,
+  SIMULATOR_WEBSOCKET_URL,
   webSocketLinkName,
 } from './LinksScreen';
 import { sheetDrilled } from './SettingsSheet';
@@ -204,8 +206,35 @@ describe('SerialLinkFormTest', () => {
 describe('LinkEditRulesTest', () => {
   const row = (connected = false, editing: LinkEditing = LinkEditing.PortOnly) => LinkRow({ index: 0, name: 'UDP 14550', statusLine: '', connected, heard: false, lastError: '', editing });
 
-  it('a connected link is not edited underneath itself', () => {
-    expect(linkIsEditable(row(true))).toBe(false);
+  it('a link carrying a vehicle is not edited underneath itself, but one still retrying is', () => {
+    expect(linkIsEditable(LinkRow({ index: 0, name: 'UDP 14550', statusLine: '', connected: true, heard: true, lastError: '', editing: LinkEditing.PortOnly }))).toBe(false);
+    expect(linkIsEditable(row(true))).toBe(true);
+  });
+
+  it('a WebSocket link edits its address, refuses one that is not ws://, and writes only that', () => {
+    const socket = LinkRow({ index: 3, name: '127.0.0.1:9', statusLine: 'Reconnecting', connected: true, heard: false, lastError: '', editing: linkEditingFrom('url'), url: 'ws://127.0.0.1:9/mavlink' });
+    expect(linkIsEditable(socket)).toBe(true);
+    const edit = { ...linkEdit(socket), host: 'ws://127.0.0.1:5760' };
+    expect(linkEdit(socket).host).toBe('ws://127.0.0.1:9/mavlink');
+    expect(editError(LinkEditing.Url, { ...edit, host: 'http://127.0.0.1' }, '14550')).toBe('A MAVLink WebSocket address starts with ws:// or wss://.');
+    expect(editError(LinkEditing.Url, edit, '14550')).toBeNull();
+    expect(editWrites(LinkEditing.Url, '127.0.0.1:5760', edit.host, 0, '', 0, true, false)).toEqual([
+      ['name', '127.0.0.1:5760'],
+      ['autoConnect', true],
+      ['highLatency', false],
+      ['url', 'ws://127.0.0.1:5760'],
+    ]);
+  });
+
+  it('a link that keeps failing waits apart from the links that hear a vehicle', () => {
+    const retrying = LinkRow({ index: 0, name: 'ws', statusLine: 'Reconnecting', connected: true, heard: false, lastError: 'No MAVLink WebSocket answered', editing: LinkEditing.HostAndPort });
+    const flying = LinkRow({ index: 1, name: 'udp', statusLine: 'Connected', connected: true, heard: true, lastError: '', editing: LinkEditing.PortOnly });
+    const saved = LinkRow({ index: 2, name: 'tcp', statusLine: '', connected: false, heard: false, lastError: '', editing: LinkEditing.HostAndPort });
+    expect(linkSections([retrying, flying, saved], []).map((it) => [it.title, it.rows.map((each) => each.name)])).toEqual([
+      ['Connected', ['udp']],
+      [LINK_WAITING, ['ws']],
+      ['Saved', ['tcp']],
+    ]);
   });
 
   it('a disconnected udp link is editable', () => {
@@ -555,9 +584,9 @@ describe('AddableLinkTypesTest', () => {
     expect(addableLinkTypes(links('["serial","udp","tcp","logReplay"]'), true)).toEqual([LinkType.Udp, LinkType.Tcp, LinkType.Serial, LinkType.LogReplay]);
   });
 
-  it('the WebSocket link starts on the Aircast cloud simulator, so the browser app flies something out of the box', () => {
-    expect(DEFAULT_WEBSOCKET_URL).toBe('wss://sitl.aircast.one/ws/mavlink');
-    expect(webSocketUrlError(DEFAULT_WEBSOCKET_URL)).toBeNull();
+  it('the WebSocket form offers the Aircast cloud simulator as one tap, not as a value already typed in', () => {
+    expect(SIMULATOR_WEBSOCKET_URL).toBe('wss://sitl.aircast.one/ws/mavlink');
+    expect(webSocketUrlError(SIMULATOR_WEBSOCKET_URL)).toBeNull();
   });
 
   it('a saved WebSocket link is named after the host it reaches', () => {

@@ -55,6 +55,7 @@ fn editing(kind: &str) -> &'static str {
         "serial" => "serial",
         "logReplay" => "logFile",
         "bluetooth" => "device",
+        "websocket" => "url",
         _ => "none",
     }
 }
@@ -160,6 +161,7 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "highLatency": flag("highLatency"),
         "dynamic": flag("dynamic"),
         "host": host,
+        "url": text("url"),
         "port": number("port").or_else(|| number("localPort")),
         "portName": text("portName"),
         "baud": number("baud"),
@@ -598,11 +600,16 @@ mod tests {
         assert_eq!(tcp["heardVehicle"], false);
         let socket = link_json(
             0,
-            &json!({ "name": "sitl.aircast.one", "settingsURL": "WebSocketSettings.qml", "summary": "wss://sitl.aircast.one/ws/mavlink", "children": ["link"], "linkDown": true, "lastError": "No MAVLink WebSocket answered at wss://sitl.aircast.one/ws/mavlink" }),
+            &json!({ "name": "sitl.aircast.one", "settingsURL": "WebSocketSettings.qml", "summary": "wss://sitl.aircast.one/ws/mavlink", "url": "wss://sitl.aircast.one/ws/mavlink", "children": ["link"], "linkDown": true, "lastError": "No MAVLink WebSocket answered at wss://sitl.aircast.one/ws/mavlink" }),
         );
         assert_eq!(
             (socket["type"].as_str(), socket["typeLabel"].as_str()),
             (Some("websocket"), Some("WebSocket"))
+        );
+        assert_eq!(
+            (socket["editing"].as_str(), socket["url"].as_str()),
+            (Some("url"), Some("wss://sitl.aircast.one/ws/mavlink")),
+            "a WebSocket link with a mistyped address is fixed in place, not deleted and added again"
         );
         assert_eq!(
             socket["statusLine"], "Reconnecting \u{b7} wss://sitl.aircast.one/ws/mavlink",

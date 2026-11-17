@@ -39,7 +39,7 @@ pub fn enumerations() -> Value {
         "view.plan.readiness.state": [0, 1, 2],
         "view.plan.upload.state": [0, 1, 2, 3],
         "view.links.links[].type": ["tcp", "udp", "serial", "bluetooth", "logReplay", "other"],
-        "view.links.links[].editing": ["hostAndPort", "portOnly", "serial", "logFile", "none"],
+        "view.links.links[].editing": ["hostAndPort", "portOnly", "serial", "logFile", "url", "none"],
         "view.warnings.warnings[].id": ["noGpsLock", "prearm"],
         "view.calibration.sides[].stage": ["waiting", "inProgress", "done"],
         "view.calibration.routines[].id": ["accelerometer", "compass", "levelHorizon", "gyro", "pressure"],

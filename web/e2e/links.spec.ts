@@ -124,3 +124,23 @@ test('the RC transmitter entry hands a plugged-in EdgeTX radio to the stick inpu
   await expect(page.getByText('Change the port under Control > Radio on USB.', { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: RADIO_PORT })).toContainText('Sends the sticks');
 });
+
+test('a WebSocket link that keeps failing waits apart from Connected, and its address is fixed in place', async ({ app }) => {
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add link…' }).click();
+  await app.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
+  const address = app.getByRole('textbox', { name: 'WebSocket address' });
+  await expect(address).toHaveValue('');
+  await expect(address).toHaveAttribute('placeholder', 'Example: ws://192.168.1.10:5760');
+  await address.fill('ws://localhost:1');
+  await app.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(app.getByText('Waiting for a vehicle', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(app.getByText('Connected', { exact: true })).toHaveCount(0);
+  await app.getByRole('button', { name: 'More actions for localhost:1' }).click();
+  await app.getByRole('menuitem', { name: 'Edit link' }).click();
+  const edited = app.getByRole('textbox', { name: 'WebSocket address' });
+  await expect(edited).toHaveValue('ws://localhost:1');
+  await edited.fill('ws://localhost:18760');
+  await app.getByRole('button', { name: 'Save and connect' }).click();
+  await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+});
