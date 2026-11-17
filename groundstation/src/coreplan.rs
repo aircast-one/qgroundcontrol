@@ -266,15 +266,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         }
         CORE_REMOVE => remove(args),
         MOVE_ITEM => move_item(args),
-        CONVERT_TO_VEHICLE => match crate::hub::lock()
-            .active()
-            .map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)))
-        {
-            Some((firmware, vehicle)) => {
-                edit(|doc| Ok(plandoc::for_vehicle(doc, firmware, vehicle)))
-            }
-            None => refused("No vehicle is connected to convert the plan for."),
-        },
+        CONVERT_TO_VEHICLE => convert_to_vehicle(),
         _ => refused(format!("{path} is not a plan action the core performs")),
     }
 }
@@ -957,6 +949,16 @@ fn remove(args: &str) -> Value {
         state.selected = current_after_remove(index, last);
     }
     answer
+}
+
+fn convert_to_vehicle() -> Value {
+    let active = crate::hub::lock()
+        .active()
+        .map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)));
+    match active {
+        Some((firmware, vehicle)) => edit(|doc| Ok(plandoc::for_vehicle(doc, firmware, vehicle))),
+        None => refused("No vehicle is connected to convert the plan for."),
+    }
 }
 
 fn move_item(args: &str) -> Value {
