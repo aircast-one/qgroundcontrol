@@ -15,11 +15,7 @@ test('tapping the plan map builds a mission with home, takeoff and waypoints', a
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   const drawn = await itemCount(app);
   await app.getByRole('button', { name: 'Undo' }).click();
-  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 1);
-  await planMenu(app, 'Undo');
-  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 2);
-  await planMenu(app, 'Redo');
-  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 1);
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBeLessThan(drawn);
 });
 
 test('upload sends the mission to the vehicle and offers to fly it', async ({ vehicle }) => {
@@ -58,19 +54,27 @@ test('a waypoint deletes from the plan through its editor', async ({ app }) => {
   await openMenu(app, 'Plan');
   await tapPlanMission(app);
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  const drawn = await itemCount(app);
   await app.getByRole('button', { name: 'Done' }).click();
+  await app.keyboard.press('ControlOrMeta+z');
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBeLessThan(drawn);
+  await app.keyboard.press('ControlOrMeta+Shift+z');
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }, 'an undo and redo close the burst of taps, so each delete below is its own undo step').toBe(drawn);
   await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
-  const before = await itemCount(app);
   await app.getByRole('button', { name: 'Delete waypoint 3' }).click();
-  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before - 1);
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 1);
+  await planMenu(app, 'Undo');
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn);
+  await planMenu(app, 'Redo');
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 1);
   await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
   await app.keyboard.down('Delete');
   await app.keyboard.down('Delete');
   await app.keyboard.up('Delete');
-  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before - 2);
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 2);
   await expect(app.getByRole('button', { name: 'Waypoint 3' }).first(), 'a held Delete removed one waypoint, not two').toBeVisible();
   await app.keyboard.press('ControlOrMeta+z');
-  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before - 1);
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn - 1);
 });
 
 test('a waypoint moves down the list and back up', async ({ app }) => {
