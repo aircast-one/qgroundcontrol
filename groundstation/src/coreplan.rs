@@ -308,6 +308,13 @@ fn settle_home_on_terrain(before: Option<(f64, f64)>) {
 }
 
 fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
+    edit_selecting(change, None)
+}
+
+fn edit_selecting(
+    change: impl FnOnce(&Document) -> Result<Document, String>,
+    selected: Option<i64>,
+) -> Value {
     let types = offline_types();
     let (answer, before) = {
         let mut state = held();
@@ -333,6 +340,7 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
                 remember(&mut state, previous, crate::hub::now_ms());
                 state.dirty = true;
                 state.dirty_for_save = true;
+                state.selected = selected.unwrap_or(state.selected);
                 (json!({ "ok": true, "items": count }), before)
             }
             Err(reason) => return refused(reason),
@@ -950,23 +958,23 @@ fn convert_to_vehicle() -> Value {
 
 fn move_item(args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    let (Some(index), Some(later)) = (
+    let (Some(index), Some(step)) = (
         given
             .get(0)
             .and_then(Value::as_u64)
             .and_then(|i| usize::try_from(i).ok()),
-        given.get(1).and_then(Value::as_i64).map(|step| step > 0),
+        given
+            .get(1)
+            .and_then(Value::as_i64)
+            .filter(|step| step.abs() == 1),
     ) else {
         return refused("Moving an item needs its index and a step of 1 or -1.");
     };
-    let answer = edit(|doc| plandoc::move_item(doc, index, later));
-    if answer["ok"] == true {
-        let moved = if later { index + 1 } else { index - 1 };
-        held().selected = moved as i64;
-        changed();
-        return json!({ "ok": true, "index": moved });
+    let moved = index as i64 + step;
+    match edit_selecting(|doc| plandoc::move_item(doc, index, step > 0), Some(moved)) {
+        answer if answer["ok"] == true => json!({ "ok": true, "index": moved }),
+        answer => answer,
     }
-    answer
 }
 
 fn current_after_remove(removed: usize, last_visual: usize) -> i64 {
