@@ -70,6 +70,38 @@ const MissionIdentityCard = () => {
   );
 };
 
+export const RTL_PREVIEW = 'view.rtlPreview';
+
+export type RtlPreview = { readonly distance: string; readonly altitude: string | null; readonly climbs: boolean; readonly verdict: string | null; readonly underReserve: boolean };
+
+const textOrNull = (json: Json, key: string): string | null => {
+  const text = optText(json, key);
+  return text.trim() === '' ? null : text;
+};
+
+export const rtlPreview = (view: Json | null): RtlPreview | null =>
+  view === null || !optBoolean(view, 'available')
+    ? null
+    : { distance: optText(view, 'distanceText'), altitude: textOrNull(view, 'returnAltitudeText'), climbs: optBoolean(view, 'climbs'), verdict: textOrNull(view, 'verdict'), underReserve: optBoolean(view, 'underReserve') };
+
+const ReturnFacts = () => {
+  const preview = rtlPreview(useQgcPath(RTL_PREVIEW));
+  if (preview === null) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-2">
+        <FactTile label="HOME" value={preview.distance} units="" />
+        {preview.altitude === null ? null : <FactTile label={preview.climbs ? 'CLIMBS TO' : 'RETURNS AT'} value={preview.altitude} units="" />}
+      </div>
+      {preview.verdict === null ? null : (
+        <Text typography="bodyMedium" color={preview.underReserve ? aircast('warning') : md('onSurfaceVariant')}>
+          {preview.verdict}
+        </Text>
+      )}
+    </div>
+  );
+};
+
 const LandFromTile = () => {
   const from = landFrom(useQgcPath(LAND_FROM));
   return from === null ? null : <FactTile label="FROM" value={from[0]} units={from[1]} />;
@@ -92,11 +124,19 @@ export const ConfirmTrack = ({ action, onSent, onCancel, className }: { action: 
       ) : null}
       {action.offerId !== null && MISSION_ACTIONS.has(action.offerId) ? <MissionIdentityCard /> : null}
       {action.offerId === 'land' ? <LandFromTile /> : null}
+      {action.offerId === 'rtl' ? <ReturnFacts /> : null}
       {action.option ? (
-        <label className="flex min-h-12 w-full cursor-pointer items-center gap-3">
-          <Checkbox checked={optionChecked} onCheckedChange={setOptionChecked} label={action.option.label} />
-          <Text typography="labelLarge">{action.option.label}</Text>
-        </label>
+        <div className="flex flex-col">
+          <label className="flex min-h-12 w-full cursor-pointer items-center gap-3">
+            <Checkbox checked={optionChecked} onCheckedChange={setOptionChecked} label={action.option.label} />
+            <Text typography="labelLarge">{action.option.label}</Text>
+          </label>
+          {action.option.hint.trim() === '' ? null : (
+            <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+              {action.option.hint}
+            </Text>
+          )}
+        </div>
       ) : null}
       <HoldToConfirm label={holdLabel(action.name)} destructive={action.destructive} className="mt-2" onConfirm={confirm} />
       <TextButton onClick={onCancel} className="self-center">

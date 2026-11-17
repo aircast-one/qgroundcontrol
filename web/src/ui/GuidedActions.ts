@@ -58,6 +58,7 @@ export type GuidedOffer = {
   readonly destructive: boolean;
   readonly carriesValue: boolean;
   readonly option: string;
+  readonly optionHint: string;
   readonly reasonCode: string;
   readonly confirm: boolean;
   readonly ready: boolean;
@@ -73,10 +74,12 @@ export const GuidedOffer = (fields: {
   destructive: boolean;
   carriesValue: boolean;
   option?: string;
+  optionHint?: string;
   reasonCode?: string;
   confirm?: boolean;
 }): GuidedOffer => ({
   option: '',
+  optionHint: '',
   reasonCode: '',
   confirm: true,
   ...fields,
@@ -102,6 +105,7 @@ export const guidedOffers = (view: Json | null): ReadonlyMap<string, GuidedOffer
             carriesValue: optBoolean(action, 'carriesValue'),
             reasonCode: optText(action, 'reasonCode'),
             option: optText(action, 'option'),
+            optionHint: optText(action, 'optionHint'),
             confirm: optBoolean(action, 'confirm', true),
           }),
         ] as const;

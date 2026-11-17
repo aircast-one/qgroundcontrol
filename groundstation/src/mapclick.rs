@@ -180,9 +180,52 @@ pub fn goto_preview_view(backend: &dyn Backend, args: &[String]) -> Value {
         "class": "GotoPreview",
         "available": true,
         "heightText": height.map(|h| format!("at {:.0} {} (current height)", vertical.show(h), vertical.name)),
+        "heightMetres": height,
+        "heightUnit": vertical.name,
+        "metresPerHeightUnit": 1.0 / vertical.factor,
         "pastReturnPoint": budget.is_some_and(|b| b.past_return_point),
         "verdict": budget.map(goto_verdict),
         "distanceText": format!("{:.0} {}", horizontal.show(crate::track::distance_m(aircraft, target)), horizontal.name),
+    })
+}
+
+pub fn rtl_verdict(budget: GotoBudget) -> String {
+    let left = budget.landing_percent.round() as i64;
+    match budget.past_return_point {
+        true => format!("About {left}% left on landing, under the reserve"),
+        false => format!("About {left}% left on landing"),
+    }
+}
+
+pub fn rtl_preview_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let Some(distance) = raw(backend, "vehicle.distanceToHome").filter(|d| d.is_finite()) else {
+        return json!({ "kind": "object", "class": "RtlPreview", "available": false });
+    };
+    let (horizontal, vertical) = (
+        crate::read::Unit::horizontal(backend),
+        crate::read::Unit::vertical(backend),
+    );
+    let trip = crate::battery::return_trip(backend);
+    let headline = crate::battery::battery_view(backend, &[])["headline"].clone();
+    let budget = trip.and_then(|trip| {
+        goto_budget(
+            headline["percent"].as_f64()?,
+            headline["secondsLeft"].as_f64()?,
+            headline["reserve"].as_f64().unwrap_or(0.0),
+            0.0,
+            crate::battery::return_seconds(trip)?,
+        )
+    });
+    let flown_at = trip.map(|t| t.altitude_m.max(t.return_altitude_m.max(0.0)));
+    json!({
+        "kind": "object",
+        "class": "RtlPreview",
+        "available": true,
+        "distanceText": format!("{:.0} {}", horizontal.show(distance), horizontal.name),
+        "returnAltitudeText": flown_at.map(|metres| format!("{:.0} {}", vertical.show(metres), vertical.name)),
+        "climbs": trip.map(|t| t.return_altitude_m > t.altitude_m),
+        "verdict": budget.map(rtl_verdict),
+        "underReserve": budget.is_some_and(|b| b.past_return_point),
     })
 }
 
@@ -503,7 +546,7 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
     }
     let core = match click {
         Click::GoTo => Some(
-            json!({ "action": "goto", "latitude": latitude, "longitude": longitude, "loiterRadius": forwarded[1] }),
+            json!({ "action": "goto", "latitude": latitude, "longitude": longitude, "loiterRadius": forwarded[1], "height": given[0].get("height").and_then(Value::as_f64).filter(|h| h.is_finite()) }),
         ),
         Click::EstimatorOrigin => Some(
             json!({ "action": "estimatorOrigin", "latitude": latitude, "longitude": longitude, "altitude": at.get("altitude").cloned().unwrap_or(json!(0.0)) }),
@@ -1052,6 +1095,29 @@ mod tests {
             "onInGotoFlightModeChanged hides the item when the goto mode is left"
         );
         assert_eq!(goto_shown(guided), None);
+    }
+
+    #[test]
+    fn the_return_confirm_says_how_far_how_high_and_what_is_left_on_landing() {
+        assert_eq!(
+            rtl_verdict(GotoBudget {
+                landing_percent: 41.6,
+                past_return_point: false
+            }),
+            "About 42% left on landing"
+        );
+        assert_eq!(
+            rtl_verdict(GotoBudget {
+                landing_percent: 12.2,
+                past_return_point: true
+            }),
+            "About 12% left on landing, under the reserve"
+        );
+        assert_eq!(
+            rtl_preview_view(&Plane, &[])["available"],
+            false,
+            "with no distance to home there is nothing honest to say"
+        );
     }
 
     #[test]

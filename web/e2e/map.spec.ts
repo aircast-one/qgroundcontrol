@@ -61,6 +61,21 @@ test('a go-to point does not outlive the motors stopping', async ({ app: vehicle
   await expect(vehicle.getByText(/^(Going to point|Arrived)/)).toHaveCount(0);
 });
 
+test('a go-to offers a height that starts at the current height, and its card keeps clear of the point', async ({ vehicle }) => {
+  await takeOff(vehicle, '10 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await showMapFull(vehicle);
+  await mapMenuAt(vehicle, 400, -100);
+  await vehicle.getByRole('button', { name: 'Go to location' }).click();
+  const card = vehicle.getByRole('dialog', { name: 'Map actions' });
+  await expect(card.getByText(/\(current height\)$/)).toBeVisible();
+  const box = await card.boundingBox();
+  expect((box?.x ?? 0) + (box?.width ?? 0), 'a point on the right puts the card on the left').toBeLessThan((vehicle.viewportSize()?.width ?? 0) / 2);
+  await card.getByRole('button', { name: /increase|\+/i }).first().click();
+  await expect(card.getByText(/ · at \d+ (m|ft)$/)).toBeVisible();
+  await expect(card.getByText(/\(current height\)$/)).toBeHidden();
+});
+
 test('in flight the map menu offers an orbit with a radius range', async ({ vehicle }) => {
   await takeOff(vehicle, '10 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });

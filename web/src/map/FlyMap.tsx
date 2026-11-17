@@ -85,6 +85,7 @@ const shape = (item: MissionItem) => [item.sequence, item.latitude, item.longitu
 
 const PREVIEW_SHEET_SHARE = 0.75;
 
+const PREVIEW_CARD_ROOM = 352;
 const keptPlan = (held: FlownPlan, next: FlownPlan): FlownPlan =>
   (Object.keys(next) as (keyof FlownPlan)[]).reduce<FlownPlan>((plan, field) => (same(held[field], next[field]) ? { ...plan, [field]: held[field] } : plan), next);
 
@@ -171,6 +172,7 @@ export const FlyMap = ({
   const [fitRequest, setFitRequest] = useState(0);
   const gotoPreview = useValue(useContext(LocalFlyMapEdits).gotoPreview);
   const lastKnown = useValue(lostVehicle);
+  const gotoCard = useValue(useContext(LocalFlyMapEdits).gotoCard);
   const fleetJson = useMapPath(VEHICLES_VIEW);
   const aircraft = useMemo(() => {
     const active = vehicleChoices(fleetJson).active;
@@ -282,7 +284,9 @@ export const FlyMap = ({
               lastKnown={lastKnown}
               fitRequest={fitRequest}
               fitOnly={gotoPreview === null ? null : [aircraft, gotoPreview].filter((it) => it !== null)}
-              fitBottomShare={gotoPreview !== null ? PREVIEW_SHEET_SHARE : 0}
+              fitBottomShare={gotoPreview !== null && gotoCard === 'bottom' ? PREVIEW_SHEET_SHARE : 0}
+              fitLeftPx={gotoPreview !== null && gotoCard === 'left' ? PREVIEW_CARD_ROOM : 0}
+              fitRightPx={gotoPreview !== null && gotoCard === 'right' ? PREVIEW_CARD_ROOM : 0}
               centreRequest={centreRequest}
               centreOn={centreOn}
               centreZoom={centreZoom}

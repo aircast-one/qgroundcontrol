@@ -8,7 +8,10 @@ export class FlyMapEdits {
   readonly orbit = mutableStateOf<OrbitCircle | null>(null);
   readonly gotoLoiter = mutableStateOf<LoiterEdit | null>(null);
   readonly gotoPreview = mutableStateOf<TrackPoint | null>(null);
+  readonly gotoCard = mutableStateOf<GotoCardSide>('bottom');
 }
+
+export type GotoCardSide = 'bottom' | 'left' | 'right';
 
 const unprovided = new Proxy({} as FlyMapEdits, {
   get: () => {

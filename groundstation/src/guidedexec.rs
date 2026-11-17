@@ -981,7 +981,7 @@ mod tests {
         assert_eq!(executor.snapshot()["state"], "done");
         let mut goto = Executor::default();
         let emits = goto.start(
-            steps(guidedcmd::goto(&copter(), 47.4, 8.5, 0.0)),
+            steps(guidedcmd::goto(&copter(), 47.4, 8.5, 0.0, None)),
             &observed("Guided", true),
             0,
         );

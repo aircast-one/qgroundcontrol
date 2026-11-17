@@ -71,9 +71,9 @@ import { withUnit } from './Quantity';
 const MISSION_POPUP_DELAY_MS = 1000;
 const GCS_POSITION = 'view.gcsPosition';
 
-export type ConfirmOption = { readonly label: string; readonly run: (checked: boolean) => void };
+export type ConfirmOption = { readonly label: string; readonly hint: string; readonly run: (checked: boolean) => void };
 
-export const ConfirmOption = (fields: { label: string; run: (checked: boolean) => void }): ConfirmOption => ({ ...fields });
+export const ConfirmOption = (fields: { label: string; hint?: string; run: (checked: boolean) => void }): ConfirmOption => ({ hint: '', ...fields });
 
 export type GuidedAction = {
   readonly name: string;
@@ -1369,7 +1369,7 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
                 name: rtl.title,
                 confirm: promptOr(rtl, 'Return to the launch position of the vehicle'),
                 destructive: false,
-                option: rtlOption === null ? null : ConfirmOption({ label: rtlOption, run: (smart) => void VehicleCommands.returnToLaunch(smart) }),
+                option: rtlOption === null ? null : ConfirmOption({ label: rtlOption, hint: rtl?.optionHint ?? '', run: (smart) => void VehicleCommands.returnToLaunch(smart) }),
                 run: () => void VehicleCommands.returnToLaunch(false),
               }),
             ),

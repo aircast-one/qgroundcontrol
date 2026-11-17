@@ -2722,6 +2722,7 @@ impl Vehicle {
                     .get("loiterRadius")
                     .and_then(Value::as_f64)
                     .unwrap_or(0.0),
+                action.get("height").and_then(Value::as_f64),
             ),
             "changeAltitude" => guidedcmd::change_altitude(&state, number("delta"), flag("pause")),
             "pause" => guidedcmd::pause(&state),

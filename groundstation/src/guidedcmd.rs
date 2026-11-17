@@ -681,7 +681,21 @@ fn loiter_direction(radius: f64) -> f64 {
     }
 }
 
-pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: f64) -> Plan {
+pub fn goto_climb(state: &VehicleState, height: Option<f64>) -> f64 {
+    height
+        .filter(|h| h.is_finite())
+        .zip(state.altitude_relative.filter(|r| r.is_finite()))
+        .map_or(0.0, |(height, relative)| height - relative)
+}
+
+pub fn goto(
+    state: &VehicleState,
+    latitude: f64,
+    longitude: f64,
+    loiter_radius: f64,
+    height: Option<f64>,
+) -> Plan {
+    let climb = goto_climb(state, height);
     match state.autopilot {
         AUTOPILOT_PX4 => {
             let Some(amsl) = state.altitude_amsl.filter(|a| a.is_finite()) else {
@@ -689,6 +703,7 @@ pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: 
                     "Unable to go to location, vehicle position not known.".into(),
                 );
             };
+            let amsl = amsl + climb;
             let command_int = state.capabilities & CAP_COMMAND_INT != 0;
             Plan::Steps(vec![Step::Command {
                 command: CMD_DO_REPOSITION,
@@ -712,7 +727,8 @@ pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: 
                     "Unable to go to location, vehicle position not known.".into(),
                 );
             };
-            let amsl = state.altitude_amsl.unwrap_or(f64::NAN);
+            let relative = relative + climb;
+            let amsl = state.altitude_amsl.unwrap_or(f64::NAN) + climb;
             let mut steps = Vec::new();
             if state.reposition_supported != Some(false) {
                 steps.push(Step::Command {
@@ -1732,7 +1748,7 @@ mod tests {
         [
             takeoff(&generic, 10.0),
             start_takeoff(&generic, false),
-            goto(&generic, 47.0, 8.0, 0.0),
+            goto(&generic, 47.0, 8.0, 0.0, None),
             change_altitude(&generic, 5.0, false),
             rtl(&generic, false),
             land(&generic),
@@ -1822,13 +1838,26 @@ mod tests {
             ],
             "and arms once the takeoff is accepted"
         );
-        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0) else {
+        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0, None) else {
             panic!()
         };
         let (cmd, params, int) = command(&steps[0]);
         assert_eq!(
             (cmd, params[1], params[4], params[5], params[6], int),
             (CMD_DO_REPOSITION, 1.0, 47.4, 8.5, 500.0, true)
+        );
+        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0, Some(30.0)) else {
+            panic!()
+        };
+        assert_eq!(
+            command(&steps[0]).1[6],
+            500.0 - state.altitude_relative.unwrap_or(0.0) + 30.0,
+            "a chosen height is above home, turned into AMSL from where the vehicle is now"
+        );
+        assert_eq!(
+            goto_climb(&state, None),
+            0.0,
+            "with no height chosen the go-to keeps the current height"
         );
         let Plan::Steps(steps) = change_altitude(&state, 5.0, true) else {
             panic!()
@@ -1924,7 +1953,7 @@ mod tests {
             2.5,
             "the minimum takeoff altitude wins over a lower request"
         );
-        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 30.0) else {
+        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 30.0, None) else {
             panic!()
         };
         assert_eq!(
@@ -1932,7 +1961,7 @@ mod tests {
             (30.0, 0.0),
             "a positive radius loiters clockwise"
         );
-        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, -30.0) else {
+        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, -30.0, None) else {
             panic!()
         };
         assert_eq!(
@@ -1940,7 +1969,7 @@ mod tests {
             (30.0, 1.0),
             "a negative radius is sent as its size with the counter-clockwise flag"
         );
-        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0) else {
+        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0, None) else {
             panic!()
         };
         assert!(
@@ -1955,7 +1984,7 @@ mod tests {
             ..copter()
         };
         assert_eq!(
-            match goto(&supported, 1.0, 2.0, 0.0) {
+            match goto(&supported, 1.0, 2.0, 0.0, None) {
                 Plan::Steps(s) => s.len(),
                 _ => 0,
             },
@@ -1966,7 +1995,7 @@ mod tests {
             ..copter()
         };
         assert!(
-            matches!(goto(&unsupported, 1.0, 2.0, 0.0), Plan::Steps(s) if matches!(s[0], Step::SetMode { .. }))
+            matches!(goto(&unsupported, 1.0, 2.0, 0.0, None), Plan::Steps(s) if matches!(s[0], Step::SetMode { .. }))
         );
         let Plan::Steps(steps) = change_altitude(&state, 3.0, true) else {
             panic!()

@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { MINIMUM_CIRCLE_RADIUS_METRES } from '@/map/MissionLayers';
 import {
+  chosenHeightText,
   coordinateLines,
   goHereText,
+  gotoArgs,
+  gotoCardAnchor,
+  gotoCardSide,
   gotoPreview,
   gotoPreviewLines,
   gotoPreviewPath,
@@ -17,6 +21,7 @@ import {
   orbitEdit,
   orbitOpened,
   radiusMetres,
+  shownHeight,
   setWaypointMessage,
   signedLoiterRadius,
   waypointTarget,
@@ -111,6 +116,24 @@ describe('MapClickMenuTest', () => {
     expect(gotoPreviewLines({ ...preview, distance: '81 m north-west' }, 'Move the vehicle')).toEqual(['81 m north-west · at 20 m (current height)', 'Past your return point. Return home instead?']);
     expect(gotoPreviewLines(null, 'Move the vehicle')).toEqual(['Move the vehicle']);
     expect(gotoPreviewPath({ latitude: 47.398, longitude: 8.546 })).toBe('view.gotoPreview(47.3980000,8.5460000)');
+  });
+
+  it('the go-to height starts at the current height and is sent only once it is changed', () => {
+    const preview = gotoPreview(json('{"available":true,"distanceText":"81 m","heightText":"at 20 m (current height)","heightMetres":20.4,"heightUnit":"ft","metresPerHeightUnit":0.3048}'))!;
+    expect(shownHeight(preview, null)).toBe(67);
+    expect(chosenHeightText(preview, null)).toBe('at 20 m (current height)');
+    expect(chosenHeightText(preview, 100)).toBe('at 100 ft');
+    const point = { latitude: 47.4, longitude: 8.5 };
+    expect(gotoArgs(point, preview, null)).toEqual({ latitude: 47.4, longitude: 8.5 });
+    expect(gotoArgs(point, preview, 100)).toEqual({ latitude: 47.4, longitude: 8.5, height: 30.48 });
+  });
+
+  it('on a desktop the go-to card sits on the far side of the screen from its point', () => {
+    expect(gotoCardSide({ x: 1300, y: 200 }, true, 1440)).toBe('left');
+    expect(gotoCardSide({ x: 200, y: 200 }, true, 1440)).toBe('right');
+    expect(gotoCardSide({ x: 200, y: 200 }, false, 1440), 'a phone sheet rises from the bottom').toBe('bottom');
+    expect(gotoCardAnchor({ x: 1300, y: 200 }, 'left', 1440)).toEqual({ x: 16, y: 200 });
+    expect(gotoCardAnchor({ x: 200, y: 200 }, 'right', 1440)).toEqual({ x: 1104, y: 200 });
   });
 
   it('the map hint names the desktop gesture on a desktop and the touch gesture elsewhere', () => {

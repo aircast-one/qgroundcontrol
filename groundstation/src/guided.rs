@@ -201,6 +201,8 @@ pub const ACTIONS: &[Action] = &[
     Action::ForceArm,
 ];
 
+pub const SMART_RTL_HINT: &str = "Smart RTL flies back the way it came instead of straight home, so it can take longer than the estimate above.";
+
 #[derive(Serialize, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Offer {
@@ -214,6 +216,7 @@ pub struct Offer {
     pub confirm: bool,
     pub carries_value: bool,
     pub option: &'static str,
+    pub option_hint: &'static str,
 }
 
 impl Action {
@@ -386,6 +389,10 @@ impl Action {
                 && !(self == Action::Takeoff && !s.takeoff_with_altitude),
             option: match (self, s.smart_rtl_supported) {
                 (Action::Rtl, true) => "Smart RTL",
+                _ => "",
+            },
+            option_hint: match (self, s.smart_rtl_supported) {
+                (Action::Rtl, true) => SMART_RTL_HINT,
                 _ => "",
             },
         }
@@ -1334,11 +1341,13 @@ mod tests {
             ..GuidedState::default()
         };
         assert_eq!(Action::Rtl.offer(&plain).option, "");
+        assert_eq!(Action::Rtl.offer(&plain).option_hint, "");
         let smart = GuidedState {
             smart_rtl_supported: true,
             ..plain
         };
         assert_eq!(Action::Rtl.offer(&smart).option, "Smart RTL");
+        assert_eq!(Action::Rtl.offer(&smart).option_hint, SMART_RTL_HINT);
         assert_eq!(Action::Land.offer(&smart).option, "");
     }
 

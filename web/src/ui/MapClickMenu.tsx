@@ -9,9 +9,10 @@ import { coerceAtLeast, format } from '@/kotlin/Std';
 import { Button, HorizontalDivider, ListItem, OutlinedButton, OutlinedTextField, Slider, Switch, Text, type SheetAnchor } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { typedNumber } from '@/map/AltitudeEntry';
-import { LocalFlyMapEdits } from '@/map/FlyMapEdits';
+import { type GotoCardSide, LocalFlyMapEdits } from '@/map/FlyMapEdits';
 import { type LoiterEdit, loiterEditNumber } from '@/map/GotoMarker';
 import { Map3d } from '@/map/Map3d';
+import { SettingStepper } from '@/map/SettingStepper';
 import { MINIMUM_CIRCLE_RADIUS_METRES } from '@/map/MissionLayers';
 import { OrbitCircle } from '@/map/OrbitMarker';
 import { sentenceCase } from '@/map/SentenceCase';
@@ -21,6 +22,7 @@ import { aircast, md } from '@/theme/Colors';
 import { useRememberActiveVehicleId } from './ActiveVehicle';
 import { HoldOrCancel } from './ConfirmTrack';
 import { GUIDED_ALTITUDE, type GuidedAltitude, guidedAltitude, guidedAltitudePath, rangeLabel } from './GuidedAltitude';
+import { useDesktopLayout } from './DesktopLayout';
 import { GuidedValuePanel } from './GuidedValuePanel';
 import { EditPositionDialog, geoOf } from './ItemEditor';
 import { RangeHint } from './VehicleUi';
@@ -52,14 +54,54 @@ export const MapHoldHint = {
 
 export const MapHoldHintEntries: readonly MapHoldHint[] = [MapHoldHint.Unseen, MapHoldHint.Due, MapHoldHint.Learned];
 
-export type GotoPreview = { readonly distance: string; readonly height: string; readonly verdict: string; readonly pastReturnPoint: boolean };
+export type GotoPreview = {
+  readonly distance: string;
+  readonly height: string;
+  readonly verdict: string;
+  readonly pastReturnPoint: boolean;
+  readonly heightMetres: number | null;
+  readonly heightUnit: string;
+  readonly metresPerHeightUnit: number;
+};
 
 export const gotoPreviewPath = (point: MapPoint): string => format('view.gotoPreview(%.7f,%.7f)', point.latitude, point.longitude);
 
-export const gotoPreview = (view: Json | null): GotoPreview | null =>
-  view !== null && optBoolean(view, 'available')
-    ? { distance: optText(view, 'distanceText'), height: optText(view, 'heightText'), verdict: optText(view, 'verdict'), pastReturnPoint: optBoolean(view, 'pastReturnPoint') }
-    : null;
+const positiveOr = (value: number, fallback: number): number => (Number.isFinite(value) && value > 0 ? value : fallback);
+
+export const gotoPreview = (view: Json | null): GotoPreview | null => {
+  if (view === null || !optBoolean(view, 'available')) return null;
+  const height = optDouble(view, 'heightMetres');
+  return {
+    distance: optText(view, 'distanceText'),
+    height: optText(view, 'heightText'),
+    verdict: optText(view, 'verdict'),
+    pastReturnPoint: optBoolean(view, 'pastReturnPoint'),
+    heightMetres: Number.isFinite(height) ? height : null,
+    heightUnit: optText(view, 'heightUnit'),
+    metresPerHeightUnit: positiveOr(optDouble(view, 'metresPerHeightUnit'), 1.0),
+  };
+};
+
+export const GOTO_HEIGHT_STEP = 5;
+export const GOTO_LOWEST_METRES = 2;
+
+export const chosenHeightText = (preview: GotoPreview, chosen: number | null): string =>
+  chosen === null ? preview.height : `at ${Math.round(chosen)} ${preview.heightUnit}`.trim();
+
+export const shownHeight = (preview: GotoPreview, chosen: number | null): number | null =>
+  chosen ?? (preview.heightMetres === null ? null : Math.round(preview.heightMetres / preview.metresPerHeightUnit));
+
+export const gotoArgs = (point: MapPoint, preview: GotoPreview | null, chosen: number | null): Record<string, number> =>
+  chosen === null || preview === null ? { latitude: point.latitude, longitude: point.longitude } : { latitude: point.latitude, longitude: point.longitude, height: chosen * preview.metresPerHeightUnit };
+
+const ANCHORED_CARD_WIDTH = 320;
+const ANCHORED_CARD_EDGE = 16;
+
+export const gotoCardSide = (anchor: SheetAnchor | undefined, desktop: boolean, width: number): GotoCardSide =>
+  !desktop || anchor === undefined ? 'bottom' : anchor.x > width / 2 ? 'left' : 'right';
+
+export const gotoCardAnchor = (anchor: SheetAnchor | undefined, side: GotoCardSide, width: number): SheetAnchor | undefined =>
+  anchor === undefined || side === 'bottom' ? anchor : { x: side === 'left' ? ANCHORED_CARD_EDGE : width - ANCHORED_CARD_WIDTH - ANCHORED_CARD_EDGE, y: anchor.y };
 
 const notBlank = (text: string): boolean => text.trim() !== '';
 
@@ -144,8 +186,8 @@ export const orbitArgs = (point: MapPoint, choice: OrbitChoice): readonly unknow
 
 export const coordinateLines = (point: MapPoint): readonly string[] => [format('Lat: %.6f', point.latitude), format('Lon: %.6f', point.longitude)];
 
-const send = (action: MapClickAction, point: MapPoint, orbit: OrbitChoice | null): Promise<string | null> =>
-  orbit === null ? Qgc.refusalOf(action.path, { latitude: point.latitude, longitude: point.longitude }) : Qgc.refusalOf(action.path, ...orbitArgs(point, orbit));
+const send = (action: MapClickAction, point: MapPoint, orbit: OrbitChoice | null, at: Record<string, number> = { latitude: point.latitude, longitude: point.longitude }): Promise<string | null> =>
+  orbit === null ? Qgc.refusalOf(action.path, at) : Qgc.refusalOf(action.path, ...orbitArgs(point, orbit));
 
 export const offeredActions = (view: Json | null, only: readonly string[] | null): readonly MapClickAction[] => mapClickActions(view).filter((it) => only === null || only.includes(it.id));
 
@@ -169,14 +211,18 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   const defaults = useMemo(() => orbitDefaults(view), [view]);
   const mapEdits = useContext(LocalFlyMapEdits);
   const previewing = confirming?.id === GOTO_ACTION;
+  const desktop = useDesktopLayout();
+  const cardSide = gotoCardSide(anchor, desktop, window.innerWidth);
   useEffect(() => {
+    mapEdits.gotoCard.value = cardSide;
     mapEdits.gotoPreview.value = previewing ? { latitude: point.latitude, longitude: point.longitude } : null;
     return () => {
       mapEdits.gotoPreview.value = null;
     };
-  }, [previewing, point.latitude, point.longitude, mapEdits]);
+  }, [previewing, point.latitude, point.longitude, mapEdits, cardSide]);
   const previewJson = useQgcPath(previewing ? gotoPreviewPath(point) : MAP_CLICK_PATH);
   const preview = useMemo(() => (previewing ? gotoPreview(previewJson) : null), [previewJson, previewing]);
+  const [height, setHeight] = useKeyedState<number | null>([point.latitude, point.longitude, previewing], () => null);
 
   const ran = (action: MapClickAction) => {
     if (opensMap3d(action)) Map3d.show(true);
@@ -184,7 +230,7 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   };
 
   const run = (action: MapClickAction) => {
-    void send(action, point, null).then((refused) => (refused === null ? ran(action) : setRefusal(refused)));
+    void send(action, point, null, action.id === GOTO_ACTION ? gotoArgs(point, preview, height) : undefined).then((refused) => (refused === null ? ran(action) : setRefusal(refused)));
   };
 
   if (view === null || actions.length === 0) return null;
@@ -195,11 +241,12 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   const vehicleGeo = geoOf(vehicleCoordinate);
   const vehicleAt: MapPoint | null = vehicleGeo === null ? null : { latitude: vehicleGeo[0], longitude: vehicleGeo[1] };
   const away = vehicleAt !== null && pending?.id === GOTO_ACTION ? goHereText(vehicleAt, point, defaults.unit, defaults.metresPerUnit) : null;
-  const lines = pending === null ? [] : preview !== null ? gotoPreviewLines({ ...preview, distance: away ?? preview.distance }, pending.message) : [away ?? pending.message];
+  const lines = pending === null ? [] : preview !== null ? gotoPreviewLines({ ...preview, distance: away ?? preview.distance, height: chosenHeightText(preview, height) }, pending.message) : [away ?? pending.message];
+  const heightShown = preview === null ? null : shownHeight(preview, height);
   const warn = preview?.pastReturnPoint === true;
 
   return (
-    <AircastSheet onDismissRequest={onDismiss} label="Map actions" anchor={anchor}>
+    <AircastSheet onDismissRequest={onDismiss} label="Map actions" anchor={pending?.id === GOTO_ACTION ? gotoCardAnchor(anchor, cardSide, window.innerWidth) : anchor}>
       <div className="flex w-full flex-col pb-6 desktop:pb-1">
         {pending === null ? (
           actions.map((action, index) => (
@@ -221,6 +268,16 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
                 {line}
               </Text>
             ))}
+            {pending.id === GOTO_ACTION && preview !== null && heightShown !== null ? (
+              <SettingStepper
+                label="Height"
+                value={heightShown}
+                unit={preview.heightUnit}
+                step={GOTO_HEIGHT_STEP}
+                range={{ start: Math.ceil(GOTO_LOWEST_METRES / preview.metresPerHeightUnit), endInclusive: Number.MAX_SAFE_INTEGER }}
+                onSet={(next) => setHeight(next)}
+              />
+            ) : null}
             {warn ? (
               <Button className="w-full" onClick={() => void VehicleCommands.returnToLaunch(false).then(() => onDismiss())}>
                 {RETURN_HOME_INSTEAD}

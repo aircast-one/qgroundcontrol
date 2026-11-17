@@ -231,6 +231,8 @@ export type VehicleMapProps = {
   fitRequest?: number;
   fitOnly?: readonly TrackPoint[] | null;
   fitBottomShare?: number;
+  fitLeftPx?: number;
+  fitRightPx?: number;
   onFitFailed?: () => void;
   centreRequest?: number;
   centreOn?: TrackPoint | null;
@@ -300,6 +302,8 @@ export const VehicleMap = ({
   fitOnly = null,
   fitBottomShare = 0,
   onFitFailed = ignore,
+  fitLeftPx = 0,
+  fitRightPx = 0,
   centreRequest = 0,
   centreOn = null,
   centreZoom = null,
@@ -730,9 +734,9 @@ export const VehicleMap = ({
     }
     map.fitBounds([[bounds.west, bounds.south], [bounds.unwrappedEast, bounds.north]], {
       padding: {
-        left: FIT_PADDING_PIXELS + leftInsetPx,
+        left: FIT_PADDING_PIXELS + leftInsetPx + fitLeftPx,
         top: FIT_PADDING_PIXELS + topInsetPx,
-        right: FIT_PADDING_PIXELS,
+        right: FIT_PADDING_PIXELS + fitRightPx,
         bottom: FIT_PADDING_PIXELS + bottomInsetPx + Math.trunc((container.current?.clientHeight ?? 0) * fitBottomShare),
       },
     });

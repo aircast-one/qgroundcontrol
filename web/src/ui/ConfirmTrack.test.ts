@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { holdLabel } from './HoldToConfirm';
-import { MISSION_ACTIONS, MISSION_ON_DRONE, MissionIdentity, landFrom, missionIdentity, sentIsStillShowing, sentText, sentUnlessRefused } from './ConfirmTrack';
+import { MISSION_ACTIONS, MISSION_ON_DRONE, MissionIdentity, landFrom, missionIdentity, rtlPreview, sentIsStillShowing, sentText, sentUnlessRefused } from './ConfirmTrack';
 
 describe('ConfirmTrackTest', () => {
   it('sent stands until the served actions change', () => {
@@ -48,5 +48,17 @@ describe('ConfirmTrackTest', () => {
     expect(holdLabel('Land')).toBe('Slide to land');
     expect(holdLabel('')).toBe('Slide to confirm');
     expect(MISSION_ACTIONS.has('land')).toBe(false);
+  });
+
+  it('the return confirm reads how far home is, the height it flies back at and the charge on landing', () => {
+    expect(rtlPreview({ available: true, distanceText: '153 m', returnAltitudeText: '15 m', climbs: true, verdict: 'About 64% left on landing', underReserve: false })).toEqual({
+      distance: '153 m',
+      altitude: '15 m',
+      climbs: true,
+      verdict: 'About 64% left on landing',
+      underReserve: false,
+    });
+    expect(rtlPreview({ available: true, distanceText: '153 m', returnAltitudeText: null, verdict: null })?.altitude).toBeNull();
+    expect(rtlPreview({ available: false })).toBeNull();
   });
 });

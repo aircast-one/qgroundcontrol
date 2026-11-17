@@ -345,6 +345,11 @@ pub const VIEWS: &[View] = &[
         compute: mapclick::goto_preview_view,
     },
     View {
+        path: "view.rtlPreview",
+        deps: mapclick::PREVIEW_DEPS,
+        compute: mapclick::rtl_preview_view,
+    },
+    View {
         path: "view.firstRun",
         deps: firstrun::DEPS,
         compute: firstrun::first_run_view,
