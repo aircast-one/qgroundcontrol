@@ -47,11 +47,12 @@ export const GuidedValuePanel = ({
   const named = guidedVehicle(vehicles.choices.length, vehicles.active?.name ?? null);
   const hold = holdLabel(guidedCommitLabel(commitLabel, readiness));
   const holdEnabled = commitEnabled && readiness?.blocks !== true;
+  const compact = guidedCompact(portrait, available);
   return (
     <div className={`w-full ${className ?? ''}`}>
-      <LocalGuidedCompact.Provider value={guidedCompact(portrait, available)}>
+      <LocalGuidedCompact.Provider value={compact}>
         <Surface className="w-full" color={md('surfaceContainerLow')} shape="extraLarge">
-          <div className="flex max-h-[calc(100dvh-32px)] w-full flex-col gap-2 p-4">
+          <div className={`flex max-h-[calc(100dvh-32px)] w-full flex-col gap-2 px-4 ${compact ? 'pt-4' : 'pt-6'} ${portrait ? 'pb-4' : 'pb-6'}`}>
             <div className="flex min-h-0 flex-col gap-2 overflow-y-auto px-2">
               <Text typography="titleLarge">{title}</Text>
               {named !== null ? <Text typography="labelLarge" color={md('primary')}>{named}</Text> : null}
@@ -65,15 +66,15 @@ export const GuidedValuePanel = ({
                   <Text typography="bodyMedium" className="block p-3">{readiness.text}</Text>
                 </Surface>
               ) : null}
-              {children}
+              <div className={`flex flex-col empty:hidden ${compact ? 'gap-2' : 'mt-2 gap-4'}`}>{children}</div>
             </div>
             {portrait ? (
               <>
-                <HoldToConfirm label={hold} enabled={holdEnabled} onConfirm={onCommit} />
+                <HoldToConfirm label={hold} enabled={holdEnabled} className="mx-2" onConfirm={onCommit} />
                 <TextButton onClick={onCancel} className="self-center">Cancel</TextButton>
               </>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-2 px-2 ${compact ? '' : 'mt-2'}`}>
                 <HoldToConfirm label={hold} enabled={holdEnabled} className="flex-1" onConfirm={onCommit} />
                 <TextButton onClick={onCancel}>Cancel</TextButton>
               </div>

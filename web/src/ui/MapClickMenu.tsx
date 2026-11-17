@@ -416,8 +416,13 @@ const OrbitPanel = ({ point, action, defaults, onDone }: { point: MapPoint; acti
           />
         </div>
         {height !== null ? (
-          <>
-            <Text typography="bodySmall">{height.label}</Text>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-baseline">
+              <Text className="flex-1">{height.label}</Text>
+              <Text typography="titleMedium" className="tabular-nums">
+                {guidedReading(target ?? height.current ?? 0.0, height.unit)}
+              </Text>
+            </div>
             <Slider
               value={target ?? height.current ?? 0.0}
               onValueChange={(it) => {
@@ -427,9 +432,10 @@ const OrbitPanel = ({ point, action, defaults, onDone }: { point: MapPoint; acti
               onValueChangeFinished={() => setSettled(targetNow.current)}
               valueRange={[height.minimum ?? 0.0, height.maximum ?? 0.0]}
               label={height.label}
+              className="-my-2"
             />
             {range !== null ? <RangeHint text={range} /> : null}
-          </>
+          </div>
         ) : null}
         {refusal !== null ? (
           <Text typography="bodyMedium" color={md('error')}>
