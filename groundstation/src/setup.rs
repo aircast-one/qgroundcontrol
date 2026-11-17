@@ -464,6 +464,32 @@ pub fn readiness(
     (ready, headline, detail)
 }
 
+fn fault_pages(sensor: &str) -> &'static [&'static str] {
+    match sensor {
+        "Gyro" | "Gyro 2" | "Accelerometer" | "Accelerometer 2" | "Magnetometer"
+        | "Magnetometer 2" | "Barometer" => &["Sensors"],
+        "Airspeed Sensor" => &["Airspeed", "Sensors"],
+        "RC Receiver" => &["Radio"],
+        "Battery" => &["Power"],
+        "Propulsion" | "Motor Outputs" => &["Motors", "Actuators"],
+        _ => &[],
+    }
+}
+
+pub fn fault_page<'a>(sensor: &str, pages: &[&'a str]) -> Option<&'a str> {
+    fault_pages(sensor)
+        .iter()
+        .find_map(|candidate| pages.iter().find(|page| *page == candidate).copied())
+}
+
+pub fn setup_faults(faults: &[String], pages: &[&str]) -> Vec<String> {
+    faults
+        .iter()
+        .filter(|fault| fault_page(fault, pages).is_some())
+        .cloned()
+        .collect()
+}
+
 pub fn setup_view(backend: &dyn Backend, args: &[String]) -> Value {
     let vehicle = backend.value_fields("vehicle", "px4Firmware");
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
@@ -703,6 +729,11 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             .active_id()
             .is_some_and(|id| crate::flowimage::image_index(id) > 0);
     let components: Vec<Component> = if incomplete { Vec::new() } else { components };
+    let pages: Vec<&str> = components
+        .iter()
+        .filter_map(|c| component_page(c, px4))
+        .collect();
+    let fixable = setup_faults(&faults, &pages);
     let screen_of = |page: &str| match (sub_frame, page) {
         (_, page) if safety_unsupported && SAFETY_PAGES.contains(&page) => {
             Some(NOT_SUPPORTED_SCREEN)
@@ -726,11 +757,13 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "headline": headline,
         "detail": detail,
         "sensorFaults": faults,
+        "setupFaults": fixable,
         "components": components.iter().map(|c| json!({
             "name": c.name,
             "className": c.class_name,
             "known": c.known,
             "needsAttention": c.needs_attention,
+            "faulty": component_page(c, px4).is_some_and(|page| fixable.iter().any(|fault| fault_page(fault, &pages) == Some(page))),
             "openable": c.blocked_reason.is_none(),
             "blockedReason": c.blocked_reason,
             "prerequisite": prerequisite(c, &components, rc_in_mode),
@@ -885,6 +918,43 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fault_goes_to_the_setup_page_that_fixes_it() {
+        let faults: Vec<String> = [
+            "Propulsion",
+            "Magnetometer",
+            "RC Receiver",
+            "GPS",
+            "Battery",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(
+            setup_faults(&faults, &["Sensors", "Radio", "Frame", "Motors"]),
+            ["Propulsion", "Magnetometer", "RC Receiver"],
+            "Power is not on this vehicle, and no Setup page fixes a missing GPS fix"
+        );
+        assert_eq!(
+            fault_page("Propulsion", &["Sensors", "Motors"]),
+            Some("Motors")
+        );
+        assert_eq!(
+            fault_page("Propulsion", &["Actuators"]),
+            Some("Actuators"),
+            "PX4 tests motors under Actuators"
+        );
+        assert_eq!(
+            fault_page("Airspeed Sensor", &["Sensors"]),
+            Some("Sensors"),
+            "PX4 calibrates airspeed under Sensors"
+        );
+        assert_eq!(
+            fault_page("Airspeed Sensor", &["Sensors", "Airspeed"]),
+            Some("Airspeed")
+        );
+        assert_eq!(fault_page("GPS", &["Sensors"]), None);
+    }
 
     #[test]
     fn apm_mode_rows_carry_qgc_channel_labels_and_pwm_ranges() {

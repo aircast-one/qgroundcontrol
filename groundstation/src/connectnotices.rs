@@ -80,6 +80,15 @@ pub fn setup_incomplete(outstanding: &[String], faults: &[String]) -> String {
     }
 }
 
+pub fn setup_notice(
+    outstanding: &[String],
+    fixable: &[String],
+    faults: &[String],
+) -> Option<String> {
+    (!outstanding.is_empty() || !fixable.is_empty() || faults.is_empty())
+        .then(|| setup_incomplete(outstanding, fixable))
+}
+
 pub fn is_setup_incomplete(text: &str) -> bool {
     text.ends_with(SETUP_INCOMPLETE_TAIL)
 }
@@ -110,12 +119,15 @@ pub fn announce(backend: &dyn Backend) {
         return;
     };
     let setup = crate::setup::setup_view(backend, &[]);
-    let setup_left = (!setup.get("ready").and_then(Value::as_bool).unwrap_or(true)).then(|| {
-        setup_incomplete(
-            &names(&setup, "components", |c| c["needsAttention"] == true),
-            &names(&setup, "sensorFaults", |_| true),
-        )
-    });
+    let setup_left = (!setup.get("ready").and_then(Value::as_bool).unwrap_or(true))
+        .then(|| {
+            setup_notice(
+                &names(&setup, "components", |c| c["needsAttention"] == true),
+                &names(&setup, "setupFaults", |_| true),
+                &names(&setup, "sensorFaults", |_| true),
+            )
+        })
+        .flatten();
     let bad_cube = announce
         .cube_black_link
         .and_then(serial_port_description)
@@ -197,6 +209,33 @@ mod tests {
             "only PX4 reads SYS_HITL"
         );
         assert!(parameters_ready_notices(None, true, false).is_empty());
+    }
+
+    #[test]
+    fn only_a_fault_a_setup_page_fixes_raises_the_setup_notice() {
+        let owned = |names: &[&str]| names.iter().map(|it| it.to_string()).collect::<Vec<_>>();
+        assert_eq!(setup_notice(&[], &[], &owned(&["GPS"])), None);
+        assert_eq!(
+            setup_notice(
+                &[],
+                &owned(&["Magnetometer"]),
+                &owned(&["GPS", "Magnetometer"])
+            ),
+            Some(
+                "Magnetometer: a compass isn't working. Fix it before this vehicle can fly.".into()
+            )
+        );
+        assert_eq!(
+            setup_notice(&owned(&["Radio"]), &[], &owned(&["GPS"])),
+            Some("Radio needs setup before this vehicle can fly.".into())
+        );
+        assert_eq!(
+            setup_notice(&[], &[], &[]),
+            Some(
+                "This vehicle reports nothing to set up. Check Setup before this vehicle can fly."
+                    .into()
+            )
+        );
     }
 
     #[test]

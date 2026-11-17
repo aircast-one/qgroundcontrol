@@ -167,4 +167,14 @@ describe('SetupScreenTest', () => {
     expect(firstToOpen(components.slice(0, 1), () => true)?.name).toBe('ESC');
     expect(firstToOpen([], () => true)).toBeUndefined();
   });
+
+  it('with nothing left to set up, setup opens on the page that fixes a reported fault', () => {
+    const components = [
+      SetupComponent({ index: 0, name: 'Frame', needsAttention: false }),
+      SetupComponent({ index: 1, name: 'Sensors', needsAttention: false, faulty: true }),
+      SetupComponent({ index: 2, name: 'Radio', needsAttention: true }),
+    ];
+    expect(firstToOpen(components.slice(0, 2), () => true)?.name).toBe('Sensors');
+    expect(firstToOpen(components, () => true)?.name, 'what still needs setting up comes first').toBe('Radio');
+  });
 });

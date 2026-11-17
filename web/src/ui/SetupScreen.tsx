@@ -50,6 +50,7 @@ export type SetupComponent = {
   known: string | null;
   className: string;
   needsAttention: boolean;
+  faulty: boolean;
   blockedReason: string | null;
   prerequisite: string | null;
 };
@@ -60,9 +61,10 @@ export const SetupComponent = (fields: {
   needsAttention: boolean;
   known?: string | null;
   className?: string;
+  faulty?: boolean;
   blockedReason?: string | null;
   prerequisite?: string | null;
-}): SetupComponent => ({ known: null, className: '', blockedReason: null, prerequisite: null, ...fields });
+}): SetupComponent => ({ known: null, className: '', faulty: false, blockedReason: null, prerequisite: null, ...fields });
 
 export const setupIcon = (known: string | null, className: string = ''): DrawableName =>
   known === 'radio' || known === 'joystick'
@@ -91,7 +93,7 @@ export const parameterCountText = (count: number): string | null => (count > 0 ?
 
 export const firstToOpen = (components: readonly SetupComponent[], canOpen: (component: SetupComponent) => boolean): SetupComponent | undefined => {
   const openable = components.filter(canOpen);
-  return openable.find((it) => it.needsAttention) ?? openable[0];
+  return openable.find((it) => it.needsAttention) ?? openable.find((it) => it.faulty) ?? openable[0];
 };
 
 export const attentionAction = (className: string): string => (['Sensors', 'Radio'].some((it) => className.includes(it)) ? 'Calibrate' : 'Set up');
@@ -249,6 +251,7 @@ const listedComponents = (view: Json | null): readonly SetupComponent[] =>
             known: textOrNull(json, 'known'),
             className: optText(json, 'className'),
             needsAttention: optBoolean(json, 'needsAttention'),
+            faulty: optBoolean(json, 'faulty'),
             blockedReason: textOrNull(json, 'blockedReason'),
             prerequisite: textOrNull(json, 'prerequisite'),
           }),
