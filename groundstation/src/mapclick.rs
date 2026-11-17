@@ -107,13 +107,17 @@ pub fn goto_budget(
     })
 }
 
+fn left_on_landing(budget: GotoBudget) -> String {
+    format!(
+        "About {}% left on landing",
+        budget.landing_percent.round() as i64
+    )
+}
+
 pub fn goto_verdict(budget: GotoBudget) -> String {
     match budget.past_return_point {
         true => "Past your return point. Return home instead?".to_string(),
-        false => format!(
-            "About {}% left on landing",
-            budget.landing_percent.round() as i64
-        ),
+        false => left_on_landing(budget),
     }
 }
 
@@ -185,10 +189,9 @@ pub fn goto_preview_view(backend: &dyn Backend, args: &[String]) -> Value {
 }
 
 pub fn rtl_verdict(budget: GotoBudget) -> String {
-    let left = budget.landing_percent.round() as i64;
     match budget.past_return_point {
-        true => format!("About {left}% left on landing, under the reserve"),
-        false => format!("About {left}% left on landing"),
+        true => format!("{}, under the reserve", left_on_landing(budget)),
+        false => left_on_landing(budget),
     }
 }
 
@@ -211,7 +214,7 @@ pub fn rtl_preview_view(backend: &dyn Backend, _args: &[String]) -> Value {
             crate::battery::return_seconds(trip)?,
         )
     });
-    let flown_at = trip.map(|t| t.altitude_m.max(t.return_altitude_m.max(0.0)));
+    let flown_at = trip.map(|t| t.flown_at_m());
     json!({
         "kind": "object",
         "class": "RtlPreview",
@@ -1241,6 +1244,100 @@ mod tests {
             rtl_preview_view(&Plane, &[])["available"],
             false,
             "with no distance to home there is nothing honest to say"
+        );
+    }
+
+    struct Homeward {
+        altitude: f64,
+        percent: f64,
+    }
+    impl Backend for Homeward {
+        fn get(&self, path: &str) -> String {
+            let value = |value: f64| json!({ "kind": "value", "value": value });
+            let fact = |value: f64| json!({ "kind": "fact", "value": value, "rawValue": value });
+            let parameter = path
+                .strip_prefix("vehicle.parameterManager.getParameter(-1,")
+                .and_then(|rest| rest.strip_suffix(')'))
+                .and_then(|name| {
+                    [
+                        ("RTL_RETURN_ALT", "m", 60.0),
+                        ("MPC_XY_CRUISE", "m/s", 5.0),
+                        ("MPC_Z_V_AUTO_UP", "m/s", 2.0),
+                        ("MPC_LAND_SPEED", "m/s", 1.0),
+                        ("COM_LOW_BAT_ACT", "", 3.0),
+                        ("BAT_CRIT_THR", "%", 7.0),
+                    ]
+                    .into_iter()
+                    .find(|(known, _, _)| *known == name)
+                })
+                .map(|(name, units, v)| json!({ "kind": "fact", "name": name, "value": v, "rawValue": v, "rawUnits": units }));
+            match (path, parameter) {
+                (_, Some(parameter)) => parameter,
+                ("vehicle.distanceToHome.rawValue", _) => value(600.0),
+                ("vehicle.altitudeRelative.rawValue", _) => value(self.altitude),
+                ("vehicle.batteries.count", _) => value(1.0),
+                ("vehicle.batteries.0.percentRemaining", _) => fact(self.percent),
+                ("vehicle.batteries.0.timeRemaining", _) => fact(600.0),
+                _ => json!({ "kind": "null" }),
+            }
+            .to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_return_preview_reads_the_trip_home_and_what_the_pack_has_left() {
+        let preview = |altitude: f64, percent: f64| {
+            let view = rtl_preview_view(&Homeward { altitude, percent }, &[]);
+            (
+                view["distanceText"].clone(),
+                view["returnAltitudeText"].clone(),
+                view["climbs"].clone(),
+                view["verdict"].clone(),
+                view["underReserve"].clone(),
+            )
+        };
+        assert_eq!(
+            preview(40.0, 60.0),
+            (
+                json!("600 m"),
+                json!("60 m"),
+                json!(true),
+                json!("About 41% left on landing"),
+                json!(false)
+            ),
+            "climb 20 m at 2 m/s, fly 600 m at 5 m/s, descend 60 m at 1 m/s: 190 s at 0.1 %/s is 19 %"
+        );
+        assert_eq!(
+            preview(90.0, 60.0),
+            (
+                json!("600 m"),
+                json!("90 m"),
+                json!(false),
+                json!("About 39% left on landing"),
+                json!(false)
+            ),
+            "above the return altitude it comes home where it is: 120 s and 90 s down"
+        );
+        assert_eq!(
+            preview(40.0, 10.0),
+            (
+                json!("600 m"),
+                json!("60 m"),
+                json!(true),
+                json!("About 7% left on landing, under the reserve"),
+                json!(true)
+            ),
+            "190 s costs 3.2 % of a 10 % pack, landing at the 7 % the failsafe keeps"
         );
     }
 

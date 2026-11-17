@@ -343,6 +343,12 @@ pub struct ReturnTrip {
     pub descent_mps: f64,
 }
 
+impl ReturnTrip {
+    pub fn flown_at_m(&self) -> f64 {
+        self.altitude_m.max(self.return_altitude_m.max(0.0))
+    }
+}
+
 pub fn return_seconds(trip: ReturnTrip) -> Option<f64> {
     let speeds_known = [trip.cruise_mps, trip.climb_mps, trip.descent_mps]
         .iter()
@@ -350,7 +356,7 @@ pub fn return_seconds(trip: ReturnTrip) -> Option<f64> {
     let place_known = [trip.distance_m, trip.altitude_m]
         .iter()
         .all(|v| v.is_finite());
-    let flown_at = trip.altitude_m.max(trip.return_altitude_m.max(0.0));
+    let flown_at = trip.flown_at_m();
     (speeds_known && place_known).then(|| {
         (flown_at - trip.altitude_m) / trip.climb_mps
             + trip.distance_m / trip.cruise_mps
@@ -368,6 +374,10 @@ pub fn return_charge(
         .then(|| (reserve_percent + trip_seconds * percent / seconds_left).min(100.0))
 }
 
+const PX4_RETURN_ALTITUDE: &[&str] = &["RTL_RETURN_ALT"];
+const COPTER_RETURN_ALTITUDE: &[&str] = &["RTL_ALT_M", "RTL_ALT"];
+const PLANE_RETURN_ALTITUDE: &[&str] = &["RTL_ALTITUDE", "ALT_HOLD_RTL"];
+
 pub fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
     let si = |names: &[&str]| parameter_si(backend, names);
     let fact = |path: &str| value_number(&backend.value(&format!("{path}.rawValue")));
@@ -379,7 +389,7 @@ pub fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
         Some(ReturnTrip {
             distance_m,
             altitude_m,
-            return_altitude_m: si(&["RTL_RETURN_ALT"])?,
+            return_altitude_m: si(PX4_RETURN_ALTITUDE)?,
             cruise_mps: si(&["MPC_XY_CRUISE"])?,
             climb_mps: si(&["MPC_Z_V_AUTO_UP"])?,
             descent_mps: si(&["MPC_LAND_SPEED"])?,
@@ -392,7 +402,7 @@ pub fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
         Some(ReturnTrip {
             distance_m,
             altitude_m,
-            return_altitude_m: si(&["RTL_ALT_M", "RTL_ALT"])?,
+            return_altitude_m: si(COPTER_RETURN_ALTITUDE)?,
             cruise_mps: rtl,
             climb_mps: si(&["WP_SPD_UP", "WPNAV_SPEED_UP"])?,
             descent_mps: si(&["LAND_SPD_MS", "LAND_SPEED"])?,
@@ -405,12 +415,11 @@ pub fn return_altitude(backend: &dyn Backend) -> Option<f64> {
     parameter_si(
         backend,
         &[
-            "RTL_RETURN_ALT",
-            "RTL_ALT_M",
-            "RTL_ALT",
-            "RTL_ALTITUDE",
-            "ALT_HOLD_RTL",
-        ],
+            PX4_RETURN_ALTITUDE,
+            COPTER_RETURN_ALTITUDE,
+            PLANE_RETURN_ALTITUDE,
+        ]
+        .concat(),
     )
     .filter(|metres| *metres > 0.0)
 }
@@ -937,7 +946,7 @@ mod tests {
                 .trim_start_matches("vehicle.parameterManager.getParameter(-1,")
                 .trim_end_matches(')');
             let units = match name {
-                "RTL_ALT" => "cm",
+                "RTL_ALT" | "ALT_HOLD_RTL" => "cm",
                 "RTL_SPEED" | "WPNAV_SPEED" | "WPNAV_SPEED_UP" | "LAND_SPEED" => "cm/s",
                 "RTL_RETURN_ALT" | "RTL_ALT_M" => "m",
                 _ => "m/s",
@@ -1025,6 +1034,42 @@ mod tests {
             return_trip(&unplaced),
             None,
             "an unknown height is not guessed as the ground"
+        );
+    }
+
+    #[test]
+    fn the_return_altitude_is_read_under_each_firmwares_name_and_unit() {
+        let read = |name: &'static str, value: f64| return_altitude(&Params(vec![(name, value)]));
+        assert_eq!(read("RTL_RETURN_ALT", 60.0), Some(60.0), "PX4");
+        assert_eq!(read("RTL_ALT_M", 60.0), Some(60.0), "ArduCopter 4.7");
+        assert_eq!(
+            read("RTL_ALT", 6000.0),
+            Some(60.0),
+            "older ArduCopter, in centimetres"
+        );
+        assert_eq!(
+            read("ALT_HOLD_RTL", 10000.0),
+            Some(100.0),
+            "ArduPlane, in centimetres"
+        );
+        assert_eq!(
+            read("RTL_ALT", 0.0),
+            None,
+            "0 returns at the current altitude, so there is no return altitude to show"
+        );
+        assert_eq!(return_altitude(&Params(vec![])), None);
+        assert_eq!(
+            ReturnTrip {
+                distance_m: 600.0,
+                altitude_m: 40.0,
+                return_altitude_m: -1.0,
+                cruise_mps: 5.0,
+                climb_mps: 2.0,
+                descent_mps: 1.0,
+            }
+            .flown_at_m(),
+            40.0,
+            "a return altitude below the aircraft never takes it lower"
         );
     }
 
