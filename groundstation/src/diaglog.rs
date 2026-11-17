@@ -81,9 +81,16 @@ pub fn beta(version: &str) -> bool {
         .is_some_and(|parsed| crate::appupdate::channel(&parsed) == "beta")
 }
 
-pub fn offered(version: &str, shown: &str, enabled: bool, has_token: bool) -> bool {
+pub fn offered(
+    version: &str,
+    shown: &str,
+    enabled: bool,
+    has_token: bool,
+    first_run_this_session: bool,
+) -> bool {
     has_token
         && !enabled
+        && !first_run_this_session
         && beta(version)
         && crate::firstrun::shown_ids(shown).contains(&crate::firstrun::INITIAL_SETUP_PROMPT_ID)
         && !crate::firstrun::shown_ids(shown).contains(&PROMPT_ID)
@@ -107,7 +114,7 @@ pub fn beta_diagnostics_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "BetaDiagnostics",
-        "show": offered(&crate::mavlinklog::application_version(), &shown_text(backend), enabled, token().is_some()),
+        "show": offered(&crate::mavlinklog::application_version(), &shown_text(backend), enabled, token().is_some(), crate::firstrun::answered_this_session()),
         "title": "Help us debug this beta",
         "text": OFFER_TEXT,
         "accept": "Share logs",
@@ -295,29 +302,33 @@ mod tests {
 
     #[test]
     fn the_offer_goes_only_to_beta_builds_that_can_send_and_have_not_answered() {
-        assert!(offered("5.6.5-beta.36", "1,3", false, true));
-        assert!(offered("v5.6.5-beta.36", "3", false, true));
+        assert!(offered("5.6.5-beta.36", "1,3", false, true, false));
+        assert!(offered("v5.6.5-beta.36", "3", false, true, false));
         assert!(
-            !offered("5.6.5-beta.36", "", false, true),
+            !offered("5.6.5-beta.36", "", false, true, false),
             "it waits for the first-run preferences, so the two never open together"
         );
         assert!(
-            !offered("5.6.5", "", false, true),
+            !offered("5.6.5-beta.36", "3", false, true, true),
+            "a new user just past the welcome is not asked again in the same session; the offer waits for the next launch"
+        );
+        assert!(
+            !offered("5.6.5", "", false, true, false),
             "a stable build is never asked"
         );
         assert!(
-            !offered("5.6.5-beta.36", "3", true, true),
+            !offered("5.6.5-beta.36", "3", true, true, false),
             "already sharing"
         );
         assert!(
-            !offered("5.6.5-beta.36", "3,1000", false, true),
+            !offered("5.6.5-beta.36", "3,1000", false, true, false),
             "already answered"
         );
         assert!(
-            !offered("5.6.5-beta.36", "3", false, false),
+            !offered("5.6.5-beta.36", "3", false, false, false),
             "nothing to authenticate with"
         );
-        assert!(!offered("dev", "3", false, true));
+        assert!(!offered("dev", "3", false, true, false));
     }
 
     #[test]

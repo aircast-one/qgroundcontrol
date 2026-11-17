@@ -1,19 +1,21 @@
 import { APP, closeSettings, expect, openAircraftSetup, openApp, openMenu, takeOff, test } from './fixtures';
 
 test('first run sets units once and stays dismissed', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 600 });
   await openApp(page, { firstRun: false });
   const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
-  await expect(welcome.getByRole('radio', { name: 'Feet' }).first()).toBeVisible();
-  await welcome.getByRole('button', { name: 'Imperial System' }).click();
-  const restart = page.getByRole('dialog').filter({ hasText: 'Restart application for changes to take effect.' });
-  await restart.getByRole('button', { name: 'OK' }).click();
-  await expect(welcome.getByRole('button', { name: 'Imperial System' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(welcome.getByRole('radio', { name: 'Feet' }).first()).toBeChecked();
+  await expect(welcome.getByRole('button', { name: 'Continue' })).toBeInViewport();
+  await welcome.getByRole('button', { name: 'Imperial', exact: true }).click();
+  await expect(welcome.getByRole('button', { name: 'Imperial', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText(/^Restart (application|Aircast)/)).toHaveCount(0);
   await welcome.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   await page.reload();
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Welcome to Aircast' })).toBeHidden();
+  await openMenu(page, 'Settings');
+  await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+  await expect(page.getByRole('button', { name: 'Imperial', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('the page says it is loading until the flight core arrives, then opens the app', async ({ page }) => {

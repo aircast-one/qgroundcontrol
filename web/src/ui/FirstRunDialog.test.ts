@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { makeFact } from '@/bridge/Qgc';
-import { FIRST_RUN_SYSTEMS, firstRun, firstRunSystemIndex, firstRunSystemWrites, firstRunUnitRows } from './FirstRunDialog';
+import { FIRST_RUN_SYSTEMS, VEHICLE_PREFERENCE, firstRun, firstRunQuestions } from './FirstRunDialog';
 
 const fact = (name: string) =>
   makeFact({
@@ -35,25 +35,10 @@ describe('FirstRunDialogTest', () => {
     expect(firstRun(parseJson('{"show":false}'))).toBeNull();
   });
 
-  it("the five unit rows always show, like InitialSetupPrompt's repeater", () => {
-    expect(firstRunUnitRows(shown).map((it) => it.name)).toEqual(['horizontalDistanceUnits', 'verticalDistanceUnits', 'areaUnits', 'speedUnits', 'temperatureUnits']);
-  });
-
-  it('imperial writes feet, square feet, feet per second and fahrenheit like changeSystemOfUnits', () => {
-    const rows = firstRunUnitRows(shown);
-    expect(firstRunSystemWrites(false, rows).map((it) => it[1])).toEqual([0, 0, 0, 0, 1]);
-    expect(firstRunSystemWrites(true, rows).map((it) => it[1])).toEqual([1, 1, 1, 1, 0]);
-    expect(firstRunSystemWrites(true, rows)[0]?.[0]).toBe('settings.unitsSettings.horizontalDistanceUnits');
-  });
-
-  it('hidden units are not written', () => {
-    expect(firstRunSystemWrites(true, firstRunUnitRows([fact('speedUnits')])).map((it) => it[0])).toEqual(['settings.unitsSettings.speedUnits']);
-  });
-
-  it('metric is chosen only while horizontal distance is in meters', () => {
-    expect(firstRunSystemIndex(1.0)).toBe(0);
-    expect(firstRunSystemIndex(0.0)).toBe(1);
-    expect(firstRunSystemIndex(Number.NaN)).toBe(1);
-    expect(FIRST_RUN_SYSTEMS).toEqual(['Metric System', 'Imperial System']);
+  it('the welcome asks two questions: the unit system, by the names Settings uses, and the vehicle type', () => {
+    expect(FIRST_RUN_SYSTEMS).toEqual(['Metric', 'Imperial']);
+    const firmware = fact('preferredFirmwareClass');
+    const vehicle = fact(VEHICLE_PREFERENCE);
+    expect(firstRunQuestions([firmware, vehicle, ...shown]).map((it) => it.name)).toEqual([VEHICLE_PREFERENCE]);
   });
 });

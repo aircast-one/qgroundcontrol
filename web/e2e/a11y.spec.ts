@@ -104,7 +104,6 @@ test('the Fly menu sheet and the take-off press are named', async ({ vehicle }) 
 test('the welcome names each choice by its question', async ({ page }) => {
   await openApp(page, { firstRun: false });
   const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
-  await expect(welcome.getByRole('button', { name: /^Preferred firmware, / })).toBeVisible();
-  await expect(welcome.getByRole('button', { name: /^Preferred vehicle, / })).toBeVisible();
+  await expect(welcome.getByRole('button', { name: /^Vehicle type, / })).toBeVisible();
   expect(await valueOnlyNames(page)).toEqual([]);
 });

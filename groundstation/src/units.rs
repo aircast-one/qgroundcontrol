@@ -375,7 +375,6 @@ pub fn fact_metadata(setting: &str) -> Option<crate::factmeta::MetaData> {
         short_description: short.to_string(),
         enums,
         default: Some(json!(kind.default_choice(METRIC))),
-        qgc_reboot_required: true,
         ..crate::px4meta::bare(crate::factmeta::ValueType::Uint32)
     })
 }
@@ -463,6 +462,17 @@ mod tests {
         );
         let feet = |key: &str| (key == "Units/verticalDistanceUnits").then(|| "0".to_string());
         assert_eq!(choice(Kind::Vertical, &feet, METRIC), 0);
+    }
+
+    #[test]
+    fn a_unit_change_applies_live_without_asking_for_a_restart() {
+        UNIT_KINDS.into_iter().for_each(|kind| {
+            assert!(
+                !fact_metadata(kind.setting()).unwrap().qgc_reboot_required,
+                "Fly redraws {} the moment it changes, so a restart note is false",
+                kind.setting()
+            )
+        });
     }
 
     #[test]

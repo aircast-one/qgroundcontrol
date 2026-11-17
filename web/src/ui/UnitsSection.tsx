@@ -9,6 +9,10 @@ import { FactRuns } from '@/ui/SettingsScreen';
 
 const UNITS_PATH = 'settings.unitsSettings';
 
+export const UNIT_SYSTEM_PATH = `${UNITS_PATH}.unitSystem`;
+
+export const SET_UNIT_SYSTEM = `${UNITS_PATH}.setUnitSystem`;
+
 export const UNIT_SYSTEM_CUSTOM = 2;
 
 export const UNIT_SYSTEM_LABELS: readonly string[] = ['Metric', 'Imperial', 'Custom'];
@@ -57,12 +61,12 @@ const UnitSystemRow = ({ system, onPick }: { system: number; onPick: (index: num
 export const UnitsSection = ({ className }: { className?: string }) => {
   const page = useQgcPath(GENERAL_SETTINGS);
   const facts = useMemo(() => unitFacts(page), [page]);
-  const system = useQgcDouble(`${UNITS_PATH}.unitSystem`);
+  const system = useQgcDouble(UNIT_SYSTEM_PATH);
   if (Number.isNaN(system)) return null;
   const chosen = Math.trunc(system);
   return (
     <div className={`flex flex-col ${className ?? ''}`}>
-      <UnitSystemRow system={chosen} onPick={(picked) => void Qgc.invoke(`${UNITS_PATH}.setUnitSystem`, picked)} />
+      <UnitSystemRow system={chosen} onPick={(picked) => void Qgc.invoke(SET_UNIT_SYSTEM, picked)} />
       <FootNote text={unitSystemNote(chosen)} />
       <FactRuns facts={unitRowsFor(chosen, facts)} />
     </div>

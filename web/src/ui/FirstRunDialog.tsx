@@ -3,85 +3,45 @@ import { Dialog } from '@base-ui/react';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
-import { settingControl, useQgcDouble, useQgcPath } from '@/bridge/QgcState';
+import { useQgcDouble, useQgcPath } from '@/bridge/QgcState';
 import { Button, FilterChip, Text } from '@/m3';
-import { sentenceCase } from '@/map/SentenceCase';
 import { Drawable } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { factFromControl } from '@/ui/ParameterForm';
-import { FactRow, FactRuns } from '@/ui/SettingsScreen';
-import { SectionHeader } from '@/ui/SetupRow';
-import { unitFacts } from '@/ui/UnitsSection';
+import { FactRow } from '@/ui/SettingsScreen';
+import { SET_UNIT_SYSTEM, UNIT_SYSTEM_LABELS, UNIT_SYSTEM_PATH } from '@/ui/UnitsSection';
 
 export const FIRST_RUN_PATH = 'view.firstRun';
 
-export type FirstRun = {
-  title: string;
-  vehicleHeading: string;
-  vehicleDescription: string;
-  preferences: readonly Fact[];
-  unitsHeading: string;
-  unitsDescription: string;
-};
+export type FirstRun = { title: string; preferences: readonly Fact[] };
 
 export const firstRun = (view: Json | null): FirstRun | null =>
   view !== null && optBoolean(view, 'show')
     ? {
         title: optText(view, 'title'),
-        vehicleHeading: optText(view, 'vehicleHeading'),
-        vehicleDescription: optText(view, 'vehicleDescription'),
         preferences: jsonObjects(optJSONArray(view, 'vehiclePreferences')).flatMap((control) => factFromControl(control) ?? []),
-        unitsHeading: optText(view, 'unitsHeading'),
-        unitsDescription: optText(view, 'unitsDescription'),
       }
     : null;
 
 const FIRST_RUN_WIDTH = 560;
 const APP_NAME = 'Aircast';
 
-export const FIRST_RUN_SYSTEMS: readonly string[] = ['Metric System', 'Imperial System'];
+export const FIRST_RUN_SYSTEMS: readonly string[] = UNIT_SYSTEM_LABELS.slice(0, 2);
 
-const METERS = 1.0;
+export const VEHICLE_PREFERENCE = 'preferredVehicleClass';
 
-const FIRST_RUN_UNIT_VALUES: ReadonlyMap<string, readonly [number, number]> = new Map([
-  ['horizontalDistanceUnits', [1, 0]],
-  ['verticalDistanceUnits', [1, 0]],
-  ['areaUnits', [1, 0]],
-  ['speedUnits', [1, 0]],
-  ['temperatureUnits', [0, 1]],
-]);
-
-export const firstRunUnitRows = (facts: readonly Fact[]): Fact[] => facts.filter((it) => FIRST_RUN_UNIT_VALUES.has(it.name));
-
-export const firstRunSystemIndex = (horizontalDistanceUnits: number): number => (horizontalDistanceUnits === METERS ? 0 : 1);
-
-export const firstRunSystemWrites = (metric: boolean, rows: readonly Fact[]): [string, number][] =>
-  rows.flatMap((fact): [string, number][] => {
-    const values = FIRST_RUN_UNIT_VALUES.get(fact.name);
-    return values === undefined ? [] : [[fact.path, metric ? values[0] : values[1]]];
-  });
+export const firstRunQuestions = (preferences: readonly Fact[]): readonly Fact[] => preferences.filter((it) => it.name === VEHICLE_PREFERENCE);
 
 const FirstRunUnits = () => {
-  const page = useQgcPath('view.settings(General)');
-  const rows = useMemo(() => firstRunUnitRows(unitFacts(page)), [page]);
-  const horizontal = useQgcDouble(settingControl('settings.unitsSettings.horizontalDistanceUnits'));
-  const chosen = firstRunSystemIndex(horizontal);
+  const system = Math.trunc(useQgcDouble(UNIT_SYSTEM_PATH));
   return (
-    <div className="flex w-full flex-col">
-      <div className="flex w-full flex-col gap-1 px-4 py-2">
-        <Text typography="bodyLarge">System of units</Text>
-        <div className="flex gap-2">
-          {FIRST_RUN_SYSTEMS.map((label, index) => (
-            <FilterChip
-              key={label}
-              selected={index === chosen}
-              onClick={() => void Promise.all(firstRunSystemWrites(index === 0, rows).map(([path, value]) => Qgc.set(path, value)))}
-              label={label}
-            />
-          ))}
-        </div>
+    <div className="flex w-full flex-col gap-1 px-4 py-2">
+      <Text typography="bodyLarge">Units</Text>
+      <div className="flex gap-2">
+        {FIRST_RUN_SYSTEMS.map((label, index) => (
+          <FilterChip key={label} selected={index === system} onClick={() => void Qgc.invoke(SET_UNIT_SYSTEM, index)} label={label} />
+        ))}
       </div>
-      <FactRuns facts={rows} />
     </div>
   );
 };
@@ -97,34 +57,26 @@ export const FirstRunDialog = () => {
   return (
     <Dialog.Root open onOpenChange={(open) => !open && close()}>
       <Dialog.Portal>
-        <Dialog.Popup aria-label={prompt.title} className="fixed inset-0 z-50 overflow-auto bg-surface text-on-surface outline-none">
-          <div className="mx-auto flex w-full flex-col gap-4 px-2 py-12" style={{ maxWidth: FIRST_RUN_WIDTH }}>
-            <div className="flex w-full flex-col items-center gap-4">
-              <div className="flex size-24 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
-                <Drawable name="ic_flight" size={48} />
-              </div>
-              <Dialog.Title className="m-0 text-center text-headline-small">{`Welcome to ${APP_NAME}`}</Dialog.Title>
-              <Text typography="bodyMedium" color={md('onSurfaceVariant')} textAlign="center">
-                {WELCOME_NOTE}
-              </Text>
-            </div>
-            <SectionHeader text={sentenceCase(prompt.unitsHeading)} />
-            <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="px-4">
-              {prompt.unitsDescription}
-            </Text>
-            <FirstRunUnits />
-            {prompt.preferences.length > 0 ? (
-              <>
-                <SectionHeader text={sentenceCase(prompt.vehicleHeading)} />
-                <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="px-4">
-                  {prompt.vehicleDescription}
+        <Dialog.Popup aria-label={prompt.title} className="fixed inset-0 z-50 flex flex-col bg-surface text-on-surface outline-none">
+          <div className="min-h-0 w-full flex-1 overflow-auto">
+            <div className="mx-auto flex w-full flex-col gap-4 px-2 pt-12 pb-4" style={{ maxWidth: FIRST_RUN_WIDTH }}>
+              <div className="flex w-full flex-col items-center gap-4">
+                <div className="flex size-24 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                  <Drawable name="ic_flight" size={48} />
+                </div>
+                <Dialog.Title className="m-0 text-center text-headline-small">{`Welcome to ${APP_NAME}`}</Dialog.Title>
+                <Text typography="bodyMedium" color={md('onSurfaceVariant')} textAlign="center">
+                  {WELCOME_NOTE}
                 </Text>
-                {prompt.preferences.map((fact) => (
-                  <FactRow key={fact.path} fact={fact} />
-                ))}
-              </>
-            ) : null}
-            <div className="flex w-full justify-end px-4">
+              </div>
+              <FirstRunUnits />
+              {firstRunQuestions(prompt.preferences).map((fact) => (
+                <FactRow key={fact.path} fact={fact} title="Vehicle type" subtitle="" />
+              ))}
+            </div>
+          </div>
+          <div className="w-full border-t border-outline-variant pb-[env(safe-area-inset-bottom)]">
+            <div className="mx-auto flex w-full justify-end px-6 py-3" style={{ maxWidth: FIRST_RUN_WIDTH }}>
               <Button onClick={close}>Continue</Button>
             </div>
           </div>

@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use serde_json::{Value, json};
 
 use crate::control::decode;
@@ -16,6 +18,12 @@ const PREFERENCES: [(&str, &str); 2] = [
     ("preferredFirmwareClass", "Preferred Firmware"),
     ("preferredVehicleClass", "Preferred Vehicle"),
 ];
+
+static ANSWERED_THIS_SESSION: AtomicBool = AtomicBool::new(false);
+
+pub fn answered_this_session() -> bool {
+    ANSWERED_THIS_SESSION.load(Ordering::Relaxed)
+}
 
 pub fn shown_ids(text: &str) -> Vec<i64> {
     text.split(',')
@@ -85,6 +93,7 @@ pub fn mark_shown(backend: &dyn Backend) -> Value {
             );
         }
     });
+    ANSWERED_THIS_SESSION.store(true, Ordering::Relaxed);
     let updated = ids
         .iter()
         .chain([&INITIAL_SETUP_PROMPT_ID])
@@ -137,6 +146,10 @@ mod tests {
         assert_eq!(view["show"], true);
         assert_eq!(view["vehiclePreferences"][0]["label"], "Preferred Firmware");
         assert_eq!(mark_shown(&settings)["ok"], true);
+        assert!(
+            answered_this_session(),
+            "this session saw the welcome, so the beta logging offer waits for the next one"
+        );
         assert_eq!(
             *settings.0.borrow(),
             "1,3",
