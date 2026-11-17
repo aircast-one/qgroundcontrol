@@ -21,12 +21,12 @@ const openLinks = async (page: Page) => {
   const row = page.getByRole('button', { name: /^Links/ });
   await expect(async () => {
     if (await row.isVisible()) await row.click();
-    await expect(page.getByRole('button', { name: 'Add link…' })).toBeVisible({ timeout: 2_000 });
+    await expect(page.getByRole('button', { name: 'Add a link' })).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
 };
 
 const addWebSocket = async (page: Page, url: string) => {
-  await page.getByRole('button', { name: 'Add link…' }).click();
+  await page.getByRole('button', { name: 'Add a link' }).click();
   await page.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
   await page.getByRole('textbox', { name: 'WebSocket address' }).fill(url);
   await page.getByRole('button', { name: 'Connect', exact: true }).click();

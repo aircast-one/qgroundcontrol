@@ -195,7 +195,7 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
                   onDismiss();
                 }}
               >
-                {'Add link…'}
+                Add a link
               </Button>
             </div>
           ) : null}
@@ -222,7 +222,7 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
                   onDismiss();
                 }}
               >
-                Add link
+                Add a link
               </TextButton>
             )}
           </div>

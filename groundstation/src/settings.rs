@@ -728,7 +728,7 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
     (
         "appSettings",
         "enableMultiVehiclePanel",
-        "Show multi-vehicle panel",
+        "Show the multi-aircraft panel",
     ),
     ("appSettings", "virtualJoystick", "Enabled"),
     (
@@ -1323,7 +1323,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
             ),
             ("AirLink", &["loginAirLink", "passAirLink"]),
             ("Ground station position", &["followTarget"]),
-            ("Multiple vehicles", &["enableMultiVehiclePanel"]),
+            ("Multiple aircraft", &["enableMultiVehiclePanel"]),
             ("Auto Intercept", &["autodropEnabled"]),
             (
                 "Files",

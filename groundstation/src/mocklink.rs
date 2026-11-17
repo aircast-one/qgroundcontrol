@@ -219,12 +219,12 @@ impl Vehicle {
 
     pub fn link_name(self) -> &'static str {
         match self {
-            Vehicle::Px4 => "PX4 MultiRotor MockLink",
-            Vehicle::Copter => "ArduCopter MockLink",
-            Vehicle::Plane => "ArduPlane MockLink",
-            Vehicle::Sub => "ArduSub MockLink",
-            Vehicle::Rover => "ArduRover MockLink",
-            Vehicle::Generic => "Generic MockLink",
+            Vehicle::Px4 => "Simulated vehicle (PX4)",
+            Vehicle::Copter => "Simulated vehicle (ArduCopter)",
+            Vehicle::Plane => "Simulated vehicle (ArduPlane)",
+            Vehicle::Sub => "Simulated vehicle (ArduSub)",
+            Vehicle::Rover => "Simulated vehicle (ArduRover)",
+            Vehicle::Generic => "Simulated vehicle (generic)",
         }
     }
 
@@ -3596,6 +3596,15 @@ impl Sim {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_simulated_link_is_named_the_way_add_a_link_offers_it() {
+        assert_eq!(
+            Vehicle::Copter.link_name(),
+            "Simulated vehicle (ArduCopter)"
+        );
+        assert_eq!(Vehicle::Px4.link_name(), "Simulated vehicle (PX4)");
+    }
 
     #[test]
     fn the_default_home_is_open_ground_in_irchelpark_and_not_inside_a_building() {

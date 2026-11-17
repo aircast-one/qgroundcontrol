@@ -47,7 +47,7 @@ const calibration = (page: Page) =>
 
 const connectSitl = async (page: Page) => {
   await page.getByRole('button', { name: /How to connect/ }).click();
-  await page.getByRole('button', { name: 'Add link…' }).click();
+  await page.getByRole('button', { name: 'Add a link' }).click();
   await page.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
   await page.getByRole('textbox', { name: 'WebSocket address' }).fill(running().ws);
   await page.getByRole('button', { name: 'Connect', exact: true }).click();

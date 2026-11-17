@@ -6,7 +6,7 @@ test('an Aircast Cloud link signs in and reaches the vehicle over WebTransport',
   const heard = async () => ((await (await request.get(`${RELAY}/stats`, { ignoreHTTPSErrors: true })).json()) as { gcsHeartbeats: number }).gcsHeartbeats;
   const before = await heard();
   await app.getByRole('button', { name: /How to connect/ }).click();
-  await app.getByRole('button', { name: 'Add link…' }).click();
+  await app.getByRole('button', { name: 'Add a link' }).click();
   await app.getByRole('button', { name: /^Aircast Cloud/ }).click();
   const form = app.locator('div').filter({ hasText: 'A backup link to the aircraft through your Aircast account.' }).filter({ hasNotText: 'Connect to an Aircast device' }).filter({ has: app.getByRole('button', { name: 'Connect', exact: true }) }).last();
   await form.getByRole('textbox', { name: 'Account server' }).fill(RELAY);

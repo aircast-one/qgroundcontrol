@@ -190,7 +190,7 @@ pub fn apply(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": "Apply takes the autostart id of the airframe chosen." });
     };
     if vehicle_count(backend) > 1 {
-        return json!({ "ok": false, "reason": "You cannot change airframe configuration while connected to multiple vehicles." });
+        return json!({ "ok": false, "reason": "You cannot change the airframe while more than one aircraft is connected." });
     }
     let vehicle = crate::guided::active_id(backend);
     let on_core = vehicle.and_then(|id| {

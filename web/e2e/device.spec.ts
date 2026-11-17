@@ -93,7 +93,7 @@ test('a device page flashes the flight controller on the device', async ({ devic
 
 test('a device page reaches a TCP vehicle on its network through the device', async ({ device }) => {
   await settingsPage(device, 'Transmission', /^Links/);
-  await device.getByRole('button', { name: 'Add link…' }).click();
+  await device.getByRole('button', { name: 'Add a link' }).click();
   await expect(device.getByRole('button', { name: /^Wi-Fi or network/ })).toBeVisible();
   await device.getByRole('button', { name: /^Network server \(TCP\)/ }).click();
   await device.getByRole('textbox', { name: 'Host address' }).fill('127.0.0.1');
@@ -105,7 +105,7 @@ test('a device page reaches a TCP vehicle on its network through the device', as
 
 test('a device page sends a UDP link to the server still typed on its form', async ({ device }) => {
   await settingsPage(device, 'Transmission', /^Links/);
-  await device.getByRole('button', { name: 'Add link…' }).click();
+  await device.getByRole('button', { name: 'Add a link' }).click();
   await device.getByRole('button', { name: /^Wi-Fi or network/ }).click();
   await device.getByRole('textbox', { name: 'Listening port' }).fill('18791');
   await device.getByRole('textbox', { name: 'Server address' }).fill('127.0.0.1:18783');

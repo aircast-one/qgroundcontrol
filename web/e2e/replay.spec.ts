@@ -15,7 +15,7 @@ const showReplayBar = async (page: Page) => {
 
 const replayLink = async (page: Page) => {
   await page.getByRole('button', { name: /How to connect/ }).click();
-  await page.getByRole('button', { name: 'Add link…' }).click();
+  await page.getByRole('button', { name: 'Add a link' }).click();
   await page.getByRole('button', { name: /^Replay a flight log/ }).click();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Choose a log file' }).click();
@@ -49,7 +49,7 @@ test('a saved replay link still plays its log after a reload', async ({ app }) =
   const links = app.getByRole('button', { name: /^Links/ });
   await expect(async () => {
     if (await links.isVisible()) await links.click();
-    await expect(app.getByRole('button', { name: 'Add link…' })).toBeVisible({ timeout: 2_000 });
+    await expect(app.getByRole('button', { name: 'Add a link' })).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
   await app.getByRole('button', { name: 'More actions for Log Replay' }).click();
   await app.getByRole('menuitem', { name: 'Connect' }).click();

@@ -313,7 +313,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
           <Text typography="titleMedium" className="block px-sheet py-2">{lostVehiclesText(lostVehicles(choices)) ?? CHOOSER_TITLE}</Text>
           <VehicleRows choices={choices} selectable={panelEnabled} onRefusal={setRefusal} onSwitched={() => setPicking(false)} />
           <ListItem
-            headlineContent={<Text typography="bodyLarge" color={md('primary')}>Connect another vehicle</Text>}
+            headlineContent={<Text typography="bodyLarge" color={md('primary')}>Connect another aircraft</Text>}
             leadingContent={<Drawable name="ic_add" style={{ color: md('primary') }} />}
             onClick={() => {
               setPicking(false);
@@ -323,7 +323,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
           {refusal !== null ? <Text typography="bodySmall" color={md('error')} className="block px-sheet py-3">{refusal}</Text> : null}
           {panelToggleShown(panelFact) ? (
             <ListItem
-              headlineContent="Enable multi-vehicle panel"
+              headlineContent="Show the multi-aircraft panel"
               trailingContent={
                 <Switch
                   checked={panelEnabled}

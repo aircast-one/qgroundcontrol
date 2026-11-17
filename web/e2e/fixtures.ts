@@ -43,7 +43,7 @@ export const chooseCameraJoystick = (page: Page) =>
 
 export const startMock = async (page: Page, options: readonly MockOption[] = [], vehicle: MockVehicle | null = null) => {
   await page.getByRole('button', { name: /How to connect/ }).click();
-  await page.getByRole('button', { name: 'Add link…' }).click();
+  await page.getByRole('button', { name: 'Add a link' }).click();
   await page.getByRole('button', { name: /^Simulated vehicle/ }).click();
   if (vehicle !== null) {
     await page.getByRole('button', { name: 'Vehicle type' }).click();

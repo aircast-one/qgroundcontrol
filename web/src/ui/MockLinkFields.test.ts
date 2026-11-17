@@ -7,7 +7,7 @@ import { settingsPages } from './SettingsScreen';
 const json = (text: string): Json => parseJson(text) ?? {};
 
 describe('MockLinkFieldsTest', () => {
-  it('mock links are started from Add link, not a settings page of their own', () => {
+  it('mock links are started from Add a link, not a settings page of their own', () => {
     const view = json('{"pages":[{"title":"Mock Link","sections":[]}]}');
     expect(settingsPages(view)).toHaveLength(0);
     expect(addableLinkTypes(json('{"linkTypeIds":["serial","udp","tcp","mock"]}'), false)).toEqual([LinkType.WebSocket, LinkType.Serial, LinkType.Mock]);

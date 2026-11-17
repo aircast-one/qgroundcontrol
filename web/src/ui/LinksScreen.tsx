@@ -1022,8 +1022,8 @@ const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void;
   const tools = toolLinkKinds(choices);
   return (
     <>
-      <OverridePageHeading title="Add link" onBack={onDismiss} />
-      <PageColumn title="Add link" backLabel="Back to links" onBack={onDismiss} className={className} padded={false}>
+      <OverridePageHeading title="Add a link" onBack={onDismiss} />
+      <PageColumn title="Add a link" backLabel="Back to links" onBack={onDismiss} className={className} padded={false}>
         <SectionHeader text="Connect over" />
         {pilotLinkKinds(choices, ports.length > 0).map(linkKind).map(row)}
         {choices.includes(LinkType.Serial) ? <SetupRow title={RC_TRANSMITTER.title} subtitle={RC_TRANSMITTER.detail} icon={linkIcon(LinkType.Serial)} onClick={() => setTransmitter(true)} /> : null}
@@ -1413,7 +1413,7 @@ export const LinksScreen = ({ className, footer = null }: { className?: string; 
         ))}
         <Button onClick={() => setAdding(true)} className="mx-5 my-2 self-start">
           <Drawable name="ic_add" />
-          <span className="ps-2">Add link…</span>
+          <span className="ps-2">Add a link</span>
         </Button>
         <AdvancedToggle open={advanced} onToggle={() => setAdvanced(!advanced)} className="self-start" />
         {advanced ? footer : null}
