@@ -22,6 +22,23 @@ const Screen = ({ onPage }: { onPage: (page: string) => void }) => {
   );
 };
 
+const Levels = () => {
+  const [level, setLevel] = useState(0);
+  useBackHandler(level >= 1, () => setLevel(0));
+  useBackHandler(level >= 2, () => setLevel(1));
+  return (
+    <div>
+      <button type="button" onClick={() => setLevel(level + 1)}>
+        deeper
+      </button>
+      <button type="button" onClick={() => setLevel(0)}>
+        close
+      </button>
+      <span>{`level ${level}`}</span>
+    </div>
+  );
+};
+
 const popped = () => new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
 
 describe('Escape and Back', () => {
@@ -50,6 +67,48 @@ describe('Escape and Back', () => {
     await waitFor(() => expect(view.getByText('home|selected')).toBeTruthy());
     expect(onPage).toHaveBeenCalledExactlyOnceWith('home');
     expect(historyDepth(history.state)).toBe(0);
+  });
+
+  it('closing a page from the app pops the history entry it pushed', async () => {
+    const view = render(<Levels />);
+    fireEvent.click(view.getByText('deeper'));
+    await waitFor(() => expect(historyDepth(history.state)).toBe(1));
+    fireEvent.click(view.getByText('close'));
+    await waitFor(() => expect(historyDepth(history.state)).toBe(0));
+    expect(view.getByText('level 0')).toBeTruthy();
+  });
+
+  it('closing two levels at once pops both entries, and Back walks out one level at a time', async () => {
+    const view = render(<Levels />);
+    fireEvent.click(view.getByText('deeper'));
+    fireEvent.click(view.getByText('deeper'));
+    await waitFor(() => expect(historyDepth(history.state)).toBe(2));
+    fireEvent.click(view.getByText('close'));
+    await waitFor(() => expect(historyDepth(history.state)).toBe(0));
+    expect(view.getByText('level 0')).toBeTruthy();
+    fireEvent.click(view.getByText('deeper'));
+    fireEvent.click(view.getByText('deeper'));
+    await waitFor(() => expect(historyDepth(history.state)).toBe(2));
+    history.back();
+    await waitFor(() => expect(view.getByText('level 1')).toBeTruthy());
+    expect(historyDepth(history.state)).toBe(1);
+    history.back();
+    await waitFor(() => expect(view.getByText('level 0')).toBeTruthy());
+    expect(historyDepth(history.state)).toBe(0);
+  });
+
+  it('Forward after Back does not reopen the page, and leaves no entry behind', async () => {
+    const view = render(<Levels />);
+    fireEvent.click(view.getByText('deeper'));
+    await waitFor(() => expect(historyDepth(history.state)).toBe(1));
+    history.back();
+    await waitFor(() => expect(view.getByText('level 0')).toBeTruthy());
+    await waitFor(() => expect(historyDepth(history.state)).toBe(0));
+    const forward = popped();
+    history.forward();
+    await forward;
+    await waitFor(() => expect(historyDepth(history.state)).toBe(0));
+    expect(view.getByText('level 0')).toBeTruthy();
   });
 
   it('reads the depth it pushed and nothing else', () => {

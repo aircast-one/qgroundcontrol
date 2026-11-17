@@ -1,5 +1,6 @@
 import { type DependencyList, useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { repeat } from './Std';
 import { OPEN_POPUP } from './Keys';
 
 export type Scope = { isActive: () => boolean };
@@ -56,7 +57,7 @@ const syncHistory = () => {
   if (trail.travelling) return;
   const wanted = enabledOf('back').length;
   if (wanted > trail.pushed) {
-    Array.from({ length: wanted - trail.pushed }, (_, at) => history.pushState({ [DEPTH]: trail.pushed + at + 1 }, ''));
+    repeat(wanted - trail.pushed, (at) => history.pushState({ [DEPTH]: trail.pushed + at + 1 }, ''));
     trail.pushed = wanted;
   } else if (wanted < trail.pushed) {
     trail.travelling = true;

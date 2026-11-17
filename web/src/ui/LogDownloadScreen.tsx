@@ -5,6 +5,7 @@ import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, isJson, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { savedFile } from '@/core/files';
 import { createDocument } from '@/kotlin/Platform';
+import { inTurn } from '@/kotlin/Std';
 import { AlertDialog, Button, Checkbox, FilledTonalButton, LinearProgressIndicator, OutlinedButton, Surface, Text, TextButton } from '@/m3';
 import { sentenceCase } from '@/map/SentenceCase';
 import { Drawable } from '@/res/Icon';
@@ -260,7 +261,7 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
     const saved = newlySaved(entries, awaited.current);
     if (saved.length === 0) return;
     awaited.current = new Set([...awaited.current].filter((id) => !saved.some((it) => it.id === id)));
-    saved.map((it) => void saveToDevice(it.savedPath));
+    void inTurn(saved, (it) => saveToDevice(it.savedPath));
   }, [entries]);
 
   const download = () => {

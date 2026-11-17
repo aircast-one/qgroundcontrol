@@ -13,6 +13,18 @@ export const isFinite = (value: number | null | undefined): value is number => t
 
 export const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+export const repeat = (times: number, action: (index: number) => void): void => {
+  const step = (index: number): void => {
+    if (index >= times) return;
+    action(index);
+    step(index + 1);
+  };
+  step(0);
+};
+
+export const inTurn = <T,>(items: readonly T[], run: (item: T) => Promise<unknown>): Promise<void> =>
+  items.reduce<Promise<void>>((done, item) => done.then(async () => void (await run(item))), Promise.resolve());
+
 const pad = (text: string, width: number, zero: boolean, left: boolean) => {
   if (text.length >= width) return text;
   if (left) return text.padEnd(width, ' ');

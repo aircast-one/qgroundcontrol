@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { coerceIn, format, same } from './Std';
+import { describe, expect, it, vi } from 'vitest';
+import { coerceIn, format, inTurn, repeat, same } from './Std';
 import { optBoolean, optDouble, optInt, optString, optText } from '@/bridge/Json';
 import { sentenceCase } from '@/map/SentenceCase';
 
@@ -45,5 +45,25 @@ describe('sentenceCase', () => {
     expect(sentenceCase('Use ArduPilot RTL Altitude')).toBe('Use ArduPilot RTL altitude');
     expect(sentenceCase('PX4 Pro Flight Stack')).toBe('PX4 Pro flight stack');
     expect(sentenceCase('Auto-Connect To Pixhawk')).toBe('Auto-connect to Pixhawk');
+  });
+});
+
+describe('effects run in turn', () => {
+  it('repeat runs an action once per index, in order, like Kotlin', () => {
+    const action = vi.fn();
+    repeat(3, action);
+    expect(action.mock.calls).toEqual([[0], [1], [2]]);
+    repeat(0, action);
+    expect(action).toHaveBeenCalledTimes(3);
+  });
+
+  it('inTurn starts each task only after the one before it settles', async () => {
+    const order = vi.fn();
+    await inTurn(['a', 'b'], async (name) => {
+      order(`start ${name}`);
+      await Promise.resolve();
+      order(`end ${name}`);
+    });
+    expect(order.mock.calls.flat()).toEqual(['start a', 'end a', 'start b', 'end b']);
   });
 });
