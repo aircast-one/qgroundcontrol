@@ -250,7 +250,7 @@ export const ParameterEditDialog = ({ name, title = name, onDismiss }: { name: s
   };
 
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label={title}>
       <div className="flex w-full flex-col gap-2 px-sheet pb-6">
         <Text typography="titleLarge">{title}</Text>
         {fact !== null ? (
@@ -300,7 +300,7 @@ export const ValueDetailsSheet = ({ fact, title = VALUE_DETAILS_TITLE, onWrite, 
     })();
   };
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label={title}>
       <LocalSettingsList.Provider value={false}>
         <LocalTypedDiscarded.Provider value={discarded}>
           <div className="flex w-full flex-col gap-2 px-sheet pb-6">

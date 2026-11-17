@@ -124,6 +124,7 @@ export const useRememberHold = (key: unknown, enabled: boolean, onTap: () => voi
       {
         role: 'button',
         tabIndex: enabled ? 0 : -1,
+        'aria-label': label,
         'aria-disabled': !enabled || undefined,
         onClick: enabled ? () => tap.current() : undefined,
         onKeyDown: (event) => {
@@ -139,7 +140,7 @@ export const useRememberHold = (key: unknown, enabled: boolean, onTap: () => voi
     {
       role: 'button',
       tabIndex: 0,
-      'aria-description': label,
+      'aria-label': label,
       style: { touchAction: 'none' },
       onClick: (event) => {
         if (event.detail === 0) tap.current();
@@ -396,7 +397,7 @@ const TileGrid = ({ tiles, onDismiss }: { tiles: readonly MenuTile[]; onDismiss:
 );
 
 export const FlyMenuSheet = ({ sections, onDismiss, footer }: { sections: readonly MenuSection[]; onDismiss: () => void; footer: ReactNode }) => (
-  <AircastSheet onDismissRequest={onDismiss}>
+  <AircastSheet onDismissRequest={onDismiss} label={FLY_MENU}>
     <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-6">
       <Text typography="titleLarge" className="px-2">
         {FLY_MENU}

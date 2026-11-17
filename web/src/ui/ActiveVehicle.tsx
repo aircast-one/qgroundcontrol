@@ -305,7 +305,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
       ) : null}
       {why ? <VehicleMessagesSheet onDismiss={() => setWhy(false)} /> : null}
       {picking ? (
-        <AircastSheet onDismissRequest={() => setPicking(false)}>
+        <AircastSheet onDismissRequest={() => setPicking(false)} label={lostVehiclesText(lostVehicles(choices)) ?? CHOOSER_TITLE}>
           <Text typography="titleMedium" className="block px-sheet py-2">{lostVehiclesText(lostVehicles(choices)) ?? CHOOSER_TITLE}</Text>
           <VehicleRows choices={choices} selectable={panelEnabled} onRefusal={setRefusal} onSwitched={() => setPicking(false)} />
           <ListItem

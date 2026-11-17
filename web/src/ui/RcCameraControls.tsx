@@ -475,7 +475,7 @@ const RcCameraControlsShown = ({
         />
       ) : null}
       {options ? (
-        <AircastSheet onDismissRequest={() => setOptions(false)}>
+        <AircastSheet onDismissRequest={() => setOptions(false)} label="Gimbal">
           <div className="flex w-full flex-col gap-2 px-4 py-2">
             <Text typography="titleLarge">Gimbal</Text>
             <div className="flex items-center gap-2">
@@ -527,7 +527,7 @@ const RcCameraControlsShown = ({
         </AircastSheet>
       ) : null}
       {gimbalSettings ? (
-        <AircastSheet onDismissRequest={() => setGimbalSettings(false)}>
+        <AircastSheet onDismissRequest={() => setGimbalSettings(false)} label="Gimbal settings">
           <GimbalSettings />
         </AircastSheet>
       ) : null}

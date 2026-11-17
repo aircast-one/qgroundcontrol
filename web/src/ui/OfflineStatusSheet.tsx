@@ -153,7 +153,7 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
   const hint = useRememberLookingHint();
   useTicker(OFFLINE_POLL_MS, [], async () => setStatus(offlineStatus(await Qgc.get(OFFLINE_STATUS_VIEW))));
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label={status?.title ?? 'Connection'}>
       {status !== null ? (
         <div className="flex w-full flex-col gap-1 pb-6">
           <Text typography="titleMedium" className="px-sheet">

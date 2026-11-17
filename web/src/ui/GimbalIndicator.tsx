@@ -142,7 +142,7 @@ export const GimbalIndicatorCell = () => {
       </button>
 
       {open ? (
-        <AircastSheet onDismissRequest={() => setOpen(false)}>
+        <AircastSheet onDismissRequest={() => setOpen(false)} label="Gimbal">
           <div className="flex w-full flex-col gap-2 px-sheet pb-6">
             <Text typography="titleMedium">Gimbal</Text>
             {state.gimbals.length > 1 ? (
@@ -193,7 +193,7 @@ export const GimbalIndicatorCell = () => {
       ) : null}
 
       {settingsOpen ? (
-        <AircastSheet onDismissRequest={() => setSettingsOpen(false)}>
+        <AircastSheet onDismissRequest={() => setSettingsOpen(false)} label="Gimbal settings">
           <GimbalSettings />
         </AircastSheet>
       ) : null}

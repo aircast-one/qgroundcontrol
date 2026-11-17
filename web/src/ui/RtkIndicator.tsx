@@ -104,7 +104,7 @@ export const RtkIndicatorCell = ({ status }: { status: RtkStatus | null }) => {
       </button>
 
       {open ? (
-        <AircastSheet onDismissRequest={() => setOpen(false)}>
+        <AircastSheet onDismissRequest={() => setOpen(false)} label="RTK GPS status">
           <div className="flex w-full flex-col gap-1.5 overflow-y-auto px-sheet pb-6">
             <Text typography="titleSmall">RTK GPS Status</Text>
             <Text typography="bodyMedium">{rtkHeadline(status)}</Text>

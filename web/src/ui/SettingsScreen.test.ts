@@ -57,6 +57,8 @@ import {
   shownSubtitle,
   tabPages,
   tabSetupComponents,
+  choiceName,
+  helpLabel,
 } from './SettingsScreen';
 
 const page = (title: string) => SettingsPageEntry({ title, showsLinks: false, showsVideoSources: false, sectionCount: 0 });
@@ -669,5 +671,18 @@ describe('FactSubtitleTest', () => {
     expect(factSubtitle(fact('s', { enums: ['Soft', 'Medium'] }))).toBe('');
     expect(factSubtitle(fact('s', { bits: ['Alt', 'Circle'] }))).toBe('');
     expect(factSubtitle(fact('s', { bool: true }))).toBe('');
+  });
+});
+
+describe('ControlNamesTest', () => {
+  it('a choice is named by the setting it changes, then its value', () => {
+    expect(choiceName(null, 'Preferred vehicle', 'No preference')).toBe('Preferred vehicle, No preference');
+    expect(choiceName('Vehicle type', null, 'ArduCopter')).toBe('Vehicle type, ArduCopter');
+    expect(choiceName(null, null, '100%')).toBe('100%');
+  });
+
+  it('each help button names the setting it explains', () => {
+    expect(helpLabel('Video fit', false)).toBe('Help: Video fit');
+    expect(helpLabel('Video fit', true)).toBe('Hide help: Video fit');
   });
 });

@@ -486,7 +486,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
         ))}
       </div>
       {allStatus ? (
-        <AircastSheet onDismissRequest={() => setAllStatus(false)}>
+        <AircastSheet onDismissRequest={() => setAllStatus(false)} label="Status">
           <LocalCompactStatus.Provider value={false}>
             <div className="flex flex-col items-start gap-[14px] px-sheet py-2">
               <Text typography="titleLarge">Status</Text>
@@ -557,17 +557,17 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
         />
       ) : null}
       {rtkSettings ? (
-        <AircastSheet onDismissRequest={() => setRtkSettings(false)}>
+        <AircastSheet onDismissRequest={() => setRtkSettings(false)} label="RTK settings">
           <RtkSettingsSheetContent status={rtk} />
         </AircastSheet>
       ) : null}
       {batterySettings ? (
-        <AircastSheet onDismissRequest={() => setBatterySettings(false)}>
+        <AircastSheet onDismissRequest={() => setBatterySettings(false)} label="Battery settings">
           <BatterySettingsContent />
         </AircastSheet>
       ) : null}
       {batteryDisplay ? (
-        <AircastSheet onDismissRequest={() => setBatteryDisplay(false)}>
+        <AircastSheet onDismissRequest={() => setBatteryDisplay(false)} label="Battery display">
           <BatteryDisplaySettings />
         </AircastSheet>
       ) : null}
@@ -724,7 +724,7 @@ const InstrumentSheet = ({ title, rows, headline = null, silence = null, action 
   const stale = silence !== null;
   const muted = md('onSurfaceVariant');
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label={title}>
       <Text typography="titleMedium" className="block px-sheet py-2">
         {title}
       </Text>

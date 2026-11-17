@@ -24,8 +24,8 @@ export const Tab = ({ selected, onClick, text, icon, enabled = true }: { selecte
   </button>
 );
 
-export const SingleChoiceSegmentedButtonRow = ({ children, className }: { children: ReactNode; className?: string }) => (
-  <div role="radiogroup" className={`inline-flex ${className ?? ''}`}>
+export const SingleChoiceSegmentedButtonRow = ({ children, className, label }: { children: ReactNode; className?: string; label?: string }) => (
+  <div role="radiogroup" aria-label={label} className={`inline-flex ${className ?? ''}`}>
     {children}
   </div>
 );

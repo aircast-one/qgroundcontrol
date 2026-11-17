@@ -78,7 +78,7 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
   const normal = reading === null ? 0 : reading.sensors.filter((it) => it.state === SENSOR_HEALTHY_STATE).length;
 
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label="Vehicle status">
       <div className="flex w-full flex-col gap-1 pb-4">
         <StatusSummary />
         <button type="button" onClick={onMessages} className="flex w-full items-center gap-3 px-sheet py-3 text-left">

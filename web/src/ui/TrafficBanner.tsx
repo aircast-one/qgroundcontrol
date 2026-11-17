@@ -70,7 +70,7 @@ export const TrafficBanner = ({ className }: { className?: string }) => {
 const TrafficSheet = ({ reading, onDismiss }: { reading: TrafficReading; onDismiss: () => void }) => {
   const urgent = md('error');
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label="Traffic">
       <Text typography="titleSmall" className="block px-sheet">
         {trafficSummary(reading)}
       </Text>

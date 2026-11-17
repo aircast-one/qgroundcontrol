@@ -792,6 +792,8 @@ export const shownSubtitle = (subtitle: string, detail: string, helpBehind: bool
   return { text, hasHelp };
 };
 
+export const helpLabel = (title: string, open: boolean): string => `${open ? 'Hide help' : 'Help'}: ${title}`;
+
 const FactTitle = ({
   title,
   color,
@@ -815,7 +817,7 @@ const FactTitle = ({
       </Text>
       {helpOpen !== null ? (
         <span className="flex shrink-0" onClick={(event) => event.stopPropagation()}>
-          <IconButton onClick={onHelp} label={helpOpen ? 'Hide help' : 'Help'}>
+          <IconButton onClick={onHelp} label={helpLabel(title, helpOpen)}>
             <Drawable name="ic_help" size={16} style={{ color: helpOpen ? md('primary') : md('onSurfaceVariant') }} />
           </IconButton>
         </span>
@@ -992,7 +994,7 @@ export const FactRow = ({
               ) : null}
             </div>
             {fact.isEnum && !fact.valueIsOffTheEnumList ? (
-              <EnumField fact={fact} style={{ width: CHOICE_VALUE_WIDTH }} write={write} />
+              <EnumField fact={fact} title={title} style={{ width: CHOICE_VALUE_WIDTH }} write={write} />
             ) : (
               <FactTextField fact={fact} onWrite={onWrite} onRejected={onRejected} onTheRight />
             )}
@@ -1044,7 +1046,7 @@ export const FactRow = ({
             </Text>
           ) : null}
         </div>
-        {segmented ? <Segments fact={fact} write={write} className="@max-[560px]:hidden" /> : null}
+        {segmented ? <Segments fact={fact} title={title} write={write} className="@max-[560px]:hidden" /> : null}
         {!segmented ? (
           <div className="flex max-w-[190px] items-center justify-end">
             {editOnDesktop(fact) ? (
@@ -1076,7 +1078,7 @@ export const FactRow = ({
           </div>
         ) : null}
       </div>
-      {segmented ? <Segments fact={fact} write={write} className="flex w-full px-4 pb-2.5 @min-[560px]:hidden" /> : null}
+      {segmented ? <Segments fact={fact} title={title} write={write} className="flex w-full px-4 pb-2.5 @min-[560px]:hidden" /> : null}
       {refusal !== null ? (
         <Text typography="bodySmall" color={md('error')} className="block pb-2 pl-4">
           {refusal}
@@ -1087,8 +1089,8 @@ export const FactRow = ({
   return segmented ? <div className="@container">{rows}</div> : rows;
 };
 
-const Segments = ({ fact, write, className }: { fact: Fact; write: (block: () => Promise<boolean>) => void; className?: string }) => (
-  <SingleChoiceSegmentedButtonRow className={className}>
+const Segments = ({ fact, title, write, className }: { fact: Fact; title: string; write: (block: () => Promise<boolean>) => void; className?: string }) => (
+  <SingleChoiceSegmentedButtonRow className={className} label={title}>
     {fact.enumStrings.map((option, index) => {
       const raw = fact.enumValues[index];
       const boolOption = fact.isBool && (raw === 'true' || raw === 'false') ? raw === 'true' : null;
@@ -1192,7 +1194,7 @@ const portExtras = (webSerial: boolean, secure: boolean): readonly string[] => (
 
 export const choiceOptions = (fact: Fact, webSerial: boolean, secure = true): readonly string[] => [...fact.enumStrings.map(sentenceCase), ...(fact.portChoice ? portExtras(webSerial, secure) : [])];
 
-const EnumField = ({ fact, style, write }: { fact: Fact; style: CSSProperties; write: (block: () => Promise<boolean>) => void }) => {
+const EnumField = ({ fact, title, style, write }: { fact: Fact; title: string; style: CSSProperties; write: (block: () => Promise<boolean>) => void }) => {
   const notice = useContext(LocalChangeNotice);
   const options = choiceOptions(fact, webSerialAvailable(), window.isSecureContext);
   const choose = (index: number): Promise<boolean> => {
@@ -1203,6 +1205,7 @@ const EnumField = ({ fact, style, write }: { fact: Fact; style: CSSProperties; w
   return (
     <ChoiceField
       label={null}
+      name={title}
       value={shownEnumLabel(fact)}
       options={options}
       style={style}
@@ -1242,8 +1245,11 @@ export const rowChoiceLabel = (label: string): string => {
 
 const DISABLED_VALUE_ALPHA = 0.5;
 
+export const choiceName = (label: string | null, name: string | null, value: string): string => [label ?? name, value].filter((it) => it !== null && notBlank(it)).join(', ');
+
 export const ChoiceField = ({
   label,
+  name = null,
   value,
   options,
   className,
@@ -1253,6 +1259,7 @@ export const ChoiceField = ({
   onPick,
 }: {
   label: string | null;
+  name?: string | null;
   value: string;
   options: readonly string[];
   className?: string;
@@ -1285,7 +1292,7 @@ export const ChoiceField = ({
           />
         </div>
       )}
-      <button type="button" aria-label={label === null ? value : `${label}, ${value}`} aria-haspopup="menu" disabled={!enabled} className="absolute inset-0 cursor-pointer disabled:cursor-default" onClick={() => setExpanded(true)} />
+      <button type="button" aria-label={choiceName(label, name, value)} aria-haspopup="menu" disabled={!enabled} className="absolute inset-0 cursor-pointer disabled:cursor-default" onClick={() => setExpanded(true)} />
       {plain ? (
         <SafeChoiceMenu expanded={expanded} options={options} onDismiss={() => setExpanded(false)} onPick={onPick} />
       ) : (

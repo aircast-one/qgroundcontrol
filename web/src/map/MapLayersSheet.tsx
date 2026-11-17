@@ -30,7 +30,7 @@ export const MapLayersSheet = ({ onDismiss }: { onDismiss: () => void }) => {
     setListed((held: MapTypes | null) => (held === null ? null : { ...held, current: type }));
   };
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label="Map layers">
       <div className="flex flex-col gap-3 px-6 pb-8">
         <div className="flex flex-col">
           <Text typography="headlineSmall">Map layers</Text>

@@ -1582,6 +1582,7 @@ export const PlanMapContent = ({
 
       {listOpen.value ? (
         <AircastSheet
+          label="Plan items"
           onDismissRequest={() => {
             listOpen.value = false;
           }}

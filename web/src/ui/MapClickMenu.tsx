@@ -199,7 +199,7 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   const warn = preview?.pastReturnPoint === true;
 
   return (
-    <AircastSheet onDismissRequest={onDismiss} anchor={anchor}>
+    <AircastSheet onDismissRequest={onDismiss} label="Map actions" anchor={anchor}>
       <div className="flex w-full flex-col pb-6 desktop:pb-1">
         {pending === null ? (
           actions.map((action, index) => (
@@ -352,7 +352,7 @@ export const setWaypointMessage = (sequence: number): string => `Adjust current 
 export const SetWaypointSheet = ({ sequence, onDismiss }: { sequence: number; onDismiss: () => void }) => {
   const [refusal, setRefusal] = useKeyedState<string | null>([sequence], () => null);
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label="Set waypoint">
       <div className="flex w-full flex-col gap-3 px-sheet pb-6">
         <Text typography="titleLarge">Set waypoint</Text>
         <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
@@ -484,7 +484,7 @@ export const RoiSheet = ({ at, onDismiss }: { at: TrackPoint; onDismiss: () => v
           }}
         />
       ) : null}
-      <AircastSheet onDismissRequest={onDismiss}>
+      <AircastSheet onDismissRequest={onDismiss} label="ROI">
         <div className="flex w-full flex-col gap-3 px-sheet pb-6">
           <Text typography="titleMedium">ROI</Text>
           <div className="flex gap-2">

@@ -93,7 +93,7 @@ export const AircastLinkCell = () => {
       </button>
 
       {open ? (
-        <AircastSheet onDismissRequest={() => setOpen(false)}>
+        <AircastSheet onDismissRequest={() => setOpen(false)} label="Aircraft link">
           <div className="flex w-full flex-col gap-1.5 px-sheet pb-6">
             <Text typography="titleSmall">Aircraft link</Text>
             {(

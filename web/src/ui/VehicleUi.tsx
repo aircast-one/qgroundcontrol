@@ -1049,7 +1049,7 @@ export const FlightModeMenu = ({ expanded, onDismiss, onStatus }: { expanded: bo
   return (
     <>
       {settings ? (
-        <AircastSheet onDismissRequest={() => setSettings(false)}>
+        <AircastSheet onDismissRequest={() => setSettings(false)} label="Flight mode settings">
           <ParameterForm page={FLIGHT_MODE_SETTINGS_PAGE} />
           {advanced && flightModesPage ? (
             <TextButton
@@ -1208,7 +1208,7 @@ const InstrumentSheet = ({
     if (scope.isActive()) setGroups([...(own !== null ? [own] : []), ...instrumentGroups(catalogue)]);
   });
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label={title}>
       <Text typography="titleLarge" className="block px-4">{title}</Text>
       <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-4 pb-2">{instrumentChoiceNote(chosen)}</Text>
       {groups.length === 0 ? (

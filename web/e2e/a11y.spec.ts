@@ -1,12 +1,18 @@
 import { type Locator, type Page } from '@playwright/test';
-import { connectMock, expect, openAircraftSetup, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
+import { connectMock, expect, openAircraftSetup, openApp, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
-const UNNAMED_CONTROL = /^\s*- (textbox|slider|switch|checkbox|combobox|spinbutton|radio)(:|\s*\[|$)/;
+const UNNAMED_CONTROL = /^\s*- (textbox|slider|switch|checkbox|combobox|spinbutton|radio|radiogroup|dialog)(:|\s*\[|$)/;
 
 const unnamedControls = async (page: Page): Promise<readonly string[]> =>
   (await page.locator('body').ariaSnapshot()).split('\n').filter((line) => UNNAMED_CONTROL.test(line)).map((line) => line.trim());
+
+const valueOnlyNames = async (page: Page): Promise<readonly string[]> => {
+  const choices = await page.locator('button[aria-haspopup="menu"]:visible').evaluateAll((buttons) => buttons.map((it) => it.getAttribute('aria-label') ?? ''));
+  const helps = await page.getByRole('button', { name: /^(Help|Hide help)$/ }).count();
+  return [...choices.filter((name) => !name.includes(', ')), ...(helps > 0 ? [`${helps} help buttons named only "Help"`] : [])];
+};
 
 test('every form control on Fly, Plan and the settings tabs has an accessible name', async ({ vehicle }) => {
   expect(await unnamedControls(vehicle)).toEqual([]);
@@ -20,6 +26,7 @@ test('every form control on Fly, Plan and the settings tabs has an accessible na
       done.then(async () => {
         await vehicle.getByRole('tablist').getByRole('tab', { name: tab }).click();
         expect(await unnamedControls(vehicle), tab).toEqual([]);
+        expect(await valueOnlyNames(vehicle), tab).toEqual([]);
       }),
     Promise.resolve(),
   );
@@ -85,4 +92,19 @@ test('icon buttons and status-strip glyphs say what they are on hover', async ({
   await tooltipOn(vehicle, vehicle.getByRole('button', { name: /RC$/ }).first(), /RC$/);
   await openMenu(vehicle, 'Settings');
   await tooltipOn(vehicle, vehicle.getByRole('button', { name: 'Close settings' }).last(), 'Close settings');
+});
+
+test('the Fly menu sheet and the take-off press are named', async ({ vehicle }) => {
+  await expect(vehicle.getByRole('button', { name: /^Slide to take off/ })).toHaveAttribute('aria-label', /^Slide to take off/);
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
+  await expect(vehicle.getByRole('dialog', { name: 'Menu' })).toBeVisible();
+  expect(await unnamedControls(vehicle)).toEqual([]);
+});
+
+test('the welcome names each choice by its question', async ({ page }) => {
+  await openApp(page, { firstRun: false });
+  const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
+  await expect(welcome.getByRole('button', { name: /^Preferred firmware, / })).toBeVisible();
+  await expect(welcome.getByRole('button', { name: /^Preferred vehicle, / })).toBeVisible();
+  expect(await valueOnlyNames(page)).toEqual([]);
 });

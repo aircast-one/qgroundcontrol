@@ -582,7 +582,7 @@ const CameraDetailsSheet = ({
   onSelect: (index: number) => void;
   onDismiss: () => void;
 }) => (
-  <AircastSheet onDismissRequest={onDismiss}>
+  <AircastSheet onDismissRequest={onDismiss} label={camera.title.trim() === '' ? 'Camera' : camera.title}>
     <Text typography="titleLarge" className="px-4">
       {camera.title.trim() === '' ? 'Camera' : camera.title}
     </Text>

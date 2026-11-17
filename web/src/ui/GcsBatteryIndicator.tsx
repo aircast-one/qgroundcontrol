@@ -93,7 +93,7 @@ export const GcsBatteryCell = ({ reading }: { reading: GcsBatteryReading | null 
       </button>
 
       {open ? (
-        <AircastSheet onDismissRequest={() => setOpen(false)}>
+        <AircastSheet onDismissRequest={() => setOpen(false)} label={reading.heading}>
           <div className="flex w-full flex-col pb-6">
             <Text typography="titleMedium" className="px-sheet py-2">
               {reading.heading}

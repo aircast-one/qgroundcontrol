@@ -198,7 +198,7 @@ const VehicleMessageLog = ({ messages, checks, blocker, onDismiss }: { messages:
   const [editing, setEditing] = useState<string | null>(null);
 
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label={blocking.length === 0 ? 'Messages' : 'Why it will not arm'}>
       {editing !== null ? <ParameterEditDialog name={editing} title={EDIT_PARAMETER_TITLE} onDismiss={() => setEditing(null)} /> : null}
       <div className="flex flex-col px-sheet pb-6">
         <Text typography="headlineSmall">{blocking.length === 0 ? 'Messages' : 'Why it will not arm'}</Text>

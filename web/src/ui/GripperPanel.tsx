@@ -119,7 +119,7 @@ export const GripperPanel = ({ offers, payload, onDismiss }: { offers: readonly 
   const [refusal, setRefusal] = useState<string | null>(null);
   const status = refusal === null ? payloadStatus(stateJson, now) : { text: refusal, warning: true };
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
+    <AircastSheet onDismissRequest={onDismiss} label="Payload">
       <div className="flex w-full flex-col gap-3 px-sheet pb-6">
         <Problems problems={payload.problems} onRefused={setRefusal} />
         <Text typography="bodyMedium" color={status?.warning === true ? md('error') : md('onSurfaceVariant')}>

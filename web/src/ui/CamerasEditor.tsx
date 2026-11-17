@@ -274,7 +274,7 @@ const CameraSheet = ({
   onAddFixed: (kind: CameraKind) => void;
   onRemove: (() => void) | null;
 }) => (
-  <AircastSheet onDismissRequest={onDismiss}>
+  <AircastSheet onDismissRequest={onDismiss} label={draft.stored === null ? 'Add video source' : 'Video source'}>
     <div className="flex flex-col overflow-y-auto" style={{ paddingInline: SHEET_PAD, paddingBottom: SHEET_PAD, gap: SHEET_GAP }}>
       {draft.choosingKind ? (
         <KindChooser
