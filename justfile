@@ -13,7 +13,7 @@ build_type := env_var_or_default("BUILD_TYPE", "Debug")
 build_dir := "build"
 # Use all cores by default; override with JOBS=N.
 jobs := env_var_or_default("JOBS", `python3 -c "import os; print(os.cpu_count() or 4)" 2>/dev/null || echo 4`)
-aircast_tokens := "369042d6be25bc14057925bff414404963fcec48"
+aircast_tokens := "8c85a9aca6f88520fb3b79db15f7bdd84a0b594e"
 
 # Default: show available commands
 default:
