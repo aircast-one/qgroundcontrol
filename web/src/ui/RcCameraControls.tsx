@@ -4,7 +4,7 @@ import { Slider as BaseSlider } from '@base-ui/react';
 import { type Json, optBoolean, optDouble } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { VideoCommands } from '@/bridge/BridgeCommands';
-import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
+import { settingControl, useQgcBool, useQgcDerived, useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { coerceIn, delay } from '@/kotlin/Std';
 import { useValue } from '@/kotlin/State';
@@ -17,13 +17,14 @@ import { activeVehicleId } from '@/ui/ActiveVehicle';
 import { BesidePopup, VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
 import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
-import { type GimbalChoice, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal, onScreenGimbal, reportGimbalRefusal } from '@/ui/GimbalIndicator';
+import { type GimbalChoice, GimbalModeSwitch, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal, onScreenGimbal, reportGimbalRefusal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
 import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
 import { RecenterTarget, TiltReadout, recenter, recenterTarget, tiltText } from '@/ui/RecenterCamera';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM, SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
 import { type Offset } from '@/ui/FlyShell';
+import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 import { CENTRED, ThumbPad } from '@/ui/VirtualJoystick';
 
 const FLY_VIEW_SETTINGS = 'settings.flyViewSettings';
@@ -388,6 +389,10 @@ export const GimbalSwitch = ({ choices, onPick }: { choices: readonly GimbalChoi
 
 const GIMBAL_SWITCH_HEIGHT = 32;
 
+const pictureDecoding = (json: Json | null): boolean => videoReading(json)?.decoding === true;
+
+export const railShowsGimbalMode = (gimbal: boolean, picturePlaying: boolean): boolean => gimbal && !picturePlaying;
+
 export const RcCameraControls = ({ className, tiltSlider = true }: { className?: string; tiltSlider?: boolean }) => {
   const channels = rcCameraChannels(
     useChannelSetting('gimbalTiltChannel'),
@@ -465,6 +470,7 @@ const RcCameraControlsShown = ({
 }) => {
   const gimbal: GimbalIndicatorState | null = useMemo(() => gimbalIndicator(gimbalJson), [gimbalJson]);
   const sticks = onScreenGimbal(gimbalJson)?.stick === true;
+  const picturePlaying = useQgcDerived(VIDEO_VIEW, pictureDecoding);
   const [gimbalRefused, setGimbalRefused] = useState<string | null>(null);
   const [options, setOptions] = useState(false);
   const [gimbalSettings, setGimbalSettings] = useState(false);
@@ -485,6 +491,7 @@ const RcCameraControlsShown = ({
     <div className={`flex min-h-0 flex-col items-center gap-1 p-1 ${className ?? ''}`}>
       {channels.light > 0 || gimbal !== null || rcGimbal ? <OpenOnRequest name={GIMBAL_SHEET} open={() => setOptions(true)} /> : null}
       {gimbal !== null && gimbal.gimbals.length > 1 ? <GimbalSwitch choices={gimbal.gimbals} onPick={(choice) => gimbalCall('gimbal.select', choice.managerCompid, choice.deviceId)} /> : null}
+      {railShowsGimbalMode(gimbal !== null, picturePlaying) ? <GimbalModeSwitch /> : null}
       <div className="flex min-h-0 shrink gap-1">
         {syntheticAims ? (
           <AimSliders

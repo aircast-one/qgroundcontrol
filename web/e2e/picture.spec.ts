@@ -88,3 +88,16 @@ test('a click on the picture teaches the right-click, and a right-click on the s
   await expect(app.getByText(/^That is above the horizon, or farther than /)).toBeVisible({ timeout: 30_000 });
   await expect(app.getByRole('button', { name: 'Go to location' })).toHaveCount(0);
 });
+
+test('with a gimbal and no camera picture, the camera rail switches the gimbal mode', async ({ app }) => {
+  await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
+  await flyNow(app);
+  const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
+  await expect(mode).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByRole('img', { name: 'Camera joystick' })).toHaveCount(0);
+  await expect(async () => {
+    if (!(await mode.getAttribute('aria-label'))?.endsWith('Joystick')) await mode.click();
+    await expect(mode).toHaveAccessibleName('Video gimbal mode, Joystick', { timeout: 1_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(app.getByRole('img', { name: 'Camera joystick' })).toBeVisible();
+});
