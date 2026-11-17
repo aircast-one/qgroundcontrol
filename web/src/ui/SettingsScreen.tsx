@@ -144,10 +144,14 @@ export const SettingsGroup = {
 } as const satisfies Record<string, SettingsGroup>;
 export const SettingsGroupEntries: readonly SettingsGroup[] = [SettingsGroup.General, SettingsGroup.Safety, SettingsGroup.Control, SettingsGroup.Camera, SettingsGroup.Transmission, SettingsGroup.Device];
 
+export const tabPage = (group: SettingsGroup): string => `${group.name} tab`;
+
 export type PageLook = { group: SettingsGroup; icon: DrawableName; inline: boolean; tabHome: boolean };
 export const PageLook = (fields: { group: SettingsGroup; icon: DrawableName; inline?: boolean; tabHome?: boolean }): PageLook => ({ inline: false, tabHome: false, ...fields });
 
 export const PAGE_LOOKS: ReadonlyMap<string, PageLook> = new Map<string, PageLook>([
+  [tabPage(SettingsGroup.Safety), PageLook({ group: SettingsGroup.Safety, icon: 'ic_shield', inline: true })],
+  [tabPage(SettingsGroup.Control), PageLook({ group: SettingsGroup.Control, icon: 'ic_flight', inline: true })],
   ['ADSB Server', PageLook({ group: SettingsGroup.Safety, icon: 'ic_navigation', inline: true })],
   ['Remote ID', PageLook({ group: SettingsGroup.Safety, icon: 'ic_shield' })],
   ['Fly View', PageLook({ group: SettingsGroup.Control, icon: 'ic_flight', inline: true })],
@@ -312,8 +316,12 @@ export const AIRCRAFT_SETUP = 'Aircraft setup';
 
 export const TAB_SETUP_TITLES: ReadonlyMap<string, string> = new Map([[SAFETY_SETUP_PAGE, 'More failsafe settings']]);
 
+export const APM_SAFETY_SETUP_PAGES: readonly string[] = ['Flight Safety', 'Failsafes'];
+
 export const tabSetupPages = (group: SettingsGroup): readonly string[] =>
-  group === SettingsGroup.Safety ? [SAFETY_SETUP_PAGE] : group === SettingsGroup.Control ? [FLIGHT_MODES_PAGE] : [];
+  group === SettingsGroup.Safety ? [SAFETY_SETUP_PAGE, ...APM_SAFETY_SETUP_PAGES] : group === SettingsGroup.Control ? [FLIGHT_MODES_PAGE] : [];
+
+export const IN_AIRCRAFT_SETUP = `In ${AIRCRAFT_SETUP}`;
 
 export const tabSetupComponents = (group: SettingsGroup, components: readonly SetupComponent[]): readonly SetupComponent[] =>
   tabSetupPages(group).flatMap((name) => {
@@ -334,6 +342,7 @@ const TabSetupRows = ({ group, onOpenSetup }: { group: SettingsGroup; onOpenSetu
           key={component.name}
           title={TAB_SETUP_TITLES.get(component.name) ?? sentenceCase(component.name)}
           status=""
+          subtitle={IN_AIRCRAFT_SETUP}
           icon={setupIcon(component.known, component.className)}
           onClick={() => onOpenSetup(component.name)}
         />

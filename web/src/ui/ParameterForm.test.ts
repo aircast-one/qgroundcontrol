@@ -6,7 +6,7 @@ import { parameterPath } from '@/ui/ParametersScreen';
 import { bitmaskEntryEnabled, bitmaskToggled, factConstraintNote, factKeyboard, factRebootNote, inertNote, isAddress, ratioText, ratioValue, validationMessage } from '@/ui/SettingsScreen';
 import { sectionImageAsset } from '@/ui/SetupRow';
 import { setupGroups, setupPage, setupPagePath } from '@/ui/SetupView';
-import { KNOWN_CONTROL_KINDS, ParameterRows, bitmaskRaw, bitmaskSummary, controlIsUnderstood, factFromControl, factFromParameter, readOnlyNote, sectionMatches, sliderSnapped, sliderTitle, sliderValue } from './ParameterForm';
+import { KNOWN_CONTROL_KINDS, ParameterRows, bitmaskRaw, bitmaskSummary, controlIsUnderstood, factFromControl, factFromParameter, readOnlyNote, sectionMatches, sliderSnapped, sliderTitle, sliderValue, withPilotLinks } from './ParameterForm';
 
 const control = (extra: Json = {}): Json => ({
   kind: 'control',
@@ -407,5 +407,21 @@ describe('SectionMatchesTest', () => {
     expect(sectionMatches(gcs, 'HEARTBEAT')).toBe(true);
     expect(sectionMatches(gcs, '')).toBe(true);
     expect(sectionMatches(gcs, 'battery')).toBe(false);
+  });
+});
+
+describe('a setup page links to the setting Settings already owns instead of editing it twice', () => {
+  const fact = (name: string, path: string) => makeFact({ path, name, description: name, units: '', valueString: '0', value: 0, enumStrings: [], enumIndex: -1, isBool: false, isString: false, readOnly: false });
+
+  it('keeps the first control of each owned parameter as its link and drops the rest', () => {
+    const rows = [
+      ParameterRows({ title: 'Return to launch', note: '', facts: [fact('RTL_ALT_M', 'choice'), fact('RTL_ALT_M', 'value'), fact('RTL_LOIT_TIME', 'loiter')] }),
+      ParameterRows({ title: 'Only owned', note: '', facts: [fact('RTL_ALT_M', 'again')] }),
+      ParameterRows({ title: 'Labels only', note: '', facts: [] }),
+    ];
+    expect(withPilotLinks(rows).map((it) => [it.title, it.facts.map((each) => each.path)])).toEqual([
+      ['Return to launch', ['choice', 'loiter']],
+      ['Labels only', []],
+    ]);
   });
 });

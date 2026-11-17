@@ -4,7 +4,7 @@ import { calibrationState } from '@/ui/CalibrationView';
 import { SENSORS } from '@/ui/SetupPages';
 import { SetupComponent, splitDesktopOnly } from '@/ui/SetupScreen';
 import { SettingsGroup } from '@/ui/SettingsScreen';
-import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, fenceRestore, fenceTurnOn, firstReported, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
+import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, firstReported, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
 
 const parameter = (name: string, description = 'Engineer description') =>
   makeFact({
@@ -132,5 +132,14 @@ describe('a limit the geofence does not enforce reads as off', () => {
       ['FENCE_ENABLE', 1],
     ]);
     expect(fenceTurnOn(FENCE_CIRCLE, reading({ GF_ACTION: 0 }))).toEqual([['GF_ACTION', 2]]);
+  });
+});
+
+describe('each pilot setting has one home tab', () => {
+  it('names the tab that owns a parameter, and nothing for one it does not', () => {
+    expect(pilotOwner('FENCE_ALT_MAX')?.group).toBe(SettingsGroup.Safety);
+    expect(pilotOwner('FENCE_ALT_MAX')?.setting.label).toBe('Max altitude');
+    expect(pilotOwner('LOIT_SPEED_MS')?.group).toBe(SettingsGroup.Control);
+    expect(pilotOwner('RTL_LOIT_TIME')).toBeNull();
   });
 });

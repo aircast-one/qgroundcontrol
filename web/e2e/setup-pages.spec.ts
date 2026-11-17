@@ -43,3 +43,14 @@ test('ArduPilot compass calibration runs to its reboot reminder', async ({ app }
   await app.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
   await expect(app.getByText(/YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION/)).toBeVisible({ timeout: 60_000 });
 });
+
+test('ArduPilot flight safety links the return altitude to Settings › Safety instead of a second editor', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Flight safety / }).click();
+  const link = app.getByRole('button', { name: /^Return-to-home altitude In Settings › Safety/ });
+  await expect(link).toContainText('15 m');
+  await expect(app.getByRole('textbox', { name: /RTL altitude|Return altitude/i })).toHaveCount(0);
+  await link.click();
+  await expect(app.getByRole('slider', { name: 'Return-to-home altitude' })).toBeVisible();
+});

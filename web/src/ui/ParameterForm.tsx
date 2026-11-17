@@ -10,6 +10,7 @@ import { sentenceCase } from '@/map/SentenceCase';
 import { aircast, md, withAlpha } from '@/theme/Colors';
 import { DIALOG_CONTROL, EscCalibrationDialog } from '@/ui/EscCalibration';
 import { parameterPath } from '@/ui/ParametersScreen';
+import { PilotLinkRow, pilotOwner } from '@/ui/PilotSettings';
 import { type PowerCalculator, PowerCalcDialog, powerCalculator } from '@/ui/PowerCalc';
 import { FactRow } from '@/ui/SettingsScreen';
 import { EmptyState, SectionHeader } from '@/ui/SetupRow';
@@ -121,6 +122,12 @@ export const readPage = async (page: string): Promise<ParameterRows[]> =>
 
 export const SETUP_PAGE_OPENED = 'setup.pageOpened';
 
+export const withPilotLinks = (rows: readonly ParameterRows[]): ParameterRows[] => {
+  const owned = rows.flatMap((it) => it.facts).filter((fact) => pilotOwner(fact.name) !== null);
+  const linked = new Set(owned.filter((fact, at) => owned.findIndex((it) => it.name === fact.name) === at).map((fact) => fact.path));
+  return rows.map((it) => ({ ...it, facts: it.facts.filter((fact) => pilotOwner(fact.name) === null || linked.has(fact.path)) })).filter((it, at) => it.facts.length > 0 || rows[at]?.facts.length === 0);
+};
+
 export const EMPTY_PAGE_TEXTS: ReadonlyMap<string, string> = new Map([['Gimbal', 'Gimbal settings are not available for this firmware version.']]);
 
 export const ParameterForm = ({ page, className, highlighted = new Set(), section = null }: { page: string; className?: string; highlighted?: ReadonlySet<string>; section?: string | null }) => {
@@ -136,7 +143,7 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
   useLaunchedEffect([page, section, reloads, ready], async (scope) => {
     if (!ready) return;
     if (reloads === 0) await Qgc.invoke(SETUP_PAGE_OPENED, page);
-    const read = (await readPage(page)).filter((it) => section === null || it.title === section);
+    const read = withPilotLinks((await readPage(page)).filter((it) => section === null || it.title === section));
     if (!scope.isActive()) return;
     setRows(read);
     setLoaded(true);
@@ -147,6 +154,8 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
   if (rows.length === 0) return <EmptyState icon="ic_tune" title="Nothing to set here" text={EMPTY_PAGE_TEXTS.get(page) ?? 'This vehicle exposes none of these parameters.'} className={className} />;
 
   const factControl = (rowsSection: ParameterRows, fact: Fact): ReactNode => {
+    const owner = pilotOwner(fact.name);
+    if (owner !== null) return <PilotLinkRow name={fact.name} owner={owner} />;
     if (fact.controlKind === DIALOG_CONTROL) {
       return (
         <OutlinedButton enabled={fact.enabled} onClick={() => setCalibratingEscs(true)} className="mx-5 my-2 self-start">

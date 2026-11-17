@@ -132,6 +132,7 @@ describe('TabSetupRowsTest', () => {
     expect(tabSetupComponents(SettingsGroup.Control, reported).map((it) => it.name)).toEqual([FLIGHT_MODES_PAGE]);
     expect(tabSetupComponents(SettingsGroup.Camera, reported)).toEqual([]);
     expect(tabSetupComponents(SettingsGroup.Safety, [])).toEqual([]);
+    expect(tabSetupComponents(SettingsGroup.Safety, [component('Failsafes'), component('Flight Safety'), component('Power')]).map((it) => it.name)).toEqual(['Flight Safety', 'Failsafes']);
   });
 
   it('search finds setup pages by name and nothing for a blank query', () => {

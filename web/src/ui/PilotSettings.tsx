@@ -12,8 +12,8 @@ import { parameterFact, parameterPath } from '@/ui/ParametersScreen';
 import { factNumber } from '@/ui/Px4TuningScreen';
 import { SectionHeader, SettingsCard, SetupRow } from '@/ui/SetupRow';
 import { SETUP, parametersReady } from '@/ui/SetupView';
-import { CONNECTIONS_PAGE, FactRow, SettingsGroup, SettingsGroupEntries, sentenceCase } from '@/ui/SettingsScreen';
-import { LocalChangeNotice, VALUE_OFF } from '@/ui/ValueRow';
+import { CONNECTIONS_PAGE, FactRow, SettingsGroup, SettingsGroupEntries, sentenceCase, tabPage } from '@/ui/SettingsScreen';
+import { LocalChangeNotice, VALUE_OFF, valueText } from '@/ui/ValueRow';
 
 export type PilotSetting = { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited: string | null; quantity: string | null; fenceBit: number | null };
 export const PilotSetting = (fields: { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited?: string | null; quantity?: string | null; fenceBit?: number | null }): PilotSetting => ({
@@ -91,6 +91,11 @@ export const pilotSettings = (group: SettingsGroup): readonly PilotSetting[] => 
   }
   return [];
 };
+
+export type PilotOwner = { setting: PilotSetting; group: SettingsGroup };
+
+export const pilotOwner = (name: string): PilotOwner | null =>
+  SettingsGroupEntries.flatMap((group) => pilotSettings(group).map((setting) => ({ setting, group }))).find(({ setting }) => setting.parameters.includes(name)) ?? null;
 
 export const pilotSearchHits = (query: string): readonly PilotSetting[] => {
   const wanted = query.trim().toLowerCase();
@@ -321,6 +326,20 @@ const PilotValueRow = ({ shown, setting }: { shown: Fact; setting: PilotSetting 
       subtitle={setting.hint}
       warning={setting.whenUnlimited !== null && factNumber(fact) === 0 ? setting.whenUnlimited : null}
       onWrite={() => setRevision((it) => it + 1)}
+    />
+  );
+};
+
+export const PilotLinkRow = ({ name, owner }: { name: string; owner: PilotOwner }) => {
+  const navigation = useContext(LocalAppNavigation);
+  const live = useQgcPath(parameterPath(name, owner.setting.quantity));
+  const fact = useProduceState<Fact | null>(null, [name, live], async (set) => set(await parameterFact(name, owner.setting.quantity)));
+  return (
+    <SetupRow
+      title={owner.setting.label}
+      subtitle={`In Settings › ${owner.group.title}`}
+      status={fact === null ? '' : fact.isEnum ? pilotChoice(fact.enumStrings[fact.enumIndex] ?? fact.valueString) : valueText(fact)}
+      onClick={() => (navigation.settingsPage.value = tabPage(owner.group))}
     />
   );
 };
