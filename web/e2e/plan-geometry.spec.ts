@@ -25,8 +25,6 @@ test('the corridor scan template starts a corridor pattern', async ({ vehicle })
   await openPlanAtVehicle(vehicle);
   await vehicle.getByRole('button', { name: 'Templates' }).click();
   await vehicle.getByRole('dialog').filter({ hasText: 'New plan' }).getByText('Corridor scan', { exact: true }).click();
-  const create = vehicle.getByRole('dialog').filter({ hasText: 'Start a new plan?' });
-  if (await create.isVisible().catch(() => false)) await create.getByRole('button', { name: 'Start new plan' }).click();
   await expect(vehicle.getByRole('button', { name: /Corridor scan .*m² · [\d,]+ photos/ })).toBeVisible();
 });
 
@@ -36,11 +34,8 @@ test('tapping the map in Rally mode places a rally point', async ({ vehicle }) =
   await expect(vehicle.getByText(/No rally points/)).toBeVisible();
   const box = await vehicle.getByRole('region', { name: 'Map' }).boundingBox();
   if (box === null) throw new Error('plan map is not on screen');
-  await expect(async () => {
-    await vehicle.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.45);
-    await expect(vehicle.getByText(/No rally points/)).toBeHidden({ timeout: 3_000 });
-  }).toPass({ timeout: 30_000 });
-  await expect(vehicle.getByText(/Rally point 1|R1|1 rally/).first()).toBeVisible();
+  await vehicle.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.45);
+  await expect(vehicle.getByText('Rally point 1', { exact: true })).toBeVisible();
   await vehicle.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.45);
   await expect(vehicle.getByText('Rally point 2', { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(vehicle.getByRole('textbox', { name: /^Alt / }), 'a new rally point starts at the return altitude, not on the ground').not.toHaveValue(/^0?$/);
@@ -69,10 +64,8 @@ test('moving a far plan to the aircraft takes its rally points along', async ({ 
   await app.getByRole('button', { name: 'Rally', exact: true }).click();
   const box = await app.getByRole('region', { name: 'Map' }).boundingBox();
   if (box === null) throw new Error('plan map is not on screen');
-  await expect(async () => {
-    await app.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.3);
-    await expect(app.getByText('Rally point 1', { exact: true })).toBeVisible({ timeout: 3_000 });
-  }).toPass({ timeout: 30_000 });
+  await app.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.3);
+  await expect(app.getByText('Rally point 1', { exact: true })).toBeVisible();
   await expect(app.getByRole('textbox', { name: 'Latitude' })).toHaveValue(/^-35\./);
   await app.getByRole('button', { name: 'Done' }).click();
   await app.addLocatorHandler(app.getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
