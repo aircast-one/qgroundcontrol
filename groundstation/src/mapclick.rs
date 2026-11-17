@@ -3,11 +3,6 @@ use serde_json::{Value, json};
 use crate::read::{flag, integer};
 use crate::router::Backend;
 
-// A click on the fly map sends one of five vehicle commands with the clicked point. Vehicle checks
-// little of it: guidedModeROI and guidedModeChangeHeading log and do nothing when the vehicle does
-// not support them, while the bridge answers ok; a goto, a heading or an ROI reaches a vehicle on
-// the ground; and setEstimatorOrigin overrides the position of a vehicle whose GPS already knows it.
-// The rules are the ones MapClickModel.swift applied before offering each action.
 const GPS_SENSOR_BIT: i64 = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -266,10 +261,15 @@ fn goto_state() -> std::sync::MutexGuard<'static, GotoState> {
 }
 
 fn remember_goto(mark: GotoMark) {
-    let mut state = goto_state();
-    state.mark = Some(mark);
-    state.flight.armed = true;
-    state.flight.flying = true;
+    let held = &mut *goto_state();
+    *held = GotoState {
+        mark: Some(mark),
+        flight: GotoFlight {
+            armed: true,
+            flying: true,
+            ..held.flight.clone()
+        },
+    };
 }
 
 fn goto_outlived(was: &GotoFlight, now: &GotoFlight) -> bool {
@@ -280,12 +280,12 @@ fn goto_outlived(was: &GotoFlight, now: &GotoFlight) -> bool {
 }
 
 fn goto_shown(now: GotoFlight) -> Option<GotoMark> {
-    let mut state = goto_state();
-    if goto_outlived(&state.flight, &now) {
-        state.mark = None;
-    }
-    state.flight = now;
-    state.mark
+    let held = &mut *goto_state();
+    *held = GotoState {
+        mark: held.mark.filter(|_| !goto_outlived(&held.flight, &now)),
+        flight: now,
+    };
+    held.mark
 }
 
 fn goto_vehicle(backend: &dyn Backend) -> (Value, GotoFlight) {
@@ -487,6 +487,29 @@ fn click_refusal(click: Click, a: Aircraft) -> Option<(&'static str, &'static st
     }
 }
 
+fn chosen_height(backend: &dyn Backend, chosen: &Value) -> Result<Option<f64>, String> {
+    if chosen.is_null() {
+        return Ok(None);
+    }
+    let limit = |name: &str| raw(backend, &format!("settings.flyViewSettings.{name}"));
+    let range = limit("guidedMinimumAltitude")
+        .zip(limit("guidedMaximumAltitude"))
+        .map(|(lowest, highest)| (lowest.max(crate::guidedcmd::GOTO_LOWEST_HEIGHT_M), highest));
+    match (chosen.as_f64().filter(|height| height.is_finite()), range) {
+        (Some(height), Some((lowest, highest))) if (lowest..=highest).contains(&height) => {
+            Ok(Some(height))
+        }
+        (_, Some((lowest, highest))) => Err(format!(
+            "Choose a go-to height from {} above launch.",
+            crate::read::range_text(lowest, highest, &crate::read::Unit::vertical(backend))
+        )),
+        (_, None) => Err(
+            "The guided altitude limits are not known, so the chosen height cannot be checked."
+                .to_string(),
+        ),
+    }
+}
+
 fn roi_action(backend: &dyn Backend, latitude: f64, longitude: f64, altitude: f64) -> Value {
     match flag(
         &backend.value_fields("vehicle", "px4Firmware"),
@@ -544,9 +567,14 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
     if let Some((token, reason)) = click_refusal(click, aircraft(backend)) {
         return refused(token, reason);
     }
+    let height = match (click, chosen_height(backend, &given[0]["height"])) {
+        (Click::GoTo, Err(reason)) => return refused("badHeight", &reason),
+        (Click::GoTo, Ok(height)) => height,
+        _ => None,
+    };
     let core = match click {
         Click::GoTo => Some(
-            json!({ "action": "goto", "latitude": latitude, "longitude": longitude, "loiterRadius": forwarded[1], "height": given[0].get("height").and_then(Value::as_f64).filter(|h| h.is_finite()) }),
+            json!({ "action": "goto", "latitude": latitude, "longitude": longitude, "loiterRadius": forwarded[1], "height": height }),
         ),
         Click::EstimatorOrigin => Some(
             json!({ "action": "estimatorOrigin", "latitude": latitude, "longitude": longitude, "altitude": at.get("altitude").cloned().unwrap_or(json!(0.0)) }),
@@ -912,7 +940,15 @@ mod tests {
     struct Vehicle(RefCell<Vec<String>>);
     impl Backend for Vehicle {
         fn get(&self, p: &str) -> String {
-            self.get_fields(p, "")
+            match p {
+                "settings.flyViewSettings.guidedMinimumAltitude.rawValue" => {
+                    json!({ "kind": "value", "value": 5.0 }).to_string()
+                }
+                "settings.flyViewSettings.guidedMaximumAltitude.rawValue" => {
+                    json!({ "kind": "value", "value": 120.0 }).to_string()
+                }
+                _ => self.get_fields(p, ""),
+            }
         }
         fn get_fields(&self, p: &str, _f: &str) -> String {
             match p {
@@ -927,6 +963,94 @@ mod tests {
         fn invoke(&self, _p: &str, a: &str) -> String {
             self.0.borrow_mut().push(a.to_string());
             json!({ "ok": true }).to_string()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_go_to_height_outside_the_guided_limits_is_refused_before_anything_is_sent() {
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let vehicle = Vehicle(RefCell::new(Vec::new()));
+        let go = |height: Value| {
+            send(
+                &vehicle,
+                Click::GoTo,
+                "vehicle.guidedModeGotoLocation",
+                &json!([{ "latitude": 47.4, "longitude": 8.5, "height": height }, 25]).to_string(),
+            )
+        };
+        [
+            json!(0),
+            json!(-10),
+            json!(4.9),
+            json!(120.5),
+            json!("high"),
+        ]
+        .into_iter()
+        .for_each(|height| {
+            let refused = go(height.clone());
+            assert_eq!(
+                (refused["refusal"].as_str(), refused["reason"].as_str()),
+                (
+                    Some("badHeight"),
+                    Some("Choose a go-to height from 5 m to 120 m above launch.")
+                ),
+                "{height}"
+            );
+        });
+        assert!(
+            vehicle
+                .0
+                .borrow()
+                .iter()
+                .all(|sent| !sent.contains("latitude")),
+            "nothing went to the vehicle: {:?}",
+            vehicle.0.borrow()
+        );
+        assert_eq!(go(json!(30))["ok"], true);
+        assert_eq!(
+            go(Value::Null)["ok"],
+            true,
+            "no height keeps the current one"
+        );
+        assert_eq!(
+            chosen_height(&Plane, &json!(30)),
+            Err(
+                "The guided altitude limits are not known, so the chosen height cannot be checked."
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            chosen_height(&Limits(0.0, 120.0), &json!(1)),
+            Err("Choose a go-to height from 2 m to 120 m above launch.".to_string()),
+            "a guided minimum set to 0 still keeps the go-to off the ground"
+        );
+    }
+
+    struct Limits(f64, f64);
+    impl Backend for Limits {
+        fn get(&self, p: &str) -> String {
+            match p {
+                "settings.flyViewSettings.guidedMinimumAltitude.rawValue" => {
+                    json!({ "kind": "value", "value": self.0 })
+                }
+                "settings.flyViewSettings.guidedMaximumAltitude.rawValue" => {
+                    json!({ "kind": "value", "value": self.1 })
+                }
+                _ => json!({ "kind": "null" }),
+            }
+            .to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
         }
         fn watch(&self, _p: &[String]) {}
     }

@@ -681,11 +681,25 @@ fn loiter_direction(radius: f64) -> f64 {
     }
 }
 
-pub fn goto_climb(state: &VehicleState, height: Option<f64>) -> f64 {
-    height
-        .filter(|h| h.is_finite())
-        .zip(state.altitude_relative.filter(|r| r.is_finite()))
-        .map_or(0.0, |(height, relative)| height - relative)
+pub const GOTO_LOWEST_HEIGHT_M: f64 = 2.0;
+pub const GOTO_HEIGHT_UNKNOWN: &str =
+    "The aircraft's height above launch is not known, so the chosen height cannot be applied.";
+const GOTO_POSITION_UNKNOWN: &str = "Unable to go to location, vehicle position not known.";
+const GOTO_ALTITUDE_UNKNOWN: &str =
+    "Unable to go to location, the aircraft's altitude above sea level is not known.";
+
+pub fn goto_climb(state: &VehicleState, height: Option<f64>) -> Result<f64, String> {
+    match height {
+        None => Ok(0.0),
+        Some(height) if !height.is_finite() || height < GOTO_LOWEST_HEIGHT_M => Err(format!(
+            "A go-to height has to be at least {GOTO_LOWEST_HEIGHT_M} m above launch."
+        )),
+        Some(height) => state
+            .altitude_relative
+            .filter(|relative| relative.is_finite())
+            .map(|relative| height - relative)
+            .ok_or_else(|| GOTO_HEIGHT_UNKNOWN.to_string()),
+    }
 }
 
 pub fn goto(
@@ -695,17 +709,17 @@ pub fn goto(
     loiter_radius: f64,
     height: Option<f64>,
 ) -> Plan {
-    let climb = goto_climb(state, height);
+    let climb = match goto_climb(state, height) {
+        Ok(climb) => climb,
+        Err(reason) => return Plan::Refused(reason),
+    };
+    let amsl = state
+        .altitude_amsl
+        .filter(|a| a.is_finite())
+        .map(|amsl| amsl + climb);
     match state.autopilot {
-        AUTOPILOT_PX4 => {
-            let Some(amsl) = state.altitude_amsl.filter(|a| a.is_finite()) else {
-                return Plan::Refused(
-                    "Unable to go to location, vehicle position not known.".into(),
-                );
-            };
-            let amsl = amsl + climb;
-            let command_int = state.capabilities & CAP_COMMAND_INT != 0;
-            Plan::Steps(vec![Step::Command {
+        AUTOPILOT_PX4 => match amsl {
+            Some(amsl) => Plan::Steps(vec![Step::Command {
                 command: CMD_DO_REPOSITION,
                 params: [
                     -1.0,
@@ -716,22 +730,19 @@ pub fn goto(
                     longitude,
                     amsl,
                 ],
-                command_int,
+                command_int: state.capabilities & CAP_COMMAND_INT != 0,
                 frame: FRAME_GLOBAL,
                 show_error: true,
-            }])
-        }
+            }]),
+            None => Plan::Refused(GOTO_POSITION_UNKNOWN.into()),
+        },
         AUTOPILOT_ARDUPILOT => {
             let Some(relative) = state.altitude_relative.filter(|a| a.is_finite()) else {
-                return Plan::Refused(
-                    "Unable to go to location, vehicle position not known.".into(),
-                );
+                return Plan::Refused(GOTO_POSITION_UNKNOWN.into());
             };
-            let relative = relative + climb;
-            let amsl = state.altitude_amsl.unwrap_or(f64::NAN) + climb;
-            let mut steps = Vec::new();
-            if state.reposition_supported != Some(false) {
-                steps.push(Step::Command {
+            let reposition = match (state.reposition_supported, amsl) {
+                (Some(false), _) | (None, None) => Ok(Vec::new()),
+                (_, Some(amsl)) => Ok(vec![Step::Command {
                     command: CMD_DO_REPOSITION,
                     params: [
                         -1.0,
@@ -745,20 +756,27 @@ pub fn goto(
                     command_int: true,
                     frame: FRAME_GLOBAL,
                     show_error: false,
-                });
+                }]),
+                (Some(true), None) => Err(GOTO_ALTITUDE_UNKNOWN.to_string()),
+            };
+            let guided_item = match state.reposition_supported {
+                Some(true) => Ok(Vec::new()),
+                _ => mode_or_refuse(state, "Guided").map(|mode_steps| {
+                    [
+                        mode_steps,
+                        vec![Step::GuidedMissionItem {
+                            latitude,
+                            longitude,
+                            altitude_relative: relative + climb,
+                        }],
+                    ]
+                    .concat()
+                }),
+            };
+            match reposition.and_then(|first| guided_item.map(|then| [first, then].concat())) {
+                Ok(steps) => Plan::Steps(steps),
+                Err(reason) => Plan::Refused(reason),
             }
-            if state.reposition_supported != Some(true) {
-                match mode_or_refuse(state, "Guided") {
-                    Ok(mode_steps) => steps.extend(mode_steps),
-                    Err(reason) => return Plan::Refused(reason),
-                }
-                steps.push(Step::GuidedMissionItem {
-                    latitude,
-                    longitude,
-                    altitude_relative: relative,
-                });
-            }
-            Plan::Steps(steps)
         }
         _ => Plan::Refused(GUIDED_NOT_SUPPORTED.into()),
     }
@@ -1816,6 +1834,72 @@ mod tests {
     }
 
     #[test]
+    fn a_go_to_height_that_cannot_be_applied_is_refused_rather_than_dropped() {
+        let refusal = |plan: Plan| match plan {
+            Plan::Refused(reason) => reason,
+            Plan::Steps(steps) => panic!("sent {steps:?}"),
+        };
+        [0.0, -10.0, 1.5, f64::NAN].into_iter().for_each(|height| {
+            assert_eq!(
+                refusal(goto(&copter(), 47.4, 8.5, 0.0, Some(height))),
+                "A go-to height has to be at least 2 m above launch.",
+                "{height} m would descend sideways into the ground"
+            );
+        });
+        let unplaced = VehicleState {
+            altitude_relative: None,
+            ..px4()
+        };
+        assert_eq!(
+            refusal(goto(&unplaced, 47.4, 8.5, 0.0, Some(30.0))),
+            GOTO_HEIGHT_UNKNOWN,
+            "PX4 knows its AMSL, but not how far above home it is, so 30 m above home cannot be worked out"
+        );
+        assert!(
+            matches!(goto(&unplaced, 47.4, 8.5, 0.0, None), Plan::Steps(_)),
+            "without a chosen height it goes at the altitude it is at"
+        );
+        let no_amsl = VehicleState {
+            altitude_amsl: None,
+            ..copter()
+        };
+        let Plan::Steps(steps) = goto(&no_amsl, 47.4, 8.5, 0.0, Some(30.0)) else {
+            panic!()
+        };
+        assert!(
+            steps.iter().all(|step| !matches!(
+                step,
+                Step::Command {
+                    command: CMD_DO_REPOSITION,
+                    ..
+                }
+            )),
+            "no DO_REPOSITION goes out with a NaN altitude: {steps:?}"
+        );
+        assert_eq!(
+            steps.last(),
+            Some(&Step::GuidedMissionItem {
+                latitude: 47.4,
+                longitude: 8.5,
+                altitude_relative: 30.0
+            })
+        );
+        assert_eq!(
+            refusal(goto(
+                &VehicleState {
+                    reposition_supported: Some(true),
+                    ..no_amsl
+                },
+                47.4,
+                8.5,
+                0.0,
+                Some(30.0)
+            )),
+            "Unable to go to location, the aircraft's altitude above sea level is not known."
+        );
+    }
+
+    #[test]
     fn px4_plans_use_reposition_and_amsl_altitudes() {
         let state = px4();
         let Plan::Steps(steps) = takeoff(&state, 15.0) else {
@@ -1851,12 +1935,16 @@ mod tests {
         };
         assert_eq!(
             command(&steps[0]).1[6],
-            500.0 - state.altitude_relative.unwrap_or(0.0) + 30.0,
-            "a chosen height is above home, turned into AMSL from where the vehicle is now"
+            510.0,
+            "30 m above home: the vehicle is 20 m up at 500 m AMSL, so 10 m higher"
         );
+        let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0, Some(5.0)) else {
+            panic!()
+        };
+        assert_eq!(command(&steps[0]).1[6], 485.0, "and 15 m lower for 5 m");
         assert_eq!(
             goto_climb(&state, None),
-            0.0,
+            Ok(0.0),
             "with no height chosen the go-to keeps the current height"
         );
         let Plan::Steps(steps) = change_altitude(&state, 5.0, true) else {
@@ -1990,12 +2078,32 @@ mod tests {
             },
             1
         );
+        let Plan::Steps(steps) = goto(&supported, 47.4, 8.5, 0.0, Some(45.0)) else {
+            panic!()
+        };
+        assert_eq!(
+            (command(&steps[0]).0, command(&steps[0]).1[6]),
+            (CMD_DO_REPOSITION, 525.0),
+            "45 m above home from 20 m up at 500 m AMSL"
+        );
         let unsupported = VehicleState {
             reposition_supported: Some(false),
             ..copter()
         };
         assert!(
             matches!(goto(&unsupported, 1.0, 2.0, 0.0, None), Plan::Steps(s) if matches!(s[0], Step::SetMode { .. }))
+        );
+        let Plan::Steps(steps) = goto(&unsupported, 47.4, 8.5, 0.0, Some(45.0)) else {
+            panic!()
+        };
+        assert_eq!(
+            steps.last(),
+            Some(&Step::GuidedMissionItem {
+                latitude: 47.4,
+                longitude: 8.5,
+                altitude_relative: 45.0
+            }),
+            "without DO_REPOSITION the guided waypoint carries the chosen height above home"
         );
         let Plan::Steps(steps) = change_altitude(&state, 3.0, true) else {
             panic!()
