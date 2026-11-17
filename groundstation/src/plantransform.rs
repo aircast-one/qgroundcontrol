@@ -185,6 +185,59 @@ fn with_keys(json: &Value, keys: &[&str], change: impl Fn(&Value) -> Value) -> V
     }
 }
 
+fn moved_coordinate(at: &Value, transform: Transform, home: Option<(f64, f64)>) -> Value {
+    at.as_array()
+        .and_then(|a| Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?)))
+        .and_then(|point| moved_point(point, transform, home))
+        .map_or_else(
+            || at.clone(),
+            |(lat, lon)| {
+                json!(
+                    [lat, lon]
+                        .into_iter()
+                        .chain(
+                            at.as_array()
+                                .into_iter()
+                                .flatten()
+                                .skip(2)
+                                .filter_map(Value::as_f64)
+                        )
+                        .collect::<Vec<f64>>()
+                )
+            },
+        )
+}
+
+fn each(list: &Value, change: impl Fn(&Value) -> Value) -> Value {
+    list.as_array().map_or_else(
+        || list.clone(),
+        |items| Value::Array(items.iter().map(change).collect()),
+    )
+}
+
+fn moved_fence(fence: &Value, transform: Transform, home: Option<(f64, f64)>) -> Value {
+    let point = |at: &Value| moved_coordinate(at, transform, home);
+    let polygons = with_keys(fence, &["polygons"], |polygons| {
+        each(polygons, |shape| {
+            with_keys(shape, &["polygon"], |ring| each(ring, point))
+        })
+    });
+    let circles = with_keys(&polygons, &["circles"], |circles| {
+        each(circles, |shape| {
+            with_keys(shape, &["circle"], |circle| {
+                with_keys(circle, &["center"], point)
+            })
+        })
+    });
+    with_keys(&circles, &["breachReturn"], point)
+}
+
+fn moved_rally(rally: &Value, transform: Transform, home: Option<(f64, f64)>) -> Value {
+    with_keys(rally, &["points"], |points| {
+        each(points, |at| moved_coordinate(at, transform, home))
+    })
+}
+
 fn moved_complex(
     kind: &str,
     json: &Value,
@@ -349,9 +402,18 @@ pub fn transform(doc: &Document, transform: Transform, scope: Scope) -> Result<D
         .unwrap_or((lat, lon));
         [at.0, at.1, alt]
     });
+    let (fence, rally) = match transform {
+        Transform::Reposition { .. } => (
+            moved_fence(&doc.fence, transform, home),
+            moved_rally(&doc.rally, transform, home),
+        ),
+        _ => (doc.fence.clone(), doc.rally.clone()),
+    };
     Ok(Document {
         items,
         home: moved_home,
+        fence,
+        rally,
         ..doc.clone()
     })
 }
@@ -691,6 +753,72 @@ mod tests {
                 }
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn a_reposition_carries_the_fence_and_rally_points_with_the_mission() {
+        let fenced = Document {
+            fence: json!({ "version": 2, "polygons": [{ "inclusion": true, "version": 1, "polygon": [[47.001, 8.0], [47.0, 8.001], [46.999, 8.0]] }], "circles": [{ "inclusion": false, "version": 1, "circle": { "center": [47.0, 8.002], "radius": 50.0 } }], "breachReturn": [47.0005, 8.0, 40.0] }),
+            rally: json!({ "version": 2, "points": [[47.002, 8.0, 60.0]] }),
+            ..doc()
+        };
+        let scope = Scope {
+            takeoff: true,
+            landing: true,
+        };
+        let carried = transform(
+            &fenced,
+            Transform::Reposition {
+                latitude: -35.0,
+                longitude: 149.0,
+            },
+            scope,
+        )
+        .unwrap();
+        let pair = |at: &Value| (at[0].as_f64().unwrap(), at[1].as_f64().unwrap());
+        let kept = |before: &Value, after: &Value| {
+            (distance_between((-35.0, 149.0), pair(after))
+                - distance_between((47.0, 8.0), pair(before)))
+            .abs()
+                < 0.01
+        };
+        assert!(kept(
+            &fenced.fence["polygons"][0]["polygon"][1],
+            &carried.fence["polygons"][0]["polygon"][1]
+        ));
+        assert!(kept(
+            &fenced.fence["circles"][0]["circle"]["center"],
+            &carried.fence["circles"][0]["circle"]["center"]
+        ));
+        assert_eq!(carried.fence["circles"][0]["circle"]["radius"], 50.0);
+        assert!(kept(
+            &fenced.fence["breachReturn"],
+            &carried.fence["breachReturn"]
+        ));
+        assert_eq!(carried.fence["breachReturn"][2], 40.0);
+        assert!(kept(
+            &fenced.rally["points"][0],
+            &carried.rally["points"][0]
+        ));
+        assert_eq!(
+            carried.rally["points"][0][2], 60.0,
+            "a rally point keeps its altitude"
+        );
+        let offset = transform(
+            &fenced,
+            Transform::Offset {
+                east: 100.0,
+                north: 0.0,
+                up: 0.0,
+            },
+            scope,
+        )
+        .unwrap();
+        assert_eq!(
+            (offset.fence, offset.rally),
+            (fenced.fence.clone(), fenced.rally.clone()),
+            "only a reposition takes them along"
         );
     }
 
