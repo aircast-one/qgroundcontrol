@@ -12,7 +12,7 @@ import type { Readiness } from '@/ui/FlyState';
 import type { GuidedOffer } from '@/ui/GuidedActions';
 import { type GuidedTakeoff, takeoffRangeUsable } from '@/ui/GuidedTakeoff';
 import { PAUSE, RELEASE } from '@/ui/MoreActions';
-import { OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow } from '@/ui/Osd';
+import { OSD_CONTROL_SIZE, osdShadow } from '@/ui/Osd';
 
 export const CHECKLIST = 'checklist';
 
@@ -303,7 +303,7 @@ export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: De
         </DeckPress>
       </Surface>
       {labelled ? (
-        <span className="w-max max-w-[72px] shrink-0 rounded-shape-sm px-1.5 text-center" style={{ background: OSD_SCRIM }}>
+        <span className={`w-max max-w-[72px] shrink-0 text-center ${osdShadow()}`}>
           <Text typography="labelMedium" color={aircast('outdoorForeground')}>
             {label}
           </Text>
