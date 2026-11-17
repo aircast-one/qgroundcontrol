@@ -393,6 +393,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const osd = useElementSize();
   const gimbalSwitch = useValue(gimbalSwitchShown);
   const corner = useElementSize();
+  const mapButtons = useElementSize();
   const stickSlot = useElementSize();
   const stickInCorner = stickPad === null && view === FlyView.Video && boxHeight >= CORNER_STICK_MIN_HEIGHT;
   const holdStick = useCallback((element: HTMLElement | null) => {
@@ -563,7 +564,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                       style={{
                         zIndex: layer(1),
                         paddingTop: `calc(env(safe-area-inset-top, 0px) + ${RAIL_CLEARANCE + AircastSpace.s3}px)`,
-                        paddingBottom: view === FlyView.Map ? mapButtonsBottom + (MAP_LAYERS_SIZE + AircastSpace.s2) * MAP_BUTTONS + AircastSpace.s3 : RAIL_CLEARANCE,
+                        paddingBottom: view === FlyView.Map ? railAboveMapButtons(mapButtonsBottom, mapButtons.size.height) : RAIL_CLEARANCE,
                         paddingInlineEnd: AircastSpace.s3,
                       }}
                     >
@@ -607,7 +608,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 {view === FlyView.Map ? (
                   <div className="absolute end-0 bottom-0" style={{ marginInlineEnd: AircastSpace.s3, marginBottom: mapButtonsBottom }}>
                     <LayoutWidget widgetKey="mapLayers" hideable={false}>
-                      <div className="flex flex-col gap-2">
+                      <div ref={mapButtons.ref} className="flex flex-col gap-2">
                         <FollowButton />
                         <Map3dToggle />
                         <Surface
@@ -771,11 +772,11 @@ export const FleetCard = () => {
 
 const MAP_LAYERS_SIZE = 48;
 export const MAP_LAYERS_CLEARANCE = MAP_LAYERS_SIZE + AircastSpace.s3 + AircastSpace.s2;
+
+export const railAboveMapButtons = (buttonsBottom: number, buttonsHeight: number): number => buttonsBottom + buttonsHeight + AircastSpace.s2 + AircastSpace.s3;
 const FLEET_CARD_MAX_WIDTH = 440;
 const FLEET_CARD_MAX_HEIGHT = 320;
 const FLEET_CARD_MIN_SCREEN_DP = 600;
-
-const MAP_BUTTONS = 3;
 
 const activeAt = (json: Json | null): TrackPoint | null => {
   const active = vehicleChoices(json).active;

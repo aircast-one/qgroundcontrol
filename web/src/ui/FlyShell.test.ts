@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FlyView, FlyViewEntries, Letterbox, flyViewAllowed, flyViewsOffered, stickInsets } from './FlyShell';
+import { FlyView, FlyViewEntries, Letterbox, flyViewAllowed, flyViewsOffered, railAboveMapButtons, stickInsets } from './FlyShell';
 
 describe('PipRulesTest', () => {
   it("the 3D view is offered only while QGC's 3D viewer is enabled, or already showing", () => {
@@ -39,5 +39,13 @@ describe('StickInsetsTest', () => {
     expect(insets.overlaysStart).toBe(72);
     expect(insets.overlaysEnd).toBe(12);
     expect(insets.ornamentEnd).toBeNull();
+  });
+});
+
+describe('railAboveMapButtons', () => {
+  it('the camera rail clears the map buttons actually shown, not three assumed slots', () => {
+    expect(railAboveMapButtons(40, 48), 'layers alone').toBe(108);
+    expect(railAboveMapButtons(40, 48 * 3 + 8 * 2), 'follow, 3D and layers').toBe(220);
+    expect(railAboveMapButtons(40, 0), 'before the column is measured').toBe(60);
   });
 });
