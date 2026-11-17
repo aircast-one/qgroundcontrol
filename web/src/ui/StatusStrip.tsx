@@ -867,14 +867,22 @@ export const smoothedSeconds = (shown: number | null, target: number | null, ela
   return shown + (target - shown) * (1 - Math.exp(-Math.max(0, elapsedSeconds) / settle));
 };
 
+export type SmoothedSeconds = { readonly shown: number | null; readonly at: number };
+
+export const smoothedTick = (held: SmoothedSeconds, target: number | null, now: number): SmoothedSeconds => ({
+  shown: smoothedSeconds(held.shown, target, (now - held.at) / 1000),
+  at: now,
+});
+
+const TIME_LEFT_TICK_MS = 1000;
+
 const useSmoothedSeconds = (target: number | null): number | null => {
-  const held = useRef<{ shown: number | null; at: number }>({ shown: null, at: 0 });
-  return useMemo(() => {
+  const [held, setHeld] = useState<SmoothedSeconds>({ shown: null, at: 0 });
+  useTicker(TIME_LEFT_TICK_MS, [target], () => {
     const now = performance.now();
-    const shown = smoothedSeconds(held.current.shown, target, (now - held.current.at) / 1000);
-    held.current = { shown, at: now };
-    return shown;
-  }, [target]);
+    setHeld((previous) => smoothedTick(previous, target, now));
+  });
+  return target === null ? null : (held.shown ?? target);
 };
 
 export const durationText = (seconds: number | null): string => {

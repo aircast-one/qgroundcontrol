@@ -24,6 +24,8 @@ import {
   satsText,
   shownStatusCells,
   smoothedSeconds,
+  smoothedTick,
+  type SmoothedSeconds,
   telemetryCell,
   telemetryDetail,
 } from './StatusStrip';
@@ -302,6 +304,16 @@ describe('batteryExtras', () => {
     expect(settledAfter(7227, 728, 5)).toBeLessThan(3200);
     expect(smoothedSeconds(null, 728, 1)).toBe(728);
     expect(smoothedSeconds(728, null, 1)).toBeNull();
+  });
+
+  it('the time left keeps moving toward a steady target on every tick, at the same pace however it is ticked', () => {
+    const ticked = (from: number, target: number, ticks: number) =>
+      Array.from({ length: ticks }, (_, at) => (at + 1) * 1000).reduce((held, now) => smoothedTick(held, target, now), { shown: from, at: 0 } as SmoothedSeconds).shown ?? NaN;
+    expect(ticked(728, 7227, 30)).toBeCloseTo(smoothedSeconds(728, 7227, 30) ?? NaN, 6);
+    expect(ticked(728, 7227, 600), 'rises the whole way, not stalling part way').toBeGreaterThan(7200);
+    expect(ticked(728, 7227, 10), 'rises slowly').toBeLessThan(728 + (7227 - 728) / 2);
+    expect(ticked(7227, 728, 10), 'falls fast').toBeLessThan(728 + (7227 - 728) / 2);
+    expect(smoothedTick({ shown: 728, at: 0 }, null, 1000).shown).toBeNull();
   });
 
   it('time left reads as the core writes it', () => {
