@@ -202,3 +202,7 @@ export const vehicleSubtitle = (state: FlyState | null, offline: string | null =
 const connectedOf = (json: Json | null): boolean => flyState(json)?.connected === true;
 
 export const useHasVehicle = (): boolean => useQgcDerived(FLY_STATE, connectedOf);
+
+const armedOf = (json: Json | null): boolean => flyState(json)?.armed === true;
+
+export const useArmed = (): boolean => useQgcDerived(FLY_STATE, armedOf);

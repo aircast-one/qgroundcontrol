@@ -71,7 +71,7 @@ type Press = { pointer: number | null; startX: number; pressedAt: number; fired:
 
 const isActivation = (event: KeyboardEvent) => event.key === 'Enter' || event.key === ' ';
 
-export const useRememberHold = (key: unknown, enabled: boolean, onTap: () => void, onHold: (() => void) | null, label: string): [number, HTMLAttributes<HTMLElement>] => {
+export const useRememberHold = (key: unknown, enabled: boolean, onTap: () => void, onHold: (() => void) | null, label: string): [number, HTMLAttributes<HTMLElement> & { 'data-gesture'?: boolean }] => {
   const [progress, setProgress] = useState(0);
   const tap = useUpdatedRef(onTap);
   const hold = useUpdatedRef(onHold);
@@ -141,6 +141,7 @@ export const useRememberHold = (key: unknown, enabled: boolean, onTap: () => voi
       role: 'button',
       tabIndex: 0,
       'aria-label': label,
+      'data-gesture': true,
       style: { touchAction: 'none' },
       onClick: (event) => {
         if (event.detail === 0) tap.current();

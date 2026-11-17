@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { chooseCameraJoystick, connectMock, expect, flightMode, takeOff, test } from './fixtures';
+import { chooseCameraJoystick, connectMock, expect, flightMode, slideAcross, takeOff, test } from './fixtures';
 
 const LONG_PRESS_MS = 400;
 const CAMERA_PANEL_OFFSET = 'aircast.fly-overlay-layout.OverlayRigOffset-cameraControl@landscape';
@@ -101,6 +101,8 @@ test('only widgets without layout widgets inside them jiggle, so the status pill
 
 const EDIT_CONTROLS = ['Layout options', 'Done'];
 
+const THIN_BAR = 24;
+
 const clippedBadges = (page: Page) =>
   page.evaluate(() =>
     [...document.querySelectorAll('[aria-label=Hide]')]
@@ -123,7 +125,7 @@ const clippedBadges = (page: Page) =>
   );
 
 const stillWhileEditing = (page: Page) =>
-  page.evaluate((controls) => {
+  page.evaluate(([controls, thinBar]) => {
     const jiggling = document
       .getAnimations()
       .filter((it): it is CSSAnimation => it instanceof CSSAnimation && it.animationName === 'aircast-overlay-jiggle')
@@ -131,16 +133,16 @@ const stillWhileEditing = (page: Page) =>
       .filter((it): it is Element => it !== null);
     const name = (it: Element) => it.getAttribute('aria-label') ?? it.querySelector('[aria-label]')?.getAttribute('aria-label') ?? it.textContent?.trim() ?? it.tagName;
     const room = innerWidth - (document.querySelector('nav')?.getBoundingClientRect().width ?? 0);
-    return [...document.querySelectorAll('button, [role=button], [role=group], [role=img], [role=region]')]
+    return [...document.querySelectorAll('button, [role=button], [role=group], [role=img], [role=region], svg:not(button svg):not([role=button] svg):not([role=img] svg)')]
       .filter((it) => it.closest('nav') === null)
       .filter((it) => {
         const box = it.getBoundingClientRect();
-        return box.width > 1 && box.height > 1 && box.width < room - 1;
+        return box.width > 1 && box.height > 1 && (box.width < room - 1 || box.height < thinBar);
       })
       .filter((it) => !jiggling.some((widget) => widget.contains(it)) && !jiggling.some((widget) => it.contains(widget)))
       .map(name)
       .filter((it) => !controls.includes(it));
-  }, EDIT_CONTROLS);
+  }, [EDIT_CONTROLS, THIN_BAR] as const);
 
 (
   [
@@ -218,19 +220,28 @@ test('a widget dragged up stops below the status row, also after turning the scr
   expect(zoom?.y, 'the top of the camera panel').toBeGreaterThanOrEqual(row);
 });
 
-test('sideways, an armed vehicle locks layout editing', async ({ vehicle }) => {
+test('in flight, holding an item edits the layout, and Return still works while everything jiggles', async ({ vehicle }) => {
   test.setTimeout(120_000);
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   await takeOff(vehicle, '5 m');
-  await expect(flightMode(vehicle)).toHaveAccessibleName(/^(Takeoff|Hold)\b/, { timeout: 60_000 });
-  const battery = vehicle.getByRole('button', { name: /^Battery \d+%/ }).first();
-  const [x, y] = await centre(battery);
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await holdUntilEditing(vehicle, vehicle.getByRole('button', { name: /^Battery \d+%/ }).first());
+  await vehicle.getByRole('button', { name: 'Return', exact: true }).click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to return' }));
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Return/);
+  await expect(editBar(vehicle)).toBeVisible();
+});
+
+test('in flight, holding Land lands without starting layout editing', async ({ vehicle }) => {
+  test.setTimeout(120_000);
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  const [x, y] = await centre(vehicle.getByRole('button', { name: 'Slide to land' }));
   await vehicle.mouse.move(x, y);
   await vehicle.mouse.down();
-  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold\b/, { timeout: 60_000 });
-  await vehicle.mouse.move(x, y + 300, { steps: 4 });
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Land/);
   await vehicle.mouse.up();
-  await expect(editBar(vehicle), 'a hold while armed does not edit the layout').toBeHidden();
+  await expect(editBar(vehicle)).toBeHidden();
 });
 
 test('holding the flight mode chip, which stays where it is while editing, starts layout editing without opening the mode menu', async ({ vehicle }) => {

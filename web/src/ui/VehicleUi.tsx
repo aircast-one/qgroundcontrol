@@ -616,7 +616,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
         flyScreen.choosingReadings.value = true;
       },
     }),
-    ...(!armed ? [MenuTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
+    MenuTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() }),
   ];
   const closeMenu = () => setMenuOpen(false);
 
@@ -686,7 +686,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       {pending === null && guidedValue === null && editingLoiter === null ? (
         <div className="absolute inset-y-0 left-0 flex flex-col" style={{ paddingLeft: 12, paddingBottom: RAIL_LIFT }}>
           <div ref={room.ref} role="group" aria-label={FLIGHT_ACTIONS} className="flex min-h-0 flex-1 flex-col items-center justify-center">
-            <LayoutWidget widgetKey="flightActions" movable={false} hideable={false}>
+            <LayoutWidget widgetKey="flightActions" movable={false} hideable={false} live={armed}>
               <div className="flex flex-col items-center gap-2">
                 {deck.flatMap(([id, primary]) => {
                   const entry = entries.find((it) => it.id === id);
@@ -746,7 +746,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
         ) : null}
         {pending === null ? (
           <div ref={room.ref}>
-            <LayoutWidget widgetKey="flightActions" movable={false} hideable={false}>
+            <LayoutWidget widgetKey="flightActions" movable={false} hideable={false} live={armed}>
               <div className="flex flex-col gap-3">
                 {bottomFit.centreInline ? null : centreBox}
                 <DeckRow deck={deck} entries={entries} extra={stopEntry} center={bottomFit.centreInline ? centreBox : null} />

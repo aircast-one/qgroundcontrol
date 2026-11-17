@@ -133,7 +133,9 @@ export const Crosshair = () => {
 const CompactSight = ({ pitch, throttle }: { pitch: number; throttle: number | null }) => (
   <div role="group" aria-label="Sight" className="pointer-events-none absolute inset-0">
     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-      <Crosshair />
+      <LayoutWidget widgetKey="crosshair" movable={false}>
+        <Crosshair />
+      </LayoutWidget>
     </div>
     <div className="absolute top-1/2 -translate-y-1/2" style={{ right: `calc(50% + ${CROSSHAIR / 2 + COMPACT_GAP}px)` }}>
       <LayoutWidget widgetKey="pitchLadder" movable={false}>
@@ -163,7 +165,9 @@ export const HudLadders = ({ shellWidth, shellHeight }: { shellWidth: number; sh
   return (
     <div role="group" aria-label="Sight" className="pointer-events-none absolute inset-0">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-        <Crosshair />
+        <LayoutWidget widgetKey="crosshair" movable={false}>
+          <Crosshair />
+        </LayoutWidget>
       </div>
       <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: reach }}>
         <LayoutWidget widgetKey="pitchLadder" movable={false}>

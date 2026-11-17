@@ -267,12 +267,11 @@ export const AircastShell = () => {
   const portrait = useFlyIsPortrait();
   const landscape = !portrait;
   const layoutEditing = useValue(overlayLayout.editing);
-  const layoutLocked = useValue(overlayLayout.locked);
   const guidedPanelOpen = useValue(flyScreen.guidedPanels) > 0;
   const requestedSheet = useValue(flyScreen.requestedSheet);
   const deckRequest = useValue(flyScreen.deckRequest);
   useEffect(() => {
-    DebugUi.state = JSON.stringify({ tab: tab.name, flyView: flyView.name, landscape, layoutEditing, layoutLocked, guidedPanelOpen, pendingOpen: requestedSheet ?? deckRequest ?? null });
+    DebugUi.state = JSON.stringify({ tab: tab.name, flyView: flyView.name, landscape, layoutEditing, guidedPanelOpen, pendingOpen: requestedSheet ?? deckRequest ?? null });
   });
   const videoExpanded = flyView !== FlyView.Map;
   const [videoFullScreen, setVideoFullScreen] = useState(false);
@@ -464,9 +463,6 @@ export const AircastShell = () => {
 
   const flyNow = useQgcDerived(FLY_STATE, shellFly);
   const armedNow = flyNow !== null && flyNow.connected && flyNow.armed;
-  useEffect(() => {
-    overlayLayout.lockWhileArmed(armedNow);
-  }, [armedNow]);
   const activeId = useRememberActiveVehicleId();
   const armedSession = useRef(NO_ARMED_SESSION);
   const armedBattery = useRef<number | null>(null);

@@ -49,7 +49,6 @@ const storedLayout = (): Record<string, unknown> =>
 
 export class OverlayLayoutState {
   readonly editing = mutableStateOf(false);
-  readonly locked = mutableStateOf(false);
   readonly hidden: MutableState<ReadonlySet<string>>;
   readonly indicatorOrder: MutableState<readonly string[]>;
   readonly valueSize = mutableStateOf<ValueSize>(ValueSize.Default);
@@ -63,12 +62,7 @@ export class OverlayLayoutState {
   }
 
   startEditing(): void {
-    if (!this.locked.value) this.editing.value = true;
-  }
-
-  lockWhileArmed(armed: boolean): void {
-    this.locked.value = armed;
-    if (armed) this.editing.value = false;
+    this.editing.value = true;
   }
 
   setHidden(key: string, hide: boolean): void {
@@ -248,18 +242,17 @@ export const swallowReleaseClick = (): void => {
 export const useHoldToEditLayout = (): HTMLAttributes<HTMLElement> => {
   const layout = useContext(LocalFlyScreenState).layout;
   const editing = useValue(layout.editing);
-  const locked = useValue(layout.locked);
   const press = useRef<{ id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
   const cancel = () => {
     if (press.current !== null) clearTimeout(press.current.timer);
     press.current = null;
   };
   useEffect(() => cancel, []);
-  if (editing || locked) return {};
+  if (editing) return {};
   return {
     onPointerDownCapture: (event) => {
       cancel();
-      if (!event.isPrimary || event.button !== 0 || !event.currentTarget.contains(event.target as Node)) return;
+      if (!event.isPrimary || event.button !== 0 || !event.currentTarget.contains(event.target as Node) || (event.target as Element).closest('[data-gesture]') !== null) return;
       const timer = setTimeout(() => {
         press.current = null;
         layout.startEditing();
@@ -373,14 +366,18 @@ export const LayoutWidget = ({
   widgetKey,
   movable = true,
   hideable = true,
+  live = false,
   dragsWith,
+  badgePlace,
   className,
   children,
 }: {
   widgetKey: string;
   movable?: boolean;
   hideable?: boolean;
+  live?: boolean;
   dragsWith?: string;
+  badgePlace?: CSSProperties;
   className?: string;
   children?: ReactNode;
 }) => {
@@ -426,14 +423,14 @@ export const LayoutWidget = ({
         </div>
         {decorated && (movable || carried !== null) ? (
           <LayoutDragArea widgetKey={carried?.key ?? widgetKey} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} className="absolute inset-0" />
-        ) : decorated ? (
+        ) : decorated && !live ? (
           <div data-gesture className="absolute inset-0" />
         ) : null}
         {decorated && hideable ? (
           <Surface
             onClick={() => layout.setHidden(widgetKey, !hidden)}
             className={BADGE}
-            style={BADGE_PLACE}
+            style={{ ...BADGE_PLACE, ...badgePlace }}
             shape="full"
             color={hidden ? md('primary') : md('inverseSurface')}
             contentColor={hidden ? md('onPrimary') : md('inverseOnSurface')}

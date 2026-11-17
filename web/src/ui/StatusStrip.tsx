@@ -612,6 +612,12 @@ const RETURN_MARKER = 12;
 const BATTERY_BAR_TRACK_ALPHA = 0.25;
 const PERCENT = 100;
 
+export const BATTERY_BAR_KEY = 'batteryBar';
+
+const BATTERY_BAR_BADGE_INSET = 4;
+
+export const BATTERY_BAR_BADGE: CSSProperties = { top: BATTERY_BAR_BADGE_INSET, insetInlineStart: BATTERY_BAR_BADGE_INSET };
+
 export const BatteryReturnBar = ({ className }: { className?: string }) => {
   const batteryJson = useQgcPath(BATTERY_VIEW);
   const stateJson = useQgcPath(FLY_STATE);

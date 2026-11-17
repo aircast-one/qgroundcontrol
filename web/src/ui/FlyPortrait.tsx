@@ -41,11 +41,11 @@ import {
   useSwipeInsteadOfClick,
   viewer3dEnabled,
 } from '@/ui/FlyShell';
-import { useHasVehicle } from '@/ui/FlyState';
+import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget, badgeRoom } from '@/ui/OverlayLayout';
-import { BatteryReturnBar } from '@/ui/StatusStrip';
+import { BATTERY_BAR_BADGE, BATTERY_BAR_KEY, BatteryReturnBar } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
@@ -108,6 +108,7 @@ const ANIMATED_PADDING = 'transition-[padding] duration-300 motion-reduce:transi
 export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, overlays, actions, fullScreen, onFullScreen, onExitFullScreen }: FlyPortraitProps) => {
   const videoJson = useQgcPath(VIDEO_VIEW);
   const reading = useMemo(() => videoReading(videoJson), [videoJson]);
+  const armed = useArmed();
   const hasVideo = portraitShowsCamera(reading);
   const split = portraitSplit(view, hasVideo);
   const flyScreen = useContext(LocalFlyScreenState);
@@ -309,7 +310,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                 >
                   {deciding ? null : (
                     <div className="flex justify-center px-3 pb-2">
-                      <LayoutWidget widgetKey="payload" movable={false} hideable={false}>
+                      <LayoutWidget widgetKey="payload" movable={false} hideable={false} live={armed}>
                         <PayloadRailStrip />
                       </LayoutWidget>
                     </div>
@@ -342,7 +343,9 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                   {status}
                 </div>
                 <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
-                  <BatteryReturnBar />
+                  <LayoutWidget widgetKey={BATTERY_BAR_KEY} movable={false} live badgePlace={BATTERY_BAR_BADGE}>
+                    <BatteryReturnBar />
+                  </LayoutWidget>
                 </div>
               </div>
               <TrafficBanner className="px-3 pb-2" />

@@ -40,7 +40,7 @@ import { HudLadders } from '@/ui/HudLadders';
 import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FLY_MENU, FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET } from '@/ui/FlyScreenState';
-import { useHasVehicle } from '@/ui/FlyState';
+import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { ApproximateAimNote, gimbalSwitchShown } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop } from '@/ui/Osd';
@@ -48,7 +48,7 @@ import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { LayoutWidget, MINIMAP_KEY, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
-import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
+import { BATTERY_BAR_BADGE, BATTERY_BAR_KEY, BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, VIDEO_CORNER_ROOM, useRememberSyntheticAims, useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
 import { UpdateBanner } from '@/ui/AppUpdates';
@@ -421,6 +421,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const deciding = useValue(shellState.guidedPanels) > 0;
   const obstacles = useValue(shellState.obstacles);
   const hasVehicle = useHasVehicle();
+  const armed = useArmed();
   const lostFlight = useValue(lostVehicle) !== null;
   const mapAboveOsd = view === FlyView.Map && stickPad === null && hasVehicle && !deciding ? osd.size.height : 0;
   const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : mapAboveOsd;
@@ -499,7 +500,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               className="absolute inset-x-0 flex justify-center"
               style={{ bottom: (view === FlyView.Video || fullScreen ? AircastSpace.s3 : Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2)) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}
             >
-              <LayoutWidget widgetKey="payload" movable={false} hideable={false}>
+              <LayoutWidget widgetKey="payload" movable={false} hideable={false} live={armed}>
                 <PayloadRailStrip />
               </LayoutWidget>
             </div>
@@ -532,7 +533,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                           </div>
                         </FlyTopBar>
                         <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
-                          <BatteryReturnBar />
+                          <LayoutWidget widgetKey={BATTERY_BAR_KEY} movable={false} live badgePlace={BATTERY_BAR_BADGE}>
+                            <BatteryReturnBar />
+                          </LayoutWidget>
                         </div>
                       </div>
                     }
