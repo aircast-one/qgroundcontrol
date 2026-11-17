@@ -16,25 +16,21 @@ const spacedOut = (piece: string): string => piece.replace(/(?<=[a-z])(?=[A-Z])/
 
 const lowerFirst = (text: string) => (text ? text.charAt(0).toLowerCase() + text.slice(1) : text);
 
+const casedPiece =
+  (firstWord: boolean) =>
+  (piece: string, part: number, pieces: readonly string[]): string => {
+    if (part % 2 === 1) return piece;
+    if (pieces[part - 1] === '/' && RUN_TOGETHER.test(piece) && !PROPER_NOUNS.has(piece)) return spacedOut(piece);
+    const lead = [...piece].findIndex(isLetterOrDigit);
+    const split = lead === -1 ? piece.length : lead;
+    const body = piece.slice(split);
+    return (firstWord && part === 0) || keepsCase(body) ? piece : piece.slice(0, split) + lowerFirst(body);
+  };
+
+const casedWord = (word: string, at: number): string =>
+  PROPER_NOUNS.has(word.replace(TRAILING_PUNCTUATION, '')) ? word : word.split(JOINERS).map(casedPiece(at === 0)).join('');
+
 export const sentenceCase = (label: string): string => {
   const phrase = PROPER_PHRASES.find((it) => label.startsWith(it));
-  if (phrase) return phrase + lowerFirst(sentenceCase(label.slice(phrase.length)));
-  return label
-    .split(' ')
-    .map((word, at) =>
-      PROPER_NOUNS.has(word.replace(TRAILING_PUNCTUATION, ''))
-        ? word
-        : word
-            .split(JOINERS)
-            .map((piece, part, pieces) => {
-              if (part % 2 === 1) return piece;
-              if (pieces[part - 1] === '/' && RUN_TOGETHER.test(piece) && !PROPER_NOUNS.has(piece)) return spacedOut(piece);
-              const lead = [...piece].findIndex(isLetterOrDigit);
-              const split = lead === -1 ? piece.length : lead;
-              const body = piece.slice(split);
-              return (at === 0 && part === 0) || keepsCase(body) ? piece : piece.slice(0, split) + lowerFirst(body);
-            })
-            .join(''),
-    )
-    .join(' ');
+  return phrase ? phrase + lowerFirst(sentenceCase(label.slice(phrase.length))) : label.split(' ').map(casedWord).join(' ');
 };

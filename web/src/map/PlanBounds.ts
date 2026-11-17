@@ -3,6 +3,12 @@ import type { MissionItem } from './PlanBridge';
 import type { Survey } from './SurveyBridge';
 import { type TrackPoint, isPlottable } from './VehicleMap';
 
+const TEMPLATE_MIN_ZOOM = 15;
+
+export const ZOOM_IN_FOR_PATTERN = 'Zoom the map in to where the pattern should go. It fills the area you can see.';
+
+export const zoomedOutForTemplates = (zoom: number | null): boolean => zoom === null || zoom < TEMPLATE_MIN_ZOOM;
+
 export type PlanBounds = {
   readonly south: number;
   readonly west: number;

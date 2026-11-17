@@ -32,7 +32,8 @@ import {
   undrawnItemsWarning,
 } from '@/ui/PlanFileRules';
 import { useRememberPlanFileActions, visualItems } from '@/ui/PlanFiles';
-import { CREATE_FROM_TEMPLATE, NewPlanDialog, ZOOM_IN_FOR_TEMPLATE, planTemplates, zoomedOutForTemplates } from '@/ui/PlanTemplates';
+import { zoomedOutForTemplates } from '@/map/PlanBounds';
+import { CREATE_FROM_TEMPLATE, NewPlanDialog, ZOOM_IN_FOR_TEMPLATE, planTemplates } from '@/ui/PlanTemplates';
 import { usePlanRequests } from '@/ui/PlanRequests';
 import { PlanTransformDialog } from '@/ui/PlanTransform';
 import { RouteSettings } from '@/ui/RouteSettings';

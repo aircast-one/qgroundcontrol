@@ -5,11 +5,7 @@ import { md } from '@/theme/Colors';
 
 export const CREATE_FROM_TEMPLATE = 'plan.createFromTemplate';
 const BLANK_LABEL = 'Blank mission';
-export const TEMPLATE_MIN_ZOOM = 15;
 export const ZOOM_IN_FOR_TEMPLATE = 'Zoom the map in to where the mission should go. A template fills the area you can see.';
-export const ZOOM_IN_FOR_PATTERN = 'Zoom the map in to where the pattern should go. It fills the area you can see.';
-
-export const zoomedOutForTemplates = (zoom: number | null): boolean => zoom === null || zoom < TEMPLATE_MIN_ZOOM;
 
 export type PlanTemplatesState = { enabled: boolean; names: readonly string[]; blank: string };
 

@@ -89,7 +89,6 @@ const setToVehicleLocation = async (index: number): Promise<string | null> => {
   return coordinate === null ? 'The vehicle has no position yet.' : PlanCommands.setLandingCoordinate(index, coordinate);
 };
 
-
 export const areaHelp = (view: Json | null): string | null => blankToNull(optText(view, 'areaHelp'));
 
 export const gridNote = (view: Json | null): string | null => blankToNull(optText(view, 'gridNote'));

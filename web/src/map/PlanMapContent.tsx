@@ -50,7 +50,7 @@ import { MISSION_SPLIT_PATH, legSplit } from './MissionLayers';
 import { missionSummaryText } from './MissionSummary';
 import { OperatorBridge, operatorPoint } from './OperatorPosition';
 import { readCamera } from './MapCamera';
-import { centersOnVehicleAtEntry, fitsPlanOnEntry, planEntryPoint, planIsDrawn, stillFirstRead } from './PlanBounds';
+import { ZOOM_IN_FOR_PATTERN, centersOnVehicleAtEntry, fitsPlanOnEntry, planEntryPoint, planIsDrawn, stillFirstRead, zoomedOutForTemplates } from './PlanBounds';
 import {
   KIND_CORRIDOR,
   KIND_DROP,
@@ -150,7 +150,6 @@ import { PlanItemList } from './PlanItemList';
 import { type PlanUpload, usePlanUpload } from './PlanUpload';
 import { firstWhere, useRemembered } from './Remembered';
 import { WaypointSettings } from './WaypointPanel';
-import { ZOOM_IN_FOR_PATTERN, zoomedOutForTemplates } from '@/ui/PlanTemplates';
 
 const PLAN_POLL_MS = 700;
 const FIELD_ZOOM = 16;

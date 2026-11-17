@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { ZOOM_IN_FOR_TEMPLATE, newPlanNote, planTemplates, templateChoices, zoomedOutForTemplates } from './PlanTemplates';
+import { zoomedOutForTemplates } from '@/map/PlanBounds';
+import { ZOOM_IN_FOR_TEMPLATE, newPlanNote, planTemplates, templateChoices } from './PlanTemplates';
 
 describe('PlanTemplatesTest', () => {
   it('templates read from the plan view in the order QGC offers them', () => {
