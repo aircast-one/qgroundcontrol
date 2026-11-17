@@ -67,7 +67,7 @@ export const readFlightModesOn = async (page: Page, channel: number) => {
   await editor.getByRole('button', { name: /^Channel ?\d+$/ }).click();
   const choice = new RegExp(`^Channel ?${channel}$`);
   await page.getByRole('menuitem', { name: choice }).or(page.getByRole('option', { name: choice })).first().click();
-  await editor.getByRole('button', { name: 'Done' }).click();
+  await editor.getByRole('button', { name: 'Save' }).click();
   await expect(row).toContainText(String(channel));
   await page.getByRole('button', { name: 'Close settings' }).click();
 };

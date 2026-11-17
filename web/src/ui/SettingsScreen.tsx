@@ -3,7 +3,7 @@ import { type Fact, type FactSlider, Qgc } from '@/bridge/Qgc';
 import { requestSerialPort, webSerialAvailable } from '@/core/client';
 import { settingControl, useQgcPath } from '@/bridge/QgcState';
 import { type Json, jsonObjects, optBoolean, optDouble, optJSONArray, optText } from '@/bridge/Json';
-import { useBackHandler, useKeyedState, useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
+import { useBackHandler, useKeyedState, useLaunchedEffect, useProduceState } from '@/kotlin/Compose';
 import type { MutableState } from '@/kotlin/State';
 import { coerceIn, delay, format } from '@/kotlin/Std';
 import { sentenceCase as mapSentenceCase } from '@/map/SentenceCase';
@@ -779,8 +779,6 @@ export const LocalRunInertNote = createContext<string | null>(null);
 
 export const LocalSettingsList = createContext(false);
 
-export const LocalTypedDiscarded = createContext<() => boolean>(() => false);
-
 export const SUBTITLE_SEPARATOR = ' · ';
 
 export type ShownSubtitle = { text: string; hasHelp: boolean };
@@ -1427,8 +1425,35 @@ export const shownText = (fact: Fact): string => {
   return (value === null ? null : ratioText(value)) ?? fieldText(fact);
 };
 
-const blurFocused = () => {
-  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+export type StagedEdits = { stage: (key: string, commit: (() => Promise<boolean>) | null) => void };
+
+export const LocalStagedEdits = createContext<StagedEdits | null>(null);
+
+export const useStagedEdits = (): readonly [StagedEdits, () => Promise<boolean>] => {
+  const commits = useRef<ReadonlyMap<string, () => Promise<boolean>>>(new Map());
+  const staged = useMemo<StagedEdits>(
+    () => ({
+      stage: (key, commit) => {
+        commits.current = commit === null ? new Map([...commits.current].filter(([it]) => it !== key)) : new Map([...commits.current, [key, commit]]);
+      },
+    }),
+    [],
+  );
+  const saveAll = () => [...commits.current.values()].reduce<Promise<boolean>>(async (saved, commit) => (await saved) && commit(), Promise.resolve(true));
+  return [staged, saveAll];
+};
+
+export const typedNotice = (fact: Fact, typed: string): string =>
+  isSecret(fact) ? `${sentenceCase(fact.heading)} changed` : `${sentenceCase(fact.heading)}: ${[typed, fact.isString ? '' : shownUnits(fact.units)].filter(notBlank).join(' ')}`;
+
+export const useWriteNotice = () => {
+  const notice = useContext(LocalChangeNotice);
+  return (fact: Fact, shown: string, previous: unknown, onWrite: () => void) =>
+    notice.show(typedNotice(fact, shown), async () => {
+      const refusal = await Qgc.writeRefusal(fact.path, previous);
+      if (refusal === null) onWrite();
+      return refusal;
+    });
 };
 
 const FactTextField = ({ fact, onWrite, onRejected = () => undefined, onTheRight = false }: { fact: Fact; onWrite: () => void; onRejected?: () => void; onTheRight?: boolean }) => {
@@ -1437,75 +1462,82 @@ const FactTextField = ({ fact, onWrite, onRejected = () => undefined, onTheRight
   const [revealed, setRevealed] = useKeyedState([fact.path], () => false);
   const [focused, setFocused] = useState(false);
   const blockRebootNote = useContext(LocalBlockRebootNote);
-  const discarded = useContext(LocalTypedDiscarded);
+  const staged = useContext(LocalStagedEdits);
+  const announce = useWriteNotice();
   const secret = isSecret(fact);
   const pending = editing !== null && editing !== shownText(fact) ? editing : null;
 
-  const commit = () => {
-    if (pending === null) return;
-    const committed = storedText(fact, pending);
-    void (async () => {
-      const refused = await blockingRejection(fact, committed);
-      if (refused !== null) {
-        setRejection(refused);
-        onRejected();
-        return;
-      }
-      const refusal = await Qgc.writeRefusal(fact.path, committed);
-      setRejection(refusal);
-      if (refusal === null) {
-        setEditing(null);
-        onWrite();
-      }
-    })();
+  const commitText = async (typed: string): Promise<boolean> => {
+    const committed = storedText(fact, typed);
+    const previous = storedText(fact, shownText(fact));
+    const refused = await blockingRejection(fact, committed);
+    if (refused !== null) {
+      setRejection(refused);
+      onRejected();
+      return false;
+    }
+    const refusal = await Qgc.writeRefusal(fact.path, committed);
+    setRejection(refusal);
+    if (refusal !== null) return false;
+    setEditing(null);
+    onWrite();
+    announce(fact, typed, previous, onWrite);
+    return true;
   };
-  const latestCommit = useUpdatedRef(commit);
-  const latestPending = useUpdatedRef(pending);
+  const commit = () => void (pending === null ? undefined : commitText(pending));
+  const commitAndLeave = () => {
+    commit();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  };
+  const discard = () => {
+    setEditing(null);
+    setRejection(null);
+  };
 
-  useEffect(
-    () => () => {
-      const typed = latestPending.current;
-      if (typed === null || discarded()) return;
-      const committed = storedText(fact, typed);
-      void (async () => {
-        if ((await blockingRejection(fact, committed)) === null) await Qgc.writeRefusal(fact.path, committed);
-      })();
-    },
-    [fact.path],
-  );
+  useEffect(() => {
+    staged?.stage(fact.path, pending === null ? null : () => commitText(pending));
+    return () => staged?.stage(fact.path, null);
+  }, [pending, fact.path]);
 
   const constraint = factConstraintNote(fact);
   const reboot = factRebootNote(fact);
   return (
     <div
       className="flex flex-col"
-      style={onTheRight ? { width: NUMBER_VALUE_WIDTH } : undefined}
       onFocus={() => setFocused(true)}
       onBlur={(event) => {
         if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
         setFocused(false);
-        if (!discarded()) latestCommit.current();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || pending === null) return;
+        event.stopPropagation();
+        discard();
       }}
     >
-      <OutlinedTextField
-        value={editing ?? shownText(fact)}
-        ariaLabel={fact.title}
-        enabled={fact.enabled}
-        suffix={notBlank(fact.units) ? shownUnits(fact.units) : undefined}
-        keyboardType={secret && !revealed ? 'password' : factKeyboard(fact)}
-        autoCorrect={!isAddress(fact)}
-        leadingIcon={secret ? <TextButton onClick={() => setRevealed(!revealed)}>{revealed ? 'Hide' : 'Show'}</TextButton> : undefined}
-        onValueChange={(it) => {
-          setEditing(typedValue(it));
-          setRejection(null);
-        }}
-        singleLine={factValueLines(fact) === 1}
-        minLines={1}
-        isError={rejection !== null}
-        onDone={blurFocused}
-        className={`w-full ${onTheRight ? '[&_input]:text-right' : ''} ${GROWING_FOUR_LINES}`}
-        trailingIcon={pending !== null ? <TextButton onClick={commit}>Set</TextButton> : undefined}
-      />
+      <div className={`flex items-center gap-1 ${onTheRight ? 'justify-end' : ''}`}>
+        <div className={onTheRight ? 'shrink-0' : 'min-w-0 flex-1'} style={onTheRight ? { width: NUMBER_VALUE_WIDTH } : undefined}>
+          <OutlinedTextField
+            value={editing ?? shownText(fact)}
+            ariaLabel={fact.title}
+            enabled={fact.enabled}
+            suffix={notBlank(fact.units) ? shownUnits(fact.units) : undefined}
+            keyboardType={secret && !revealed ? 'password' : factKeyboard(fact)}
+            autoCorrect={!isAddress(fact)}
+            leadingIcon={secret ? <TextButton onClick={() => setRevealed(!revealed)}>{revealed ? 'Hide' : 'Show'}</TextButton> : undefined}
+            onValueChange={(it) => {
+              setEditing(typedValue(it));
+              setRejection(null);
+            }}
+            singleLine={factValueLines(fact) === 1}
+            minLines={1}
+            isError={rejection !== null}
+            onDone={commitAndLeave}
+            className={`w-full ${onTheRight ? '[&_input]:text-right' : ''} ${GROWING_FOUR_LINES}`}
+          />
+        </div>
+        {pending !== null && staged === null ? <TextButton onClick={commit}>Set</TextButton> : null}
+      </div>
       {rejection !== null ? (
         <Text typography="bodySmall" color={md('error')} className="block pt-1 pl-4">
           {rejection}

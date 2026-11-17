@@ -188,6 +188,7 @@ const ParameterRow = ({ name, offersRcToParam }: { name: string; offersRcToParam
       {forcing ? (
         <ParameterEditDialog
           name={name}
+          onWrite={() => setRevision((it) => it + 1)}
           onDismiss={() => {
             setForcing(false);
             setRevision((it) => it + 1);

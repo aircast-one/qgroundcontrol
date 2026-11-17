@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { type Fact, Qgc, makeFact } from '@/bridge/Qgc';
 import { type Json, has, isNull, opt, optBoolean } from '@/bridge/Json';
 import { useKeyedState, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
@@ -9,7 +9,7 @@ import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { aircast, md } from '@/theme/Colors';
 import { useAdvancedUiShown } from '@/ui/AdvancedUi';
 import { parameterFact, parameterPath } from '@/ui/ParametersScreen';
-import { FactRow, LocalBlockRebootNote, LocalSettingsList, LocalTypedDiscarded, factRebootNote } from '@/ui/SettingsScreen';
+import { FactRow, LocalBlockRebootNote, LocalSettingsList, LocalStagedEdits, factRebootNote, fieldText, useStagedEdits, useWriteNotice } from '@/ui/SettingsScreen';
 import { ValueControls, opensAsValue } from '@/ui/ValueRow';
 
 const PARAM_SCHEME = 'param://';
@@ -131,7 +131,7 @@ export const parameterRangeLine = (fact: Fact): string => {
 export const parameterRebootNotes = (fact: Fact): string[] =>
   [fact.vehicleRebootRequired ? 'Vehicle reboot required after change' : null, fact.qgcRebootRequired ? 'Application restart required after change' : null].filter((it): it is string => it !== null);
 
-export const ParameterEditDialog = ({ name, title = name, onDismiss }: { name: string; title?: string; onDismiss: () => void }) => {
+export const ParameterEditDialog = ({ name, title = name, onWrite = () => undefined, onDismiss }: { name: string; title?: string; onWrite?: () => void; onDismiss: () => void }) => {
   const [revision, setRevision] = useState(0);
   const [advanced, setAdvanced] = useState(false);
   const [forced, setForced] = useState(false);
@@ -140,8 +140,8 @@ export const ParameterEditDialog = ({ name, title = name, onDismiss }: { name: s
   const [rejected, setRejected] = useState(false);
   const [forcedText, setForcedText] = useState('');
   const [forceRefusal, setForceRefusal] = useState<string | null>(null);
-  const resetting = useRef(false);
-  const discarded = useCallback(() => resetting.current, []);
+  const [staged, saveAll] = useStagedEdits();
+  const announce = useWriteNotice();
   const forceAllowed = useAdvancedUiShown();
   const fact = useProduceState<Fact | null>(null, [name, revision], async (set) => set(await parameterFact(name)));
   const defaultValue = useProduceState<unknown>(null, [name, revision], async (set) => set(parameterDefault(await Qgc.get(parameterPath(name)))));
@@ -173,16 +173,17 @@ export const ParameterEditDialog = ({ name, title = name, onDismiss }: { name: s
           </Text>
         ) : null}
         <LocalBlockRebootNote.Provider value={factRebootNote(loaded)}>
-          <LocalTypedDiscarded.Provider value={discarded}>
-            <FactRow
-              fact={shown}
-              title={notBlank(loaded.heading) ? loaded.heading : 'Value'}
-              subtitle=""
-              fieldModifier="w-full py-2"
-              onWrite={() => setRevision((it) => it + 1)}
-              onRejected={() => setRejected(true)}
-            />
-          </LocalTypedDiscarded.Provider>
+          <FactRow
+            fact={shown}
+            title={notBlank(loaded.heading) ? loaded.heading : 'Value'}
+            subtitle=""
+            fieldModifier="w-full py-2"
+            onWrite={() => {
+              setRevision((it) => it + 1);
+              onWrite();
+            }}
+            onRejected={() => setRejected(true)}
+          />
         </LocalBlockRebootNote.Provider>
         {notBlank(range) ? (
           <Text typography="bodySmall" color={md('onSurfaceVariant')}>
@@ -239,33 +240,47 @@ export const ParameterEditDialog = ({ name, title = name, onDismiss }: { name: s
   };
 
   const resettable = fact !== null && (!fact.readOnly || forced) && defaultValue !== null ? fact : null;
-  const reset = (loaded: Fact) => {
-    resetting.current = true;
+  const reset = (loaded: Fact) =>
     void (async () => {
       const refused = forced ? await Qgc.writeForcedRefusal(loaded.path, defaultValue) : await Qgc.writeRefusal(loaded.path, defaultValue);
       setForceRefusal(refused);
-      resetting.current = refused === null;
-      if (refused === null) onDismiss();
+      if (refused !== null) return;
+      announce(loaded, String(defaultValue), fieldText(loaded), onWrite);
+      onDismiss();
     })();
-  };
+  const save = () =>
+    void (async () => {
+      if (await saveAll()) onDismiss();
+    })();
 
   return (
     <AircastSheet onDismissRequest={onDismiss} label={title}>
-      <div className="flex w-full flex-col gap-2 px-sheet pb-6">
-        <Text typography="titleLarge">{title}</Text>
-        {fact !== null ? (
-          body(fact)
-        ) : (
-          <Text typography="bodySmall">{`${name} is not a parameter on this vehicle.`}</Text>
-        )}
-        <div className="flex w-full justify-end gap-2">
-          {resettable !== null ? <TextButton onClick={() => reset(resettable)}>Reset to default</TextButton> : null}
-          <Button onClick={onDismiss}>Done</Button>
+      <LocalStagedEdits.Provider value={staged}>
+        <div className="flex w-full flex-col gap-2 px-sheet pb-6">
+          <Text typography="titleLarge">{title}</Text>
+          {fact !== null ? (
+            body(fact)
+          ) : (
+            <Text typography="bodySmall">{`${name} is not a parameter on this vehicle.`}</Text>
+          )}
+          <SheetActions onReset={resettable !== null ? () => reset(resettable) : null} onCancel={onDismiss} onSave={fact !== null ? save : null} />
         </div>
-      </div>
+      </LocalStagedEdits.Provider>
     </AircastSheet>
   );
 };
+
+const SheetActions = ({ onReset, onCancel, onSave }: { onReset: (() => void) | null; onCancel: () => void; onSave: (() => void) | null }) => (
+  <div className="flex w-full flex-wrap items-center justify-end gap-2">
+    {onReset !== null ? (
+      <TextButton onClick={onReset} className="mr-auto">
+        Reset to default
+      </TextButton>
+    ) : null}
+    <TextButton onClick={onCancel}>Cancel</TextButton>
+    {onSave !== null ? <Button onClick={onSave}>Save</Button> : null}
+  </div>
+);
 
 export const VALUE_DETAILS_TITLE = 'Value Details';
 
@@ -282,27 +297,28 @@ export const valueDetailsNotes = (fact: Fact): string[] => [
 
 export const ValueDetailsSheet = ({ fact, title = VALUE_DETAILS_TITLE, onWrite, onDismiss }: { fact: Fact; title?: string; onWrite: () => void; onDismiss: () => void }) => {
   const [refusal, setRefusal] = useKeyedState<string | null>([fact.path], () => null);
-  const resetting = useRef(false);
-  const discarded = useCallback(() => resetting.current, []);
+  const [staged, saveAll] = useStagedEdits();
+  const announce = useWriteNotice();
   const parsedDefault = toDoubleOrNull(fact.defaultValueString);
   const defaultValue = parsedDefault !== null && !fact.readOnly ? parsedDefault : null;
   const typedEntry = <FactRow fact={fact} title={opensAsValue(fact) ? 'Type a value' : fact.heading} subtitle="" fieldModifier="w-full py-2" onWrite={onWrite} />;
-  const reset = (value: number) => {
-    resetting.current = true;
+  const reset = (value: number) =>
     void (async () => {
       const refused = await Qgc.writeRefusal(fact.path, value);
       setRefusal(refused);
-      resetting.current = refused === null;
-      if (refused === null) {
-        onWrite();
-        onDismiss();
-      }
+      if (refused !== null) return;
+      onWrite();
+      announce(fact, fact.defaultValueString, fieldText(fact), onWrite);
+      onDismiss();
     })();
-  };
+  const save = () =>
+    void (async () => {
+      if (await saveAll()) onDismiss();
+    })();
   return (
     <AircastSheet onDismissRequest={onDismiss} label={title}>
       <LocalSettingsList.Provider value={false}>
-        <LocalTypedDiscarded.Provider value={discarded}>
+        <LocalStagedEdits.Provider value={staged}>
           <div className="flex w-full flex-col gap-2 px-sheet pb-6">
             <Text typography="titleLarge">{title}</Text>
             {opensAsValue(fact) ? <ValueControls fact={fact} onWrite={onWrite} typedEntry={typedEntry} /> : typedEntry}
@@ -321,12 +337,9 @@ export const ValueDetailsSheet = ({ fact, title = VALUE_DETAILS_TITLE, onWrite, 
                 {refusal}
               </Text>
             ) : null}
-            <div className="flex w-full justify-end gap-2">
-              {defaultValue !== null ? <TextButton onClick={() => reset(defaultValue)}>Reset to default</TextButton> : null}
-              <Button onClick={onDismiss}>Done</Button>
-            </div>
+            <SheetActions onReset={defaultValue !== null ? () => reset(defaultValue) : null} onCancel={onDismiss} onSave={save} />
           </div>
-        </LocalTypedDiscarded.Provider>
+        </LocalStagedEdits.Provider>
       </LocalSettingsList.Provider>
     </AircastSheet>
   );

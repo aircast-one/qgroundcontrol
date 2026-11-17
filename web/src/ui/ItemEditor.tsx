@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { type Json, arrayJSONObject, has, isNull, jsonObjects, jsonStrings, optArrayText, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optString, optText } from '@/bridge/Json';
 import { PlanCommands } from '@/bridge/BridgeCommands';
 import { type Fact, type FactSlider, Qgc, makeFact } from '@/bridge/Qgc';
@@ -23,7 +23,7 @@ import { factFromControl, factSlider } from '@/ui/ParameterForm';
 import { ValueDetailsSheet } from '@/ui/ParameterLinks';
 import { PatternPresets, presetKind } from '@/ui/PatternPresets';
 import { PlanVehicleRows } from '@/ui/PlanVehicleRows';
-import { FactRow, FieldSlider, LocalTypedDiscarded } from '@/ui/SettingsScreen';
+import { FactRow, FieldSlider } from '@/ui/SettingsScreen';
 import { SectionHeader } from '@/ui/SetupRow';
 
 export const itemFactsPath = (index: number): string => `view.itemFacts(${index})`;
@@ -191,29 +191,6 @@ export const itemFields = (view: Json | null): readonly Fact[] => {
 type ItemEditorProps = { index: number; at: TrackPoint | null; mapCentre: readonly [number, number] | null; legDetail: string | null; onRemove: (() => void) | null };
 
 export const ItemEditor = ({ index, at, mapCentre, legDetail, onRemove }: ItemEditorProps) => {
-  const removing = useRef<number | null>(null);
-  const discarded = useCallback(() => removing.current === index, [index]);
-  return (
-    <LocalTypedDiscarded.Provider value={discarded}>
-      <ItemEditorBody
-        index={index}
-        at={at}
-        mapCentre={mapCentre}
-        legDetail={legDetail}
-        onRemove={
-          onRemove === null
-            ? null
-            : () => {
-                removing.current = index;
-                onRemove();
-              }
-        }
-      />
-    </LocalTypedDiscarded.Provider>
-  );
-};
-
-const ItemEditorBody = ({ index, at, mapCentre, legDetail, onRemove }: ItemEditorProps) => {
   const [revision, setRevision] = useKeyedState([index], () => 0);
   const [view, setView] = useKeyedState<Json | null>([index], () => null);
   const [choosing, setChoosing] = useKeyedState([index], () => false);

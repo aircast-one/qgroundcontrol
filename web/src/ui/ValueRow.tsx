@@ -1,4 +1,4 @@
-import { type PointerEvent, type ReactNode, Fragment, createContext, useContext, useRef, useState } from 'react';
+import { type PointerEvent, type ReactNode, Fragment, createContext, useContext, useEffect, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc } from '@/bridge/Qgc';
 import { AlertDialog, CircularProgressIndicator, DropdownMenu, DropdownMenuItem, HorizontalDivider, Text, TextButton } from '@/m3';
 import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
@@ -8,7 +8,7 @@ import { type ClosedRange, useRepeatWhileHeld } from '@/map/SettingStepper';
 import { md, withAlpha } from '@/theme/Colors';
 import { sliderValue } from '@/ui/ParameterForm';
 import { factNumber } from '@/ui/Px4TuningScreen';
-import { FieldSlider, showsAsField } from '@/ui/SettingsScreen';
+import { FieldSlider, LocalStagedEdits, sentenceCase, showsAsField } from '@/ui/SettingsScreen';
 
 export const VALUE_OFF = 'Off';
 export const VALUE_NO_LIMIT = 'No limit';
@@ -387,6 +387,8 @@ const StepButton = ({ label, description, enabled, onStep, onRelease }: { label:
 };
 
 export const ValueControls = ({ fact, onWrite, typedEntry }: { fact: Fact; onWrite: () => void; typedEntry: ReactNode }) => {
+  const notice = useContext(LocalChangeNotice);
+  const staged = useContext(LocalStagedEdits);
   const [refusal, setRefusal] = useKeyedState<string | null>([fact.path], () => null);
   const [pending, setPendingState] = useKeyedState<number | null>([fact.path, fact.valueString], () => null);
   const pendingRef = useRef(pending);
@@ -396,19 +398,29 @@ export const ValueControls = ({ fact, onWrite, typedEntry }: { fact: Fact; onWri
     setPendingState(next);
   };
   const [typing, setTyping] = useKeyedState([fact.path], () => false);
-  const write = (value: number) => {
-    void (async () => {
-      const refused = await writeValueRefusal(fact, value);
-      setRefusal(refused);
-      if (refused === null) onWrite();
-      else setPending(null);
-    })();
+  const write = async (value: number): Promise<boolean> => {
+    const before = numberOf(fact);
+    const refused = await writeValueRefusal(fact, value);
+    setRefusal(refused);
+    if (refused !== null) return false;
+    onWrite();
+    notice.show(
+      `${sentenceCase(fact.heading)}: ${valueTextOf(fact, value)}`,
+      before === null
+        ? null
+        : async () => {
+            const undone = await writeValueRefusal(fact, before);
+            if (undone === null) onWrite();
+            return undone;
+          },
+    );
+    return true;
   };
+  useEffect(() => {
+    staged?.stage(`${fact.path}#value`, pending === null || pending === numberOf(fact) ? null : () => write(pending));
+    return () => staged?.stage(`${fact.path}#value`, null);
+  }, [pending, fact.path, fact.valueString]);
   const shown = pending ?? numberOf(fact);
-  const commit = () => {
-    const held = pendingRef.current;
-    if (held !== null && held !== numberOf(fact)) write(held);
-  };
   const nudge = (direction: number) => (repeats: number) => {
     const from = pendingRef.current ?? numberOf(fact);
     if (from !== null) setPending(nudged(fact, from, direction, repeats));
@@ -418,18 +430,18 @@ export const ValueControls = ({ fact, onWrite, typedEntry }: { fact: Fact; onWri
   return (
     <>
       <div className="flex w-full items-center justify-center gap-4">
-        <StepButton label={'−'} description="Decrease" enabled={fact.acceptsWrite} onStep={nudge(-1)} onRelease={commit} />
+        <StepButton label={'−'} description="Decrease" enabled={fact.acceptsWrite} onStep={nudge(-1)} onRelease={() => undefined} />
         <button type="button" onClick={() => setTyping(!typing)} title="Type a value" className="px-2 py-1">
           <Text typography="headlineSmall">{valueTextOf(fact, shown)}</Text>
         </button>
-        <StepButton label="+" description="Increase" enabled={fact.acceptsWrite} onStep={nudge(1)} onRelease={commit} />
+        <StepButton label="+" description="Increase" enabled={fact.acceptsWrite} onStep={nudge(1)} onRelease={() => undefined} />
       </div>
-      {slider !== null && !(disablesAtZero(fact) && shown === 0) ? <FieldSlider value={shown} slider={slider} label={fact.title} enabled={fact.acceptsWrite} onWrite={write} /> : null}
+      {slider !== null && !(disablesAtZero(fact) && shown === 0) ? <FieldSlider value={shown} slider={slider} label={fact.title} enabled={fact.acceptsWrite} onWrite={setPending} /> : null}
       {disablesAtZero(fact) ? (
         shown === 0 ? (
-          <TextButton onClick={() => write(turnOnValue(fact))}>{limit ? 'Set a limit' : 'Turn on'}</TextButton>
+          <TextButton onClick={() => setPending(turnOnValue(fact))}>{limit ? 'Set a limit' : 'Turn on'}</TextButton>
         ) : (
-          <TextButton onClick={() => write(0.0)}>{limit ? 'Remove the limit' : 'Turn off'}</TextButton>
+          <TextButton onClick={() => setPending(0.0)}>{limit ? 'Remove the limit' : 'Turn off'}</TextButton>
         )
       ) : null}
       {typing ? typedEntry : null}
