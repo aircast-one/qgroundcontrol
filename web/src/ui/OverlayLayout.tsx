@@ -1,7 +1,7 @@
 import { type CSSProperties, type Dispatch, type HTMLAttributes, type PointerEvent, type ReactNode, type RefObject, type SetStateAction, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
 import { Button, DropdownMenu, DropdownMenuItem, Surface } from '@/m3';
-import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useEscapeHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type SharedPreferences, getSharedPreferences, TAP } from '@/kotlin/Platform';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
@@ -501,7 +501,7 @@ export const LayoutOptionsMenu = () => {
 
 export const LayoutDoneButton = () => {
   const layout = useContext(LocalFlyScreenState).layout;
-  useBackHandler(true, () => {
+  useEscapeHandler(true, () => {
     layout.editing.value = false;
   });
   return (

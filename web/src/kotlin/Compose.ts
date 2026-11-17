@@ -1,4 +1,5 @@
 import { type DependencyList, useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 
 export type Scope = { isActive: () => boolean };
 
@@ -31,35 +32,78 @@ export const useProduceState = <T,>(initial: T, keys: DependencyList, producer: 
   return value;
 };
 
-type BackEntry = { order: number; enabled: boolean; onBack: { readonly current: () => void } };
+type Handler = { order: number; enabled: boolean; run: { readonly current: () => void } };
 
-const backStack: { entries: readonly BackEntry[]; next: number; listening: boolean } = { entries: [], next: 0, listening: false };
+type HandlerKind = 'back' | 'escape';
+
+const handlers: { back: readonly Handler[]; escape: readonly Handler[]; next: number; listening: boolean } = { back: [], escape: [], next: 0, listening: false };
+
+const trail = { pushed: 0, travelling: false };
+
+const DEPTH = 'aircastDepth';
 
 const OPEN_POPUP = '[role="dialog"][data-open], [role="alertdialog"][data-open], [role="menu"][data-open], [role="listbox"][data-open]';
 
-const listenForBack = () => {
-  if (backStack.listening) return;
-  backStack.listening = true;
+const enabledOf = (kind: HandlerKind): readonly Handler[] => handlers[kind].filter((entry) => entry.enabled);
+
+const topOf = (kind: HandlerKind): Handler | null => enabledOf(kind).reduce<Handler | null>((best, entry) => (best === null || entry.order > best.order ? entry : best), null);
+
+export const historyDepth = (state: unknown): number => {
+  const depth = typeof state === 'object' && state !== null ? (state as Record<string, unknown>)[DEPTH] : undefined;
+  return typeof depth === 'number' && Number.isInteger(depth) && depth > 0 ? depth : 0;
+};
+
+const syncHistory = () => {
+  if (trail.travelling) return;
+  const wanted = enabledOf('back').length;
+  if (wanted > trail.pushed) {
+    Array.from({ length: wanted - trail.pushed }, (_, at) => history.pushState({ [DEPTH]: trail.pushed + at + 1 }, ''));
+    trail.pushed = wanted;
+  } else if (wanted < trail.pushed) {
+    trail.travelling = true;
+    history.go(wanted - trail.pushed);
+  }
+};
+
+const listen = () => {
+  if (handlers.listening) return;
+  handlers.listening = true;
+  trail.pushed = historyDepth(history.state);
   window.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector(OPEN_POPUP)) return;
-    const top = backStack.entries.filter((entry) => entry.enabled).reduce<BackEntry | null>((best, entry) => (best === null || entry.order > best.order ? entry : best), null);
+    const top = topOf('escape');
     if (top === null) return;
     event.preventDefault();
-    top.onBack.current();
+    top.run.current();
+  });
+  window.addEventListener('popstate', (event) => {
+    const depth = historyDepth(event.state);
+    const asked = !trail.travelling && depth < trail.pushed;
+    trail.travelling = false;
+    trail.pushed = depth;
+    const top = asked ? topOf('back') : null;
+    if (top !== null) flushSync(() => top.run.current());
+    syncHistory();
   });
 };
 
-export const useBackHandler = (enabled: boolean, onBack: () => void): void => {
-  const latest = useUpdatedRef(onBack);
-  const [order] = useState(() => backStack.next++);
+const useHandler = (kind: HandlerKind, enabled: boolean, run: () => void): void => {
+  const latest = useUpdatedRef(run);
+  const [order] = useState(() => handlers.next++);
   useEffect(() => {
-    listenForBack();
-    backStack.entries = [...backStack.entries.filter((entry) => entry.order !== order), { order, enabled, onBack: latest }];
+    listen();
+    handlers[kind] = [...handlers[kind].filter((entry) => entry.order !== order), { order, enabled, run: latest }];
+    if (kind === 'back') syncHistory();
     return () => {
-      backStack.entries = backStack.entries.filter((entry) => entry.order !== order);
+      handlers[kind] = handlers[kind].filter((entry) => entry.order !== order);
+      if (kind === 'back') queueMicrotask(syncHistory);
     };
   }, [order, enabled]);
 };
+
+export const useBackHandler = (enabled: boolean, onBack: () => void): void => useHandler('back', enabled, onBack);
+
+export const useEscapeHandler = (enabled: boolean, onEscape: () => void): void => useHandler('escape', enabled, onEscape);
 
 export const useTicker = (periodMs: number, keys: DependencyList, tick: () => void | Promise<void>): void => {
   useLaunchedEffect([periodMs, ...keys], async (scope) => {

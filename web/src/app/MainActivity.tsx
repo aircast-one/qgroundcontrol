@@ -4,7 +4,7 @@ import type { Json } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import { call } from '@/core/client';
-import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useBackHandler, useEscapeHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { same } from '@/kotlin/Std';
 import { NavigationBar, NavigationBarItem, NavigationRail, NavigationRailItem, type SnackbarHostState, SnackbarHost, Surface, useSnackbarHostState, type SheetAnchor } from '@/m3';
@@ -515,7 +515,7 @@ export const AircastShell = () => {
   useEffect(() => {
     if (!fullScreen) setVideoFullScreen(false);
   }, [fullScreen, videoFullScreen]);
-  useBackHandler(fullScreen, () => setVideoFullScreen(false));
+  useEscapeHandler(fullScreen, () => setVideoFullScreen(false));
 
   const settingsOpen = useValue(navigation.settingsOpen);
   const browserFullScreen = useBrowserFullScreen();

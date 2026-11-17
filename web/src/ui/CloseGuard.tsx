@@ -4,13 +4,16 @@ import { type Json, jsonObjects, optBoolean, optJSONArray } from '@/bridge/Json'
 import { useQgcPath } from '@/bridge/QgcState';
 import { sendCommand } from '@/core/desktopCommands';
 import { AlertDialog, TextButton } from '@/m3';
+import { useHasVehicle } from '@/ui/FlyState';
 
 export const CLOSE_CHECKS = 'view.closeChecks';
 
 export const leavingLosesWork = (view: Json | null): boolean => jsonObjects(optJSONArray(view, 'prompts')).some((it) => optBoolean(it, 'losesWork'));
 
+export const leavingWarns = (view: Json | null, vehicle: boolean): boolean => vehicle || leavingLosesWork(view);
+
 const BrowserCloseGuard = () => {
-  const guarding = leavingLosesWork(useQgcPath(CLOSE_CHECKS));
+  const guarding = leavingWarns(useQgcPath(CLOSE_CHECKS), useHasVehicle());
   useEffect(() => {
     if (!guarding) return undefined;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();

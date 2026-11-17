@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { type Json, has, isNull, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
-import { useBackHandler, useLaunchedEffect } from '@/kotlin/Compose';
+import { useEscapeHandler, useLaunchedEffect } from '@/kotlin/Compose';
 import { openDocuments } from '@/kotlin/Platform';
 import { delay, format, same } from '@/kotlin/Std';
 import { MutableState, useValue } from '@/kotlin/State';
@@ -326,7 +326,7 @@ export const PlanMapContent = ({
     if (owning !== null) layer.value = owning;
   }, [selectedKey]);
 
-  useBackHandler(selected.value !== null, () => {
+  useEscapeHandler(selected.value !== null, () => {
     selected.value = null;
   });
   const busy = useRemembered<string | null>(null);

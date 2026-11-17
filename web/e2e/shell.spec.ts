@@ -91,3 +91,23 @@ test('menu opens the settings sheet with its tabs', async ({ app }) => {
   await app.getByRole('button', { name: 'Close settings' }).click();
   await expect(tabs).toBeHidden();
 });
+
+test('Escape never changes screens, and the browser Back button walks back through the screens without leaving the app', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  const plan = app.getByText('Click the map to add a waypoint');
+  await expect(plan).toBeVisible();
+  await app.keyboard.press('Escape');
+  await expect(plan).toBeVisible();
+  await openMenu(app, 'Settings');
+  const tabs = app.getByRole('tablist');
+  await expect(tabs).toBeVisible();
+  await app.keyboard.press('Escape');
+  await expect(tabs).toBeVisible();
+  await app.goBack();
+  await expect(tabs).toBeHidden();
+  await expect(plan).toBeVisible();
+  await app.goBack();
+  await expect(plan).toBeHidden();
+  await expect(app.getByRole('region', { name: 'Map' })).toBeVisible();
+  expect(new URL(app.url()).pathname).toBe('/');
+});

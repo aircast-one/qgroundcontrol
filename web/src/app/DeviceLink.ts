@@ -50,7 +50,7 @@ const recordHandoff = (event: string): void => void AppCommands.recordLog(HANDOF
 
 const dropConnect = (): void => {
   const rest = withoutConnect(location.hash);
-  if (rest !== location.hash) history.replaceState(null, '', `${location.pathname}${location.search}${rest}`);
+  if (rest !== location.hash) history.replaceState(history.state, '', `${location.pathname}${location.search}${rest}`);
 };
 
 export const deviceSocket = (page: string): string => {

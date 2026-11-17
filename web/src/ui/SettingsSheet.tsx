@@ -1,5 +1,5 @@
 import { type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { useBackHandler, useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useBackHandler, useEscapeHandler, useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { HorizontalDivider, IconButton, ScrollableTabRow, SnackbarHost, Tab, Text, TextButton, useSnackbarHostState } from '@/m3';
 import { type DrawableName } from '@/res/drawables';
@@ -134,7 +134,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
     };
   }, [group, setupOpen]);
   useBackHandler(true, onClose);
-  useBackHandler(query !== null, () => setQuery(null));
+  useEscapeHandler(query !== null, () => setQuery(null));
   useBackHandler(setupOpen && query === null, closeSetup);
   const initialPage = page !== null && pageLook(page).group === group ? page : null;
   const [openPage, setOpenPage] = useKeyedState<string | null>([group, page, query !== null, setupOpen], () => (initialPage !== null && !pageLook(initialPage).inline ? initialPage : null));
