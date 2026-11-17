@@ -57,19 +57,21 @@ fn listed(names: &[String]) -> String {
     }
 }
 
+pub fn explained(faults: &[String]) -> String {
+    faults
+        .iter()
+        .map(|fault| crate::sysstatus::fault_text(fault))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub fn setup_incomplete(outstanding: &[String], faults: &[String]) -> String {
     match (outstanding, faults) {
         ([], []) => {
             format!("This vehicle reports nothing to set up. Check Setup {SETUP_INCOMPLETE_TAIL}")
         }
-        ([], [_]) => format!(
-            "{} reports a fault. Check it in Setup {SETUP_INCOMPLETE_TAIL}",
-            listed(faults)
-        ),
-        ([], _) => format!(
-            "{} report faults. Check them in Setup {SETUP_INCOMPLETE_TAIL}",
-            listed(faults)
-        ),
+        ([], [_]) => format!("{} Fix it {SETUP_INCOMPLETE_TAIL}", explained(faults)),
+        ([], _) => format!("{} Fix them {SETUP_INCOMPLETE_TAIL}", explained(faults)),
         ([_], _) => format!(
             "{} needs setup {SETUP_INCOMPLETE_TAIL}",
             listed(outstanding)
@@ -216,12 +218,12 @@ mod tests {
             "Frame, Radio and Sensors need setup before this vehicle can fly."
         );
         assert_eq!(
-            named(&[], &["GPS"]),
-            "GPS reports a fault. Check it in Setup before this vehicle can fly."
+            named(&[], &["Propulsion"]),
+            "Propulsion: a motor or its ESC isn't giving the thrust it should. Check the motors and ESCs, then run the motor test. Fix it before this vehicle can fly."
         );
         assert_eq!(
-            named(&[], &["GPS", "Gyro"]),
-            "GPS and Gyro report faults. Check them in Setup before this vehicle can fly."
+            named(&[], &["RC Receiver", "Motors Reversed"]),
+            "RC Receiver: no signal from the RC receiver. Turn on the transmitter. Motors Reversed reports a fault. Fix them before this vehicle can fly."
         );
         assert!(
             [

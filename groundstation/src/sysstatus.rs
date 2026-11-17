@@ -42,6 +42,68 @@ pub fn sensor_name(bit: u32) -> String {
         .to_string()
 }
 
+const GYRO_FAULT: &str =
+    "a gyro isn't working or didn't calibrate at boot. Reboot with the vehicle still";
+const ACCELEROMETER_FAULT: &str = "an accelerometer isn't working";
+const COMPASS_FAULT: &str = "a compass isn't working";
+
+const FAULTS: &[(&str, &str)] = &[
+    ("Gyro", GYRO_FAULT),
+    ("Gyro 2", GYRO_FAULT),
+    ("Accelerometer", ACCELEROMETER_FAULT),
+    ("Accelerometer 2", ACCELEROMETER_FAULT),
+    ("Magnetometer", COMPASS_FAULT),
+    ("Magnetometer 2", COMPASS_FAULT),
+    ("Barometer", "the barometer isn't giving readings"),
+    (
+        "Airspeed Sensor",
+        "the airspeed sensor isn't giving readings",
+    ),
+    (
+        "GPS",
+        "no 3D fix yet, or the GPS isn't sending data. Check its cable and give it open sky",
+    ),
+    (
+        "Optical Flow",
+        "the optical flow sensor isn't giving readings",
+    ),
+    ("Rangefinder", "the rangefinder isn't giving readings"),
+    ("Proximity", "the proximity sensor isn't giving readings"),
+    (
+        "RC Receiver",
+        "no signal from the RC receiver. Turn on the transmitter",
+    ),
+    (
+        "Battery",
+        "the battery monitor isn't reading, or the battery is at its failsafe level",
+    ),
+    (
+        "Logging",
+        "the flight controller can't write its log. Check the SD card",
+    ),
+    (
+        "Attitude Estimation",
+        "the attitude estimate isn't ready. Keep the vehicle still and wait",
+    ),
+    ("Geofence", "the vehicle is outside its geofence"),
+    ("Terrain", "terrain data for this area isn't loaded"),
+    (
+        "Pre-Arm Check",
+        "a pre-arm check is failing. The vehicle's messages say which",
+    ),
+    (
+        "Propulsion",
+        "a motor or its ESC isn't giving the thrust it should. Check the motors and ESCs, then run the motor test",
+    ),
+];
+
+pub fn fault_text(name: &str) -> String {
+    FAULTS.iter().find(|(n, _)| *n == name).map_or_else(
+        || format!("{name} reports a fault."),
+        |(_, meaning)| format!("{name}: {meaning}."),
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SensorInfo {
     pub enabled: bool,
@@ -128,6 +190,24 @@ mod tests {
     const GYRO: u32 = 1;
     const GPS: u32 = 1 << 5;
     const GEOFENCE: u32 = 1 << 20;
+
+    #[test]
+    fn a_fault_says_what_is_wrong_in_plain_words() {
+        assert_eq!(
+            fault_text("Propulsion"),
+            "Propulsion: a motor or its ESC isn't giving the thrust it should. Check the motors and ESCs, then run the motor test."
+        );
+        assert_eq!(
+            fault_text("Motors Reversed"),
+            "Motors Reversed reports a fault."
+        );
+        assert!(
+            FAULTS
+                .iter()
+                .all(|(name, _)| NAMES.iter().any(|(_, n)| n == name)),
+            "every explained fault is a sensor the vehicle can report"
+        );
+    }
 
     #[test]
     fn matches_sys_status_sensor_info_test() {

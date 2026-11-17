@@ -456,7 +456,7 @@ pub fn readiness(
         outstanding.is_empty(),
         components.is_empty(),
     ) {
-        (false, _, _) => sensor_faults.join(", "),
+        (false, _, _) => crate::connectnotices::explained(sensor_faults),
         (true, false, _) => outstanding.join(", "),
         (true, true, true) => "Nothing to check.".to_string(),
         _ => "Setup complete and all enabled sensors are healthy.".to_string(),
@@ -1138,6 +1138,10 @@ mod tests {
         assert_eq!(two.2, "Sensors, Radio");
         let faults = readiness(true, true, &[("Sensors".into(), false)], &["GPS".into()]);
         assert_eq!(faults.1, "1 sensor reporting a fault");
+        assert_eq!(
+            faults.2,
+            "GPS: no 3D fix yet, or the GPS isn't sending data. Check its cable and give it open sky."
+        );
         assert_eq!(
             readiness(true, true, &[], &[]).1,
             "This vehicle reports no setup components"
