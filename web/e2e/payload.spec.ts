@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { armPayload, connectMock, dropFromStrip, expect, flightMode, itemCount, openMenu, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
+import { armPayload, closeSettings, connectMock, dropFromStrip, expect, flightMode, itemCount, openMenu, openPlanAtVehicle, showMapFull, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -113,7 +113,7 @@ const fourServoBays = async (page: Page) => {
   await bays.press('Enter');
   await page.getByRole('radio', { name: 'A servo per bay' }).click();
   await expect(page.getByText('Bay 4 output', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(page);
 };
 
 const bayPwms = (page: Page): Promise<readonly (number | null)[]> =>

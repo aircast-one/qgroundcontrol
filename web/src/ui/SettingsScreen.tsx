@@ -370,10 +370,6 @@ const DevicePageRow = ({ page }: { page: DevicePage }) => {
   return <SetupRow title={page.title} status={page.summary} icon={devicePageIcon(page.icon)} onClick={() => openDevicePage(navigation, page.href)} />;
 };
 
-const AircraftSetupRow = ({ onOpenSetup }: { onOpenSetup: (component: string | null) => void }) => (
-  <SetupRow title={AIRCRAFT_SETUP} status="" icon="ic_build" onClick={() => onOpenSetup(null)} />
-);
-
 export const SettingsScreen = ({
   group,
   shown = true,
@@ -466,12 +462,7 @@ const SettingsTab = ({
       {linksRow || group === SettingsGroup.General ? (
         <SettingsCard>
           {linksRow ? <DevicePageRow page={groundStationLinks} /> : null}
-          {group === SettingsGroup.General ? (
-            <>
-              <AircraftSetupRow onOpenSetup={onOpenSetup} />
-              <SetupRow title={FLASHER_PAGE} status="Set up an SD card for a new drone" icon="ic_usb" onClick={() => onOpen(FLASHER_PAGE)} />
-            </>
-          ) : null}
+          {group === SettingsGroup.General ? <SetupRow title={FLASHER_PAGE} status="Set up an SD card for a new drone" icon="ic_usb" onClick={() => onOpen(FLASHER_PAGE)} /> : null}
         </SettingsCard>
       ) : null}
       <PilotSettings group={group} />
@@ -1001,7 +992,7 @@ export const FactRow = ({
               ) : null}
             </div>
             {fact.isEnum && !fact.valueIsOffTheEnumList ? (
-              <EnumField fact={fact} title={title} style={{ width: CHOICE_VALUE_WIDTH }} write={write} />
+              <EnumField fact={fact} title={title} style={{ minWidth: CHOICE_VALUE_WIDTH, maxWidth: '50%' }} write={write} />
             ) : (
               <FactTextField fact={fact} onWrite={onWrite} onRejected={onRejected} onTheRight />
             )}

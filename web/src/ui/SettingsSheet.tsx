@@ -11,6 +11,7 @@ import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SETTINGS_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 import { SetupScreen } from '@/ui/SetupScreen';
 import { type ChangeNotice, LocalChangeNotice } from '@/ui/ValueRow';
+import { useFocusReturn } from '@/ui/FocusReturn';
 import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
 
 export const sheetDrilled = (openPage: string | null, setupOpen: boolean): boolean => openPage !== null || setupOpen;
@@ -83,8 +84,12 @@ const usePagerState = (initialPage: number): PagerState => {
   }, [targetPage]);
 };
 
-export const SettingsSheet = ({ requested, onClose }: { requested: string | null; onClose: () => void }) => {
+export const SettingsSheet = ({ requested, onClose, overFly, status }: { requested: string | null; onClose: () => void; overFly: boolean; status: ReactNode }) => {
   const navigation = useContext(LocalAppNavigation);
+  const desktop = useDesktopLayout();
+  const root = useRef<HTMLDivElement>(null);
+  useFocusReturn();
+  useEffect(() => root.current?.focus({ preventScroll: true }), []);
   const aircraftRequested = useValue(navigation.aircraftRequested);
   const settingsPage = useValue(navigation.settingsPage);
   const [group, setGroup] = useKeyedState([requested], () => (navigation.aircraftRequested.value ? SettingsGroup.General : openingGroup(requested)));
@@ -134,6 +139,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
     };
   }, [group, setupOpen]);
   useBackHandler(true, onClose);
+  useEscapeHandler(!desktop, onClose);
   useEscapeHandler(query !== null, () => setQuery(null));
   useBackHandler(setupOpen && query === null, closeSetup);
   const initialPage = page !== null && pageLook(page).group === group ? page : null;
@@ -186,7 +192,8 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
     pager.animateScrollToPage(entry.ordinal);
   };
   const contentKey = `${group.name}|${page ?? ''}|${query !== null}|${setupOpen}`;
-  const desktop = useDesktopLayout();
+  const setupDestination = setupOpen && enteredForSetup;
+  const headerBack = drilledTitle !== null && !(setupDestination && heading === null && !setupFromTab);
   const content =
     query === null && !setupOpen ? (
       <SettingsTabsPager pager={pager} groups={groups} group={group} swipeable={openPage === null && !desktop} onSettled={pickTab} className="min-h-0 flex-1">
@@ -233,19 +240,21 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
 
   if (desktop)
     return (
-      <div className="fixed inset-0 bg-surface text-on-surface" style={{ zIndex: SETTINGS_SHEET_LAYER }}>
+      <div ref={root} tabIndex={-1} className="absolute inset-0 bg-surface text-on-surface outline-none" style={{ zIndex: SETTINGS_SHEET_LAYER }}>
         <LocalChangeNotice.Provider value={notice}>
           <div className="relative flex h-full w-full">
-            <nav aria-label="Settings" className="flex w-[300px] shrink-0 flex-col gap-section overflow-y-auto bg-surface-container-low px-menu py-page">
-              <Text typography="titleLarge" className="px-menu pt-2">
-                Settings
-              </Text>
-              <SearchPill value={query ?? ''} onValueChange={(value) => setQuery(value === '' ? null : value)} placeholder="Search settings" />
-              <SideTabs groups={groups} selected={query === null && !setupOpen ? group : null} onPick={pickTab} />
-            </nav>
+            {setupDestination ? null : (
+              <nav aria-label="Settings" className="flex w-[300px] shrink-0 flex-col gap-section overflow-y-auto bg-surface-container-low px-menu py-page">
+                <Text typography="titleLarge" className="px-menu pt-2">
+                  Settings
+                </Text>
+                <SearchPill value={query ?? ''} onValueChange={(value) => setQuery(value === '' ? null : value)} placeholder="Search settings" />
+                <SideTabs groups={groups} selected={query === null && !setupOpen ? group : null} onPick={pickTab} />
+              </nav>
+            )}
             <div className="relative flex min-w-0 flex-1 flex-col">
-              <div className={`flex w-full items-center gap-2 pt-page pb-2 ${setupOpen ? 'px-page pr-16' : 'px-list'}`} style={setupOpen ? undefined : { maxWidth: SETTINGS_PANE_MAX_WIDTH }}>
-                {drilledTitle !== null ? (
+              <div className={`flex w-full items-center gap-2 pt-page pb-2 ${setupOpen ? 'px-page' : 'px-list'}`} style={setupOpen ? undefined : { maxWidth: SETTINGS_PANE_MAX_WIDTH }}>
+                {headerBack ? (
                   <IconButton onClick={setupOpen ? setupBack : pageBack} label="Back" className="-ml-2">
                     <Drawable name="ic_arrow_back" />
                   </IconButton>
@@ -254,9 +263,6 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
                   {drilledTitle ?? (query !== null ? 'Search results' : group.title)}
                 </Text>
               </div>
-              <IconButton onClick={onClose} label="Close settings" className="absolute top-page right-page">
-                <Drawable name="ic_close" />
-              </IconButton>
               {content}
             </div>
             {snackbarHost}
@@ -267,12 +273,15 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
 
   return (
     <div
-      className="fixed inset-0 bg-(--settings-backdrop) text-on-surface"
-      style={{ zIndex: SETTINGS_SHEET_LAYER, '--settings-backdrop': withAlpha(md('surface'), landscape ? SETTINGS_PANEL_ALPHA : 1) } as CSSProperties}
+      ref={root}
+      tabIndex={-1}
+      className="fixed inset-0 bg-(--settings-backdrop) text-on-surface outline-none"
+      style={{ zIndex: SETTINGS_SHEET_LAYER, '--settings-backdrop': withAlpha(md('surface'), landscape && overFly ? SETTINGS_PANEL_ALPHA : 1) } as CSSProperties}
     >
       <LocalChangeNotice.Provider value={notice}>
         <div className="relative h-full w-full">
           <div className="flex h-full w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
+            {status}
             <div className="@container">
               <div
                 className={`flex w-full items-center ${tabsShown ? 'pb-1 @min-[600px]:pb-0' : 'pb-1'}`}

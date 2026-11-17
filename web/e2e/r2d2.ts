@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, openAircraftSetup } from './fixtures';
+import { closeSettings, expect, openAircraftSetup } from './fixtures';
 
 export const STM32_VCP_VENDOR = 0x0483;
 export const STM32_VCP_PRODUCT = 0x5740;
@@ -69,5 +69,5 @@ export const readFlightModesOn = async (page: Page, channel: number) => {
   await page.getByRole('menuitem', { name: choice }).or(page.getByRole('option', { name: choice })).first().click();
   await editor.getByRole('button', { name: 'Save' }).click();
   await expect(row).toContainText(String(channel));
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(page);
 };

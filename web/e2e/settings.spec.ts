@@ -1,4 +1,4 @@
-import { connectMock, expect, openMenu, telemetry, test } from './fixtures';
+import { closeSettings, connectMock, expect, openMenu, telemetry, test } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const openGeneral = async (page: Page) => {
@@ -56,7 +56,7 @@ test('turning on the ADS-B server connection keeps the core running', async ({ a
   const adsb = app.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' });
   await adsb.click();
   await expect(adsb).toBeChecked();
-  await app.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(app);
   await connectMock(app);
 });
 
@@ -67,7 +67,7 @@ test('turning on the on-screen sticks shows both sticks on the Fly screen', asyn
   await sticks.click();
   await expect(sticks).toBeChecked();
   await expect(vehicle.getByRole('switch', { name: 'Left-handed mode (swap sticks)' })).toBeEnabled();
-  await vehicle.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(vehicle);
   await expect(vehicle.getByLabel('Left virtual stick')).toBeVisible({ timeout: 60_000 });
   await expect(vehicle.getByLabel('Right virtual stick')).toBeVisible();
 });
@@ -77,7 +77,7 @@ test('imperial units turn the Fly telemetry into feet', async ({ vehicle }) => {
   await openGeneral(vehicle);
   await vehicle.getByRole('button', { name: 'Imperial', exact: true }).click();
   await expect(vehicle.getByRole('button', { name: 'Imperial', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await vehicle.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(vehicle);
   await expect(telemetry(vehicle, 'H')).toContainText('ft');
 });
 

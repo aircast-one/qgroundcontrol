@@ -1,13 +1,13 @@
 import type { Locator, Page } from '@playwright/test';
 import { connectMock, dropFromStrip, expect, flightMode, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
-test('one menu holds where to go, what the aircraft can do and how the screen is laid out', async ({ vehicle }) => {
-  await expect(vehicle.getByRole('button', { name: 'Settings', exact: true }), 'settings live in the menu, not beside it').toHaveCount(0);
+test('on a desktop the rail holds where to go, and the menu what the aircraft can do and how the screen is laid out', async ({ vehicle }) => {
+  await expect(vehicle.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   const sheet = vehicle.getByRole('dialog');
   const section = (name: string) => sheet.getByRole('region', { name });
-  await expect(section('Go to').getByRole('button', { name: 'Plan', exact: true })).toBeVisible();
-  await expect(section('Go to').getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Plan', exact: true }), 'one way to each screen, the rail').toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
   await expect(section('Aircraft').getByRole('button', { name: 'All status', exact: true })).toBeVisible();
   await expect(section('Aircraft').getByRole('button', { name: 'Payload', exact: true })).toBeVisible();
   await expect(section('Screen').getByRole('button', { name: 'Choose readings', exact: true })).toBeVisible();

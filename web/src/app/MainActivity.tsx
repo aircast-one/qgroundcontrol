@@ -1,4 +1,4 @@
-import { Fragment, useContext, useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import { AppCommands, VideoCommands } from '@/bridge/BridgeCommands';
 import type { Json } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
@@ -33,6 +33,7 @@ import { AppFontScale } from '@/ui/AppFontScale';
 import { AppNavigationState, LocalAppNavigation, LocalOpenPlan, OpenPlanDocument, navigationRefusal } from '@/ui/AppNavigation';
 import { CAMERA_CONTROL_KEY, CameraControlLayer, CameraShutters } from '@/ui/CameraControlLayer';
 import { CameraSwitch } from '@/ui/CameraSwitch';
+import { ArmedFlightBar } from '@/ui/ArmedFlightBar';
 import { CloseGuard } from '@/ui/CloseGuard';
 import { ConnectingCard } from '@/ui/ConnectingCard';
 import { ConnectionLocks } from '@/ui/ConnectionLocks';
@@ -42,6 +43,7 @@ import { DeviceCameraHost } from '@/ui/DeviceCameraHost';
 import { BetaDiagnosticsDialog } from '@/ui/BetaDiagnosticsDialog';
 import { HandoffDialog } from '@/ui/HandoffDialog';
 import { FirstRunDialog } from '@/ui/FirstRunDialog';
+import { trackFocus } from '@/ui/FocusReturn';
 import { type FlyDeckLayout, LocalFlyDestinations, MenuTile } from '@/ui/FlyDeck';
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
@@ -66,7 +68,7 @@ import { LayoutDoneButton, LayoutGroup, LayoutOptionsMenu, LayoutWidget, Overlay
 import { PlanTab } from '@/ui/PlanTab';
 import { RcControlsLayer } from '@/ui/RcControlsLayer';
 import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
-import { SettingsGroup } from '@/ui/SettingsScreen';
+import { AIRCRAFT_SETUP, SettingsGroup } from '@/ui/SettingsScreen';
 import { SettingsSheet } from '@/ui/SettingsSheet';
 import { StatusPill, batteryPercentNow, flightTimeNow } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -129,6 +131,7 @@ export const MainActivity = () => {
     GamepadInput.start(scope);
     VirtualStickSender.start(scope);
     VehicleLinkKeeper.start();
+    trackFocus();
   });
 
   useEffect(() => {
@@ -192,14 +195,16 @@ const AlertHost = ({ hostState, className }: { hostState: SnackbarHostState; cla
   );
 };
 
-const RequestedSettingsSheet = ({ onClose }: { onClose: () => void }) => {
+const RequestedSettingsSheet = ({ onClose, overFly, status }: { onClose: () => void; overFly: boolean; status: ReactNode }) => {
   const navigation = useContext(LocalAppNavigation);
   const [requested] = useState(() => navigation.settingsPage.value);
   useEffect(() => {
     navigation.settingsPage.value = null;
   }, []);
-  return <SettingsSheet requested={requested} onClose={onClose} />;
+  return <SettingsSheet requested={requested} onClose={onClose} overFly={overFly} status={status} />;
 };
+
+type RailDestination = { key: string; label: string; icon: DrawableName; selected: boolean; onClick: () => void };
 
 export const AircastShell = () => {
   const navigation = useContext(LocalAppNavigation);
@@ -520,14 +525,23 @@ export const AircastShell = () => {
   useEscapeHandler(fullScreen, () => setVideoFullScreen(false));
 
   const settingsOpen = useValue(navigation.settingsOpen);
+  const settingsShowing = useValue(navigation.settingsShowing);
+  const setupShowing = settingsOpen && settingsShowing === null;
+  const [settingsEpoch, setSettingsEpoch] = useState(0);
   const browserFullScreen = useBrowserFullScreen();
   const tabs = visibleTabs(useAdvancedUiShown());
   const [resumeDismissed, setResumeDismissed] = useState<number | null>(null);
   const onFly = tab === Tab.Fly;
   const flyLandscape = onFly && landscape;
+  const closeSettings = () => {
+    navigation.settingsOpen.value = false;
+  };
   const selectTab = (entry: Tab) => {
     if (refuseNavigation()) return;
-    if (tab === entry) {
+    if (settingsOpen) {
+      closeSettings();
+      setTab(entry);
+    } else if (tab === entry) {
       if (reselectClearsAnalyze(tab, entry)) setAnalyzePage(null);
       setPopEpoch((epoch) => epoch + 1);
     } else {
@@ -535,14 +549,34 @@ export const AircastShell = () => {
     }
   };
   const openSettings = () => {
+    if (settingsOpen && refuseNavigation()) return;
+    setSettingsEpoch((epoch) => epoch + 1);
     navigation.settingsOpen.value = true;
   };
-
-  const flyDestinations: readonly MenuTile[] = [
-    ...tabs.filter((it) => it !== Tab.Fly).map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: true, onClick: () => selectTab(it) })),
-    MenuTile({ label: 'Settings', icon: 'ic_settings', enabled: true, onClick: openSettings }),
-    ...(browserFullScreenSupported() ? [MenuTile({ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen', enabled: true, onClick: () => void toggleBrowserFullScreen().catch(() => undefined) })] : []),
+  const openSetup = () => {
+    if (settingsOpen && refuseNavigation()) return;
+    setSettingsEpoch((epoch) => epoch + 1);
+    navigation.openAircraft();
+  };
+  const backToFly = () => {
+    if (refuseNavigation()) return;
+    closeSettings();
+    setTab(Tab.Fly);
+  };
+  const railShown = !fullScreen && (desktop || (landscape && !flyLandscape));
+  const destinations: readonly RailDestination[] = [
+    ...tabs.map((entry) => ({ key: entry.name, label: entry.label, icon: entry.icon, selected: tab === entry && !settingsOpen, onClick: () => selectTab(entry) })),
+    { key: 'setup', label: AIRCRAFT_SETUP, icon: 'ic_build', selected: setupShowing, onClick: openSetup },
+    { key: 'settings', label: 'Settings', icon: 'ic_settings', selected: settingsOpen && !setupShowing, onClick: openSettings },
   ];
+  const fullScreenTiles = browserFullScreenSupported() ? [MenuTile({ label: browserFullScreen ? 'Exit full screen' : 'Full screen', icon: 'ic_fullscreen', enabled: true, onClick: () => void toggleBrowserFullScreen().catch(() => undefined) })] : [];
+  const flyDestinations: readonly MenuTile[] = [
+    ...(railShown ? [] : destinations.filter((it) => it.key !== Tab.Fly.name).map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: true, onClick: it.onClick }))),
+    ...fullScreenTiles,
+  ];
+  const flightBar = armedNow && (!onFly || settingsOpen) ? <ArmedFlightBar onFly={backToFly} /> : null;
+  const sheetCovers = settingsOpen && !desktop;
+  const settingsSheet = settingsOpen ? <RequestedSettingsSheet key={settingsEpoch} onClose={closeSettings} overFly={onFly} status={sheetCovers ? flightBar : null} /> : null;
 
   const flyStatus = (
     <>
@@ -615,57 +649,76 @@ export const AircastShell = () => {
       <LocalImmersive.Provider value={flyLandscape}>
         <LocalFlyDestinations.Provider value={flyDestinations}>
           <div className="flex h-full w-full bg-surface text-on-surface">
-            {landscape && !flyLandscape ? (
-              <NavigationRail className="h-full pt-[max(12px,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
-                {tabs.map((entry) => (
-                  <NavigationRailItem key={entry.name} selected={tab === entry && !settingsOpen} onClick={() => selectTab(entry)} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
-                ))}
-                <NavigationRailItem selected={settingsOpen} onClick={openSettings} icon={<Drawable name="ic_settings" label="Settings" />} label="Settings" />
-              </NavigationRail>
+            {railShown ? (
+              <div className="contents" inert={sheetCovers}>
+                <NavigationRail className="h-full shrink-0 overflow-y-auto pt-[max(12px,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
+                  {destinations.map((entry) => (
+                    <NavigationRailItem key={entry.key} selected={entry.selected} onClick={entry.onClick} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
+                  ))}
+                </NavigationRail>
+              </div>
             ) : null}
             <div className="flex min-w-0 flex-1 flex-col">
-              {!onFly ? <AlertHost hostState={alerts} className="p-3 pt-[max(12px,env(safe-area-inset-top))]" /> : null}
+              {!onFly ? (
+                <div className="contents" inert={sheetCovers}>
+                  <AlertHost hostState={alerts} className="p-3 pt-[max(12px,env(safe-area-inset-top))]" />
+                </div>
+              ) : null}
+              {sheetCovers ? null : flightBar}
               <div className={`relative min-h-0 flex-1 overflow-hidden ${contentInsets}`}>
-                {onFly && flyLandscape ? (
-                  <FlyScreen
-                    view={shownFlyView}
-                    onView={setFlyView}
-                    status={flyStatus}
-                    video={flyVideo}
-                    map={flyMap}
-                    keyRow={flyObstacleArc}
-                    cameraSwitch={(splitRoom, modifier) => (
-                      <LayoutWidget widgetKey="cameraSwitch">
-                        <div {...modifier}>
-                          <CameraSwitch splitRoom={splitRoom} />
-                        </div>
-                      </LayoutWidget>
-                    )}
-                    cameraControls={flyCameraControlLayer}
-                    overlays={flyOverlays}
-                    actions={flightActions}
-                    fullScreen={fullScreen}
-                    onFullScreen={enterFullScreen}
-                    onExitFullScreen={exitFullScreen}
-                  />
-                ) : null}
-                {onFly && !flyLandscape ? (
-                  <FlyPortrait
-                    view={shownFlyView}
-                    onView={setFlyView}
-                    status={flyStatus}
-                    video={flyVideo}
-                    map={flyMap}
-                    keyRow={flyObstacleArc}
-                    rail={flyRail}
-                    overlays={flyOverlays}
-                    actions={flightActions}
-                    fullScreen={fullScreen}
-                    onFullScreen={enterFullScreen}
-                    onExitFullScreen={exitFullScreen}
-                  />
-                ) : null}
-                {onFly ? <ConnectingCard className="absolute inset-x-0 top-1/2 z-10 -translate-y-1/2" /> : null}
+                <div className="contents" inert={settingsOpen}>
+                  {onFly && flyLandscape ? (
+                    <FlyScreen
+                      view={shownFlyView}
+                      onView={setFlyView}
+                      status={flyStatus}
+                      video={flyVideo}
+                      map={flyMap}
+                      keyRow={flyObstacleArc}
+                      cameraSwitch={(splitRoom, modifier) => (
+                        <LayoutWidget widgetKey="cameraSwitch">
+                          <div {...modifier}>
+                            <CameraSwitch splitRoom={splitRoom} />
+                          </div>
+                        </LayoutWidget>
+                      )}
+                      cameraControls={flyCameraControlLayer}
+                      overlays={flyOverlays}
+                      actions={flightActions}
+                      fullScreen={fullScreen}
+                      onFullScreen={enterFullScreen}
+                      onExitFullScreen={exitFullScreen}
+                    />
+                  ) : null}
+                  {onFly && !flyLandscape ? (
+                    <FlyPortrait
+                      view={shownFlyView}
+                      onView={setFlyView}
+                      status={flyStatus}
+                      video={flyVideo}
+                      map={flyMap}
+                      keyRow={flyObstacleArc}
+                      rail={flyRail}
+                      overlays={flyOverlays}
+                      actions={flightActions}
+                      fullScreen={fullScreen}
+                      onFullScreen={enterFullScreen}
+                      onExitFullScreen={exitFullScreen}
+                    />
+                  ) : null}
+                  {onFly ? <ConnectingCard className="absolute inset-x-0 top-1/2 z-10 -translate-y-1/2" /> : null}
+                  {mapClickAt !== null && onFly ? <MapClickMenu point={mapClickAt} anchor={mapClickAnchor} only={picturePressed?.actions ?? null} onDismiss={closeMapClick} /> : null}
+                  {waypointTapped !== null && onFly ? <SetWaypointSheet sequence={waypointTapped} onDismiss={() => setWaypointTapped(null)} /> : null}
+                  {roiTapped !== null && onFly ? <RoiSheet at={roiTapped} onDismiss={() => setRoiTapped(null)} /> : null}
+                  <Fragment key={popEpoch}>
+                    {tab === Tab.Plan ? (
+                      <Surface className="absolute inset-0" contentColor={md('onSurface')}>
+                        <PlanTab onFly={() => setTab(Tab.Fly)} />
+                      </Surface>
+                    ) : null}
+                    {tab === Tab.Analyze ? <AnalyzeScreen page={analyzePage} onSelect={setAnalyzePage} className="absolute inset-0" /> : null}
+                  </Fragment>
+                </div>
                 {onFly ? (
                   <div className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4" style={{ top: `calc(env(safe-area-inset-top) + ${FLY_NOTICE_TOP}px)` }}>
                     <div className="flex w-full flex-col gap-2" style={{ maxWidth: FLY_NOTICE_MAX_WIDTH }}>
@@ -674,46 +727,26 @@ export const AircastShell = () => {
                     </div>
                   </div>
                 ) : null}
-
-                {mapClickAt !== null && onFly ? <MapClickMenu point={mapClickAt} anchor={mapClickAnchor} only={picturePressed?.actions ?? null} onDismiss={closeMapClick} /> : null}
-                {waypointTapped !== null && onFly ? <SetWaypointSheet sequence={waypointTapped} onDismiss={() => setWaypointTapped(null)} /> : null}
-                {roiTapped !== null && onFly ? <RoiSheet at={roiTapped} onDismiss={() => setRoiTapped(null)} /> : null}
-                {settingsOpen ? (
-                  <RequestedSettingsSheet
-                    onClose={() => {
-                      navigation.settingsOpen.value = false;
-                    }}
-                  />
-                ) : null}
+                {settingsSheet}
                 <MissionCompleteDialog />
                 {onFly ? <ResumeFailedPrompt dismissed={resumeDismissed} onDismissed={setResumeDismissed} /> : null}
                 <FirstRunDialog />
                 {appMessages[0] === undefined ? <BetaDiagnosticsDialog /> : null}
                 <HandoffDialog />
                 <DeepLinkSetupPrompt />
-
-                <Fragment key={popEpoch}>
-                  {tab === Tab.Plan ? (
-                    <Surface className="absolute inset-0" contentColor={md('onSurface')}>
-                      <PlanTab onFly={() => setTab(Tab.Fly)} />
-                    </Surface>
-                  ) : null}
-                  {tab === Tab.Analyze ? <AnalyzeScreen page={analyzePage} onSelect={setAnalyzePage} className="absolute inset-0" /> : null}
-                </Fragment>
                 {!onFly ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-40 flex justify-center px-4">
                     <SnackbarHost hostState={snackbars} />
                   </div>
                 ) : null}
               </div>
-              <div className="flex flex-col">
+              <div className="flex flex-col" inert={sheetCovers}>
                 <LogReplayBar />
-                {!landscape && !onFly ? (
+                {!landscape && !onFly && !railShown ? (
                   <NavigationBar>
-                    {tabs.map((entry) => (
-                      <NavigationBarItem key={entry.name} selected={tab === entry && !settingsOpen} onClick={() => selectTab(entry)} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
+                    {destinations.map((entry) => (
+                      <NavigationBarItem key={entry.key} selected={entry.selected} onClick={entry.onClick} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
                     ))}
-                    <NavigationBarItem selected={settingsOpen} onClick={openSettings} icon={<Drawable name="ic_settings" label="Settings" />} label="Settings" />
                   </NavigationBar>
                 ) : null}
               </div>

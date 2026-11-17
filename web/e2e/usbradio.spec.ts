@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, openApp, openMenu, test } from './fixtures';
+import { closeSettings, expect, openApp, openMenu, test } from './fixtures';
 import { lastAnswer, plugInR2d2Radio, setRadioChannels, setRadioStreaming } from './r2d2';
 import { type Sitl, connectSitl, startSitl } from './sitl';
 
@@ -75,7 +75,7 @@ test('a radio streaming the script is found by what it sends, offered once, and 
 
   await radioDevice(page).click();
   await page.getByRole('menuitem', { name: DETECTED_RADIO }).click();
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(page);
   await setRadioChannels(page, { 1: 1024 });
   await expect.poll(channel(ROLL), { message: 'picked again', timeout: 20_000 }).toBeGreaterThan(1900);
   await setRadioStreaming(page, false);

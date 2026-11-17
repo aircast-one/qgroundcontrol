@@ -130,10 +130,12 @@ const stillWhileEditing = (page: Page) =>
       .map((it) => (it.effect instanceof KeyframeEffect ? it.effect.target : null))
       .filter((it): it is Element => it !== null);
     const name = (it: Element) => it.getAttribute('aria-label') ?? it.querySelector('[aria-label]')?.getAttribute('aria-label') ?? it.textContent?.trim() ?? it.tagName;
+    const room = innerWidth - (document.querySelector('nav')?.getBoundingClientRect().width ?? 0);
     return [...document.querySelectorAll('button, [role=button], [role=group], [role=img], [role=region]')]
+      .filter((it) => it.closest('nav') === null)
       .filter((it) => {
         const box = it.getBoundingClientRect();
-        return box.width > 1 && box.height > 1 && box.width < innerWidth - 1;
+        return box.width > 1 && box.height > 1 && box.width < room - 1;
       })
       .filter((it) => !jiggling.some((widget) => widget.contains(it)) && !jiggling.some((widget) => it.contains(widget)))
       .map(name)

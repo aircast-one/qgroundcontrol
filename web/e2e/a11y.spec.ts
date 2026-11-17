@@ -90,8 +90,8 @@ const tooltipOn = async (page: Page, target: Locator, text: string | RegExp) =>
 test('icon buttons and status-strip glyphs say what they are on hover', async ({ vehicle }) => {
   await tooltipOn(vehicle, vehicle.getByRole('button', { name: /^\d+ sats$/ }), /^\d+ sats$/);
   await tooltipOn(vehicle, vehicle.getByRole('button', { name: /RC$/ }).first(), /RC$/);
-  await openMenu(vehicle, 'Settings');
-  await tooltipOn(vehicle, vehicle.getByRole('button', { name: 'Close settings' }).last(), 'Close settings');
+  await openMenu(vehicle, 'Plan');
+  await tooltipOn(vehicle, vehicle.getByRole('button', { name: 'Plan menu' }), 'Plan menu');
 });
 
 test('the Fly menu sheet and the take-off press are named', async ({ vehicle }) => {

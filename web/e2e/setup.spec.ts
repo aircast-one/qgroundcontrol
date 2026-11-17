@@ -1,4 +1,4 @@
-import { connectMock, expect, openAircraftSetup, openApp, openMenu, startMock, test } from './fixtures';
+import { closeSettings, connectMock, expect, openAircraftSetup, openApp, openMenu, startMock, test } from './fixtures';
 import { plugInRadio } from './radio';
 
 test.describe.configure({ timeout: 120_000 });
@@ -32,7 +32,7 @@ test('ArduPilot follow takes another connected vehicle as its lead', async ({ ap
   await app.getByRole('button', { name: 'Vehicle Type' }).click();
   await app.getByRole('menuitem', { name: 'APM ArduCopter Vehicle' }).click();
   await app.getByRole('button', { name: 'Start', exact: true }).click();
-  await app.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(app);
   await openAircraftSetup(app);
   await app.getByRole('button', { name: /^Follow me/ }).click();
   await app.getByRole('checkbox', { name: 'Enable follow me' }).click();

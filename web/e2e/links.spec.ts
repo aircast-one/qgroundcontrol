@@ -1,4 +1,4 @@
-import { expect, openApp, openMenu, test } from './fixtures';
+import { closeSettings, expect, openApp, openMenu, test } from './fixtures';
 import { plugInR2d2Radio } from './r2d2';
 
 const RADIO_PORT = /0483:5740/;
@@ -18,7 +18,7 @@ test('the links page shows the simulated vehicle and stopping it disconnects', a
   await openLinks(vehicle);
   await expect(vehicle.getByRole('button', { name: /^Links / })).toBeHidden();
   await vehicle.getByRole('button', { name: 'Stop', exact: true }).click();
-  await vehicle.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(vehicle);
   await expect(vehicle.getByRole('button', { name: /Not connected|How to connect/ })).toBeVisible({ timeout: 30_000 });
 });
 
@@ -83,7 +83,7 @@ test('with a saved link and no aircraft, the Fly screen offers that link, not on
   await app.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
   await app.getByRole('textbox', { name: 'WebSocket address' }).fill('ws://localhost:1');
   await app.getByRole('button', { name: 'Connect', exact: true }).click();
-  await app.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(app);
   await expect(app.getByRole('button', { name: /ws:\/\/localhost:1/ })).toBeVisible({ timeout: 15_000 });
   await expect(app.getByRole('button', { name: 'Add a link' })).toBeVisible();
   await app.setViewportSize({ width: 390, height: 844 });

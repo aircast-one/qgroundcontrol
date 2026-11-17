@@ -32,7 +32,7 @@ PAGES.map(([tab, page, title = page]) =>
 
 test('a setup row clicked before the tab pager settles opens its page and stays there', async ({ vehicle }) => {
   await openMenu(vehicle, 'Settings');
-  await expect(vehicle.getByRole('button', { name: /^Aircraft setup/ })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: /^Aircast card/ })).toBeVisible();
   await vehicle.clock.install();
   await vehicle.clock.pauseAt(await vehicle.evaluate(() => Date.now() + 1_000));
   await vehicle.getByRole('tablist').getByRole('tab', { name: 'Safety' }).click();

@@ -1,4 +1,4 @@
-import { APP, expect, openApp, openMenu, test } from './fixtures';
+import { APP, closeSettings, expect, openAircraftSetup, openApp, openMenu, takeOff, test } from './fixtures';
 
 test('first run sets units once and stays dismissed', async ({ page }) => {
   await openApp(page, { firstRun: false });
@@ -59,14 +59,16 @@ test('with no aircraft and no video the Fly screen opens on the map, not an empt
   await expect(app.getByRole('button', { name: 'Add a camera to see video' })).toBeHidden();
 });
 
-test('on a desktop Fly stays full screen with no rail, and the map inset starts as a button and shows as a real preview', async ({ vehicle }) => {
-  await expect(vehicle.getByRole('navigation')).toHaveCount(0);
+test('on a desktop Fly keeps the same rail as every other screen, and the map inset starts as a button and shows as a real preview', async ({ vehicle }) => {
+  const rail = vehicle.getByRole('navigation');
+  await expect(rail.getByRole('button')).toHaveText(['Fly', 'Plan', 'Analyze', 'Aircraft setup', 'Settings']);
+  await expect(rail.getByRole('button', { name: 'Fly', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(vehicle.getByRole('button', { name: 'Menu' })).toBeVisible();
   const inset = async () => (await vehicle.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0;
   await expect.poll(inset).toBe(48);
   const left = async (name: string) => (await vehicle.getByRole('button', { name, exact: true }).boundingBox())?.x ?? -1;
-  const rail = await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button').first().boundingBox();
-  expect(await left('Map'), 'the map button lines up with the action rail').toBe(rail?.x ?? -2);
+  const actions = await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button').first().boundingBox();
+  expect(await left('Map'), 'the map button lines up with the action rail').toBe(actions?.x ?? -2);
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
@@ -88,7 +90,7 @@ test('menu opens the settings sheet with its tabs', async ({ app }) => {
   const tabs = app.getByRole('tablist');
   await expect(tabs.getByRole('tab')).toHaveText(['General', 'Safety', 'Control', 'Camera', 'Transmission', 'Device']);
   await expect(tabs.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
-  await app.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(app);
   await expect(tabs).toBeHidden();
 });
 
@@ -110,4 +112,49 @@ test('Escape never changes screens, and the browser Back button walks back throu
   await expect(plan).toBeHidden();
   await expect(app.getByRole('region', { name: 'Map' })).toBeVisible();
   expect(new URL(app.url()).pathname).toBe('/');
+});
+
+test('Back inside Aircraft setup closes the page it is on and stays in the app', async ({ vehicle }) => {
+  await openAircraftSetup(vehicle);
+  const setup = vehicle.getByRole('navigation').getByRole('button', { name: 'Aircraft setup', exact: true });
+  await expect(setup).toHaveAttribute('aria-current', 'page');
+  await vehicle.getByRole('button', { name: /^Power/ }).click();
+  await expect(vehicle.getByText('Power', { exact: true }).last()).toBeVisible();
+  await vehicle.goBack();
+  await expect(setup).toHaveAttribute('aria-current', 'page');
+  await expect(vehicle.getByRole('button', { name: /^Sensors/ })).toBeVisible();
+  expect(new URL(vehicle.url()).pathname).toBe('/');
+});
+
+test('Settings keeps the keyboard inside it and hands focus back to the control that opened it', async ({ vehicle }) => {
+  const rail = vehicle.getByRole('navigation').getByRole('button', { name: 'Settings', exact: true });
+  await rail.focus();
+  await vehicle.keyboard.press('Enter');
+  await vehicle.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await vehicle.getByRole('button', { name: /^NTRIP/ }).focus();
+  await vehicle.keyboard.press('Tab');
+  await vehicle.keyboard.press('Tab');
+  await expect(vehicle.getByRole('button', { name: /Change flight mode/ }).first()).not.toBeFocused();
+  await expect(vehicle.getByRole('button', { name: 'Menu', exact: true })).not.toBeFocused();
+  await vehicle.getByRole('button', { name: /^NTRIP/ }).focus();
+  await vehicle.goBack();
+  await expect(vehicle.getByRole('tablist')).toBeHidden();
+  await expect(rail).toBeFocused();
+});
+
+test('while armed every other screen keeps the flight in view and leads back to Fly', async ({ vehicle }) => {
+  await takeOff(vehicle, '5 m');
+  await expect(vehicle.getByRole('button', { name: /^Armed$|Flying/ }).first()).toBeVisible({ timeout: 60_000 });
+  const status = vehicle.getByRole('status', { name: 'Flight status' });
+  await expect(status).toBeHidden();
+  await openMenu(vehicle, 'Settings');
+  await expect(status).toBeVisible();
+  await expect(status.getByLabel(/^Alt /)).toBeVisible();
+  await expect(status.getByLabel(/^Battery /)).toBeVisible();
+  await expect(status.getByLabel('Link OK')).toBeVisible();
+  await openMenu(vehicle, 'Plan');
+  await expect(status).toBeVisible();
+  await status.getByRole('button', { name: 'Back to Fly' }).click();
+  await expect(status).toBeHidden();
+  await expect(vehicle.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true })).toHaveAttribute('aria-current', 'page');
 });

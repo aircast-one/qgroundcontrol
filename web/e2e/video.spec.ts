@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, flyNow, openMenu, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { closeSettings, connectMock, expect, flightMode, flyNow, openMenu, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
 
@@ -20,7 +20,7 @@ const addVideoSource = async (page: Page, type: RegExp, address: string) => {
   await page.getByRole('textbox').first().fill(address);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText(address)).toBeVisible();
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(page);
 };
 
 test('a WHEP camera plays in the Fly view', async ({ app }) => {

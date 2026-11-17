@@ -1,5 +1,5 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { flyNow, mapOrMapButton, openMenu, test as hosted } from './fixtures';
+import { closeSettings, flyNow, mapOrMapButton, openMenu, test as hosted } from './fixtures';
 
 const DEVICE = 'http://localhost:18780';
 const SILENT = 'http://localhost:18788';
@@ -237,7 +237,7 @@ test('a device page offers its synthetic view on every visit, even after it was 
     await expect(device.getByRole('button', { name: 'Add a video source' })).toBeVisible({ timeout: 2_000 });
     await expect(synthetic).toHaveCount(0);
   }).toPass({ timeout: 45_000 });
-  await device.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(device);
   await device.reload();
   await offered();
 });

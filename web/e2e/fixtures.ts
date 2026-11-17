@@ -17,9 +17,18 @@ export const openApp = async (page: Page, { firstRun = true } = {}) => {
 
 export const openMenu = async (page: Page, item: string) => {
   const rail = page.getByRole('navigation').getByRole('button', { name: item, exact: true });
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  await expect(rail.or(menu).first()).toBeVisible();
   if (await rail.isVisible()) return rail.click();
-  await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  await menu.click();
   await page.getByRole('dialog').getByRole('button', { name: item, exact: true }).click();
+};
+
+export const closeSettings = async (page: Page) => {
+  const close = page.getByRole('button', { name: 'Close settings' });
+  if (await close.isVisible()) return close.click();
+  await page.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Settings' })).toBeHidden();
 };
 
 export type MockOption = 'Enable camera' | 'Enable gimbal' | 'Enable proximity sensors' | 'Send status text + voice';
@@ -143,13 +152,8 @@ export const tapPlanMission = async (page: Page) => {
 };
 
 export const openAircraftSetup = async (page: Page) => {
-  await openMenu(page, 'Settings');
-  await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
-  const entry = page.getByRole('button', { name: 'Aircraft setup' });
-  await expect(async () => {
-    if (await entry.isVisible()) await entry.click();
-    await expect(page.getByRole('button', { name: /^Sensors/ })).toBeVisible({ timeout: 5_000 });
-  }).toPass({ timeout: 60_000 });
+  await openMenu(page, 'Aircraft setup');
+  await expect(page.getByRole('button', { name: /^Sensors/ })).toBeVisible({ timeout: 60_000 });
 };
 
 export const openPlanAtVehicle = async (page: Page) => {

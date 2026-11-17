@@ -905,7 +905,7 @@ export const FlyMenuButton = () => {
       className={`grid place-items-center ${osdShadow()}`}
       style={{ width: STATUS_ROW_HEIGHT + AircastSpace.s2, height: STATUS_ROW_HEIGHT + AircastSpace.s2 }}
     >
-      <MaterialIcon name="more_horiz" filled size={24} />
+      <MaterialIcon name="more_vert" filled size={24} />
     </Surface>
   );
 };

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, openApp, openMenu, test } from './fixtures';
+import { closeSettings, connectMock, expect, openApp, openMenu, test } from './fixtures';
 import { plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
@@ -59,7 +59,7 @@ test('the six-position switch picks which bay the drop switch drops', async ({ p
   await bays.press('Enter');
   await page.getByRole('radio', { name: 'A servo per bay' }).click();
   await expect(page.getByText('Bay 4 output', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(page);
   const sheet = await openPayload(page);
   await expect(sheet.getByText('Bay 2 · output 10', { exact: true })).toBeVisible();
 

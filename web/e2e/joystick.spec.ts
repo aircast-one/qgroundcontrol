@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, openAircraftSetup, openApp, test } from './fixtures';
+import { closeSettings, expect, openAircraftSetup, openApp, test } from './fixtures';
 import { moveSticks, plugInRadio, type Sticks } from './radio';
 import { type Sitl, startSitl } from './sitl';
 
@@ -100,7 +100,7 @@ test('a roll stick pushed the wrong way is flagged before saving, and leaving th
   await page.getByRole('button', { name: 'Open Setup', exact: true }).click();
   await captureSticks(page, -1);
   await expect(page.getByText(/^Roll moved the opposite way to yaw/)).toBeVisible();
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(page);
   await expect.poll(() => calibration(page)).toBeNull();
   await openAircraftSetup(page);
   await page.getByRole('button', { name: /^Joystick.*axes/ }).click();

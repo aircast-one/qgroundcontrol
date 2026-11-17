@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, openApp, openMenu, test } from './fixtures';
+import { closeSettings, connectMock, expect, openApp, openMenu, test } from './fixtures';
 import { lastAnswer, plugInR2d2Radio, readFlightModesOn, setRadioChannels } from './r2d2';
 
 const RADIO_FOUND = 'An EdgeTX radio is streaming its sticks on USB. Fly with it?';
@@ -15,7 +15,7 @@ const fourServoBays = async (page: Page) => {
   await bays.press('Enter');
   await page.getByRole('radio', { name: 'A servo per bay' }).click();
   await expect(page.getByText('Bay 4 output', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(page);
 };
 
 const rail = (page: Page) => page.getByRole('group', { name: 'Payload' });
@@ -104,7 +104,7 @@ test("a radio whose 6POS neither EdgeTX nor R2D2 reads picks no bay until it is 
     await expect(page.getByText(at === ladder.length - 1 ? "The radio's 6POS is learned" : `${at + 1} of 6 positions heard`)).toBeVisible({ timeout: 10_000 });
   }
   await expect(page.getByText("The radio's 6POS is learned: 1484,1492,1500,1508,1516,1524.")).toBeVisible();
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await closeSettings(page);
 
   await setRadioChannels(page, { 5: ladder[3] });
   await expect(rail(page).getByRole('button', { name: 'Bay 4, loaded, selected' }), 'button 4 of the learned 6POS picks bay 4').toBeVisible({ timeout: 30_000 });
