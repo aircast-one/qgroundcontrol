@@ -101,9 +101,12 @@ test('the Fly menu sheet and the take-off press are named', async ({ vehicle }) 
   expect(await unnamedControls(vehicle)).toEqual([]);
 });
 
-test('the welcome names each choice by its question', async ({ page }) => {
+test('the welcome asks each question as a named group of one-click choices', async ({ page }) => {
   await openApp(page, { firstRun: false });
   const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
-  await expect(welcome.getByRole('button', { name: /^Vehicle type, / })).toBeVisible();
+  await expect(welcome.getByRole('group', { name: 'Units' }).getByRole('button', { name: 'Metric', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const fixedWing = welcome.getByRole('group', { name: 'Vehicle type' }).getByRole('button', { name: 'Fixed wing', exact: true });
+  await fixedWing.click();
+  await expect(fixedWing).toHaveAttribute('aria-pressed', 'true');
   expect(await valueOnlyNames(page)).toEqual([]);
 });
