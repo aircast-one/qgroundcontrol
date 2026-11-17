@@ -343,7 +343,7 @@ base('a page opened over the tailnet stays on the device when the hosted app doe
   await flies(page, TAILNET_NO_APP);
   await openMenu(page, 'Settings');
   await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
-  await page.getByRole('button', { name: /^App log/ }).click();
+  await page.getByRole('button', { name: 'App log', exact: true }).click();
   await page.getByPlaceholder('Search…').fill('handoff');
   await expect(page.getByText('handoff stayed reason=app-unreachable page=localhost:18794')).toBeVisible({ timeout: 30_000 });
 });
