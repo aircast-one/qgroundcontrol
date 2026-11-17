@@ -1,4 +1,4 @@
-import { type HTMLAttributes, type KeyboardEvent, type PointerEvent, type ReactNode, createContext, useContext, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent, type ReactNode, createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { vibrate } from '@/kotlin/Platform';
 import { coerceAtLeast, coerceIn } from '@/kotlin/Std';
@@ -12,7 +12,7 @@ import type { Readiness } from '@/ui/FlyState';
 import type { GuidedOffer } from '@/ui/GuidedActions';
 import { type GuidedTakeoff, takeoffRangeUsable } from '@/ui/GuidedTakeoff';
 import { PAUSE, RELEASE } from '@/ui/MoreActions';
-import { OSD_CONTROL_SIZE, osdShadow } from '@/ui/Osd';
+import { OSD_CONTROL_SIZE, OSD_SCRIM } from '@/ui/Osd';
 
 export const CHECKLIST = 'checklist';
 
@@ -192,8 +192,13 @@ export const HoldFill = ({ progress, color, className }: { progress: number; col
 const DeckPress = ({ entry, children }: { entry: DeckEntry; children: ReactNode }) => {
   const [progress, gesture] = useRememberHold(entry.id, entry.enabled, entry.onClick, entry.onHold, entry.label);
   return (
-    <div {...gesture} className="relative flex size-full cursor-pointer items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-primary">
-      <HoldFill progress={progress} color={withAlpha('currentColor', DECK_HOLD_FILL_ALPHA)} className="absolute inset-y-0 start-0" />
+    <div
+      {...gesture}
+      className="relative flex size-full cursor-pointer items-center justify-center rounded-[inherit] outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-[var(--md-primary)]"
+    >
+      <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
+        <HoldFill progress={progress} color={withAlpha('currentColor', DECK_HOLD_FILL_ALPHA)} className="absolute inset-y-0 start-0" />
+      </div>
       {children}
     </div>
   );
@@ -214,7 +219,8 @@ const DECK_GAP = 10;
 const DECK_MORE_WIDTH = 64;
 const DECK_MIN_WIDTH = 56;
 const RAIL_GAP = 8;
-const RAIL_LABEL_HEIGHT = 16;
+const RAIL_LABEL_HEIGHT = 20;
+export const RAIL_STOP_GAP = 12;
 const DECK_PRIORITY: readonly string[] = ['rtl', 'land', 'takeoff', 'arm', RELEASE, PAUSE, CHECKLIST];
 
 const priority = (id: string): number => (DECK_PRIORITY.includes(id) ? DECK_PRIORITY.indexOf(id) : DECK_PRIORITY.length);
@@ -234,23 +240,27 @@ export const bottomDeck = (deck: DeckIds, width: number, centre: number): { deck
   return { deck: fitting(deck, width, DECK_MIN_WIDTH + DECK_GAP, DECK_MORE_WIDTH + (centreInline && centre > 0 ? centre + DECK_GAP : 0)), centreInline };
 };
 
+const railLabelRoom = (labelled: boolean): number => (labelled ? RAIL_LABEL_HEIGHT : 0);
+
 export const railDeck = (deck: DeckIds, height: number): { deck: DeckIds; labelled: boolean } => {
-  const labelled = height <= 0 || deck.length * (OSD_CONTROL_SIZE + RAIL_LABEL_HEIGHT + RAIL_GAP) + OSD_CONTROL_SIZE <= height;
-  return { deck: fitting(deck, height, OSD_CONTROL_SIZE + (labelled ? RAIL_LABEL_HEIGHT : 0) + RAIL_GAP, OSD_CONTROL_SIZE), labelled };
+  const slot = (labelled: boolean) => OSD_CONTROL_SIZE + railLabelRoom(labelled) + RAIL_GAP;
+  const stop = (labelled: boolean) => OSD_CONTROL_SIZE + railLabelRoom(labelled) + RAIL_STOP_GAP;
+  const labelled = height <= 0 || deck.length * slot(true) + stop(true) <= height;
+  return { deck: fitting(deck, height, slot(labelled), stop(labelled)), labelled };
 };
 
 export const CROWDED_DECK = 5;
 
 export const deckLabel = (label: string, buttons: number): string => (buttons >= CROWDED_DECK ? railLabel(label) : label);
 
-export const DeckButton = ({ entry, primary, className, buttons = 0 }: { entry: DeckEntry; primary: boolean; className?: string; buttons?: number }) => (
-  <Surface
-    shape="large"
-    color={primary && entry.enabled ? md('primaryContainer') : md('surfaceContainerHigh')}
-    contentColor={!entry.enabled ? withAlpha(md('onSurface'), DISABLED_ALPHA) : primary ? md('onPrimaryContainer') : md('onSurface')}
-    className={`overflow-hidden ${className ?? ''}`}
-    style={{ height: DECK_BUTTON_HEIGHT }}
-  >
+export const deckColours = (entry: DeckEntry, primary: boolean): readonly [string, string] => {
+  if (!entry.enabled) return [md('surfaceContainerHigh'), withAlpha(md('onSurface'), DISABLED_ALPHA)];
+  if (entry.warning) return [md('error'), md('onError')];
+  return primary ? [md('primaryContainer'), md('onPrimaryContainer')] : [md('surfaceContainerHigh'), md('onSurface')];
+};
+
+export const DeckButton = ({ entry, primary, className, style, buttons = 0 }: { entry: DeckEntry; primary: boolean; className?: string; style?: CSSProperties; buttons?: number }) => (
+  <Surface shape="large" color={deckColours(entry, primary)[0]} contentColor={deckColours(entry, primary)[1]} className={className} style={{ ...style, height: DECK_BUTTON_HEIGHT }}>
     <DeckPress entry={entry}>
       <div className="flex min-w-0 flex-col items-center justify-center gap-1 px-1">
         <Drawable name={entry.icon} size={DECK_ICON_SIZE} />
@@ -263,46 +273,45 @@ export const DeckButton = ({ entry, primary, className, buttons = 0 }: { entry: 
 );
 
 const RAIL_ICON_SIZE = 24;
-const RAIL_PRIMARY_ICON_SIZE = 32;
+const RAIL_PRIMARY_ICON_SIZE = 28;
 const RAIL_INSET_ICON_SIZE = 20;
-const RAIL_INSET_LABEL_SIZE = 10;
 
 export const railLabel = (label: string): string => {
   const rest = label.startsWith('Slide to ') ? label.slice('Slide to '.length) : label;
   return rest.charAt(0).toUpperCase() + rest.slice(1);
 };
 
-export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: DeckEntry; primary: boolean; labelled?: boolean }) => (
-  <div className="flex flex-col items-center">
-    <Surface
-      shape="full"
-      color="transparent"
-      contentColor={aircast('outdoorForeground')}
-      className="overflow-hidden"
-      style={{ width: OSD_CONTROL_SIZE, height: OSD_CONTROL_SIZE, opacity: entry.enabled ? 1 : DISABLED_ALPHA }}
-    >
-      <DeckPress entry={entry}>
-        {labelled ? (
-          <Drawable name={entry.icon} label={entry.label} size={primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE} className={osdShadow()} />
-        ) : (
-          <span className="flex flex-col items-center">
-            <Drawable name={entry.icon} label={entry.label} size={RAIL_INSET_ICON_SIZE} className={osdShadow()} />
-            <span aria-hidden>
-              <Text typography="labelSmall" color={aircast('outdoorForeground')} maxLines={1} className={osdShadow()} style={{ fontSize: RAIL_INSET_LABEL_SIZE, lineHeight: `${RAIL_INSET_LABEL_SIZE + 2}px` }}>
-                {entry.short ?? railLabel(entry.label)}
-              </Text>
+export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: DeckEntry; primary: boolean; labelled?: boolean }) => {
+  const [color, content] = deckColours(entry, primary);
+  const label = entry.short ?? railLabel(entry.label);
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <Surface shape="full" color={color} contentColor={content} shadow style={{ minWidth: OSD_CONTROL_SIZE, height: OSD_CONTROL_SIZE, opacity: entry.enabled ? 1 : DISABLED_ALPHA }}>
+        <DeckPress entry={entry}>
+          {labelled ? (
+            <Drawable name={entry.icon} label={entry.label} size={primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE} />
+          ) : (
+            <span className="flex flex-col items-center px-2">
+              <Drawable name={entry.icon} label={entry.label} size={RAIL_INSET_ICON_SIZE} />
+              <span aria-hidden>
+                <Text typography="labelSmall" maxLines={1}>
+                  {label}
+                </Text>
+              </span>
             </span>
-          </span>
-        )}
-      </DeckPress>
-    </Surface>
-    {labelled ? (
-      <Text typography="labelSmall" color={aircast('outdoorForeground')} maxLines={1} className={osdShadow()}>
-        {entry.short ?? railLabel(entry.label)}
-      </Text>
-    ) : null}
-  </div>
-);
+          )}
+        </DeckPress>
+      </Surface>
+      {labelled ? (
+        <span className="rounded-full px-2" style={{ background: OSD_SCRIM }}>
+          <Text typography="labelMedium" color={aircast('outdoorForeground')} maxLines={1}>
+            {label}
+          </Text>
+        </span>
+      ) : null}
+    </div>
+  );
+};
 
 const MENU_COLUMNS = 4;
 const MENU_TILE_HEIGHT = 80;

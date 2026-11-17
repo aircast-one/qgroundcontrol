@@ -99,7 +99,7 @@ test('in flight the payload strip is the only drop: the deck offers none, and th
 
 type Target = { name: string; left: number; top: number; right: number; bottom: number; clipped: boolean };
 
-const FLIGHT_ACTIONS = [/pause/i, /return/i, /land/i, /^Stop motors$/];
+const FLIGHT_ACTIONS = [/pause/i, /return/i, /land/i, /^Kill motors$/];
 
 const flyWithFourBays = async (app: Page): Promise<Locator> => {
   await app.evaluate(async (module) => {

@@ -19,7 +19,7 @@ import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnlessRefused } from './ConfirmTrack';
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
-import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
+import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET } from './FlyScreenState';
 import { AnimatedVisibility, PASS_THROUGH, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
@@ -642,7 +642,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const deciding = pending !== null || guidedValue !== null || editingLoiter !== null;
   const confirming = pending;
   const stop = armedStopOffer(offers, armed);
-  const stopEntry = stop === null ? null : DeckEntry({ id: 'stopMotors', label: STOP_MOTORS, short: 'Stop', icon: 'ic_warning', enabled: true, warning: true, onClick: () => setPending(emergencyStopAction(stop)) });
+  const stopEntry = stop === null ? null : DeckEntry({ id: 'stopMotors', label: STOP_MOTORS, icon: 'ic_warning', enabled: true, warning: true, onClick: () => setPending(emergencyStopAction(stop)) });
   const centreBox = (
     <div ref={centre.ref} className="shrink-0 self-center empty:hidden">
       {center}
@@ -689,9 +689,13 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
               <div className="flex flex-col items-center gap-2">
                 {deck.flatMap(([id, primary]) => {
                   const entry = entries.find((it) => it.id === id);
-                  return entry === undefined ? [] : [<RailDeckButton key={id} entry={entry} primary={primary} labelled={armed && railFit.labelled} />];
+                  return entry === undefined ? [] : [<RailDeckButton key={id} entry={entry} primary={primary} labelled={railFit.labelled} />];
                 })}
-                {stopEntry !== null ? <RailDeckButton entry={stopEntry} primary={false} /> : null}
+                {stopEntry !== null ? (
+                  <div style={{ marginTop: RAIL_STOP_GAP }}>
+                    <RailDeckButton entry={stopEntry} primary={false} labelled={railFit.labelled} />
+                  </div>
+                ) : null}
               </div>
             </LayoutWidget>
           </div>
@@ -811,22 +815,21 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
 };
 
 const DeckRow = ({ deck, entries, extra, center }: { deck: DeckIds; entries: readonly DeckEntry[]; extra: DeckEntry | null; center: ReactNode }) => {
-  const buttons: readonly (readonly [DeckEntry, boolean])[] = [
-    ...deck.flatMap(([id, primary]) => {
-      const entry = entries.find((it) => it.id === id);
-      return entry === undefined ? [] : [[entry, primary] as const];
-    }),
-    ...(extra === null ? [] : [[extra, false] as const]),
-  ];
+  const buttons: readonly (readonly [DeckEntry, boolean])[] = deck.flatMap(([id, primary]) => {
+    const entry = entries.find((it) => it.id === id);
+    return entry === undefined ? [] : [[entry, primary] as const];
+  });
+  const count = buttons.length + (extra === null ? 0 : 1);
   const leading = Math.trunc((buttons.length + 1) / 2);
   const button = ([entry, primary]: readonly [DeckEntry, boolean]) => (
-    <DeckButton key={entry.id} entry={entry} primary={primary} buttons={buttons.length} className="min-w-0 flex-1" />
+    <DeckButton key={entry.id} entry={entry} primary={primary} buttons={count} className="min-w-0 flex-1" />
   );
   return (
     <div role="group" aria-label={FLIGHT_ACTIONS} className="flex items-center gap-[10px]">
       {buttons.slice(0, leading).map(button)}
       {center}
       {buttons.slice(leading).map(button)}
+      {extra === null ? null : <DeckButton entry={extra} primary={false} buttons={count} className="min-w-0 flex-1" style={{ marginInlineStart: RAIL_STOP_GAP }} />}
     </div>
   );
 };
@@ -876,7 +879,7 @@ export const LocalDeckTelemetry = createContext(true);
 
 const DECISION_CARD_WIDTH = 460;
 export const OSD_LABEL_ALPHA = 0.75;
-export const STOP_MOTORS = 'Stop motors';
+export const STOP_MOTORS = 'Kill motors';
 const FLIGHT_ACTIONS = 'Flight actions';
 const RAIL_LIFT = 56;
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CHECKLIST, type DeckIds, bottomDeck, deckIds, deckLabel, railDeck, railLabel, slideProgress } from './FlyDeck';
+import { md } from '@/theme/Colors';
+import { CHECKLIST, DeckEntry, type DeckIds, bottomDeck, deckColours, deckIds, deckLabel, railDeck, railLabel, slideProgress } from './FlyDeck';
 import { PAUSE, RELEASE } from './MoreActions';
 
 describe('FlyDeckTest', () => {
@@ -60,6 +61,13 @@ describe('RailLabelTest', () => {
     expect([deckLabel('Slide to land', 4), deckLabel('Slide to land', 5), deckLabel('Slide to drop 2', 5)]).toEqual(['Slide to land', 'Land', 'Drop 2']);
   });
 
+  it('the motor kill is red and every other action sits on a solid fill', () => {
+    const entry = DeckEntry({ id: 'stopMotors', label: 'Kill motors', icon: 'ic_warning', enabled: true, warning: true, onClick: () => undefined });
+    expect(deckColours(entry, false)).toEqual([md('error'), md('onError')]);
+    expect(deckColours({ ...entry, warning: false }, true)).toEqual([md('primaryContainer'), md('onPrimaryContainer')]);
+    expect(deckColours({ ...entry, warning: false }, false)).toEqual([md('surfaceContainerHigh'), md('onSurface')]);
+  });
+
   it('rail labels drop the hold instruction', () => {
     expect(['Slide to land', 'Return', 'Slide to take off'].map(railLabel)).toEqual(['Land', 'Return', 'Take off']);
   });
@@ -97,7 +105,7 @@ describe('DeckFitTest', () => {
   it('a sideways phone drops the rail labels before it drops an action', () => {
     const noDrop = flying.filter(([id]) => id !== RELEASE);
     expect(railDeck(flying, 286)).toEqual({ deck: flying, labelled: false });
-    expect(railDeck(noDrop, 286)).toEqual({ deck: noDrop, labelled: true });
+    expect(railDeck(noDrop, 308)).toEqual({ deck: noDrop, labelled: true });
     expect(ids(railDeck(flying, 271).deck)).toEqual(['rtl', 'land', RELEASE]);
   });
 });

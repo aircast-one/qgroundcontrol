@@ -352,7 +352,7 @@ const showPicture = async (page: Page) => {
   await expect(page.locator('[data-status-row]').getByRole('button', { name: /^Bitrate / }), 'the picture is decoding').toBeVisible({ timeout: 30_000 });
 };
 
-test('in full screen stop motors stays on the rail, and stopping asks for a slide before it cuts the motors', async ({ vehicle }) => {
+test('in full screen kill motors stays on the rail, and stopping asks for a slide before it cuts the motors', async ({ vehicle }) => {
   test.setTimeout(150_000);
   await showPicture(vehicle);
   const mapButton = vehicle.getByRole('button', { name: 'Map', exact: true });
@@ -362,7 +362,7 @@ test('in full screen stop motors stays on the rail, and stopping asks for a slid
   }).toPass({ timeout: 15_000 });
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
-  await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Stop motors', exact: true }).click();
+  await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Kill motors', exact: true }).click();
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to emergency stop' }));
   await expect(vehicle.getByRole('button', { name: /^Not fully ready$|^Ready to fly$/ }).first(), 'the motors are cut').toBeVisible({ timeout: 30_000 });
   await expect(mapButton, 'still in full screen').toBeHidden();
