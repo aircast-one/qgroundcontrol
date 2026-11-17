@@ -152,7 +152,7 @@ export const tapPlanMission = async (page: Page) => {
 };
 
 export const openAircraftSetup = async (page: Page) => {
-  await openMenu(page, 'Aircraft setup');
+  await openMenu(page, 'Setup');
   await expect(page.getByRole('button', { name: /^Sensors/ })).toBeVisible({ timeout: 60_000 });
 };
 

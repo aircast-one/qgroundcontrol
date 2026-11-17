@@ -8,7 +8,7 @@ const PAGES: readonly (readonly [string, string, string?])[] = [
   ['Transmission', 'RTK GPS'],
   ['Transmission', 'NTRIP / RTK'],
   ['Safety', 'Remote ID'],
-  ['Safety', 'More failsafe settings', 'Aircraft setup'],
+  ['Safety', 'More failsafe settings', 'Setup'],
   ['General', 'PX4 log transfer'],
   ['General', 'App logging'],
   ['General', 'App log$', 'App log'],

@@ -314,7 +314,7 @@ export const matchesIn = (pageTitle: string, sections: readonly SettingsSectionR
     });
 };
 
-export const AIRCRAFT_SETUP = 'Aircraft setup';
+export const AIRCRAFT_SETUP = 'Setup';
 
 export const TAB_SETUP_TITLES: ReadonlyMap<string, string> = new Map([[SAFETY_SETUP_PAGE, 'More failsafe settings']]);
 

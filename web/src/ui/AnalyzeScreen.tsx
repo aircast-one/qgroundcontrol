@@ -187,10 +187,10 @@ const AnalyzePageBody = ({ page, leave, style }: { page: AnalyzePage; leave: () 
   const vehiclesJson = useQgcPath(VEHICLES_VIEW);
   const reloadKey = useMemo(() => (page.requiresVehicle ? activeVehicleId(vehiclesJson) : null), [vehiclesJson, page]);
   return (
-    <div className="flex size-full flex-col" style={style}>
+    <div className="flex size-full flex-col" style={gate === null ? style : undefined}>
       <PageTopBar title={page.label} backLabel="Back to Analyze" onBack={leave} />
       <Surface className="flex min-h-0 w-full flex-1 flex-col">
-        {gate !== null ? <EmptyState icon={page.icon} title={gate} text="" /> : <Fragment key={String(reloadKey)}>{PAGE_BODIES[page.name]()}</Fragment>}
+        {gate !== null ? <EmptyState icon={page.icon} title={gate} text="" className="flex-1 justify-center" /> : <Fragment key={String(reloadKey)}>{PAGE_BODIES[page.name]()}</Fragment>}
       </Surface>
     </div>
   );

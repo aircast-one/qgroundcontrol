@@ -65,7 +65,7 @@ test('on a desktop Fly leaves the whole window to the flight and keeps the other
   await expect(vehicle.getByRole('navigation')).toHaveCount(0);
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   const menu = vehicle.getByRole('dialog', { name: 'Menu' });
-  await expect(menu.getByRole('button', { name: /^(Plan|Analyze|Aircraft setup|Settings)$/ })).toHaveText(['Plan', 'Analyze', 'Aircraft setup', 'Settings']);
+  await expect(menu.getByRole('button', { name: /^(Plan|Analyze|Setup|Settings)$/ })).toHaveText(['Plan', 'Analyze', 'Setup', 'Settings']);
   await vehicle.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   const inset = async () => (await vehicle.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0;
@@ -118,9 +118,9 @@ test('Escape never changes screens, and the browser Back button walks back throu
   expect(new URL(app.url()).pathname).toBe('/');
 });
 
-test('Back inside Aircraft setup closes the page it is on and stays in the app', async ({ vehicle }) => {
+test('Back inside Setup closes the page it is on and stays in the app', async ({ vehicle }) => {
   await openAircraftSetup(vehicle);
-  const setup = vehicle.getByRole('navigation').getByRole('button', { name: 'Aircraft setup', exact: true });
+  const setup = vehicle.getByRole('navigation').getByRole('button', { name: 'Setup', exact: true });
   await expect(setup).toHaveAttribute('aria-current', 'page');
   await vehicle.getByRole('button', { name: /^Power/ }).click();
   await expect(vehicle.getByText('Power', { exact: true }).last()).toBeVisible();
@@ -170,7 +170,7 @@ test('in the browser Alt with a digit or comma moves between screens', async ({ 
   await app.keyboard.press('Alt+Comma');
   await expect(rail.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page');
   await app.keyboard.press('Alt+Digit4');
-  await expect(rail.getByRole('button', { name: 'Aircraft setup', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(rail.getByRole('button', { name: 'Setup', exact: true })).toHaveAttribute('aria-current', 'page');
   await app.keyboard.press('Alt+Digit1');
   await expect(rail).toHaveCount(0);
   await expect(app.getByRole('button', { name: 'Menu', exact: true })).toBeVisible();

@@ -71,8 +71,8 @@ test('ArduPilot setup lists its pages in the order an aircraft is set up', async
   expect(tops).toEqual(tops.toSorted((a, b) => a - b));
 });
 
-test('Aircraft setup flashes firmware with or without a vehicle', async ({ app }) => {
-  await openMenu(app, 'Aircraft setup');
+test('Setup flashes firmware with or without a vehicle', async ({ app }) => {
+  await openMenu(app, 'Setup');
   await app.getByRole('button', { name: 'Flash firmware' }).click();
   await expect(app.getByText(/^(No USB serial devices attached|Flash a board over USB|Flash the flight controller)/)).toBeVisible();
   await openMenu(app, 'Fly');

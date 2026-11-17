@@ -36,7 +36,7 @@ pub const VIEW: [Command; 4] = [
     command("fly", "Fly", Some("CmdOrCtrl+1")),
     command("plan", "Plan", Some("CmdOrCtrl+2")),
     command("analyze", "Analyze", Some("CmdOrCtrl+3")),
-    command("setup", "Aircraft setup", Some("CmdOrCtrl+4")),
+    command("setup", "Setup", Some("CmdOrCtrl+4")),
 ];
 
 pub const FULL_SCREEN: Command = command("full-screen", "Enter full screen", Some("F11"));
