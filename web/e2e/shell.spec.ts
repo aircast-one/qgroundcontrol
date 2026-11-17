@@ -5,6 +5,7 @@ test('first run sets units once and stays dismissed', async ({ page }) => {
   await openApp(page, { firstRun: false });
   const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
   await expect(welcome.getByRole('button', { name: 'Continue' })).toBeInViewport();
+  await expect(welcome.getByRole('button', { name: 'Continue' }), 'the card opens with Continue focused').toBeFocused();
   await welcome.getByRole('button', { name: 'Imperial', exact: true }).click();
   await expect(welcome.getByRole('button', { name: 'Imperial', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText(/^Restart (application|Aircast)/)).toHaveCount(0);

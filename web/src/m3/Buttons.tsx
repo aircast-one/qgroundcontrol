@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactElement, ReactNode } from 'react';
+import type { CSSProperties, ReactElement, ReactNode, Ref } from 'react';
 import { Tooltipped } from './Feedback';
 
 type ButtonProps = {
@@ -12,13 +12,15 @@ type ButtonProps = {
   type?: 'button' | 'submit';
   containerColor?: string;
   contentColor?: string;
+  ref?: Ref<HTMLButtonElement>;
 };
 
 const base = 'inline-flex select-none items-center justify-center gap-2 text-label-large transition-[background,opacity] disabled:cursor-default disabled:opacity-[0.38] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--md-primary)]';
 const pill = 'h-10 rounded-full px-6';
 
-const button = (look: string, overlay: string, { children, onClick, enabled = true, className, style, label, title, type = 'button', containerColor, contentColor }: ButtonProps) => (
+const button = (look: string, overlay: string, { children, onClick, enabled = true, className, style, label, title, type = 'button', containerColor, contentColor, ref }: ButtonProps) => (
   <button
+    ref={ref}
     type={type}
     className={`${base} ${look} ${enabled ? overlay : ''} ${className ?? ''}`}
     style={{ background: containerColor, color: contentColor, ...style }}
