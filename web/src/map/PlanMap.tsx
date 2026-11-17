@@ -30,6 +30,7 @@ export const PlanMapScreen = ({
   fitKey = 0,
   onTemplates = null,
   onDownload = null,
+  onSave = null,
 }: {
   className?: string;
   onCentre?: ((latitude: number, longitude: number, zoom: number) => void) | null;
@@ -39,12 +40,13 @@ export const PlanMapScreen = ({
   fitKey?: number;
   onTemplates?: (() => void) | null;
   onDownload?: (() => void) | null;
+  onSave?: (() => void) | null;
 }) => {
   const style = useProduceState<string | null>(null, [], async (set) => set(await planMapStyle()));
   return (
     <Surface className={className} color={md('surface')} contentColor={md('onSurface')}>
       {style === null ? null : (
-        <PlanMapContent mapStyle={style} onCentre={onCentre} itemPanel={itemPanel} header={header} routeSettings={routeSettings} fitKey={fitKey} onTemplates={onTemplates} onDownload={onDownload} />
+        <PlanMapContent mapStyle={style} onCentre={onCentre} itemPanel={itemPanel} header={header} routeSettings={routeSettings} fitKey={fitKey} onTemplates={onTemplates} onDownload={onDownload} onSave={onSave} />
       )}
     </Surface>
   );

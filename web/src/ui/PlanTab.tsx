@@ -13,7 +13,7 @@ import type { PlanStat } from '@/map/PlanStrip';
 import { sentenceCase } from '@/map/SentenceCase';
 import type { TrackPoint } from '@/map/VehicleMap';
 import { DOWNLOADING, NEWEST_PATTERN, PlanFocus } from '@/map/VehicleSync';
-import { type PlanAction, PlanActions, shortcutHint, usePlanAction, usePlanShortcuts } from '@/map/PlanShortcuts';
+import { type PlanAction, shortcutHint } from '@/map/PlanShortcuts';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
@@ -24,7 +24,6 @@ import {
   confirmCopy,
   planActions,
   planContainsItems,
-  planHistory,
   planIsDirty,
   planIsSyncing,
   planStatusText,
@@ -136,7 +135,6 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
   const [showDefaults, setShowDefaults] = useState(false);
   const [showTransform, setShowTransform] = useState(false);
   const can = planActions(planStatus);
-  const history = planHistory(planStatus);
   const [undrawn, setUndrawn] = useState<readonly string[]>([]);
   const [centre, setCentre] = useState<readonly [number, number] | null>(null);
   const [zoom, setZoom] = useState<number | null>(null);
@@ -193,13 +191,6 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
 
   const requestDownload = () => (dirty ? setPending(PlanConfirm.Download) : files.download());
   const requestOpen = () => (dirty ? setPending(PlanConfirm.Open) : files.open());
-  usePlanShortcuts();
-  usePlanAction('save', () => {
-    if (can.save) void files.save();
-  });
-  usePlanAction('redo', () => {
-    if (history.canRedo) void PlanCommands.redo();
-  });
   const hint = (action: PlanAction) => (
     <Text typography="labelMedium" color={md('onSurfaceVariant')}>
       {shortcutHint(action)}
@@ -310,20 +301,20 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
                 text="Undo"
                 leadingIcon={<Drawable name="plan_undo" />}
                 trailingIcon={hint('undo')}
-                enabled={history.canUndo}
+                enabled={bar.undo !== null}
                 onClick={() => {
                   setMenuOpen(false);
-                  PlanActions.run('undo');
+                  bar.undo?.();
                 }}
               />
               <DropdownMenuItem
                 text="Redo"
                 leadingIcon={<Drawable name="ic_redo" />}
                 trailingIcon={hint('redo')}
-                enabled={history.canRedo}
+                enabled={bar.redo !== null}
                 onClick={() => {
                   setMenuOpen(false);
-                  void PlanCommands.redo();
+                  bar.redo?.();
                 }}
               />
               <HorizontalDivider />
@@ -505,6 +496,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
           routeSettings={() => <RouteSettings plan={planStatus} />}
           onTemplates={() => setNewPlanOpen(true)}
           onDownload={requestDownload}
+          onSave={can.save ? () => void files.save() : null}
           header={header}
         />
       </div>

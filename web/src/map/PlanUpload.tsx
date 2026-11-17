@@ -110,6 +110,7 @@ export const usePlanUpload = ({
                 onBridge(() => repositionMission(aircraftAt), {
                   label: 'Moving the plan to the aircraft',
                   done: 'Plan moved to the aircraft',
+                  edited: true,
                   then: () => onMoved(aircraftAt),
                 });
               }}
@@ -160,7 +161,7 @@ export const usePlanUpload = ({
                 <Button
                   onClick={() => {
                     uploadAsk.value = null;
-                    onBridge(() => PlanBridge.convertToVehicle(), { label: 'Converting the plan', done: CONVERTED, then: () => undefined });
+                    onBridge(() => PlanBridge.convertToVehicle(), { label: 'Converting the plan', done: CONVERTED, edited: true });
                   }}
                 >
                   Convert to this vehicle

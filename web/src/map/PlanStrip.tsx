@@ -1,6 +1,6 @@
 import type { MouseEvent, PointerEvent } from 'react';
 import type { Json } from '@/bridge/Json';
-import { format, replaceFirstCharLower } from '@/kotlin/Std';
+import { format } from '@/kotlin/Std';
 import { Button, IconButton, Text, TextButton } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
@@ -9,7 +9,8 @@ import type { MapHit } from './MissionEditing';
 import { HOME_ITEM } from './MissionKinds';
 import { summaryRow } from './MissionSummary';
 import type { MissionItem } from './PlanBridge';
-import { type ItemRow, itemTitle, legText, patternName, sequenceLabel } from './PlanItems';
+import type { Deletion } from './PlanEditing';
+import { type ItemRow, legText, patternName, sequenceLabel } from './PlanItems';
 import { sentenceCase } from './SentenceCase';
 import type { Survey } from './SurveyBridge';
 import { metresBetween } from './TerrainProfile';
@@ -148,20 +149,6 @@ export const selectionTitle = (selected: MapHit, items: readonly MissionItem[]):
   }
 };
 
-export const deleteLabel = (selected: MapHit | null, items: readonly MissionItem[]): string | null => {
-  switch (selected?.kind) {
-    case 'Waypoint': {
-      const item = items.find((it) => it.index === selected.index && it.index !== HOME_ITEM);
-      return item === undefined ? null : `Delete ${replaceFirstCharLower(itemTitle(item))}`;
-    }
-    case 'Rally': return 'Delete rally point';
-    case 'Circle':
-    case 'CircleCentre':
-    case 'CircleRadius': return 'Delete circular fence';
-    default: return null;
-  }
-};
-
 export const WaypointStripBar = ({
   rows,
   altitudes,
@@ -220,8 +207,8 @@ export const SelectionHeader = ({
   open,
   onTitle,
   onDone,
-  deleting = null,
-  onDelete = () => undefined,
+  deletion,
+  deleteEnabled,
 }: {
   title: string;
   detail: string | null;
@@ -229,8 +216,8 @@ export const SelectionHeader = ({
   open: boolean;
   onTitle: () => void;
   onDone: () => void;
-  deleting?: string | null;
-  onDelete?: () => void;
+  deletion: Deletion | null;
+  deleteEnabled: boolean;
 }) => (
   <div className="flex w-full items-center pb-2">
     <button type="button" onClick={onTitle} title={open ? 'Fold the settings' : 'Show the settings'} className="flex min-w-0 flex-1 flex-col pl-3 text-left">
@@ -246,9 +233,9 @@ export const SelectionHeader = ({
         </Text>
       )}
     </button>
-    {deleting === null ? null : (
-      <IconButton onClick={onDelete} label={deleting}>
-        <MaterialIcon name="delete" filled style={{ color: md('error') }} />
+    {deletion === null ? null : (
+      <IconButton onClick={deletion.run} label={deletion.label} enabled={deleteEnabled}>
+        <MaterialIcon name="delete" filled style={{ color: deleteEnabled ? md('error') : md('onSurfaceVariant') }} />
       </IconButton>
     )}
     <Button onClick={onDone} className="mr-1" style={{ paddingLeft: 16, paddingRight: 24 }}>

@@ -1,6 +1,7 @@
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, useRef } from 'react';
 import { useUpdatedRef } from '@/kotlin/Compose';
+import { onMac, typingIn } from '@/kotlin/Keys';
 
 export const MENU_EVENT = 'menu';
 
@@ -42,10 +43,6 @@ export const echoOfKey = (keyed: KeyedCommand | null, command: MenuCommand, now:
 
 export const browserShortcut = (press: KeyPress, typing: boolean): MenuCommand | null =>
   press.altKey && !press.metaKey && !press.ctrlKey && !press.shiftKey && !typing ? (BROWSER_KEYS[press.code] ?? null) : null;
-
-const typingIn = (target: EventTarget | null): boolean => target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
-
-export const onMac = (): boolean => /Mac/.test(navigator.platform);
 
 export const useMenuCommands = (run: (command: MenuCommand) => void): void => {
   const latest = useUpdatedRef(run);

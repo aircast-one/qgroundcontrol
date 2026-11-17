@@ -106,7 +106,6 @@ import {
   WaypointStripBar,
   advancedDetail,
   appendSequence,
-  deleteLabel,
   farFromAircraft,
   panelDrag,
   placedPattern,
@@ -146,6 +145,7 @@ import { VEHICLES_VIEW, vehicleChoices } from './VehiclePicker';
 import { TrackPoint, VehicleMap, isPlottable } from './VehicleMap';
 import { PlanFocus, planSupport } from './VehicleSync';
 import { FAILURE_MESSAGE_MS, type OnBridge, type Say, usePlanEditing, usePlanFeedback } from './PlanEditing';
+import { usePlanShortcuts } from './PlanShortcuts';
 import { PlanItemList } from './PlanItemList';
 import { type PlanUpload, usePlanUpload } from './PlanUpload';
 import { firstWhere, useRemembered } from './Remembered';
@@ -220,7 +220,14 @@ export const fenceWindow = (visible: readonly TrackPoint[], at: TrackPoint): rea
     : [TrackPoint(at.latitude + FALLBACK_FENCE_DEGREES, at.longitude - FALLBACK_FENCE_DEGREES), TrackPoint(at.latitude - FALLBACK_FENCE_DEGREES, at.longitude + FALLBACK_FENCE_DEGREES)];
 };
 
-export type PlanBar = { readonly upload: PlanUpload; readonly stats: readonly PlanStat[]; readonly warning: string | null; readonly note: string | null };
+export type PlanBar = {
+  readonly upload: PlanUpload;
+  readonly stats: readonly PlanStat[];
+  readonly warning: string | null;
+  readonly note: string | null;
+  readonly undo: (() => void) | null;
+  readonly redo: (() => void) | null;
+};
 
 const hitKey = (hit: MapHit | null): string => JSON.stringify(hit);
 
@@ -233,6 +240,7 @@ export const PlanMapContent = ({
   fitKey = 0,
   onTemplates = null,
   onDownload = null,
+  onSave = null,
 }: {
   mapStyle: string;
   onCentre?: ((latitude: number, longitude: number, zoom: number) => void) | null;
@@ -242,6 +250,7 @@ export const PlanMapContent = ({
   fitKey?: number;
   onTemplates?: (() => void) | null;
   onDownload?: (() => void) | null;
+  onSave?: (() => void) | null;
 }) => {
   const follow = useRemembered(false);
   const shownStyle = useRemembered(mapStyle);
@@ -329,7 +338,8 @@ export const PlanMapContent = ({
   const planOffline = optBoolean(planStatus, 'offline');
   const support = useMemo(() => planSupport(planStatus), [planStatus]);
   const canUndo = optBoolean(planStatus, 'canUndo');
-  const { removals, deleteSelected, moveItem, undo } = usePlanEditing({ feedback, selected, allItems: allItems.value, rallyCount: rally.value.length, canUndo });
+  const canRedo = optBoolean(planStatus, 'canRedo');
+  const { removals, removing, deletion, moveItem, undo, redo } = usePlanEditing({ feedback, selected, allItems: allItems.value, rallyCount: rally.value.length });
   const templates = optJSONObject(planStatus, 'templates');
   const homeSet = templates === null || optBoolean(templates, 'homeSet');
   const addable = (kind: string): boolean => kindAllows(insertable, kind) || !homeSet;
@@ -365,6 +375,12 @@ export const PlanMapContent = ({
     if (message !== null) say(message);
   };
   const tracing = useRemembered<readonly [ShapeTarget, readonly TrackPoint[]] | null>(null);
+  usePlanShortcuts({
+    save: onSave,
+    undo: canUndo ? undo : null,
+    redo: canRedo ? redo : null,
+    deleteSelected: removing || tracing.value !== null || positioning.value !== null ? null : (deletion?.run ?? null),
+  });
   const firstRead = useRemembered(true);
   const listOpen = useRemembered(false);
   const centreRequest = useRemembered(0);
@@ -382,15 +398,14 @@ export const PlanMapContent = ({
   };
   const pickRow = (row: ItemRow): void => focusItem(row.index);
   const addRallyAt = (lat: number, lon: number): void => {
-    onBridge(
-      async () => {
-        const added = await FenceBridge.addRallyPoint(lat, lon);
-        const count = added ? rallyPoints(await FenceBridge.read()).length : 0;
+    void onBridge(() => FenceBridge.addRallyPoint(lat, lon), {
+      label: 'Adding rally',
+      edited: true,
+      then: async () => {
+        const count = rallyPoints(await FenceBridge.read()).length;
         if (count > 0) selected.value = { kind: 'Rally', index: count - 1 };
-        return added;
       },
-      { label: 'Adding rally', then: () => undefined },
-    );
+    });
   };
   const centredOnEntry = useRemembered(false);
   const lastViewed = useMemo(() => readCamera()?.centre ?? null, []);
@@ -591,6 +606,8 @@ export const PlanMapContent = ({
     stats: planStats(itemCount.value, allItems.value, missionSummaryView),
     warning: farText ?? terrainWarning(terrainHits.length, conflicts.size),
     note: itemCount.value > 0 && optBoolean(terrainView, 'checking') ? CHECKING_TERRAIN : null,
+    undo: canUndo ? undo : null,
+    redo: canRedo ? redo : null,
   };
 
   const radiusVertices = radiusFor.value === null ? null : shapeVertices(radiusFor.value, fences.value, surveyList.value);
@@ -818,6 +835,7 @@ export const PlanMapContent = ({
                     },
                     {
                       label: 'Adding fence',
+                      edited: true,
                       then: () => {
                         selected.value = { kind: 'FenceVertex', polygon: next, vertex: 0 };
                       },
@@ -839,6 +857,7 @@ export const PlanMapContent = ({
                     },
                     {
                       label: 'Adding circle',
+                      edited: true,
                       then: () => {
                         selected.value = { kind: 'Circle', index: next };
                       },
@@ -1017,8 +1036,8 @@ export const PlanMapContent = ({
                 onDone={() => {
                   selected.value = null;
                 }}
-                deleting={deleteLabel(chosen, allItems.value)}
-                onDelete={deleteSelected}
+                deletion={deletion}
+                deleteEnabled={!removing}
               />
             ) : chosen !== null ? (
               <SelectionHeader
@@ -1032,8 +1051,8 @@ export const PlanMapContent = ({
                 onDone={() => {
                   selected.value = null;
                 }}
-                deleting={deleteLabel(chosen, allItems.value)}
-                onDelete={deleteSelected}
+                deletion={deletion}
+                deleteEnabled={!removing}
               />
             ) : layer.value === PlanLayer.Mission && itemCount.value === 0 ? (
               <EmptyMissionStrip homeSet={homeSet} onTemplates={onTemplates} onDownload={planOffline ? null : onDownload} />
@@ -1091,6 +1110,7 @@ export const PlanMapContent = ({
                         const count = rally.value.length;
                         onBridge(() => FenceBridge.removeRallyPoint(row.index), {
                           label: `Removing ${row.title.toLowerCase()}`,
+                          edited: true,
                           then: () => {
                             selected.value = rallyAfterRemove(row.index, count);
                           },
@@ -1118,6 +1138,7 @@ export const PlanMapContent = ({
                           onRemove={() => {
                             onBridge(() => (row.circle ? FenceBridge.deleteCircle(row.index) : FenceBridge.deletePolygon(row.index)), {
                               label: `Removing ${row.title.toLowerCase()}`,
+                              edited: true,
                               then: () => {
                                 selected.value = fenceSelectionAfterRemove(row, selected.value);
                               },
@@ -1326,6 +1347,7 @@ export const PlanMapContent = ({
                         onClick={() => {
                           const count = rally.value.length;
                           onBridge(() => FenceBridge.removeRallyPoint(rallyHit.index), {
+                            edited: true,
                             then: () => {
                               selected.value = rallyAfterRemove(rallyHit.index, count);
                             },
@@ -1367,7 +1389,7 @@ export const PlanMapContent = ({
                 listOpen.value = false;
               }}
               onMove={moveItem}
-              onDelete={deleteSelected}
+              onDelete={removing ? null : (deletion?.run ?? null)}
             />
           </div>
         </AircastSheet>

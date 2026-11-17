@@ -6,7 +6,7 @@ import { type DrawableName } from '@/res/drawables';
 import { Drawable } from '@/res/Icon';
 import { AircastSpace, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
-import { onMac } from '@/app/MenuCommands';
+import { onMac } from '@/kotlin/Keys';
 
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SETTINGS_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';

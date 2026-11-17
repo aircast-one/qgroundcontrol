@@ -1,5 +1,6 @@
 import { type DependencyList, useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { OPEN_POPUP } from './Keys';
 
 export type Scope = { isActive: () => boolean };
 
@@ -41,8 +42,6 @@ const handlers: { back: readonly Handler[]; escape: readonly Handler[]; next: nu
 const trail = { pushed: 0, travelling: false };
 
 const DEPTH = 'aircastDepth';
-
-const OPEN_POPUP = '[role="dialog"][data-open], [role="alertdialog"][data-open], [role="menu"][data-open], [role="listbox"][data-open]';
 
 const enabledOf = (kind: HandlerKind): readonly Handler[] => handlers[kind].filter((entry) => entry.enabled);
 
