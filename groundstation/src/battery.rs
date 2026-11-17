@@ -535,7 +535,7 @@ fn parameter_value(backend: &dyn Backend, name: &str, field: &str) -> Option<f64
     parameter(backend, name)?.get(field).and_then(Value::as_f64)
 }
 
-fn parameter_si(backend: &dyn Backend, names: &[&str]) -> Option<f64> {
+pub(crate) fn parameter_si(backend: &dyn Backend, names: &[&str]) -> Option<f64> {
     names.iter().find_map(|name| {
         let fact = parameter(backend, name)?;
         let per_base = crate::pilotunits::raw_per_base(

@@ -158,7 +158,10 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.guidedAltitude", "<metres>[,pause]"),
     ("view.guidedSpeed", "<metres per second>"),
     ("view.guidedTakeoff", "<metres>"),
-    ("view.gotoPreview", "<latitude>,<longitude>"),
+    (
+        "view.gotoPreview",
+        "<latitude>,<longitude>[,<height metres>]",
+    ),
     ("view.instruments", "<group/fact>,..."),
     ("view.landingPattern", "<index>"),
     ("view.mapScale", "<pixels>"),

@@ -114,6 +114,56 @@ fn left_on_landing(budget: GotoBudget) -> String {
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GotoSpeeds {
+    pub across_mps: f64,
+    pub up_mps: f64,
+    pub down_mps: f64,
+}
+
+fn goto_speeds(backend: &dyn Backend) -> Option<GotoSpeeds> {
+    let si = |names: &[&str]| crate::battery::parameter_si(backend, names);
+    let speeds = |across: &[&str], up: &[&str], down: &[&str]| {
+        Some(GotoSpeeds {
+            across_mps: si(across)?,
+            up_mps: si(up)?,
+            down_mps: si(down)?,
+        })
+    };
+    speeds(
+        &["MPC_XY_CRUISE"],
+        &["MPC_Z_V_AUTO_UP"],
+        &["MPC_Z_V_AUTO_DN"],
+    )
+    .or_else(|| {
+        speeds(
+            &["WP_SPD", "WPNAV_SPEED"],
+            &["WP_SPD_UP", "WPNAV_SPEED_UP"],
+            &["WP_SPD_DN", "WPNAV_SPEED_DN"],
+        )
+    })
+}
+
+pub fn goto_seconds(across_m: f64, climb_m: f64, speeds: GotoSpeeds) -> Option<f64> {
+    let vertical_mps = if climb_m < 0.0 {
+        speeds.down_mps
+    } else {
+        speeds.up_mps
+    };
+    [speeds.across_mps, vertical_mps]
+        .iter()
+        .all(|s| s.is_finite() && *s > 0.0)
+        .then(|| (across_m / speeds.across_mps).max(climb_m.abs() / vertical_mps))
+        .filter(|s| s.is_finite())
+}
+
+pub fn about_text(seconds: f64) -> String {
+    match seconds < 59.5 {
+        true => format!("about {} sec", seconds.round().max(1.0) as i64),
+        false => format!("about {} min", (seconds / 60.0).round() as i64),
+    }
+}
+
 pub fn goto_verdict(budget: GotoBudget) -> String {
     match budget.past_return_point {
         true => "Past your return point. Return home instead?".to_string(),
@@ -156,12 +206,16 @@ pub fn goto_preview_view(backend: &dyn Backend, args: &[String]) -> Value {
         crate::read::Unit::vertical(backend),
     );
     let height = raw(backend, "vehicle.altitudeRelative");
+    let across = crate::track::distance_m(aircraft, target);
+    let chosen = args.get(2).and_then(|h| h.trim().parse::<f64>().ok());
+    let climb = height.map_or(0.0, |now| chosen.unwrap_or(now) - now);
+    let eta = goto_speeds(backend).and_then(|speeds| goto_seconds(across, climb, speeds));
     let headline = crate::battery::battery_view(backend, &[])["headline"].clone();
     let trip = crate::battery::return_trip(backend);
     let budget = (|| {
         let trip = trip?;
         let home = place(backend, "vehicle.homePosition")?;
-        let there = crate::track::distance_m(aircraft, target) / trip.cruise_mps;
+        let there = across / trip.cruise_mps;
         let back = crate::battery::return_seconds(crate::battery::ReturnTrip {
             distance_m: crate::track::distance_m(target, home),
             ..trip
@@ -184,7 +238,8 @@ pub fn goto_preview_view(backend: &dyn Backend, args: &[String]) -> Value {
         "metresPerHeightUnit": 1.0 / vertical.factor,
         "pastReturnPoint": budget.is_some_and(|b| b.past_return_point),
         "verdict": budget.map(goto_verdict),
-        "distanceText": format!("{:.0} {}", horizontal.show(crate::track::distance_m(aircraft, target)), horizontal.name),
+        "distanceText": format!("{:.0} {}", horizontal.show(across), horizontal.name),
+        "etaText": eta.map(about_text),
     })
 }
 
@@ -619,6 +674,41 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_go_to_takes_as_long_as_its_slower_leg_and_says_so_roughly() {
+        let speeds = GotoSpeeds {
+            across_mps: 5.0,
+            up_mps: 2.5,
+            down_mps: 1.0,
+        };
+        assert_eq!(goto_seconds(100.0, 0.0, speeds), Some(20.0));
+        assert_eq!(
+            goto_seconds(10.0, 50.0, speeds),
+            Some(20.0),
+            "a 50 m climb at 2.5 m/s outlasts 10 m across"
+        );
+        assert_eq!(
+            goto_seconds(10.0, -30.0, speeds),
+            Some(30.0),
+            "going down uses the descent speed"
+        );
+        assert_eq!(
+            goto_seconds(
+                10.0,
+                0.0,
+                GotoSpeeds {
+                    across_mps: 0.0,
+                    ..speeds
+                }
+            ),
+            None
+        );
+        assert_eq!(about_text(0.2), "about 1 sec");
+        assert_eq!(about_text(24.6), "about 25 sec");
+        assert_eq!(about_text(59.6), "about 1 min");
+        assert_eq!(about_text(150.0), "about 3 min");
+    }
 
     #[test]
     fn a_go_to_preview_says_what_is_left_on_landing_or_that_it_is_past_the_return_point() {
