@@ -6,7 +6,7 @@ import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { useTicker } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { coerceIn, format, roundToInt } from '@/kotlin/Std';
-import { AlertDialog, ListItem, Surface, Text, TextButton } from '@/m3';
+import { AlertDialog, ListItem, Surface, Text, TextButton, Tooltipped } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { useSilentSeconds } from '@/map/Silence';
 import { Drawable } from '@/res/Icon';
@@ -351,17 +351,18 @@ const BatteryCells = ({
         );
       })}
       {extras.map(([value, meaning]) => (
-        <button
-          key={meaning}
-          type="button"
-          aria-label={`${value} ${meaning}`}
-          aria-description="Battery"
-          onClick={onOpen}
-          className="text-label-large tabular-nums"
-          style={{ color: live ? aircast('outdoorForeground') : md('outline') }}
-        >
-          {value}
-        </button>
+        <Tooltipped key={meaning} tooltip={`${value} ${meaning}`}>
+          <button
+            type="button"
+            aria-label={`${value} ${meaning}`}
+            aria-description="Battery"
+            onClick={onOpen}
+            className="text-label-large tabular-nums"
+            style={{ color: live ? aircast('outdoorForeground') : md('outline') }}
+          >
+            {value}
+          </button>
+        </Tooltipped>
       ))}
     </div>
   );
@@ -799,12 +800,16 @@ const InlineCell = ({ text, colour, icon = null, onClick = null }: { text: strin
       ) : null}
     </>
   );
-  return onClick === null ? (
-    <div className="flex items-center gap-1">{body}</div>
-  ) : (
-    <button type="button" aria-label={text} onClick={onClick} className="flex items-center gap-1">
-      {body}
-    </button>
+  return (
+    <Tooltipped tooltip={text}>
+      {onClick === null ? (
+        <div className="flex items-center gap-1">{body}</div>
+      ) : (
+        <button type="button" aria-label={text} onClick={onClick} className="flex items-center gap-1">
+          {body}
+        </button>
+      )}
+    </Tooltipped>
   );
 };
 

@@ -1,4 +1,4 @@
-import { type Page } from '@playwright/test';
+import { type Locator, type Page } from '@playwright/test';
 import { connectMock, expect, openAircraftSetup, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
@@ -71,4 +71,18 @@ test('every form control on the ArduPilot setup pages has an accessible name', a
       }),
     Promise.resolve(),
   );
+});
+
+const tooltipOn = async (page: Page, target: Locator, text: string | RegExp) =>
+  expect(async () => {
+    await page.mouse.move(0, 0);
+    await target.hover();
+    await expect(page.getByRole('tooltip')).toHaveText(text, { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+
+test('icon buttons and status-strip glyphs say what they are on hover', async ({ vehicle }) => {
+  await tooltipOn(vehicle, vehicle.getByRole('button', { name: /^\d+ sats$/ }), /^\d+ sats$/);
+  await tooltipOn(vehicle, vehicle.getByRole('button', { name: /RC$/ }).first(), /RC$/);
+  await openMenu(vehicle, 'Settings');
+  await tooltipOn(vehicle, vehicle.getByRole('button', { name: 'Close settings' }).last(), 'Close settings');
 });

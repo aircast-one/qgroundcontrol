@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useRef, useState } from 'react';
+import { type ReactElement, type ReactNode, useMemo, useRef, useState } from 'react';
 import { Tooltip } from '@base-ui/react';
 
 export type SnackbarResult = 'Dismissed' | 'ActionPerformed';
@@ -56,15 +56,21 @@ export const SnackbarHost = ({ hostState, className }: { hostState: SnackbarHost
   ) : null;
 };
 
+export const Tooltipped = ({ tooltip, children }: { tooltip: ReactNode; children: ReactElement }) => (
+  <Tooltip.Root disableHoverablePopup>
+    <Tooltip.Trigger render={children} />
+    <Tooltip.Portal>
+      <Tooltip.Positioner sideOffset={6} className="pointer-events-none z-[60]">
+        <Tooltip.Popup role="tooltip" className="max-w-[280px] rounded-shape-xs bg-inverse-surface px-2 py-1 text-body-small text-inverse-on-surface">
+          {tooltip}
+        </Tooltip.Popup>
+      </Tooltip.Positioner>
+    </Tooltip.Portal>
+  </Tooltip.Root>
+);
+
 export const TooltipBox = ({ tooltip, children }: { tooltip: ReactNode; children: ReactNode }) => (
-  <Tooltip.Provider>
-    <Tooltip.Root>
-      <Tooltip.Trigger render={<span className="inline-flex" />}>{children}</Tooltip.Trigger>
-      <Tooltip.Portal>
-        <Tooltip.Positioner sideOffset={6} className="z-50">
-          <Tooltip.Popup className="max-w-[280px] rounded-shape-xs bg-inverse-surface px-2 py-1 text-body-small text-inverse-on-surface">{tooltip}</Tooltip.Popup>
-        </Tooltip.Positioner>
-      </Tooltip.Portal>
-    </Tooltip.Root>
-  </Tooltip.Provider>
+  <Tooltipped tooltip={tooltip}>
+    <span className="inline-flex">{children}</span>
+  </Tooltipped>
 );
