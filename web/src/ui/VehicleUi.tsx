@@ -22,7 +22,7 @@ import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeHead
 import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET } from './FlyScreenState';
 import { AnimatedVisibility, PASS_THROUGH, useElementSize } from './FlyShell';
-import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
+import { FLY_STATE, type Readiness, flyState, useGuidedReadiness, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
 import { AUTO_PURSUIT, type AutoPursuit, GUIDED_ACTIONS, type GuidedOffer, type PursuitAction, type Payload, SINGLE_GRIPPER, autoPursuit, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
@@ -457,7 +457,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const deckTelemetry = useContext(LocalDeckTelemetry);
   const stateJson = useQgcPath(FLY_STATE);
   const state = useMemo(() => flyState(stateJson), [stateJson]);
-  const readiness = useMemo(() => guidedReadiness(state), [state]);
+  const readiness = useGuidedReadiness(state);
   const available = state?.connected === true;
   const armed = state?.armed === true;
   const activeId = useRememberActiveVehicleId();
@@ -984,6 +984,7 @@ export const FlightModeMenu = ({ expanded, onDismiss, onStatus }: { expanded: bo
   const modes = useMemo(() => flightModesView(json), [json]);
   const flyJson = useQgcPath(FLY_STATE);
   const fly = useMemo(() => flyState(flyJson), [flyJson]);
+  const readiness = useGuidedReadiness(fly);
   const actionsJson = useQgcPath(GUIDED_ACTIONS);
   const offered = useMemo(() => guidedOffers(actionsJson).get(TAKEOFF_REQUEST) ?? null, [actionsJson]);
   const takeoff = offered?.shown ? offered : null;
@@ -1045,7 +1046,6 @@ export const FlightModeMenu = ({ expanded, onDismiss, onStatus }: { expanded: bo
     );
   };
   const setting = modes.pinnedSetting;
-  const warning = readinessWarning(fly);
 
   return (
     <>
@@ -1172,7 +1172,7 @@ export const FlightModeMenu = ({ expanded, onDismiss, onStatus }: { expanded: bo
         <HorizontalDivider />
         <ModeMenuItem
           text={<Text typography="bodyMedium">{VEHICLE_STATUS}</Text>}
-          leadingIcon={warning !== null ? <Drawable name="ic_warning" style={{ color: aircast('warning') }} /> : <Drawable name="ic_check_circle" />}
+          leadingIcon={readiness !== null ? <Drawable name="ic_warning" style={{ color: aircast('warning') }} /> : <Drawable name="ic_check_circle" />}
           trailingIcon={<MaterialIcon name="keyboard_arrow_right" filled />}
           onClick={() => {
             onDismiss();

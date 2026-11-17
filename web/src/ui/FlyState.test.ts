@@ -19,6 +19,7 @@ import {
   vehicleSubtitle,
 } from './FlyState';
 import { GuidedOffer } from './GuidedActions';
+import { NOT_FULLY_READY, RC_NO_SIGNAL, withRedIndicators } from './OsdDetails';
 
 const json = (text: string): Json => parseJson(text) ?? {};
 
@@ -185,9 +186,18 @@ describe('FlyReadinessTest', () => {
   });
 
   it('aReadinessIssueBlocksOnlyWhenTheVehicleCannotArm', () => {
-    expect(guidedReadiness(state({ ready: false }))).toEqual(Readiness({ text: 'Not ready. 2 checks need attention before arming.', blocks: false }));
-    expect(guidedReadiness({ ...state({ ready: false }), canArm: false })).toEqual(Readiness({ text: `Not ready. 2 checks need attention before arming. ${READINESS_BLOCKED}`, blocks: true }));
-    expect(guidedReadiness(state())).toBeNull();
+    expect(guidedReadiness(state({ ready: false }), [])).toEqual(Readiness({ text: 'Not ready. 2 checks need attention before arming.', blocks: false }));
+    expect(guidedReadiness({ ...state({ ready: false }), canArm: false }, [])).toEqual(Readiness({ text: `Not ready. 2 checks need attention before arming. ${READINESS_BLOCKED}`, blocks: true }));
+    expect(guidedReadiness(state(), [])).toBeNull();
+  });
+
+  it('a red reading warns before take-off the way the status chip does, without blocking it', () => {
+    const red = ['Vibration 60.0 m/s²', RC_NO_SIGNAL];
+    const shaking = guidedReadiness(state(), red);
+    expect(shaking).toEqual(Readiness({ text: `${NOT_FULLY_READY}. Vibration 60.0 m/s². RC has no signal. Tap a red reading to see how to fix it.`, blocks: false }));
+    expect(shaking?.text).toContain(withRedIndicators(state(), red)?.summaryDetail ?? 'missing');
+    expect(guidedReadiness({ ...state(), canArm: false }, red)?.blocks, 'only the aircraft refusing to arm blocks').toBe(true);
+    expect(guidedReadiness(state({ armed: true }), red), 'in the air a red reading is not a take-off warning').toBeNull();
   });
 
   it('disarmingSaysWhetherTheVehicleFlew', () => {

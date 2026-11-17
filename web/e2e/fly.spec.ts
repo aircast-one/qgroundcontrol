@@ -37,6 +37,15 @@ test('the flight mode menu changes the mode', async ({ vehicle }) => {
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Position/);
 });
 
+test('a red reading that makes the chip say not fully ready is the take-off warning too, and take-off still goes', async ({ vehicle }) => {
+  await expect(vehicle.getByRole('button', { name: 'Not fully ready', exact: true })).toBeVisible();
+  await vehicle.getByRole('button', { name: 'Take off' }).click();
+  await expect(vehicle.getByText(/^Not fully ready\. Vibration \d+\.\d m\/s²\./)).toBeVisible();
+  await vehicle.getByRole('button', { name: '5 m', exact: true }).click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: /^Slide to take off anyway · 5(\.0)? m$/ }));
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/Flying/, { timeout: 60_000 });
+});
+
 test('Escape cancels the takeoff panel', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'Take off' }).click();
   await expect(vehicle.getByText('Height above launch')).toBeVisible();

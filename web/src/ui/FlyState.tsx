@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { type Json, isNull, optBoolean, optDouble, optInt, optJSONObject, optText } from '@/bridge/Json';
 import { useQgcDerived } from '@/bridge/QgcState';
 import { sentenceCase } from '@/map/SentenceCase';
 import { type PayloadProblem, payloadProblem } from '@/ui/GuidedActions';
+import { useRedIndicators, withRedIndicators } from '@/ui/OsdDetails';
 import { flightTimeText } from '@/ui/StatusStrip';
 
 export const FLY_STATE = 'view.flyState';
@@ -75,11 +77,16 @@ export const Readiness = (fields: Readiness): Readiness => ({ ...fields });
 
 export const READINESS_BLOCKED = 'The vehicle will refuse to arm until this is fixed.';
 
-export const guidedReadiness = (state: FlyState | null): Readiness | null => {
-  const text = readinessWarning(state);
+export const guidedReadiness = (state: FlyState | null, red: readonly string[]): Readiness | null => {
+  const text = readinessWarning(withRedIndicators(state, red));
   if (text === null) return null;
   const blocks = state?.canArm === false;
   return Readiness({ text: blocks ? `${text.endsWith('.') ? text.slice(0, -1) : text}. ${READINESS_BLOCKED}` : text, blocks });
+};
+
+export const useGuidedReadiness = (state: FlyState | null): Readiness | null => {
+  const red = useRedIndicators(state);
+  return useMemo(() => guidedReadiness(state, red), [state, red.join('|')]);
 };
 
 export const disarmNotice = (wasArmed: boolean, flewWhileArmed: boolean, armedNow: boolean, connectedNow: boolean): string | null =>

@@ -8,7 +8,7 @@ import { VEHICLES_VIEW, vehicleChoices } from '@/map/VehiclePicker';
 import { aircast, md } from '@/theme/Colors';
 import { useFlyIsPortrait, useScreenSize } from './FlyShell';
 import { LocalFlyScreenState } from './FlyScreenState';
-import { FLY_STATE, type Readiness, flyState, guidedReadiness } from './FlyState';
+import { FLY_STATE, type Readiness, flyState, useGuidedReadiness } from './FlyState';
 import { HoldToConfirm, holdLabel } from './HoldToConfirm';
 
 export const GuidedValuePanel = ({
@@ -41,7 +41,7 @@ export const GuidedValuePanel = ({
     };
   }, [flyScreen]);
   const flyJson = useQgcPath(FLY_STATE);
-  const readiness = useMemo(() => guidedReadiness(flyState(flyJson)), [flyJson]);
+  const readiness = useGuidedReadiness(useMemo(() => flyState(flyJson), [flyJson]));
   const vehiclesJson = useQgcPath(VEHICLES_VIEW);
   const vehicles = useMemo(() => vehicleChoices(vehiclesJson), [vehiclesJson]);
   const named = guidedVehicle(vehicles.choices.length, vehicles.active?.name ?? null);
