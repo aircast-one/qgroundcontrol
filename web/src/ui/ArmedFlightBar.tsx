@@ -11,8 +11,13 @@ import { VEHICLE_LINKS, type VehicleLinks, linkCell, vehicleLinks } from '@/ui/V
 
 export type FlightGlance = { mode: string; altitude: string | null; battery: string | null; batteryLow: boolean; link: string; linkLost: boolean };
 
-const lowestBattery = (batteries: readonly BatteryReading[]): BatteryReading | null =>
-  batteries.reduce<BatteryReading | null>((lowest, it) => (lowest === null || (batteryPercent(it.text) ?? 101) < (batteryPercent(lowest.text) ?? 101) ? it : lowest), null);
+export const lowestBattery = (batteries: readonly BatteryReading[]): BatteryReading | null =>
+  batteries
+    .flatMap((reading) => {
+      const percent = batteryPercent(reading.text);
+      return percent === null ? [] : [{ reading, percent }];
+    })
+    .toSorted((a, b) => a.percent - b.percent)[0]?.reading ?? batteries[0] ?? null;
 
 export const flightGlance = (state: FlyState | null, altitude: readonly [string, string] | null, batteries: readonly BatteryReading[], links: VehicleLinks | null): FlightGlance | null => {
   if (state === null || !state.connected || !state.armed) return null;

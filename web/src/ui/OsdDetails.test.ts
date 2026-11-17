@@ -10,7 +10,7 @@ const healthyVideo = { fps: 30, kbps: 2200, jitterMs: 10, lossPercent: 0.4, lost
 const everything = {
   hdop: 0.54,
   ekfRatios: [0.1, NaN, 0.32],
-  vibration: { axes: [{ axis: 'X', value: 3.2, fraction: 0, severity: 'normal' }], clipping: [], warningLevel: 30, dangerLevel: 60, scaleMaximum: 90 } as never,
+  vibration: { units: '', axes: [{ axis: 'X', value: 3.2, fraction: 0, severity: 'normal' }], clipCounts: [], warningLevel: 30, dangerLevel: 60, scaleMaximum: 90 },
   video: healthyVideo,
 };
 

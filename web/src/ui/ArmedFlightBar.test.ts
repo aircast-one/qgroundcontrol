@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flightGlance } from './ArmedFlightBar';
+import { flightGlance, lowestBattery } from './ArmedFlightBar';
 import { FlyState } from './FlyState';
 import { BatteryLevel, BatteryReading } from './StatusStrip';
 import { VehicleLink, VehicleLinks } from './VehicleLinks';
@@ -16,6 +16,14 @@ describe('ArmedFlightBarTest', () => {
     const two = VehicleLinks({ available: true, links: [VehicleLink(false), VehicleLink(true)] });
     expect(flightGlance(armed, null, [], two)?.link).toBe('1 link lost');
     expect(flightGlance({ ...armed, contactLost: true }, null, [], null)).toMatchObject({ link: 'Lost', linkLost: true, altitude: null, battery: null });
+  });
+
+  it('a battery with no percentage is never picked over one that reports its charge', () => {
+    const unknown = BatteryReading({ text: 'B1 11.10V', level: BatteryLevel.Normal });
+    const known = BatteryReading({ text: 'B2 64%', level: BatteryLevel.Caution });
+    expect(lowestBattery([unknown, known])).toBe(known);
+    expect(lowestBattery([unknown])).toBe(unknown);
+    expect(lowestBattery([])).toBeNull();
   });
 
   it('shows nothing on the ground or without a vehicle', () => {

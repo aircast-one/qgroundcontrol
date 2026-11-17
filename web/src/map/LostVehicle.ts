@@ -20,7 +20,7 @@ export const LINK_LOST = 'Link lost';
 
 const ALTITUDE_ROW = 'alt (rel)';
 
-export const lastSeenFlying = (choice: VehicleChoice, battery: number | null, failsafe: LossFailsafe | null): LostVehicle | null =>
+export const lastSeenArmed = (choice: VehicleChoice, battery: number | null, failsafe: LossFailsafe | null): LostVehicle | null =>
   choice.armed
     ? {
         name: choice.name,
@@ -34,4 +34,4 @@ export const lastSeenFlying = (choice: VehicleChoice, battery: number | null, fa
     : null;
 
 export const keptSighting = (held: LostVehicle | null, active: VehicleChoice | null, battery: number | null, failsafe: LossFailsafe | null): LostVehicle | null =>
-  active === null ? held : lastSeenFlying(active, battery ?? held?.battery ?? null, failsafe ?? held?.failsafe ?? null);
+  active === null ? held : lastSeenArmed(active, battery ?? held?.battery ?? null, failsafe ?? held?.failsafe ?? null);

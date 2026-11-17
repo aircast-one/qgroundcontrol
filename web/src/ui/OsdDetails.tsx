@@ -59,10 +59,10 @@ const ekfDetails = (ratios: readonly number[]): OsdDetail[] => {
   return worst === null ? [] : detail('EKF variance', worst.toFixed(2), ekfTone(worst));
 };
 
-const withUnits = (value: number, units: string | undefined): string => withUnit(value.toFixed(0), units ?? '');
+const withUnits = (value: number, units: string): string => withUnit(value.toFixed(0), units);
 
 export const vibrationHint = (tone: Tone, vibration: VibrationReading): string => {
-  const units = vibration.units as string | undefined;
+  const units = vibration.units;
   if (tone === 'error') return `At or over the ${withUnits(vibration.dangerLevel, units)} danger level. Balance or replace the props and soft-mount the flight controller before flying.`;
   if (tone === 'warning') return `Over the ${withUnits(vibration.warningLevel, units)} warning level. Check the props and motor mounts.`;
   return `Under the ${withUnits(vibration.warningLevel, units)} warning level.`;
@@ -72,8 +72,7 @@ const vibrationDetails = (vibration: VibrationReading | null): OsdDetail[] => {
   const values = (vibration?.axes ?? []).flatMap((it) => (it.value === null ? [] : [it.value]));
   if (vibration === null || values.length === 0) return [];
   const tone = severityTone(worstSeverity(vibration));
-  const units = (vibration.units as string | undefined) ?? '';
-  return detail('Vibration', withUnit(Math.max(...values).toFixed(1), units), tone).map((it) => ({ ...it, hint: vibrationHint(tone, vibration) }));
+  return detail('Vibration', withUnit(Math.max(...values).toFixed(1), vibration.units), tone).map((it) => ({ ...it, hint: vibrationHint(tone, vibration) }));
 };
 
 const videoDetails = (video: WhepStats | null): OsdDetail[] =>
