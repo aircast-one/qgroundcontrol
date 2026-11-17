@@ -87,7 +87,7 @@ fn condition_gate() -> bool {
         .unwrap_or(false)
 }
 
-fn offered(firmware: Firmware, class: VehicleClass) -> Vec<Command> {
+pub(crate) fn offered(firmware: Firmware, class: VehicleClass) -> Vec<Command> {
     let supported = supported_commands(firmware, class, condition_gate());
     crate::cmdinfo::tree(firmware, class)
         .into_values()

@@ -1,7 +1,7 @@
 import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { coerceAtLeast, replaceFirstCharUpper } from '@/kotlin/Std';
 import { altitudeModePath } from './AltitudeModes';
-import { coordinateJson, invokeAnswer, invokeOk, refusalIn, setOk, setRefusal, settingJson } from './BridgeCalls';
+import { coordinateJson, invokeAnswer, invokeOk, invokeRefusal, refusalIn, setOk, setRefusal, settingJson } from './BridgeCalls';
 import { type LandingPattern, landingPattern } from './LandingPattern';
 import { MapBridge } from './MapBridge';
 import { removeMissionItem } from './MissionKinds';
@@ -265,7 +265,7 @@ export const PlanBridge = {
 
   sendToVehicle: (): Promise<boolean> => invokeOk(`${PLAN_ROOT}.sendToVehicle`),
 
-  convertToVehicle: (): Promise<boolean> => invokeOk(CONVERT_TO_VEHICLE),
+  convertToVehicle: (): Promise<string | null> => invokeRefusal(CONVERT_TO_VEHICLE, '[]', 'The plan could not be converted.'),
 
   reorder: async (index: number, later: boolean): Promise<Reorder> => reorderOf(await invokeAnswer(MOVE_ITEM, `[${index},${later ? 1 : -1}]`)),
 

@@ -1249,28 +1249,101 @@ pub fn set_altitude_mode(doc: &Document, visual_index: usize, mode: i64) -> Opti
     ))
 }
 
-pub fn for_vehicle(doc: &Document, firmware_type: i64, vehicle_type: i64) -> Document {
-    let px4 = firmware(firmware_type) == Firmware::Px4;
-    let terrain_frame = |mode: i64| px4 && mode == crate::altitudemodes::TERRAIN_FRAME;
-    let retyped = Document {
+fn flown_mode(mode: i64, firmware_type: i64) -> i64 {
+    match firmware(firmware_type) == Firmware::Px4 && mode == crate::altitudemodes::TERRAIN_FRAME {
+        true => crate::altitudemodes::CALC_ABOVE_TERRAIN,
+        false => mode,
+    }
+}
+
+pub fn retyped(doc: Document, firmware_type: i64, vehicle_type: i64) -> Document {
+    Document {
         firmware_type,
         vehicle_type,
-        global_altitude_mode: match terrain_frame(doc.global_altitude_mode) {
-            true => crate::altitudemodes::CALC_ABOVE_TERRAIN,
-            false => doc.global_altitude_mode,
-        },
-        ..doc.clone()
-    };
-    (1..=retyped.items.len()).fold(retyped, |current, at| {
-        let on_terrain_frame = simple_at(&current, at)
-            .and_then(|(_, simple)| simple.altitude.as_ref())
-            .is_some_and(|held| terrain_frame(held.mode));
-        match on_terrain_frame {
-            true => set_altitude_mode(&current, at, crate::altitudemodes::CALC_ABOVE_TERRAIN)
-                .unwrap_or(current),
-            false => current,
+        global_altitude_mode: flown_mode(doc.global_altitude_mode, firmware_type),
+        ..doc
+    }
+}
+
+fn unflown_pattern(kind: &str, class: VehicleClass) -> Option<&'static str> {
+    match kind {
+        "StructureScan" if !matches!(class, VehicleClass::MultiRotor | VehicleClass::Vtol) => {
+            Some("Structure Scan")
         }
-    })
+        crate::landingpattern::FIXED_WING_PATTERN if class != VehicleClass::FixedWing => {
+            Some("Landing Pattern")
+        }
+        crate::landingpattern::VTOL_PATTERN if class != VehicleClass::Vtol => {
+            Some("Landing Pattern")
+        }
+        _ => None,
+    }
+}
+
+fn unflown_items(doc: &Document, firmware_type: i64, vehicle_type: i64) -> Vec<String> {
+    let class = vehicle_class(vehicle_type);
+    let flown: Vec<i64> = crate::commandtree::offered(firmware(firmware_type), class)
+        .iter()
+        .map(|command| command.id)
+        .collect();
+    let names = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let unflown = |seq: usize, simple: &Simple| {
+        (!flown.contains(&simple.command)).then(|| {
+            let name = names.get(&simple.command).map_or_else(
+                || format!("command {}", simple.command),
+                |c| c.friendly_name.clone(),
+            );
+            format!("item {seq} ({name})")
+        })
+    };
+    let settings = doc
+        .settings_sections
+        .iter()
+        .enumerate()
+        .filter_map(|(i, simple)| unflown(i + 1, simple));
+    let items = doc
+        .items
+        .iter()
+        .zip(item_spans(doc))
+        .flat_map(|(item, (seq, _))| match item {
+            Item::Simple(simple) => std::iter::once(simple)
+                .chain(&simple.sections)
+                .enumerate()
+                .filter_map(|(i, simple)| unflown(seq + i, simple))
+                .collect::<Vec<_>>(),
+            Item::Complex { kind, .. } => unflown_pattern(kind, class)
+                .map(|name| format!("item {seq} ({name})"))
+                .into_iter()
+                .collect(),
+        });
+    settings.chain(items).collect()
+}
+
+pub fn for_vehicle(
+    doc: &Document,
+    firmware_type: i64,
+    vehicle_type: i64,
+) -> Result<Document, String> {
+    let unflown = unflown_items(doc, firmware_type, vehicle_type);
+    if !unflown.is_empty() {
+        return Err(format!(
+            "The connected vehicle cannot fly {}. Remove them, then convert the plan.",
+            unflown.join(", ")
+        ));
+    }
+    (1..=doc.items.len()).try_fold(
+        retyped(doc.clone(), firmware_type, vehicle_type),
+        |current, at| {
+            let held_mode = simple_at(&current, at)
+                .and_then(|(_, simple)| simple.altitude.as_ref())
+                .map(|held| held.mode);
+            match held_mode.filter(|mode| flown_mode(*mode, firmware_type) != *mode) {
+                Some(mode) => set_altitude_mode(&current, at, flown_mode(mode, firmware_type))
+                    .ok_or_else(|| format!("Item {at} could not leave the terrain frame.")),
+                None => Ok(current),
+            }
+        },
+    )
 }
 
 fn above_ground(mode: i64) -> bool {
@@ -3252,13 +3325,13 @@ mod tests {
             Item::Simple(s) => s.altitude.as_ref().unwrap().mode,
             _ => unreachable!(),
         };
-        let apm = for_vehicle(&terrain, 3, 2);
+        let apm = for_vehicle(&terrain, 3, 2).unwrap();
         assert_eq!(
             (apm.firmware_type, apm.vehicle_type, mode(&apm)),
             (3, 2, crate::altitudemodes::TERRAIN_FRAME)
         );
         assert_eq!(apm.items.len(), terrain.items.len());
-        let px4 = for_vehicle(&terrain, 12, 2);
+        let px4 = for_vehicle(&terrain, 12, 2).unwrap();
         assert_eq!(
             (px4.firmware_type, mode(&px4), px4.global_altitude_mode),
             (
@@ -3267,6 +3340,56 @@ mod tests {
                 crate::altitudemodes::CALC_ABOVE_TERRAIN
             ),
             "PX4 flies no terrain frame, so those items keep their height above the ground another way"
+        );
+    }
+
+    #[test]
+    fn a_plan_is_not_converted_for_a_vehicle_that_cannot_fly_some_of_its_items() {
+        let item = |command: i64, latitude: f64| json!({ "type": "SimpleItem", "command": command, "frame": 3, "doJumpId": 1, "autoContinue": true, "params": [0, 0, 0, 0, latitude, 8.0, 50] });
+        let vtol = load(
+            &json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 20, "plannedHomePosition": [47.0, 8.0, 0], "items": [item(84, 47.0), item(16, 47.001)] } })
+            .to_string(),
+            2,
+        )
+        .unwrap();
+        assert_eq!(
+            for_vehicle(&vtol, 12, 2),
+            Err("The connected vehicle cannot fly item 1 (VTOL takeoff). Remove them, then convert the plan.".to_string()),
+            "a copter has no VTOL takeoff, so the plan keeps its VTOL type and the mismatch warning"
+        );
+        assert_eq!(for_vehicle(&vtol, 12, 20).map(|d| d.vehicle_type), Ok(20));
+        let landing = |kind: &str| Document {
+            items: [
+                vtol.items[1..].to_vec(),
+                vec![Item::Complex {
+                    kind: kind.to_string(),
+                    json: json!({}),
+                    item_count: 3,
+                }],
+            ]
+            .concat(),
+            ..vtol.clone()
+        };
+        assert_eq!(
+            for_vehicle(&landing(crate::landingpattern::FIXED_WING_PATTERN), 3, 2),
+            Err("The connected vehicle cannot fly item 2 (Landing Pattern). Remove them, then convert the plan.".to_string())
+        );
+        assert!(for_vehicle(&landing(crate::landingpattern::FIXED_WING_PATTERN), 3, 1).is_ok());
+        assert!(for_vehicle(&landing(crate::landingpattern::VTOL_PATTERN), 3, 1).is_err());
+        assert!(
+            for_vehicle(&landing("StructureScan"), 12, 1).is_err(),
+            "a plane cannot hover around a structure"
+        );
+        let camera_mode = Document {
+            firmware_type: 12,
+            vehicle_type: 2,
+            ..set_camera(&section(), 0, "specifyCameraMode", &json!(true)).unwrap()
+        };
+        assert!(
+            for_vehicle(&camera_mode, 3, 2)
+                .unwrap_err()
+                .contains("item 1 ("),
+            "ArduPilot takes no camera mode in a mission, and the mission start is item 1"
         );
     }
 

@@ -750,20 +750,9 @@ fn offline_types() -> (i64, i64) {
 }
 
 fn tracked(document: Document, (firmware_type, vehicle_type): (i64, i64)) -> Document {
-    if !document.items.is_empty() {
-        return document;
-    }
-    let frame = match document.global_altitude_mode == crate::altitudemodes::TERRAIN_FRAME
-        && plandoc::firmware(firmware_type) == crate::cmdinfo::Firmware::Px4
-    {
-        true => crate::altitudemodes::CALC_ABOVE_TERRAIN,
-        false => document.global_altitude_mode,
-    };
-    Document {
-        firmware_type,
-        vehicle_type,
-        global_altitude_mode: frame,
-        ..document
+    match document.items.is_empty() {
+        true => plandoc::retyped(document, firmware_type, vehicle_type),
+        false => document,
     }
 }
 
@@ -954,7 +943,7 @@ fn convert_to_vehicle() -> Value {
         .active()
         .map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)));
     match active {
-        Some((firmware, vehicle)) => edit(|doc| Ok(plandoc::for_vehicle(doc, firmware, vehicle))),
+        Some((firmware, vehicle)) => edit(|doc| plandoc::for_vehicle(doc, firmware, vehicle)),
         None => refused("No vehicle is connected to convert the plan for."),
     }
 }

@@ -45,7 +45,7 @@ export const usePlanUpload = ({
   feedback: PlanFeedback;
   onMoved: (at: TrackPoint) => void;
 }): { readonly planUpload: PlanUpload; readonly dialogs: ReactNode } => {
-  const { busy, say, onBridge } = feedback;
+  const { busy, edits, say, onBridge, onRefusal } = feedback;
   const uploadAsk = useRemembered<UploadGate | null>(null);
   const farAsk = useRemembered(false);
   const vehiclesJson = useMapPath(VEHICLES_VIEW);
@@ -161,7 +161,11 @@ export const usePlanUpload = ({
                 <Button
                   onClick={() => {
                     uploadAsk.value = null;
-                    onBridge(() => PlanBridge.convertToVehicle(), { label: 'Converting the plan', done: CONVERTED, edited: true });
+                    onRefusal(async () => {
+                      const refusal = await PlanBridge.convertToVehicle();
+                      if (refusal === null) edits.value += 1;
+                      return refusal ?? CONVERTED;
+                    }, 'Converting the plan');
                   }}
                 >
                   Convert to this vehicle
