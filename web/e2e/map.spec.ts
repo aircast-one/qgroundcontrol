@@ -80,16 +80,16 @@ test('a stepped go-to height is the height commanded, even when the slide follow
   await takeOff(vehicle, '10 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
   await showMapFull(vehicle);
-  await vehicle.evaluate(async (module) => {
-    const { Qgc } = (await import(module)) as { Qgc: { call: (path: string, ...args: unknown[]) => Promise<unknown> } };
-    const call = Qgc.call.bind(Qgc);
-    const sent: unknown[] = [];
-    Object.assign(window, { gotoSent: sent });
-    Qgc.call = (path, ...args) => {
-      if (path === 'vehicle.guidedModeGotoLocation') sent.push(args[0]);
-      return call(path, ...args);
+  await vehicle.evaluate(() => {
+    const record = window as unknown as { gotoSent: readonly { height?: number }[] };
+    record.gotoSent = [];
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function posted(this: Worker, message: unknown, transfer?: Transferable[] | StructuredSerializeOptions) {
+      const sent = message as { call?: string; args?: readonly unknown[] };
+      if (sent.call === 'invoke' && sent.args?.[0] === 'vehicle.guidedModeGotoLocation') record.gotoSent = [...record.gotoSent, (JSON.parse(String(sent.args[1])) as { height?: number }[])[0] ?? {}];
+      return Reflect.apply(post, this, [message, transfer]);
     };
-  }, '/src/bridge/Qgc.ts');
+  });
   await mapMenuAt(vehicle, 200, -100);
   await vehicle.getByRole('button', { name: 'Go to location' }).click();
   const card = vehicle.getByRole('dialog', { name: 'Map actions' });
