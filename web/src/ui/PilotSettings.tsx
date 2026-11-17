@@ -1,5 +1,5 @@
 import { Fragment, useContext, useMemo, useState } from 'react';
-import { type Fact, makeFact } from '@/bridge/Qgc';
+import { type Fact, Qgc, makeFact } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import type { Json } from '@/bridge/Json';
 import { useProduceState } from '@/kotlin/Compose';
@@ -13,13 +13,44 @@ import { factNumber } from '@/ui/Px4TuningScreen';
 import { SectionHeader, SettingsCard, SetupRow } from '@/ui/SetupRow';
 import { SETUP, parametersReady } from '@/ui/SetupView';
 import { CONNECTIONS_PAGE, FactRow, SettingsGroup, SettingsGroupEntries, sentenceCase } from '@/ui/SettingsScreen';
+import { LocalChangeNotice, VALUE_OFF } from '@/ui/ValueRow';
 
-export type PilotSetting = { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited: string | null; quantity: string | null };
-export const PilotSetting = (fields: { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited?: string | null; quantity?: string | null }): PilotSetting => ({
+export type PilotSetting = { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited: string | null; quantity: string | null; fenceBit: number | null };
+export const PilotSetting = (fields: { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited?: string | null; quantity?: string | null; fenceBit?: number | null }): PilotSetting => ({
   whenUnlimited: null,
   quantity: null,
+  fenceBit: null,
   ...fields,
 });
+
+export const FENCE_MAX_ALTITUDE = 1;
+export const FENCE_CIRCLE = 2;
+const PX4_FENCE_HOLD = 2;
+export const FENCE_PARAMETERS: readonly string[] = ['FENCE_ENABLE', 'FENCE_TYPE', 'GF_ACTION'];
+
+export type ParameterReading = (name: string) => number | null;
+
+export const fenceOff = (bit: number, read: ParameterReading): boolean | null => {
+  const enable = read('FENCE_ENABLE');
+  const action = read('GF_ACTION');
+  if (enable !== null) return enable === 0 || (Math.trunc(read('FENCE_TYPE') ?? 0) & bit) === 0;
+  return action === null ? null : action === 0;
+};
+
+export const fenceTurnOn = (bit: number, read: ParameterReading): readonly (readonly [string, number])[] => {
+  const enable = read('FENCE_ENABLE');
+  const type = Math.trunc(read('FENCE_TYPE') ?? 0);
+  if (enable !== null) return [['FENCE_TYPE', (enable === 0 ? type & ~(FENCE_MAX_ALTITUDE | FENCE_CIRCLE) : type) | bit], ['FENCE_ENABLE', 1]];
+  return read('GF_ACTION') === null ? [] : [['GF_ACTION', PX4_FENCE_HOLD]];
+};
+
+export const fenceRestore = (writes: readonly (readonly [string, number])[], read: ParameterReading): readonly (readonly [string, number])[] =>
+  writes.flatMap(([name]) => {
+    const before = read(name);
+    return before === null ? [] : [[name, before] as const];
+  }).toReversed();
+
+export const FENCE_OFF_NOTE = 'The geofence is off, so nothing holds the aircraft to this.';
 
 const groupBy = <T,>(items: readonly T[], keyOf: (item: T) => string): ReadonlyMap<string, readonly T[]> =>
   items.reduce((groups, item) => new Map(groups).set(keyOf(item), [...(groups.get(keyOf(item)) ?? []), item]), new Map<string, readonly T[]>());
@@ -36,8 +67,16 @@ export const pilotSettings = (group: SettingsGroup): readonly PilotSetting[] => 
   if (group === SettingsGroup.Safety) {
     return [
       PilotSetting({ label: 'Return-to-home altitude', parameters: ['RTL_RETURN_ALT', 'RTL_ALT_M', 'RTL_ALT'], section: RETURN_HOME, hint: 'Climbs to this height before flying home.', quantity: ALTITUDE }),
-      PilotSetting({ label: 'Max altitude', parameters: ['GF_MAX_VER_DIST', 'FENCE_ALT_MAX'], section: FLIGHT_PROTECTION, hint: 'The aircraft will not climb above this.', whenUnlimited: 'Most countries cap flights at 120 m.', quantity: ALTITUDE }),
-      PilotSetting({ label: 'Max distance', parameters: ['GF_MAX_HOR_DIST', 'FENCE_RADIUS'], section: FLIGHT_PROTECTION, hint: 'The aircraft will not fly farther from home than this.', quantity: DISTANCE }),
+      PilotSetting({
+        label: 'Max altitude',
+        parameters: ['GF_MAX_VER_DIST', 'FENCE_ALT_MAX'],
+        section: FLIGHT_PROTECTION,
+        hint: 'The aircraft will not climb above this.',
+        whenUnlimited: 'Most countries cap flights at 120 m.',
+        quantity: ALTITUDE,
+        fenceBit: FENCE_MAX_ALTITUDE,
+      }),
+      PilotSetting({ label: 'Max distance', parameters: ['GF_MAX_HOR_DIST', 'FENCE_RADIUS'], section: FLIGHT_PROTECTION, hint: 'The aircraft will not fly farther from home than this.', quantity: DISTANCE, fenceBit: FENCE_CIRCLE }),
       PilotSetting({ label: 'Signal lost', parameters: ['NAV_DLL_ACT', 'FS_GCS_ENABLE'], section: FAILSAFES, hint: 'When the link to this app drops.' }),
       PilotSetting({ label: 'Remote controller lost', parameters: ['NAV_RCL_ACT', 'FS_THR_ENABLE'], section: FAILSAFES, hint: 'When the remote controller drops.' }),
       PilotSetting({ label: 'Low battery', parameters: ['COM_LOW_BAT_ACT', 'BATT_FS_LOW_ACT'], section: FAILSAFES, hint: 'When the battery runs low.' }),
@@ -219,7 +258,56 @@ export const SensorChecks = ({ onCalibrate }: { onCalibrate: () => void }) => {
   );
 };
 
+const useFenceReading = (): ParameterReading | null => {
+  const enable = useQgcPath(parameterPath('FENCE_ENABLE'));
+  const type = useQgcPath(parameterPath('FENCE_TYPE'));
+  const action = useQgcPath(parameterPath('GF_ACTION'));
+  const read = useProduceState<ReadonlyMap<string, number | null> | null>(null, [enable, type, action], async (set) => {
+    const facts = await Promise.all(FENCE_PARAMETERS.map(async (name) => [name, await parameterFact(name)] as const));
+    set(new Map(facts.map(([name, fact]) => [name, fact === null ? null : factNumber(fact)])));
+  });
+  return read === null ? null : (name) => read.get(name) ?? null;
+};
+
 const PilotFactRow = ({ shown, setting }: { shown: Fact; setting: PilotSetting }) => {
+  const fence = useFenceReading();
+  const off = setting.fenceBit === null || fence === null ? false : fenceOff(setting.fenceBit, fence) === true;
+  return off && fence !== null && setting.fenceBit !== null ? <FenceOffRow setting={setting} bit={setting.fenceBit} read={fence} /> : <PilotValueRow shown={shown} setting={setting} />;
+};
+
+const writeAll = (writes: readonly (readonly [string, number])[]): Promise<string | null> =>
+  writes.reduce<Promise<string | null>>(async (refused, [name, value]) => (await refused) ?? Qgc.writeRefusal(parameterPath(name), value), Promise.resolve(null));
+
+const FenceOffRow = ({ setting, bit, read }: { setting: PilotSetting; bit: number; read: ParameterReading }) => {
+  const notice = useContext(LocalChangeNotice);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const turnOn = () =>
+    void (async () => {
+      const writes = fenceTurnOn(bit, read);
+      const undo = fenceRestore(writes, read);
+      const refused = await writeAll(writes);
+      setRefusal(refused);
+      if (refused === null) notice.show(`${setting.label}: on`, () => writeAll(undo));
+    })();
+  return (
+    <div className="flex min-h-14 w-full items-center gap-3 py-2 pr-2 pl-4">
+      <div className="min-w-0 flex-1">
+        <Text typography="bodyLarge" fontWeight={500} className="block">
+          {setting.label}
+        </Text>
+        <Text typography="bodySmall" color={refusal === null ? md('onSurfaceVariant') : md('error')} className="block">
+          {refusal ?? FENCE_OFF_NOTE}
+        </Text>
+      </div>
+      <Text typography="bodyLarge" color={md('onSurfaceVariant')}>
+        {VALUE_OFF}
+      </Text>
+      <TextButton onClick={turnOn}>Turn on</TextButton>
+    </div>
+  );
+};
+
+const PilotValueRow = ({ shown, setting }: { shown: Fact; setting: PilotSetting }) => {
   const name = shown.name;
   const [revision, setRevision] = useState(0);
   const live = useQgcPath(parameterPath(name, setting.quantity));

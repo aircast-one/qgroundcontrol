@@ -4,7 +4,7 @@ import { calibrationState } from '@/ui/CalibrationView';
 import { SENSORS } from '@/ui/SetupPages';
 import { SetupComponent, splitDesktopOnly } from '@/ui/SetupScreen';
 import { SettingsGroup } from '@/ui/SettingsScreen';
-import { firstReported, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
+import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, fenceRestore, fenceTurnOn, firstReported, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
 
 const parameter = (name: string, description = 'Engineer description') =>
   makeFact({
@@ -98,5 +98,39 @@ describe('PilotSettingsTest', () => {
 
   it("offline, safety still lists its sections in DJI's order so the pilot knows they exist", () => {
     expect([...pilotSections(pilotSettings(SettingsGroup.Safety)).keys()]).toEqual(['Return to home', 'Flight protection', 'If something goes wrong']);
+  });
+});
+
+describe('a limit the geofence does not enforce reads as off', () => {
+  const reading = (values: Readonly<Record<string, number>>) => (name: string) => values[name] ?? null;
+
+  it('an ArduPilot limit is off while the fence is disabled or its type leaves the limit out', () => {
+    expect(fenceOff(FENCE_MAX_ALTITUDE, reading({ FENCE_ENABLE: 0, FENCE_TYPE: 7 }))).toBe(true);
+    expect(fenceOff(FENCE_MAX_ALTITUDE, reading({ FENCE_ENABLE: 1, FENCE_TYPE: 6 }))).toBe(true);
+    expect(fenceOff(FENCE_CIRCLE, reading({ FENCE_ENABLE: 1, FENCE_TYPE: 3 }))).toBe(false);
+  });
+
+  it('a PX4 limit is off while the geofence action is none', () => {
+    expect(fenceOff(FENCE_CIRCLE, reading({ GF_ACTION: 0 }))).toBe(true);
+    expect(fenceOff(FENCE_CIRCLE, reading({ GF_ACTION: 2 }))).toBe(false);
+    expect(fenceOff(FENCE_CIRCLE, reading({}))).toBeNull();
+  });
+
+  it('turning a limit on enables the fence for that limit alone, and undo puts both back', () => {
+    const before = reading({ FENCE_ENABLE: 0, FENCE_TYPE: 7 });
+    const writes = fenceTurnOn(FENCE_MAX_ALTITUDE, before);
+    expect(writes).toEqual([
+      ['FENCE_TYPE', 5],
+      ['FENCE_ENABLE', 1],
+    ]);
+    expect(fenceRestore(writes, before)).toEqual([
+      ['FENCE_ENABLE', 0],
+      ['FENCE_TYPE', 7],
+    ]);
+    expect(fenceTurnOn(FENCE_CIRCLE, reading({ FENCE_ENABLE: 1, FENCE_TYPE: 1 }))).toEqual([
+      ['FENCE_TYPE', 3],
+      ['FENCE_ENABLE', 1],
+    ]);
+    expect(fenceTurnOn(FENCE_CIRCLE, reading({ GF_ACTION: 0 }))).toEqual([['GF_ACTION', 2]]);
   });
 });

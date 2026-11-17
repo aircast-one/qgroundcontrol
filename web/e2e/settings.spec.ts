@@ -87,3 +87,17 @@ test('the radio on USB settings sit with the other stick inputs and let the brow
   await expect(app.getByText('Radio on USB (EdgeTX script)', { exact: false })).toBeVisible();
   await expect(app.getByRole('button', { name: 'Allow a USB port' })).toBeVisible();
 });
+
+test('a limit the disabled geofence does not enforce reads Off until it is turned on, and Undo turns it back off', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Safety' }).click();
+  const fenceOff = app.getByText('The geofence is off, so nothing holds the aircraft to this.');
+  await expect(fenceOff).toHaveCount(2, { timeout: 60_000 });
+  await expect(app.getByRole('slider', { name: 'Max altitude' })).toHaveCount(0);
+  await app.getByRole('button', { name: 'Turn on' }).first().click();
+  await expect(app.getByRole('slider', { name: 'Max altitude' })).toBeVisible();
+  await expect(fenceOff).toHaveCount(1);
+  await app.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+  await expect(fenceOff).toHaveCount(2);
+});
