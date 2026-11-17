@@ -275,6 +275,7 @@ fn main() {
     start_core(&context.package_info().version.to_string());
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .menu(|app| menu::build(app))
@@ -345,6 +346,7 @@ fn main() {
             files::staged_list,
             files::saved_read,
             files::saved_list,
+            files::plan_pick,
             synthetic::synthetic_open,
             synthetic::synthetic_resize,
             synthetic::synthetic_close,

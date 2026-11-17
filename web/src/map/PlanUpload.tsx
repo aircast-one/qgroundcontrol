@@ -15,9 +15,17 @@ import { PlanFocus, UPLOADED, type UploadGate, freshPlanView, notReadyToSend, sy
 const CONVERTED = 'Plan converted to this vehicle. Check it, then upload.';
 const FAR_FROM_AIRCRAFT_TEXT = 'The aircraft is not where this route begins. Move the plan, with its fence and rally points, so it starts at the aircraft, or upload it as it is.';
 
-export type PlanUpload = { readonly enabled: boolean; readonly emphasised: boolean; readonly label: string; readonly shown: boolean; readonly onClick: () => void; readonly done: boolean };
+export type PlanUpload = {
+  readonly enabled: boolean;
+  readonly emphasised: boolean;
+  readonly label: string;
+  readonly shown: boolean;
+  readonly downloading: boolean;
+  readonly onClick: () => void;
+  readonly done: boolean;
+};
 
-export const PlanUpload = (fields: { enabled: boolean; emphasised: boolean; label: string; shown: boolean; onClick: () => void }): PlanUpload => ({ ...fields, done: fields.label === UPLOADED });
+export const PlanUpload = (fields: { enabled: boolean; emphasised: boolean; label: string; shown: boolean; downloading: boolean; onClick: () => void }): PlanUpload => ({ ...fields, done: fields.label === UPLOADED });
 
 const sendPlan = (say: (message: string | null) => void, done: () => void, pauseFirst = false): void => {
   say('Uploading to vehicle');
@@ -90,9 +98,16 @@ export const usePlanUpload = ({
     else sendUpload();
   };
 
-  const uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems, optBoolean(optJSONObject(planStatus, 'sync'), 'downloading'));
+  const downloading = planSyncing && optBoolean(optJSONObject(planStatus, 'sync'), 'downloading');
   const uploadEnabled = planHasItems && !planOffline && !planSyncing;
-  const planUpload = PlanUpload({ enabled: uploadEnabled, emphasised: uploadEnabled && !uploadBlocked, label: uploadText, shown: !planOffline, onClick: upload });
+  const planUpload = PlanUpload({
+    enabled: uploadEnabled,
+    emphasised: uploadEnabled && !uploadBlocked,
+    label: uploadLabel(planOffline, planSyncing, planDirty, planHasItems, downloading),
+    shown: !planOffline,
+    downloading,
+    onClick: upload,
+  });
 
   const dialogs = (
     <>

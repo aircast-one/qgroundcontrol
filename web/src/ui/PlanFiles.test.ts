@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { PlanConfirm, confirmCopy, planActions, planHistory, planStatusText, planTitle, saveBlockedReason } from './PlanFileRules';
-import { downloadedText, holdsPatterns } from './PlanFiles';
+import { downloadedText, flattenedPatterns } from './PlanFiles';
 
 const json = (text: string): Json => parseJson(text)!;
 
@@ -74,6 +74,11 @@ describe('PlanActionsTest', () => {
     expect(confirmCopy(PlanConfirm.NewPlan).title).toBe('Start a new plan?');
   });
 
+  it('starting a new plan offers to save first, like opening and downloading', () => {
+    const fresh = confirmCopy(PlanConfirm.NewPlan);
+    expect([fresh.confirm, fresh.saveFirst]).toEqual(['Start new plan', 'Save and start new plan']);
+  });
+
   it('clearing the mission says that undo brings back only the plan, not the copy on the vehicle', () => {
     const clear = confirmCopy(PlanConfirm.ClearMission);
     expect(clear.body).toContain('the copy on the vehicle stays deleted');
@@ -112,10 +117,11 @@ describe('PlanHistoryTest', () => {
     expect(planTitle('')).toBe('Untitled plan');
   });
 
-  it('a download warns that patterns come back as plain waypoints when the plan had any', () => {
-    expect(holdsPatterns([{ kind: 'waypoint' }, { kind: 'survey' }])).toBe(true);
-    expect(holdsPatterns([{ kind: 'settings' }, { kind: 'waypoint' }])).toBe(false);
-    expect(downloadedText(true)).toContain('come back as waypoints');
+  it('a download explains flattened patterns when the downloaded items carry camera triggers, whatever the plan held before', () => {
+    expect(flattenedPatterns([{ kind: 'waypoint', command: 16 }, { kind: 'command', command: 206 }])).toBe(true);
+    expect(flattenedPatterns([{ kind: 'settings', command: 16 }, { kind: 'waypoint', command: 16 }])).toBe(false);
+    expect(flattenedPatterns([{ kind: 'survey', command: 0 }]), 'a pattern in the plan before the download says nothing about the download').toBe(false);
+    expect(downloadedText(true)).toContain('plain waypoints with camera triggers');
     expect(downloadedText(false)).toBe('Plan downloaded from the vehicle.');
   });
 });

@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Manager, Runtime};
+use tauri_plugin_dialog::DialogExt;
 
 fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     app.path()
@@ -207,6 +208,24 @@ pub async fn saved_read(path: String) -> Result<Response, String> {
 #[tauri::command]
 pub async fn saved_list(path: String) -> Result<Value, String> {
     off_the_window(move || listed(&inside_saves(&path)?)).await
+}
+
+#[tauri::command]
+pub async fn plan_pick<R: Runtime>(app: AppHandle<R>) -> Result<Value, String> {
+    let (picked, chosen) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_file(move |path| {
+        let _ = picked.send(path);
+    });
+    let Some(path) = chosen.await.map_err(|error| error.to_string())? else {
+        return Ok(Value::Null);
+    };
+    let path = path.into_path().map_err(|error| error.to_string())?;
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let bytes = off_the_window(move || std::fs::read(&path).map_err(failed)).await?;
+    Ok(json!({ "name": name, "bytes": bytes }))
 }
 
 #[cfg(test)]

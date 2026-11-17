@@ -30,7 +30,6 @@ export class AppNavigationState {
 }
 
 export class OpenPlanDocument {
-  readonly document = mutableStateOf<File | null>(null);
   readonly name = mutableStateOf<string | null>(null);
 }
 

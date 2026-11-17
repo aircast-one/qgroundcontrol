@@ -111,7 +111,7 @@ export const freshPlanView = (): Promise<Json | null> => MapBridge.read('view.pl
 export const UPLOADED = 'Uploaded';
 export const DOWNLOADING = 'Downloading…';
 
-export const uploadLabel = (offline: boolean, syncing: boolean, dirty: boolean, hasItems: boolean, downloading: boolean = false): string => {
+export const uploadLabel = (offline: boolean, syncing: boolean, dirty: boolean, hasItems: boolean, downloading: boolean): string => {
   if (syncing) return downloading ? DOWNLOADING : 'Uploading…';
   if (!dirty && hasItems && !offline) return UPLOADED;
   return 'Upload';

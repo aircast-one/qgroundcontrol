@@ -4,7 +4,6 @@ import { PlanCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useLaunchedEffect } from '@/kotlin/Compose';
-import { useValue } from '@/kotlin/State';
 import { delay } from '@/kotlin/Std';
 import { AlertDialog, Button, DropdownMenu, DropdownMenuItem, HorizontalDivider, IconButton, Surface, Text, TextButton } from '@/m3';
 import { PlanMapScreen } from '@/map/PlanMap';
@@ -12,7 +11,7 @@ import type { PlanBar } from '@/map/PlanMapContent';
 import type { PlanStat } from '@/map/PlanStrip';
 import { sentenceCase } from '@/map/SentenceCase';
 import type { TrackPoint } from '@/map/VehicleMap';
-import { DOWNLOADING, NEWEST_PATTERN, PlanFocus } from '@/map/VehicleSync';
+import { NEWEST_PATTERN, PlanFocus } from '@/map/VehicleSync';
 import { type PlanAction, shortcutHint } from '@/map/PlanShortcuts';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md, withAlpha } from '@/theme/Colors';
@@ -34,6 +33,7 @@ import {
 } from '@/ui/PlanFileRules';
 import { useRememberPlanFileActions, visualItems } from '@/ui/PlanFiles';
 import { CREATE_FROM_TEMPLATE, NewPlanDialog, ZOOM_IN_FOR_TEMPLATE, planTemplates, zoomedOutForTemplates } from '@/ui/PlanTemplates';
+import { usePlanRequests } from '@/ui/PlanRequests';
 import { PlanTransformDialog } from '@/ui/PlanTransform';
 import { RouteSettings } from '@/ui/RouteSettings';
 
@@ -142,15 +142,6 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
   const [startFrom, setStartFrom] = useState<string | null>(null);
   const documentName = files.documentName();
   const navigation = useContext(LocalAppNavigation);
-  const planRequest = useValue(navigation.planRequest);
-  useEffect(() => {
-    if (planRequest === null || planStatus === null) return;
-    navigation.planRequest.value = null;
-    if (planRequest === 'new' && can.newPlan) setNewPlanOpen(true);
-    else if (planRequest === 'open' && can.open) (dirty ? setPending(PlanConfirm.Open) : files.open());
-    else if (planRequest === 'save' && can.save) void files.save();
-    else if (planRequest === 'saveAs' && can.save) void files.saveAs();
-  }, [planRequest, planStatus === null]);
 
   const startPlan = (template: string | null) => {
     if (template === null) {
@@ -191,6 +182,14 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
 
   const requestDownload = () => (dirty ? setPending(PlanConfirm.Download) : files.download());
   const requestOpen = () => (dirty ? setPending(PlanConfirm.Open) : files.open());
+  const save = () => void files.save();
+  const saveAs = () => void files.saveAs();
+  usePlanRequests(
+    navigation.planRequest,
+    planStatus !== null,
+    { new: can.newPlan ? () => setNewPlanOpen(true) : null, open: can.open ? requestOpen : null, save: can.save ? save : null, saveAs: can.save ? saveAs : null },
+    setNotice,
+  );
   const hint = (action: PlanAction) => (
     <Text typography="labelMedium" color={md('onSurfaceVariant')}>
       {shortcutHint(action)}
@@ -208,12 +207,17 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
   const confirmDialog = (() => {
     if (pending === null) return null;
     const copy = confirmCopy(pending);
-    const act = {
-      Open: files.open,
-      NewPlan: () => startPlan(startFrom),
-      ClearMission: files.clearMission,
-      Download: files.download,
-    }[pending.name];
+    const savedFirst = (then: () => void) => () =>
+      void (async () => {
+        if (await files.save()) then();
+      })();
+    const actions: Record<PlanConfirm['name'], readonly [() => void, (() => void) | null]> = {
+      Open: [files.open, files.saveAndOpen],
+      NewPlan: [() => startPlan(startFrom), savedFirst(() => startPlan(startFrom))],
+      ClearMission: [files.clearMission, null],
+      Download: [files.download, savedFirst(files.download)],
+    };
+    const [act, saveFirst] = actions[pending.name];
     return (
       <AlertDialog
         onDismissRequest={() => setPending(null)}
@@ -230,13 +234,11 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
             >
               {copy.confirm}
             </TextButton>
-            {copy.saveFirst === null ? null : (
+            {copy.saveFirst === null || saveFirst === null ? null : (
               <Button
                 onClick={() => {
                   setPending(null);
-                  void (async () => {
-                    if (await files.save()) act();
-                  })();
+                  saveFirst();
                 }}
               >
                 {copy.saveFirst}
@@ -274,7 +276,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
           {bar.upload.shown ? (
             <PlanActionPill
               label={bar.upload.done ? FLY_LABEL : bar.upload.label}
-              icon={<Drawable name={bar.upload.done ? 'ic_flight' : bar.upload.label === DOWNLOADING ? 'ic_download' : bar.warning !== null ? 'ic_warning' : 'ic_upload'} size={20} />}
+              icon={<Drawable name={bar.upload.done ? 'ic_flight' : bar.upload.downloading ? 'ic_download' : bar.warning !== null ? 'ic_warning' : 'ic_upload'} size={20} />}
               enabled={bar.upload.enabled}
               container={bar.upload.done ? aircast('success') : bar.upload.emphasised ? md('primary') : md('surfaceContainerHighest')}
               content={bar.upload.done ? aircast('onSuccess') : bar.upload.emphasised ? md('onPrimary') : md('onSurface')}
@@ -289,7 +291,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
               container={dirty ? md('primary') : md('surfaceContainerHighest')}
               content={dirty ? md('onPrimary') : md('onSurface')}
               progress={null}
-              onClick={() => void files.save()}
+              onClick={save}
             />
           ) : null}
           <Surface shape="full" color={withAlpha(md('surfaceContainer'), HEADER_ALPHA)} className="shrink-0">
@@ -343,7 +345,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
                 enabled={can.save}
                 onClick={() => {
                   setMenuOpen(false);
-                  void files.save();
+                  save();
                 }}
               />
               <DropdownMenuItem
@@ -352,7 +354,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
                 enabled={can.save}
                 onClick={() => {
                   setMenuOpen(false);
-                  void files.saveAs();
+                  saveAs();
                 }}
               />
               <HorizontalDivider />
@@ -496,7 +498,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
           routeSettings={() => <RouteSettings plan={planStatus} />}
           onTemplates={() => setNewPlanOpen(true)}
           onDownload={requestDownload}
-          onSave={can.save ? () => void files.save() : null}
+          onSave={can.save ? save : null}
           header={header}
         />
       </div>

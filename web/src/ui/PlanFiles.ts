@@ -1,5 +1,6 @@
+import { invoke } from '@tauri-apps/api/core';
 import { useContext, useState } from 'react';
-import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optJSONArray, optText } from '@/bridge/Json';
+import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { stageFile, stagedFile, stagedLocation, stagedOutput, unstageAll } from '@/core/files';
 import { useUpdatedRef } from '@/kotlin/Compose';
@@ -43,6 +44,7 @@ export type PatternChoice = {
 
 export type PlanFileActions = {
   open: () => void;
+  saveAndOpen: () => void;
   saveAs: () => Promise<boolean>;
   save: () => Promise<boolean>;
   exportKml: () => void;
@@ -92,14 +94,24 @@ export const currentPlanPath = (view: Json | null): string | null => {
 
 export const visualItems = async (): Promise<JsonArray> => optJSONArray(await Qgc.get(MISSION_ITEMS_VIEW), 'items') ?? [];
 
-const PATTERN_KINDS: ReadonlySet<string> = new Set(['survey', 'corridor', 'structure']);
+const CAMERA_TRIGGERS: ReadonlySet<number> = new Set([203, 206, 214, 2000]);
 
-export const holdsPatterns = (items: JsonArray): boolean => jsonObjects(items).some((it) => PATTERN_KINDS.has(optText(it, 'kind')));
+export const flattenedPatterns = (downloaded: JsonArray): boolean => jsonObjects(downloaded).some((it) => CAMERA_TRIGGERS.has(optInt(it, 'command')));
 
-export const downloadedText = (patternsBefore: boolean): string =>
-  patternsBefore
-    ? 'Plan downloaded. The vehicle stores surveys and other patterns as plain waypoints, so they come back as waypoints.'
+export const downloadedText = (flattened: boolean): string =>
+  flattened
+    ? 'Plan downloaded. The vehicle keeps a survey or other pattern as plain waypoints with camera triggers, so it comes back that way.'
     : 'Plan downloaded from the vehicle.';
+
+export const DOWNLOAD_UNFINISHED = 'The plan did not finish downloading from the vehicle. Download it again.';
+
+type PickedPlan = { name: string; bytes: number[] };
+
+const pickPlan = async (): Promise<File | null> => {
+  if (!__DESKTOP__) return openDocument([...PLAN_OPEN_TYPES]);
+  const picked = await invoke<PickedPlan | null>('plan_pick');
+  return picked === null ? null : new File([new Uint8Array(picked.bytes)], picked.name);
+};
 
 const lastDistance = (items: JsonArray): number | null => {
   const distance = arrayJSONObject(items, items.length - 1)?.patternDistance;
@@ -159,13 +171,11 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
   const [patterns, setPatterns] = useState<readonly string[]>([]);
 
   const adopt = (document: File) => {
-    openPlan.document.value = document;
     rememberDocument(document);
     openPlan.name.value = document.name;
   };
 
   const forget = () => {
-    openPlan.document.value = null;
     openPlan.name.value = null;
   };
 
@@ -210,36 +220,35 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
     return true;
   };
 
-  const open = () =>
-    void (async () => {
-      const chosen = await openDocument([...PLAN_OPEN_TYPES]);
-      if (chosen === null) return;
-      const staged = cachePath(OPEN_FOLDER, openedFileName(chosen.name));
-      await unstageAll(cachePath(OPEN_FOLDER));
-      const [failure, loaded] = (await stageFile(staged, chosen)) ? await planLoad(stagedLocation(staged)).then((it) => [loadFailureMessage(it), it === true] as const) : (['That file could not be read.', false] as const);
-      if (!loaded) {
-        if (failure !== null) result.current(failure);
-        return;
-      }
-      if (isTextMission(leafOf(staged))) forget();
-      else adopt(chosen);
-      setOpened((it) => it + 1);
-      result.current('Plan opened.');
-    })();
+  const load = async (chosen: File): Promise<void> => {
+    const staged = cachePath(OPEN_FOLDER, openedFileName(chosen.name));
+    await unstageAll(cachePath(OPEN_FOLDER));
+    const [failure, loaded] = (await stageFile(staged, chosen)) ? await planLoad(stagedLocation(staged)).then((it) => [loadFailureMessage(it), it === true] as const) : (['That file could not be read.', false] as const);
+    if (!loaded) {
+      if (failure !== null) result.current(failure);
+      return;
+    }
+    if (isTextMission(leafOf(staged))) forget();
+    else adopt(chosen);
+    setOpened((it) => it + 1);
+    result.current('Plan opened.');
+  };
+
+  const picked = (then: (chosen: File) => Promise<void>) =>
+    void pickPlan().then(
+      (chosen) => (chosen === null ? undefined : then(chosen)),
+      () => result.current('That file could not be opened.'),
+    );
 
   const exportKmlTo = async (target: string): Promise<boolean> => {
     const staged = cachePath(KML_CACHE);
     await unstageAll(staged);
     await Qgc.invoke(`${PLAN_ROOT}.saveToKml`, await stagedOutput(staged));
     const exported = await stagedFile(staged);
-    result.current(
-      exported === null || exported.size === 0
-        ? 'The plan could not be exported.'
-        : copyOut(exported, withExtension(target, KML_EXTENSION))
-          ? 'KML exported.'
-          : 'The KML was written but could not be copied out.',
-    );
-    return exported !== null;
+    if (exported === null || exported.size === 0) return failed('The plan could not be exported.');
+    if (!copyOut(exported, withExtension(target, KML_EXTENSION))) return failed('The KML was written but could not be copied out.');
+    result.current('KML exported.');
+    return true;
   };
 
   const importBoundary = () =>
@@ -255,10 +264,16 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
       }
     })();
 
+  const save = () => guarded(() => writeTo(openPlan.name.value ?? DEFAULT_PLAN_NAME));
+
   return {
-    open,
-    saveAs: () => guarded(() => writeTo(openPlan.name.value ?? DEFAULT_PLAN_NAME)),
-    save: () => guarded(() => writeTo(openPlan.document.value?.name ?? DEFAULT_PLAN_NAME)),
+    open: () => picked(load),
+    saveAndOpen: () =>
+      picked(async (chosen) => {
+        if (await save()) await load(chosen);
+      }),
+    saveAs: save,
+    save,
     exportKml: () => void guarded(() => exportKmlTo(DEFAULT_KML_NAME)),
     importBoundary,
     patternChoice: {
@@ -274,14 +289,12 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
     clearMission: () => discard('removeAllFromVehicle', 'Clear sent to the vehicle.', 'The clear could not be sent to the vehicle.'),
     download: () =>
       void (async () => {
-        const patternsBefore = holdsPatterns(await visualItems());
         if (!(await Qgc.invoke(`${PLAN_ROOT}.loadFromVehicle`))) return result.current('The plan could not be downloaded from the vehicle.');
-        openPlan.document.value = null;
         openPlan.name.value = DOWNLOADED_PLAN;
         result.current('Downloading the plan from the vehicle.');
-        if (!(await downloadSettled())) return;
+        if (!(await downloadSettled())) return result.current(DOWNLOAD_UNFINISHED);
         setOpened((it) => it + 1);
-        result.current(downloadedText(patternsBefore));
+        result.current(downloadedText(flattenedPatterns(await visualItems())));
       })(),
     documentName: () => documentName,
     opened: () => opened,

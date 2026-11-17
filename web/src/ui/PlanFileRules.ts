@@ -106,6 +106,7 @@ export const confirmCopy = (kind: PlanConfirm): ConfirmCopy => {
         title: 'Start a new plan?',
         body: 'The plan you are editing will be cleared.',
         confirm: 'Start new plan',
+        saveFirst: 'Save and start new plan',
       });
     case 'Download':
       return ConfirmCopy({
