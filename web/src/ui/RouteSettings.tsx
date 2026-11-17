@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { type Json, optJSONObject, optText } from '@/bridge/Json';
 import { FilterChip, Text } from '@/m3';
+import { altitudeCeiling } from '@/map/AltitudeEntry';
 import { type ClosedRange, SettingStepper } from '@/map/SettingStepper';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
@@ -12,9 +13,6 @@ import { factFromControl } from '@/ui/ParameterForm';
 
 const ALTITUDE_STEP = 1.0;
 const SPEED_STEP = 0.5;
-const FEET = 'ft';
-const METRES_RANGE: ClosedRange = { start: 0.0, endInclusive: 500.0 };
-const FEET_RANGE: ClosedRange = { start: 0.0, endInclusive: 1640.0 };
 const ROUTE_ALTITUDE_NOTE = 'New waypoints use this';
 const VEHICLE_SPEED_NOTE = 'Vehicle default';
 
@@ -91,7 +89,7 @@ const RouteSettingsBody = ({
           unit={altitude.units}
           step={ALTITUDE_STEP}
           note={ROUTE_ALTITUDE_NOTE}
-          range={altitude.units === FEET ? FEET_RANGE : METRES_RANGE}
+          range={{ start: 0.0, endInclusive: altitudeCeiling(altitude.units) }}
           slider
           onSet={(wanted) => write(() => Qgc.writeRefusal(altitude.path, wanted))}
         />

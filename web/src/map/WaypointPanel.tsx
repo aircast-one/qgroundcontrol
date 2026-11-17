@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { format } from '@/kotlin/Std';
 import { FilterChip, Text } from '@/m3';
 import { aircast, argb, md } from '@/theme/Colors';
+import { altitudeCeiling, metresPerUnit } from './AltitudeEntry';
 import { AltitudeModePicker, itemReferenceSelectable, itemReferenceShown } from './AltitudeModePicker';
 import { ALT_MODE_AMSL } from './AltitudeModes';
 import { setOk, settingJson } from './BridgeCalls';
@@ -16,21 +17,27 @@ import { waypointHold, waypointSpeed } from './WaypointSpeed';
 
 const CHIP_SIZE = 40;
 const STRIP_PADDING = 4;
-const FEET = 'ft';
-const ALTITUDE_CEILING_METRES = 500.0;
-const ALTITUDE_CEILING_FEET = 1640.0;
 const SPEED_STEP = 0.5;
 export const SPEED_RANGE: ClosedRange = { start: 0.0, endInclusive: 30.0 };
 
-export const altitudeRange = (units: string, mode: number = -1, launch: number = NaN): ClosedRange => {
-  const base = mode === ALT_MODE_AMSL && Number.isFinite(launch) ? launch : 0.0;
-  return { start: base, endInclusive: base + (units === FEET ? ALTITUDE_CEILING_FEET : ALTITUDE_CEILING_METRES) };
+const editUnits = (item: MissionItem): string => (item.altitudeEditUnits.trim() === '' ? 'm' : item.altitudeEditUnits);
+
+export const altitudeMetres = (item: MissionItem): number | null => (Number.isFinite(item.altitude) ? item.altitude * metresPerUnit(editUnits(item)) : null);
+
+export const launchIn = (units: string, launch: MissionItem | null): number | null => {
+  const metres = launch === null ? null : altitudeMetres(launch);
+  return metres === null ? null : metres / metresPerUnit(units);
 };
 
-export const altitudeNote = (item: MissionItem, launch: number): string | null => {
+export const altitudeRange = (units: string, mode: number, launch: number | null): ClosedRange | null => {
+  const ceiling = altitudeCeiling(units);
+  if (mode !== ALT_MODE_AMSL) return { start: 0.0, endInclusive: ceiling };
+  return launch === null ? null : { start: launch - ceiling, endInclusive: launch + ceiling };
+};
+
+export const altitudeNote = (item: MissionItem, launch: number | null): string | null => {
   const frame = item.altitudeFrameText.trim() === '' ? null : item.altitudeFrameText;
-  const units = item.altitudeEditUnits.trim() === '' ? 'm' : item.altitudeEditUnits;
-  return item.altitudeMode === ALT_MODE_AMSL && Number.isFinite(launch) ? `${frame ?? 'AMSL'} · launch is ${format('%,.0f', launch)} ${units}` : frame;
+  return item.altitudeMode === ALT_MODE_AMSL && launch !== null ? `${frame ?? 'AMSL'} · launch is ${format('%,.0f', launch)} ${editUnits(item)}` : frame;
 };
 
 export const stripRows = (rows: readonly ItemRow[]): readonly ItemRow[] => rows.filter((it) => it.index !== HOME_ITEM);
@@ -108,18 +115,19 @@ export const WaypointStrip = ({
 export const WaypointSettings = ({
   item,
   globalFrame,
-  launchAltitude,
+  launch,
   onWrite,
   onRefusal,
 }: {
   item: MissionItem;
   globalFrame: number | null;
-  launchAltitude: number;
+  launch: MissionItem | null;
   onWrite: (label: string | null, work: () => Promise<boolean>) => void;
   onRefusal: (label: string, work: () => Promise<string | null>) => void;
 }) => {
   const json = useMapPath(`view.itemFacts(${item.index})`);
-  const units = item.altitudeEditUnits.trim() === '' ? 'm' : item.altitudeEditUnits;
+  const units = editUnits(item);
+  const launchHere = launchIn(units, launch);
   const speed = waypointSpeed(json);
   return (
     <div className="flex w-full flex-col px-3">
@@ -129,10 +137,10 @@ export const WaypointSettings = ({
           value={item.altitude}
           unit={units}
           step={1.0}
-          note={altitudeNote(item, launchAltitude)}
-          range={altitudeRange(units, item.altitudeMode, launchAltitude)}
+          note={altitudeNote(item, launchHere)}
+          range={altitudeRange(units, item.altitudeMode, launchHere)}
           slider
-          onSet={(metres) => onWrite(null, () => PlanBridge.setAltitude(item.index, metres))}
+          onSet={(shown) => onWrite(null, () => PlanBridge.setAltitude(item.index, shown))}
         />
       ) : null}
       {speed !== null ? (

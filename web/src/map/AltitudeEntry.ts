@@ -26,7 +26,14 @@ export const parsedSurfaceDistance = (text: string, metresPerShown: number): num
   return typed !== null && typed * metresPerShown >= SURFACE_DISTANCE_MINIMUM - 1e-9 ? typed : null;
 };
 
-export const metresPerUnit = (units: string): number => (units.trim() === 'ft' ? 0.3048 : 1.0);
+export const FEET = 'ft';
+
+export const metresPerUnit = (units: string): number => (units.trim() === FEET ? 0.3048 : 1.0);
+
+const ALTITUDE_CEILING_METRES = 500.0;
+const ALTITUDE_CEILING_FEET = 1640.0;
+
+export const altitudeCeiling = (units: string): number => (units.trim() === FEET ? ALTITUDE_CEILING_FEET : ALTITUDE_CEILING_METRES);
 
 export const altitudeFieldText = (altitude: number, decimals: number): string => {
   if (Number.isNaN(altitude)) return '';

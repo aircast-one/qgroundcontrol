@@ -16,7 +16,7 @@ export type ClosedRange = { readonly start: number; readonly endInclusive: numbe
 
 export const steppedValue = (current: number, step: number, direction: number, range: ClosedRange | null): number => {
   const next = current + step * direction;
-  return range ? coerceIn(next, range.start, range.endInclusive) : next;
+  return range ? coerceIn(next, Math.min(range.start, current), Math.max(range.endInclusive, current)) : next;
 };
 
 export const stepperText = (value: number | null, decimals: number): string =>

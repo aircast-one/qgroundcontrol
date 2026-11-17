@@ -1322,7 +1322,7 @@ export const PlanMapContent = ({
                   <WaypointSettings
                     item={chosenItem}
                     globalFrame={globalFrame}
-                    launchAltitude={allItems.value.find((it) => it.index === HOME_ITEM)?.altitude ?? NaN}
+                    launch={allItems.value.find((it) => it.index === HOME_ITEM) ?? null}
                     onWrite={(label, work) => onBridge(work, { label })}
                     onRefusal={(label, work) => onRefusal(work, label)}
                   />

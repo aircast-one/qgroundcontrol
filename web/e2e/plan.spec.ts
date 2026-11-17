@@ -103,8 +103,17 @@ test('switching a waypoint to AMSL keeps its height above the launch', async ({ 
   await expect(vehicle.getByRole('button', { name: /^3 Waypoint 50\.0 m/ })).toBeVisible();
   await vehicle.getByRole('button', { name: 'AMSL', exact: true }).click();
   await expect(vehicle.getByRole('button', { name: new RegExp(`^3 Waypoint ${Math.round(ground + 50)}(\\.\\d)? m AMSL`) })).toBeVisible({ timeout: 15_000 });
+  const valley = Math.round(ground - 25);
+  await vehicle.getByRole('button', { name: /^Altitude: / }).click();
+  const entry = vehicle.getByRole('dialog').filter({ hasText: 'Altitude' });
+  await entry.getByRole('textbox').fill(`${valley}`);
+  await expect(entry.getByText(/Raised to|Capped at/), 'a waypoint below the launch is a normal valley plan, not a value to raise').toHaveCount(0);
+  await entry.getByRole('button', { name: 'Set' }).click();
+  await expect(vehicle.getByRole('button', { name: new RegExp(`^3 Waypoint ${valley}(\\.0)? m AMSL`) })).toBeVisible({ timeout: 15_000 });
+  await vehicle.getByRole('button', { name: 'Decrease Altitude' }).click();
+  await expect(vehicle.getByRole('button', { name: new RegExp(`^3 Waypoint ${valley - 1}(\\.0)? m AMSL`) }), 'minus moves the waypoint down, not up to the launch').toBeVisible({ timeout: 15_000 });
   await vehicle.getByRole('button', { name: 'Relative to launch', exact: true }).click();
-  await expect(vehicle.getByRole('button', { name: /^3 Waypoint 50(\.0)? m/ })).toBeVisible({ timeout: 15_000 });
+  await expect(vehicle.getByRole('button', { name: /^3 Waypoint -2\d(\.\d)? m/ }), 'back relative to the launch, it stays below it').toBeVisible({ timeout: 15_000 });
 });
 
 test('a waypoint takes a hover action and gives it back', async ({ app }) => {
