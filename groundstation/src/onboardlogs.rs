@@ -485,16 +485,10 @@ impl OnboardLogs {
         }
     }
 
-    fn set_status(&mut self, id: u16, status: &str) {
+    fn set_status(&mut self, id: u16, status: &str, downloaded: Option<u64>) {
         if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
             entry.status = status.to_string();
-        }
-    }
-
-    fn set_progress(&mut self, id: u16, status: &str, downloaded: u64) {
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
-            entry.status = status.to_string();
-            entry.downloaded = downloaded;
+            entry.downloaded = downloaded.unwrap_or(entry.downloaded);
         }
     }
 
@@ -543,7 +537,7 @@ impl OnboardLogs {
         self.folder = folder.to_path_buf();
         self.extension = extension.to_string();
         if let Some(id) = self.entries.iter().find(|e| e.selected).map(|e| e.id) {
-            self.set_status(id, "Waiting");
+            self.set_status(id, "Waiting", Some(0));
         }
         self.downloading = true;
         self.next_download(now_ms)
@@ -596,7 +590,7 @@ impl OnboardLogs {
                 },
             );
         let Some((file, path)) = opened else {
-            self.set_status(entry.id, "Error");
+            self.set_status(entry.id, "Error", None);
             self.reset_selection(false);
             self.downloading = false;
             return Vec::new();
@@ -651,7 +645,7 @@ impl OnboardLogs {
         );
         download.last_status_written = download.written;
         let (id, written) = (download.id, download.written);
-        self.set_progress(id, &status, written);
+        self.set_status(id, &status, Some(written));
     }
 
     pub fn on_data(&mut self, offset: u32, id: u16, data: &[u8], now_ms: u64) -> Vec<Out> {
@@ -666,7 +660,7 @@ impl OnboardLogs {
             return Vec::new();
         }
         if offset > download.size {
-            self.set_status(index, "Error");
+            self.set_status(index, "Error", None);
             return Vec::new();
         }
         let chunk = offset / CHUNK_SIZE;
@@ -678,7 +672,7 @@ impl OnboardLogs {
             *slot = true;
         }
         if download.file.write_at(u64::from(offset), data).is_err() {
-            self.set_status(index, "Error");
+            self.set_status(index, "Error", None);
             return Vec::new();
         }
         download.written += data.len() as u64;
@@ -771,7 +765,9 @@ impl OnboardLogs {
             .map(|e| e.id)
             .collect();
         let queued = self.ftp.downloads.clone();
-        queued.iter().for_each(|id| self.set_status(*id, "Waiting"));
+        queued
+            .iter()
+            .for_each(|id| self.set_status(*id, "Waiting", Some(0)));
         if queued.is_empty() {
             return Vec::new();
         }
@@ -842,7 +838,7 @@ impl OnboardLogs {
                 }
             }
             Err(_) => {
-                self.set_status(id, "Error");
+                self.set_status(id, "Error", None);
                 self.ftp.had_error = true;
             }
         }
@@ -875,7 +871,7 @@ impl OnboardLogs {
             big_size_text(total),
             big_size_text(self.ftp.rate_avg as u64)
         );
-        self.set_progress(id, &status, total);
+        self.set_status(id, &status, Some(total));
     }
 
     pub fn erase_selected(&mut self) -> Vec<Out> {
@@ -919,7 +915,7 @@ impl OnboardLogs {
             return Vec::new();
         }
         if let Some(id) = self.ftp.erasing {
-            self.set_status(id, "Error");
+            self.set_status(id, "Error", None);
         }
         self.next_ftp_delete(now_ms)
     }
@@ -937,7 +933,7 @@ impl OnboardLogs {
         }
         self.finish_listing();
         if let Some(download) = self.download.take() {
-            self.set_status(download.id, "Canceled");
+            self.set_status(download.id, "Canceled", None);
             drop(download.file);
             let _ = crate::vfs::remove(&download.path);
         }
@@ -962,7 +958,7 @@ impl OnboardLogs {
         let downloading = self.downloading;
         if downloading {
             if let Some(id) = self.ftp.current.take() {
-                self.set_status(id, "Canceled");
+                self.set_status(id, "Canceled", None);
             }
             self.ftp.downloads.clear();
         }
@@ -1119,6 +1115,30 @@ mod tests {
             ),
             (false, "Error")
         );
+    }
+
+    #[test]
+    fn a_log_downloaded_again_starts_from_nothing_rather_than_the_last_tries_progress() {
+        let folder =
+            std::env::temp_dir().join(format!("qgc-onboard-relogs-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut logs = OnboardLogs::default();
+        logs.refresh(0);
+        logs.on_entry(false, 0, 180, 0, 1, 0);
+        logs.select(0, true);
+        logs.download(&folder, ".bin", 0);
+        logs.on_data(90, 0, &[2; 90], GUI_RATE_MS);
+        assert_eq!(logs.model_json()["elements"][0]["downloaded"], 90);
+        logs.cancel();
+        logs.select(0, true);
+        logs.download(&folder, ".bin", GUI_RATE_MS + 10);
+        let element = &logs.model_json()["elements"][0];
+        assert_eq!(
+            (element["status"].as_str(), element["downloaded"].as_u64()),
+            (Some("Waiting"), Some(0)),
+            "the retry shows no progress until its own data arrives"
+        );
+        let _ = std::fs::remove_dir_all(folder);
     }
 
     #[test]
