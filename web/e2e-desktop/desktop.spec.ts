@@ -74,3 +74,18 @@ test('the menu keys work while the page has focus: Ctrl+2 opens Plan and Ctrl+, 
   await app().keyboard.press('Control+Comma');
   await expect(app().getByRole('tablist').getByRole('tab', { name: 'General' })).toBeVisible();
 });
+
+test('a TCP address that does not answer says why on the page, keeps what was typed and leaves no link behind', async () => {
+  await app().getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await app().getByRole('button', { name: /^Links/ }).first().click();
+  await app().getByRole('button', { name: 'Add a link' }).last().click();
+  await app().getByRole('button', { name: /^Connect to an address \(TCP\)/ }).click();
+  await app().getByRole('textbox', { name: 'Address', exact: true }).fill('tcp://127.0.0.1:9');
+  await app().getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(app().getByRole('textbox', { name: 'Address', exact: true })).toHaveValue('127.0.0.1');
+  await expect(app().getByRole('textbox', { name: 'Port', exact: true })).toHaveValue('9');
+  await expect(app().getByRole('alert')).toBeVisible({ timeout: 30_000 });
+  await expect(app().getByRole('button', { name: 'Connect', exact: true })).toBeEnabled();
+  const links = await fetch(`${DEBUG_API}/links`).then((response) => response.text());
+  expect(links, 'the failed link was removed, so trying again does not leave a duplicate').not.toContain('127.0.0.1');
+});

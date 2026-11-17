@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import {
   AddOutcome,
+  dialFailure,
+  dialState,
+  parsedAddress,
+  rememberedByDefault,
+  withParsedAddress,
   CREATABLE_LINK_TYPES,
   DEFAULT_BAUD,
   LinkDraft,
@@ -456,8 +461,8 @@ describe('LinkDraftTest', () => {
     expect(addOutcome(false, false)).toBe(AddOutcome.Failed);
   });
 
-  it('only a link that was never saved blames the name', () => {
-    expect(addFailure(LinkType.Tcp)).toBe('Could not add that link. The name may already be in use.');
+  it('a link that was never saved says so without guessing at the name', () => {
+    expect(addFailure(LinkType.Tcp)).toBe('Could not add that link.');
     expect(addFailure(LinkType.Mock)).toBe('Could not start the simulated vehicle.');
   });
 
@@ -616,5 +621,53 @@ describe('AddableLinkTypesTest', () => {
 
   it('every link kind has a pilot title, an explanation, and a subtitle within the 32-character row budget', () => {
     expect([...PILOT_LINK_ORDER, ...TOOL_LINK_ORDER].map(linkKind).filter((kind) => !(kind.title.trim() !== '' && kind.about.trim() !== '' && kind.detail.length <= 32)).map((kind) => kind.type.id)).toEqual([]);
+  });
+
+  it('an address is taken as people paste it: with a port, a scheme, a path or IPv6 brackets', () => {
+    expect(parsedAddress('sitl.aircast.one')).toEqual({ host: 'sitl.aircast.one', port: null });
+    expect(parsedAddress('  sitl.aircast.one:5760 ')).toEqual({ host: 'sitl.aircast.one', port: '5760' });
+    expect(parsedAddress('tcp://sitl.aircast.one:5760')).toEqual({ host: 'sitl.aircast.one', port: '5760' });
+    expect(parsedAddress('tcp://192.168.1.10:5762/mavlink')).toEqual({ host: '192.168.1.10', port: '5762' });
+    expect(parsedAddress('[::1]:5760')).toEqual({ host: '::1', port: '5760' });
+    expect(parsedAddress('fe80::1')).toEqual({ host: 'fe80::1', port: null });
+  });
+
+  it('a pasted host:port fills the port field only for a TCP link, and keeps the typed port when the address has none', () => {
+    const tcp = LinkDraft({ type: LinkType.Tcp, host: 'sitl.aircast.one:5770', port: '5760' });
+    expect(withParsedAddress(tcp)).toMatchObject({ host: 'sitl.aircast.one', port: '5770' });
+    expect(withParsedAddress({ ...tcp, host: 'sitl.aircast.one' })).toMatchObject({ host: 'sitl.aircast.one', port: '5760' });
+    const udp = LinkDraft({ type: LinkType.Udp, host: 'x:1', port: '14550' });
+    expect(withParsedAddress(udp)).toBe(udp);
+  });
+
+  it('a dial succeeds only when an aircraft is heard, fails at once on a link error, and splits a silent open link from no answer', () => {
+    const row = (fields: Partial<LinkRow>) => LinkRow({ index: 3, name: 'sim', statusLine: '', connected: false, heard: false, lastError: '', ...fields });
+    expect(dialState(null, false)).toBe('failed');
+    expect(dialState(row({ connected: true, heard: true }), false)).toBe('heard');
+    expect(dialState(row({ lastError: "Can't find 192.168.1.5 on this network." }), false)).toBe('failed');
+    expect(dialState(row({ connected: true }), false)).toBe('pending');
+    expect(dialState(row({ connected: true }), true)).toBe('silent');
+    expect(dialState(row({}), false)).toBe('pending');
+    expect(dialState(row({}), true)).toBe('failed');
+  });
+
+  it('a failed dial gives the core reason and remedy, or says what to check', () => {
+    const failed = LinkRow({ index: 1, name: 'sim', statusLine: '', connected: false, heard: false, lastError: "Can't find 192.168.1.5 on this network.", errorRemedy: 'Check the address.' });
+    expect(dialFailure('192.168.1.5', '5760', failed)).toBe("Can't find 192.168.1.5 on this network. Check the address.");
+    expect(dialFailure('sitl.aircast.one', '5760', null)).toBe('No answer from sitl.aircast.one:5760. Check the address, and that the device is on and listening.');
+  });
+
+  it('a link added for an aircraft reconnects next launch by default; a simulator and a replay do not', () => {
+    expect(rememberedByDefault(LinkType.Tcp)).toBe(true);
+    expect(rememberedByDefault(LinkType.Udp)).toBe(true);
+    expect(rememberedByDefault(LinkType.Serial)).toBe(true);
+    expect(rememberedByDefault(LinkType.Mock)).toBe(false);
+    expect(rememberedByDefault(LinkType.LogReplay)).toBe(false);
+  });
+
+  it('a typed name already in use is refused before anything is created', () => {
+    const draft = LinkDraft({ type: LinkType.Tcp, host: 'sitl.aircast.one', port: '5760', name: 'Sim' });
+    expect(draftError(draft, '14550', ['Sim'], false)).toBe('A link named "Sim" already exists.');
+    expect(draftError({ ...draft, name: '' }, '14550', ['Sim'], false)).toBeNull();
   });
 });

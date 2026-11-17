@@ -566,6 +566,12 @@ export const AircastShell = () => {
     closeSettings();
     setTab(Tab.Fly);
   };
+  const flyRequested = useValue(navigation.flyRequested);
+  useEffect(() => {
+    if (!flyRequested) return;
+    navigation.flyRequested.value = false;
+    backToFly();
+  }, [flyRequested]);
   const showTab = (entry: Tab): boolean => {
     if (refuseNavigation()) return false;
     closeSettings();

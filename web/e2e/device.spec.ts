@@ -95,8 +95,8 @@ test('a device page reaches a TCP vehicle on its network through the device', as
   await settingsPage(device, 'Transmission', /^Links/);
   await device.getByRole('button', { name: 'Add a link' }).click();
   await expect(device.getByRole('button', { name: /^Wi-Fi or network/ })).toBeVisible();
-  await device.getByRole('button', { name: /^Network server \(TCP\)/ }).click();
-  await device.getByRole('textbox', { name: 'Host address' }).fill('127.0.0.1');
+  await device.getByRole('button', { name: /^Connect to an address \(TCP\)/ }).click();
+  await device.getByRole('textbox', { name: 'Address', exact: true }).fill('127.0.0.1');
   await device.getByRole('textbox', { name: 'Port' }).fill('18784');
   await device.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(async () => (await stats()).relays.some((query) => query.includes('tcp=127.0.0.1%3A18784')), { timeout: 30_000 }).toBe(true);

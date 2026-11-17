@@ -27,6 +27,11 @@ export class AppNavigationState {
   readonly addLinkRequested = mutableStateOf(false);
   readonly blockedReason = mutableStateOf<string | null>(null);
   readonly planRequest = mutableStateOf<PlanRequest | null>(null);
+  readonly flyRequested = mutableStateOf(false);
+
+  showFly(): void {
+    this.flyRequested.value = true;
+  }
 }
 
 export class OpenPlanDocument {

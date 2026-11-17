@@ -8,7 +8,7 @@ import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
 import { delay, same } from '@/kotlin/Std';
-import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, FilterChip, OutlinedButton, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
+import { AlertDialog, Button, Checkbox, CircularProgressIndicator, DropdownMenu, DropdownMenuItem, FilterChip, OutlinedButton, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { type DrawableName } from '@/res/drawables';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
@@ -637,22 +637,73 @@ const applyEdit = async (index: number, writes: readonly LinkWrite[], device: Bl
   await LinkCommands.connect(`@${LINKS_PATH}.${index}`);
 };
 
-const LinkPortField = ({ label, value, error, enabled, onChange }: { label: string; value: string; error: string | null; enabled: boolean; onChange: (value: string) => void }) => (
-  <OutlinedTextField value={value} onValueChange={onChange} label={label} enabled={enabled} isError={error !== null} supportingText={error ?? undefined} keyboardType="number" className="w-full" />
+const ADDRESS_FIELD = 'w-full desktop:max-w-[28rem]';
+const PORT_FIELD = 'w-full desktop:w-32';
+
+const AddressRow = ({ children }: { children: ReactNode }) => <div className="flex w-full flex-col gap-4 desktop:flex-row desktop:items-start">{children}</div>;
+
+export type ParsedAddress = { host: string; port: string | null };
+
+const SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+export const parsedAddress = (typed: string): ParsedAddress => {
+  const bare = typed.trim().replace(SCHEME, '').split('/')[0] ?? '';
+  const bracketed = /^\[([^\]]+)\](?::(\d+))?$/.exec(bare);
+  const hostAndPort = /^([^:]+):(\d+)$/.exec(bare);
+  return bracketed !== null
+    ? { host: bracketed[1] ?? '', port: bracketed[2] ?? null }
+    : hostAndPort !== null
+      ? { host: hostAndPort[1] ?? '', port: hostAndPort[2] ?? null }
+      : { host: bare, port: null };
+};
+
+export const withParsedAddress = (draft: LinkDraft): LinkDraft => {
+  const parsed = parsedAddress(draft.host);
+  return draft.type === LinkType.Tcp ? { ...draft, host: parsed.host, port: parsed.port ?? draft.port } : draft;
+};
+
+export type Dial = 'pending' | 'heard' | 'silent' | 'failed';
+
+export const dialState = (row: LinkRow | null, expired: boolean): Dial =>
+  row === null
+    ? 'failed'
+    : row.heard
+      ? 'heard'
+      : !row.connected && row.lastError.trim() !== ''
+        ? 'failed'
+        : expired
+          ? row.connected
+            ? 'silent'
+            : 'failed'
+          : 'pending';
+
+export const dialFailure = (host: string, port: string, row: LinkRow | null): string =>
+  row !== null && row.lastError.trim() !== ''
+    ? [row.lastError.trim(), row.errorRemedy.trim()].filter((it) => it !== '').join(' ')
+    : `No answer from ${host}:${port}. Check the address, and that the device is on and listening.`;
+
+export const dialSilence = (host: string, port: string): string => `Connected to ${host}:${port}, but no aircraft has answered yet. Aircast keeps listening on this link.`;
+
+export const dialProgress = (host: string, port: string): string => `Connecting to ${host}:${port}…`;
+
+export const rememberedByDefault = (type: LinkType): boolean => type !== LinkType.Mock && type !== LinkType.LogReplay;
+
+const LinkPortField = ({ label, value, error, enabled, onChange, className }: { label: string; value: string; error: string | null; enabled: boolean; onChange: (value: string) => void; className: string }) => (
+  <OutlinedTextField value={value} onValueChange={onChange} label={label} enabled={enabled} isError={error !== null} supportingText={error ?? undefined} keyboardType="number" className={className} />
 );
 
-const LinkHostField = ({ value, error, enabled, onChange }: { value: string; error: string | null; enabled: boolean; onChange: (value: string) => void }) => (
+const LinkHostField = ({ value, error, enabled, onChange, className }: { value: string; error: string | null; enabled: boolean; onChange: (value: string) => void; className: string }) => (
   <OutlinedTextField
     value={value}
     onValueChange={onChange}
-    label="Host address"
-    placeholder="Example: 192.168.1.10"
+    label="Address"
+    placeholder="Example: 192.168.1.10 or sitl.aircast.one:5760"
     enabled={enabled}
     isError={error !== null}
     supportingText={error ?? undefined}
     keyboardType="uri"
     autoCorrect={false}
-    className="w-full"
+    className={className}
   />
 );
 
@@ -737,12 +788,14 @@ const EditLinkFields = ({
   if (editing === LinkEditing.HostAndPort) {
     return (
       <>
-        <LinkHostField value={edit.host} error={null} enabled={enabled} onChange={(it) => onEdit({ ...edit, host: it })} />
-        <LinkPortField label="Port" value={edit.port} error={null} enabled={enabled} onChange={(it) => onEdit({ ...edit, port: it })} />
+        <AddressRow>
+          <LinkHostField value={edit.host} error={null} enabled={enabled} onChange={(it) => onEdit({ ...edit, host: it })} className={ADDRESS_FIELD} />
+          <LinkPortField label="Port" value={edit.port} error={null} enabled={enabled} onChange={(it) => onEdit({ ...edit, port: it })} className={PORT_FIELD} />
+        </AddressRow>
       </>
     );
   }
-  return <LinkPortField label={editing === LinkEditing.PortOnly ? 'Listening port' : 'Port'} value={edit.port} error={null} enabled={enabled} onChange={(it) => onEdit({ ...edit, port: it })} />;
+  return <LinkPortField label={editing === LinkEditing.PortOnly ? 'Listening port' : 'Port'} value={edit.port} error={null} enabled={enabled} onChange={(it) => onEdit({ ...edit, port: it })} className={PORT_FIELD} />;
 };
 
 const udpDefaultOf = (udpListen: unknown): string =>
@@ -878,11 +931,11 @@ export const PILOT_LINK_ORDER: readonly LinkType[] = [LinkType.WebSocket, LinkTy
 export const TOOL_LINK_ORDER: readonly LinkType[] = [LinkType.LogReplay, LinkType.Mock];
 
 const LINK_KINDS: Record<Exclude<LinkType['name'], 'Other'>, readonly [string, string, string]> = {
-  Udp: ['Wi-Fi or network', 'Wi-Fi or Ethernet (UDP)', 'Listens on a port for telemetry from the aircraft or its radio.'],
+  Udp: ['Wi-Fi or network (UDP)', 'Aircraft sends to this device', 'Listens on a port for telemetry the aircraft or its radio sends to this device.'],
   Serial: ['USB telemetry radio', 'MAVLink radio on USB', 'A telemetry radio or flight controller plugged into this device over USB.'],
   Bluetooth: ['Bluetooth radio', 'Paired telemetry radio', 'A radio paired with or near this device over Bluetooth.'],
   AircastCloud: ['Aircast Cloud', 'Backup link via your account', 'A backup link to the aircraft through your Aircast account.'],
-  Tcp: ['Network server (TCP)', 'A listening ground station', 'Calls out to a device that is listening, such as a ground station or bridge.'],
+  Tcp: ['Connect to an address (TCP)', 'You have an address and port', 'Aircast calls the address and port you enter, like sitl.aircast.one:5760: a simulator, a ground station or a bridge that is listening.'],
   LogReplay: ['Replay a flight log', 'Play back a saved log', 'Plays back a saved telemetry log as if the vehicle were connected.'],
   Mock: ['Simulated vehicle', 'Try the app without hardware', 'A simulated vehicle for trying the app without hardware. It is not saved, so it ends when the app restarts.'],
   WebSocket: ['Network (WebSocket)', 'MAVLink over WebSocket', 'A browser cannot open UDP or TCP sockets, so it reaches the aircraft through a MAVLink WebSocket, such as a bridge on the ground station or the aircraft. The link is saved and reconnects when the page opens again.'],
@@ -960,6 +1013,7 @@ export const draftError = (draft: LinkDraft, udpDefault: string, taken: readonly
   if (draft.type === LinkType.Bluetooth) return draft.device === null ? 'Pick a Bluetooth device.' : null;
   if (draft.type === LinkType.LogReplay) return draft.replayLog.trim() === '' ? 'Choose a log file to replay.' : null;
   if (draft.type === LinkType.Serial) return serialFormError(draft.portName, draft.baud, taken, draft.name, anyPorts);
+  if (taken.includes(draft.name.trim())) return `A link named "${draft.name.trim()}" already exists.`;
   return linkFormError(draft.type, draft.host, shownPort(draft, udpDefault), udpDefault) ?? (draft.type === LinkType.Udp ? serverFormError(draft.server, shownPort(draft, udpDefault)) : null);
 };
 
@@ -975,7 +1029,7 @@ export const AddOutcomeEntries: readonly AddOutcome[] = [AddOutcome.Connected, A
 
 export const addOutcome = (created: boolean, saved: boolean): AddOutcome => (created ? AddOutcome.Connected : saved ? AddOutcome.SavedNotConnected : AddOutcome.Failed);
 
-export const addFailure = (type: LinkType): string => (type === LinkType.Mock ? 'Could not start the simulated vehicle.' : 'Could not add that link. The name may already be in use.');
+export const addFailure = (type: LinkType): string => (type === LinkType.Mock ? 'Could not start the simulated vehicle.' : 'Could not add that link.');
 
 const createCloudLink = async (draft: LinkDraft, name: string): Promise<boolean> => {
   await AccountCommands.setApiBase(draft.apiBase);
@@ -1132,12 +1186,12 @@ const NewLinkFields = ({
       </>
     );
   }
-  if (draft.type === LinkType.Udp) return <LinkPortField label="Listening port" value={draft.port} error={portError} enabled onChange={(it) => onDraft({ ...draft, port: it })} />;
+  if (draft.type === LinkType.Udp) return <LinkPortField label="Listening port" value={draft.port} error={portError} enabled onChange={(it) => onDraft({ ...draft, port: it })} className={PORT_FIELD} />;
   return (
-    <>
-      <LinkHostField value={draft.host} error={hostError} enabled onChange={(it) => onDraft({ ...draft, host: it })} />
-      <LinkPortField label="Port" value={draft.port} error={portError} enabled onChange={(it) => onDraft({ ...draft, port: it })} />
-    </>
+    <AddressRow>
+      <LinkHostField value={draft.host} error={hostError} enabled onChange={(it) => onDraft({ ...draft, host: it })} className={ADDRESS_FIELD} />
+      <LinkPortField label="Port" value={draft.port} error={portError} enabled onChange={(it) => onDraft({ ...draft, port: it })} className={PORT_FIELD} />
+    </AddressRow>
   );
 };
 
@@ -1244,13 +1298,16 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
   }, [linksJson]);
   const taken = useMemo(() => linkRows(linksJson).map((it) => it.name), [linksJson]);
   const udpDefault = udpDefaultOf(useQgcValue(UDP_LISTEN_PORT));
-  const [typed, setTyped] = useState(() => LinkDraft({ type, port: portFor(type, udpDefault), mock: preferredMockChoices(linksJson) }));
+  const navigation = useContext(LocalAppNavigation);
+  const [typed, setTyped] = useState(() => LinkDraft({ type, port: portFor(type, udpDefault), mock: preferredMockChoices(linksJson), autoConnect: rememberedByDefault(type) }));
   const [replayFile, setReplayFile] = useState<File | null>(null);
   const draft = withPluggedPort(typed, ports);
   const [advanced, setAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cloudErrors, setCloudErrors] = useState(false);
+  const [dialing, setDialing] = useState<string | null>(null);
+  const [silence, setSilence] = useState<string | null>(null);
   const pickLog = () =>
     void (async () => {
       const chosen = await openDocument(['*/*']);
@@ -1273,19 +1330,39 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
   const title = linkKind(type).title;
 
   useBackHandler(true, onBack);
+  const dial = async (name: string, host: string, port: string) => {
+    setDialing(dialProgress(host, port));
+    const { state, row } = await dialed(name, Date.now() + DIAL_MS);
+    setDialing(null);
+    if (state === 'heard') {
+      onAdded();
+      navigation.showFly();
+      return;
+    }
+    if (state === 'silent') {
+      setSilence(dialSilence(host, port));
+      return;
+    }
+    if (row !== null) await LinkCommands.remove(`@${LINKS_PATH}.${row.index}`, row.name);
+    setError(dialFailure(host, port, row));
+  };
   const connect = () => {
     setCloudErrors(type === LinkType.AircastCloud);
-    const invalid = draftError(draft, udpDefault, taken, ports.length > 0);
+    setSilence(null);
+    const parsed = withParsedAddress(draft);
+    if (parsed !== draft) setTyped(parsed);
+    const invalid = draftError(parsed, udpDefault, taken, ports.length > 0);
     setError(invalid === null || invalid.trim() === '' ? null : invalid);
     if (invalid !== null) return;
     setBusy(true);
-    const typedName = draft.name.trim();
-    const name = typedName === '' ? uniqueLinkName(suggestedName, taken) : typedName;
+    const typedName = parsed.name.trim();
+    const name = typedName === '' ? uniqueLinkName(suggestedLinkName(parsed, ports, udpDefault), taken) : typedName;
     void (async () => {
-      const outcome = await addLink(withTypedServer(draft, udpDefault), name, udpDefault, replayFile);
-      setBusy(false);
+      const outcome = await addLink(withTypedServer(parsed, udpDefault), name, udpDefault, replayFile);
       if (outcome === AddOutcome.Failed) setError(addFailure(type));
+      else if (type === LinkType.Tcp) await dial(name, parsed.host, shownPort(parsed, udpDefault));
       else onAdded();
+      setBusy(false);
     })();
   };
 
@@ -1314,16 +1391,51 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
           </>
         ) : null}
         {fieldError === null && error !== null ? (
-          <Text typography="bodySmall" color={md('error')}>
-            {error}
-          </Text>
+          <div role="alert">
+            <Text typography="bodySmall" color={md('error')}>
+              {error}
+            </Text>
+          </div>
         ) : null}
-        <Button enabled={!busy && (type !== LinkType.Serial || serialAvailable())} onClick={connect} className="min-h-[52px] w-full desktop:w-auto desktop:min-w-40 desktop:self-end">
-          {busy ? 'Connecting…' : type === LinkType.Mock ? 'Start' : 'Connect'}
-        </Button>
+        {dialing !== null ? (
+          <div className="flex items-center gap-3" role="status">
+            <CircularProgressIndicator size={18} strokeWidth={2} />
+            <Text typography="bodyMedium">{dialing}</Text>
+          </div>
+        ) : null}
+        {silence !== null ? (
+          <div className="flex flex-col gap-3" role="status">
+            <Text typography="bodyMedium">{silence}</Text>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  onAdded();
+                  navigation.showFly();
+                }}
+              >
+                Go to Fly
+              </Button>
+              <TextButton onClick={onAdded}>See links</TextButton>
+            </div>
+          </div>
+        ) : (
+          <Button enabled={!busy && (type !== LinkType.Serial || serialAvailable())} onClick={connect} className="min-h-[52px] w-full desktop:w-auto desktop:min-w-40 desktop:self-start">
+            {busy ? 'Connecting…' : type === LinkType.Mock ? 'Start' : 'Connect'}
+          </Button>
+        )}
       </PageColumn>
     </>
   );
+};
+
+const DIAL_MS = 8000;
+
+const dialed = async (name: string, deadline: number): Promise<{ state: Dial; row: LinkRow | null }> => {
+  const row = await rowNamed(name);
+  const state = dialState(row, Date.now() >= deadline);
+  if (state !== 'pending') return { state, row };
+  await delay(SETTLE_POLL_MS);
+  return dialed(name, deadline);
 };
 
 const LINK_SETTLE_MS = 4000;
