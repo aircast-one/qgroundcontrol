@@ -109,9 +109,10 @@ export const planSupport = (view: Json | null): PlanSupport => {
 export const freshPlanView = (): Promise<Json | null> => MapBridge.read('view.plan');
 
 export const UPLOADED = 'Uploaded';
+export const DOWNLOADING = 'Downloading…';
 
-export const uploadLabel = (offline: boolean, syncing: boolean, dirty: boolean, hasItems: boolean): string => {
-  if (syncing) return 'Uploading…';
+export const uploadLabel = (offline: boolean, syncing: boolean, dirty: boolean, hasItems: boolean, downloading: boolean = false): string => {
+  if (syncing) return downloading ? DOWNLOADING : 'Uploading…';
   if (!dirty && hasItems && !offline) return UPLOADED;
   return 'Upload';
 };

@@ -5221,6 +5221,7 @@ mod tests {
 
 pub struct PlanState {
     pub syncing: bool,
+    pub downloading: bool,
     pub progress: f64,
     pub dirty: bool,
     pub dirty_for_save: bool,
@@ -5247,12 +5248,14 @@ pub fn plan_state() -> Option<PlanState> {
         .map(|v| v.mission_snapshot()["mission"].clone())
         .unwrap_or_default();
     let syncing = mission["inProgress"].as_bool() == Some(true);
+    let reading = mission["transaction"].as_str() == Some("Read");
     let progress = mission["progress"].as_f64().unwrap_or(0.0);
     let state = held();
     let document = state.document.clone().unwrap_or_else(empty_document);
     let has_mission_items = !document.items.is_empty();
     Some(PlanState {
         syncing,
+        downloading: syncing && (reading || state.fetching),
         progress,
         dirty: state.dirty,
         dirty_for_save: state.dirty_for_save,

@@ -63,6 +63,7 @@ describe('UploadGateTest', () => {
 
   it('upload label follows PlanToolBarIndicators', () => {
     expect(uploadLabel(false, true, false, true)).toBe('Uploading…');
+    expect(uploadLabel(false, true, true, true, true), 'a download in progress never reads as an upload').toBe('Downloading…');
     expect(uploadLabel(false, false, false, true)).toBe('Uploaded');
     expect(uploadLabel(false, false, true, true)).toBe('Upload');
     expect(uploadLabel(true, false, false, true)).toBe('Upload');

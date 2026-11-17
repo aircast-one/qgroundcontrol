@@ -220,6 +220,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let syncing = core
         .as_ref()
         .map_or_else(|| flag(&plan, "syncInProgress"), |c| c.syncing);
+    let downloading = core.as_ref().is_some_and(|c| c.downloading);
     let progress = core.as_ref().map_or_else(
         || {
             mission
@@ -296,7 +297,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         },
         "fenceSupported": fences,
         "rallySupported": rally,
-        "sync": sync_json(offline, syncing, progress),
+        "sync": sync_json(offline, syncing, progress, downloading),
         "status": state_line(syncing, contains_items, dirty, item_count),
         "file": name,
         "filePath": (!file.is_empty()).then_some(file),
@@ -419,13 +420,13 @@ fn upload_json(state: Option<i64>) -> Value {
     })
 }
 
-fn sync_json(offline: bool, syncing: bool, progress: f64) -> Value {
+fn sync_json(offline: bool, syncing: bool, progress: f64, downloading: bool) -> Value {
     let (state, refusal) = match (offline, syncing) {
         (true, _) => ("offline", Some("No vehicle is connected.")),
         (false, true) => ("busy", Some("Already syncing, wait for it to finish.")),
         (false, false) => ("ready", None),
     };
-    json!({ "state": state, "refusal": refusal, "progress": if syncing { progress.clamp(0.0, 1.0) } else { 0.0 } })
+    json!({ "state": state, "refusal": refusal, "progress": if syncing { progress.clamp(0.0, 1.0) } else { 0.0 }, "downloading": syncing && downloading })
 }
 
 fn state_line(syncing: bool, contains_items: bool, dirty: bool, item_count: i64) -> String {
@@ -651,13 +652,21 @@ mod tests {
 
     #[test]
     fn sync_carries_the_transfer_progress_only_while_syncing_as_plan_toolbar_draws_it() {
-        assert_eq!(sync_json(false, true, 0.4)["progress"], 0.4);
+        assert_eq!(sync_json(false, true, 0.4, false)["progress"], 0.4);
         assert_eq!(
-            sync_json(false, false, 1.0)["progress"],
+            (
+                sync_json(false, true, 0.4, true)["downloading"].clone(),
+                sync_json(false, false, 0.0, true)["downloading"].clone()
+            ),
+            (json!(true), json!(false)),
+            "a download says so while it runs, so the button does not read Uploading"
+        );
+        assert_eq!(
+            sync_json(false, false, 1.0, false)["progress"],
             0.0,
             "the bar is hidden once the sync ends"
         );
-        assert_eq!(sync_json(false, true, 1.7)["progress"], 1.0);
+        assert_eq!(sync_json(false, true, 1.7, false)["progress"], 1.0);
     }
 
     #[test]
