@@ -6,8 +6,10 @@ import {
   ALL_CHECKS_PASSED,
   ChipTone,
   FlyState,
+  NO_ARMED_SESSION,
   READINESS_BLOCKED,
   Readiness,
+  armedSessionStep,
   chipTone,
   disarmNotice,
   flownDistanceText,
@@ -204,6 +206,24 @@ describe('FlyReadinessTest', () => {
     expect(disarmNotice(true, true, false, true)).toBe('Landed and disarmed');
     expect(disarmNotice(true, false, false, true)).toBe('Disarmed');
     expect(disarmNotice(false, false, false, true)).toBeNull();
+  });
+
+  it('an armed flight outlives a link loss: a landing during the outage still reads as landed, and the start is not re-read', () => {
+    const flying = [[true, 1, true, 'disarmed'], [true, 1, true, 'flying']].reduce((held, [connected, vehicle, armed, state]) => armedSessionStep(held, connected as boolean, vehicle as number, armed as boolean, state as string).session, NO_ARMED_SESSION);
+    expect(flying).toEqual({ vehicle: 1, armed: true, flew: true });
+    const outage = armedSessionStep(flying, false, null, false, null);
+    expect(outage).toEqual({ session: flying, notice: null, landed: false, started: false });
+    expect(armedSessionStep(outage.session, true, 1, false, 'landed')).toMatchObject({ notice: 'Landed and disarmed', landed: true, started: false });
+    expect(armedSessionStep(outage.session, true, 1, true, 'landed'), 'still armed on its return, the flight carries on').toMatchObject({ notice: null, started: false, session: { armed: true, flew: true } });
+    expect(armedSessionStep(outage.session, true, null, false, 'disarmed'), 'nothing is said until the vehicle list names the aircraft').toEqual({ session: flying, notice: null, landed: false, started: false });
+  });
+
+  it('a different aircraft after a link loss starts afresh and announces nothing about the lost one', () => {
+    const flying = armedSessionStep(armedSessionStep(NO_ARMED_SESSION, true, 1, true, 'flying').session, false, null, false, null).session;
+    expect(armedSessionStep(flying, true, 2, false, 'disarmed')).toEqual({ session: { vehicle: 2, armed: false, flew: false }, notice: null, landed: false, started: false });
+    expect(armedSessionStep(flying, true, 2, true, 'disarmed').started).toBe(true);
+    const unnamed = armedSessionStep(flying, true, null, false, 'disarmed');
+    expect(armedSessionStep(unnamed.session, true, 2, false, 'disarmed').notice, 'connected before the list names it, still another aircraft').toBeNull();
   });
 
   it('aVehicleThatVanishesWhileArmedIsNeverAnnouncedAsDisarmed', () => {

@@ -92,6 +92,25 @@ export const useGuidedReadiness = (state: FlyState | null): Readiness | null => 
 export const disarmNotice = (wasArmed: boolean, flewWhileArmed: boolean, armedNow: boolean, connectedNow: boolean): string | null =>
   wasArmed && !armedNow && connectedNow ? (flewWhileArmed ? 'Landed and disarmed' : 'Disarmed') : null;
 
+export type ArmedSession = { readonly vehicle: number | null; readonly armed: boolean; readonly flew: boolean };
+
+export const NO_ARMED_SESSION: ArmedSession = { vehicle: null, armed: false, flew: false };
+
+export type ArmedSessionStep = { readonly session: ArmedSession; readonly notice: string | null; readonly landed: boolean; readonly started: boolean };
+
+export const armedSessionStep = (held: ArmedSession, connected: boolean, vehicle: number | null, armed: boolean, state: string | null): ArmedSessionStep => {
+  if (!connected || (vehicle === null && held.vehicle !== null)) return { session: held, notice: null, landed: false, started: false };
+  const same = held.vehicle === null || held.vehicle === vehicle;
+  const was = same && held.armed;
+  const flew = same && held.flew;
+  return {
+    session: { vehicle, armed, flew: armed && (flew || state === 'flying' || state === 'landing') },
+    notice: disarmNotice(was, flew, armed, true),
+    landed: flew,
+    started: armed && !was,
+  };
+};
+
 export const VEHICLE_FLIGHT_DISTANCE = 'vehicle.flightDistance';
 
 export const flownDistanceText = (view: Json | null): string | null => {

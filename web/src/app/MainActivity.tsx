@@ -24,7 +24,7 @@ import { useMap3dShown } from '@/map/Map3d';
 import { AircastTheme } from '@/map/Theme';
 import type { TrackPoint } from '@/map/VehicleMap';
 import { VEHICLES_VIEW, type VehicleChoices, VehicleBridge, activeChanged, handoverNotice, rememberedChoices, vehicleChoices } from '@/map/VehiclePicker';
-import { VehicleStateChip } from '@/ui/ActiveVehicle';
+import { VehicleStateChip, useRememberActiveVehicleId } from '@/ui/ActiveVehicle';
 import { DeviceDeepLink, DeviceStatusChip } from '@/ui/DeviceScreen';
 import { deviceLinkOf } from '@/ui/DeviceScreens';
 import { deviceRequested } from '@/ui/DeviceStatus';
@@ -49,7 +49,7 @@ import { type FlyDeckLayout, LocalFlyDestinations, MenuTile } from '@/ui/FlyDeck
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
 import { FleetCard, FlyMenuButton, FlyScreen, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
-import { FLY_STATE, VEHICLE_FLIGHT_DISTANCE, disarmNotice, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
+import { FLY_STATE, NO_ARMED_SESSION, VEHICLE_FLIGHT_DISTANCE, armedSessionStep, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog, gimbalRefused } from '@/ui/GimbalIndicator';
 import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners, showLatest } from '@/ui/HostNotices';
@@ -466,8 +466,8 @@ export const AircastShell = () => {
   useEffect(() => {
     overlayLayout.lockWhileArmed(armedNow);
   }, [armedNow]);
-  const wasArmed = useRef(false);
-  const flewWhileArmed = useRef(false);
+  const activeId = useRememberActiveVehicleId();
+  const armedSession = useRef(NO_ARMED_SESSION);
   const armedBattery = useRef<number | null>(null);
 
   const announceDisarm = async (said: string, landed: boolean, startBattery: number | null) => {
@@ -480,16 +480,15 @@ export const AircastShell = () => {
   };
 
   useEffect(() => {
-    if (armedNow && !wasArmed.current) {
+    const step = armedSessionStep(armedSession.current, flyNow?.connected === true, activeId, armedNow, flyNow?.state ?? null);
+    if (step.started) {
       void batteryPercentNow().then((percent) => {
         armedBattery.current = percent;
       });
     }
-    const said = disarmNotice(wasArmed.current, flewWhileArmed.current, armedNow, flyNow?.connected === true);
-    if (said !== null) void announceDisarm(said, flewWhileArmed.current, armedBattery.current);
-    flewWhileArmed.current = armedNow && (flewWhileArmed.current || flyNow?.state === 'flying' || flyNow?.state === 'landing');
-    wasArmed.current = armedNow;
-  }, [flyNow?.armed, flyNow?.state, flyNow?.connected]);
+    if (step.notice !== null) void announceDisarm(step.notice, step.landed, armedBattery.current);
+    armedSession.current = step.session;
+  }, [flyNow?.armed, flyNow?.state, flyNow?.connected, activeId]);
 
   const noVideoSource = useQgcDerived(VIDEO_VIEW, noVideoSourceOf);
   const pictureNow = useQgcDerived(VIDEO_VIEW, videoDecodingOf);
