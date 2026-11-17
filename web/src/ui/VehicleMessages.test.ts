@@ -13,10 +13,12 @@ import {
   levelOf,
   messageCountText,
   messageTime,
+  severityRank,
   severitySummary,
   unreadCount,
   unreadMessages,
   vehicleMessages,
+  worstFirst,
 } from './VehicleMessages';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -64,6 +66,20 @@ describe('VehicleMessagesTest', () => {
     expect(bannerMessages(unread).map((it) => it.text)).toEqual(['Battery low']);
     expect(bannerMessages(unread.slice(0, 2))).toEqual([]);
     expect(bannerText(bannerMessages(unread))).toBe('Battery low');
+  });
+
+  it('the most severe message leads the log and the banner, newest first within a severity', () => {
+    const said = (severity: string, level: MessageSeverity, text: string) => VehicleMessage({ index: 0, time: '', severity, level, text });
+    const log = [
+      said('Emergency', MessageSeverity.Error, 'Status text emergency'),
+      said('Error', MessageSeverity.Error, 'Status text error'),
+      said('Info', MessageSeverity.Normal, 'Status text info'),
+      said('Warning', MessageSeverity.Warning, 'Status text warning'),
+      said('Error', MessageSeverity.Error, 'Newer error'),
+    ];
+    expect(worstFirst(log).map((it) => it.text)).toEqual(['Status text emergency', 'Newer error', 'Status text error', 'Status text warning', 'Status text info']);
+    expect(bannerText(bannerMessages(log))).toBe('Status text emergency');
+    expect(severityRank(said('Fehler', MessageSeverity.Error, 'kaputt'))).toBe(severityRank(said('Error', MessageSeverity.Error, 'x')));
   });
 
   it('a message time drops the milliseconds QGC stamps it with', () => {

@@ -38,6 +38,7 @@ test('status text from the vehicle fills the message log and clear empties it', 
   const log = app.getByRole('dialog').filter({ hasText: /errors? · \d+ warnings?/ });
   await expect(log.getByText('Status text critical')).toBeVisible();
   await expect(log.getByText('Status text info')).toBeVisible();
+  await expect(log.getByText(/^Status text /).first(), 'the emergency leads the log').toHaveText('Status text emergency');
   await log.getByRole('button', { name: 'Clear' }).click();
   await expect(log).toBeHidden();
   const again = await vehicleStatus(app);

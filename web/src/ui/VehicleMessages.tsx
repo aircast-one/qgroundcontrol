@@ -6,7 +6,7 @@ import { useLaunchedEffect } from '@/kotlin/Compose';
 import { IconButton, Text, TextButton } from '@/m3';
 import type { SnackbarDuration } from '@/m3/Feedback';
 import { AircastSheet } from '@/map/AircastSheet';
-import { Drawable } from '@/res/Icon';
+import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { useOsdBackdrop, useOsdTint } from './Osd';
 import { EDIT_PARAMETER_TITLE, LinkedText, ParameterEditDialog } from './ParameterLinks';
@@ -50,9 +50,23 @@ export const chipBlocker = (blocker: string): string => {
 export const bannerMessages = (unread: readonly VehicleMessage[]): readonly VehicleMessage[] =>
   unread.filter((it) => (it.level === MessageSeverity.Error || it.level === MessageSeverity.Warning) && !it.toldElsewhere);
 
+const SEVERITY_RANK: readonly string[] = ['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug'];
+
+export const severityRank = (message: VehicleMessage): number => {
+  const named = SEVERITY_RANK.indexOf(message.severity.trim().toLowerCase());
+  if (named >= 0) return named;
+  return message.level === MessageSeverity.Error ? SEVERITY_RANK.indexOf('error') : message.level === MessageSeverity.Warning ? SEVERITY_RANK.indexOf('warning') : SEVERITY_RANK.indexOf('info');
+};
+
+export const worstFirst = (messages: readonly VehicleMessage[]): readonly VehicleMessage[] =>
+  messages
+    .map((message, at) => ({ message, at }))
+    .toSorted((a, b) => severityRank(a.message) - severityRank(b.message) || b.at - a.at)
+    .map((it) => it.message);
+
 export const bannerText = (messages: readonly VehicleMessage[]): string | null => {
   if (messages.length === 0) return null;
-  const worst = messages.findLast((it) => it.level === MessageSeverity.Error) ?? messages.findLast((it) => it.level === MessageSeverity.Warning) ?? null;
+  const worst = worstFirst(messages)[0] ?? null;
   const count = messageCountText(messages.length);
   return worst !== null && worst.text.trim() !== '' ? worst.text : count;
 };
@@ -194,7 +208,7 @@ export const VehicleMessagesSheet = ({ onDismiss }: { onDismiss: () => void }) =
 
 const VehicleMessageLog = ({ messages, checks, blocker, onDismiss }: { messages: readonly VehicleMessage[]; checks: readonly ArmingCheck[]; blocker: string | null; onDismiss: () => void }) => {
   const blocking = checks.length === 0 ? (blocker === null ? [] : [ArmingCheck(blocker, '', 'error')]) : checks;
-  const lines = useMemo(() => messages.toReversed(), [messages]);
+  const lines = useMemo(() => worstFirst(messages), [messages]);
   const [editing, setEditing] = useState<string | null>(null);
 
   return (
@@ -240,7 +254,7 @@ const VehicleMessageLog = ({ messages, checks, blocker, onDismiss }: { messages:
 
 export const VehicleMessagesPage = ({ className }: { className?: string }) => {
   const messagesJson = useQgcPath(MESSAGES);
-  const lines = useMemo(() => vehicleMessages(messagesJson).toReversed(), [messagesJson]);
+  const lines = useMemo(() => worstFirst(vehicleMessages(messagesJson)), [messagesJson]);
   useLaunchedEffect([], () => void VehicleCommands.resetAllMessages());
 
   if (lines.length === 0) return <EmptyState icon="ic_description" title="No messages" text="The vehicle has not said anything yet." className={className} />;
@@ -258,22 +272,21 @@ export const VehicleMessagesPage = ({ className }: { className?: string }) => {
   );
 };
 
-const levelIcon = (level: MessageSeverity) => {
+const LevelIcon = ({ level }: { level: MessageSeverity }) => {
   switch (level.name) {
     case 'Error':
-      return { icon: 'ic_error', tint: md('error') } as const;
+      return <Drawable name="ic_error" size={24} className="shrink-0" style={{ color: md('error') }} />;
     case 'Warning':
-      return { icon: 'ic_warning', tint: aircast('warning') } as const;
+      return <Drawable name="ic_warning" size={24} className="shrink-0" style={{ color: aircast('warning') }} />;
     case 'Normal':
-      return { icon: 'ic_check_circle', tint: aircast('success') } as const;
+      return <MaterialIcon name="info" size={24} className="shrink-0" style={{ color: md('onSurfaceVariant') }} />;
   }
 };
 
 export const MessageLine = ({ level, time, children }: { level: MessageSeverity; time: string; children: ReactNode }) => {
-  const { icon, tint } = levelIcon(level);
   return (
     <div className="flex w-full gap-4 py-2.5">
-      <Drawable name={icon} size={24} className="shrink-0" style={{ color: tint }} />
+      <LevelIcon level={level} />
       <div className="flex min-w-0 flex-1 flex-col">
         {time.trim() !== '' ? (
           <Text typography="labelSmall" color={md('onSurfaceVariant')}>
