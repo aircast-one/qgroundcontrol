@@ -785,10 +785,10 @@ const activeAt = (json: Json | null): TrackPoint | null => {
 
 const FollowButton = () => {
   const following = useValue(mapFollowing);
-  const corners = useValue(mapWindow);
+  const shown = useValue(mapWindow);
   const vehicle = useQgcDerived(VEHICLES_VIEW, activeAt);
   if (following || vehicle === null) return null;
-  const away = vehicleOffScreen(corners, vehicle);
+  const away = vehicleOffScreen(shown, vehicle);
   const label = away === null ? FOLLOW_VEHICLE : `${FOLLOW_VEHICLE}. ${away.text}`;
   return (
     <Surface

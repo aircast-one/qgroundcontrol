@@ -256,8 +256,8 @@ export const FlyMap = ({
               onUserPan={() => {
                 if (!pip) mapFollowing.value = false;
               }}
-              onViewChanged={(corners) => {
-                if (!pip) mapWindow.value = corners;
+              onWindowChanged={(seen) => {
+                if (!pip) mapWindow.value = seen;
               }}
               keepCentered={keepCentered || pip}
               pip={pip}

@@ -4,7 +4,13 @@ import type { TrackPoint } from './VehicleMap';
 
 export const mapFollowing = mutableStateOf(true);
 
-export const mapWindow = mutableStateOf<readonly TrackPoint[]>([]);
+export type ScreenPoint = { readonly x: number; readonly y: number };
+
+export type ScreenRect = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+
+export type MapWindow = { readonly centre: TrackPoint; readonly shows: (at: TrackPoint) => boolean };
+
+export const mapWindow = mutableStateOf<MapWindow | null>(null);
 
 export const FOLLOW_VEHICLE = 'Follow the vehicle';
 
@@ -18,20 +24,24 @@ export const bearingDegrees = (from: TrackPoint, to: TrackPoint): number => {
   return ((Math.atan2(y, x) / radians) + 360) % 360;
 };
 
-export const inWindow = (corners: readonly TrackPoint[], at: TrackPoint): boolean => {
-  if (corners.length === 0) return true;
-  const latitudes = corners.map((it) => it.latitude);
-  const longitudes = corners.map((it) => it.longitude);
-  return at.latitude <= Math.max(...latitudes) && at.latitude >= Math.min(...latitudes) && at.longitude <= Math.max(...longitudes) && at.longitude >= Math.min(...longitudes);
+export const nearestLongitude = (centre: number, longitude: number): number => centre + ((((longitude - centre) % 360) + 540) % 360) - 180;
+
+export const inWindow = (project: (at: TrackPoint) => ScreenPoint, rect: ScreenRect, centre: TrackPoint, at: TrackPoint): boolean => {
+  const { x, y } = project({ latitude: at.latitude, longitude: nearestLongitude(centre.longitude, at.longitude) });
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 };
+
+export const projectedWindow = (project: (at: TrackPoint) => ScreenPoint, rect: ScreenRect, centre: TrackPoint): MapWindow => ({
+  centre,
+  shows: (at) => inWindow(project, rect, centre, at),
+});
 
 export type VehicleOffScreen = { readonly bearing: number; readonly text: string };
 
-export const vehicleOffScreen = (corners: readonly TrackPoint[], vehicle: TrackPoint): VehicleOffScreen | null => {
-  if (inWindow(corners, vehicle)) return null;
-  const centre = { latitude: corners.reduce((sum, it) => sum + it.latitude, 0) / corners.length, longitude: corners.reduce((sum, it) => sum + it.longitude, 0) / corners.length };
-  const bearing = bearingDegrees(centre, vehicle);
-  const metres = metresBetween(centre, vehicle);
+export const vehicleOffScreen = (seen: MapWindow | null, vehicle: TrackPoint): VehicleOffScreen | null => {
+  if (seen === null || seen.shows(vehicle)) return null;
+  const bearing = bearingDegrees(seen.centre, vehicle);
+  const metres = metresBetween(seen.centre, vehicle);
   const away = metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres)} m`;
   return { bearing, text: `Vehicle ${away} ${COMPASS_POINTS[Math.round(bearing / 45) % COMPASS_POINTS.length] ?? ''} of the map center` };
 };

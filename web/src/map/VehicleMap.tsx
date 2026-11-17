@@ -10,6 +10,7 @@ import { installBottleLayer, landedBottles, renderBottles } from './DroppedBottl
 import { type FenceCircle, type FencePolygon, type FirmwareFence, type RallyPoint, circlesAsPolygons } from './FenceBridge';
 import { LocalFlyMapEdits } from './FlyMapEdits';
 import { LAST_SEEN, type LostVehicle } from './LostVehicle';
+import { type MapWindow, projectedWindow } from './MapFollow';
 import { type GimbalAzimuth, installGimbalLayer, renderGimbals } from './GimbalWedge';
 import { type GotoLocation, attachGotoRadiusDrag, editedGoto, gotoPath, installClickMarker, installGotoLayer, previewGoto, renderClickMarker, renderGoto, renderGotoPath } from './GotoMarker';
 import { type LandingPattern, landingAreaFeatures, landingLabelFeatures, landingLoiterFeatures, landingPathFeatures } from './LandingPattern';
@@ -221,6 +222,7 @@ export type VehicleMapProps = {
   canDrag?: (hit: MapHit) => boolean;
   onCentreChanged?: (at: TrackPoint, zoom: number) => void;
   onViewChanged?: (corners: readonly TrackPoint[]) => void;
+  onWindowChanged?: (seen: MapWindow) => void;
   bottomInsetPx?: number;
   topInsetPx?: number;
   leftInsetPx?: number;
@@ -292,6 +294,7 @@ export const VehicleMap = ({
   canDrag = () => true,
   onCentreChanged = ignore,
   onViewChanged = ignore,
+  onWindowChanged = ignore,
   bottomInsetPx = 0,
   topInsetPx = 0,
   leftInsetPx = 0,
@@ -383,6 +386,7 @@ export const VehicleMap = ({
   const latestUserPan = useUpdatedRef(onUserPan);
   const latestCentreChanged = useUpdatedRef(onCentreChanged);
   const latestViewChanged = useUpdatedRef(onViewChanged);
+  const latestWindowChanged = useUpdatedRef(onWindowChanged);
   const latestLeftInset = useUpdatedRef(leftInsetPx);
   const latestBottomInset = useUpdatedRef(bottomInsetPx);
   const latestTopInset = useUpdatedRef(topInsetPx);
@@ -400,6 +404,7 @@ export const VehicleMap = ({
       const top = coerceIn(latestTopInset.current, 0, bottom);
       const seen = ([[left, top], [right, top], [right, bottom], [left, bottom]] as const).map(([x, y]) => pointOf(loaded.unproject([x, y])));
       latestViewChanged.current(clearWindow(seen));
+      latestWindowChanged.current(projectedWindow((at) => loaded.project([at.longitude, at.latitude]), { left, top, right, bottom }, pointOf(loaded.unproject([(left + right) / 2, (top + bottom) / 2]))));
     };
     reportCentre();
     loaded.on('moveend', () => {
