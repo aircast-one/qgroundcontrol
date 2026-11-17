@@ -1,19 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { motorLoads } from './MotorLoadWidget';
+import { besideWidget, motorLoads } from './MotorLoadWidget';
 
 describe('MotorLoadWidgetTest', () => {
   it("draws one rotor per motor of the core's frame", () => {
     const loads = motorLoads(
       parseJson(
         '{"shown":true,"frame":[' +
-          '{"motor":1,"angle":90,"reporting":false,"current":"0.0","temperature":"0 C","temperatureLevel":"normal","currentLevel":"normal"},' +
-          '{"motor":5,"angle":30,"reporting":true,"current":"50.4","rpm":"4200","temperature":"75 C","temperatureLevel":"elevated","currentLevel":"critical"}]}',
+          '{"motor":1,"angle":90,"state":"none","current":"0.0","temperature":"0 C","temperatureLevel":"normal","currentLevel":"normal"},' +
+          '{"motor":3,"angle":-30,"state":"lost","current":"0.0","temperature":"0 C","temperatureLevel":"normal","currentLevel":"normal"},' +
+          '{"motor":5,"angle":30,"state":"reporting","current":"50.4","rpm":"4200","temperature":"75 C","temperatureLevel":"elevated","currentLevel":"critical"}]}',
       ),
     );
-    expect(loads.map((load) => load.motor)).toEqual([1, 5]);
-    expect(loads[1]).toMatchObject({ angle: 30, reporting: true, current: '50.4', rpm: '4200', temperatureLevel: 'elevated', currentLevel: 'critical' });
+    expect(loads.map((load) => [load.motor, load.state])).toEqual([
+      [1, 'none'],
+      [3, 'lost'],
+      [5, 'reporting'],
+    ]);
+    expect(loads[2]).toMatchObject({ angle: 30, current: '50.4', rpm: '4200', temperatureLevel: 'elevated', currentLevel: 'critical' });
     expect(motorLoads(parseJson('{"shown":false}'))).toEqual([]);
     expect(motorLoads(parseJson('{"shown":true,"motors":[]}'))).toEqual([]);
+  });
+
+  it('opens its panel beside the frame, on whichever side has room', () => {
+    expect(besideWidget({ left: 16, right: 156, top: 80 }, 1280)).toEqual({ x: 164, y: 80 });
+    expect(besideWidget({ left: 1100, right: 1240, top: 80 }, 1280), 'a frame moved to the right edge opens the panel to its left').toEqual({ x: 772, y: 80 });
   });
 });

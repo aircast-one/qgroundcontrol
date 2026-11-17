@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { linkAlert, linkBuzz, returnAlert, speechBatch, speechPath } from './VoiceAlerts';
+import { linkAlert, linkBuzz, lostMotors, motorLossAlert, returnAlert, speechBatch, speechPath } from './VoiceAlerts';
 
 describe('InstrumentDetailTest', () => {
+  it('a motor whose telemetry is lost in flight is said once, by number, and not again while it stays lost', () => {
+    expect(lostMotors(parseJson('{"shown":true,"frame":[{"motor":1,"state":"reporting"},{"motor":3,"state":"lost"},{"motor":4,"state":"none"},{"motor":6,"state":"lost"}]}'))).toBe('3,6');
+    const first = motorLossAlert([], [3], true);
+    expect(first).toEqual({ heard: [3], spoken: 'Motor 3 telemetry lost' });
+    expect(motorLossAlert(first.heard, [3], true).spoken).toBeNull();
+    expect(motorLossAlert(first.heard, [3, 6], true).spoken, 'a second motor going is news').toBe('Motor 6 telemetry lost');
+    expect(motorLossAlert([], [2, 5], true).spoken).toBe('Motors 2, 5 telemetry lost');
+    expect(motorLossAlert([], [3], false), 'on the ground the red rotor says it').toEqual({ heard: [3], spoken: null });
+  });
+
   it('return now is said once a flight, however often the charge crosses the turn-back point', () => {
     const first = returnAlert(false, true, true);
     expect(first).toEqual({ speak: true, alerted: true });
