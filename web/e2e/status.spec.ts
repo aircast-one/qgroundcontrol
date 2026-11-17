@@ -48,7 +48,7 @@ test('status text from the vehicle fills the message log and clear empties it', 
 
 test('at desktop width the status pill shows battery time, current draw and satellites', async ({ vehicle }) => {
   await expect(vehicle.getByRole('button', { name: /^\d+:\d\d flight time left$/ })).toBeVisible();
-  await expect(vehicle.getByRole('button', { name: /^[\d.]+A current draw$/ })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: /^[\d.]+ A current draw$/ })).toBeVisible();
   await expect(vehicle.getByText(/^\d+$/).filter({ hasText: '12' }).first()).toBeVisible();
 });
 

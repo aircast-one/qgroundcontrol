@@ -37,7 +37,7 @@ test('a right-click on the camera picture flies the aircraft to the spot it show
   await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
   await takeOff(app, '20 m');
   await expect(flightMode(app)).toHaveAccessibleName(/ Flying /, { timeout: 60_000 });
-  await expect(telemetry(app, 'H')).toHaveText(/^H(19\.[5-9]|20\.[0-4])m$/, { timeout: 90_000 });
+  await expect(telemetry(app, 'H')).toHaveText(/^H(19\.[5-9]|20\.[0-4]) m$/, { timeout: 90_000 });
   await aimGimbal(app, -45, 0);
   await expect.poll(() => gimbalPitch(app), { timeout: 30_000 }).toBeLessThan(-44);
   const centre = await pictureCentre(app);

@@ -27,7 +27,7 @@ export const planStats = (itemCount: number, items: readonly MissionItem[], summ
   return [
     { label: 'Items', value: itemCount.toString() },
     ...(distance === null ? [] : [{ label: 'Distance', value: distance }]),
-    ...(time === null ? [] : [{ label: 'Time', value: time.startsWith(NO_HOURS) ? time.slice(NO_HOURS.length) : time }]),
+    ...(time === null ? [] : [{ label: 'Time', value: time }]),
     ...(highest === null ? [] : [{ label: 'Max alt', value: highest }]),
   ];
 };
@@ -37,7 +37,6 @@ export const highestAltitude = (items: readonly MissionItem[]): string | null =>
     .filter((it) => it.index !== HOME_ITEM && !Number.isNaN(it.altitude) && it.altitudeText.trim() !== '')
     .reduce<MissionItem | null>((best, it) => (best === null || it.altitude > best.altitude ? it : best), null)?.altitudeText ?? null;
 
-const NO_HOURS = '00:';
 export const TAP_TO_ADD = `${TAP} the map to add a waypoint`;
 export const TERRAIN_CONFLICT_HERE = 'Too close to the terrain here';
 const PANEL_DRAG_THRESHOLD = 24;

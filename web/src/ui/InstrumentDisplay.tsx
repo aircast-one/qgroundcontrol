@@ -5,6 +5,7 @@ import { coerceIn } from '@/kotlin/Std';
 import { AlertDialog, FilterChip, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { argb, md } from '@/theme/Colors';
+import { withUnit } from './Quantity';
 
 const DISPLAY_STORE = 'fly-instrument-display';
 const DEFAULT_RANGE_LOW = 0.0;
@@ -105,7 +106,7 @@ export const displayIcon = (display: ValueDisplay, raw: number | null): string |
 
 export const iconShown = (display: ValueDisplay): boolean => display.rangeType === RangeType.Icon || display.showIcon;
 
-export const displayReading = (display: ValueDisplay, value: string, units: string): string => (display.showUnits && units.trim() !== '' ? `${value} ${units}` : value);
+export const displayReading = (display: ValueDisplay, value: string, units: string): string => (display.showUnits ? withUnit(value, units) : value);
 
 export const displayJson = (display: ValueDisplay): string =>
   JSON.stringify({

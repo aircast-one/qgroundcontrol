@@ -9,6 +9,7 @@ import { md, withAlpha } from '@/theme/Colors';
 import { sliderValue } from '@/ui/ParameterForm';
 import { factNumber } from '@/ui/Px4TuningScreen';
 import { FieldSlider, LocalStagedEdits, sentenceCase, showsAsField } from '@/ui/SettingsScreen';
+import { quantityText } from './Quantity';
 
 export const VALUE_OFF = 'Off';
 export const VALUE_NO_LIMIT = 'No limit';
@@ -26,7 +27,7 @@ export const disablesAtZero = (fact: Fact): boolean => DISABLED_AT_ZERO.test(`${
 export const valueText = (fact: Fact): string =>
   disablesAtZero(fact) && numberOf(fact) === 0
     ? offLabel(fact)
-    : [fact.valueString.trim(), fact.units].filter((it) => it.trim() !== '').join(' ');
+    : quantityText(fact.valueString, fact.units);
 
 export const valueDecimals = (fact: Fact): number => {
   const text = fact.valueString.trim();

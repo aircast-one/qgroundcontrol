@@ -66,6 +66,7 @@ import { FootNote, SectionHeader } from './SetupRow';
 import { useHasSetupPage } from './SetupScreen';
 import { ARM_REQUEST, deckRequestRefusal } from './VehicleStatusSheet';
 import { TAP_LOWER } from '@/kotlin/Platform';
+import { withUnit } from './Quantity';
 
 const MISSION_POPUP_DELAY_MS = 1000;
 const GCS_POSITION = 'view.gcsPosition';
@@ -153,7 +154,7 @@ export const instrumentReading = (item: Json): string | null => {
   if (!optBoolean(item, 'missing')) {
     const units = optText(item, 'units');
     const value = optText(item, 'value');
-    return units.trim() === '' ? value : `${value} ${units}`;
+    return withUnit(value, units);
   }
   return optText(item, 'missingReason') === 'notReported' ? AWAITING_READING : null;
 };
@@ -325,7 +326,7 @@ export const TelemetryRow = ({
           {osdLabel(instrument.label)}
         </Text>
         <Text typography={typography} className="tabular-nums" maxLines={1} style={{ zoom: valueSize.scale }} color={silent ? md('onSurfaceVariant') : colourOf(displayFor(displays, instrument), instrument.raw) ?? aircast('outdoorForeground')}>
-          {`${instrument.value}${instrument.units}`}
+          {withUnit(instrument.value, instrument.units)}
         </Text>
       </div>
     );
@@ -411,7 +412,7 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
         </Text>
       )}
       <Text typography="titleMedium" fontWeight={700} className="tabular-nums" maxLines={1} style={{ zoom: scale }} color={tint}>
-        {`${instrument.value}${instrument.units}`}
+        {withUnit(instrument.value, instrument.units)}
       </Text>
     </div>
   );

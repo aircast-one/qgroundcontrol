@@ -12,7 +12,7 @@ import { NEWEST_PATTERN } from './VehicleSync';
 const item = (index: number, altitude = NaN) =>
   MissionItem({ index, sequence: index, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: true, altitude, altitudeText: Number.isNaN(altitude) ? '' : `${Math.trunc(altitude)} m` });
 
-const summary = parseJson('{"rows":[{"label":"Distance","value":"1.2 km"},{"label":"Time","value":"00:04:30"},{"label":"Furthest from launch","value":"640 m"}]}');
+const summary = parseJson('{"rows":[{"label":"Distance","value":"1.2 km"},{"label":"Time","value":"4:30"},{"label":"Furthest from launch","value":"640 m"}]}');
 
 describe('PlanStripTest', () => {
   it("the strip reads items, the core's distance and time, and the highest altitude", () => {
@@ -24,15 +24,9 @@ describe('PlanStripTest', () => {
     ).toEqual([
       { label: 'Items', value: '3' },
       { label: 'Distance', value: '1.2 km' },
-      { label: 'Time', value: '04:30' },
+      { label: 'Time', value: '4:30' },
       { label: 'Max alt', value: '80 m' },
     ]);
-  });
-
-  it('a flight under an hour drops the empty hours so the time fits the strip', () => {
-    const long = parseJson('{"rows":[{"label":"Time","value":"01:04:30"}]}');
-
-    expect(planStats(0, [], long)[1]).toEqual({ label: 'Time', value: '01:04:30' });
   });
 
   it('a stat the core has not worked out is left off rather than shown as zero', () => {

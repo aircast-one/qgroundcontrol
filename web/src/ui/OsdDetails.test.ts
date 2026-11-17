@@ -18,16 +18,16 @@ describe('OsdDetailsTest', () => {
   it('each status bar cell reads its worst reading first, then the rest in order', () => {
     expect(osdLines(everything).map((line) => [line.icon, osdCellText(line)])).toEqual([
       ['ic_explore', 'EKF variance 0.32 · Vibration 3.2 · HDOP 0.5'],
-      ['ic_videocam', 'Bitrate 2.2Mb/s · Frame rate 30fps · Jitter 10ms · Packet loss 0.4% · Skipped frames 0/s'],
+      ['ic_videocam', 'Bitrate 2.2 Mb/s · Frame rate 30 fps · Jitter 10 ms · Packet loss 0.4% · Skipped frames 0/s'],
     ]);
     const lines = osdLines({ ...everything, ekfRatios: [0.62], video: { ...healthyVideo, lossPercent: 12, lostPerSecond: 0, skippedPerSecond: 2 } });
-    expect(lines.map(osdCellText)).toEqual(['EKF variance 0.62 · Vibration 3.2 · HDOP 0.5', 'Packet loss 12% · Skipped frames 2/s · Bitrate 2.2Mb/s · Frame rate 30fps · Jitter 10ms']);
+    expect(lines.map(osdCellText)).toEqual(['EKF variance 0.62 · Vibration 3.2 · HDOP 0.5', 'Packet loss 12% · Skipped frames 2/s · Bitrate 2.2 Mb/s · Frame rate 30 fps · Jitter 10 ms']);
     expect(osdRows(lines[1]!).map((it) => it.severity)).toEqual([0, 0, 0, 2, 1]);
   });
 
   it('a camera that reports lost packets but not how many arrived shows the loss as a rate', () => {
     const rtsp = osdLines({ ...everything, video: { ...healthyVideo, lossPercent: null, lostPerSecond: 3.4 } });
-    expect(osdCellText(rtsp[1]!)).toBe('Bitrate 2.2Mb/s · Frame rate 30fps · Jitter 10ms · Packets lost 3/s · Skipped frames 0/s');
+    expect(osdCellText(rtsp[1]!)).toBe('Bitrate 2.2 Mb/s · Frame rate 30 fps · Jitter 10 ms · Packets lost 3/s · Skipped frames 0/s');
   });
 
   it('vibration says its unit, the level it is judged against and what to do about it', () => {
@@ -77,7 +77,7 @@ describe('OsdDetailsTest', () => {
     expect(now.kbps).toBe(2200);
     expect(now.lossPercent).toBe(2);
     expect(now.skippedPerSecond).toBe(2);
-    expect([bitrateText(now.kbps), bitrateText(800)]).toEqual(['2.2Mb/s', '800kb/s']);
+    expect([bitrateText(now.kbps), bitrateText(800)]).toEqual(['2.2 Mb/s', '800 kb/s']);
     expect([percentText(0.44), percentText(12.4)]).toEqual(['0.4%', '12%']);
   });
 });

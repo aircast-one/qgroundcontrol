@@ -29,7 +29,7 @@ test('in flight the map menu flies to the clicked point', async ({ vehicle }) =>
 test('in flight an ArduCopter flies to the clicked point without saying the transfer failed', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await takeOff(vehicle, '10 m');
-  await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4])m$/, { timeout: 60_000 });
+  await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4]) m$/, { timeout: 60_000 });
   await showMapFull(vehicle);
   await mapMenuAt(vehicle, 200, -100);
   await vehicle.getByRole('button', { name: 'Go to location' }).click();

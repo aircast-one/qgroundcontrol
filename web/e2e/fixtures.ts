@@ -51,7 +51,7 @@ export const connectMock = async (page: Page, options: readonly MockOption[] = [
 
 export const flightMode = (page: Page): Locator => page.getByRole('button', { name: /Change flight mode$/ }).first();
 
-export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: new RegExp(`^${label.replace('.', '\\.')}-?[\\d.]+(m|m/s|ft|ft/s)$`) });
+export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: new RegExp(`^${label.replace('.', '\\.')}-?[\\d.]+ (m|m/s|ft|ft/s)$`) });
 
 export const slideAcross = async (page: Page, target: Locator) => {
   await expect(target).toBeEnabled();

@@ -8,7 +8,7 @@ test('takeoff climbs to the chosen height and holds there', async ({ vehicle }) 
   await takeOff(vehicle, '10 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^(Takeoff|Hold) Flying/);
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
-  await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4])m$/);
+  await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4]) m$/);
 });
 
 test('slide to land brings the aircraft down and offers takeoff again', async ({ vehicle }) => {

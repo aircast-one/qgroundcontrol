@@ -165,21 +165,21 @@ describe('BatteryReturnTest', () => {
   });
 
   it('total draw sums watts, else amps', () => {
-    expect(totalDraw(battery(1, '119.6', '10'))).toBe('120W');
-    expect(totalDraw(battery(1, 'null', '10'))).toBe('10.0A');
+    expect(totalDraw(battery(1, '119.6', '10'))).toBe('120 W');
+    expect(totalDraw(battery(1, 'null', '10'))).toBe('10.0 A');
     expect(totalDraw(battery(1, 'null', 'null'))).toBeNull();
   });
 
   it('the strip shows amps even when watts are known', () => {
-    expect(totalCurrent(battery(1, '119.6', '10'))).toBe('10.0A');
+    expect(totalCurrent(battery(1, '119.6', '10'))).toBe('10.0 A');
     expect(totalCurrent(battery(1, '119.6', 'null'))).toBeNull();
     expect(totalCurrent(null)).toBeNull();
   });
 
   it('the strip shows the lowest pack voltage', () => {
     const packs = (...volts: string[]) => json(`{"available":true,"packs":[${volts.map((v) => `{"facts":[{"name":"voltage","value":${v}}]}`).join(',')}]}`);
-    expect(lowestVoltage(packs('16.8'))).toBe('16.8V');
-    expect(lowestVoltage(packs('25.2', '24.94'))).toBe('24.9V');
+    expect(lowestVoltage(packs('16.8'))).toBe('16.8 V');
+    expect(lowestVoltage(packs('25.2', '24.94'))).toBe('24.9 V');
     expect(lowestVoltage(packs('25.2', 'null'))).toBeNull();
     expect(lowestVoltage(null)).toBeNull();
   });

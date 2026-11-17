@@ -7,6 +7,7 @@ import { aircast, md } from '@/theme/Colors';
 import type { FlyState } from './FlyState';
 import { DetailRow } from './InstrumentDetail';
 import { VIBRATION_VIEW, type VibrationReading, vibrationReading, worstSeverity } from './VibrationScreen';
+import { withUnit } from './Quantity';
 
 export const mainVideoStats = mutableStateMapOf<symbol, WhepStats>();
 
@@ -49,7 +50,7 @@ const rateTone = (value: number, warning: number, danger: number): Tone => (valu
 
 export const percentText = (value: number): string => `${value < 10 ? value.toFixed(1) : Math.round(value)}%`;
 
-export const bitrateText = (kbps: number): string => (kbps >= 1000 ? `${(kbps / 1000).toFixed(1)}Mb/s` : `${kbps}kb/s`);
+export const bitrateText = (kbps: number): string => (kbps >= 1000 ? withUnit((kbps / 1000).toFixed(1), 'Mb/s') : withUnit(String(kbps), 'kb/s'));
 
 const hdopDetails = (hdop: number): OsdDetail[] => (Number.isFinite(hdop) && hdop > 0 && hdop < 100 ? detail('HDOP', hdop.toFixed(1)) : []);
 
@@ -80,8 +81,8 @@ const videoDetails = (video: WhepStats | null): OsdDetail[] =>
     ? []
     : [
         ...detail('Bitrate', bitrateText(video.kbps)),
-        ...detail('Frame rate', `${video.fps}fps`),
-        ...detail('Jitter', `${video.jitterMs}ms`),
+        ...detail('Frame rate', withUnit(String(video.fps), 'fps')),
+        ...detail('Jitter', withUnit(String(video.jitterMs), 'ms')),
         ...(video.lossPercent === null
           ? detail('Packets lost', `${Math.round(video.lostPerSecond)}/s`)
           : detail('Packet loss', percentText(video.lossPercent), rateTone(video.lossPercent, LOSS_WARNING, LOSS_DANGER))),

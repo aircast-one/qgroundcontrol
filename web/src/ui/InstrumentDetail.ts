@@ -4,6 +4,7 @@ import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { silenceDuration } from '@/map/Silence';
 import { BatteryLevel, batteryLevelOf } from './StatusStrip';
 import type { LossFailsafe, VehicleLinks } from './VehicleLinks';
+import { withUnit } from './Quantity';
 
 export const SEVERITY_SECONDARY = -1;
 
@@ -155,17 +156,17 @@ const packFactTotal = (view: Json | null, name: string): number | null => packFa
 
 export const lowestVoltage = (view: Json | null): string | null => {
   const values = packFactValues(view, 'voltage');
-  return values === null ? null : format('%.1fV', Math.min(...values));
+  return values === null ? null : withUnit(format('%.1f', Math.min(...values)), 'V');
 };
 
 export const totalCurrent = (view: Json | null): string | null => {
   const total = packFactTotal(view, 'current');
-  return total === null ? null : format('%.1fA', total);
+  return total === null ? null : withUnit(format('%.1f', total), 'A');
 };
 
 export const totalDraw = (view: Json | null): string | null => {
   const total = packFactTotal(view, 'instantPower');
-  return total === null ? totalCurrent(view) : `${Math.round(total)}W`;
+  return total === null ? totalCurrent(view) : withUnit(String(Math.round(total)), 'W');
 };
 
 export const factLabel = (name: string): string => {

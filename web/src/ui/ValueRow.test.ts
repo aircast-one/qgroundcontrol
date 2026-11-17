@@ -40,6 +40,12 @@ describe('ValueRowTest', () => {
     expect(valueText(number('0', { longDescription: 'Height above home.' }))).toBe('0 m');
   });
 
+  it('a value row reads the way Plan does: no trailing .0, a space before the unit, and gigabytes for big sizes', () => {
+    expect(valueText(number('50.0'))).toBe('50 m');
+    expect(valueText(number('12.5'))).toBe('12.5 m');
+    expect(valueText(number('10240', { units: 'MB' }))).toBe('10 GB');
+  });
+
   it("steps follow the value's own precision and stay inside its range", () => {
     expect(valueStep(number('12.0'))).toBeCloseTo(0.1, 9);
     expect(valueStep(number('30'))).toBeCloseTo(1.0, 9);

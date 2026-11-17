@@ -298,7 +298,8 @@ describe('ControlBoundsTest', () => {
     const fact = makeFact({ ...bounded(0.0, 1.0, 0.5), description: 'Climb Sensitivity', shortLabel: 'Acceleration (vertical) controller P gain' });
     expect(sliderTitle(fact)).toBe('Climb sensitivity');
     expect(sliderValue(0.1349, 3, '')).toBe('0.135');
-    expect(sliderValue(38, 0, '%')).toBe('38 %');
+    expect(sliderValue(38, 0, '%')).toBe('38%');
+    expect(sliderValue(12.5, 1, 'm')).toBe('12.5 m');
   });
 
   it('a slider over a whole-number fact lands on whole numbers', () => {

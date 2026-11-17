@@ -18,7 +18,7 @@ test('auto intercept on a marked point asks with the core words, then the pill f
   }, '/src/bridge/Qgc.ts');
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await takeOff(vehicle, '10 m');
-  await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4])m$/, { timeout: 60_000 });
+  await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4]) m$/, { timeout: 60_000 });
   await armPayload(vehicle);
   await showMapFull(vehicle);
   await mapMenuAt(vehicle, 120, -80);

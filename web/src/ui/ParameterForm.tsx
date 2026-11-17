@@ -15,6 +15,7 @@ import { type PowerCalculator, PowerCalcDialog, powerCalculator } from '@/ui/Pow
 import { FactRow } from '@/ui/SettingsScreen';
 import { EmptyState, SectionHeader } from '@/ui/SetupRow';
 import { SETUP, parametersReady, setupPagePath } from '@/ui/SetupView';
+import { withUnit } from './Quantity';
 
 export type ParameterRows = {
   title: string;
@@ -327,4 +328,4 @@ export const sliderTitle = (fact: Fact): string => sentenceCase(fact.description
 export const sliderSnapped = (value: number, decimals: number): number => Number(value.toFixed(coerceIn(decimals, 0, 6)));
 
 export const sliderValue = (value: number, decimals: number, units: string): string =>
-  [value.toFixed(coerceIn(decimals, 0, 6)), units].filter((it) => it.trim() !== '').join(' ');
+  withUnit(value.toFixed(coerceIn(decimals, 0, 6)), units);

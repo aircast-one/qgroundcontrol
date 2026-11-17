@@ -80,26 +80,6 @@ pub fn whole_distance_text(metres: f64, imperial: bool) -> String {
     }
 }
 
-pub fn mission_time_text(seconds: f64) -> String {
-    let whole = if seconds.is_finite() && seconds > 0.0 {
-        seconds as i64
-    } else {
-        0
-    };
-    let days = whole / (24 * SECONDS_PER_HOUR);
-    let rest = whole % (24 * SECONDS_PER_HOUR);
-    let clock = format!(
-        "{:02}:{:02}:{:02}",
-        rest / SECONDS_PER_HOUR,
-        rest % SECONDS_PER_HOUR / SECONDS_PER_MINUTE,
-        rest % SECONDS_PER_MINUTE
-    );
-    match days {
-        0 => clock,
-        n => format!("{n:02} days {clock}"),
-    }
-}
-
 fn point_of(value: &Value) -> Option<(f64, f64)> {
     let at = value.as_object()?;
     Some((
@@ -340,11 +320,7 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
             "Distance",
             metres("missionPlannedDistance").map(|value| whole_distance_text(value, imperial)),
         ),
-        row(
-            "time",
-            "Time",
-            seconds("missionTime").map(mission_time_text),
-        ),
+        row("time", "Time", seconds("missionTime").map(duration_text)),
         row(
             "hover",
             "Hover",
@@ -725,8 +701,8 @@ mod tests {
         );
         assert_eq!(
             labelled(&view, "Time").unwrap(),
-            "00:03:05",
-            "and the time as hh:mm:ss"
+            "3:05",
+            "and the time as a clock, the same way every other duration reads"
         );
         assert_eq!(labelled(&view, "Furthest from launch").unwrap(), "640 m");
         let ids: Vec<&str> = view["rows"]
@@ -775,10 +751,10 @@ mod tests {
         );
         assert_eq!(
             labelled(&view, "Time").unwrap(),
-            "00:03:05",
+            "3:05",
             "time is not a unit the operator chooses"
         );
-        assert_eq!(mission_time_text(90_000.0), "01 days 01:00:00");
+        assert_eq!(duration_text(90_000.0), "25:00:00");
         assert_eq!(
             view["distanceMetres"], 1500.0,
             "the raw number stays metric whichever way it is drawn"
