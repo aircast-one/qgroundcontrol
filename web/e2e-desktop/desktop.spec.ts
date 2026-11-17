@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import { type Browser, chromium, expect, type Page, test } from '@playwright/test';
 import { openMenu } from '../e2e/fixtures';
 
@@ -13,11 +14,27 @@ const app = (): Page => {
   return shared.page;
 };
 
+const allPages = (browser: Browser): Page[] => browser.contexts().flatMap((context) => context.pages());
+
+const appPage = (browser: Browser): Page | null => allPages(browser).find((page) => /^https?:\/\/tauri\.localhost|^tauri:/.test(page.url())) ?? null;
+
 test.beforeAll(async () => {
-  shared.browser = await chromium.connectOverCDP(CDP);
-  const page = shared.browser.contexts()[0]?.pages()[0] ?? null;
-  if (page === null) throw new Error(`The desktop app at ${CDP} shows no page.`);
-  shared.page = page;
+  const browser = await chromium.connectOverCDP(CDP);
+  shared.browser = browser;
+  await expect.poll(() => appPage(browser)?.url() ?? allPages(browser).map((page) => page.url()).join(' | '), { timeout: 60_000 }).toMatch(/tauri/);
+  shared.page = appPage(browser);
+});
+
+test.afterEach(async ({}, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus || shared.browser === null) return;
+  const pages = allPages(shared.browser);
+  const described = await Promise.all(
+    pages.map(async (page) => `${page.url()} closed=${page.isClosed()} ready=${page.isClosed() ? '-' : await page.evaluate(() => document.readyState).catch((error: Error) => error.message)}`),
+  );
+  const text = shared.page === null || shared.page.isClosed() ? '' : await shared.page.evaluate(() => document.body.innerText.slice(0, 4000)).catch((error: Error) => error.message);
+  const log = await fetch(`${DEBUG_API}/bridge/get?path=view.appLog`).then((response) => response.text()).catch((error: Error) => error.message);
+  await writeFile(testInfo.outputPath('desktop-state.txt'), [`pages:\n${described.join('\n')}`, `text:\n${text}`, `appLog:\n${log.slice(-20_000)}`].join('\n\n'));
+  if (shared.page !== null && !shared.page.isClosed()) await shared.page.screenshot({ path: testInfo.outputPath('desktop.png') }).catch(() => undefined);
 });
 
 test.afterAll(async () => {
@@ -48,4 +65,12 @@ test('general settings show the version and its update channel', async () => {
   await expect(app().getByText('Aircast version', { exact: true })).toBeVisible();
   await expect(app().getByText(/ · (beta|stable) channel$/)).toBeVisible();
   await expect(app().getByRole('switch', { name: 'Check for updates automatically' })).toBeVisible();
+});
+
+test('the menu keys work while the page has focus: Ctrl+2 opens Plan and Ctrl+, opens Settings', async () => {
+  await app().addLocatorHandler(app().getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
+  await app().keyboard.press('Control+Digit2');
+  await expect(app().getByText('Click the map to add a waypoint')).toBeVisible();
+  await app().keyboard.press('Control+Comma');
+  await expect(app().getByRole('tablist').getByRole('tab', { name: 'General' })).toBeVisible();
 });

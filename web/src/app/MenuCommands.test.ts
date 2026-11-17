@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { browserShortcut, nativeMenuOwns } from './MenuCommands';
+import { browserShortcut, echoOfKey, nativeCommand, nativeMenuOwns } from './MenuCommands';
 
 const key = (code: string, fields: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) => ({ code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...fields });
 
@@ -22,5 +22,22 @@ describe('MenuCommandsTest', () => {
     expect(browserShortcut(key('Digit1', { altKey: true }), true)).toBeNull();
     expect(browserShortcut(key('Digit1', { metaKey: true }), false), 'Cmd+1 switches browser tabs').toBeNull();
     expect(browserShortcut(key('KeyS', { altKey: true }), false)).toBeNull();
+  });
+
+  it('on Windows the page runs the menu keys itself, since WebView2 keeps them from the window’s accelerators', () => {
+    expect(nativeCommand(key('KeyS', { ctrlKey: true }), false)).toBe('save-plan');
+    expect(nativeCommand(key('KeyS', { ctrlKey: true, shiftKey: true }), false)).toBe('save-plan-as');
+    expect(nativeCommand(key('Comma', { ctrlKey: true }), false)).toBe('settings');
+    expect(nativeCommand(key('Digit3', { ctrlKey: true }), false)).toBe('analyze');
+    expect(nativeCommand(key('KeyZ', { ctrlKey: true }), false)).toBeNull();
+    expect(nativeCommand(key('KeyS', { metaKey: true }), false)).toBeNull();
+  });
+
+  it('a menu event right after the same key is its echo and runs nothing, while a later click on the menu still runs', () => {
+    const keyed = { command: 'save-plan' as const, at: 1_000 };
+    expect(echoOfKey(keyed, 'save-plan', 1_200)).toBe(true);
+    expect(echoOfKey(keyed, 'save-plan', 1_600)).toBe(false);
+    expect(echoOfKey(keyed, 'open-plan', 1_100)).toBe(false);
+    expect(echoOfKey(null, 'save-plan', 1_100)).toBe(false);
   });
 });

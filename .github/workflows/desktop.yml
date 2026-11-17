@@ -267,6 +267,17 @@ jobs:
           }
           npx playwright test -c e2e-desktop/playwright.config.ts
           $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            New-Item -ItemType Directory -Force -Path test-results | Out-Null
+            try { Invoke-RestMethod http://127.0.0.1:9222/json/list | ConvertTo-Json -Depth 4 | Set-Content test-results\cdp-targets.json } catch { "$_" | Set-Content test-results\cdp-targets.json }
+            try {
+              Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+              $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+              [System.Drawing.Graphics]::FromImage($bitmap).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+              $bitmap.Save((Join-Path $PWD 'test-results\screen.png'))
+            } catch { "$_" | Set-Content test-results\screen-error.txt }
+          }
           Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
           exit $code
 
