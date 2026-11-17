@@ -19,6 +19,7 @@ const settle = () => act(() => Promise.resolve());
 
 describe('typed values reach the aircraft only on an explicit save', () => {
   beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addEventListener: () => undefined, removeEventListener: () => undefined }) });
     vi.spyOn(Qgc, 'writeRefusal').mockResolvedValue(null);
     vi.spyOn(Qgc, 'invokeResult').mockResolvedValue(null);
   });
