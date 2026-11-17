@@ -158,3 +158,15 @@ test('while armed every other screen keeps the flight in view and leads back to 
   await expect(status).toBeHidden();
   await expect(vehicle.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true })).toHaveAttribute('aria-current', 'page');
 });
+
+test('in the browser Alt with a digit or comma moves between screens', async ({ app }) => {
+  const rail = app.getByRole('navigation');
+  await app.keyboard.press('Alt+Digit2');
+  await expect(rail.getByRole('button', { name: 'Plan', exact: true })).toHaveAttribute('aria-current', 'page');
+  await app.keyboard.press('Alt+Comma');
+  await expect(rail.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page');
+  await app.keyboard.press('Alt+Digit4');
+  await expect(rail.getByRole('button', { name: 'Aircraft setup', exact: true })).toHaveAttribute('aria-current', 'page');
+  await app.keyboard.press('Alt+Digit1');
+  await expect(rail.getByRole('button', { name: 'Fly', exact: true })).toHaveAttribute('aria-current', 'page');
+});

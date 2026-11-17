@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { type Json, optBoolean, optInt, optJSONObject, optText } from '@/bridge/Json';
 import { PlanCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useValue } from '@/kotlin/State';
 import { delay } from '@/kotlin/Std';
 import { AlertDialog, Button, DropdownMenu, DropdownMenuItem, HorizontalDivider, IconButton, Surface, Text, TextButton } from '@/m3';
 import { PlanMapScreen } from '@/map/PlanMap';
@@ -15,6 +16,7 @@ import { NEWEST_PATTERN, PlanFocus } from '@/map/VehicleSync';
 import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { aircast, md, withAlpha } from '@/theme/Colors';
+import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { ItemEditor } from '@/ui/ItemEditor';
 import { PlanDefaultsDialog } from '@/ui/PlanDefaults';
 import {
@@ -139,6 +141,16 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
   const [newPlanOpen, setNewPlanOpen] = useState(false);
   const [startFrom, setStartFrom] = useState<string | null>(null);
   const documentName = files.documentName();
+  const navigation = useContext(LocalAppNavigation);
+  const planRequest = useValue(navigation.planRequest);
+  useEffect(() => {
+    if (planRequest === null || planStatus === null) return;
+    navigation.planRequest.value = null;
+    if (planRequest === 'new' && can.newPlan) setNewPlanOpen(true);
+    else if (planRequest === 'open' && can.open) (dirty ? setPending(PlanConfirm.Open) : files.open());
+    else if (planRequest === 'save' && can.save) files.save();
+    else if (planRequest === 'saveAs' && can.save) files.saveAs();
+  }, [planRequest, planStatus === null]);
 
   const startPlan = (template: string | null) => {
     if (template === null) {

@@ -14,6 +14,7 @@ import { md } from '@/theme/Colors';
 import { browserFullScreenSupported, toggleBrowserFullScreen, useBrowserFullScreen } from '@/app/BrowserFullScreen';
 import { DEBUG_UI_ACTION, DebugUi, DebugUiReceiver } from '@/app/DebugUi';
 import { GamepadInput } from '@/app/GamepadInput';
+import { type MenuCommand, useMenuCommands } from '@/app/MenuCommands';
 import { SpeechOut } from '@/app/SpeechOut';
 import { VehicleLinkKeeper } from '@/app/VehicleLinkService';
 import { LocalImmersive } from '@/map/AircastSheet';
@@ -30,7 +31,7 @@ import { deviceRequested } from '@/ui/DeviceStatus';
 import { useAdvancedUiShown } from '@/ui/AdvancedUi';
 import { type AnalyzePage, AnalyzeScreen } from '@/ui/AnalyzeScreen';
 import { AppFontScale } from '@/ui/AppFontScale';
-import { AppNavigationState, LocalAppNavigation, LocalOpenPlan, OpenPlanDocument, navigationRefusal } from '@/ui/AppNavigation';
+import { AppNavigationState, LocalAppNavigation, LocalOpenPlan, OpenPlanDocument, type PlanRequest, navigationRefusal } from '@/ui/AppNavigation';
 import { CAMERA_CONTROL_KEY, CameraControlLayer, CameraShutters } from '@/ui/CameraControlLayer';
 import { CameraSwitch } from '@/ui/CameraSwitch';
 import { ArmedFlightBar } from '@/ui/ArmedFlightBar';
@@ -563,6 +564,30 @@ export const AircastShell = () => {
     closeSettings();
     setTab(Tab.Fly);
   };
+  const showTab = (entry: Tab): boolean => {
+    if (refuseNavigation()) return false;
+    closeSettings();
+    setTab(entry);
+    return true;
+  };
+  const requestPlan = (request: PlanRequest) => {
+    if (showTab(Tab.Plan)) navigation.planRequest.value = request;
+  };
+  const menuCommands: Record<MenuCommand, () => void> = {
+    about: () => {
+      navigation.settingsPage.value = 'About';
+    },
+    settings: openSettings,
+    fly: () => void showTab(Tab.Fly),
+    plan: () => void showTab(Tab.Plan),
+    analyze: () => void showTab(Tab.Analyze),
+    setup: openSetup,
+    'new-plan': () => requestPlan('new'),
+    'open-plan': () => requestPlan('open'),
+    'save-plan': () => requestPlan('save'),
+    'save-plan-as': () => requestPlan('saveAs'),
+  };
+  useMenuCommands((command) => menuCommands[command]());
   const railShown = !fullScreen && (desktop || (landscape && !flyLandscape));
   const destinations: readonly RailDestination[] = [
     ...tabs.map((entry) => ({ key: entry.name, label: entry.label, icon: entry.icon, selected: tab === entry && !settingsOpen, onClick: () => selectTab(entry) })),

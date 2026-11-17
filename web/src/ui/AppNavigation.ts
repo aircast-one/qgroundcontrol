@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect } from 'react';
 import { mutableStateOf } from '@/kotlin/State';
 import type { SettingsGroup } from '@/ui/SettingsScreen';
 
+export type PlanRequest = 'new' | 'open' | 'save' | 'saveAs';
+
 export class AppNavigationState {
   readonly settingsPage = mutableStateOf<string | null>(null);
   readonly settingsOpen = mutableStateOf(false);
@@ -17,6 +19,7 @@ export class AppNavigationState {
   readonly parametersSearch = mutableStateOf('');
   readonly addLinkRequested = mutableStateOf(false);
   readonly blockedReason = mutableStateOf<string | null>(null);
+  readonly planRequest = mutableStateOf<PlanRequest | null>(null);
 }
 
 export class OpenPlanDocument {

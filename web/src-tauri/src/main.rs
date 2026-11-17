@@ -7,6 +7,7 @@ mod files;
 mod folders;
 mod ingest;
 mod matroska;
+mod menu;
 mod mpegts;
 mod record;
 mod rtp;
@@ -275,6 +276,8 @@ fn main() {
     start_core(&context.package_info().version.to_string());
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .menu(|app| menu::build(app))
+        .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .manage(video::Streams::default())
         .manage(synthetic::Views::default())
         .setup(|app| {
