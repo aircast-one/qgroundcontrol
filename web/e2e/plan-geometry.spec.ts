@@ -1,4 +1,4 @@
-import { expect, openPlanAtVehicle, test } from './fixtures';
+import { expect, openMenu, openPlanAtVehicle, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -9,7 +9,7 @@ test('a survey pattern computes its area, photo count and interval', async ({ ve
   await expect(vehicle.getByText('AREA', { exact: true })).toBeVisible();
   await expect(vehicle.getByText('PHOTOS', { exact: true })).toBeVisible();
   await expect(vehicle.getByText(/^Survey$/).first()).toBeVisible();
-  await expect(vehicle.getByText(/\d+ m² · \d+ photos/)).toBeVisible();
+  await expect(vehicle.getByText(/[\d,]+ m² · [\d,]+ photos/)).toBeVisible();
 });
 
 test('a fence polygon starts as a four-corner inclusion zone and can become keep-out', async ({ vehicle }) => {
@@ -25,9 +25,9 @@ test('the corridor scan template starts a corridor pattern', async ({ vehicle })
   await openPlanAtVehicle(vehicle);
   await vehicle.getByRole('button', { name: 'Templates' }).click();
   await vehicle.getByRole('dialog').filter({ hasText: 'New plan' }).getByText('Corridor scan', { exact: true }).click();
-  const create = vehicle.getByRole('dialog').filter({ hasText: 'Create Plan' });
-  if (await create.isVisible().catch(() => false)) await create.getByRole('button', { name: 'Create plan' }).click();
-  await expect(vehicle.getByRole('button', { name: /Corridor scan .*m² · \d+ photos/ })).toBeVisible();
+  const create = vehicle.getByRole('dialog').filter({ hasText: 'Start a new plan?' });
+  if (await create.isVisible().catch(() => false)) await create.getByRole('button', { name: 'Start new plan' }).click();
+  await expect(vehicle.getByRole('button', { name: /Corridor scan .*m² · [\d,]+ photos/ })).toBeVisible();
 });
 
 test('tapping the map in Rally mode places a rally point', async ({ vehicle }) => {
@@ -41,4 +41,16 @@ test('tapping the map in Rally mode places a rally point', async ({ vehicle }) =
     await expect(vehicle.getByText(/No rally points/)).toBeHidden({ timeout: 3_000 });
   }).toPass({ timeout: 30_000 });
   await expect(vehicle.getByText(/Rally point 1|R1|1 rally/).first()).toBeVisible();
+  await vehicle.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.45);
+  await expect(vehicle.getByText('Rally point 2', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(vehicle.getByRole('textbox', { name: /^Alt / }), 'a new rally point starts at the return altitude, not on the ground').not.toHaveValue(/^0?$/);
+});
+
+test('templates wait until the map is zoomed in to a place', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await app.getByRole('button', { name: 'Templates' }).click();
+  const dialog = app.getByRole('dialog').filter({ hasText: 'New plan' });
+  await expect(dialog.getByText(/Zoom the map in to where the mission should go/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Survey', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Blank mission' })).toBeEnabled();
 });

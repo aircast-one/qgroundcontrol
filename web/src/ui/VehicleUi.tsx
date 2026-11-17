@@ -1347,7 +1347,7 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
                   GuidedAction({
                     offerId: 'takeoff',
                     name: takeoff.title,
-                    confirm: promptOr(takeoff, 'Takeoff from ground and hold position.'),
+                    confirm: promptOr(takeoff, 'Take off from the ground and hold position.'),
                     destructive: false,
                     run: () => void VehicleCommands.takeoff(),
                   }),

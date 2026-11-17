@@ -9,6 +9,4 @@ export const UploadOutcomeEntries: readonly UploadOutcome[] = [UploadOutcome.Sen
 
 export const uploadOutcome = (invoked: boolean): UploadOutcome => (invoked ? UploadOutcome.Sent : UploadOutcome.NotStarted);
 
-export const uploadMessage = (outcome: UploadOutcome): string => (outcome === UploadOutcome.Sent ? 'Upload sent to vehicle' : 'Upload did not start');
-
-export const downloadMessage = (outcome: UploadOutcome): string => (outcome === UploadOutcome.Sent ? 'Download requested from vehicle' : 'Download did not start');
+export const uploadMessage = (outcome: UploadOutcome): string | null => (outcome === UploadOutcome.Sent ? null : 'Upload did not start');

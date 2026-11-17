@@ -25,7 +25,7 @@ test('save as downloads the plan and open plan loads it back', async ({ app }, t
 
   await planMenu(app, 'New plan…');
   await app.getByRole('dialog').filter({ hasText: 'New plan' }).getByText('Blank mission').click();
-  await app.getByRole('dialog').filter({ hasText: 'Create Plan' }).getByRole('button', { name: 'Create plan' }).click();
+  await app.getByRole('dialog').filter({ hasText: 'Start a new plan?' }).getByRole('button', { name: 'Start new plan' }).click();
   await expect.poll(() => itemCount(app)).toBeLessThan(4);
   const choosing = app.waitForEvent('filechooser');
   await planMenu(app, 'Open plan…');

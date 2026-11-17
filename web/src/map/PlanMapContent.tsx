@@ -42,7 +42,6 @@ import {
   trimmedRadius,
   typedRadius,
 } from './FenceBridge';
-import { LoadStep, loadStep, replaceWarning } from './LoadConfirm';
 import { type LandingPattern, landingText } from './LandingPattern';
 import { MapBridge, useMapPath } from './MapBridge';
 import type { MapHit } from './MissionEditing';
@@ -160,6 +159,10 @@ const FIELD_ZOOM = 16;
 const FAILURE_MESSAGE_MS = 2500;
 const PANEL_MAX_FRACTION = 0.5;
 const SIDE_PANEL_WIDTH = 380;
+const NARROW_SIDE_PANEL_WIDTH = 320;
+const WIDE_SCREEN_DP = 1200;
+
+export const sidePanelWidth = (screenWidth: number): number => (screenWidth < WIDE_SCREEN_DP ? NARROW_SIDE_PANEL_WIDTH : SIDE_PANEL_WIDTH);
 const SIDE_PANEL_MIN_WIDTH_DP = 840;
 export const SUMMARY_MAX_FRACTION = 0.74;
 
@@ -236,7 +239,7 @@ const sendPlan = (say: (message: string | null) => void, done: () => void, pause
     if (pauseFirst) await PlanBridge.pauseVehicle();
     const outcome = uploadOutcome(await PlanBridge.sendToVehicle());
     say(uploadMessage(outcome));
-    await delay(FAILURE_MESSAGE_MS);
+    if (outcome === UploadOutcome.NotStarted) await delay(FAILURE_MESSAGE_MS);
     done();
   })();
 };
@@ -304,7 +307,6 @@ export const PlanMapContent = ({
   const edits = useRemembered(0);
   const fitOnly = useRemembered<readonly TrackPoint[] | null>(null);
   const positioning = useRemembered<readonly [MapHit, TrackPoint] | null>(null);
-  const loadArmed = useRemembered(false);
   const items = useRemembered<readonly MissionItem[]>([]);
   const allItems = useRemembered<readonly MissionItem[]>([]);
   const itemCount = useRemembered(0);
@@ -358,7 +360,7 @@ export const PlanMapContent = ({
   const screenWidth = useWindowWidth();
   const screenHeight = useWindowHeight();
   const sidePanel = screenWidth >= SIDE_PANEL_MIN_WIDTH_DP;
-  const sidePanelPx = sidePanel ? SIDE_PANEL_WIDTH : 0;
+  const sidePanelPx = sidePanel ? sidePanelWidth(screenWidth) : 0;
   const railPx = RAIL_WIDTH + 8;
 
   const kindsView = useMapPath('view.missionKinds');
@@ -517,13 +519,15 @@ export const PlanMapContent = ({
   };
   const pickRow = (row: ItemRow): void => focusItem(row.index);
   const addRallyAt = (lat: number, lon: number): void => {
-    const next = rally.value.length;
-    onBridge(() => FenceBridge.addRallyPoint(lat, lon), {
-      label: 'Adding rally',
-      then: () => {
-        selected.value = { kind: 'Rally', index: next };
+    onBridge(
+      async () => {
+        const added = await FenceBridge.addRallyPoint(lat, lon);
+        const count = added ? rallyPoints(await FenceBridge.read()).length : 0;
+        if (count > 0) selected.value = { kind: 'Rally', index: count - 1 };
+        return added;
       },
-    });
+      { label: 'Adding rally', then: () => undefined },
+    );
   };
   const centredOnEntry = useRemembered(false);
   const lastViewed = useMemo(() => readCamera()?.centre ?? null, []);
@@ -536,9 +540,16 @@ export const PlanMapContent = ({
     centreRequest.value += 1;
   }, [entryPoint !== null]);
 
-  useEffect(() => {
-    if (fitKey !== 0) firstRead.value = true;
-  }, [fitKey]);
+  useLaunchedEffect([fitKey], async (scope) => {
+    if (fitKey === 0) return;
+    const since = readsStarted.value;
+    await firstWhere(planReads, (it) => it > since);
+    if (!scope.isActive()) return;
+    follow.value = false;
+    fitOnly.value = null;
+    centredOnEntry.value = true;
+    fitRequest.value += 1;
+  });
 
   const selectedSequence = selectionSequence(selected.value, allItems.value);
 
@@ -675,26 +686,7 @@ export const PlanMapContent = ({
     else sendUpload();
   };
 
-  const download = (): void => {
-    loadArmed.value = false;
-    busy.value = 'Downloading from vehicle';
-    selected.value = null;
-    void (async () => {
-      const outcome = uploadOutcome(await PlanBridge.loadFromVehicle());
-      busy.value = downloadMessage(outcome);
-      await delay(FAILURE_MESSAGE_MS);
-      busy.value = null;
-    })();
-  };
-
-  const requestDownload = (): void => {
-    const refusal = syncRefusal(vehicleSyncState(planOffline, planSyncing), 'download from');
-    if (refusal !== null) say(refusal);
-    else if (loadStep(planDirty, loadArmed.value) === LoadStep.Confirm) loadArmed.value = true;
-    else download();
-  };
-
-  const uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems);
+  const uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems, optBoolean(optJSONObject(planStatus, 'sync'), 'downloading'));
   const uploadEnabled = planHasItems && !planOffline && !planSyncing;
   const uploadEmphasised = uploadEnabled && !uploadBlocked;
   const planUpload = PlanUpload({ enabled: uploadEnabled, emphasised: uploadEmphasised, label: uploadText, shown: !planOffline, onClick: upload });
@@ -710,7 +702,7 @@ export const PlanMapContent = ({
   const shownLandings = useMemo(() => landingList.value.map((it) => ({ ...it, collides: collidingPatterns.has(it.index) })), [landingList.value, collidingPatterns]);
 
   const ready = useValue(MapBridge.bridgeReady);
-  const mapStart = sidePanel ? SIDE_PANEL_WIDTH : 0;
+  const mapStart = sidePanelPx;
   const railStart = mapStart + 8;
   const headerHeight = headerPx;
   const panelHeight = controlsHeightPx;
@@ -872,7 +864,7 @@ export const PlanMapContent = ({
           zoom.value = level;
           onCentre?.(at.latitude, at.longitude, level);
         }}
-        bottomInsetPx={controlsHeightPx}
+        bottomInsetPx={sidePanel ? 0 : controlsHeightPx}
         topInsetPx={headerPx}
         leftInsetPx={sidePanelPx + railPx}
         rightInsetPx={railPx}
@@ -1083,26 +1075,6 @@ export const PlanMapContent = ({
         />
       </PlanRail>
 
-      {loadArmed.value ? (
-        <AlertDialog
-          onDismissRequest={() => {
-            loadArmed.value = false;
-          }}
-          title="Load plan from vehicle?"
-          text={replaceWarning(allItems.value.filter((it) => it.index !== HOME_ITEM).length)}
-          confirmButton={<TextButton onClick={download}>Replace</TextButton>}
-          dismissButton={
-            <TextButton
-              onClick={() => {
-                loadArmed.value = false;
-              }}
-            >
-              Keep mine
-            </TextButton>
-          }
-        />
-      ) : null}
-
       {farAsk.value && aircraftAt !== null ? (
         <AlertDialog
           onDismissRequest={() => {
@@ -1248,7 +1220,7 @@ export const PlanMapContent = ({
       <div
         ref={sidePanel ? undefined : controlsRef}
         className={sidePanel ? 'absolute left-0 top-0 h-full' : 'absolute inset-x-0 bottom-0 rounded-t-[28px]'}
-        style={{ width: sidePanel ? SIDE_PANEL_WIDTH : undefined, background: md('surfaceContainerLow'), color: md('onSurface') }}
+        style={{ width: sidePanel ? sidePanelPx : undefined, background: md('surfaceContainerLow'), color: md('onSurface') }}
       >
         <div className={`flex flex-col px-3 ${sidePanel ? 'h-full pt-3' : ''}`} style={sidePanel ? undefined : { maxHeight: screenHeight * PANEL_MAX_FRACTION }}>
           <div
@@ -1341,7 +1313,7 @@ export const PlanMapContent = ({
               {chosenItem !== null ? (
                 <>
                   {tiles.length === 0 ? null : (
-                    <div className="flex gap-2 px-3 pb-3">
+                    <div className="flex flex-wrap gap-x-2 px-3 pb-3">
                       {tiles.map(([label, value]) => (
                         <StatTile key={label} label={label} value={value} />
                       ))}
@@ -2107,6 +2079,8 @@ export const PlanLayer = {
   Rally: { name: 'Rally', ordinal: 2, label: 'Rally', icon: 'plan_flag' },
 } as const satisfies Record<string, PlanLayer>;
 
+export const inclusionText = (inclusion: boolean): string => (inclusion ? 'Keep-in' : 'Keep-out');
+
 export const PlanLayerEntries: readonly PlanLayer[] = [PlanLayer.Mission, PlanLayer.Fence, PlanLayer.Rally];
 
 export const ownerOf = (hit: MapHit | null): string | null => {
@@ -2213,8 +2187,11 @@ const FenceListRow = ({
       )}
     </button>
     {onInclusion !== null && row.inclusion !== null ? (
-      <span className="px-2">
-        <Switch checked={row.inclusion} onCheckedChange={onInclusion} label={row.title} />
+      <span className="flex items-center gap-2 px-2">
+        <Text typography="labelMedium" color={md('onSurfaceVariant')}>
+          {inclusionText(row.inclusion)}
+        </Text>
+        <Switch checked={row.inclusion} onCheckedChange={onInclusion} label={`${row.title} keeps the aircraft inside`} />
       </span>
     ) : null}
     <IconButton onClick={onRemove} label={`Remove ${row.title}`}>
