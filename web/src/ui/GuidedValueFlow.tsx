@@ -9,7 +9,7 @@ import type { GuidedOffer } from './GuidedActions';
 import { GUIDED_ALTITUDE, type GuidedAltitude, altitudeDelta, guidedAltitude, guidedAltitudePath, rangeLabel } from './GuidedAltitude';
 import { GUIDED_SPEED, type GuidedSpeed, guidedSpeed, guidedSpeedPath } from './GuidedSpeed';
 import { GUIDED_TAKEOFF, type GuidedTakeoff, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
-import { GuidedPresets, GuidedQuickPicks, GuidedStepper, GuidedValuePanel, LocalGuidedCompact, guidedDecimals, guidedRounded, guidedValueText } from './GuidedValuePanel';
+import { GUIDED_SLIDER, GuidedPresets, GuidedQuickPicks, GuidedStepper, GuidedValuePanel, LocalGuidedCompact, guidedDecimals, guidedRounded, guidedValueText } from './GuidedValuePanel';
 import { PAUSE } from './MoreActions';
 import { RangeHint } from './VehicleUi';
 
@@ -162,17 +162,20 @@ export const GuidedValueControls = ({
       <GuidedStepper value={value} label={guidedLabel(label, shownRange, compact)} unit={unit} minimum={start} maximum={endInclusive} onValue={settle} />
       {presets ? <GuidedPresets value={value} minimum={start} maximum={endInclusive} unit={unit} onValue={settle} /> : null}
       {!compact ? (
-        <Slider
-          value={value}
-          onValueChange={(it) => onValue(guidedRounded(it, unit))}
-          onValueChangeFinished={onSettled}
-          valueRange={[start, endInclusive]}
-          steps={stepsFor(start, endInclusive, 10 ** -guidedDecimals(unit))}
-          label={label}
-        />
+        <div className="flex flex-col gap-1">
+          <Slider
+            value={value}
+            onValueChange={(it) => onValue(guidedRounded(it, unit))}
+            onValueChangeFinished={onSettled}
+            valueRange={[start, endInclusive]}
+            steps={stepsFor(start, endInclusive, 10 ** -guidedDecimals(unit))}
+            label={label}
+            className={GUIDED_SLIDER}
+          />
+          {shownRange !== null ? <RangeHint text={shownRange} /> : null}
+        </div>
       ) : null}
       {quickPicks ? <GuidedQuickPicks value={value} minimum={start} maximum={endInclusive} unit={unit} onValue={settle} /> : null}
-      {!compact && shownRange !== null ? <RangeHint text={shownRange} /> : null}
     </>
   );
 };

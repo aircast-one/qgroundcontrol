@@ -24,7 +24,7 @@ import { HoldOrCancel } from './ConfirmTrack';
 import { GUIDED_ALTITUDE, type GuidedAltitude, guidedAltitude, guidedAltitudePath, rangeLabel } from './GuidedAltitude';
 import { GuidedValueControls } from './GuidedValueFlow';
 import { useDesktopLayout } from './DesktopLayout';
-import { GuidedValuePanel, guidedDecimals, guidedReading, guidedRounded } from './GuidedValuePanel';
+import { GUIDED_SLIDER, GuidedValuePanel, guidedDecimals, guidedReading, guidedRounded } from './GuidedValuePanel';
 import { EditPositionDialog, geoOf } from './ItemEditor';
 import { RangeHint } from './VehicleUi';
 
@@ -310,12 +310,21 @@ const GotoPanel = ({ point, action, units, side, onDone }: { point: MapPoint; ac
   return (
     <div className={`pointer-events-none absolute inset-0 z-30 flex items-end p-3 ${GOTO_JUSTIFY[side]}`} style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
       <div className="pointer-events-auto w-full" style={{ maxWidth: GOTO_CARD_WIDTH }}>
-        <GuidedValuePanel title={title} sentence={gotoSentence(away, preview, action.message)} commitLabel={gotoCommitLabel(title, chosen, unit)} commitEnabled onCommit={commit} onCancel={onDone}>
-          {preview !== null && preview.verdict.trim() !== '' ? (
-            <Text typography="bodyMedium" color={warn ? aircast('warning') : md('onSurfaceVariant')}>
-              {preview.verdict}
-            </Text>
-          ) : null}
+        <GuidedValuePanel
+          title={title}
+          sentence={gotoSentence(away, preview, action.message)}
+          note={
+            preview !== null && preview.verdict.trim() !== '' ? (
+              <Text typography="bodyMedium" color={warn ? aircast('warning') : md('onSurfaceVariant')}>
+                {preview.verdict}
+              </Text>
+            ) : null
+          }
+          commitLabel={gotoCommitLabel(title, chosen, unit)}
+          commitEnabled
+          onCommit={commit}
+          onCancel={onDone}
+        >
           {guided !== null && shown !== null && range !== null ? (
             <GuidedValueControls
               value={shown}
@@ -432,7 +441,7 @@ const OrbitPanel = ({ point, action, defaults, onDone }: { point: MapPoint; acti
               onValueChangeFinished={() => setSettled(targetNow.current)}
               valueRange={[height.minimum ?? 0.0, height.maximum ?? 0.0]}
               label={height.label}
-              className="-my-2"
+              className={GUIDED_SLIDER}
             />
             {range !== null ? <RangeHint text={range} /> : null}
           </div>

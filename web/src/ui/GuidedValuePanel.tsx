@@ -14,6 +14,7 @@ import { HoldToConfirm, holdLabel } from './HoldToConfirm';
 export const GuidedValuePanel = ({
   title,
   sentence,
+  note,
   commitLabel,
   commitEnabled,
   onCommit,
@@ -23,6 +24,7 @@ export const GuidedValuePanel = ({
 }: {
   title: string;
   sentence: string;
+  note?: ReactNode;
   commitLabel: string;
   commitEnabled: boolean;
   onCommit: () => void;
@@ -57,6 +59,7 @@ export const GuidedValuePanel = ({
               <Text typography="titleLarge">{title}</Text>
               {named !== null ? <Text typography="labelLarge" color={md('primary')}>{named}</Text> : null}
               {sentence.trim() !== '' ? <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="whitespace-pre-line">{sentence}</Text> : null}
+              {note}
               {readiness !== null ? (
                 <Surface
                   color={readiness.blocks ? md('errorContainer') : aircast('warningContainer')}
@@ -87,6 +90,8 @@ export const GuidedValuePanel = ({
 };
 
 export const LocalGuidedCompact = createContext(false);
+
+export const GUIDED_SLIDER = '-my-2 px-2.5';
 
 const COMPACT_PANEL_HEIGHT = 440;
 
