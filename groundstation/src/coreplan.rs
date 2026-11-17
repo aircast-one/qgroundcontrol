@@ -1015,6 +1015,21 @@ fn load_text_mission(text: &str) -> Result<Document, String> {
     ))
 }
 
+fn launch_ground(
+    document: &Document,
+    vehicle_home: Option<[f64; 3]>,
+    terrain: &dyn Fn(f64, f64) -> Option<f64>,
+) -> Option<f64> {
+    let home = document.home?;
+    terrain(home[0], home[1])
+        .or_else(|| {
+            vehicle_home
+                .filter(|vehicle| (vehicle[0], vehicle[1]) == (home[0], home[1]))
+                .map(|vehicle| vehicle[2])
+        })
+        .filter(|ground| ground.is_finite())
+}
+
 fn active_vehicle_home() -> Option<[f64; 3]> {
     crate::hub::lock()
         .active()
@@ -2924,6 +2939,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                         &current,
                         index,
                         mode as i64,
+                        launch_ground(&current, active_vehicle_home(), &terrain_height),
                         &terrain_height,
                     )
                 }),
@@ -3989,6 +4005,32 @@ mod tests {
             crate::cmdinfo::VehicleClass::Vtol,
             "items from the RTL on get no flight status, so they keep the VTOL tree"
         );
+    }
+
+    #[test]
+    fn launch_ground_is_the_vehicle_home_or_terrain_not_the_planned_altitude() {
+        let moved = Document {
+            home: Some([47.1, 8.1, 481.0]),
+            ..empty_document()
+        };
+        let terrain = |_: f64, _: f64| Some(300.0);
+        let unknown = |_: f64, _: f64| None;
+        assert_eq!(
+            launch_ground(&moved, Some([47.1, 8.1, 485.0]), &terrain),
+            Some(300.0),
+            "the terrain under home is what the plan shows as the launch once it arrives"
+        );
+        assert_eq!(
+            launch_ground(&moved, Some([47.1, 8.1, 485.0]), &unknown),
+            Some(485.0),
+            "without terrain, a plan launching from the vehicle's home uses the altitude the vehicle reported"
+        );
+        assert_eq!(
+            launch_ground(&moved, Some([47.0, 8.0, 485.0]), &unknown),
+            None,
+            "a moved home keeps the old site's 481 m until its own terrain arrives, so it is not known yet"
+        );
+        assert_eq!(launch_ground(&empty_document(), None, &terrain), None);
     }
 
     #[test]

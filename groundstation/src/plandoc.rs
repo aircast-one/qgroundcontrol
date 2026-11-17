@@ -1225,11 +1225,13 @@ fn altitude_datum(mode: i64, launch: f64, ground: &dyn Fn() -> Option<f64>) -> O
 }
 
 pub const GROUND_UNKNOWN: &str = "The ground height under this item is not known yet, so its altitude cannot be kept in that mode. Try again when the terrain has loaded.";
+pub const LAUNCH_GROUND_UNKNOWN: &str = "The ground height at the launch position is not known yet, so the altitude cannot be kept in that mode. Try again when the terrain has loaded.";
 
 pub fn altitude_keeping_height(
     doc: &Document,
     visual_index: usize,
     mode: i64,
+    launch: Option<f64>,
     terrain: &dyn Fn(f64, f64) -> Option<f64>,
 ) -> Result<f64, String> {
     let refused = || format!("Item {visual_index} cannot take that altitude mode.");
@@ -1241,11 +1243,11 @@ pub fn altitude_keeping_height(
     if held.mode == mode || (above_ground(held.mode) && above_ground(mode)) {
         return Ok(held.altitude);
     }
-    let launch = doc
-        .home
-        .map(|home| home[2])
-        .filter(|it| it.is_finite())
-        .ok_or_else(|| "Set the launch position first, so the altitude can be kept.".to_string())?;
+    let launch = match (doc.home, launch.filter(|it| it.is_finite())) {
+        (None, _) => Err("Set the launch position first, so the altitude can be kept.".to_string()),
+        (Some(_), None) => Err(LAUNCH_GROUND_UNKNOWN.to_string()),
+        (Some(_), Some(launch)) => Ok(launch),
+    }?;
     let ground = || {
         current.params[4]
             .zip(current.params[5])
@@ -1265,9 +1267,10 @@ pub fn set_altitude_mode_keeping_height(
     doc: &Document,
     visual_index: usize,
     mode: i64,
+    launch: Option<f64>,
     terrain: &dyn Fn(f64, f64) -> Option<f64>,
 ) -> Result<Document, String> {
-    let altitude = altitude_keeping_height(doc, visual_index, mode, terrain)?;
+    let altitude = altitude_keeping_height(doc, visual_index, mode, launch, terrain)?;
     set_altitude(doc, visual_index, altitude)
         .and_then(|kept| set_altitude_mode(&kept, visual_index, mode))
         .ok_or_else(|| format!("Item {visual_index} cannot take that altitude mode."))
@@ -3185,7 +3188,7 @@ mod tests {
     #[test]
     fn changing_an_items_altitude_mode_keeps_it_at_the_same_height() {
         let doc = Document {
-            home: Some([47.0, 8.0, 481.0]),
+            home: Some([47.0, 8.0, 0.0]),
             ..section()
         };
         let at = doc
@@ -3199,6 +3202,7 @@ mod tests {
             _ => unreachable!(),
         };
         let no_ground = |_: f64, _: f64| None;
+        let launch = Some(481.0);
         let relative = set_altitude(
             &set_altitude_mode(&doc, at, crate::altitudemodes::RELATIVE).unwrap(),
             at,
@@ -3209,13 +3213,14 @@ mod tests {
             &relative,
             at,
             crate::altitudemodes::ABSOLUTE,
+            launch,
             &no_ground,
         )
         .unwrap();
         assert_eq!(
             height(&amsl),
             (531.0, Some(531.0)),
-            "50 m above a 481 m launch"
+            "50 m above a 481 m launch, whatever altitude the planned home still carries"
         );
         assert_eq!(
             height(
@@ -3223,6 +3228,7 @@ mod tests {
                     &amsl,
                     at,
                     crate::altitudemodes::RELATIVE,
+                    launch,
                     &no_ground
                 )
                 .unwrap()
@@ -3233,6 +3239,7 @@ mod tests {
             &amsl,
             at,
             crate::altitudemodes::TERRAIN_FRAME,
+            launch,
             &|_, _| Some(500.0),
         )
         .unwrap();
@@ -3243,6 +3250,7 @@ mod tests {
                     &terrain,
                     at,
                     crate::altitudemodes::CALC_ABOVE_TERRAIN,
+                    launch,
                     &no_ground
                 )
                 .unwrap()
@@ -3256,9 +3264,64 @@ mod tests {
                 &amsl,
                 at,
                 crate::altitudemodes::TERRAIN_FRAME,
+                launch,
                 &no_ground
             ),
             Err(GROUND_UNKNOWN.to_string())
+        );
+    }
+
+    #[test]
+    fn a_height_is_not_kept_against_a_launch_whose_ground_is_not_known() {
+        let doc = Document {
+            home: Some([47.0, 8.0, 0.0]),
+            ..section()
+        };
+        let at = doc
+            .items
+            .iter()
+            .position(|item| matches!(item, Item::Simple(s) if s.altitude.is_some()))
+            .unwrap()
+            + 1;
+        let relative = set_altitude(
+            &set_altitude_mode(&doc, at, crate::altitudemodes::RELATIVE).unwrap(),
+            at,
+            50.0,
+        )
+        .unwrap();
+        assert_eq!(
+            set_altitude_mode_keeping_height(
+                &relative,
+                at,
+                crate::altitudemodes::ABSOLUTE,
+                None,
+                &|_, _| Some(481.0)
+            ),
+            Err(LAUNCH_GROUND_UNKNOWN.to_string()),
+            "a new home sits at 0 until its terrain arrives, and 50 m above it would be underground at a 481 m site"
+        );
+        assert_eq!(
+            set_altitude_mode_keeping_height(
+                &Document {
+                    home: None,
+                    ..relative.clone()
+                },
+                at,
+                crate::altitudemodes::ABSOLUTE,
+                Some(481.0),
+                &|_, _| None
+            ),
+            Err("Set the launch position first, so the altitude can be kept.".to_string())
+        );
+        assert_eq!(
+            set_altitude_mode_keeping_height(
+                &relative,
+                at,
+                crate::altitudemodes::ABSOLUTE,
+                Some(f64::NAN),
+                &|_, _| None
+            ),
+            Err(LAUNCH_GROUND_UNKNOWN.to_string())
         );
     }
 
