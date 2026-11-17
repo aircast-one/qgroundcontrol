@@ -18,8 +18,8 @@ describe('MapFollow', () => {
   it('a vehicle off the map is pointed at with its distance and compass direction', () => {
     const away = vehicleOffScreen(window, { latitude: 47.395, longitude: 8.552 });
     expect(away?.bearing).toBeCloseTo(90, 0);
-    expect(away?.text).toMatch(/^Vehicle \d+ m east of the map centre$/);
-    expect(vehicleOffScreen(window, { latitude: 47.5, longitude: 8.545 })?.text).toMatch(/^Vehicle 11\.\d km north of the map centre$/);
+    expect(away?.text).toMatch(/^Vehicle \d+ m east of the map center$/);
+    expect(vehicleOffScreen(window, { latitude: 47.5, longitude: 8.545 })?.text).toMatch(/^Vehicle 11\.\d km north of the map center$/);
   });
 
   it('bearings run clockwise from north', () => {

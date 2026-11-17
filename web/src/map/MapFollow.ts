@@ -33,5 +33,5 @@ export const vehicleOffScreen = (corners: readonly TrackPoint[], vehicle: TrackP
   const bearing = bearingDegrees(centre, vehicle);
   const metres = metresBetween(centre, vehicle);
   const away = metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres)} m`;
-  return { bearing, text: `Vehicle ${away} ${COMPASS_POINTS[Math.round(bearing / 45) % COMPASS_POINTS.length] ?? ''} of the map centre` };
+  return { bearing, text: `Vehicle ${away} ${COMPASS_POINTS[Math.round(bearing / 45) % COMPASS_POINTS.length] ?? ''} of the map center` };
 };
