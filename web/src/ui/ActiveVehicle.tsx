@@ -61,6 +61,7 @@ import {
   takeoverLine,
 } from './OperatorControl';
 import { OSD_SCRIM, osdShadow, useOsdBackdrop } from './Osd';
+import { useRedIndicators, withRedIndicators } from './OsdDetails';
 import { factFromControl } from './ParameterForm';
 import { CONNECTIONS_PAGE, FactRow, factSubtitle } from './SettingsScreen';
 import { FootNote } from './SetupRow';
@@ -150,7 +151,9 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
   const navigation = useContext(LocalAppNavigation);
   const flyScreen = useContext(LocalFlyScreenState);
   const flyJson = useQgcPath(FLY_STATE);
-  const fly = useMemo(() => flyState(flyJson), [flyJson]);
+  const reported = useMemo(() => flyState(flyJson), [flyJson]);
+  const red = useRedIndicators(reported);
+  const fly = useMemo(() => withRedIndicators(reported, red), [reported, red.join('|')]);
   const vehiclesJson = useQgcPath(VEHICLES_VIEW);
   const choices = useMemo(() => vehicleChoices(vehiclesJson), [vehiclesJson]);
   const controlJson = useQgcPath(OPERATOR_CONTROL_VIEW);

@@ -760,6 +760,7 @@ const InstrumentSheet = ({ title, rows, headline = null, silence = null, action 
           <ListItem
             key={at}
             headlineContent={<span style={{ color: row.severity === SEVERITY_SECONDARY ? md('onSurfaceVariant') : undefined }}>{row.label}</span>}
+            supportingContent={row.hint}
             trailingContent={<span style={{ color: stale ? muted : severityColour(row.severity) }}>{row.value}</span>}
           />
         ))

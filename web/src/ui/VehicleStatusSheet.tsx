@@ -16,6 +16,7 @@ import { FLY_STATE, type FlyState, flyState } from './FlyState';
 import { PayloadFixButton } from './GripperPanel';
 import type { GuidedOffer, PayloadProblem } from './GuidedActions';
 import { HoldToConfirm } from './HoldToConfirm';
+import { useRedIndicators, withRedIndicators } from './OsdDetails';
 import { ParameterForm } from './ParameterForm';
 import { EDIT_PARAMETER_TITLE, LinkedText, ParameterEditDialog } from './ParameterLinks';
 import { AIRCRAFT_SETUP } from './SettingsScreen';
@@ -232,12 +233,16 @@ export const statusSummary = (state: FlyState | null): StatusSummaryLines | null
 
 const StatusSummary = () => {
   const stateJson = useQgcPath(FLY_STATE);
-  const summary = useMemo(() => statusSummary(flyState(stateJson)), [stateJson]);
+  const state = useMemo(() => flyState(stateJson), [stateJson]);
+  const red = useRedIndicators(state);
+  const summary = statusSummary(withRedIndicators(state, red));
   const [refusal, setRefusal] = useState<string | null>(null);
   if (summary === null) return null;
   return (
     <div className="flex flex-col px-sheet py-1">
-      <Text typography="titleMedium">{summary.title}</Text>
+      <Text typography="titleMedium" color={red.length > 0 ? aircast('warning') : undefined}>
+        {summary.title}
+      </Text>
       <div className="flex items-center gap-2">
         <Text className="flex-1" typography="bodySmall" color={md('onSurfaceVariant')}>
           {summary.detail}

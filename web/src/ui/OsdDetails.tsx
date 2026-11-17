@@ -4,6 +4,7 @@ import type { WhepStats } from '@/core/whep';
 import { mutableStateMapOf, useValue } from '@/kotlin/State';
 import type { DrawableName } from '@/res/drawables';
 import { aircast, md } from '@/theme/Colors';
+import type { FlyState } from './FlyState';
 import { DetailRow } from './InstrumentDetail';
 import { VIBRATION_VIEW, type VibrationReading, vibrationReading, worstSeverity } from './VibrationScreen';
 
@@ -12,7 +13,7 @@ export const mainVideoStats = mutableStateMapOf<symbol, WhepStats>();
 export const playingStats = (surfaces: ReadonlyMap<symbol, WhepStats>): WhepStats | null => [...surfaces.values()].at(0) ?? null;
 
 type Tone = 'error' | 'warning' | null;
-export type OsdDetail = { label: string; value: string; tone: Tone };
+export type OsdDetail = { label: string; value: string; tone: Tone; hint?: string };
 export type OsdLine = { id: string; icon: DrawableName; details: readonly OsdDetail[] };
 
 export type OsdDetailsInput = {
@@ -57,9 +58,21 @@ const ekfDetails = (ratios: readonly number[]): OsdDetail[] => {
   return worst === null ? [] : detail('EKF variance', worst.toFixed(2), ekfTone(worst));
 };
 
+const withUnits = (value: number, units: string | undefined): string => [value.toFixed(0), units ?? ''].join(' ').trim();
+
+export const vibrationHint = (tone: Tone, vibration: VibrationReading): string => {
+  const units = vibration.units as string | undefined;
+  if (tone === 'error') return `At or over the ${withUnits(vibration.dangerLevel, units)} danger level. Balance or replace the props and soft-mount the flight controller before flying.`;
+  if (tone === 'warning') return `Over the ${withUnits(vibration.warningLevel, units)} warning level. Check the props and motor mounts.`;
+  return `Under the ${withUnits(vibration.warningLevel, units)} warning level.`;
+};
+
 const vibrationDetails = (vibration: VibrationReading | null): OsdDetail[] => {
   const values = (vibration?.axes ?? []).flatMap((it) => (it.value === null ? [] : [it.value]));
-  return vibration === null || values.length === 0 ? [] : detail('Vibration', Math.max(...values).toFixed(1), severityTone(worstSeverity(vibration)));
+  if (vibration === null || values.length === 0) return [];
+  const tone = severityTone(worstSeverity(vibration));
+  const units = (vibration.units as string | undefined) ?? '';
+  return detail('Vibration', `${Math.max(...values).toFixed(1)}${units.trim()}`, tone).map((it) => ({ ...it, hint: vibrationHint(tone, vibration) }));
 };
 
 const videoDetails = (video: WhepStats | null): OsdDetail[] =>
@@ -96,7 +109,27 @@ export const osdCellColour = (line: OsdLine): string | null => {
   return worst >= 2 ? md('error') : worst === 1 ? aircast('warning') : null;
 };
 
-export const osdRows = (line: OsdLine): readonly DetailRow[] => line.details.map((it) => DetailRow({ label: it.label, value: it.value, severity: toneRank(it.tone) }));
+export const osdRows = (line: OsdLine): readonly DetailRow[] => line.details.map((it) => DetailRow({ label: it.label, value: it.value, severity: toneRank(it.tone), hint: it.hint }));
+
+export const RC_NO_SIGNAL = 'RC has no signal';
+
+export const redIndicators = (lines: readonly OsdLine[], state: FlyState | null): readonly string[] => [
+  ...lines
+    .filter((line) => line.id === 'health')
+    .flatMap((line) => line.details)
+    .filter((it) => it.tone === 'error')
+    .map((it) => `${it.label} ${it.value}`),
+  ...(state !== null && state.connected && state.rcSupported && state.rcRequired && state.rcSignal === 0 ? [RC_NO_SIGNAL] : []),
+];
+
+export const NOT_FULLY_READY = 'Not fully ready';
+
+export const withRedIndicators = (state: FlyState | null, red: readonly string[]): FlyState | null =>
+  state === null || red.length === 0 || !state.connected || state.armed || state.contactLost === true || !state.readyToFly || !state.nominal
+    ? state
+    : { ...state, nominal: false, stateText: NOT_FULLY_READY, summaryDetail: `${red.join('. ')}. Tap a red reading to see how to fix it.` };
+
+export const useRedIndicators = (state: FlyState | null): readonly string[] => redIndicators(useOsdLines(), state);
 
 export const useOsdLines = (): readonly OsdLine[] =>
   osdLines({

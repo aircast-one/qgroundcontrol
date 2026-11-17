@@ -233,7 +233,7 @@ test('sideways, an armed vehicle locks layout editing', async ({ vehicle }) => {
 
 test('holding the flight mode chip, which stays where it is while editing, starts layout editing without opening the mode menu', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(vehicle.getByRole('button', { name: 'Ready to fly', exact: true }), 'the chip has settled, so nothing moves under the pointer').toBeVisible({ timeout: 60_000 });
+  await expect(vehicle.getByRole('button', { name: /^(Ready to fly|Not fully ready)$/ }), 'the chip has settled, so nothing moves under the pointer').toBeVisible({ timeout: 60_000 });
   await holdUntilEditing(vehicle, flightMode(vehicle));
   await expect(vehicle.getByRole('menu')).toHaveCount(0);
   await vehicle.getByRole('button', { name: 'Done' }).click();

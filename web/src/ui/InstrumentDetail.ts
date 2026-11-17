@@ -7,9 +7,9 @@ import type { LossFailsafe, VehicleLinks } from './VehicleLinks';
 
 export const SEVERITY_SECONDARY = -1;
 
-export type DetailRow = { label: string; value: string; severity: number };
+export type DetailRow = { label: string; value: string; severity: number; hint?: string };
 
-export const DetailRow = (fields: { label: string; value: string; severity?: number }): DetailRow => ({ severity: 0, ...fields });
+export const DetailRow = (fields: { label: string; value: string; severity?: number; hint?: string }): DetailRow => ({ severity: 0, ...fields });
 
 export type BatteryHeadline = {
   text: string;
