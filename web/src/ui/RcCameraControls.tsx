@@ -19,7 +19,7 @@ import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { type GimbalChoice, GimbalModeSwitch, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal, onScreenGimbal, reportGimbalRefusal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
-import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
+import { OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
 import { RecenterTarget, TiltReadout, recenter, recenterTarget, tiltText } from '@/ui/RecenterCamera';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM, SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
@@ -358,11 +358,11 @@ export const GimbalSwitch = ({ choices, onPick }: { choices: readonly GimbalChoi
       <Surface
         onClick={() => setOpen(true)}
         shape="small"
-        color={OSD_SCRIM}
+        color={useOsdBackdrop(OSD_SCRIM)}
         contentColor={aircast('outdoorForeground')}
         label={`Gimbal: ${shown}. Switch gimbal`}
         title="Switch gimbal"
-        className="inline-flex max-w-44 items-center gap-0.5 ps-2 pe-1"
+        className={`inline-flex max-w-44 items-center gap-0.5 ps-2 pe-1 ${osdShadow()}`}
         style={{ height: GIMBAL_SWITCH_HEIGHT }}
       >
         <Text typography="labelMedium" maxLines={1} ellipsis className="min-w-0">

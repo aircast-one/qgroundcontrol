@@ -9,7 +9,7 @@ import { coerceIn, delay, format } from '@/kotlin/Std';
 import { AlertDialog, FilterChip, RadioButton, Slider, Surface, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { sentenceCase } from '@/map/SentenceCase';
-import { Drawable } from '@/res/Icon';
+import { Drawable, MaterialIcon } from '@/res/Icon';
 import { Color, aircast, argb, md, withAlpha } from '@/theme/Colors';
 import {
   CAMERA_CURRENT_STREAM,
@@ -86,7 +86,8 @@ const DISABLED_SHUTTER_ALPHA = 0.38;
 const CAMERA_CLUSTER_GAP = 8;
 const ZOOM_IDLE_MS = 3000;
 const MODE_IDLE_ALPHA = 0.6;
-const MODE_ROW_HEIGHT = 28;
+const MODE_ROW_HEIGHT = 32;
+const MODE_GLYPH = 22;
 const CAMERA_RAIL_MAX_WIDTH = 120;
 const REC_DOT_SIZE = 8;
 const REC_BLINK_MS = 600;
@@ -365,27 +366,29 @@ const ZoomSlider = ({ camera, onIdle }: { camera: CameraReading; onIdle: () => v
 
 const CameraModeSwitch = ({ camera, panel, onRefused }: { camera: CameraReading; panel: CameraPanel; onRefused: (refusal: string | null) => void }) => {
   const white = aircast('outdoorForeground');
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
   return (
-    <div className="flex flex-col items-center rounded-shape-md" style={{ background: OSD_SCRIM }}>
+    <div className="flex flex-col items-center rounded-shape-md" style={{ background: backdrop }}>
       {[false, true]
         .filter((video) => camera.hasModes || video !== panel.inPhotoMode)
         .map((video) => {
           const current = video !== panel.inPhotoMode;
-          const name = video ? 'VIDEO' : 'PHOTO';
+          const name = video ? 'Video' : 'Photo';
           const selectable = !current && camera.hasModes && (video ? panel.selectVideoEnabled : panel.selectPhotoEnabled);
           return (
             <button
               key={name}
               type="button"
               disabled={!selectable}
+              aria-label={name}
               title={selectable ? `Switch to ${name.toLowerCase()}` : undefined}
               onClick={() => {
                 if (modeTapSwitches(camera, video)) void (async () => onRefused(await Qgc.refusalOf(CAMERA_SET_MODE, video ? 'video' : 'photo')))();
               }}
-              className="px-2 py-1.5 text-label-small"
-              style={{ minHeight: MODE_ROW_HEIGHT, fontWeight: current ? 700 : 400, color: current ? white : withAlpha(white, MODE_IDLE_ALPHA) }}
+              className={`flex items-center justify-center px-2 py-1 ${osdShadow()}`}
+              style={{ minHeight: MODE_ROW_HEIGHT, color: current ? white : withAlpha(white, MODE_IDLE_ALPHA) }}
             >
-              {name}
+              <MaterialIcon name={video ? 'videocam' : 'photo_camera'} size={MODE_GLYPH} filled={current} />
             </button>
           );
         })}

@@ -1,17 +1,17 @@
 import { Qgc } from '@/bridge/Qgc';
 import { Surface, Text } from '@/m3';
 import { roundToInt } from '@/kotlin/Std';
-import { Drawable } from '@/res/Icon';
+import { MaterialIcon } from '@/res/Icon';
 import { aircast } from '@/theme/Colors';
 import { type GimbalIndicatorState, gimbalRefusal } from '@/ui/GimbalIndicator';
-import { OSD_SCRIM } from '@/ui/Osd';
+import { OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM } from '@/ui/SyntheticView';
 
 const GIMBAL_CENTER = 'gimbal.center';
 const OFF_CENTRE_DEG = 2.0;
 const TILT_READOUT_WIDTH = 64;
 const TILT_READOUT_HEIGHT = 44;
-const RECENTER_GLYPH = 14;
+const TILT_GLYPH = 16;
 const TILT_READOUT_PADDING = 8;
 
 export type RecenterTarget = { readonly name: 'Synthetic' | 'Gimbal'; readonly ordinal: number };
@@ -48,16 +48,16 @@ export const TiltReadout = ({ degrees, onRecenter, onTap = null, tapLabel = null
     <Surface
       onClick={action ?? undefined}
       shape="small"
-      color={OSD_SCRIM}
+      color={useOsdBackdrop(OSD_SCRIM)}
       contentColor={aircast('outdoorForeground')}
       label={description}
       title={action !== null ? (actionLabel ?? undefined) : undefined}
-      className="inline-flex items-center justify-center gap-1"
+      className={`inline-flex items-center justify-center gap-1 ${osdShadow()}`}
       style={{ minWidth: TILT_READOUT_WIDTH, height: TILT_READOUT_HEIGHT, paddingInline: TILT_READOUT_PADDING }}
     >
-      {onRecenter !== null ? <Drawable name="ic_my_location" size={RECENTER_GLYPH} /> : null}
-      <Text typography="labelMedium">
-        Tilt {text}
+      <MaterialIcon name={onRecenter !== null ? 'my_location' : 'control_camera'} size={TILT_GLYPH} />
+      <Text typography="titleMedium" fontWeight={700} className="tabular-nums">
+        {text}
       </Text>
     </Surface>
   );

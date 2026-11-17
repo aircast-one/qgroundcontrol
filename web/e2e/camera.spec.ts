@@ -7,10 +7,10 @@ test('a vehicle camera records video and blocks photo mode while recording', asy
   await start.click();
   await expect(app.getByRole('button', { name: 'Stop recording' })).toBeVisible();
   await expect(app.getByText(/^REC \d\d:\d\d:\d\d$/)).toBeVisible();
-  await expect(app.getByRole('button', { name: 'PHOTO', exact: true })).toBeDisabled();
+  await expect(app.getByRole('button', { name: 'Photo', exact: true })).toBeDisabled();
   await app.getByRole('button', { name: 'Stop recording' }).click();
   await expect(start).toBeVisible();
-  await expect(app.getByRole('button', { name: 'PHOTO', exact: true })).toBeEnabled();
+  await expect(app.getByRole('button', { name: 'Photo', exact: true })).toBeEnabled();
 });
 
 test('a vehicle camera shows its zoom level', async ({ app }) => {
