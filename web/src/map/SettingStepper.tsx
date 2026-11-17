@@ -131,6 +131,7 @@ export const SettingStepper = ({
   slider = false,
   enabled = true,
   trailing = null,
+  commitEachStep = false,
 }: {
   label: string;
   value: number | null;
@@ -143,6 +144,7 @@ export const SettingStepper = ({
   slider?: boolean;
   enabled?: boolean;
   trailing?: ReactNode;
+  commitEachStep?: boolean;
 }) => {
   const [shown, setShownState] = useKeyedState<number | null>([value], () => value);
   const shownRef = useRef(shown);
@@ -182,7 +184,8 @@ export const SettingStepper = ({
     if (current === null) return;
     const wanted = steppedValue(current, step, direction, range);
     setShown(wanted);
-    setStepped(wanted);
+    if (commitEachStep) commit.current(wanted);
+    else setStepped(wanted);
   };
   return (
     <div className={`flex w-full flex-col py-1 ${className ?? ''}`}>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { MINIMUM_CIRCLE_RADIUS_METRES } from '@/map/MissionLayers';
+import { GuidedAltitude } from './GuidedAltitude';
 import {
   chosenHeightText,
   coordinateLines,
@@ -8,6 +9,8 @@ import {
   gotoArgs,
   gotoCardAnchor,
   gotoCardSide,
+  gotoHeight,
+  gotoHeightRange,
   gotoPreview,
   gotoPreviewLines,
   gotoPreviewPath,
@@ -122,10 +125,32 @@ describe('MapClickMenuTest', () => {
     const preview = gotoPreview(json('{"available":true,"distanceText":"81 m","heightText":"at 20 m (current height)","heightMetres":20.4,"heightUnit":"ft","metresPerHeightUnit":0.3048}'))!;
     expect(shownHeight(preview, null)).toBe(67);
     expect(chosenHeightText(preview, null)).toBe('at 20 m (current height)');
-    expect(chosenHeightText(preview, 100)).toBe('at 100 ft');
+    const chosen = gotoHeight(preview, 100);
+    expect(chosen).toEqual({ shown: 100, metres: 30.48 });
+    expect(chosenHeightText(preview, chosen)).toBe('at 100 ft');
+    expect(shownHeight(preview, chosen)).toBe(100);
     const point = { latitude: 47.4, longitude: 8.5 };
-    expect(gotoArgs(point, preview, null)).toEqual({ latitude: 47.4, longitude: 8.5 });
-    expect(gotoArgs(point, preview, 100)).toEqual({ latitude: 47.4, longitude: 8.5, height: 30.48 });
+    expect(gotoArgs(point, null)).toEqual({ latitude: 47.4, longitude: 8.5 });
+    expect(gotoArgs(point, chosen), 'a chosen height is sent in metres even after the preview goes away').toEqual({ latitude: 47.4, longitude: 8.5, height: 30.48 });
+  });
+
+  it('without a unit conversion there is no height to show or choose, rather than a guess in metres', () => {
+    const preview = gotoPreview(json('{"available":true,"heightText":"at 67 ft (current height)","heightMetres":20.4,"heightUnit":"ft"}'))!;
+    expect(preview.metresPerHeightUnit).toBeNull();
+    expect(shownHeight(preview, null)).toBeNull();
+    expect(gotoHeight(preview, 100)).toBeNull();
+    expect(gotoHeightRange(GuidedAltitude({ available: true, label: '', unit: 'ft', current: 67, minimum: 6.56, maximum: 396.98, sentence: '', deltaMeters: 0, sends: false }), preview)).toBeNull();
+  });
+
+  it('the go-to height range is the guided altitude range, in the shown unit', () => {
+    const metres = gotoPreview(json('{"available":true,"heightMetres":20.4,"heightUnit":"m","metresPerHeightUnit":1}'))!;
+    const feet = { ...metres, heightUnit: 'ft', metresPerHeightUnit: 0.3048 };
+    const guided = (unit: string, minimum: number | null, maximum: number | null) => GuidedAltitude({ available: true, label: '', unit, current: null, minimum, maximum, sentence: '', deltaMeters: 0, sends: false });
+    expect(gotoHeightRange(guided('m', 2, 121), metres)).toEqual({ start: 2, endInclusive: 121 });
+    expect(gotoHeightRange(guided('ft', 6.56, 396.98), feet), 'whole feet inside the limits').toEqual({ start: 7, endInclusive: 396 });
+    expect(gotoHeightRange(null, metres), 'no limits known means no stepper').toBeNull();
+    expect(gotoHeightRange(guided('m', null, 121), metres)).toBeNull();
+    expect(gotoHeightRange(guided('m', 2, 121), feet), 'limits in another unit are not applied').toBeNull();
   });
 
   it('on a desktop the go-to card sits on the far side of the screen from its point', () => {

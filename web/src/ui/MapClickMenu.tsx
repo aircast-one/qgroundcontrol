@@ -12,7 +12,7 @@ import { typedNumber } from '@/map/AltitudeEntry';
 import { type GotoCardSide, LocalFlyMapEdits } from '@/map/FlyMapEdits';
 import { type LoiterEdit, loiterEditNumber } from '@/map/GotoMarker';
 import { Map3d } from '@/map/Map3d';
-import { SettingStepper } from '@/map/SettingStepper';
+import { type ClosedRange, SettingStepper } from '@/map/SettingStepper';
 import { MINIMUM_CIRCLE_RADIUS_METRES } from '@/map/MissionLayers';
 import { OrbitCircle } from '@/map/OrbitMarker';
 import { sentenceCase } from '@/map/SentenceCase';
@@ -61,12 +61,12 @@ export type GotoPreview = {
   readonly pastReturnPoint: boolean;
   readonly heightMetres: number | null;
   readonly heightUnit: string;
-  readonly metresPerHeightUnit: number;
+  readonly metresPerHeightUnit: number | null;
 };
 
 export const gotoPreviewPath = (point: MapPoint): string => format('view.gotoPreview(%.7f,%.7f)', point.latitude, point.longitude);
 
-const positiveOr = (value: number, fallback: number): number => (Number.isFinite(value) && value > 0 ? value : fallback);
+const positiveOrNull = (value: number): number | null => (Number.isFinite(value) && value > 0 ? value : null);
 
 export const gotoPreview = (view: Json | null): GotoPreview | null => {
   if (view === null || !optBoolean(view, 'available')) return null;
@@ -78,21 +78,31 @@ export const gotoPreview = (view: Json | null): GotoPreview | null => {
     pastReturnPoint: optBoolean(view, 'pastReturnPoint'),
     heightMetres: Number.isFinite(height) ? height : null,
     heightUnit: optText(view, 'heightUnit'),
-    metresPerHeightUnit: positiveOr(optDouble(view, 'metresPerHeightUnit'), 1.0),
+    metresPerHeightUnit: positiveOrNull(optDouble(view, 'metresPerHeightUnit')),
   };
 };
 
 export const GOTO_HEIGHT_STEP = 5;
-export const GOTO_LOWEST_METRES = 2;
 
-export const chosenHeightText = (preview: GotoPreview, chosen: number | null): string =>
-  chosen === null ? preview.height : `at ${Math.round(chosen)} ${preview.heightUnit}`.trim();
+export type GotoHeight = { readonly shown: number; readonly metres: number };
 
-export const shownHeight = (preview: GotoPreview, chosen: number | null): number | null =>
-  chosen ?? (preview.heightMetres === null ? null : Math.round(preview.heightMetres / preview.metresPerHeightUnit));
+export const gotoHeight = (preview: GotoPreview, shown: number): GotoHeight | null =>
+  preview.metresPerHeightUnit === null ? null : { shown, metres: shown * preview.metresPerHeightUnit };
 
-export const gotoArgs = (point: MapPoint, preview: GotoPreview | null, chosen: number | null): Record<string, number> =>
-  chosen === null || preview === null ? { latitude: point.latitude, longitude: point.longitude } : { latitude: point.latitude, longitude: point.longitude, height: chosen * preview.metresPerHeightUnit };
+export const chosenHeightText = (preview: GotoPreview, chosen: GotoHeight | null): string =>
+  chosen === null ? preview.height : `at ${Math.round(chosen.shown)} ${preview.heightUnit}`.trim();
+
+export const shownHeight = (preview: GotoPreview, chosen: GotoHeight | null): number | null =>
+  chosen?.shown ?? (preview.heightMetres === null || preview.metresPerHeightUnit === null ? null : Math.round(preview.heightMetres / preview.metresPerHeightUnit));
+
+export const gotoHeightRange = (guided: GuidedAltitude | null, preview: GotoPreview): ClosedRange | null => {
+  if (guided === null || guided.minimum === null || guided.maximum === null || guided.unit !== preview.heightUnit || preview.metresPerHeightUnit === null) return null;
+  const range = { start: Math.ceil(guided.minimum), endInclusive: Math.floor(guided.maximum) };
+  return range.start <= range.endInclusive ? range : null;
+};
+
+export const gotoArgs = (point: MapPoint, chosen: GotoHeight | null): Record<string, number> =>
+  chosen === null ? { latitude: point.latitude, longitude: point.longitude } : { latitude: point.latitude, longitude: point.longitude, height: chosen.metres };
 
 const ANCHORED_CARD_WIDTH = 320;
 const ANCHORED_CARD_EDGE = 16;
@@ -222,7 +232,9 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   }, [previewing, point.latitude, point.longitude, mapEdits, cardSide]);
   const previewJson = useQgcPath(previewing ? gotoPreviewPath(point) : MAP_CLICK_PATH);
   const preview = useMemo(() => (previewing ? gotoPreview(previewJson) : null), [previewJson, previewing]);
-  const [height, setHeight] = useKeyedState<number | null>([point.latitude, point.longitude, previewing], () => null);
+  const guidedJson = useQgcPath(GUIDED_ALTITUDE);
+  const guided = useMemo(() => guidedAltitude(guidedJson), [guidedJson]);
+  const [height, setHeight] = useKeyedState<GotoHeight | null>([point.latitude, point.longitude, previewing], () => null);
 
   const ran = (action: MapClickAction) => {
     if (opensMap3d(action)) Map3d.show(true);
@@ -230,7 +242,7 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   };
 
   const run = (action: MapClickAction) => {
-    void send(action, point, null, action.id === GOTO_ACTION ? gotoArgs(point, preview, height) : undefined).then((refused) => (refused === null ? ran(action) : setRefusal(refused)));
+    void send(action, point, null, action.id === GOTO_ACTION ? gotoArgs(point, height) : undefined).then((refused) => (refused === null ? ran(action) : setRefusal(refused)));
   };
 
   if (view === null || actions.length === 0) return null;
@@ -243,6 +255,7 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   const away = vehicleAt !== null && pending?.id === GOTO_ACTION ? goHereText(vehicleAt, point, defaults.unit, defaults.metresPerUnit) : null;
   const lines = pending === null ? [] : preview !== null ? gotoPreviewLines({ ...preview, distance: away ?? preview.distance, height: chosenHeightText(preview, height) }, pending.message) : [away ?? pending.message];
   const heightShown = preview === null ? null : shownHeight(preview, height);
+  const heightRange = preview === null ? null : gotoHeightRange(guided, preview);
   const warn = preview?.pastReturnPoint === true;
 
   return (
@@ -268,14 +281,15 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
                 {line}
               </Text>
             ))}
-            {pending.id === GOTO_ACTION && preview !== null && heightShown !== null ? (
+            {pending.id === GOTO_ACTION && preview !== null && heightShown !== null && heightRange !== null ? (
               <SettingStepper
                 label="Height"
                 value={heightShown}
                 unit={preview.heightUnit}
                 step={GOTO_HEIGHT_STEP}
-                range={{ start: Math.ceil(GOTO_LOWEST_METRES / preview.metresPerHeightUnit), endInclusive: Number.MAX_SAFE_INTEGER }}
-                onSet={(next) => setHeight(next)}
+                range={heightRange}
+                commitEachStep
+                onSet={(next) => setHeight(gotoHeight(preview, next))}
               />
             ) : null}
             {warn ? (
