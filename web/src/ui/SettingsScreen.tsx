@@ -1,9 +1,9 @@
-import { type CSSProperties, Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type DependencyList, Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc } from '@/bridge/Qgc';
 import { requestSerialPort, webSerialAvailable } from '@/core/client';
 import { settingControl, useQgcPath } from '@/bridge/QgcState';
 import { type Json, jsonObjects, optBoolean, optDouble, optJSONArray, optText } from '@/bridge/Json';
-import { useBackHandler, useKeyedState, useLaunchedEffect, useProduceState } from '@/kotlin/Compose';
+import { useBackHandler, useKeyedState, useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
 import type { MutableState } from '@/kotlin/State';
 import { coerceIn, delay, format } from '@/kotlin/Std';
 import { sentenceCase as mapSentenceCase } from '@/map/SentenceCase';
@@ -971,12 +971,17 @@ export const FactRow = ({
   const segmented = !editOnDesktop(fact) && !fact.isBitmask && showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings);
   const asField = !segmented && showsAsField(fact);
 
-  const write = (block: () => Promise<boolean>) =>
-    void (async () => {
-      const accepted = await block();
-      setRefusal(writeRefusal(accepted));
-      if (accepted) onWrite();
-    })();
+  const staged = useContext(LocalStagedEdits);
+  const [choice, setChoice] = useKeyedState<StagedChoice | null>([fact.path, fact.valueString], () => null);
+  const chosen = choice?.preview ?? fact;
+  const run = async (block: StagedCommit): Promise<boolean> => {
+    const accepted = await block();
+    setRefusal(writeRefusal(accepted));
+    if (accepted) onWrite();
+    return accepted;
+  };
+  useStagedEdit(fact.path, choice === null ? null : () => run(choice.commit), [choice]);
+  const write: ControlWrite = (block, preview) => (staged !== null && preview !== null ? setChoice({ preview, commit: block }) : void run(block));
 
   const slider = inlineSlider(fact);
   if (asField && settingsList && opensAsValue(fact) && !(desktop && slider === null)) {
@@ -1055,7 +1060,7 @@ export const FactRow = ({
               ) : null}
             </div>
             {fact.isEnum && !fact.valueIsOffTheEnumList ? (
-              <EnumField fact={fact} title={title} style={{ minWidth: CHOICE_VALUE_WIDTH, maxWidth: '50%' }} write={write} />
+              <EnumField fact={fact} shown={chosen} title={title} style={{ minWidth: CHOICE_VALUE_WIDTH, maxWidth: '50%' }} write={write} />
             ) : (
               <FactTextField fact={fact} label={settingsList ? title : fact.title} onWrite={onWrite} onRejected={onRejected} onTheRight />
             )}
@@ -1063,11 +1068,11 @@ export const FactRow = ({
         ) : (
           <>
             <FactTitle title={title} color={titleColor} helpOpen={helpToggle} onHelp={toggleHelp} className="pb-2" />
-            {fact.isBitmask ? <BitmaskPicker fact={fact} write={write} /> : <FactTextField fact={fact} onWrite={onWrite} onRejected={onRejected} />}
+            {fact.isBitmask ? <BitmaskPicker fact={chosen} write={write} /> : <FactTextField fact={fact} onWrite={onWrite} onRejected={onRejected} />}
           </>
         )}
         {fact.slider !== null && !fact.isEnum && !fact.isBitmask ? (
-          <FieldSlider value={factNumberOrNull(fact)} slider={fact.slider} label={title} enabled={fact.acceptsWrite} onWrite={(value) => write(() => Qgc.set(fact.path, value))} />
+          <FieldSlider value={factNumberOrNull(chosen)} slider={fact.slider} label={title} enabled={fact.acceptsWrite} onWrite={(value) => write(() => Qgc.set(fact.path, value), { ...fact, value, valueString: String(value) })} />
         ) : null}
         {notBlank(note) && !valueOnTheRight(fact) ? (
           <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block pt-1 pl-4">
@@ -1084,7 +1089,7 @@ export const FactRow = ({
   }
 
   const rowToggles = !segmented && fact.isBool && fact.acceptsWrite && !editOnDesktop(fact);
-  const toggle = (checked: boolean) => write(() => Qgc.set(fact.path, checked !== fact.inverted));
+  const toggle = (checked: boolean) => write(() => Qgc.set(fact.path, checked !== fact.inverted), { ...fact, boolValue: checked });
   const rowNote = shown.text.split(SUBTITLE_SEPARATOR).filter((it) => notBlank(it) && it !== fact.units).join(' · ');
   const inert = inertNote(fact);
   const shownInert = !fact.acceptsWrite && !editOnDesktop(fact) && inert !== runInert ? inert : null;
@@ -1092,7 +1097,7 @@ export const FactRow = ({
     <div>
       <div
         className={`flex min-h-16 w-full items-center gap-4 px-4 py-2.5 desktop:min-h-12 desktop:py-1.5 ${rowToggles ? 'cursor-pointer' : ''}`}
-        onClick={rowToggles ? () => toggle(!fact.boolValue) : undefined}
+        onClick={rowToggles ? () => toggle(!chosen.boolValue) : undefined}
       >
         <div className="min-w-0 flex-1">
           <FactTitle title={title} color={titleColor} helpOpen={helpToggle} onHelp={toggleHelp} maxLines={3} />
@@ -1107,7 +1112,7 @@ export const FactRow = ({
             </Text>
           ) : null}
         </div>
-        {segmented ? <Segments fact={fact} title={title} write={write} className="@max-[560px]:hidden" /> : null}
+        {segmented ? <Segments fact={chosen} title={title} write={write} className="@max-[560px]:hidden" /> : null}
         {!segmented ? (
           <div className="flex max-w-[190px] items-center justify-end">
             {editOnDesktop(fact) ? (
@@ -1131,15 +1136,15 @@ export const FactRow = ({
               </div>
             ) : fact.isBool ? (
               <span className="flex" onClick={(event) => event.stopPropagation()}>
-                <Switch checked={fact.boolValue} onCheckedChange={toggle} label={title} />
+                <Switch checked={chosen.boolValue} onCheckedChange={toggle} label={title} />
               </span>
             ) : (
-              <BitmaskPicker fact={fact} write={write} />
+              <BitmaskPicker fact={chosen} write={write} />
             )}
           </div>
         ) : null}
       </div>
-      {segmented ? <Segments fact={fact} title={title} write={write} className="flex w-full px-4 pb-2.5 @min-[560px]:hidden" /> : null}
+      {segmented ? <Segments fact={chosen} title={title} write={write} className="flex w-full px-4 pb-2.5 @min-[560px]:hidden" /> : null}
       {refusal !== null ? (
         <Text typography="bodySmall" color={md('error')} className="block pb-2 pl-4">
           {refusal}
@@ -1150,7 +1155,11 @@ export const FactRow = ({
   return segmented ? <div className="@container">{rows}</div> : rows;
 };
 
-const Segments = ({ fact, title, write, className }: { fact: Fact; title: string; write: (block: () => Promise<boolean>) => void; className?: string }) => (
+type StagedChoice = { preview: Fact; commit: StagedCommit };
+
+type ControlWrite = (block: StagedCommit, preview: Fact | null) => void;
+
+const Segments = ({ fact, title, write, className }: { fact: Fact; title: string; write: ControlWrite; className?: string }) => (
   <SingleChoiceSegmentedButtonRow className={className} label={title}>
     {fact.enumStrings.map((option, index) => {
       const raw = fact.enumValues[index];
@@ -1161,7 +1170,12 @@ const Segments = ({ fact, title, write, className }: { fact: Fact; title: string
           index={index}
           count={fact.enumStrings.length}
           selected={boolOption !== null ? boolOption === fact.boolValue : index === fact.enumIndex}
-          onClick={() => write(() => (boolOption !== null ? Qgc.set(fact.path, boolOption !== fact.inverted) : Qgc.set(`${fact.path}.enumIndex`, index)))}
+          onClick={() =>
+            write(
+              () => (boolOption !== null ? Qgc.set(fact.path, boolOption !== fact.inverted) : Qgc.set(`${fact.path}.enumIndex`, index)),
+              boolOption !== null ? { ...fact, boolValue: boolOption } : { ...fact, enumIndex: index },
+            )
+          }
           label={<span className="truncate">{sentenceCase(option)}</span>}
         />
       );
@@ -1203,10 +1217,13 @@ export const bitmaskEntryEnabled = (fact: Fact, raw: number, index: number): boo
 const GROWING_THREE_LINES = '[&_textarea]:[field-sizing:content] [&_textarea]:max-h-[calc(3lh+1.5rem)]';
 const GROWING_FOUR_LINES = '[&_textarea]:[field-sizing:content] [&_textarea]:max-h-[calc(4lh+1.5rem)]';
 
-const BitmaskPicker = ({ fact, write }: { fact: Fact; write: (block: () => Promise<boolean>) => void }) => {
+const BitmaskPicker = ({ fact, write }: { fact: Fact; write: ControlWrite }) => {
   const [editing, setEditing] = useKeyedState([fact.path], () => false);
   const raw = bitmaskRaw(fact);
-  const toggle = (index: number) => write(() => Qgc.set(fact.path, String(bitmaskToggled(fact, raw, index))));
+  const toggle = (index: number) => {
+    const next = bitmaskToggled(fact, raw, index);
+    write(() => Qgc.set(fact.path, String(next)), { ...fact, value: next, valueString: String(next) });
+  };
   return (
     <>
       <div className="relative w-full">
@@ -1255,7 +1272,7 @@ const portExtras = (webSerial: boolean, secure: boolean): readonly string[] => (
 
 export const choiceOptions = (fact: Fact, webSerial: boolean, secure = true): readonly string[] => [...fact.enumStrings.map(sentenceCase), ...(fact.portChoice ? portExtras(webSerial, secure) : [])];
 
-const EnumField = ({ fact, title, style, write }: { fact: Fact; title: string; style: CSSProperties; write: (block: () => Promise<boolean>) => void }) => {
+const EnumField = ({ fact, shown, title, style, write }: { fact: Fact; shown: Fact; title: string; style: CSSProperties; write: ControlWrite }) => {
   const notice = useContext(LocalChangeNotice);
   const options = choiceOptions(fact, webSerialAvailable(), window.isSecureContext);
   const choose = (index: number): Promise<boolean> => {
@@ -1267,7 +1284,7 @@ const EnumField = ({ fact, title, style, write }: { fact: Fact; title: string; s
     <ChoiceField
       label={null}
       name={title}
-      value={shownEnumLabel(fact)}
+      value={shownEnumLabel(shown)}
       options={options}
       style={style}
       enabled={fact.enabled}
@@ -1278,20 +1295,23 @@ const EnumField = ({ fact, title, style, write }: { fact: Fact; title: string; s
           return;
         }
         if (index >= fact.enumStrings.length) {
-          write(() => requestSerialPort().then(() => true, () => false));
+          write(() => requestSerialPort().then(() => true, () => false), null);
           return;
         }
         const previous = fact.enumIndex;
-        write(async () => {
-          const accepted = await choose(index);
-          if (accepted && index !== previous && previous >= 0) {
-            notice.show(`${sentenceCase(fact.heading)}: ${sentenceCase(fact.enumStrings[index] ?? '')}`, async () => {
-              write(() => choose(previous));
-              return null;
-            });
-          }
-          return accepted;
-        });
+        write(
+          async () => {
+            const accepted = await choose(index);
+            if (accepted && index !== previous && previous >= 0) {
+              notice.show(`${sentenceCase(fact.heading)}: ${sentenceCase(fact.enumStrings[index] ?? '')}`, async () => {
+                write(() => choose(previous), null);
+                return null;
+              });
+            }
+            return accepted;
+          },
+          { ...fact, enumIndex: index, valueIsOffTheEnumList: false },
+        );
       }}
     />
   );
@@ -1489,32 +1509,56 @@ export const shownText = (fact: Fact): string => {
   return (value === null ? null : ratioText(value)) ?? fieldText(fact);
 };
 
-export type StagedEdits = { stage: (key: string, commit: (() => Promise<boolean>) | null) => void };
+export type StagedCommit = () => Promise<boolean>;
+
+export type StagedEdits = { stage: (key: string, owner: object, commit: StagedCommit | null) => void; save: () => void };
 
 export const LocalStagedEdits = createContext<StagedEdits | null>(null);
 
-export const useStagedEdits = (): readonly [StagedEdits, () => Promise<boolean>] => {
-  const commits = useRef<ReadonlyMap<string, () => Promise<boolean>>>(new Map());
-  const staged = useMemo<StagedEdits>(
+type HeldCommit = { owner: object; commit: StagedCommit };
+
+export const useStagedEdits = (onSaved: () => void): StagedEdits => {
+  const commits = useRef<ReadonlyMap<string, HeldCommit>>(new Map());
+  const saved = useUpdatedRef(onSaved);
+  return useMemo<StagedEdits>(
     () => ({
-      stage: (key, commit) => {
-        commits.current = commit === null ? new Map([...commits.current].filter(([it]) => it !== key)) : new Map([...commits.current, [key, commit]]);
+      stage: (key, owner, commit) => {
+        if (commit === null && commits.current.get(key)?.owner !== owner) return;
+        commits.current = commit === null ? new Map([...commits.current].filter(([it]) => it !== key)) : new Map([...commits.current, [key, { owner, commit }]]);
       },
+      save: () =>
+        void (async () => {
+          const all = await [...commits.current.values()].reduce<Promise<boolean>>(async (ok, held) => (await ok) && held.commit(), Promise.resolve(true));
+          if (all) saved.current();
+        })(),
     }),
     [],
   );
-  const saveAll = () => [...commits.current.values()].reduce<Promise<boolean>>(async (saved, commit) => (await saved) && commit(), Promise.resolve(true));
-  return [staged, saveAll];
+};
+
+export const useStagedEdit = (key: string, commit: StagedCommit | null, keys: DependencyList): void => {
+  const staged = useContext(LocalStagedEdits);
+  const [owner] = useState(() => ({}));
+  useEffect(() => {
+    staged?.stage(key, owner, commit);
+    return () => staged?.stage(key, owner, null);
+  }, [staged, key, ...keys]);
 };
 
 export const typedNotice = (fact: Fact, typed: string): string =>
   isSecret(fact) ? `${sentenceCase(fact.heading)} changed` : `${sentenceCase(fact.heading)}: ${fact.isString ? typed : quantityText(typed, shownUnits(fact.units))}`;
 
-export const useWriteNotice = () => {
+export type ValueWriter = (path: string, value: unknown) => Promise<string | null>;
+
+export const writeValue: ValueWriter = (path, value) => Qgc.writeRefusal(path, value);
+
+export const writeForcedValue: ValueWriter = (path, value) => Qgc.writeForcedRefusal(path, value);
+
+export const useWriteNotice = (write: ValueWriter = writeValue) => {
   const notice = useContext(LocalChangeNotice);
   return (fact: Fact, shown: string, previous: unknown, onWrite: () => void) =>
     notice.show(typedNotice(fact, shown), async () => {
-      const refusal = await Qgc.writeRefusal(fact.path, previous);
+      const refusal = await write(fact.path, previous);
       if (refusal === null) onWrite();
       return refusal;
     });
@@ -1570,10 +1614,7 @@ const FactTextField = ({
     setRejection(null);
   };
 
-  useEffect(() => {
-    staged?.stage(fact.path, pending === null ? null : () => commitText(pending));
-    return () => staged?.stage(fact.path, null);
-  }, [pending, fact.path]);
+  useStagedEdit(fact.path, pending === null ? null : () => commitText(pending), [pending, fact.valueString]);
 
   const constraint = factConstraintNote(fact);
   const reboot = factRebootNote(fact);
@@ -1608,7 +1649,7 @@ const FactTextField = ({
             singleLine={factValueLines(fact) === 1}
             minLines={1}
             isError={rejection !== null}
-            onDone={commitAndLeave}
+            onDone={staged !== null ? staged.save : commitAndLeave}
             className={`w-full ${onTheRight ? '[&_input]:text-right' : ''} ${GROWING_FOUR_LINES}`}
           />
         </div>

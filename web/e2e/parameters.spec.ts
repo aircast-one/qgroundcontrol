@@ -31,6 +31,21 @@ test('a parameter typed into its editor is written to the vehicle on Save, with 
   await expect(row).toContainText('30.0 m');
 });
 
+test('Enter in the parameter editor runs its Save, so the value is written once with an undo', async ({ vehicle }) => {
+  await openAircraftSetup(vehicle);
+  await vehicle.getByRole('button', { name: /^Parameters/ }).click();
+  await vehicle.getByRole('textbox', { name: 'Search parameters' }).fill('RTL_RETURN_ALT');
+  const row = vehicle.getByRole('button', { name: /^RTL_RETURN_ALT/ }).first();
+  await row.click();
+  const editor = vehicle.getByRole('dialog').filter({ hasText: 'RTL_RETURN_ALT' });
+  await editor.getByRole('textbox', { name: /return altitude/i }).fill('45');
+  await editor.getByRole('textbox', { name: /return altitude/i }).press('Enter');
+  await expect(editor).toBeHidden();
+  await expect(row).toContainText('45.0 m');
+  await vehicle.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+  await expect(row).toContainText('30.0 m');
+});
+
 test('a value half-typed into the parameter editor is dropped by Escape, Cancel or a tap outside', async ({ vehicle }) => {
   await openAircraftSetup(vehicle);
   await vehicle.getByRole('button', { name: /^Parameters/ }).click();
