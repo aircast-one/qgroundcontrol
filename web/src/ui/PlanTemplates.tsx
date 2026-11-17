@@ -5,6 +5,11 @@ import { md } from '@/theme/Colors';
 
 export const CREATE_FROM_TEMPLATE = 'plan.createFromTemplate';
 const BLANK_LABEL = 'Blank mission';
+export const TEMPLATE_MIN_ZOOM = 15;
+export const ZOOM_IN_FOR_TEMPLATE = 'Zoom the map in to where the mission should go. A template fills the area you can see.';
+export const ZOOM_IN_FOR_PATTERN = 'Zoom the map in to where the pattern should go. It fills the area you can see.';
+
+export const zoomedOutForTemplates = (zoom: number | null): boolean => zoom === null || zoom < TEMPLATE_MIN_ZOOM;
 
 export type PlanTemplatesState = { enabled: boolean; names: readonly string[]; blank: string };
 
@@ -24,17 +29,32 @@ export const templateChoices = (state: PlanTemplatesState | null): readonly (rea
   ...(state?.names ?? []).filter((it) => it !== state?.blank).map((it) => [it, sentenceCase(it)] as const),
 ];
 
-export const NewPlanDialog = ({ state, replacing, onDismiss, onPick }: { state: PlanTemplatesState | null; replacing: boolean; onDismiss: () => void; onPick: (template: string | null) => void }) => (
+export const newPlanNote = (replacing: boolean, zoomedOut: boolean): string =>
+  [replacing ? 'Replaces the plan you are editing.' : null, zoomedOut ? ZOOM_IN_FOR_TEMPLATE : 'Templates fill the area you can see on the map.'].filter((it): it is string => it !== null).join(' ');
+
+export const NewPlanDialog = ({
+  state,
+  replacing,
+  zoomedOut,
+  onDismiss,
+  onPick,
+}: {
+  state: PlanTemplatesState | null;
+  replacing: boolean;
+  zoomedOut: boolean;
+  onDismiss: () => void;
+  onPick: (template: string | null) => void;
+}) => (
   <AlertDialog
     onDismissRequest={onDismiss}
     title="New plan"
     text={
       <div className="flex flex-col">
         <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-          {replacing ? 'Replaces the plan you are editing. Templates start at the map centre.' : 'Templates start at the map centre.'}
+          {newPlanNote(replacing, zoomedOut)}
         </Text>
         {templateChoices(state).map(([name, label]) => (
-          <TextButton key={name ?? ''} className="self-start" enabled={name === null || state?.enabled === true} onClick={() => onPick(name)}>
+          <TextButton key={name ?? ''} className="self-start" enabled={name === null || (state?.enabled === true && !zoomedOut)} onClick={() => onPick(name)}>
             {label}
           </TextButton>
         ))}

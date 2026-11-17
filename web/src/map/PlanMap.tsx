@@ -31,7 +31,7 @@ export const PlanMapScreen = ({
   onTemplates = null,
 }: {
   className?: string;
-  onCentre?: ((latitude: number, longitude: number) => void) | null;
+  onCentre?: ((latitude: number, longitude: number, zoom: number) => void) | null;
   itemPanel?: ((index: number, at: TrackPoint | null, leg: string | null, remove: (() => void) | null) => ReactNode) | null;
   header?: ((bar: PlanBar) => ReactNode) | null;
   routeSettings?: (() => ReactNode) | null;

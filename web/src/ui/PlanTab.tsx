@@ -34,7 +34,7 @@ import {
   undrawnItemsWarning,
 } from '@/ui/PlanFileRules';
 import { useRememberPlanFileActions, visualItems } from '@/ui/PlanFiles';
-import { CREATE_FROM_TEMPLATE, NewPlanDialog, planTemplates } from '@/ui/PlanTemplates';
+import { CREATE_FROM_TEMPLATE, NewPlanDialog, ZOOM_IN_FOR_TEMPLATE, planTemplates, zoomedOutForTemplates } from '@/ui/PlanTemplates';
 import { PlanTransformDialog } from '@/ui/PlanTransform';
 import { RouteSettings } from '@/ui/RouteSettings';
 
@@ -138,6 +138,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
   const history = planHistory(planStatus);
   const [undrawn, setUndrawn] = useState<readonly string[]>([]);
   const [centre, setCentre] = useState<readonly [number, number] | null>(null);
+  const [zoom, setZoom] = useState<number | null>(null);
   const [newPlanOpen, setNewPlanOpen] = useState(false);
   const [startFrom, setStartFrom] = useState<string | null>(null);
   const documentName = files.documentName();
@@ -160,6 +161,10 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
     void (async () => {
       if (centre === null) {
         setNotice('The map has not reported its centre yet.');
+        return;
+      }
+      if (zoomedOutForTemplates(zoom)) {
+        setNotice(ZOOM_IN_FOR_TEMPLATE);
         return;
       }
       const [lat, lon] = centre;
@@ -395,6 +400,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
         <NewPlanDialog
           state={planTemplates(planStatus)}
           replacing={containsItems}
+          zoomedOut={zoomedOutForTemplates(zoom)}
           onDismiss={() => setNewPlanOpen(false)}
           onPick={(template) => {
             setNewPlanOpen(false);
@@ -450,7 +456,10 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
         <PlanMapScreen
           className="size-full"
           fitKey={files.opened()}
-          onCentre={(lat: number, lon: number) => setCentre([lat, lon])}
+          onCentre={(lat: number, lon: number, level: number) => {
+            setCentre([lat, lon]);
+            setZoom(level);
+          }}
           itemPanel={(index: number, at: TrackPoint | null, leg: string | null, remove: (() => void) | null) => <ItemEditor index={index} at={at} mapCentre={centre} legDetail={leg} onRemove={remove} />}
           routeSettings={() => <RouteSettings plan={planStatus} />}
           onTemplates={() => setNewPlanOpen(true)}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { planTemplates, templateChoices } from './PlanTemplates';
+import { ZOOM_IN_FOR_TEMPLATE, newPlanNote, planTemplates, templateChoices, zoomedOutForTemplates } from './PlanTemplates';
 
 describe('PlanTemplatesTest', () => {
   it('templates read from the plan view in the order QGC offers them', () => {
@@ -25,5 +25,11 @@ describe('PlanTemplatesTest', () => {
 
   it('with no answer from the core a blank plan is still offered', () => {
     expect(templateChoices(null)).toEqual([[null, 'Blank mission']]);
+  });
+
+  it('a template waits until the map is zoomed in to a place, so it never fills a world view', () => {
+    expect([zoomedOutForTemplates(null), zoomedOutForTemplates(2.0), zoomedOutForTemplates(14.9), zoomedOutForTemplates(15.0), zoomedOutForTemplates(17.0)]).toEqual([true, true, true, false, false]);
+    expect(newPlanNote(true, true)).toBe(`Replaces the plan you are editing. ${ZOOM_IN_FOR_TEMPLATE}`);
+    expect(newPlanNote(false, false)).toBe('Templates fill the area you can see on the map.');
   });
 });

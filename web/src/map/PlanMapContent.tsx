@@ -151,6 +151,7 @@ import { VEHICLES_VIEW, uploadHeading, vehicleChoices } from './VehiclePicker';
 import { TrackPoint, VehicleMap, isPlottable } from './VehicleMap';
 import { PlanFocus, UPLOADED, type UploadGate, freshPlanView, notReadyToSend, planSupport, syncRefusal, uploadGate, uploadLabel, uploadStep, vehicleSyncState } from './VehicleSync';
 import { WaypointSettings } from './WaypointPanel';
+import { ZOOM_IN_FOR_PATTERN, zoomedOutForTemplates } from '@/ui/PlanTemplates';
 
 const PLAN_POLL_MS = 700;
 const FIELD_ZOOM = 16;
@@ -282,7 +283,7 @@ export const PlanMapContent = ({
   onTemplates = null,
 }: {
   mapStyle: string;
-  onCentre?: ((latitude: number, longitude: number) => void) | null;
+  onCentre?: ((latitude: number, longitude: number, zoom: number) => void) | null;
   itemPanel?: ((index: number, at: TrackPoint | null, leg: string | null, remove: (() => void) | null) => ReactNode) | null;
   header?: ((bar: PlanBar) => ReactNode) | null;
   routeSettings?: (() => ReactNode) | null;
@@ -837,7 +838,7 @@ export const PlanMapContent = ({
         onCentreChanged={(at, level) => {
           centre.value = at;
           zoom.value = level;
-          onCentre?.(at.latitude, at.longitude);
+          onCentre?.(at.latitude, at.longitude, level);
         }}
         bottomInsetPx={controlsHeightPx}
         topInsetPx={headerPx}
@@ -1153,13 +1154,13 @@ export const PlanMapContent = ({
             patternWanted.value = [];
           }}
           title="Which pattern?"
-          text={patternWanted.value.find((it) => !addablePattern(it) && it.disabledReason.trim() !== '')?.disabledReason ?? 'A pattern covers an area or a line with a camera run.'}
+          text={zoomedOutForTemplates(zoom.value) ? ZOOM_IN_FOR_PATTERN : (patternWanted.value.find((it) => !addablePattern(it) && it.disabledReason.trim() !== '')?.disabledReason ?? 'A pattern covers an area or a line with a camera run.')}
           confirmButton={
             <div className="flex flex-col">
               {patternWanted.value.map((kind) => (
                 <TextButton
                   key={kind.id}
-                  enabled={addablePattern(kind)}
+                  enabled={addablePattern(kind) && !zoomedOutForTemplates(zoom.value)}
                   onClick={() => {
                     patternWanted.value = [];
                     addMissionItem(kind.id, `Adding ${kind.label.toLowerCase()}`, placeAt(), insertAfter(selected.value, allItems.value));
