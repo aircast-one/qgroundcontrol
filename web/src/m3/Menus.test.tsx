@@ -3,10 +3,12 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DropdownMenu, DropdownMenuItem } from './Menus';
 
+const marks = (item: HTMLElement): number => item.querySelectorAll('[aria-hidden="true"]').length;
+
 describe('a choice menu shows which option is chosen', () => {
   afterEach(cleanup);
 
-  it('marks the chosen option with a check and aria-current, and leaves the others plain', async () => {
+  it('marks the chosen option for screen readers with aria-current and for the eye with a mark, and leaves the others plain', async () => {
     render(
       <div>
         <DropdownMenu expanded onDismissRequest={() => undefined}>
@@ -18,20 +20,8 @@ describe('a choice menu shows which option is chosen', () => {
     const chosen = await screen.findByRole('menuitem', { name: 'Multi-rotor' });
     const other = screen.getByRole('menuitem', { name: 'Fixed wing' });
     expect(chosen.getAttribute('aria-current')).toBe('true');
-    expect(chosen.textContent).toContain('check');
     expect(other.hasAttribute('aria-current')).toBe(false);
-    expect(other.textContent).not.toContain('check');
-  });
-
-  it('opens at least as wide as the field it drops from', async () => {
-    render(
-      <div>
-        <DropdownMenu expanded onDismissRequest={() => undefined}>
-          <DropdownMenuItem text="VTOL" onClick={() => undefined} />
-        </DropdownMenu>
-      </div>,
-    );
-    const menu = await screen.findByRole('menu');
-    expect(menu.className).toContain('min-w-[max(160px,var(--anchor-width))]');
+    expect(marks(chosen)).toBe(1);
+    expect(marks(other)).toBe(0);
   });
 });

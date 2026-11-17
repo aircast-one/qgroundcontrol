@@ -156,6 +156,23 @@ test('turning a geofence limit on while armed asks first, since the breach actio
   await expect(fenceOff, 'only the chosen limit comes on').toHaveCount(1);
 });
 
+test('a dropdown opens at least as wide as its field and marks the chosen option', async ({ app }) => {
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add a link' }).click();
+  await app.getByRole('button', { name: /^Simulated vehicle/ }).click();
+  const field = app.getByRole('button', { name: /^Vehicle type, / });
+  const value = ((await field.getAttribute('aria-label')) ?? '').replace('Vehicle type, ', '');
+  await field.click();
+  const menu = app.getByRole('menu');
+  const chosen = menu.locator('[role="menuitem"][aria-current="true"]');
+  await expect(chosen).toHaveCount(1);
+  await expect(chosen).toHaveAccessibleName(value);
+  await expect(chosen.locator('[aria-hidden="true"]')).toBeVisible();
+  await expect(menu.locator('[role="menuitem"]:not([aria-current])').first().locator('[aria-hidden="true"]')).toHaveCount(0);
+  const [fieldBox, menuBox] = await Promise.all([field.boundingBox(), menu.boundingBox()]);
+  expect(menuBox?.width ?? 0).toBeGreaterThanOrEqual(fieldBox?.width ?? Number.POSITIVE_INFINITY);
+});
+
 test('settings search reaches setup pages by what they hold, and the parameters', async ({ vehicle }) => {
   await openMenu(vehicle, 'Settings');
   const search = vehicle.getByPlaceholder('Search settings');

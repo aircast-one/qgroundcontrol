@@ -42,6 +42,35 @@ const App = () => {
   );
 };
 
+const Opener = ({ kept, disabled }: { kept: boolean; disabled: boolean }) => {
+  const [open, setOpen] = useState(false);
+  const [used, setUsed] = useState(false);
+  return (
+    <div>
+      {kept ? (
+        <button
+          type="button"
+          disabled={disabled && used}
+          onClick={() => {
+            setUsed(true);
+            setOpen(true);
+          }}
+        >
+          Open
+        </button>
+      ) : null}
+      {open ? (
+        <div>
+          <Panel />
+          <button type="button" onClick={() => setOpen(false)}>
+            Close
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 describe('FocusReturnTest', () => {
   afterEach(cleanup);
 
@@ -57,5 +86,30 @@ describe('FocusReturnTest', () => {
     view.getByText('Close').focus();
     fireEvent.click(view.getByText('Close'));
     expect(document.activeElement).toBe(menu);
+  });
+
+  it('when the opener is gone, closing leaves focus where it fell and does not throw', () => {
+    trackFocus();
+    const view = render(<Opener kept disabled={false} />);
+    const opener = view.getByText('Open');
+    opener.focus();
+    fireEvent.click(opener);
+    view.rerender(<Opener kept={false} disabled={false} />);
+    view.getByText('Close').focus();
+    expect(() => fireEvent.click(view.getByText('Close'))).not.toThrow();
+    expect(opener.isConnected).toBe(false);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('when the opener is disabled, focus does not land on it', () => {
+    trackFocus();
+    const view = render(<Opener kept disabled />);
+    const opener = view.getByText('Open');
+    opener.focus();
+    fireEvent.click(opener);
+    view.getByText('Close').focus();
+    fireEvent.click(view.getByText('Close'));
+    expect(opener).toHaveProperty('disabled', true);
+    expect(document.activeElement).not.toBe(opener);
   });
 });

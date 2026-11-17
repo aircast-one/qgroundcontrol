@@ -64,7 +64,11 @@ test('ArduPilot flight safety links the return altitude to Settings › Safety i
 test('ArduPilot setup lists its pages in the order an aircraft is set up', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
-  const top = async (name: string) => (await app.getByRole('button', { name: new RegExp(`^${name} `) }).first().boundingBox())?.y ?? -1;
+  const top = async (name: string) => {
+    const box = await app.getByRole('button', { name: new RegExp(`^${name} `) }).first().boundingBox();
+    if (box === null) throw new Error(`${name} is not listed`);
+    return box.y;
+  };
   const order = ['Frame', 'Sensors', 'Radio', 'Flight modes', 'Power', 'Failsafes', 'Flight safety', 'ESC'];
   await expect(app.getByRole('button', { name: /^ESC / })).toBeVisible();
   const tops = await Promise.all(order.map(top));

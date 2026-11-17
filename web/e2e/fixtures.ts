@@ -1,4 +1,5 @@
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
+import { DESKTOP_QUERY } from '../src/ui/DesktopLayout';
 
 export const APP = '/';
 
@@ -25,10 +26,10 @@ export const openMenu = async (page: Page, item: string) => {
 };
 
 export const closeSettings = async (page: Page) => {
-  const close = page.getByRole('button', { name: 'Close settings' });
-  if (await close.isVisible()) return close.click();
-  await page.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: 'Settings' })).toBeHidden();
+  const desktop = await page.evaluate((query) => window.matchMedia(query).matches, DESKTOP_QUERY);
+  const close = desktop ? page.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true }) : page.getByRole('button', { name: 'Close settings' });
+  await close.click();
+  await expect(desktop ? page.getByRole('navigation', { name: 'Settings' }) : close).toBeHidden();
 };
 
 export type MockOption = 'Enable camera' | 'Enable gimbal' | 'Enable proximity sensors' | 'Send status text + voice';
