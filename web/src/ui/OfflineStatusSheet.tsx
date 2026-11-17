@@ -78,8 +78,10 @@ export const offlineGuide = (status: OfflineStatus | null, hint: string, noCamer
       };
 };
 
-const OfflineLinkRow = ({ link, busy }: { link: OfflineLink; busy: boolean }) => (
+const OfflineLinkRow = ({ link, busy, className, containerColor }: { link: OfflineLink; busy: boolean; className?: string; containerColor?: string }) => (
   <ListItem
+    className={className}
+    containerColor={containerColor}
     headlineContent={link.text}
     supportingContent={
       link.description === '' ? undefined : (
@@ -114,7 +116,7 @@ export const OfflineGuideCard = ({ inVideo }: { inVideo: boolean }) => {
   return (
     <div className="flex size-full items-center justify-center p-4">
       <Surface shape="extraLarge" color={md('surfaceContainer')} contentColor={md('onSurface')} className="w-full max-w-[420px]">
-        <div className="flex flex-col items-center gap-3 p-6">
+        <div className={`flex flex-col items-center gap-3 px-6 pt-6 ${guide.links.length > 0 ? 'pb-3' : 'pb-6'}`}>
           <div className="flex size-14 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
             <Drawable name={icon} size={28} />
           </div>
@@ -126,9 +128,9 @@ export const OfflineGuideCard = ({ inVideo }: { inVideo: boolean }) => {
           </Text>
           {guide.links.length > 0 ? (
             <>
-              <div className="-mx-6 w-[calc(100%+3rem)]">
+              <div className="mt-2 flex w-full flex-col gap-2">
                 {guide.links.map((link) => (
-                  <OfflineLinkRow key={link.index} link={link} busy={guide.busy} />
+                  <OfflineLinkRow key={link.index} link={link} busy={guide.busy} className="rounded-shape-lg" containerColor={md('surfaceContainerHigh')} />
                 ))}
               </div>
               <TextButton onClick={open}>{label}</TextButton>
