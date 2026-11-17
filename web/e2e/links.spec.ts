@@ -45,7 +45,7 @@ test('a MAVLink WebSocket link connects a vehicle and hears the ground station',
   await app.getByRole('textbox', { name: 'WebSocket address' }).fill('ws://localhost:18760');
   await app.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
-  await expect(app.getByText('20.0m', { exact: true })).toBeVisible();
+  await expect(app.getByText('20.0 m', { exact: true })).toBeVisible();
   await expect.poll(async () => ((await (await request.get('http://localhost:18760/stats')).json()) as { gcsHeartbeats: number }).gcsHeartbeats, { timeout: 15_000 }).toBeGreaterThan(before);
 });
 

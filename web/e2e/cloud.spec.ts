@@ -15,6 +15,6 @@ test('an Aircast Cloud link signs in and reaches the vehicle over WebTransport',
   await expect(form.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 30_000 });
   await form.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
-  await expect(app.getByText('20.0m', { exact: true })).toBeVisible();
+  await expect(app.getByText('20.0 m', { exact: true })).toBeVisible();
   await expect.poll(heard, { timeout: 15_000 }).toBeGreaterThan(before);
 });

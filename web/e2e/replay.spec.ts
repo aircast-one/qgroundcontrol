@@ -26,7 +26,7 @@ const replayLink = async (page: Page) => {
 test('a flight log replays as a connected vehicle', async ({ app }) => {
   await replayLink(app);
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
-  await expect(app.getByText('20.0m', { exact: true })).toBeVisible();
+  await expect(app.getByText('20.0 m', { exact: true })).toBeVisible();
 });
 
 test('the replay bar shows progress and pauses the log', async ({ app }) => {
@@ -55,5 +55,5 @@ test('a saved replay link still plays its log after a reload', async ({ app }) =
   await app.getByRole('menuitem', { name: 'Connect' }).click();
   await expect(app.getByRole('navigation', { name: 'Settings' }), 'a vehicle connecting from Transmission closes settings').toBeHidden({ timeout: 60_000 });
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
-  await expect(app.getByText('20.0m', { exact: true })).toBeVisible();
+  await expect(app.getByText('20.0 m', { exact: true })).toBeVisible();
 });
