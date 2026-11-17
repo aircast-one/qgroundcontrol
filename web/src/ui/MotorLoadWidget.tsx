@@ -3,7 +3,7 @@ import { type Json, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, op
 import { useQgcDerived } from '@/bridge/QgcState';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { ESC_PATH, EscStatusSheet } from '@/ui/EscIndicator';
-import { LocalCompactHud, OSD_SCRIM, osdShadow } from '@/ui/Osd';
+import { LocalCompactHud, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
 export type Level = 'normal' | 'elevated' | 'critical';
 
@@ -67,7 +67,7 @@ const Rotor = ({ frame, load }: { frame: Frame; load: MotorLoad }) => {
   return (
     <g>
       <title>{load.reporting ? `Motor ${load.motor}: ${load.current} A, ${load.rpm} rpm, ${load.temperature}` : `Motor ${load.motor}: no ESC data`}</title>
-      <circle cx={x} cy={y} r={frame.ring} fill={OSD_SCRIM} stroke={withAlpha(Color.White, 0.3)} strokeWidth={RING_WIDTH} strokeDasharray={load.reporting ? undefined : '3 3'} />
+      <circle cx={x} cy={y} r={frame.ring} fill={useOsdBackdrop(OSD_SCRIM)} stroke={withAlpha(Color.White, 0.3)} strokeWidth={RING_WIDTH} strokeDasharray={load.reporting ? undefined : '3 3'} />
       {load.reporting && load.temperatureLevel !== 'normal' ? (
         <circle cx={x} cy={y} r={frame.ring} fill="none" stroke={ringColour(load.temperatureLevel)} strokeWidth={RING_WIDTH} />
       ) : null}
