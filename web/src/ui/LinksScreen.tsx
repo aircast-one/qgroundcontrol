@@ -660,6 +660,7 @@ const SerialPortFields = ({ ports, bauds, portName, baud, enabled, onPort, onBau
   <>
     <ChoiceField
       label="USB port"
+      name={null}
       value={orIfBlank(portLabel(ports, portName), orIfBlank(portName, 'Choose a port'))}
       options={ports.map((it) => it.label)}
       className="w-full"
@@ -671,6 +672,7 @@ const SerialPortFields = ({ ports, bauds, portName, baud, enabled, onPort, onBau
     />
     <ChoiceField
       label="Baud rate"
+      name={null}
       value={`${baud}`}
       options={bauds.map(String)}
       className="w-full"

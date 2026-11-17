@@ -282,7 +282,7 @@ export const FirmwareScreen = ({ className }: { className?: string }) => {
         </div>
       ))}
       <div className="flex w-full flex-col gap-2 px-4 py-3">
-        <ChoiceField label="Firmware" value={known === undefined ? source : label(known)} options={offered.map(label)} className="w-full" onPick={(index) => !busy && chooseSource(offered[index]?.[0] ?? source)} />
+        <ChoiceField label="Firmware" name={null} value={known === undefined ? source : label(known)} options={offered.map(label)} className="w-full" onPick={(index) => !busy && chooseSource(offered[index]?.[0] ?? source)} />
         {chibios !== null ? <FactRow fact={chibios} fieldModifier="w-full" /> : null}
         <div className="flex items-center gap-3">
           <Checkbox

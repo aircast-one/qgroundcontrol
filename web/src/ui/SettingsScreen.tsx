@@ -1330,7 +1330,7 @@ export const choiceName = (label: string | null, name: string | null, value: str
 
 export const ChoiceField = ({
   label,
-  name = null,
+  name,
   value,
   options,
   className,
@@ -1340,7 +1340,7 @@ export const ChoiceField = ({
   onPick,
 }: {
   label: string | null;
-  name?: string | null;
+  name: string | null;
   value: string;
   options: readonly string[];
   className?: string;

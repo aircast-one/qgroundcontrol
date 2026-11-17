@@ -69,7 +69,7 @@ const MockCheck = ({ text, checked, onChecked }: { text: string; checked: boolea
 
 export const MockLinkFields = ({ choices, onChange }: { choices: MockLinkChoices; onChange: (choices: MockLinkChoices) => void }) => (
   <div className="flex flex-col gap-1">
-    <ChoiceField label="Vehicle type" value={vehicleLabel(choices)} options={MOCK_VEHICLES.map((it) => it[1])} className="w-full" onPick={(it) => onChange(withMockVehicle(choices, it))} />
+    <ChoiceField label="Vehicle type" name={null} value={vehicleLabel(choices)} options={MOCK_VEHICLES.map((it) => it[1])} className="w-full" onPick={(it) => onChange(withMockVehicle(choices, it))} />
     <MockCheck text="Send status text + voice" checked={choices.sendStatusText} onChecked={(it) => onChange({ ...choices, sendStatusText: it })} />
     <MockCheck text="Enable camera" checked={choices.camera} onChecked={(it) => onChange({ ...choices, camera: it })} />
     <MockCheck text="Enable gimbal" checked={choices.gimbal} onChecked={(it) => onChange({ ...choices, gimbal: it })} />
@@ -80,6 +80,7 @@ export const MockLinkFields = ({ choices, onChange }: { choices: MockLinkChoices
     {choices.camera ? (
       <ChoiceField
         label="Served Video Stream"
+        name={null}
         value={MOCK_VIDEO_STREAMS[choices.videoStream] ?? ''}
         options={MOCK_VIDEO_STREAMS}
         className="w-full pt-2"

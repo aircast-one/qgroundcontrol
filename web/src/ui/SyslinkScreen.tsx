@@ -73,7 +73,7 @@ export const SyslinkScreen = ({ className }: { className?: string }) => {
         }}
       />
       <RadioField label="Address" value={radio.address} hint={radio.addressHint} keyboard="text" accept={hexAddress} onDone={(typed) => void act('syslink.setAddress', typed)} />
-      <ChoiceField label="Data Rate" value={radio.rates[radio.rate] ?? ''} options={radio.rates} onPick={(it) => void act('syslink.setRate', it)} />
+      <ChoiceField label="Data Rate" name={null} value={radio.rates[radio.rate] ?? ''} options={radio.rates} onPick={(it) => void act('syslink.setRate', it)} />
       {refusal !== null ? <Text color={md('error')}>{refusal}</Text> : null}
       <OutlinedButton className="self-start" onClick={() => void act('syslink.resetDefaults')}>
         Restore defaults
