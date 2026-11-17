@@ -39,7 +39,7 @@ pub const VIEW: [Command; 4] = [
     command("setup", "Setup", Some("CmdOrCtrl+4")),
 ];
 
-pub const FULL_SCREEN: Command = command("full-screen", "Enter full screen", Some("F11"));
+pub const FULL_SCREEN: Command = command("full-screen", "Full screen", Some("F11"));
 pub const EXIT: Command = command("exit", "Exit", None);
 
 pub const HELP: [(Command, &str); 4] = [
@@ -49,7 +49,7 @@ pub const HELP: [(Command, &str); 4] = [
     ),
     (
         command("help-troubleshooting", "Troubleshooting", None),
-        "https://aircast.one/docs/troubleshooting",
+        "https://aircast.one/docs#troubleshooting",
     ),
     (
         command("help-releases", "Release notes", None),
@@ -293,6 +293,16 @@ mod tests {
             assert_eq!(parsed.scheme(), "https");
             assert_eq!(parsed.host_str(), Some("aircast.one"));
         });
+        assert_eq!(
+            route("help-troubleshooting"),
+            Some(Route::Link("https://aircast.one/docs#troubleshooting")),
+            "aircast.one has no troubleshooting index page; the docs list its guides under this heading"
+        );
+    }
+
+    #[test]
+    fn full_screen_reads_right_whether_the_window_is_in_it_or_not() {
+        assert_eq!(FULL_SCREEN.label, "Full screen");
     }
 
     #[test]
