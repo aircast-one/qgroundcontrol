@@ -513,12 +513,14 @@ mod tests {
         }
     }
 
+    static NEXT_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+
     fn free_port() -> u16 {
-        std::net::UdpSocket::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port()
+        let base = 20_000 + u16::try_from(std::process::id() % 400).unwrap() * 20;
+        std::iter::repeat_with(|| base + NEXT_PORT.fetch_add(1, Ordering::Relaxed))
+            .take(1_000)
+            .find(|port| std::net::UdpSocket::bind(("127.0.0.1", *port)).is_ok())
+            .expect("a free port below the ephemeral range")
     }
 
     #[test]
