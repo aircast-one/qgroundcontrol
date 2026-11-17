@@ -1316,7 +1316,7 @@ export const ChoiceField = ({
       )}
       <button type="button" aria-label={choiceName(label, name, value)} title={value} aria-haspopup="menu" disabled={!enabled} className="absolute inset-0 cursor-pointer disabled:cursor-default" onClick={() => setExpanded(true)} />
       {plain ? (
-        <SafeChoiceMenu expanded={expanded} options={options} onDismiss={() => setExpanded(false)} onPick={onPick} />
+        <SafeChoiceMenu expanded={expanded} options={options} chosen={value} onDismiss={() => setExpanded(false)} onPick={onPick} />
       ) : (
         <DropdownMenu expanded={expanded} onDismissRequest={() => setExpanded(false)}>
           {options.map((option, index) => {
@@ -1334,6 +1334,7 @@ export const ChoiceField = ({
                 ) : null}
                 <DropdownMenuItem
                   text={option}
+                  selected={option === value}
                   onClick={() => {
                     setExpanded(false);
                     onPick(index);

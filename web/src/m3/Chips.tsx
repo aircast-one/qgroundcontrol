@@ -11,7 +11,7 @@ export const FilterChip = ({ selected, onClick, label, leadingIcon, trailingIcon
     aria-pressed={selected}
     disabled={!enabled}
     onClick={onClick}
-    className={`${chip} ${selected ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline text-on-surface-variant hover:bg-[color-mix(in_srgb,currentColor_8%,transparent)]'} ${className ?? ''}`}
+    className={`${chip} border ${selected ? 'border-transparent bg-primary-container text-on-primary-container' : 'border-outline text-on-surface-variant hover:bg-[color-mix(in_srgb,currentColor_8%,transparent)]'} ${className ?? ''}`}
   >
     {leadingIcon ?? (selected ? <MaterialIcon name="check" size={18} /> : null)}
     {label}
@@ -30,7 +30,7 @@ export const AssistChip = ({ onClick, label, leadingIcon, trailingIcon, enabled 
 export const SuggestionChip = AssistChip;
 
 export const InputChip = ({ selected, onClick, label, leadingIcon, trailingIcon, enabled = true, className }: ChipProps & { selected: boolean }) => (
-  <button type="button" aria-pressed={selected} disabled={!enabled} onClick={onClick} className={`${chip} ${selected ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline text-on-surface-variant'} ${className ?? ''}`}>
+  <button type="button" aria-pressed={selected} disabled={!enabled} onClick={onClick} className={`${chip} border ${selected ? 'border-transparent bg-primary-container text-on-primary-container' : 'border-outline text-on-surface-variant'} ${className ?? ''}`}>
     {leadingIcon}
     {label}
     {trailingIcon}

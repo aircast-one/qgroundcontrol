@@ -304,7 +304,7 @@ export const safeFirst = (options: readonly string[]): number[] =>
 
 export const DANGER_NOTE = 'Motors stop — the aircraft falls';
 
-export const SafeChoiceMenu = ({ expanded, options, onDismiss, onPick }: { expanded: boolean; options: readonly string[]; onDismiss: () => void; onPick: (index: number) => void }) => {
+export const SafeChoiceMenu = ({ expanded, options, chosen = null, onDismiss, onPick }: { expanded: boolean; options: readonly string[]; chosen?: string | null; onDismiss: () => void; onPick: (index: number) => void }) => {
   const [confirming, setConfirming] = useState<number | null>(null);
   const order = safeFirst(options);
   const firstDanger = order.find((it) => dangerousChoice(options[it] ?? ''));
@@ -328,6 +328,7 @@ export const SafeChoiceMenu = ({ expanded, options, onDismiss, onPick }: { expan
                     ) : null}
                   </span>
                 }
+                selected={option === chosen}
                 onClick={() => {
                   onDismiss();
                   if (danger) setConfirming(index);
