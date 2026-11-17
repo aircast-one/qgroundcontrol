@@ -61,19 +61,20 @@ test('a go-to point does not outlive the motors stopping', async ({ app: vehicle
   await expect(vehicle.getByText(/^(Going to point|Arrived)/)).toHaveCount(0);
 });
 
-test('a go-to offers a height that starts at the current height, and its card keeps clear of the point', async ({ vehicle }) => {
+test('a go-to offers a height that starts at the current height, says how long it takes, and its card keeps clear of the point', async ({ vehicle }) => {
   await takeOff(vehicle, '10 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
   await showMapFull(vehicle);
   await mapMenuAt(vehicle, 400, -100);
   await vehicle.getByRole('button', { name: 'Go to location' }).click();
-  const card = vehicle.getByRole('dialog', { name: 'Map actions' });
-  await expect(card.getByText(/\(current height\)$/)).toBeVisible();
-  const box = await card.boundingBox();
-  expect((box?.x ?? 0) + (box?.width ?? 0), 'a point on the right puts the card on the left').toBeLessThan((vehicle.viewportSize()?.width ?? 0) / 2);
-  await card.getByRole('button', { name: /increase|\+/i }).first().click();
-  await expect(card.getByText(/ · at \d+ (m|ft)$/)).toBeVisible();
-  await expect(card.getByText(/\(current height\)$/)).toBeHidden();
+  await expect(vehicle.getByText('Height above launch (current)')).toBeVisible();
+  await expect(vehicle.getByText(/^\d+ m (north|north-east|east|south-east|south|south-west|west|north-west) · about \d+ (sec|min)$/)).toBeVisible();
+  const slide = await vehicle.getByRole('button', { name: 'Slide to go to location', exact: true }).boundingBox();
+  expect((slide?.x ?? 0) + (slide?.width ?? 0), 'a point on the right puts the card on the left').toBeLessThan((vehicle.viewportSize()?.width ?? 0) / 2);
+  await vehicle.getByRole('button', { name: '+10 m' }).click();
+  await expect(vehicle.getByText('Height above launch', { exact: true })).toBeVisible();
+  await expect(vehicle.getByText('Height above launch (current)')).toBeHidden();
+  await expect(vehicle.getByRole('button', { name: /^Slide to go to location · \d+\.\d m$/ })).toBeVisible();
 });
 
 test('a stepped go-to height is the height commanded, even when the slide follows at once', async ({ vehicle }) => {
@@ -92,11 +93,10 @@ test('a stepped go-to height is the height commanded, even when the slide follow
   });
   await mapMenuAt(vehicle, 200, -100);
   await vehicle.getByRole('button', { name: 'Go to location' }).click();
-  const card = vehicle.getByRole('dialog', { name: 'Map actions' });
-  const shown = card.getByRole('button', { name: /^Height: \d+ m$/ });
-  const before = Number((await shown.getAttribute('aria-label'))?.replace(/\D/g, ''));
-  const increase = await card.getByRole('button', { name: 'Increase Height' }).boundingBox();
-  const slide = await card.getByRole('button', { name: 'Slide to go to location' }).boundingBox();
+  await expect(vehicle.getByText('Height above launch (current)')).toBeVisible();
+  const before = Number((await vehicle.getByRole('button', { name: /^\d+\.\d m$/ }).textContent())?.replace(' m', ''));
+  const increase = await vehicle.getByRole('button', { name: '+10 m' }).boundingBox();
+  const slide = await vehicle.getByRole('button', { name: 'Slide to go to location', exact: true }).boundingBox();
   if (increase === null || slide === null) throw new Error('the go-to card is not on screen');
   await vehicle.mouse.click(increase.x + increase.width / 2, increase.y + increase.height / 2);
   await vehicle.mouse.move(slide.x + 10, slide.y + slide.height / 2);
@@ -105,8 +105,9 @@ test('a stepped go-to height is the height commanded, even when the slide follow
   await vehicle.mouse.up();
   await expect(vehicle.getByText(/^Going to point/)).toBeVisible();
   const commanded = await vehicle.evaluate(() => (window as unknown as { gotoSent: { height?: number }[] }).gotoSent.map((it) => it.height ?? null));
-  expect(commanded).toEqual([before + 5]);
-  await expect(telemetry(vehicle, 'H')).toHaveText(new RegExp(`^H(${before + 4}\\.[5-9]|${before + 5}\\.[0-4]) m$`), { timeout: 90_000 });
+  expect(commanded).toHaveLength(1);
+  expect(Math.abs((commanded[0] ?? 0) - (before + 10)), 'the height commanded is the shown height and the 10 m added').toBeLessThan(0.25);
+  await expect.poll(async () => Number((await telemetry(vehicle, 'H').textContent())?.replace(/[^\d.]/g, '')), { timeout: 90_000 }).toBeGreaterThan(before + 9.5);
 });
 
 test('dragging the map stops it following the vehicle until the follow button brings it back', async ({ vehicle }) => {

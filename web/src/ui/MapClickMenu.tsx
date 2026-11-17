@@ -1,18 +1,18 @@
 import { useContext, useEffect, useMemo, useRef } from 'react';
 import { type Json, jsonObjects, optBoolean, optDouble, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useQgcPath } from '@/bridge/QgcState';
+import { useQgcPath, useQgcPathHoldingLast } from '@/bridge/QgcState';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
-import { useValue } from '@/kotlin/State';
+import { mutableStateOf, useValue } from '@/kotlin/State';
 import { coerceAtLeast, format } from '@/kotlin/Std';
 import { Button, HorizontalDivider, ListItem, OutlinedButton, OutlinedTextField, Slider, Switch, Text, type SheetAnchor } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { typedNumber } from '@/map/AltitudeEntry';
-import { type GotoCardSide, LocalFlyMapEdits } from '@/map/FlyMapEdits';
+import { GOTO_CARD_WIDTH, type GotoCardSide, LocalFlyMapEdits } from '@/map/FlyMapEdits';
 import { type LoiterEdit, loiterEditNumber } from '@/map/GotoMarker';
 import { Map3d } from '@/map/Map3d';
-import { type ClosedRange, SettingStepper } from '@/map/SettingStepper';
+import { type ClosedRange } from '@/map/SettingStepper';
 import { MINIMUM_CIRCLE_RADIUS_METRES } from '@/map/MissionLayers';
 import { OrbitCircle } from '@/map/OrbitMarker';
 import { sentenceCase } from '@/map/SentenceCase';
@@ -22,8 +22,9 @@ import { aircast, md } from '@/theme/Colors';
 import { useRememberActiveVehicleId } from './ActiveVehicle';
 import { HoldOrCancel } from './ConfirmTrack';
 import { GUIDED_ALTITUDE, type GuidedAltitude, guidedAltitude, guidedAltitudePath, rangeLabel } from './GuidedAltitude';
+import { GuidedValueControls } from './GuidedValueFlow';
 import { useDesktopLayout } from './DesktopLayout';
-import { GuidedValuePanel } from './GuidedValuePanel';
+import { GuidedValuePanel, guidedDecimals, guidedReading, guidedRounded } from './GuidedValuePanel';
 import { EditPositionDialog, geoOf } from './ItemEditor';
 import { RangeHint } from './VehicleUi';
 
@@ -56,7 +57,7 @@ export const MapHoldHintEntries: readonly MapHoldHint[] = [MapHoldHint.Unseen, M
 
 export type GotoPreview = {
   readonly distance: string;
-  readonly height: string;
+  readonly eta: string;
   readonly verdict: string;
   readonly pastReturnPoint: boolean;
   readonly heightMetres: number | null;
@@ -64,7 +65,8 @@ export type GotoPreview = {
   readonly metresPerHeightUnit: number | null;
 };
 
-export const gotoPreviewPath = (point: MapPoint): string => format('view.gotoPreview(%.7f,%.7f)', point.latitude, point.longitude);
+export const gotoPreviewPath = (point: MapPoint, heightMetres: number | null = null): string =>
+  heightMetres === null ? format('view.gotoPreview(%.7f,%.7f)', point.latitude, point.longitude) : format('view.gotoPreview(%.7f,%.7f,%.2f)', point.latitude, point.longitude, heightMetres);
 
 const positiveOrNull = (value: number): number | null => (Number.isFinite(value) && value > 0 ? value : null);
 
@@ -73,7 +75,7 @@ export const gotoPreview = (view: Json | null): GotoPreview | null => {
   const height = optDouble(view, 'heightMetres');
   return {
     distance: optText(view, 'distanceText'),
-    height: optText(view, 'heightText'),
+    eta: optText(view, 'etaText'),
     verdict: optText(view, 'verdict'),
     pastReturnPoint: optBoolean(view, 'pastReturnPoint'),
     heightMetres: Number.isFinite(height) ? height : null,
@@ -82,43 +84,39 @@ export const gotoPreview = (view: Json | null): GotoPreview | null => {
   };
 };
 
-export const GOTO_HEIGHT_STEP = 5;
-
 export type GotoHeight = { readonly shown: number; readonly metres: number };
 
 export const gotoHeight = (preview: GotoPreview, shown: number): GotoHeight | null =>
   preview.metresPerHeightUnit === null ? null : { shown, metres: shown * preview.metresPerHeightUnit };
 
-export const chosenHeightText = (preview: GotoPreview, chosen: GotoHeight | null): string =>
-  chosen === null ? preview.height : `at ${Math.round(chosen.shown)} ${preview.heightUnit}`.trim();
+export const currentHeight = (preview: GotoPreview): number | null =>
+  preview.heightMetres === null || preview.metresPerHeightUnit === null ? null : guidedRounded(preview.heightMetres / preview.metresPerHeightUnit, preview.heightUnit);
 
-export const shownHeight = (preview: GotoPreview, chosen: GotoHeight | null): number | null =>
-  chosen?.shown ?? (preview.heightMetres === null || preview.metresPerHeightUnit === null ? null : Math.round(preview.heightMetres / preview.metresPerHeightUnit));
+export const gotoHeightLabel = (label: string, chosen: boolean): string => (chosen ? label : `${label} (current)`);
+
+export const gotoCommitLabel = (title: string, height: number | null, unit: string): string => (height === null ? title : `${title} · ${guidedReading(height, unit)}`);
 
 export const gotoHeightRange = (guided: GuidedAltitude | null, preview: GotoPreview): ClosedRange | null => {
   if (guided === null || guided.minimum === null || guided.maximum === null || guided.unit !== preview.heightUnit || preview.metresPerHeightUnit === null) return null;
-  const range = { start: Math.ceil(guided.minimum), endInclusive: Math.floor(guided.maximum) };
-  return range.start <= range.endInclusive ? range : null;
+  const grid = 10 ** guidedDecimals(guided.unit);
+  const range = { start: Math.ceil(guided.minimum * grid) / grid, endInclusive: Math.floor(guided.maximum * grid) / grid };
+  return range.start < range.endInclusive ? range : null;
 };
 
 export const gotoArgs = (point: MapPoint, chosen: GotoHeight | null): Record<string, number> =>
   chosen === null ? { latitude: point.latitude, longitude: point.longitude } : { latitude: point.latitude, longitude: point.longitude, height: chosen.metres };
 
-const ANCHORED_CARD_WIDTH = 320;
-const ANCHORED_CARD_EDGE = 16;
-
 export const gotoCardSide = (anchor: SheetAnchor | undefined, desktop: boolean, width: number): GotoCardSide =>
   !desktop || anchor === undefined ? 'bottom' : anchor.x > width / 2 ? 'left' : 'right';
 
-export const gotoCardAnchor = (anchor: SheetAnchor | undefined, side: GotoCardSide, width: number): SheetAnchor | undefined =>
-  anchor === undefined || side === 'bottom' ? anchor : { x: side === 'left' ? ANCHORED_CARD_EDGE : width - ANCHORED_CARD_WIDTH - ANCHORED_CARD_EDGE, y: anchor.y };
-
 const notBlank = (text: string): boolean => text.trim() !== '';
 
-export const gotoPreviewLines = (preview: GotoPreview | null, fallback: string): readonly string[] => {
-  const lines = preview === null ? [] : [[preview.distance, preview.height].filter(notBlank).join(' · '), preview.verdict].filter(notBlank);
-  return lines.length > 0 ? lines : [fallback];
+export const gotoSentence = (away: string | null, preview: GotoPreview | null, fallback: string): string => {
+  const line = [away ?? preview?.distance ?? '', preview?.eta ?? ''].filter(notBlank).join(' · ');
+  return line === '' ? fallback : line;
 };
+
+const GOTO_JUSTIFY: Record<GotoCardSide, string> = { bottom: 'justify-center', left: 'justify-start', right: 'justify-end' };
 
 export const GOTO_ACTION = 'GoTo';
 
@@ -203,7 +201,6 @@ export const offeredActions = (view: Json | null, only: readonly string[] | null
 
 export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point: MapPoint; anchor?: SheetAnchor; only?: readonly string[] | null; onDismiss: () => void }) => {
   const view = useQgcPath(MAP_CLICK_PATH);
-  const vehicleCoordinate = useQgcPath('vehicle.coordinate');
   const actions = useMemo(() => offeredActions(view, only), [view, only]);
   const empty = view !== null && actions.length === 0;
   useLaunchedEffect([point.latitude, point.longitude, empty], () => {
@@ -219,22 +216,7 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   const [refusal, setRefusal] = useKeyedState<string | null>([point.latitude, point.longitude], () => null);
 
   const defaults = useMemo(() => orbitDefaults(view), [view]);
-  const mapEdits = useContext(LocalFlyMapEdits);
-  const previewing = confirming?.id === GOTO_ACTION;
   const desktop = useDesktopLayout();
-  const cardSide = gotoCardSide(anchor, desktop, window.innerWidth);
-  useEffect(() => {
-    mapEdits.gotoCard.value = cardSide;
-    mapEdits.gotoPreview.value = previewing ? { latitude: point.latitude, longitude: point.longitude } : null;
-    return () => {
-      mapEdits.gotoPreview.value = null;
-    };
-  }, [previewing, point.latitude, point.longitude, mapEdits, cardSide]);
-  const previewJson = useQgcPath(previewing ? gotoPreviewPath(point) : MAP_CLICK_PATH);
-  const preview = useMemo(() => (previewing ? gotoPreview(previewJson) : null), [previewJson, previewing]);
-  const guidedJson = useQgcPath(GUIDED_ALTITUDE);
-  const guided = useMemo(() => guidedAltitude(guidedJson), [guidedJson]);
-  const [height, setHeight] = useKeyedState<GotoHeight | null>([point.latitude, point.longitude, previewing], () => null);
 
   const ran = (action: MapClickAction) => {
     if (opensMap3d(action)) Map3d.show(true);
@@ -242,24 +224,19 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
   };
 
   const run = (action: MapClickAction) => {
-    void send(action, point, null, action.id === GOTO_ACTION ? gotoArgs(point, height) : undefined).then((refused) => (refused === null ? ran(action) : setRefusal(refused)));
+    void send(action, point, null).then((refused) => (refused === null ? ran(action) : setRefusal(refused)));
   };
 
   if (view === null || actions.length === 0) return null;
 
   if (confirming?.id === ORBIT_ACTION) return <OrbitPanel point={point} action={confirming} defaults={defaults} onDone={onDismiss} />;
 
+  if (confirming?.id === GOTO_ACTION) return <GotoPanel point={point} action={confirming} units={defaults} side={gotoCardSide(anchor, desktop, window.innerWidth)} onDone={onDismiss} />;
+
   const pending = confirming;
-  const vehicleGeo = geoOf(vehicleCoordinate);
-  const vehicleAt: MapPoint | null = vehicleGeo === null ? null : { latitude: vehicleGeo[0], longitude: vehicleGeo[1] };
-  const away = vehicleAt !== null && pending?.id === GOTO_ACTION ? goHereText(vehicleAt, point, defaults.unit, defaults.metresPerUnit) : null;
-  const lines = pending === null ? [] : preview !== null ? gotoPreviewLines({ ...preview, distance: away ?? preview.distance, height: chosenHeightText(preview, height) }, pending.message) : [away ?? pending.message];
-  const heightShown = preview === null ? null : shownHeight(preview, height);
-  const heightRange = preview === null ? null : gotoHeightRange(guided, preview);
-  const warn = preview?.pastReturnPoint === true;
 
   return (
-    <AircastSheet onDismissRequest={onDismiss} label="Map actions" anchor={pending?.id === GOTO_ACTION ? gotoCardAnchor(anchor, cardSide, window.innerWidth) : anchor}>
+    <AircastSheet onDismissRequest={onDismiss} label="Map actions" anchor={anchor}>
       <div className="flex w-full flex-col pb-6 desktop:pb-1">
         {pending === null ? (
           actions.map((action, index) => (
@@ -276,27 +253,9 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
         ) : (
           <div className="flex flex-col gap-3 px-sheet">
             <Text typography="titleLarge">{sentenceCase(pending.title)}</Text>
-            {lines.map((line, index) => (
-              <Text key={index} typography="bodyMedium" color={warn && index === lines.length - 1 ? aircast('warning') : md('onSurfaceVariant')}>
-                {line}
-              </Text>
-            ))}
-            {pending.id === GOTO_ACTION && preview !== null && heightShown !== null && heightRange !== null ? (
-              <SettingStepper
-                label="Height"
-                value={heightShown}
-                unit={preview.heightUnit}
-                step={GOTO_HEIGHT_STEP}
-                range={heightRange}
-                commitEachStep
-                onSet={(next) => setHeight(gotoHeight(preview, next))}
-              />
-            ) : null}
-            {warn ? (
-              <Button className="w-full" onClick={() => void VehicleCommands.returnToLaunch(false).then(() => onDismiss())}>
-                {RETURN_HOME_INSTEAD}
-              </Button>
-            ) : null}
+            <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+              {pending.message}
+            </Text>
             <HoldOrCancel label={pending.title} onConfirm={() => run(pending)} onCancel={() => setConfirming(null)} />
           </div>
         )}
@@ -315,6 +274,74 @@ export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point:
         ))}
       </div>
     </AircastSheet>
+  );
+};
+
+const GotoPanel = ({ point, action, units, side, onDone }: { point: MapPoint; action: MapClickAction; units: OrbitDefaults; side: GotoCardSide; onDone: () => void }) => {
+  const mapEdits = useContext(LocalFlyMapEdits);
+  useEffect(() => {
+    mapEdits.gotoCard.value = side;
+    mapEdits.gotoPreview.value = { latitude: point.latitude, longitude: point.longitude };
+    return () => {
+      mapEdits.gotoPreview.value = null;
+    };
+  }, [point.latitude, point.longitude, mapEdits, side]);
+  const height = useMemo(() => mutableStateOf<number | null>(null), [point.latitude, point.longitude]);
+  const chosen = useValue(height);
+  const [settledMetres, setSettledMetres] = useKeyedState<number | null>([height], () => null);
+  const [refusal, setRefusal] = useKeyedState<string | null>([height], () => null);
+  const previewJson = useQgcPathHoldingLast(gotoPreviewPath(point, settledMetres));
+  const preview = useMemo(() => gotoPreview(previewJson), [previewJson]);
+  const guidedJson = useQgcPath(GUIDED_ALTITUDE);
+  const guided = useMemo(() => guidedAltitude(guidedJson), [guidedJson]);
+  const vehicleGeo = geoOf(useQgcPath('vehicle.coordinate'));
+  const away = vehicleGeo === null ? null : goHereText({ latitude: vehicleGeo[0], longitude: vehicleGeo[1] }, point, units.unit, units.metresPerUnit);
+  const range = preview === null ? null : gotoHeightRange(guided, preview);
+  const shown = chosen ?? (preview === null ? null : currentHeight(preview));
+  const unit = preview?.heightUnit ?? '';
+  const warn = preview?.pastReturnPoint === true;
+  const title = sentenceCase(action.title);
+  const metresOf = (picked: number | null): GotoHeight | null => (preview === null || picked === null ? null : gotoHeight(preview, picked));
+
+  const commit = () => {
+    void send(action, point, null, gotoArgs(point, metresOf(height.value))).then((refused) => (refused === null ? onDone() : setRefusal(refused)));
+  };
+
+  return (
+    <div className={`pointer-events-none absolute inset-0 z-30 flex items-end p-3 ${GOTO_JUSTIFY[side]}`} style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+      <div className="pointer-events-auto w-full" style={{ maxWidth: GOTO_CARD_WIDTH }}>
+        <GuidedValuePanel title={title} sentence={gotoSentence(away, preview, action.message)} commitLabel={gotoCommitLabel(title, chosen, unit)} commitEnabled onCommit={commit} onCancel={onDone}>
+          {preview !== null && preview.verdict.trim() !== '' ? (
+            <Text typography="bodyMedium" color={warn ? aircast('warning') : md('onSurfaceVariant')}>
+              {preview.verdict}
+            </Text>
+          ) : null}
+          {guided !== null && shown !== null && range !== null ? (
+            <GuidedValueControls
+              value={shown}
+              label={gotoHeightLabel(guided.label, chosen !== null)}
+              unit={unit}
+              range={range}
+              quickPicks
+              onValue={(it) => {
+                height.value = it;
+              }}
+              onSettled={() => setSettledMetres(metresOf(height.value)?.metres ?? null)}
+            />
+          ) : null}
+          {warn ? (
+            <Button className="w-full" onClick={() => void VehicleCommands.returnToLaunch(false).then(onDone)}>
+              {RETURN_HOME_INSTEAD}
+            </Button>
+          ) : null}
+          {refusal !== null ? (
+            <Text typography="bodyMedium" color={md('error')}>
+              {refusal}
+            </Text>
+          ) : null}
+        </GuidedValuePanel>
+      </div>
+    </div>
   );
 };
 

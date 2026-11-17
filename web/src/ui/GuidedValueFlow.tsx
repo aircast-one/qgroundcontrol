@@ -131,40 +131,68 @@ export const altitudeValue = (pauses: boolean): GuidedValueKind =>
 
 export const openGuidedValue = async (kind: GuidedValueKind): Promise<OpenGuidedValue | null> => openedGuidedValue(kind, await kind.read(null));
 
-const GuidedValueContent = ({ open }: { open: OpenGuidedValue }) => {
-  const kind = open.kind;
-  const unit = open.reading.unit;
-  const target = useValue(open.target);
+export const GuidedValueControls = ({
+  value,
+  label,
+  unit,
+  range,
+  presets = false,
+  quickPicks = false,
+  onValue,
+  onSettled,
+}: {
+  value: number;
+  label: string;
+  unit: string;
+  range: ClosedRange;
+  presets?: boolean;
+  quickPicks?: boolean;
+  onValue: (value: number) => void;
+  onSettled: () => void;
+}) => {
   const compact = useContext(LocalGuidedCompact);
-  const settle = (value: number) => {
-    open.target.value = value;
-    open.settled.value = value;
+  const settle = (next: number) => {
+    onValue(next);
+    onSettled();
   };
-  const { start, endInclusive } = open.range;
-  const range = rangeLabel(start, endInclusive, unit);
+  const { start, endInclusive } = range;
+  const shownRange = rangeLabel(start, endInclusive, unit);
   return (
     <>
-      <GuidedStepper value={target} label={guidedLabel(open.reading.label, range, compact)} unit={unit} minimum={start} maximum={endInclusive} onValue={settle} />
-      {kind.presets ? <GuidedPresets value={target} minimum={start} maximum={endInclusive} unit={unit} onValue={settle} /> : null}
+      <GuidedStepper value={value} label={guidedLabel(label, shownRange, compact)} unit={unit} minimum={start} maximum={endInclusive} onValue={settle} />
+      {presets ? <GuidedPresets value={value} minimum={start} maximum={endInclusive} unit={unit} onValue={settle} /> : null}
       {!compact ? (
         <Slider
-          value={target}
-          onValueChange={(it) => {
-            open.target.value = guidedRounded(it, unit);
-          }}
-          onValueChangeFinished={() => {
-            open.settled.value = open.target.value;
-          }}
+          value={value}
+          onValueChange={(it) => onValue(guidedRounded(it, unit))}
+          onValueChangeFinished={onSettled}
           valueRange={[start, endInclusive]}
           steps={stepsFor(start, endInclusive, 10 ** -guidedDecimals(unit))}
-          label={open.reading.label}
+          label={label}
         />
       ) : null}
-      {kind.quickPicks ? <GuidedQuickPicks value={target} minimum={start} maximum={endInclusive} unit={unit} onValue={settle} /> : null}
-      {!compact && range !== null ? <RangeHint text={range} /> : null}
+      {quickPicks ? <GuidedQuickPicks value={value} minimum={start} maximum={endInclusive} unit={unit} onValue={settle} /> : null}
+      {!compact && shownRange !== null ? <RangeHint text={shownRange} /> : null}
     </>
   );
 };
+
+const GuidedValueContent = ({ open }: { open: OpenGuidedValue }) => (
+  <GuidedValueControls
+    value={useValue(open.target)}
+    label={open.reading.label}
+    unit={open.reading.unit}
+    range={open.range}
+    presets={open.kind.presets}
+    quickPicks={open.kind.quickPicks}
+    onValue={(it) => {
+      open.target.value = it;
+    }}
+    onSettled={() => {
+      open.settled.value = open.target.value;
+    }}
+  />
+);
 
 export const GuidedValueFlow = ({ open, onClose }: { open: OpenGuidedValue; onClose: () => void }) => {
   const kind = open.kind;

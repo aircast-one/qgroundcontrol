@@ -453,6 +453,7 @@ export const scaledNumber = (scale: number): CSSProperties => ({
 
 export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center = null }: { className?: string; layout?: FlyDeckLayout; center?: ReactNode }) => {
   const flyScreen = useContext(LocalFlyScreenState);
+  const panelOpen = useValue(flyScreen.guidedPanels) > 0;
   const destinations = useFlyDestinations();
   const deckTelemetry = useContext(LocalDeckTelemetry);
   const stateJson = useQgcPath(FLY_STATE);
@@ -640,7 +641,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     );
   }
 
-  const deciding = pending !== null || guidedValue !== null || editingLoiter !== null;
+  const deciding = pending !== null || guidedValue !== null || editingLoiter !== null || panelOpen;
   const confirming = pending;
   const stop = armedStopOffer(offers, armed);
   const stopEntry = stop === null ? null : DeckEntry({ id: 'stopMotors', label: STOP_MOTORS, icon: 'ic_warning', enabled: true, warning: true, onClick: () => setPending(emergencyStopAction(stop)) });
@@ -683,7 +684,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
 
   const body = rail ? (
     <div className={`relative size-full ${className ?? ''}`}>
-      {pending === null && guidedValue === null && editingLoiter === null ? (
+      {!deciding ? (
         <div className="absolute inset-y-0 left-0 flex flex-col" style={{ paddingLeft: 12, paddingBottom: RAIL_LIFT }}>
           <div ref={room.ref} role="group" aria-label={FLIGHT_ACTIONS} className="flex min-h-0 flex-1 flex-col items-center justify-center">
             <LayoutWidget widgetKey="flightActions" movable={false} hideable={false} live={armed}>

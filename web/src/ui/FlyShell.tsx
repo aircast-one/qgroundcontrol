@@ -561,7 +561,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                       if (!same(next, shellState.mapInsets.value)) shellState.mapInsets.value = next;
                     }}
                   />
-                  {stickPad === null ? (
+                  {stickPad === null && !deciding ? (
                     <div
                       className="absolute inset-y-0 end-0 flex items-center"
                       style={{

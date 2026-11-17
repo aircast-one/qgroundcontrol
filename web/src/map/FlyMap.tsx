@@ -5,7 +5,7 @@ import { delay, same } from '@/kotlin/Std';
 import { useValue } from '@/kotlin/State';
 import { Surface } from '@/m3';
 import { type FenceCircle, type FencePolygon, type FirmwareFence, type RallyPoint, FenceBridge, breachReturn, fenceCircles, fencePolygons, firmwareFence, rallyPoints } from './FenceBridge';
-import { LocalFlyMapEdits } from './FlyMapEdits';
+import { GOTO_CARD_ROOM, LocalFlyMapEdits } from './FlyMapEdits';
 import { lostVehicle } from './LostVehicle';
 import { mapFollowing, mapWindow } from './MapFollow';
 import { GimbalBridge, type GimbalAzimuth } from './GimbalWedge';
@@ -85,7 +85,6 @@ export const missionArrived = <T, K>(before: readonly T[], after: readonly T[], 
 const shape = (item: MissionItem) => [item.sequence, item.latitude, item.longitude, item.command];
 
 const PREVIEW_SHEET_SHARE = 0.75;
-const PREVIEW_CARD_ROOM = 352;
 
 const keptPlan = (held: FlownPlan, next: FlownPlan): FlownPlan =>
   (Object.keys(next) as (keyof FlownPlan)[]).reduce<FlownPlan>((plan, field) => (same(held[field], next[field]) ? { ...plan, [field]: held[field] } : plan), next);
@@ -296,8 +295,8 @@ export const FlyMap = ({
               fitRequest={fitRequest}
               fitOnly={gotoPreview === null ? null : [aircraft, gotoPreview].filter((it) => it !== null)}
               fitBottomShare={gotoPreview !== null && gotoCard === 'bottom' ? PREVIEW_SHEET_SHARE : 0}
-              fitLeftPx={gotoPreview !== null && gotoCard === 'left' ? PREVIEW_CARD_ROOM : 0}
-              fitRightPx={gotoPreview !== null && gotoCard === 'right' ? PREVIEW_CARD_ROOM : 0}
+              fitLeftPx={gotoPreview !== null && gotoCard === 'left' ? GOTO_CARD_ROOM : 0}
+              fitRightPx={gotoPreview !== null && gotoCard === 'right' ? GOTO_CARD_ROOM : 0}
               centreRequest={centreRequest}
               centreOn={centreOn}
               centreZoom={centreZoom}

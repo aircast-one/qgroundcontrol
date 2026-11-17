@@ -13,6 +13,10 @@ export class FlyMapEdits {
 
 export type GotoCardSide = 'bottom' | 'left' | 'right';
 
+export const GOTO_CARD_WIDTH = 460;
+
+export const GOTO_CARD_ROOM = GOTO_CARD_WIDTH + 24;
+
 const unprovided = new Proxy({} as FlyMapEdits, {
   get: () => {
     throw new Error('FlyMapEdits is provided by the screen that hosts the map');

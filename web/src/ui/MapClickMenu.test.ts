@@ -3,17 +3,18 @@ import { type Json, parseJson } from '@/bridge/Json';
 import { MINIMUM_CIRCLE_RADIUS_METRES } from '@/map/MissionLayers';
 import { GuidedAltitude } from './GuidedAltitude';
 import {
-  chosenHeightText,
   coordinateLines,
+  currentHeight,
   goHereText,
   gotoArgs,
-  gotoCardAnchor,
   gotoCardSide,
+  gotoCommitLabel,
   gotoHeight,
+  gotoHeightLabel,
   gotoHeightRange,
   gotoPreview,
-  gotoPreviewLines,
   gotoPreviewPath,
+  gotoSentence,
   loiterEditOpened,
   loiterOffer,
   loiterRadiusField,
@@ -24,7 +25,6 @@ import {
   orbitEdit,
   orbitOpened,
   radiusMetres,
-  shownHeight,
   setWaypointMessage,
   signedLoiterRadius,
   waypointTarget,
@@ -112,23 +112,27 @@ describe('MapClickMenuTest', () => {
     expect(goHereText(from, { latitude: 47.001, longitude: 8.0 }, '', 1.0)).toBeNull();
   });
 
-  it('the go-to preview names height and battery, and warns past the return point', () => {
-    const view = json('{"available":true,"distanceText":"81 m","heightText":"at 20 m (current height)","verdict":"Past your return point. Return home instead?","pastReturnPoint":true}');
+  it('the go-to sentence says how far, which way and how long, and the preview warns past the return point', () => {
+    const view = json('{"available":true,"distanceText":"81 m","etaText":"about 16 sec","verdict":"Past your return point. Return home instead?","pastReturnPoint":true}');
     const preview = gotoPreview(view)!;
     expect(preview.pastReturnPoint).toBe(true);
-    expect(gotoPreviewLines({ ...preview, distance: '81 m north-west' }, 'Move the vehicle')).toEqual(['81 m north-west · at 20 m (current height)', 'Past your return point. Return home instead?']);
-    expect(gotoPreviewLines(null, 'Move the vehicle')).toEqual(['Move the vehicle']);
+    expect(gotoSentence('81 m north-west', preview, 'Move the vehicle')).toBe('81 m north-west · about 16 sec');
+    expect(gotoSentence(null, preview, 'Move the vehicle'), 'without the vehicle position the core distance stands in').toBe('81 m · about 16 sec');
+    expect(gotoSentence(null, null, 'Move the vehicle')).toBe('Move the vehicle');
     expect(gotoPreviewPath({ latitude: 47.398, longitude: 8.546 })).toBe('view.gotoPreview(47.3980000,8.5460000)');
+    expect(gotoPreviewPath({ latitude: 47.398, longitude: 8.546 }, 30.48), 'a chosen height times the climb too').toBe('view.gotoPreview(47.3980000,8.5460000,30.48)');
   });
 
   it('the go-to height starts at the current height and is sent only once it is changed', () => {
     const preview = gotoPreview(json('{"available":true,"distanceText":"81 m","heightText":"at 20 m (current height)","heightMetres":20.4,"heightUnit":"ft","metresPerHeightUnit":0.3048}'))!;
-    expect(shownHeight(preview, null)).toBe(67);
-    expect(chosenHeightText(preview, null)).toBe('at 20 m (current height)');
+    expect(currentHeight(preview)).toBe(67);
+    expect(gotoHeightLabel('Height above launch', false)).toBe('Height above launch (current)');
+    expect(gotoHeightLabel('Height above launch', true)).toBe('Height above launch');
     const chosen = gotoHeight(preview, 100);
     expect(chosen).toEqual({ shown: 100, metres: 30.48 });
-    expect(chosenHeightText(preview, chosen)).toBe('at 100 ft');
-    expect(shownHeight(preview, chosen)).toBe(100);
+    expect(gotoCommitLabel('Go to location', 100, 'ft')).toBe('Go to location · 100 ft');
+    expect(gotoCommitLabel('Go to location', 20.4, 'm')).toBe('Go to location · 20.4 m');
+    expect(gotoCommitLabel('Go to location', null, 'm')).toBe('Go to location');
     const point = { latitude: 47.4, longitude: 8.5 };
     expect(gotoArgs(point, null)).toEqual({ latitude: 47.4, longitude: 8.5 });
     expect(gotoArgs(point, chosen), 'a chosen height is sent in metres even after the preview goes away').toEqual({ latitude: 47.4, longitude: 8.5, height: 30.48 });
@@ -137,7 +141,7 @@ describe('MapClickMenuTest', () => {
   it('without a unit conversion there is no height to show or choose, rather than a guess in metres', () => {
     const preview = gotoPreview(json('{"available":true,"heightText":"at 67 ft (current height)","heightMetres":20.4,"heightUnit":"ft"}'))!;
     expect(preview.metresPerHeightUnit).toBeNull();
-    expect(shownHeight(preview, null)).toBeNull();
+    expect(currentHeight(preview)).toBeNull();
     expect(gotoHeight(preview, 100)).toBeNull();
     expect(gotoHeightRange(GuidedAltitude({ available: true, label: '', unit: 'ft', current: 67, minimum: 6.56, maximum: 396.98, sentence: '', deltaMeters: 0, sends: false }), preview)).toBeNull();
   });
@@ -148,6 +152,7 @@ describe('MapClickMenuTest', () => {
     const guided = (unit: string, minimum: number | null, maximum: number | null) => GuidedAltitude({ available: true, label: '', unit, current: null, minimum, maximum, sentence: '', deltaMeters: 0, sends: false });
     expect(gotoHeightRange(guided('m', 2, 121), metres)).toEqual({ start: 2, endInclusive: 121 });
     expect(gotoHeightRange(guided('ft', 6.56, 396.98), feet), 'whole feet inside the limits').toEqual({ start: 7, endInclusive: 396 });
+    expect(gotoHeightRange(guided('m', 2.04, 121.92), metres), 'tenths of a metre inside the limits').toEqual({ start: 2.1, endInclusive: 121.9 });
     expect(gotoHeightRange(null, metres), 'no limits known means no stepper').toBeNull();
     expect(gotoHeightRange(guided('m', null, 121), metres)).toBeNull();
     expect(gotoHeightRange(guided('m', 2, 121), feet), 'limits in another unit are not applied').toBeNull();
@@ -157,8 +162,6 @@ describe('MapClickMenuTest', () => {
     expect(gotoCardSide({ x: 1300, y: 200 }, true, 1440)).toBe('left');
     expect(gotoCardSide({ x: 200, y: 200 }, true, 1440)).toBe('right');
     expect(gotoCardSide({ x: 200, y: 200 }, false, 1440), 'a phone sheet rises from the bottom').toBe('bottom');
-    expect(gotoCardAnchor({ x: 1300, y: 200 }, 'left', 1440)).toEqual({ x: 16, y: 200 });
-    expect(gotoCardAnchor({ x: 200, y: 200 }, 'right', 1440)).toEqual({ x: 1104, y: 200 });
   });
 
   it('the map hint names the desktop gesture on a desktop and the touch gesture elsewhere', () => {
