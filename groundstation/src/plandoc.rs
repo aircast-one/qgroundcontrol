@@ -1327,8 +1327,9 @@ pub fn for_vehicle(
     let unflown = unflown_items(doc, firmware_type, vehicle_type);
     if !unflown.is_empty() {
         return Err(format!(
-            "The connected vehicle cannot fly {}. Remove them, then convert the plan.",
-            unflown.join(", ")
+            "The connected vehicle cannot fly {}. Remove {}, then convert the plan.",
+            unflown.join(", "),
+            if unflown.len() == 1 { "it" } else { "them" }
         ));
     }
     (1..=doc.items.len()).try_fold(
@@ -3354,7 +3355,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             for_vehicle(&vtol, 12, 2),
-            Err("The connected vehicle cannot fly item 1 (VTOL takeoff). Remove them, then convert the plan.".to_string()),
+            Err("The connected vehicle cannot fly item 1 (VTOL takeoff). Remove it, then convert the plan.".to_string()),
             "a copter has no VTOL takeoff, so the plan keeps its VTOL type and the mismatch warning"
         );
         assert_eq!(for_vehicle(&vtol, 12, 20).map(|d| d.vehicle_type), Ok(20));
@@ -3372,9 +3373,24 @@ mod tests {
         };
         assert_eq!(
             for_vehicle(&landing(crate::landingpattern::FIXED_WING_PATTERN), 3, 2),
-            Err("The connected vehicle cannot fly item 2 (Landing Pattern). Remove them, then convert the plan.".to_string())
+            Err("The connected vehicle cannot fly item 2 (Landing Pattern). Remove it, then convert the plan.".to_string())
         );
         assert!(for_vehicle(&landing(crate::landingpattern::FIXED_WING_PATTERN), 3, 1).is_ok());
+        assert_eq!(
+            for_vehicle(
+                &Document {
+                    items: [
+                        vtol.items.clone(),
+                        landing(crate::landingpattern::VTOL_PATTERN).items[1..].to_vec()
+                    ]
+                    .concat(),
+                    ..vtol.clone()
+                },
+                12,
+                2
+            ),
+            Err("The connected vehicle cannot fly item 1 (VTOL takeoff), item 3 (Landing Pattern). Remove them, then convert the plan.".to_string())
+        );
         assert!(for_vehicle(&landing(crate::landingpattern::VTOL_PATTERN), 3, 1).is_err());
         assert!(
             for_vehicle(&landing("StructureScan"), 12, 1).is_err(),

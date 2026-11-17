@@ -152,6 +152,30 @@ test('a waypoint takes a hover action and gives it back', async ({ app }) => {
   await expect(app.getByRole('button', { name: /^3 Waypoint .* · holds/ })).toHaveCount(0, { timeout: 15_000 });
 });
 
+test('a plan the connected vehicle cannot fly says which items, and is not converted', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await app.getByRole('button', { name: /^Vehicle, / }).click();
+  await app.getByRole('menuitem', { name: 'VTOL' }).click();
+  await expect(app.getByText(/For .*VTOL/)).toBeVisible();
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.addLocatorHandler(app.getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
+  await app.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true }).click();
+  await connectMock(app);
+  await openMenu(app, 'Plan');
+  await app.getByRole('button', { name: 'Upload', exact: true }).click();
+  const far = app.getByRole('dialog').filter({ hasText: 'from the aircraft' });
+  const mismatch = app.getByRole('dialog').filter({ hasText: 'different firmware' });
+  await expect(far.or(mismatch)).toBeVisible();
+  if (await far.isVisible()) await far.getByRole('button', { name: 'Upload anyway' }).click();
+  await mismatch.getByRole('button', { name: 'Convert to this vehicle' }).click();
+  await expect(app.getByText(/^The connected vehicle cannot fly item 1 \(VTOL takeoff\)/)).toBeVisible();
+  await expect(app.getByText('Plan converted to this vehicle. Check it, then upload.')).toHaveCount(0);
+  await app.getByRole('button', { name: 'Upload', exact: true }).click();
+  if (await far.isVisible()) await far.getByRole('button', { name: 'Upload anyway' }).click();
+  await expect(mismatch, 'the plan still holds the VTOL takeoff, so it still differs from the vehicle').toBeVisible();
+});
+
 test('a plan made for another firmware converts to the connected vehicle', async ({ app }) => {
   await openMenu(app, 'Plan');
   await app.getByRole('radiogroup', { name: 'Firmware' }).getByRole('radio', { name: 'ArduPilot' }).click();
