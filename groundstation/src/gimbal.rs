@@ -11,6 +11,7 @@ pub const CMD_DO_GIMBAL_MANAGER_PITCHYAW: u16 = 1000;
 pub const CMD_DO_GIMBAL_MANAGER_CONFIGURE: u16 = 1001;
 
 pub const CAP_HAS_RETRACT: u32 = 1;
+pub const CAP_HAS_PITCH_AXIS: u32 = 32;
 pub const CAP_HAS_YAW_AXIS: u32 = 256;
 pub const CAP_HAS_YAW_LOCK: u32 = 1024;
 
@@ -308,6 +309,11 @@ impl Gimbal {
             .map(|flags| flags & CAP_HAS_RETRACT != 0)
     }
 
+    pub fn steerable(&self) -> bool {
+        self.capability_flags
+            .is_some_and(|flags| flags & (CAP_HAS_PITCH_AXIS | CAP_HAS_YAW_AXIS) != 0)
+    }
+
     pub fn supports_yaw_lock(&self) -> Option<bool> {
         self.capability_flags
             .map(|flags| flags & CAP_HAS_YAW_LOCK != 0)
@@ -455,6 +461,7 @@ pub struct Gimbals {
     gimbals: BTreeMap<PairId, Gimbal>,
     managers: BTreeMap<u8, Manager>,
     active: Option<PairId>,
+    chosen: bool,
     pending_information: Option<(u8, u64)>,
     last_status_request_ms: Option<u64>,
     drag_origin: Option<(f32, f32, bool)>,
@@ -470,6 +477,7 @@ impl Default for Gimbals {
             gimbals: BTreeMap::new(),
             managers: BTreeMap::new(),
             active: None,
+            chosen: false,
             pending_information: None,
             last_status_request_ms: None,
             drag_origin: None,
@@ -559,12 +567,12 @@ impl Gimbals {
     }
 
     pub fn set_active(&mut self, pair: PairId) -> Vec<Out> {
-        match self
+        let known = self
             .gimbals
             .get(&pair)
-            .is_some_and(|gimbal| gimbal.complete)
-            && self.active != Some(pair)
-        {
+            .is_some_and(|gimbal| gimbal.complete);
+        self.chosen = self.chosen || known;
+        match known && self.active != Some(pair) {
             true => {
                 self.active = Some(pair);
                 vec![Out::ActiveGimbal(pair)]
@@ -1340,11 +1348,22 @@ impl Gimbals {
         }]
     }
 
+    fn rank(&self, pair: PairId) -> (bool, bool, std::cmp::Reverse<u8>) {
+        (
+            self.gimbals.get(&pair).is_some_and(Gimbal::steerable),
+            pair.manager_compid != crate::compinfo::AUTOPILOT_COMPONENT,
+            std::cmp::Reverse(pair.device_id),
+        )
+    }
+
     fn complete(&mut self, pair: PairId) -> Vec<Out> {
         self.gimbals
             .entry(pair)
             .and_modify(|gimbal| gimbal.complete = true);
-        let activated = self.active.is_none_or(|active| takes_over(pair, active));
+        let activated = !self.chosen
+            && self
+                .active
+                .is_none_or(|active| self.rank(pair) > self.rank(active));
         self.active = activated.then_some(pair).or(self.active);
         activated
             .then_some(Out::ActiveGimbal(pair))
@@ -1352,11 +1371,6 @@ impl Gimbals {
             .chain([Out::GimbalComplete(pair)])
             .collect()
     }
-}
-
-fn takes_over(pair: PairId, active: PairId) -> bool {
-    active.manager_compid == crate::compinfo::AUTOPILOT_COMPONENT
-        && pair.manager_compid != crate::compinfo::AUTOPILOT_COMPONENT
 }
 
 pub fn gimbal_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
@@ -2879,14 +2893,89 @@ mod tests {
         );
     }
 
+    fn heard(
+        gimbals: &mut Gimbals,
+        manager: u8,
+        device: u8,
+        capabilities: u32,
+        at_ms: u64,
+    ) -> Vec<Out> {
+        gimbals.on_manager_information(info(manager, device, capabilities), at_ms);
+        gimbals.on_manager_status(status(manager, device, OUR_SYSTEM, OUR_COMPONENT), at_ms);
+        gimbals.on_device_attitude_status(
+            attitude(device, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()),
+            0.0,
+            at_ms,
+        )
+    }
+
+    fn ready() -> Gimbals {
+        let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
+        gimbals.set_ready(true);
+        gimbals
+    }
+
+    const FIXED: u32 = CAP_HAS_RETRACT;
+    const STEERED: u32 = CAP_HAS_PITCH_AXIS | CAP_HAS_YAW_AXIS;
+
+    fn on(device_id: u8) -> PairId {
+        PairId {
+            manager_compid: crate::compinfo::AUTOPILOT_COMPONENT,
+            device_id,
+        }
+    }
+
+    #[test]
+    fn a_gimbal_that_can_pitch_or_yaw_is_steered_ahead_of_a_fixed_mount_whichever_answers_first() {
+        let autopilot = crate::compinfo::AUTOPILOT_COMPONENT;
+        let mut fixed_first = ready();
+        heard(&mut fixed_first, autopilot, 1, FIXED, 1000);
+        assert_eq!(fixed_first.active(), Some(on(1)));
+        assert_eq!(
+            heard(&mut fixed_first, autopilot, 2, STEERED, 2000),
+            vec![Out::ActiveGimbal(on(2)), Out::GimbalComplete(on(2))],
+            "the FPV camera's fixed mount answered first, but the payload gimbal is the one to aim"
+        );
+        let mut steered_first = ready();
+        heard(&mut steered_first, autopilot, 2, STEERED, 1000);
+        assert_eq!(
+            heard(&mut steered_first, autopilot, 1, FIXED, 2000),
+            vec![Out::GimbalComplete(on(1))]
+        );
+        assert_eq!(steered_first.active(), Some(on(2)));
+    }
+
+    #[test]
+    fn among_equal_gimbals_the_lowest_device_id_is_active_whichever_answers_first() {
+        let autopilot = crate::compinfo::AUTOPILOT_COMPONENT;
+        let mut low_first = ready();
+        heard(&mut low_first, autopilot, 1, STEERED, 1000);
+        heard(&mut low_first, autopilot, 2, STEERED, 2000);
+        let mut high_first = ready();
+        heard(&mut high_first, autopilot, 2, STEERED, 1000);
+        heard(&mut high_first, autopilot, 1, STEERED, 2000);
+        assert_eq!(low_first.active(), Some(on(1)));
+        assert_eq!(high_first.active(), Some(on(1)));
+    }
+
+    #[test]
+    fn a_gimbal_the_pilot_picked_stays_active_when_another_answers_later() {
+        let autopilot = crate::compinfo::AUTOPILOT_COMPONENT;
+        let mut gimbals = ready();
+        heard(&mut gimbals, autopilot, 1, FIXED, 1000);
+        assert!(gimbals.set_active(on(1)).is_empty());
+        assert_eq!(
+            heard(&mut gimbals, autopilot, 2, STEERED, 2000),
+            vec![Out::GimbalComplete(on(2))],
+            "a pick is kept even when it names the gimbal that was already active"
+        );
+        assert_eq!(gimbals.active(), Some(on(1)));
+    }
+
     #[test]
     fn the_active_gimbal_is_one_of_the_gimbals_and_changes_only_when_it_changes() {
         let mut gimbals = discovered();
         assert_eq!(gimbals.active(), Some(pair()));
-        assert!(
-            gimbals.set_active(pair()).is_empty(),
-            "naming the gimbal that is already active tells a head nothing"
-        );
         assert!(
             gimbals
                 .set_active(PairId {
@@ -2929,6 +3018,10 @@ mod tests {
             "a further gimbal does not steal the active slot from a camera's own manager"
         );
         assert_eq!(gimbals.set_active(pair()), vec![Out::ActiveGimbal(pair())]);
+        assert!(
+            gimbals.set_active(pair()).is_empty(),
+            "naming the gimbal that is already active tells a head nothing"
+        );
         assert_eq!(gimbals.pairs(), vec![pair(), second, third]);
     }
 
