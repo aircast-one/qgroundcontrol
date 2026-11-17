@@ -590,7 +590,7 @@ export const AircastShell = () => {
     'save-plan-as': () => requestPlan('saveAs'),
   };
   useMenuCommands((command) => menuCommands[command]());
-  const railShown = !fullScreen && (desktop || (landscape && !flyLandscape));
+  const railShown = !fullScreen && (desktop || landscape) && (!onFly || settingsOpen);
   const destinations: readonly RailDestination[] = [
     ...tabs.map((entry) => ({ key: entry.name, label: entry.label, icon: entry.icon, selected: tab === entry && !settingsOpen, onClick: () => selectTab(entry) })),
     { key: 'setup', label: AIRCRAFT_SETUP, icon: 'ic_build', selected: setupShowing, onClick: openSetup },
