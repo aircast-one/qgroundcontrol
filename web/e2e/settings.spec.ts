@@ -1,4 +1,4 @@
-import { closeSettings, connectMock, expect, openMenu, telemetry, test } from './fixtures';
+import { closeSettings, connectMock, expect, flightMode, openMenu, takeOff, telemetry, test } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const openGeneral = async (page: Page) => {
@@ -134,6 +134,26 @@ test('a limit the disabled geofence does not enforce reads Off until it is turne
   await expect(fenceOff).toHaveCount(1);
   await app.getByRole('status').getByRole('button', { name: 'Undo' }).click();
   await expect(fenceOff).toHaveCount(2);
+});
+
+test('turning a geofence limit on while armed asks first, since the breach action may start at once', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await takeOff(app, '5 m');
+  await expect(flightMode(app)).toHaveAccessibleName(/Flying/, { timeout: 60_000 });
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Safety' }).click();
+  const fenceOff = app.getByText('The geofence is off, so nothing holds the aircraft to this.');
+  await expect(fenceOff).toHaveCount(2, { timeout: 60_000 });
+  await app.getByRole('button', { name: 'Turn on' }).first().click();
+  const confirm = app.getByRole('alertdialog').or(app.getByRole('dialog')).filter({ hasText: 'Turn on max altitude while armed?' });
+  await expect(confirm).toContainText('breach action');
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toBeHidden();
+  await expect(fenceOff).toHaveCount(2);
+  await app.getByRole('button', { name: 'Turn on' }).first().click();
+  await confirm.getByRole('button', { name: 'Turn on' }).click();
+  await expect(app.getByRole('slider', { name: 'Max altitude' })).toBeVisible();
+  await expect(fenceOff, 'only the chosen limit comes on').toHaveCount(1);
 });
 
 test('settings search reaches setup pages by what they hold, and the parameters', async ({ vehicle }) => {

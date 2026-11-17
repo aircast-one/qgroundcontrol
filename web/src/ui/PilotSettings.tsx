@@ -1,13 +1,13 @@
 import { Fragment, useContext, useMemo, useState } from 'react';
 import { type Fact, Qgc, makeFact } from '@/bridge/Qgc';
-import { useQgcPath } from '@/bridge/QgcState';
+import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import type { Json } from '@/bridge/Json';
 import { useProduceState } from '@/kotlin/Compose';
-import { Text, TextButton } from '@/m3';
+import { AlertDialog, Text, TextButton } from '@/m3';
 import { md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { CALIBRATION, type CalibrationRoutine, type CalibrationState, calibrationState } from '@/ui/CalibrationView';
-import { useHasVehicle } from '@/ui/FlyState';
+import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
 import { parameterFact, parameterPath } from '@/ui/ParametersScreen';
 import { factNumber } from '@/ui/Px4TuningScreen';
 import { SectionHeader, SettingsCard, SetupRow } from '@/ui/SetupRow';
@@ -37,20 +37,45 @@ export const fenceOff = (bit: number, read: ParameterReading): boolean | null =>
   return action === null ? null : action === 0;
 };
 
-export const fenceTurnOn = (bit: number, read: ParameterReading): readonly (readonly [string, number])[] => {
+export type ParameterWrites = readonly (readonly [string, number])[];
+
+export const fenceTurnOn = (bit: number, read: ParameterReading): ParameterWrites => {
   const enable = read('FENCE_ENABLE');
-  const type = Math.trunc(read('FENCE_TYPE') ?? 0);
-  if (enable !== null) return [['FENCE_TYPE', (enable === 0 ? type & ~(FENCE_MAX_ALTITUDE | FENCE_CIRCLE) : type) | bit], ['FENCE_ENABLE', 1]];
+  if (enable !== null) return [['FENCE_TYPE', enable === 0 ? bit : Math.trunc(read('FENCE_TYPE') ?? 0) | bit], ['FENCE_ENABLE', 1]];
   return read('GF_ACTION') === null ? [] : [['GF_ACTION', PX4_FENCE_HOLD]];
 };
 
-export const fenceRestore = (writes: readonly (readonly [string, number])[], read: ParameterReading): readonly (readonly [string, number])[] =>
+export const fenceRestore = (writes: ParameterWrites, read: ParameterReading): ParameterWrites =>
   writes.flatMap(([name]) => {
     const before = read(name);
     return before === null ? [] : [[name, before] as const];
   }).toReversed();
 
+export const readingOf = (writes: ParameterWrites): ParameterReading => (name) => writes.find(([it]) => it === name)?.[1] ?? null;
+
+export type ParameterWriter = (name: string, value: number) => Promise<string | null>;
+
+type WriteOutcome = { applied: ParameterWrites; refused: string | null };
+
+const writeEach = (writes: ParameterWrites, write: ParameterWriter): Promise<WriteOutcome> =>
+  writes.reduce<Promise<WriteOutcome>>(async (previous, [name, value]) => {
+    const outcome = await previous;
+    if (outcome.refused !== null) return outcome;
+    const refused = await write(name, value);
+    return refused === null ? { ...outcome, applied: [...outcome.applied, [name, value] as const] } : { ...outcome, refused };
+  }, Promise.resolve({ applied: [], refused: null }));
+
+export const writeAllOrNone = async (writes: ParameterWrites, read: ParameterReading, write: ParameterWriter): Promise<string | null> => {
+  const outcome = await writeEach(writes, write);
+  if (outcome.refused !== null) await writeEach(fenceRestore(outcome.applied, read), write);
+  return outcome.refused;
+};
+
 export const FENCE_OFF_NOTE = 'The geofence is off, so nothing holds the aircraft to this.';
+
+export const fenceArmedTitle = (label: string): string => `Turn on ${label.toLowerCase()} while armed?`;
+
+export const FENCE_ARMED_NOTE = 'If the aircraft is already past this limit, the geofence breach action, such as return home or land, may start at once.';
 
 const groupBy = <T,>(items: readonly T[], keyOf: (item: T) => string): ReadonlyMap<string, readonly T[]> =>
   items.reduce((groups, item) => new Map(groups).set(keyOf(item), [...(groups.get(keyOf(item)) ?? []), item]), new Map<string, readonly T[]>());
@@ -274,25 +299,30 @@ const useFenceReading = (): ParameterReading | null => {
   return read === null ? null : (name) => read.get(name) ?? null;
 };
 
-const PilotFactRow = ({ shown, setting }: { shown: Fact; setting: PilotSetting }) => {
+const PilotFactRow = ({ shown, setting }: { shown: Fact; setting: PilotSetting }) =>
+  setting.fenceBit === null ? <PilotValueRow shown={shown} setting={setting} /> : <FencedPilotRow shown={shown} setting={setting} bit={setting.fenceBit} />;
+
+const FencedPilotRow = ({ shown, setting, bit }: { shown: Fact; setting: PilotSetting; bit: number }) => {
   const fence = useFenceReading();
-  const off = setting.fenceBit === null || fence === null ? false : fenceOff(setting.fenceBit, fence) === true;
-  return off && fence !== null && setting.fenceBit !== null ? <FenceOffRow setting={setting} bit={setting.fenceBit} read={fence} /> : <PilotValueRow shown={shown} setting={setting} />;
+  return fence !== null && fenceOff(bit, fence) === true ? <FenceOffRow setting={setting} bit={bit} read={fence} /> : <PilotValueRow shown={shown} setting={setting} />;
 };
 
-const writeAll = (writes: readonly (readonly [string, number])[]): Promise<string | null> =>
-  writes.reduce<Promise<string | null>>(async (refused, [name, value]) => (await refused) ?? Qgc.writeRefusal(parameterPath(name), value), Promise.resolve(null));
+const writeParameter: ParameterWriter = (name, value) => Qgc.writeRefusal(parameterPath(name), value);
+
+const armedOf = (json: Json | null): boolean => flyState(json)?.armed === true;
 
 const FenceOffRow = ({ setting, bit, read }: { setting: PilotSetting; bit: number; read: ParameterReading }) => {
   const notice = useContext(LocalChangeNotice);
+  const armed = useQgcDerived(FLY_STATE, armedOf);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const turnOn = () =>
     void (async () => {
       const writes = fenceTurnOn(bit, read);
       const undo = fenceRestore(writes, read);
-      const refused = await writeAll(writes);
+      const refused = await writeAllOrNone(writes, read, writeParameter);
       setRefusal(refused);
-      if (refused === null) notice.show(`${setting.label}: on`, () => writeAll(undo));
+      if (refused === null) notice.show(`${setting.label}: on`, () => writeAllOrNone(undo, readingOf(writes), writeParameter));
     })();
   return (
     <div className="flex min-h-14 w-full items-center gap-3 py-2 pr-2 pl-4">
@@ -307,7 +337,25 @@ const FenceOffRow = ({ setting, bit, read }: { setting: PilotSetting; bit: numbe
       <Text typography="bodyLarge" color={md('onSurfaceVariant')}>
         {VALUE_OFF}
       </Text>
-      <TextButton onClick={turnOn}>Turn on</TextButton>
+      <TextButton onClick={() => (armed ? setConfirming(true) : turnOn())}>Turn on</TextButton>
+      {confirming ? (
+        <AlertDialog
+          onDismissRequest={() => setConfirming(false)}
+          title={fenceArmedTitle(setting.label)}
+          text={FENCE_ARMED_NOTE}
+          confirmButton={
+            <TextButton
+              onClick={() => {
+                setConfirming(false);
+                turnOn();
+              }}
+            >
+              Turn on
+            </TextButton>
+          }
+          dismissButton={<TextButton onClick={() => setConfirming(false)}>Cancel</TextButton>}
+        />
+      ) : null}
     </div>
   );
 };

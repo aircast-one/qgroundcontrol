@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { makeFact } from '@/bridge/Qgc';
 import { calibrationState } from '@/ui/CalibrationView';
 import { SENSORS } from '@/ui/SetupPages';
 import { SetupComponent, splitDesktopOnly } from '@/ui/SetupScreen';
 import { SettingsGroup } from '@/ui/SettingsScreen';
-import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, firstReported, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
+import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, firstReported, type ParameterWriter, readingOf, writeAllOrNone, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
 
 const parameter = (name: string, description = 'Engineer description') =>
   makeFact({
@@ -119,19 +119,47 @@ describe('a limit the geofence does not enforce reads as off', () => {
   it('turning a limit on enables the fence for that limit alone, and undo puts both back', () => {
     const before = reading({ FENCE_ENABLE: 0, FENCE_TYPE: 7 });
     const writes = fenceTurnOn(FENCE_MAX_ALTITUDE, before);
-    expect(writes).toEqual([
-      ['FENCE_TYPE', 5],
+    expect(writes, 'an uploaded polygon or the minimum altitude stays off').toEqual([
+      ['FENCE_TYPE', FENCE_MAX_ALTITUDE],
       ['FENCE_ENABLE', 1],
     ]);
     expect(fenceRestore(writes, before)).toEqual([
       ['FENCE_ENABLE', 0],
       ['FENCE_TYPE', 7],
     ]);
-    expect(fenceTurnOn(FENCE_CIRCLE, reading({ FENCE_ENABLE: 1, FENCE_TYPE: 1 }))).toEqual([
-      ['FENCE_TYPE', 3],
+    expect(fenceTurnOn(FENCE_CIRCLE, reading({ FENCE_ENABLE: 0, FENCE_TYPE: 12 }))).toEqual([
+      ['FENCE_TYPE', FENCE_CIRCLE],
+      ['FENCE_ENABLE', 1],
+    ]);
+  });
+
+  it('turning a limit on beside a running fence keeps the limits it already enforces', () => {
+    expect(fenceTurnOn(FENCE_CIRCLE, reading({ FENCE_ENABLE: 1, FENCE_TYPE: 5 }))).toEqual([
+      ['FENCE_TYPE', 7],
       ['FENCE_ENABLE', 1],
     ]);
     expect(fenceTurnOn(FENCE_CIRCLE, reading({ GF_ACTION: 0 }))).toEqual([['GF_ACTION', 2]]);
+  });
+
+  it('a refused write puts back the ones before it, so the fence is never left half changed', async () => {
+    const before = reading({ FENCE_ENABLE: 0, FENCE_TYPE: 7 });
+    const write = vi.fn<ParameterWriter>().mockResolvedValueOnce(null).mockResolvedValueOnce('Denied').mockResolvedValue(null);
+    expect(await writeAllOrNone(fenceTurnOn(FENCE_MAX_ALTITUDE, before), before, write)).toBe('Denied');
+    expect(write.mock.calls).toEqual([
+      ['FENCE_TYPE', 1],
+      ['FENCE_ENABLE', 1],
+      ['FENCE_TYPE', 7],
+    ]);
+  });
+
+  it('a write that goes through leaves nothing to put back', async () => {
+    const before = reading({ FENCE_ENABLE: 0, FENCE_TYPE: 7 });
+    const write = vi.fn<ParameterWriter>().mockResolvedValue(null);
+    const writes = fenceTurnOn(FENCE_MAX_ALTITUDE, before);
+    expect(await writeAllOrNone(writes, before, write)).toBeNull();
+    expect(write.mock.calls).toEqual(writes);
+    expect(readingOf(writes)('FENCE_TYPE')).toBe(1);
+    expect(readingOf(writes)('GF_ACTION')).toBeNull();
   });
 });
 
