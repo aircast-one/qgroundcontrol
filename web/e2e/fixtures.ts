@@ -63,10 +63,24 @@ export const flightMode = (page: Page): Locator => page.getByRole('button', { na
 
 export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: new RegExp(`^${label.replace('.', '\\.')}-?[\\d.]+ (m|m/s|ft|ft/s)$`) });
 
+const nextFrames = (page: Page) => page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+
+const steadyBox = async (page: Page, target: Locator) => {
+  const read = async () => JSON.stringify(await target.boundingBox());
+  await expect
+    .poll(async () => {
+      const before = await read();
+      await nextFrames(page);
+      return before === (await read()) && before !== 'null';
+    })
+    .toBe(true);
+  return target.boundingBox();
+};
+
 export const slideAcross = async (page: Page, target: Locator) => {
   await expect(target).toBeEnabled();
   await target.hover();
-  const box = await target.boundingBox();
+  const box = await steadyBox(page, target);
   if (box === null) throw new Error('slide target is not on screen');
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + 10, y);
