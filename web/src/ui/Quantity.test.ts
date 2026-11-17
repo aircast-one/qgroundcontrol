@@ -20,6 +20,14 @@ describe('quantityText', () => {
     expect(quantityText('Disabled', '')).toBe('Disabled');
   });
 
+  it('shows a negative zero as 0 and a value that is not a number as a dash, without a unit', () => {
+    expect(quantityText('-0.0', 'm')).toBe('0 m');
+    expect(quantityText('-0', 'm')).toBe('0 m');
+    expect(quantityText('-0.5', 'm')).toBe('-0.5 m');
+    expect(quantityText('NaN', 'm')).toBe('—');
+    expect(quantityText('nan', '%')).toBe('—');
+  });
+
   it('shows large storage sizes in gigabytes', () => {
     expect(quantityText('10240', 'MB')).toBe('10 GB');
     expect(quantityText('2048', 'MB')).toBe('2 GB');
@@ -33,6 +41,7 @@ describe('wholeIfWhole', () => {
     expect(wholeIfWhole('50.0')).toBe('50');
     expect(wholeIfWhole('5.50')).toBe('5.50');
     expect(wholeIfWhole('abc')).toBe('abc');
+    expect(wholeIfWhole('-0.00')).toBe('0');
   });
 });
 

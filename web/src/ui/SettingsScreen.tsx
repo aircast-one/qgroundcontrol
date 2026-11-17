@@ -1508,7 +1508,7 @@ export const useStagedEdits = (): readonly [StagedEdits, () => Promise<boolean>]
 };
 
 export const typedNotice = (fact: Fact, typed: string): string =>
-  isSecret(fact) ? `${sentenceCase(fact.heading)} changed` : `${sentenceCase(fact.heading)}: ${[typed, fact.isString ? '' : shownUnits(fact.units)].filter(notBlank).join(' ')}`;
+  isSecret(fact) ? `${sentenceCase(fact.heading)} changed` : `${sentenceCase(fact.heading)}: ${fact.isString ? typed : quantityText(typed, shownUnits(fact.units))}`;
 
 export const useWriteNotice = () => {
   const notice = useContext(LocalChangeNotice);

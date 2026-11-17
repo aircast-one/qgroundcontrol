@@ -96,6 +96,15 @@ describe('ValueRowTest', () => {
     expect(valueTextOf(number('30.0'), 45.5)).toBe('45.5 m');
   });
 
+  it("the sheet's headline reads exactly like the row, through the one formatter", () => {
+    expect(valueTextOf(number('50.0'), 50)).toBe(valueText(number('50.0')));
+    expect(valueTextOf(number('50.0'), 50)).toBe('50 m');
+    expect(valueTextOf(number('10240', { units: 'MB' }), 10240)).toBe('10 GB');
+    expect(valueTextOf(number('45', { units: '%' }), 45)).toBe('45%');
+    expect(valueTextOf(number('0.0'), -0.01)).toBe('0 m');
+    expect(valueTextOf(number('0.0'), Number.NaN)).toBe('—');
+  });
+
   it('a long choice label is cut at its first clause in the row', () => {
     expect(rowChoiceLabel('Return at critical level, land at emergency level')).toBe('Return at critical level');
     expect(rowChoiceLabel('Hold mode')).toBe('Hold mode');

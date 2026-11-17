@@ -6,7 +6,6 @@ import { coerceAtMost, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { type ClosedRange, useRepeatWhileHeld } from '@/map/SettingStepper';
 import { md, withAlpha } from '@/theme/Colors';
-import { sliderValue } from '@/ui/ParameterForm';
 import { factNumber } from '@/ui/Px4TuningScreen';
 import { FieldSlider, LocalStagedEdits, NUMBER_VALUE_WIDTH, sentenceCase, showsAsField } from '@/ui/SettingsScreen';
 import { quantityText } from './Quantity';
@@ -16,6 +15,7 @@ export const VALUE_NO_LIMIT = 'No limit';
 const NO_LIMIT_NOTCH = 0.1;
 const NO_LIMIT_SNAP = 0.25;
 const SLIDER_SPAN_LIMIT = 100_000.0;
+const MAX_DECIMALS = 6;
 const DISABLED_AT_ZERO = /(disabled if 0|0 (disables|to disable|hides|turns .* off)|set to 0 to disable|zero disables)/i;
 
 export const opensAsValue = (fact: Fact): boolean => showsAsField(fact) && !fact.isString && !fact.isBitmask && !fact.isEnum;
@@ -410,7 +410,7 @@ export const steppedValue = (fact: Fact, direction: number): number | null => {
 export const valueTextOf = (fact: Fact, value: number | null): string => {
   if (value === null) return valueText(fact);
   if (disablesAtZero(fact) && value === 0) return offLabel(fact);
-  return sliderValue(value, valueDecimals(fact), fact.units.trim());
+  return quantityText(value.toFixed(coerceIn(valueDecimals(fact), 0, MAX_DECIMALS)), fact.units);
 };
 
 const HOLD_DELAY_MS = 400;

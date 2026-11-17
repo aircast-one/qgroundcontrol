@@ -60,6 +60,7 @@ import {
   tabSetupComponents,
   choiceName,
   helpLabel,
+  typedNotice,
 } from './SettingsScreen';
 
 const page = (title: string) => SettingsPageEntry({ title, showsLinks: false, showsVideoSources: false, sectionCount: 0 });
@@ -716,5 +717,18 @@ describe('ControlNamesTest', () => {
   it('each help button names the setting it explains', () => {
     expect(helpLabel('Video fit', false)).toBe('Help: Video fit');
     expect(helpLabel('Video fit', true)).toBe('Hide help: Video fit');
+  });
+});
+
+describe('a written value is announced the way the row shows it', () => {
+  const typed = (units: string, { isString = false, name = 'n' } = {}) =>
+    makeFact({ path: 'p', name, description: 'Battery warning', units, valueString: '0', value: 0, enumStrings: [], enumIndex: -1, isBool: false, isString, readOnly: false });
+
+  it('through the one formatter, so 45% has no space and 50.0 m drops its zero', () => {
+    expect(typedNotice(typed('%'), '45')).toBe('Battery warning: 45%');
+    expect(typedNotice(typed('m'), '50.0')).toBe('Battery warning: 50 m');
+    expect(typedNotice(typed('secs'), '3')).toBe('Battery warning: 3 s');
+    expect(typedNotice(typed('m', { isString: true }), '50.0')).toBe('Battery warning: 50.0');
+    expect(typedNotice(typed('', { name: 'ntripPassword' }), 'hunter2')).toBe('Battery warning changed');
   });
 });
