@@ -147,6 +147,11 @@ export const installMissionLayers = (style: MapLibreMap): void => {
 
 export const crowded = (itemCount: number): boolean => itemCount > CROWDED_ITEMS;
 
+const NEARBY_ITEMS = 2;
+
+export const hushed = (crowd: boolean, sequence: number, selectedSequence: number | null): boolean =>
+  crowd && (selectedSequence === null || Math.abs(sequence - selectedSequence) > NEARBY_ITEMS);
+
 export const legLabels = (items: readonly MissionItem[]): readonly (readonly [TrackPoint, string])[] =>
   crowded(items.length)
     ? []
@@ -206,6 +211,7 @@ export const missionFeatures = (items: readonly MissionItem[], selectedIndex: nu
   const isCrowded = crowded(items.length);
   const patterns: ReadonlyMap<number, LandingPattern> = new Map(landings.map((it) => [it.index, it]));
   const covered = homeCovered(items);
+  const selectedSequence = items.find((it) => it.index === selectedIndex)?.sequence ?? null;
   const plain = items.filter((it) => !patterns.has(it.index)).filter((it) => !(it.index === HOME_ITEM && covered));
   const markers: readonly Marker[] = [
     ...plain.map((item) => ({ item, at: pointOf(item), sequence: item.sequence, exit: false, side: item.drops ? DROP_SIDE : null })),
@@ -219,11 +225,12 @@ export const missionFeatures = (items: readonly MissionItem[], selectedIndex: nu
     markers.map(({ item, at, sequence, exit, side }) => {
       const letters = !exit && !item.complexPattern ? item.abbreviation : '';
       const selected = item.index === selectedIndex;
+      const quiet = hushed(isCrowded, sequence, selectedSequence);
       return pointFeature(at.longitude, at.latitude, {
         [WAYPOINT_ID_PROPERTY]: item.index,
-        [WAYPOINT_LABEL_PROPERTY]: item.index === HOME_ITEM && !exit && !isCrowded ? HOME_SEAL : waypointLabel(sequence, isCrowded, letters),
-        [WAYPOINT_SIDE_LABEL_PROPERTY]: side !== null && !isCrowded ? side : sideLabel(isCrowded, letters),
-        [WAYPOINT_RADIUS_PROPERTY]: markerRadius(isCrowded, selected),
+        [WAYPOINT_LABEL_PROPERTY]: item.index === HOME_ITEM && !exit && !quiet ? HOME_SEAL : waypointLabel(sequence, quiet, letters),
+        [WAYPOINT_SIDE_LABEL_PROPERTY]: side !== null && !quiet ? side : sideLabel(quiet, letters),
+        [WAYPOINT_RADIUS_PROPERTY]: markerRadius(quiet, selected),
         [WAYPOINT_STROKE_PROPERTY]: markerStroke(isCrowded, selected),
         [WAYPOINT_COLOUR_PROPERTY]: waypointColour(item.kind, item.commandId),
         [WAYPOINT_SELECTED_PROPERTY]: selected,

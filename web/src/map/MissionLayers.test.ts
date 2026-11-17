@@ -41,6 +41,7 @@ import {
   circleEdge,
   collisionLegFeatures,
   crowded,
+  hushed,
   draggedCircleRadius,
   draggedLoiterRadius,
   fenceFeatures,
@@ -193,6 +194,14 @@ describe('MarkerDensityTest', () => {
     expect(property(features, 0, WAYPOINT_RADIUS_PROPERTY)).toBe(CROWDED_RADIUS);
     expect(property(features, 3, WAYPOINT_RADIUS_PROPERTY)).toBe(MARKER_RADIUS);
     expect(property(features, 0, WAYPOINT_LABEL_PROPERTY)).toBe('');
+  });
+
+  it('in a crowd the selected item and its neighbours keep their numbers', () => {
+    const items = Array.from({ length: 81 }, (_, it) => MissionItem({ index: it, sequence: it, latitude: 41.0 + it * 0.001, longitude: 44.0, command: 'Waypoint', selected: false, kind: 'waypoint' }));
+    const features = missionFeatures(items, 40);
+    expect([38, 39, 40, 41, 42].map((at) => property(features, at, WAYPOINT_LABEL_PROPERTY))).toEqual(['38', '39', '40', '41', '42']);
+    expect([37, 43].map((at) => property(features, at, WAYPOINT_LABEL_PROPERTY))).toEqual(['', '']);
+    expect([hushed(true, 41, 40), hushed(true, 45, 40), hushed(true, 41, null), hushed(false, 99, null)]).toEqual([false, true, true, false]);
   });
 });
 
