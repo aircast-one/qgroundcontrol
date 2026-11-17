@@ -127,7 +127,7 @@ test('the RC transmitter entry hands a plugged-in EdgeTX radio to the stick inpu
 
 test('a WebSocket link that keeps failing waits apart from Connected, and its address is fixed in place', async ({ app }) => {
   await app.getByRole('button', { name: /How to connect/ }).click();
-  await app.getByRole('button', { name: 'Add link…' }).click();
+  await app.getByRole('button', { name: 'Add a link' }).click();
   await app.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
   const address = app.getByRole('textbox', { name: 'WebSocket address' });
   await expect(address).toHaveValue('');

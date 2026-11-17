@@ -64,7 +64,7 @@ export const readFlightModesOn = async (page: Page, channel: number) => {
   const row = page.getByRole('button', { name: /^FLTMODE_CH/ }).first();
   await row.click();
   const editor = page.getByRole('dialog').filter({ hasText: 'FLTMODE_CH' });
-  await editor.getByRole('button', { name: /^Channel ?\d+$/ }).click();
+  await editor.getByRole('button', { name: /Channel ?\d+$/ }).click();
   const choice = new RegExp(`^Channel ?${channel}$`);
   await page.getByRole('menuitem', { name: choice }).or(page.getByRole('option', { name: choice })).first().click();
   await editor.getByRole('button', { name: 'Save' }).click();
