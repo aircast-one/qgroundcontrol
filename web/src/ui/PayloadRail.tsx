@@ -8,6 +8,7 @@ import { Surface, Text } from '@/m3';
 import { Drawable } from '@/res/Icon';
 import { aircast, md, withAlpha } from '@/theme/Colors';
 import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
+import { TAP_LOWER } from '@/kotlin/Platform';
 
 export const PAYLOAD_RAIL_VIEW = 'view.payloadRail';
 const ARM = 'payloadRail.arm';
@@ -56,9 +57,9 @@ export const payloadRailOf = (json: Json | null): PayloadRail | null =>
 
 export const payloadNote = (rail: PayloadRail, refusal: string | null): string | null => refusal ?? (rail.dropReady || !rail.armed ? null : rail.reason);
 
-export const lockLabel = (rail: PayloadRail): string => (rail.armed ? 'Payload armed, tap to make safe' : 'Payload safe, tap to arm');
+export const lockLabel = (rail: PayloadRail): string => (rail.armed ? `Payload armed, ${TAP_LOWER} to make safe` : `Payload safe, ${TAP_LOWER} to arm`);
 
-export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}${loaded || rail.armed ? '' : ', tap when reloaded'}`;
+export const bayTileLabel = (rail: PayloadRail, bay: number, loaded: boolean): string => `Bay ${bay}, ${loaded ? 'loaded' : 'empty'}${rail.selected === bay ? ', selected' : ''}${loaded || rail.armed ? '' : `, ${TAP_LOWER} when reloaded`}`;
 
 const Tile = ({ label, enabled, ring, fill, hollow, onClick, children }: { label: string; enabled: boolean; ring: boolean; fill: string; hollow: boolean; onClick: () => void; children: React.ReactNode }) => (
   <Surface

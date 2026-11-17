@@ -110,9 +110,9 @@ export const mapMenuAt = async (page: Page, dx: number, dy: number) => {
 
 export const armPayload = async (page: Page) => {
   const strip = page.getByRole('group', { name: 'Payload', exact: true });
-  const armed = strip.getByRole('button', { name: 'Payload armed, tap to make safe' });
-  await expect(strip.getByRole('button', { name: /^Payload (safe, tap to arm|armed, tap to make safe)$/ })).toBeVisible();
-  if ((await armed.count()) === 0) await strip.getByRole('button', { name: 'Payload safe, tap to arm' }).click();
+  const armed = strip.getByRole('button', { name: 'Payload armed, click to make safe' });
+  await expect(strip.getByRole('button', { name: /^Payload (safe, click to arm|armed, click to make safe)$/ })).toBeVisible();
+  if ((await armed.count()) === 0) await strip.getByRole('button', { name: 'Payload safe, click to arm' }).click();
   await expect(armed).toBeVisible();
 };
 

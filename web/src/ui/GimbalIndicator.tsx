@@ -15,6 +15,7 @@ import { APPROXIMATE_AIM, LENS_VIEW, lensReading } from '@/ui/Lens';
 import { OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { FactRow, type SettingsBlock, type SettingsSectionRows, sentenceCase, settingsPagePath, settingsSections } from '@/ui/SettingsScreen';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
+import { TAP, TAP_LOWER } from '@/kotlin/Platform';
 
 export const GIMBAL_INDICATOR_PATH = 'view.gimbalIndicator';
 export const OTHERS_HAVE_CONTROL = 'othersHaveControl';
@@ -262,10 +263,10 @@ const STICK_SETTING = 'settings.gimbalControllerSettings.onScreenStick';
 type VideoGimbalModeChoice = { mode: VideoGimbalMode; label: string; icon: string; hint: string; onScreen: boolean; clickAndDrag: boolean; stick: boolean };
 
 export const VIDEO_GIMBAL_MODES: readonly VideoGimbalModeChoice[] = [
-  { mode: 'drag', label: 'Drag to move', icon: 'pan_tool', hint: 'Drag the picture like a map; what you grab stays under your finger.', onScreen: false, clickAndDrag: false, stick: false },
-  { mode: 'point', label: 'Tap to point', icon: 'ads_click', hint: 'Tap to turn the camera there, or drag the picture to move it.', onScreen: true, clickAndDrag: false, stick: false },
+  { mode: 'drag', label: 'Drag to move', icon: 'pan_tool', hint: 'Drag the picture like a map; what you grab stays where you hold it.', onScreen: false, clickAndDrag: false, stick: false },
+  { mode: 'point', label: `${TAP} to point`, icon: 'ads_click', hint: `${TAP} to turn the camera there, or drag the picture to move it.`, onScreen: true, clickAndDrag: false, stick: false },
   { mode: 'hold', label: 'Hold and drag', icon: 'swipe', hint: 'Press, then drag away from that spot; the further you drag, the faster the camera turns.', onScreen: true, clickAndDrag: true, stick: false },
-  { mode: 'stick', label: 'Joystick', icon: 'joystick', hint: 'Steer the camera with the on-screen joystick; drags and taps on the picture leave it alone.', onScreen: false, clickAndDrag: false, stick: true },
+  { mode: 'stick', label: 'Joystick', icon: 'joystick', hint: `Steer the camera with the on-screen joystick; dragging or ${TAP_LOWER}ing the picture leaves it alone.`, onScreen: false, clickAndDrag: false, stick: true },
 ];
 
 export const videoGimbalMode = (control: OnScreenGimbal): VideoGimbalMode => (control.stick ? 'stick' : !control.enabled ? 'drag' : control.clickAndDrag ? 'hold' : 'point');

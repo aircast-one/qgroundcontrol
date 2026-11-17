@@ -42,3 +42,11 @@ test('a setup row clicked before the tab pager settles opens its page and stays 
   await vehicle.clock.runFor(1_000);
   await expect(vehicle.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
 });
+
+test('in a browser the Aircast card page points to the desktop app rather than stopping', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+  await app.getByRole('button', { name: /^Aircast card/ }).click();
+  await expect(app.getByText(/^A browser cannot write SD cards\./)).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Get the desktop app' })).toBeVisible();
+});

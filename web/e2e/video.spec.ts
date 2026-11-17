@@ -124,7 +124,7 @@ test('the gimbal sheet chooses what a drag on the video does and opens every gim
   await app.getByRole('button', { name: /^Cameras, showing/ }).click();
   await app.getByRole('menuitem', { name: 'Gimbal settings' }).click();
   await expect(app.getByText('Aim the camera', { exact: true })).toBeVisible();
-  await expect(app.getByRole('button', { name: 'Tap to point' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(app.getByRole('button', { name: 'Click to point' })).toHaveAttribute('aria-pressed', 'true');
   await app.getByRole('button', { name: 'Drag to move' }).click();
   await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
   await expect(app.getByText('Drag the picture like a map; what you grab stays under your finger.')).toBeVisible();
@@ -139,7 +139,7 @@ test('the switch on the video steps through every way a drag steers the gimbal',
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
   await flyNow(app);
   const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
-  await expect(mode).toHaveAccessibleName('Video gimbal mode, Tap to point');
+  await expect(mode).toHaveAccessibleName('Video gimbal mode, Click to point');
   await mode.click();
   await expect(mode).toHaveAccessibleName('Video gimbal mode, Hold and drag');
   await mode.click();
@@ -323,7 +323,7 @@ const liveGimbalVideo = async (page: Page) => {
   const video = page.locator('video').first();
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
   await flyNow(page);
-  await expect(page.getByRole('button', { name: /^Video gimbal mode/ })).toHaveAccessibleName('Video gimbal mode, Tap to point');
+  await expect(page.getByRole('button', { name: /^Video gimbal mode/ })).toHaveAccessibleName('Video gimbal mode, Click to point');
   await expect.poll(gimbalAim(page), { timeout: 30_000 }).not.toBeNull();
   const box = (await video.boundingBox())!;
   return { box, before: (await gimbalAim(page)()) as { pitch: number; yaw: number } };

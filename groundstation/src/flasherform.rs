@@ -228,7 +228,7 @@ pub fn problems(form: &Form) -> Vec<(&'static str, String)> {
         .then(|| {
             (
                 "wifiPassword",
-                format!("{ssid} needs its password. This phone uses one to join it."),
+                format!("{ssid} needs its password. This device uses one to join it."),
             )
         }),
         (mode == SshMode::KeyOnly && form.authorized_key.trim().is_empty()).then(|| {
@@ -608,7 +608,7 @@ mod tests {
             problems(&missing),
             vec![(
                 "wifiPassword",
-                "field-net needs its password. This phone uses one to join it.".to_string()
+                "field-net needs its password. This device uses one to join it.".to_string()
             )]
         );
         assert_eq!(

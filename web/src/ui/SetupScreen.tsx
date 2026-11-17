@@ -118,7 +118,7 @@ const COMPONENT_NOTES: readonly (readonly [string, string])[] = [
   ['Tuning', 'How it responds to the sticks'],
   ['Actuator', 'Outputs and what drives them'],
   ['Servo', 'Outputs and what drives them'],
-  ['Follow', 'Follow a target or this phone'],
+  ['Follow', 'Follow a target or this device'],
   ['Camera', 'Camera trigger and gimbal'],
 ];
 

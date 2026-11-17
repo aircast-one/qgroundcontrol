@@ -16,6 +16,7 @@ import { groundPoint } from '@/ui/PictureHold';
 import { SyntheticSurface, nativeDraw } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, syntheticAvailable } from '@/ui/SyntheticView';
 import { DOUBLE_TAP_TIMEOUT_MS, LONG_PRESS_TIMEOUT_MS, TOUCH_SLOP, usePointerGestures } from '@/ui/VideoGestures';
+import { TAP_LOWER } from '@/kotlin/Platform';
 
 const MAP3D_VIEW = 'view.map3d';
 const MAP3D_PAN = 'map3d.pan';
@@ -37,7 +38,7 @@ const DOM_DELTA_LINE = 1;
 const CONTROL_SIZE = 40;
 const CONTROL_ICON = 20;
 export const BACK_TO_AIRCRAFT = 'Back to aircraft';
-const COMPASS_LABEL = 'Compass. Drag to turn and tilt the view, tap to face north';
+const COMPASS_LABEL = `Compass. Drag to turn and tilt the view, ${TAP_LOWER} to face north`;
 const MAP3D_TOUCH_HINT = 'Drag to move · Two fingers to turn and tilt';
 const MAP3D_MOUSE_HINT = 'Drag to move · Right-drag or Shift-drag to turn and tilt';
 const COARSE_POINTER = '(pointer: coarse)';

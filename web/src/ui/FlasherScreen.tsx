@@ -9,7 +9,7 @@ import { aircast, md } from '@/theme/Colors';
 import { BlocksNavigation } from '@/ui/AppNavigation';
 import { phoneIsOnMeteredNetwork, useRememberPhoneWifi } from '@/ui/PhoneNetwork';
 import { OverridePageHeading } from '@/ui/SetupRow';
-import { TAP } from '@/kotlin/Platform';
+import { TAP, openUri } from '@/kotlin/Platform';
 
 export const FLASHER_PAGE = 'Aircast card';
 export const FLASHER_VIEW = 'view.flasher';
@@ -52,6 +52,11 @@ export const FlasherStepEntries: readonly FlasherStep[] = [FlasherStep.Card, Fla
 const stepAt = (ordinal: number): FlasherStep => FlasherStepEntries[ordinal] ?? FlasherStep.Card;
 
 export type FlasherRelease = { version: string; label: string; published: string; sizeText: string; recommended: boolean };
+
+export const DESKTOP_APP_URL = 'https://aircast.one/docs/fly/aircast-qgc';
+
+export const cannotWriteCards = (desktop: boolean): string =>
+  desktop ? 'This device cannot write cards.' : 'A browser cannot write SD cards. Set up the card from the Aircast desktop app for Windows, macOS or Linux.';
 
 export const FlasherRelease = (fields: { version: string; label: string; published: string; sizeText: string; recommended?: boolean }): FlasherRelease => ({ recommended: false, ...fields });
 
@@ -234,7 +239,7 @@ export const setupComplete = (problems: ReadonlyMap<string, string>): boolean =>
 export const defaultSshMode = (form: FlasherForm): string | null => (form.sshMode === 'key-only' && !notBlank(form.authorizedKey) ? FLASHER_PASSWORD_MODE : null);
 
 export const meteredNote = (release: FlasherRelease | null, downloadState: string, metered: boolean): string | null =>
-  release !== null && metered && downloadState !== 'ready' && downloadState !== 'running' ? `Aircast OS is a ${release.sizeText} download and this phone is on mobile data.` : null;
+  release !== null && metered && downloadState !== 'ready' && downloadState !== 'running' ? `Aircast OS is a ${release.sizeText} download and this device is on mobile data.` : null;
 
 export const FLASHER_SSH_MODES: readonly (readonly [string, string])[] = [
   ['password', 'Password'],
@@ -458,9 +463,12 @@ export const FlasherScreen = ({ className }: { className?: string }) => {
       {state === null || form === null ? (
         <Text className="block p-4">Loading…</Text>
       ) : !state.available ? (
-        <Text color={aircast('warning')} className="block p-4">
-          This device cannot write cards.
-        </Text>
+        <div className="flex flex-col items-start gap-2 p-4">
+          <Text color={aircast('warning')} className="block">
+            {cannotWriteCards(__DESKTOP__)}
+          </Text>
+          {__DESKTOP__ ? null : <TextButton onClick={() => openUri(DESKTOP_APP_URL)}>Get the desktop app</TextButton>}
+        </div>
       ) : (
         body(state, form)
       )}
@@ -569,7 +577,7 @@ const Selectable = ({ onClick, children }: { onClick: () => void; children: Reac
 
 const CardStep = ({ state, onChoose }: { state: FlasherState; onChoose: (id: string) => void }) => (
   <>
-    <Heading title="Insert the card" body="Put the drone's SD card in a USB card reader and plug it into this phone. Use an OTG adapter if the reader has a full-size USB plug." />
+    <Heading title="Insert the card" body="Put the drone's SD card in a USB card reader and plug it into this device. On a phone, use an OTG adapter if the reader has a full-size USB plug." />
     {state.disks.length === 0 ? <ListItem headlineContent="Waiting for a card reader…" supportingContent="You can continue and plug it in before writing" /> : null}
     {state.disks.map((disk) => {
       const chosen = disk.id === state.cardId;
@@ -664,7 +672,7 @@ const SetupStep = ({
           label="WiFi network"
           value={form.ssid}
           problem={problems.get('ssid') ?? null}
-          help={phoneSsid !== null && form.ssid === phoneSsid ? "This phone's current network" : null}
+          help={phoneSsid !== null && form.ssid === phoneSsid ? "This device's current network" : null}
           onChange={(it) => edit({ ...form, ssid: it }, 'ssid', it)}
         />
         {phoneSsid !== null && phoneSsid !== form.ssid ? (

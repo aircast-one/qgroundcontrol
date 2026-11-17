@@ -38,7 +38,7 @@ describe('FollowMeTest', () => {
     expect(
       followMeLabel(followMeReading(view({ mode: '"followMe"', wouldSend: false, reason: '"noFix"' }))),
       "reason() returns NoVehicleInFollowMode before it looks at the fix at all, so any other reason means a vehicle IS in Follow Me mode and the stream is failing anyway - that is the operator's own request breaking, not a resting default",
-    ).toBe('Not following you — this phone has no position yet');
+    ).toBe('Not following you — this device has no position yet');
   });
 
   it('a vehicle taking the stream says so plainly', () => {
@@ -54,8 +54,8 @@ describe('FollowMeTest', () => {
   it('switched on and not sending names the thing standing in the way', () => {
     const stuck = (token: string) => followMeLabel(followMeReading(view({ mode: '"always"', enabled: false, wouldSend: false, reason: `"${token}"` })));
 
-    expect(stuck('fixStale')).toBe("Not following you — this phone's position has stopped updating");
-    expect(stuck('fixInvalid')).toBe("Not following you — this phone's position is not valid");
+    expect(stuck('fixStale')).toBe("Not following you — this device's position has stopped updating");
+    expect(stuck('fixInvalid')).toBe("Not following you — this device's position is not valid");
     expect(stuck('allVehiclesRefused')).toBe('Not following you — the vehicle refused the position');
   });
 
@@ -78,7 +78,7 @@ describe('FollowMeTest', () => {
       vehicles: '[{"id":1,"following":false,"refusal":"notInFollowMode"}]',
     });
 
-    expect(followMeLabel(followMeReading(asked))).toBe("Not following you — this phone's position has stopped updating");
+    expect(followMeLabel(followMeReading(asked))).toBe("Not following you — this device's position has stopped updating");
   });
 
   it('no vehicle at all is nothing to say, however the setting reads', () => {

@@ -24,6 +24,8 @@ import {
   setupComplete,
   showsChannels,
   visibleProblems,
+  DESKTOP_APP_URL,
+  cannotWriteCards,
 } from './FlasherScreen';
 
 const view = parseJson(`
@@ -134,7 +136,7 @@ describe('FlasherScreenTest', () => {
 
   it('mobile_data_is_warned_about_only_before_the_download_starts', () => {
     const release = FlasherRelease({ version: 'v0.3.5', label: 'Aircast OS v0.3.5', published: '2026-08-22', sizeText: '577 MB', recommended: true });
-    expect(meteredNote(release, 'idle', true)).toBe('Aircast OS is a 577 MB download and this phone is on mobile data.');
+    expect(meteredNote(release, 'idle', true)).toBe('Aircast OS is a 577 MB download and this device is on mobile data.');
     expect(meteredNote(release, 'idle', false)).toBeNull();
     expect(meteredNote(release, 'running', true)).toBeNull();
     expect(meteredNote(release, 'ready', true)).toBeNull();
@@ -190,5 +192,13 @@ describe('FlasherScreenTest', () => {
     expect(previousStep(FlasherStep.Card, false, 'idle')).toBeNull();
     expect(previousStep(FlasherStep.Write, true, 'writing')).toBeNull();
     expect(previousStep(FlasherStep.Write, false, 'done')).toBeNull();
+  });
+});
+
+describe('CannotWriteCardsTest', () => {
+  it('a browser that cannot write cards points to the desktop app instead of stopping', () => {
+    expect(cannotWriteCards(false)).toContain('Aircast desktop app');
+    expect(cannotWriteCards(true)).toBe('This device cannot write cards.');
+    expect(DESKTOP_APP_URL).toBe('https://aircast.one/docs/fly/aircast-qgc');
   });
 });

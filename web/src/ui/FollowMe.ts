@@ -29,10 +29,10 @@ const TROUBLES: ReadonlyMap<string, string> = new Map([
   ['modeNever', 'Follow Me is switched off'],
   ['noVehicles', 'no vehicle is connected'],
   ['noVehicleInFollowMode', 'no vehicle is in Follow Me mode'],
-  ['noFix', 'this phone has no position yet'],
-  ['fixInvalid', "this phone's position is not valid"],
-  ['fixStale', "this phone's position has stopped updating"],
-  ['fixUnusable', "this phone's position cannot be used"],
+  ['noFix', 'this device has no position yet'],
+  ['fixInvalid', "this device's position is not valid"],
+  ['fixStale', "this device's position has stopped updating"],
+  ['fixUnusable', "this device's position cannot be used"],
   ['allVehiclesRefused', 'the vehicle refused the position'],
 ]);
 
