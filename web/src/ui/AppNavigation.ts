@@ -15,6 +15,13 @@ export class AppNavigationState {
     this.settingsOpen.value = true;
   }
 
+  readonly settingsTab = mutableStateOf<SettingsGroup | null>(null);
+
+  openSettingsTab(group: SettingsGroup): void {
+    this.settingsTab.value = group;
+    this.settingsOpen.value = true;
+  }
+
   readonly setupPage = mutableStateOf<string | null>(null);
   readonly parametersSearch = mutableStateOf('');
   readonly addLinkRequested = mutableStateOf(false);

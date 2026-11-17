@@ -193,6 +193,12 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
     pickTab(entry);
     pager.animateScrollToPage(entry.ordinal);
   };
+  const settingsTab = useValue(navigation.settingsTab);
+  useLaunchedEffect([settingsTab], () => {
+    if (settingsTab === null) return;
+    showTab(settingsTab);
+    navigation.settingsTab.value = null;
+  });
   const contentKey = `${group.name}|${page ?? ''}|${query !== null}|${setupOpen}`;
   const setupDestination = setupOpen && enteredForSetup;
   const headerBack = drilledTitle !== null && !(setupDestination && heading === null && !setupFromTab);

@@ -197,10 +197,12 @@ const COMPONENT_KEYWORDS: readonly (readonly [string, string])[] = [
   ['Frame', 'frame airframe'],
 ];
 
-export const setupKeywords = (component: SetupComponent): string =>
+export type SetupSearchable = Pick<SetupComponent, 'name' | 'className'>;
+
+export const setupKeywords = (component: SetupSearchable): string =>
   [setupNote(component.className), ...COMPONENT_KEYWORDS.filter(([token]) => component.className.includes(token) || component.name === token).map(([, words]) => words)].join(' ').toLowerCase();
 
-export const setupFound = (component: SetupComponent, sectionTitles: readonly string[], search: string): boolean => {
+export const setupFound = (component: SetupSearchable, sectionTitles: readonly string[], search: string): boolean => {
   const wanted = search.trim().toLowerCase();
   return wanted !== '' && (setupMatches(component.name, wanted) || setupKeywords(component).includes(wanted) || sectionTitles.some((it) => it.toLowerCase().includes(wanted)));
 };

@@ -7,7 +7,7 @@ import { PRIVACY_POLICY_LINK, aboutLinks } from '@/ui/AboutPage';
 import { LOOKING_HINT, LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { factFromControl } from '@/ui/ParameterForm';
 import { FLIGHT_MODES_PAGE, SAFETY_SETUP_PAGE, SENSORS } from '@/ui/SetupPages';
-import { SetupComponent } from '@/ui/SetupScreen';
+import { SetupComponent, setupFound } from '@/ui/SetupScreen';
 import {
   CONNECTIONS_PAGE,
   blockInertNote,
@@ -730,5 +730,13 @@ describe('a written value is announced the way the row shows it', () => {
     expect(typedNotice(typed('secs'), '3')).toBe('Battery warning: 3 s');
     expect(typedNotice(typed('m', { isString: true }), '50.0')).toBe('Battery warning: 50.0');
     expect(typedNotice(typed('', { name: 'ntripPassword' }), 'hunter2')).toBe('Battery warning changed');
+  });
+});
+
+describe('setup search takes any row with a name and a class, not only a setup page', () => {
+  it('finds the Parameters row by its name without posing as a setup component', () => {
+    expect(setupFound({ name: 'Parameters', className: '' }, [], 'param')).toBe(true);
+    expect(setupFound({ name: 'Parameters', className: '' }, [], 'compass')).toBe(false);
+    expect(setupFound({ name: 'Parameters', className: '' }, [], '  ')).toBe(false);
   });
 });

@@ -12,7 +12,7 @@ import { parameterFact, parameterPath } from '@/ui/ParametersScreen';
 import { factNumber } from '@/ui/Px4TuningScreen';
 import { SectionHeader, SettingsCard, SetupRow } from '@/ui/SetupRow';
 import { SETUP, parametersReady } from '@/ui/SetupView';
-import { CONNECTIONS_PAGE, FactRow, SettingsGroup, SettingsGroupEntries, sentenceCase, tabPage } from '@/ui/SettingsScreen';
+import { CONNECTIONS_PAGE, FactRow, SettingsGroup, SettingsGroupEntries, sentenceCase } from '@/ui/SettingsScreen';
 import { LocalChangeNotice, VALUE_OFF, valueText } from '@/ui/ValueRow';
 
 export type PilotSetting = { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited: string | null; quantity: string | null; fenceBit: number | null };
@@ -387,7 +387,7 @@ export const PilotLinkRow = ({ name, owner }: { name: string; owner: PilotOwner 
       title={owner.setting.label}
       subtitle={`In Settings › ${owner.group.title}`}
       status={fact === null ? '' : fact.isEnum ? pilotChoice(fact.enumStrings[fact.enumIndex] ?? fact.valueString) : valueText(fact)}
-      onClick={() => (navigation.settingsPage.value = tabPage(owner.group))}
+      onClick={() => navigation.openSettingsTab(owner.group)}
     />
   );
 };

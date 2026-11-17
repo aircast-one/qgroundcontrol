@@ -146,14 +146,10 @@ export const SettingsGroup = {
 } as const satisfies Record<string, SettingsGroup>;
 export const SettingsGroupEntries: readonly SettingsGroup[] = [SettingsGroup.General, SettingsGroup.Safety, SettingsGroup.Control, SettingsGroup.Camera, SettingsGroup.Transmission, SettingsGroup.Device];
 
-export const tabPage = (group: SettingsGroup): string => `${group.name} tab`;
-
 export type PageLook = { group: SettingsGroup; icon: DrawableName; inline: boolean; tabHome: boolean };
 export const PageLook = (fields: { group: SettingsGroup; icon: DrawableName; inline?: boolean; tabHome?: boolean }): PageLook => ({ inline: false, tabHome: false, ...fields });
 
 export const PAGE_LOOKS: ReadonlyMap<string, PageLook> = new Map<string, PageLook>([
-  [tabPage(SettingsGroup.Safety), PageLook({ group: SettingsGroup.Safety, icon: 'ic_shield', inline: true })],
-  [tabPage(SettingsGroup.Control), PageLook({ group: SettingsGroup.Control, icon: 'ic_flight', inline: true })],
   ['ADSB Server', PageLook({ group: SettingsGroup.Safety, icon: 'ic_navigation', inline: true })],
   ['Remote ID', PageLook({ group: SettingsGroup.Safety, icon: 'ic_shield' })],
   ['Fly View', PageLook({ group: SettingsGroup.Control, icon: 'ic_flight', inline: true })],
@@ -591,7 +587,7 @@ export const SettingsSearch = ({
 
   const pageHits = pages.filter((page) => pageMatches(page, query));
   const deviceHits = (useDeviceStatus()?.pages ?? []).filter((page) => devicePageMatches(page, query));
-  const parametersHit = vehicle && setupFound(SetupComponent({ index: -1, name: PARAMETERS_ROW, needsAttention: false }), [], query);
+  const parametersHit = vehicle && setupFound({ name: PARAMETERS_ROW, className: '' }, [], query);
   const nothing = hits.length === 0 && pageHits.length === 0 && setupHits.length === 0 && !parametersHit && pilotHits.length === 0 && deviceHits.length === 0;
   const desktop = useDesktopLayout();
 
