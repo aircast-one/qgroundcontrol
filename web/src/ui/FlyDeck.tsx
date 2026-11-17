@@ -12,7 +12,7 @@ import type { Readiness } from '@/ui/FlyState';
 import type { GuidedOffer } from '@/ui/GuidedActions';
 import { type GuidedTakeoff, takeoffRangeUsable } from '@/ui/GuidedTakeoff';
 import { PAUSE, RELEASE } from '@/ui/MoreActions';
-import { OSD_CONTROL_SIZE, OSD_SCRIM } from '@/ui/Osd';
+import { OSD_CONTROL_SIZE, OSD_SCRIM, osdShadow } from '@/ui/Osd';
 
 export const CHECKLIST = 'checklist';
 
@@ -283,16 +283,15 @@ export const railLabel = (label: string): string => {
 };
 
 export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: DeckEntry; primary: boolean; labelled?: boolean }) => {
-  const [color, content] = deckColours(entry, primary);
   const label = entry.short ?? railLabel(entry.label);
   return (
     <div className="flex flex-col items-center gap-1" style={{ width: OSD_CONTROL_SIZE }}>
-      <Surface shape="full" color={color} contentColor={content} shadow className="shrink-0" style={{ minWidth: OSD_CONTROL_SIZE, height: OSD_CONTROL_SIZE, opacity: entry.enabled ? 1 : DISABLED_ALPHA }}>
+      <Surface shape="full" color="transparent" contentColor={entry.warning ? md('error') : aircast('outdoorForeground')} className="shrink-0" style={{ minWidth: OSD_CONTROL_SIZE, height: OSD_CONTROL_SIZE, opacity: entry.enabled ? 1 : DISABLED_ALPHA }}>
         <DeckPress entry={entry}>
           {labelled ? (
-            <Drawable name={entry.icon} label={entry.label} size={primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE} />
+            <Drawable name={entry.icon} label={entry.label} size={primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE} className={osdShadow()} />
           ) : (
-            <span className="flex flex-col items-center px-2">
+            <span className={`flex flex-col items-center px-2 ${osdShadow()}`}>
               <Drawable name={entry.icon} label={entry.label} size={RAIL_INSET_ICON_SIZE} />
               <span aria-hidden>
                 <Text typography="labelSmall" maxLines={1}>
