@@ -87,6 +87,13 @@ jobs:
         run: |
           ./fetch-deps.sh
           xcodegen generate
+          iphone() { xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | startswith("iPhone"))] | last | .udid // empty'; }
+          device=$(iphone)
+          if [ -z "$device" ]; then
+            xcodebuild -downloadPlatform iOS
+            device=$(iphone)
+          fi
+          test -n "$device" || { echo "No iPhone simulator is available on this runner"; xcrun simctl list devices available; exit 1; }
           xcodebuild -project Aircast.xcodeproj -scheme Aircast -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' CODE_SIGNING_ALLOWED=NO test \
+            -destination "platform=iOS Simulator,id=$device" CODE_SIGNING_ALLOWED=NO test \
             | grep -E -A1 "error:|Test Case .* failed|Test Suite 'All tests' (passed|failed)|\*\* TEST (SUCCEEDED|FAILED)" ; test "${PIPESTATUS[0]}" -eq 0
