@@ -193,14 +193,27 @@ struct GotoMark {
     radius: f64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+struct GotoFlight {
+    in_goto_mode: bool,
+    armed: bool,
+    flying: bool,
+    mode: String,
+}
+
 struct GotoState {
     mark: Option<GotoMark>,
-    in_goto_mode: bool,
+    flight: GotoFlight,
 }
 
 static LAST_GOTO: std::sync::Mutex<GotoState> = std::sync::Mutex::new(GotoState {
     mark: None,
-    in_goto_mode: false,
+    flight: GotoFlight {
+        in_goto_mode: false,
+        armed: false,
+        flying: false,
+        mode: String::new(),
+    },
 });
 
 fn goto_state() -> std::sync::MutexGuard<'static, GotoState> {
@@ -210,26 +223,41 @@ fn goto_state() -> std::sync::MutexGuard<'static, GotoState> {
 }
 
 fn remember_goto(mark: GotoMark) {
-    goto_state().mark = Some(mark);
+    let mut state = goto_state();
+    state.mark = Some(mark);
+    state.flight.armed = true;
+    state.flight.flying = true;
 }
 
-fn goto_shown(in_goto_mode: bool) -> Option<GotoMark> {
+fn goto_outlived(was: &GotoFlight, now: &GotoFlight) -> bool {
+    let left_goto = was.in_goto_mode && !now.in_goto_mode;
+    let mode_changed = !was.mode.is_empty() && was.mode != now.mode && !now.in_goto_mode;
+    let took_off = now.flying && !was.flying;
+    !now.armed || left_goto || mode_changed || took_off
+}
+
+fn goto_shown(now: GotoFlight) -> Option<GotoMark> {
     let mut state = goto_state();
-    if state.in_goto_mode && !in_goto_mode {
+    if goto_outlived(&state.flight, &now) {
         state.mark = None;
     }
-    state.in_goto_mode = in_goto_mode;
+    state.flight = now;
     state.mark
 }
 
-fn goto_vehicle(backend: &dyn Backend) -> (Value, bool) {
+fn goto_vehicle(backend: &dyn Backend) -> (Value, GotoFlight) {
     let vehicle = backend.value_fields(
         "vehicle",
         "armed,flying,px4Firmware,orbitActive,flightMode,gotoFlightMode",
     );
-    let in_goto_mode = vehicle.get("flightMode").is_some()
-        && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
-    (vehicle, in_goto_mode)
+    let flight = GotoFlight {
+        in_goto_mode: vehicle.get("flightMode").is_some()
+            && vehicle.get("flightMode") == vehicle.get("gotoFlightMode"),
+        armed: flag(&vehicle, "armed"),
+        flying: flag(&vehicle, "flying"),
+        mode: crate::read::text(&vehicle, "flightMode"),
+    };
+    (vehicle, flight)
 }
 
 fn loiter_circle_shown(backend: &dyn Backend, vehicle: &Value) -> bool {
@@ -239,8 +267,9 @@ fn loiter_circle_shown(backend: &dyn Backend, vehicle: &Value) -> bool {
 }
 
 fn loiter_offer(backend: &dyn Backend) -> Option<GotoMark> {
-    let (vehicle, in_goto_mode) = goto_vehicle(backend);
-    let mark = goto_shown(in_goto_mode).filter(|_| in_goto_mode)?;
+    let (vehicle, flight) = goto_vehicle(backend);
+    let in_goto_mode = flight.in_goto_mode;
+    let mark = goto_shown(flight).filter(|_| in_goto_mode)?;
     let guided = flag(
         &backend.value_fields("vehicle.supports", "guidedMode"),
         "guidedMode",
@@ -254,8 +283,9 @@ fn loiter_offer(backend: &dyn Backend) -> Option<GotoMark> {
 }
 
 fn goto_location(backend: &dyn Backend) -> Option<Value> {
-    let (vehicle, in_goto_mode) = goto_vehicle(backend);
-    goto_shown(in_goto_mode).map(|mark| {
+    let (vehicle, flight) = goto_vehicle(backend);
+    let in_goto_mode = flight.in_goto_mode;
+    goto_shown(flight).map(|mark| {
         let radius = loiter_circle_shown(backend, &vehicle).then_some(mark.radius.abs());
         let unit = crate::read::Unit::horizontal(backend);
         let vertical = crate::read::Unit::vertical(backend);
@@ -958,7 +988,7 @@ mod tests {
         let _serial = SERIAL
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        goto_shown(false);
+        goto_shown(GotoFlight::default());
         remember_goto(GotoMark {
             latitude: 47.4,
             longitude: 8.5,
@@ -984,7 +1014,7 @@ mod tests {
             map_click_view(&Plane, &[])["gotoLocation"]["loiterClockwise"],
             true
         );
-        goto_shown(false);
+        goto_shown(GotoFlight::default());
     }
 
     #[test]
@@ -997,19 +1027,89 @@ mod tests {
             longitude: 8.5,
             radius: 0.0,
         };
-        goto_shown(false);
+        let loiter = GotoFlight {
+            in_goto_mode: false,
+            armed: true,
+            flying: true,
+            mode: "Loiter".to_string(),
+        };
+        let guided = GotoFlight {
+            in_goto_mode: true,
+            mode: "Guided".to_string(),
+            ..loiter.clone()
+        };
+        goto_shown(loiter.clone());
         remember_goto(mark);
         assert_eq!(
-            goto_shown(false),
+            goto_shown(loiter.clone()),
             Some(mark),
             "a goto sent from Loiter shows before the vehicle has switched to Guided"
         );
-        assert_eq!(goto_shown(true), Some(mark));
+        assert_eq!(goto_shown(guided.clone()), Some(mark));
         assert_eq!(
-            goto_shown(false),
+            goto_shown(loiter),
             None,
             "onInGotoFlightModeChanged hides the item when the goto mode is left"
         );
-        assert_eq!(goto_shown(true), None);
+        assert_eq!(goto_shown(guided), None);
+    }
+
+    #[test]
+    fn the_go_here_marker_never_outlives_a_disarm_a_new_takeoff_or_a_mode_change() {
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guided = GotoFlight {
+            in_goto_mode: true,
+            armed: true,
+            flying: true,
+            mode: "Guided".to_string(),
+        };
+        goto_shown(guided.clone());
+        remember_goto(GotoMark {
+            latitude: 47.4,
+            longitude: 8.5,
+            radius: 0.0,
+        });
+        assert!(goto_shown(guided.clone()).is_some());
+        let landed = GotoFlight {
+            armed: false,
+            flying: false,
+            ..guided.clone()
+        };
+        assert_eq!(
+            goto_shown(landed),
+            None,
+            "an ArduCopter lands and disarms in Guided, so leaving the goto mode never happens"
+        );
+        assert_eq!(
+            goto_shown(guided.clone()),
+            None,
+            "the next takeoff in Guided must not resurrect the old point"
+        );
+        let on_ground = GotoFlight {
+            flying: false,
+            ..guided.clone()
+        };
+        assert!(goto_outlived(&on_ground, &guided), "a takeoff clears it");
+        let loiter = GotoFlight {
+            in_goto_mode: false,
+            mode: "Loiter".to_string(),
+            ..guided.clone()
+        };
+        let alt_hold = GotoFlight {
+            mode: "AltHold".to_string(),
+            ..loiter.clone()
+        };
+        assert!(
+            goto_outlived(&loiter, &alt_hold),
+            "a mode change before the goto mode is reached cancels it"
+        );
+        assert!(
+            !goto_outlived(&loiter, &guided),
+            "switching into the goto mode is the goto starting, not a change of mind"
+        );
+        assert!(!goto_outlived(&guided, &guided));
+        goto_shown(GotoFlight::default());
     }
 }

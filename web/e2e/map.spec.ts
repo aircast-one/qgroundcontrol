@@ -42,6 +42,25 @@ test('in flight an ArduCopter flies to the clicked point without saying the tran
   await expect(vehicle.getByText(/transfer failed|did not take the go-to point/)).toBeHidden();
 });
 
+test('a go-to point does not outlive the motors stopping', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await takeOff(vehicle, '10 m');
+  await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4])m$/, { timeout: 60_000 });
+  await showMapFull(vehicle);
+  await mapMenuAt(vehicle, 200, -100);
+  await vehicle.getByRole('button', { name: 'Go to location' }).click();
+  const slide = vehicle.getByRole('button', { name: 'Slide to go to location' });
+  await expect(async () => {
+    if (await slide.isVisible()) await slideAcross(vehicle, slide);
+    await expect(slide).toBeHidden({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(vehicle.getByText(/^Going to point/)).toBeVisible();
+  await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Kill motors', exact: true }).click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to emergency stop' }));
+  await expect(vehicle.getByRole('button', { name: /^Not fully ready$|^Ready to fly$/ }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(vehicle.getByText(/^(Going to point|Arrived)/)).toHaveCount(0);
+});
+
 test('in flight the map menu offers an orbit with a radius range', async ({ vehicle }) => {
   await takeOff(vehicle, '10 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
