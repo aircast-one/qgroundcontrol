@@ -29,7 +29,7 @@
   font-feature-settings: "liga";
 }
 
-@custom-variant desktop (@media (min-width: 1200px) and (pointer: fine));
+@custom-variant desktop (@media (min-width: 840px) and (pointer: fine));
 
 :root {
   --layout-page: 16px;
@@ -52,7 +52,7 @@
   color-scheme: light;
 }
 
-@media (min-width: 1200px) and (pointer: fine) {
+@media (min-width: 840px) and (pointer: fine) {
   :root {
     --layout-page: 24px;
     --layout-form: 24px;
