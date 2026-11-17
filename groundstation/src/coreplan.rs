@@ -2014,18 +2014,9 @@ pub fn view(backend: &dyn Backend) -> Value {
 pub(crate) fn visual_spans(document: &Document) -> Vec<(i64, i64)> {
     std::iter::once((0usize, document.settings_sections.len()))
         .chain(
-            document
-                .items
-                .iter()
-                .scan(document.settings_sections.len() + 1, |next, item| {
-                    let start = *next;
-                    let span = match item {
-                        plandoc::Item::Simple(s) => 1 + s.sections.len(),
-                        plandoc::Item::Complex { item_count, .. } => *item_count,
-                    };
-                    *next += span;
-                    Some((start, start + span - 1))
-                }),
+            plandoc::item_spans(document)
+                .into_iter()
+                .map(|(start, span)| (start, start + span - 1)),
         )
         .map(|(first, last)| (first as i64, last as i64))
         .collect()
