@@ -398,22 +398,34 @@ export const SettingsScreen = ({
   useBackHandler(open !== null, onClose);
   const current = everyPage.find((it) => it.title === open) ?? null;
   const desktop = useDesktopLayout();
+  const deviceTab = <DeviceTab shown={shown} open={open} onOpen={onOpen} onClose={onClose} />;
   return (
     <LocalPageHeading.Provider value={heading}>
       <LocalSettingsList.Provider value>
-        <div className={`flex h-full w-full ${desktop ? 'justify-start' : 'justify-center'} ${className ?? ''}`}>
-          <div className="h-full w-full" style={desktop && group === SettingsGroup.Device ? undefined : { maxWidth: desktop ? SETTINGS_PANE_MAX_WIDTH : DETAIL_PANE_MAX_WIDTH }}>
-            {group === SettingsGroup.Device ? (
-              <DeviceTab shown={shown} open={open} onOpen={onOpen} onClose={onClose} />
-            ) : current === null ? (
+        <div className={`h-full w-full ${className ?? ''}`}>
+          {group !== SettingsGroup.Device ? (
+            current === null ? (
               <SettingsTab group={group} everyPage={everyPage} className="h-full w-full" onOpenSetup={onOpenSetup} onOpen={onOpen} />
             ) : (
               <SettingsPageBody page={current} className="h-full w-full" />
-            )}
-          </div>
+            )
+          ) : desktop ? (
+            deviceTab
+          ) : (
+            <PaneColumn className="h-full">{deviceTab}</PaneColumn>
+          )}
         </div>
       </LocalSettingsList.Provider>
     </LocalPageHeading.Provider>
+  );
+};
+
+const PaneColumn = ({ className, children }: { className?: string; children: ReactNode }) => {
+  const desktop = useDesktopLayout();
+  return (
+    <div className={`w-full ${desktop ? '' : 'mx-auto'} ${className ?? ''}`} style={{ maxWidth: desktop ? SETTINGS_PANE_MAX_WIDTH : DETAIL_PANE_MAX_WIDTH }}>
+      {children}
+    </div>
   );
 };
 
@@ -463,32 +475,34 @@ const SettingsTab = ({
   const linksRow = groundStationLinks !== null && SHOWS_GROUND_STATION_LINKS.includes(group);
   return (
     <div className={`overflow-y-auto ${className}`}>
-      {linksRow || group === SettingsGroup.General ? (
-        <SettingsCard>
-          {linksRow ? <DevicePageRow page={groundStationLinks} /> : null}
-          {group === SettingsGroup.General ? <SetupRow title={FLASHER_PAGE} status="Set up an SD card for a new drone" icon="ic_usb" onClick={() => onOpen(FLASHER_PAGE)} /> : null}
-        </SettingsCard>
-      ) : null}
-      <PilotSettings group={group} />
-      {group === SettingsGroup.General ? <UpdatesCard /> : null}
-      {group === SettingsGroup.Safety ? <SensorChecks onCalibrate={() => onOpenSetup(SENSORS)} /> : null}
-      {foldsInline ? (
-        <>
+      <PaneColumn>
+        {linksRow || group === SettingsGroup.General ? (
           <SettingsCard>
-            {shown.map(pageEntry)}
-            <TabSetupRows group={group} onOpenSetup={onOpenSetup} />
+            {linksRow ? <DevicePageRow page={groundStationLinks} /> : null}
+            {group === SettingsGroup.General ? <SetupRow title={FLASHER_PAGE} status="Set up an SD card for a new drone" icon="ic_usb" onClick={() => onOpen(FLASHER_PAGE)} /> : null}
           </SettingsCard>
-          {folded.length > 0 ? <AdvancedToggle open={advancedOpen} label={ADVANCED_SAFETY} onToggle={() => setAdvancedOpen(!advancedOpen)} /> : null}
-          {advancedOpen ? folded.map(pageEntry) : null}
-        </>
-      ) : (
-        <>
-          {pageRuns(pages, drawnInline).map((run) => (run.inline ? <Fragment key={run.pages[0]?.title}>{run.pages.map(pageEntry)}</Fragment> : <SettingsCard key={run.pages[0]?.title}>{run.pages.map(pageEntry)}</SettingsCard>))}
-          <SettingsCard>
-            <TabSetupRows group={group} onOpenSetup={onOpenSetup} />
-          </SettingsCard>
-        </>
-      )}
+        ) : null}
+        <PilotSettings group={group} />
+        {group === SettingsGroup.General ? <UpdatesCard /> : null}
+        {group === SettingsGroup.Safety ? <SensorChecks onCalibrate={() => onOpenSetup(SENSORS)} /> : null}
+        {foldsInline ? (
+          <>
+            <SettingsCard>
+              {shown.map(pageEntry)}
+              <TabSetupRows group={group} onOpenSetup={onOpenSetup} />
+            </SettingsCard>
+            {folded.length > 0 ? <AdvancedToggle open={advancedOpen} label={ADVANCED_SAFETY} onToggle={() => setAdvancedOpen(!advancedOpen)} /> : null}
+            {advancedOpen ? folded.map(pageEntry) : null}
+          </>
+        ) : (
+          <>
+            {pageRuns(pages, drawnInline).map((run) => (run.inline ? <Fragment key={run.pages[0]?.title}>{run.pages.map(pageEntry)}</Fragment> : <SettingsCard key={run.pages[0]?.title}>{run.pages.map(pageEntry)}</SettingsCard>))}
+            <SettingsCard>
+              <TabSetupRows group={group} onOpenSetup={onOpenSetup} />
+            </SettingsCard>
+          </>
+        )}
+      </PaneColumn>
     </div>
   );
 };
@@ -579,11 +593,10 @@ export const SettingsSearch = ({
   const deviceHits = (useDeviceStatus()?.pages ?? []).filter((page) => devicePageMatches(page, query));
   const parametersHit = vehicle && setupFound(SetupComponent({ index: -1, name: PARAMETERS_ROW, needsAttention: false }), [], query);
   const nothing = hits.length === 0 && pageHits.length === 0 && setupHits.length === 0 && !parametersHit && pilotHits.length === 0 && deviceHits.length === 0;
-  const desktop = useDesktopLayout();
 
   return (
-    <div className={`flex h-full w-full ${desktop ? 'justify-start' : 'justify-center'} ${className ?? ''}`}>
-      <div className="h-full w-full overflow-y-auto" style={{ maxWidth: desktop ? SETTINGS_PANE_MAX_WIDTH : DETAIL_PANE_MAX_WIDTH }}>
+    <div className={`h-full w-full overflow-y-auto ${className ?? ''}`}>
+      <PaneColumn>
         {!searching ? null : nothing ? (
           <>
             <FootNote text={`No settings match “${query.trim()}”.`} />
@@ -620,7 +633,7 @@ export const SettingsSearch = ({
             {searchesParameters ? <ParameterSearchRow query={query} onClick={parameterSearch} /> : null}
           </>
         )}
-      </div>
+      </PaneColumn>
     </div>
   );
 };
@@ -645,18 +658,21 @@ const SettingsPageBody = ({ page, className }: { page: SettingsPageEntry; classN
   });
 
   const own = sectionsIn(pageLook(page.title).group, page.title, sections);
-  if (page.showsLinks) return <LinksScreen className={className} footer={<SettingsControls page={page} sections={own} onWrite={reload} />} />;
-  if (page.showsAbout) return <AboutPage links={page.helpLinks} className={className} />;
-  if (page.showsFlasher) return <FlasherScreen className={className} />;
-  if (page.showsConsole) return <AppLogPage className={className} />;
-  if (page.showsPx4Logs) return <Px4LogTransferPage className={className} />;
-  if (page.showsVideoSources) return <CamerasEditor className={className} />;
-  if (!loaded) return <Text className={`block p-4 ${className}`}>Reading settings.</Text>;
-  if (own.length === 0) return <Text className={`block p-4 ${className}`}>No settings exposed here.</Text>;
+  const column = (body: ReactNode) => <PaneColumn className="h-full">{body}</PaneColumn>;
+  if (page.showsLinks) return column(<LinksScreen className={className} footer={<SettingsControls page={page} sections={own} onWrite={reload} />} />);
+  if (page.showsAbout) return column(<AboutPage links={page.helpLinks} className={className} />);
+  if (page.showsFlasher) return column(<FlasherScreen className={className} />);
+  if (page.showsConsole) return column(<AppLogPage className={className} />);
+  if (page.showsPx4Logs) return column(<Px4LogTransferPage className={className} />);
+  if (page.showsVideoSources) return column(<CamerasEditor className={className} />);
+  if (!loaded) return column(<Text className={`block p-4 ${className}`}>Reading settings.</Text>);
+  if (own.length === 0) return column(<Text className={`block p-4 ${className}`}>No settings exposed here.</Text>);
   return (
     <div className={`overflow-y-auto ${className}`}>
-      <SettingsControls page={page} sections={own} onWrite={reload} />
-      {page.title === GENERAL_PAGE ? <ResetAllSettingsRow /> : null}
+      <PaneColumn>
+        <SettingsControls page={page} sections={own} onWrite={reload} />
+        {page.title === GENERAL_PAGE ? <ResetAllSettingsRow /> : null}
+      </PaneColumn>
     </div>
   );
 };
