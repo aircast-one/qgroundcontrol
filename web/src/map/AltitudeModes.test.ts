@@ -44,6 +44,10 @@ const ONE_OPTION = {
 };
 
 describe('AltitudeModesTest', () => {
+  it("the core's mode titles read in sentence case, keeping acronyms", () => {
+    expect(altitudeModesView(SERVED)?.offers.map((it) => it.title)).toEqual(['Relative to launch', 'AMSL', 'Terrain frame', 'Mixed modes']);
+  });
+
   it('one pickable mode is the one already set, so the control changes nothing', () => {
     expect(
       offersChoice(altitudeModesView(ONE_OPTION)),

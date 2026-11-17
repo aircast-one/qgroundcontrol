@@ -3318,7 +3318,7 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                                 r.clone(),
                             ))
                         },
-                        "A circle's centre needs a latitude and a longitude.",
+                        "A circle's center needs a latitude and a longitude.",
                     ),
                     "radius" => {
                         let horizontal = crate::read::Unit::horizontal(backend);

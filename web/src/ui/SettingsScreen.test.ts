@@ -512,6 +512,17 @@ describe('EnumLabelTest', () => {
     expect(shownEnumLabel(fact('1', ['Fit Width', 'Fit Height'], 1))).toBe('Fit height');
     expect(shownEnumLabel(fact('My Value', [], -1))).toBe('My Value');
   });
+
+  it("a value the enum does not list reads as its number, not the core's Unknown: placeholder", () => {
+    const offList = makeFact({ path: 'p', name: 'ACRO_RP_RATE_TC', description: '', units: 's', valueString: '0.0', value: 0, enumStrings: ['Very soft', 'Soft', 'Unknown: 0'], enumIndex: 2, unknownEnumLabel: 'Unknown: 0', isBool: false, isString: false, readOnly: false });
+    expect(enumLabel(offList)).toBe('0 s');
+    expect(shownEnumLabel(offList)).toBe('0 s');
+  });
+
+  it('a run-together token after a slash reads as words', () => {
+    expect(shownEnumLabel(fact('0', ['Disabled/NoAction', 'Enabled'], 0))).toBe('Disabled/no action');
+    expect(sentenceCase('Hold/ArduPilot')).toBe('Hold/ArduPilot');
+  });
 });
 
 describe('FieldRunsTest', () => {
@@ -574,7 +585,7 @@ describe('FieldRunsTest', () => {
     expect(relabelled('Color scheme', 'Application color scheme')).toBe('');
     expect(relabelled('RTL loiter time', 'Loiter time')).toBe('');
     expect(relabelled('RTL final altitude', 'Final land stage altitude')).toBe('Final land stage altitude');
-    expect(relabelled('Attitude control input time constant', 'RC Roll/Pitch Feel')).toBe('RC Roll/Pitch feel');
+    expect(relabelled('Attitude control input time constant', 'RC Roll/Pitch Feel')).toBe('RC roll/pitch feel');
     expect(relabelled('Confirm', 'Only while in Guided mode.')).toBe('Only while in Guided mode.');
   });
 
@@ -598,6 +609,11 @@ describe('FieldRunsTest', () => {
     expect(sentenceCase('Time Offset (seconds)')).toBe('Time offset (seconds)');
     expect(sentenceCase('Auto-Center throttle')).toBe('Auto-center throttle');
     expect(sentenceCase('Left-Handed mode')).toBe('Left-handed mode');
+    expect(sentenceCase('Application Load/Save Path')).toBe('Application load/save path');
+    expect(sentenceCase('Relative To Launch')).toBe('Relative to launch');
+    expect(sentenceCase('Join Wi-Fi Network')).toBe('Join Wi-Fi network');
+    expect(sentenceCase('RTL Altitude AMSL')).toBe('RTL altitude AMSL');
+    expect(sentenceCase('GPS / RC Failsafe')).toBe('GPS / RC failsafe');
   });
 
   it('aBlockWhoseFieldsAreAllOffForOneReasonSaysItOnce', () => {

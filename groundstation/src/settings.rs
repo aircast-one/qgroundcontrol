@@ -1430,10 +1430,8 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
 ];
 
 const HELP_LINKS: [(&str, &str); 4] = [
-    (
-        "QGroundControl User Guide",
-        "https://docs.qgroundcontrol.com",
-    ),
+    ("Aircast guide", "https://aircast.one/docs"),
+    ("Contact Aircast", "https://aircast.one/contact"),
     (
         "PX4 Users Discussion Forum",
         "http://discuss.px4.io/c/qgroundcontrol",
@@ -1441,10 +1439,6 @@ const HELP_LINKS: [(&str, &str); 4] = [
     (
         "ArduPilot Users Discussion Forum",
         "https://discuss.ardupilot.org/c/ground-control-software/qgroundcontrol",
-    ),
-    (
-        "QGroundControl Discord Channel",
-        "https://discord.com/channels/1022170275984457759/1022185820683255908",
     ),
 ];
 
@@ -3452,10 +3446,18 @@ mod tests {
             .find(|p| p.shows_about)
             .map(|p| page_json(p, None))
             .unwrap();
-        assert_eq!(about["helpLinks"][0]["name"], "QGroundControl User Guide");
+        assert_eq!(about["helpLinks"][0]["name"], "Aircast guide");
         assert_eq!(
-            about["helpLinks"][1]["host"], "discuss.px4.io",
+            about["helpLinks"][0]["host"], "aircast.one",
             "the link text is the host, as HelpSettings shows it"
+        );
+        assert!(
+            about["helpLinks"].as_array().unwrap().iter().all(|link| ![
+                "docs.qgroundcontrol.com",
+                "discord.com"
+            ]
+            .contains(&link["host"].as_str().unwrap())),
+            "support points to Aircast and the autopilot forums, not upstream QGroundControl's docs and Discord"
         );
         let general = PAGES
             .iter()

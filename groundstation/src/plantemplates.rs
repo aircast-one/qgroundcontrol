@@ -116,7 +116,7 @@ pub fn create(backend: &dyn Backend, args: &str) -> Value {
             .filter(|v| v.is_finite() && v.abs() <= limit)
     };
     let (Some(latitude), Some(longitude)) = (coordinate(1, 90.0), coordinate(2, 180.0)) else {
-        return json!({ "ok": false, "reason": "A template is placed at the map centre's latitude and longitude." });
+        return json!({ "ok": false, "reason": "A template is placed at the map center's latitude and longitude." });
     };
     let core = crate::coreplan::enabled();
     let planned = match core {

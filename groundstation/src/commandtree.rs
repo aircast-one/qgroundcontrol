@@ -259,7 +259,7 @@ pub fn hint(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let Some((latitude, longitude)) = crate::fenceedit::point(given.get(0)) else {
         return refused(
             "badCoordinate",
-            "The map centre needs a latitude from -90 to 90 and a longitude from -180 to 180."
+            "The map center needs a latitude from -90 to 90 and a longitude from -180 to 180."
                 .to_string(),
         );
     };

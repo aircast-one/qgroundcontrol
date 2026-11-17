@@ -127,7 +127,7 @@ export const confirmCopy = (kind: PlanConfirm): ConfirmCopy => {
 export const DOWNLOADED_PLAN = 'Downloaded plan';
 
 export const planTitle = (documentName: string | null): string => {
-  if (documentName === null || documentName.trim() === '') return 'Untitled Plan';
+  if (documentName === null || documentName.trim() === '') return 'Untitled plan';
   const dot = documentName.lastIndexOf('.');
   return dot > 0 ? documentName.slice(0, dot) : documentName;
 };

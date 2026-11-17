@@ -1,5 +1,6 @@
 import { type Json, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { PLAN_ITEMS } from './PlanBridge';
+import { sentenceCase } from './SentenceCase';
 
 export const MISSION_CONTEXT = 'mission';
 export const ITEM_CONTEXT = 'item';
@@ -16,7 +17,7 @@ export const altitudeModesPath = (context: string, current: number): string => `
 const offers = (view: Json | null, key: string): readonly AltitudeModeOffer[] =>
   jsonObjects(optJSONArray(view, key)).map((it) => ({
     raw: optInt(it, 'raw', -1),
-    title: optText(it, 'title'),
+    title: sentenceCase(optText(it, 'title')),
     help: optText(it, 'help'),
     enabled: optBoolean(it, 'enabled'),
     current: optBoolean(it, 'current'),

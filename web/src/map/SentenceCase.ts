@@ -1,4 +1,4 @@
-const PROPER_NOUNS = new Set(['Aircast', 'Android', 'ArduPilot', 'Pixhawk', 'Herelink', 'Trimble', 'Septentrio', 'Bing', 'Esri', 'Google', 'Mapbox', 'Tianditu', 'VWorld', 'OpenAIP', 'QGroundControl']);
+const PROPER_NOUNS = new Set(['Aircast', 'Android', 'ArduPilot', 'Pixhawk', 'Herelink', 'Trimble', 'Septentrio', 'Bing', 'Esri', 'Google', 'Mapbox', 'Tianditu', 'VWorld', 'OpenAIP', 'QGroundControl', 'Wi-Fi', 'Starlink']);
 
 const isUpper = (char: string) => char !== char.toLowerCase() && char === char.toUpperCase();
 const isLower = (char: string) => char !== char.toUpperCase() && char === char.toLowerCase();
@@ -8,6 +8,12 @@ const keepsCase = (word: string): boolean => PROPER_NOUNS.has(word) || [...word.
 
 const PROPER_PHRASES = ['PX4 Pro', '3DR Solo', 'Parrot Discovery', 'Yuneec Mantis G', 'Herelink AirUnit', 'Herelink Hotspot'];
 
+const JOINERS = /([-/])/;
+const TRAILING_PUNCTUATION = /[.,:;!?)]+$/;
+const RUN_TOGETHER = /^(?:[A-Z][a-z]+){2,}$/;
+
+const spacedOut = (piece: string): string => piece.replace(/(?<=[a-z])(?=[A-Z])/g, ' ').toLowerCase();
+
 const lowerFirst = (text: string) => (text ? text.charAt(0).toLowerCase() + text.slice(1) : text);
 
 export const sentenceCase = (label: string): string => {
@@ -16,15 +22,19 @@ export const sentenceCase = (label: string): string => {
   return label
     .split(' ')
     .map((word, at) =>
-      word
-        .split('-')
-        .map((piece, part) => {
-          const lead = [...piece].findIndex(isLetterOrDigit);
-          const split = lead === -1 ? piece.length : lead;
-          const body = piece.slice(split);
-          return (at === 0 && part === 0) || keepsCase(body) ? piece : piece.slice(0, split) + lowerFirst(body);
-        })
-        .join('-'),
+      PROPER_NOUNS.has(word.replace(TRAILING_PUNCTUATION, ''))
+        ? word
+        : word
+            .split(JOINERS)
+            .map((piece, part, pieces) => {
+              if (part % 2 === 1) return piece;
+              if (pieces[part - 1] === '/' && RUN_TOGETHER.test(piece) && !PROPER_NOUNS.has(piece)) return spacedOut(piece);
+              const lead = [...piece].findIndex(isLetterOrDigit);
+              const split = lead === -1 ? piece.length : lead;
+              const body = piece.slice(split);
+              return (at === 0 && part === 0) || keepsCase(body) ? piece : piece.slice(0, split) + lowerFirst(body);
+            })
+            .join(''),
     )
     .join(' ');
 };

@@ -23,9 +23,22 @@ describe('SetupSummaryTest', () => {
     expect(summaryGlance(frame)).toBe('Quad · X');
     expect(summaryGlance([SummaryLine({ label: 'a', value: 'RTL' }), SummaryLine({ label: 'b', value: 'Land' }), SummaryLine({ label: 'c', value: 'RTL' })])).toBe('RTL · Land');
     expect(summaryGlance([])).toBeNull();
-    expect(summaryGlance([SummaryLine({ label: 'Battery monitor', value: 'Analog Voltage and Current' }), SummaryLine({ label: 'Capacity', value: '5000 mAh' })])).toBe('Analog voltage and current · 5000 mAh');
+    expect(summaryGlance([SummaryLine({ label: 'Battery monitor', value: 'Analog Voltage and Current' }), SummaryLine({ label: 'Capacity', value: '5000 mAh' })])).toBe('Analog voltage and current · Capacity 5000 mAh');
     const radio = [SummaryLine({ label: 'Roll', value: 'Channel 1' }), SummaryLine({ label: 'Pitch', value: 'Channel 2' }), SummaryLine({ label: 'Throttle', value: 'Channel 3' })];
     expect(summaryGlance(radio)).toBe('Roll 1 · Pitch 2 · Throttle 3');
     expect(summaryGlance([SummaryLine({ label: 'Compass', value: 'Ready' }), SummaryLine({ label: 'Airspeed', value: 'Not Supported(Over APM 4.1)' })])).toBe('Ready · Not supported (over APM 4.1)');
+  });
+
+  it('a number or an on/off state carries its label, so the glance never reads as bare values', () => {
+    const follow = [
+      SummaryLine({ label: 'Follow Enabled', value: 'Disabled' }),
+      SummaryLine({ label: 'Follow System ID', value: '0' }),
+      SummaryLine({ label: 'Max Distance', value: '100.000' }),
+      SummaryLine({ label: 'Offset Type', value: 'North-East-Down' }),
+    ];
+    expect(summaryGlance(follow)).toBe('Follow disabled · Follow system ID 0 · Max distance 100 · North-east-down');
+    const safety = [SummaryLine({ label: 'Arming Checks:', value: 'Enabled' }), SummaryLine({ label: 'GeoFence:', value: 'Disabled' }), SummaryLine({ label: 'RTL min alt:', value: '15.0 m' })];
+    expect(summaryGlance(safety)).toBe('Arming checks enabled · GeoFence disabled · RTL min alt 15 m');
+    expect(summaryGlance([SummaryLine({ label: 'Rate', value: 'Unknown: 0' })])).toBeNull();
   });
 });

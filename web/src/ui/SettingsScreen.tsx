@@ -49,6 +49,7 @@ import { GENERAL_PAGE, ResetAllSettingsRow } from '@/ui/ResetAllSettings';
 import { UpdatesCard } from '@/ui/AppUpdates';
 import { UnitsSection, unitSystemLabel } from '@/ui/UnitsSection';
 import { OPEN_OVER_HTTPS, USB_RADIO_BLOCK, UsbAccess, openOverHttps } from '@/ui/UsbAccess';
+import { quantityText } from './Quantity';
 
 const SETTINGS_VIEW = 'view.settings';
 const SEARCH_SETTLE_MS = 250;
@@ -852,11 +853,11 @@ export const NTRIP_MOUNTPOINT_BLOCK = 'Mountpoint';
 
 export const isSecret = (fact: Fact): boolean => fact.name.toLowerCase().endsWith('password');
 
-export const enumLabel = (fact: Fact): string => fact.enumStrings[fact.enumIndex] ?? fact.valueString;
+export const enumLabel = (fact: Fact): string => (fact.valueIsOffTheEnumList ? quantityText(fact.valueString, fact.units) : (fact.enumStrings[fact.enumIndex] ?? fact.valueString));
 
 export const shownEnumLabel = (fact: Fact): string => {
   const label = fact.enumStrings[fact.enumIndex];
-  return label === undefined ? fact.valueString : sentenceCase(label);
+  return label === undefined || fact.valueIsOffTheEnumList ? enumLabel(fact) : sentenceCase(label);
 };
 
 export const factSubtitle = (fact: Fact): string => (fact.enumStrings.length > 0 || fact.bitmaskStrings.length > 0 || fact.isBool ? '' : fact.units);
@@ -1297,7 +1298,7 @@ export const ChoiceField = ({
           />
         </div>
       )}
-      <button type="button" aria-label={choiceName(label, name, value)} aria-haspopup="menu" disabled={!enabled} className="absolute inset-0 cursor-pointer disabled:cursor-default" onClick={() => setExpanded(true)} />
+      <button type="button" aria-label={choiceName(label, name, value)} title={value} aria-haspopup="menu" disabled={!enabled} className="absolute inset-0 cursor-pointer disabled:cursor-default" onClick={() => setExpanded(true)} />
       {plain ? (
         <SafeChoiceMenu expanded={expanded} options={options} onDismiss={() => setExpanded(false)} onPick={onPick} />
       ) : (

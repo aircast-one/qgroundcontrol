@@ -10,6 +10,7 @@ import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { LocalSettingsList } from '@/ui/SettingsScreen';
+import { quantityText } from './Quantity';
 
 export type SetupState = { readonly name: 'NeedsAttention' | 'Done' | 'Neutral' | 'Unavailable'; readonly ordinal: number };
 
@@ -200,6 +201,18 @@ export const EmptyState = ({ icon, title, text, className }: { icon: DrawableNam
 const UNREAD_VALUES: ReadonlySet<string> = new Set(['Unknown', '--', '']);
 const GLANCE_SEPARATOR = ' · ';
 
+const NUMBER_WITH_UNIT = /^(-?\d+(?:\.\d+)?)(?:\s+(\S+))?$/;
+const ON_OFF: ReadonlySet<string> = new Set(['Enabled', 'Disabled', 'On', 'Off']);
+
+const unreadable = (value: string): boolean => UNREAD_VALUES.has(value) || value.startsWith('Unknown:');
+
+const said = (label: string, value: string): string => {
+  const subject = sentenceCase(label).replace(/\s+enabled?$/i, '');
+  const number = NUMBER_WITH_UNIT.exec(value);
+  if (number !== null) return `${subject} ${quantityText(number[1] ?? '', number[2] ?? '')}`;
+  return ON_OFF.has(value) ? `${subject} ${value.toLowerCase()}` : value;
+};
+
 const firstWord = (value: string): string => (value.includes(' ') ? value.slice(0, value.indexOf(' ')) : '');
 
 const distinctBy = <T,>(items: readonly T[], key: (item: T) => string): T[] =>
@@ -208,13 +221,13 @@ const distinctBy = <T,>(items: readonly T[], key: (item: T) => string): T[] =>
 export const summaryGlanceParts = (summary: readonly SummaryLine[]): SummaryLine[] => {
   const read = summary
     .map((it) => ({ ...it, label: it.label.replace(/[: ]+$/, ''), value: it.value.trim().replace(/(\S)\(/g, '$1 (') }))
-    .filter((it) => !UNREAD_VALUES.has(it.value));
+    .filter((it) => !unreadable(it.value));
   const prefixes = [...new Set(read.map((it) => firstWord(it.value)))];
   const only = prefixes.length === 1 ? (prefixes[0] ?? '') : '';
   const shared = only !== '' && read.length > 1 ? only : null;
   const parts = shared !== null
     ? read.map((it) => ({ ...it, value: `${it.label} ${(it.value.startsWith(shared) ? it.value.slice(shared.length) : it.value).trim()}` }))
-    : distinctBy(read, (it) => it.value);
+    : distinctBy(read, (it) => it.value).map((it) => ({ ...it, value: said(it.label, it.value) }));
   return parts.map((it) => ({ ...it, value: sentenceCase(it.value) }));
 };
 

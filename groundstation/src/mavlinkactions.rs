@@ -181,6 +181,13 @@ type Cached = std::collections::HashMap<
 static CACHE: std::sync::LazyLock<std::sync::Mutex<Cached>> =
     std::sync::LazyLock::new(Default::default);
 
+fn folder_note(folder: &str) -> String {
+    match folder.trim() {
+        "" => String::new(),
+        folder => format!("Action JSON files should be created in the '{folder}' folder."),
+    }
+}
+
 pub fn mavlink_actions_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = crate::read::flag(
         &backend.value_fields("vehicles", "activeVehicleAvailable"),
@@ -194,7 +201,7 @@ pub fn mavlink_actions_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "joystickFile": text(backend, JOYSTICK_FILE),
         "flyViewPath": FLY_VIEW_FILE,
         "joystickPath": JOYSTICK_FILE,
-        "folderNote": format!("Action JSON files should be created in the '{}' folder.", text(backend, ACTIONS_SAVE_PATH)),
+        "folderNote": folder_note(&text(backend, ACTIONS_SAVE_PATH)),
         "actions": if vehicle { fly_view_actions(backend).iter().map(|a| json!({ "label": a.label, "description": a.description })).collect::<Vec<_>>() } else { Vec::new() },
     })
 }
@@ -323,5 +330,18 @@ mod tests {
         );
         assert_eq!(send(&backend, "[5]")["ok"], false);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_folder_note_names_a_folder_or_says_nothing() {
+        assert_eq!(
+            mavlink_actions_view(&Saved(String::new()), &[])["folderNote"],
+            "",
+            "a head with no actions folder, like the browser, never shows an empty pair of quotes"
+        );
+        assert_eq!(
+            mavlink_actions_view(&Saved("/data/actions".to_string()), &[])["folderNote"],
+            "Action JSON files should be created in the '/data/actions' folder."
+        );
     }
 }

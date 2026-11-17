@@ -42,7 +42,7 @@ export const tiltText = (degrees: number): string => `${roundToInt(degrees)}°`;
 export const TiltReadout = ({ degrees, onRecenter, onTap = null, tapLabel = null }: { degrees: number; onRecenter: (() => void) | null; onTap?: (() => void) | null; tapLabel?: string | null }) => {
   const text = tiltText(degrees);
   const action = onRecenter ?? onTap;
-  const description = onRecenter !== null ? `Tilt ${text}, off centre` : `Tilt ${text}`;
+  const description = onRecenter !== null ? `Tilt ${text}, off center` : `Tilt ${text}`;
   const actionLabel = onRecenter !== null ? 'Recenter' : tapLabel;
   return (
     <Surface

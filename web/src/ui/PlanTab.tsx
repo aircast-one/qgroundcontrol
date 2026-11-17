@@ -161,7 +161,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
     }
     void (async () => {
       if (centre === null) {
-        setNotice('The map has not reported its centre yet.');
+        setNotice('The map has not reported its center yet.');
         return;
       }
       if (zoomedOutForTemplates(zoom)) {

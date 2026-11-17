@@ -8,6 +8,7 @@ import { removeMissionItem } from './MissionKinds';
 import { LANDING_PLACE_APPROACH, LANDING_PLACE_TOUCHDOWN, withDrops } from './MissionLayers';
 import { MISSION_CONTROLLER } from './SurveyBridge';
 import { type TrackPoint, isPlottable } from './VehicleMap';
+import { sentenceCase } from './SentenceCase';
 
 export const PLAN_ROOT = 'plan';
 export const CONVERT_TO_VEHICLE = 'core.plan.convertToVehicle';
@@ -227,7 +228,7 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
         extraSeconds: optDouble(element, 'extraSeconds', 0.0),
         speedChangeText: optText(element, 'speedChangeText'),
         foldedCommands: optInt(element, 'foldedCommands'),
-        altitudeFrameText: optText(element, 'altitudeFrameText'),
+        altitudeFrameText: sentenceCase(optText(element, 'altitudeFrameText')),
         altitudeMode: optInt(element, 'altitudeMode', -1),
         altitudeEditUnits: optText(element, 'altitudeEditUnits'),
         complexPattern: !optBoolean(element, 'simple', true),

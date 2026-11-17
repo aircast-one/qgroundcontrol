@@ -46,7 +46,7 @@ export const startMock = async (page: Page, options: readonly MockOption[] = [],
   await page.getByRole('button', { name: 'Add link…' }).click();
   await page.getByRole('button', { name: /^Simulated vehicle/ }).click();
   if (vehicle !== null) {
-    await page.getByRole('button', { name: 'Vehicle Type' }).click();
+    await page.getByRole('button', { name: 'Vehicle type' }).click();
     await page.getByRole('menuitem', { name: vehicle }).click();
   }
   await options.reduce((done, name) => done.then(() => page.getByRole('checkbox', { name }).check()), Promise.resolve());

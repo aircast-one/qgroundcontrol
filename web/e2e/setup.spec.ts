@@ -29,7 +29,7 @@ test('ArduPilot follow takes another connected vehicle as its lead', async ({ ap
   await app.getByRole('button', { name: /^Links / }).click();
   await app.getByRole('button', { name: 'Add link…' }).click();
   await app.getByRole('button', { name: /^Simulated vehicle/ }).click();
-  await app.getByRole('button', { name: 'Vehicle Type' }).click();
+  await app.getByRole('button', { name: 'Vehicle type' }).click();
   await app.getByRole('menuitem', { name: 'APM ArduCopter Vehicle' }).click();
   await app.getByRole('button', { name: 'Start', exact: true }).click();
   await closeSettings(app);

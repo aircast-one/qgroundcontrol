@@ -1066,7 +1066,7 @@ export const PlanMapContent = ({
           onFollow={() => {
             follow.value = !follow.value;
           }}
-          anchor={(open) => <RailButton icon="plan_my_location" label="Centre" chosen={follow.value} onClick={open} />}
+          anchor={(open) => <RailButton icon="plan_my_location" label="Center" chosen={follow.value} onClick={open} />}
         />
         <MapTypeMenu
           onStyle={(style) => {

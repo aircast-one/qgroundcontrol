@@ -45,7 +45,7 @@ const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, 
         {singleLine ? (
           <input
             id={id}
-            className={control}
+            className={`${control} text-ellipsis`}
             value={value}
             placeholder={placeholder}
             disabled={!enabled}

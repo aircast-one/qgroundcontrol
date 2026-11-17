@@ -2,7 +2,6 @@ import { FilterChip, Text } from '@/m3';
 import { ITEM_CONTEXT, FRAME_UNKNOWN, altitudeModesPath, altitudeModesView, choosable, offersChoice, refusalFor } from './AltitudeModes';
 import { useMapPath } from './MapBridge';
 import type { MissionItem } from './PlanBridge';
-import { sentenceCase } from './SentenceCase';
 
 export const GLOBAL_FRAME_MIXED = 0;
 export const GLOBAL_FRAME_RELATIVE = 1;
@@ -33,7 +32,7 @@ export const AltitudeModePicker = ({ item, onPick, className, globalFrameMixed =
             onClick={() => {
               if (live && !offer.current) onPick(offer.raw);
             }}
-            label={sentenceCase(offer.title)}
+            label={offer.title}
           />
         ))}
       </div>

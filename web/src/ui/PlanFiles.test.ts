@@ -103,13 +103,13 @@ describe('PlanHistoryTest', () => {
     expect(planHistory(json('{}'))).toEqual({ canUndo: false, canRedo: false });
   });
 
-  it('the title is the file\'s base name, or Untitled Plan like PlanToolBarIndicators', () => {
+  it('the title is the file\'s base name, or Untitled plan like PlanToolBarIndicators', () => {
     expect(planTitle('ridge.plan')).toBe('ridge');
     expect(planTitle('a.b.plan')).toBe('a.b');
     expect(planTitle('ridge')).toBe('ridge');
     expect(planTitle('.plan')).toBe('.plan');
-    expect(planTitle(null)).toBe('Untitled Plan');
-    expect(planTitle('')).toBe('Untitled Plan');
+    expect(planTitle(null)).toBe('Untitled plan');
+    expect(planTitle('')).toBe('Untitled plan');
   });
 
   it('a download warns that patterns come back as plain waypoints when the plan had any', () => {
