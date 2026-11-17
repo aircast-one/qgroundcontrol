@@ -1,6 +1,6 @@
-import { type PointerEvent, type ReactNode, Fragment, createContext, useContext, useEffect, useRef, useState } from 'react';
+import { type PointerEvent, type ReactNode, Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc } from '@/bridge/Qgc';
-import { AlertDialog, CircularProgressIndicator, DropdownMenu, DropdownMenuItem, HorizontalDivider, Text, TextButton } from '@/m3';
+import { AlertDialog, CircularProgressIndicator, DropdownMenu, DropdownMenuItem, HorizontalDivider, type SnackbarHostState, Text, TextButton } from '@/m3';
 import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { coerceAtMost, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
@@ -117,6 +117,23 @@ export const writeValueRefusal = (fact: Fact, value: number): Promise<string | n
 export type ChangeNotice = { show: (message: string, undo: (() => Promise<string | null>) | null) => void };
 
 export const LocalChangeNotice = createContext<ChangeNotice>({ show: () => {} });
+
+export const useChangeNotice = (snackbars: SnackbarHostState): ChangeNotice => {
+  const latestSnackbars = useUpdatedRef(snackbars);
+  return useMemo<ChangeNotice>(
+    () => ({
+      show: (message, undo) =>
+        void (async () => {
+          latestSnackbars.current.current?.settle('Dismissed');
+          const result = await latestSnackbars.current.showSnackbar(message, undo !== null ? 'Undo' : null, 'Long');
+          if (result !== 'ActionPerformed' || undo === null) return;
+          const refusal = await undo();
+          if (refusal !== null) await latestSnackbars.current.showSnackbar(`Undo failed: ${refusal}`);
+        })(),
+    }),
+    [],
+  );
+};
 
 const DONE_MARK_MS = 3000;
 

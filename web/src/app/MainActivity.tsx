@@ -83,6 +83,7 @@ import { VideoSurface } from '@/ui/VideoSurface';
 import { VirtualStickSender } from '@/ui/VirtualJoystick';
 import { VoiceAlerts } from '@/ui/VoiceAlerts';
 import { VtolStateCell } from '@/ui/VtolStateCell';
+import { LocalChangeNotice, useChangeNotice } from '@/ui/ValueRow';
 
 const FLY_NOTICE_TOP = 76;
 
@@ -395,6 +396,7 @@ export const AircastShell = () => {
 
   const desktop = useDesktopLayout();
   const snackbars = useSnackbarHostState();
+  const changeNotice = useChangeNotice(snackbars);
   const refusedGimbal = useValue(gimbalRefused);
   useLaunchedEffect([refusedGimbal], async () => {
     if (refusedGimbal === null) return;
@@ -673,6 +675,7 @@ export const AircastShell = () => {
       {appMessages[0] !== undefined ? <AppMessageDialog message={appMessages[0]} onOpenSetup={() => navigation.openAircraft()} onDismiss={() => setAppMessages((messages) => messages.slice(1))} /> : null}
       <LocalImmersive.Provider value={flyLandscape}>
         <LocalFlyDestinations.Provider value={flyDestinations}>
+          <LocalChangeNotice.Provider value={changeNotice}>
           <div className="flex h-full w-full bg-surface text-on-surface">
             {railShown ? (
               <div className="contents" inert={sheetCovers}>
@@ -777,6 +780,7 @@ export const AircastShell = () => {
               </div>
             </div>
           </div>
+          </LocalChangeNotice.Provider>
         </LocalFlyDestinations.Provider>
       </LocalImmersive.Provider>
     </AircastTheme>

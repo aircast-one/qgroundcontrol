@@ -10,7 +10,7 @@ import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SETTINGS_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 import { SetupScreen } from '@/ui/SetupScreen';
-import { type ChangeNotice, LocalChangeNotice } from '@/ui/ValueRow';
+import { LocalChangeNotice, useChangeNotice } from '@/ui/ValueRow';
 import { useFocusReturn } from '@/ui/FocusReturn';
 import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
 
@@ -160,20 +160,7 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
     setQuery(null);
   };
   const snackbars = useSnackbarHostState();
-  const latestSnackbars = useUpdatedRef(snackbars);
-  const notice = useMemo<ChangeNotice>(
-    () => ({
-      show: (message, undo) =>
-        void (async () => {
-          latestSnackbars.current.current?.settle('Dismissed');
-          const result = await latestSnackbars.current.showSnackbar(message, undo !== null ? 'Undo' : null, 'Long');
-          if (result !== 'ActionPerformed' || undo === null) return;
-          const refusal = await undo();
-          if (refusal !== null) await latestSnackbars.current.showSnackbar(`Undo failed: ${refusal}`);
-        })(),
-    }),
-    [],
-  );
+  const notice = useChangeNotice(snackbars);
   const landscape = useLandscape();
   const groups = SettingsGroupEntries;
   const pickTab = (entry: SettingsGroup) => {
