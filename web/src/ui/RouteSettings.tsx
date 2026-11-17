@@ -6,6 +6,7 @@ import { type ClosedRange, SettingStepper } from '@/map/SettingStepper';
 import { md } from '@/theme/Colors';
 import { type SpeedSection, speedSectionOf } from '@/ui/ItemEditor';
 import { MissionAltitudeFrame } from '@/ui/MissionAltitudeFrame';
+import { PlanVehicleRows } from '@/ui/PlanVehicleRows';
 import { factFromControl } from '@/ui/ParameterForm';
 
 const ALTITUDE_STEP = 1.0;
@@ -70,6 +71,7 @@ export const RouteSettings = ({ plan }: { plan: Json | null }) => {
         ) : null}
       </div>
       <MissionAltitudeFrame />
+      <PlanVehicleRows heading="Planned for" />
       {refusal !== null ? (
         <Text typography="bodySmall" color={md('error')} className="block px-3">
           {refusal}

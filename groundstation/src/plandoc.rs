@@ -1187,6 +1187,30 @@ pub fn set_altitude_mode(doc: &Document, visual_index: usize, mode: i64) -> Opti
     ))
 }
 
+pub fn for_vehicle(doc: &Document, firmware_type: i64, vehicle_type: i64) -> Document {
+    let px4 = firmware(firmware_type) == Firmware::Px4;
+    let terrain_frame = |mode: i64| px4 && mode == crate::altitudemodes::TERRAIN_FRAME;
+    let retyped = Document {
+        firmware_type,
+        vehicle_type,
+        global_altitude_mode: match terrain_frame(doc.global_altitude_mode) {
+            true => crate::altitudemodes::CALC_ABOVE_TERRAIN,
+            false => doc.global_altitude_mode,
+        },
+        ..doc.clone()
+    };
+    (1..=retyped.items.len()).fold(retyped, |current, at| {
+        let on_terrain_frame = simple_at(&current, at)
+            .and_then(|(_, simple)| simple.altitude.as_ref())
+            .is_some_and(|held| terrain_frame(held.mode));
+        match on_terrain_frame {
+            true => set_altitude_mode(&current, at, crate::altitudemodes::CALC_ABOVE_TERRAIN)
+                .unwrap_or(current),
+            false => current,
+        }
+    })
+}
+
 fn above_ground(mode: i64) -> bool {
     mode == crate::altitudemodes::CALC_ABOVE_TERRAIN || mode == crate::altitudemodes::TERRAIN_FRAME
 }
@@ -3046,6 +3070,41 @@ mod tests {
         assert_eq!(
             set_altitude_mode(&doc, at, crate::altitudemodes::MIXED),
             None
+        );
+    }
+
+    #[test]
+    fn a_plan_converted_for_a_vehicle_takes_its_types_and_drops_frames_it_cannot_fly() {
+        let doc = section();
+        let at = doc
+            .items
+            .iter()
+            .position(|item| matches!(item, Item::Simple(s) if s.altitude.is_some()))
+            .unwrap()
+            + 1;
+        let terrain = Document {
+            global_altitude_mode: crate::altitudemodes::TERRAIN_FRAME,
+            ..set_altitude_mode(&doc, at, crate::altitudemodes::TERRAIN_FRAME).unwrap()
+        };
+        let mode = |d: &Document| match &d.items[at - 1] {
+            Item::Simple(s) => s.altitude.as_ref().unwrap().mode,
+            _ => unreachable!(),
+        };
+        let apm = for_vehicle(&terrain, 3, 2);
+        assert_eq!(
+            (apm.firmware_type, apm.vehicle_type, mode(&apm)),
+            (3, 2, crate::altitudemodes::TERRAIN_FRAME)
+        );
+        assert_eq!(apm.items.len(), terrain.items.len());
+        let px4 = for_vehicle(&terrain, 12, 2);
+        assert_eq!(
+            (px4.firmware_type, mode(&px4), px4.global_altitude_mode),
+            (
+                12,
+                crate::altitudemodes::CALC_ABOVE_TERRAIN,
+                crate::altitudemodes::CALC_ABOVE_TERRAIN
+            ),
+            "PX4 flies no terrain frame, so those items keep their height above the ground another way"
         );
     }
 

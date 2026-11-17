@@ -10,6 +10,8 @@ import { MISSION_CONTROLLER } from './SurveyBridge';
 import { type TrackPoint, isPlottable } from './VehicleMap';
 
 export const PLAN_ROOT = 'plan';
+export const CONVERT_TO_VEHICLE = 'core.plan.convertToVehicle';
+
 export const PLAN_ITEMS = `${PLAN_ROOT}.missionController.visualItems`;
 export const PLAN_VIEW = 'view.missionItems(geometry)';
 
@@ -252,6 +254,8 @@ export const PlanBridge = {
   loadFromVehicle: (): Promise<boolean> => invokeOk(`${PLAN_ROOT}.loadFromVehicle`),
 
   sendToVehicle: (): Promise<boolean> => invokeOk(`${PLAN_ROOT}.sendToVehicle`),
+
+  convertToVehicle: (): Promise<boolean> => invokeOk(CONVERT_TO_VEHICLE),
 
   pauseVehicle: (): Promise<boolean> => invokeOk('vehicle.pauseVehicle'),
 

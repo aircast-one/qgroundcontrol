@@ -43,11 +43,13 @@ describe('UploadGateTest', () => {
     expect(step.gate.proceedTitle).toBe('Pause and upload');
   });
 
-  it('a firmware mismatch warns and offers to go ahead', () => {
-    const step = uploadStep(uploadGate(view({ canSend: false, canProceed: true, pausesFirst: false, proceedTitle: 'Upload anyway' })));
+  it('a firmware mismatch warns and offers to convert the plan or go ahead', () => {
+    const step = uploadStep(uploadGate(view({ canSend: false, canProceed: true, pausesFirst: false, proceedTitle: 'Upload anyway', convertible: true })));
     expect(step.kind).toBe('Confirm');
     if (step.kind !== 'Confirm') return;
     expect(step.gate.pausesFirst).toBe(false);
+    expect(step.gate.convertible).toBe(true);
+    expect(uploadGate(view({ canSend: false, canProceed: true, pausesFirst: true }))?.convertible).toBe(false);
   });
 
   it("no vehicle is a refusal with the core's words", () => {

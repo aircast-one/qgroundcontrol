@@ -163,6 +163,7 @@ export const SUMMARY_MAX_FRACTION = 0.74;
 
 const WAITING_FOR_QGC = 'Waiting for QGroundControl';
 const CHECKING_TERRAIN = 'Checking the terrain…';
+const CONVERTED = 'Plan converted to this vehicle. Check it, then upload.';
 const FAR_FROM_AIRCRAFT_TEXT = 'The aircraft is not where this route begins. Move the route so it starts at the aircraft, or upload it as it is.';
 const VIEW_CORNERS = 4;
 const PATTERN_KINDS: ReadonlySet<string> = new Set([KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE]);
@@ -1118,23 +1119,35 @@ export const PlanMapContent = ({
           title={uploadHeading(uploadAsk.value, vehicleChoices(vehiclesJson))}
           text={uploadAsk.value.refusal}
           confirmButton={
-            <TextButton
-              onClick={() => {
-                const pauses = uploadAsk.value?.pausesFirst ?? false;
-                uploadAsk.value = null;
-                sendPlan(
-                  (next) => {
-                    busy.value = next;
-                  },
-                  () => {
-                    busy.value = null;
-                  },
-                  pauses,
-                );
-              }}
-            >
-              {uploadAsk.value.proceedTitle.trim() === '' ? 'Upload' : uploadAsk.value.proceedTitle}
-            </TextButton>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <TextButton
+                onClick={() => {
+                  const pauses = uploadAsk.value?.pausesFirst ?? false;
+                  uploadAsk.value = null;
+                  sendPlan(
+                    (next) => {
+                      busy.value = next;
+                    },
+                    () => {
+                      busy.value = null;
+                    },
+                    pauses,
+                  );
+                }}
+              >
+                {uploadAsk.value.proceedTitle.trim() === '' ? 'Upload' : uploadAsk.value.proceedTitle}
+              </TextButton>
+              {uploadAsk.value.convertible ? (
+                <Button
+                  onClick={() => {
+                    uploadAsk.value = null;
+                    onBridge(() => PlanBridge.convertToVehicle(), { label: 'Converting the plan', done: CONVERTED, then: () => undefined });
+                  }}
+                >
+                  Convert to this vehicle
+                </Button>
+              ) : null}
+            </div>
           }
           dismissButton={
             <TextButton

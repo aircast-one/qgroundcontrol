@@ -47,6 +47,7 @@ const gate = (heading: string): UploadGate => ({
   heading,
   refusal: '',
   proceedTitle: 'Upload',
+  convertible: false,
 });
 
 const listOfVehicles = (ids: readonly number[], activeId: number) =>

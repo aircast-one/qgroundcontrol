@@ -15,7 +15,14 @@ const OFFLINE_CLASSES: readonly (readonly [string, string])[] = [
 
 export const choosesPlanVehicle = (connected: boolean, plan: Json | null): boolean => !connected && !optBoolean(plan, 'hasMissionItems');
 
-export const PlanVehicleRows = () => {
+const Heading = ({ text }: { text: string | null }) =>
+  text === null ? null : (
+    <Text typography="titleSmall" className="block pt-2 pl-3">
+      {text}
+    </Text>
+  );
+
+export const PlanVehicleRows = ({ heading = null }: { heading?: string | null }) => {
   const plan = useQgcPath('view.plan');
   const choosing = choosesPlanVehicle(useHasVehicle(), plan);
   const [reloads, setReloads] = useState(0);
@@ -29,8 +36,9 @@ export const PlanVehicleRows = () => {
   });
 
   if (choosing) {
-    return (
+    return facts.length === 0 ? null : (
       <>
+        <Heading text={heading} />
         {facts.map(([label, fact]) => (
           <FactRow key={fact.path} fact={fact} title={label} onWrite={() => setReloads((it) => it + 1)} />
         ))}
@@ -40,6 +48,7 @@ export const PlanVehicleRows = () => {
   const vehicle = optJSONObject(plan, 'planningFor');
   return vehicle === null ? null : (
     <>
+      <Heading text={heading} />
       {(
         [
           ['Firmware', optText(vehicle, 'firmware')],

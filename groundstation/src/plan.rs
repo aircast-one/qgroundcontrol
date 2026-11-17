@@ -391,7 +391,7 @@ fn upload_json(state: Option<i64>) -> Value {
         ),
         Some(2) => (
             Some(
-                "This plan was made for a different firmware or vehicle type. Uploading it can make the vehicle behave incorrectly.",
+                "This plan was made for a different firmware or vehicle type. Convert it to this vehicle first; uploading it as it is can make the vehicle behave incorrectly.",
             ),
             Some("Upload anyway"),
         ),
@@ -415,6 +415,7 @@ fn upload_json(state: Option<i64>) -> Value {
         "proceedTitle": proceed_title,
         "canProceed": can_proceed,
         "pausesFirst": state == Some(3),
+        "convertible": state == Some(2),
     })
 }
 
@@ -1204,6 +1205,14 @@ mod tests {
             "a question is only a question when there is something to answer"
         );
         assert_eq!(wrong_firmware["proceedTitle"], "Upload anyway");
+        assert_eq!(
+            (
+                wrong_firmware["convertible"].clone(),
+                ready["convertible"].clone()
+            ),
+            (json!(true), json!(false)),
+            "only a plan made for another firmware or vehicle type offers to convert"
+        );
 
         let unchecked = upload_json(None);
         assert_eq!(

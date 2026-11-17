@@ -29,6 +29,7 @@ export type UploadGate = {
   readonly heading: string;
   readonly refusal: string;
   readonly proceedTitle: string;
+  readonly convertible: boolean;
 };
 
 export const notReadyToSend = (view: Json | null): string | null => {
@@ -68,6 +69,7 @@ export const uploadGate = (view: Json | null): UploadGate | null => {
         heading: optText(upload, 'heading'),
         refusal: optText(upload, 'refusal'),
         proceedTitle: optText(upload, 'proceedTitle'),
+        convertible: optBoolean(upload, 'convertible'),
       };
 };
 

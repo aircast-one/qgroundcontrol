@@ -20,7 +20,9 @@ pub const CORE_SET_ALTITUDE_MODE: &str = "core.plan.setAltitudeMode";
 pub const CORE_ITEMS: &str = "core.plan.items";
 pub const APPLY_DEFAULT_ALTITUDE: &str = "core.plan.applyDefaultAltitude";
 pub const DISMISS_ALTITUDE_PROMPT: &str = "core.plan.dismissAltitudePrompt";
+pub const CONVERT_TO_VEHICLE: &str = "core.plan.convertToVehicle";
 const ACTIONS: &[&str] = &[
+    CONVERT_TO_VEHICLE,
     OPEN,
     SAVE,
     SEND,
@@ -261,6 +263,15 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
             json!({ "ok": true })
         }
         CORE_REMOVE => remove(args),
+        CONVERT_TO_VEHICLE => match crate::hub::lock()
+            .active()
+            .map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)))
+        {
+            Some((firmware, vehicle)) => {
+                edit(|doc| Ok(plandoc::for_vehicle(doc, firmware, vehicle)))
+            }
+            None => refused("No vehicle is connected to convert the plan for."),
+        },
         _ => refused(format!("{path} is not a plan action the core performs")),
     }
 }
