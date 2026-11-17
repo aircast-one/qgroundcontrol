@@ -21,8 +21,10 @@ pub const CORE_ITEMS: &str = "core.plan.items";
 pub const APPLY_DEFAULT_ALTITUDE: &str = "core.plan.applyDefaultAltitude";
 pub const DISMISS_ALTITUDE_PROMPT: &str = "core.plan.dismissAltitudePrompt";
 pub const CONVERT_TO_VEHICLE: &str = "core.plan.convertToVehicle";
+pub const MOVE_ITEM: &str = "core.plan.moveItem";
 const ACTIONS: &[&str] = &[
     CONVERT_TO_VEHICLE,
+    MOVE_ITEM,
     OPEN,
     SAVE,
     SEND,
@@ -263,6 +265,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
             json!({ "ok": true })
         }
         CORE_REMOVE => remove(args),
+        MOVE_ITEM => move_item(args),
         CONVERT_TO_VEHICLE => match crate::hub::lock()
             .active()
             .map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)))
@@ -952,6 +955,27 @@ fn remove(args: &str) -> Value {
         let mut state = held();
         let last = state.document.as_ref().map_or(0, |d| d.items.len());
         state.selected = current_after_remove(index, last);
+    }
+    answer
+}
+
+fn move_item(args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let (Some(index), Some(later)) = (
+        given
+            .get(0)
+            .and_then(Value::as_u64)
+            .and_then(|i| usize::try_from(i).ok()),
+        given.get(1).and_then(Value::as_i64).map(|step| step > 0),
+    ) else {
+        return refused("Moving an item needs its index and a step of 1 or -1.");
+    };
+    let answer = edit(|doc| plandoc::move_item(doc, index, later));
+    if answer["ok"] == true {
+        let moved = if later { index + 1 } else { index - 1 };
+        held().selected = moved as i64;
+        changed();
+        return json!({ "ok": true, "index": moved });
     }
     answer
 }

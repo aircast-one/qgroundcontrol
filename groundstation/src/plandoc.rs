@@ -1579,6 +1579,48 @@ pub fn set_altitude(doc: &Document, visual_index: usize, altitude: f64) -> Optio
     ))
 }
 
+pub const ORDER_PINNED: &str = "The takeoff, landing and return keep their places in the mission.";
+
+fn pins_order(doc: &Document, item: &Item) -> bool {
+    match item {
+        Item::Simple(simple) => {
+            simple.command == CMD_NAV_RETURN_TO_LAUNCH
+                || cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type))
+                    .get(&simple.command)
+                    .is_some_and(|command| command.is_takeoff || command.is_land)
+        }
+        Item::Complex { kind, .. } => crate::landingpattern::is_landing(kind),
+    }
+}
+
+pub fn move_item(doc: &Document, visual_index: usize, later: bool) -> Result<Document, String> {
+    let at = visual_index
+        .checked_sub(1)
+        .filter(|at| *at < doc.items.len())
+        .ok_or_else(|| format!("This plan has no item {visual_index} to move."))?;
+    let to = match later {
+        true => Some(at + 1).filter(|to| *to < doc.items.len()),
+        false => at.checked_sub(1),
+    }
+    .ok_or_else(|| "The item is already at that end of the mission.".to_string())?;
+    if pins_order(doc, &doc.items[at]) || pins_order(doc, &doc.items[to]) {
+        return Err(ORDER_PINNED.to_string());
+    }
+    Ok(Document {
+        items: doc
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| match i {
+                i if i == at => doc.items[to].clone(),
+                i if i == to => doc.items[at].clone(),
+                _ => item.clone(),
+            })
+            .collect(),
+        ..doc.clone()
+    })
+}
+
 pub fn remove(doc: &Document, visual_index: usize) -> Option<Document> {
     let at = visual_index
         .checked_sub(1)
@@ -3070,6 +3112,38 @@ mod tests {
         assert_eq!(
             set_altitude_mode(&doc, at, crate::altitudemodes::MIXED),
             None
+        );
+    }
+
+    #[test]
+    fn an_item_moves_one_place_but_never_past_the_takeoff_or_off_the_ends() {
+        let doc = set_altitude(&section(), 3, 77.0).unwrap();
+        let heights = |d: &Document| {
+            d.items
+                .iter()
+                .map(|item| match item {
+                    Item::Simple(s) => (s.command, s.altitude.as_ref().map(|a| a.altitude)),
+                    Item::Complex { .. } => (-1, None),
+                })
+                .collect::<Vec<_>>()
+        };
+        let later = move_item(&doc, 3, true).unwrap();
+        assert_eq!(heights(&later)[3], heights(&doc)[2]);
+        assert_eq!(heights(&later)[2], heights(&doc)[3]);
+        assert_eq!(
+            heights(&move_item(&later, 4, false).unwrap()),
+            heights(&doc)
+        );
+        assert_eq!(
+            move_item(&doc, 2, false),
+            Err(ORDER_PINNED.to_string()),
+            "nothing moves above the takeoff"
+        );
+        assert_eq!(move_item(&doc, 1, true), Err(ORDER_PINNED.to_string()));
+        assert!(move_item(&doc, doc.items.len(), true).is_err());
+        assert!(
+            move_item(&doc, 0, true).is_err(),
+            "home is not an item to move"
         );
     }
 
