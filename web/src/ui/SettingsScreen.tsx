@@ -33,13 +33,13 @@ import { OsmFilePicker } from '@/ui/OsmFilePicker';
 import { PacketRadioSection } from '@/ui/PacketRadioSection';
 import { SixPosSection } from '@/ui/SixPosSection';
 import { paletteNamed } from '@/ui/Palette';
-import { bitmaskRaw, bitmaskSummary, controlIsUnderstood, factFromControl, sliderSnapped, sliderValue } from '@/ui/ParameterForm';
+import { type ParameterRows, bitmaskRaw, bitmaskSummary, controlIsUnderstood, factFromControl, sliderSnapped, sliderValue } from '@/ui/ParameterForm';
 import { ValueDetailsSheet } from '@/ui/ParameterLinks';
 import { Px4LogTransferPage } from '@/ui/Px4LogTransfer';
 import { RcControlsEditor } from '@/ui/RcControlsEditor';
 import { FLIGHT_MODES_PAGE, SAFETY_SETUP_PAGE, SENSORS } from '@/ui/SetupPages';
 import { AdvancedToggle, FootNote, LocalPageHeading, type PageHeading, SectionHeader, SettingsCard, SetupRow } from '@/ui/SetupRow';
-import { SETUP_PARAMETERS_PAGE, type SetupComponent, setupComponents, setupIcon, setupMatches } from '@/ui/SetupScreen';
+import { SETUP_PARAMETERS_PAGE, SetupComponent, setupComponents, setupFound, setupIcon, setupNote, useFormSections } from '@/ui/SetupScreen';
 import { SETUP } from '@/ui/SetupView';
 import { MAVLINK_GROUP, SIGNING_AFTER_BLOCK, SigningKeysSection } from '@/ui/SigningKeysSection';
 import { LocalChangeNotice, SafeChoiceMenu, SliderValueRow, inlineSlider, opensAsValue, valueText } from '@/ui/ValueRow';
@@ -113,6 +113,7 @@ const usePageGlance = (title: string): string => {
 
 const PAGE_TITLES: ReadonlyMap<string, string> = new Map([
   [CONNECTIONS_PAGE, 'Links'],
+  ['Console', 'App log'],
   ['ADSB Server', 'ADS-B server'],
 ]);
 
@@ -140,7 +141,7 @@ export const SettingsGroup = {
   Control: { name: 'Control', ordinal: 2, title: 'Control' },
   Camera: { name: 'Camera', ordinal: 3, title: 'Camera' },
   Transmission: { name: 'Transmission', ordinal: 4, title: 'Transmission' },
-  Device: { name: 'Device', ordinal: 5, title: 'Device' },
+  Device: { name: 'Device', ordinal: 5, title: 'Aircast device' },
 } as const satisfies Record<string, SettingsGroup>;
 export const SettingsGroupEntries: readonly SettingsGroup[] = [SettingsGroup.General, SettingsGroup.Safety, SettingsGroup.Control, SettingsGroup.Camera, SettingsGroup.Transmission, SettingsGroup.Device];
 
@@ -157,11 +158,11 @@ export const PAGE_LOOKS: ReadonlyMap<string, PageLook> = new Map<string, PageLoo
   ['Fly View', PageLook({ group: SettingsGroup.Control, icon: 'ic_flight', inline: true })],
   ['Flight Modes', PageLook({ group: SettingsGroup.Control, icon: 'ic_toggle_on' })],
   ['Plan View', PageLook({ group: SettingsGroup.Control, icon: 'ic_route', inline: true })],
-  ['Maps', PageLook({ group: SettingsGroup.Control, icon: 'ic_map' })],
+  ['Maps', PageLook({ group: SettingsGroup.General, icon: 'ic_map' })],
   ['3D Viewer', PageLook({ group: SettingsGroup.Control, icon: 'ic_explore' })],
   ['Video', PageLook({ group: SettingsGroup.Camera, icon: 'ic_videocam', inline: true })],
   ['Connections', PageLook({ group: SettingsGroup.Transmission, icon: 'ic_link' })],
-  [VIDEO_SOURCES_PAGE, PageLook({ group: SettingsGroup.Transmission, icon: 'ic_videocam' })],
+  [VIDEO_SOURCES_PAGE, PageLook({ group: SettingsGroup.Camera, icon: 'ic_videocam' })],
   ['MAVLink', PageLook({ group: SettingsGroup.Transmission, icon: 'ic_swap_horiz' })],
   ['Packet Radio', PageLook({ group: SettingsGroup.Transmission, icon: 'ic_wifi' })],
   ['RTK GPS', PageLook({ group: SettingsGroup.Transmission, icon: 'ic_satellite_alt' })],
@@ -329,8 +330,10 @@ export const tabSetupComponents = (group: SettingsGroup, components: readonly Se
     return found === undefined ? [] : [found];
   });
 
-export const setupSearchHits = (components: readonly SetupComponent[], query: string): readonly SetupComponent[] =>
-  query.trim() === '' ? [] : components.filter((component) => setupMatches(component.name, query));
+export const setupSearchHits = (components: readonly SetupComponent[], query: string, sections: ReadonlyMap<string, readonly ParameterRows[]> = new Map()): readonly SetupComponent[] =>
+  components.filter((component) => setupFound(component, (sections.get(component.name) ?? []).map((it) => it.title), query));
+
+export const PARAMETERS_ROW = 'Parameters';
 
 const TabSetupRows = ({ group, onOpenSetup }: { group: SettingsGroup; onOpenSetup: (component: string | null) => void }) => {
   const setupJson = useQgcPath(SETUP);
@@ -537,7 +540,9 @@ export const SettingsSearch = ({
   onOpen: (title: string) => void;
 }) => {
   const setupJson = useQgcPath(SETUP);
-  const setupHits = useMemo(() => setupSearchHits(setupComponents(setupJson), query), [setupJson, query]);
+  const components = useMemo(() => setupComponents(setupJson), [setupJson]);
+  const formSections = useFormSections(notBlank(query), components, setupJson);
+  const setupHits = useMemo(() => setupSearchHits(components, query, formSections), [components, query, formSections]);
   const pilotHits = useMemo(() => pilotSearchHits(query), [query]);
   const navigation = useContext(LocalAppNavigation);
   const vehicle = useHasVehicle();
@@ -571,7 +576,8 @@ export const SettingsSearch = ({
 
   const pageHits = pages.filter((page) => pageMatches(page, query));
   const deviceHits = (useDeviceStatus()?.pages ?? []).filter((page) => devicePageMatches(page, query));
-  const nothing = hits.length === 0 && pageHits.length === 0 && setupHits.length === 0 && pilotHits.length === 0 && deviceHits.length === 0;
+  const parametersHit = vehicle && setupFound(SetupComponent({ index: -1, name: PARAMETERS_ROW, needsAttention: false }), [], query);
+  const nothing = hits.length === 0 && pageHits.length === 0 && setupHits.length === 0 && !parametersHit && pilotHits.length === 0 && deviceHits.length === 0;
   const desktop = useDesktopLayout();
 
   return (
@@ -589,10 +595,11 @@ export const SettingsSearch = ({
                 <PilotSettings settings={pilotHits} />
               </div>
             ) : null}
-            {setupHits.length > 0 ? <SectionHeader text={AIRCRAFT_SETUP} /> : null}
+            {setupHits.length > 0 || parametersHit ? <SectionHeader text={AIRCRAFT_SETUP} /> : null}
             {setupHits.map((component) => (
-              <SetupRow key={`setup${component.name}`} title={sentenceCase(component.name)} icon={setupIcon(component.known, component.className)} onClick={() => onOpenSetup(component.name)} />
+              <SetupRow key={`setup${component.name}`} title={sentenceCase(component.name)} subtitle={setupNote(component.className)} icon={setupIcon(component.known, component.className)} onClick={() => onOpenSetup(component.name)} />
             ))}
+            {parametersHit ? <SetupRow title={PARAMETERS_ROW} subtitle="Every setting the vehicle has" icon="ic_tune" onClick={() => onOpenSetup(SETUP_PARAMETERS_PAGE)} /> : null}
             {deviceHits.length > 0 ? <SectionHeader text={SettingsGroup.Device.title} /> : null}
             {deviceHits.map((page) => (
               <DevicePageRow key={`device${page.href}`} page={page} />

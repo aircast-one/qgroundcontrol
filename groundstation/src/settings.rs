@@ -1411,7 +1411,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
                 ],
             ),
             (
-                "Camera & Gimbal Control",
+                "Camera & gimbal on the aircraft's receiver",
                 &[
                     "gimbalTiltChannel",
                     "gimbalPanChannel",

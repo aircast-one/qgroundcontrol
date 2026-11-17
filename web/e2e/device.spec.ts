@@ -228,7 +228,7 @@ test('a device page offers its synthetic view on every visit, even after it was 
   const sources = device.getByRole('button', { name: /^Video sources/ });
   const synthetic = device.getByRole('button', { name: /Synthetic view/ });
   await openMenu(device, 'Settings');
-  await device.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await device.getByRole('tablist').getByRole('tab', { name: 'Camera' }).click();
   await expect(async () => {
     if (await sources.isVisible()) await sources.click();
     if (await synthetic.isVisible()) await synthetic.click();

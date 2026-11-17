@@ -101,3 +101,23 @@ test('a limit the disabled geofence does not enforce reads Off until it is turne
   await app.getByRole('status').getByRole('button', { name: 'Undo' }).click();
   await expect(fenceOff).toHaveCount(2);
 });
+
+test('settings search reaches setup pages by what they hold, and the parameters', async ({ vehicle }) => {
+  await openMenu(vehicle, 'Settings');
+  const search = vehicle.getByPlaceholder('Search settings');
+  await search.fill('compass');
+  await expect(vehicle.getByRole('button', { name: /^Sensors/ })).toBeVisible();
+  await search.fill('calibrat');
+  await expect(vehicle.getByRole('button', { name: /^Sensors/ })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: /^Radio/ })).toBeVisible();
+  await search.fill('parameters');
+  await vehicle.getByRole('button', { name: /^Parameters Every setting/ }).click();
+  await expect(vehicle.getByRole('textbox', { name: 'Search parameters' })).toBeVisible();
+});
+
+test('the two camera channel groups in Control say which radio they read', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
+  await expect(app.getByText("Camera & gimbal on the aircraft's receiver", { exact: true })).toBeVisible();
+  await expect(app.getByText('Radio on USB (EdgeTX script)', { exact: false })).toBeVisible();
+});

@@ -80,9 +80,9 @@ describe('NoVideoPanelTest', () => {
     expect(whileArmed(unavailableVideoState(unavailable(false, false))!).action).toBe(NoVideoAction.None);
   });
 
-  it('the missing-video copy points at the Video sources page on the Transmission tab', () => {
-    expect(unavailableVideoState(unavailable(false, false))?.detail).toBe('Add a camera in Settings › Transmission › Video sources.');
-    expect(unavailableVideoState(unavailable(true, false))?.detail).toBe('Enter the stream address in Settings › Transmission › Video sources.');
+  it('the missing-video copy points at the Video sources page on the Camera tab', () => {
+    expect(unavailableVideoState(unavailable(false, false))?.detail).toBe('Add a camera in Settings › Camera › Video sources.');
+    expect(unavailableVideoState(unavailable(true, false))?.detail).toBe('Enter the stream address in Settings › Camera › Video sources.');
   });
 
   it('the video button is named for the Video sources page it opens', () => {

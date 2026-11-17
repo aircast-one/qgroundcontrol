@@ -56,6 +56,24 @@ describe('SetupScreenTest', () => {
     expect(read.map((it) => it.blockedReason)).toEqual(['armed', null]);
   });
 
+  it('setup pages list in the order a new aircraft is set up, the rest after them as the core sent them', () => {
+    const read = setupComponents({
+      components: [
+        { name: 'ESC', className: 'APMESCComponent', known: 'esc' },
+        { name: 'Failsafes', className: 'APMFailsafesComponent' },
+        { name: 'Flight Modes', className: 'APMFlightModesComponent', known: 'flightModes' },
+        { name: 'Flight Safety', className: 'APMFlightSafetyComponent', known: 'safety' },
+        { name: 'Frame', className: 'APMAirframeComponent' },
+        { name: 'Logging', className: 'APMLoggingComponent' },
+        { name: 'Power', className: 'APMPowerComponent', known: 'power' },
+        { name: 'Radio', className: 'APMRadioComponent', known: 'radio' },
+        { name: 'Sensors', className: 'APMSensorsComponent', known: 'sensors' },
+      ],
+    });
+    expect(read.map((it) => it.name)).toEqual(['Frame', 'Sensors', 'Radio', 'Flight Modes', 'Power', 'Failsafes', 'Flight Safety', 'ESC', 'Logging']);
+    expect(read.find((it) => it.name === 'ESC')?.index).toBe(0);
+  });
+
   it('a blocked page says why like SetupPage', () => {
     expect(disabledWhile('flying')).toBe('Disabled while the vehicle is flying');
   });

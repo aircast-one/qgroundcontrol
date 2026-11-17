@@ -9,7 +9,7 @@ const coreView = (page: Page, path: string) =>
 
 const addVideoSource = async (page: Page, type: RegExp, address: string) => {
   await openMenu(page, 'Settings');
-  await page.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: 'Camera' }).click();
   const row = page.getByRole('button', { name: /^Video sources/ });
   await expect(async () => {
     if (await row.isVisible()) await row.click();

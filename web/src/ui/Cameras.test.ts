@@ -125,10 +125,10 @@ describe('CamerasTest', () => {
     expect(refusedDraft(typedWhileSaving, null)).toBeNull();
   });
 
-  it('the video sources page is listed under Transmission though it has no settings of its own', () => {
+  it('the video sources page is listed under Camera, with the cameras it feeds, though it has no settings of its own', () => {
     const pages = settingsPages(json('{"pages":[{"title":"Video sources","showsVideoSources":true,"sections":[]}]}'));
     expect(pages.map((it) => it.title)).toEqual([VIDEO_SOURCES_PAGE]);
-    expect(pageLook(VIDEO_SOURCES_PAGE).group).toBe(SettingsGroup.Transmission);
+    expect(pageLook(VIDEO_SOURCES_PAGE).group).toBe(SettingsGroup.Camera);
   });
 
   it('the settings index names the camera on screen and how many there are', () => {

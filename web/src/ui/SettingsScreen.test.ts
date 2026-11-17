@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ParameterRows } from '@/ui/ParameterForm';
 import { OPEN_OVER_HTTPS } from './UsbAccess';
 import { makeFact } from '@/bridge/Qgc';
 import type { Json } from '@/bridge/Json';
@@ -72,6 +73,11 @@ describe('SettingsGroupsTest', () => {
     expect(tabPages(SettingsGroup.General, every).map((it) => it.title)).toEqual(['General', 'Something new']);
   });
 
+  it('maps sit in General with the other planning defaults, and the device tab says which device', () => {
+    expect(pageLook('Maps').group).toBe(SettingsGroup.General);
+    expect(SettingsGroup.Device.title).toBe('Aircast device');
+  });
+
   it('safetyOpensWithTheGuidedLimitsItBorrowsFromFlyView', () => {
     expect(tabPages(SettingsGroup.Safety, every).map((it) => it.title)).toEqual(['Fly View', 'ADSB Server', 'Remote ID']);
   });
@@ -139,6 +145,14 @@ describe('TabSetupRowsTest', () => {
     const reported = [component('Flight Modes'), component('Flight Behavior'), component(SENSORS)];
     expect(setupSearchHits(reported, 'flight').map((it) => it.name)).toEqual(['Flight Modes', 'Flight Behavior']);
     expect(setupSearchHits(reported, '  ')).toEqual([]);
+  });
+
+  it('search finds a setup page by what it calibrates and by the sections inside it', () => {
+    const reported = [component(SENSORS), component('Radio'), component('Power'), component('Logging')];
+    expect(setupSearchHits(reported, 'compass').map((it) => it.name)).toEqual([SENSORS]);
+    expect(setupSearchHits(reported, 'calibrat').map((it) => it.name)).toEqual([SENSORS, 'Radio', 'Power']);
+    const sections = new Map([['Logging', [ParameterRows({ title: 'Log bitmask', facts: [], note: '' })]]]);
+    expect(setupSearchHits(reported, 'bitmask', sections).map((it) => it.name)).toEqual(['Logging']);
   });
 });
 

@@ -90,7 +90,7 @@ test('the menu takes the app full screen and back, for a browser whose F11 does 
 test('menu opens the settings sheet with its tabs', async ({ app }) => {
   await openMenu(app, 'Settings');
   const tabs = app.getByRole('tablist');
-  await expect(tabs.getByRole('tab')).toHaveText(['General', 'Safety', 'Control', 'Camera', 'Transmission', 'Device']);
+  await expect(tabs.getByRole('tab')).toHaveText(['General', 'Safety', 'Control', 'Camera', 'Transmission', 'Aircast device']);
   await expect(tabs.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
   await closeSettings(app);
   await expect(tabs).toBeHidden();

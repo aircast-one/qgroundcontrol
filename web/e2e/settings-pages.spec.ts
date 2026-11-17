@@ -1,7 +1,8 @@
 import { expect, openMenu, test } from './fixtures';
 
 const PAGES: readonly (readonly [string, string, string?])[] = [
-  ['Transmission', 'Video sources'],
+  ['Camera', 'Video sources'],
+  ['General', 'Maps'],
   ['Transmission', 'MAVLink'],
   ['Transmission', 'Packet radio'],
   ['Transmission', 'RTK GPS'],
@@ -10,7 +11,7 @@ const PAGES: readonly (readonly [string, string, string?])[] = [
   ['Safety', 'More failsafe settings', 'Aircraft setup'],
   ['General', 'PX4 log transfer'],
   ['General', 'App logging'],
-  ['General', 'Console'],
+  ['General', 'App log$', 'App log'],
   ['General', 'About'],
   ['General', 'Aircast card'],
 ];

@@ -19,6 +19,7 @@ import { APM_SUB_MOTORS_SCREEN, ApmSubMotorsScreen } from '@/ui/ApmSubMotorsScre
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { LOOKING_TITLE, useRememberLookingHint } from '@/ui/ConnectingCard';
 import { ESP_BRIDGE_SCREEN, EspBridgeScreen } from '@/ui/EspBridgeScreen';
+import { FirmwareScreen } from '@/ui/FirmwareScreen';
 import { FlightModesSetup } from '@/ui/FlightModesSetup';
 import { JOYSTICK_SCREEN, JoystickScreen } from '@/ui/JoystickScreen';
 import { MotorsScreen } from '@/ui/MotorsScreen';
@@ -183,6 +184,38 @@ export const setupSummaries = (view: Json | null): ReadonlyMap<string, readonly 
 
 export const setupMatches = (name: string, search: string): boolean => search.trim() === '' || name.toLowerCase().includes(search.trim().toLowerCase());
 
+const COMPONENT_KEYWORDS: readonly (readonly [string, string])[] = [
+  ['Sensors', 'compass magnetometer accelerometer gyroscope level horizon orientation calibrate calibration'],
+  ['Radio', 'transmitter sticks switches channels calibrate calibration'],
+  ['ESC', 'esc calibrate calibration'],
+  ['Power', 'battery voltage current capacity calibrate calibration'],
+  ['Motor', 'motor test spin direction order'],
+  ['FlightModes', 'mode switch'],
+  ['Failsafe', 'failsafe battery radio link'],
+  ['Safety', 'return rtl geofence fence altitude'],
+  ['Airframe', 'frame airframe'],
+  ['Frame', 'frame airframe'],
+];
+
+export const setupKeywords = (component: SetupComponent): string =>
+  [setupNote(component.className), ...COMPONENT_KEYWORDS.filter(([token]) => component.className.includes(token) || component.name === token).map(([, words]) => words)].join(' ').toLowerCase();
+
+export const setupFound = (component: SetupComponent, sectionTitles: readonly string[], search: string): boolean => {
+  const wanted = search.trim().toLowerCase();
+  return wanted !== '' && (setupMatches(component.name, wanted) || setupKeywords(component).includes(wanted) || sectionTitles.some((it) => it.toLowerCase().includes(wanted)));
+};
+
+export const useFormSections = (searching: boolean, components: readonly SetupComponent[], setupJson: Json | null): ReadonlyMap<string, readonly ParameterRows[]> =>
+  useProduceState<ReadonlyMap<string, readonly ParameterRows[]>>(new Map(), [searching, components], async (set) => {
+    if (!searching) return set(new Map());
+    const read = await Promise.all(
+      components
+        .filter((it) => setupPage(setupJson, it.name)?.parameterSections === true && !OWN_SCREEN_HEADS.has(headPage(it)))
+        .map(async (component) => [component.name, await readPage(component.name)] as const),
+    );
+    set(new Map(read));
+  });
+
 export const splitDesktopOnly = (components: readonly SetupComponent[], opensHere: (component: SetupComponent) => boolean): readonly [SetupComponent[], SetupComponent[]] => [
   components.filter(opensHere),
   components.filter((it) => !opensHere(it)),
@@ -200,7 +233,7 @@ const textOrNull = (json: Json, key: string): string | null => {
   return isNull(json, key) || text.trim() === '' ? null : text;
 };
 
-export const setupComponents = (view: Json | null): readonly SetupComponent[] =>
+const listedComponents = (view: Json | null): readonly SetupComponent[] =>
   (optJSONArray(view, 'components') ?? []).flatMap((element, index) => {
     if (typeof element !== 'object' || element === null || Array.isArray(element)) return [];
     const json = element as Json;
@@ -219,6 +252,24 @@ export const setupComponents = (view: Json | null): readonly SetupComponent[] =>
           }),
         ];
   });
+
+const WORKFLOW: readonly ((component: SetupComponent) => boolean)[] = [
+  (it) => /Airframe|Frame/.test(it.className),
+  (it) => it.known === 'sensors',
+  (it) => it.known === 'radio',
+  (it) => it.known === 'flightModes',
+  (it) => it.known === 'power',
+  (it) => it.className.includes('Failsafe'),
+  (it) => it.known === 'safety',
+];
+
+export const workflowRank = (component: SetupComponent): number => {
+  const step = WORKFLOW.findIndex((matches) => matches(component));
+  return step < 0 ? WORKFLOW.length : step;
+};
+
+export const setupComponents = (view: Json | null): readonly SetupComponent[] =>
+  listedComponents(view).toSorted((a, b) => workflowRank(a) - workflowRank(b) || a.index - b.index);
 
 const OWN_SCREEN_HEADS: ReadonlySet<string> = new Set([SENSORS, RADIO, REMOTE_SUPPORT, MOTORS, FLIGHT_MODES_PAGE]);
 
@@ -287,6 +338,7 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   const openComponent = opened?.[0] ?? null;
   const openSection = opened?.[1] ?? null;
   const [parametersOpen, setParametersOpen] = useState(false);
+  const [firmwareOpen, setFirmwareOpen] = useState(false);
   const advanced = useAdvancedUiShown();
   const [setupSearch, setSetupSearch] = useState('');
   const [parametersSearch, setParametersSearch] = useState('');
@@ -294,23 +346,17 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   const [measure, maxWidth] = useMaxWidth();
 
   useBackHandler(openComponent !== null, () => setOpened(null));
+  useBackHandler(firmwareOpen, () => setFirmwareOpen(false));
 
   const components = useMemo(() => setupComponents(setupJson), [setupJson]);
   const searching = setupSearch.trim() !== '';
-  const formSections = useProduceState<ReadonlyMap<string, readonly ParameterRows[]>>(new Map(), [searching, components], async (set) => {
-    if (!searching) return set(new Map());
-    const read = await Promise.all(
-      components
-        .filter((it) => setupPage(setupJson, it.name)?.parameterSections === true && !OWN_SCREEN_HEADS.has(headPage(it)))
-        .map(async (component) => [component.name, await readPage(component.name)] as const),
-    );
-    set(new Map(read));
-  });
+  const formSections = useFormSections(searching, components, setupJson);
   const sectionHits = new Map([...formSections].map(([name, rows]) => [name, rows.filter((it) => sectionMatches(it, setupSearch)).map((it) => it.title)]));
   const hitsOf = (name: string): readonly string[] => sectionHits.get(name) ?? [];
-  const searchHit = (it: SetupComponent): boolean => setupMatches(it.name, setupSearch) || hitsOf(it.name).length > 0;
+  const searchHit = (it: SetupComponent): boolean => !searching || setupFound(it, hitsOf(it.name), setupSearch);
   const openFromList = (component: SetupComponent, section: string | null) => {
     setParametersOpen(false);
+    setFirmwareOpen(false);
     setOpened([component, section]);
   };
   const [summaries, setSummaries] = useState<ReadonlyMap<string, readonly SummaryLine[]>>(new Map());
@@ -340,14 +386,22 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   const panesShown = hasVehicle && waiting === null;
 
   useLaunchedEffect([wide && panesShown, components, requestedPage], () => {
-    if (!(wide && panesShown) || opened !== null || parametersOpen || requestedPage !== null) return;
+    if (!(wide && panesShown) || opened !== null || parametersOpen || firmwareOpen || requestedPage !== null) return;
     const first = firstToOpen(components, (it) => headCanOpen(setupPage(setupJson, it.name), it.name));
     if (first !== undefined) setOpened([first, null]);
   });
 
+  if (!hasVehicle && firmwareOpen) {
+    return (
+      <div className={`flex h-full w-full flex-col ${className ?? ''}`}>
+        <FirmwarePage onBack={() => setFirmwareOpen(false)} />
+      </div>
+    );
+  }
+
   if (!hasVehicle) {
     return (
-      <div className={`flex w-full flex-col items-center ${className ?? ''}`}>
+      <div className={`flex w-full flex-col items-center gap-2 ${className ?? ''}`}>
         <EmptyState icon="ic_build" title={LOOKING_TITLE} text={lookingHint} />
         <OutlinedButton
           onClick={() => {
@@ -356,6 +410,7 @@ export const SetupScreen = ({ className }: { className?: string }) => {
         >
           Set up connection
         </OutlinedButton>
+        <TextButton onClick={() => setFirmwareOpen(true)}>{FLASH_FIRMWARE}</TextButton>
       </div>
     );
   }
@@ -381,10 +436,12 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   const componentOpens = openComponent !== null && headCanOpen(setupPage(setupJson, openComponent.name), openComponent.name);
   const shownDetail: ReactNode = parametersOpen ? (
     <ParametersPage initialSearch={parametersSearch} onBack={() => setParametersOpen(false)} />
+  ) : firmwareOpen ? (
+    <FirmwarePage onBack={() => setFirmwareOpen(false)} />
   ) : componentOpens && openComponent !== null ? (
     <ComponentPage open={openComponent} section={openSection} setupJson={setupJson} onBack={() => setOpened(null)} onOpen={setOpened} />
   ) : null;
-  const detailKey = parametersOpen ? 'parameters' : (openComponent?.name ?? '');
+  const detailKey = parametersOpen ? 'parameters' : firmwareOpen ? 'firmware' : (openComponent?.name ?? '');
 
   const overview = (paneClass: string, paneStyle?: CSSProperties) => (
     <SetupOverview
@@ -415,7 +472,14 @@ export const SetupScreen = ({ className }: { className?: string }) => {
       onOpenParameters={() => {
         setParametersSearch('');
         setOpened(null);
+        setFirmwareOpen(false);
         setParametersOpen(true);
+      }}
+      firmwareOpen={firmwareOpen}
+      onOpenFirmware={() => {
+        setOpened(null);
+        setParametersOpen(false);
+        setFirmwareOpen(true);
       }}
     />
   );
@@ -439,6 +503,16 @@ export const SetupScreen = ({ className }: { className?: string }) => {
     </div>
   );
 };
+
+export const FIRMWARE_PAGE = 'Firmware';
+export const FLASH_FIRMWARE = 'Flash firmware';
+
+const FirmwarePage = ({ onBack }: { onBack: () => void }) => (
+  <>
+    <SetupPageBar title={FIRMWARE_PAGE} onBack={onBack} />
+    <FirmwareScreen className="min-h-0 flex-1" />
+  </>
+);
 
 const ParametersPage = ({ initialSearch, onBack }: { initialSearch: string; onBack: () => void }) => (
   <>
@@ -597,6 +671,8 @@ const SetupOverview = ({
   onSummaries,
   parametersOpen,
   onOpenParameters,
+  firmwareOpen,
+  onOpenFirmware,
 }: {
   className: string;
   style?: CSSProperties;
@@ -618,6 +694,8 @@ const SetupOverview = ({
   onSummaries: (summaries: ReadonlyMap<string, readonly SummaryLine[]>) => void;
   parametersOpen: boolean;
   onOpenParameters: () => void;
+  firmwareOpen: boolean;
+  onOpenFirmware: () => void;
 }) => {
   useLaunchedEffect([], async (scope) => {
     await Qgc.invoke(SETUP_PAGE_OPENED, SETUP_SUMMARY_PAGE);
@@ -709,9 +787,16 @@ const SetupOverview = ({
         </>
       ) : null}
 
-      {advanced && setupMatches('Parameters', setupSearch) ? (
+      {setupMatches(FIRMWARE_PAGE, setupSearch) ? (
         <>
           {desktopOnly.length === 0 ? <SectionHeader text="Advanced" /> : null}
+          <SetupRow title={FIRMWARE_PAGE} subtitle="Flash a board through its bootloader over USB" state={SetupState.Neutral} icon="ic_developer_board" onClick={onOpenFirmware} selected={firmwareOpen} />
+        </>
+      ) : null}
+
+      {advanced && setupMatches('Parameters', setupSearch) ? (
+        <>
+          {desktopOnly.length === 0 && !setupMatches(FIRMWARE_PAGE, setupSearch) ? <SectionHeader text="Advanced" /> : null}
           <SetupRow
             title="Parameters"
             subtitle={parameterCountText(parameterCount) ?? 'Every setting the vehicle has'}
