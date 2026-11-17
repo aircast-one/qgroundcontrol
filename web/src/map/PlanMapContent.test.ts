@@ -3,7 +3,7 @@ import { parseJson } from '@/bridge/Json';
 import { FENCE_POLYGONS, FencePolygon } from './FenceBridge';
 import { MISSION_SPLIT_INVOKABLE, MISSION_SPLIT_PATH } from './MissionLayers';
 import { MissionItem, PLAN_ITEMS } from './PlanBridge';
-import { PlanLayer, cornerPosition, dragAllowed, fenceWindow, mapTypes, missionFitPoints, parsedCoordinate, tapAddsRally } from './PlanMapContent';
+import { PlanLayer, cornerPosition, dragAllowed, fenceWindow, inclusionText, mapTypes, missionFitPoints, parsedCoordinate, sidePanelWidth, tapAddsRally } from './PlanMapContent';
 import { Survey } from './SurveyBridge';
 import { TrackPoint } from './VehicleMap';
 
@@ -33,9 +33,13 @@ describe('CenterMenuTest', () => {
 });
 
 describe('DragAllowedTest', () => {
-  it('only the selected item on the active layer can be dragged', () => {
+  it('any marker on the active layer drags, while shape handles need their shape selected', () => {
     expect(dragAllowed({ kind: 'Waypoint', index: 2 }, { kind: 'Waypoint', index: 2 }, PlanLayer.Mission)).toBe(true);
-    expect(dragAllowed({ kind: 'Waypoint', index: 3 }, { kind: 'Waypoint', index: 2 }, PlanLayer.Mission), 'MissionItemMapVisualBase only drags the current item').toBe(false);
+    expect(dragAllowed({ kind: 'Waypoint', index: 3 }, { kind: 'Waypoint', index: 2 }, PlanLayer.Mission), 'an unselected waypoint drags without being selected first').toBe(true);
+    expect(dragAllowed({ kind: 'Waypoint', index: 3 }, null, PlanLayer.Mission)).toBe(true);
+    expect(dragAllowed({ kind: 'Rally', index: 1 }, null, PlanLayer.Rally)).toBe(true);
+    expect(dragAllowed({ kind: 'Waypoint', index: 3 }, null, PlanLayer.Fence), 'a waypoint stays put while the fence is edited').toBe(false);
+    expect(dragAllowed({ kind: 'SurveyVertex', item: 4, vertex: 1 }, { kind: 'Waypoint', index: 2 }, PlanLayer.Mission), "another survey's corners stay put").toBe(false);
     expect(dragAllowed({ kind: 'SurveyVertex', item: 2, vertex: 1 }, { kind: 'Waypoint', index: 2 }, PlanLayer.Mission), "a selected survey's corners move").toBe(true);
     expect(dragAllowed({ kind: 'Rally', index: 0 }, { kind: 'Rally', index: 0 }, PlanLayer.Mission), 'a rally point is not dragged from the mission layer').toBe(false);
     expect(dragAllowed({ kind: 'Rally', index: 0 }, { kind: 'Rally', index: 0 }, PlanLayer.Rally)).toBe(true);
@@ -78,5 +82,13 @@ describe('FenceInclusionTest', () => {
     expect(tapAddsRally(PlanLayer.Rally, { kind: 'Waypoint', index: 2 }, true)).toBe(false);
     expect(tapAddsRally(PlanLayer.Mission, null, true)).toBe(false);
     expect(tapAddsRally(PlanLayer.Rally, null, false)).toBe(false);
+  });
+
+  it('the fence switch says whether the shape keeps the aircraft in or out', () => {
+    expect([inclusionText(true), inclusionText(false)]).toEqual(['Keep-in', 'Keep-out']);
+  });
+
+  it('the side panel narrows on a laptop-width window so the map keeps room', () => {
+    expect([sidePanelWidth(1024), sidePanelWidth(1199), sidePanelWidth(1440)]).toEqual([320, 320, 380]);
   });
 });

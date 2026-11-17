@@ -1,4 +1,4 @@
-import { expect, itemCount, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
+import { connectMock, expect, itemCount, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -50,10 +50,61 @@ test('a waypoint deletes from the plan through its editor', async ({ app }) => {
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   await app.getByRole('button', { name: 'Done' }).click();
   await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
-  await app.getByRole('button', { name: /^Advanced/, expanded: false }).last().click();
   const before = await itemCount(app);
-  await app.getByRole('button', { name: 'Delete from the plan' }).click();
+  await app.getByRole('button', { name: 'Delete waypoint 3' }).click();
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before - 1);
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.keyboard.press('Delete');
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before - 2);
+  await app.keyboard.press('ControlOrMeta+z');
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBeGreaterThan(before - 2);
+});
+
+test('a waypoint moves down the list and back up', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.getByRole('button', { name: 'Increase Altitude' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
+  await app.getByRole('button', { name: 'Move waypoint 3 down' }).click();
+  await expect(app.getByRole('button', { name: /^4 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
+  await app.getByRole('button', { name: 'Move waypoint 4 up' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
+});
+
+test('a typed altitude past the limit says it was capped', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.getByRole('button', { name: /^Altitude: / }).click();
+  const entry = app.getByRole('dialog').filter({ hasText: 'Altitude' });
+  await entry.getByRole('textbox').fill('900');
+  await expect(entry.getByText('Capped at 500 m, the highest allowed.')).toBeVisible();
+  await entry.getByRole('button', { name: 'Set' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint 500 m/ })).toBeVisible({ timeout: 15_000 });
+});
+
+test('switching a waypoint to AMSL keeps its height above the launch', async ({ vehicle }) => {
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await expect.poll(() => itemCount(vehicle)).toBeGreaterThanOrEqual(5);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await vehicle.getByRole('button', { name: /^Relative to launch$/i }).click();
+  await vehicle.getByRole('menuitem', { name: /Mixed modes/i }).click();
+  const launch = vehicle.getByRole('button', { name: /Launch -?[\d,.]+ m AMSL/ });
+  await expect(launch).toBeVisible({ timeout: 30_000 });
+  const ground = Number((await launch.innerText()).match(/Launch\s+(-?[\d,.]+) m AMSL/)?.[1]?.replace(',', ''));
+  expect(ground, 'the launch has a real elevation, so the conversion is visible').toBeGreaterThan(0);
+  await vehicle.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await expect(vehicle.getByRole('button', { name: /^3 Waypoint 50\.0 m/ })).toBeVisible();
+  await vehicle.getByRole('button', { name: 'AMSL', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: new RegExp(`^3 Waypoint ${Math.round(ground + 50)}(\\.\\d)? m AMSL`) })).toBeVisible({ timeout: 15_000 });
+  await vehicle.getByRole('button', { name: 'Relative to launch', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: /^3 Waypoint 50(\.0)? m/ })).toBeVisible({ timeout: 15_000 });
 });
 
 test('a waypoint takes a hover action and gives it back', async ({ app }) => {
@@ -68,4 +119,24 @@ test('a waypoint takes a hover action and gives it back', async ({ app }) => {
   await expect(app.getByRole('button', { name: /^3 Waypoint .* · holds 5 s/ })).toBeVisible({ timeout: 15_000 });
   await app.getByRole('button', { name: 'Remove Hover' }).click();
   await expect(app.getByRole('button', { name: /^3 Waypoint .* · holds/ })).toHaveCount(0, { timeout: 15_000 });
+});
+
+test('a plan made for another firmware converts to the connected vehicle', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await app.getByRole('radiogroup', { name: 'Firmware' }).getByRole('radio', { name: 'ArduPilot' }).click();
+  await expect(app.getByText(/For ArduPilot/)).toBeVisible();
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.addLocatorHandler(app.getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
+  await app.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true }).click();
+  await connectMock(app);
+  await openMenu(app, 'Plan');
+  await app.getByRole('button', { name: 'Upload', exact: true }).click();
+  const far = app.getByRole('dialog').filter({ hasText: 'from the aircraft' });
+  const mismatch = app.getByRole('dialog').filter({ hasText: 'different firmware' });
+  await expect(far.or(mismatch)).toBeVisible();
+  if (await far.isVisible()) await far.getByRole('button', { name: 'Upload anyway' }).click();
+  await mismatch.getByRole('button', { name: 'Convert to this vehicle' }).click();
+  await expect(app.getByText('Plan converted to this vehicle. Check it, then upload.')).toBeVisible();
+  await expect(app.getByText(/For PX4/)).toBeVisible({ timeout: 15_000 });
 });

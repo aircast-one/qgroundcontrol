@@ -4,7 +4,7 @@ import type { MapHit } from './MissionEditing';
 import { homeCovered } from './MissionLayers';
 import { KIND_SURVEY, MissionItem } from './PlanBridge';
 import { itemSeal, itemTitle } from './PlanItems';
-import { advancedDetail, appendSequence, distanceWords, farFromAircraft, highestAltitude, placedPattern, planStats, routeStart, selectionTitle, startsFromAircraft, tapCloses, terrainWarning } from './PlanStrip';
+import { advancedDetail, appendSequence, deleteLabel, distanceWords, farFromAircraft, highestAltitude, placedPattern, planStats, routeStart, selectionTitle, startsFromAircraft, tapCloses, terrainWarning } from './PlanStrip';
 import { Survey } from './SurveyBridge';
 import { TrackPoint } from './VehicleMap';
 import { NEWEST_PATTERN } from './VehicleSync';
@@ -98,5 +98,12 @@ describe('PlanStripTest', () => {
   it("distances read in the operator's units, coarser as they grow", () => {
     expect([850.0, 1500.0, 9_412_000.0].map((it) => distanceWords(it, false))).toEqual(['850 m', '1.5 km', '9,412 km']);
     expect([150.0, 3000.0, 9_412_000.0].map((it) => distanceWords(it, true))).toEqual(['492 ft', '1.9 mi', '5,848 mi']);
+  });
+
+  it('the selection header offers to delete what can be deleted, by name', () => {
+    const items = [MissionItem({ index: 0, sequence: 0, latitude: 1, longitude: 1, command: 'Mission Start', selected: false }), MissionItem({ index: 3, sequence: 3, latitude: 1, longitude: 1, command: 'Waypoint', selected: true })];
+    expect(deleteLabel({ kind: 'Waypoint', index: 3 }, items)).toBe('Delete waypoint 3');
+    expect(deleteLabel({ kind: 'Waypoint', index: 0 }, items), 'the launch is never deleted').toBeNull();
+    expect([deleteLabel({ kind: 'Rally', index: 1 }, items), deleteLabel({ kind: 'CircleCentre', index: 0 }, items), deleteLabel(null, items)]).toEqual(['Delete rally point', 'Delete circular fence', null]);
   });
 });

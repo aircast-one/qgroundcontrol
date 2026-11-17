@@ -1,7 +1,7 @@
 import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { coerceAtLeast, replaceFirstCharUpper } from '@/kotlin/Std';
 import { altitudeModePath } from './AltitudeModes';
-import { coordinateJson, invokeOk, setOk, setRefusal, settingJson } from './BridgeCalls';
+import { coordinateJson, invokeOk, invokeRefusal, setOk, setRefusal, settingJson } from './BridgeCalls';
 import { type LandingPattern, landingPattern } from './LandingPattern';
 import { MapBridge } from './MapBridge';
 import { removeMissionItem } from './MissionKinds';
@@ -11,6 +11,7 @@ import { type TrackPoint, isPlottable } from './VehicleMap';
 
 export const PLAN_ROOT = 'plan';
 export const CONVERT_TO_VEHICLE = 'core.plan.convertToVehicle';
+export const MOVE_ITEM = 'core.plan.moveItem';
 
 export const PLAN_ITEMS = `${PLAN_ROOT}.missionController.visualItems`;
 export const PLAN_VIEW = 'view.missionItems(geometry)';
@@ -256,6 +257,8 @@ export const PlanBridge = {
   sendToVehicle: (): Promise<boolean> => invokeOk(`${PLAN_ROOT}.sendToVehicle`),
 
   convertToVehicle: (): Promise<boolean> => invokeOk(CONVERT_TO_VEHICLE),
+
+  reorder: (index: number, later: boolean): Promise<string | null> => invokeRefusal(MOVE_ITEM, `[${index},${later ? 1 : -1}]`, 'The item could not be moved.'),
 
   pauseVehicle: (): Promise<boolean> => invokeOk('vehicle.pauseVehicle'),
 

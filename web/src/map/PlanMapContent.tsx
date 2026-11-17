@@ -109,6 +109,7 @@ import {
   WaypointStripBar,
   advancedDetail,
   appendSequence,
+  deleteLabel,
   farFromAircraft,
   panelDrag,
   placedPattern,
@@ -146,10 +147,11 @@ import { sentenceCase } from './SentenceCase';
 import { GRID_ANGLE_MAX, type Survey, SurveyBridge, type SurveyStats, fitSurveyArea, gridAngleShown, insetRing, surveyStatsFor } from './SurveyBridge';
 import { TERRAIN_VIEW, type TerrainProfile, collidingItems, collisionLegs, terrainProfile } from './TerrainProfile';
 import { ELEVATION_PROVIDER, SHOW_MISSION_ITEM_STATUS, TerrainProfileView, missionItemStatusShown } from './TerrainProfileView';
-import { downloadMessage, uploadMessage, uploadOutcome } from './UploadOutcome';
+import { UploadOutcome, uploadMessage, uploadOutcome } from './UploadOutcome';
 import { VEHICLES_VIEW, uploadHeading, vehicleChoices } from './VehiclePicker';
 import { TrackPoint, VehicleMap, isPlottable } from './VehicleMap';
 import { PlanFocus, UPLOADED, type UploadGate, freshPlanView, notReadyToSend, planSupport, syncRefusal, uploadGate, uploadLabel, uploadStep, vehicleSyncState } from './VehicleSync';
+import { usePlanAction } from './PlanShortcuts';
 import { WaypointSettings } from './WaypointPanel';
 import { ZOOM_IN_FOR_PATTERN, zoomedOutForTemplates } from '@/ui/PlanTemplates';
 
@@ -282,14 +284,16 @@ export const PlanMapContent = ({
   routeSettings = null,
   fitKey = 0,
   onTemplates = null,
+  onDownload = null,
 }: {
   mapStyle: string;
   onCentre?: ((latitude: number, longitude: number, zoom: number) => void) | null;
-  itemPanel?: ((index: number, at: TrackPoint | null, leg: string | null, remove: (() => void) | null) => ReactNode) | null;
+  itemPanel?: ((index: number, at: TrackPoint | null, leg: string | null) => ReactNode) | null;
   header?: ((bar: PlanBar) => ReactNode) | null;
   routeSettings?: (() => ReactNode) | null;
   fitKey?: number;
   onTemplates?: (() => void) | null;
+  onDownload?: (() => void) | null;
 }) => {
   const follow = useRemembered(false);
   const shownStyle = useRemembered(mapStyle);
@@ -435,6 +439,31 @@ export const PlanMapContent = ({
   const planSyncing = optText(optJSONObject(planStatus, 'sync'), 'state') === 'busy';
   const support = useMemo(() => planSupport(planStatus), [planStatus]);
   const canUndo = optBoolean(planStatus, 'canUndo');
+  const deleteSelected = (): void => {
+    const hit = selected.value;
+    const item = hit?.kind === 'Waypoint' ? allItems.value.find((it) => it.index === hit.index && it.index > HOME_ITEM) : undefined;
+    if (item !== undefined) removeItem(item);
+    else if (hit?.kind === 'Rally') {
+      const count = rally.value.length;
+      onBridge(() => FenceBridge.removeRallyPoint(hit.index), { label: 'Removing the rally point', then: () => (selected.value = rallyAfterRemove(hit.index, count)) });
+    } else if (hit?.kind === 'Circle' || hit?.kind === 'CircleCentre' || hit?.kind === 'CircleRadius') {
+      onBridge(() => FenceBridge.deleteCircle(hit.index), { label: 'Removing the circular fence', then: () => (selected.value = null) });
+    }
+  };
+  const moveItem = (index: number, later: boolean): void => {
+    onRefusal(async () => {
+      const refusal = await PlanBridge.reorder(index, later);
+      if (refusal === null) {
+        edits.value += 1;
+        selected.value = { kind: 'Waypoint', index: later ? index + 1 : index - 1 };
+      }
+      return refusal;
+    });
+  };
+  usePlanAction('deleteSelected', deleteSelected);
+  usePlanAction('undo', () => {
+    if (canUndo) onBridge(() => invokeOk(PLAN_UNDO));
+  });
   const templates = optJSONObject(planStatus, 'templates');
   const homeSet = templates === null || optBoolean(templates, 'homeSet');
   const addable = (kind: string): boolean => kindAllows(insertable, kind) || !homeSet;
@@ -1270,6 +1299,8 @@ export const PlanMapContent = ({
                 onDone={() => {
                   selected.value = null;
                 }}
+                deleting={deleteLabel(chosen, allItems.value)}
+                onDelete={deleteSelected}
               />
             ) : chosen !== null ? (
               <SelectionHeader
@@ -1283,9 +1314,11 @@ export const PlanMapContent = ({
                 onDone={() => {
                   selected.value = null;
                 }}
+                deleting={deleteLabel(chosen, allItems.value)}
+                onDelete={deleteSelected}
               />
             ) : layer.value === PlanLayer.Mission && itemCount.value === 0 ? (
-              <EmptyMissionStrip homeSet={homeSet} onTemplates={onTemplates} onDownload={planOffline ? null : requestDownload} />
+              <EmptyMissionStrip homeSet={homeSet} onTemplates={onTemplates} onDownload={planOffline ? null : onDownload} />
             ) : layer.value !== PlanLayer.Mission ? (
               <Text typography="titleMedium" className="block pb-1 pl-3">
                 {layer.value.label}
@@ -1382,7 +1415,14 @@ export const PlanMapContent = ({
                 <>
                   <ItemListHeading rows={rows} summary={missionSummaryText(missionSummaryView)} className="px-3 py-1" />
                   {rows.map((row) => (
-                    <ItemRowView key={row.index} row={row} selected={chosen?.kind === 'Waypoint' && chosen.index === row.index} onClick={() => pickRow(row)} />
+                    <ItemRowView
+                      key={row.index}
+                      row={row}
+                      selected={chosen?.kind === 'Waypoint' && chosen.index === row.index}
+                      onClick={() => pickRow(row)}
+                      onMove={row.index === HOME_ITEM ? null : (later) => moveItem(row.index, later)}
+                      onDelete={null}
+                    />
                   ))}
                 </>
               ) : null}
@@ -1595,7 +1635,7 @@ export const PlanMapContent = ({
 
               {chosenItem === null ? null : (
                 <Fragment key={removals.value}>
-                  {itemPanel?.(chosenItem.index, chosenItem.placed ? TrackPoint(chosenItem.latitude, chosenItem.longitude) : null, advancedDetail(chosenItem), chosenItem.index > HOME_ITEM ? () => removeItem(chosenItem) : null)}
+                  {itemPanel?.(chosenItem.index, chosenItem.placed ? TrackPoint(chosenItem.latitude, chosenItem.longitude) : null, advancedDetail(chosenItem))}
                 </Fragment>
               )}
             </div>
@@ -1621,6 +1661,8 @@ export const PlanMapContent = ({
                   pickRow(row);
                   listOpen.value = false;
                 }}
+                onMove={row.index === HOME_ITEM ? null : (later) => moveItem(row.index, later)}
+                onDelete={row.index === HOME_ITEM ? null : deleteSelected}
               />
             ))}
           </div>
@@ -1794,34 +1836,57 @@ const ItemListHeading = ({ rows, summary, className }: { rows: readonly ItemRow[
   </div>
 );
 
-const ItemRowView = ({ row, selected, onClick }: { row: ItemRow; selected: boolean; onClick: () => void }) => (
-  <Surface
-    onClick={onClick}
-    color={selected ? md('secondaryContainer') : md('surfaceContainerLow')}
-    contentColor={selected ? md('onSecondaryContainer') : md('onSurface')}
-    className="flex min-h-[72px] w-full items-center gap-4 pb-2 pl-4 pr-3 pt-2"
-  >
-    <span
-      className="flex shrink-0 items-center justify-center rounded-full"
-      style={{ width: ITEM_MARKER_SIZE, height: ITEM_MARKER_SIZE, ...(row.readyForSave ? { background: row.colour } : { border: `1px solid ${aircast('warning')}` }) }}
-    >
-      <Text typography="labelLarge" color={row.readyForSave ? md('surface') : aircast('warning')} maxLines={1}>
-        {row.number}
-      </Text>
-    </span>
-    <span className="flex min-w-0 flex-1 flex-col">
-      <Text typography="titleMedium" maxLines={1}>
-        {sentenceCase(row.name)}
-      </Text>
-      {row.detail.trim() === '' ? null : (
-        <Text typography="bodyMedium" color={md('onSurfaceVariant')} maxLines={2}>
-          {row.detail}
+const ItemRowView = ({
+  row,
+  selected,
+  onClick,
+  onMove,
+  onDelete,
+}: {
+  row: ItemRow;
+  selected: boolean;
+  onClick: () => void;
+  onMove: ((later: boolean) => void) | null;
+  onDelete: (() => void) | null;
+}) => (
+  <div className="flex w-full items-center" style={{ background: selected ? md('secondaryContainer') : md('surfaceContainerLow'), color: selected ? md('onSecondaryContainer') : md('onSurface') }}>
+    <Surface onClick={onClick} color="transparent" contentColor="inherit" className="flex min-h-[72px] min-w-0 flex-1 items-center gap-4 pb-2 pl-4 pr-3 pt-2">
+      <span
+        className="flex shrink-0 items-center justify-center rounded-full"
+        style={{ width: ITEM_MARKER_SIZE, height: ITEM_MARKER_SIZE, ...(row.readyForSave ? { background: row.colour } : { border: `1px solid ${aircast('warning')}` }) }}
+      >
+        <Text typography="labelLarge" color={row.readyForSave ? md('surface') : aircast('warning')} maxLines={1}>
+          {row.number}
         </Text>
-      )}
-    </span>
-    {selected ? <Text typography="labelMedium">Selected</Text> : null}
-    <MaterialIcon name="keyboard_arrow_right" filled style={{ color: md('onSurfaceVariant') }} />
-  </Surface>
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <Text typography="titleMedium" maxLines={1}>
+          {sentenceCase(row.name)}
+        </Text>
+        {row.detail.trim() === '' ? null : (
+          <Text typography="bodyMedium" color={md('onSurfaceVariant')} maxLines={2}>
+            {row.detail}
+          </Text>
+        )}
+      </span>
+      {selected ? null : <MaterialIcon name="keyboard_arrow_right" filled style={{ color: md('onSurfaceVariant') }} />}
+    </Surface>
+    {selected && onMove !== null ? (
+      <>
+        <IconButton onClick={() => onMove(false)} label={`Move ${sentenceCase(row.name).toLowerCase()} ${row.number} up`}>
+          <MaterialIcon name="arrow_upward" filled />
+        </IconButton>
+        <IconButton onClick={() => onMove(true)} label={`Move ${sentenceCase(row.name).toLowerCase()} ${row.number} down`}>
+          <MaterialIcon name="arrow_downward" filled />
+        </IconButton>
+      </>
+    ) : null}
+    {selected && onDelete !== null ? (
+      <IconButton onClick={onDelete} label={`Delete ${sentenceCase(row.name).toLowerCase()} ${row.number}`}>
+        <MaterialIcon name="delete" filled style={{ color: md('error') }} />
+      </IconButton>
+    ) : null}
+  </div>
 );
 
 export const MAP_TYPES_VIEW = 'view.mapTypes';
@@ -2078,8 +2143,10 @@ export const dragAllowed = (hit: MapHit, selected: MapHit | null, layer: PlanLay
   }
   if (hit.kind === 'BreachReturn') return layer === PlanLayer.Fence;
   const owner = ownerOf(hit);
-  return layerOf(hit) === layer && owner !== null && owner === ownerOf(selected);
+  return layerOf(hit) === layer && owner !== null && (MARKER_KINDS.has(hit.kind) || owner === ownerOf(selected));
 };
+
+const MARKER_KINDS: ReadonlySet<MapHit['kind']> = new Set(['Waypoint', 'Rally', 'CircleCentre', 'LandingPlace']);
 
 export const tapAddsRally = (layer: PlanLayer, selected: MapHit | null, supported: boolean): boolean => layer === PlanLayer.Rally && supported && (selected === null || selected.kind === 'Rally');
 

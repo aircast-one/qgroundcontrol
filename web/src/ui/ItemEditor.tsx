@@ -89,7 +89,6 @@ const setToVehicleLocation = async (index: number): Promise<string | null> => {
   return coordinate === null ? 'The vehicle has no position yet.' : PlanCommands.setLandingCoordinate(index, coordinate);
 };
 
-const DELETE_LABEL = 'Delete from the plan';
 
 export const areaHelp = (view: Json | null): string | null => blankToNull(optText(view, 'areaHelp'));
 
@@ -188,9 +187,9 @@ export const itemFields = (view: Json | null): readonly Fact[] => {
   });
 };
 
-type ItemEditorProps = { index: number; at: TrackPoint | null; mapCentre: readonly [number, number] | null; legDetail: string | null; onRemove: (() => void) | null };
+type ItemEditorProps = { index: number; at: TrackPoint | null; mapCentre: readonly [number, number] | null; legDetail: string | null };
 
-export const ItemEditor = ({ index, at, mapCentre, legDetail, onRemove }: ItemEditorProps) => {
+export const ItemEditor = ({ index, at, mapCentre, legDetail }: ItemEditorProps) => {
   const [revision, setRevision] = useKeyedState([index], () => 0);
   const [view, setView] = useKeyedState<Json | null>([index], () => null);
   const [choosing, setChoosing] = useKeyedState([index], () => false);
@@ -475,11 +474,6 @@ export const ItemEditor = ({ index, at, mapCentre, legDetail, onRemove }: ItemEd
                 ) : null}
                 {presetsFirst === false ? presets : null}
               </div>
-            ) : null}
-            {onRemove !== null ? (
-              <TextButton className="mx-2 self-start" contentColor={md('error')} onClick={onRemove}>
-                {DELETE_LABEL}
-              </TextButton>
             ) : null}
           </>
         ) : null}

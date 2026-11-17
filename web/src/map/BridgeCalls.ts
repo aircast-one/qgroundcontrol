@@ -17,3 +17,5 @@ export const setRefusal = async (path: string, value: string, fallback: string):
 export const PLAN_UNDO = 'plan.undo';
 
 export const invokeOk = async (path: string, args = '[]'): Promise<boolean> => optBoolean(parseJson(await call<string>('invoke', path, args)), 'ok');
+
+export const invokeRefusal = async (path: string, args: string, fallback: string): Promise<string | null> => refusalIn(parseJson(await call<string>('invoke', path, args)), fallback);

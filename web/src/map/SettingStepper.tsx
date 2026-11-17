@@ -202,6 +202,7 @@ export const SettingStepper = ({
             type="button"
             disabled={!enabled}
             onClick={() => setTyping(true)}
+            aria-label={`${label}: ${stepperText(shown, decimals)}${unit.trim() === '' ? '' : ` ${unit}`}`}
             className="flex items-end justify-center px-1"
             style={{ minWidth: VALUE_MIN_WIDTH }}
           >

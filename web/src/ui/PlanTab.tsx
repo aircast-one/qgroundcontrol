@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { type Json, optBoolean, optInt, optJSONObject, optText } from '@/bridge/Json';
 import { PlanCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
@@ -12,9 +12,9 @@ import type { PlanBar } from '@/map/PlanMapContent';
 import type { PlanStat } from '@/map/PlanStrip';
 import { sentenceCase } from '@/map/SentenceCase';
 import type { TrackPoint } from '@/map/VehicleMap';
-import { NEWEST_PATTERN, PlanFocus } from '@/map/VehicleSync';
-import { Drawable } from '@/res/Icon';
-import type { DrawableName } from '@/res/drawables';
+import { DOWNLOADING, NEWEST_PATTERN, PlanFocus } from '@/map/VehicleSync';
+import { type PlanAction, PlanActions, shortcutHint, usePlanAction, usePlanShortcuts } from '@/map/PlanShortcuts';
+import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { ItemEditor } from '@/ui/ItemEditor';
@@ -41,6 +41,7 @@ import { RouteSettings } from '@/ui/RouteSettings';
 const NOTICE_MILLIS = 4000;
 const HEADER_ALPHA = 0.94;
 const FLY_LABEL = 'Fly';
+export const DOWNLOAD_LABEL = 'Download from vehicle';
 const DISABLED_PILL_ALPHA = 0.38;
 const PILL_HEIGHT = 40;
 const HEADER_CORNER = 20;
@@ -105,7 +106,7 @@ const PlanActionPill = ({
   onClick,
 }: {
   label: string;
-  icon: DrawableName;
+  icon: ReactNode;
   enabled: boolean;
   container: string;
   content: string;
@@ -115,7 +116,7 @@ const PlanActionPill = ({
   <Surface onClick={onClick} enabled={enabled} shape="full" color={container} contentColor={content} className="relative shrink-0 overflow-hidden" style={{ opacity: enabled ? 1 : DISABLED_PILL_ALPHA }}>
     {progress !== null ? <span className="absolute inset-y-0 left-0" style={{ width: `${progress * 100}%`, background: withAlpha(content, 0.28) }} /> : null}
     <span className="relative flex items-center gap-2 pr-6 pl-5" style={{ height: PILL_HEIGHT }}>
-      <Drawable name={icon} size={20} />
+      {icon}
       <Text typography="labelLarge">{label}</Text>
     </span>
   </Surface>
@@ -149,8 +150,8 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
     navigation.planRequest.value = null;
     if (planRequest === 'new' && can.newPlan) setNewPlanOpen(true);
     else if (planRequest === 'open' && can.open) (dirty ? setPending(PlanConfirm.Open) : files.open());
-    else if (planRequest === 'save' && can.save) files.save();
-    else if (planRequest === 'saveAs' && can.save) files.saveAs();
+    else if (planRequest === 'save' && can.save) void files.save();
+    else if (planRequest === 'saveAs' && can.save) void files.saveAs();
   }, [planRequest, planStatus === null]);
 
   const startPlan = (template: string | null) => {
@@ -190,6 +191,21 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
     if (scope.isActive()) setNotice(null);
   });
 
+  const requestDownload = () => (dirty ? setPending(PlanConfirm.Download) : files.download());
+  const requestOpen = () => (dirty ? setPending(PlanConfirm.Open) : files.open());
+  usePlanShortcuts();
+  usePlanAction('save', () => {
+    if (can.save) void files.save();
+  });
+  usePlanAction('redo', () => {
+    if (history.canRedo) void PlanCommands.redo();
+  });
+  const hint = (action: PlanAction) => (
+    <Text typography="labelMedium" color={md('onSurfaceVariant')}>
+      {shortcutHint(action)}
+    </Text>
+  );
+
   const changePrompt = vehicleChangePrompt(planStatus);
   const altitudePrompt = applyAltitudePrompt(planStatus);
   const keep = () => void Qgc.invoke(KEEP_CURRENT_PLAN);
@@ -213,15 +229,29 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
         title={copy.title}
         text={copy.body}
         confirmButton={
-          <TextButton
-            contentColor={copy.destructive ? md('error') : undefined}
-            onClick={() => {
-              setPending(null);
-              act();
-            }}
-          >
-            {copy.confirm}
-          </TextButton>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TextButton
+              contentColor={copy.destructive ? md('error') : undefined}
+              onClick={() => {
+                setPending(null);
+                act();
+              }}
+            >
+              {copy.confirm}
+            </TextButton>
+            {copy.saveFirst === null ? null : (
+              <Button
+                onClick={() => {
+                  setPending(null);
+                  void (async () => {
+                    if (await files.save()) act();
+                  })();
+                }}
+              >
+                {copy.saveFirst}
+              </Button>
+            )}
+          </div>
         }
         dismissButton={<TextButton onClick={() => setPending(null)}>Keep editing</TextButton>}
       />
@@ -253,7 +283,7 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
           {bar.upload.shown ? (
             <PlanActionPill
               label={bar.upload.done ? FLY_LABEL : bar.upload.label}
-              icon={bar.upload.done ? 'ic_flight' : bar.warning !== null ? 'ic_warning' : 'ic_upload'}
+              icon={<Drawable name={bar.upload.done ? 'ic_flight' : bar.upload.label === DOWNLOADING ? 'ic_download' : bar.warning !== null ? 'ic_warning' : 'ic_upload'} size={20} />}
               enabled={bar.upload.enabled}
               container={bar.upload.done ? aircast('success') : bar.upload.emphasised ? md('primary') : md('surfaceContainerHighest')}
               content={bar.upload.done ? aircast('onSuccess') : bar.upload.emphasised ? md('onPrimary') : md('onSurface')}
@@ -263,12 +293,12 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
           ) : containsItems ? (
             <PlanActionPill
               label={dirty ? 'Save' : 'Saved'}
-              icon={dirty ? 'ic_download' : 'ic_check_circle'}
+              icon={dirty ? <MaterialIcon name="save" size={20} /> : <Drawable name="ic_check_circle" size={20} />}
               enabled={can.save && dirty}
               container={dirty ? md('primary') : md('surfaceContainerHighest')}
               content={dirty ? md('onPrimary') : md('onSurface')}
               progress={null}
-              onClick={() => files.save()}
+              onClick={() => void files.save()}
             />
           ) : null}
           <Surface shape="full" color={withAlpha(md('surfaceContainer'), HEADER_ALPHA)} className="shrink-0">
@@ -277,77 +307,23 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
             </IconButton>
             <DropdownMenu expanded={menuOpen} onDismissRequest={() => setMenuOpen(false)}>
               <DropdownMenuItem
+                text="Undo"
+                leadingIcon={<Drawable name="plan_undo" />}
+                trailingIcon={hint('undo')}
+                enabled={history.canUndo}
+                onClick={() => {
+                  setMenuOpen(false);
+                  PlanActions.run('undo');
+                }}
+              />
+              <DropdownMenuItem
                 text="Redo"
                 leadingIcon={<Drawable name="ic_redo" />}
+                trailingIcon={hint('redo')}
                 enabled={history.canRedo}
                 onClick={() => {
                   setMenuOpen(false);
                   void PlanCommands.redo();
-                }}
-              />
-              <HorizontalDivider />
-              <DropdownMenuItem
-                text="Open plan…"
-                leadingIcon={<Drawable name="ic_description" />}
-                enabled={can.open}
-                onClick={() => {
-                  setMenuOpen(false);
-                  if (dirty) setPending(PlanConfirm.Open);
-                  else files.open();
-                }}
-              />
-              <DropdownMenuItem
-                text="Save"
-                leadingIcon={<Drawable name="ic_download" />}
-                enabled={can.save}
-                onClick={() => {
-                  setMenuOpen(false);
-                  files.save();
-                }}
-              />
-              <DropdownMenuItem
-                text="Save as…"
-                leadingIcon={<Drawable name="ic_edit" />}
-                enabled={can.save}
-                onClick={() => {
-                  setMenuOpen(false);
-                  files.saveAs();
-                }}
-              />
-              <DropdownMenuItem
-                text="Export KML…"
-                leadingIcon={<Drawable name="ic_send" />}
-                enabled={can.exportKml}
-                onClick={() => {
-                  setMenuOpen(false);
-                  files.exportKml();
-                }}
-              />
-              <DropdownMenuItem
-                text="Import boundary…"
-                leadingIcon={<Drawable name="ic_map" />}
-                enabled={can.open}
-                onClick={() => {
-                  setMenuOpen(false);
-                  files.importBoundary();
-                }}
-              />
-              <HorizontalDivider />
-              <DropdownMenuItem
-                text="Defaults…"
-                leadingIcon={<Drawable name="ic_tune" />}
-                onClick={() => {
-                  setMenuOpen(false);
-                  setShowDefaults(true);
-                }}
-              />
-              <DropdownMenuItem
-                text="Transform…"
-                leadingIcon={<Drawable name="ic_straighten" />}
-                enabled={containsItems}
-                onClick={() => {
-                  setMenuOpen(false);
-                  setShowTransform(true);
                 }}
               />
               <HorizontalDivider />
@@ -361,13 +337,41 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
                 }}
               />
               <DropdownMenuItem
-                text="Load from vehicle"
-                leadingIcon={<Drawable name="ic_upload" />}
+                text="Open plan…"
+                leadingIcon={<Drawable name="ic_description" />}
+                enabled={can.open}
+                onClick={() => {
+                  setMenuOpen(false);
+                  requestOpen();
+                }}
+              />
+              <DropdownMenuItem
+                text="Save"
+                leadingIcon={<MaterialIcon name="save" />}
+                trailingIcon={hint('save')}
+                enabled={can.save}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void files.save();
+                }}
+              />
+              <DropdownMenuItem
+                text="Save as…"
+                leadingIcon={<Drawable name="ic_edit" />}
+                enabled={can.save}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void files.saveAs();
+                }}
+              />
+              <HorizontalDivider />
+              <DropdownMenuItem
+                text={DOWNLOAD_LABEL}
+                leadingIcon={<Drawable name="ic_download" />}
                 enabled={can.download}
                 onClick={() => {
                   setMenuOpen(false);
-                  if (dirty) setPending(PlanConfirm.Download);
-                  else files.download();
+                  requestDownload();
                 }}
               />
               <DropdownMenuItem
@@ -380,6 +384,43 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
                   setPending(PlanConfirm.ClearMission);
                 }}
               />
+              <HorizontalDivider />
+              <DropdownMenuItem
+                text="Import boundary…"
+                leadingIcon={<Drawable name="ic_map" />}
+                enabled={can.open}
+                onClick={() => {
+                  setMenuOpen(false);
+                  files.importBoundary();
+                }}
+              />
+              <DropdownMenuItem
+                text="Export KML…"
+                leadingIcon={<Drawable name="ic_send" />}
+                enabled={can.exportKml}
+                onClick={() => {
+                  setMenuOpen(false);
+                  files.exportKml();
+                }}
+              />
+              <DropdownMenuItem
+                text="Transform…"
+                leadingIcon={<Drawable name="ic_straighten" />}
+                enabled={containsItems}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setShowTransform(true);
+                }}
+              />
+              <DropdownMenuItem
+                text="Defaults…"
+                leadingIcon={<Drawable name="ic_tune" />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setShowDefaults(true);
+                }}
+              />
+              <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-6 h-6" style={{ background: `linear-gradient(transparent, ${md('surfaceContainer')})` }} />
             </DropdownMenu>
           </Surface>
         </div>
@@ -460,9 +501,10 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
             setCentre([lat, lon]);
             setZoom(level);
           }}
-          itemPanel={(index: number, at: TrackPoint | null, leg: string | null, remove: (() => void) | null) => <ItemEditor index={index} at={at} mapCentre={centre} legDetail={leg} onRemove={remove} />}
+          itemPanel={(index: number, at: TrackPoint | null, leg: string | null) => <ItemEditor index={index} at={at} mapCentre={centre} legDetail={leg} />}
           routeSettings={() => <RouteSettings plan={planStatus} />}
           onTemplates={() => setNewPlanOpen(true)}
+          onDownload={requestDownload}
           header={header}
         />
       </div>
