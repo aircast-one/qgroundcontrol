@@ -108,6 +108,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
                         "id": id,
                         "sizeBytes": size,
                         "sizeText": human_size(size),
+                        "downloadedBytes": e.get("downloaded").and_then(Value::as_i64).unwrap_or(0),
                         "status": e.get("status").and_then(Value::as_str).unwrap_or(""),
                         "statusId": e.get("statusId").and_then(Value::as_str).unwrap_or(""),
                         "received": flag(e, "received"),

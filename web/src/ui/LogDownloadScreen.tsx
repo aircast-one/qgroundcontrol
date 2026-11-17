@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, isJson, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { savedFile } from '@/core/files';
 import { createDocument } from '@/kotlin/Platform';
-import { AlertDialog, Checkbox, ExtendedFloatingActionButton, FilledTonalButton, LinearProgressIndicator, OutlinedButton, Surface, Text, TextButton } from '@/m3';
+import { AlertDialog, Button, Checkbox, FilledTonalButton, LinearProgressIndicator, OutlinedButton, Surface, Text, TextButton } from '@/m3';
 import { sentenceCase } from '@/map/SentenceCase';
 import { Drawable } from '@/res/Icon';
 import { md } from '@/theme/Colors';
@@ -52,6 +52,8 @@ export type LogEntry = {
   id: number;
   time: string;
   sizeStr: string;
+  sizeBytes: number;
+  downloadedBytes: number;
   received: boolean;
   selected: boolean;
   status: string;
@@ -60,20 +62,23 @@ export type LogEntry = {
   savedPath: string;
 };
 
-export const LogEntry = (fields: Omit<LogEntry, 'downloading' | 'saved' | 'savedPath'> & { downloading?: boolean; saved?: boolean; savedPath?: string }): LogEntry => ({ downloading: false, saved: false, savedPath: '', ...fields });
+export const LogEntry = (
+  fields: Omit<LogEntry, 'downloading' | 'saved' | 'savedPath' | 'sizeBytes' | 'downloadedBytes'> & { downloading?: boolean; saved?: boolean; savedPath?: string; sizeBytes?: number; downloadedBytes?: number },
+): LogEntry => ({ downloading: false, saved: false, savedPath: '', sizeBytes: 0, downloadedBytes: 0, ...fields });
 
-export const logSections = (entries: readonly LogEntry[]): (readonly [string, readonly LogEntry[]])[] =>
-  (
-    [
-      ['On the vehicle', entries.filter((it) => !it.saved)],
-      [__DESKTOP__ ? 'On this computer' : 'In this browser', entries.filter((it) => it.saved)],
-    ] as const
-  ).filter(([, section]) => section.length > 0);
+export const ON_THE_VEHICLE = 'On the vehicle';
 
-export const downloadCard = (entries: readonly LogEntry[]): readonly [string, string] => {
+export type DownloadCard = { title: string; progress: string; fraction: number | undefined };
+
+export const downloadCard = (entries: readonly LogEntry[]): DownloadCard => {
   const fetching = entries.find((it) => it.downloading);
-  return fetching === undefined ? ['Downloading', ''] : [`Downloading log ${fetching.id}`, fetching.status];
+  if (fetching === undefined) return { title: 'Downloading', progress: '', fraction: undefined };
+  return { title: `Downloading log ${fetching.id}`, progress: fetching.status, fraction: fetching.sizeBytes > 0 ? Math.min(fetching.downloadedBytes / fetching.sizeBytes, 1) : undefined };
 };
+
+export const downloadLabel = (selected: number): string => (selected > 0 ? `Download (${selected})` : 'Download');
+
+export const newlySaved = (entries: readonly LogEntry[], awaited: ReadonlySet<number>): readonly LogEntry[] => entries.filter((it) => awaited.has(it.id) && it.saved && it.savedPath !== '');
 
 export type LogsView = {
   connected: boolean;
@@ -109,6 +114,8 @@ export const logsView = (view: Json | null): LogsView | null =>
                   id: optInt(entry, 'id'),
                   time: logTimeText(optText(entry, 'time'), optText(entry, 'timeState'), (it) => compactLogTime(it, new Date())),
                   sizeStr: optText(entry, 'sizeText'),
+                  sizeBytes: optInt(entry, 'sizeBytes'),
+                  downloadedBytes: optInt(entry, 'downloadedBytes'),
                   received: optBoolean(entry, 'received'),
                   selected: optBoolean(entry, 'selected'),
                   status: optText(entry, 'status'),
@@ -211,9 +218,9 @@ const LogRow = ({ entry, enabled, onToggle }: { entry: LogEntry; enabled: boolea
           {entry.status}
         </Text>
       </button>
-      {entry.saved && entry.savedPath !== '' ? (
-        <TextButton label={`Save log ${entry.id}`} onClick={() => void saveToDevice(entry.savedPath)} className="mr-2">
-          Save
+      {entry.saved && entry.savedPath !== '' && !__DESKTOP__ ? (
+        <TextButton label={`Save log ${entry.id} again`} onClick={() => void saveToDevice(entry.savedPath)} className="mr-2">
+          Save again
         </TextButton>
       ) : null}
     </div>
@@ -237,6 +244,7 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
   const json = useQgcPath(LOGS_VIEW);
   const logs = useMemo(() => logsView(json), [json]);
   const [confirmErase, setConfirmErase] = useState<EraseKind | null>(null);
+  const awaited = useRef<ReadonlySet<number>>(new Set());
 
   const entries = logs?.entries ?? [];
   const selectedCount = entries.filter((it) => it.selected).length;
@@ -247,6 +255,18 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
   useEffect(() => {
     if (shouldAutoRefreshLogs(connected, busy)) invoke('refresh');
   }, [connected]);
+
+  useEffect(() => {
+    const saved = newlySaved(entries, awaited.current);
+    if (saved.length === 0) return;
+    awaited.current = new Set([...awaited.current].filter((id) => !saved.some((it) => it.id === id)));
+    saved.map((it) => void saveToDevice(it.savedPath));
+  }, [entries]);
+
+  const download = () => {
+    awaited.current = __DESKTOP__ ? new Set() : new Set(entries.filter((it) => it.selected).map((it) => it.id));
+    invoke('download');
+  };
 
   const blocks = <BlocksNavigation blocking={logs?.downloading === true} reason={LOG_DOWNLOAD_BLOCK} />;
 
@@ -264,7 +284,7 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
     );
   }
 
-  const [title, progress] = downloadCard(entries);
+  const card = downloadCard(entries);
   const savedTo = savedToText(logs);
   return (
     <div className={`relative h-full w-full ${className ?? ''}`}>
@@ -275,6 +295,10 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
           <FilledTonalButton onClick={() => invoke('refresh')} enabled={logs.canRefresh}>
             Refresh
           </FilledTonalButton>
+          <Button onClick={download} enabled={logs.canDownload && selectedCount > 0} title={selectedCount > 0 ? undefined : 'Select the logs to download'}>
+            <Drawable name="ic_download" />
+            {downloadLabel(selectedCount)}
+          </Button>
           {logs.sortText.trim() !== '' ? (
             <FilledTonalButton onClick={() => invoke('toggleSortByDate')} enabled={logs.canSort}>
               {sentenceCase(logs.sortText)}
@@ -301,16 +325,16 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
               <div className="flex flex-col gap-2.5 p-4">
                 <div className="flex items-center">
                   <Text typography="titleSmall" className="flex-1">
-                    {title}
+                    {card.title}
                   </Text>
-                  {progress.trim() !== '' ? (
+                  {card.progress.trim() !== '' ? (
                     <Text typography="labelMedium" color={md('onSurfaceVariant')}>
-                      {progress}
+                      {card.progress}
                     </Text>
                   ) : null}
                   {logs.canCancel ? <TextButton onClick={() => invoke('cancel')}>Cancel</TextButton> : null}
                 </div>
-                <LinearProgressIndicator />
+                <LinearProgressIndicator progress={card.fraction} label={card.title} />
               </div>
             </Surface>
           </div>
@@ -319,13 +343,9 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
           <EmptyState icon="ic_description" title="No logs yet" text={logs.emptyText.trim() === '' ? 'This vehicle reports no flight logs.' : logs.emptyText} />
         ) : (
           <div className="min-h-0 w-full flex-1 overflow-auto">
-            {logSections(entries).map(([sectionTitle, section]) => (
-              <div key={sectionTitle}>
-                <SectionHeader text={sectionTitle} />
-                {section.map((entry) => (
-                  <LogRow key={entry.index} entry={entry} enabled={!busy} onToggle={(checked) => void select(entry, checked)} />
-                ))}
-              </div>
+            <SectionHeader text={ON_THE_VEHICLE} />
+            {entries.map((entry) => (
+              <LogRow key={entry.index} entry={entry} enabled={!busy} onToggle={(checked) => void select(entry, checked)} />
             ))}
             <div>
               {!busy ? (
@@ -340,7 +360,6 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
                   </OutlinedButton>
                 </div>
               ) : null}
-              <div className="h-[88px]" />
             </div>
           </div>
         )}
@@ -350,18 +369,6 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
           </Text>
         ) : null}
       </div>
-      {logs.canDownload && selectedCount > 0 ? (
-        <ExtendedFloatingActionButton
-          onClick={() => invoke('download')}
-          label={`Download (${selectedCount})`}
-          containerColor={md('primaryContainer')}
-          contentColor={md('onPrimaryContainer')}
-          className="absolute right-4 bottom-4"
-        >
-          <Drawable name="ic_download" />
-          {`Download (${selectedCount})`}
-        </ExtendedFloatingActionButton>
-      ) : null}
     </div>
   );
 };

@@ -66,6 +66,7 @@ pub struct Entry {
     pub status: String,
     pub ftp_path: Option<String>,
     pub saved: Option<std::path::PathBuf>,
+    pub downloaded: u64,
 }
 
 impl Entry {
@@ -79,6 +80,7 @@ impl Entry {
             status: "Pending".to_string(),
             ftp_path: None,
             saved: None,
+            downloaded: 0,
         }
     }
 
@@ -355,6 +357,7 @@ impl OnboardLogs {
                     None => format!("{}/{name}", self.ftp.root),
                 }),
                 saved: None,
+                downloaded: 0,
             })
             .collect();
         self.ftp.next_id += found.len() as u16;
@@ -485,6 +488,13 @@ impl OnboardLogs {
     fn set_status(&mut self, id: u16, status: &str) {
         if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
             entry.status = status.to_string();
+        }
+    }
+
+    fn set_progress(&mut self, id: u16, status: &str, downloaded: u64) {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+            entry.status = status.to_string();
+            entry.downloaded = downloaded;
         }
     }
 
@@ -640,8 +650,8 @@ impl OnboardLogs {
             big_size_text(download.rate_avg as u64)
         );
         download.last_status_written = download.written;
-        let id = download.id;
-        self.set_status(id, &status);
+        let (id, written) = (download.id, download.written);
+        self.set_progress(id, &status, written);
     }
 
     pub fn on_data(&mut self, offset: u32, id: u16, data: &[u8], now_ms: u64) -> Vec<Out> {
@@ -865,7 +875,7 @@ impl OnboardLogs {
             big_size_text(total),
             big_size_text(self.ftp.rate_avg as u64)
         );
-        self.set_status(id, &status);
+        self.set_progress(id, &status, total);
     }
 
     pub fn erase_selected(&mut self) -> Vec<Out> {
@@ -996,6 +1006,7 @@ impl OnboardLogs {
             "savedPath": entry.saved.as_ref().map(|path| path.to_string_lossy()),
             "status": entry.status,
             "statusId": entry.status_id(),
+            "downloaded": entry.downloaded,
             "time": entry.time_utc.and_then(local_time).map(|t| t.format("%Y-%m-%dT%H:%M:%S%.3f").to_string()),
         })
     }
@@ -1126,9 +1137,14 @@ mod tests {
                 count: 180
             }]
         );
-        assert!(logs.on_data(90, 0, &[2; 90], 10).is_empty());
+        assert!(logs.on_data(90, 0, &[2; 90], GUI_RATE_MS).is_empty());
+        assert_eq!(
+            logs.model_json()["elements"][0]["downloaded"],
+            90,
+            "the head draws how much of the log has arrived"
+        );
         assert!(
-            logs.on_data(0, 0, &[1; 90], 20).is_empty(),
+            logs.on_data(0, 0, &[1; 90], GUI_RATE_MS + 10).is_empty(),
             "the last missing packet completes the log and nothing else is selected"
         );
         assert_eq!(

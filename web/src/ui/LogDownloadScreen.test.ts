@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { TIME_UNKNOWN, TIME_UNRECEIVED, type LogsView, compactLogTime, downloadCard, logLocalTime, logSections, logTimeText, logsView, savedToText, shouldAutoRefreshLogs } from './LogDownloadScreen';
+import { TIME_UNKNOWN, TIME_UNRECEIVED, type LogsView, compactLogTime, downloadCard, downloadLabel, logLocalTime, logTimeText, logsView, newlySaved, savedToText, shouldAutoRefreshLogs } from './LogDownloadScreen';
 
 const served = `
   {"connected":true,"busy":false,"canRefresh":true,"canDownload":true,
@@ -22,21 +22,23 @@ const read = (text: string): LogsView => {
 };
 
 describe('LogDownloadScreenTest', () => {
-  it("logs split into the vehicle's and the browser's by status id", () => {
+  it('a log downloaded at the operator\'s request is saved to disk once it lands, and only that log', () => {
     const saved = served.replace('"status":"Downloaded",', '"status":"Downloaded","statusId":"downloaded","savedPath":"/logs/log_1_UnknownDate.bin",');
-    const sections = logSections(read(saved).entries);
-    expect(sections.map(([title, logs]) => [title, logs.map((it) => it.id)])).toEqual([
-      ['On the vehicle', [2]],
-      ['In this browser', [1]],
-    ]);
-    expect(read(saved).entries.map((it) => it.savedPath)).toEqual(['/logs/log_1_UnknownDate.bin', '']);
-    expect(logSections(read(served).entries).map(([title]) => title)).toEqual(['On the vehicle']);
+    const entries = read(saved).entries;
+    expect(entries.map((it) => it.savedPath)).toEqual(['/logs/log_1_UnknownDate.bin', '']);
+    expect(newlySaved(entries, new Set([1, 2])).map((it) => it.id)).toEqual([1]);
+    expect(newlySaved(entries, new Set([2]))).toEqual([]);
   });
 
-  it('the download card names the log being fetched by its status id, not its translated status', () => {
-    const downloading = served.replace('"status":"Available",', '"status":"1.2 MB (300 KB/s)","statusId":"downloading",');
-    expect(downloadCard(read(downloading).entries)).toEqual(['Downloading log 2', '1.2 MB (300 KB/s)']);
-    expect(downloadCard(read(served).entries)).toEqual(['Downloading', '']);
+  it('the download card names the log being fetched and how much of it has arrived', () => {
+    const downloading = served.replace('"status":"Available",', '"status":"1.2 MB (300 KB/s)","statusId":"downloading","downloadedBytes":2560,');
+    expect(downloadCard(read(downloading).entries)).toEqual({ title: 'Downloading log 2', progress: '1.2 MB (300 KB/s)', fraction: 0.25 });
+    expect(downloadCard(read(served).entries)).toEqual({ title: 'Downloading', progress: '', fraction: undefined });
+  });
+
+  it('Download is always on the toolbar and counts the selection once there is one', () => {
+    expect(downloadLabel(0)).toBe('Download');
+    expect(downloadLabel(2)).toBe('Download (2)');
   });
 
   it("the entries carry the core's formatted size and time", () => {
