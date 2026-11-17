@@ -1,6 +1,13 @@
 {
   "identifier": "one.aircast.mac",
   "bundle": {
+    "icon": [
+      "icons/Assets.car",
+      "icons/icon.icns",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ],
     "macOS": {
       "entitlements": "macos/Aircast.entitlements",
       "hardenedRuntime": true

@@ -131,6 +131,8 @@ jobs:
           test -x "$app/Contents/MacOS/aircast-desktop"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = one.aircast.mac
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "${SHORT#v}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist")" = AppIcon
+          xcrun assetutil --info "$app/Contents/Resources/Assets.car" | grep -q '"Name" : "AppIcon"'
           test -L "$mount/Applications"
           codesign --verify --deep --strict --verbose=2 "$app"
           if [ "$SIGNED" == "true" ]; then

@@ -142,6 +142,16 @@ desktop-bundle:
     ./web/build-core.sh
     cd web && npm ci && npx tauri build
 
+# Compile the desktop app's macOS icon from its Icon Composer source (needs Xcode 26 or newer)
+desktop-icon:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$(mktemp -d)
+    xcrun actool web/src-tauri/icons/AppIcon.icon --compile "$out" --app-icon AppIcon --include-all-app-icons --enable-on-demand-resources NO --development-region en --target-device mac --platform macosx --minimum-deployment-target 11.0 --output-partial-info-plist "$out/info.plist" < /dev/null > /dev/null
+    cp "$out/Assets.car" web/src-tauri/icons/Assets.car
+    cp "$out/AppIcon.icns" web/src-tauri/icons/icon.icns
+    rm -rf "$out"
+
 # Type-check, unit-test and bundle the web head
 web-checks:
     ./web/build-core.sh
