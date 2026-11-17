@@ -939,9 +939,7 @@ fn remove(args: &str) -> Value {
         return refused("Remove needs the index of the item.");
     };
     let answer = edit(|doc| {
-        plandoc::remove(doc, index)
-            .map(|after| plandoc::after_scan_removed(doc, after))
-            .ok_or_else(|| format!("This plan has no item {index} to remove."))
+        plandoc::remove(doc, index).map(|after| plandoc::after_scan_removed(doc, after))
     });
     if answer["ok"] == true {
         let mut state = held();

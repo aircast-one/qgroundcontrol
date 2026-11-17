@@ -986,17 +986,9 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
         "readyForSaveState": READY_TO_SAVE,
         "facts": altitude_fact("plannedHomePositionAltitude", home[2]),
     });
-    let starts = doc
-        .items
-        .iter()
-        .scan(doc.settings_sections.len() + 1, |next, item| {
-            let start = *next;
-            *next += match item {
-                crate::plandoc::Item::Simple(s) => 1 + s.sections.len(),
-                crate::plandoc::Item::Complex { item_count, .. } => *item_count,
-            };
-            Some(start)
-        });
+    let starts = crate::plandoc::item_spans(doc)
+        .into_iter()
+        .map(|(start, _)| start);
     let first_landing = doc.items.iter().position(|item| matches!(item, crate::plandoc::Item::Complex { kind, .. } if crate::landingpattern::is_landing(kind)));
     let reads: Vec<Value> = doc
         .items

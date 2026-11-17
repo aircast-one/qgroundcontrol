@@ -321,6 +321,83 @@ fn load_with(text: &str, offline_vehicle_type: i64, jumps: Jumps) -> Result<Docu
 
 const CMD_DO_JUMP: i64 = 177;
 
+pub fn item_spans(doc: &Document) -> Vec<(usize, usize)> {
+    doc.items
+        .iter()
+        .scan(doc.settings_sections.len() + 1, |next, item| {
+            let start = *next;
+            let span = match item {
+                Item::Simple(simple) => 1 + simple.sections.len(),
+                Item::Complex { item_count, .. } => *item_count,
+            };
+            *next += span;
+            Some((start, span))
+        })
+        .collect()
+}
+
+fn jump_seq(item: &Item) -> Option<f64> {
+    match item {
+        Item::Simple(simple) if simple.command == CMD_DO_JUMP => simple.params[0],
+        _ => None,
+    }
+}
+
+fn jump_target(spans: &[(usize, usize)], seq: Option<f64>) -> Option<(usize, usize)> {
+    let seq = seq.filter(|seq| seq.is_finite() && *seq >= 1.0)? as usize;
+    spans
+        .iter()
+        .position(|(start, span)| (*start..start + span).contains(&seq))
+        .map(|at| (at, seq - spans[at].0))
+}
+
+fn kept_jumps(
+    before: &Document,
+    after: Document,
+    moved_to: &dyn Fn(usize) -> Option<usize>,
+) -> Document {
+    let (old, new) = (item_spans(before), item_spans(&after));
+    let came_from = |to: usize| (0..before.items.len()).find(|from| moved_to(*from) == Some(to));
+    let items = after
+        .items
+        .iter()
+        .enumerate()
+        .map(|(to, item)| {
+            let retargeted = came_from(to)
+                .and(jump_target(&old, jump_seq(item)))
+                .and_then(|(target, offset)| Some(new[moved_to(target)?].0 + offset));
+            match (item, retargeted) {
+                (Item::Simple(jump), Some(seq)) => Item::Simple(Simple {
+                    params: std::array::from_fn(|i| match i {
+                        0 => Some(seq as f64),
+                        _ => jump.params[i],
+                    }),
+                    ..jump.clone()
+                }),
+                _ => item.clone(),
+            }
+        })
+        .collect();
+    Document { items, ..after }
+}
+
+fn inserted_at(doc: &Document, at: usize, item: Item) -> Document {
+    let items = doc.items[..at]
+        .iter()
+        .cloned()
+        .chain(std::iter::once(item))
+        .chain(doc.items[at..].iter().cloned())
+        .collect();
+    kept_jumps(
+        doc,
+        Document {
+            items,
+            ..doc.clone()
+        },
+        &|from| Some(if from < at { from } else { from + 1 }),
+    )
+}
+
 fn resolve_jumps(items: Vec<Item>, saved: &[Value]) -> Result<Vec<Item>, String> {
     let starts = items.iter().scan(1i64, |next, item| {
         let start = *next;
@@ -775,16 +852,7 @@ pub fn insert_simple(
         .ok()
         .filter(|i| *i <= doc.items.len())
         .unwrap_or(doc.items.len());
-    let items: Vec<Item> = doc.items[..at]
-        .iter()
-        .cloned()
-        .chain(std::iter::once(Item::Simple(placed)))
-        .chain(doc.items[at..].iter().cloned())
-        .collect();
-    let placed = Document {
-        items,
-        ..doc.clone()
-    };
+    let placed = inserted_at(doc, at, Item::Simple(placed));
     Document {
         home: doc
             .home
@@ -823,27 +891,21 @@ pub fn insert_complex(
         .ok()
         .filter(|i| *i <= doc.items.len())
         .unwrap_or(doc.items.len());
-    let item = Item::Complex {
-        kind: kind.to_string(),
-        json,
-        item_count,
-    };
-    let items: Vec<Item> = doc.items[..at]
-        .iter()
-        .cloned()
-        .chain(std::iter::once(item))
-        .chain(doc.items[at..].iter().cloned())
-        .collect();
+    let placed = inserted_at(
+        doc,
+        at,
+        Item::Complex {
+            kind: kind.to_string(),
+            json,
+            item_count,
+        },
+    );
     let home = doc.home.or_else(|| {
         let (lat, lon) =
             crate::surveygrid::at_distance_and_azimuth(center, PLANNED_HOME_OFFSET_M, 0.0);
         Some([lat, lon, 0.0])
     });
-    Document {
-        items,
-        home,
-        ..doc.clone()
-    }
+    Document { home, ..placed }
 }
 
 const CMD_DO_SET_ROI: i64 = 201;
@@ -1609,35 +1671,56 @@ pub fn move_item(doc: &Document, visual_index: usize, later: bool) -> Result<Doc
     if pins_order(doc, &doc.items[at]) || pins_order(doc, &doc.items[to]) {
         return Err(ORDER_PINNED.to_string());
     }
-    Ok(Document {
-        items: doc
-            .items
-            .iter()
-            .enumerate()
-            .map(|(i, item)| match i {
-                i if i == at => doc.items[to].clone(),
-                i if i == to => doc.items[at].clone(),
-                _ => item.clone(),
-            })
-            .collect(),
-        ..doc.clone()
-    })
+    let swapped = |i: usize| match i {
+        i if i == at => to,
+        i if i == to => at,
+        i => i,
+    };
+    Ok(kept_jumps(
+        doc,
+        Document {
+            items: (0..doc.items.len())
+                .map(|i| doc.items[swapped(i)].clone())
+                .collect(),
+            ..doc.clone()
+        },
+        &|from| Some(swapped(from)),
+    ))
 }
 
-pub fn remove(doc: &Document, visual_index: usize) -> Option<Document> {
+pub fn remove(doc: &Document, visual_index: usize) -> Result<Document, String> {
     let at = visual_index
         .checked_sub(1)
-        .filter(|i| *i < doc.items.len())?;
-    Some(Document {
-        items: doc
-            .items
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| *i != at)
-            .map(|(_, item)| item.clone())
-            .collect(),
-        ..doc.clone()
-    })
+        .filter(|i| *i < doc.items.len())
+        .ok_or_else(|| format!("This plan has no item {visual_index} to remove."))?;
+    let spans = item_spans(doc);
+    let jumped_from = doc.items.iter().enumerate().find(|(from, item)| {
+        *from != at && jump_target(&spans, jump_seq(item)).is_some_and(|(target, _)| target == at)
+    });
+    if let Some((from, _)) = jumped_from {
+        return Err(format!(
+            "The jump at item {} goes to item {}. Change or remove that jump first.",
+            spans[from].0, spans[at].0
+        ));
+    }
+    Ok(kept_jumps(
+        doc,
+        Document {
+            items: doc
+                .items
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != at)
+                .map(|(_, item)| item.clone())
+                .collect(),
+            ..doc.clone()
+        },
+        &|from| match from {
+            from if from < at => Some(from),
+            from if from == at => None,
+            from => Some(from - 1),
+        },
+    ))
 }
 
 pub fn save(doc: &Document) -> Value {
@@ -2051,7 +2134,9 @@ pub fn after_scan_removed(before: &Document, after: Document) -> Document {
         && !has_area_scan(&after)
         && camera_state(&after.settings_sections).mode == Some(CAMERA_MODE_IMAGE);
     match undo {
-        true => set_camera(&after, 0, "specifyCameraMode", &json!(false)).unwrap_or(after),
+        true => set_camera(&after, 0, "specifyCameraMode", &json!(false))
+            .map(|unmoded| kept_jumps(&after, unmoded, &Some))
+            .unwrap_or(after),
         false => after,
     }
 }
@@ -2547,10 +2632,10 @@ mod tests {
             include_str!("../tests/fixtures/edit-C-by-qt.plan"),
         );
         assert!(
-            remove(&section(), 0).is_none(),
+            remove(&section(), 0).is_err(),
             "visual index zero is the mission settings item, which is never removed"
         );
-        assert!(remove(&section(), 6).is_none());
+        assert!(remove(&section(), 6).is_err());
     }
 
     #[test]
@@ -3686,6 +3771,145 @@ mod tests {
         assert_eq!(
             load(&plan(json!([item(177, 1, 9.0)])), 2).unwrap_err(),
             "Mission: Could not find doJumpId: 9"
+        );
+    }
+
+    fn jumping() -> Document {
+        let item = |command: i64, id: i64, p1: f64, latitude: f64| json!({ "type": "SimpleItem", "command": command, "frame": 3, "doJumpId": id, "autoContinue": true, "params": [p1, 0, 0, 0, latitude, 8.0, 50] });
+        let loaded = load(
+            &json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 2, "plannedHomePosition": [47.0, 8.0, 0], "items": [
+                item(22, 1, 0.0, 47.0),
+                item(16, 2, 0.0, 47.001),
+                item(16, 3, 0.0, 47.002),
+                item(16, 4, 0.0, 47.003),
+                item(177, 5, 3.0, 0.0)
+            ] } })
+            .to_string(),
+            2,
+        )
+        .unwrap();
+        let survey = Item::Complex {
+            kind: "survey".to_string(),
+            json: json!({}),
+            item_count: 4,
+        };
+        jump_to(
+            &Document {
+                items: [
+                    &loaded.items[..2],
+                    std::slice::from_ref(&survey),
+                    &loaded.items[2..],
+                ]
+                .concat(),
+                ..loaded
+            },
+            7.0,
+        )
+    }
+
+    fn jump_to(doc: &Document, seq: f64) -> Document {
+        Document {
+            items: doc
+                .items
+                .iter()
+                .map(|item| match item {
+                    Item::Simple(jump) if jump.command == CMD_DO_JUMP => Item::Simple(Simple {
+                        params: std::array::from_fn(|i| match i {
+                            0 => Some(seq),
+                            _ => jump.params[i],
+                        }),
+                        ..jump.clone()
+                    }),
+                    other => other.clone(),
+                })
+                .collect(),
+            ..doc.clone()
+        }
+    }
+
+    fn jump_lands_on(doc: &Document) -> (Option<f64>, Option<f64>, usize) {
+        let spans = item_spans(doc);
+        let seq = doc.items.iter().find_map(jump_seq);
+        let (at, offset) = jump_target(&spans, seq).unwrap();
+        let latitude = match &doc.items[at] {
+            Item::Simple(simple) => simple.params[4],
+            Item::Complex { .. } => None,
+        };
+        (seq, latitude, offset)
+    }
+
+    #[test]
+    fn a_jump_keeps_landing_on_the_same_item_when_items_move_around_it() {
+        let doc = jumping();
+        assert_eq!(
+            jump_lands_on(&doc),
+            (Some(7.0), Some(47.002), 0),
+            "takeoff 1, waypoint 2, the survey's four 3 to 6, then the target at 7"
+        );
+        assert_eq!(
+            jump_lands_on(&move_item(&doc, 3, false).unwrap()),
+            (Some(7.0), Some(47.002), 0),
+            "swapping two items before the target leaves its sequence alone"
+        );
+        let target_up = move_item(&doc, 4, false).unwrap();
+        assert_eq!(
+            jump_lands_on(&target_up),
+            (Some(3.0), Some(47.002), 0),
+            "the target moved above the survey, so it is four sequence numbers earlier"
+        );
+        assert_eq!(
+            jump_lands_on(&move_item(&target_up, 3, true).unwrap()),
+            (Some(7.0), Some(47.002), 0)
+        );
+        assert_eq!(
+            jump_lands_on(&move_item(&doc, 4, true).unwrap()),
+            (Some(8.0), Some(47.002), 0),
+            "the target moved one place down"
+        );
+        assert_eq!(
+            jump_lands_on(&move_item(&doc, 6, false).unwrap()),
+            (Some(7.0), Some(47.002), 0),
+            "the jump itself moved, its target did not"
+        );
+        assert_eq!(
+            jump_lands_on(&move_item(&jump_to(&doc, 5.0), 3, false).unwrap()),
+            (Some(4.0), None, 2),
+            "a jump into the survey's third item follows the survey"
+        );
+    }
+
+    #[test]
+    fn a_jump_keeps_its_target_when_items_are_inserted_or_removed_before_it() {
+        let doc = jumping();
+        assert_eq!(
+            jump_lands_on(&insert_waypoint(&doc, 47.0005, 8.0, 2, &QT_DEFAULTS)),
+            (Some(8.0), Some(47.002), 0)
+        );
+        assert_eq!(
+            jump_lands_on(&insert_complex(
+                &doc,
+                "survey",
+                json!({ "TransectStyleComplexItem": { "Items": [{}, {}] } }),
+                (47.0, 8.0),
+                2
+            )),
+            (Some(9.0), Some(47.002), 0),
+            "a survey of two items pushes the target two places on"
+        );
+        assert_eq!(
+            jump_lands_on(&remove(&doc, 3).unwrap()),
+            (Some(3.0), Some(47.002), 0),
+            "removing the survey before the target takes its four sequence numbers away"
+        );
+        assert_eq!(
+            remove(&doc, 4),
+            Err("The jump at item 9 goes to item 7. Change or remove that jump first.".to_string()),
+            "the target of a jump is not removed from under it"
+        );
+        assert_eq!(
+            remove(&doc, 6).map(|d| d.items.len()),
+            Ok(5),
+            "the jump itself can go"
         );
     }
 
