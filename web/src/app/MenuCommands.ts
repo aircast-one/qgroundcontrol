@@ -45,7 +45,7 @@ export const browserShortcut = (press: KeyPress, typing: boolean): MenuCommand |
 
 const typingIn = (target: EventTarget | null): boolean => target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 
-const onMac = (): boolean => /Mac/.test(navigator.platform);
+export const onMac = (): boolean => /Mac/.test(navigator.platform);
 
 export const useMenuCommands = (run: (command: MenuCommand) => void): void => {
   const latest = useUpdatedRef(run);

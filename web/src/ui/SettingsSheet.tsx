@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { type KeyboardEvent, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { useBackHandler, useEscapeHandler, useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { HorizontalDivider, IconButton, ScrollableTabRow, SnackbarHost, Tab, Text, TextButton, useSnackbarHostState } from '@/m3';
@@ -6,6 +6,7 @@ import { type DrawableName } from '@/res/drawables';
 import { Drawable } from '@/res/Icon';
 import { AircastSpace, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
+import { onMac } from '@/app/MenuCommands';
 
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SETTINGS_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
@@ -159,6 +160,20 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
     setReturnQuery(query !== null && query.trim() !== '' ? query : null);
     setQuery(null);
   };
+  useEffect(() => {
+    if (!desktop) return;
+    const mac = onMac();
+    const find = (event: globalThis.KeyboardEvent) => {
+      if (event.code !== 'KeyF' || event.altKey || event.shiftKey || !(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return;
+      const search = root.current?.querySelector<HTMLInputElement>('nav input');
+      if (search === null || search === undefined) return;
+      event.preventDefault();
+      search.focus();
+      search.select();
+    };
+    window.addEventListener('keydown', find);
+    return () => window.removeEventListener('keydown', find);
+  }, [desktop]);
   const snackbars = useSnackbarHostState();
   const notice = useChangeNotice(snackbars);
   const landscape = useLandscape();
@@ -183,7 +198,7 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
   const headerBack = drilledTitle !== null && !(setupDestination && heading === null && !setupFromTab);
   const content =
     query === null && !setupOpen ? (
-      <SettingsTabsPager pager={pager} groups={groups} group={group} swipeable={openPage === null && !desktop} onSettled={pickTab} className="min-h-0 flex-1">
+      <SettingsTabsPager pager={pager} groups={groups} group={group} swipeable={openPage === null && !desktop} neighbours={!desktop} onSettled={pickTab} className="min-h-0 flex-1">
         {(shown, everyPage) => {
           const current = shown === group;
           return (
@@ -357,6 +372,7 @@ const SettingsTabsPager = ({
   groups,
   group,
   swipeable,
+  neighbours,
   onSettled,
   className,
   children,
@@ -365,6 +381,7 @@ const SettingsTabsPager = ({
   groups: readonly SettingsGroup[];
   group: SettingsGroup;
   swipeable: boolean;
+  neighbours: boolean;
   onSettled: (group: SettingsGroup) => void;
   className: string;
   children: (group: SettingsGroup, everyPage: ReturnType<typeof useRememberSettingsPages>) => ReactNode;
@@ -379,7 +396,7 @@ const SettingsTabsPager = ({
     const landed = groups[page];
     if (landed !== undefined && landed !== shownGroup.current) settled.current(landed);
   };
-  const near = (index: number) => Math.abs(index - pager.targetPage) <= 1 || index === group.ordinal;
+  const near = (index: number) => index === group.ordinal || (neighbours && Math.abs(index - pager.targetPage) <= 1);
   return (
     <div
       ref={pager.element}
@@ -414,23 +431,45 @@ const GROUP_ICONS: Record<SettingsGroup['name'], DrawableName> = {
   Device: 'ic_developer_board',
 };
 
-const SideTabs = ({ groups, selected, onPick }: { groups: readonly SettingsGroup[]; selected: SettingsGroup | null; onPick: (group: SettingsGroup) => void }) => (
-  <div role="tablist" aria-orientation="vertical" className="flex flex-col gap-1">
-    {groups.map((entry) => (
-      <button
-        key={entry.name}
-        type="button"
-        role="tab"
-        aria-selected={entry === selected}
-        onClick={() => onPick(entry)}
-        className={`flex h-14 shrink-0 items-center gap-3 rounded-full px-list text-label-large ${entry === selected ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-[color-mix(in_srgb,currentColor_8%,transparent)]'}`}
-      >
-        <Drawable name={GROUP_ICONS[entry.name]} />
-        {entry.title}
-      </button>
-    ))}
-  </div>
-);
+const TAB_KEYS: Readonly<Record<string, (at: number, count: number) => number>> = {
+  ArrowDown: (at, count) => (at + 1) % count,
+  ArrowUp: (at, count) => (at - 1 + count) % count,
+  Home: () => 0,
+  End: (_, count) => count - 1,
+};
+
+const SideTabs = ({ groups, selected, onPick }: { groups: readonly SettingsGroup[]; selected: SettingsGroup | null; onPick: (group: SettingsGroup) => void }) => {
+  const reachable = selected ?? groups[0];
+  const move = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = TAB_KEYS[event.key];
+    const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+    const at = tabs.findIndex((tab) => tab === document.activeElement);
+    if (step === undefined || at < 0) return;
+    event.preventDefault();
+    const next = step(at, tabs.length);
+    tabs[next]?.focus();
+    const group = groups[next];
+    if (group !== undefined) onPick(group);
+  };
+  return (
+    <div role="tablist" aria-orientation="vertical" className="flex flex-col gap-1" onKeyDown={move}>
+      {groups.map((entry) => (
+        <button
+          key={entry.name}
+          type="button"
+          role="tab"
+          aria-selected={entry === selected}
+          tabIndex={entry === reachable ? 0 : -1}
+          onClick={() => onPick(entry)}
+          className={`flex h-11 shrink-0 items-center gap-3 rounded-full px-list text-label-large ${entry === selected ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-[color-mix(in_srgb,currentColor_8%,transparent)]'}`}
+        >
+          <Drawable name={GROUP_ICONS[entry.name]} />
+          {entry.title}
+        </button>
+      ))}
+    </div>
+  );
+};
 
 const SETTINGS_SHEET_LAYER = 10;
 const SETTINGS_PANEL_ALPHA = 0.9;

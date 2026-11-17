@@ -34,6 +34,40 @@ test('the enforce checklist switch unlocks only with the checklist on', async ({
   await expect(enforce).toBeEnabled();
 });
 
+test('on a desktop a number is typed in its row and written only on Enter', async ({ app }) => {
+  await openGeneral(app);
+  const altitude = app.getByRole('textbox', { name: 'Default waypoint altitude' });
+  await expect(altitude).toHaveValue('50');
+  await altitude.fill('63');
+  await app.keyboard.press('Escape');
+  await expect(altitude).toHaveValue('50');
+  await altitude.fill('64');
+  await app.getByRole('tablist').getByRole('tab', { name: 'General' }).focus();
+  await app.reload();
+  await openGeneral(app);
+  await expect(altitude).toHaveValue('50');
+  await altitude.fill('65');
+  await altitude.press('Enter');
+  await expect(app.getByText('Default waypoint altitude: 65 m')).toBeVisible();
+  await app.reload();
+  await openGeneral(app);
+  await expect(altitude).toHaveValue('65');
+});
+
+test('the settings tabs move with the arrow keys and the find shortcut jumps to search', async ({ app }) => {
+  await openGeneral(app);
+  const tabs = app.getByRole('tablist');
+  await tabs.getByRole('tab', { name: 'General' }).focus();
+  await app.keyboard.press('ArrowDown');
+  await expect(tabs.getByRole('tab', { name: 'Safety' })).toBeFocused();
+  await expect(tabs.getByRole('tab', { name: 'Safety' })).toHaveAttribute('aria-selected', 'true');
+  await app.keyboard.press('End');
+  await expect(tabs.getByRole('tab', { name: 'Aircast device' })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.locator('[tabindex="0"]')).toHaveCount(1);
+  await app.keyboard.press('ControlOrMeta+f');
+  await expect(app.getByPlaceholder('Search settings')).toBeFocused();
+});
+
 test('settings search finds a setting by name', async ({ app }) => {
   await openMenu(app, 'Settings');
   await app.getByPlaceholder('Search settings').fill('mute');
