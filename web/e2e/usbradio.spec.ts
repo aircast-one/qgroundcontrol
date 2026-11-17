@@ -65,7 +65,7 @@ test('a radio streaming the script is found by what it sends, offered once, and 
   await expect.poll(channel(DROP), { message: 'payload switch back' }).toBeLessThan(1100);
 
   await openRadioSettings(page);
-  await expect(radioDevice(page), 'the same 0483:5740 an ArduPilot board shows is named by what it sends').toHaveAccessibleName(DETECTED_RADIO);
+  await expect(radioDevice(page), 'the same 0483:5740 an ArduPilot board shows is named by what it sends').toHaveAccessibleName(`Device, ${DETECTED_RADIO}`);
   await radioDevice(page).click();
   await expect(page.getByRole('menuitem', { name: 'Allow a USB port…' })).toBeVisible();
   await page.getByRole('menuitem', { name: 'Off', exact: true }).click();

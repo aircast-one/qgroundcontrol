@@ -57,7 +57,7 @@ test('templates wait until the map is zoomed in to a place', async ({ app }) => 
 
 test('moving a far plan to the aircraft takes its rally points along', async ({ app }) => {
   await openMenu(app, 'Plan');
-  await app.getByRole('button', { name: 'Centre', exact: true }).click();
+  await app.getByRole('button', { name: 'Center', exact: true }).click();
   await app.getByRole('menuitem', { name: 'Coordinates…' }).click();
   const centre = app.getByRole('dialog').filter({ hasText: 'Center map on coordinate' });
   await centre.getByRole('textbox', { name: 'Latitude' }).fill('-35.3632');
