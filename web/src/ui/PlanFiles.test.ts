@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { PlanConfirm, confirmCopy, planActions, planHistory, planStatusText, planTitle, saveBlockedReason } from './PlanFileRules';
+import { downloadedText, holdsPatterns } from './PlanFiles';
 
 const json = (text: string): Json => parseJson(text)!;
 
@@ -62,13 +63,22 @@ describe('PlanActionsTest', () => {
   it('download from vehicle follows the core and confirms over unsaved changes', () => {
     expect(planActions(json('{"actions":{"download":true}}')).download).toBe(true);
     expect(planActions(json('{"actions":{"download":false}}')).download).toBe(false);
-    expect(confirmCopy(PlanConfirm.Download).title).toBe('Plan overwrite');
+    expect(confirmCopy(PlanConfirm.Download).title).toBe("Download the vehicle's plan?");
+    expect(confirmCopy(PlanConfirm.Download).saveFirst).toBe('Save and download');
   });
 
-  it("opening over changes and creating over items ask in PlanView's words", () => {
-    expect(confirmCopy(PlanConfirm.Open).title).toBe('Plan overwrite');
-    expect(confirmCopy(PlanConfirm.Open).body).toBe('You have unsaved/unsent changes. Loading from a file will lose these changes. Are you sure you want to load from a file?');
-    expect(confirmCopy(PlanConfirm.NewPlan).title).toBe('Create Plan');
+  it('opening over changes offers to save first, in plain sentence-case words', () => {
+    const open = confirmCopy(PlanConfirm.Open);
+    expect([open.title, open.confirm, open.saveFirst]).toEqual(['Open another plan?', 'Open without saving', 'Save and open']);
+    expect(open.body).toBe('This plan has changes you have not saved or uploaded. Opening a file replaces them.');
+    expect(confirmCopy(PlanConfirm.NewPlan).title).toBe('Start a new plan?');
+  });
+
+  it('clearing the mission says that undo brings back only the plan, not the copy on the vehicle', () => {
+    const clear = confirmCopy(PlanConfirm.ClearMission);
+    expect(clear.body).toContain('the copy on the vehicle stays deleted');
+    expect(clear.body).not.toContain('cannot be undone');
+    expect([clear.destructive, clear.saveFirst]).toEqual([true, null]);
   });
 
   it('no answer offers nothing rather than guessing what is allowed', () => {
@@ -100,5 +110,12 @@ describe('PlanHistoryTest', () => {
     expect(planTitle('.plan')).toBe('.plan');
     expect(planTitle(null)).toBe('Untitled Plan');
     expect(planTitle('')).toBe('Untitled Plan');
+  });
+
+  it('a download warns that patterns come back as plain waypoints when the plan had any', () => {
+    expect(holdsPatterns([{ kind: 'waypoint' }, { kind: 'survey' }])).toBe(true);
+    expect(holdsPatterns([{ kind: 'settings' }, { kind: 'waypoint' }])).toBe(false);
+    expect(downloadedText(true)).toContain('come back as waypoints');
+    expect(downloadedText(false)).toBe('Plan downloaded from the vehicle.');
   });
 });

@@ -86,39 +86,45 @@ export const PlanConfirm = {
 
 export const PlanConfirmEntries: readonly PlanConfirm[] = [PlanConfirm.Open, PlanConfirm.NewPlan, PlanConfirm.ClearMission, PlanConfirm.Download];
 
-export type ConfirmCopy = { title: string; body: string; confirm: string; destructive: boolean };
+export type ConfirmCopy = { title: string; body: string; confirm: string; destructive: boolean; saveFirst: string | null };
 
-export const ConfirmCopy = (fields: { title: string; body: string; confirm: string; destructive?: boolean }): ConfirmCopy => ({ destructive: false, ...fields });
+export const ConfirmCopy = (fields: { title: string; body: string; confirm: string; destructive?: boolean; saveFirst?: string | null }): ConfirmCopy => ({ destructive: false, saveFirst: null, ...fields });
+
+const UNSAVED = 'This plan has changes you have not saved or uploaded.';
 
 export const confirmCopy = (kind: PlanConfirm): ConfirmCopy => {
   switch (kind.name) {
     case 'Open':
       return ConfirmCopy({
-        title: 'Plan overwrite',
-        body: 'You have unsaved/unsent changes. Loading from a file will lose these changes. Are you sure you want to load from a file?',
-        confirm: 'Load from file',
+        title: 'Open another plan?',
+        body: `${UNSAVED} Opening a file replaces them.`,
+        confirm: 'Open without saving',
+        saveFirst: 'Save and open',
       });
     case 'NewPlan':
       return ConfirmCopy({
-        title: 'Create Plan',
-        body: 'Are you sure you want to remove current plan and create a new plan?',
-        confirm: 'Create plan',
+        title: 'Start a new plan?',
+        body: 'The plan you are editing will be cleared.',
+        confirm: 'Start new plan',
       });
     case 'Download':
       return ConfirmCopy({
-        title: 'Plan overwrite',
-        body: 'You have unsaved/unsent changes. Loading from the Vehicle will lose these changes. Are you sure you want to load from the Vehicle?',
-        confirm: 'Load from vehicle',
+        title: "Download the vehicle's plan?",
+        body: `${UNSAVED} Downloading replaces them with the plan stored on the vehicle.`,
+        confirm: 'Download without saving',
+        saveFirst: 'Save and download',
       });
     case 'ClearMission':
       return ConfirmCopy({
         title: 'Clear the mission from the vehicle?',
-        body: 'This removes the mission from the aircraft as well as from this plan. It cannot be undone.',
+        body: 'This deletes the mission stored on the vehicle and clears this plan. Undo brings the plan back here, but the copy on the vehicle stays deleted until you upload again.',
         confirm: 'Clear mission',
         destructive: true,
       });
   }
 };
+
+export const DOWNLOADED_PLAN = 'Downloaded plan';
 
 export const planTitle = (documentName: string | null): string => {
   if (documentName === null || documentName.trim() === '') return 'Untitled Plan';
