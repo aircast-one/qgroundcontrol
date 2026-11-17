@@ -148,6 +148,13 @@
   --radius-shape-xl: 28px;
 }
 
+@utility pane-scroll {
+  padding-inline: max(0px, (100% - var(--pane-max, 100%)) / 2);
+  @variant desktop {
+    padding-inline: 0 max(0px, 100% - var(--pane-max, 100%));
+  }
+}
+
 @utility text-display-large { font-size: 57px; line-height: 64px; font-weight: 400; }
 @utility text-display-medium { font-size: 45px; line-height: 52px; font-weight: 400; }
 @utility text-display-small { font-size: 36px; line-height: 44px; font-weight: 400; }

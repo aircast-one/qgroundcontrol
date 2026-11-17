@@ -149,7 +149,7 @@ export const CamerasEditor = ({ className }: { className?: string }) => {
 
   return (
     <>
-      <div className={`flex flex-col overflow-y-auto ${className ?? ''}`}>
+      <div className={`pane-scroll flex flex-col overflow-y-auto ${className ?? ''}`}>
         <div className="flex w-full justify-end pe-1 pt-2">
           <IconButton onClick={() => setDraft(NEW_CAMERA_DRAFT)} enabled={editable && !busy} label="Add a video source">
             <Drawable name="ic_add" />

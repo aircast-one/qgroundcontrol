@@ -121,7 +121,7 @@ export const SetupRow = ({
       {onClick !== null ? <MaterialIcon name="keyboard_arrow_right" filled style={{ color: md('onSurfaceVariant') }} /> : null}
     </>
   );
-  const look = 'flex min-h-[72px] w-full items-center gap-4 px-list py-3 text-left';
+  const look = 'flex min-h-[72px] w-full items-center gap-4 px-list py-3 text-left desktop:min-h-14 desktop:py-2';
   const background = selected ? { background: md('surfaceContainerHighest') } : undefined;
   return onClick !== null ? (
     <button type="button" onClick={onClick} className={`${look} hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]`} style={background}>
@@ -289,7 +289,7 @@ export const SearchPill = ({
   };
   return (
     <div className={`w-full px-4 py-2 ${className ?? ''}`}>
-      <label className="flex min-h-14 w-full items-center gap-3 rounded-full bg-surface-container-high px-4">
+      <label className="flex min-h-14 w-full items-center gap-3 rounded-full bg-surface-container-high px-4 desktop:min-h-10">
         <Drawable name="ic_search" style={{ color: md('onSurfaceVariant') }} />
         <input
           className="min-w-0 flex-1 bg-transparent text-body-large text-on-surface outline-none placeholder:text-on-surface-variant"

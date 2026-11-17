@@ -146,109 +146,111 @@ export const Px4LogTransferPage = ({ className }: { className?: string }) => {
 
   return (
     <>
-      <div className={`flex w-full flex-col gap-2 overflow-auto px-4 ${className ?? ''}`}>
-        <SectionHeader text="MAVLink 2.0 Logging" />
-        <FootNote text="PX4 Pro only" />
-        <div className="flex items-center gap-2">
-          <Text className="flex-1">Logging</Text>
-          <OutlinedButton enabled={!log.running && log.canStart && editable} onClick={() => act('mavlinkLog.start')}>
-            Start
-          </OutlinedButton>
-          <OutlinedButton enabled={log.running && editable} onClick={() => act('mavlinkLog.stop')}>
-            Stop
-          </OutlinedButton>
-        </div>
-        <LogFlag label="Start logging automatically" checked={flag('enableAutoStart')} enabled={editable} onChange={(it) => act(MAVLINK_LOG_SET, 'enableAutoStart', it)} />
+      <div className={`pane-scroll w-full overflow-auto ${className ?? ''}`}>
+        <div className="flex flex-col gap-2 px-4">
+          <SectionHeader text="MAVLink 2.0 Logging" />
+          <FootNote text="PX4 Pro only" />
+          <div className="flex items-center gap-2">
+            <Text className="flex-1">Logging</Text>
+            <OutlinedButton enabled={!log.running && log.canStart && editable} onClick={() => act('mavlinkLog.start')}>
+              Start
+            </OutlinedButton>
+            <OutlinedButton enabled={log.running && editable} onClick={() => act('mavlinkLog.stop')}>
+              Stop
+            </OutlinedButton>
+          </div>
+          <LogFlag label="Start logging automatically" checked={flag('enableAutoStart')} enabled={editable} onChange={(it) => act(MAVLINK_LOG_SET, 'enableAutoStart', it)} />
 
-        <SectionHeader text="Log Upload" />
-        <LogText label="Email Address" value={text('emailAddress')} enabled={editable} onType={draft('emailAddress')} onSave={save('emailAddress')} />
-        <LogText label="Default Description" value={text('description')} enabled={editable} onType={draft('description')} onSave={save('description')} />
-        <LogText label="Upload URL" value={text('uploadURL')} enabled={editable} onType={draft('uploadURL')} onSave={save('uploadURL')} />
-        <LogText label="Video URL" value={text('videoURL')} enabled={editable} onType={draft('videoURL')} onSave={save('videoURL')} />
-        <LogChoice label="Wind Speed" choices={WIND_SPEEDS} value={text('windSpeed')} enabled={editable} onPick={(it) => saveItemsThen(MAVLINK_LOG_SET, 'windSpeed', it)} />
-        <LogChoice label="Flight Rating" choices={FLIGHT_RATINGS} value={text('rating')} enabled={editable} onPick={(it) => saveItemsThen(MAVLINK_LOG_SET, 'rating', it)} />
-        <LogText label="Additional Feedback" value={text('feedback')} enabled={editable} onType={draft('feedback')} onSave={save('feedback')} />
-        <LogFlag label="Make logs public" checked={flag('publicLog')} enabled={editable} onChange={(it) => act(MAVLINK_LOG_SET, 'publicLog', it)} />
-        <LogFlag label="Upload logs automatically" checked={flag('enableAutoUpload')} enabled={editable} onChange={(it) => saveItemsThen(MAVLINK_LOG_SET, 'enableAutoUpload', it)} />
-        <LogFlag label="Delete logs after upload" checked={flag('deleteAfterUpload')} enabled={editable && flag('enableAutoUpload')} onChange={(it) => act(MAVLINK_LOG_SET, 'deleteAfterUpload', it)} />
+          <SectionHeader text="Log Upload" />
+          <LogText label="Email Address" value={text('emailAddress')} enabled={editable} onType={draft('emailAddress')} onSave={save('emailAddress')} />
+          <LogText label="Default Description" value={text('description')} enabled={editable} onType={draft('description')} onSave={save('description')} />
+          <LogText label="Upload URL" value={text('uploadURL')} enabled={editable} onType={draft('uploadURL')} onSave={save('uploadURL')} />
+          <LogText label="Video URL" value={text('videoURL')} enabled={editable} onType={draft('videoURL')} onSave={save('videoURL')} />
+          <LogChoice label="Wind Speed" choices={WIND_SPEEDS} value={text('windSpeed')} enabled={editable} onPick={(it) => saveItemsThen(MAVLINK_LOG_SET, 'windSpeed', it)} />
+          <LogChoice label="Flight Rating" choices={FLIGHT_RATINGS} value={text('rating')} enabled={editable} onPick={(it) => saveItemsThen(MAVLINK_LOG_SET, 'rating', it)} />
+          <LogText label="Additional Feedback" value={text('feedback')} enabled={editable} onType={draft('feedback')} onSave={save('feedback')} />
+          <LogFlag label="Make logs public" checked={flag('publicLog')} enabled={editable} onChange={(it) => act(MAVLINK_LOG_SET, 'publicLog', it)} />
+          <LogFlag label="Upload logs automatically" checked={flag('enableAutoUpload')} enabled={editable} onChange={(it) => saveItemsThen(MAVLINK_LOG_SET, 'enableAutoUpload', it)} />
+          <LogFlag label="Delete logs after upload" checked={flag('deleteAfterUpload')} enabled={editable && flag('enableAutoUpload')} onChange={(it) => act(MAVLINK_LOG_SET, 'deleteAfterUpload', it)} />
 
-        <SectionHeader text="Saved Log Files" />
-        {log.files.length === 0 ? <Text typography="bodySmall">No log files</Text> : null}
-        {log.files.map((file) => {
-          const uploadingThis = log.uploading && log.uploadingFile === file.name;
-          return (
-            <div key={file.name} className="flex items-center gap-3">
-              <Checkbox
-                checked={selected.has(file.name)}
-                enabled={!uploadingThis && !file.writing}
-                label={file.name}
-                onCheckedChange={(it) => setSelected(it ? new Set([...selected, file.name]) : new Set([...selected].filter((name) => name !== file.name)))}
-              />
-              <Text typography="bodySmall" color={file.writing ? aircast('warning') : undefined} className="flex-1">
-                {file.name}
-              </Text>
-              {uploadingThis && !file.uploaded ? (
-                <LinearProgressIndicator progress={log.uploadProgress} className="w-24" />
-              ) : (
-                <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-                  {file.uploaded ? 'Uploaded' : logSizeText(file.size)}
+          <SectionHeader text="Saved Log Files" />
+          {log.files.length === 0 ? <Text typography="bodySmall">No log files</Text> : null}
+          {log.files.map((file) => {
+            const uploadingThis = log.uploading && log.uploadingFile === file.name;
+            return (
+              <div key={file.name} className="flex items-center gap-3">
+                <Checkbox
+                  checked={selected.has(file.name)}
+                  enabled={!uploadingThis && !file.writing}
+                  label={file.name}
+                  onCheckedChange={(it) => setSelected(it ? new Set([...selected, file.name]) : new Set([...selected].filter((name) => name !== file.name)))}
+                />
+                <Text typography="bodySmall" color={file.writing ? aircast('warning') : undefined} className="flex-1">
+                  {file.name}
                 </Text>
-              )}
-            </div>
-          );
-        })}
-        <div className="flex flex-wrap gap-1">
-          <TextButton enabled={idle} onClick={() => setSelected(new Set(log.files.filter((it) => !it.writing).map((it) => it.name)))}>
-            Select All
-          </TextButton>
-          <TextButton enabled={idle} onClick={() => setSelected(new Set())}>
-            Select None
-          </TextButton>
-          <TextButton
-            enabled={selected.size > 0 && idle}
-            onClick={() =>
-              setConfirming({
-                title: 'Delete Selected Log Files',
-                question: 'Delete the selected log files?',
-                run: () => {
-                  act('mavlinkLog.delete', ...selected);
-                  setSelected(new Set());
-                },
-              })
-            }
-          >
-            Delete…
-          </TextButton>
-          {log.uploading ? (
-            <TextButton onClick={() => setConfirming({ title: 'Cancel Upload', question: 'Cancel the upload in progress?', run: () => act('mavlinkLog.cancelUpload') })}>Cancel Upload…</TextButton>
-          ) : (
+                {uploadingThis && !file.uploaded ? (
+                  <LinearProgressIndicator progress={log.uploadProgress} className="w-24" />
+                ) : (
+                  <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+                    {file.uploaded ? 'Uploaded' : logSizeText(file.size)}
+                  </Text>
+                )}
+              </div>
+            );
+          })}
+          <div className="flex flex-wrap gap-1">
+            <TextButton enabled={idle} onClick={() => setSelected(new Set(log.files.filter((it) => !it.writing).map((it) => it.name)))}>
+              Select All
+            </TextButton>
+            <TextButton enabled={idle} onClick={() => setSelected(new Set())}>
+              Select None
+            </TextButton>
             <TextButton
-              enabled={selected.size > 0 && idle && !uploadedSelected}
-              onClick={() => {
-                actAll(settingCalls(unsavedTexts(log.settings, drafts)));
-                if (uploadEmail(log.settings, drafts).trim() === '') {
-                  setRefusal('Please enter an email address before uploading MAVLink log files.');
-                  return;
-                }
+              enabled={selected.size > 0 && idle}
+              onClick={() =>
                 setConfirming({
-                  title: 'Upload Selected Log Files',
-                  question: 'Upload the selected log files?',
+                  title: 'Delete Selected Log Files',
+                  question: 'Delete the selected log files?',
                   run: () => {
-                    act('mavlinkLog.upload', ...selected);
+                    act('mavlinkLog.delete', ...selected);
                     setSelected(new Set());
                   },
-                });
-              }}
+                })
+              }
             >
-              Upload…
+              Delete…
             </TextButton>
-          )}
+            {log.uploading ? (
+              <TextButton onClick={() => setConfirming({ title: 'Cancel Upload', question: 'Cancel the upload in progress?', run: () => act('mavlinkLog.cancelUpload') })}>Cancel Upload…</TextButton>
+            ) : (
+              <TextButton
+                enabled={selected.size > 0 && idle && !uploadedSelected}
+                onClick={() => {
+                  actAll(settingCalls(unsavedTexts(log.settings, drafts)));
+                  if (uploadEmail(log.settings, drafts).trim() === '') {
+                    setRefusal('Please enter an email address before uploading MAVLink log files.');
+                    return;
+                  }
+                  setConfirming({
+                    title: 'Upload Selected Log Files',
+                    question: 'Upload the selected log files?',
+                    run: () => {
+                      act('mavlinkLog.upload', ...selected);
+                      setSelected(new Set());
+                    },
+                  });
+                }}
+              >
+                Upload…
+              </TextButton>
+            )}
+          </div>
+          {log.message.trim() !== '' ? (
+            <Text typography="bodySmall" color={md('error')}>
+              {log.message}
+            </Text>
+          ) : null}
         </div>
-        {log.message.trim() !== '' ? (
-          <Text typography="bodySmall" color={md('error')}>
-            {log.message}
-          </Text>
-        ) : null}
       </div>
       {confirming !== null ? (
         <AlertDialog

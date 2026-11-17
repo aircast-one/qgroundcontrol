@@ -39,7 +39,7 @@ const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, 
   return (
     <div className={`grid grid-cols-[minmax(0,1fr)] gap-label ${className ?? ''}`}>
       {label ? <label htmlFor={id} className={`text-body-small ${isError ? 'text-error' : 'text-on-surface-variant'}`}>{label}</label> : null}
-      <div className={`flex min-h-14 items-center gap-3 px-4 ${filled ? 'rounded-t-shape-xs border-b bg-surface-container-highest' : 'rounded-shape-xs border'} ${tone} ${enabled ? '' : 'opacity-40'}`}>
+      <div className={`flex min-h-14 items-center gap-3 px-4 desktop:min-h-10 desktop:px-3 ${filled ? 'rounded-t-shape-xs border-b bg-surface-container-highest' : 'rounded-shape-xs border'} ${tone} ${enabled ? '' : 'opacity-40'}`}>
         {leadingIcon ? <span className="flex text-on-surface-variant">{leadingIcon}</span> : null}
         {prefix ? <span className="text-body-large text-on-surface-variant">{prefix}</span> : null}
         {singleLine ? (

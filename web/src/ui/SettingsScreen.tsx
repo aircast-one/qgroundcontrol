@@ -593,48 +593,67 @@ export const SettingsSearch = ({
   const deviceHits = (useDeviceStatus()?.pages ?? []).filter((page) => devicePageMatches(page, query));
   const parametersHit = vehicle && setupFound(SetupComponent({ index: -1, name: PARAMETERS_ROW, needsAttention: false }), [], query);
   const nothing = hits.length === 0 && pageHits.length === 0 && setupHits.length === 0 && !parametersHit && pilotHits.length === 0 && deviceHits.length === 0;
+  const desktop = useDesktopLayout();
 
   return (
-    <div className={`h-full w-full overflow-y-auto ${className ?? ''}`}>
-      <PaneColumn>
-        {!searching ? null : nothing ? (
-          <>
-            <FootNote text={`No settings match “${query.trim()}”.`} />
-            {searchesParameters ? <ParameterSearchRow query={query} onClick={parameterSearch} /> : null}
-          </>
-        ) : (
-          <>
-            {pilotHits.length > 0 ? (
-              <div style={{ minHeight: TOP_HIT_ANCHOR }}>
-                <PilotSettings settings={pilotHits} />
-              </div>
-            ) : null}
-            {setupHits.length > 0 || parametersHit ? <SectionHeader text={AIRCRAFT_SETUP} /> : null}
-            {setupHits.map((component) => (
-              <SetupRow key={`setup${component.name}`} title={sentenceCase(component.name)} subtitle={setupNote(component.className)} icon={setupIcon(component.known, component.className)} onClick={() => onOpenSetup(component.name)} />
-            ))}
-            {parametersHit ? <SetupRow title={PARAMETERS_ROW} subtitle="Every setting the vehicle has" icon="ic_tune" onClick={() => onOpenSetup(SETUP_PARAMETERS_PAGE)} /> : null}
-            {deviceHits.length > 0 ? <SectionHeader text={SettingsGroup.Device.title} /> : null}
-            {deviceHits.map((page) => (
-              <DevicePageRow key={`device${page.href}`} page={page} />
-            ))}
-            {pageHits.length > 0 ? <SectionHeader text="Pages" /> : null}
-            {pageHits.map((entry) => (
-              <SetupRow key={`page${entry.title}`} title={pageTitle(entry.title)} icon={pageLook(entry.title).icon} onClick={() => onOpen(entry.title)} />
-            ))}
-            {hits.map((section) => (
-              <Fragment key={`head${section.title}`}>
-                <SectionHeader text={shownBreadcrumb(section.title)} />
-                {section.blocks.flatMap((block) => block.facts).map((fact) => (
-                  <FactRow key={fact.path} fact={fact} />
+    <LocalSettingsList.Provider value={desktop}>
+      <div className={`h-full w-full overflow-y-auto ${className ?? ''}`}>
+        <PaneColumn>
+          {!searching ? null : nothing ? (
+            <>
+              <FootNote text={`No settings match “${query.trim()}”.`} />
+              {searchesParameters ? (
+                <SettingsCard>
+                  <ParameterSearchRow query={query} onClick={parameterSearch} />
+                </SettingsCard>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {pilotHits.length > 0 ? (
+                <div style={{ minHeight: TOP_HIT_ANCHOR }}>
+                  <PilotSettings settings={pilotHits} />
+                </div>
+              ) : null}
+              {setupHits.length > 0 || parametersHit ? <SectionHeader text={AIRCRAFT_SETUP} /> : null}
+              <SettingsCard>
+                {setupHits.map((component) => (
+                  <SetupRow key={`setup${component.name}`} title={sentenceCase(component.name)} subtitle={setupNote(component.className)} icon={setupIcon(component.known, component.className)} onClick={() => onOpenSetup(component.name)} />
                 ))}
-              </Fragment>
-            ))}
-            {searchesParameters ? <ParameterSearchRow query={query} onClick={parameterSearch} /> : null}
-          </>
-        )}
-      </PaneColumn>
-    </div>
+                {parametersHit ? <SetupRow title={PARAMETERS_ROW} subtitle="Every setting the vehicle has" icon="ic_tune" onClick={() => onOpenSetup(SETUP_PARAMETERS_PAGE)} /> : null}
+              </SettingsCard>
+              {deviceHits.length > 0 ? <SectionHeader text={SettingsGroup.Device.title} /> : null}
+              <SettingsCard>
+                {deviceHits.map((page) => (
+                  <DevicePageRow key={`device${page.href}`} page={page} />
+                ))}
+              </SettingsCard>
+              {pageHits.length > 0 ? <SectionHeader text="Pages" /> : null}
+              <SettingsCard>
+                {pageHits.map((entry) => (
+                  <SetupRow key={`page${entry.title}`} title={pageTitle(entry.title)} icon={pageLook(entry.title).icon} onClick={() => onOpen(entry.title)} />
+                ))}
+              </SettingsCard>
+              {hits.map((section) => (
+                <Fragment key={`head${section.title}`}>
+                  <SectionHeader text={shownBreadcrumb(section.title)} />
+                  <SettingsCard>
+                    {section.blocks.flatMap((block) => block.facts).map((fact) => (
+                      <FactRow key={fact.path} fact={fact} />
+                    ))}
+                  </SettingsCard>
+                </Fragment>
+              ))}
+              {searchesParameters ? (
+                <SettingsCard>
+                  <ParameterSearchRow query={query} onClick={parameterSearch} />
+                </SettingsCard>
+              ) : null}
+            </>
+          )}
+        </PaneColumn>
+      </div>
+    </LocalSettingsList.Provider>
   );
 };
 
@@ -658,13 +677,19 @@ const SettingsPageBody = ({ page, className }: { page: SettingsPageEntry; classN
   });
 
   const own = sectionsIn(pageLook(page.title).group, page.title, sections);
+  const desktop = useDesktopLayout();
   const column = (body: ReactNode) => <PaneColumn className="h-full">{body}</PaneColumn>;
-  if (page.showsLinks) return column(<LinksScreen className={className} footer={<SettingsControls page={page} sections={own} onWrite={reload} />} />);
+  const spanning = (body: ReactNode) => (
+    <div className="h-full w-full" style={{ '--pane-max': `${desktop ? SETTINGS_PANE_MAX_WIDTH : DETAIL_PANE_MAX_WIDTH}px` } as CSSProperties}>
+      {body}
+    </div>
+  );
+  if (page.showsLinks) return spanning(<LinksScreen className={className} footer={<SettingsControls page={page} sections={own} onWrite={reload} />} />);
   if (page.showsAbout) return column(<AboutPage links={page.helpLinks} className={className} />);
   if (page.showsFlasher) return column(<FlasherScreen className={className} />);
-  if (page.showsConsole) return column(<AppLogPage className={className} />);
-  if (page.showsPx4Logs) return column(<Px4LogTransferPage className={className} />);
-  if (page.showsVideoSources) return column(<CamerasEditor className={className} />);
+  if (page.showsConsole) return <AppLogPage className={className} />;
+  if (page.showsPx4Logs) return spanning(<Px4LogTransferPage className={className} />);
+  if (page.showsVideoSources) return spanning(<CamerasEditor className={className} />);
   if (!loaded) return column(<Text className={`block p-4 ${className}`}>Reading settings.</Text>);
   if (own.length === 0) return column(<Text className={`block p-4 ${className}`}>No settings exposed here.</Text>);
   return (
@@ -919,7 +944,7 @@ export const FactRow = ({
   title = sentenceCase(fact.heading),
   subtitle = [fact.detail, factSubtitle(fact)].filter(notBlank).join(' · '),
   titleColor,
-  fieldModifier = 'w-full px-list py-2',
+  fieldModifier = 'w-full px-list py-2 desktop:py-1.5',
   warning = null,
   onRejected = () => undefined,
   onWrite = () => undefined,
@@ -935,6 +960,7 @@ export const FactRow = ({
 }) => {
   const settingsList = useContext(LocalSettingsList);
   const runInert = useContext(LocalRunInertNote);
+  const desktop = useDesktopLayout();
   const [refusal, setRefusal] = useKeyedState<string | null>([fact.path], () => null);
   const [helpOpen, setHelpOpen] = useKeyedState([fact.path], () => false);
   const [editing, setEditing] = useKeyedState([fact.path], () => false);
@@ -952,12 +978,12 @@ export const FactRow = ({
       if (accepted) onWrite();
     })();
 
-  if (asField && settingsList && opensAsValue(fact)) {
+  const slider = inlineSlider(fact);
+  if (asField && settingsList && opensAsValue(fact) && !(desktop && slider === null)) {
     const note = shown.text
       .split(SUBTITLE_SEPARATOR)
       .filter((it) => notBlank(it) && it !== fact.units && it !== fact.detail)
       .join(SUBTITLE_SEPARATOR);
-    const slider = inlineSlider(fact);
     const heading = (
       <span className="block">
         <FactTitle title={title} color={titleColor} helpOpen={null} onHelp={() => undefined} />
@@ -977,7 +1003,15 @@ export const FactRow = ({
     if (slider !== null) {
       return (
         <>
-          <SliderValueRow fact={fact} label={title} slider={slider} title={heading} onOpen={() => setEditing(true)} onWrite={onWrite} />
+          <SliderValueRow
+            fact={fact}
+            label={title}
+            slider={slider}
+            title={heading}
+            exact={desktop ? <FactTextField fact={fact} label={title} onWrite={onWrite} onRejected={onRejected} onTheRight /> : null}
+            onOpen={() => setEditing(true)}
+            onWrite={onWrite}
+          />
           {details}
         </>
       );
@@ -987,7 +1021,7 @@ export const FactRow = ({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
+          className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)] desktop:min-h-12 desktop:py-1.5"
         >
           <span className="min-w-0 flex-1">{heading}</span>
           <Text typography="bodyLarge" color={md('onSurfaceVariant')}>
@@ -1014,11 +1048,16 @@ export const FactRow = ({
                   {note}
                 </Text>
               ) : null}
+              {warning !== null ? (
+                <Text typography="bodySmall" color={aircast('warning')} className="block">
+                  {warning}
+                </Text>
+              ) : null}
             </div>
             {fact.isEnum && !fact.valueIsOffTheEnumList ? (
               <EnumField fact={fact} title={title} style={{ minWidth: CHOICE_VALUE_WIDTH, maxWidth: '50%' }} write={write} />
             ) : (
-              <FactTextField fact={fact} onWrite={onWrite} onRejected={onRejected} onTheRight />
+              <FactTextField fact={fact} label={settingsList ? title : fact.title} onWrite={onWrite} onRejected={onRejected} onTheRight />
             )}
           </div>
         ) : (
@@ -1052,7 +1091,7 @@ export const FactRow = ({
   const rows = (
     <div>
       <div
-        className={`flex min-h-16 w-full items-center gap-4 px-4 py-2.5 ${rowToggles ? 'cursor-pointer' : ''}`}
+        className={`flex min-h-16 w-full items-center gap-4 px-4 py-2.5 desktop:min-h-12 desktop:py-1.5 ${rowToggles ? 'cursor-pointer' : ''}`}
         onClick={rowToggles ? () => toggle(!fact.boolValue) : undefined}
       >
         <div className="min-w-0 flex-1">
@@ -1481,7 +1520,19 @@ export const useWriteNotice = () => {
     });
 };
 
-const FactTextField = ({ fact, onWrite, onRejected = () => undefined, onTheRight = false }: { fact: Fact; onWrite: () => void; onRejected?: () => void; onTheRight?: boolean }) => {
+const FactTextField = ({
+  fact,
+  label = fact.title,
+  onWrite,
+  onRejected = () => undefined,
+  onTheRight = false,
+}: {
+  fact: Fact;
+  label?: string;
+  onWrite: () => void;
+  onRejected?: () => void;
+  onTheRight?: boolean;
+}) => {
   const [editing, setEditing] = useKeyedState<string | null>([fact.path], () => null);
   const [rejection, setRejection] = useKeyedState<string | null>([fact.path], () => null);
   const [revealed, setRevealed] = useKeyedState([fact.path], () => false);
@@ -1544,7 +1595,7 @@ const FactTextField = ({ fact, onWrite, onRejected = () => undefined, onTheRight
         <div className={onTheRight ? 'shrink-0' : 'min-w-0 flex-1'} style={onTheRight ? { width: NUMBER_VALUE_WIDTH } : undefined}>
           <OutlinedTextField
             value={editing ?? shownText(fact)}
-            ariaLabel={fact.title}
+            ariaLabel={label}
             enabled={fact.enabled}
             suffix={notBlank(fact.units) ? shownUnits(fact.units) : undefined}
             keyboardType={secret && !revealed ? 'password' : factKeyboard(fact)}

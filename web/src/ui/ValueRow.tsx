@@ -8,7 +8,7 @@ import { type ClosedRange, useRepeatWhileHeld } from '@/map/SettingStepper';
 import { md, withAlpha } from '@/theme/Colors';
 import { sliderValue } from '@/ui/ParameterForm';
 import { factNumber } from '@/ui/Px4TuningScreen';
-import { FieldSlider, LocalStagedEdits, sentenceCase, showsAsField } from '@/ui/SettingsScreen';
+import { FieldSlider, LocalStagedEdits, NUMBER_VALUE_WIDTH, sentenceCase, showsAsField } from '@/ui/SettingsScreen';
 import { quantityText } from './Quantity';
 
 export const VALUE_OFF = 'Off';
@@ -137,7 +137,23 @@ export const useChangeNotice = (snackbars: SnackbarHostState): ChangeNotice => {
 
 const DONE_MARK_MS = 3000;
 
-export const SliderValueRow = ({ fact, label, slider, title, onOpen, onWrite }: { fact: Fact; label: string; slider: InlineSlider; title: ReactNode; onOpen: () => void; onWrite: () => void }) => {
+export const SliderValueRow = ({
+  fact,
+  label,
+  slider,
+  title,
+  exact = null,
+  onOpen,
+  onWrite,
+}: {
+  fact: Fact;
+  label: string;
+  slider: InlineSlider;
+  title: ReactNode;
+  exact?: ReactNode;
+  onOpen: () => void;
+  onWrite: () => void;
+}) => {
   const notice = useContext(LocalChangeNotice);
   const [dragging, setDraggingState] = useKeyedState<number | null>([fact.path, fact.valueString], () => null);
   const draggingRef = useRef(dragging);
@@ -195,11 +211,15 @@ export const SliderValueRow = ({ fact, label, slider, title, onOpen, onWrite }: 
               {'✓'}
             </Text>
           ) : null}
-          <button type="button" onClick={onOpen} title="Set exactly" className="px-1 py-2">
-            <Text typography="bodyLarge" color={md('onSurfaceVariant')}>
-              {valueTextOf(fact, shownValue)}
-            </Text>
-          </button>
+          {exact !== null && dragging === null && !writing ? (
+            exact
+          ) : (
+            <button type="button" onClick={onOpen} title="Set exactly" className={exact === null ? 'px-1 py-2' : 'px-4 py-2 text-right'} style={exact === null ? undefined : { width: NUMBER_VALUE_WIDTH }}>
+              <Text typography="bodyLarge" color={md('onSurfaceVariant')}>
+                {valueTextOf(fact, shownValue)}
+              </Text>
+            </button>
+          )}
         </div>
         <ThinSlider
           value={dragging ?? sliderPosition(slider, numberOf(fact))}

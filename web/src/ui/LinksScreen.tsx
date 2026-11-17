@@ -1383,7 +1383,7 @@ export const LinksScreen = ({ className, footer = null }: { className?: string; 
           {notice}
         </Text>
       ) : null}
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+      <div className="pane-scroll flex min-h-0 flex-1 flex-col overflow-auto">
         {rows.length === 0 && auto.length === 0 ? <FootNote text="No links saved. A USB cable or telemetry radio connects by itself; add a link for Wi-Fi or a network connection." /> : null}
         {linkSections(rows, auto).map((section) => (
           <div key={`head${section.title}`} className="flex flex-col">
