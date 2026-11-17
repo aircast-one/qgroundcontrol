@@ -69,7 +69,7 @@ export const offlineGuide = (status: OfflineStatus | null, hint: string, noCamer
   return noCamera
     ? { ...NO_CAMERA_GUIDE, onDevice, camera: true, links, busy: false }
     : {
-        title: status === null ? LOOKING_TITLE : sentenceCase(status.title),
+        title: status === null || !onDevice ? LOOKING_TITLE : sentenceCase(status.title),
         text: status !== null && (onDevice || links.some((link) => link.connected || link.failed)) ? status.footnote : hint,
         onDevice,
         camera: false,

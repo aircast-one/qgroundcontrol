@@ -65,7 +65,8 @@ export const ConnectingCard = ({ className }: { className?: string }) => {
 };
 
 export const LOOKING_TITLE = 'Looking for your aircraft';
-export const LOOKING_HINT = 'Turn on the aircraft. A USB cable or telemetry radio connects by itself; for Wi-Fi, add a link.';
+export const LOOKING_HINT = 'Turn on the aircraft. A USB cable or telemetry radio connects by itself; for Wi-Fi or a network, add a link.';
+export const BROWSER_LOOKING_HINT = 'Turn on the aircraft, then add a link: a network (WebSocket) bridge or a USB telemetry radio.';
 export const BUILT_IN_LOOKING_HINT = 'Turn on the aircraft. The built-in radio connects by itself.';
 
 export const BUILT_IN_RADIO = 'Built-in radio';
@@ -76,10 +77,11 @@ export const builtInRadioProblem = (links: Json | null): string | null => {
   return problem.trim() === '' ? null : problem;
 };
 
-export const lookingHint = (device: string | null, problem: string | null): string => problem ?? (device !== null ? BUILT_IN_LOOKING_HINT : LOOKING_HINT);
+export const lookingHint = (device: string | null, problem: string | null, desktop: boolean = true): string =>
+  problem ?? (device !== null ? BUILT_IN_LOOKING_HINT : desktop ? LOOKING_HINT : BROWSER_LOOKING_HINT);
 
 export const useRememberLookingHint = (): string => {
   const [device] = useState(hostDevice);
   const links = useQgcPath(LINKS_VIEW);
-  return lookingHint(device, builtInRadioProblem(links));
+  return lookingHint(device, builtInRadioProblem(links), __DESKTOP__);
 };

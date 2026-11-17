@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { BUILT_IN_LOOKING_HINT, LOOKING_HINT, builtInRadioProblem, connectingTitle, loadingWords, lookingHint } from './ConnectingCard';
+import { BROWSER_LOOKING_HINT, BUILT_IN_LOOKING_HINT, LOOKING_HINT, builtInRadioProblem, connectingTitle, loadingWords, lookingHint } from './ConnectingCard';
 
 describe('ConnectingCardTest', () => {
   it('namesTheVehicleWhenKnown', () => {
@@ -26,5 +26,12 @@ describe('ConnectingCardTest', () => {
     expect(lookingHint('radiomaster-ax12', builtInRadioProblem(busy))).toBe('Another app is using the built-in radio. Close it to connect.');
     expect(lookingHint('radiomaster-ax12', builtInRadioProblem(open))).toBe(BUILT_IN_LOOKING_HINT);
     expect(lookingHint(null, null)).toBe(LOOKING_HINT);
+  });
+
+  it('the hint names only the links that this build can add', () => {
+    expect(lookingHint(null, null, true)).toContain('for Wi-Fi or a network, add a link');
+    expect(lookingHint(null, null, false)).toBe(BROWSER_LOOKING_HINT);
+    expect(BROWSER_LOOKING_HINT).toContain('network (WebSocket)');
+    expect(BROWSER_LOOKING_HINT).not.toContain('by itself');
   });
 });

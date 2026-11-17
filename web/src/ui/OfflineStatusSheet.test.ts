@@ -19,7 +19,7 @@ describe('OfflineStatusTest', () => {
     const device = offlineStatus(parseJson('{"title":"No Flight Controller","footnote":"pi4 hears no flight controller. Check it is plugged in and powered on.","onDevice":true}'));
     expect(offlineGuide(device, 'Turn on the aircraft.')).toEqual({ title: 'No flight controller', text: 'pi4 hears no flight controller. Check it is plugged in and powered on.', onDevice: true, camera: false, links: [], busy: false });
     const phone = offlineStatus(parseJson('{"title":"Not Connected","footnote":"Tap a link to connect.","onDevice":false}'));
-    expect(offlineGuide(phone, 'Turn on the aircraft.')).toEqual({ title: 'Not connected', text: 'Turn on the aircraft.', onDevice: false, camera: false, links: [], busy: false });
+    expect(offlineGuide(phone, 'Turn on the aircraft.'), 'the chip already says Not connected, so the card does not repeat it').toEqual({ title: LOOKING_TITLE, text: 'Turn on the aircraft.', onDevice: false, camera: false, links: [], busy: false });
     expect(offlineGuide(null, 'Turn on the aircraft.')).toEqual({ title: LOOKING_TITLE, text: 'Turn on the aircraft.', onDevice: false, camera: false, links: [], busy: false });
     expect(offlineGuide(device, 'Turn on the aircraft.', true)).toEqual({ ...NO_CAMERA_GUIDE, onDevice: true, camera: true, links: [], busy: false });
   });
