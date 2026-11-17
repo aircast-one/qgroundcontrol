@@ -8,15 +8,16 @@ import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/Qg
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { coerceIn, delay } from '@/kotlin/Std';
 import { useValue } from '@/kotlin/State';
-import { FilterChip, Surface, Text, TextButton } from '@/m3';
+import { DropdownMenu, DropdownMenuItem, FilterChip, Surface, Text, TextButton } from '@/m3';
+import { Drawable } from '@/res/Icon';
 import { AircastSheet } from '@/map/AircastSheet';
 import { VEHICLES_VIEW } from '@/map/VehiclePicker';
-import { Color, md, withAlpha } from '@/theme/Colors';
+import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { activeVehicleId } from '@/ui/ActiveVehicle';
 import { BesidePopup, VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
 import { LocalFlyScreenState, OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
-import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal, onScreenGimbal, reportGimbalRefusal } from '@/ui/GimbalIndicator';
+import { type GimbalChoice, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal, onScreenGimbal, reportGimbalRefusal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
 import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
@@ -346,6 +347,47 @@ const AimSliders = ({ pitch, yaw, onRecenter, slider, onTilt }: { pitch: number 
 
 const finiteOrNull = (value: number): number | null => (Number.isFinite(value) ? value : null);
 
+export const gimbalSwitchText = (choices: readonly GimbalChoice[]): string => choices.find((it) => it.active)?.name ?? 'Choose a gimbal';
+
+export const GimbalSwitch = ({ choices, onPick }: { choices: readonly GimbalChoice[]; onPick: (choice: GimbalChoice) => void }) => {
+  const [open, setOpen] = useState(false);
+  const shown = gimbalSwitchText(choices);
+  return (
+    <div className="relative">
+      <Surface
+        onClick={() => setOpen(true)}
+        shape="small"
+        color={OSD_SCRIM}
+        contentColor={aircast('outdoorForeground')}
+        label={`Gimbal: ${shown}. Switch gimbal`}
+        title="Switch gimbal"
+        className="inline-flex max-w-44 items-center gap-0.5 ps-2 pe-1"
+        style={{ height: GIMBAL_SWITCH_HEIGHT }}
+      >
+        <Text typography="labelMedium" maxLines={1} ellipsis className="min-w-0">
+          {shown}
+        </Text>
+        <Drawable name="ic_arrow_drop_down" size={18} />
+      </Surface>
+      <DropdownMenu expanded={open} onDismissRequest={() => setOpen(false)} align="end">
+        {choices.map((choice) => (
+          <DropdownMenuItem
+            key={`${choice.managerCompid}-${choice.deviceId}`}
+            text={choice.name}
+            selected={choice.active}
+            onClick={() => {
+              setOpen(false);
+              onPick(choice);
+            }}
+          />
+        ))}
+      </DropdownMenu>
+    </div>
+  );
+};
+
+const GIMBAL_SWITCH_HEIGHT = 32;
+
 export const RcCameraControls = ({ className, tiltSlider = true }: { className?: string; tiltSlider?: boolean }) => {
   const channels = rcCameraChannels(
     useChannelSetting('gimbalTiltChannel'),
@@ -442,6 +484,7 @@ const RcCameraControlsShown = ({
   return (
     <div className={`flex min-h-0 flex-col items-center gap-1 p-1 ${className ?? ''}`}>
       {channels.light > 0 || gimbal !== null || rcGimbal ? <OpenOnRequest name={GIMBAL_SHEET} open={() => setOptions(true)} /> : null}
+      {gimbal !== null && gimbal.gimbals.length > 1 ? <GimbalSwitch choices={gimbal.gimbals} onPick={(choice) => gimbalCall('gimbal.select', choice.managerCompid, choice.deviceId)} /> : null}
       <div className="flex min-h-0 shrink gap-1">
         {syntheticAims ? (
           <AimSliders

@@ -125,8 +125,35 @@ pub fn indicator(
     })
 }
 
+fn camera_on(cameras: &Value, device_id: Option<u64>) -> Option<String> {
+    cameras["cameras"]
+        .as_array()?
+        .iter()
+        .find(|camera| device_id.is_some() && camera["gimbalDeviceId"].as_u64() == device_id)
+        .and_then(|camera| camera["model"].as_str())
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string)
+}
+
+pub fn named(gimbals: &Value, cameras: &Value) -> Value {
+    json!(gimbals
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|gimbal| json!({
+            "name": camera_on(cameras, gimbal["deviceId"].as_u64()).map_or_else(|| gimbal["name"].clone(), |model| json!(model)),
+            "managerCompid": gimbal["managerCompid"],
+            "deviceId": gimbal["deviceId"],
+            "active": gimbal["active"],
+        }))
+        .collect::<Vec<_>>())
+}
+
 pub fn indicator_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let snapshot = crate::gimbal::gimbal_view(backend, &[]);
+    let cameras = crate::hub::core_cameras_view(backend, &[]);
     let mut shown = indicator(
         &snapshot,
         setting(backend, "toolbarIndicatorShowAzimuth"),
@@ -138,6 +165,7 @@ pub fn indicator_view(backend: &dyn Backend, _args: &[String]) -> Value {
         ),
     );
     shown["askSerial"] = json!(crate::gimbal::asked());
+    shown["gimbals"] = named(&shown["gimbals"], &cameras);
     shown
 }
 
@@ -416,6 +444,33 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_gimbal_is_named_after_the_camera_mounted_on_it_or_keeps_its_number() {
+        let gimbals = json!([
+            { "name": "Gimbal 1-1", "managerCompid": 1, "deviceId": 1, "active": false },
+            { "name": "Gimbal 1-2", "managerCompid": 1, "deviceId": 2, "active": true },
+            { "name": "Gimbal 1-3", "managerCompid": 1, "deviceId": 3, "active": false },
+        ]);
+        let cameras = json!({ "cameras": [
+            { "model": "SITL FPV camera", "gimbalDeviceId": 1 },
+            { "model": "SITL payload camera ", "gimbalDeviceId": 2 },
+            { "model": "", "gimbalDeviceId": 3 },
+            { "model": "Unmounted camera", "gimbalDeviceId": null },
+        ] });
+        assert_eq!(
+            named(&gimbals, &cameras),
+            json!([
+                { "name": "SITL FPV camera", "managerCompid": 1, "deviceId": 1, "active": false },
+                { "name": "SITL payload camera", "managerCompid": 1, "deviceId": 2, "active": true },
+                { "name": "Gimbal 1-3", "managerCompid": 1, "deviceId": 3, "active": false },
+            ])
+        );
+        assert_eq!(
+            named(&gimbals, &json!({ "available": false }))[1]["name"],
+            "Gimbal 1-2"
+        );
+    }
+
     use super::*;
 
     #[test]
