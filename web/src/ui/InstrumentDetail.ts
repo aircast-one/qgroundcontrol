@@ -21,6 +21,7 @@ export type BatteryHeadline = {
   index: number;
   percent: number | null;
   timeLeft: string;
+  secondsLeft: number | null;
   reserve: number;
   returnAt: number | null;
   returnNow: boolean;
@@ -36,6 +37,7 @@ export const BatteryHeadline = (fields: {
   index?: number;
   percent?: number | null;
   timeLeft?: string;
+  secondsLeft?: number | null;
   reserve?: number;
   returnAt?: number | null;
   returnNow?: boolean;
@@ -46,6 +48,7 @@ export const BatteryHeadline = (fields: {
   index: 0,
   percent: null,
   timeLeft: '',
+  secondsLeft: null,
   reserve: 0,
   returnAt: null,
   returnNow: false,
@@ -74,6 +77,7 @@ export const batteryHeadline = (view: Json | null): BatteryHeadline | null => {
         index: optInt(it, 'index'),
         percent: optNumber(it, 'percent'),
         timeLeft: optText(it, 'timeLeft'),
+        secondsLeft: optNumber(it, 'secondsLeft'),
         reserve: optDouble(it, 'reserve', 0),
         returnAt: optNumber(it, 'returnAt'),
         returnNow: optBoolean(it, 'returnNow'),

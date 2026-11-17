@@ -9,7 +9,7 @@ test('the status sheet arms the aircraft without starting layout editing', async
   await expect(vehicle.getByText('Arm the vehicle.')).toBeVisible();
   await expect(vehicle.getByRole('button', { name: 'Layout options' })).toBeHidden();
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to arm' }));
-  await expect(vehicle.getByRole('button', { name: /Change flight mode$/ }).first()).toContainText('Armed');
+  await expect(vehicle.getByRole('button', { name: /Change flight mode$/ }).first()).toHaveAccessibleName(/Armed/);
 });
 
 test('the status sheet scrolls as one page, with no scroll box nested inside it', async ({ app }) => {

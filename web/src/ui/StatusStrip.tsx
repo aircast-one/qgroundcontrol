@@ -9,7 +9,7 @@ import { coerceIn, format, roundToInt } from '@/kotlin/Std';
 import { AlertDialog, ListItem, Surface, Text, TextButton, Tooltipped } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { useSilentSeconds } from '@/map/Silence';
-import { Drawable } from '@/res/Icon';
+import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { useAdvancedUiShown } from '@/ui/AdvancedUi';
@@ -357,9 +357,10 @@ const BatteryCells = ({
             aria-label={`${value} ${meaning}`}
             aria-description="Battery"
             onClick={onOpen}
-            className="text-label-large tabular-nums"
+            className="flex min-h-8 items-center gap-0.5 text-label-large tabular-nums"
             style={{ color: live ? aircast('outdoorForeground') : md('outline') }}
           >
+            {meaning === TIME_LEFT ? <MaterialIcon name="hourglass_bottom" size={16} /> : null}
             {value}
           </button>
         </Tooltipped>
@@ -378,7 +379,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const batteryJson = useQgcPath(BATTERY_VIEW);
   const batteries = useMemo(() => batteryReadings(batteryJson), [batteryJson]);
   const headline = useMemo(() => batteryHeadline(batteryJson), [batteryJson]);
-  const timeLeft = headline?.timeLeft ?? '';
+  const timeLeft = durationText(useSmoothedSeconds(headline?.secondsLeft ?? null));
   const current = useMemo(() => totalCurrent(batteryJson) ?? '', [batteryJson]);
   const voltage = useMemo(() => lowestVoltage(batteryJson) ?? '', [batteryJson]);
   const linksJson = useQgcPath(VEHICLE_LINKS);
@@ -466,7 +467,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
     <>
       <OpenOnRequest name={STATUS_ALL_SHEET} open={() => setAllStatus(true)} />
       <div
-        className={`flex items-center overflow-x-auto ${className ?? ''}`}
+        className={`flex items-center overflow-x-auto min-[1600px]:[zoom:1.25] ${className ?? ''}`}
         style={{ ...style, opacity: live ? 1 : 0.45, ...badgeRoom(editing, true) }}
       >
         {keys.map((key) => (
@@ -806,7 +807,7 @@ const InlineCell = ({ text, colour, icon = null, onClick = null }: { text: strin
       {onClick === null ? (
         <div className="flex items-center gap-1">{body}</div>
       ) : (
-        <button type="button" aria-label={text} onClick={onClick} className="flex items-center gap-1">
+        <button type="button" aria-label={text} onClick={onClick} className="flex min-h-8 min-w-8 items-center justify-center gap-1">
           {body}
         </button>
       )}
@@ -854,11 +855,41 @@ export const batteryPercent = (text: string): number | null => {
   return /^[+-]?\d+$/.test(digits) ? coerceIn(Number(digits), 0, 100) : null;
 };
 
+export const TIME_LEFT = 'flight time left';
+
+const TIME_LEFT_RISE_SECONDS = 60;
+const TIME_LEFT_FALL_SECONDS = 5;
+
+export const smoothedSeconds = (shown: number | null, target: number | null, elapsedSeconds: number): number | null => {
+  if (target === null || !Number.isFinite(target)) return null;
+  if (shown === null) return target;
+  const settle = target > shown ? TIME_LEFT_RISE_SECONDS : TIME_LEFT_FALL_SECONDS;
+  return shown + (target - shown) * (1 - Math.exp(-Math.max(0, elapsedSeconds) / settle));
+};
+
+const useSmoothedSeconds = (target: number | null): number | null => {
+  const held = useRef<{ shown: number | null; at: number }>({ shown: null, at: 0 });
+  return useMemo(() => {
+    const now = performance.now();
+    const shown = smoothedSeconds(held.current.shown, target, (now - held.current.at) / 1000);
+    held.current = { shown, at: now };
+    return shown;
+  }, [target]);
+};
+
+export const durationText = (seconds: number | null): string => {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return '';
+  const total = Math.round(seconds);
+  const [hours, minutes, secs] = [Math.trunc(total / 3600), Math.trunc((total % 3600) / 60), total % 60];
+  if (total < 60) return `${total} sec`;
+  return hours > 0 ? format('%d:%02d:%02d', hours, minutes, secs) : format('%d:%02d', minutes, secs);
+};
+
 export const batteryExtras = (batteries: readonly BatteryReading[], voltage: string, timeLeft: string, current: string): readonly (readonly [string, string])[] =>
   (
     [
       [batteries.some((it) => batteryPercent(it.text) !== null) ? voltage : '', 'battery voltage'],
-      [timeLeft, 'flight time left'],
+      [timeLeft, TIME_LEFT],
       [current, 'current draw'],
     ] as const
   ).filter(([value]) => value !== '');
@@ -883,7 +914,8 @@ const FlightTimeCell = () => {
   const [seconds, setSeconds] = useState<number | null>(null);
   useTicker(FLIGHT_TIME_POLL_MS, [], async () => setSeconds(flightTimeSeconds(await Qgc.get(VEHICLE_FLIGHT_TIME))));
   return (
-    <span role="timer" aria-label="Flight time" className="text-title-small tabular-nums" style={{ color: aircast('outdoorForeground') }}>
+    <span role="timer" aria-label="Flight time" className="flex items-center gap-0.5 text-title-small tabular-nums" style={{ color: aircast('outdoorForeground') }}>
+      <MaterialIcon name="timer" size={16} />
       {flightTimeText(seconds)}
     </span>
   );

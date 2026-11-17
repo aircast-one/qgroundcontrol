@@ -20,7 +20,8 @@ test('the synthetic view stays on screen in flight with no camera, and comes bac
   await expect(map).toBeVisible();
   await map.click();
   const back = vehicle.getByRole('button', { name: 'Video', exact: true });
-  await expect(vehicle.getByText('Synthetic view', { exact: true })).toBeVisible();
+  await expect(vehicle.getByRole('img', { name: 'Synthetic view' }), 'with nothing but the synthetic view to show, the inset shrinks to a toggle').toBeVisible();
+  await expect.poll(async () => (await back.boundingBox())?.width ?? 0).toBe(48);
   await back.click();
   await expect(map).toBeVisible();
 });

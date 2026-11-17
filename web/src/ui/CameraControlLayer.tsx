@@ -366,7 +366,7 @@ const ZoomSlider = ({ camera, onIdle }: { camera: CameraReading; onIdle: () => v
 const CameraModeSwitch = ({ camera, panel, onRefused }: { camera: CameraReading; panel: CameraPanel; onRefused: (refusal: string | null) => void }) => {
   const white = aircast('outdoorForeground');
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center rounded-shape-md" style={{ background: OSD_SCRIM }}>
       {[false, true]
         .filter((video) => camera.hasModes || video !== panel.inPhotoMode)
         .map((video) => {
@@ -382,7 +382,7 @@ const CameraModeSwitch = ({ camera, panel, onRefused }: { camera: CameraReading;
               onClick={() => {
                 if (modeTapSwitches(camera, video)) void (async () => onRefused(await Qgc.refusalOf(CAMERA_SET_MODE, video ? 'video' : 'photo')))();
               }}
-              className={`px-2 py-1.5 text-label-small ${osdShadow()}`}
+              className="px-2 py-1.5 text-label-small"
               style={{ minHeight: MODE_ROW_HEIGHT, fontWeight: current ? 700 : 400, color: current ? white : withAlpha(white, MODE_IDLE_ALPHA) }}
             >
               {name}

@@ -248,12 +248,14 @@ export const VideoSurface = ({
 export const SYNTHETIC_THUMB_LABEL = 'Synthetic view';
 
 const SyntheticThumb = ({ className }: { className?: string }) => (
-  <Surface className={`size-full ${className ?? ''}`} color={aircast('outdoorBackground')} contentColor={aircast('outdoorForeground')}>
+  <Surface className={`@container size-full ${className ?? ''}`} color={aircast('outdoorBackground')} contentColor={aircast('outdoorForeground')}>
     <div className="flex size-full flex-col items-center justify-center gap-1">
-      <Drawable name="ic_explore" size={28} />
-      <Text typography="labelMedium" color={aircast('outdoorForeground')}>
-        {SYNTHETIC_THUMB_LABEL}
-      </Text>
+      <Drawable name="ic_explore" size={24} label={SYNTHETIC_THUMB_LABEL} />
+      <span aria-hidden className="hidden @min-[120px]:block">
+        <Text typography="labelMedium" color={aircast('outdoorForeground')}>
+          {SYNTHETIC_THUMB_LABEL}
+        </Text>
+      </span>
     </div>
   </Surface>
 );

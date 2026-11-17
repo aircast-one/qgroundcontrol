@@ -76,6 +76,22 @@ test('a go-to offers a height that starts at the current height, and its card ke
   await expect(card.getByText(/\(current height\)$/)).toBeHidden();
 });
 
+test('dragging the map stops it following the vehicle until the follow button brings it back', async ({ vehicle }) => {
+  await showMapFull(vehicle);
+  const box = (await vehicle.getByRole('region', { name: 'Map' }).boundingBox())!;
+  const follow = vehicle.getByRole('button', { name: /^Follow the vehicle/ });
+  await expect(follow).toBeHidden();
+  await expect(async () => {
+    await vehicle.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await vehicle.mouse.down();
+    await vehicle.mouse.move(box.x + 60, box.y + 80, { steps: 12 });
+    await vehicle.mouse.up();
+    await expect(follow).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 45_000 });
+  await follow.click();
+  await expect(follow).toBeHidden();
+});
+
 test('in flight the map menu offers an orbit with a radius range', async ({ vehicle }) => {
   await takeOff(vehicle, '10 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });

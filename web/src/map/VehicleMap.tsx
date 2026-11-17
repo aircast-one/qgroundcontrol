@@ -258,6 +258,7 @@ export type VehicleMapProps = {
   orbit?: OrbitCircle | null;
   otherMissions?: readonly OtherMission[];
   lastKnown?: LostVehicle | null;
+  onUserPan?: () => void;
 };
 
 const NONE: readonly never[] = [];
@@ -301,9 +302,9 @@ export const VehicleMap = ({
   fitRequest = 0,
   fitOnly = null,
   fitBottomShare = 0,
-  onFitFailed = ignore,
   fitLeftPx = 0,
   fitRightPx = 0,
+  onFitFailed = ignore,
   centreRequest = 0,
   centreOn = null,
   centreZoom = null,
@@ -328,6 +329,7 @@ export const VehicleMap = ({
   orbit = null,
   otherMissions = NONE,
   lastKnown = null,
+  onUserPan = ignore,
 }: VehicleMapProps) => {
   const mapEdits = useContext(LocalFlyMapEdits);
   const gotoPreview = useValue(mapEdits.gotoPreview);
@@ -378,6 +380,7 @@ export const VehicleMap = ({
     if (scope.isActive()) setTrack(next);
   });
 
+  const latestUserPan = useUpdatedRef(onUserPan);
   const latestCentreChanged = useUpdatedRef(onCentreChanged);
   const latestViewChanged = useUpdatedRef(onViewChanged);
   const latestLeftInset = useUpdatedRef(leftInsetPx);
@@ -409,6 +412,7 @@ export const VehicleMap = ({
     loaded.on('movestart', (event) => {
       if (event.originalEvent !== undefined) panning.current = true;
     });
+    loaded.on('dragstart', () => latestUserPan.current());
     const attachFlyClicks = (): (() => void) => {
       const detachGoto = attachGotoRadiusDrag(loaded.getCanvasContainer(), loaded, mapEdits, () => latestGoto.current);
       loaded.on('click', (event) => {
@@ -656,6 +660,10 @@ export const VehicleMap = ({
     if (trackDraws(track) || ghost === null) flownTrack.current = track;
     setGeoJson(loaded, TRAIL_SOURCE, featureCollection(trackDraws(flownTrack.current) ? [lineFeature(plottedTrack(flownTrack.current))] : []));
   }, [style, track, ghost]);
+
+  useEffect(() => {
+    if (follow) setTrackingResumesAtMs(elapsedRealtime());
+  }, [follow]);
 
   useLaunchedEffect([trackingResumesAtMs], async (scope) => {
     if (trackingResumesAtMs === 0) return;

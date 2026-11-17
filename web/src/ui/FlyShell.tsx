@@ -23,6 +23,9 @@ import { useUpdatedRef } from '@/kotlin/Compose';
 import { getSharedPreferences } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
 import { lostVehicle } from '@/map/LostVehicle';
+import { FOLLOW_VEHICLE, mapFollowing, mapWindow, vehicleOffScreen } from '@/map/MapFollow';
+import { type TrackPoint, isPlottable } from '@/map/VehicleMap';
+import { VEHICLES_VIEW, vehicleChoices } from '@/map/VehiclePicker';
 import { coerceAtLeast, same } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
 import { Map3d, useMap3dShown } from '@/map/Map3d';
@@ -82,6 +85,7 @@ const MINIMAP_THUMB = 56;
 const FULL_SCREEN_LAYER = 10;
 const STICK_LAYER = FULL_SCREEN_LAYER + 1;
 const DECISION_LAYER = 4;
+const PIP_LAYER = 0.5;
 const MAP_SCALE_CLEARANCE = 88;
 const CORNER_STICK_MIN_HEIGHT = 560;
 const STICK_FLOOR = MINIMAP_THUMB + AircastSpace.s3 * 2;
@@ -432,9 +436,12 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const hiddenWidgets = useValue(layout.hidden);
   const minimapCollapsed = mapIsPip && hiddenWidgets.has(MINIMAP_KEY);
   const pipThumb = thumbSize(useDesktopLayout());
-  const thumb = minimapCollapsed ? Size(OSD_CONTROL_SIZE, OSD_CONTROL_SIZE) : pipThumb;
-  const thumbStyle = thumbPlace(thumb, minimapCollapsed ? 0 : BOTTOM_LEAD);
-  const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
+  const syntheticPip = videoIsPip && syntheticReady && videoReading(videoJson)?.decoding !== true;
+  const toggleThumb = minimapCollapsed || syntheticPip;
+  const thumb = toggleThumb ? Size(OSD_CONTROL_SIZE, OSD_CONTROL_SIZE) : pipThumb;
+  const thumbLead = toggleThumb ? 0 : BOTTOM_LEAD;
+  const thumbStyle = thumbPlace(thumb, thumbLead);
+  const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + thumbLead, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
   const pipJiggle = useJiggleAngle(mapIsPip ? MINIMAP_KEY : 'pip', editing && thumbShown && !fullScreen, thumb);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
@@ -504,19 +511,184 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   return (
     <div ref={rootRef} className="relative size-full overflow-hidden">
       <LocalCompactHud.Provider value={compactHud(boxHeight)}>
+        {fullScreen ? null : (
+          <>
+            <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(1), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING }}>
+              <div className="relative size-full">
+                <LocalFlyOsd.Provider value={view === FlyView.Video}>
+                  <FlyChromeLayout
+                    top={
+                      <div className="relative">
+                        <FlyTopBar status={status} statusRef={statusRow}>
+                          <LayoutWidget widgetKey="headingTape" movable={false} hideable={false} className="self-center">
+                            <HeadingTape />
+                          </LayoutWidget>
+                          {view === FlyView.Video ? <ApproximateAimNote /> : null}
+                          <TrafficBanner />
+                          <UpdateBanner />
+                          <div className="flex items-center gap-2 overflow-x-auto" style={badgeRoom(editing, true)}>
+                            {keyRow}
+                          </div>
+                        </FlyTopBar>
+                        <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
+                          <BatteryReturnBar />
+                        </div>
+                      </div>
+                    }
+                    overlays={
+                      <div className="flex w-full flex-col items-start gap-2 overflow-hidden" style={{ ...badgeRoom(editing, false), paddingInlineStart: insets.overlaysStart, paddingInlineEnd: insets.overlaysEnd }}>
+                        <LocalAvoidedByVideoMessage.Provider value>{overlays}</LocalAvoidedByVideoMessage.Provider>
+                      </div>
+                    }
+                    bottom={<div style={{ height: cornerRoom }} />}
+                    overlaysAboveBottom
+                    message={
+                      lostFlight ? null : guideMessage ? (
+                        <OfflineGuideCard inVideo={videoMessage} />
+                      ) : videoMessage ? (
+                        <div className={`size-full ${osdShadow()}`}>
+                          <FlyNoVideoMessage />
+                        </div>
+                      ) : null
+                    }
+                    messageAboveBottom={false}
+                    obstacles={[...obstacles.values()]}
+                    onInsets={(next) => {
+                      if (!same(next, shellState.mapInsets.value)) shellState.mapInsets.value = next;
+                    }}
+                  />
+                  {stickPad === null ? (
+                    <div
+                      className="absolute inset-y-0 end-0 flex items-center"
+                      style={{
+                        zIndex: layer(1),
+                        paddingTop: `calc(env(safe-area-inset-top, 0px) + ${RAIL_CLEARANCE + AircastSpace.s3}px)`,
+                        paddingBottom: view === FlyView.Map ? mapButtonsBottom + (MAP_LAYERS_SIZE + AircastSpace.s2) * MAP_BUTTONS + AircastSpace.s3 : RAIL_CLEARANCE,
+                        paddingInlineEnd: AircastSpace.s3,
+                      }}
+                    >
+                      <LocalAvoidedByVideoMessage.Provider value>
+                        <div className="flex items-center justify-center" style={{ minWidth: RAIL_SHUTTER_ROOM }}>
+                          {cameraControls}
+                        </div>
+                      </LocalAvoidedByVideoMessage.Provider>
+                    </div>
+                  ) : null}
+                  <div
+                    ref={corner.ref}
+                    className="absolute end-0 bottom-0 flex items-center justify-end"
+                    style={{ zIndex: layer(1), marginInlineEnd: switchEnd, marginBottom: switchBottom, minHeight: MAP_LAYERS_SIZE }}
+                  >
+                    <LocalAvoidedByVideoMessage.Provider value>{cameraSwitch(mapIsPip, {})}</LocalAvoidedByVideoMessage.Provider>
+                  </div>
+                  {stickInCorner ? (
+                    <div
+                      ref={holdStick}
+                      className="absolute end-0 bottom-0"
+                      style={{ zIndex: layer(1), marginInlineEnd: AircastSpace.s3, marginBottom: switchBottom + corner.size.height + AircastSpace.s2 }}
+                    />
+                  ) : null}
+                  {hasVehicle && !deciding && view === FlyView.Video ? (
+                    sight
+                  ) : hasVehicle && !deciding ? (
+                    <div
+                      ref={osd.ref}
+                      className={`absolute inset-x-0 bottom-0 flex items-end gap-6 ${osdShadow()} ${PASS_THROUGH}`}
+                      style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideThumb + AircastSpace.s3 * 2, paddingInlineEnd: osdEndRoom, paddingBottom: AircastSpace.s3 }}
+                    >
+                      <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="shrink-0">
+                        <LocalFlyOsd.Provider value>
+                          <TelemetryRow valuesShown chooser={false} compact stacked className="rounded-shape-md bg-black/55 px-3 py-1.5" />
+                        </LocalFlyOsd.Provider>
+                      </LayoutWidget>
+                    </div>
+                  ) : null}
+                </LocalFlyOsd.Provider>
+                {view === FlyView.Map ? (
+                  <div className="absolute end-0 bottom-0" style={{ marginInlineEnd: AircastSpace.s3, marginBottom: mapButtonsBottom }}>
+                    <LayoutWidget widgetKey="mapLayers" hideable={false}>
+                      <div className="flex flex-col gap-2">
+                        <FollowButton />
+                        <Map3dToggle />
+                        <Surface
+                          onClick={() => setLayers(true)}
+                          shape="full"
+                          color={md('surfaceContainerHigh')}
+                          contentColor={md('onSurface')}
+                          label="Map layers"
+                          className="grid place-items-center"
+                          style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
+                        >
+                          <Drawable name="ic_layers" />
+                        </Surface>
+                      </div>
+                    </LayoutWidget>
+                  </div>
+                ) : null}
+                {view === FlyView.Map && layers ? <MapLayersSheet onDismiss={() => setLayers(false)} /> : null}
+              </div>
+            </div>
+          </>
+        )}
+        {fullScreen && hasVehicle && view === FlyView.Video ? (
+          <LocalFlyOsd.Provider value>
+            <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(FULL_SCREEN_LAYER + 0.5), ...CUTOUT_PADDING }}>
+              <TopScrim />
+              <div className="relative size-full">
+                <FlyTopBar status={status} statusRef={undefined}>
+                  <HeadingTape className="self-center" />
+                </FlyTopBar>
+                {sight}
+              </div>
+            </div>
+          </LocalFlyOsd.Provider>
+        ) : null}
+        {deckLayer}
+        {stickPad !== null ? (
+          <LocalFlyOsd.Provider value={view === FlyView.Video}>
+            <LocalAvoidedByVideoMessage.Provider value>
+              <div
+                className={`absolute inset-x-0 bottom-0 flex justify-center ${PASS_THROUGH}`}
+                style={{
+                  zIndex: layer(deciding ? DECISION_LAYER - 0.5 : STICK_LAYER),
+                  opacity: settingsOver ? 0 : 1,
+                  paddingInlineStart: insets.rowStart,
+                  paddingInlineEnd: insets.rowEnd,
+                  paddingBottom: STICK_FLOOR,
+                  height: Math.max(stickBand, stickPad) + STICK_FLOOR,
+                }}
+              >
+                <VirtualJoystick
+                  pad={stickPad}
+                  className="h-full"
+                  trailing={
+                    fullScreen ? null : (
+                      <div className="flex h-full">
+                        <div style={{ width: insets.trailingGap }} />
+                        <div ref={controls.ref} className="flex h-full items-center justify-center" style={{ minWidth: RAIL_SHUTTER_ROOM }}>
+                          {cameraControls}
+                        </div>
+                      </div>
+                    )
+                  }
+                />
+              </div>
+            </LocalAvoidedByVideoMessage.Provider>
+          </LocalFlyOsd.Provider>
+        ) : null}
         {view === FlyView.ThreeD ? <Viewer3DPane className="absolute inset-0" /> : null}
         {view !== FlyView.ThreeD && !minimapCollapsed
           ? map(
               mapIsPip
                 ? {
                     className: 'absolute overflow-hidden rounded-shape-md',
-                    style: { ...thumbStyle, zIndex: layer(1), border: `2px solid ${md('onSurface')}`, ...pipJiggle },
+                    style: { ...thumbStyle, zIndex: layer(PIP_LAYER), border: `2px solid ${md('onSurface')}`, ...pipJiggle },
                     'aria-hidden': fullScreen || undefined,
                   }
                 : { className: 'absolute inset-0', 'aria-hidden': fullScreen || undefined },
             )
           : null}
-        <AnimatedVisibility visible={videoShown} from="bottom" className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: fullScreen ? layer(FULL_SCREEN_LAYER) : videoIsPip ? layer(1) : 0 }}>
+        <AnimatedVisibility visible={videoShown} from="bottom" className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: fullScreen ? layer(FULL_SCREEN_LAYER) : videoIsPip ? layer(PIP_LAYER) : 0 }}>
           {video(
             {
               ...videoGestureProps,
@@ -577,163 +749,8 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 style={{ ...thumbStyle, zIndex: layer(3), border: `2px solid ${md('onSurface')}`, ...pipJiggle }}
               />
             ) : null}
-            <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(1), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING }}>
-              <div className="relative size-full">
-                {view === FlyView.Map ? (
-                  <div className="absolute end-0 bottom-0" style={{ marginInlineEnd: AircastSpace.s3, marginBottom: mapButtonsBottom }}>
-                    <LayoutWidget widgetKey="mapLayers" hideable={false}>
-                      <div className="flex flex-col gap-2">
-                        <Map3dToggle />
-                        <Surface
-                          onClick={() => setLayers(true)}
-                          shape="full"
-                          color={md('surfaceContainerHigh')}
-                          contentColor={md('onSurface')}
-                          label="Map layers"
-                          className="grid place-items-center"
-                          style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
-                        >
-                          <Drawable name="ic_layers" />
-                        </Surface>
-                      </div>
-                    </LayoutWidget>
-                  </div>
-                ) : null}
-                {view === FlyView.Map && layers ? <MapLayersSheet onDismiss={() => setLayers(false)} /> : null}
-                <LocalFlyOsd.Provider value={view === FlyView.Video}>
-                  <FlyChromeLayout
-                    top={
-                      <div className="relative">
-                        <FlyTopBar status={status} statusRef={statusRow}>
-                          <LayoutWidget widgetKey="headingTape" movable={false} hideable={false} className="self-center">
-                            <HeadingTape />
-                          </LayoutWidget>
-                          {view === FlyView.Video ? <ApproximateAimNote /> : null}
-                          <TrafficBanner />
-                          <UpdateBanner />
-                          <div className="flex items-center gap-2 overflow-x-auto" style={badgeRoom(editing, true)}>
-                            {keyRow}
-                          </div>
-                        </FlyTopBar>
-                        <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
-                          <BatteryReturnBar />
-                        </div>
-                      </div>
-                    }
-                    overlays={
-                      <div className="flex w-full flex-col items-start gap-2 overflow-hidden" style={{ ...badgeRoom(editing, false), paddingInlineStart: insets.overlaysStart, paddingInlineEnd: insets.overlaysEnd }}>
-                        <LocalAvoidedByVideoMessage.Provider value>{overlays}</LocalAvoidedByVideoMessage.Provider>
-                      </div>
-                    }
-                    bottom={<div style={{ height: cornerRoom }} />}
-                    overlaysAboveBottom
-                    message={
-                      lostFlight ? null : guideMessage ? (
-                        <OfflineGuideCard inVideo={videoMessage} />
-                      ) : videoMessage ? (
-                        <div className={`size-full ${osdShadow()}`}>
-                          <FlyNoVideoMessage />
-                        </div>
-                      ) : null
-                    }
-                    messageAboveBottom={false}
-                    obstacles={[...obstacles.values()]}
-                    onInsets={(next) => {
-                      if (!same(next, shellState.mapInsets.value)) shellState.mapInsets.value = next;
-                    }}
-                  />
-                  {stickPad === null ? (
-                    <div
-                      className="absolute inset-y-0 end-0 flex items-center"
-                      style={{ zIndex: layer(1), paddingTop: `calc(env(safe-area-inset-top, 0px) + ${RAIL_CLEARANCE + AircastSpace.s3}px)`, paddingBottom: RAIL_CLEARANCE, paddingInlineEnd: AircastSpace.s3 }}
-                    >
-                      <LocalAvoidedByVideoMessage.Provider value>
-                        <div className="flex items-center justify-center" style={{ minWidth: RAIL_SHUTTER_ROOM }}>
-                          {cameraControls}
-                        </div>
-                      </LocalAvoidedByVideoMessage.Provider>
-                    </div>
-                  ) : null}
-                  <div
-                    ref={corner.ref}
-                    className="absolute end-0 bottom-0 flex items-center justify-end"
-                    style={{ zIndex: layer(1), marginInlineEnd: switchEnd, marginBottom: switchBottom, minHeight: MAP_LAYERS_SIZE }}
-                  >
-                    <LocalAvoidedByVideoMessage.Provider value>{cameraSwitch(mapIsPip, {})}</LocalAvoidedByVideoMessage.Provider>
-                  </div>
-                  {stickInCorner ? (
-                    <div
-                      ref={holdStick}
-                      className="absolute end-0 bottom-0"
-                      style={{ zIndex: layer(1), marginInlineEnd: AircastSpace.s3, marginBottom: switchBottom + corner.size.height + AircastSpace.s2 }}
-                    />
-                  ) : null}
-                  {hasVehicle && !deciding && view === FlyView.Video ? (
-                    sight
-                  ) : hasVehicle && !deciding ? (
-                    <div
-                      ref={osd.ref}
-                      className={`absolute inset-x-0 bottom-0 flex items-end gap-6 ${osdShadow()} ${PASS_THROUGH}`}
-                      style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideThumb + AircastSpace.s3 * 2, paddingInlineEnd: osdEndRoom, paddingBottom: AircastSpace.s3 }}
-                    >
-                      <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="shrink-0">
-                        <LocalFlyOsd.Provider value>
-                          <TelemetryRow valuesShown chooser={false} compact stacked />
-                        </LocalFlyOsd.Provider>
-                      </LayoutWidget>
-                    </div>
-                  ) : null}
-                </LocalFlyOsd.Provider>
-              </div>
-            </div>
           </>
         )}
-        {fullScreen && hasVehicle && view === FlyView.Video ? (
-          <LocalFlyOsd.Provider value>
-            <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(FULL_SCREEN_LAYER + 0.5), ...CUTOUT_PADDING }}>
-              <TopScrim />
-              <div className="relative size-full">
-                <FlyTopBar status={status} statusRef={undefined}>
-                  <HeadingTape className="self-center" />
-                </FlyTopBar>
-                {sight}
-              </div>
-            </div>
-          </LocalFlyOsd.Provider>
-        ) : null}
-        {deckLayer}
-        {stickPad !== null ? (
-          <LocalFlyOsd.Provider value={view === FlyView.Video}>
-            <LocalAvoidedByVideoMessage.Provider value>
-              <div
-                className={`absolute inset-x-0 bottom-0 flex justify-center ${PASS_THROUGH}`}
-                style={{
-                  zIndex: layer(deciding ? DECISION_LAYER - 0.5 : STICK_LAYER),
-                  opacity: settingsOver ? 0 : 1,
-                  paddingInlineStart: insets.rowStart,
-                  paddingInlineEnd: insets.rowEnd,
-                  paddingBottom: STICK_FLOOR,
-                  height: Math.max(stickBand, stickPad) + STICK_FLOOR,
-                }}
-              >
-                <VirtualJoystick
-                  pad={stickPad}
-                  className="h-full"
-                  trailing={
-                    fullScreen ? null : (
-                      <div className="flex h-full">
-                        <div style={{ width: insets.trailingGap }} />
-                        <div ref={controls.ref} className="flex h-full items-center justify-center" style={{ minWidth: RAIL_SHUTTER_ROOM }}>
-                          {cameraControls}
-                        </div>
-                      </div>
-                    )
-                  }
-                />
-              </div>
-            </LocalAvoidedByVideoMessage.Provider>
-          </LocalFlyOsd.Provider>
-        ) : null}
       </LocalCompactHud.Provider>
     </div>
   );
@@ -757,6 +774,38 @@ export const MAP_LAYERS_CLEARANCE = MAP_LAYERS_SIZE + AircastSpace.s3 + AircastS
 const FLEET_CARD_MAX_WIDTH = 440;
 const FLEET_CARD_MAX_HEIGHT = 320;
 const FLEET_CARD_MIN_SCREEN_DP = 600;
+
+const MAP_BUTTONS = 3;
+
+const activeAt = (json: Json | null): TrackPoint | null => {
+  const active = vehicleChoices(json).active;
+  return active === null || !isPlottable(active.latitude, active.longitude) ? null : { latitude: active.latitude, longitude: active.longitude };
+};
+
+const FollowButton = () => {
+  const following = useValue(mapFollowing);
+  const corners = useValue(mapWindow);
+  const vehicle = useQgcDerived(VEHICLES_VIEW, activeAt);
+  if (following || vehicle === null) return null;
+  const away = vehicleOffScreen(corners, vehicle);
+  const label = away === null ? FOLLOW_VEHICLE : `${FOLLOW_VEHICLE}. ${away.text}`;
+  return (
+    <Surface
+      onClick={() => {
+        mapFollowing.value = true;
+      }}
+      shape="full"
+      color={md('primaryContainer')}
+      contentColor={md('onPrimaryContainer')}
+      label={label}
+      title={label}
+      className="grid place-items-center"
+      style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
+    >
+      {away === null ? <Drawable name="ic_my_location" /> : <Drawable name="ic_navigation" style={{ transform: `rotate(${away.bearing}deg)` }} />}
+    </Surface>
+  );
+};
 
 const Map3dToggle = () => {
   const shown = useMap3dShown();

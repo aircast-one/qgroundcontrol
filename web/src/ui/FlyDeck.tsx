@@ -286,8 +286,8 @@ export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: De
   const [color, content] = deckColours(entry, primary);
   const label = entry.short ?? railLabel(entry.label);
   return (
-    <div className="flex flex-col items-center gap-1">
-      <Surface shape="full" color={color} contentColor={content} shadow style={{ minWidth: OSD_CONTROL_SIZE, height: OSD_CONTROL_SIZE, opacity: entry.enabled ? 1 : DISABLED_ALPHA }}>
+    <div className="flex flex-col items-center gap-1" style={{ width: OSD_CONTROL_SIZE }}>
+      <Surface shape="full" color={color} contentColor={content} shadow className="shrink-0" style={{ minWidth: OSD_CONTROL_SIZE, height: OSD_CONTROL_SIZE, opacity: entry.enabled ? 1 : DISABLED_ALPHA }}>
         <DeckPress entry={entry}>
           {labelled ? (
             <Drawable name={entry.icon} label={entry.label} size={primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE} />
@@ -304,8 +304,8 @@ export const RailDeckButton = ({ entry, primary, labelled = false }: { entry: De
         </DeckPress>
       </Surface>
       {labelled ? (
-        <span className="rounded-full px-2" style={{ background: OSD_SCRIM }}>
-          <Text typography="labelMedium" color={aircast('outdoorForeground')} maxLines={1}>
+        <span className="w-max max-w-[72px] shrink-0 rounded-shape-sm px-1.5 text-center" style={{ background: OSD_SCRIM }}>
+          <Text typography="labelMedium" color={aircast('outdoorForeground')}>
             {label}
           </Text>
         </span>

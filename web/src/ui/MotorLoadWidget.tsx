@@ -3,7 +3,7 @@ import { type Json, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, op
 import { useQgcDerived } from '@/bridge/QgcState';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { ESC_PATH } from '@/ui/EscIndicator';
-import { LocalCompactHud, osdShadow } from '@/ui/Osd';
+import { LocalCompactHud, OSD_SCRIM, osdShadow } from '@/ui/Osd';
 
 export type Level = 'normal' | 'elevated' | 'critical';
 
@@ -21,7 +21,7 @@ export type MotorLoad = {
 
 type Frame = { readonly size: number; readonly arm: number; readonly ring: number; readonly rpm: boolean };
 
-const FULL_FRAME: Frame = { size: 120, arm: 42, ring: 16, rpm: true };
+const FULL_FRAME: Frame = { size: 140, arm: 48, ring: 20, rpm: true };
 const COMPACT_FRAME: Frame = { size: 88, arm: 30, ring: 12, rpm: false };
 const RING_WIDTH = 2;
 const BODY = 6;
@@ -62,7 +62,7 @@ const Rotor = ({ frame, load }: { frame: Frame; load: MotorLoad }) => {
   return (
     <g>
       <title>{load.reporting ? `Motor ${load.motor}: ${load.current} A, ${load.rpm} rpm, ${load.temperature}` : `Motor ${load.motor}: no ESC data`}</title>
-      <circle cx={x} cy={y} r={frame.ring} fill="none" stroke={withAlpha(Color.White, 0.3)} strokeWidth={RING_WIDTH} strokeDasharray={load.reporting ? undefined : '3 3'} />
+      <circle cx={x} cy={y} r={frame.ring} fill={OSD_SCRIM} stroke={withAlpha(Color.White, 0.3)} strokeWidth={RING_WIDTH} strokeDasharray={load.reporting ? undefined : '3 3'} />
       {load.reporting ? (
         <circle
           cx={x}
@@ -78,15 +78,15 @@ const Rotor = ({ frame, load }: { frame: Frame; load: MotorLoad }) => {
       ) : null}
       {load.reporting && frame.rpm ? (
         <>
-          <text x={x} y={y} dy="-0.05em" textAnchor="middle" fontSize={11} fontWeight={600} fill={labelColour(load.currentLevel)}>
+          <text x={x} y={y} dy="-0.1em" textAnchor="middle" fontSize={12} fontWeight={600} fill={labelColour(load.currentLevel)}>
             {load.current}
           </text>
-          <text x={x} y={y} dy="1.05em" textAnchor="middle" fontSize={7.5} fill={withAlpha(Color.White, 0.7)}>
+          <text x={x} y={y} dy="1.05em" textAnchor="middle" fontSize={11} fill={withAlpha(Color.White, 0.85)}>
             {load.rpm}
           </text>
         </>
       ) : load.reporting ? (
-        <text x={x} y={y} dy="0.35em" textAnchor="middle" fontSize={10} fontWeight={600} fill={labelColour(load.currentLevel)}>
+        <text x={x} y={y} dy="0.35em" textAnchor="middle" fontSize={11} fontWeight={600} fill={labelColour(load.currentLevel)}>
           {load.current}
         </text>
       ) : (

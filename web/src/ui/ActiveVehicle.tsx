@@ -211,6 +211,8 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
     else setModeMenu(true);
   };
 
+  const modeButton = pendingMode === null && !choices.ambiguous && !taken && !disconnected;
+  const modeButtonLabel = lost ? SIGNAL_LOST : 'Change flight mode';
   const trailing: ReactNode =
     pendingMode !== null ? (
       <CircularProgressIndicator size={16} strokeWidth={2} />
@@ -218,13 +220,9 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
       <Drawable name={alarm === null ? 'ic_arrow_drop_down' : 'ic_warning'} label={alarm ?? 'Choose which vehicle to fly'} />
     ) : disconnected ? (
       <Drawable name="ic_chevron_right" label="How to connect" style={{ color: titleColour }} />
-    ) : (
-      <StopPropagation className="flex">
-        <button type="button" className="flex" aria-label={lost ? SIGNAL_LOST : 'Change flight mode'} onClick={() => (lost ? setLostMenu(true) : setModeMenu(true))}>
-          <Drawable name="ic_arrow_drop_down" />
-        </button>
-      </StopPropagation>
-    );
+    ) : null;
+  const trailingName = pendingMode !== null ? null : choices.ambiguous || taken ? (alarm ?? 'Choose which vehicle to fly') : disconnected ? 'How to connect' : modeButtonLabel;
+  const chipName = [osdModeText(title), note, trailingName].filter((it): it is string => it !== null && it.trim() !== '').join(' ');
 
   return (
     <>
@@ -238,15 +236,15 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
       />
       <div className={`relative ${className ?? ''}`}>
         <FlightModeMenu expanded={modeMenu && !disconnected} onDismiss={() => setModeMenu(false)} onStatus={() => setStatusSettings(true)} />
-        <div
-          role="button"
-          tabIndex={0}
-          className="rounded-shape-sm outline-none focus-visible:outline-2 focus-visible:outline-[var(--md-primary)]"
-          style={{ color: aircast('outdoorForeground') }}
-          onClick={chipClick}
-          onKeyDown={activate(chipClick)}
-        >
-          <div className="flex min-h-11 items-center gap-2 px-3 py-1.5">
+        <div className="flex min-h-11 items-center gap-2 px-3 py-1.5" style={{ color: aircast('outdoorForeground') }}>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label={chipName}
+            className="flex min-w-0 shrink items-center gap-2 rounded-shape-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-[var(--md-primary)]"
+            onClick={chipClick}
+            onKeyDown={activate(chipClick)}
+          >
             {searching ? (
               <span className="flex size-6 shrink-0 items-center justify-center">
                 <CircularProgressIndicator size={18} strokeWidth={2} color={titleColour} label="Searching" />
@@ -257,29 +255,32 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
             <Text typography="titleMedium" color={titleColour} maxLines={1} ellipsis className="min-w-0 shrink">
               {osdModeText(title)}
             </Text>
-            {note !== null ? (
-              <StopPropagation className="flex min-w-0 shrink">
-                <Surface
-                  onClick={() => (blocker !== null ? setWhy(true) : setStatusSettings(true))}
-                  shape="small"
-                  color={noteBackdrop}
-                  contentColor={noteColour(tone)}
-                  className={`min-w-0 px-[14px] py-2 ${osdShadow()}`}
-                >
-                  <Text typography="labelLarge" maxLines={1} ellipsis className="block">{note}</Text>
-                </Surface>
-              </StopPropagation>
-            ) : null}
             {trailing}
-            {loading !== null && !lost ? (
-              <div className="flex flex-col pl-2">
-                <Text typography="labelSmall">Loading vehicle</Text>
-                <div className="w-[72px]">
-                  <LinearProgressIndicator progress={loading} />
-                </div>
-              </div>
-            ) : null}
           </div>
+          {note !== null ? (
+            <Surface
+              onClick={() => (blocker !== null ? setWhy(true) : setStatusSettings(true))}
+              shape="small"
+              color={noteBackdrop}
+              contentColor={noteColour(tone)}
+              className={`min-w-0 shrink px-[14px] py-2 ${osdShadow()}`}
+            >
+              <Text typography="labelLarge" maxLines={1} ellipsis className="block">{note}</Text>
+            </Surface>
+          ) : null}
+          {modeButton ? (
+            <button type="button" className="flex min-h-8 min-w-8 items-center justify-center rounded-shape-sm" aria-label={modeButtonLabel} onClick={() => (lost ? setLostMenu(true) : setModeMenu(true))}>
+              <Drawable name="ic_arrow_drop_down" />
+            </button>
+          ) : null}
+          {loading !== null && !lost ? (
+            <div className="flex flex-col pl-2">
+              <Text typography="labelSmall">Loading vehicle</Text>
+              <div className="w-[72px]">
+                <LinearProgressIndicator progress={loading} />
+              </div>
+            </div>
+          ) : null}
         </div>
         <DropdownMenu expanded={lostMenu && lost} onDismissRequest={() => setLostMenu(false)}>
           <DropdownMenuItem text={<Text typography="labelLarge" color={md('onSurfaceVariant')}>{silentFor !== null ? silenceText(silentFor) : SIGNAL_LOST}</Text>} onClick={() => undefined} enabled={false} />

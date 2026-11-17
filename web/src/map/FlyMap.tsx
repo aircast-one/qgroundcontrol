@@ -7,11 +7,12 @@ import { Surface } from '@/m3';
 import { type FenceCircle, type FencePolygon, type FirmwareFence, type RallyPoint, FenceBridge, breachReturn, fenceCircles, fencePolygons, firmwareFence, rallyPoints } from './FenceBridge';
 import { LocalFlyMapEdits } from './FlyMapEdits';
 import { lostVehicle } from './LostVehicle';
+import { mapFollowing, mapWindow } from './MapFollow';
 import { GimbalBridge, type GimbalAzimuth } from './GimbalWedge';
 import { GotoBridge, type GotoLocation } from './GotoMarker';
 import { VideoBridge, shotPoints } from './ItemCamera';
 import { MapBridge, useMapBool, useMapPath } from './MapBridge';
-import { readCamera, writeCamera } from './MapCamera';
+import { launchCamera, readCamera, readLastVehicle, writeCamera, writeLastVehicle } from './MapCamera';
 import type { OtherMission } from './MissionLayers';
 import { OperatorBridge, operatorHeading, operatorPoint } from './OperatorPosition';
 import { OrbitBridge, type OrbitCircle } from './OrbitMarker';
@@ -84,8 +85,8 @@ export const missionArrived = <T, K>(before: readonly T[], after: readonly T[], 
 const shape = (item: MissionItem) => [item.sequence, item.latitude, item.longitude, item.command];
 
 const PREVIEW_SHEET_SHARE = 0.75;
-
 const PREVIEW_CARD_ROOM = 352;
+
 const keptPlan = (held: FlownPlan, next: FlownPlan): FlownPlan =>
   (Object.keys(next) as (keyof FlownPlan)[]).reduce<FlownPlan>((plan, field) => (same(held[field], next[field]) ? { ...plan, [field]: held[field] } : plan), next);
 
@@ -171,8 +172,9 @@ export const FlyMap = ({
   const [zoom, setZoom] = useState(0.0);
   const [fitRequest, setFitRequest] = useState(0);
   const gotoPreview = useValue(useContext(LocalFlyMapEdits).gotoPreview);
-  const lastKnown = useValue(lostVehicle);
   const gotoCard = useValue(useContext(LocalFlyMapEdits).gotoCard);
+  const lastKnown = useValue(lostVehicle);
+  const following = useValue(mapFollowing);
   const fleetJson = useMapPath(VEHICLES_VIEW);
   const aircraft = useMemo(() => {
     const active = vehicleChoices(fleetJson).active;
@@ -181,7 +183,10 @@ export const FlyMap = ({
   useEffect(() => {
     if (gotoPreview !== null) setFitRequest((request) => request + 1);
   }, [gotoPreview]);
-  const saved = useMemo(() => readCamera(), []);
+  const saved = useMemo(() => launchCamera(readCamera(), readLastVehicle()), []);
+  useEffect(() => {
+    if (aircraft !== null && isPlottable(aircraft.latitude, aircraft.longitude)) writeLastVehicle(aircraft);
+  }, [aircraft?.latitude, aircraft?.longitude]);
   const [centreRequest, setCentreRequest] = useState(saved !== null ? 1 : 0);
   const [centreOn, setCentreOn] = useState<TrackPoint | null>(saved?.centre ?? null);
   const [centreZoom, setCentreZoom] = useState<number | null>(saved?.zoom ?? null);
@@ -247,7 +252,13 @@ export const FlyMap = ({
             <VehicleMap
               className="size-full"
               mapStyle={style}
-              follow
+              follow={following || pip}
+              onUserPan={() => {
+                if (!pip) mapFollowing.value = false;
+              }}
+              onViewChanged={(corners) => {
+                if (!pip) mapWindow.value = corners;
+              }}
               keepCentered={keepCentered || pip}
               pip={pip}
               gimbals={plan.gimbals}

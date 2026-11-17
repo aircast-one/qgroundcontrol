@@ -78,9 +78,11 @@ const Tile = ({ label, enabled, ring, fill, hollow, onClick, children }: { label
 const Labelled = ({ text, tone, children }: { text: string; tone: string; children: React.ReactNode }) => (
   <div className="flex flex-col items-center gap-1">
     {children}
-    <Text typography="labelSmall" color={tone} maxLines={1} className={osdShadow()}>
-      {text}
-    </Text>
+    <span className="rounded-full px-2" style={{ background: OSD_SCRIM }}>
+      <Text typography="labelMedium" color={tone} maxLines={1}>
+        {text}
+      </Text>
+    </span>
   </div>
 );
 

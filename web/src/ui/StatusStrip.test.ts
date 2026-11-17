@@ -13,6 +13,7 @@ import {
   batteryReadings,
   batteryRingSegments,
   compactStatusText,
+  durationText,
   fixLevel,
   flightTimeSeconds,
   flightTimeText,
@@ -22,6 +23,7 @@ import {
   rcCell,
   satsText,
   shownStatusCells,
+  smoothedSeconds,
   telemetryCell,
   telemetryDetail,
 } from './StatusStrip';
@@ -290,5 +292,18 @@ describe('batteryExtras', () => {
 
   it('leaves the voltage out when the battery already reads in volts', () => {
     expect(batteryExtras([reading('50.21V')], '50.2V', '', '0.8A')).toEqual([['0.8A', 'current draw']]);
+  });
+
+  it('the time left rises slowly when the draw drops and falls fast when it climbs', () => {
+    const settledAfter = (from: number, to: number, seconds: number) => smoothedSeconds(from, to, seconds) ?? NaN;
+    expect(settledAfter(728, 7227, 1)).toBeLessThan(840);
+    expect(settledAfter(7227, 728, 5)).toBeLessThan(3200);
+    expect(smoothedSeconds(null, 728, 1)).toBe(728);
+    expect(smoothedSeconds(728, null, 1)).toBeNull();
+  });
+
+  it('time left reads as the core writes it', () => {
+    expect([59, 728, 7227].map(durationText)).toEqual(['59 sec', '12:08', '2:00:27']);
+    expect(durationText(null)).toBe('');
   });
 });
