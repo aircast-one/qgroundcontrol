@@ -7506,7 +7506,7 @@ impl Vehicle {
         if self.is_ardusub() {
             self.sub_info.apply(message);
         }
-        self.escs.apply(message);
+        self.escs.apply(message, now_ms);
         if let MavMessage::TERRAIN_REPORT(d) = message {
             self.terrain_blocks = (d.pending, d.loaded);
         }

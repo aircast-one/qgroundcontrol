@@ -2140,9 +2140,19 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
                 &points["vehicle.cameraTriggerPoints.".len()..],
             );
         }
-        "vehicle.escs" => return Some(crate::vehiclefact::esc_list(&known.escs)),
+        "vehicle.escs" => {
+            return Some(crate::vehiclefact::esc_list(
+                &known.escs.online_at(crate::hub::now_ms()),
+            ));
+        }
         "vehicle.escs.count" => {
             return Some(json!({ "kind": "value", "value": known.escs.by_id.len() }));
+        }
+        "vehicle.escs.steadyCurrents" => {
+            return Some(json!({
+                "kind": "value",
+                "value": known.escs.by_id.values().map(|esc| esc.steady_current).collect::<Vec<_>>(),
+            }));
         }
         "vehicle.terrain" => {
             return Some(crate::vehiclefact::spec_group(

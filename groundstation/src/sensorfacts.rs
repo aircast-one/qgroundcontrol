@@ -26,6 +26,19 @@ pub struct EscFacts {
     pub error_count: u32,
     pub temperature: i16,
     pub telemetry: bool,
+    pub packets: u16,
+    pub heard_ms: Option<u64>,
+    pub steady_current: f32,
+}
+
+pub const ESC_STALE_MS: u64 = 3000;
+const CURRENT_SMOOTHING_MS: f32 = 2000.0;
+
+fn steadied(esc: &EscFacts, current: f32, now_ms: u64) -> f32 {
+    esc.heard_ms.map_or(current, |heard| {
+        let weight = 1.0 - (-(now_ms.saturating_sub(heard) as f32) / CURRENT_SMOOTHING_MS).exp();
+        esc.steady_current + weight * (current - esc.steady_current)
+    })
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -66,20 +79,59 @@ fn ardupilot_esc_block(message: &MavMessage) -> Option<ArduPilotEscBlock> {
 }
 
 impl Escs {
+    pub fn online_at(&self, now_ms: u64) -> Escs {
+        let heard = self
+            .by_id
+            .values()
+            .enumerate()
+            .filter(|(_, esc)| {
+                esc.heard_ms
+                    .is_some_and(|heard| now_ms.saturating_sub(heard) <= ESC_STALE_MS)
+            })
+            .fold(0u32, |mask, (position, _)| {
+                mask | 1u32.checked_shl(position as u32).unwrap_or(0)
+            });
+        Escs {
+            by_id: self
+                .by_id
+                .iter()
+                .map(|(id, esc)| {
+                    (
+                        *id,
+                        EscFacts {
+                            info: esc.info & heard,
+                            ..esc.clone()
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
     fn apply_ardupilot(
         &mut self,
         (first, voltage, current, rpm, count, temperature): ArduPilotEscBlock,
+        now_ms: u64,
     ) -> bool {
         (0..4usize)
             .filter(|slot| count[*slot] > 0)
             .for_each(|slot| {
                 let esc = self.by_id.entry(first + slot as u32).or_default();
+                let amps = f32::from(current[slot]) / 100.0;
+                let fresh = esc.heard_ms.is_none() || esc.packets != count[slot];
                 *esc = EscFacts {
                     rpm: i32::from(rpm[slot]),
                     voltage: f32::from(voltage[slot]) / 100.0,
-                    current: f32::from(current[slot]) / 100.0,
+                    current: amps,
                     temperature: i16::from(temperature[slot]) * 100,
                     telemetry: true,
+                    packets: count[slot],
+                    heard_ms: fresh.then_some(now_ms).or(esc.heard_ms),
+                    steady_current: if fresh {
+                        steadied(esc, amps, now_ms)
+                    } else {
+                        esc.steady_current
+                    },
                     ..esc.clone()
                 };
             });
@@ -95,9 +147,9 @@ impl Escs {
         true
     }
 
-    pub fn apply(&mut self, message: &MavMessage) -> bool {
+    pub fn apply(&mut self, message: &MavMessage, now_ms: u64) -> bool {
         if let Some(block) = ardupilot_esc_block(message) {
-            return self.apply_ardupilot(block);
+            return self.apply_ardupilot(block, now_ms);
         }
         let first = match message {
             MavMessage::ESC_INFO(_) => 0,
@@ -120,6 +172,7 @@ impl Escs {
                     error_count: d.error_count[slot],
                     temperature: d.temperature[slot],
                     telemetry: true,
+                    heard_ms: Some(now_ms),
                     ..esc.clone()
                 };
             }
@@ -132,6 +185,8 @@ impl Escs {
                     current: d.current[slot],
                     voltage: d.voltage[slot],
                     telemetry: true,
+                    heard_ms: Some(now_ms),
+                    steady_current: steadied(esc, d.current[slot], now_ms),
                     ..esc.clone()
                 };
             }
@@ -712,22 +767,28 @@ mod tests {
     fn esc_info_always_opens_the_first_four_because_qt_reads_its_index_from_the_wrong_message() {
         use mavlink::dialects::ardupilotmega::{ESC_INFO_DATA, ESC_STATUS_DATA};
         let mut escs = Escs::default();
-        escs.apply(&MavMessage::ESC_STATUS(ESC_STATUS_DATA {
-            index: 4,
-            rpm: [100, 200, 300, 400],
-            ..Default::default()
-        }));
+        escs.apply(
+            &MavMessage::ESC_STATUS(ESC_STATUS_DATA {
+                index: 4,
+                rpm: [100, 200, 300, 400],
+                ..Default::default()
+            }),
+            0,
+        );
         assert_eq!(
             escs.by_id.keys().copied().collect::<Vec<_>>(),
             vec![4, 5, 6, 7]
         );
         assert_eq!((escs.by_id[&5].rpm, escs.by_id[&5].telemetry), (200, true));
-        escs.apply(&MavMessage::ESC_INFO(ESC_INFO_DATA {
-            index: 4,
-            count: 8,
-            temperature: [0, 3150, 0, 0],
-            ..Default::default()
-        }));
+        escs.apply(
+            &MavMessage::ESC_INFO(ESC_INFO_DATA {
+                index: 4,
+                count: 8,
+                temperature: [0, 3150, 0, 0],
+                ..Default::default()
+            }),
+            0,
+        );
         assert_eq!(
             escs.by_id.keys().copied().collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 4, 5, 6, 7]

@@ -14,8 +14,12 @@ pub const DEPS: &[&str] = &[
 const HEALTH_CHECKED_MOTORS: u32 = 4;
 const TEMPERATURE_ELEVATED_C: f64 = 70.0;
 const TEMPERATURE_CRITICAL_C: f64 = 90.0;
-const CURRENT_ELEVATED_A: f64 = 40.0;
-const CURRENT_CRITICAL_A: f64 = 70.0;
+const IMBALANCE_ELEVATED: f64 = 0.25;
+const IMBALANCE_CRITICAL: f64 = 0.5;
+const IMBALANCE_ELEVATED_FLOOR_A: f64 = 2.0;
+const IMBALANCE_CRITICAL_FLOOR_A: f64 = 4.0;
+const IMBALANCE_MIN_MOTORS: usize = 3;
+const RPM_IN_THOUSANDS: f64 = 10_000.0;
 const FIRST_MOTOR_FUNCTION: i64 = 33;
 const LAST_MOTOR_FUNCTION: i64 = 40;
 
@@ -101,17 +105,59 @@ fn title(index: usize, esc: &Value, wiring: Option<&Wiring>) -> String {
     }
 }
 
-fn frame(escs: &[Value], wiring: &Wiring) -> Vec<Value> {
-    wiring
+fn median(values: &[f64]) -> Option<f64> {
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let middle = sorted.len() / 2;
+    (sorted.len() >= IMBALANCE_MIN_MOTORS).then(|| {
+        if sorted.len() % 2 == 0 {
+            (sorted[middle - 1] + sorted[middle]) / 2.0
+        } else {
+            sorted[middle]
+        }
+    })
+}
+
+fn imbalance(steady: f64, median: Option<f64>) -> &'static str {
+    median.map_or("normal", |median| {
+        level(
+            (steady - median).abs(),
+            (median * IMBALANCE_ELEVATED).max(IMBALANCE_ELEVATED_FLOOR_A),
+            (median * IMBALANCE_CRITICAL).max(IMBALANCE_CRITICAL_FLOOR_A),
+        )
+    })
+}
+
+fn frame(
+    escs: &[Value],
+    wiring: &Wiring,
+    online: &dyn Fn(usize) -> bool,
+    steady: &[f64],
+) -> Vec<Value> {
+    let placed: Vec<(f64, i64, Option<usize>)> = wiring
         .angles
         .iter()
         .zip(1..)
         .map(|(angle, motor)| {
-            let esc = wiring
+            let at = wiring
                 .motors
                 .iter()
                 .position(|m| *m == Some(motor))
-                .and_then(|at| escs.get(at));
+                .filter(|at| *at < escs.len() && online(*at));
+            (*angle, motor, at)
+        })
+        .collect();
+    let steady_of = |at: Option<usize>| at.and_then(|at| steady.get(at)).copied();
+    let middle = median(
+        &placed
+            .iter()
+            .filter_map(|(_, _, at)| steady_of(*at))
+            .collect::<Vec<_>>(),
+    );
+    placed
+        .iter()
+        .map(|(angle, motor, at)| {
+            let esc = at.and_then(|at| escs.get(at));
             let temperature = esc.map_or(0.0, |e| reading(e, "temperature") / 100.0);
             let current = esc.map_or(0.0, |e| reading(e, "current"));
             let rpm = esc.map_or(0.0, |e| reading(e, "rpm"));
@@ -121,17 +167,36 @@ fn frame(escs: &[Value], wiring: &Wiring) -> Vec<Value> {
                 "reporting": esc.is_some(),
                 "temperature": format!("{temperature:.0} C"),
                 "current": format!("{current:.1}"),
-                "rpm": format!("{rpm:.0}"),
+                "rpm": if rpm >= RPM_IN_THOUSANDS {
+                    format!("{:.0}k", rpm / 1000.0)
+                } else {
+                    format!("{rpm:.0}")
+                },
                 "temperatureLevel": level(temperature, TEMPERATURE_ELEVATED_C, TEMPERATURE_CRITICAL_C),
-                "currentLevel": level(current, CURRENT_ELEVATED_A, CURRENT_CRITICAL_A),
-                "fill": (temperature / TEMPERATURE_CRITICAL_C).clamp(0.0, 1.0),
+                "currentLevel": steady_of(*at).map_or("normal", |s| imbalance(s, middle)),
             })
         })
         .collect()
 }
 
-fn hint(wiring: &Wiring) -> String {
-    wiring
+fn silent_hint(silent: &[i64]) -> Option<String> {
+    match silent {
+        [] => None,
+        [motor] => Some(format!(
+            "Motor {motor} sends no ESC telemetry: check its ESC's telemetry connection and numbering."
+        )),
+        [rest @ .., last] => Some(format!(
+            "Motors {} and {last} send no ESC telemetry: check their ESCs' telemetry connection and numbering.",
+            rest.iter()
+                .map(i64::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
+fn hint(wiring: &Wiring, silent: &[i64]) -> String {
+    let unmatched = wiring
         .motors
         .iter()
         .zip(&wiring.outputs)
@@ -140,11 +205,15 @@ fn hint(wiring: &Wiring) -> String {
             format!(
                 "ESC {output} matches no motor: its output drives none and the frame has fewer motors. Number each ESC after its motor, or shift DroneCAN ESCs with CAN_D1_UC_ESC_OF onto their motors' outputs."
             )
-        })
-        .unwrap_or_default()
+        });
+    [silent_hint(silent), unmatched]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
-pub fn summary(escs: &[Value], wiring: Option<&Wiring>) -> Value {
+pub fn summary(escs: &[Value], wiring: Option<&Wiring>, steady: &[f64]) -> Value {
     let Some(first) = escs.first() else {
         return json!({ "kind": "object", "class": "Escs", "shown": false });
     };
@@ -168,7 +237,15 @@ pub fn summary(escs: &[Value], wiring: Option<&Wiring>) -> Value {
                 .get(index)
                 .is_some_and(|esc| raw(esc, "failureFlags") > 0)
     });
-    let healthy = online_count == motor_count && !failing_checked;
+    let rotors = wiring
+        .map(|w| frame(escs, w, &online, steady))
+        .unwrap_or_default();
+    let silent: Vec<i64> = rotors
+        .iter()
+        .filter(|rotor| rotor["reporting"] == false)
+        .filter_map(|rotor| rotor["motor"].as_i64())
+        .collect();
+    let healthy = online_count == motor_count && !failing_checked && silent.is_empty();
     let healthy_motors = (0..escs.len()).filter(|i| motor_healthy(*i)).count();
     json!({
         "kind": "object",
@@ -177,10 +254,14 @@ pub fn summary(escs: &[Value], wiring: Option<&Wiring>) -> Value {
         "onlineCount": online_count,
         "healthy": healthy,
         "healthText": if healthy { "OK" } else { "ERR" },
-        "healthyMotorsText": format!("{healthy_motors}/{}", escs.len()),
+        "healthyMotorsText": if rotors.is_empty() {
+            format!("{healthy_motors}/{}", escs.len())
+        } else {
+            format!("{}/{}", rotors.len() - silent.len(), rotors.len())
+        },
         "totalErrors": escs.iter().map(|esc| raw(esc, "errorCount")).sum::<i64>(),
-        "frame": wiring.map(|w| frame(escs, w)).unwrap_or_default(),
-        "hint": wiring.map(hint).unwrap_or_default(),
+        "hint": wiring.map(|w| hint(w, &silent)).unwrap_or_default(),
+        "frame": rotors,
         "motors": escs.iter().enumerate().map(|(index, esc)| {
             let fine = motor_healthy(index);
             json!({
@@ -257,7 +338,13 @@ pub fn esc_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    summary(&escs, ardupilot_wiring(backend, &escs).as_ref())
+    let steady: Vec<f64> = backend
+        .value("vehicle.escs.steadyCurrents")
+        .get("value")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_f64).collect())
+        .unwrap_or_default();
+    summary(&escs, ardupilot_wiring(backend, &escs).as_ref(), &steady)
 }
 
 #[cfg(test)]
@@ -277,7 +364,7 @@ mod tests {
             esc(2, 4, 0b1111, 0, 2),
             esc(3, 4, 0b1111, 0, 0),
         ];
-        let fine = summary(&four, None);
+        let fine = summary(&four, None, &[]);
         assert_eq!(
             (fine["onlineCount"].as_i64(), fine["healthText"].as_str()),
             (Some(4), Some("OK"))
@@ -292,7 +379,7 @@ mod tests {
             esc(2, 4, 0b0111, 0, 0),
             esc(3, 4, 0b0111, 0, 0),
         ];
-        let down = summary(&one_down, None);
+        let down = summary(&one_down, None, &[]);
         assert_eq!(
             down["healthText"], "ERR",
             "a motor missing from the online mask is an error"
@@ -300,11 +387,11 @@ mod tests {
         assert_eq!(down["motors"][3]["title"], "Motor 4 - OFFLINE");
         let failing = [esc(0, 1, 0b1, 4, 0)];
         assert_eq!(
-            summary(&failing, None)["healthText"],
+            summary(&failing, None, &[])["healthText"],
             "ERR",
             "a failure flag on an online motor is an error"
         );
-        assert_eq!(summary(&[], None)["shown"], false);
+        assert_eq!(summary(&[], None, &[])["shown"], false);
     }
 
     #[test]
@@ -313,25 +400,27 @@ mod tests {
             ESC_TELEMETRY_1_TO_4_DATA, ESC_TELEMETRY_5_TO_8_DATA, MavMessage,
         };
         let mut escs = crate::sensorfacts::Escs::default();
-        escs.apply(&MavMessage::ESC_TELEMETRY_1_TO_4(
-            ESC_TELEMETRY_1_TO_4_DATA {
+        escs.apply(
+            &MavMessage::ESC_TELEMETRY_1_TO_4(ESC_TELEMETRY_1_TO_4_DATA {
                 voltage: [5010, 5000, 0, 0],
                 current: [250, 0, 0, 0],
                 rpm: [4200, 4100, 0, 0],
                 count: [12, 3, 0, 0],
                 temperature: [41, 40, 0, 0],
                 ..Default::default()
-            },
-        ));
-        escs.apply(&MavMessage::ESC_TELEMETRY_5_TO_8(
-            ESC_TELEMETRY_5_TO_8_DATA {
+            }),
+            0,
+        );
+        escs.apply(
+            &MavMessage::ESC_TELEMETRY_5_TO_8(ESC_TELEMETRY_5_TO_8_DATA {
                 rpm: [0, 3900, 0, 0],
                 count: [0, 7, 0, 0],
                 ..Default::default()
-            },
-        ));
+            }),
+            0,
+        );
         let listed = crate::vehiclefact::esc_list(&escs);
-        let shown = summary(listed["elements"].as_array().unwrap(), None);
+        let shown = summary(listed["elements"].as_array().unwrap(), None, &[]);
         assert_eq!(
             (shown["onlineCount"].as_i64(), shown["healthText"].as_str()),
             (Some(3), Some("OK"))
@@ -356,6 +445,7 @@ mod tests {
     }
     struct Vampire {
         escs: crate::sensorfacts::Escs,
+        now_ms: u64,
     }
 
     impl Backend for Vampire {
@@ -364,7 +454,14 @@ mod tests {
                 json!({ "kind": "fact", "name": name, "rawValue": value }).to_string()
             };
             match path {
-                "vehicle.escs" => crate::vehiclefact::esc_list(&self.escs).to_string(),
+                "vehicle.escs" => {
+                    crate::vehiclefact::esc_list(&self.escs.online_at(self.now_ms)).to_string()
+                }
+                "vehicle.escs.steadyCurrents" => json!({
+                    "kind": "value",
+                    "value": self.escs.by_id.values().map(|esc| esc.steady_current).collect::<Vec<_>>(),
+                })
+                .to_string(),
                 _ => path
                     .strip_prefix("vehicle.parameterManager.getParameter(-1,")
                     .and_then(|rest| rest.strip_suffix(')'))
@@ -414,29 +511,32 @@ mod tests {
             MavMessage,
         };
         let mut escs = crate::sensorfacts::Escs::default();
-        escs.apply(&MavMessage::ESC_TELEMETRY_1_TO_4(
-            ESC_TELEMETRY_1_TO_4_DATA {
+        escs.apply(
+            &MavMessage::ESC_TELEMETRY_1_TO_4(ESC_TELEMETRY_1_TO_4_DATA {
                 count: [0, 5, 0, 0],
                 temperature: [0, 23, 0, 0],
                 ..Default::default()
-            },
-        ));
-        escs.apply(&MavMessage::ESC_TELEMETRY_5_TO_8(
-            ESC_TELEMETRY_5_TO_8_DATA {
+            }),
+            0,
+        );
+        escs.apply(
+            &MavMessage::ESC_TELEMETRY_5_TO_8(ESC_TELEMETRY_5_TO_8_DATA {
                 count: [0, 0, 0, 4],
                 ..Default::default()
-            },
-        ));
-        escs.apply(&MavMessage::ESC_TELEMETRY_13_TO_16(
-            ESC_TELEMETRY_13_TO_16_DATA {
+            }),
+            0,
+        );
+        escs.apply(
+            &MavMessage::ESC_TELEMETRY_13_TO_16(ESC_TELEMETRY_13_TO_16_DATA {
                 current: [5040, 0, 0, 0],
                 rpm: [4200, 0, 0, 0],
                 count: [9, 0, 0, 0],
                 temperature: [75, 0, 0, 0],
                 ..Default::default()
-            },
-        ));
-        let shown = esc_view(&Vampire { escs }, &[]);
+            }),
+            0,
+        );
+        let shown = esc_view(&Vampire { escs, now_ms: 0 }, &[]);
         assert_eq!(
             shown["motors"]
                 .as_array()
@@ -468,7 +568,7 @@ mod tests {
                 Some(true),
                 Some("50.4"),
                 Some("4200"),
-                Some("elevated"),
+                Some("normal"),
                 Some("elevated")
             )
         );
@@ -479,11 +579,17 @@ mod tests {
             ),
             (Some(false), Some(true))
         );
-        assert!(
-            shown["hint"]
-                .as_str()
-                .unwrap()
-                .starts_with("ESC 8 matches no motor")
+        assert_eq!(
+            shown["hint"],
+            "Motors 1, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering. ESC 8 matches no motor: its output drives none and the frame has fewer motors. Number each ESC after its motor, or shift DroneCAN ESCs with CAN_D1_UC_ESC_OF onto their motors' outputs."
+        );
+        assert_eq!(
+            (
+                shown["healthText"].as_str(),
+                shown["healthyMotorsText"].as_str()
+            ),
+            (Some("ERR"), Some("2/6")),
+            "a hexa with four silent motors is not healthy, whatever the reporting ESCs say"
         );
     }
 
@@ -491,15 +597,16 @@ mod tests {
     fn a_hobbywing_esc_numbered_after_its_motor_lands_there_without_an_offset() {
         use mavlink::dialects::ardupilotmega::{ESC_TELEMETRY_5_TO_8_DATA, MavMessage};
         let mut escs = crate::sensorfacts::Escs::default();
-        escs.apply(&MavMessage::ESC_TELEMETRY_5_TO_8(
-            ESC_TELEMETRY_5_TO_8_DATA {
+        escs.apply(
+            &MavMessage::ESC_TELEMETRY_5_TO_8(ESC_TELEMETRY_5_TO_8_DATA {
                 voltage: [4970, 0, 0, 0],
                 count: [2757, 0, 0, 0],
                 temperature: [23, 0, 0, 0],
                 ..Default::default()
-            },
-        ));
-        let shown = esc_view(&Vampire { escs }, &[]);
+            }),
+            0,
+        );
+        let shown = esc_view(&Vampire { escs, now_ms: 0 }, &[]);
         let frame = shown["frame"].as_array().unwrap();
         assert_eq!(
             frame
@@ -508,6 +615,123 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![false, false, false, false, true, false]
         );
-        assert_eq!(shown["hint"], "");
+        assert_eq!(
+            shown["hint"],
+            "Motors 1, 2, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering."
+        );
+    }
+
+    fn fly(escs: &mut crate::sensorfacts::Escs, amps: [u16; 6], packets: [u16; 6], now_ms: u64) {
+        use mavlink::dialects::ardupilotmega::{
+            ESC_TELEMETRY_9_TO_12_DATA, ESC_TELEMETRY_13_TO_16_DATA, MavMessage,
+        };
+        escs.apply(
+            &MavMessage::ESC_TELEMETRY_9_TO_12(ESC_TELEMETRY_9_TO_12_DATA {
+                current: [amps[0] * 100, amps[1] * 100, amps[2] * 100, amps[3] * 100],
+                count: [packets[0], packets[1], packets[2], packets[3]],
+                ..Default::default()
+            }),
+            now_ms,
+        );
+        escs.apply(
+            &MavMessage::ESC_TELEMETRY_13_TO_16(ESC_TELEMETRY_13_TO_16_DATA {
+                current: [amps[4] * 100, amps[5] * 100, 0, 0],
+                count: [packets[4], packets[5], 0, 0],
+                ..Default::default()
+            }),
+            now_ms,
+        );
+    }
+
+    #[test]
+    fn an_esc_whose_packet_count_stops_goes_silent_on_the_frame_and_offline_on_the_toolbar() {
+        let mut escs = crate::sensorfacts::Escs::default();
+        fly(&mut escs, [10; 6], [1; 6], 0);
+        fly(&mut escs, [10; 6], [2, 2, 2, 2, 2, 1], 1000);
+        let fresh = esc_view(
+            &Vampire {
+                escs: escs.clone(),
+                now_ms: 1000,
+            },
+            &[],
+        );
+        assert_eq!(
+            (
+                fresh["healthText"].as_str(),
+                fresh["healthyMotorsText"].as_str()
+            ),
+            (Some("OK"), Some("6/6"))
+        );
+        fly(&mut escs, [10; 6], [3, 3, 3, 3, 3, 1], 3500);
+        let stale = esc_view(&Vampire { escs, now_ms: 3500 }, &[]);
+        assert_eq!(
+            stale["frame"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| m["reporting"].as_bool().unwrap())
+                .collect::<Vec<_>>(),
+            vec![true, true, true, true, true, false],
+            "ArduPilot keeps resending a dead ESC's last numbers; only its packet count stops"
+        );
+        assert_eq!(
+            (
+                stale["healthText"].as_str(),
+                stale["motors"][5]["title"].as_str(),
+                stale["hint"].as_str()
+            ),
+            (
+                Some("ERR"),
+                Some("Motor 6 - OFFLINE"),
+                Some(
+                    "Motor 6 sends no ESC telemetry: check its ESC's telemetry connection and numbering."
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn current_is_judged_against_the_other_motors_once_the_difference_holds() {
+        let levels = |escs: &crate::sensorfacts::Escs, now_ms: u64| {
+            esc_view(
+                &Vampire {
+                    escs: escs.clone(),
+                    now_ms,
+                },
+                &[],
+            )["frame"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| m["currentLevel"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+        let mut lifter = crate::sensorfacts::Escs::default();
+        fly(&mut lifter, [60; 6], [1; 6], 0);
+        assert!(
+            levels(&lifter, 0).iter().all(|level| level == "normal"),
+            "a heavy lifter at 60 A a motor is level when every motor carries it"
+        );
+        let mut hexa = crate::sensorfacts::Escs::default();
+        fly(&mut hexa, [30; 6], [1; 6], 0);
+        fly(&mut hexa, [60, 30, 30, 30, 30, 30], [2; 6], 200);
+        assert_eq!(
+            levels(&hexa, 200)[0],
+            "normal",
+            "a yaw kick of a fifth of a second is not an imbalance"
+        );
+        let held = (3..=8).fold(hexa, |mut escs, step| {
+            fly(
+                &mut escs,
+                [60, 30, 30, 30, 30, 30],
+                [step; 6],
+                u64::from(step) * 1000,
+            );
+            escs
+        });
+        assert_eq!(
+            levels(&held, 8000),
+            vec!["critical", "normal", "normal", "normal", "normal", "normal"]
+        );
     }
 }
