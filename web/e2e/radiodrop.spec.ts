@@ -54,7 +54,7 @@ test('the six-position switch picks which bay the drop switch drops', async ({ p
   await readFlightModesOn(page, 10);
   await openMenu(page, 'Settings');
   await page.getByPlaceholder('Search settings').fill('bay');
-  const bays = page.getByRole('textbox', { name: /^How many payload bays/ });
+  const bays = page.getByRole('textbox', { name: /^(How many payload bays|Payload bays)/ });
   await bays.fill('4');
   await bays.press('Enter');
   await page.getByRole('radio', { name: 'A servo per bay' }).click();

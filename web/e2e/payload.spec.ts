@@ -108,7 +108,7 @@ const GRIP_RELEASE_PWM = 1100;
 const fourServoBays = async (page: Page) => {
   await openMenu(page, 'Settings');
   await page.getByPlaceholder('Search settings').fill('bay');
-  const bays = page.getByRole('textbox', { name: /^How many payload bays/ });
+  const bays = page.getByRole('textbox', { name: /^(How many payload bays|Payload bays)/ });
   await bays.fill('4');
   await bays.press('Enter');
   await page.getByRole('radio', { name: 'A servo per bay' }).click();
