@@ -1,4 +1,4 @@
-import { closeSettings, expect, openApp, openMenu, test } from './fixtures';
+import { closeSettings, connectMock, expect, openApp, openMenu, test } from './fixtures';
 import { plugInR2d2Radio } from './r2d2';
 
 const RADIO_PORT = /0483:5740/;
@@ -34,7 +34,14 @@ test('the battery sheet shows each battery with its voltage', async ({ vehicle }
   const sheet = vehicle.getByRole('dialog');
   await expect(sheet.getByText(/^Battery 1/)).toBeVisible();
   await expect(sheet.getByText(/\d+\.\d\d V/).first()).toBeVisible();
+  await expect(sheet.getByText('Total draw')).toBeVisible();
   await expect(sheet.getByText('Battery failsafes')).toBeVisible();
+});
+
+test('an ArduPilot battery sheet names its low-battery failsafe by voltage', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await app.getByRole('button', { name: /^Battery/ }).click();
+  await expect(app.getByRole('dialog').getByText(/ at \d+\.\d V/)).toBeVisible();
 });
 
 test('a MAVLink WebSocket link connects a vehicle and hears the ground station', async ({ app, request }) => {

@@ -24,6 +24,25 @@ final class InstrumentDetailTests: XCTestCase {
         XCTAssertEqual(rows.map(\.severity), [1, 1, SEVERITY_SECONDARY])
     }
 
+    func testAReadingTheAircraftDoesNotSendKeepsItsRowAndCarriesTheCoreHint() {
+        let rows = batteryDetail(battery(pack(#"{"label":"Charge","value":"Not reported","severity":-1,"reported":false,"hint":"Set it up"}"#, row("Voltage", "11.10 V"))))
+        XCTAssertEqual(rows, [
+            DetailRow(label: "Charge", value: "Not reported", severity: SEVERITY_SECONDARY, hint: "Set it up"),
+            DetailRow(label: "Voltage", value: "11.10 V", severity: SEVERITY_SECONDARY),
+        ])
+    }
+
+    func testAPackSummaryLineLeavesOutWhatTheAircraftDoesNotReport() {
+        let missing = #"{"label":"Time left","value":"Not reported","severity":-1,"reported":false}"#
+        let view = battery(pack(missing, row("Charge", "90%")), pack(missing, row("Charge", "79%")), headline: #"{"text":"79%","detail":"","severity":0,"index":1}"#)
+        XCTAssertEqual(batteryDetail(view).map(\.value), ["90%", "79%"])
+    }
+
+    func testOnePackDrawsSeveralDrawInTotal() {
+        XCTAssertEqual(drawLabel(battery(pack())), "Draw")
+        XCTAssertEqual(drawLabel(battery(pack(), pack())), "Total draw")
+    }
+
     func testTwoPacksReadAsOneLineEachWithTheLimitingOneMarked() {
         let view = battery(
             pack(row("Charge", "90%"), row("Voltage", "12.60 V")),

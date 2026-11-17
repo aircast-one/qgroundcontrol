@@ -6,7 +6,7 @@ import org.json.JSONObject
 
 internal const val SEVERITY_SECONDARY = -1
 
-internal data class DetailRow(val label: String, val value: String, val severity: Int = 0)
+internal data class DetailRow(val label: String, val value: String, val severity: Int = 0, val hint: String = "")
 
 internal data class BatteryHeadline(
     val text: String,
@@ -50,10 +50,10 @@ internal fun batteryDetail(view: JSONObject?): List<DetailRow> {
     val rowsOf = { index: Int ->
         packs.optJSONObject(index)?.optJSONArray("rows")?.let { rows -> (0 until rows.length()).mapNotNull { rows.optJSONObject(it) } }.orEmpty()
     }
-    if (packs.length() < 2) return rowsOf(0).map { DetailRow(it.optText("label"), it.optText("value"), it.optInt("severity", SEVERITY_SECONDARY)) }
+    if (packs.length() < 2) return rowsOf(0).map { DetailRow(it.optText("label"), it.optText("value"), it.optInt("severity", SEVERITY_SECONDARY), it.optText("hint")) }
     val limiting = batteryHeadline(view)?.index
     return (0 until packs.length()).map { index ->
-        val rows = rowsOf(index)
+        val rows = rowsOf(index).filter { it.optBoolean("reported", true) }
         DetailRow(
             listOfNotNull("Battery ${index + 1}", LIMITING_PACK.takeIf { index == limiting }).joinToString(" \u00b7 "),
             rows.joinToString(" \u00b7 ") { it.optText("value") },
@@ -103,6 +103,9 @@ internal fun totalCurrent(view: JSONObject?): String? =
 
 internal fun totalDraw(view: JSONObject?): String? =
     packFactTotal(view, "instantPower")?.let { "${Math.round(it)}W" } ?: totalCurrent(view)
+
+internal fun drawLabel(view: JSONObject?): String =
+    if ((view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs")?.length() ?: 0) > 1) "Total draw" else "Draw"
 
 internal fun factLabel(name: String): String = when (name) {
     "voltage" -> "Voltage"

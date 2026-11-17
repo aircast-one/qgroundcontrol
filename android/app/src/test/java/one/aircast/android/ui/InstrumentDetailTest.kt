@@ -35,6 +35,28 @@ class InstrumentDetailTest {
     }
 
     @Test
+    fun `a reading the aircraft does not send keeps its row and carries the core hint`() {
+        val rows = batteryDetail(battery(pack("""{"label":"Charge","value":"Not reported","severity":-1,"reported":false,"hint":"Set it up"}""", row("Voltage", "11.10 V"))))
+        assertEquals(
+            listOf(DetailRow("Charge", "Not reported", SEVERITY_SECONDARY, "Set it up"), DetailRow("Voltage", "11.10 V", SEVERITY_SECONDARY)),
+            rows,
+        )
+    }
+
+    @Test
+    fun `a pack summary line leaves out what the aircraft does not report`() {
+        val missing = """{"label":"Time left","value":"Not reported","severity":-1,"reported":false}"""
+        val view = battery(pack(missing, row("Charge", "90%")), pack(missing, row("Charge", "79%")), headline = """{"text":"79%","detail":"","severity":0,"index":1}""")
+        assertEquals(listOf("90%", "79%"), batteryDetail(view).map { it.value })
+    }
+
+    @Test
+    fun `one pack draws, several draw in total`() {
+        assertEquals("Draw", drawLabel(battery(pack())))
+        assertEquals("Total draw", drawLabel(battery(pack(), pack())))
+    }
+
+    @Test
     fun `two packs read as one line each, with the limiting one marked`() {
         val view = battery(
             pack(row("Charge", "90%"), row("Voltage", "12.60 V")),

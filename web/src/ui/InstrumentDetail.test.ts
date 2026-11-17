@@ -8,6 +8,7 @@ import {
   batteryDetail,
   batteryHeadline,
   batteryReturnOffered,
+  drawLabel,
   gpsDetail,
   gpsStatus,
   linkDetail,
@@ -50,6 +51,22 @@ describe('InstrumentDetailTest', () => {
       DetailRow({ label: 'Battery 1', value: '90% · 12.60 V', severity: 0 }),
       DetailRow({ label: 'Battery 2 · lowest', value: '79% · 12.30 V', severity: 1 }),
     ]);
+  });
+
+  it('a reading the aircraft does not send keeps its row and carries the core hint', () => {
+    const rows = batteryDetail(battery([pack('{"label":"Charge","value":"Not reported","severity":-1,"reported":false,"hint":"Set it up"}', row('Voltage', '11.10 V'))]));
+    expect(rows).toEqual([DetailRow({ label: 'Charge', value: 'Not reported', severity: SEVERITY_SECONDARY, hint: 'Set it up' }), DetailRow({ label: 'Voltage', value: '11.10 V', severity: SEVERITY_SECONDARY })]);
+  });
+
+  it('a pack summary line leaves out what the aircraft does not report', () => {
+    const missing = '{"label":"Time left","value":"Not reported","severity":-1,"reported":false}';
+    const view = battery([pack(missing, row('Charge', '90%')), pack(missing, row('Charge', '79%'))], '{"text":"79%","detail":"","severity":0,"index":1}');
+    expect(batteryDetail(view).map((it) => it.value)).toEqual(['90%', '79%']);
+  });
+
+  it('one pack draws, several draw in total', () => {
+    expect(drawLabel(battery([pack()]))).toBe('Draw');
+    expect(drawLabel(battery([pack(), pack()]))).toBe('Total draw');
   });
 
   it('the headline is the limiting pack the core picked, with its level and failsafe margin', () => {

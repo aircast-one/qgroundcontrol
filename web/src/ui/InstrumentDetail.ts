@@ -96,10 +96,14 @@ export const batteryDetail = (view: Json | null): readonly DetailRow[] => {
   const packs = optJSONArray(availableView(view), 'packs');
   if (packs === null) return [];
   const rowsOf = (index: number): Json[] => jsonObjects(optJSONArray(arrayJSONObject(packs, index), 'rows'));
-  if (packs.length < 2) return rowsOf(0).map((it) => DetailRow({ label: optText(it, 'label'), value: optText(it, 'value'), severity: optInt(it, 'severity', SEVERITY_SECONDARY) }));
+  if (packs.length < 2)
+    return rowsOf(0).map((it) => {
+      const hint = optText(it, 'hint');
+      return DetailRow({ label: optText(it, 'label'), value: optText(it, 'value'), severity: optInt(it, 'severity', SEVERITY_SECONDARY), ...(hint === '' ? {} : { hint }) });
+    });
   const limiting = batteryHeadline(view)?.index ?? null;
   return packs.map((_, index) => {
-    const rows = rowsOf(index);
+    const rows = rowsOf(index).filter((it) => optBoolean(it, 'reported', true));
     return DetailRow({
       label: [`Battery ${index + 1}`, ...(index === limiting ? [LIMITING_PACK] : [])].join(' · '),
       value: rows.map((it) => optText(it, 'value')).join(' · '),
@@ -172,6 +176,8 @@ export const totalDraw = (view: Json | null): string | null => {
   const total = packFactTotal(view, 'instantPower');
   return total === null ? totalCurrent(view) : withUnit(String(Math.round(total)), 'W');
 };
+
+export const drawLabel = (view: Json | null): string => ((optJSONArray(availableView(view), 'packs')?.length ?? 0) > 1 ? 'Total draw' : 'Draw');
 
 export const factLabel = (name: string): string => {
   switch (name) {

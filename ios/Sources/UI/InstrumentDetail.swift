@@ -6,6 +6,7 @@ struct DetailRow: Equatable, Hashable {
     let label: String
     let value: String
     var severity: Int = 0
+    var hint: String = ""
 }
 
 struct BatteryHeadline: Equatable {
@@ -54,11 +55,11 @@ func batteryDetail(_ view: JSON?) -> [DetailRow] {
         packs.indices.contains(index) ? packs[index]["rows"].objects : []
     }
     guard packs.count >= 2 else {
-        return rowsOf(0).map { DetailRow(label: $0["label"].string, value: $0["value"].string, severity: $0["severity"].int(SEVERITY_SECONDARY)) }
+        return rowsOf(0).map { DetailRow(label: $0["label"].string, value: $0["value"].string, severity: $0["severity"].int(SEVERITY_SECONDARY), hint: $0["hint"].string) }
     }
     let limiting = batteryHeadline(view)?.index
     return packs.indices.map { index in
-        let rows = rowsOf(index)
+        let rows = rowsOf(index).filter { $0["reported"].boolOrNil ?? true }
         return DetailRow(
             label: ["Battery \(index + 1)", index == limiting ? LIMITING_PACK : nil].compactMap { $0 }.joined(separator: " \u{00b7} "),
             value: rows.map { $0["value"].string }.joined(separator: " \u{00b7} "),
@@ -94,6 +95,11 @@ private let CRITICAL_CHARGE_STATES = 3...6
 func batteryReturnOffered(_ view: JSON?) -> Bool {
     guard let view, view["available"].bool, let packs = view["packs"].arrayOrNil else { return false }
     return packs.contains { $0.object != nil && CRITICAL_CHARGE_STATES.contains($0["chargeState"].int(0)) }
+}
+
+func drawLabel(_ view: JSON?) -> String {
+    guard let view, view["available"].bool, let packs = view["packs"].arrayOrNil, packs.count > 1 else { return "Draw" }
+    return "Total draw"
 }
 
 func totalDraw(_ view: JSON?) -> String? {

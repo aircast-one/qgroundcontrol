@@ -31,12 +31,10 @@ import one.aircast.android.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
-import one.aircast.android.bridge.Fact
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.font.FontWeight
-import one.aircast.android.bridge.qgcFacts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -243,7 +241,6 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     var batterySettings by remember { mutableStateOf(false) }
     var allStatus by remember { mutableStateOf(false) }
     OpenOnRequest("status-all") { allStatus = true }
-    var batteryDisplay by remember { mutableStateOf(false) }
     var rtkSettings by remember { mutableStateOf(false) }
     val layout = LocalFlyScreenState.current.layout
     var centres by remember { mutableStateOf(emptyMap<String, Float>()) }
@@ -353,7 +350,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     val silence = silentSeconds(vehicleLinks(linksJson)?.contactLost == true)?.let(::silenceText)
     detail?.let { shown ->
         val rows = when (shown) {
-            StripDetail.Battery -> listOfNotNull(totalDraw(batteryJson)?.let { DetailRow("Total draw", it) }) + batteryDetail(batteryJson)
+            StripDetail.Battery -> listOfNotNull(totalDraw(batteryJson)?.let { DetailRow(drawLabel(batteryJson), it) }) + batteryDetail(batteryJson)
             StripDetail.Gps -> gpsDetail(gps)
             StripDetail.Telemetry -> telemetryDetail(state?.telemetry)
             StripDetail.Rc -> rcDetail(state)
@@ -367,7 +364,6 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         InstrumentSheet(instrumentTitle(shown), rows, headline = if (battery) batteryHeadline(batteryJson) else null, silence = silence, footer = if (battery) {
             {
                 TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery failsafes") }
-                TextButton(onClick = { detail = null; batteryDisplay = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery display") }
                 if (advancedUiShown() && hasSetupPage(POWER_SETUP_PAGE)) TextButton(onClick = { detail = null; navigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Power setup") }
             }
         } else null, action = if (battery) {
@@ -395,12 +391,6 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
             indicatorParameterWait(setupJson)?.let {
                 Text(it, Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
             } ?: ParameterForm(BATTERY_SETTINGS_PAGE)
-        }
-    }
-
-    if (batteryDisplay) {
-        AircastSheet(onDismissRequest = { batteryDisplay = false }) {
-            BatteryDisplaySettings()
         }
     }
 }
@@ -472,20 +462,6 @@ internal fun indicatorParameterWait(setup: JSONObject?): String? = when {
     setup?.optText("parametersReason") == "skipped" -> "Parameters not available"
     else -> "Waiting for parameters…"
 }
-private const val BATTERY_INDICATOR_SETTINGS = "settings.batteryIndicatorSettings"
-internal val BATTERY_DISPLAY_FACTS = listOf("valueDisplay", "threshold1", "threshold2")
-
-internal fun batteryDisplayFacts(facts: List<Fact>): List<Fact> =
-    BATTERY_DISPLAY_FACTS.mapNotNull { name -> facts.firstOrNull { it.name == name } }
-
-@Composable
-private fun BatteryDisplaySettings() {
-    val facts by qgcFacts(BATTERY_INDICATOR_SETTINGS)
-    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-        Text("Battery display", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-        batteryDisplayFacts(facts).forEach { FactRow(it) }
-    }
-}
 internal const val CLEAR_RC_OVERRIDES = "vehicle.clearRcChannelOverrides"
 internal const val POWER_SETUP_PAGE = "Power"
 
@@ -540,12 +516,12 @@ private fun InstrumentSheet(
             else -> rows.forEach { row ->
                 ListItem(
                     headlineContent = { Text(row.label, color = if (row.severity == SEVERITY_SECONDARY) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified) },
+                    supportingContent = row.hint.takeIf { it.isNotBlank() }?.let { hint -> { Text(hint) } },
                     trailingContent = { Text(row.value, color = if (stale) muted else severityColour(row.severity)) },
                 )
             }
         }
         footer?.invoke()
-        FootNote("Readings come from the aircraft and stop updating when it stops answering.")
     }
 }
 

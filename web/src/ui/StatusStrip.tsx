@@ -1,7 +1,7 @@
 import { type CSSProperties, Fragment, type HTMLAttributes, type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
-import { type Fact, Qgc } from '@/bridge/Qgc';
-import { useQgcFacts, useQgcPath } from '@/bridge/QgcState';
+import { Qgc } from '@/bridge/Qgc';
+import { useQgcPath } from '@/bridge/QgcState';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { useTicker } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
@@ -32,6 +32,7 @@ import {
   batteryDetail,
   batteryHeadline,
   batteryReturnOffered,
+  drawLabel,
   gpsDetail,
   gpsStatus,
   linkDetail,
@@ -47,9 +48,7 @@ import { LayoutWidget, badgeRoom, droppedOrder, movedAmongShown, orderedKeys, sw
 import { ParameterForm } from '@/ui/ParameterForm';
 import { RemoteIdIndicatorCell } from '@/ui/RemoteIdIndicator';
 import { RtkIndicatorCell, RtkSettingsSheetContent, type RtkStatus, useRememberRtkStatus } from '@/ui/RtkIndicator';
-import { FactRow } from '@/ui/SettingsScreen';
 import { osdCellColour, osdCellText, osdRows, useOsdLines } from '@/ui/OsdDetails';
-import { FootNote } from '@/ui/SetupRow';
 import { useHasSetupPage } from '@/ui/SetupScreen';
 import { SETUP, parametersReady } from '@/ui/SetupView';
 import { SupportForwardingCell } from '@/ui/SupportForwardingCell';
@@ -391,7 +390,6 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const [detail, setDetail] = useState<StripDetail | null>(null);
   const [batterySettings, setBatterySettings] = useState(false);
   const [allStatus, setAllStatus] = useState(false);
-  const [batteryDisplay, setBatteryDisplay] = useState(false);
   const [rtkSettings, setRtkSettings] = useState(false);
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
   const seen = useCallback(
@@ -451,7 +449,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const rows = (() => {
     if (detail === StripDetail.Battery) {
       const draw = totalDraw(batteryJson);
-      return [...(draw === null ? [] : [{ label: 'Total draw', value: draw, severity: 0 }]), ...batteryDetail(batteryJson)];
+      return [...(draw === null ? [] : [{ label: drawLabel(batteryJson), value: draw, severity: 0 }]), ...batteryDetail(batteryJson)];
     }
     if (detail === StripDetail.Gps) return gpsDetail(gps);
     if (detail === StripDetail.Telemetry) return telemetryDetail(state?.telemetry ?? null);
@@ -516,15 +514,6 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
                 >
                   Battery failsafes
                 </TextButton>
-                <TextButton
-                  className="mx-3"
-                  onClick={() => {
-                    setDetail(null);
-                    setBatteryDisplay(true);
-                  }}
-                >
-                  Battery display
-                </TextButton>
                 {advancedUi && powerPage ? (
                   <TextButton
                     className="mx-3"
@@ -565,11 +554,6 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
       {batterySettings ? (
         <AircastSheet onDismissRequest={() => setBatterySettings(false)} label="Battery settings">
           <BatterySettingsContent />
-        </AircastSheet>
-      ) : null}
-      {batteryDisplay ? (
-        <AircastSheet onDismissRequest={() => setBatteryDisplay(false)} label="Battery display">
-          <BatteryDisplaySettings />
         </AircastSheet>
       ) : null}
     </>
@@ -655,29 +639,6 @@ export const BATTERY_SETTINGS_PAGE = 'Battery Settings';
 export const indicatorParameterWait = (setup: Json | null): string | null => {
   if (parametersReady(setup)) return null;
   return setup !== null && optText(setup, 'parametersReason') === 'skipped' ? 'Parameters not available' : 'Waiting for parameters…';
-};
-
-const BATTERY_INDICATOR_SETTINGS = 'settings.batteryIndicatorSettings';
-export const BATTERY_DISPLAY_FACTS: readonly string[] = ['valueDisplay', 'threshold1', 'threshold2'];
-
-export const batteryDisplayFacts = (facts: readonly Fact[]): readonly Fact[] =>
-  BATTERY_DISPLAY_FACTS.flatMap((name) => {
-    const fact = facts.find((it) => it.name === name);
-    return fact === undefined ? [] : [fact];
-  });
-
-const BatteryDisplaySettings = () => {
-  const facts = useQgcFacts(BATTERY_INDICATOR_SETTINGS);
-  return (
-    <div className="flex w-full flex-col pb-6">
-      <Text typography="titleMedium" className="block px-sheet py-2">
-        Battery display
-      </Text>
-      {batteryDisplayFacts(facts).map((fact) => (
-        <FactRow key={fact.path} fact={fact} />
-      ))}
-    </div>
-  );
 };
 
 export const CLEAR_RC_OVERRIDES = 'vehicle.clearRcChannelOverrides';
@@ -773,7 +734,6 @@ const InstrumentSheet = ({ title, rows, headline = null, silence = null, action 
         ))
       )}
       {footer === null ? null : <div className="flex flex-col items-start">{footer}</div>}
-      <FootNote text="Readings come from the aircraft and stop updating when it stops answering." />
     </AircastSheet>
   );
 };

@@ -204,7 +204,6 @@ private struct VehicleStatusReadings: View {
     @State private var detail: StripDetail?
     @State private var batterySettings = false
     @State private var allStatus = false
-    @State private var batteryDisplay = false
     @State private var rtkSettings = false
     @State private var contentSize: CGSize?
     @State private var centres: [String: CGFloat] = [:]
@@ -324,11 +323,6 @@ private struct VehicleStatusReadings: View {
                 }
             }
         }
-        if batteryDisplay {
-            AircastSheet(onDismissRequest: { batteryDisplay = false }) {
-                BatteryDisplaySettings()
-            }
-        }
     }
 
     @ViewBuilder
@@ -390,7 +384,7 @@ private struct VehicleStatusReadings: View {
         let hasPowerSetup = setupComponents(setupJson).contains { $0.name == POWER_SETUP_PAGE }
         let battery = shown == .Battery
         let rows: [DetailRow] = switch shown {
-        case .Battery: [totalDraw(batteryJson).map { DetailRow(label: "Total draw", value: $0) }].compactMap { $0 } + batteryDetail(batteryJson)
+        case .Battery: [totalDraw(batteryJson).map { DetailRow(label: drawLabel(batteryJson), value: $0) }].compactMap { $0 } + batteryDetail(batteryJson)
         case .Gps: gpsDetail(gpsStatus(gpsJson))
         case .Telemetry: telemetryDetail(state?.telemetry)
         case .Rc: rcDetail(state)
@@ -398,7 +392,6 @@ private struct VehicleStatusReadings: View {
         }
         let footer: AnyView? = battery ? AnyView(VStack(alignment: .leading, spacing: 0) {
             textButton("Battery failsafes") { detail = nil; batterySettings = true }
-            textButton("Battery display") { detail = nil; batteryDisplay = true }
             if hasPowerSetup && advanced {
                 textButton("Power setup") { detail = nil; navigation.setupPage = POWER_SETUP_PAGE }
             }
@@ -531,25 +524,6 @@ func indicatorParameterWait(_ setup: JSON?) -> String? {
     return setup?["parametersReason"].string == "skipped" ? "Parameters not available" : "Waiting for parameters…"
 }
 
-private let BATTERY_INDICATOR_SETTINGS = "settings.batteryIndicatorSettings"
-let BATTERY_DISPLAY_FACTS = ["valueDisplay", "threshold1", "threshold2"]
-
-func batteryDisplayFacts(_ facts: [Fact]) -> [Fact] {
-    BATTERY_DISPLAY_FACTS.compactMap { name in facts.first { $0.name == name } }
-}
-
-private struct BatteryDisplaySettings: View {
-    @QgcFacts(BATTERY_INDICATOR_SETTINGS) private var facts
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Battery display").font(.titleMedium).padding(.horizontal, Space.s6).padding(.vertical, Space.s2)
-            ForEach(batteryDisplayFacts(facts)) { fact in FactRow(fact: fact) }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, Space.s6)
-    }
-}
 
 let CLEAR_RC_OVERRIDES = "vehicle.clearRcChannelOverrides"
 let POWER_SETUP_PAGE = "Power"
@@ -608,13 +582,12 @@ private struct InstrumentSheet: View {
                             .padding(.vertical, Space.s3)
                     } else {
                         ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                            StatusListItem(headline: row.label, headlineColor: row.severity == SEVERITY_SECONDARY ? theme.colors.onSurfaceVariant : nil) {
+                            StatusListItem(headline: row.label, headlineColor: row.severity == SEVERITY_SECONDARY ? theme.colors.onSurfaceVariant : nil, supporting: row.hint.isEmpty ? nil : row.hint) {
                                 Text(row.value).foregroundStyle(stale ? muted : severityColour(row.severity))
                             }
                         }
                     }
                     footer
-                    FootNote(text: "Readings come from the aircraft and stop updating when it stops answering.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

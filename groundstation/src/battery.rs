@@ -257,10 +257,19 @@ pub struct PopupPack {
     pub percent: Option<f64>,
     pub time_remaining: Option<f64>,
     pub voltage: Option<String>,
-    pub consumed: Option<String>,
+    pub consumed_mah: Option<f64>,
+    pub capacity_mah: Option<f64>,
     pub temperature: Option<String>,
     pub function: Option<String>,
 }
+
+const CHARGE_UNKNOWN: &str = "Charge unknown";
+const UNREPORTED_TEXT: &str = "Not reported";
+const CHARGE_HINT: &str = "Set the pack capacity and current sensor in Power setup";
+const OVER_CAPACITY_HINT: &str =
+    "More than the pack holds. Check the current sensor calibration in Power setup";
+const SECONDARY: i64 = -1;
+const CAUTION: i64 = 1;
 
 fn limiting_percent(pack: &PopupPack) -> f64 {
     pack.percent
@@ -288,10 +297,16 @@ pub fn headline(packs: &[PopupPack]) -> Option<Value> {
         .chain(lowest)
         .collect::<Vec<_>>()
         .join("  \u{00b7}  ");
+    let (text, shown_severity) = match (alarming, percent, &worst.voltage) {
+        (true, _, _) => (worst.charge_label.clone(), severity(worst.charge_state)),
+        (false, Some(p), _) => (p, 0),
+        (false, None, Some(volts)) => (format!("{volts} V"), 0),
+        (false, None, None) => (CHARGE_UNKNOWN.to_string(), CAUTION),
+    };
     Some(json!({
-        "text": if alarming || percent.is_none() { worst.charge_label.clone() } else { percent.unwrap_or_default() },
+        "text": text,
         "detail": detail,
-        "severity": severity(worst.charge_state),
+        "severity": shown_severity,
         "index": index,
     }))
 }
@@ -330,6 +345,90 @@ pub fn margin_text(
             Some(seconds) => minutes_to_go(seconds * (p - at) / p),
             None => format!("{} points to go", (p - at).round() as i64),
         });
+    Some(to_go.map_or(rule.clone(), |go| format!("{rule}  \u{00b7}  {go}")))
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FailsafeStage {
+    pub action: i64,
+    pub label: String,
+    pub volts: Option<f64>,
+    pub mah: Option<f64>,
+}
+
+const APM_WARN_ONLY: i64 = 0;
+const APM_STAGES: [(&str, &str, &str); 2] = [
+    ("FS_LOW_ACT", "LOW_VOLT", "LOW_MAH"),
+    ("FS_CRT_ACT", "CRT_VOLT", "CRT_MAH"),
+];
+
+fn apm_prefix(index: usize) -> String {
+    match index {
+        0 => "BATT".to_string(),
+        _ => format!("BATT{}", index + 1),
+    }
+}
+
+fn apm_stages(backend: &dyn Backend, index: usize) -> Vec<FailsafeStage> {
+    let prefix = apm_prefix(index);
+    let trigger = |name: &str| {
+        parameter_value(backend, &format!("{prefix}_{name}"), "value").filter(|v| *v > 0.0)
+    };
+    APM_STAGES
+        .iter()
+        .filter_map(|(act, volts, mah)| {
+            let action = parameter(backend, &format!("{prefix}_{act}"))?;
+            Some(FailsafeStage {
+                action: action.get("rawValue").and_then(Value::as_f64)? as i64,
+                label: crate::read::enum_label(&action),
+                volts: trigger(volts),
+                mah: trigger(mah),
+            })
+        })
+        .collect()
+}
+
+fn mah_text(mah: f64) -> String {
+    crate::offlinemaps::grouped(mah.max(0.0).round() as u64)
+}
+
+pub fn apm_margin_text(
+    stages: &[FailsafeStage],
+    volts: Option<f64>,
+    mah_left: Option<f64>,
+) -> Option<String> {
+    let set = |stage: &&FailsafeStage| stage.volts.is_some() || stage.mah.is_some();
+    let stage = stages
+        .iter()
+        .filter(set)
+        .find(|stage| stage.action != APM_WARN_ONLY)
+        .or_else(|| stages.iter().find(set))?;
+    let verb = match (stage.action, stage.label.trim()) {
+        (APM_WARN_ONLY, _) => "Warns",
+        (_, "") => "Failsafe",
+        (_, label) => label,
+    };
+    let rule = [
+        stage.volts.map(|v| format!("{v:.1} V")),
+        stage.mah.map(|m| format!("{} mAh left", mah_text(m))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" or ");
+    let by_mah = stage.mah.zip(mah_left).map(|(at, left)| left - at);
+    let by_volts = stage.volts.zip(volts).map(|(at, now)| now - at);
+    let to_go = match [by_mah, by_volts]
+        .into_iter()
+        .flatten()
+        .any(|gap| gap <= 0.0)
+    {
+        true => Some("reached".to_string()),
+        false => by_mah
+            .map(|gap| format!("{} mAh to go", mah_text(gap)))
+            .or_else(|| by_volts.map(|gap| format!("{gap:.1} V to go"))),
+    };
+    let rule = format!("{verb} at {rule}");
     Some(to_go.map_or(rule.clone(), |go| format!("{rule}  \u{00b7}  {go}")))
 }
 
@@ -448,19 +547,69 @@ fn parameter_si(backend: &dyn Backend, names: &[&str]) -> Option<f64> {
     })
 }
 
+fn row(label: &str, value: String, severity: i64) -> Value {
+    json!({ "label": label, "value": value, "severity": severity, "reported": true })
+}
+
+fn unreported(label: &str) -> Value {
+    json!({ "label": label, "value": UNREPORTED_TEXT, "severity": SECONDARY, "reported": false })
+}
+
+fn with_hint(mut row: Value, hint: &str) -> Value {
+    row["hint"] = json!(hint);
+    row
+}
+
+pub fn consumed_row(consumed: f64, capacity: Option<f64>) -> Value {
+    let used = mah_text(consumed);
+    match capacity.filter(|c| *c > 0.0) {
+        Some(c) if consumed > c => with_hint(
+            row(
+                "Consumed",
+                format!("{used} of {} mAh", mah_text(c)),
+                CAUTION,
+            ),
+            OVER_CAPACITY_HINT,
+        ),
+        Some(c) => row(
+            "Consumed",
+            format!("{used} of {} mAh", mah_text(c)),
+            SECONDARY,
+        ),
+        None => row("Consumed", format!("{used} mAh"), SECONDARY),
+    }
+}
+
 pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
     let level = severity(pack.charge_state);
+    let coloured = if level > 0 { level } else { SECONDARY };
     [
-        pack.time_remaining.map(|t| ("Time left", duration_text(t), true)),
-        pack.percent.map(|p| ("Charge", format!("{}%", p.round() as i64), true)),
-        pack.voltage.clone().map(|v| ("Voltage", format!("{v} V"), false)),
-        pack.consumed.clone().map(|c| ("Consumed", format!("{c} mAh"), false)),
-        pack.temperature.clone().map(|t| ("Temperature", format!("{t}\u{00b0}C"), false)),
-        pack.function.clone().map(|f| ("Function", f, false)),
+        Some(
+            pack.time_remaining
+                .map(duration_text)
+                .filter(|t| !t.is_empty())
+                .map_or_else(
+                    || unreported("Time left"),
+                    |t| row("Time left", t, coloured),
+                ),
+        ),
+        Some(pack.percent.map_or_else(
+            || with_hint(unreported("Charge"), CHARGE_HINT),
+            |p| row("Charge", format!("{}%", p.round() as i64), coloured),
+        )),
+        Some(pack.voltage.clone().map_or_else(
+            || unreported("Voltage"),
+            |v| row("Voltage", format!("{v} V"), SECONDARY),
+        )),
+        pack.consumed_mah
+            .map(|c| consumed_row(c, pack.capacity_mah)),
+        pack.temperature
+            .clone()
+            .map(|t| row("Temperature", format!("{t}\u{00b0}C"), SECONDARY)),
+        pack.function.clone().map(|f| row("Function", f, SECONDARY)),
     ]
     .into_iter()
     .flatten()
-    .map(|(label, value, coloured)| json!({ "label": label, "value": value, "severity": if coloured && level > 0 { level } else { -1 } }))
     .collect()
 }
 
@@ -501,7 +650,8 @@ fn popup_pack(fact: &dyn Fn(&str) -> Value) -> PopupPack {
         percent: raw("percentRemaining"),
         time_remaining: raw("timeRemaining"),
         voltage: spelled("voltage"),
-        consumed: spelled("mahConsumed"),
+        consumed_mah: raw("mahConsumed"),
+        capacity_mah: None,
         temperature: spelled("temperature"),
         function,
     }
@@ -559,7 +709,14 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .map(|index| remembered(backend, index))
         .collect();
     let packs: Vec<Pack> = readers.iter().map(|read| pack(read)).collect();
-    let popup_packs: Vec<PopupPack> = readers.iter().map(|read| popup_pack(read)).collect();
+    let popup_packs: Vec<PopupPack> = readers
+        .iter()
+        .enumerate()
+        .map(|(index, read)| PopupPack {
+            capacity_mah: capacity_mah(backend, index),
+            ..popup_pack(read)
+        })
+        .collect();
     let (threshold1, threshold2) = thresholds(backend);
     let value_display =
         value_number(&backend.value("settings.batteryIndicatorSettings.valueDisplay.rawValue"))
@@ -679,14 +836,13 @@ pub fn drain_per_minute(amps: Option<f64>, capacity_mah: Option<f64>) -> Option<
 }
 
 fn capacity_mah(backend: &dyn Backend, index: usize) -> Option<f64> {
-    let apm = if index == 0 {
-        "BATT_CAPACITY".to_string()
-    } else {
-        format!("BATT{}_CAPACITY", index + 1)
-    };
-    [apm, format!("BAT{}_CAPACITY", index + 1)]
-        .iter()
-        .find_map(|name| parameter_value(backend, name, "value"))
+    [
+        format!("{}_CAPACITY", apm_prefix(index)),
+        format!("BAT{}_CAPACITY", index + 1),
+    ]
+    .iter()
+    .find_map(|name| parameter_value(backend, name, "value"))
+    .filter(|mah| *mah > 0.0)
 }
 
 fn limiting_pack_extras(
@@ -717,6 +873,16 @@ fn limiting_pack_extras(
         limiting.percent,
         limiting.time_remaining,
     )
+    .or_else(|| {
+        apm_margin_text(
+            &apm_stages(backend, index),
+            packs.get(index).and_then(|pack| pack.voltage),
+            limiting
+                .capacity_mah
+                .zip(limiting.consumed_mah)
+                .map(|(capacity, used)| capacity - used),
+        )
+    })
     .map_or(Value::Null, Value::String);
     shown["percent"] = limiting.percent.map_or(Value::Null, |p| json!(p));
     shown["secondsLeft"] = limiting.time_remaining.map_or(Value::Null, |s| json!(s));
@@ -730,7 +896,7 @@ fn limiting_pack_extras(
     shown["returnNow"] = json!(must_return(limiting.percent, return_at, flying));
     shown["drainPerMinute"] = drain_per_minute(
         packs.get(index).and_then(|pack| pack.current),
-        capacity_mah(backend, index),
+        limiting.capacity_mah,
     )
     .map_or(Value::Null, |d| json!(d));
     shown
@@ -821,10 +987,178 @@ mod tests {
             percent,
             time_remaining: left,
             voltage: Some("15.80".into()),
-            consumed: None,
+            consumed_mah: None,
+            capacity_mah: None,
             temperature: None,
             function: None,
         }
+    }
+
+    #[test]
+    fn without_a_percent_the_headline_never_reads_the_charge_state_as_a_reading() {
+        let volts = headline(&[popup(1, "Ok", None, None)]).unwrap();
+        assert_eq!(
+            (volts["text"].as_str(), volts["severity"].as_i64()),
+            (Some("15.80 V"), Some(0)),
+            "ArduPilot reports Ok at any charge until a failsafe trips, so the voltage leads"
+        );
+        let blind = headline(&[PopupPack {
+            voltage: None,
+            ..popup(1, "Ok", None, None)
+        }])
+        .unwrap();
+        assert_eq!(
+            (blind["text"].as_str(), blind["severity"].as_i64()),
+            (Some("Charge unknown"), Some(1)),
+            "with nothing measured the headline says so, in the caution colour"
+        );
+        let critical = headline(&[PopupPack {
+            voltage: None,
+            ..popup(3, "Critical", None, None)
+        }])
+        .unwrap();
+        assert_eq!(
+            (critical["text"].as_str(), critical["severity"].as_i64()),
+            (Some("Critical"), Some(2)),
+            "an alarming state is still worth leading with"
+        );
+    }
+
+    #[test]
+    fn the_core_readings_stay_listed_and_say_when_the_aircraft_sends_none() {
+        let rows = popup_rows(&PopupPack {
+            voltage: None,
+            ..popup(1, "Ok", None, None)
+        });
+        let shown: Vec<(&str, &str, bool)> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r["label"].as_str().unwrap(),
+                    r["value"].as_str().unwrap(),
+                    r["reported"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            shown,
+            vec![
+                ("Time left", "Not reported", false),
+                ("Charge", "Not reported", false),
+                ("Voltage", "Not reported", false),
+            ]
+        );
+        assert_eq!(
+            rows[1]["hint"], CHARGE_HINT,
+            "the charge row says where to fix it"
+        );
+        assert!(rows[0].get("hint").is_none());
+    }
+
+    #[test]
+    fn consumed_reads_against_the_pack_and_flags_more_than_it_holds() {
+        let row = |used: f64, capacity: Option<f64>| {
+            let shown = consumed_row(used, capacity);
+            (
+                shown["value"].as_str().unwrap().to_string(),
+                shown["severity"].as_i64(),
+                shown["hint"].as_str().map(str::to_string),
+            )
+        };
+        assert_eq!(
+            row(3200.4, Some(5000.0)),
+            ("3,200 of 5,000 mAh".to_string(), Some(-1), None)
+        );
+        assert_eq!(
+            row(501833.0, Some(5000.0)),
+            (
+                "501,833 of 5,000 mAh".to_string(),
+                Some(1),
+                Some(OVER_CAPACITY_HINT.to_string())
+            ),
+            "more than the pack holds is a sensor to check, not a reading to trust"
+        );
+        assert_eq!(
+            row(501833.0, None),
+            ("501,833 mAh".to_string(), Some(-1), None)
+        );
+        assert_eq!(
+            row(800.0, Some(-1.0)).0,
+            "800 mAh",
+            "PX4's -1 capacity is unset"
+        );
+    }
+
+    fn stage(action: i64, label: &str, volts: Option<f64>, mah: Option<f64>) -> FailsafeStage {
+        FailsafeStage {
+            action,
+            label: label.into(),
+            volts,
+            mah,
+        }
+    }
+
+    #[test]
+    fn the_ardupilot_margin_names_the_first_failsafe_that_takes_over() {
+        assert_eq!(
+            apm_margin_text(&[stage(2, "RTL", Some(10.5), None)], Some(11.8), None).as_deref(),
+            Some("RTL at 10.5 V  \u{00b7}  1.3 V to go")
+        );
+        assert_eq!(
+            apm_margin_text(
+                &[stage(2, "RTL", Some(10.5), Some(1000.0))],
+                Some(11.8),
+                Some(3200.0)
+            )
+            .as_deref(),
+            Some("RTL at 10.5 V or 1,000 mAh left  \u{00b7}  2,200 mAh to go"),
+            "consumption is steadier than a voltage that sags under load"
+        );
+        assert_eq!(
+            apm_margin_text(
+                &[
+                    stage(0, "None", Some(10.5), None),
+                    stage(1, "Land", Some(9.9), None)
+                ],
+                Some(10.2),
+                None
+            )
+            .as_deref(),
+            Some("Land at 9.9 V  \u{00b7}  0.3 V to go"),
+            "a warn-only low stage gives way to the critical stage that lands"
+        );
+        assert_eq!(
+            apm_margin_text(&[stage(0, "None", Some(10.5), None)], Some(10.4), None).as_deref(),
+            Some("Warns at 10.5 V  \u{00b7}  reached")
+        );
+        assert_eq!(
+            apm_margin_text(&[stage(2, "RTL", None, None)], Some(11.8), None),
+            None,
+            "BATT_LOW_VOLT and BATT_LOW_MAH at 0 disable the failsafe"
+        );
+        assert_eq!(apm_margin_text(&[], Some(11.8), None), None);
+    }
+
+    #[test]
+    fn the_ardupilot_failsafe_parameters_are_read_per_pack() {
+        let apm = Params(vec![
+            ("BATT2_FS_LOW_ACT", 2.0),
+            ("BATT2_LOW_VOLT", 10.5),
+            ("BATT2_LOW_MAH", 0.0),
+            ("BATT2_FS_CRT_ACT", 1.0),
+            ("BATT2_CRT_VOLT", 9.9),
+        ]);
+        assert_eq!(
+            apm_stages(&apm, 1)
+                .iter()
+                .map(|s| (s.action, s.volts, s.mah))
+                .collect::<Vec<_>>(),
+            vec![(2, Some(10.5), None), (1, Some(9.9), None)]
+        );
+        assert!(
+            apm_stages(&apm, 0).is_empty(),
+            "a PX4 vehicle has no BATT_ failsafes"
+        );
     }
 
     #[test]
