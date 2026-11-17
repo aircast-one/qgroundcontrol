@@ -140,28 +140,33 @@ fn transformed_simple(
     }
 }
 
-fn translated(at: &Value, distance: f64, azimuth: f64) -> Value {
-    match at
-        .as_array()
+fn mapped_point(at: &Value, map: impl FnOnce((f64, f64)) -> Option<(f64, f64)>) -> Value {
+    at.as_array()
         .and_then(|a| Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?)))
-    {
-        Some(point) => {
-            let (lat, lon) = at_distance_and_azimuth(point, distance, azimuth);
-            json!(
-                [lat, lon]
-                    .into_iter()
-                    .chain(
-                        at.as_array()
-                            .into_iter()
-                            .flatten()
-                            .skip(2)
-                            .filter_map(Value::as_f64)
-                    )
-                    .collect::<Vec<f64>>()
-            )
-        }
-        None => at.clone(),
-    }
+        .and_then(map)
+        .map_or_else(
+            || at.clone(),
+            |(lat, lon)| {
+                json!(
+                    [lat, lon]
+                        .into_iter()
+                        .chain(
+                            at.as_array()
+                                .into_iter()
+                                .flatten()
+                                .skip(2)
+                                .filter_map(Value::as_f64)
+                        )
+                        .collect::<Vec<f64>>()
+                )
+            },
+        )
+}
+
+fn translated(at: &Value, distance: f64, azimuth: f64) -> Value {
+    mapped_point(at, |point| {
+        Some(at_distance_and_azimuth(point, distance, azimuth))
+    })
 }
 
 fn with_keys(json: &Value, keys: &[&str], change: impl Fn(&Value) -> Value) -> Value {
@@ -186,26 +191,7 @@ fn with_keys(json: &Value, keys: &[&str], change: impl Fn(&Value) -> Value) -> V
 }
 
 fn moved_coordinate(at: &Value, transform: Transform, home: Option<(f64, f64)>) -> Value {
-    at.as_array()
-        .and_then(|a| Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?)))
-        .and_then(|point| moved_point(point, transform, home))
-        .map_or_else(
-            || at.clone(),
-            |(lat, lon)| {
-                json!(
-                    [lat, lon]
-                        .into_iter()
-                        .chain(
-                            at.as_array()
-                                .into_iter()
-                                .flatten()
-                                .skip(2)
-                                .filter_map(Value::as_f64)
-                        )
-                        .collect::<Vec<f64>>()
-                )
-            },
-        )
+    mapped_point(at, |point| moved_point(point, transform, home))
 }
 
 fn each(list: &Value, change: impl Fn(&Value) -> Value) -> Value {
@@ -947,6 +933,25 @@ mod tests {
         );
         assert!((view["horizontalMetresPerUnit"].as_f64().unwrap() - 0.3048).abs() < 1e-9);
         assert!((view["verticalMetresPerUnit"].as_f64().unwrap() - 0.3048).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_saved_point_is_mapped_keeping_its_altitude_and_left_alone_when_it_cannot_be() {
+        let north = |(lat, lon): (f64, f64)| Some((lat + 1.0, lon));
+        assert_eq!(
+            mapped_point(&json!([47.0, 8.0, 120.0]), north),
+            json!([48.0, 8.0, 120.0])
+        );
+        assert_eq!(mapped_point(&json!([47.0, 8.0]), north), json!([48.0, 8.0]));
+        assert_eq!(
+            mapped_point(&json!(["47", 8.0]), north),
+            json!(["47", 8.0]),
+            "a point that is not two numbers is kept as it was saved"
+        );
+        assert_eq!(
+            mapped_point(&json!([47.0, 8.0, 120.0]), |_| None),
+            json!([47.0, 8.0, 120.0])
+        );
     }
 
     #[test]
