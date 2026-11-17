@@ -2883,8 +2883,12 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             number
                 .ok_or_else(|| "An altitude mode is a number.".to_string())
                 .and_then(|mode| {
-                    plandoc::set_altitude_mode(&current, index, mode as i64)
-                        .ok_or_else(|| format!("Item {index} cannot take that altitude mode."))
+                    plandoc::set_altitude_mode_keeping_height(
+                        &current,
+                        index,
+                        mode as i64,
+                        &terrain_height,
+                    )
                 }),
         ),
         "coordinate" | "launchCoordinate" => answer(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, optJSONArray, parseJson } from '@/bridge/Json';
+import { refusalIn } from './BridgeCalls';
 import { legArrows, missionPath } from './MissionLayers';
 import { type MissionKind, allMissionItems, blockedReason, kindAllows, kindOffered, legsAfterLanding, missionItems, missionKinds, placed, planItemCount, planShape, routeEndsAfter, scanPatterns } from './PlanBridge';
 import { TrackPoint } from './VehicleMap';
@@ -323,5 +324,12 @@ describe('DropMarkerTest', () => {
     );
 
     expect(plan.filter((it) => it.placed).map((it) => it.drops)).toEqual([true]);
+  });
+
+  it('a refused edit carries the core reason, or a fallback when it gives none', () => {
+    expect(refusalIn(json('{"ok":true}'), 'fallback')).toBeNull();
+    expect(refusalIn(json('{"ok":false,"reason":"The ground height is not known yet."}'), 'fallback')).toBe('The ground height is not known yet.');
+    expect(refusalIn(json('{"ok":false}'), 'fallback')).toBe('fallback');
+    expect(refusalIn(null, 'fallback')).toBe('fallback');
   });
 });

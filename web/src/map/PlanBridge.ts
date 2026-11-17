@@ -1,7 +1,7 @@
 import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { coerceAtLeast, replaceFirstCharUpper } from '@/kotlin/Std';
 import { altitudeModePath } from './AltitudeModes';
-import { coordinateJson, invokeOk, setOk, settingJson } from './BridgeCalls';
+import { coordinateJson, invokeOk, setOk, setRefusal, settingJson } from './BridgeCalls';
 import { type LandingPattern, landingPattern } from './LandingPattern';
 import { MapBridge } from './MapBridge';
 import { removeMissionItem } from './MissionKinds';
@@ -257,7 +257,7 @@ export const PlanBridge = {
 
   setAltitude: (index: number, shown: number): Promise<boolean> => setOk(`${PLAN_ITEMS}.${index}.altitude`, settingJson(`${shown}`)),
 
-  setAltitudeMode: (index: number, raw: number): Promise<boolean> => setOk(altitudeModePath(index), settingJson(`${raw}`)),
+  setAltitudeMode: (index: number, raw: number): Promise<string | null> => setRefusal(altitudeModePath(index), settingJson(`${raw}`), 'That altitude mode could not be set.'),
 
   removeItem: async (index: number): Promise<boolean> => (await removeMissionItem(index)).ok,
 

@@ -80,6 +80,7 @@ import {
 import {
   type ItemRow,
   addingAfterText,
+  altitudeWithFrame,
   cameraText,
   insertAfter,
   itemCountText,
@@ -690,7 +691,7 @@ export const PlanMapContent = ({
   const message = busy.value ?? (ready ? null : WAITING_FOR_QGC);
   const chosenItem = chosen?.kind === 'Waypoint' ? (allItems.value.find((it) => it.index === chosen.index) ?? null) : null;
   const rows = useMemo(() => itemRows(allItems.value, surveyStatsMap.value), [allItems.value, surveyStatsMap.value]);
-  const altitudes = useMemo<ReadonlyMap<number, string>>(() => new Map(allItems.value.map((it) => [it.index, it.altitudeText])), [allItems.value]);
+  const altitudes = useMemo<ReadonlyMap<number, string>>(() => new Map(allItems.value.map((it) => [it.index, altitudeWithFrame(it) ?? ''])), [allItems.value]);
   const traced = tracing.value;
   const panelScroll = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1297,7 +1298,13 @@ export const PlanMapContent = ({
                       ))}
                     </div>
                   )}
-                  <WaypointSettings item={chosenItem} globalFrame={globalFrame} onWrite={(label, work) => onBridge(work, { label })} />
+                  <WaypointSettings
+                    item={chosenItem}
+                    globalFrame={globalFrame}
+                    launchAltitude={allItems.value.find((it) => it.index === HOME_ITEM)?.altitude ?? NaN}
+                    onWrite={(label, work) => onBridge(work, { label })}
+                    onRefusal={(label, work) => onRefusal(work, label)}
+                  />
                 </>
               ) : chosen !== null ? null : layer.value === PlanLayer.Mission ? (
                 routeSettings?.()

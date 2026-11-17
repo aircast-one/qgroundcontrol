@@ -4,6 +4,7 @@ import { PLAN_ITEMS } from './PlanBridge';
 export const MISSION_CONTEXT = 'mission';
 export const ITEM_CONTEXT = 'item';
 export const ALT_MODE_MIXED = 0;
+export const ALT_MODE_AMSL = 2;
 export const FRAME_UNKNOWN = 'Frame';
 
 export type AltitudeModeOffer = { raw: number; title: string; help: string; enabled: boolean; current: boolean; reason: string };

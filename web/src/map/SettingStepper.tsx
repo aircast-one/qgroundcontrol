@@ -25,6 +25,17 @@ export const stepperText = (value: number | null, decimals: number): string =>
 export const stepperDecimals = (value: number | null, step: number): number =>
   [value, step].filter((it): it is number => it !== null).every((it) => it === Math.floor(it)) ? 0 : 1;
 
+const limitText = (value: number, unit: string): string => `${format(`%,.${stepperDecimals(value, 1)}f`, value)}${unit.trim() === '' ? '' : ` ${unit}`}`;
+
+export const clampNote = (wanted: number | null, range: ClosedRange | null, unit: string): string | null =>
+  wanted === null || range === null
+    ? null
+    : wanted > range.endInclusive
+      ? `Capped at ${limitText(range.endInclusive, unit)}, the highest allowed.`
+      : wanted < range.start
+        ? `Raised to ${limitText(range.start, unit)}, the lowest allowed.`
+        : null;
+
 export const useRepeatWhileHeld = (enabled: boolean, onStep: (repeats: number) => void, firstDelay: number, interval: number, onRelease: () => void = () => {}) => {
   const step = useUpdatedRef(onStep);
   const release = useUpdatedRef(onRelease);
@@ -86,11 +97,12 @@ const StepperEntry = ({ label, unit, initial, range, onSet, onDismiss }: { label
   const [text, setText] = useState(initial);
   const wanted = typedNumber(text);
   const typed = wanted === null ? null : range ? coerceIn(wanted, range.start, range.endInclusive) : wanted;
+  const note = clampNote(wanted, range, unit);
   return (
     <AlertDialog
       onDismissRequest={onDismiss}
       title={label}
-      text={<OutlinedTextField value={text} onValueChange={setText} suffix={unit.trim() !== '' ? unit : undefined} singleLine keyboardType="decimal" />}
+      text={<OutlinedTextField value={text} onValueChange={setText} suffix={unit.trim() !== '' ? unit : undefined} supportingText={note ?? undefined} isError={note !== null} singleLine keyboardType="decimal" />}
       confirmButton={
         <TextButton
           enabled={typed !== null}
