@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
+import { useValue } from '@/kotlin/State';
 import { Surface, Text, TextButton } from '@/m3';
+import { LINK_LOST, type LostVehicle, lostVehicle } from '@/map/LostVehicle';
 import { Drawable } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { LAND_FROM, landFrom } from '@/ui/ConfirmTrack';
@@ -9,7 +11,7 @@ import { BATTERY_VIEW } from '@/ui/InstrumentDetail';
 import { type BatteryReading, BatteryLevel, batteryPercent, batteryReadings, compactStatusText } from '@/ui/StatusStrip';
 import { VEHICLE_LINKS, type VehicleLinks, linkCell, vehicleLinks } from '@/ui/VehicleLinks';
 
-export type FlightGlance = { mode: string; altitude: string | null; battery: string | null; batteryLow: boolean; link: string; linkLost: boolean };
+export type FlightGlance = { mode: string; altitude: string | null; battery: string | null; batteryLow: boolean; link: string; linkLost: boolean; dropped: boolean };
 
 export const lowestBattery = (batteries: readonly BatteryReading[]): BatteryReading | null =>
   batteries
@@ -30,8 +32,19 @@ export const flightGlance = (state: FlyState | null, altitude: readonly [string,
     batteryLow: battery !== null && battery.level.ordinal >= BatteryLevel.Warning.ordinal,
     link: linkLost ? 'Lost' : (linkCell(links)?.text ?? 'OK'),
     linkLost,
+    dropped: false,
   };
 };
+
+export const lostGlance = (lost: LostVehicle): FlightGlance => ({
+  mode: `${LINK_LOST} · ${lost.name}`,
+  altitude: lost.altitude === null || lost.altitude.trim() === '' ? null : lost.altitude.trim(),
+  battery: lost.battery === null ? null : `${lost.battery}%`,
+  batteryLow: false,
+  link: 'Lost',
+  linkLost: true,
+  dropped: true,
+});
 
 const Reading = ({ label, value, alert = false }: { label: string; value: string; alert?: boolean }) => (
   <span aria-label={`${label} ${value}`} className="flex items-baseline gap-1 whitespace-nowrap">
@@ -49,21 +62,22 @@ export const ArmedFlightBar = ({ onFly }: { onFly: () => void }) => {
   const altitudeJson = useQgcPath(LAND_FROM);
   const batteryJson = useQgcPath(BATTERY_VIEW);
   const linksJson = useQgcPath(VEHICLE_LINKS);
+  const lost = useValue(lostVehicle);
   const glance = useMemo(
-    () => flightGlance(flyState(stateJson), landFrom(altitudeJson), batteryReadings(batteryJson), vehicleLinks(linksJson)),
-    [stateJson, altitudeJson, batteryJson, linksJson],
+    () => (lost !== null ? lostGlance(lost) : flightGlance(flyState(stateJson), landFrom(altitudeJson), batteryReadings(batteryJson), vehicleLinks(linksJson))),
+    [lost, stateJson, altitudeJson, batteryJson, linksJson],
   );
   if (glance === null) return null;
   return (
     <Surface color={md('surfaceContainerHigh')} contentColor={md('onSurface')} className="shrink-0">
-      <div role="status" aria-label="Flight status" className="flex min-h-12 items-center gap-4 overflow-x-auto px-4 py-1">
+      <div role={glance.dropped ? 'alert' : 'status'} aria-label={glance.dropped ? LINK_LOST : 'Flight status'} className="flex min-h-12 items-center gap-4 overflow-x-auto px-4 py-1">
         <span className="flex items-center gap-2 whitespace-nowrap">
-          <Drawable name="ic_flight" size={20} />
-          <Text typography="titleSmall">{glance.mode}</Text>
+          <Drawable name={glance.dropped ? 'ic_warning' : 'ic_flight'} size={20} style={glance.dropped ? { color: md('error') } : undefined} />
+          <Text typography="titleSmall" color={glance.dropped ? md('error') : undefined}>{glance.mode}</Text>
         </span>
-        {glance.altitude !== null ? <Reading label="Alt" value={glance.altitude} /> : null}
-        {glance.battery !== null ? <Reading label="Battery" value={glance.battery} alert={glance.batteryLow} /> : null}
-        <Reading label="Link" value={glance.link} alert={glance.linkLost} />
+        {glance.altitude !== null ? <Reading label={glance.dropped ? 'Last alt' : 'Alt'} value={glance.altitude} /> : null}
+        {glance.battery !== null ? <Reading label={glance.dropped ? 'Last battery' : 'Battery'} value={glance.battery} alert={glance.batteryLow} /> : null}
+        {glance.dropped ? null : <Reading label="Link" value={glance.link} alert={glance.linkLost} />}
         <span className="flex-1" />
         <TextButton onClick={onFly}>Back to Fly</TextButton>
       </div>

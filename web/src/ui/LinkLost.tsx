@@ -3,7 +3,7 @@ import type { Json } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useValue } from '@/kotlin/State';
 import { Surface, Text, TextButton } from '@/m3';
-import { LAST_SEEN, LINK_LOST, type LostVehicle, keptSighting, lostVehicle } from '@/map/LostVehicle';
+import { LAST_SEEN, LINK_LOST, type LinkWatch, type LostVehicle, NO_LINK_WATCH, linkWatchStep, lostVehicle } from '@/map/LostVehicle';
 import { isPlottable } from '@/map/VehicleMap';
 import { VEHICLES_VIEW, vehicleChoices } from '@/map/VehiclePicker';
 import { Drawable } from '@/res/Icon';
@@ -36,16 +36,10 @@ export const LinkLostWatch = () => {
   const vehicles = useQgcPath(VEHICLES_VIEW);
   const battery = useQgcPath(BATTERY_VIEW);
   const links = useQgcPath(VEHICLE_LINKS);
-  const sighting = useRef<LostVehicle | null>(null);
+  const watch = useRef<LinkWatch>(NO_LINK_WATCH);
   useEffect(() => {
-    if (connected) {
-      sighting.current = keptSighting(sighting.current, vehicleChoices(vehicles).active, batteryOf(battery), vehicleLinks(links)?.failsafe ?? null);
-      lostVehicle.value = null;
-      return;
-    }
-    if (sighting.current === null) return;
-    lostVehicle.value = sighting.current;
-    sighting.current = null;
+    watch.current = linkWatchStep(watch.current, connected, vehicleChoices(vehicles).active, batteryOf(battery), vehicleLinks(links)?.failsafe ?? null);
+    lostVehicle.value = watch.current.lost;
   }, [connected, vehicles, battery, links]);
   return null;
 };

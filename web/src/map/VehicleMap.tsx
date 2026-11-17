@@ -653,13 +653,15 @@ export const VehicleMap = ({
     await frame();
   });
 
-  const flownTrack = useRef(track);
+  const lastDrawn = useRef<{ vehicle: number | null; track: TrackReading }>({ vehicle: null, track });
   useEffect(() => {
     const loaded = style?.map;
     if (loaded === undefined) return;
-    if (trackDraws(track) || ghost === null) flownTrack.current = track;
-    setGeoJson(loaded, TRAIL_SOURCE, featureCollection(trackDraws(flownTrack.current) ? [lineFeature(plottedTrack(flownTrack.current))] : []));
-  }, [style, track, ghost]);
+    const vehicle = flown?.id ?? null;
+    if (trackDraws(track) || (vehicle !== null && vehicle !== lastDrawn.current.vehicle)) lastDrawn.current = { vehicle: vehicle ?? lastDrawn.current.vehicle, track };
+    const shown = ghost === null ? track : lastDrawn.current.track;
+    setGeoJson(loaded, TRAIL_SOURCE, featureCollection(trackDraws(shown) ? [lineFeature(plottedTrack(shown))] : []));
+  }, [style, track, ghost, flown?.id]);
 
   useEffect(() => {
     if (follow) setTrackingResumesAtMs(elapsedRealtime());

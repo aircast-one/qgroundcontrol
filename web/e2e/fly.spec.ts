@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, flightMode, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { connectMock, expect, flightMode, mapMenuAt, openMenu, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 import { type Sitl, connectSitl, startSitl } from './sitl';
 
 test.describe.configure({ timeout: 120_000 });
@@ -53,20 +53,127 @@ test('Escape cancels the takeoff panel', async ({ vehicle }) => {
   await expect(vehicle.getByText('Height above launch')).toBeHidden();
 });
 
+const QGC = '/src/bridge/Qgc.ts';
+
+const dropLink = (page: Page) =>
+  page.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { invoke: (path: string) => Promise<boolean> } };
+    await Qgc.invoke('vehicle.closeVehicle');
+  }, QGC);
+
+const coreAnswered = (page: Page, times: number) =>
+  page.evaluate(
+    async ({ module, times }) => {
+      const { Qgc } = (await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } };
+      await Array.from({ length: times }).reduce<Promise<unknown>>((done) => done.then(() => Qgc.get('view.flyState')), Promise.resolve());
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    },
+    { module: QGC, times },
+  );
+
+type Heard = { heard: readonly string[] };
+
+const recordNotices = (page: Page) =>
+  page.evaluate(() => {
+    const record = window as unknown as Heard;
+    record.heard = [];
+    new MutationObserver(() => {
+      record.heard = [...record.heard, ...[...document.querySelectorAll('[role="status"]')].map((it) => it.textContent ?? '')];
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+
+const listenForSpeech = (page: Page) =>
+  page.evaluate(() => {
+    const record = window as unknown as Heard;
+    record.heard = [];
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function played(this: HTMLMediaElement) {
+      record.heard = [...record.heard, this.src];
+      return play.call(this);
+    };
+  });
+
+const heard = (page: Page): Promise<readonly string[]> => page.evaluate(() => (window as unknown as Heard).heard);
+
+type MapSources = { sources: Readonly<Record<string, string>> };
+
+const recordMapSources = (page: Page) =>
+  page.evaluate(async () => {
+    const record = window as unknown as MapSources;
+    record.sources = {};
+    const url = (await (await fetch('/src/map/VehicleMap.tsx')).text()).match(/"([^"]*\/maplibre-gl\.js[^"]*)"/)?.[1];
+    if (url === undefined) throw new Error('the map module does not import the map library');
+    const { GeoJSONSource } = (await import(url)) as { GeoJSONSource: { prototype: { id: string; setData: (data: unknown) => unknown } } };
+    const setData = GeoJSONSource.prototype.setData;
+    GeoJSONSource.prototype.setData = function recorded(this: { id: string }, data: unknown) {
+      record.sources = { ...record.sources, [this.id]: JSON.stringify(data) };
+      return setData.call(this, data);
+    };
+  });
+
+const mapSource = (page: Page, id: string): Promise<string> => page.evaluate((id) => (window as unknown as MapSources).sources[id] ?? '', id);
+
 test('a link that drops mid-flight says the link is lost and where the aircraft was, never that it landed', async ({ vehicle }) => {
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/Flying/, { timeout: 60_000 });
-  await vehicle.evaluate(async (module) => {
-    const { Qgc } = (await import(module)) as { Qgc: { invoke: (path: string) => Promise<boolean> } };
-    await Qgc.invoke('vehicle.closeVehicle');
-  }, '/src/bridge/Qgc.ts');
+  await recordNotices(vehicle);
+  await dropLink(vehicle);
   const alert = vehicle.getByRole('alert').filter({ hasText: 'Link lost' });
   await expect(alert).toContainText(/Last seen at -?\d+\.\d{5}, -?\d+\.\d{5}/);
   await expect(alert).toContainText(/\d+(\.\d+)? m up/);
   await expect(alert).toContainText('Failsafe on link loss:');
   await expect(vehicle.getByText('Link lost', { exact: true })).toBeVisible();
+  await coreAnswered(vehicle, 3);
+  expect((await heard(vehicle)).filter((it) => /disarmed/i.test(it)), 'no landed or disarmed notice, even briefly').toEqual([]);
   await expect(vehicle.getByText(/disarmed/i)).toHaveCount(0);
   await expect(vehicle.getByText(/^Turn on the aircraft/)).toHaveCount(0);
+});
+
+const dropsOn = (screen: 'Settings' | 'Plan') =>
+  test(`a link that drops while ${screen} is open raises the link-lost bar and says so aloud`, async ({ vehicle }) => {
+    await takeOff(vehicle, '5 m');
+    await expect(flightMode(vehicle)).toHaveAccessibleName(/Flying/, { timeout: 60_000 });
+    await openMenu(vehicle, screen);
+    await listenForSpeech(vehicle);
+    await dropLink(vehicle);
+    const bar = vehicle.getByRole('alert', { name: 'Link lost' });
+    await expect(bar).toContainText(/^Link lost · /);
+    await expect(bar.getByLabel(/^Last alt \d+(\.\d+)? m$/)).toBeVisible();
+    await expect(bar.getByLabel(/^Last battery \d+%$/)).toBeVisible();
+    await expect.poll(() => heard(vehicle)).toContainEqual(expect.stringMatching(/signal_lost/));
+    await bar.getByRole('button', { name: 'Back to Fly' }).click();
+    await expect(bar).toBeHidden();
+    await expect(vehicle.getByRole('alert').filter({ hasText: 'Failsafe on link loss:' })).toBeVisible();
+  });
+
+dropsOn('Settings');
+dropsOn('Plan');
+
+test('reconnecting after a link loss clears the card, the last-seen marker and the old trail, and claims nothing about the lost flight', async ({ vehicle }) => {
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await showMapFull(vehicle);
+  await recordMapSources(vehicle);
+  await mapMenuAt(vehicle, 200, -100);
+  await vehicle.getByRole('button', { name: 'Go to location' }).click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to go to location' }));
+  await expect.poll(() => mapSource(vehicle, 'aircast-trail'), { timeout: 30_000 }).toContain('LineString');
+  await dropLink(vehicle);
+  const card = vehicle.getByRole('alert').filter({ hasText: 'Failsafe on link loss:' });
+  await expect(card).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: /^Link lost How to connect$/ })).toBeVisible();
+  await expect.poll(() => mapSource(vehicle, 'aircast-vehicle')).toContain('Last seen');
+  expect(await mapSource(vehicle, 'aircast-trail'), 'the trail stays while the aircraft is missing').toContain('LineString');
+  await recordNotices(vehicle);
+  await connectMock(vehicle);
+  await expect(card).toBeHidden();
+  await expect(vehicle.getByRole('button', { name: /^Link lost How to connect$/ })).toBeHidden();
+  await expect(flightMode(vehicle)).toBeVisible();
+  await showMapFull(vehicle);
+  await expect.poll(() => mapSource(vehicle, 'aircast-vehicle')).not.toContain('Last seen');
+  await expect.poll(() => mapSource(vehicle, 'aircast-trail')).not.toContain('LineString');
+  await coreAnswered(vehicle, 3);
+  expect((await heard(vehicle)).filter((it) => /disarmed/i.test(it)), 'a different aircraft is not announced as the lost one landing').toEqual([]);
 });
 
 const ARM_VOLTAGE = 'vehicle.parameterManager.getParameter(-1,BATT_ARM_VOLT)';

@@ -23,6 +23,7 @@ import { LocalFlyMapEdits } from '@/map/FlyMapEdits';
 import { useMap3dShown } from '@/map/Map3d';
 import { AircastTheme } from '@/map/Theme';
 import type { TrackPoint } from '@/map/VehicleMap';
+import { lostVehicle } from '@/map/LostVehicle';
 import { VEHICLES_VIEW, type VehicleChoices, VehicleBridge, activeChanged, handoverNotice, rememberedChoices, vehicleChoices } from '@/map/VehiclePicker';
 import { VehicleStateChip, useRememberActiveVehicleId } from '@/ui/ActiveVehicle';
 import { DeviceDeepLink, DeviceStatusChip } from '@/ui/DeviceScreen';
@@ -600,7 +601,8 @@ export const AircastShell = () => {
     ...(railShown ? [] : destinations.filter((it) => it.key !== Tab.Fly.name).map((it) => MenuTile({ label: it.label, icon: it.icon, enabled: true, onClick: it.onClick }))),
     ...fullScreenTiles,
   ];
-  const flightBar = armedNow && (!onFly || settingsOpen) ? <ArmedFlightBar onFly={backToFly} /> : null;
+  const linkLost = useValue(lostVehicle) !== null;
+  const flightBar = (armedNow || linkLost) && (!onFly || settingsOpen) ? <ArmedFlightBar onFly={backToFly} /> : null;
   const sheetCovers = settingsOpen && !desktop;
   const settingsSheet = settingsOpen ? <RequestedSettingsSheet key={settingsEpoch} onClose={closeSettings} overFly={onFly} status={sheetCovers ? flightBar : null} /> : null;
 
@@ -749,7 +751,7 @@ export const AircastShell = () => {
                 {onFly ? (
                   <div className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4" style={{ top: `calc(env(safe-area-inset-top) + ${FLY_NOTICE_TOP}px)` }}>
                     <div className="flex w-full flex-col gap-2" style={{ maxWidth: FLY_NOTICE_MAX_WIDTH }}>
-                      <LinkLostCard className="pointer-events-auto" />
+                      {settingsOpen ? null : <LinkLostCard className="pointer-events-auto" />}
                       <SnackbarHost hostState={snackbars} />
                     </div>
                   </div>

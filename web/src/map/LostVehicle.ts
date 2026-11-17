@@ -35,3 +35,14 @@ export const lastSeenArmed = (choice: VehicleChoice, battery: number | null, fai
 
 export const keptSighting = (held: LostVehicle | null, active: VehicleChoice | null, battery: number | null, failsafe: LossFailsafe | null): LostVehicle | null =>
   active === null ? held : lastSeenArmed(active, battery ?? held?.battery ?? null, failsafe ?? held?.failsafe ?? null);
+
+export type LinkWatch = { readonly sighting: LostVehicle | null; readonly lost: LostVehicle | null };
+
+export const NO_LINK_WATCH: LinkWatch = { sighting: null, lost: null };
+
+export const linkWatchStep = (held: LinkWatch, connected: boolean, active: VehicleChoice | null, battery: number | null, failsafe: LossFailsafe | null): LinkWatch =>
+  connected
+    ? { sighting: keptSighting(held.sighting, active, battery, failsafe), lost: null }
+    : held.sighting === null
+      ? held
+      : { sighting: null, lost: held.sighting };
