@@ -169,7 +169,7 @@ export const SUMMARY_MAX_FRACTION = 0.74;
 const WAITING_FOR_QGC = 'Waiting for QGroundControl';
 const CHECKING_TERRAIN = 'Checking the terrain…';
 const CONVERTED = 'Plan converted to this vehicle. Check it, then upload.';
-const FAR_FROM_AIRCRAFT_TEXT = 'The aircraft is not where this route begins. Move the route so it starts at the aircraft, or upload it as it is.';
+const FAR_FROM_AIRCRAFT_TEXT = 'The aircraft is not where this route begins. Move the plan, with its fence and rally points, so it starts at the aircraft, or upload it as it is.';
 const VIEW_CORNERS = 4;
 const PATTERN_KINDS: ReadonlySet<string> = new Set([KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE]);
 
@@ -1087,8 +1087,8 @@ export const PlanMapContent = ({
               onClick={() => {
                 farAsk.value = false;
                 onBridge(() => repositionMission(aircraftAt), {
-                  label: 'Moving the route to the aircraft',
-                  done: 'Route moved to the aircraft',
+                  label: 'Moving the plan to the aircraft',
+                  done: 'Plan moved to the aircraft',
                   then: () => {
                     follow.value = false;
                     centreOn.value = aircraftAt;
