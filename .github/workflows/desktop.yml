@@ -29,6 +29,10 @@ on:
         required: false
       OTEL_BETA_INGEST_TOKEN:
         required: false
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
   pull_request:
     paths:
       - 'web/**'
@@ -56,6 +60,7 @@ on:
 env:
   SHORT: ${{ inputs.short_version || 'v0.0.0-dev' }}
   RELEASING: ${{ inputs.short_version != '' }}
+  UPDATES: https://github.com/${{ github.repository }}/releases/download/desktop-updates
 
 jobs:
   macos:
@@ -104,6 +109,8 @@ jobs:
           NOTARY_TEAM: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
           NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
           OTEL_BETA_INGEST_TOKEN: ${{ inputs.short_version != '' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -n "$P12" ] && [ "$RELEASING" == "true" ]; then
@@ -113,9 +120,20 @@ jobs:
             echo "This build is signed ad hoc and not notarized: only a release or a manual run signs it."
             export APPLE_SIGNING_IDENTITY=-
           fi
-          npx tauri build --bundles app,dmg --config "{\"version\":\"${SHORT#v}\",\"build\":{\"beforeBuildCommand\":\"npx vite build\"}}"
+          config=$(jq -nc --arg version "${SHORT#v}" '{version: $version, build: {beforeBuildCommand: "npx vite build"}}')
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && [ "$RELEASING" == "true" ]; then
+            channel=$([[ "$SHORT" == *-* ]] && echo beta || echo stable)
+            config=$(jq -c --arg url "$UPDATES/$channel.json" '. + {bundle: {createUpdaterArtifacts: true}, plugins: {updater: {endpoints: [$url]}}}' <<<"$config")
+          else
+            echo "This build does not update itself: only a release signs an update and sets where to look for the next one."
+          fi
+          npx tauri build --bundles app,dmg --config "$config"
           mkdir -p ../out
           cp src-tauri/target/release/bundle/dmg/*.dmg "../out/AircastQGCNative-${SHORT}.dmg"
+          if [ -f src-tauri/target/release/bundle/macos/Aircast.app.tar.gz.sig ]; then
+            cp src-tauri/target/release/bundle/macos/Aircast.app.tar.gz "../out/AircastQGCNative-${SHORT}.app.tar.gz"
+            cp src-tauri/target/release/bundle/macos/Aircast.app.tar.gz.sig "../out/AircastQGCNative-${SHORT}.app.tar.gz.sig"
+          fi
 
       - name: Verify DMG
         env:
@@ -159,7 +177,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: qgc-macos-native
-          path: out/*.dmg
+          path: |
+            out/*.dmg
+            out/*.app.tar.gz
+            out/*.sig
           if-no-files-found: error
 
   windows:
@@ -214,14 +235,25 @@ jobs:
         working-directory: web
         env:
           OTEL_BETA_INGEST_TOKEN: ${{ inputs.short_version != '' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $config = Join-Path $env:RUNNER_TEMP 'version.json'
-          @{ version = $env:SHORT.TrimStart('v'); build = @{ beforeBuildCommand = 'npx vite build' } } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $config
+          $settings = @{ version = $env:SHORT.TrimStart('v'); build = @{ beforeBuildCommand = 'npx vite build' } }
+          if ($env:TAURI_SIGNING_PRIVATE_KEY -and $env:RELEASING -eq 'true') {
+            $channel = if ($env:SHORT.Contains('-')) { 'beta' } else { 'stable' }
+            $settings.bundle = @{ createUpdaterArtifacts = $true }
+            $settings.plugins = @{ updater = @{ endpoints = @("$env:UPDATES/$channel.json") } }
+          }
+          $settings | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $config
           npx tauri build --bundles nsis --config $config
           if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
           New-Item -ItemType Directory -Force -Path ..\out | Out-Null
           $setup = Get-ChildItem src-tauri\target\release\bundle\nsis\*-setup.exe | Select-Object -First 1
           Copy-Item $setup.FullName "..\out\AircastQGCNative-$env:SHORT-windows-$env:ARCH-setup.exe"
+          if (Test-Path "$($setup.FullName).sig") {
+            Copy-Item "$($setup.FullName).sig" "..\out\AircastQGCNative-$env:SHORT-windows-$env:ARCH-setup.exe.sig"
+          }
           Get-ChildItem ..\out
 
       - name: Upgrade from the released app
@@ -293,5 +325,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: qgc-windows-native-${{ matrix.arch }}
-          path: out/*-setup.exe
+          path: |
+            out/*-setup.exe
+            out/*-setup.exe.sig
           if-no-files-found: error

@@ -478,6 +478,8 @@ jobs:
       MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
       MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
       OTEL_BETA_INGEST_TOKEN: ${{ needs.setup.outputs.environment == 'beta' && secrets.OTEL_BETA_INGEST_TOKEN || '' }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
   build-windows:
     needs: setup
@@ -881,6 +883,32 @@ jobs:
               --notes-file release-notes.md \
               $PRE assets/*
           fi
+
+      - name: Point desktop updates at this release
+        if: needs.setup.outputs.environment == 'production' || needs.setup.outputs.environment == 'beta'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          V: ${{ needs.setup.outputs.version }}
+          SHORT: ${{ needs.setup.outputs.short_version }}
+          IS_PRODUCTION: ${{ needs.setup.outputs.is_production }}
+        run: |
+          set -euo pipefail
+          if ! scripts/desktop-update-manifest.sh assets "$SHORT" "https://github.com/$REPO/releases/download/$V" release-notes.md > beta.json; then
+            echo "::warning::This release has no signed desktop build for every platform, so desktop apps keep updating to the previous release."
+            exit 0
+          fi
+          if ! gh release view desktop-updates -R "$REPO" >/dev/null 2>&1; then
+            gh release create desktop-updates -R "$REPO" --prerelease --target "$(git rev-parse HEAD)" \
+              --title "Desktop app updates" \
+              --notes "The desktop app reads beta.json and stable.json from here to find its next update. Release CI replaces them; download Aircast from the aircast-v* releases."
+          fi
+          MANIFESTS=(beta.json)
+          if [ "$IS_PRODUCTION" = "true" ]; then
+            cp beta.json stable.json
+            MANIFESTS+=(stable.json)
+          fi
+          gh release upload desktop-updates -R "$REPO" --clobber "${MANIFESTS[@]}"
 
       - name: Hand the web build to aircastd
         if: needs.setup.outputs.environment == 'production' || needs.setup.outputs.environment == 'beta'

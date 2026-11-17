@@ -38,29 +38,16 @@ fn prompt() -> std::sync::MutexGuard<'static, Prompt> {
     PROMPT.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn prompt_messages(checks: &Value, wanted: impl Fn(&Value) -> bool) -> Vec<String> {
+pub fn close_prompts(checks: &Value) -> Vec<String> {
     checks["prompts"]
         .as_array()
         .map(|prompts| {
             prompts
                 .iter()
-                .filter(|prompt| wanted(prompt))
                 .filter_map(|prompt| prompt["message"].as_str().map(str::to_string))
                 .collect()
         })
         .unwrap_or_default()
-}
-
-pub fn close_prompts(checks: &Value) -> Vec<String> {
-    prompt_messages(checks, |_| true)
-}
-
-pub fn work_lost(checks: &Value) -> Vec<String> {
-    prompt_messages(checks, |prompt| prompt["losesWork"] == true)
-}
-
-pub fn work_at_risk() -> Vec<String> {
-    work_lost(&crate::bridge::core_value(CLOSE_CHECKS))
 }
 
 pub fn holds_close<R: Runtime>(app: &AppHandle<R>) -> bool {
@@ -194,14 +181,6 @@ mod tests {
                 "Parameter writes are still pending."
             ],
             "a live connection asks too, so a Cmd+Q in flight is never silent"
-        );
-        assert_eq!(
-            work_lost(&checks),
-            [
-                "The mission has unsaved changes.",
-                "Parameter writes are still pending."
-            ],
-            "an update asks to save these first, as installing closes the app"
         );
         assert!(close_prompts(&json!({ "prompts": [] })).is_empty());
         assert!(close_prompts(&Value::Null).is_empty());

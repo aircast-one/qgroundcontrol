@@ -1,111 +1,190 @@
-import { invoke } from '@tauri-apps/api/core';
-import { type ReactNode, useState } from 'react';
-import { type Json, optBoolean, optDouble, optInt, optText } from '@/bridge/Json';
-import { Qgc } from '@/bridge/Qgc';
+import { getVersion } from '@tauri-apps/api/app';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater';
+import { type ReactNode, useSyncExternalStore } from 'react';
+import { type Json, isJson, optJSONArray, optText } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
-import { openUri } from '@/kotlin/Platform';
+import { commandFailed } from '@/core/desktopCommands';
+import { getSharedPreferences, openUri } from '@/kotlin/Platform';
 import { FilledTonalButton, LinearProgressIndicator, Surface, Switch, Text, TextButton } from '@/m3';
 import { Drawable } from '@/res/Icon';
 import { md } from '@/theme/Colors';
+import { useHasVehicle } from './FlyState';
 import { SectionHeader, SettingsCard } from './SetupRow';
 
-export const APP_UPDATE = 'view.appUpdate';
 export const DISCONNECT_FIRST = 'Disconnect from the vehicle first';
 export const INSTALL_NOTE = 'Aircast closes, installs the update and opens again.';
+const CLOSE_CHECKS = 'view.closeChecks';
+const BLOCKERS: Readonly<Record<string, string>> = {
+  activeConnections: DISCONNECT_FIRST,
+  unsavedMission: 'Save or send the mission first',
+  pendingWrites: 'Wait for the parameter writes to finish first',
+};
+const RELEASES = 'https://github.com/aircast-one/qgroundcontrol/releases';
+const FIRST_CHECK_AFTER_MS = 15_000;
+const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 const BANNER_MAX_WIDTH = 560;
 const BANNER_CORNER = 12;
-const MEGABYTE = 1_000_000;
 
-export type AppUpdatePhase = 'idle' | 'checking' | 'upToDate' | 'available' | 'downloading' | 'ready' | 'failed';
+export type AppUpdatePhase = 'idle' | 'checking' | 'upToDate' | 'available' | 'downloading' | 'installing' | 'failed';
 
-export type AppUpdateReading = {
+export type AppUpdateState = {
   current: string;
-  channel: string;
   phase: AppUpdatePhase;
   latest: string;
-  releaseUrl: string;
-  sizeBytes: number;
-  progress: number;
+  downloaded: number;
+  total: number;
   error: string;
   autoCheck: boolean;
-  skipped: boolean;
+  skipped: string;
   later: boolean;
   updatedFrom: string;
-  canInstall: boolean;
 };
 
-const PHASES: readonly AppUpdatePhase[] = ['idle', 'checking', 'upToDate', 'available', 'downloading', 'ready', 'failed'];
+export type UpdateBannerKind = 'updated' | 'offer' | 'installing' | 'failed';
 
-const phaseOf = (token: string): AppUpdatePhase => PHASES.find((phase) => phase === token) ?? 'idle';
+const preferences = getSharedPreferences('appUpdate');
 
-export const appUpdateReading = (view: Json | null): AppUpdateReading | null =>
-  view === null || optText(view, 'current') === ''
-    ? null
-    : {
-        current: optText(view, 'current'),
-        channel: optText(view, 'channel'),
-        phase: phaseOf(optText(view, 'phase')),
-        latest: optText(view, 'latest'),
-        releaseUrl: optText(view, 'releaseUrl'),
-        sizeBytes: optInt(view, 'sizeBytes'),
-        progress: optDouble(view, 'progress', 0),
-        error: optText(view, 'error'),
-        autoCheck: optBoolean(view, 'autoCheck', true),
-        skipped: optBoolean(view, 'skipped'),
-        later: optBoolean(view, 'later'),
-        updatedFrom: optText(view, 'updatedFrom'),
-        canInstall: optBoolean(view, 'canInstall'),
-      };
-
-export const sizeText = (bytes: number): string | null => (bytes > 0 ? `${Math.max(1, Math.round(bytes / MEGABYTE))} MB` : null);
-
-export const sized = (label: string, bytes: number): string => {
-  const size = sizeText(bytes);
-  return size === null ? label : `${label} (${size})`;
+const store: { state: AppUpdateState; update: Update | null; started: boolean } = {
+  state: {
+    current: '',
+    phase: 'idle',
+    latest: '',
+    downloaded: 0,
+    total: 0,
+    error: '',
+    autoCheck: preferences.getBoolean('autoCheck', true),
+    skipped: preferences.getString('skipped', null) ?? '',
+    later: false,
+    updatedFrom: '',
+  },
+  update: null,
+  started: false,
 };
 
-export const updateStatus = (reading: AppUpdateReading): string => {
-  switch (reading.phase) {
+const changes = new EventTarget();
+
+export const channelOf = (version: string): string => (version.includes('-') ? 'beta' : 'stable');
+
+export const percentOf = (state: AppUpdateState): number => (state.total > 0 ? Math.min(100, Math.floor((state.downloaded / state.total) * 100)) : 0);
+
+export const updateStatus = (state: AppUpdateState): string => {
+  switch (state.phase) {
     case 'checking':
       return 'Checking for updates…';
     case 'upToDate':
       return 'Aircast is up to date';
     case 'available':
-      return `Aircast ${reading.latest} is available`;
+      return `Aircast ${state.latest} is available`;
     case 'downloading':
-      return `Downloading Aircast ${reading.latest}… ${Math.round(reading.progress * 100)}%`;
-    case 'ready':
-      return `Aircast ${reading.latest} is ready to install`;
+      return `Downloading Aircast ${state.latest}… ${percentOf(state)}%`;
+    case 'installing':
+      return `Installing Aircast ${state.latest}…`;
     case 'failed':
-      return reading.error.trim() === '' ? 'The update check failed.' : reading.error;
+      return state.error.trim() === '' ? 'The update failed.' : state.error;
     case 'idle':
       return '';
   }
 };
 
-export type UpdateBannerKind = 'updated' | 'offer' | 'downloading' | 'ready';
-
-export const updateBannerKind = (reading: AppUpdateReading | null): UpdateBannerKind | null => {
-  if (reading === null) return null;
-  if (reading.updatedFrom.trim() !== '') return 'updated';
-  if (reading.later) return null;
-  if (reading.phase === 'downloading') return 'downloading';
-  if (reading.phase === 'ready') return 'ready';
-  return reading.phase === 'available' && !reading.skipped ? 'offer' : null;
+export const updateBannerKind = (state: AppUpdateState): UpdateBannerKind | null => {
+  if (state.updatedFrom !== '') return 'updated';
+  if (state.later) return null;
+  if (state.phase === 'downloading' || state.phase === 'installing') return 'installing';
+  if (state.phase === 'failed' && state.latest !== '') return 'failed';
+  return state.phase === 'available' && state.latest !== state.skipped ? 'offer' : null;
 };
 
-const act = (path: string, ...args: unknown[]) => void Qgc.invoke(path, ...args);
-
-const useInstaller = (): { refusal: string | null; install: () => void } => {
-  const [refusal, setRefusal] = useState<string | null>(null);
-  const install = () => {
-    setRefusal(null);
-    invoke('install_update').catch((error: unknown) => setRefusal(String(error)));
-  };
-  return { refusal, install };
+export const installBlocker = (checks: Json | null): string | null => {
+  const prompt = (optJSONArray(checks, 'prompts') ?? []).find(isJson);
+  return prompt === undefined ? null : (BLOCKERS[optText(prompt, 'id')] ?? optText(prompt, 'message'));
 };
 
-const releasePage = (reading: AppUpdateReading): string => (reading.releaseUrl.trim() === '' ? `https://github.com/aircast-one/qgroundcontrol/releases` : reading.releaseUrl);
+const publish = (next: Partial<AppUpdateState>) => {
+  store.state = { ...store.state, ...next };
+  changes.dispatchEvent(new Event('change'));
+};
+
+const busy = () => ['checking', 'downloading', 'installing'].includes(store.state.phase);
+
+const failed = (error: unknown) => {
+  commandFailed('updater')(error);
+  publish({ phase: 'failed', error: String(error) });
+};
+
+export const checkForUpdate = async (): Promise<void> => {
+  if (busy()) return;
+  publish({ phase: 'checking', error: '' });
+  try {
+    const found = await check();
+    store.update = found;
+    publish(found === null ? { phase: 'upToDate', latest: '' } : { phase: 'available', latest: found.version });
+  } catch (error) {
+    failed(error);
+  }
+};
+
+const progressed = (event: DownloadEvent) => {
+  if (event.event === 'Started') return publish({ total: event.data.contentLength ?? 0 });
+  if (event.event === 'Finished') return publish({ phase: 'installing' });
+  const before = percentOf(store.state);
+  store.state = { ...store.state, downloaded: store.state.downloaded + event.data.chunkLength };
+  if (percentOf(store.state) !== before) changes.dispatchEvent(new Event('change'));
+};
+
+export const installUpdate = async (): Promise<void> => {
+  const update = store.update;
+  if (update === null || busy()) return;
+  publish({ phase: 'downloading', downloaded: 0, total: 0, error: '', later: false });
+  try {
+    await update.downloadAndInstall(progressed);
+    await relaunch();
+  } catch (error) {
+    failed(error);
+  }
+};
+
+const retry = () => (store.update === null ? checkForUpdate() : installUpdate());
+
+const later = () => publish({ later: true });
+
+const skip = () => {
+  preferences.putString('skipped', store.state.latest);
+  publish({ skipped: store.state.latest });
+};
+
+const setAutoCheck = (on: boolean) => {
+  preferences.putBoolean('autoCheck', on);
+  publish({ autoCheck: on });
+};
+
+const dismissUpdated = () => publish({ updatedFrom: '' });
+
+const automatically = () => void (store.state.autoCheck ? checkForUpdate() : undefined);
+
+const start = async () => {
+  const current = await getVersion();
+  const last = preferences.getString('lastVersion', null);
+  preferences.putString('lastVersion', current);
+  publish({ current, updatedFrom: last !== null && last !== current ? last : '' });
+  setTimeout(automatically, FIRST_CHECK_AFTER_MS);
+  setInterval(automatically, CHECK_EVERY_MS);
+};
+
+const subscribe = (changed: () => void) => {
+  if (__DESKTOP__ && !store.started) {
+    store.started = true;
+    start().catch(commandFailed('updater'));
+  }
+  changes.addEventListener('change', changed);
+  return () => changes.removeEventListener('change', changed);
+};
+
+const snapshot = () => store.state;
+
+const useAppUpdate = (): AppUpdateState => useSyncExternalStore(subscribe, snapshot);
+
+const releasePage = (version: string): string => `${RELEASES}/tag/aircast-v${version.replace(/^v/, '')}`;
 
 const UpdateLine = ({ headline, supporting, children }: { headline: string; supporting: string; children?: ReactNode }) => (
   <div className="flex min-h-14 flex-wrap items-center gap-2 px-list py-2">
@@ -121,92 +200,75 @@ const UpdateLine = ({ headline, supporting, children }: { headline: string; supp
   </div>
 );
 
-const UpdateActions = ({ reading, refusal, install }: { reading: AppUpdateReading; refusal: string | null; install: () => void }) => (
-  <>
-    {reading.phase === 'available' ? (
-      <>
-        <TextButton onClick={() => openUri(releasePage(reading))}>Release notes</TextButton>
-        <TextButton onClick={() => act('appUpdate.skip')}>Skip this version</TextButton>
-        <FilledTonalButton onClick={() => act('appUpdate.download')}>{sized('Download', reading.sizeBytes)}</FilledTonalButton>
-      </>
-    ) : null}
-    {reading.phase === 'downloading' ? <TextButton onClick={() => act('appUpdate.cancel')}>Cancel</TextButton> : null}
-    {reading.phase === 'ready' ? (
-      <FilledTonalButton enabled={reading.canInstall} onClick={install} title={reading.canInstall ? INSTALL_NOTE : DISCONNECT_FIRST}>
-        {refusal === null ? 'Install and restart' : 'Try again'}
-      </FilledTonalButton>
-    ) : null}
-    {reading.phase === 'failed' ? <TextButton onClick={() => act('appUpdate.check')}>Try again</TextButton> : null}
-  </>
+const InstallButton = ({ label, blocker }: { label: string; blocker: string | null }) => (
+  <FilledTonalButton enabled={blocker === null} onClick={() => void installUpdate()} title={blocker ?? INSTALL_NOTE}>
+    {label}
+  </FilledTonalButton>
 );
 
-const installNote = (reading: AppUpdateReading, refusal: string | null): string => refusal ?? (reading.canInstall ? INSTALL_NOTE : DISCONNECT_FIRST);
-
 export const UpdatesCard = () => {
-  const reading = appUpdateReading(useQgcPath(APP_UPDATE));
-  const { refusal, install } = useInstaller();
-  if (!__DESKTOP__ || reading === null) return null;
-  const status = updateStatus(reading);
+  const state = useAppUpdate();
+  const blocker = installBlocker(useQgcPath(CLOSE_CHECKS));
+  if (!__DESKTOP__ || state.current === '') return null;
+  const status = updateStatus(state);
   return (
     <>
       <SectionHeader text="Updates" />
       <SettingsCard>
-        <UpdateLine headline="Aircast version" supporting={`${reading.current} · ${reading.channel} channel`}>
-          <TextButton enabled={reading.phase !== 'checking' && reading.phase !== 'downloading'} onClick={() => act('appUpdate.check')}>
+        <UpdateLine headline="Aircast version" supporting={`${state.current} · ${channelOf(state.current)} channel`}>
+          <TextButton enabled={!busy()} onClick={() => void checkForUpdate()}>
             Check now
           </TextButton>
         </UpdateLine>
         <UpdateLine headline="Check for updates automatically" supporting="">
-          <Switch checked={reading.autoCheck} onCheckedChange={(on) => act('appUpdate.setAutoCheck', on)} label="Check for updates automatically" />
+          <Switch checked={state.autoCheck} onCheckedChange={setAutoCheck} label="Check for updates automatically" />
         </UpdateLine>
         {status === '' ? null : (
-          <UpdateLine headline={status} supporting={reading.phase === 'ready' ? installNote(reading, refusal) : ''}>
-            <UpdateActions reading={reading} refusal={refusal} install={install} />
+          <UpdateLine headline={status} supporting={state.phase === 'available' ? (blocker ?? INSTALL_NOTE) : ''}>
+            {state.phase === 'available' ? (
+              <>
+                <TextButton onClick={() => openUri(releasePage(state.latest))}>Release notes</TextButton>
+                {state.latest !== state.skipped ? <TextButton onClick={skip}>Skip this version</TextButton> : null}
+                <InstallButton label="Update" blocker={blocker} />
+              </>
+            ) : null}
+            {state.phase === 'failed' ? <TextButton onClick={() => void retry()}>Try again</TextButton> : null}
           </UpdateLine>
         )}
-        {reading.phase === 'downloading' ? <LinearProgressIndicator className="w-full" progress={reading.progress} label={status} /> : null}
+        {state.phase === 'downloading' ? <LinearProgressIndicator className="w-full" progress={percentOf(state) / 100} label={status} /> : null}
       </SettingsCard>
     </>
   );
 };
 
 export const UpdateBanner = () => {
-  const reading = appUpdateReading(useQgcPath(APP_UPDATE));
-  const { refusal, install } = useInstaller();
-  const kind = __DESKTOP__ ? updateBannerKind(reading) : null;
-  if (reading === null || kind === null) return null;
-  const text = kind === 'updated' ? `Updated to Aircast ${reading.current}` : updateStatus(reading);
-  const detail = kind === 'ready' ? installNote(reading, refusal) : '';
+  const state = useAppUpdate();
+  const blocker = installBlocker(useQgcPath(CLOSE_CHECKS));
+  const connected = useHasVehicle();
+  const kind = __DESKTOP__ ? updateBannerKind(state) : null;
+  if (kind === null || (connected && kind === 'offer')) return null;
+  const text = kind === 'updated' ? `Updated to Aircast ${state.current}` : updateStatus(state);
   return (
     <Surface className="w-full" style={{ maxWidth: BANNER_MAX_WIDTH }} shape={BANNER_CORNER} color={md('secondaryContainer')} contentColor={md('onSecondaryContainer')}>
       <div className="flex min-h-12 flex-wrap items-center gap-2 px-3 py-2">
         <Drawable name={kind === 'updated' ? 'ic_check_circle' : 'ic_download'} size={24} className="shrink-0" />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Text typography="titleSmall">{text}</Text>
-          {detail.trim() !== '' ? <Text typography="bodyMedium">{detail}</Text> : null}
-        </div>
+        <Text typography="titleSmall" className="min-w-0 flex-1">
+          {text}
+        </Text>
         {kind === 'updated' ? (
           <>
-            <TextButton onClick={() => act('appUpdate.dismissUpdated')}>Dismiss</TextButton>
-            <TextButton onClick={() => openUri(`https://github.com/aircast-one/qgroundcontrol/releases/tag/aircast-${reading.current.startsWith('v') ? reading.current : `v${reading.current}`}`)}>What&apos;s new</TextButton>
+            <TextButton onClick={dismissUpdated}>Dismiss</TextButton>
+            <TextButton onClick={() => openUri(releasePage(state.current))}>What&apos;s new</TextButton>
           </>
         ) : null}
-        {kind === 'offer' ? (
+        {kind === 'offer' || kind === 'failed' ? (
           <>
-            <TextButton onClick={() => act('appUpdate.later')}>Later</TextButton>
-            <FilledTonalButton onClick={() => act('appUpdate.download')}>{sized('Update', reading.sizeBytes)}</FilledTonalButton>
-          </>
-        ) : null}
-        {kind === 'downloading' ? <TextButton onClick={() => act('appUpdate.cancel')}>Cancel</TextButton> : null}
-        {kind === 'ready' ? (
-          <>
-            <TextButton onClick={() => act('appUpdate.later')}>Later</TextButton>
-            <FilledTonalButton enabled={reading.canInstall} onClick={install}>
-              {refusal === null ? 'Install and restart' : 'Try again'}
-            </FilledTonalButton>
+            <TextButton onClick={later}>Later</TextButton>
+            <InstallButton label={kind === 'offer' ? 'Update' : 'Try again'} blocker={blocker} />
           </>
         ) : null}
       </div>
+      {kind === 'installing' && state.phase === 'downloading' ? <LinearProgressIndicator className="w-full" progress={percentOf(state) / 100} label={text} /> : null}
     </Surface>
   );
 };

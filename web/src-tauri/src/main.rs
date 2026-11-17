@@ -12,7 +12,6 @@ mod mpegts;
 mod record;
 mod rtp;
 mod synthetic;
-mod update;
 mod video;
 #[cfg(windows)]
 mod webview2;
@@ -258,7 +257,7 @@ fn start_core(version: &str) {
     let arguments: Vec<CString> = given
         .into_iter()
         .chain(head)
-        .chain(["--no-autoconnect", "--app-version", version].map(str::to_string))
+        .chain(["--no-autoconnect", "--no-app-update", "--app-version", version].map(str::to_string))
         .filter_map(|argument| text(&argument).ok())
         .collect();
     let pointers: Vec<*const c_char> = arguments.iter().map(|a| a.as_ptr()).collect();
@@ -276,6 +275,8 @@ fn main() {
     start_core(&context.package_info().version.to_string());
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .menu(|app| menu::build(app))
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .manage(video::Streams::default())
@@ -348,7 +349,6 @@ fn main() {
             synthetic::synthetic_resize,
             synthetic::synthetic_close,
             window::close_anyway,
-            update::install_update,
             window::close_prompt_shown,
             window::close_prompt_dismissed,
             window::full_screen,
