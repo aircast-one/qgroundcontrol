@@ -50,6 +50,7 @@ import { FLY_STATE, VEHICLE_FLIGHT_DISTANCE, disarmNotice, flownDistanceText, fl
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog, gimbalRefused } from '@/ui/GimbalIndicator';
 import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners, showLatest } from '@/ui/HostNotices';
+import { LinkLostCard, LinkLostWatch } from '@/ui/LinkLost';
 import { LogReplayBar } from '@/ui/LogReplayBar';
 import { Map3dView } from '@/ui/Map3dView';
 import { MapClickMenu, MapHoldHint, type MapPoint, RoiSheet, SetWaypointSheet, mapHoldHintText } from '@/ui/MapClickMenu';
@@ -140,6 +141,7 @@ export const MainActivity = () => {
   return (
     <>
       <ConnectionLocks />
+      <LinkLostWatch />
       <VoiceAlerts />
       <DeviceCameraHost />
       <AppFontScale>
@@ -475,11 +477,11 @@ export const AircastShell = () => {
         armedBattery.current = percent;
       });
     }
-    const said = disarmNotice(wasArmed.current, flewWhileArmed.current, armedNow);
+    const said = disarmNotice(wasArmed.current, flewWhileArmed.current, armedNow, flyNow?.connected === true);
     if (said !== null) void announceDisarm(said, flewWhileArmed.current, armedBattery.current);
     flewWhileArmed.current = armedNow && (flewWhileArmed.current || flyNow?.state === 'flying' || flyNow?.state === 'landing');
     wasArmed.current = armedNow;
-  }, [flyNow?.armed, flyNow?.state]);
+  }, [flyNow?.armed, flyNow?.state, flyNow?.connected]);
 
   const noVideoSource = useQgcDerived(VIDEO_VIEW, noVideoSourceOf);
   const pictureNow = useQgcDerived(VIDEO_VIEW, videoDecodingOf);
@@ -666,7 +668,8 @@ export const AircastShell = () => {
                 {onFly ? <ConnectingCard className="absolute inset-x-0 top-1/2 z-10 -translate-y-1/2" /> : null}
                 {onFly ? (
                   <div className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4" style={{ top: `calc(env(safe-area-inset-top) + ${FLY_NOTICE_TOP}px)` }}>
-                    <div className="w-full" style={{ maxWidth: FLY_NOTICE_MAX_WIDTH }}>
+                    <div className="flex w-full flex-col gap-2" style={{ maxWidth: FLY_NOTICE_MAX_WIDTH }}>
+                      <LinkLostCard className="pointer-events-auto" />
                       <SnackbarHost hostState={snackbars} />
                     </div>
                   </div>

@@ -191,9 +191,14 @@ describe('FlyReadinessTest', () => {
   });
 
   it('disarmingSaysWhetherTheVehicleFlew', () => {
-    expect(disarmNotice(true, true, false)).toBe('Landed and disarmed');
-    expect(disarmNotice(true, false, false)).toBe('Disarmed');
-    expect(disarmNotice(false, false, false)).toBeNull();
+    expect(disarmNotice(true, true, false, true)).toBe('Landed and disarmed');
+    expect(disarmNotice(true, false, false, true)).toBe('Disarmed');
+    expect(disarmNotice(false, false, false, true)).toBeNull();
+  });
+
+  it('aVehicleThatVanishesWhileArmedIsNeverAnnouncedAsDisarmed', () => {
+    expect(disarmNotice(true, true, false, false)).toBeNull();
+    expect(disarmNotice(true, false, false, false)).toBeNull();
   });
 
   it('aLandingSaysHowLongHowFarAndHowMuchBatteryTheFlightTook', () => {

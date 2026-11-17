@@ -42,6 +42,22 @@ test('Escape cancels the takeoff panel', async ({ vehicle }) => {
   await expect(vehicle.getByText('Height above launch')).toBeHidden();
 });
 
+test('a link that drops mid-flight says the link is lost and where the aircraft was, never that it landed', async ({ vehicle }) => {
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/Flying/, { timeout: 60_000 });
+  await vehicle.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { invoke: (path: string) => Promise<boolean> } };
+    await Qgc.invoke('vehicle.closeVehicle');
+  }, '/src/bridge/Qgc.ts');
+  const alert = vehicle.getByRole('alert').filter({ hasText: 'Link lost' });
+  await expect(alert).toContainText(/Last seen at -?\d+\.\d{5}, -?\d+\.\d{5}/);
+  await expect(alert).toContainText(/\d+(\.\d+)? m up/);
+  await expect(alert).toContainText('Failsafe on link loss:');
+  await expect(vehicle.getByText('Link lost', { exact: true })).toBeVisible();
+  await expect(vehicle.getByText(/disarmed/i)).toHaveCount(0);
+  await expect(vehicle.getByText(/^Turn on the aircraft/)).toHaveCount(0);
+});
+
 const ARM_VOLTAGE = 'vehicle.parameterManager.getParameter(-1,BATT_ARM_VOLT)';
 
 const core = (page: Page, path: string, value?: unknown): Promise<{ valid?: boolean; value?: unknown }> =>

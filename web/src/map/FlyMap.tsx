@@ -6,6 +6,7 @@ import { useValue } from '@/kotlin/State';
 import { Surface } from '@/m3';
 import { type FenceCircle, type FencePolygon, type FirmwareFence, type RallyPoint, FenceBridge, breachReturn, fenceCircles, fencePolygons, firmwareFence, rallyPoints } from './FenceBridge';
 import { LocalFlyMapEdits } from './FlyMapEdits';
+import { lostVehicle } from './LostVehicle';
 import { GimbalBridge, type GimbalAzimuth } from './GimbalWedge';
 import { GotoBridge, type GotoLocation } from './GotoMarker';
 import { VideoBridge, shotPoints } from './ItemCamera';
@@ -169,6 +170,7 @@ export const FlyMap = ({
   const [zoom, setZoom] = useState(0.0);
   const [fitRequest, setFitRequest] = useState(0);
   const gotoPreview = useValue(useContext(LocalFlyMapEdits).gotoPreview);
+  const lastKnown = useValue(lostVehicle);
   const fleetJson = useMapPath(VEHICLES_VIEW);
   const aircraft = useMemo(() => {
     const active = vehicleChoices(fleetJson).active;
@@ -277,6 +279,7 @@ export const FlyMap = ({
               orbit={plan.orbit}
               selectedWaypoint={plan.current}
               otherMissions={plan.others}
+              lastKnown={lastKnown}
               fitRequest={fitRequest}
               fitOnly={gotoPreview === null ? null : [aircraft, gotoPreview].filter((it) => it !== null)}
               fitBottomShare={gotoPreview !== null ? PREVIEW_SHEET_SHARE : 0}

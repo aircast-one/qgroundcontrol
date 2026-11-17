@@ -31,7 +31,7 @@ export const trafficMarks = (view: Json | null): readonly TrafficMark[] => {
   if (contacts === null) return [];
   const unit = optText(optJSONObject(view, 'units'), 'altitude');
   return contacts.flatMap((contact) => {
-    if (!isJson(contact)) return [];
+    if (!isJson(contact) || optBoolean(contact, 'stale')) return [];
     const latitude = numberAt(contact, 'latitude');
     const longitude = numberAt(contact, 'longitude');
     if (latitude === null || longitude === null || !isPlottable(latitude, longitude)) return [];

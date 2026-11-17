@@ -22,6 +22,7 @@ import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { getSharedPreferences } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
+import { lostVehicle } from '@/map/LostVehicle';
 import { coerceAtLeast, same } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
 import { Map3d, useMap3dShown } from '@/map/Map3d';
@@ -415,6 +416,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const deciding = useValue(shellState.guidedPanels) > 0;
   const obstacles = useValue(shellState.obstacles);
   const hasVehicle = useHasVehicle();
+  const lostFlight = useValue(lostVehicle) !== null;
   const mapAboveOsd = view === FlyView.Map && stickPad === null && hasVehicle && !deciding ? osd.size.height : 0;
   const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : mapAboveOsd;
   const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE + mapAboveOsd;
@@ -626,7 +628,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     bottom={<div style={{ height: cornerRoom }} />}
                     overlaysAboveBottom
                     message={
-                      guideMessage ? (
+                      lostFlight ? null : guideMessage ? (
                         <OfflineGuideCard inVideo={videoMessage} />
                       ) : videoMessage ? (
                         <div className={`size-full ${osdShadow()}`}>

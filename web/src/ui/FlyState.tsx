@@ -82,8 +82,8 @@ export const guidedReadiness = (state: FlyState | null): Readiness | null => {
   return Readiness({ text: blocks ? `${text.endsWith('.') ? text.slice(0, -1) : text}. ${READINESS_BLOCKED}` : text, blocks });
 };
 
-export const disarmNotice = (wasArmed: boolean, flewWhileArmed: boolean, armedNow: boolean): string | null =>
-  wasArmed && !armedNow ? (flewWhileArmed ? 'Landed and disarmed' : 'Disarmed') : null;
+export const disarmNotice = (wasArmed: boolean, flewWhileArmed: boolean, armedNow: boolean, connectedNow: boolean): string | null =>
+  wasArmed && !armedNow && connectedNow ? (flewWhileArmed ? 'Landed and disarmed' : 'Disarmed') : null;
 
 export const VEHICLE_FLIGHT_DISTANCE = 'vehicle.flightDistance';
 

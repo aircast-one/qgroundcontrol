@@ -9,6 +9,7 @@ import { SYNTHETIC_VIEW_PATH, cameraBeam, installCameraBeamLayer, renderCameraBe
 import { installBottleLayer, landedBottles, renderBottles } from './DroppedBottles';
 import { type FenceCircle, type FencePolygon, type FirmwareFence, type RallyPoint, circlesAsPolygons } from './FenceBridge';
 import { LocalFlyMapEdits } from './FlyMapEdits';
+import { LAST_SEEN, type LostVehicle } from './LostVehicle';
 import { type GimbalAzimuth, installGimbalLayer, renderGimbals } from './GimbalWedge';
 import { type GotoLocation, attachGotoRadiusDrag, editedGoto, gotoPath, installClickMarker, installGotoLayer, previewGoto, renderClickMarker, renderGoto, renderGotoPath } from './GotoMarker';
 import { type LandingPattern, landingAreaFeatures, landingLabelFeatures, landingLoiterFeatures, landingPathFeatures } from './LandingPattern';
@@ -254,6 +255,7 @@ export type VehicleMapProps = {
   collisionLegs?: readonly (readonly [TrackPoint, TrackPoint])[];
   orbit?: OrbitCircle | null;
   otherMissions?: readonly OtherMission[];
+  lastKnown?: LostVehicle | null;
 };
 
 const NONE: readonly never[] = [];
@@ -321,6 +323,7 @@ export const VehicleMap = ({
   collisionLegs = NONE,
   orbit = null,
   otherMissions = NONE,
+  lastKnown = null,
 }: VehicleMapProps) => {
   const mapEdits = useContext(LocalFlyMapEdits);
   const gotoPreview = useValue(mapEdits.gotoPreview);
@@ -351,6 +354,7 @@ export const VehicleMap = ({
   const longitude = flown?.longitude ?? NaN;
   const heading = flown?.heading ?? NaN;
   const home = flown?.home ?? null;
+  const ghost = fleet.length === 0 ? lastKnown : null;
   const glides = useRef<ReadonlyMap<number, Glide>>(new Map());
 
   const container = useRef<HTMLDivElement>(null);
@@ -615,17 +619,25 @@ export const VehicleMap = ({
   };
   const recenterNow = useUpdatedRef(recenterOnVehicle);
 
-  useLaunchedEffect([style, latitude, longitude, heading, home, linkLost, fleet, lastSeen], async (scope) => {
+  useLaunchedEffect([style, latitude, longitude, heading, home, linkLost, fleet, lastSeen, ghost], async (scope) => {
     const loaded = style?.map;
     if (loaded === undefined) return;
     const segments = toward(glides.current, fleet, nanoTime());
     glides.current = segments;
-    setGeoJson(loaded, HOME_SOURCE, featureCollection((fleet.length === 0 ? [home] : fleet.map((it) => it.home)).flatMap((it) => (it === null ? [] : [pointFeature(it.longitude, it.latitude)]))));
+    setGeoJson(loaded, HOME_SOURCE, featureCollection((fleet.length === 0 ? [home ?? ghost?.home ?? null] : fleet.map((it) => it.home)).flatMap((it) => (it === null ? [] : [pointFeature(it.longitude, it.latitude)]))));
     recenterNow.current();
     const frame = async (): Promise<void> => {
       const now = await nextFrameNanos();
       if (!scope.isActive()) return;
-      setGeoJson(loaded, VEHICLE_SOURCE, fleet.length === 0 ? vehicleFeatures(latitude, longitude, heading, linkLost, lastSeen) : fleetFeatures(glidedAt(fleet, segments, now), lastSeen));
+      setGeoJson(
+        loaded,
+        VEHICLE_SOURCE,
+        ghost !== null
+          ? vehicleFeatures(ghost.at.latitude, ghost.at.longitude, ghost.heading, true, LAST_SEEN)
+          : fleet.length === 0
+            ? vehicleFeatures(latitude, longitude, heading, linkLost, lastSeen)
+            : fleetFeatures(glidedAt(fleet, segments, now), lastSeen),
+      );
       if (keepCentered) recenterNow.current();
       if ([...segments.values()].some((it) => now < it.endNs)) return frame();
       return undefined;
@@ -633,11 +645,13 @@ export const VehicleMap = ({
     await frame();
   });
 
+  const flownTrack = useRef(track);
   useEffect(() => {
     const loaded = style?.map;
     if (loaded === undefined) return;
-    setGeoJson(loaded, TRAIL_SOURCE, featureCollection(trackDraws(track) ? [lineFeature(plottedTrack(track))] : []));
-  }, [style, track]);
+    if (trackDraws(track) || ghost === null) flownTrack.current = track;
+    setGeoJson(loaded, TRAIL_SOURCE, featureCollection(trackDraws(flownTrack.current) ? [lineFeature(plottedTrack(flownTrack.current))] : []));
+  }, [style, track, ghost]);
 
   useLaunchedEffect([trackingResumesAtMs], async (scope) => {
     if (trackingResumesAtMs === 0) return;

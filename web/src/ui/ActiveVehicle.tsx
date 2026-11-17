@@ -9,6 +9,7 @@ import { Checkbox, CircularProgressIndicator, DropdownMenu, DropdownMenuItem, Ho
 import { AircastSheet } from '@/map/AircastSheet';
 import { useSilentSeconds } from '@/map/Silence';
 import { gotoLocation } from '@/map/GotoMarker';
+import { LINK_LOST, lostVehicle } from '@/map/LostVehicle';
 import {
   CHOOSER_TITLE,
   FleetBridge,
@@ -190,11 +191,12 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
     if (!disconnected) setOffline(false);
   }, [disconnected]);
 
-  const tone = blocker !== null ? ChipTone.Error : chipTone(fly, lost);
+  const vanished = useValue(lostVehicle) !== null && disconnected;
+  const tone = blocker !== null || vanished ? ChipTone.Error : chipTone(fly, lost);
   const titleColour = statusTitleColour(tone, disconnected && (offlineNow?.links ?? []).some((it: OfflineLink) => it.failed));
   const noteBackdrop = useOsdBackdrop(OSD_SCRIM);
   const searching = disconnected && offlineNow?.busy === true;
-  const title = lost ? signalLostTitle(silentFor, failsafe, narrow) : gotoProgress !== '' && !choices.ambiguous ? gotoProgress : activeVehicleTitle(choices, subtitle);
+  const title = lost ? signalLostTitle(silentFor, failsafe, narrow) : vanished ? LINK_LOST : gotoProgress !== '' && !choices.ambiguous ? gotoProgress : activeVehicleTitle(choices, subtitle);
   const note = narrow ? null : osdStatusNote(title);
   const alarm = lostVehiclesText(lostVehicles(choices)) ?? (taken ? controlLine(station) : null);
 
