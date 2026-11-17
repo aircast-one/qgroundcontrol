@@ -128,12 +128,94 @@ fn imbalance(steady: f64, median: Option<f64>) -> &'static str {
     })
 }
 
-fn frame(
+fn rank(level: &str) -> u8 {
+    match level {
+        "critical" => 2,
+        "elevated" => 1,
+        _ => 0,
+    }
+}
+
+struct Rotor {
+    motor: i64,
+    angle: f64,
+    at: Option<usize>,
+    state: &'static str,
+    temperature: f64,
+    current: f64,
+    rpm: f64,
+    temperature_level: &'static str,
+    current_level: &'static str,
+}
+
+impl Rotor {
+    fn level(&self) -> &'static str {
+        match self.state {
+            "lost" => "critical",
+            _ if rank(self.temperature_level) >= rank(self.current_level) => self.temperature_level,
+            _ => self.current_level,
+        }
+    }
+
+    fn reasons(&self, middle: Option<f64>) -> Vec<(u8, String)> {
+        let motor = self.motor;
+        let lost = (self.state == "lost")
+            .then(|| (3, format!("Motor {motor} stopped sending ESC telemetry.")));
+        let heat = match self.temperature_level {
+            "critical" => Some((
+                2,
+                format!(
+                    "Motor {motor} is at {:.0} C, past the {TEMPERATURE_CRITICAL_C:.0} C limit.",
+                    self.temperature
+                ),
+            )),
+            "elevated" => Some((
+                1,
+                format!(
+                    "Motor {motor} is warm at {:.0} C; {TEMPERATURE_CRITICAL_C:.0} C is critical.",
+                    self.temperature
+                ),
+            )),
+            _ => None,
+        };
+        let draw = middle
+            .filter(|_| self.current_level != "normal")
+            .map(|middle| {
+                (
+                    rank(self.current_level),
+                    format!(
+                        "Motor {motor} draws {:.0} A while the others draw about {middle:.0} A: check its propeller and motor.",
+                        self.current
+                    ),
+                )
+            });
+        [lost, heat, draw].into_iter().flatten().collect()
+    }
+
+    fn json(&self) -> Value {
+        json!({
+            "motor": self.motor,
+            "angle": self.angle,
+            "state": self.state,
+            "temperature": format!("{:.0} C", self.temperature),
+            "current": format!("{:.1}", self.current),
+            "rpm": if self.rpm >= RPM_IN_THOUSANDS {
+                format!("{:.0}k", self.rpm / 1000.0)
+            } else {
+                format!("{:.0}", self.rpm)
+            },
+            "temperatureLevel": self.temperature_level,
+            "currentLevel": self.current_level,
+        })
+    }
+}
+
+fn rotors(
     escs: &[Value],
     wiring: &Wiring,
     online: &dyn Fn(usize) -> bool,
     steady: &[f64],
-) -> Vec<Value> {
+) -> (Vec<Rotor>, Option<f64>) {
     let placed: Vec<(f64, i64, Option<usize>)> = wiring
         .angles
         .iter()
@@ -143,44 +225,49 @@ fn frame(
                 .motors
                 .iter()
                 .position(|m| *m == Some(motor))
-                .filter(|at| *at < escs.len() && online(*at));
+                .filter(|at| *at < escs.len());
             (*angle, motor, at)
         })
         .collect();
-    let steady_of = |at: Option<usize>| at.and_then(|at| steady.get(at)).copied();
+    let live = |at: Option<usize>| at.filter(|at| online(*at));
+    let steady_of = |at: Option<usize>| live(at).and_then(|at| steady.get(at)).copied();
     let middle = median(
         &placed
             .iter()
             .filter_map(|(_, _, at)| steady_of(*at))
             .collect::<Vec<_>>(),
     );
-    placed
+    let placed_rotors = placed
         .iter()
         .map(|(angle, motor, at)| {
-            let esc = at.and_then(|at| escs.get(at));
+            let esc = live(*at).and_then(|at| escs.get(at));
             let temperature = esc.map_or(0.0, |e| reading(e, "temperature") / 100.0);
-            let current = esc.map_or(0.0, |e| reading(e, "current"));
-            let rpm = esc.map_or(0.0, |e| reading(e, "rpm"));
-            json!({
-                "motor": motor,
-                "angle": angle,
-                "reporting": esc.is_some(),
-                "temperature": format!("{temperature:.0} C"),
-                "current": format!("{current:.1}"),
-                "rpm": if rpm >= RPM_IN_THOUSANDS {
-                    format!("{:.0}k", rpm / 1000.0)
-                } else {
-                    format!("{rpm:.0}")
+            Rotor {
+                motor: *motor,
+                angle: *angle,
+                at: *at,
+                state: match (at, esc) {
+                    (_, Some(_)) => "reporting",
+                    (Some(_), None) => "lost",
+                    (None, None) => "none",
                 },
-                "temperatureLevel": level(temperature, TEMPERATURE_ELEVATED_C, TEMPERATURE_CRITICAL_C),
-                "currentLevel": steady_of(*at).map_or("normal", |s| imbalance(s, middle)),
-            })
+                temperature,
+                current: esc.map_or(0.0, |e| reading(e, "current")),
+                rpm: esc.map_or(0.0, |e| reading(e, "rpm")),
+                temperature_level: level(
+                    temperature,
+                    TEMPERATURE_ELEVATED_C,
+                    TEMPERATURE_CRITICAL_C,
+                ),
+                current_level: steady_of(*at).map_or("normal", |s| imbalance(s, middle)),
+            }
         })
-        .collect()
+        .collect();
+    (placed_rotors, middle)
 }
 
-fn silent_hint(silent: &[i64]) -> Option<String> {
-    match silent {
+fn unwired_hint(unwired: &[i64]) -> Option<String> {
+    match unwired {
         [] => None,
         [motor] => Some(format!(
             "Motor {motor} sends no ESC telemetry: check its ESC's telemetry connection and numbering."
@@ -195,7 +282,16 @@ fn silent_hint(silent: &[i64]) -> Option<String> {
     }
 }
 
-fn hint(wiring: &Wiring, silent: &[i64]) -> String {
+fn hints(wiring: &Wiring, rotors: &[Rotor], middle: Option<f64>) -> Vec<String> {
+    let reasons: Vec<(u8, String)> = rotors
+        .iter()
+        .flat_map(|rotor| rotor.reasons(middle))
+        .collect();
+    let unwired: Vec<i64> = rotors
+        .iter()
+        .filter(|rotor| rotor.state == "none")
+        .map(|rotor| rotor.motor)
+        .collect();
     let unmatched = wiring
         .motors
         .iter()
@@ -206,11 +302,17 @@ fn hint(wiring: &Wiring, silent: &[i64]) -> String {
                 "ESC {output} matches no motor: its output drives none and the frame has fewer motors. Number each ESC after its motor, or shift DroneCAN ESCs with CAN_D1_UC_ESC_OF onto their motors' outputs."
             )
         });
-    [silent_hint(silent), unmatched]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(" ")
+    [3, 2, 1]
+        .iter()
+        .flat_map(|urgency| {
+            reasons
+                .iter()
+                .filter(move |(rank, _)| rank == urgency)
+                .map(|(_, text)| text.clone())
+        })
+        .chain(unwired_hint(&unwired))
+        .chain(unmatched)
+        .collect()
 }
 
 pub fn summary(escs: &[Value], wiring: Option<&Wiring>, steady: &[f64]) -> Value {
@@ -237,16 +339,51 @@ pub fn summary(escs: &[Value], wiring: Option<&Wiring>, steady: &[f64]) -> Value
                 .get(index)
                 .is_some_and(|esc| raw(esc, "failureFlags") > 0)
     });
-    let rotors = wiring
-        .map(|w| frame(escs, w, &online, steady))
+    let (frame, middle) = wiring
+        .map(|w| rotors(escs, w, &online, steady))
         .unwrap_or_default();
-    let silent: Vec<i64> = rotors
+    let reporting = frame
         .iter()
-        .filter(|rotor| rotor["reporting"] == false)
-        .filter_map(|rotor| rotor["motor"].as_i64())
-        .collect();
-    let healthy = online_count == motor_count && !failing_checked && silent.is_empty();
+        .filter(|rotor| rotor.state == "reporting")
+        .count();
+    let healthy = online_count == motor_count
+        && !failing_checked
+        && reporting == frame.len()
+        && frame.iter().all(|rotor| rotor.level() != "critical");
     let healthy_motors = (0..escs.len()).filter(|i| motor_healthy(*i)).count();
+    let mut motors: Vec<(&'static str, Option<i64>, usize, Value)> = escs
+        .iter()
+        .enumerate()
+        .map(|(index, esc)| {
+            let fine = motor_healthy(index);
+            let motor = wiring.and_then(|w| w.motors.get(index).copied().flatten());
+            let rotor = frame.iter().find(|rotor| rotor.at == Some(index));
+            let level = if fine {
+                rotor.map_or("normal", Rotor::level)
+            } else {
+                "critical"
+            };
+            let entry = json!({
+                "title": format!("{} {}", title(index, esc, wiring), if fine { "" } else { "- OFFLINE" }).trim_end().to_string(),
+                "motor": motor,
+                "level": level,
+                "reasons": rotor.map(|rotor| rotor.reasons(middle).into_iter().map(|(_, text)| text).collect::<Vec<_>>()).unwrap_or_default(),
+                "rpm": shown(esc, "rpm"),
+                "temperature": shown(esc, "temperature"),
+                "voltage": shown(esc, "voltage"),
+                "current": shown(esc, "current"),
+                "errors": shown(esc, "errorCount"),
+            });
+            (level, motor, index, entry)
+        })
+        .collect();
+    motors.sort_by_key(|(level, motor, index, _)| {
+        (
+            std::cmp::Reverse(rank(level)),
+            motor.unwrap_or(i64::MAX),
+            *index,
+        )
+    });
     json!({
         "kind": "object",
         "class": "Escs",
@@ -254,26 +391,15 @@ pub fn summary(escs: &[Value], wiring: Option<&Wiring>, steady: &[f64]) -> Value
         "onlineCount": online_count,
         "healthy": healthy,
         "healthText": if healthy { "OK" } else { "ERR" },
-        "healthyMotorsText": if rotors.is_empty() {
+        "healthyMotorsText": if frame.is_empty() {
             format!("{healthy_motors}/{}", escs.len())
         } else {
-            format!("{}/{}", rotors.len() - silent.len(), rotors.len())
+            format!("{reporting}/{}", frame.len())
         },
         "totalErrors": escs.iter().map(|esc| raw(esc, "errorCount")).sum::<i64>(),
-        "hint": wiring.map(|w| hint(w, &silent)).unwrap_or_default(),
-        "frame": rotors,
-        "motors": escs.iter().enumerate().map(|(index, esc)| {
-            let fine = motor_healthy(index);
-            json!({
-                "title": format!("{} {}", title(index, esc, wiring), if fine { "" } else { "- OFFLINE" }).trim_end().to_string(),
-                "healthy": fine,
-                "rpm": shown(esc, "rpm"),
-                "temperature": shown(esc, "temperature"),
-                "voltage": shown(esc, "voltage"),
-                "current": shown(esc, "current"),
-                "errors": shown(esc, "errorCount"),
-            })
-        }).collect::<Vec<_>>(),
+        "hints": wiring.map(|w| hints(w, &frame, middle)).unwrap_or_default(),
+        "frame": frame.iter().map(Rotor::json).collect::<Vec<_>>(),
+        "motors": motors.into_iter().map(|(_, _, _, entry)| entry).collect::<Vec<_>>(),
     })
 }
 
@@ -384,7 +510,14 @@ mod tests {
             down["healthText"], "ERR",
             "a motor missing from the online mask is an error"
         );
-        assert_eq!(down["motors"][3]["title"], "Motor 4 - OFFLINE");
+        assert_eq!(
+            (
+                down["motors"][0]["title"].as_str(),
+                down["motors"][0]["level"].as_str()
+            ),
+            (Some("Motor 4 - OFFLINE"), Some("critical")),
+            "the motor in trouble leads the list"
+        );
         let failing = [esc(0, 1, 0b1, 4, 0)];
         assert_eq!(
             summary(&failing, None, &[])["healthText"],
@@ -544,8 +677,8 @@ mod tests {
                 .iter()
                 .map(|motor| motor["title"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec!["Motor 2", "ESC 8", "Motor 5"],
-            "ESC 13 is on SERVO13 = Motor 5; ESC 2's output drives nothing, so it is Motor 2; a hexa has no motor 8"
+            vec!["Motor 5", "Motor 2", "ESC 8"],
+            "ESC 13 is on SERVO13 = Motor 5 and leads because it runs warm; ESC 2's output drives nothing, so it is Motor 2; a hexa has no motor 8, so ESC 8 comes last"
         );
         let frame = shown["frame"].as_array().unwrap();
         assert_eq!(
@@ -558,14 +691,14 @@ mod tests {
         let five = &frame[4];
         assert_eq!(
             (
-                five["reporting"].as_bool(),
+                five["state"].as_str(),
                 five["current"].as_str(),
                 five["rpm"].as_str(),
                 five["currentLevel"].as_str(),
                 five["temperatureLevel"].as_str()
             ),
             (
-                Some(true),
+                Some("reporting"),
                 Some("50.4"),
                 Some("4200"),
                 Some("normal"),
@@ -573,15 +706,16 @@ mod tests {
             )
         );
         assert_eq!(
-            (
-                frame[0]["reporting"].as_bool(),
-                frame[1]["reporting"].as_bool()
-            ),
-            (Some(false), Some(true))
+            (frame[0]["state"].as_str(), frame[1]["state"].as_str()),
+            (Some("none"), Some("reporting"))
         );
         assert_eq!(
-            shown["hint"],
-            "Motors 1, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering. ESC 8 matches no motor: its output drives none and the frame has fewer motors. Number each ESC after its motor, or shift DroneCAN ESCs with CAN_D1_UC_ESC_OF onto their motors' outputs."
+            shown["hints"],
+            json!([
+                "Motor 5 is warm at 75 C; 90 C is critical.",
+                "Motors 1, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering.",
+                "ESC 8 matches no motor: its output drives none and the frame has fewer motors. Number each ESC after its motor, or shift DroneCAN ESCs with CAN_D1_UC_ESC_OF onto their motors' outputs."
+            ])
         );
         assert_eq!(
             (
@@ -611,13 +745,15 @@ mod tests {
         assert_eq!(
             frame
                 .iter()
-                .map(|m| m["reporting"].as_bool().unwrap())
+                .map(|m| m["state"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec![false, false, false, false, true, false]
+            vec!["none", "none", "none", "none", "reporting", "none"]
         );
         assert_eq!(
-            shown["hint"],
-            "Motors 1, 2, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering."
+            shown["hints"],
+            json!([
+                "Motors 1, 2, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering."
+            ])
         );
     }
 
@@ -669,24 +805,34 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .map(|m| m["reporting"].as_bool().unwrap())
+                .map(|m| m["state"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec![true, true, true, true, true, false],
-            "ArduPilot keeps resending a dead ESC's last numbers; only its packet count stops"
+            vec![
+                "reporting",
+                "reporting",
+                "reporting",
+                "reporting",
+                "reporting",
+                "lost"
+            ],
+            "ArduPilot keeps resending a dead ESC's last numbers; only its packet count stops, and a motor heard before is lost, not unwired"
         );
         assert_eq!(
             (
                 stale["healthText"].as_str(),
-                stale["motors"][5]["title"].as_str(),
-                stale["hint"].as_str()
+                stale["motors"][0]["title"].as_str(),
+                stale["motors"][0]["motor"].as_i64(),
+                stale["hints"].clone(),
+                stale["motors"][0]["reasons"].clone()
             ),
             (
                 Some("ERR"),
                 Some("Motor 6 - OFFLINE"),
-                Some(
-                    "Motor 6 sends no ESC telemetry: check its ESC's telemetry connection and numbering."
-                )
-            )
+                Some(6),
+                json!(["Motor 6 stopped sending ESC telemetry."]),
+                json!(["Motor 6 stopped sending ESC telemetry."])
+            ),
+            "the summary and the motor's own entry say the same words"
         );
     }
 
@@ -732,6 +878,50 @@ mod tests {
         assert_eq!(
             levels(&held, 8000),
             vec!["critical", "normal", "normal", "normal", "normal", "normal"]
+        );
+        let shown = esc_view(
+            &Vampire {
+                escs: held,
+                now_ms: 8000,
+            },
+            &[],
+        );
+        assert_eq!(
+            (
+                shown["healthText"].as_str(),
+                shown["hints"].clone(),
+                shown["motors"][0]["motor"].as_i64()
+            ),
+            (
+                Some("ERR"),
+                json!([
+                    "Motor 1 draws 60 A while the others draw about 30 A: check its propeller and motor."
+                ]),
+                Some(1)
+            ),
+            "a red motor on the frame is never OK on the toolbar, and the sheet says why"
+        );
+    }
+
+    #[test]
+    fn a_hot_motor_says_how_hot_against_the_limit() {
+        let hot = Rotor {
+            motor: 3,
+            angle: 0.0,
+            at: Some(2),
+            state: "reporting",
+            temperature: 92.0,
+            current: 31.0,
+            rpm: 7400.0,
+            temperature_level: "critical",
+            current_level: "normal",
+        };
+        assert_eq!(
+            (hot.level(), hot.reasons(Some(31.0))),
+            (
+                "critical",
+                vec![(2, "Motor 3 is at 92 C, past the 90 C limit.".to_string())]
+            )
         );
     }
 }
