@@ -326,20 +326,26 @@ pub fn cloud_settings_valid(api_base: &str, device_id: &str) -> bool {
         && !device_id.trim().is_empty()
 }
 
+fn websocket_url(text: &str) -> Option<String> {
+    let text = text.trim();
+    url::Url::parse(text)
+        .ok()
+        .filter(|url| {
+            matches!(url.scheme(), "ws" | "wss") && url.host_str().is_some_and(|h| !h.is_empty())
+        })
+        .map(|_| text.to_string())
+}
+
 fn create_websocket(name: &str, url: &str) -> bool {
-    let url = url.trim();
-    let scheme_ok = url.starts_with("ws://") || url.starts_with("wss://");
-    if name.is_empty() || !scheme_ok {
-        return false;
+    match websocket_url(url).filter(|_| !name.is_empty()) {
+        Some(url) => replace_and_connect(LinkConfig {
+            name: name.to_string(),
+            auto_connect: true,
+            high_latency: false,
+            kind: Kind::WebSocket { url },
+        }),
+        None => false,
     }
-    replace_and_connect(LinkConfig {
-        name: name.to_string(),
-        auto_connect: true,
-        high_latency: false,
-        kind: Kind::WebSocket {
-            url: url.to_string(),
-        },
-    })
 }
 
 pub fn device_udp(name: &str, host: &str, port: i64) -> Option<LinkConfig> {
@@ -542,7 +548,7 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
             });
         }
         (Kind::WebSocket { .. }, "url") => Kind::WebSocket {
-            url: text.filter(|url| url.starts_with("ws://") || url.starts_with("wss://"))?,
+            url: websocket_url(value.as_str()?)?,
         },
         (Kind::Tcp { port, .. }, "host") => Kind::Tcp {
             host: text?,
@@ -1510,6 +1516,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_websocket_address_needs_the_ws_scheme_and_a_host() {
+        assert_eq!(
+            websocket_url(" ws://127.0.0.1:5760 "),
+            Some("ws://127.0.0.1:5760".to_string())
+        );
+        assert_eq!(
+            websocket_url("wss://relay.example.com/mavlink"),
+            Some("wss://relay.example.com/mavlink".to_string())
+        );
+        [
+            "ws://",
+            "wss://",
+            "http://127.0.0.1:5760",
+            "127.0.0.1:5760",
+            "",
+        ]
+        .into_iter()
+        .for_each(|url| assert_eq!(websocket_url(url), None, "{url:?}"));
+        assert!(
+            !create_websocket("bare", "ws://"),
+            "no link is made for an address with no host"
+        );
+    }
+
+    #[test]
     fn the_autoconnect_udp_link_sends_to_the_target_host_like_udp_configuration() {
         let given = |ip: &'static str| {
             move |name: &str| match name {
@@ -1746,6 +1777,11 @@ mod tests {
             edited(&socket, "url", &json!("http://127.0.0.1:5760")),
             None,
             "only a ws:// or wss:// address replaces it"
+        );
+        assert_eq!(
+            edited(&socket, "url", &json!("ws://")),
+            None,
+            "a bare scheme names no host to connect to"
         );
         let scanned = vec![("HC-05".to_string(), "98:D3:31:F6:12:34".to_string())];
         assert_eq!(
