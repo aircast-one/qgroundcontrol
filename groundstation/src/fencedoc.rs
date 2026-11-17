@@ -7,7 +7,6 @@ type Point = (f64, f64);
 const INSET: f64 = 0.75;
 const LARGEST_HALF_METRES: f64 = 1500.0;
 const FEWEST_VERTICES: usize = 3;
-pub const RALLY_DEFAULT_ALTITUDE: f64 = 0.0;
 
 fn window(top_left: Point, bottom_right: Point) -> (Point, f64, f64) {
     let top_right = (top_left.0, bottom_right.1);
@@ -174,17 +173,13 @@ pub fn set_breach_altitude(fence: &Value, altitude: f64) -> Option<Value> {
     Some(changed)
 }
 
-pub fn add_rally(rally: &Value, at: Point, fixed_wing: bool, mission_altitude: f64) -> Value {
+pub fn add_rally(rally: &Value, at: Point, first_altitude: f64) -> Value {
     let points = list(rally, "points");
     let altitude = points
         .last()
         .and_then(|last| last.get(2))
         .and_then(Value::as_f64)
-        .unwrap_or(if fixed_wing {
-            mission_altitude
-        } else {
-            RALLY_DEFAULT_ALTITUDE
-        });
+        .unwrap_or(first_altitude);
     with(
         rally,
         "points",
@@ -264,20 +259,17 @@ mod tests {
     }
 
     #[test]
-    fn a_rally_point_climbs_to_the_last_one_or_to_the_airframe_default() {
+    fn a_rally_point_climbs_to_the_last_one_or_to_the_given_first_altitude() {
         let rally = json!({ "points": [], "version": 2 });
-        let copter = add_rally(&rally, (1.0, 2.0), false, 75.0);
-        assert_eq!(copter["points"][0][2], 0.0);
+        let first = add_rally(&rally, (1.0, 2.0), 60.0);
         assert_eq!(
-            add_rally(&rally, (1.0, 2.0), true, 75.0)["points"][0][2],
-            75.0,
-            "a plane's first rally point takes the mission altitude"
+            first["points"][0][2], 60.0,
+            "the first rally point takes the return altitude it is given"
         );
         let second = add_rally(
-            &move_rally(&copter, 0, (1.0, 2.0), Some(40.0)).unwrap(),
+            &move_rally(&first, 0, (1.0, 2.0), Some(40.0)).unwrap(),
             (3.0, 4.0),
-            false,
-            75.0,
+            60.0,
         );
         assert_eq!(
             second["points"][1][2], 40.0,

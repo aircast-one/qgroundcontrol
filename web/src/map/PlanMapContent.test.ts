@@ -3,7 +3,7 @@ import { parseJson } from '@/bridge/Json';
 import { FENCE_POLYGONS, FencePolygon } from './FenceBridge';
 import { MISSION_SPLIT_INVOKABLE, MISSION_SPLIT_PATH } from './MissionLayers';
 import { MissionItem, PLAN_ITEMS } from './PlanBridge';
-import { PlanLayer, cornerPosition, dragAllowed, fenceWindow, mapTypes, missionFitPoints, parsedCoordinate } from './PlanMapContent';
+import { PlanLayer, cornerPosition, dragAllowed, fenceWindow, mapTypes, missionFitPoints, parsedCoordinate, tapAddsRally } from './PlanMapContent';
 import { Survey } from './SurveyBridge';
 import { TrackPoint } from './VehicleMap';
 
@@ -70,5 +70,13 @@ describe('FenceInclusionTest', () => {
     expect(topLeft.longitude).toBeCloseTo(8.498, 9);
     expect(bottomRight.latitude).toBeCloseTo(47.498, 9);
     expect(bottomRight.longitude).toBeCloseTo(8.502, 9);
+  });
+
+  it('each click on the empty map in Rally adds a point, even with the last one selected', () => {
+    expect(tapAddsRally(PlanLayer.Rally, { kind: 'Rally', index: 0 }, true)).toBe(true);
+    expect(tapAddsRally(PlanLayer.Rally, null, true)).toBe(true);
+    expect(tapAddsRally(PlanLayer.Rally, { kind: 'Waypoint', index: 2 }, true)).toBe(false);
+    expect(tapAddsRally(PlanLayer.Mission, null, true)).toBe(false);
+    expect(tapAddsRally(PlanLayer.Rally, null, false)).toBe(false);
   });
 });

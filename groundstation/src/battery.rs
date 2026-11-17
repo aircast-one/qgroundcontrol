@@ -401,6 +401,20 @@ pub fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
     px4().or_else(apm)
 }
 
+pub fn return_altitude(backend: &dyn Backend) -> Option<f64> {
+    parameter_si(
+        backend,
+        &[
+            "RTL_RETURN_ALT",
+            "RTL_ALT_M",
+            "RTL_ALT",
+            "RTL_ALTITUDE",
+            "ALT_HOLD_RTL",
+        ],
+    )
+    .filter(|metres| *metres > 0.0)
+}
+
 fn parameter(backend: &dyn Backend, name: &str) -> Option<Value> {
     let fact = backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"));
     fact.get("name")

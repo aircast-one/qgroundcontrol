@@ -3129,21 +3129,14 @@ fn fence_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> 
         "plan.rallyPointController.addPoint" => match point_of(given.get(0)) {
             Some(at) => {
                 opened(backend);
-                let fixed_wing = held().document.as_ref().is_some_and(|d| {
-                    plandoc::vehicle_class(d.vehicle_type)
-                        == crate::cmdinfo::VehicleClass::FixedWing
+                let altitude = crate::battery::return_altitude(backend).unwrap_or_else(|| {
+                    crate::read::value_number(
+                        &backend.value(&format!("{DEFAULT_ALTITUDE}.rawValue")),
+                    )
+                    .unwrap_or(0.0)
                 });
-                let altitude = crate::read::value_number(
-                    &backend.value(&format!("{DEFAULT_ALTITUDE}.rawValue")),
-                )
-                .unwrap_or(0.0);
                 fence_edit(
-                    |f, r| {
-                        Some((
-                            f.clone(),
-                            crate::fencedoc::add_rally(r, at, fixed_wing, altitude),
-                        ))
-                    },
+                    |f, r| Some((f.clone(), crate::fencedoc::add_rally(r, at, altitude))),
                     "",
                 )
             }

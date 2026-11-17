@@ -778,6 +778,8 @@ export const PlanMapContent = ({
           const trace = tracing.value;
           if (trace !== null) {
             tracing.value = [trace[0], [...trace[1], TrackPoint(lat, lon)]];
+          } else if (tapAddsRally(layer.value, selected.value, support.rally)) {
+            addRallyAt(lat, lon);
           } else if (tapCloses(selected.value, panelOpen.value)) {
             selected.value = null;
             panelOpen.value = false;
@@ -2078,6 +2080,8 @@ export const dragAllowed = (hit: MapHit, selected: MapHit | null, layer: PlanLay
   const owner = ownerOf(hit);
   return layerOf(hit) === layer && owner !== null && owner === ownerOf(selected);
 };
+
+export const tapAddsRally = (layer: PlanLayer, selected: MapHit | null, supported: boolean): boolean => layer === PlanLayer.Rally && supported && (selected === null || selected.kind === 'Rally');
 
 export const profileShown = (layer: PlanLayer, profile: TerrainProfile): boolean => layer === PlanLayer.Mission && profile.points.length > 0;
 
