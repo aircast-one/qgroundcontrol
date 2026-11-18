@@ -43,13 +43,30 @@ const flyUploadedMission = async (page: Page) => {
   await expect(page.getByText(/^To waypoint \d+ of \d+/)).toBeVisible({ timeout: 60_000 });
 };
 
-test('landing out of a flown mission says the flight plan is complete', async ({ vehicle }) => {
+const leftOverAction = (page: Page) => page.getByRole('dialog').filter({ hasText: 'Leave plan on vehicle' });
+
+test('landing out of a flown mission says where it stopped, and removing the plan is not the first choice', async ({ vehicle }) => {
   await flyUploadedMission(vehicle);
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to land' }));
-  const done = vehicle.getByRole('dialog').filter({ hasText: 'Flight plan complete' });
+  const done = leftOverAction(vehicle);
   await expect(done).toBeVisible({ timeout: 120_000 });
+  await expect(done.getByText(/^Mission stopped at waypoint \d+ of \d+$/), 'a mission left early is not complete').toBeVisible();
+  const choices = await done.getByRole('button').allTextContents();
+  expect(choices.indexOf('Remove plan from vehicle'), 'removing the plan comes after keeping it').toBeGreaterThan(choices.indexOf('Leave plan on vehicle'));
   await done.getByRole('button', { name: 'Close' }).click();
   await expect(done).toBeHidden();
+});
+
+test('an ArduCopter mission left with Return names its waypoint and offers to resume', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await flyUploadedMission(app);
+  await expect(app.getByText(/^To waypoint [3-9] of \d+/)).toBeVisible({ timeout: 120_000 });
+  await app.getByRole('button', { name: 'Return', exact: true }).click();
+  await slideAcross(app, app.getByRole('button', { name: 'Slide to return' }));
+  const done = leftOverAction(app);
+  await expect(done).toBeVisible({ timeout: 180_000 });
+  await expect(done.getByText(/^Mission stopped at waypoint [3-9] of \d+$/)).toBeVisible();
+  await expect(done.getByRole('button', { name: /^Resume from waypoint \d+$/ })).toBeVisible();
 });
 
 test('the mission card over the picture leaves the home readings clear and names a distance only once the vehicle reports one', async ({ app }) => {

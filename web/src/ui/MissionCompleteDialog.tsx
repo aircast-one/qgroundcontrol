@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { PlanCommands } from '@/bridge/BridgeCommands';
 import { type Json, isNull, optBoolean, optInt, optLong, optText } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
-import { AlertDialog, Button, HorizontalDivider, OutlinedButton, Text, TextButton } from '@/m3';
+import { AlertDialog, Button, OutlinedButton, Text, TextButton } from '@/m3';
 import { aircast } from '@/theme/Colors';
 
 export const MISSION_COMPLETE_PATH = 'view.missionComplete';
@@ -12,7 +12,6 @@ export type MissionComplete = {
   readonly imagesTaken: number;
   readonly resumeFromWaypoint: number | null;
   readonly batteryWarning: boolean;
-  readonly interrupted: boolean;
   readonly title: string;
   readonly detail: string;
   readonly resumeLabel: string;
@@ -25,7 +24,6 @@ export const missionComplete = (view: Json | null): MissionComplete | null =>
         imagesTaken: optInt(view, 'imagesTaken'),
         resumeFromWaypoint: isNull(view, 'resumeFromWaypoint') ? null : optInt(view, 'resumeFromWaypoint'),
         batteryWarning: optBoolean(view, 'batteryWarning'),
-        interrupted: optBoolean(view, 'interrupted'),
         title: optText(view, 'title') || 'Flight plan complete',
         detail: optText(view, 'detail'),
         resumeLabel: optText(view, 'resumeLabel'),
@@ -52,35 +50,6 @@ export const MissionCompleteDialog = () => {
       await PlanCommands.dismissMissionComplete(notice.id);
     })();
 
-  if (notice.interrupted && waypoint !== null) {
-    return (
-      <AlertDialog
-        onDismissRequest={close}
-        title={notice.title}
-        confirmButton={<TextButton onClick={close}>Close</TextButton>}
-        text={
-          <div className="flex flex-col gap-3">
-            <Text typography="bodyMedium">{notice.detail}</Text>
-            <Button className="w-full" onClick={() => resume(waypoint)}>
-              {notice.resumeLabel || `Resume mission from waypoint ${waypoint}`}
-            </Button>
-            <OutlinedButton className="w-full" onClick={close}>
-              Leave plan on vehicle
-            </OutlinedButton>
-            <TextButton className="w-full" onClick={remove}>
-              Remove plan from vehicle
-            </TextButton>
-            {notice.batteryWarning ? (
-              <Text typography="bodySmall" color={aircast('warning')}>
-                If you are changing batteries for Resume Mission do not disconnect from the vehicle.
-              </Text>
-            ) : null}
-          </div>
-        }
-      />
-    );
-  }
-
   return (
     <AlertDialog
       onDismissRequest={close}
@@ -88,38 +57,19 @@ export const MissionCompleteDialog = () => {
       confirmButton={<TextButton onClick={close}>Close</TextButton>}
       text={
         <div className="flex flex-col gap-3">
-          {images !== null ? <Text typography="bodyMedium" textAlign="center" className="w-full">{images}</Text> : null}
-          <Button
-            className="w-full"
-            onClick={() =>
-              void (async () => {
-                await PlanCommands.removeAllFromVehicle();
-                await PlanCommands.dismissMissionComplete(notice.id);
-              })()
-            }
-          >
-            Remove plan from vehicle
-          </Button>
+          {notice.detail !== '' ? <Text typography="bodyMedium">{notice.detail}</Text> : null}
+          {images !== null ? <Text typography="bodyMedium">{images}</Text> : null}
+          {waypoint !== null ? (
+            <Button className="w-full" onClick={() => resume(waypoint)}>
+              {notice.resumeLabel || `Resume mission from waypoint ${waypoint}`}
+            </Button>
+          ) : null}
           <OutlinedButton className="w-full" onClick={close}>
             Leave plan on vehicle
           </OutlinedButton>
-          {waypoint !== null ? (
-            <>
-              <HorizontalDivider />
-              <OutlinedButton
-                className="w-full"
-                onClick={() =>
-                  void (async () => {
-                    await PlanCommands.resumeMission(waypoint);
-                    await PlanCommands.dismissMissionComplete(notice.id);
-                  })()
-                }
-              >
-                {`Resume mission from waypoint ${waypoint}`}
-              </OutlinedButton>
-              <Text typography="bodySmall">Resume Mission will rebuild the current mission from the last flown waypoint and upload it to the vehicle for the next flight.</Text>
-            </>
-          ) : null}
+          <TextButton className="w-full" onClick={remove}>
+            Remove plan from vehicle
+          </TextButton>
           {notice.batteryWarning ? (
             <Text typography="bodySmall" color={aircast('warning')}>
               If you are changing batteries for Resume Mission do not disconnect from the vehicle.

@@ -24,6 +24,14 @@ pub struct Latch {
     was_in_mission: bool,
     shown: u64,
     open: bool,
+    reached: Progress,
+    finished: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Progress {
+    pub waypoint: i64,
+    pub of: i64,
 }
 
 pub struct Reading {
@@ -31,20 +39,40 @@ pub struct Reading {
     pub armed: bool,
     pub in_mission: bool,
     pub has_plan: bool,
+    pub progress: Progress,
+}
+
+impl Reading {
+    fn finished(&self) -> bool {
+        self.progress.of > 0 && self.progress.waypoint > self.progress.of
+    }
 }
 
 pub fn step(latch: Latch, now: &Reading) -> Latch {
     let armed = !now.connected || now.armed;
     let in_mission = now.connected && now.in_mission;
+    let flying_it = in_mission && (1..=now.progress.of).contains(&now.progress.waypoint);
     let base = Latch {
         armed: now.connected.then_some(now.armed),
         open: latch.open && now.connected,
+        reached: if flying_it {
+            now.progress
+        } else {
+            latch.reached
+        },
+        finished: !flying_it && (latch.finished || (now.connected && now.finished())),
         ..latch
     };
     match (latch.armed.unwrap_or(true) != armed, armed) {
         (true, true) => Latch {
             was_armed: true,
             was_in_mission: in_mission,
+            reached: if flying_it {
+                now.progress
+            } else {
+                Progress::default()
+            },
+            finished: !flying_it && now.finished(),
             ..base
         },
         (true, false) => {
@@ -71,6 +99,8 @@ static LATCH: Mutex<Latch> = Mutex::new(Latch {
     was_in_mission: false,
     shown: 0,
     open: false,
+    reached: Progress { waypoint: 0, of: 0 },
+    finished: false,
 });
 
 fn contains(backend: &dyn Backend, controller: &str) -> bool {
@@ -98,12 +128,21 @@ fn reading(backend: &dyn Backend) -> (Reading, i64) {
         || contains(backend, "geoFenceController")
         || contains(backend, "rallyPointController")
         || images != 0;
+    let progress = Progress {
+        waypoint: integer(
+            &backend.value_fields("planFly.missionController", "currentMissionIndex"),
+            "currentMissionIndex",
+        )
+        .unwrap_or(-1),
+        of: crate::missionprogress::last_sequence(backend),
+    };
     (
         Reading {
             connected,
             armed: flag(&vehicle, "armed"),
             in_mission,
             has_plan,
+            progress,
         },
         images,
     )
@@ -131,14 +170,33 @@ pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "resumeFromWaypoint": resume,
         "batteryWarning": resume.is_some(),
         "interrupted": interrupted,
-        "title": if interrupted { INTERRUPTED_TITLE } else { COMPLETE_TITLE },
-        "detail": summary.map(|(waypoint, drops)| interrupted_detail(waypoint, drops)).unwrap_or_default(),
+        "title": title(latch.finished, latch.reached),
+        "detail": summary.map(|(waypoint, drops)| interrupted_detail(waypoint, drops)).unwrap_or_else(|| stopped_detail(latch.finished).to_string()),
         "resumeLabel": summary.map(|(waypoint, _)| format!("Resume from waypoint {waypoint}")).or_else(|| resume.map(|at| format!("Resume mission from waypoint {at}"))),
     })
 }
 
 const COMPLETE_TITLE: &str = "Flight plan complete";
-const INTERRUPTED_TITLE: &str = "Mission interrupted";
+const STOPPED_TITLE: &str = "Mission stopped";
+const STOPPED_DETAIL: &str = "The aircraft left the mission before finishing it.";
+
+pub fn title(finished: bool, reached: Progress) -> String {
+    match (finished, reached.waypoint > 0) {
+        (true, _) => COMPLETE_TITLE.to_string(),
+        (false, true) => format!(
+            "{STOPPED_TITLE} at waypoint {} of {}",
+            reached.waypoint, reached.of
+        ),
+        (false, false) => STOPPED_TITLE.to_string(),
+    }
+}
+
+fn stopped_detail(finished: bool) -> &'static str {
+    match finished {
+        true => "",
+        false => STOPPED_DETAIL,
+    }
+}
 
 pub fn interrupted_detail(waypoint: usize, drops: usize) -> String {
     let rest = match drops {
@@ -146,9 +204,7 @@ pub fn interrupted_detail(waypoint: usize, drops: usize) -> String {
         1 => " One drop is still to come.".to_string(),
         n => format!(" {n} drops are still to come."),
     };
-    format!(
-        "The aircraft left the mission before finishing it. Resuming flies it again from waypoint {waypoint}.{rest}"
-    )
+    format!("{STOPPED_DETAIL} Resuming flies it again from waypoint {waypoint}.{rest}")
 }
 
 fn resume_summary(offer: i64) -> Option<(usize, usize)> {
@@ -208,7 +264,82 @@ mod tests {
             armed,
             in_mission,
             has_plan: true,
+            progress: Progress { waypoint: 3, of: 6 },
         }
+    }
+
+    fn heading(waypoint: i64, in_mission: bool) -> Reading {
+        Reading {
+            progress: Progress { waypoint, of: 140 },
+            ..at(true, in_mission)
+        }
+    }
+
+    #[test]
+    fn a_mission_left_by_a_return_says_where_it_stopped_instead_of_complete() {
+        let returned = run(&[
+            at(false, false),
+            heading(48, true),
+            heading(49, true),
+            heading(49, false),
+            Reading {
+                progress: Progress {
+                    waypoint: -1,
+                    of: 140,
+                },
+                ..at(false, false)
+            },
+        ]);
+        assert!(returned.open);
+        assert_eq!(
+            title(returned.finished, returned.reached),
+            "Mission stopped at waypoint 49 of 140",
+            "a plan sent again while returning clears the vehicle's index, so the latch keeps the last waypoint flown"
+        );
+        let finished = run(&[
+            at(false, false),
+            heading(139, true),
+            heading(140, true),
+            heading(141, false),
+            Reading {
+                progress: Progress {
+                    waypoint: 141,
+                    of: 140,
+                },
+                ..at(false, false)
+            },
+        ]);
+        assert_eq!(
+            title(finished.finished, finished.reached),
+            "Flight plan complete",
+            "the core reads an index past the last sequence once MISSION_CURRENT says MISSION_STATE_COMPLETE"
+        );
+        assert_eq!(
+            title(false, Progress::default()),
+            "Mission stopped",
+            "with no waypoint seen there is nothing to name"
+        );
+        let next = run(&[
+            at(false, false),
+            heading(140, true),
+            heading(141, false),
+            at(false, false),
+            Reading {
+                progress: Progress {
+                    waypoint: 141,
+                    of: 140,
+                },
+                ..at(true, false)
+            },
+            heading(5, true),
+            heading(5, false),
+            at(false, false),
+        ]);
+        assert_eq!(
+            title(next.finished, next.reached),
+            "Mission stopped at waypoint 5 of 140",
+            "ArduPilot still says complete when it arms again, and the mission flown after that is a new one"
+        );
     }
 
     fn run(readings: &[Reading]) -> Latch {
