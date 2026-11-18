@@ -1391,7 +1391,7 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
     }
     if kind == "button" {
         return vec![
-            json!({ "control": "button", "name": name, "label": label, "enabled": enabled, "path": path }),
+            json!({ "control": "button", "name": name, "label": label, "enabled": enabled, "path": path, "confirmTitle": control["confirm"]["title"], "confirmText": control["confirm"]["text"] }),
         ];
     }
     if kind == "dialogButton"
@@ -3801,6 +3801,32 @@ mod tests {
         assert_eq!(
             write(&fake, armed["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"],
             false
+        );
+        assert!(
+            calibrate["confirmText"]
+                .as_str()
+                .is_some_and(|t| t.contains("propellers")),
+            "Calibrate wrote ESC_CALIBRATION the moment it was pressed, with no word on what comes next"
+        );
+        let undo = section(&started, "Calibration")["controls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["label"] == "Cancel calibration")
+            .cloned()
+            .expect("a pending ESC calibration can be taken back");
+        assert_eq!(
+            write(&fake, undo["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"],
+            true
+        );
+        assert_eq!(fake.params.borrow()["ESC_CALIBRATION"], 0.0);
+        assert!(
+            section(&page(&fake, "ESC", false), "Calibration")["controls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|c| c["label"] != "Cancel calibration"),
+            "nothing to cancel once it reads 0 again"
         );
         let quad = Fake::new(&[
             ("Q_M_PWM_TYPE", 0.0),

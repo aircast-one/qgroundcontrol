@@ -49,6 +49,8 @@ export type FactFields = {
   valueDetails?: string;
   problem?: string;
   enumGroups?: string[];
+  confirmTitle?: string;
+  confirmText?: string;
 };
 
 export type Fact = Required<FactFields> & {
@@ -108,6 +110,8 @@ export const makeFact = (fields: FactFields): Fact => {
     valueDetails: '',
     problem: '',
     enumGroups: [],
+    confirmTitle: '',
+    confirmText: '',
     ...fields,
   };
   const title = trimEndChars(filled.description || filled.name, ': ');

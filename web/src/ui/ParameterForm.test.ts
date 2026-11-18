@@ -35,6 +35,13 @@ const required = <T,>(value: T | null): T => {
 };
 
 describe('ParameterFormTest', () => {
+  it('a button the config asks to confirm carries what the confirmation says, and a plain one carries none', () => {
+    const escs = required(factFromControl(control({ control: 'button', label: 'Calibrate', confirmTitle: 'Calibrate the ESCs?', confirmText: 'Take the propellers off first.' })));
+    expect([escs.confirmTitle, escs.confirmText]).toEqual(['Calibrate the ESCs?', 'Take the propellers off first.']);
+    const plain = required(factFromControl(control({ control: 'button', label: 'Reset', confirmTitle: null, confirmText: null })));
+    expect([plain.confirmTitle, plain.confirmText]).toEqual(['', '']);
+  });
+
   it('a control served without the gate is writable, because every older core omits it', () => {
     const fact = required(factFromControl(control()));
     expect(

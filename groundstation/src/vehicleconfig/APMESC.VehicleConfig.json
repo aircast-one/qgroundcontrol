@@ -137,6 +137,19 @@
                     "button": {
                         "onClicked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue = 3"
                     },
+                    "confirm": {
+                        "title": "Calibrate the ESCs?",
+                        "text": "Take the propellers off first. This tells the autopilot to calibrate the ESCs the next time it powers up: unplug USB and the battery so it powers down, connect the battery, and wait for the single long beep. Until it powers down you can cancel here."
+                    },
+                    "param": "ESC_CALIBRATION"
+                },
+                {
+                    "control": "button",
+                    "label": "Cancel calibration",
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\") && controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3",
+                    "button": {
+                        "onClicked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue = 0"
+                    },
                     "param": "ESC_CALIBRATION"
                 },
                 {
@@ -210,6 +223,19 @@
                     "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 0",
                     "button": {
                         "onClicked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue = 3"
+                    },
+                    "confirm": {
+                        "title": "Calibrate the ESCs?",
+                        "text": "Take the propellers off first. This tells the autopilot to calibrate the ESCs the next time it powers up: unplug USB and the battery so it powers down, connect the battery, and wait for the single long beep. Until it powers down you can cancel here."
+                    },
+                    "param": "Q_ESC_CAL"
+                },
+                {
+                    "control": "button",
+                    "label": "Cancel calibration",
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\") && controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3",
+                    "button": {
+                        "onClicked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue = 0"
                     },
                     "param": "Q_ESC_CAL"
                 },

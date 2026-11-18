@@ -2,7 +2,7 @@ import { type ReactNode, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc, makeFact } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, isJson, isNull, jsonObjects, jsonStrings, opt, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
-import { FilledTonalButton, OutlinedButton, Slider, Surface, Text, stepsFor } from '@/m3';
+import { AlertDialog, FilledTonalButton, OutlinedButton, Slider, Surface, Text, TextButton, stepsFor } from '@/m3';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { coerceIn } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
@@ -102,6 +102,8 @@ export const factFromControl = (control: Json): Fact | null => {
     valueDetails: optText(control, 'valueDetails'),
     problem: optText(control, 'problem'),
     enumGroups: options.map((it) => optText(it, 'group')),
+    confirmTitle: optText(control, 'confirmTitle'),
+    confirmText: optText(control, 'confirmText'),
   });
 };
 
@@ -137,7 +139,13 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
   const [reloads, setReloads] = useState(0);
   const [calculating, setCalculating] = useState<PowerCalculator | null>(null);
   const [calibratingEscs, setCalibratingEscs] = useState(false);
+  const [confirming, setConfirming] = useState<Fact | null>(null);
   const reload = () => setReloads((it) => it + 1);
+  const press = (fact: Fact) =>
+    void (async () => {
+      await Qgc.set(fact.path, true);
+      reload();
+    })();
   const setup = useQgcPath(SETUP);
   const ready = parametersReady(setup);
 
@@ -166,16 +174,7 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
     }
     if (fact.controlKind === BUTTON_CONTROL) {
       return (
-        <OutlinedButton
-          enabled={fact.enabled}
-          onClick={() => {
-            void (async () => {
-              await Qgc.set(fact.path, true);
-              reload();
-            })();
-          }}
-          className="mx-5 my-2 self-start"
-        >
+        <OutlinedButton enabled={fact.enabled} onClick={() => (fact.confirmText.trim() === '' ? press(fact) : setConfirming(fact))} className="mx-5 my-2 self-start">
           {fact.title}
         </OutlinedButton>
       );
@@ -233,6 +232,24 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
         ])}
       </div>
       {calibratingEscs ? <EscCalibrationDialog onClose={() => setCalibratingEscs(false)} /> : null}
+      {confirming !== null ? (
+        <AlertDialog
+          onDismissRequest={() => setConfirming(null)}
+          title={confirming.confirmTitle.trim() === '' ? confirming.title : confirming.confirmTitle}
+          text={confirming.confirmText}
+          confirmButton={
+            <TextButton
+              onClick={() => {
+                setConfirming(null);
+                press(confirming);
+              }}
+            >
+              {confirming.title}
+            </TextButton>
+          }
+          dismissButton={<TextButton onClick={() => setConfirming(null)}>Cancel</TextButton>}
+        />
+      ) : null}
       {calculating !== null ? (
         <PowerCalcDialog
           calculator={calculating}

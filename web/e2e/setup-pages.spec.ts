@@ -70,6 +70,24 @@ test('ArduPilot failsafes open Settings › Safety on its own page, not on a bla
   await expect(app.getByText('When the battery runs low.', { exact: true })).toBeInViewport();
 });
 
+test('ArduPilot ESC calibration says what happens before it arms, and can be taken back', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^ESC / }).click();
+  const calibrate = app.getByRole('button', { name: 'Calibrate', exact: true }).first();
+  await calibrate.click();
+  const confirm = app.getByRole('dialog').filter({ hasText: 'Calibrate the ESCs?' });
+  await expect(confirm).toContainText('Take the propellers off first.');
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(app.getByText(/^Click Calibrate to start, then/)).toBeVisible();
+  await calibrate.click();
+  await confirm.getByRole('button', { name: 'Calibrate', exact: true }).click();
+  await expect(app.getByText(/^Now perform these steps/)).toBeVisible();
+  await app.getByRole('button', { name: 'Cancel calibration', exact: true }).click();
+  await expect(app.getByText(/^Click Calibrate to start, then/)).toBeVisible();
+  await expect(calibrate).toBeEnabled();
+});
+
 test('an ArduPilot accelerometer calibration keeps the pilot on Sensors, since it cannot be cancelled', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
