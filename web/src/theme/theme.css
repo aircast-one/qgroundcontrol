@@ -155,28 +155,28 @@
   }
 }
 
-@utility text-display-large { font-size: 57px; line-height: 64px; font-weight: 400; }
-@utility text-display-medium { font-size: 45px; line-height: 52px; font-weight: 400; }
-@utility text-display-small { font-size: 36px; line-height: 44px; font-weight: 400; }
-@utility text-headline-large { font-size: 32px; line-height: 40px; font-weight: 400; }
-@utility text-headline-medium { font-size: 28px; line-height: 36px; font-weight: 400; }
-@utility text-headline-small { font-size: 24px; line-height: 32px; font-weight: 400; }
-@utility text-title-large { font-size: 22px; line-height: 28px; font-weight: 400; }
-@utility text-title-medium { font-size: 16px; line-height: 24px; font-weight: 500; }
-@utility text-title-small { font-size: 14px; line-height: 20px; font-weight: 500; }
-@utility text-body-large { font-size: 16px; line-height: 24px; font-weight: 400; }
-@utility text-body-medium { font-size: 14px; line-height: 20px; font-weight: 400; }
-@utility text-body-small { font-size: 12px; line-height: 16px; font-weight: 400; }
-@utility text-label-large { font-size: 14px; line-height: 20px; font-weight: 500; }
-@utility text-label-medium { font-size: 12px; line-height: 16px; font-weight: 500; }
-@utility text-label-small { font-size: 11px; line-height: 16px; font-weight: 500; }
-@utility text-telemetry { font-size: 22px; line-height: 26.4px; font-weight: 500; font-variant-numeric: tabular-nums; }
-@utility text-telemetry-medium { font-size: 16px; line-height: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+@utility text-display-large { font-size: calc(57px * var(--aircast-font-scale, 1)); line-height: calc(64px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-display-medium { font-size: calc(45px * var(--aircast-font-scale, 1)); line-height: calc(52px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-display-small { font-size: calc(36px * var(--aircast-font-scale, 1)); line-height: calc(44px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-headline-large { font-size: calc(32px * var(--aircast-font-scale, 1)); line-height: calc(40px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-headline-medium { font-size: calc(28px * var(--aircast-font-scale, 1)); line-height: calc(36px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-headline-small { font-size: calc(24px * var(--aircast-font-scale, 1)); line-height: calc(32px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-title-large { font-size: calc(22px * var(--aircast-font-scale, 1)); line-height: calc(28px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-title-medium { font-size: calc(16px * var(--aircast-font-scale, 1)); line-height: calc(24px * var(--aircast-font-scale, 1)); font-weight: 500; }
+@utility text-title-small { font-size: calc(14px * var(--aircast-font-scale, 1)); line-height: calc(20px * var(--aircast-font-scale, 1)); font-weight: 500; }
+@utility text-body-large { font-size: calc(16px * var(--aircast-font-scale, 1)); line-height: calc(24px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-body-medium { font-size: calc(14px * var(--aircast-font-scale, 1)); line-height: calc(20px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-body-small { font-size: calc(12px * var(--aircast-font-scale, 1)); line-height: calc(16px * var(--aircast-font-scale, 1)); font-weight: 400; }
+@utility text-label-large { font-size: calc(14px * var(--aircast-font-scale, 1)); line-height: calc(20px * var(--aircast-font-scale, 1)); font-weight: 500; }
+@utility text-label-medium { font-size: calc(12px * var(--aircast-font-scale, 1)); line-height: calc(16px * var(--aircast-font-scale, 1)); font-weight: 500; }
+@utility text-label-small { font-size: calc(11px * var(--aircast-font-scale, 1)); line-height: calc(16px * var(--aircast-font-scale, 1)); font-weight: 500; }
+@utility text-telemetry { font-size: calc(22px * var(--aircast-font-scale, 1)); line-height: calc(26.4px * var(--aircast-font-scale, 1)); font-weight: 500; font-variant-numeric: tabular-nums; }
+@utility text-telemetry-medium { font-size: calc(16px * var(--aircast-font-scale, 1)); line-height: calc(20px * var(--aircast-font-scale, 1)); font-weight: 500; font-variant-numeric: tabular-nums; }
 @utility osd-shadow { text-shadow: 0 1px 2px rgb(0 0 0 / 0.85), 0 0 8px rgb(0 0 0 / 0.45); }
 
 @layer base {
   html, body, #root { height: 100%; margin: 0; }
-  body { background: var(--md-background); color: var(--md-on-surface); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+  body { background: var(--md-background); color: var(--md-on-surface); font-family: var(--font-sans); font-size: calc(16px * var(--aircast-font-scale, 1)); -webkit-font-smoothing: antialiased; }
   button { cursor: pointer; }
 }
 

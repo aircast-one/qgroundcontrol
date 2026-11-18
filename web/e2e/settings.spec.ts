@@ -192,3 +192,16 @@ test('the two camera channel groups in Control say which radio they read', async
   await expect(app.getByText("Camera & gimbal on the aircraft's receiver", { exact: true })).toBeVisible();
   await expect(app.getByText('Radio on USB (EdgeTX script)', { exact: false })).toBeVisible();
 });
+
+test('UI scaling makes the app text larger and 100% puts it back', async ({ app }) => {
+  await openGeneral(app);
+  const label = app.getByText('Mute all audio output', { exact: true });
+  const size = () => label.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  const normal = await size();
+  await app.getByRole('button', { name: 'UI scaling, 100%' }).click();
+  await app.getByRole('menuitem', { name: '150%' }).click();
+  await expect.poll(size).toBeCloseTo(normal * 1.5, 1);
+  await app.getByRole('button', { name: 'UI scaling, 150%' }).click();
+  await app.getByRole('menuitem', { name: '100%' }).click();
+  await expect.poll(size).toBeCloseTo(normal, 1);
+});
