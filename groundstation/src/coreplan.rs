@@ -3005,17 +3005,12 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         "speedSection.specifyFlightSpeed" => {
             let on = given.as_ref().and_then(Value::as_bool).unwrap_or(false);
             let keep = plandoc::specified_speed(&current, index);
-            let setting = |name: &str, default: f64| {
-                crate::read::value_number(
-                    &backend.value(&format!("settings.appSettings.{name}.rawValue")),
-                )
-                .unwrap_or(default)
-            };
+            let speeds = planning_speeds(backend);
             let default = speed_in_force(
                 &current,
                 index.saturating_sub(1),
-                setting("offlineEditingHoverSpeed", 5.0),
-                setting("offlineEditingCruiseSpeed", 15.0),
+                speeds.hover,
+                speeds.cruise,
             );
             let speed = on.then(|| keep.unwrap_or(default));
             answer(
@@ -3775,6 +3770,74 @@ pub fn route_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Flown(Vec<(&'static str, f64, &'static str)>);
+
+    impl Backend for Flown {
+        fn get(&self, path: &str) -> String {
+            let name = path
+                .trim_start_matches("vehicle.parameterManager.getParameter(-1,")
+                .trim_start_matches("settings.appSettings.")
+                .trim_end_matches(".rawValue")
+                .trim_end_matches(')');
+            self.0
+                .iter()
+                .find(|(n, ..)| *n == name)
+                .map_or(json!({ "kind": "null" }), |(n, v, units)| {
+                    json!({ "kind": "fact", "name": n, "value": v, "rawValue": v, "rawUnits": units })
+                })
+                .to_string()
+        }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            self.get(path)
+        }
+        fn set(&self, _path: &str, _value: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _path: &str, _args: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn a_connected_vehicle_plans_at_the_speeds_it_flies() {
+        let offline = Flown(vec![
+            ("offlineEditingHoverSpeed", 5.0, "m/s"),
+            ("offlineEditingCruiseSpeed", 15.0, "m/s"),
+        ]);
+        let copter = Flown(
+            offline
+                .0
+                .iter()
+                .copied()
+                .chain([
+                    ("WPNAV_SPEED", 1000.0, "cm/s"),
+                    ("WPNAV_SPEED_UP", 250.0, "cm/s"),
+                    ("WPNAV_SPEED_DN", 150.0, "cm/s"),
+                ])
+                .collect(),
+        );
+        let px4 = Flown(vec![
+            ("MPC_XY_CRUISE", 12.0, "m/s"),
+            ("FW_AIRSPD_TRIM", 18.0, "m/s"),
+        ]);
+        let pick = |b: &Flown| {
+            let s = planning_speeds(b);
+            (s.hover, s.cruise, s.ascent, s.descent)
+        };
+        assert_eq!(
+            pick(&offline),
+            (5.0, 15.0, 3.0, 1.0),
+            "with no vehicle the offline editing speeds plan the mission"
+        );
+        assert_eq!(
+            pick(&copter),
+            (10.0, 15.0, 2.5, 1.5),
+            "ArduCopter flies its waypoints at WPNAV_SPEED, in centimetres per second"
+        );
+        assert_eq!(pick(&px4), (12.0, 18.0, 3.0, 1.0));
+    }
 
     #[test]
     fn no_statement_holds_the_plan_lock_while_it_calls_into_the_backend() {
@@ -5304,21 +5367,35 @@ pub fn current_document() -> Document {
     held().document.clone().unwrap_or_else(empty_document)
 }
 
+pub fn planning_speeds(backend: &dyn Backend) -> crate::missionitems::Speeds {
+    let flown = |names: &[&str]| crate::battery::parameter_si(backend, names).filter(|s| *s > 0.0);
+    let setting = |name: &str, default: f64| {
+        crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")))
+            .unwrap_or(default)
+    };
+    crate::missionitems::Speeds {
+        hover: flown(&["MPC_XY_CRUISE", "WP_SPD", "WPNAV_SPEED", "Q_WP_SPEED"])
+            .unwrap_or_else(|| setting("offlineEditingHoverSpeed", 5.0)),
+        cruise: flown(&[
+            "FW_AIRSPD_TRIM",
+            "AIRSPEED_CRUISE",
+            "TRIM_ARSPD_CM",
+            "WP_SPEED",
+        ])
+        .unwrap_or_else(|| setting("offlineEditingCruiseSpeed", 15.0)),
+        ascent: flown(&["MPC_Z_V_AUTO_UP", "WP_SPD_UP", "WPNAV_SPEED_UP"])
+            .unwrap_or_else(|| setting("offlineEditingAscentSpeed", 3.0)),
+        descent: flown(&["MPC_Z_V_AUTO_DN", "WP_SPD_DN", "WPNAV_SPEED_DN"])
+            .unwrap_or_else(|| setting("offlineEditingDescentSpeed", 1.0)),
+    }
+}
+
 pub fn summary_fields(backend: &dyn Backend) -> Option<Value> {
     if !enabled() {
         return None;
     }
     let document = held().document.clone().unwrap_or_else(empty_document);
-    let speed = |name: &str| {
-        crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")))
-    };
-    let speeds = crate::missionitems::Speeds {
-        hover: speed("offlineEditingHoverSpeed").unwrap_or(5.0),
-        cruise: speed("offlineEditingCruiseSpeed").unwrap_or(15.0),
-        ascent: speed("offlineEditingAscentSpeed").unwrap_or(3.0),
-        descent: speed("offlineEditingDescentSpeed").unwrap_or(1.0),
-    };
-    let status = crate::missionitems::flight_status(&document, &speeds);
+    let status = crate::missionitems::flight_status(&document, &planning_speeds(backend));
     Some(json!({
         "kind": "object",
         "containsItems": !document.items.is_empty(),
@@ -5715,26 +5792,20 @@ fn vehicle_has_home(backend: &dyn Backend) -> bool {
 
 pub fn mission_speed_section(backend: &dyn Backend) -> Value {
     let document = held().document.clone().unwrap_or_else(empty_document);
-    let speed = |name: &str, default: f64| {
-        crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")))
-            .unwrap_or(default)
-    };
+    let speeds = planning_speeds(backend);
     speed_section(
         &document,
         0,
         &document.settings_sections,
         true,
-        speed("offlineEditingHoverSpeed", 5.0),
-        speed("offlineEditingCruiseSpeed", 15.0),
+        speeds.hover,
+        speeds.cruise,
     )
 }
 
 pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let document = held().document.clone().unwrap_or_else(empty_document);
-    let speed = |name: &str, default: f64| {
-        crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")))
-            .unwrap_or(default)
-    };
+    let speeds = planning_speeds(backend);
     let (vertical, horizontal) = (
         crate::read::Unit::vertical(backend),
         crate::read::Unit::horizontal(backend),
@@ -5742,8 +5813,8 @@ pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let facts = document_facts(
         &document,
         index,
-        speed("offlineEditingHoverSpeed", 5.0),
-        speed("offlineEditingCruiseSpeed", 15.0),
+        speeds.hover,
+        speeds.cruise,
         (&vertical, &horizontal),
     );
     let launch = (index == 0 && !vehicle_has_home(backend))
@@ -6185,16 +6256,8 @@ pub fn survey_stats_inputs(backend: &dyn Backend, index: usize) -> Option<(Value
         .get("complexItemType")
         .and_then(Value::as_str)
         .unwrap_or("");
-    let setting = |name: &str, default: f64| {
-        crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")))
-            .unwrap_or(default)
-    };
-    let speed = speed_in_force(
-        &document,
-        at,
-        setting("offlineEditingHoverSpeed", 5.0),
-        setting("offlineEditingCruiseSpeed", 15.0),
-    );
+    let speeds = planning_speeds(backend);
+    let speed = speed_in_force(&document, at, speeds.hover, speeds.cruise);
     let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
     let per_second = |metres: f64| if speed == 0.0 { 0.0 } else { metres / speed };
     let horizontal = crate::read::Unit::horizontal(backend);

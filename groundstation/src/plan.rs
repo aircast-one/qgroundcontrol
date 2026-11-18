@@ -19,6 +19,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.visualItems.count",
     "vehicles.activeVehicleAvailable",
     "vehicle.armed",
+    "vehicle.parameterManager.parametersReady",
     crate::coreplan::CHANGED,
     "vehicle.flightMode",
     "plan.geoFenceController.supported",

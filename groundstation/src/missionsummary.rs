@@ -22,6 +22,7 @@ pub const DEPS: &[&str] = &[
     "settings.appSettings.offlineEditingHoverSpeed",
     "settings.appSettings.offlineEditingCruiseSpeed",
     "settings.appSettings.offlineEditingAscentSpeed",
+    "vehicle.parameterManager.parametersReady",
     "settings.unitsSettings.verticalDistanceUnits",
     crate::coreplan::CHANGED,
 ];

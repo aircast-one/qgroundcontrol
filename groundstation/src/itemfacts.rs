@@ -15,6 +15,7 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.verticalDistanceUnits",
     "vehicle.homePosition",
     crate::coreplan::CHANGED,
+    "vehicle.parameterManager.parametersReady",
 ];
 
 const ITEM_ROOT: &str = "plan.missionController.visualItems";
