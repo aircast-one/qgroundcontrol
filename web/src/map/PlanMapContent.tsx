@@ -7,7 +7,7 @@ import { useValue } from '@/kotlin/State';
 import { AlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, OutlinedTextField, Slider, Surface, Switch, Text, TextButton, stepsFor } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
-import { md, withAlpha } from '@/theme/Colors';
+import { aircast, md, withAlpha } from '@/theme/Colors';
 import { AircastSheet } from './AircastSheet';
 import { LATITUDE_LIMIT, LONGITUDE_LIMIT, RALLY_ALTITUDE_DECIMALS, SURFACE_DISTANCE_DECIMALS, altitudeFieldText, metresPerUnit, parsedAltitude, parsedCoordinate as parsedCoordinateWithin, parsedSurfaceDistance } from './AltitudeEntry';
 import { BreachReturnDialog } from './BreachReturnDialog';
@@ -21,6 +21,7 @@ import {
   type FenceRow,
   type FirmwareFence,
   GEOFENCE_NOT_SUPPORTED,
+  LAUNCH_BREACHES_FENCE,
   NO_GEOFENCE,
   NO_RALLY_POINTS,
   RALLY_NOT_SUPPORTED,
@@ -35,6 +36,7 @@ import {
   fenceSelectionAfterRemove,
   firmwareFence,
   grownRadius,
+  launchBreachesFence,
   rallyAfterRemove,
   rallyPoints,
   rallyRows,
@@ -602,6 +604,8 @@ export const PlanMapContent = ({
     return panelOpen.value ? null : addingAfterText(chosen, allItems.value);
   })();
   const listedFences = support.fenceRefused ? [] : fenceRows(fences.value, circles.value);
+  const launchItem = allItems.value.find((it) => it.index === HOME_ITEM && it.placed) ?? null;
+  const launchPoint = launchItem === null ? null : TrackPoint(launchItem.latitude, launchItem.longitude);
 
   const bar: PlanBar = {
     upload: planUpload,
@@ -1124,6 +1128,11 @@ export const PlanMapContent = ({
               ) : (
                 <>
                   {support.fenceRefused ? <PaletteNote text={GEOFENCE_NOT_SUPPORTED} /> : fences.value.length === 0 && circles.value.length === 0 ? <PaletteNote text={NO_GEOFENCE} /> : null}
+                  {launchBreachesFence(launchPoint, fences.value, circles.value) ? (
+                    <Text typography="bodySmall" color={aircast('warning')} className="block w-full p-1">
+                      {LAUNCH_BREACHES_FENCE}
+                    </Text>
+                  ) : null}
                   {listedFences.map((row, at) => {
                     const heading = fenceHeading(row, listedFences[at - 1] ?? null);
                     const inclusion = row.inclusion;

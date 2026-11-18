@@ -5,6 +5,7 @@ import { coordinateJson, coordinateJsonAt, invokeOk, setOk, settingJson } from '
 import { type EditableShape, editableShape } from './EditableShape';
 import { MapBridge } from './MapBridge';
 import type { MapHit } from './MissionEditing';
+import { metresBetween } from './TerrainProfile';
 import { type TrackPoint, isPlottable } from './VehicleMap';
 import { TAP } from '@/kotlin/Platform';
 
@@ -91,6 +92,24 @@ export const rallyAfterRemove = (removed: number, countBefore: number): MapHit |
 };
 
 export const NO_GEOFENCE = 'No geofence – keep the vehicle inside a boundary, or out of an area.';
+export const LAUNCH_BREACHES_FENCE = 'The launch point is outside the geofence, so the vehicle breaches it as it takes off.';
+
+const insideRing = (at: TrackPoint, ring: readonly TrackPoint[]): boolean =>
+  ring.reduce((inside, a, i) => {
+    const b = ring[(i + ring.length - 1) % ring.length] ?? a;
+    const crosses = a.latitude > at.latitude !== b.latitude > at.latitude && at.longitude < ((b.longitude - a.longitude) * (at.latitude - a.latitude)) / (b.latitude - a.latitude) + a.longitude;
+    return crosses ? !inside : inside;
+  }, false);
+
+export const launchBreachesFence = (launch: TrackPoint | null, polygons: readonly FencePolygon[], circles: readonly FenceCircle[]): boolean => {
+  if (launch === null || !isPlottable(launch.latitude, launch.longitude)) return false;
+  const zones = [
+    ...polygons.filter((it) => it.vertices.length >= 3).map((it) => [it.inclusion, insideRing(launch, it.vertices)] as const),
+    ...circles.map((it) => [it.inclusion, metresBetween(launch, it.centre) <= it.radiusMetres] as const),
+  ];
+  const keepIns = zones.filter(([inclusion]) => inclusion);
+  return (keepIns.length > 0 && !keepIns.some(([, inside]) => inside)) || zones.some(([inclusion, inside]) => !inclusion && inside);
+};
 export const NO_RALLY_POINTS = `No rally points – alternate landing points for Return to Launch. ${TAP} the map to place one.`;
 export const GEOFENCE_NOT_SUPPORTED = 'Not supported – this vehicle does not support geofence.';
 export const RALLY_NOT_SUPPORTED = 'Not supported – this vehicle does not support rally points.';

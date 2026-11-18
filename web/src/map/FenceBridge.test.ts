@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { fenceCircles, fencePolygons, rallyPoints } from './FenceBridge';
+import { FenceCircle, FencePolygon, fenceCircles, fencePolygons, launchBreachesFence, rallyPoints } from './FenceBridge';
 
 const vertex = (latitude: number, longitude: number) => `{"latitude":${latitude},"longitude":${longitude}}`;
 
@@ -67,5 +67,30 @@ describe('FenceBridgeTest', () => {
     expect((await fencePolygons(null)).length).toBe(0);
     expect(fenceCircles(null).length).toBe(0);
     expect(rallyPoints(null).length).toBe(0);
+  });
+});
+
+describe('LaunchBreachesFenceTest', () => {
+  const square = (inclusion: boolean) =>
+    FencePolygon({ index: 0, inclusion, vertices: [{ latitude: 41.0, longitude: 44.0 }, { latitude: 41.0, longitude: 44.01 }, { latitude: 41.01, longitude: 44.01 }, { latitude: 41.01, longitude: 44.0 }] });
+  const inside = { latitude: 41.005, longitude: 44.005 };
+  const outside = { latitude: 41.02, longitude: 44.005 };
+
+  it('a launch outside every keep-in zone breaches the fence on takeoff', () => {
+    expect(launchBreachesFence(outside, [square(true)], [])).toBe(true);
+    expect(launchBreachesFence(inside, [square(true)], [])).toBe(false);
+  });
+
+  it('a launch inside a keep-out zone breaches it, and no fence means nothing to breach', () => {
+    expect(launchBreachesFence(inside, [square(false)], [])).toBe(true);
+    expect(launchBreachesFence(outside, [square(false)], [])).toBe(false);
+    expect(launchBreachesFence(outside, [], [])).toBe(false);
+    expect(launchBreachesFence(null, [square(true)], [])).toBe(false);
+  });
+
+  it('a keep-in circle around the launch keeps it inside', () => {
+    const circle = FenceCircle({ index: 0, inclusion: true, centre: inside, radius: 200, radiusMetres: 200 });
+    expect(launchBreachesFence(inside, [], [circle])).toBe(false);
+    expect(launchBreachesFence(outside, [], [circle])).toBe(true);
   });
 });
