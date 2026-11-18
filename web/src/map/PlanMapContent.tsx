@@ -97,7 +97,7 @@ import {
   writeDragStep,
   writeMove,
 } from './PlanItems';
-import { PlanRail, RAIL_WIDTH, RailButton, RailDivider } from './PlanRail';
+import { DOCKED_RAIL_HEIGHT, PlanRail, RAIL_WIDTH, RailButton, RailDivider } from './PlanRail';
 import {
   EmptyMissionStrip,
   type PlanStat,
@@ -555,10 +555,12 @@ export const PlanMapContent = ({
   const headerHeight = headerPx;
   const panelHeight = controlsHeightPx;
   const listedInPanel = sidePanel && layer.value === PlanLayer.Mission && worthListing(allItems.value);
+  const docked = !sidePanel;
+  const dockedRailPx = docked ? DOCKED_RAIL_HEIGHT + 8 : 0;
   const railTop = headerHeight + 8;
-  const railBottom = sidePanel ? 8 : panelHeight + 8;
+  const railBottom = sidePanel ? 8 : panelHeight + dockedRailPx + 8;
   const railMaxHeight = `calc(100% - ${railTop + railBottom}px)`;
-  const summaryStart = railStart + RAIL_WIDTH + 8;
+  const summaryStart = docked ? mapStart + 8 : railStart + RAIL_WIDTH + 8;
   const message = busy.value ?? (ready ? null : WAITING_FOR_QGC);
   const chosenItem = chosen?.kind === 'Waypoint' ? (allItems.value.find((it) => it.index === chosen.index) ?? null) : null;
   const rows = useMemo(() => itemRows(allItems.value, surveyStatsMap.value), [allItems.value, surveyStatsMap.value]);
@@ -714,9 +716,9 @@ export const PlanMapContent = ({
           zoom.value = level;
           onCentre?.(at.latitude, at.longitude, level);
         }}
-        bottomInsetPx={sidePanel ? 0 : controlsHeightPx}
+        bottomInsetPx={sidePanel ? 0 : controlsHeightPx + dockedRailPx}
         topInsetPx={headerPx}
-        leftInsetPx={sidePanelPx + railPx}
+        leftInsetPx={docked ? 0 : sidePanelPx + railPx}
         rightInsetPx={railPx}
         fitRequest={fitRequest.value}
         fitOnly={fitOnly.value}
@@ -778,7 +780,7 @@ export const PlanMapContent = ({
         {centre.value === null ? null : <ScaleBarView latitude={centre.value.latitude} zoom={zoom.value} className="pl-1 pt-2" />}
       </div>
 
-      <PlanRail className="absolute" style={{ left: railStart, top: railTop, maxHeight: railMaxHeight }}>
+      <PlanRail className="absolute" docked={docked} style={docked ? { left: 8, bottom: panelHeight + 8, maxWidth: 'calc(100% - 16px)' } : { left: railStart, top: railTop, maxHeight: railMaxHeight }}>
         {PlanLayerEntries.map((option) => (
           <RailButton
             key={option.name}
@@ -793,7 +795,7 @@ export const PlanMapContent = ({
             }}
           />
         ))}
-        <RailDivider />
+        <RailDivider docked={docked} />
         {layer.value === PlanLayer.Mission ? (
           <>
             <RailButton icon="plan_add" label="Waypoint" enabled={placeAt() !== null} onClick={() => addMissionItem(KIND_WAYPOINT, 'Adding a waypoint', placeAt(), insertAfter(selected.value, allItems.value))} />

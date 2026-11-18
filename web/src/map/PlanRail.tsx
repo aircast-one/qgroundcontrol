@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { HorizontalDivider, Text, TooltipBox } from '@/m3';
+import { HorizontalDivider, Text, TooltipBox, VerticalDivider } from '@/m3';
 import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { md, withAlpha } from '@/theme/Colors';
@@ -7,16 +7,23 @@ import { md, withAlpha } from '@/theme/Colors';
 export const RAIL_WIDTH = 52;
 const RAIL_ITEM = 44;
 const RAIL_LABELLED_ITEM = 52;
+export const DOCKED_RAIL_HEIGHT = RAIL_LABELLED_ITEM + 8;
 const RAIL_LABEL_SIZE = 10;
 const RAIL_ICON = 22;
 const RAIL_ALPHA = 0.94;
 const DISABLED_ALPHA = 0.38;
 
-export const PlanRail = ({ className, style, children }: { className?: string; style?: CSSProperties; children?: ReactNode }) => (
-  <div className={`flex flex-col overflow-hidden rounded-[20px] ${className ?? ''}`} style={{ background: withAlpha(md('surfaceContainer'), RAIL_ALPHA), ...style }}>
-    <div className="flex min-h-0 flex-col items-center overflow-y-auto py-0.5" style={{ width: RAIL_WIDTH }}>
-      {children}
-    </div>
+export const PlanRail = ({ className, style, children, docked = false }: { className?: string; style?: CSSProperties; children?: ReactNode; docked?: boolean }) => (
+  <div className={`flex overflow-hidden rounded-[20px] ${docked ? 'flex-row' : 'flex-col'} ${className ?? ''}`} style={{ background: withAlpha(md('surfaceContainer'), RAIL_ALPHA), ...style }}>
+    {docked ? (
+      <div role="toolbar" className="flex min-w-0 flex-row items-center gap-1 overflow-x-auto px-1.5" style={{ height: DOCKED_RAIL_HEIGHT }}>
+        {children}
+      </div>
+    ) : (
+      <div className="flex min-h-0 flex-col items-center overflow-y-auto py-0.5" style={{ width: RAIL_WIDTH }}>
+        {children}
+      </div>
+    )}
   </div>
 );
 
@@ -61,8 +68,13 @@ export const RailButton = ({
   </TooltipBox>
 );
 
-export const RailDivider = () => (
-  <div className="w-7 shrink-0 py-0.5">
-    <HorizontalDivider />
-  </div>
-);
+export const RailDivider = ({ docked = false }: { docked?: boolean }) =>
+  docked ? (
+    <div className="flex h-7 shrink-0 px-0.5">
+      <VerticalDivider />
+    </div>
+  ) : (
+    <div className="w-7 shrink-0 py-0.5">
+      <HorizontalDivider />
+    </div>
+  );

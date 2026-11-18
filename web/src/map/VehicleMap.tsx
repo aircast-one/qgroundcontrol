@@ -415,7 +415,9 @@ export const VehicleMap = ({
       }
     });
     loaded.on('movestart', (event) => {
-      if (event.originalEvent !== undefined) panning.current = true;
+      if (event.originalEvent === undefined) return;
+      panning.current = true;
+      focused.current = null;
     });
     loaded.on('dragstart', () => latestUserPan.current());
     const attachFlyClicks = (): (() => void) => {
@@ -710,11 +712,13 @@ export const VehicleMap = ({
   }, [map, bottomInsetPx, leftInsetPx, logoEndInsetPx, pip]);
 
   const centred = useRef(0);
+  const focused = useRef<TrackPoint | null>(null);
   useEffect(() => {
     const map = style?.map;
     if (centreRequest === 0 || centreRequest === centred.current || map === undefined) return;
     centred.current = centreRequest;
     const at = centreOn !== null && isPlottable(centreOn.latitude, centreOn.longitude) ? centreOn : null;
+    focused.current = at;
     if (at === null) return;
     const target: [number, number] = [at.longitude, at.latitude];
     if (centreZoom !== null) {
@@ -728,6 +732,23 @@ export const VehicleMap = ({
       map.easeTo({ center: target, zoom: DEFAULT_ZOOM });
     }
   }, [centreRequest, style]);
+
+  useEffect(() => {
+    const map = style?.map;
+    const view = container.current;
+    if (map === undefined || view === null) return undefined;
+    const reveal = () => {
+      const at = focused.current;
+      if (at === null || map.getZoom() <= 1.0) return;
+      const centre = revealingCentre(map.project([at.longitude, at.latitude]), view.clientWidth, view.clientHeight, { top: topInsetPx, bottom: bottomInsetPx, left: leftInsetPx });
+      if (centre !== null) map.easeTo({ center: map.unproject(centre) });
+    };
+    if (map.isMoving()) map.once('moveend', reveal);
+    else reveal();
+    return () => {
+      map.off('moveend', reveal);
+    };
+  }, [bottomInsetPx]);
 
   useEffect(() => {
     if (map !== null) setAllGesturesEnabled(map, gestures);
@@ -938,6 +959,9 @@ const RECENTER_ANIMATION_MS = 1000;
 const CENTRE_INSET_FRACTION = 0.15;
 
 export const clearAreaLift = (topInset: number, bottomInset: number): number => (topInset - bottomInset) / 2;
+
+export const revealingCentre = (point: { x: number; y: number }, width: number, height: number, inset: { top: number; bottom: number; left: number }): [number, number] | null =>
+  outsideCentreInset(point.x, point.y, width, height, inset.top, inset.bottom) ? [point.x - inset.left / 2, point.y - clearAreaLift(inset.top, inset.bottom)] : null;
 
 export const outsideCentreInset = (x: number, y: number, width: number, height: number, topInset: number, bottomInset: number): boolean => {
   const side = width * CENTRE_INSET_FRACTION;

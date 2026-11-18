@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Feature, Point } from 'geojson';
 import { lastSeenText } from './Silence';
 import { vehicleChoices } from './VehiclePicker';
-import { ACTIVE_PROPERTY, HEADING_PROPERTY, STALE_PROPERTY, VEHICLE_LABEL_PROPERTY, clearAreaLift, fleetFeatures, outsideCentreInset, vehicleFeature, vehicleFeatures } from './VehicleMap';
+import { ACTIVE_PROPERTY, HEADING_PROPERTY, STALE_PROPERTY, VEHICLE_LABEL_PROPERTY, clearAreaLift, fleetFeatures, outsideCentreInset, revealingCentre, vehicleFeature, vehicleFeatures } from './VehicleMap';
 
 const property = (feature: Feature | undefined, name: string): unknown => feature?.properties?.[name];
 
@@ -128,5 +128,11 @@ describe('CentreInsetTest', () => {
   it('theVehicleSitsInTheMiddleOfTheClearArea', () => {
     expect(clearAreaLift(300, 100)).toBe(100);
     expect(clearAreaLift(0, 0)).toBe(0);
+  });
+
+  it('a focused item the plan sheet grows over is brought back to the middle of the map above it', () => {
+    const phone = { top: 120, bottom: 450, left: 0 };
+    expect(revealingCentre({ x: 206, y: 500 }, 412, 860, phone), 'under the opened sheet, so the map moves until it sits midway between the header and the sheet').toEqual([206, 665]);
+    expect(revealingCentre({ x: 206, y: 260 }, 412, 860, phone), 'already in the clear area, the map stays put').toBeNull();
   });
 });

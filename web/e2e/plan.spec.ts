@@ -242,3 +242,22 @@ test('a PX4 survey plan converts for ArduCopter without asking to remove the cam
   await mismatch.getByRole('button', { name: 'Convert to this vehicle' }).click();
   await expect(app.getByText('Plan converted to this vehicle. Check it, then upload.'), 'the survey set a PX4 camera mode at the mission start, which no list row lets an operator remove').toBeVisible();
 });
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 412, height: 860 } });
+
+  test('the plan tools sit above the open sheet, where a tap reaches them', async ({ vehicle }) => {
+    await openPlanAtVehicle(vehicle);
+    await vehicle.getByRole('button', { name: 'Waypoint', exact: true }).click();
+    await expect(vehicle.getByText('Waypoint 2', { exact: true }), 'the open waypoint editor fills the sheet').toBeVisible();
+    const uncovered = async (name: string) => {
+      const tool = vehicle.getByRole('button', { name, exact: true });
+      await expect(tool).toBeInViewport({ ratio: 1 });
+      return tool.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        return button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+      });
+    };
+    await Promise.all(['Pattern', 'Return', 'Drop'].map(async (name) => expect(await uncovered(name), `${name} was scrolled away inside the rail under the sheet`).toBe(true)));
+  });
+});
