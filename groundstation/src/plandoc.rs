@@ -1319,11 +1319,25 @@ fn unflown_items(doc: &Document, firmware_type: i64, vehicle_type: i64) -> Vec<S
     settings.chain(items).collect()
 }
 
+fn without_unflown_camera_mode(doc: &Document, firmware_type: i64, vehicle_type: i64) -> Document {
+    let flies_camera_mode =
+        crate::commandtree::offered(firmware(firmware_type), vehicle_class(vehicle_type))
+            .iter()
+            .any(|command| command.id == CMD_SET_CAMERA_MODE);
+    match camera_state(&doc.settings_sections).mode.is_some() && !flies_camera_mode {
+        true => set_camera(doc, 0, "specifyCameraMode", &json!(false))
+            .map(|unmoded| kept_jumps(doc, unmoded, &Some))
+            .unwrap_or_else(|| doc.clone()),
+        false => doc.clone(),
+    }
+}
+
 pub fn for_vehicle(
     doc: &Document,
     firmware_type: i64,
     vehicle_type: i64,
 ) -> Result<Document, String> {
+    let doc = &without_unflown_camera_mode(doc, firmware_type, vehicle_type);
     let unflown = unflown_items(doc, firmware_type, vehicle_type);
     if !unflown.is_empty() {
         return Err(format!(
@@ -3401,11 +3415,14 @@ mod tests {
             vehicle_type: 2,
             ..set_camera(&section(), 0, "specifyCameraMode", &json!(true)).unwrap()
         };
-        assert!(
-            for_vehicle(&camera_mode, 3, 2)
-                .unwrap_err()
-                .contains("item 1 ("),
-            "ArduPilot takes no camera mode in a mission, and the mission start is item 1"
+        let converted = for_vehicle(&camera_mode, 3, 2).unwrap();
+        assert_eq!(
+            (
+                converted.firmware_type,
+                camera_state(&converted.settings_sections).mode
+            ),
+            (3, None),
+            "ArduPilot takes no camera mode in a mission; the start-of-mission camera mode a survey set is the plan's own setting, folded into Launch where no one can reach it, so converting drops it instead of asking for it to be removed"
         );
     }
 

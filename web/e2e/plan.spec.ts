@@ -216,3 +216,29 @@ test('a plan made for another firmware converts to the connected vehicle', async
   await expect(app.getByText('Plan converted to this vehicle. Check it, then upload.')).toBeVisible();
   await expect(app.getByText(/For PX4/)).toBeVisible({ timeout: 15_000 });
 });
+
+test('a PX4 survey plan converts for ArduCopter without asking to remove the camera mode it cannot reach', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await app.getByRole('button', { name: 'Center', exact: true }).click();
+  await app.getByRole('menuitem', { name: 'Coordinates…' }).click();
+  const centre = app.getByRole('dialog').filter({ hasText: 'Center map on coordinate' });
+  await centre.getByRole('textbox', { name: 'Latitude' }).fill('47.3977');
+  await centre.getByRole('textbox', { name: 'Longitude' }).fill('8.5456');
+  await centre.getByRole('button', { name: 'Center' }).click();
+  await expect(app.locator('span.text-label-small').getByText(/^\d+ (m|km)$/)).toHaveText(/^\d+ m$/, { timeout: 30_000 });
+  await expect(app.getByText(/For PX4/)).toBeVisible();
+  await app.getByRole('button', { name: 'Pattern', exact: true }).click();
+  await app.getByRole('dialog').filter({ hasText: 'Which pattern?' }).getByRole('button', { name: 'Survey', exact: true }).click();
+  await expect(app.getByText('AREA', { exact: true })).toBeVisible();
+  await app.addLocatorHandler(app.getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
+  await app.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true }).click();
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openMenu(app, 'Plan');
+  await app.getByRole('button', { name: 'Upload', exact: true }).click();
+  const far = app.getByRole('dialog').filter({ hasText: 'from the aircraft' });
+  const mismatch = app.getByRole('dialog').filter({ hasText: 'different firmware' });
+  await expect(far.or(mismatch)).toBeVisible();
+  if (await far.isVisible()) await far.getByRole('button', { name: 'Upload anyway' }).click();
+  await mismatch.getByRole('button', { name: 'Convert to this vehicle' }).click();
+  await expect(app.getByText('Plan converted to this vehicle. Check it, then upload.'), 'the survey set a PX4 camera mode at the mission start, which no list row lets an operator remove').toBeVisible();
+});
