@@ -745,7 +745,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
             <DeckReadiness readiness={readiness} />
           </LayoutWidget>
         ) : null}
-        {pending === null ? (
+        {!deciding ? (
           <div ref={room.ref}>
             <LayoutWidget widgetKey="flightActions" movable={false} hideable={false} live={armed}>
               <div className="flex flex-col gap-3">

@@ -12,6 +12,18 @@ test('on a phone the Fly screen runs in portrait and still takes off', async ({ 
   await expect(page.getByRole('button', { name: /^(Takeoff|Hold)\b.*Change flight mode$/ })).toBeVisible({ timeout: 60_000 });
 });
 
+test('on a phone the take off panel replaces the deck instead of pushing it up over the map', async ({ page }) => {
+  await openApp(page);
+  await connectMock(page, ['Enable camera']);
+  await expect(page.getByRole('button', { name: 'Start recording' })).toBeVisible();
+  await page.getByRole('button', { name: /^(Slide to take off|Take off)$/ }).click();
+  await expect(page.getByRole('button', { name: /^Slide to take off( anyway)? · / })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(Slide to take off|Take off)$/ }), 'no second Take off stands above the panel').toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Start recording' }), 'the camera buttons leave with the deck rather than landing on the map buttons').toHaveCount(0);
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('button', { name: /^(Slide to take off|Take off)$/ })).toBeVisible();
+});
+
 const gimbalPitch = (page: Page) =>
   page.evaluate(
     async (module) => (((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal') as Promise<{ gimbals?: { pitch: number | null }[] } | null>).then((it) => it?.gimbals?.[0]?.pitch ?? null),
