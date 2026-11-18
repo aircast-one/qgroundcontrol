@@ -37,8 +37,8 @@ const ItemRowView = ({
   <div className="flex w-full items-center" style={{ background: selected ? md('secondaryContainer') : md('surfaceContainerLow'), color: selected ? md('onSecondaryContainer') : md('onSurface') }}>
     <Surface onClick={onClick} color="transparent" contentColor="inherit" className="flex min-h-[72px] min-w-0 flex-1 items-center gap-4 pb-2 pl-4 pr-3 pt-2">
       <span
-        className="flex shrink-0 items-center justify-center rounded-full"
-        style={{ width: ITEM_MARKER_SIZE, height: ITEM_MARKER_SIZE, ...(row.readyForSave ? { background: row.colour } : { border: `1px solid ${aircast('warning')}` }) }}
+        className="flex shrink-0 items-center justify-center rounded-full px-2"
+        style={{ minWidth: ITEM_MARKER_SIZE, height: ITEM_MARKER_SIZE, ...(row.readyForSave ? { background: row.colour } : { border: `1px solid ${aircast('warning')}` }) }}
       >
         <Text typography="labelLarge" color={row.readyForSave ? md('surface') : aircast('warning')} maxLines={1}>
           {row.number}
