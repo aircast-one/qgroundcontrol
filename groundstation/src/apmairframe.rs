@@ -269,11 +269,11 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
                 return json!({ "ok": false, "reason": "Pick one of the listed frame classes." });
             };
             let current_type = raw(&read.type_fact);
-            let unchanged =
-                raw(&read.class_fact) == Some(class.value) && type_valid(class, current_type);
+            let type_kept = type_valid(class, current_type);
+            let unchanged = raw(&read.class_fact) == Some(class.value) && type_kept;
             match (
                 unchanged,
-                read.copter && present(&read.type_fact),
+                read.copter && present(&read.type_fact) && !type_kept,
                 class.default_type.filter(|t| *t != ANY_TYPE),
             ) {
                 (true, _, _) => json!({ "ok": true }),
@@ -442,6 +442,69 @@ mod tests {
         assert_eq!(
             help_text(Some(1), "Rover", None),
             "Currently set to frame class 'Rover'. To change this configuration, select the desired frame class below and then reboot the vehicle."
+        );
+    }
+
+    struct Copter {
+        frame_type: i64,
+        writes: std::cell::RefCell<Vec<(String, i64)>>,
+    }
+
+    impl Backend for Copter {
+        fn get(&self, path: &str) -> String {
+            let classes = json!({ "kind": "fact", "name": FRAME_CLASS, "rawValue": CLASS_QUAD, "enumStrings": ["Undefined", "Quad", "Hexa", "Y6"], "enumValues": [0, CLASS_QUAD, CLASS_HEX, CLASS_Y6] });
+            let types = json!({ "kind": "fact", "name": FRAME_TYPE, "rawValue": self.frame_type, "enumStrings": ["Plus", "X", "H", "Y6B"], "enumValues": [TYPE_PLUS, TYPE_X, TYPE_H, TYPE_Y6B] });
+            match path {
+                p if p == param_path(FRAME_CLASS) => classes.to_string(),
+                p if p == param_path(FRAME_TYPE) => types.to_string(),
+                _ => "{}".to_string(),
+            }
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            json!({ "apmFirmware": true, "multiRotor": true, "sub": false, "rover": false })
+                .to_string()
+        }
+        fn set(&self, path: &str, value: &str) -> String {
+            let name = [FRAME_CLASS, FRAME_TYPE]
+                .into_iter()
+                .find(|n| path == format!("{}.rawValue", param_path(n)))
+                .unwrap_or_default();
+            let raw = serde_json::from_str::<Value>(value).unwrap()["value"]
+                .as_i64()
+                .unwrap();
+            self.writes.borrow_mut().push((name.to_string(), raw));
+            json!({ "ok": true }).to_string()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_new_frame_class_keeps_the_frame_type_when_that_class_has_it() {
+        let plus = Copter {
+            frame_type: TYPE_PLUS,
+            writes: Default::default(),
+        };
+        run(&plus, PICK_CLASS, &format!("[{CLASS_HEX}]"));
+        assert_eq!(
+            plus.writes.into_inner(),
+            vec![(FRAME_CLASS.to_string(), CLASS_HEX)],
+            "a Plus quad picked as a hexa stays Plus; switching it to X behind the pilot's back was a silent change"
+        );
+        let h = Copter {
+            frame_type: TYPE_H,
+            writes: Default::default(),
+        };
+        run(&h, PICK_CLASS, &format!("[{CLASS_HEX}]"));
+        assert_eq!(
+            h.writes.into_inner(),
+            vec![
+                (FRAME_TYPE.to_string(), TYPE_X),
+                (FRAME_CLASS.to_string(), CLASS_HEX)
+            ],
+            "a hexa has no H layout, so the type falls back to the class default"
         );
     }
 }

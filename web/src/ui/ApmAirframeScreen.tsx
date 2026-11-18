@@ -3,8 +3,9 @@ import { type Json, isNull, jsonObjects, optBoolean, optInt, optJSONArray, optTe
 import { Qgc } from '@/bridge/Qgc';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { delay } from '@/kotlin/Std';
-import { FilterChip, Surface, Text } from '@/m3';
+import { FilledTonalButton, FilterChip, Surface, Text } from '@/m3';
 import { md } from '@/theme/Colors';
+import { REBOOT_VEHICLE } from '@/ui/CalibrationView';
 import { airframeImageAsset } from '@/ui/Px4AirframeScreen';
 
 export const APM_AIRFRAME_SCREEN = 'apmAirframe';
@@ -12,6 +13,7 @@ export const APM_AIRFRAME_VIEW = 'view.apmAirframe';
 export const APM_AIRFRAME_PICK_CLASS = 'apmAirframe.pickClass';
 export const APM_AIRFRAME_PICK_TYPE = 'apmAirframe.pickType';
 const APM_AIRFRAME_POLL_MS = 1000;
+export const FRAME_REBOOT_TEXT = 'The new frame takes effect after the vehicle reboots.';
 
 export type FrameTypeChoice = { name: string; value: number };
 
@@ -40,6 +42,7 @@ export const ApmAirframeScreen = ({ className }: { className?: string }) => {
   const [revision, setRevision] = useState(0);
   const [read, setRead] = useState<ApmAirframe | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [rebootDue, setRebootDue] = useState(false);
   useLaunchedEffect([revision], async (scope) => {
     const next = apmAirframe(await Qgc.get(APM_AIRFRAME_VIEW));
     if (!scope.isActive()) return;
@@ -49,8 +52,16 @@ export const ApmAirframeScreen = ({ className }: { className?: string }) => {
   });
   const act = (path: string, value: number) =>
     void (async () => {
-      setRefusal(await Qgc.refusalOf(path, value));
+      const refused = await Qgc.refusalOf(path, value);
+      setRefusal(refused);
+      if (refused === null) setRebootDue(true);
       setRead(apmAirframe(await Qgc.get(APM_AIRFRAME_VIEW)));
+    })();
+  const reboot = () =>
+    void (async () => {
+      const refused = await Qgc.refusalOf(REBOOT_VEHICLE);
+      setRefusal(refused);
+      if (refused === null) setRebootDue(false);
     })();
   const state = read;
   if (state === null) {
@@ -64,6 +75,14 @@ export const ApmAirframeScreen = ({ className }: { className?: string }) => {
           {state.help}
         </Text>
       </Surface>
+      {rebootDue ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Text typography="bodyMedium" className="min-w-0 flex-1">
+            {FRAME_REBOOT_TEXT}
+          </Text>
+          <FilledTonalButton onClick={reboot}>Reboot vehicle</FilledTonalButton>
+        </div>
+      ) : null}
       {refusal !== null ? <Text color={md('error')}>{refusal}</Text> : null}
       {chosen !== null ? <FrameTypeChips types={chosen.types} frameType={state.frameType} onPick={(it) => act(APM_AIRFRAME_PICK_TYPE, it)} /> : null}
       <div className="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${FRAME_TILE_MIN}px, 1fr))` }}>
