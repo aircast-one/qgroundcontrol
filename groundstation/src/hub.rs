@@ -4417,7 +4417,7 @@ impl Vehicle {
                         command_int: false,
                         frame: 0,
                         params,
-                        show_error: false,
+                        show_error: true,
                         tag: INSPECTOR_RATE_TAG + u64::from(message),
                     },
                     now_ms,
@@ -16953,6 +16953,53 @@ mod tests {
             vehicle
                 .start_guided(&json!({ "action": "pidTuningMode", "mode": 7 }), 20_200)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn an_inspector_rate_the_vehicle_refuses_tells_the_pilot() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        (0..20u64).for_each(|n| {
+            if hub.vehicles[&1]
+                .commands
+                .pending(1, crate::mavcmd::CMD_SET_MESSAGE_INTERVAL)
+            {
+                let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+                    command: MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+                    result: MavResult::MAV_RESULT_ACCEPTED,
+                    ..Default::default()
+                });
+                hub.on_frame(origin(4), &autopilot, &ack, (9_000 + n) * 1000, 9_000 + n);
+            }
+        });
+        hub.vehicles
+            .get_mut(&1)
+            .unwrap()
+            .start_guided(
+                &json!({ "action": "messageInterval", "component": 1, "message": 30, "rate": 1 }),
+                10_000,
+            )
+            .unwrap();
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+            command: MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+            result: MavResult::MAV_RESULT_UNSUPPORTED,
+            ..Default::default()
+        });
+        hub.on_frame(origin(4), &autopilot, &refused, 10_100_000, 10_100);
+        assert!(
+            hub.vehicles[&1]
+                .pending_notices
+                .iter()
+                .any(|(_, text)| text.contains("not supported")),
+            "the rate menu closed and nothing changed, so the pilot never learned the vehicle refused it: {:?}",
+            hub.vehicles[&1].pending_notices
         );
     }
 
