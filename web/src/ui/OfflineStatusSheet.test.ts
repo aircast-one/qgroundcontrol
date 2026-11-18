@@ -7,11 +7,13 @@ describe('OfflineStatusTest', () => {
   it("the offline page reads the core's footnote and links", () => {
     const status = offlineStatus(
       parseJson(`{"title":"Connection Failed","footnote":"Couldn't connect to Drone.","busy":false,"noLinks":false,"editAddress":true,
-                   "links":[{"index":2,"text":"Drone","description":"TCP\\nrefused","retry":true,"failed":true,"connected":false}]}`),
+                   "signInUrl":"https://aircast.one/device?code=ABCD",
+                   "links":[{"index":2,"text":"Drone","description":"TCP\\nrefused","action":"edit","actionLabel":"Edit","failed":true,"connected":false}]}`),
     );
     expect(status?.title).toBe('Connection Failed');
     expect(status?.editAddress).toBe(true);
-    expect(status?.links).toEqual([{ index: 2, text: 'Drone', description: 'TCP\nrefused', retry: true, failed: true, connected: false }]);
+    expect(status?.signInUrl).toBe('https://aircast.one/device?code=ABCD');
+    expect(status?.links).toEqual([{ index: 2, text: 'Drone', description: 'TCP\nrefused', action: 'edit', actionLabel: 'Edit', failed: true, connected: false }]);
     expect(offlineStatus(parseJson('{}'))).toBeNull();
   });
 
@@ -27,7 +29,7 @@ describe('OfflineStatusTest', () => {
   it('with saved links the Fly screen offers to connect them, not only to add another', () => {
     const saved = offlineStatus(
       parseJson(`{"title":"Not Connected","footnote":"Looking for a vehicle on USB…","busy":true,"noLinks":false,
-                   "links":[{"index":0,"text":"Drone","description":"UDP 14550","retry":false,"failed":false,"connected":false}]}`),
+                   "links":[{"index":0,"text":"Drone","description":"UDP 14550","action":"connect","actionLabel":"Connect","failed":false,"connected":false}]}`),
     );
     const guide = offlineGuide(saved, 'Turn on the aircraft.');
     expect(guide.text).toBe('Turn on the aircraft.');
@@ -37,7 +39,7 @@ describe('OfflineStatusTest', () => {
   it('once a saved link is tried, the Fly screen says how that went instead of the general hint', () => {
     const failed = offlineStatus(
       parseJson(`{"title":"Connection Failed","footnote":"Couldn't connect to Drone. Check the drone is powered on and on the same network, then tap Retry.","noLinks":false,
-                   "links":[{"index":0,"text":"Drone","description":"timeout","retry":true,"failed":true,"connected":false}]}`),
+                   "links":[{"index":0,"text":"Drone","description":"timeout","action":"retry","actionLabel":"Retry","failed":true,"connected":false}]}`),
     );
     expect(offlineGuide(failed, 'Turn on the aircraft.').text).toBe("Couldn't connect to Drone. Check the drone is powered on and on the same network, then tap Retry.");
   });

@@ -5,6 +5,7 @@ import { Qgc } from './Qgc';
 const LINKS_COMMIT = 'links.commitLinkConfigurations';
 const DEVICE_PAIR = 'device.pair';
 const LINKS_BLUETOOTH_SCAN = 'links.bluetoothScan';
+const LINKS_SIGN_IN = 'links.signIn';
 const LINKS_CONNECT = 'links.createConnectedLink';
 const LINKS_REMOVE = 'links.removeConfiguration';
 const LINKS_CONFIGURATIONS = 'links.linkConfigurations';
@@ -69,6 +70,7 @@ export const LinkCommands = {
   commitConfigurations: (): Promise<boolean> => Qgc.invoke(LINKS_COMMIT),
   scanBluetooth: (scanning: boolean): Promise<boolean> => Qgc.invoke(LINKS_BLUETOOTH_SCAN, scanning),
   connect: (configuration: string): Promise<string | null> => Qgc.refusalOfSubject(LINK_SUBJECT, LINKS_CONNECT, configuration),
+  signIn: async (configuration: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_SIGN_IN, configuration)) === true,
   remove: (configuration: string, name: string): Promise<string | null> => Qgc.refusalOfSubject(LINK_SUBJECT, LINKS_REMOVE, configuration, name),
   disconnect: (index: number): Promise<string | null> => Qgc.refusalOfSubject(LINK_SUBJECT, `${LINKS_CONFIGURATIONS}.${index}.link.disconnect`),
   createAircastCloud: async (name: string, apiBase: string, deviceId: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_CLOUD, name, apiBase, deviceId)) === true,

@@ -176,6 +176,7 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "errorRemedy": match (last_error.is_empty(), number("lastErrorRemedy")) {
             (true, _) => Value::Null,
             (false, Some(1)) => json!("editAddress"),
+            (false, Some(2)) => json!("signIn"),
             (false, _) => json!("retry"),
         },
     })

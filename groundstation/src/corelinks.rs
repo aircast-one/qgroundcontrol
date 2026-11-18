@@ -867,7 +867,11 @@ pub fn element(entry: &Entry, table: &TypeTable, state: &State) -> Value {
         "summary": summary,
         "lastError": state.error.as_ref().map(|(reason, _)| reason.as_str()).or(state.down.as_deref()).unwrap_or(""),
         "linkDown": state.down.is_some(),
-        "lastErrorRemedy": i64::from(state.error.as_ref().is_some_and(|(_, remedy)| *remedy == "editAddress")),
+        "lastErrorRemedy": match state.error.as_ref().map(|(_, remedy)| *remedy) {
+            Some("editAddress") => 1,
+            Some("signIn") => 2,
+            _ => 0,
+        },
         "heardVehicle": state.heard,
         "linkActive": state.link.is_some() || (entry.config.auto_connect && state.reconnecting),
     });
@@ -939,6 +943,21 @@ fn connect(index: usize) -> bool {
         let opened = open_entry(&entry, true);
         release(&entry.config.name);
         opened
+    }
+}
+
+fn sign_in(index: usize) -> bool {
+    match listed()
+        .into_iter()
+        .nth(index)
+        .map(|entry| entry.config.kind)
+    {
+        Some(Kind::AircastCloud { api_base, .. }) => {
+            crate::account::set_api_base(&api_base);
+            crate::account::sign_in(&crate::account::post_json);
+            true
+        }
+        _ => false,
     }
 }
 
@@ -1462,6 +1481,9 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
     let whole = |i: usize| given.get(i).and_then(Value::as_i64).unwrap_or(0);
     let result = match path {
         "links.createConnectedLink" => json!(connect(
+            given.get(0).and_then(Value::as_str).and_then(indexed)?
+        )),
+        "links.signIn" => json!(sign_in(
             given.get(0).and_then(Value::as_str).and_then(indexed)?
         )),
         "links.createAndConnectLink" => {

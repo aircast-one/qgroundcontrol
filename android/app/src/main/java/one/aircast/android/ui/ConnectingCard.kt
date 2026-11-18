@@ -90,6 +90,7 @@ internal fun ConnectingCard(modifier: Modifier = Modifier) {
 internal const val LOOKING_TITLE = "Looking for your aircraft"
 internal const val LOOKING_HINT = "Turn on the aircraft. A USB cable or telemetry radio connects by itself; for Wi-Fi, add a link."
 internal const val BUILT_IN_LOOKING_HINT = "Turn on the aircraft. The built-in radio connects by itself."
+internal const val SAVED_LOOKING_HINT = "Turn on the aircraft. A USB cable or telemetry radio connects by itself."
 
 internal const val BUILT_IN_RADIO = "Built-in radio"
 
@@ -98,13 +99,17 @@ internal fun builtInRadioProblem(links: JSONObject?): String? =
         ?.firstOrNull { it.optText("name") == BUILT_IN_RADIO }
         ?.optText("lastError")?.ifBlank { null }
 
-internal fun lookingHint(device: String?, problem: String?): String =
-    problem ?: if (device != null) BUILT_IN_LOOKING_HINT else LOOKING_HINT
+internal fun lookingHint(device: String?, problem: String?, saved: Boolean = false): String =
+    problem ?: when {
+        device != null -> BUILT_IN_LOOKING_HINT
+        saved -> SAVED_LOOKING_HINT
+        else -> LOOKING_HINT
+    }
 
 @Composable
-internal fun rememberLookingHint(): String {
+internal fun rememberLookingHint(saved: Boolean = false): String {
     val context = LocalContext.current
     val device = remember { hostDevice(context) }
     val links by qgcPath(LINKS_VIEW)
-    return lookingHint(device, builtInRadioProblem(links))
+    return lookingHint(device, builtInRadioProblem(links), saved)
 }

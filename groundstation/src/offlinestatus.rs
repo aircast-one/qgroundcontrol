@@ -72,31 +72,38 @@ pub fn offline(
         .unwrap_or("")
         .to_string();
     let edit_address = failed.is_some_and(|l| l["errorRemedy"] == "editAddress");
+    let sign_in = failed.is_some_and(|l| l["errorRemedy"] == "signIn");
     let stalled = stalled_for(&connecting);
     let on_device = connected.is_some_and(|l| l["device"] == true);
-    let no_autopilot = stalled && on_device;
+    let answered = connected.is_some_and(|l| l["type"] != "udp");
+    let no_autopilot = stalled && on_device && answered;
     let watching = !watched.is_empty();
     let watched_links = watched.join(", ");
-    let title = match (no_autopilot, connecting.is_empty(), failed_name.is_empty()) {
-        (true, _, _) => "No Flight Controller",
-        (false, false, _) => "Connecting…",
-        (false, true, false) => "Connection Failed",
-        (false, true, true) => "Not Connected",
+    let state = |failed: &'static str| match (
+        no_autopilot,
+        connecting.is_empty(),
+        stalled,
+        failed_name.is_empty(),
+    ) {
+        (true, _, _, _) => "No Flight Controller",
+        (false, false, true, _) => "No Telemetry",
+        (false, false, false, _) => "Connecting…",
+        (false, true, _, false) => failed,
+        (false, true, _, true) => "Not Connected",
     };
-    let main_status = match (no_autopilot, connecting.is_empty(), failed_name.is_empty()) {
-        (true, _, _) => "No Flight Controller",
-        (false, false, _) => "Connecting…",
-        (false, true, false) => "Can't Connect",
-        (false, true, true) => "Not Connected",
-    };
+    let (title, main_status) = (state("Connection Failed"), state("Can't Connect"));
     let footnote = match () {
         _ if no_autopilot => format!(
             "{connecting} hears no flight controller. Check it is plugged in and powered on."
+        ),
+        _ if !connecting.is_empty() && stalled && on_device => format!(
+            "No telemetry from {connecting} yet. Check the drone is powered on and the device hears its flight controller."
         ),
         _ if !connecting.is_empty() && stalled => format!(
             "No telemetry from {connecting} yet. Check the port is the drone's MAVLink port."
         ),
         _ if !connecting.is_empty() => format!("Connecting to {connecting}…"),
+        _ if sign_in => format!("Sign in to your Aircast account to connect {failed_name}."),
         _ if edit_address => {
             format!("Couldn't connect to {failed_name}. Check its address in Connection Settings.")
         }
@@ -120,11 +127,21 @@ pub fn offline(
 }
 
 fn on_device(link: Value, device: &str) -> Value {
-    let reaches = link["type"] == "websocket"
-        && !device.is_empty()
-        && link["summary"]
-            .as_str()
-            .is_some_and(|url| crate::deviceviews::host_of(url) == device);
+    let bare = crate::devicesetup::bare_host(device);
+    let reaches = !device.is_empty()
+        && match link["type"].as_str() {
+            Some("websocket") => link["summary"]
+                .as_str()
+                .is_some_and(|url| crate::deviceviews::host_of(url) == device),
+            Some("udp") => link["hostList"].as_array().is_some_and(|hosts| {
+                hosts
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|host| crate::devicesetup::bare_host(host) == bare)
+            }),
+            Some("tcp") => link["host"] == bare,
+            _ => false,
+        };
     match link {
         Value::Object(fields) => Value::Object(
             fields
@@ -161,6 +178,7 @@ pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let shown = offline(&links, &watched, |name| {
         connecting_stalled(name, crate::hub::now_ms())
     });
+    let (account_status, sign_in_url) = crate::account::sign_in_progress();
     json!({
         "kind": "object",
         "class": "OfflineStatus",
@@ -171,17 +189,35 @@ pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "noLinks": shown.no_links,
         "editAddress": shown.edit_address,
         "onDevice": shown.on_device,
-        "links": links.iter().filter(|l| l["dynamic"] != true).map(offline_link).collect::<Vec<_>>(),
+        "links": links.iter().filter(|l| l["dynamic"] != true).map(|l| offline_link(l, &account_status)).collect::<Vec<_>>(),
+        "signInUrl": sign_in_url,
     })
 }
 
-fn offline_link(link: &Value) -> Value {
+fn row_action(connected: bool, error: &str, remedy: &str) -> (&'static str, &'static str) {
+    match (connected, error.is_empty(), remedy) {
+        (true, _, _) => ("", ""),
+        (false, true, _) => ("connect", "Connect"),
+        (false, false, "signIn") => ("signIn", "Sign in"),
+        (false, false, "editAddress") => ("edit", "Edit"),
+        (false, false, _) => ("retry", "Retry"),
+    }
+}
+
+fn offline_link(link: &Value, account_status: &str) -> Value {
     let error = link["lastError"].as_str().unwrap_or("");
     let summary = link["summary"].as_str().unwrap_or("");
     let connected = link["connected"] == true;
     let name = link["name"].as_str().unwrap_or("");
     let address = if name.contains(summary) { "" } else { summary };
-    let description = [address, error]
+    let (action, action_label) =
+        row_action(connected, error, link["errorRemedy"].as_str().unwrap_or(""));
+    let progress = if action == "signIn" {
+        account_status
+    } else {
+        ""
+    };
+    let description = [address, error, progress]
         .into_iter()
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
@@ -190,7 +226,8 @@ fn offline_link(link: &Value) -> Value {
         "index": link["index"],
         "text": name,
         "description": description,
-        "retry": !error.is_empty() && !connected,
+        "action": action,
+        "actionLabel": action_label,
         "failed": !error.is_empty(),
         "connected": connected,
     })
@@ -234,8 +271,8 @@ mod tests {
         let connecting = offline(&[link("Drone", true, "", "")], &all, |name| name == "Drone");
         assert_eq!(
             (connecting.title.as_str(), connecting.busy),
-            ("Connecting…", false),
-            "a stalled connect stops the spinner"
+            ("No Telemetry", false),
+            "a stalled connect stops the spinner and stops saying it is connecting"
         );
         assert_eq!(
             connecting.footnote,
@@ -258,6 +295,20 @@ mod tests {
         assert_eq!(
             refused.footnote,
             "Couldn't connect to Drone. Check its address in Connection Settings."
+        );
+        let signed_out = offline(
+            &[link(
+                "Aircast cloud",
+                false,
+                "Sign in to your Aircast account to use the cloud backup link.",
+                "signIn",
+            )],
+            &all,
+            |_| false,
+        );
+        assert_eq!(
+            signed_out.footnote, "Sign in to your Aircast account to connect Aircast cloud.",
+            "the footnote does not tell the pilot to tap Retry when the row offers Sign in"
         );
         let retry = offline(&[link("Drone", false, "timeout", "retry")], &all, |_| false);
         assert!(retry.footnote.ends_with("then tap Retry."));
@@ -308,7 +359,22 @@ mod tests {
     }
 
     #[test]
-    fn only_a_websocket_to_the_paired_device_is_the_devices_link() {
+    fn a_silent_udp_link_to_the_device_points_at_the_device_not_the_port() {
+        let device = json!({ "name": "Aircast 100.64.0.18", "type": "udp", "dynamic": false, "connected": true, "device": true });
+        let silent = offline(&[device], &["USB"], |_| true);
+        assert_eq!(
+            (silent.title.as_str(), silent.on_device, silent.no_autopilot),
+            ("No Telemetry", true, false),
+            "UDP never proves the device answered, so it cannot claim the device hears no flight controller"
+        );
+        assert_eq!(
+            silent.footnote,
+            "No telemetry from Aircast 100.64.0.18 yet. Check the drone is powered on and the device hears its flight controller."
+        );
+    }
+
+    #[test]
+    fn only_a_link_that_calls_the_paired_device_is_the_devices_link() {
         let socket = |url: &str| json!({ "type": "websocket", "summary": url });
         assert_eq!(
             on_device(socket("ws://zero3w/fly/mavlink"), "zero3w")["device"],
@@ -326,12 +392,24 @@ mod tests {
             on_device(socket("ws://zero3w/fly/mavlink"), "")["device"],
             false
         );
+        let udp = |hosts: Value| json!({ "type": "udp", "hostList": hosts });
         assert_eq!(
-            on_device(
-                json!({ "type": "udp", "summary": "zero3w:14550" }),
-                "zero3w"
-            )["device"],
+            on_device(udp(json!(["100.64.0.18:14550"])), "100.64.0.18")["device"],
+            true,
+            "the telemetry link device setup made calls the device"
+        );
+        assert_eq!(
+            on_device(udp(json!(["10.0.0.9:14550"])), "100.64.0.18")["device"],
             false
+        );
+        assert_eq!(
+            on_device(udp(Value::Null), "zero3w")["device"],
+            false,
+            "a listening UDP link reaches no one in particular"
+        );
+        assert_eq!(
+            on_device(json!({ "type": "tcp", "host": "zero3w" }), "zero3w:8080")["device"],
+            true
         );
     }
 
@@ -360,6 +438,7 @@ mod tests {
         let row = |name: &str, summary: &str, error: &str| {
             offline_link(
                 &json!({ "index": 0, "name": name, "summary": summary, "lastError": error, "connected": false }),
+                "",
             )
         };
         let named_by_address = row("TCP sitl.aircast.one:5760", "sitl.aircast.one:5760", "");
@@ -370,7 +449,45 @@ mod tests {
         assert_eq!(row("Drone", "UDP 14550", "")["description"], "UDP 14550");
         let refused = row("Drone", "TCP 10.0.0.2:5760", "refused");
         assert_eq!(refused["description"], "TCP 10.0.0.2:5760\nrefused");
-        assert_eq!(refused["retry"], true);
+        assert_eq!(
+            (&refused["action"], &refused["actionLabel"]),
+            (&json!("retry"), &json!("Retry"))
+        );
+    }
+
+    #[test]
+    fn a_link_row_offers_the_action_that_fixes_its_failure() {
+        let row = |error: &str, remedy: &str, connected: bool| {
+            let shown = offline_link(
+                &json!({ "index": 0, "name": "Aircast pi4 (cloud)", "summary": "", "lastError": error, "errorRemedy": remedy, "connected": connected }),
+                "Approve code ABCD in the browser to sign in.",
+            );
+            (
+                shown["action"].as_str().unwrap_or("").to_string(),
+                shown["actionLabel"].as_str().unwrap_or("").to_string(),
+                shown["description"].as_str().unwrap_or("").to_string(),
+            )
+        };
+        assert_eq!(
+            row("Sign in to your Aircast account to use the cloud backup link.", "signIn", false),
+            (
+                "signIn".into(),
+                "Sign in".into(),
+                "Sign in to your Aircast account to use the cloud backup link.\nApprove code ABCD in the browser to sign in.".into()
+            ),
+            "Retry can never fix a missing sign-in, and the sign-in's progress shows on the row"
+        );
+        assert_eq!(
+            row(
+                "Reached host but nothing is listening.",
+                "editAddress",
+                false
+            )
+            .0,
+            "edit"
+        );
+        assert_eq!(row("", "", false).0, "connect");
+        assert_eq!(row("", "", true).0, "", "a connected row has no button");
     }
 
     #[test]

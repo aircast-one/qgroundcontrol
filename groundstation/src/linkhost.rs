@@ -293,6 +293,13 @@ impl Failure {
             remedy: "editAddress",
         }
     }
+
+    fn sign_in(reason: impl Into<String>) -> Failure {
+        Failure {
+            reason: reason.into(),
+            remedy: "signIn",
+        }
+    }
 }
 
 fn tcp_failure(name: &str, host: &str, port: u16, error: &std::io::Error) -> Failure {
@@ -462,7 +469,9 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             let token = crate::cloudlink::token_key(api_base)
                 .and_then(|key| crate::settingsstore::stored_text(&key))
                 .filter(|t| !t.is_empty());
-            let token = token.ok_or_else(|| Failure::edit_address("Sign in to your Aircast account in this link's settings to use the cloud backup link."))?;
+            let token = token.ok_or_else(|| {
+                Failure::sign_in("Sign in to your Aircast account to use the cloud backup link.")
+            })?;
             let (shared, relay) = (shared.clone(), shared.clone());
             Ok(Owned::Cloud(crate::cloudlink::CloudLink::open(
                 url,

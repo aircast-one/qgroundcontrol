@@ -101,6 +101,22 @@ fn finish(status: &str) {
     set_status(status);
 }
 
+pub fn sign_in_progress() -> (String, String) {
+    let url = PENDING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .map(|pending| pending.verification_url.clone())
+        .unwrap_or_default();
+    (
+        STATUS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone(),
+        url,
+    )
+}
+
 pub fn seen_text(ago: chrono::Duration) -> String {
     let minutes = ago.num_minutes().max(0);
     match (minutes, minutes / 60, minutes / 1440) {

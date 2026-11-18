@@ -70,3 +70,4 @@ struct ConnectingCard: View {
 
 let LOOKING_TITLE = "Looking for your aircraft"
 let LOOKING_HINT = "Turn on the aircraft. For Wi-Fi or a network connection, add a link."
+let SAVED_LOOKING_HINT = "Turn on the aircraft."

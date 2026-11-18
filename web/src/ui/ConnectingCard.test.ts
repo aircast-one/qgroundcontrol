@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { BROWSER_LOOKING_HINT, BUILT_IN_LOOKING_HINT, LOOKING_HINT, builtInRadioProblem, connectingTitle, loadingWords, lookingHint } from './ConnectingCard';
+import { BROWSER_LOOKING_HINT, BUILT_IN_LOOKING_HINT, LOOKING_HINT, SAVED_LOOKING_HINT, TURN_ON_HINT, builtInRadioProblem, connectingTitle, loadingWords, lookingHint } from './ConnectingCard';
 
 describe('ConnectingCardTest', () => {
   it('namesTheVehicleWhenKnown', () => {
@@ -33,5 +33,11 @@ describe('ConnectingCardTest', () => {
     expect(lookingHint(null, null, false)).toBe(BROWSER_LOOKING_HINT);
     expect(BROWSER_LOOKING_HINT).toContain('network (WebSocket)');
     expect(BROWSER_LOOKING_HINT).not.toContain('by itself');
+  });
+
+  it('with links already saved the hint stops sending the pilot to add another', () => {
+    expect(lookingHint(null, null, true, true)).toBe(SAVED_LOOKING_HINT);
+    expect(lookingHint(null, null, false, true)).toBe(TURN_ON_HINT);
+    expect(lookingHint('radiomaster-ax12', null, true, true)).toBe(BUILT_IN_LOOKING_HINT);
   });
 });

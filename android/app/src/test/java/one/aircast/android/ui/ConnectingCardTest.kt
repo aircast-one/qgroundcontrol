@@ -30,5 +30,6 @@ class ConnectingCardTest {
         assertEquals("Another app is using the built-in radio. Close it to connect.", lookingHint("radiomaster-ax12", builtInRadioProblem(busy)))
         assertEquals(BUILT_IN_LOOKING_HINT, lookingHint("radiomaster-ax12", builtInRadioProblem(open)))
         assertEquals(LOOKING_HINT, lookingHint(null, null))
+        assertEquals("with links already saved the hint stops sending the pilot to add another", SAVED_LOOKING_HINT, lookingHint(null, null, saved = true))
     }
 }

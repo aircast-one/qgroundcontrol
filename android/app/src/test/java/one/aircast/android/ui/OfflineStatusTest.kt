@@ -11,12 +11,14 @@ class OfflineStatusTest {
         val status = offlineStatus(
             JSONObject(
                 """{"title":"Connection Failed","footnote":"Couldn't connect to Drone.","busy":false,"noLinks":false,"editAddress":true,
-                   "links":[{"index":2,"text":"Drone","description":"TCP\nrefused","retry":true,"failed":true,"connected":false}]}""",
+                   "signInUrl":"https://aircast.one/device?code=ABCD",
+                   "links":[{"index":2,"text":"Drone","description":"TCP\nrefused","action":"edit","actionLabel":"Edit","failed":true,"connected":false}]}""",
             ),
         )
         assertEquals("Connection Failed", status?.title)
         assertEquals(true, status?.editAddress)
-        assertEquals(listOf(OfflineLink(2, "Drone", "TCP\nrefused", retry = true, failed = true, connected = false)), status?.links)
+        assertEquals("https://aircast.one/device?code=ABCD", status?.signInUrl)
+        assertEquals(listOf(OfflineLink(2, "Drone", "TCP\nrefused", action = "edit", actionLabel = "Edit", failed = true, connected = false)), status?.links)
         assertNull(offlineStatus(JSONObject("{}")))
     }
 }

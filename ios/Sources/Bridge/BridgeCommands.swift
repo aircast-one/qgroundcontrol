@@ -1,6 +1,7 @@
 import Foundation
 
 private let linksCommit = "links.commitLinkConfigurations"
+private let linksSignIn = "links.signIn"
 private let linksBluetoothScan = "links.bluetoothScan"
 private let linksConnect = "links.createConnectedLink"
 private let linksRemove = "links.removeConfiguration"
@@ -59,6 +60,7 @@ enum LinkCommands {
     @discardableResult static func commitConfigurations() -> Bool { Qgc.invoke(linksCommit) }
     @discardableResult static func scanBluetooth(_ scanning: Bool) -> Bool { Qgc.invoke(linksBluetoothScan, scanning) }
     @discardableResult static func connect(_ configuration: String) -> String? { Qgc.refusalOf(linksConnect, configuration, subject: linkSubject) }
+    @discardableResult static func signIn(_ configuration: String) -> Bool { Qgc.invokeResult(linksSignIn, configuration) == .bool(true) }
     @discardableResult static func remove(_ configuration: String, name: String) -> String? { Qgc.refusalOf(linksRemove, configuration, name, subject: linkSubject) }
     @discardableResult static func disconnect(_ index: Int) -> String? { Qgc.refusalOf("\(linksConfigurations).\(index).link.disconnect", subject: linkSubject) }
     @discardableResult static func createAircastCloud(_ name: String, apiBase: String, deviceId: String) -> Bool { Qgc.invokeResult(linksCreateCloud, name, apiBase, deviceId) == .bool(true) }

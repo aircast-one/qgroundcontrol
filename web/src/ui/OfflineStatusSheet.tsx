@@ -1,9 +1,10 @@
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { LinkCommands } from '@/bridge/BridgeCommands';
 import { type Json, has, jsonObjects, optBoolean, optInt, optJSONArray, optString } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useTicker } from '@/kotlin/Compose';
+import { openUri } from '@/kotlin/Platform';
 import { Button, CircularProgressIndicator, HorizontalDivider, ListItem, Surface, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { sentenceCase } from '@/map/SentenceCase';
@@ -20,9 +21,9 @@ const OFFLINE_LINKS_PATH = 'links.linkConfigurations';
 const CONNECTIONS_SETTINGS_PAGE = 'Connections';
 const OFFLINE_POLL_MS = 1000;
 
-export type OfflineLink = { index: number; text: string; description: string; retry: boolean; failed: boolean; connected: boolean };
+export type OfflineLink = { index: number; text: string; description: string; action: string; actionLabel: string; failed: boolean; connected: boolean };
 
-export type OfflineStatus = { title: string; footnote: string; busy: boolean; noLinks: boolean; editAddress: boolean; onDevice: boolean; links: readonly OfflineLink[] };
+export type OfflineStatus = { title: string; footnote: string; busy: boolean; noLinks: boolean; editAddress: boolean; onDevice: boolean; signInUrl: string; links: readonly OfflineLink[] };
 
 export const offlineStatus = (view: Json | null): OfflineStatus | null =>
   view !== null && has(view, 'title')
@@ -33,11 +34,13 @@ export const offlineStatus = (view: Json | null): OfflineStatus | null =>
         noLinks: optBoolean(view, 'noLinks'),
         editAddress: optBoolean(view, 'editAddress'),
         onDevice: optBoolean(view, 'onDevice'),
+        signInUrl: optString(view, 'signInUrl'),
         links: jsonObjects(optJSONArray(view, 'links')).map((link) => ({
           index: optInt(link, 'index'),
           text: optString(link, 'text'),
           description: optString(link, 'description'),
-          retry: optBoolean(link, 'retry'),
+          action: optString(link, 'action'),
+          actionLabel: optString(link, 'actionLabel'),
           failed: optBoolean(link, 'failed'),
           connected: optBoolean(link, 'connected'),
         })),
@@ -78,41 +81,87 @@ export const offlineGuide = (status: OfflineStatus | null, hint: string, noCamer
       };
 };
 
-const OfflineLinkRow = ({ link, busy, className, containerColor }: { link: OfflineLink; busy: boolean; className?: string; containerColor?: string }) => (
-  <ListItem
-    className={className}
-    containerColor={containerColor}
-    headlineContent={link.text}
-    supportingContent={
-      link.description === '' ? undefined : (
-        <span className="whitespace-pre-line" style={{ color: link.failed ? md('error') : md('onSurfaceVariant') }}>
-          {link.description}
-        </span>
-      )
-    }
-    trailingContent={
-      link.connected ? (
-        busy ? (
+const openedSignIns = new Set<string>();
+
+const useOpenSignIn = (url: string): void =>
+  useEffect(() => {
+    if (url === '' || openedSignIns.has(url)) return;
+    openedSignIns.add(url);
+    openUri(url);
+  }, [url]);
+
+export const linkAction = (link: OfflineLink, edit: () => void): Promise<unknown> =>
+  link.connected
+    ? LinkCommands.disconnect(link.index)
+    : link.action === 'signIn'
+      ? LinkCommands.signIn(`@${OFFLINE_LINKS_PATH}.${link.index}`)
+      : link.action === 'edit'
+        ? Promise.resolve(edit())
+        : LinkCommands.connect(`@${OFFLINE_LINKS_PATH}.${link.index}`);
+
+const OfflineLinkRow = ({
+  link,
+  busy,
+  onEdit,
+  onActed,
+  className,
+  containerColor,
+}: {
+  link: OfflineLink;
+  busy: boolean;
+  onEdit: () => void;
+  onActed?: () => Promise<void>;
+  className?: string;
+  containerColor?: string;
+}) => {
+  const [acting, setActing] = useState(false);
+  const act = () => {
+    setActing(true);
+    void linkAction(link, onEdit)
+      .then(() => onActed?.())
+      .finally(() => setActing(false));
+  };
+  return (
+    <ListItem
+      className={className}
+      containerColor={containerColor}
+      headlineContent={link.text}
+      supportingContent={
+        link.description === '' ? undefined : (
+          <span className="whitespace-pre-line" style={{ color: link.failed ? md('error') : md('onSurfaceVariant') }}>
+            {link.description}
+          </span>
+        )
+      }
+      trailingContent={
+        acting || (link.connected && busy) ? (
           <CircularProgressIndicator size={16} strokeWidth={2} />
-        ) : null
-      ) : (
-        <span className="inline-flex h-10 items-center rounded-full bg-secondary-container px-6 text-label-large text-on-secondary-container">{link.retry ? 'Retry' : 'Connect'}</span>
-      )
-    }
-    onClick={() => void (link.connected ? LinkCommands.disconnect(link.index) : LinkCommands.connect(`@${OFFLINE_LINKS_PATH}.${link.index}`))}
-  />
-);
+        ) : link.connected ? null : (
+          <span className="inline-flex h-10 items-center rounded-full bg-secondary-container px-6 text-label-large text-on-secondary-container">{link.actionLabel}</span>
+        )
+      }
+      onClick={act}
+    />
+  );
+};
+
+const CONNECTION_SETTINGS = 'Connection settings';
 
 export const OfflineGuideCard = ({ inVideo }: { inVideo: boolean }) => {
   const navigation = useContext(LocalAppNavigation);
-  const hint = useRememberLookingHint();
   const json = useQgcPath(OFFLINE_STATUS_VIEW);
+  const status = useMemo(() => offlineStatus(json), [json]);
+  const hint = useRememberLookingHint(status !== null && !status.noLinks);
   const noCamera = useCameraMissing() && inVideo;
   const onDevice = useDeviceStatus() !== null;
-  const guide = useMemo(() => offlineGuide(offlineStatus(json), hint, noCamera), [json, hint, noCamera]);
+  const guide = useMemo(() => offlineGuide(status, hint, noCamera), [status, hint, noCamera]);
+  useOpenSignIn(status?.signInUrl ?? '');
+  const settings = () => {
+    navigation.settingsPage.value = CONNECTIONS_SETTINGS_PAGE;
+  };
   const icon = guide.camera ? 'ic_videocam' : guide.onDevice ? 'ic_developer_board' : 'ic_link';
-  const label = guide.camera ? 'Add a camera' : guide.onDevice ? CHECK_DEVICE : 'Add a link';
-  const open = () => (guide.camera ? openCameraSetup(onDevice, navigation) : guide.onDevice ? openDeviceTelemetry() : openAddLink(navigation));
+  const label = guide.camera ? 'Add a camera' : guide.onDevice ? CHECK_DEVICE : guide.links.length > 0 ? CONNECTION_SETTINGS : 'Add a link';
+  const open = () => (guide.camera ? openCameraSetup(onDevice, navigation) : guide.onDevice ? openDeviceTelemetry() : guide.links.length > 0 ? settings() : openAddLink(navigation));
   return (
     <div className="flex size-full items-center justify-center p-4">
       <Surface shape="extraLarge" color={md('surfaceContainer')} contentColor={md('onSurface')} className="w-full max-w-[420px]">
@@ -130,7 +179,7 @@ export const OfflineGuideCard = ({ inVideo }: { inVideo: boolean }) => {
             <>
               <div className="mt-2 flex w-full flex-col gap-2">
                 {guide.links.map((link) => (
-                  <OfflineLinkRow key={link.index} link={link} busy={guide.busy} className="rounded-shape-lg" containerColor={md('surfaceContainerHigh')} />
+                  <OfflineLinkRow key={link.index} link={link} busy={guide.busy} onEdit={settings} className="rounded-shape-lg" containerColor={md('surfaceContainerHigh')} />
                 ))}
               </div>
               <TextButton onClick={open}>{label}</TextButton>
@@ -152,8 +201,10 @@ const openConnectionSettings = (navigation: AppNavigationState, onDismiss: () =>
 export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => {
   const navigation = useContext(LocalAppNavigation);
   const [status, setStatus] = useState<OfflineStatus | null>(null);
-  const hint = useRememberLookingHint();
-  useTicker(OFFLINE_POLL_MS, [], async () => setStatus(offlineStatus(await Qgc.get(OFFLINE_STATUS_VIEW))));
+  const hint = useRememberLookingHint(status !== null && !status.noLinks);
+  const refresh = async () => setStatus(offlineStatus(await Qgc.get(OFFLINE_STATUS_VIEW)));
+  useTicker(OFFLINE_POLL_MS, [], refresh);
+  useOpenSignIn(status?.signInUrl ?? '');
   return (
     <AircastSheet onDismissRequest={onDismiss} label={status?.title ?? 'Connection'}>
       {status !== null ? (
@@ -202,13 +253,11 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
             </div>
           ) : null}
           {status.links.map((link) => (
-            <OfflineLinkRow key={link.index} link={link} busy={status.busy} />
+            <OfflineLinkRow key={link.index} link={link} busy={status.busy} onEdit={() => openConnectionSettings(navigation, onDismiss)} onActed={refresh} />
           ))}
           <HorizontalDivider />
           <div className="px-sheet pt-2">
-            {status.onDevice ? (
-              <TextButton onClick={() => openConnectionSettings(navigation, onDismiss)}>Connection settings</TextButton>
-            ) : status.noLinks ? (
+            {status.noLinks && !status.onDevice ? (
               <TextButton
                 onClick={() => {
                   navigation.settingsPage.value = FLASHER_PAGE;
@@ -218,14 +267,7 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
                 New drone? Flash an Aircast card
               </TextButton>
             ) : (
-              <TextButton
-                onClick={() => {
-                  openAddLink(navigation);
-                  onDismiss();
-                }}
-              >
-                Add a link
-              </TextButton>
+              <TextButton onClick={() => openConnectionSettings(navigation, onDismiss)}>{CONNECTION_SETTINGS}</TextButton>
             )}
           </div>
         </div>

@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import one.aircast.android.bridge.LinkCommands
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -40,7 +43,15 @@ private const val OFFLINE_LINKS_PATH = "links.linkConfigurations"
 private const val CONNECTIONS_SETTINGS_PAGE = "Connections"
 private const val OFFLINE_POLL_MS = 1000L
 
-internal data class OfflineLink(val index: Int, val text: String, val description: String, val retry: Boolean, val failed: Boolean, val connected: Boolean)
+internal data class OfflineLink(
+    val index: Int,
+    val text: String,
+    val description: String,
+    val action: String,
+    val actionLabel: String,
+    val failed: Boolean,
+    val connected: Boolean,
+)
 
 internal data class OfflineStatus(
     val title: String,
@@ -48,6 +59,7 @@ internal data class OfflineStatus(
     val busy: Boolean,
     val noLinks: Boolean,
     val editAddress: Boolean,
+    val signInUrl: String,
     val links: List<OfflineLink>,
 )
 
@@ -60,8 +72,17 @@ internal fun offlineStatus(view: JSONObject?): OfflineStatus? =
             busy = json.optBoolean("busy"),
             noLinks = json.optBoolean("noLinks"),
             editAddress = json.optBoolean("editAddress"),
+            signInUrl = json.optString("signInUrl"),
             links = (0 until (links?.length() ?: 0)).mapNotNull { links?.optJSONObject(it) }.map {
-                OfflineLink(it.optInt("index"), it.optString("text"), it.optString("description"), it.optBoolean("retry"), it.optBoolean("failed"), it.optBoolean("connected"))
+                OfflineLink(
+                    it.optInt("index"),
+                    it.optString("text"),
+                    it.optString("description"),
+                    it.optString("action"),
+                    it.optString("actionLabel"),
+                    it.optBoolean("failed"),
+                    it.optBoolean("connected"),
+                )
             },
         )
     }
@@ -78,22 +99,40 @@ private fun openConnectionSettings(navigation: AppNavigationState, onDismiss: ()
     onDismiss()
 }
 
+private fun runLinkAction(link: OfflineLink) {
+    when {
+        link.connected -> LinkCommands.disconnect(link.index)
+        link.action == "signIn" -> LinkCommands.signIn("@$OFFLINE_LINKS_PATH.${link.index}")
+        else -> LinkCommands.connect("@$OFFLINE_LINKS_PATH.${link.index}")
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
     val navigation = LocalAppNavigation.current
+    val context = LocalContext.current
     var status by remember { mutableStateOf<OfflineStatus?>(null) }
+    var acting by remember { mutableStateOf<Int?>(null) }
+    var openedSignIn by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         while (isActive) {
             status = withContext(Dispatchers.Default) { offlineStatus(Qgc.get(OFFLINE_STATUS_VIEW)) }
             delay(OFFLINE_POLL_MS)
         }
     }
+    val signInUrl = status?.signInUrl.orEmpty()
+    LaunchedEffect(signInUrl) {
+        if (signInUrl.isNotBlank() && signInUrl != openedSignIn) {
+            openedSignIn = signInUrl
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(signInUrl))) }
+        }
+    }
     AircastSheet(onDismissRequest = onDismiss) {
         val shown = status ?: return@AircastSheet
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(shown.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp))
-            Text(rememberLookingHint(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp))
+            Text(rememberLookingHint(saved = !shown.noLinks), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp))
             Row(
                 Modifier.padding(horizontal = 20.dp).let { if (shown.editAddress) it.clickable { openConnectionSettings(navigation, onDismiss) } else it },
                 verticalAlignment = Alignment.CenterVertically,
@@ -107,9 +146,14 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
             }
             shown.links.forEach { link ->
                 val toggle = {
-                    offMainDetached {
-                        if (link.connected) LinkCommands.disconnect(link.index)
-                        else LinkCommands.connect("@$OFFLINE_LINKS_PATH.${link.index}")
+                    if (link.action == "edit" && !link.connected) openConnectionSettings(navigation, onDismiss)
+                    else {
+                        acting = link.index
+                        offMainDetached {
+                            runLinkAction(link)
+                            status = offlineStatus(Qgc.get(OFFLINE_STATUS_VIEW))
+                            acting = null
+                        }
                     }
                 }
                 ListItem(
@@ -118,8 +162,8 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
                         { Text(description, color = if (link.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
                     },
                     trailingContent = {
-                        if (link.connected) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                        else FilledTonalButton(onClick = { toggle() }) { Text(if (link.retry) "Retry" else "Connect") }
+                        if (link.connected || acting == link.index) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else FilledTonalButton(onClick = { toggle() }) { Text(link.actionLabel) }
                     },
                     modifier = Modifier.clickable { toggle() },
                 )
@@ -128,7 +172,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
             if (shown.noLinks) {
                 TextButton(onClick = { navigation.settingsPage = FLASHER_PAGE; onDismiss() }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("New drone? Flash an Aircast card") }
             } else {
-                TextButton(onClick = { openAddLink(navigation); onDismiss() }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Add link") }
+                TextButton(onClick = { openConnectionSettings(navigation, onDismiss) }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Connection settings") }
             }
         }
     }

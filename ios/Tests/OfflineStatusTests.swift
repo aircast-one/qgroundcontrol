@@ -4,11 +4,12 @@ import XCTest
 final class OfflineStatusTests: XCTestCase {
     func testTheOfflinePageReadsTheCoresFootnoteAndLinks() {
         let status = offlineStatus(JSON.parse(
-            #"{"title":"Connection Failed","footnote":"Couldn't connect to Drone.","busy":false,"noLinks":false,"editAddress":true,"links":[{"index":2,"text":"Drone","description":"TCP\nrefused","retry":true,"failed":true,"connected":false}]}"#
+            #"{"title":"Connection Failed","footnote":"Couldn't connect to Drone.","busy":false,"noLinks":false,"editAddress":true,"signInUrl":"https://aircast.one/device?code=ABCD","links":[{"index":2,"text":"Drone","description":"TCP\nrefused","action":"edit","actionLabel":"Edit","failed":true,"connected":false}]}"#
         ))
         XCTAssertEqual(status?.title, "Connection Failed")
         XCTAssertEqual(status?.editAddress, true)
-        XCTAssertEqual(status?.links, [OfflineLink(index: 2, text: "Drone", description: "TCP\nrefused", retry: true, failed: true, connected: false)])
+        XCTAssertEqual(status?.signInUrl, "https://aircast.one/device?code=ABCD")
+        XCTAssertEqual(status?.links, [OfflineLink(index: 2, text: "Drone", description: "TCP\nrefused", action: "edit", actionLabel: "Edit", failed: true, connected: false)])
         XCTAssertNil(offlineStatus(JSON.parse("{}")))
     }
 
