@@ -57,3 +57,16 @@ test('a saved replay link still plays its log after a reload', async ({ app }) =
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   await expect(app.getByText('20.0 m', { exact: true })).toBeVisible();
 });
+
+test('choosing a log clears the ask for one', async ({ app }) => {
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add a link' }).click();
+  await app.getByRole('button', { name: /^Replay a flight log/ }).click();
+  await app.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(app.getByRole('alert')).toHaveText('Choose a log file to replay.');
+  const chooser = app.waitForEvent('filechooser');
+  await app.getByRole('button', { name: 'Choose a log file' }).click();
+  await (await chooser).setFiles({ name: 'flight.tlog', mimeType: 'application/octet-stream', buffer: flightLog(30, HOME) });
+  await expect(app.getByRole('button', { name: 'flight.tlog' })).toBeVisible();
+  await expect(app.getByRole('alert')).toHaveCount(0);
+});

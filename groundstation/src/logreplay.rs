@@ -71,6 +71,13 @@ fn lock() -> MutexGuard<'static, Controller> {
     CONTROLLER.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+fn shown_name(file: &str) -> &str {
+    std::path::Path::new(file)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(file)
+}
+
 pub struct ReplayLink {
     generation: u64,
 }
@@ -80,11 +87,12 @@ impl ReplayLink {
         file: &str,
         deliver: impl Fn(&[u8]) + Send + 'static,
     ) -> Result<ReplayLink, String> {
+        let named = shown_name(file);
         let bytes = crate::vfs::read(file)
-            .map_err(|e| format!("Unable to open log file: '{file}', error: {e}"))?;
+            .map_err(|e| format!("Unable to open log file: '{named}', error: {e}"))?;
         let replay = Replay::from_tlog(&bytes, crate::hub::now_us());
         if replay.duration_us() == 0 {
-            return Err(format!("The log file '{file}' is corrupt or empty."));
+            return Err(format!("The log file '{named}' is corrupt or empty."));
         }
         let generation = {
             let mut controller = lock();
@@ -307,5 +315,16 @@ mod tests {
         link.close();
         assert!(lock().session.is_none());
         assert!(ReplayLink::open("/nonexistent/flight.tlog", |_| {}).is_err());
+    }
+
+    #[test]
+    fn a_log_that_will_not_play_is_named_by_its_file_not_where_the_app_staged_it() {
+        assert_eq!(
+            ReplayLink::open("/replay-links/Log_Replay/flight.tlog", |_| {})
+                .err()
+                .map(|error| error.contains("'flight.tlog'") && !error.contains("/replay-links")),
+            Some(true)
+        );
+        assert_eq!(shown_name("flight.tlog"), "flight.tlog");
     }
 }

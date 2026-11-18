@@ -1314,6 +1314,7 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
       if (chosen === null) return;
       setReplayFile(chosen);
       setTyped((it) => ({ ...it, replayLog: chosen.name }));
+      setError(null);
     })();
   const formTyped = type === LinkType.Udp || type === LinkType.Tcp;
   const fieldError =
