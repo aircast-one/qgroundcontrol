@@ -32,6 +32,12 @@ export type TextFieldProps = {
   className?: string;
 };
 
+export const doneOnEnter = (event: { key: string; shiftKey: boolean; preventDefault: () => void }, onDone: (() => void) | undefined): void => {
+  if (event.key !== 'Enter' || event.shiftKey || onDone === undefined) return;
+  event.preventDefault();
+  onDone();
+};
+
 const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, supportingText, isError = false, singleLine = true, minLines = 3, enabled = true, readOnly = false, keyboardType = 'text', leadingIcon, trailingIcon, prefix, suffix, onDone, autoFocus, capitalization = 'none', autoCorrect = true, ariaLabel, className }: TextFieldProps) => {
   const id = useId();
   const tone = isError ? 'border-error text-error' : 'border-outline focus-within:border-primary focus-within:border-2';
@@ -62,7 +68,7 @@ const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, 
             onKeyDown={(event) => event.key === 'Enter' && onDone?.()}
           />
         ) : (
-          <textarea id={id} className={`${control} py-3`} rows={minLines} value={value} placeholder={placeholder} disabled={!enabled} readOnly={readOnly} autoFocus={autoFocus} aria-invalid={isError || undefined} aria-label={ariaLabel} onChange={(event) => onValueChange(event.target.value)} />
+          <textarea id={id} className={`${control} py-3`} rows={minLines} value={value} placeholder={placeholder} disabled={!enabled} readOnly={readOnly} autoFocus={autoFocus} aria-invalid={isError || undefined} aria-label={ariaLabel} onChange={(event) => onValueChange(event.target.value)} onKeyDown={(event) => doneOnEnter(event, onDone)} />
         )}
         {suffix ? <span className="text-body-large text-on-surface-variant">{suffix}</span> : null}
         {trailingIcon ? <span className="flex text-on-surface-variant">{trailingIcon}</span> : null}
