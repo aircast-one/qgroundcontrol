@@ -176,3 +176,16 @@ test('in the browser Alt with a digit or comma moves between screens', async ({ 
   await expect(rail).toHaveCount(0);
   await expect(app.getByRole('button', { name: 'Menu', exact: true })).toBeVisible();
 });
+
+test('a vehicle connected from Setup lands on Fly, not on the screen left open under Settings', async ({ app }) => {
+  await openMenu(app, 'Analyze');
+  await expect(app.getByText('Logs and tools for the connected vehicle')).toBeVisible();
+  await app.getByRole('navigation').getByRole('button', { name: 'Setup', exact: true }).click();
+  await app.getByRole('button', { name: 'Set up connection' }).click();
+  await app.getByRole('button', { name: 'Add a link' }).click();
+  await app.getByRole('button', { name: /^Simulated vehicle/ }).click();
+  await app.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(app.getByText('Logs and tools for the connected vehicle')).toBeHidden();
+  await expect(app.getByRole('button', { name: 'Menu', exact: true })).toBeVisible();
+});

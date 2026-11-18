@@ -229,7 +229,10 @@ export const AircastShell = () => {
   const vehicleNow = useHasVehicle();
   const hadVehicle = useRef(vehicleNow);
   useEffect(() => {
-    if (vehicleNow && !hadVehicle.current && navigation.settingsShowing.value === SettingsGroup.Transmission) navigation.settingsOpen.value = false;
+    if (vehicleNow && !hadVehicle.current && navigation.settingsShowing.value === SettingsGroup.Transmission) {
+      navigation.settingsOpen.value = false;
+      setTab(Tab.Fly);
+    }
     hadVehicle.current = vehicleNow;
   }, [vehicleNow]);
   const [analyzePage, setAnalyzePage] = useState<AnalyzePage | null>(null);
