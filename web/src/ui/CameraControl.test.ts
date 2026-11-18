@@ -31,6 +31,13 @@ describe('CameraControlTest', () => {
     expect(reading.currentStream).toBe(1);
   });
 
+  it('an idle photo shutter keeps its count once the camera has taken a picture, so a press is seen to land', () => {
+    const shutter = (photo: string) => read(json(`{"present":true,"panel":{"visible":true,"bothShown":false,"photo":${photo}}}`)).panel?.shutters[0];
+    const taken = shutter('{"enabled":true,"capturing":false,"idle":true,"press":"take","count":"00002","counted":true}');
+    const none = shutter('{"enabled":true,"capturing":false,"idle":true,"press":"take","count":"00000","counted":false}');
+    expect([taken && shutterReadout(taken), none && shutterReadout(none)]).toEqual(['00002', null]);
+  });
+
   it('the panel offers the shutters the core serves, each with its readout', () => {
     const panel = read(
       json(`{"present":true,"panel":{"visible":true,"inPhotoMode":false,"selectVideoEnabled":true,"selectPhotoEnabled":false,"bothShown":true,

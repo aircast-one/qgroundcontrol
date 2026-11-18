@@ -55,7 +55,7 @@ export const cameraPanel = (panel: Json | null): CameraPanel | null => {
           action: press === 'stop' ? CAMERA_STOP_PHOTO : press === 'take' ? CAMERA_PHOTO : null,
           video: false,
           readout: optText(p, 'count'),
-          readoutActive: !optBoolean(p, 'idle'),
+          readoutActive: !optBoolean(p, 'idle') || optBoolean(p, 'counted'),
         };
   return {
     visible: optBoolean(panel, 'visible'),

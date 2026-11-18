@@ -404,6 +404,7 @@ fn photo_video_panel(camera: &Value, present: bool, shots: i64, fight: bool) -> 
             "idle": raw_photo == CAPTURE_IDLE,
             "press": match raw_photo { CAPTURE_MULTIPLE_PHOTOS => Some("stop"), CAPTURE_IDLE if !fight => Some("take"), _ => None },
             "count": photo_count_text(shots),
+            "counted": shots > 0,
         })),
         "freeText": match fight {
             true => Some(crate::hub::NOTHING_RECORDED.to_string()),
@@ -1282,6 +1283,26 @@ mod tests {
             "a tracking-only camera still gets the panel"
         );
         assert_eq!(panel(json!({}))["visible"], false);
+        let after_a_shot = panel(
+            json!({ "hasModes": true, "cameraMode": 0, "capturesPhotos": true, "capturePhotosState": 1 }),
+        );
+        assert_eq!(
+            (
+                after_a_shot["photo"]["idle"].as_bool(),
+                after_a_shot["photo"]["counted"].as_bool()
+            ),
+            (Some(true), Some(true)),
+            "once the camera has taken a picture the count stays under the shutter, so the next press is seen to land"
+        );
+        assert_eq!(
+            photo_video_panel(
+                &json!({ "hasModes": true, "cameraMode": 0, "capturesPhotos": true, "capturePhotosState": 1 }),
+                true,
+                0,
+                false
+            )["photo"]["counted"],
+            false
+        );
         assert_eq!(
             (photo_count_text(7), photo_count_text(112_345)),
             ("00007".to_string(), "12345".to_string()),
