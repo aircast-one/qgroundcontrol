@@ -105,7 +105,7 @@ describe('plan files', () => {
     expect(said).toHaveBeenLastCalledWith(expect.stringContaining('plain waypoints with camera triggers'));
     expect(openPlan.name.value).toBe('Downloaded plan');
     await act(async () => view.result.current.save());
-    await act(async () => view.result.current.saveAs());
-    expect(written.mock.calls.map(([name]) => name)).toEqual(['Downloaded plan.plan', 'Downloaded plan.plan']);
+    await act(async () => view.result.current.saveAs('North field'));
+    expect(written.mock.calls.map(([name]) => name), 'Save as writes under the name the operator typed, where it used to repeat Save').toEqual(['Downloaded plan.plan', 'North field.plan']);
   });
 });

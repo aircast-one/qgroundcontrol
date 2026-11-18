@@ -5,7 +5,7 @@ import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { delay } from '@/kotlin/Std';
-import { AlertDialog, Button, DropdownMenu, DropdownMenuItem, HorizontalDivider, IconButton, Surface, Text, TextButton } from '@/m3';
+import { AlertDialog, Button, DropdownMenu, DropdownMenuItem, HorizontalDivider, IconButton, OutlinedTextField, Surface, Text, TextButton } from '@/m3';
 import { PlanMapScreen } from '@/map/PlanMap';
 import type { PlanBar } from '@/map/PlanMapContent';
 import type { PlanStat } from '@/map/PlanStrip';
@@ -19,6 +19,7 @@ import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { ItemEditor } from '@/ui/ItemEditor';
 import { PlanDefaultsDialog } from '@/ui/PlanDefaults';
 import {
+  DEFAULT_PLAN_NAME,
   PlanConfirm,
   confirmCopy,
   planActions,
@@ -122,6 +123,27 @@ const PlanActionPill = ({
   </Surface>
 );
 
+export const SaveAsDialog = ({ initial, onDismiss, onSave }: { initial: string; onDismiss: () => void; onSave: (name: string) => void }) => {
+  const [name, setName] = useState(initial);
+  const named = name.trim() !== '';
+  const confirm = () => {
+    if (named) onSave(name);
+  };
+  return (
+    <AlertDialog
+      onDismissRequest={onDismiss}
+      title="Save plan as"
+      text={<OutlinedTextField value={name} onValueChange={setName} label="File name" singleLine autoFocus onDone={confirm} />}
+      confirmButton={
+        <TextButton enabled={named} onClick={confirm}>
+          Save
+        </TextButton>
+      }
+      dismissButton={<TextButton onClick={onDismiss}>Cancel</TextButton>}
+    />
+  );
+};
+
 export const PlanTab = ({ className, onFly = () => undefined }: { className?: string; onFly?: () => void }) => {
   const [notice, setNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -184,7 +206,8 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
   const requestDownload = () => (dirty ? setPending(PlanConfirm.Download) : files.download());
   const requestOpen = () => (dirty ? setPending(PlanConfirm.Open) : files.open());
   const save = () => void files.save();
-  const saveAs = () => void files.saveAs();
+  const [savingAs, setSavingAs] = useState(false);
+  const saveAs = () => setSavingAs(true);
   usePlanRequests(
     navigation.planRequest,
     planStatus !== null,
@@ -431,6 +454,16 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
 
   return (
     <>
+      {savingAs ? (
+        <SaveAsDialog
+          initial={planTitle(documentName ?? DEFAULT_PLAN_NAME)}
+          onDismiss={() => setSavingAs(false)}
+          onSave={(name) => {
+            setSavingAs(false);
+            void files.saveAs(name);
+          }}
+        />
+      ) : null}
       {newPlanOpen ? (
         <NewPlanDialog
           state={planTemplates(planStatus)}

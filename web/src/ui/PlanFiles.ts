@@ -45,7 +45,7 @@ export type PatternChoice = {
 export type PlanFileActions = {
   open: () => void;
   saveAndOpen: () => void;
-  saveAs: () => Promise<boolean>;
+  saveAs: (name: string) => Promise<boolean>;
   save: () => Promise<boolean>;
   exportKml: () => void;
   importBoundary: () => void;
@@ -272,7 +272,7 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
       picked(async (chosen) => {
         if (await save()) await load(chosen);
       }),
-    saveAs: save,
+    saveAs: (name: string) => guarded(() => writeTo(name.trim() === '' ? (openPlan.name.value ?? DEFAULT_PLAN_NAME) : name.trim())),
     save,
     exportKml: () => void guarded(() => exportKmlTo(DEFAULT_KML_NAME)),
     importBoundary,

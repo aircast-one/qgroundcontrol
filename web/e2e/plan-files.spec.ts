@@ -14,8 +14,11 @@ test('save as downloads the plan and open plan loads it back', async ({ app }, t
   await tapPlanMission(app);
   const saving = app.waitForEvent('download');
   await planMenu(app, 'Save as…');
+  const naming = app.getByRole('dialog').filter({ hasText: 'Save plan as' });
+  await naming.getByRole('textbox', { name: 'File name' }).fill('North field');
+  await naming.getByRole('button', { name: 'Save', exact: true }).click();
   const saved = await saving;
-  expect(saved.suggestedFilename()).toMatch(/\.plan$/);
+  expect(saved.suggestedFilename(), 'Save as asks for a name instead of repeating Save').toBe('North field.plan');
   const file = testInfo.outputPath(saved.suggestedFilename());
   await saved.saveAs(file);
   const plan = JSON.parse(await readFile(file, 'utf8')) as { fileType: string; mission: { items: unknown[] } };
@@ -50,6 +53,7 @@ test('export KML downloads a KML document of the mission', async ({ app }, testI
 const savedPlan = async (page: Page, file: string) => {
   const saving = page.waitForEvent('download');
   await planMenu(page, 'Save as…');
+  await page.getByRole('dialog').filter({ hasText: 'Save plan as' }).getByRole('button', { name: 'Save', exact: true }).click();
   await (await saving).saveAs(file);
   await expect(page.getByText('Plan saved.')).toBeVisible();
 };
