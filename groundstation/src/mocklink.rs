@@ -3225,7 +3225,7 @@ fn esc_status(elapsed_ms: u64) -> Out {
 
 fn radio_status() -> Out {
     (
-        AUTOPILOT,
+        crate::vehiclefact::SIK_COMPONENT,
         MavMessage::RADIO_STATUS(RADIO_STATUS_DATA {
             rssi: 100,
             remrssi: 100,
@@ -3304,7 +3304,10 @@ fn distance_sensors(elapsed_ms: u64) -> Vec<Out> {
 fn encode(system: u8, sequences: &mut BTreeMap<u8, u8>, (component, message): &Out) -> Vec<u8> {
     let sequence = sequences.entry(*component).or_insert(0);
     let header = MavHeader {
-        system_id: system,
+        system_id: match *component {
+            crate::vehiclefact::SIK_COMPONENT => crate::vehiclefact::SIK_SYSTEM,
+            _ => system,
+        },
         component_id: *component,
         sequence: *sequence,
     };
@@ -3596,6 +3599,30 @@ impl Sim {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_simulated_telemetry_radio_reports_its_signal_as_a_sik_radio_so_it_reads_in_real_dbm() {
+        let bytes = encode(FIRST_SYSTEM_ID, &mut BTreeMap::new(), &radio_status());
+        let (header, message) = mavlink::read_v2_msg::<MavMessage, _>(
+            &mut mavlink::peek_reader::PeekReader::new(bytes.as_slice()),
+        )
+        .expect("a RADIO_STATUS frame");
+        assert_eq!(
+            (header.system_id, header.component_id),
+            (
+                crate::vehiclefact::SIK_SYSTEM,
+                crate::vehiclefact::SIK_COMPONENT
+            ),
+            "Vehicle::_handleRadioStatus converts the Si1k register to dBm only for system '3' component 'D'"
+        );
+        let mut facts = crate::vehiclefact::RadioStatusFacts::default();
+        facts.apply((header.system_id, header.component_id), &message);
+        assert_eq!(
+            (facts.raw("lrssi"), facts.raw("rrssi")),
+            (serde_json::json!(-74), serde_json::json!(-74)),
+            "a raw 100 is 100 / 1.9 - 127 dBm, never a positive 100 dBm"
+        );
+    }
 
     #[test]
     fn a_simulated_link_is_named_the_way_add_a_link_offers_it() {

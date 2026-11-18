@@ -513,8 +513,8 @@ pub const RADIO: GroupSpec = GroupSpec {
     ],
 };
 
-const SIK_SYSTEM: u8 = b'3';
-const SIK_COMPONENT: u8 = b'D';
+pub const SIK_SYSTEM: u8 = b'3';
+pub const SIK_COMPONENT: u8 = b'D';
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct RadioStatusFacts {
