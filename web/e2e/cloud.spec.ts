@@ -60,5 +60,10 @@ test('an Aircast Cloud link is edited in place, without deleting and adding it a
   await expect(device).toHaveValue('first-drone');
   await device.fill('e2e-drone');
   await app.getByRole('button', { name: 'Save and connect' }).click();
-  await expect(app.getByText('Aircast cloud · e2e-drone', { exact: false }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await app.getByRole('button', { name: /^Links/ }).first().click();
+  await expect(app.getByText('Aircast cloud · e2e-drone', { exact: false }).first()).toBeVisible();
+  await expect(app.getByText('first-drone', { exact: false })).toHaveCount(0);
 });
