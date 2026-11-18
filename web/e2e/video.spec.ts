@@ -125,8 +125,8 @@ test('the gimbal sheet chooses what a drag on the video does and opens every gim
   await app.getByRole('menuitem', { name: 'Gimbal settings' }).click();
   await expect(app.getByText('Aim the camera', { exact: true })).toBeVisible();
   await expect(app.getByRole('button', { name: 'Click to point' })).toHaveAttribute('aria-pressed', 'true');
-  await app.getByRole('button', { name: 'Drag to move' }).click();
-  await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
+  await app.getByRole('button', { name: 'Drag the picture' }).click();
+  await expect(app.getByRole('button', { name: 'Drag the picture' })).toHaveAttribute('aria-pressed', 'true');
   await expect(app.getByText('Drag the picture like a map; what you grab stays where you hold it.')).toBeVisible();
   await app.getByRole('button', { name: 'Gimbal settings', exact: true }).click();
   await expect(app.getByText('Show gimbal azimuth indicator in map')).toBeVisible();
@@ -146,11 +146,11 @@ test('the switch on the video steps through every way a drag steers the gimbal',
   await expect(mode).toHaveAccessibleName('Video gimbal mode, Joystick');
   await expect(app.getByRole('img', { name: 'Camera joystick' }), 'the joystick shows only in its own mode').toBeVisible();
   await mode.click();
-  await expect(mode).toHaveAccessibleName('Video gimbal mode, Drag to move');
+  await expect(mode).toHaveAccessibleName('Video gimbal mode, Drag the picture');
   await expect(app.getByRole('img', { name: 'Camera joystick' })).toHaveCount(0);
   await app.getByRole('button', { name: /^Cameras, showing/ }).click();
   await app.getByRole('menuitem', { name: 'Gimbal settings' }).click();
-  await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(app.getByRole('button', { name: 'Drag the picture' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('holding a drag on the video keeps the gimbal turning, however late its angle reports', async ({ app }) => {

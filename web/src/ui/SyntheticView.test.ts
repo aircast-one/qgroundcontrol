@@ -6,6 +6,7 @@ import {
   dragStart,
   gimbalAim,
   pageOf,
+  pointedAim,
   shownCameraStatus,
   shownNote,
   syntheticAims,
@@ -50,6 +51,14 @@ describe('SyntheticViewTest', () => {
     expect(syntheticPan(170.0, -200, 1000, 70.0)).toBeCloseTo(-176.0, 9);
     expect(verticalFov(90.0, 1000, 500)).toBeCloseTo(53.13, 2);
     expect(syntheticLook([-15.0, 0.0], { x: -250, y: 100 }, { width: 1000, height: 500 }, 90.0).map((it) => Number(it.toFixed(2)))).toEqual([-4.37, 22.5]);
+  });
+
+  it('a tap in Click to point turns the gimbal so the tapped spot comes to the centre', () => {
+    const size = { width: 1000, height: 500 };
+    expect(pointedAim([-15.0, 0.0], { x: 500, y: 250 }, size, 90.0)).toEqual([-15.0, 0.0]);
+    const [tilt, yaw] = pointedAim([-15.0, 0.0], { x: 750, y: 350 }, size, 90.0);
+    expect(yaw, 'a spot right of centre turns the gimbal right').toBeCloseTo(22.5, 6);
+    expect(tilt, 'a spot below centre tilts it down').toBeLessThan(-15.0);
   });
 
   it('the synthetic camera reads live only once the page has drawn it', () => {

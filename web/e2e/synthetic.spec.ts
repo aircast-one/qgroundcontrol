@@ -78,6 +78,24 @@ test('with a gimbal, dragging the synthetic view turns the gimbal the same way, 
 });
 
 
+test('with a gimbal set to Click to point, a click on the synthetic view turns the gimbal toward the spot', async ({ app }) => {
+  await connectMock(app, ['Enable gimbal']);
+  await syntheticCanvas(app);
+  await app.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.gimbalControllerSettings.onScreenStick', false);
+    await Qgc.set('settings.gimbalControllerSettings.clickAndDrag', false);
+    await Qgc.set('settings.gimbalControllerSettings.enableOnScreenControl', true);
+  }, '/src/bridge/Qgc.ts');
+  await expect.poll(() => gimbalYaw(app), { timeout: 30_000 }).not.toBeNull();
+  const before = (await gimbalYaw(app)) as number;
+  const canvas = app.locator('[data-gesture=gimbal] canvas');
+  await expect(canvas).toBeVisible();
+  const box = (await canvas.boundingBox())!;
+  await app.mouse.click(box.x + box.width * 0.75, box.y + box.height / 2);
+  await expect.poll(async () => ((await gimbalYaw(app)) as number) - before, { timeout: 10_000 }).toBeGreaterThan(8);
+});
+
 test('with a gimbal, a drag on the picked synthetic view turns the view and leaves the real camera where it is', async ({ app }) => {
   await call(app, 'cameras.add', 'Synthetic view', 'Synthetic View', '');
   await connectMock(app, ['Enable gimbal']);

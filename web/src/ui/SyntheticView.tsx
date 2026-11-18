@@ -9,7 +9,7 @@ import { CircularProgressIndicator, Text } from '@/m3';
 import { Color, aircast, withAlpha } from '@/theme/Colors';
 import { type CameraEntry, CameraStatus, type CamerasReading } from '@/ui/Cameras';
 import { useCamerasReading } from '@/ui/CameraSwitch';
-import { reportGimbalRefusal } from '@/ui/GimbalIndicator';
+import { GIMBAL_INDICATOR_PATH, onScreenGimbal, reportGimbalRefusal, videoGimbalMode } from '@/ui/GimbalIndicator';
 import { osdShadow } from '@/ui/Osd';
 import { type PicturePress, type PictureSpot, PictureMark, usePictureHold } from '@/ui/PictureHold';
 import { SyntheticSurface, nativeChosen, nativeDraw } from '@/ui/SyntheticSurface';
@@ -84,6 +84,14 @@ export const syntheticLook = (from: Aim, dragged: { x: number; y: number }, size
   syntheticTilt(from[0], dragged.y, size.height, verticalFov(hFov, size.width, size.height)),
   syntheticPan(from[1], dragged.x, size.width, hFov),
 ];
+
+export const pointedAim = (from: Aim, at: { x: number; y: number }, size: { width: number; height: number }, hFov: number): Aim =>
+  syntheticLook(from, { x: size.width / 2 - at.x, y: size.height / 2 - at.y }, size, hFov);
+
+const pointsOnTap = (json: Json | null): boolean => {
+  const control = onScreenGimbal(json);
+  return control !== null && videoGimbalMode(control) === 'point';
+};
 
 export const syntheticFree = (view: Json | null, picked: boolean): boolean =>
   syntheticAvailable(view) && !optBoolean(view, 'locksOnTarget') && (picked || !optBoolean(view, 'gimbalAimed'));
@@ -233,6 +241,7 @@ export const SyntheticView = ({
   };
   const gimbalJson = useQgcPath(GIMBAL_STATE);
   const gimbalAt = useUpdatedRef(gimbalAim(gimbalJson));
+  const pointing = useQgcDerived(GIMBAL_INDICATOR_PATH, pointsOnTap);
   const lastAim = useRef<Aim | null>(null);
   const lastAimAt = useRef(0);
   const aimGimbal = (tilt: number, yaw: number) => {
@@ -255,6 +264,12 @@ export const SyntheticView = ({
       }
     : drag === 'gimbal'
       ? {
+          onTap: pointing
+            ? (at, size) => {
+                const [tilt, yaw] = pointedAim(dragStart(gimbalAt.current, lastAim.current, uptimeMillis() - lastAimAt.current), at, size, fov.current);
+                aimGimbal(tilt, yaw);
+              }
+            : undefined,
           onDragStart: () => {
             look.current.start = dragStart(gimbalAt.current, lastAim.current, uptimeMillis() - lastAimAt.current);
             look.current.moved = { x: 0, y: 0 };

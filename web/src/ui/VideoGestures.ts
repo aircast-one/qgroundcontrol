@@ -275,6 +275,7 @@ export const verticalSwipe = (threshold: number, onSwipe: (swipe: VideoSwipe) =>
 };
 
 export type PointerGestureHandlers = {
+  onTap?: (at: Offset, size: Size) => void;
   onDragStart?: (at: Offset) => void;
   onDrag?: (at: Offset, dragged: Offset, size: Size) => void;
   onDragEnd?: () => void;
@@ -308,6 +309,7 @@ export const usePointerGestures = (handlers: PointerGestureHandlers | null): HTM
         return;
       }
       state.tapUpAt = event.timeStamp;
+      latest.current?.onTap?.(state.from, sizeOf(event));
     };
     return {
       onPointerDown: (event) => {

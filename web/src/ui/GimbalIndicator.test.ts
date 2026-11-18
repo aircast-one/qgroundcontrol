@@ -125,7 +125,7 @@ describe('GimbalTakeControlTest', () => {
     expect(VIDEO_GIMBAL_MODES.map((mode) => videoGimbalMode({ enabled: mode.onScreen, clickAndDrag: mode.clickAndDrag, stick: mode.stick }))).toEqual(VIDEO_GIMBAL_MODES.map((mode) => mode.mode));
     expect(videoGimbalMode({ enabled: false, clickAndDrag: true, stick: false })).toBe('drag');
     expect(videoGimbalMode({ enabled: true, clickAndDrag: true, stick: true }), 'the joystick wins over any way of dragging the picture').toBe('stick');
-    expect(VIDEO_GIMBAL_MODES.map((mode) => mode.label)).toEqual(['Drag to move', 'Tap to point', 'Hold and drag', 'Joystick']);
+    expect(VIDEO_GIMBAL_MODES.map((mode) => mode.label)).toEqual(['Drag the picture', 'Tap to point', 'Hold and drag', 'Joystick']);
   });
 
   it('the switch on the video steps through every mode and back to the first', () => {
