@@ -1363,7 +1363,20 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
     let written = crate::read::object(value);
     let given = written.get("value").cloned().unwrap_or(written);
     let raw_given = raw_from_given(&at.meta, at.field.as_deref(), unit_for(&at.meta), given)?;
-    if let Some(reason) = refused_write(at.group, &at.fact, &raw_given) {
+    let refused = refused_write(at.group, &at.fact, &raw_given)
+        .map(str::to_string)
+        .or_else(|| {
+            (at.group == "AutoConnect")
+                .then(|| {
+                    radio_channel_clash(&at.fact, &raw_given, |name| {
+                        raw_setting(&format!("settings.autoConnectSettings.{name}"))
+                            .as_ref()
+                            .and_then(crate::factwrite::number)
+                    })
+                })
+                .flatten()
+        });
+    if let Some(reason) = refused {
         return Some(json!({ "ok": false, "reason": reason }).to_string());
     }
     store_raw(&at, &raw_given);
@@ -1422,6 +1435,39 @@ fn refused_write(group: &str, fact: &str, raw: &Value) -> Option<&'static str> {
         || stored.as_deref() == Some(candidate)
         || crate::remoteid::eu_operator_id_valid(candidate);
     (group == "RemoteID" && fact == "operatorIDEU" && !legal).then_some(INVALID_EU_OPERATOR_ID)
+}
+
+const RADIO_CHANNELS: &[(&str, &str)] = &[
+    ("usbRadioPitchChannel", "camera pitch"),
+    ("usbRadioYawChannel", "camera yaw"),
+    ("usbRadioZoomChannel", "camera zoom"),
+    ("usbRadioPictureChannel", "camera picture"),
+    ("usbRadioPaletteChannel", "thermal palette"),
+    ("usbRadioDropChannel", "payload drop"),
+    ("usbRadioArmChannel", "payload arm"),
+    ("usbRadioBayChannel", "payload bay"),
+    ("usbRadioTiltChannel", "camera tilt knob"),
+    ("usbRadioLookChannel", "camera look switch"),
+    ("usbRadioStickChannel", "left stick camera switch"),
+];
+
+fn radio_channel_clash(
+    fact: &str,
+    raw: &Value,
+    held: impl Fn(&str) -> Option<f64>,
+) -> Option<String> {
+    RADIO_CHANNELS
+        .iter()
+        .any(|(name, _)| *name == fact)
+        .then_some(())?;
+    let wanted = crate::factwrite::number(raw).filter(|channel| *channel != 0.0)?;
+    RADIO_CHANNELS
+        .iter()
+        .filter(|(name, _)| *name != fact)
+        .find(|(name, _)| held(name) == Some(wanted))
+        .map(|(_, role)| {
+            format!("Channel {wanted} is already the {role} channel. Pick another channel, or set that one to 0 first.")
+        })
 }
 
 fn validated(group: &str, fact: &str, new: Value) -> Value {
@@ -2464,6 +2510,47 @@ mod tests {
             raw_from_given(&meta, Some("rawValue"), feet, json!("300")),
             Some(json!("300")),
             "a raw write is already in metres"
+        );
+    }
+
+    #[test]
+    fn a_radio_channel_already_working_another_control_is_refused() {
+        let defaults = |name: &str| {
+            metadata("AutoConnect", name)
+                .and_then(|meta| default_of(&meta))
+                .as_ref()
+                .and_then(crate::factwrite::number)
+        };
+        assert_eq!(
+            radio_channel_clash("usbRadioPitchChannel", &json!("11"), defaults).as_deref(),
+            Some(
+                "Channel 11 is already the payload drop channel. Pick another channel, or set that one to 0 first."
+            )
+        );
+        assert_eq!(
+            radio_channel_clash("usbRadioDropChannel", &json!(18), defaults).as_deref(),
+            Some(
+                "Channel 18 is already the camera pitch channel. Pick another channel, or set that one to 0 first."
+            )
+        );
+        assert_eq!(
+            radio_channel_clash("usbRadioPitchChannel", &json!(18), defaults),
+            None,
+            "its own channel"
+        );
+        assert_eq!(
+            radio_channel_clash("usbRadioPitchChannel", &json!(0), defaults),
+            None,
+            "0 is off"
+        );
+        assert_eq!(
+            radio_channel_clash("usbRadioPitchChannel", &json!(13), defaults),
+            None
+        );
+        assert_eq!(
+            radio_channel_clash("usbRadioYawSpeed", &json!(11), defaults),
+            None,
+            "a speed is no channel"
         );
     }
 

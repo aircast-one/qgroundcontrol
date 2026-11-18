@@ -259,11 +259,12 @@ fn write_enum_index(backend: &dyn Backend, path: &str, value: &str) -> Value {
             .and_then(|i| fact.get("enumValues")?.get(i).cloned());
         return write(backend, fact_path, &json!({ "value": offered }).to_string());
     }
-    let answered = flag(&object(&backend.set(path, value)), "ok");
+    let reply = object(&backend.set(path, value));
+    let answered = flag(&reply, "ok");
     if answered && index != fact.get("enumIndex").and_then(Value::as_i64) {
         announce_reboot(&fact);
     }
-    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The setting was not written.") } })
+    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": not_written(answered, &reply) })
 }
 
 fn reboot_flags(fact: &Value, qt_present: bool) -> (bool, bool) {
@@ -283,6 +284,20 @@ fn announce_reboot(fact: &Value) {
 }
 
 const UI_SCALING: &str = "settings.appSettings.appFontPointSize.enumIndex";
+
+fn not_written(answered: bool, reply: &Value) -> Value {
+    match answered {
+        true => Value::Null,
+        false => reply
+            .get("reason")
+            .and_then(Value::as_str)
+            .filter(|reason| !reason.trim().is_empty())
+            .map_or_else(
+                || json!("The setting was not written."),
+                |reason| json!(reason),
+            ),
+    }
+}
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     if path == UI_SCALING {
@@ -343,11 +358,12 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason, "path": path });
     }
-    let answered = flag(&object(&backend.set(path, value)), "ok");
+    let reply = object(&backend.set(path, value));
+    let answered = flag(&reply, "ok");
     if answered && !unchanged(&fact, &asked) {
         announce_reboot(&fact);
     }
-    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The setting was not written.") } })
+    json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": not_written(answered, &reply) })
 }
 
 #[cfg(test)]
@@ -516,6 +532,39 @@ mod tests {
             check(json!({ "kind": "fact", "name": "x" }), json!(1)),
             None,
             "a fact that does not say it is read-only is not refused as one"
+        );
+    }
+
+    #[test]
+    fn the_store_s_own_reason_for_refusing_a_setting_reaches_the_pilot() {
+        struct Refusing;
+        impl Backend for Refusing {
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "fact", "name": "usbRadioPitchChannel", "min": 0, "max": 24, "minIsDefaultForType": false, "maxIsDefaultForType": false }).to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
+            fn set(&self, _p: &str, v: &str) -> String {
+                match v.contains("13") {
+                    true => json!({ "ok": false }),
+                    false => json!({ "ok": false, "reason": "Channel 11 is already the payload drop channel." }),
+                }
+                .to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let path = "settings.autoConnectSettings.usbRadioPitchChannel";
+        assert_eq!(
+            write(&Refusing, path, r#"{"value":11}"#)["reason"],
+            "Channel 11 is already the payload drop channel."
+        );
+        assert_eq!(
+            write(&Refusing, path, r#"{"value":13}"#)["reason"],
+            "The setting was not written."
         );
     }
 
