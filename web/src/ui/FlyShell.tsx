@@ -36,6 +36,8 @@ import type { DrawableName } from '@/res/drawables';
 import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { FleetPanel } from '@/ui/ActiveVehicle';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
+import { CAMERA_VIEW, cameraReading } from '@/ui/CameraControl';
+import { railAboveShutter } from '@/ui/CameraControlLayer';
 import { HudLadders } from '@/ui/HudLadders';
 import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FLY_MENU, FlyDeckLayout } from '@/ui/FlyDeck';
@@ -428,6 +430,8 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE + mapAboveOsd;
   const switchBottom = view === FlyView.Map ? mapButtonsBottom : AircastSpace.s3 + gimbalRoom;
   const syntheticChosen = useRememberSyntheticChosen();
+  const cameraJson = useQgcPath(CAMERA_VIEW);
+  const aboveShutter = useMemo(() => railAboveShutter(cameraReading(cameraJson)), [cameraJson]);
   const [layers, setLayers] = useState(false);
   useEffect(() => setLayers(false), [view]);
 
@@ -482,7 +486,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
         style={{
           zIndex: layer(2),
           top: `calc(env(safe-area-inset-top, 0px) + ${STATUS_ROW_HEIGHT + AircastSpace.s6}px)`,
-          bottom: `calc(50% + ${RAIL_SHUTTER_ROOM / 2 + AircastSpace.s4}px)`,
+          bottom: `calc(50% + ${RAIL_SHUTTER_ROOM / 2 + aboveShutter + AircastSpace.s4}px)`,
         }}
       />
     </>

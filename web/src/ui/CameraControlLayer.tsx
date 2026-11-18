@@ -426,6 +426,8 @@ export const CameraShutters = () => {
 
 const RAIL_GAP = 8;
 
+export const railAboveShutter = (camera: CameraReading | null): number => (camera?.panel?.visible === true && zoomText(camera) !== null ? OSD_CONTROL_SIZE + RAIL_GAP : 0);
+
 const ShutterCentredRail = ({ centre, style, above, shutter, below }: { centre: number; style?: CSSProperties; above: ReactNode; shutter: ReactNode; below: ReactNode }) => (
   <div className="grid justify-items-center" style={{ gridTemplateRows: `1fr ${centre}px 1fr`, ...style }}>
     <div className="row-start-1 flex flex-col items-center self-end empty:hidden" style={{ gap: RAIL_GAP, marginBottom: RAIL_GAP }}>
