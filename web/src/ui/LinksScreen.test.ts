@@ -66,6 +66,7 @@ import {
   withTypedServer,
   webSocketUrlError,
   SIMULATOR_WEBSOCKET_URL,
+  webSocketAddress,
   webSocketLinkName,
 } from './LinksScreen';
 import { sheetDrilled } from './SettingsSheet';
@@ -587,6 +588,19 @@ describe('AddableLinkTypesTest', () => {
 
   it('the desktop app opens UDP and TCP sockets itself, so it offers them and no WebSocket the native core cannot open', () => {
     expect(addableLinkTypes(links('["serial","udp","tcp","logReplay"]'), true)).toEqual([LinkType.Udp, LinkType.Tcp, LinkType.Serial, LinkType.LogReplay]);
+  });
+
+  it('a WebSocket address typed without ws:// gets it, and a port past 65535 is named as the problem', () => {
+    expect(webSocketAddress(' 192.168.1.10:5760 ')).toBe('ws://192.168.1.10:5760');
+    expect(webSocketAddress('wss://bridge.example/mavlink')).toBe('wss://bridge.example/mavlink');
+    expect(webSocketAddress('http://192.168.1.10:5760')).toBe('http://192.168.1.10:5760');
+    expect(webSocketAddress('  ')).toBe('');
+    expect(webSocketUrlError(webSocketAddress('192.168.1.10:5760'))).toBeNull();
+    expect(webSocketUrlError('ws://10.0.0.1:99999')).toBe('Port must be a number between 1 and 65535.');
+    expect(webSocketUrlError('ws://10.0.0.1:5760/mavlink')).toBeNull();
+    const socket = LinkRow({ index: 3, name: 'bridge', statusLine: '', connected: false, heard: false, lastError: '', editing: linkEditingFrom('url'), url: 'ws://127.0.0.1:9' });
+    expect(editError(LinkEditing.Url, { ...linkEdit(socket), host: '10.0.0.1:5760' }, '14550')).toBeNull();
+    expect(editWrites(LinkEditing.Url, 'bridge', '10.0.0.1:5760', 0, '', 0, true, false)).toContainEqual(['url', 'ws://10.0.0.1:5760']);
   });
 
   it('the WebSocket form offers the Aircast cloud simulator as one tap, not as a value already typed in', () => {

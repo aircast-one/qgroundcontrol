@@ -261,7 +261,7 @@ export const editWrites = (
           ['port', port],
         ]
       : editing === LinkEditing.Url
-        ? [['url', host.trim()]]
+        ? [['url', webSocketAddress(host)]]
         : editing === LinkEditing.PortOnly
           ? [['localPort', port]]
           : editing === LinkEditing.LogFile
@@ -617,7 +617,7 @@ export const editError = (editing: LinkEditing, edit: LinkEdit, udpDefault: stri
   if (editing === LinkEditing.LogFile) return edit.logFile.trim() === '' ? 'Choose a log file.' : null;
   if (editing === LinkEditing.PortOnly) return linkFormError(LinkType.Udp, '', edit.port, udpDefault);
   if (editing === LinkEditing.HostAndPort) return inPortRange(editedPort(editing, edit.port, udpDefault)) ? null : 'Port must be a number between 1 and 65535.';
-  if (editing === LinkEditing.Url) return webSocketUrlError(edit.host);
+  if (editing === LinkEditing.Url) return webSocketUrlError(webSocketAddress(edit.host));
   return null;
 };
 
@@ -1231,7 +1231,18 @@ export const webSocketLinkName = (typed: string): string => {
   }
 };
 
+const URL_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
+const URL_PORT = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*:(\d+)(?:[/?#]|$)/i;
+
+export const webSocketAddress = (typed: string): string => (typed.trim() === '' || URL_SCHEME.test(typed.trim()) ? typed.trim() : `ws://${typed.trim()}`);
+
+const portOutOfRange = (typed: string): boolean => {
+  const port = URL_PORT.exec(typed.trim())?.[1];
+  return port !== undefined && !inPortRange(Number(port));
+};
+
 export const webSocketUrlError = (typed: string): string | null => {
+  if (portOutOfRange(typed)) return 'Port must be a number between 1 and 65535.';
   try {
     const url = new URL(typed.trim());
     return url.protocol === 'ws:' || url.protocol === 'wss:' ? null : 'A MAVLink WebSocket address starts with ws:// or wss://.';
@@ -1249,11 +1260,13 @@ const WebSocketLinkPage = ({ onBack, onAdded, className }: { onBack: () => void;
   const taken = useMemo(() => linkRows(linksJson).map((it) => it.name), [linksJson]);
   useBackHandler(true, onBack);
   const connect = () => {
-    const invalid = webSocketUrlError(typed);
+    const address = webSocketAddress(typed);
+    setTyped(address);
+    const invalid = webSocketUrlError(address);
     setError(invalid);
     if (invalid !== null) return;
     setBusy(true);
-    void LinkCommands.createWebSocket(uniqueLinkName(webSocketLinkName(typed), taken), typed.trim()).then((saved) => {
+    void LinkCommands.createWebSocket(uniqueLinkName(webSocketLinkName(address), taken), address).then((saved) => {
       setBusy(false);
       if (saved) onAdded();
       else setError(WEBSOCKET_NOT_SAVED);
