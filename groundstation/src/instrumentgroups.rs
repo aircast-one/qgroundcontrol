@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::label::capitalised;
+use crate::label::humanise;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -11,38 +11,82 @@ pub const DEPS: &[&str] = &[
 ];
 
 fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
-    group
+    let listed: Vec<&Value> = group
         .get("facts")
         .and_then(Value::as_array)
-        .map(|facts| {
-            facts
-                .iter()
-                .filter_map(|fact| {
-                    let property = fact.get("property").and_then(Value::as_str)?;
-                    let named = fact
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .filter(|n| !n.is_empty())
-                        .unwrap_or(property);
-                    let described = fact
-                        .get("shortDescription")
-                        .and_then(Value::as_str)
-                        .filter(|d| !d.is_empty());
-                    Some(json!({
-                        "name": property,
-                        "selection": format!("{prefix}{property}"),
-                        "label": described.unwrap_or(named),
-                    }))
+        .map(|facts| facts.iter().collect())
+        .unwrap_or_default();
+    let has_text_twin = |name: &str| {
+        listed
+            .iter()
+            .any(|other| property_of(other) == Some(&format!("{name}{TEXT_TWIN}")))
+    };
+    listed
+        .iter()
+        .filter_map(|fact| {
+            let property = property_of(fact)?;
+            let named = fact
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|n| !n.is_empty())
+                .unwrap_or(property);
+            let described = fact
+                .get("shortDescription")
+                .and_then(Value::as_str)
+                .filter(|d| !d.is_empty() && *d != named);
+            (!has_text_twin(property)).then(|| {
+                json!({
+                    "name": property,
+                    "selection": format!("{prefix}{property}"),
+                    "label": described.map_or_else(|| sentence(named), crate::label::capitalised),
                 })
-                .collect()
+            })
         })
-        .unwrap_or_default()
+        .collect()
+}
+
+const TEXT_TWIN: &str = "Str";
+
+fn property_of(fact: &Value) -> Option<&str> {
+    fact.get("property").and_then(Value::as_str)
+}
+
+const GROUP_TITLES: &[(&str, &str)] = &[
+    ("aircastLink", "Aircast link"),
+    ("distanceSensors", "Distance sensors"),
+    ("efi", "Engine"),
+    ("gps", "GPS"),
+    ("gps2", "GPS 2"),
+    ("gpsAggregate", "GPS integrity"),
+    ("radioStatus", "Telemetry radio"),
+    ("rpm", "RPM"),
+];
+
+fn sentence(identifier: &str) -> String {
+    humanise(identifier)
+        .split(' ')
+        .enumerate()
+        .map(
+            |(at, word)| match at == 0 || word.chars().all(|c| !c.is_lowercase()) {
+                true => word.to_string(),
+                false => word.to_lowercase(),
+            },
+        )
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn title(group: &str) -> String {
-    match group {
-        "distanceSensors" => "DistanceSensor".to_string(),
-        other => capitalised(other),
+    GROUP_TITLES
+        .iter()
+        .find(|(name, _)| *name == group)
+        .map_or_else(|| sentence(group), |(_, title)| title.to_string())
+}
+
+fn gimbal_title(at: usize, count: usize) -> String {
+    match count {
+        1 => "Gimbal".to_string(),
+        _ => format!("Gimbal {}", at + 1),
     }
 }
 
@@ -62,25 +106,27 @@ fn catalogued() -> Option<(Vec<Value>, Value)> {
         })
         .flatten()?;
     let (groups, vehicle) = crate::vehiclefact::instrument_catalogue(sub);
-    let gimbals: Vec<(String, Value)> = fact_groups
+    let count = fact_groups.len();
+    let gimbals: Vec<(String, String, Value)> = fact_groups
         .into_iter()
-        .map(|(pair, _)| {
+        .enumerate()
+        .map(|(at, (pair, _))| {
             (
                 crate::vehiclefact::gimbal_group_name(pair),
+                gimbal_title(at, count),
                 crate::vehiclefact::gimbal_listing(),
             )
         })
         .collect();
     let listed = groups
         .into_iter()
-        .map(|(group, listing)| (group.to_string(), listing))
+        .map(|(group, listing)| (group.to_string(), title(group), listing))
         .chain(gimbals)
-        .filter(|(group, _)| sub || group != crate::vehiclefact::SUB_INFO_GROUP)
-        .filter(|(group, _)| group != "orbitMapCircle")
-        .filter_map(|(group, listing)| {
+        .filter(|(group, _, _)| sub || group != crate::vehiclefact::SUB_INFO_GROUP)
+        .filter(|(group, _, _)| group != "orbitMapCircle")
+        .filter_map(|(group, title, listing)| {
             let facts = facts_of(&listing, &format!("{group}/"));
-            (!facts.is_empty())
-                .then(|| json!({ "group": group, "title": title(&group), "facts": facts }))
+            (!facts.is_empty()).then(|| json!({ "group": group, "title": title, "facts": facts }))
         })
         .collect();
     Some((listed, vehicle))
@@ -127,10 +173,8 @@ fn instrument_groups(
                 &backend.value(&format!("vehicle.{group}")),
                 &format!("{group}/"),
             );
-            let id = crate::read::value_number(&backend.value(&format!("vehicle.{group}.id")))
-                .map_or(pack, |id| id as i64);
             (!facts.is_empty())
-                .then(|| json!({ "group": group, "title": format!("Battery{id}"), "facts": facts }))
+                .then(|| json!({ "group": group, "title": format!("Battery {}", pack + 1), "facts": facts }))
         })
         .collect();
     json!({
@@ -156,11 +200,16 @@ mod tests {
         fn get(&self, path: &str) -> String {
             match path {
                 "vehicle.batteries.count" => json!({ "kind": "value", "value": 2 }).to_string(),
-                "vehicle.batteries.0" => json!({ "kind": "object", "facts": [{ "property": "voltage", "name": "voltage", "shortDescription": "Voltage" }] }).to_string(),
+                "vehicle.batteries.0" => json!({ "kind": "object", "facts": [
+                    { "property": "voltage", "name": "voltage", "shortDescription": "Voltage" },
+                    { "property": "timeRemaining", "name": "timeRemaining", "shortDescription": "Time Remaining" },
+                    { "property": "timeRemainingStr", "name": "timeRemainingStr", "shortDescription": "Time Remaining" },
+                ] }).to_string(),
                 "vehicle.batteries.0.id" => json!({ "kind": "fact", "value": 3 }).to_string(),
                 "vehicle.gps" => json!({ "kind": "object", "facts": [
                     { "property": "lock", "name": "lock", "shortDescription": "GPS Lock" },
                     { "property": "count", "name": "count", "shortDescription": "" },
+                    { "property": "runtime", "name": "runtime", "shortDescription": "runtime" },
                 ] }).to_string(),
                 "vehicle.escStatus" => json!({ "kind": "object", "facts": [
                     { "property": "rpmFirst", "name": "rpm1", "shortDescription": "" },
@@ -218,8 +267,8 @@ mod tests {
             "the head hands this back as view.instruments(escStatus/<name>), which resolves it as a PATH, so it has to be the Q_PROPERTY and not the fact's own name"
         );
         assert_eq!(
-            esc["label"], "rpm1",
-            "a fact with no description is listed by its FACT name, as InstrumentValueData::factValueDescriptions does"
+            esc["label"], "Rpm 1",
+            "a fact with no description is listed by its FACT name, spelt out as words rather than the identifier"
         );
 
         assert_eq!(
@@ -227,12 +276,16 @@ mod tests {
             "shortDescription wins whenever the fact has one"
         );
         assert_eq!(
-            gps_group["facts"][1]["label"], "count",
+            gps_group["facts"][1]["label"], "Count",
             "and the fact name fills in when it does not"
         );
         assert_eq!(
-            gps_group["title"], "Gps",
-            "InstrumentValueData::factGroupNames only upper-cases the first letter"
+            gps_group["facts"][2]["label"], "Runtime",
+            "a description that only repeats the identifier reads like one with none"
+        );
+        assert_eq!(
+            gps_group["title"], "GPS",
+            "the picker heads each group with words a pilot reads, not the FactGroup name"
         );
         assert_eq!(
             view["packs"],
@@ -248,8 +301,18 @@ mod tests {
         );
         assert_eq!(
             (&packs[0]["group"], &packs[0]["title"]),
-            (&json!("batteries.0"), &json!("Battery3")),
-            "BatteryFactGroupListModel names the group battery<BATTERY_STATUS id>"
+            (&json!("batteries.0"), &json!("Battery 1")),
+            "the pack is named as the battery sheet numbers it, from one"
+        );
+        assert_eq!(
+            packs[0]["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| fact["name"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["voltage", "timeRemainingStr"],
+            "a reading with a formatted Str twin is offered once, as the twin, instead of two Time remaining rows"
         );
         let voltage = packs[0]["facts"][0]["selection"].as_str().unwrap();
         assert_eq!(
@@ -268,13 +331,39 @@ mod tests {
             )
         );
         assert_eq!(
-            own[1]["label"], "groundSpeed",
+            own[1]["label"], "Ground speed",
             "a fact with no description reads its name like every other group's"
         );
         assert_eq!(
             crate::instruments::fact_path_of("altitudeRelative"),
             "vehicle.altitudeRelative",
             "a bare selection is the vehicle's own reading"
+        );
+    }
+
+    #[test]
+    fn group_titles_read_as_words_and_a_lone_gimbal_is_just_gimbal() {
+        assert_eq!(
+            [
+                "estimatorStatus",
+                "localPositionSetpoint",
+                "gpsAggregate",
+                "efi",
+                "wind"
+            ]
+            .map(title),
+            [
+                "Estimator status",
+                "Local position setpoint",
+                "GPS integrity",
+                "Engine",
+                "Wind"
+            ]
+        );
+        assert_eq!(
+            (gimbal_title(0, 1), gimbal_title(1, 2)),
+            ("Gimbal".to_string(), "Gimbal 2".to_string()),
+            "gimbal1154 is a manager and device id glued together, not a name"
         );
     }
 }

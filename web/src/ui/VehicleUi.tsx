@@ -610,7 +610,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
 
   const screen: readonly MenuTile[] = [
     MenuTile({
-      label: 'Choose readings',
+      label: CHOOSE_READINGS,
       icon: 'ic_tune',
       enabled: true,
       onClick: () => {
@@ -1187,12 +1187,13 @@ export const FlightModeMenu = ({ expanded, onDismiss, onStatus }: { expanded: bo
 
 const MODE_TEXT_WIDTH = 260;
 export const ALL_MODES = 'All modes';
+export const CHOOSE_READINGS = 'Choose readings';
 export const TAKEOFF_REQUEST = 'takeoff';
 const QUICK_LIST_HINT = `Shown first when you ${TAP_LOWER} the mode`;
 
 const InstrumentSheet = ({
   chosen,
-  title = 'Instrument tiles',
+  title = CHOOSE_READINGS,
   onToggle,
   onDismiss,
 }: {

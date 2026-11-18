@@ -61,10 +61,22 @@ test('reset layout in the layout options asks for a second tap before it resets'
   await expect(vehicle.getByRole('button', { name: 'Layout options' }), 'still editing after the reset').toBeVisible();
 });
 
-test('choose readings opens the readings chooser', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
-  await vehicle.getByRole('dialog').getByText('Choose readings').click();
-  await expect(vehicle.getByRole('dialog').filter({ hasNotText: 'Go to' })).toBeVisible();
+test('choose readings opens a chooser of the same name whose groups and readings read as words', async ({ app }) => {
+  await connectMock(app, ['Enable gimbal']);
+  await app.getByRole('button', { name: 'Menu', exact: true }).click();
+  await app.getByRole('dialog').getByText('All status').click();
+  await expect(app.getByRole('button', { name: /· P: -?[\d.]+ ·/ }), 'the gimbal has been discovered').toBeVisible({ timeout: 30_000 });
+  await expect(app.getByRole('dialog').getByRole('button', { name: /×2/ }), 'both packs have reported').toBeVisible();
+  await app.keyboard.press('Escape');
+  await expect(app.getByRole('dialog')).toHaveCount(0);
+  await app.getByRole('button', { name: 'Menu', exact: true }).click();
+  await app.getByRole('dialog').getByText('Choose readings').click();
+  const chooser = app.getByRole('dialog', { name: 'Choose readings' });
+  await expect(chooser.getByText('Estimator status', { exact: true })).toBeVisible();
+  await expect(chooser.getByText('Gimbal', { exact: true }), 'one gimbal is not named by its manager and device ids').toBeVisible();
+  await expect(chooser.getByText('Battery 1', { exact: true })).toBeVisible();
+  await expect(chooser.getByText(/^(EstimatorStatus|Gimbal\d+|Battery\d|managerCompid|runtime)$/)).toHaveCount(0);
+  await expect(chooser.getByText('Time remaining', { exact: true }), 'one Time remaining row per pack').toHaveCount(2);
 });
 
 test('map layers switches the base map', async ({ vehicle: app }) => {
