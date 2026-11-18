@@ -19,12 +19,14 @@
                 {
                     "param": "LOG_BACKEND_TYPE",
                     "label": "Logging backends",
+                    "heading": "Log storage",
                     "optional": true,
                     "control": "bitmask"
                 },
                 {
                     "param": "LOG_BITMASK",
                     "label": "Logged data groups",
+                    "heading": "What gets logged",
                     "optional": true,
                     "control": "bitmask"
                 },
@@ -36,6 +38,7 @@
                 {
                     "param": "LOG_FILE_MB_FREE",
                     "label": "Minimum free space (MB)",
+                    "heading": "Free space to keep",
                     "optional": true
                 }
             ]

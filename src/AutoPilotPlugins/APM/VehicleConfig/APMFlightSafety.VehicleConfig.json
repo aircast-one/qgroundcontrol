@@ -164,6 +164,7 @@
                 {
                     "param": "FENCE_ENABLE",
                     "label": "Enabled",
+                    "heading": "Geofence",
                     "control": "checkbox"
                 },
                 {
@@ -248,6 +249,7 @@
                 {
                     "param": "FENCE_ENABLE",
                     "label": "Enabled",
+                    "heading": "Geofence",
                     "control": "checkbox"
                 },
                 {
@@ -359,6 +361,7 @@
                 {
                     "param": "ARMING_CHECK",
                     "label": "Arming checks",
+                    "heading": "Arming checks",
                     "control": "bitmask",
                     "optional": true,
                     "firstEntryIsAll": true,
@@ -367,6 +370,7 @@
                 {
                     "param": "ARMING_SKIPCHK",
                     "label": "Skip arming checks",
+                    "heading": "Arming checks to skip",
                     "control": "bitmask",
                     "optional": true,
                     "showWhen": "!_armingCheck && _armingSkipCheck"

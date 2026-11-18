@@ -1252,6 +1252,9 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
     if !control["label"].is_null() {
         decoded["label"] = control["label"].clone();
     }
+    if let Some(heading) = control["heading"].as_str() {
+        decoded["shortLabel"] = json!(heading);
+    }
     if let Some(zero) = control["labelWhenZero"]
         .as_str()
         .filter(|_| decoded["value"].as_f64() == Some(0.0))
@@ -2028,6 +2031,55 @@ mod tests {
         );
     }
     use std::cell::RefCell;
+
+    #[test]
+    fn rows_named_after_firmware_internals_carry_a_pilot_heading() {
+        let fake = Fake::new(&[
+            ("LOG_BACKEND_TYPE", 1.0),
+            ("LOG_BITMASK", 176126.0),
+            ("ARMING_SKIPCHK", 0.0),
+            ("FENCE_ENABLE", 0.0),
+        ]);
+        let headings = |name: &str| -> Vec<(String, String)> {
+            page(&fake, name, false)["sections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default())
+                .filter(|r| r["shortLabel"].is_string())
+                .map(|r| {
+                    (
+                        r["name"].as_str().unwrap().to_string(),
+                        r["shortLabel"].as_str().unwrap().to_string(),
+                    )
+                })
+                .collect()
+        };
+        let logging = headings("Logging");
+        let safety = headings("Flight Safety");
+        [
+            ("LOG_BACKEND_TYPE", "Log storage"),
+            ("LOG_BITMASK", "What gets logged"),
+        ]
+        .iter()
+        .for_each(|(name, heading)| {
+            assert!(
+                logging.contains(&(name.to_string(), heading.to_string())),
+                "AP_Logger backend storage type and Log bitmask headed the Logging page: {logging:?}"
+            )
+        });
+        [
+            ("ARMING_SKIPCHK", "Arming checks to skip"),
+            ("FENCE_ENABLE", "Geofence"),
+        ]
+        .iter()
+        .for_each(|(name, heading)| {
+            assert!(
+                safety.contains(&(name.to_string(), heading.to_string())),
+                "Arm checks to skip (bitmask) and Fence enable/disable headed Flight safety: {safety:?}"
+            )
+        });
+    }
 
     #[test]
     fn ekf3_logging_lists_the_four_choices_the_config_names() {
