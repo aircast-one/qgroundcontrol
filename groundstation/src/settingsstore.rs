@@ -1344,16 +1344,25 @@ fn enum_index_raw(meta: &MetaData, given: &Value) -> Option<Value> {
     meta.enums.get(index).map(|entry| entry.value.clone())
 }
 
+fn raw_from_given(
+    meta: &MetaData,
+    field: Option<&str>,
+    unit: Option<crate::units::Conversion>,
+    given: Value,
+) -> Option<Value> {
+    match (field, unit, crate::factwrite::number(&given)) {
+        (None | Some("value"), Some(u), Some(n)) => Some(json!((u.base)(n))),
+        (None | Some("value" | "rawValue"), _, _) => Some(given),
+        (Some("enumIndex"), _, _) => enum_index_raw(meta, &given),
+        _ => None,
+    }
+}
+
 pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
     let at = address(path)?;
     let written = crate::read::object(value);
     let given = written.get("value").cloned().unwrap_or(written);
-    let raw_given = match (at.field.as_deref(), unit_for(&at.meta), given.as_f64()) {
-        (None | Some("value"), Some(u), Some(n)) => json!((u.base)(n)),
-        (None | Some("value" | "rawValue"), _, _) => given,
-        (Some("enumIndex"), _, _) => enum_index_raw(&at.meta, &given)?,
-        _ => return None,
-    };
+    let raw_given = raw_from_given(&at.meta, at.field.as_deref(), unit_for(&at.meta), given)?;
     if let Some(reason) = refused_write(at.group, &at.fact, &raw_given) {
         return Some(json!({ "ok": false, "reason": reason }).to_string());
     }
@@ -2434,6 +2443,28 @@ mod tests {
             crate::units::cooking_with("m/s", |_| None, crate::units::IMPERIAL_US),
         );
         assert_eq!(speed["units"], "mph");
+    }
+
+    #[test]
+    fn a_typed_imperial_value_is_stored_in_metres_whether_it_comes_as_text_or_a_number() {
+        let meta = metadata("FlyView", "guidedMaximumAltitude").unwrap();
+        let feet = crate::units::cooking_with("vertical m", |_| None, crate::units::IMPERIAL_US);
+        let metres = |given: Value| {
+            raw_from_given(&meta, Some("value"), feet, given)
+                .and_then(|raw| raw.as_f64())
+                .map(|m| (m * 100.0).round() / 100.0)
+        };
+        assert_eq!(
+            metres(json!("300")),
+            Some(91.44),
+            "a settings field sends its text"
+        );
+        assert_eq!(metres(json!(300)), Some(91.44));
+        assert_eq!(
+            raw_from_given(&meta, Some("rawValue"), feet, json!("300")),
+            Some(json!("300")),
+            "a raw write is already in metres"
+        );
     }
 
     #[test]
