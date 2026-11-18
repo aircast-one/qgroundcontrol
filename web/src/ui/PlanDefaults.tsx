@@ -40,7 +40,6 @@ export const PlanDefaultsDialog = ({ view, onDismiss }: { view: Json | null; onD
       title="Plan defaults"
       text={
         <div className="flex flex-col gap-1">
-          {note.trim() !== '' ? <Text typography="bodySmall">{note}</Text> : null}
           {altitude.map((fact) => (
             <FactRow key={fact.path} fact={fact} />
           ))}
@@ -60,6 +59,7 @@ export const PlanDefaultsDialog = ({ view, onDismiss }: { view: Json | null; onD
               {refusal}
             </Text>
           ) : null}
+          {note.trim() !== '' ? <Text typography="bodySmall">{note}</Text> : null}
           {speeds.map((fact) => (
             <FactRow key={fact.path} fact={fact} />
           ))}

@@ -132,8 +132,7 @@ fn mission_flight_speed(backend: &dyn Backend) -> Value {
     }
 }
 
-const SPEED_NOTE: &str =
-    "Speeds are used to estimate mission time only. They do not change the flight speed.";
+const SPEED_NOTE: &str = "The speeds below only estimate the mission time. They do not change how fast the aircraft flies.";
 
 fn defaults_json(backend: &dyn Backend) -> Value {
     let altitude = plan_default(backend, "defaultMissionItemAltitude");
