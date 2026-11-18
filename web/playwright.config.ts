@@ -19,7 +19,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
     viewport: { width: 1280, height: 800 },
     ignoreHTTPSErrors: true,
-    launchOptions: { args: [`--origin-to-force-quic-on=${WT_ORIGIN}`, `--ignore-certificate-errors-spki-list=${WT_CERT_SPKI}`, `--host-resolver-rules=MAP ${PLAIN_DEVICE_HOST} 127.0.0.1`] },
+    launchOptions: { args: [`--mute-audio`, `--origin-to-force-quic-on=${WT_ORIGIN}`, `--ignore-certificate-errors-spki-list=${WT_CERT_SPKI}`, `--host-resolver-rules=MAP ${PLAIN_DEVICE_HOST} 127.0.0.1`] },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], channel: 'chromium', viewport: { width: 1280, height: 800 } } }],
   webServer: [
