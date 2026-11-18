@@ -2468,6 +2468,24 @@ mod tests {
     }
 
     #[test]
+    fn a_udp_port_past_65535_is_refused() {
+        let refused: Vec<&str> = ["udpListenPort", "udpTargetHostPort", "nmeaUdpPort"]
+            .into_iter()
+            .filter(|name| {
+                let path = format!("settings.autoConnectSettings.{name}");
+                let fact = fact_json(&metadata("AutoConnect", name).unwrap(), &json!(14550), None);
+                let control = crate::control::decode(&fact, &path);
+                crate::factwrite::refusal(&control, &fact, &json!(99999)).is_some()
+                    && crate::factwrite::refusal(&control, &fact, &json!(14551)).is_none()
+            })
+            .collect();
+        assert_eq!(
+            refused,
+            ["udpListenPort", "udpTargetHostPort", "nmeaUdpPort"]
+        );
+    }
+
+    #[test]
     fn every_field_left_to_the_host_really_differs_from_the_metadata() {
         let qt: serde_json::Map<String, Value> =
             serde_json::from_str(include_str!("../tests/fixtures/settings-facts-by-qt.json"))

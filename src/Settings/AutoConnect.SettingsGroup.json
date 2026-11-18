@@ -237,7 +237,7 @@
         {
             "name": "udpListenPort",
             "shortDesc": "UDP port for autoconnect",
-            "type": "uint32",
+            "type": "uint16",
             "default": 14550,
             "label": "UDP port for autoconnect"
         },
@@ -251,14 +251,14 @@
         {
             "name": "udpTargetHostPort",
             "shortDesc": "UDP target host port for autoconnect",
-            "type": "uint32",
+            "type": "uint16",
             "default": 14550,
             "label": "UDP target host port for autoconnect"
         },
         {
             "name": "nmeaUdpPort",
             "shortDesc": "Udp port to receive NMEA streams",
-            "type": "uint32",
+            "type": "uint16",
             "default": 14401,
             "label": "Udp port to receive NMEA streams"
         }
