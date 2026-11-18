@@ -54,6 +54,7 @@ test('a fence polygon starts as a four-corner inclusion zone and can become keep
   await vehicle.getByRole('button', { name: 'Fence', exact: true }).click();
   await vehicle.getByRole('button', { name: 'Polygon', exact: true }).click();
   await expect(vehicle.getByText(/Polygon 1 · Inclusion · 4 vertices/)).toBeVisible();
+  await expect(vehicle.getByText(/^[\d,.]+ (m²|ha|km²) · [\d,.]+ (m|km)$/), 'the area was printed a second time, wedged between the shape buttons').toHaveCount(0);
   await vehicle.getByRole('button', { name: 'Make keep-out' }).click();
   await expect(vehicle.getByText(/Polygon 1 · Exclusion · 4 vertices/)).toBeVisible();
 });

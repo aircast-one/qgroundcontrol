@@ -1226,7 +1226,7 @@ export const PlanMapContent = ({
 
                   {target === null ? null : (
                     <>
-                      {targetShape === null ? null : <Text typography="labelSmall">{shapeCaption(targetShape, circled.has(target.path))}</Text>}
+                      {targetShape === null || fenceText !== null ? null : <PaletteNote text={shapeCaption(targetShape, circled.has(target.path))} />}
                       {target.line ? (
                         <TextButton enabled={visible.value.length === 4} onClick={() => onBridge(() => replaceShape(target, defaultLine(visible.value)), { label: 'Drawing line' })}>
                           Line
