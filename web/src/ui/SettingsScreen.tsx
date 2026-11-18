@@ -295,19 +295,29 @@ export const pageMatches = (page: SettingsPageEntry, needle: string): boolean =>
   return wanted !== '' && (page.title.toLowerCase().includes(wanted) || page.keywords.includes(wanted));
 };
 
-export const matchesIn = (pageTitle: string, sections: readonly SettingsSectionRows[], needle: string): readonly SettingsSectionRows[] => {
+const UNITS_SEARCH_TERMS = 'units measurement system metric imperial';
+
+const searchCrumb = (page: string, heading: string): string => {
+  const shown = pageTitle(page);
+  return notBlank(heading) && heading.toLowerCase() !== page.toLowerCase() && heading.toLowerCase() !== shown.toLowerCase() ? `${shown} › ${heading}` : shown;
+};
+
+const factFound = (fact: Fact, wanted: string): boolean =>
+  [fact.heading, fact.title, fact.name].some((it) => it.toLowerCase().includes(wanted)) || fact.keywords.includes(wanted);
+
+export const matchesIn = (page: string, sections: readonly SettingsSectionRows[], needle: string): readonly SettingsSectionRows[] => {
   const wanted = needle.trim().toLowerCase();
   if (wanted === '') return [];
-  return sections
-    .filter((section) => section.group !== UNITS_GROUP)
-    .flatMap((section) => {
-      const hits = section.blocks
-        .flatMap((block) => block.facts)
-        .filter((fact) => fact.title.toLowerCase().includes(wanted) || fact.name.toLowerCase().includes(wanted) || fact.keywords.includes(wanted));
-      if (hits.length === 0) return [];
-      const title = notBlank(section.title) && section.title.toLowerCase() !== pageTitle.toLowerCase() ? `${pageTitle} › ${section.title}` : pageTitle;
-      return [{ ...section, title, note: '', blocks: [{ title: '', facts: hits }] }];
-    });
+  return sections.flatMap((section) =>
+    section.group === UNITS_GROUP
+      ? UNITS_SEARCH_TERMS.includes(wanted)
+        ? [{ ...section, title: searchCrumb(page, section.title), note: '', blocks: [{ title: '', facts: [] }] }]
+        : []
+      : section.blocks.flatMap((block) => {
+          const hits = block.facts.filter((fact) => factFound(fact, wanted));
+          return hits.length === 0 ? [] : [{ ...section, title: searchCrumb(page, blockHeading(page, section, block)), note: '', blocks: [{ title: '', facts: hits }] }];
+        }),
+  );
 };
 
 export const AIRCRAFT_SETUP = 'Setup';
@@ -633,11 +643,15 @@ export const SettingsSearch = ({
               {hits.map((section) => (
                 <Fragment key={`head${section.title}`}>
                   <SectionHeader text={shownBreadcrumb(section.title)} />
-                  <SettingsCard>
-                    {section.blocks.flatMap((block) => block.facts).map((fact) => (
-                      <FactRow key={fact.path} fact={fact} />
-                    ))}
-                  </SettingsCard>
+                  {section.group === UNITS_GROUP ? (
+                    <UnitsSection />
+                  ) : (
+                    <SettingsCard>
+                      {section.blocks.flatMap((block) => block.facts).map((fact) => (
+                        <FactRow key={fact.path} fact={fact} />
+                      ))}
+                    </SettingsCard>
+                  )}
                 </Fragment>
               ))}
               {searchesParameters ? (

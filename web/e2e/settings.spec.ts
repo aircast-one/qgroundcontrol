@@ -221,3 +221,14 @@ test('a browser offers no UDP auto-connect, MAVLink forwarding or save folder it
   await expect(app.getByRole('switch', { name: 'Pixhawk' })).toBeVisible();
   await expect(app.getByRole('switch', { name: 'UDP', exact: true })).toHaveCount(0);
 });
+
+test('settings search finds UI scaling and the measurement system by the words on screen', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  const search = app.getByPlaceholder('Search settings');
+  await search.fill('UI scaling');
+  await expect(app.getByText('General › Appearance', { exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'UI scaling, 100%' })).toBeVisible();
+  await search.fill('measurement system');
+  await expect(app.getByText('General › Units', { exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Imperial', exact: true })).toBeVisible();
+});

@@ -281,7 +281,7 @@ describe('SettingsViewTest', () => {
 
   it('a search finds a setting by what it is called and by its name', () => {
     const read = settingsSections(general);
-    expect(matchesIn('General', read, 'mute').map((it) => it.title)).toEqual(['General › Application']);
+    expect(matchesIn('General', read, 'mute').map((it) => it.title), 'the breadcrumb names the heading the setting sits under on its page').toEqual(['General › Sound']);
     expect(
       matchesIn('General', read, 'audioMuted').flatMap((section) => section.blocks.flatMap((it) => it.facts)).map((it) => it.name),
       'an operator who knows the fact\'s name should not have to guess the page',
@@ -290,7 +290,21 @@ describe('SettingsViewTest', () => {
   });
 
   it('a section named like its page is not repeated in the breadcrumb', () => {
-    expect(matchesIn('Application', settingsSections(general), 'mute').map((it) => it.title)).toEqual(['Application']);
+    expect(matchesIn('Sound', settingsSections(general), 'mute').map((it) => it.title)).toEqual(['Sound']);
+  });
+
+  it('a search finds a setting by the words on its row and names the page as the tabs do', () => {
+    const scaling = { title: 'General', sections: [{ title: 'Application', group: 'appSettings', subsections: [{ title: 'Appearance', controls: [{ name: 'appFontPointSize', label: 'Application font size', shortLabel: 'UI Scaling', control: 'choice', path: 'settings.appSettings.appFontPointSize' }] }] }] };
+    expect(matchesIn('General', settingsSections(scaling), 'ui scaling').map((it) => it.title)).toEqual(['General › Appearance']);
+    const links = { title: 'Connections', sections: [{ title: 'AutoConnect', group: 'autoConnectSettings', subsections: [{ title: 'Auto connect', controls: [{ name: 'nmeaUdpPort', label: 'NMEA stream UDP port', control: 'number', path: 'settings.autoConnectSettings.nmeaUdpPort' }] }] }] };
+    expect(matchesIn('Connections', settingsSections(links), 'nmea').map((it) => it.title)).toEqual(['Links › Auto connect']);
+  });
+
+  it('the measurement system is found by what pilots call it', () => {
+    const read = settingsSections(general);
+    expect(['units', 'Measurement system', 'imperial', 'metric'].map((word) => matchesIn('General', read, word).map((it) => [it.title, it.group]))).toEqual(
+      Array(4).fill([['General › Units', 'unitsSettings']]),
+    );
   });
 
   it('an empty search matches nothing rather than everything', () => {
