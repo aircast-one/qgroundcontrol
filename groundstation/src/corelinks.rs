@@ -929,7 +929,7 @@ fn connect(index: usize) -> bool {
     };
     update_runtime(&entry.config.name, Runtime::connect_requested);
     !claim(&entry.config.name) || {
-        let opened = open_entry(&entry);
+        let opened = open_entry(&entry, true);
         release(&entry.config.name);
         opened
     }
@@ -980,11 +980,11 @@ fn open_in_background(
 fn reopen(entry: &Entry) {
     let owned = entry.clone();
     let _ = open_in_background(&entry.config.name, move || {
-        open_entry(&owned);
+        open_entry(&owned, false);
     });
 }
 
-fn open_entry(entry: &Entry) -> bool {
+fn open_entry(entry: &Entry, asked: bool) -> bool {
     if crate::firmwareflash::suspended() {
         crate::noticeboard::post(
             crate::noticeboard::MESSAGE,
@@ -1014,7 +1014,7 @@ fn open_entry(entry: &Entry) -> bool {
             false
         }
         Err(failure) => {
-            if !retried_silently(entry) {
+            if asked || !retried_silently(entry) {
                 errors.insert(entry.config.name.clone(), failure);
             }
             false
@@ -1289,7 +1289,7 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
             crate::linkhost::mark_usb_direct(&port, usb_direct);
             let entry = serial_entry(&name, &port, baud);
             add_dynamic(&entry);
-            open_entry(&entry);
+            open_entry(&entry, false);
         }
         crate::autoconnect::Action::ConnectRtk { port, name } => {
             crate::rtkbase::connect(&port, &name)
@@ -1903,6 +1903,25 @@ mod tests {
         );
         update_runtime(&auto.config.name, Runtime::connect_requested);
         assert!(retried_silently(&auto));
+    }
+
+    #[test]
+    fn a_tapped_connect_shows_why_an_auto_link_failed_and_a_background_retry_does_not() {
+        fn refuse(_: LinkConfig) -> Result<crate::transport::LinkId, (String, &'static str)> {
+            Err(("Sign in to your Aircast account.".into(), "editAddress"))
+        }
+        set_hooks(refuse, |_| {});
+        let error = |name: &str| LAST_ERRORS.lock().unwrap().get(name).cloned();
+        let retried = serial_entry("Background retry test", "/dev/cu.retried", 57600);
+        assert!(!open_entry(&retried, false));
+        assert_eq!(error("Background retry test"), None);
+        let tapped = serial_entry("Tapped connect test", "/dev/cu.tapped", 57600);
+        assert!(!open_entry(&tapped, true));
+        assert_eq!(
+            error("Tapped connect test"),
+            Some(("Sign in to your Aircast account.".into(), "editAddress")),
+            "the Connect button otherwise does nothing visible while the link retries"
+        );
     }
 
     #[test]
