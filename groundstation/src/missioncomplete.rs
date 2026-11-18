@@ -14,6 +14,7 @@ pub const DEPS: &[&str] = &[
     "planFly.geoFenceController.containsItems",
     "planFly.rallyPointController.containsItems",
     "planFly.missionController.resumeMissionIndex",
+    "planFly.missionController.currentMissionIndex",
     crate::coreplan::CHANGED,
 ];
 
