@@ -238,6 +238,10 @@ fn moved_complex(
     }?;
     let new = moved_point(old, transform, home)?;
     let (distance, azimuth) = (distance_between(old, new), azimuth_to(old, new));
+    let carried = |at: &Value| match transform {
+        Transform::Rotate { .. } => translated(at, distance, azimuth),
+        _ => moved_coordinate(at, transform, home),
+    };
     let moved = match landing {
         true => with_keys(
             json,
@@ -246,7 +250,7 @@ fn moved_complex(
                 "loiterCoordinate",
                 "landingApproachCoordinate",
             ],
-            |at| translated(at, distance, azimuth),
+            carried,
         ),
         false => with_keys(json, &["polygon", "polyline"], |shape| {
             Value::Array(
@@ -254,7 +258,7 @@ fn moved_complex(
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .map(|at| translated(at, distance, azimuth))
+                    .map(carried)
                     .collect(),
             )
         }),
@@ -631,6 +635,62 @@ mod tests {
             distance_between(entry, (-35.36, 149.17)) < 1.0,
             "TransectStyleComplexItem::setCoordinate translates the polygon so the entry lands on the point: {entry:?}"
         );
+    }
+
+    #[test]
+    fn a_survey_carried_far_with_the_plan_keeps_its_shape() {
+        let plan: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let corners = |json: &Value| -> Vec<(f64, f64)> {
+            json["polygon"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|at| (at[0].as_f64().unwrap(), at[1].as_f64().unwrap()))
+                .collect()
+        };
+        let sides = |points: &[(f64, f64)]| -> Vec<f64> {
+            points
+                .iter()
+                .zip(points.iter().cycle().skip(1))
+                .map(|(a, b)| distance_between(*a, *b))
+                .chain([distance_between(points[0], points[2])])
+                .collect()
+        };
+        let original = plan["mission"]["items"][0].clone();
+        let doc = Document {
+            home: Some([-35.3629, 149.1652, 0.0]),
+            items: vec![Item::Complex {
+                kind: "survey".into(),
+                json: original.clone(),
+                item_count: 1,
+            }],
+            ..doc()
+        };
+        let moved = transform(
+            &doc,
+            Transform::Reposition {
+                latitude: -12.0,
+                longitude: 131.0,
+            },
+            Scope {
+                takeoff: true,
+                landing: true,
+            },
+        )
+        .unwrap();
+        let Item::Complex { json, .. } = &moved.items[0] else {
+            panic!("the survey stays a survey")
+        };
+        sides(&corners(json))
+            .iter()
+            .zip(sides(&corners(&original)))
+            .for_each(|(after, before)| {
+                assert!(
+                    (after - before).abs() < 0.5,
+                    "every side and diagonal keeps its length: {after} vs {before}"
+                )
+            });
     }
 
     #[test]
