@@ -5,7 +5,7 @@ import { useQgcPath } from '@/bridge/QgcState';
 import { useBackHandler, useLaunchedEffect, useProduceState } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { delay, format, same } from '@/kotlin/Std';
-import { Button, OutlinedButton, Text, TextButton } from '@/m3';
+import { Button, OutlinedButton, SnackbarHost, Text, TextButton, useSnackbarHostState } from '@/m3';
 import { sentenceCase } from '@/map/SentenceCase';
 import type { DrawableName } from '@/res/drawables';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
@@ -16,7 +16,7 @@ import { APM_FOLLOW_SCREEN, ApmFollowScreen } from '@/ui/ApmFollowScreen';
 import { APM_SERVOS_SCREEN, ApmServosScreen } from '@/ui/ApmServosScreen';
 import { APM_SUB_FRAME_SCREEN, ApmSubFrameScreen } from '@/ui/ApmSubFrameScreen';
 import { APM_SUB_MOTORS_SCREEN, ApmSubMotorsScreen } from '@/ui/ApmSubMotorsScreen';
-import { LocalAppNavigation } from '@/ui/AppNavigation';
+import { LocalAppNavigation, navigationRefusal } from '@/ui/AppNavigation';
 import { LOOKING_TITLE, useRememberLookingHint } from '@/ui/ConnectingCard';
 import { ESP_BRIDGE_SCREEN, EspBridgeScreen } from '@/ui/EspBridgeScreen';
 import { FirmwareScreen } from '@/ui/FirmwareScreen';
@@ -349,8 +349,16 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   const [parametersSearch, setParametersSearch] = useState('');
   const lookingHint = useRememberLookingHint();
   const [measure, maxWidth] = useMaxWidth();
+  const toasts = useSnackbarHostState();
+  const leaving =
+    (go: () => void) =>
+    (): void => {
+      const refused = navigationRefusal(navigation.blockedReason.value, true);
+      if (refused !== null) void toasts.showSnackbar(refused);
+      else go();
+    };
 
-  useBackHandler(openComponent !== null, () => setOpened(null));
+  useBackHandler(openComponent !== null, leaving(() => setOpened(null)));
   useBackHandler(firmwareOpen, () => setFirmwareOpen(false));
 
   const components = useMemo(() => setupComponents(setupJson), [setupJson]);
@@ -359,11 +367,12 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   const sectionHits = new Map([...formSections].map(([name, rows]) => [name, rows.filter((it) => sectionMatches(it, setupSearch)).map((it) => it.title)]));
   const hitsOf = (name: string): readonly string[] => sectionHits.get(name) ?? [];
   const searchHit = (it: SetupComponent): boolean => !searching || setupFound(it, hitsOf(it.name), setupSearch);
-  const openFromList = (component: SetupComponent, section: string | null) => {
-    setParametersOpen(false);
-    setFirmwareOpen(false);
-    setOpened([component, section]);
-  };
+  const openFromList = (component: SetupComponent, section: string | null) =>
+    leaving(() => {
+      setParametersOpen(false);
+      setFirmwareOpen(false);
+      setOpened([component, section]);
+    })();
   const [summaries, setSummaries] = useState<ReadonlyMap<string, readonly SummaryLine[]>>(new Map());
 
   useLaunchedEffect([hasVehicle], () => {
@@ -444,7 +453,7 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   ) : firmwareOpen ? (
     <FirmwarePage onBack={() => setFirmwareOpen(false)} />
   ) : componentOpens && openComponent !== null ? (
-    <ComponentPage open={openComponent} section={openSection} setupJson={setupJson} onBack={() => setOpened(null)} onOpen={setOpened} />
+    <ComponentPage open={openComponent} section={openSection} setupJson={setupJson} onBack={leaving(() => setOpened(null))} onOpen={setOpened} />
   ) : null;
   const detailKey = parametersOpen ? 'parameters' : firmwareOpen ? 'firmware' : (openComponent?.name ?? '');
 
@@ -474,23 +483,23 @@ export const SetupScreen = ({ className }: { className?: string }) => {
       summaries={summaries}
       onSummaries={setSummaries}
       parametersOpen={parametersOpen}
-      onOpenParameters={() => {
+      onOpenParameters={leaving(() => {
         setParametersSearch('');
         setOpened(null);
         setFirmwareOpen(false);
         setParametersOpen(true);
-      }}
+      })}
       firmwareOpen={firmwareOpen}
-      onOpenFirmware={() => {
+      onOpenFirmware={leaving(() => {
         setOpened(null);
         setParametersOpen(false);
         setFirmwareOpen(true);
-      }}
+      })}
     />
   );
 
   return (
-    <div ref={measure} className={`flex h-full w-full ${className ?? ''}`}>
+    <div ref={measure} className={`relative flex h-full w-full ${className ?? ''}`}>
       {wide || shownDetail === null ? (wide ? overview('h-full shrink-0', { width: LIST_PANE_WIDTH, background: md('surfaceContainerLow') }) : overview('h-full w-full')) : null}
       {wide || shownDetail !== null ? (
         <div className="relative h-full min-w-0 flex-1">
@@ -505,6 +514,9 @@ export const SetupScreen = ({ className }: { className?: string }) => {
           </LocalTwoPane.Provider>
         </div>
       ) : null}
+      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+        <SnackbarHost hostState={toasts} />
+      </div>
     </div>
   );
 };

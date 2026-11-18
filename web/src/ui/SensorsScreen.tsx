@@ -38,6 +38,11 @@ const CAL_START_POLL_MS = 150;
 
 export const calibrationFailure = (name: string, started: boolean): string | null => (started ? null : `${name} calibration did not start.`);
 
+export const UNCANCELLABLE_BLOCK = 'Finish this calibration first: the autopilot cannot cancel it once it has started';
+
+export const calibrationLeaveBlock = (state: CalibrationState | null): string | null =>
+  state === null || !state.inProgress ? null : !state.cancelEnabled ? UNCANCELLABLE_BLOCK : state.px4 ? CALIBRATION_BLOCK : null;
+
 const calibrationStatus = async (): Promise<string> => calibrationState(await Qgc.get(CALIBRATION))?.statusText ?? '';
 
 const calibrationRunning = async (): Promise<boolean> => calibrationState(await Qgc.get(CALIBRATION))?.inProgress === true;
@@ -291,7 +296,8 @@ export const SensorsScreen = ({ className }: { className?: string }) => {
   const shown = hasVehicle ? state : null;
   const running = shown?.inProgress === true;
   const stillRunning = useRef(false);
-  if (shown !== null) stillRunning.current = running;
+  if (shown !== null) stillRunning.current = running && shown.cancelEnabled;
+  const leaveBlock = calibrationLeaveBlock(shown);
 
   useLaunchedEffect([shown !== null, running], () => {
     if (shown === null) return;
@@ -386,7 +392,7 @@ export const SensorsScreen = ({ className }: { className?: string }) => {
 
       {pending !== null ? <StartDialog calibration={pending} fast={state.fastCompass} onConfirm={confirmStart(pending)} onDismiss={() => setPending(null)} /> : null}
 
-      <BlocksNavigation blocking={running && state.px4} reason={CALIBRATION_BLOCK} />
+      <BlocksNavigation blocking={leaveBlock !== null} reason={leaveBlock ?? CALIBRATION_BLOCK} />
 
       {running ? (
         <RunningCalibration name={runningName} state={state} className={className} />

@@ -430,6 +430,7 @@ pub struct Vehicle {
     pub rccal: crate::rccal::RcCal,
     rccal_loaded: bool,
     rccal_open: bool,
+    rccal_deferred: bool,
     pub camera_tracking_enabled: bool,
     pub camera_tracking_image: Option<crate::cameratrack::TrackingImage>,
     pub camera_tracking_image_ms: u64,
@@ -712,6 +713,7 @@ impl Vehicle {
             rccal: crate::rccal::RcCal::default(),
             rccal_loaded: false,
             rccal_open: false,
+            rccal_deferred: false,
             camera_tracking_enabled: false,
             camera_tracking_image: None,
             camera_tracking_image_ms: 0,
@@ -4193,7 +4195,18 @@ impl Vehicle {
                 let vehicle = self.rccal_vehicle();
                 let target = (self.id, self.component);
                 let op = action.get("op").and_then(Value::as_str);
+                let sensors_busy = self.calibrate.under_way();
+                if sensors_busy && op == Some("copyTrims") {
+                    return Err("Finish the sensor calibration before copying trims.".to_string());
+                }
+                let deferred_open = op == Some("next") && self.rccal_deferred && !sensors_busy;
+                self.rccal_deferred = match op {
+                    Some("open") => sensors_busy,
+                    Some("close") => false,
+                    _ => self.rccal_deferred && !deferred_open,
+                };
                 if let Some(param4) = match op {
+                    Some("open") if sensors_busy => return Ok(Vec::new()),
                     Some("open") => Some(1.0),
                     Some("copyTrims") => Some(2.0),
                     _ => None,
@@ -4208,6 +4221,18 @@ impl Vehicle {
                         .into_iter()
                         .collect());
                 }
+                self.rccal_open |= deferred_open;
+                let reopened: Vec<Vec<u8>> = deferred_open
+                    .then(|| {
+                        self.encode(&Outbound::CommandLong {
+                            target,
+                            command: sensorcal::CMD_PREFLIGHT_CALIBRATION,
+                            params: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                        })
+                    })
+                    .flatten()
+                    .into_iter()
+                    .collect();
                 let mut cal = std::mem::take(&mut self.rccal);
                 let outcomes = {
                     let lookup =
@@ -4286,7 +4311,7 @@ impl Vehicle {
                     cal.read_stored(&vehicle, &lookup);
                     self.rccal = cal;
                 }
-                return Ok(sent);
+                return Ok(reopened.into_iter().chain(sent).collect());
             }
             Some("resumeMission") => {
                 let index = action
@@ -19286,6 +19311,71 @@ mod tests {
         assert!(
             stopped && !hub.vehicles[&3].rccal.running(),
             "RadioComponentController's destructor stops the vehicle's RC calibration too"
+        );
+    }
+
+    #[test]
+    fn opening_the_radio_page_during_a_sensor_calibration_leaves_that_calibration_running() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavType};
+        let heard = MavHeader {
+            system_id: 3,
+            component_id: 1,
+            sequence: 0,
+        };
+        let mut copter = HEARTBEAT_DATA::default();
+        copter.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        copter.autopilot = MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA;
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &heard, &MavMessage::HEARTBEAT(copter), 0, 0);
+        hub.calibrate_request(
+            Some(3),
+            &json!({ "action": "start", "type": "accelerometer" }),
+            100,
+        )
+        .unwrap();
+        let radio = hub.vehicles.get_mut(&3).unwrap();
+        let calibration = |sent: &[Vec<u8>]| {
+            sent.iter()
+                .filter_map(|b| match decode(b) {
+                    MavMessage::COMMAND_LONG(c)
+                        if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION =>
+                    {
+                        Some(c.param4)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let opened = radio
+            .start_guided(&json!({ "action": "rcCal", "op": "open" }), 200)
+            .unwrap();
+        let closed = radio
+            .start_guided(&json!({ "action": "rcCal", "op": "close" }), 300)
+            .unwrap();
+        assert_eq!(
+            (calibration(&opened), calibration(&closed)),
+            (Vec::new(), Vec::new()),
+            "the page's calibration command, and the all-zero stop that follows it, would end the accelerometer calibration the pilot is holding the vehicle for"
+        );
+        assert!(radio.calibrate.running());
+        assert!(
+            radio
+                .start_guided(&json!({ "action": "rcCal", "op": "copyTrims" }), 400)
+                .is_err()
+        );
+        radio
+            .start_guided(&json!({ "action": "rcCal", "op": "open" }), 500)
+            .unwrap();
+        radio.calibrate = sensorcal::Calibration::new(false);
+        radio.rccal.channel_values(&[1500; 8], 600);
+        assert_eq!(
+            calibration(
+                &radio
+                    .start_guided(&json!({ "action": "rcCal", "op": "next" }), 700)
+                    .unwrap()
+            ),
+            vec![1.0],
+            "once the sensors are done, Calibrate puts the vehicle in radio calibration the page could not enter"
         );
     }
 

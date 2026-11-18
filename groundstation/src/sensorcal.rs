@@ -470,6 +470,10 @@ impl Calibration {
         self.running.is_some()
     }
 
+    pub fn under_way(&self) -> bool {
+        self.running.is_some() && !self.waiting_for_cancel
+    }
+
     pub fn cancel(&mut self) -> Result<Vec<Action>, String> {
         let Some(running) = self.running else {
             return Err("No calibration is running.".to_string());

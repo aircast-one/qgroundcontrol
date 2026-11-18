@@ -70,6 +70,21 @@ test('ArduPilot failsafes open Settings › Safety on its own page, not on a bla
   await expect(app.getByText('When the battery runs low.', { exact: true })).toBeInViewport();
 });
 
+test('an ArduPilot accelerometer calibration keeps the pilot on Sensors, since it cannot be cancelled', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Sensors/ }).first().click();
+  await app.getByRole('button', { name: /^Accelerometer/ }).first().click();
+  await app.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+  await expect(app.getByText('1 of 6 positions', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await app.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(app.getByText('Place the vehicle on its left side, hold it still and press Next', { exact: true })).toBeVisible();
+  await app.getByRole('button', { name: /^Radio / }).click();
+  await expect(app.getByText(/Finish this calibration first/)).toBeVisible();
+  await expect(app.getByText('2 of 6 positions', { exact: true })).toBeVisible();
+  await expect(app.getByText('Calibration failed. Calibration log will be displayed.')).toHaveCount(0);
+});
+
 test('ArduPilot setup lists its pages in the order an aircraft is set up', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);

@@ -211,7 +211,7 @@ const CalibrationStart = ({
 
 export const RADIO_SWITCHES_PAGE = 'Radio Switches';
 export const RADIO_ENTER_ACTIONS: readonly string[] = ['start', 'open'];
-export const RADIO_LEAVE_ACTIONS: readonly string[] = ['cancelButtonClicked', 'close'];
+export const RADIO_LEAVE_ACTIONS: readonly string[] = ['close'];
 
 const invokeInOrder = (actions: readonly string[]): void => void Promise.all(actions.map((it) => Qgc.invoke(radioCalAction(it))));
 

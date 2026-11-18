@@ -61,6 +61,6 @@ export const BlocksNavigation = ({ blocking, reason }: { blocking: boolean; reas
     return () => {
       if (navigation.blockedReason.value === reason) navigation.blockedReason.value = null;
     };
-  }, [blocking]);
+  }, [blocking, reason]);
   return null;
 };

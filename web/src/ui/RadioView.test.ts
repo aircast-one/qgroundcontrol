@@ -54,7 +54,7 @@ describe('RadioViewTest', () => {
     expect(radioCalAction('nextButtonClicked')).toBe('radioCal.nextButtonClicked');
     expect(radioCalAction('cancelButtonClicked')).toBe('radioCal.cancelButtonClicked');
     expect(RADIO_ENTER_ACTIONS.map(radioCalAction)).toEqual(['radioCal.start', 'radioCal.open']);
-    expect(RADIO_LEAVE_ACTIONS.map(radioCalAction)).toEqual(['radioCal.cancelButtonClicked', 'radioCal.close']);
+    expect(RADIO_LEAVE_ACTIONS.map(radioCalAction), 'close stops a running calibration itself; a cancel sent with nothing running is refused and logged').toEqual(['radioCal.close']);
   });
 
   it('a channel carrying no signal is a dash, never a pwm of zero', () => {
