@@ -119,6 +119,7 @@ test('the ArduPilot radio calibration start can be backed out of', async ({ app 
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
   await app.getByRole('button', { name: /^Radio / }).click();
+  await expect(app.getByText(/ carrying a signal\.$/)).toBeVisible();
   await app.getByRole('button', { name: 'Calibrate', exact: true }).click();
   const zero = app.getByRole('dialog').filter({ hasText: 'Zero Trims' });
   await zero.getByRole('button', { name: 'Cancel' }).click();
