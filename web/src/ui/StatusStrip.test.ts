@@ -24,6 +24,7 @@ import {
   satsText,
   shownStatusCells,
   smoothedSeconds,
+  stripKeys,
   smoothedTick,
   type SmoothedSeconds,
   telemetryCell,
@@ -33,6 +34,15 @@ import {
 const json = (text: string): Json => parseJson(text) ?? {};
 
 const toDoubleOrNaN = (text: string): number => (/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text.trim()) ? Number(text) : Number.NaN);
+
+describe('NarrowStripTest', () => {
+  it('a phone strip keeps the battery and adds every indicator in alarm, wherever it sits in the order', () => {
+    const ordered = ['battery', 'flightTime', 'gps', 'health', 'video', 'rc', 'links'];
+    expect(stripKeys(ordered, shownStatusCells(true), new Set())).toEqual(['battery']);
+    expect(stripKeys(ordered, shownStatusCells(true), new Set(['gps', 'health', 'rc']))).toEqual(['battery', 'gps', 'health', 'rc']);
+    expect(stripKeys(ordered, shownStatusCells(false), new Set(['rc', 'links']))).toEqual([...ordered.slice(0, COMPACT_STATUS_CELLS), 'links']);
+  });
+});
 
 describe('RcSignalTest', () => {
   const state = ({ rcSupported = true, rcRequired = true, rcSignal = '72', rcSignalText = '"72%"' }: { rcSupported?: boolean; rcRequired?: boolean; rcSignal?: string; rcSignalText?: string } = {}) =>

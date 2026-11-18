@@ -104,6 +104,8 @@ export const osdCellText = (line: OsdLine): string =>
     .map((it) => `${it.label} ${it.value}`)
     .join(' · ');
 
+export const osdAlarmed = (line: OsdLine): boolean => line.details.some((it) => it.tone === 'error');
+
 export const osdCellColour = (line: OsdLine): string | null => {
   const worst = Math.max(...line.details.map((it) => toneRank(it.tone)));
   return worst >= 2 ? md('error') : worst === 1 ? aircast('warning') : null;

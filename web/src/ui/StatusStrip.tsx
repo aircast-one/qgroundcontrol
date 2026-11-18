@@ -48,7 +48,7 @@ import { LayoutWidget, badgeRoom, droppedOrder, movedAmongShown, orderedKeys, sw
 import { ParameterForm } from '@/ui/ParameterForm';
 import { RemoteIdIndicatorCell } from '@/ui/RemoteIdIndicator';
 import { RtkIndicatorCell, RtkSettingsSheetContent, type RtkStatus, useRememberRtkStatus } from '@/ui/RtkIndicator';
-import { osdCellColour, osdCellText, osdRows, useOsdLines } from '@/ui/OsdDetails';
+import { osdAlarmed, osdCellColour, osdCellText, osdRows, useOsdLines } from '@/ui/OsdDetails';
 import { useHasSetupPage } from '@/ui/SetupScreen';
 import { SETUP, parametersReady } from '@/ui/SetupView';
 import { SupportForwardingCell } from '@/ui/SupportForwardingCell';
@@ -194,6 +194,8 @@ export const LocalNarrowStatus = createContext(false);
 const stripGap = (narrow: boolean): number => (narrow ? NARROW_STRIP_GAP : STRIP_GAP);
 
 export const shownStatusCells = (narrow: boolean): number => (narrow ? NARROW_STATUS_CELLS : COMPACT_STATUS_CELLS);
+
+export const stripKeys = (ordered: readonly string[], room: number, alarmed: ReadonlySet<string>): readonly string[] => ordered.filter((key, at) => at < room || alarmed.has(key));
 
 const REORDER_HOLD_MS = 150;
 const REORDER_SLOP = 8;
@@ -442,7 +444,8 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
     indicatorOrder,
   );
   const compact = compactStatus && !editing;
-  const keys = compact ? ordered.slice(0, shownStatusCells(narrow)) : ordered;
+  const alarmed: ReadonlySet<string> = new Set([...(gps !== null && fix === FixLevel.None ? ['gps'] : []), ...osd.filter(osdAlarmed).map((line) => line.id), ...(rc?.lost === true ? ['rc'] : [])]);
+  const keys = compact ? stripKeys(ordered, shownStatusCells(narrow), alarmed) : ordered;
   const silence = silentFor === null ? null : silenceText(silentFor);
   const battery = detail === StripDetail.Battery;
   const [dragged, reorder] = useIndicatorReorder(keys, shown, (moved) => layout.saveIndicatorOrder(moved));

@@ -110,6 +110,11 @@ test.describe('on a phone', () => {
   test('while editing the layout the status strip stays inside the screen and the flight mode keeps its name', async ({ vehicle }) => {
     await fitsAndKeepsTheFlightMode(vehicle);
   });
+
+  test('an indicator in alarm stays on the narrow strip while healthy ones fold away', async ({ vehicle }) => {
+    await expect(vehicle.getByRole('button', { name: /^Vibration / }), 'the simulated vehicle shakes at the danger level').toBeVisible({ timeout: 30_000 });
+    await expect(vehicle.getByRole('button', { name: /sats$/ }), 'a 12-satellite fix is not an alarm').toHaveCount(0);
+  });
 });
 
 test('an indicator held and dragged lands where it is let go, its hide badge sits clear of its reading, and the arrow keys move it', async ({ vehicle }) => {
