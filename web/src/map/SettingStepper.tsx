@@ -98,19 +98,18 @@ const StepperEntry = ({ label, unit, initial, range, onSet, onDismiss }: { label
   const wanted = typedNumber(text);
   const typed = wanted === null ? null : range ? coerceIn(wanted, range.start, range.endInclusive) : wanted;
   const note = clampNote(wanted, range, unit);
+  const confirm = () => {
+    if (typed === null) return;
+    onDismiss();
+    onSet(typed);
+  };
   return (
     <AlertDialog
       onDismissRequest={onDismiss}
       title={label}
-      text={<OutlinedTextField value={text} onValueChange={setText} suffix={unit.trim() !== '' ? unit : undefined} supportingText={note ?? undefined} isError={note !== null} singleLine keyboardType="decimal" />}
+      text={<OutlinedTextField value={text} onValueChange={setText} suffix={unit.trim() !== '' ? unit : undefined} supportingText={note ?? undefined} isError={note !== null} singleLine keyboardType="decimal" onDone={confirm} />}
       confirmButton={
-        <TextButton
-          enabled={typed !== null}
-          onClick={() => {
-            onDismiss();
-            if (typed !== null) onSet(typed);
-          }}
-        >
+        <TextButton enabled={typed !== null} onClick={confirm}>
           Set
         </TextButton>
       }
