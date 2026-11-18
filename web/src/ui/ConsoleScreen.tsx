@@ -1,5 +1,5 @@
 import { type ClipboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type Json, optArrayText, optJSONArray } from '@/bridge/Json';
+import { type Json, optArrayText, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useLaunchedEffect } from '@/kotlin/Compose';
@@ -45,6 +45,7 @@ const HISTORY_STEPS: readonly (readonly [string, string])[] = [
 export const ConsoleScreen = ({ className }: { className?: string }) => {
   const consoleJson = useQgcPath(CONSOLE_VIEW);
   const lines = useMemo(() => consoleLines(consoleJson), [consoleJson]);
+  const note = consoleNote(consoleJson);
   const [field, setField] = useState<TextFieldValue>(() => TextFieldValue(''));
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -104,6 +105,11 @@ export const ConsoleScreen = ({ className }: { className?: string }) => {
 
   return (
     <div className={`flex size-full flex-col ${className ?? ''}`}>
+      {note !== null ? (
+        <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block w-full px-4 py-2">
+          {note}
+        </Text>
+      ) : null}
       <div ref={listRef} className="flex min-h-0 w-full flex-1 flex-col gap-1 overflow-y-auto bg-surface-container-lowest p-4">
         {lines.length === 0 ? (
           <Text typography="bodyMedium" monospace color={md('onSurface')} className="whitespace-pre-wrap">
@@ -176,6 +182,11 @@ const styledText = (value: AnnotatedString): ReactNode => {
       {value.text.slice(span.end)}
     </>
   );
+};
+
+export const consoleNote = (view: Json | null): string | null => {
+  const note = optText(view, 'note');
+  return note.trim() === '' ? null : note;
 };
 
 export const consoleLines = (view: Json | null): readonly string[] => {

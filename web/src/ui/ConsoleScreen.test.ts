@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { Color } from '@/theme/Colors';
-import { CONSOLE_EMPTY_TEXT, CONSOLE_OPEN, TextFieldValue, TextRange, consoleLineStyled, consoleLines, isPromptLine, shouldFollowTail, splitCompleteLines } from './ConsoleScreen';
+import { CONSOLE_EMPTY_TEXT, CONSOLE_OPEN, TextFieldValue, TextRange, consoleLineStyled, consoleLines, consoleNote, isPromptLine, shouldFollowTail, splitCompleteLines } from './ConsoleScreen';
 
 describe('ConsoleScreenTest', () => {
+  it('a console the core says will not answer shows why, and a quiet one shows nothing extra', () => {
+    expect(consoleNote(parseJson('{"class":"MavlinkConsole","note":"Most ArduPilot firmware has no MAVLink shell."}'))).toBe('Most ArduPilot firmware has no MAVLink shell.');
+    expect(consoleNote(parseJson('{"class":"MavlinkConsole","note":null}'))).toBeNull();
+    expect(consoleNote(null)).toBeNull();
+  });
+
   it('an empty console shows the bare prompt like the MAVLinkConsolePage text area', () => {
     expect(CONSOLE_EMPTY_TEXT).toBe('> ');
   });

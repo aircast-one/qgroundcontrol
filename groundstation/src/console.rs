@@ -3,7 +3,13 @@ use serde_json::{Value, json};
 use crate::read::flag;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["mavlinkConsole.lines", "vehicles.activeVehicleAvailable"];
+pub const DEPS: &[&str] = &[
+    "mavlinkConsole.lines",
+    "vehicles.activeVehicleAvailable",
+    "vehicle.apmFirmware",
+];
+
+pub const ARDUPILOT_NOTE: &str = "Most ArduPilot firmware has no MAVLink shell, so a command sent here usually gets no answer. What the vehicle says is under Messages.";
 
 const MAX_HISTORY: usize = 100;
 
@@ -67,10 +73,16 @@ pub fn console_view(backend: &dyn Backend, _args: &[String]) -> Value {
     if lines.last() == Some(&"") {
         lines.pop();
     }
+    let ardupilot = connected
+        && flag(
+            &backend.value_fields("vehicle", "apmFirmware"),
+            "apmFirmware",
+        );
     json!({
         "kind": "object",
         "class": "MavlinkConsole",
         "connected": connected,
+        "note": ardupilot.then_some(ARDUPILOT_NOTE),
         "lines": lines,
         "count": lines.len(),
         "last": lines.last(),
@@ -115,6 +127,7 @@ mod tests {
                 "vehicles" => {
                     json!({ "kind": "object", "activeVehicleAvailable": self.1 }).to_string()
                 }
+                "vehicle" => json!({ "kind": "object", "apmFirmware": true }).to_string(),
                 "mavlinkConsole" => match &self.0 {
                     Some(lines) => json!({ "kind": "object", "lines": lines }).to_string(),
                     None => json!({ "kind": "null" }).to_string(),
@@ -172,5 +185,15 @@ mod tests {
 
         let absent = console_view(&Console(None, true), &[]);
         assert_eq!(absent["count"], 0);
+    }
+
+    #[test]
+    fn an_ardupilot_console_says_why_nothing_answers() {
+        assert_eq!(
+            console_view(&Console(Some(vec![]), true), &[])["note"],
+            ARDUPILOT_NOTE,
+            "a command typed to ArduPilot vanished with no echo and no reply"
+        );
+        assert!(console_view(&Console(Some(vec![]), false), &[])["note"].is_null());
     }
 }
