@@ -316,6 +316,25 @@ const OPTIONAL_WHEN_OFF: &[&str] = &[
     "Magnetometer 2",
 ];
 
+const LAND_WHEN_FAILED: &[&str] = &[
+    "Gyro",
+    "Accelerometer",
+    "Magnetometer",
+    "Barometer",
+    "Airspeed Sensor",
+    "GPS",
+    "Rate Control",
+    "Attitude Control",
+    "Heading Control",
+    "Altitude Control",
+    "Position Control",
+    "Motor Outputs",
+    "RC Receiver",
+    "Attitude Estimation",
+    "Battery",
+    "Propulsion",
+];
+
 fn counts_against_readiness(name: &str, enabled: bool) -> bool {
     enabled || !OPTIONAL_WHEN_OFF.contains(&name)
 }
@@ -443,7 +462,13 @@ pub fn summary_detail(
     );
     match (armed, in_air) {
         (true, true) if !faults.is_empty() => {
-            format!("{faults} not working. Land as soon as it is safe.")
+            let must_land = sensors.iter().any(|(name, enabled, healthy)| {
+                *enabled && !*healthy && LAND_WHEN_FAILED.contains(&name.as_str())
+            });
+            match must_land {
+                true => format!("{faults} not working. Land as soon as it is safe."),
+                false => format!("{faults} not working."),
+            }
         }
         (true, true) => "Motors are armed and the vehicle is in the air.".to_string(),
         (true, false) => "Motors are armed. Keep clear of the propellers.".to_string(),
@@ -599,6 +624,29 @@ mod tests {
             ),
             "Propulsion not working. Land as soon as it is safe.",
             "in the air a fault leads the summary instead of hiding behind the armed line"
+        );
+        assert_eq!(
+            summary_detail(
+                true,
+                true,
+                0,
+                &sensors(&[("Logging", true, false), ("Terrain", true, false)]),
+                None,
+                None
+            ),
+            "Logging, Terrain not working.",
+            "a fault that does not threaten the flight is named without telling the pilot to land"
+        );
+        assert_eq!(
+            summary_detail(
+                true,
+                true,
+                0,
+                &sensors(&[("Logging", true, false), ("GPS", true, false)]),
+                None,
+                None
+            ),
+            "Logging, GPS not working. Land as soon as it is safe."
         );
         assert_eq!(
             summary_detail(true, false, 0, &[], None, None),

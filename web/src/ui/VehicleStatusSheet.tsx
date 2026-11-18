@@ -57,6 +57,8 @@ export const armControls = (state: FlyState, forceOpen: boolean): ArmControls =>
     !state.armed && forceOpen,
   );
 
+export const armSlideShown = (state: FlyState | null): state is FlyState => state !== null && state.connected && !inAir(state);
+
 export const shownSensors = <T extends { state: string }>(sensors: readonly T[], showAll: boolean): readonly T[] => (showAll ? sensors : sensors.filter((it) => it.state === SENSOR_FAULT_STATE));
 
 const ChevronRight = ({ size = 24 }: { size?: number }) => <MaterialIcon name="keyboard_arrow_right" filled size={size} style={{ color: md('onSurfaceVariant') }} />;
@@ -68,6 +70,7 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
   const [showAll, setShowAll] = useState(false);
   const advanced = useAdvancedUiShown();
   const airborne = useInAir();
+  useLaunchedEffect([], () => void VehicleCommands.resetAllMessages());
   const open = (page: string) => {
     navigation.setupPage.value = page;
     onDismiss();
@@ -142,7 +145,6 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
 const MessagesRow = ({ onClick }: { onClick: () => void }) => {
   const messagesJson = useQgcPath(MESSAGES);
   const lines = useMemo(() => vehicleMessages(messagesJson), [messagesJson]);
-  useLaunchedEffect([], () => void VehicleCommands.resetAllMessages());
   const tone = lines.some((it) => it.level === MessageSeverity.Error) ? md('error') : lines.some((it) => it.level === MessageSeverity.Warning) ? aircast('warning') : md('onSurfaceVariant');
   return (
     <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-sheet py-3 text-left">
@@ -254,7 +256,7 @@ const StatusSummary = () => {
 const ArmSection = ({ onDismiss }: { onDismiss: () => void }) => {
   const stateJson = useQgcPath(FLY_STATE);
   const state = useMemo(() => flyState(stateJson), [stateJson]);
-  return state !== null && state.connected && !inAir(state) ? <ArmButtons state={state} onDismiss={onDismiss} /> : null;
+  return armSlideShown(state) ? <ArmButtons state={state} onDismiss={onDismiss} /> : null;
 };
 
 const ArmButtons = ({ state, onDismiss }: { state: FlyState; onDismiss: () => void }) => {

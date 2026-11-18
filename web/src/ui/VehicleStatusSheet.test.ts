@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { FlyState, flyState, inAir } from './FlyState';
+import { FlyState, flyState } from './FlyState';
 import { GuidedOffer } from './GuidedActions';
-import { ARM_UNAVAILABLE, ArmControls, armControls, deckRequestRefusal, expandedAfterTap, shownSensors, statusSummary } from './VehicleStatusSheet';
+import { ARM_UNAVAILABLE, ArmControls, armControls, armSlideShown, deckRequestRefusal, expandedAfterTap, shownSensors, statusSummary } from './VehicleStatusSheet';
 import { ArmingCheck } from './VehicleMessages';
 
 describe('VehicleStatusSheetTest', () => {
@@ -16,9 +16,9 @@ describe('VehicleStatusSheetTest', () => {
     expect(shownSensors(sensors, true).map((it) => it.name)).toEqual(['Gyro', 'Baro', 'Geofence']);
   });
 
-  const state = ({ armed = false, nominal = true, fault = false, canArm = true, phase = '' }: { armed?: boolean; nominal?: boolean; fault?: boolean; canArm?: boolean; phase?: string } = {}) =>
+  const state = ({ armed = false, nominal = true, fault = false, canArm = true, phase = '', connected = true }: { armed?: boolean; nominal?: boolean; fault?: boolean; canArm?: boolean; phase?: string; connected?: boolean } = {}) =>
     FlyState({
-      connected: true,
+      connected,
       armed,
       contactLost: false,
       state: phase,
@@ -35,10 +35,11 @@ describe('VehicleStatusSheetTest', () => {
       canArm,
     });
 
-  it('the sheet counts the aircraft in the air while it flies or lands, and only then drops the disarm slide', () => {
-    expect(['flying', 'landing'].map((phase) => inAir(state({ armed: true, phase })))).toEqual([true, true]);
-    expect(['armed', 'disarmed', ''].map((phase) => inAir(state({ armed: true, phase })))).toEqual([false, false, false]);
-    expect(inAir(null)).toBe(false);
+  it('the arm slide leaves the sheet while the aircraft flies or lands, where it would cut the motors', () => {
+    expect(['flying', 'landing'].map((phase) => armSlideShown(state({ armed: true, phase })))).toEqual([false, false]);
+    expect(['armed', 'disarmed'].map((phase) => armSlideShown(state({ armed: phase === 'armed', phase })))).toEqual([true, true]);
+    expect(armSlideShown(state({ connected: false, phase: 'disarmed' })), 'nothing to arm without a vehicle').toBe(false);
+    expect(armSlideShown(null)).toBe(false);
   });
 
   it("the status drawer's arm controls follow MainStatusIndicator", () => {

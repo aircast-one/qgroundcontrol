@@ -96,6 +96,10 @@ export type ArmedSession = { readonly vehicle: number | null; readonly armed: bo
 
 export const NO_ARMED_SESSION: ArmedSession = { vehicle: null, armed: false, flew: false };
 
+const IN_AIR_STATES: readonly string[] = ['flying', 'landing'];
+
+const inAirState = (token: string): boolean => IN_AIR_STATES.includes(token);
+
 export type ArmedSessionStep = { readonly session: ArmedSession; readonly notice: string | null; readonly landed: boolean; readonly started: boolean };
 
 export const armedSessionStep = (held: ArmedSession, connected: boolean, vehicle: number | null, armed: boolean, state: string | null): ArmedSessionStep => {
@@ -104,7 +108,7 @@ export const armedSessionStep = (held: ArmedSession, connected: boolean, vehicle
   const was = same && held.armed;
   const flew = same && held.flew;
   return {
-    session: { vehicle, armed, flew: armed && (flew || state === 'flying' || state === 'landing') },
+    session: { vehicle, armed, flew: armed && (flew || (state !== null && inAirState(state))) },
     notice: disarmNotice(was, flew, armed, true),
     landed: flew,
     started: armed && !was,
@@ -207,7 +211,7 @@ const armedOf = (json: Json | null): boolean => flyState(json)?.armed === true;
 
 export const useArmed = (): boolean => useQgcDerived(FLY_STATE, armedOf);
 
-export const inAir = (state: FlyState | null): boolean => state?.state === 'flying' || state?.state === 'landing';
+export const inAir = (state: FlyState | null): boolean => state !== null && inAirState(state.state);
 
 const inAirOf = (json: Json | null): boolean => inAir(flyState(json));
 

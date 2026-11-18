@@ -20,7 +20,7 @@ test('the status sheet scrolls as one page, with no scroll box nested inside it'
   expect(nested, 'the failsafe settings scroll inside the sheet instead of with it').toBe(0);
 });
 
-test('in the air the status sheet drops the disarm slide and every way off the Fly screen', async ({ vehicle }) => {
+test('in the air the status sheet drops the disarm slide and the setup links', async ({ vehicle }) => {
   test.setTimeout(120_000);
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
