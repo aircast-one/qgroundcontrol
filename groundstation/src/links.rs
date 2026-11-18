@@ -56,6 +56,7 @@ fn editing(kind: &str) -> &'static str {
         "logReplay" => "logFile",
         "bluetooth" => "device",
         "websocket" => "url",
+        "aircastCloud" => "cloud",
         _ => "none",
     }
 }
@@ -162,6 +163,8 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "dynamic": flag("dynamic"),
         "host": host,
         "url": text("url"),
+        "apiBase": text("apiBase"),
+        "deviceId": text("deviceId"),
         "port": number("port").or_else(|| number("localPort")),
         "portName": text("portName"),
         "baud": number("baud"),
@@ -611,6 +614,19 @@ mod tests {
             (socket["editing"].as_str(), socket["url"].as_str()),
             (Some("url"), Some("wss://sitl.aircast.one/ws/mavlink")),
             "a WebSocket link with a mistyped address is fixed in place, not deleted and added again"
+        );
+        let cloud = link_json(
+            1,
+            &json!({ "name": "Aircast cloud", "settingsURL": "AircastCloudSettings.qml", "summary": "Aircast cloud \u{b7} zzz", "apiBase": "https://api.aircast.one", "deviceId": "zzz" }),
+        );
+        assert_eq!(
+            (
+                cloud["editing"].as_str(),
+                cloud["apiBase"].as_str(),
+                cloud["deviceId"].as_str()
+            ),
+            (Some("cloud"), Some("https://api.aircast.one"), Some("zzz")),
+            "a cloud link with a mistyped device is fixed in place too"
         );
         assert_eq!(
             socket["statusLine"], "Reconnecting \u{b7} wss://sitl.aircast.one/ws/mavlink",

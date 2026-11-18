@@ -50,7 +50,7 @@ export const LinkTypeEntries: readonly LinkType[] = [LinkType.Udp, LinkType.Tcp,
 export const linkTypeFrom = (id: string): LinkType => LinkTypeEntries.find((it) => it.id === id && it !== LinkType.Other) ?? LinkType.Other;
 
 export type LinkEditing = {
-  readonly name: 'HostAndPort' | 'PortOnly' | 'Serial' | 'LogFile' | 'Device' | 'Url' | 'None';
+  readonly name: 'HostAndPort' | 'PortOnly' | 'Serial' | 'LogFile' | 'Device' | 'Url' | 'Cloud' | 'None';
   readonly ordinal: number;
   readonly id: string;
 };
@@ -62,10 +62,11 @@ export const LinkEditing = {
   LogFile: { name: 'LogFile', ordinal: 3, id: 'logFile' },
   Device: { name: 'Device', ordinal: 4, id: 'device' },
   Url: { name: 'Url', ordinal: 5, id: 'url' },
-  None: { name: 'None', ordinal: 6, id: '' },
+  Cloud: { name: 'Cloud', ordinal: 6, id: 'cloud' },
+  None: { name: 'None', ordinal: 7, id: '' },
 } as const satisfies Record<string, LinkEditing>;
 
-export const LinkEditingEntries: readonly LinkEditing[] = [LinkEditing.HostAndPort, LinkEditing.PortOnly, LinkEditing.Serial, LinkEditing.LogFile, LinkEditing.Device, LinkEditing.Url, LinkEditing.None];
+export const LinkEditingEntries: readonly LinkEditing[] = [LinkEditing.HostAndPort, LinkEditing.PortOnly, LinkEditing.Serial, LinkEditing.LogFile, LinkEditing.Device, LinkEditing.Url, LinkEditing.Cloud, LinkEditing.None];
 
 export const linkEditingFrom = (id: string): LinkEditing => LinkEditingEntries.find((it) => it.id === id && it !== LinkEditing.None) ?? LinkEditing.None;
 
@@ -85,6 +86,8 @@ export type LinkRow = {
   editing: LinkEditing;
   host: string;
   url: string;
+  apiBase: string;
+  deviceId: string;
   port: number;
   portName: string;
   baud: number;
@@ -102,6 +105,8 @@ export const LinkRow = (fields: Pick<LinkRow, 'index' | 'name' | 'statusLine' | 
   editing: LinkEditing.None,
   host: '',
   url: '',
+  apiBase: '',
+  deviceId: '',
   port: 0,
   portName: '',
   baud: 0,
@@ -140,6 +145,8 @@ export const linkRows = (view: Json | null): readonly LinkRow[] =>
       editing: linkEditingFrom(optText(link, 'editing')),
       host: optText(link, 'host'),
       url: optText(link, 'url'),
+      apiBase: optText(link, 'apiBase'),
+      deviceId: optText(link, 'deviceId'),
       port: optInt(link, 'port'),
       portName: optText(link, 'portName'),
       baud: optInt(link, 'baud'),
@@ -248,6 +255,7 @@ export const editWrites = (
   highLatency: boolean,
   framing: SerialFraming = SerialFraming(),
   logFile = '',
+  cloud: CloudEdit = { apiBase: '', deviceId: '' },
 ): readonly LinkWrite[] => {
   const common: readonly LinkWrite[] = [
     ['name', name],
@@ -262,6 +270,11 @@ export const editWrites = (
         ]
       : editing === LinkEditing.Url
         ? [['url', webSocketAddress(host)]]
+        : editing === LinkEditing.Cloud
+          ? [
+              ['apiBase', cloud.apiBase.trim()],
+              ['deviceId', cloud.deviceId.trim()],
+            ]
         : editing === LinkEditing.PortOnly
           ? [['localPort', port]]
           : editing === LinkEditing.LogFile
@@ -584,9 +597,12 @@ const BluetoothPicker = ({ chosen, onPick }: { chosen: BluetoothDeviceChoice | n
   );
 };
 
+export type CloudEdit = { apiBase: string; deviceId: string };
+
 export type LinkEdit = {
   name: string;
   host: string;
+  cloud: CloudEdit;
   port: string;
   portName: string;
   baud: number;
@@ -599,6 +615,7 @@ export type LinkEdit = {
 export const linkEdit = (row: LinkRow): LinkEdit => ({
   name: row.name,
   host: row.editing === LinkEditing.Url ? row.url : row.host,
+  cloud: { apiBase: row.apiBase, deviceId: row.deviceId },
   port: String(row.port),
   portName: row.portName,
   baud: row.baud > 0 ? row.baud : DEFAULT_BAUD,
@@ -618,6 +635,7 @@ export const editError = (editing: LinkEditing, edit: LinkEdit, udpDefault: stri
   if (editing === LinkEditing.PortOnly) return linkFormError(LinkType.Udp, '', edit.port, udpDefault);
   if (editing === LinkEditing.HostAndPort) return inPortRange(editedPort(editing, edit.port, udpDefault)) ? null : 'Port must be a number between 1 and 65535.';
   if (editing === LinkEditing.Url) return webSocketUrlError(webSocketAddress(edit.host));
+  if (editing === LinkEditing.Cloud) return cloudApiBaseValid(edit.cloud.apiBase) && cloudDeviceValid(edit.cloud.deviceId) ? null : '';
   return null;
 };
 
@@ -771,6 +789,9 @@ const EditLinkFields = ({
   if (editing === LinkEditing.Serial) {
     return <SerialPortFields ports={ports} bauds={bauds} portName={edit.portName} baud={edit.baud} enabled={enabled} onPort={(it) => onEdit({ ...edit, portName: it })} onBaud={(it) => onEdit({ ...edit, baud: it })} />;
   }
+  if (editing === LinkEditing.Cloud) {
+    return <AircastCloudFields apiBase={edit.cloud.apiBase} deviceId={edit.cloud.deviceId} showErrors onApiBase={(it) => onEdit({ ...edit, cloud: { ...edit.cloud, apiBase: it } })} onDeviceId={(it) => onEdit({ ...edit, cloud: { ...edit.cloud, deviceId: it } })} />;
+  }
   if (editing === LinkEditing.Url) {
     return (
       <OutlinedTextField
@@ -863,7 +884,7 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
       }
       const typedName = edit.name.trim();
       const resolved = typedName === '' ? uniqueLinkName(editSuggestion(row, edit, device, ports), rows.filter((it) => it.index !== row.index).map((it) => it.name)) : typedName;
-      const writes = editWrites(row.editing, resolved, edit.host, editedPort(row.editing, edit.port, udpDefault), edit.portName, edit.baud, edit.autoConnect, edit.highLatency, edit.framing, edit.logFile);
+      const writes = editWrites(row.editing, resolved, edit.host, editedPort(row.editing, edit.port, udpDefault), edit.portName, edit.baud, edit.autoConnect, edit.highLatency, edit.framing, edit.logFile, edit.cloud);
       if (typedServer !== null) await Qgc.invoke(`${LINKS_PATH}.${row.index}.addHost`, typedServer);
       await applyEdit(row.index, writes, device);
       if (row.editing === LinkEditing.LogFile) await pruneReplayFolder(row.name, edit.logFile);

@@ -614,6 +614,20 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
         (Kind::Serial { .. }, "dataBits" | "stopBits" | "parity" | "flowControl") => {
             serial_framing(&config.kind, field, value.as_i64()?)?
         }
+        (Kind::AircastCloud { device_id, .. }, "apiBase") => {
+            let api_base = text.filter(|base| cloud_settings_valid(base, device_id))?;
+            Kind::AircastCloud {
+                api_base,
+                device_id: device_id.clone(),
+            }
+        }
+        (Kind::AircastCloud { api_base, .. }, "deviceId") => {
+            let device_id = text.filter(|device| cloud_settings_valid(api_base, device))?;
+            Kind::AircastCloud {
+                api_base: api_base.clone(),
+                device_id,
+            }
+        }
         (Kind::LogReplay { .. }, "filename") => Kind::LogReplay {
             file: text.filter(|t| !t.is_empty())?,
         },
@@ -1878,6 +1892,35 @@ mod tests {
         assert!(edited(&tcp, "highLatency", &json!(true)).is_some_and(|c| c.high_latency));
         assert_eq!(edited(&tcp, "highLatency", &json!("yes")), None);
         assert_eq!(edited(&tcp, "port", &json!(70000)), None);
+    }
+
+    #[test]
+    fn a_cloud_link_s_server_and_device_are_fixed_in_place() {
+        let cloud = LinkConfig {
+            name: "Aircast cloud".into(),
+            auto_connect: true,
+            high_latency: false,
+            kind: Kind::AircastCloud {
+                api_base: "https://api.aircast.one".into(),
+                device_id: "zzz".into(),
+            },
+        };
+        assert_eq!(
+            edited(&cloud, "deviceId", &json!(" drone-1 ")).map(|c| c.kind),
+            Some(Kind::AircastCloud {
+                api_base: "https://api.aircast.one".into(),
+                device_id: "drone-1".into(),
+            })
+        );
+        assert_eq!(
+            edited(&cloud, "apiBase", &json!("https://api.dev.aircast.one")).map(|c| c.kind),
+            Some(Kind::AircastCloud {
+                api_base: "https://api.dev.aircast.one".into(),
+                device_id: "zzz".into(),
+            })
+        );
+        assert_eq!(edited(&cloud, "apiBase", &json!("not a url")), None);
+        assert_eq!(edited(&cloud, "deviceId", &json!("  ")), None);
     }
 
     #[test]

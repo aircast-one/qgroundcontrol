@@ -590,6 +590,23 @@ describe('AddableLinkTypesTest', () => {
     expect(addableLinkTypes(links('["serial","udp","tcp","logReplay"]'), true)).toEqual([LinkType.Udp, LinkType.Tcp, LinkType.Serial, LinkType.LogReplay]);
   });
 
+  it('a cloud link with a mistyped device is fixed in place, not deleted and added again', () => {
+    const view = parseJson('{"configured":[{"index":1,"name":"Aircast cloud","statusLine":"Not connected","editing":"cloud","type":"aircastCloud","apiBase":"https://api.aircast.one","deviceId":"zzz"}]}');
+    const [cloud] = linkRows(view);
+    expect(cloud === undefined ? false : linkIsEditable(cloud)).toBe(true);
+    const edit = cloud === undefined ? null : linkEdit(cloud);
+    expect(edit?.cloud).toEqual({ apiBase: 'https://api.aircast.one', deviceId: 'zzz' });
+    expect(edit === null ? null : editError(LinkEditing.Cloud, { ...edit, cloud: { ...edit.cloud, deviceId: ' ' } }, '14550')).toBe('');
+    expect(edit === null ? null : editError(LinkEditing.Cloud, { ...edit, cloud: { ...edit.cloud, deviceId: 'drone-1' } }, '14550')).toBeNull();
+    expect(editWrites(LinkEditing.Cloud, 'Aircast cloud', '', 0, '', 0, true, false, SerialFraming(), '', { apiBase: ' https://api.aircast.one ', deviceId: ' drone-1 ' })).toEqual([
+      ['name', 'Aircast cloud'],
+      ['autoConnect', true],
+      ['highLatency', false],
+      ['apiBase', 'https://api.aircast.one'],
+      ['deviceId', 'drone-1'],
+    ]);
+  });
+
   it('a WebSocket address typed without ws:// gets it, and a port past 65535 is named as the problem', () => {
     expect(webSocketAddress(' 192.168.1.10:5760 ')).toBe('ws://192.168.1.10:5760');
     expect(webSocketAddress('wss://bridge.example/mavlink')).toBe('wss://bridge.example/mavlink');
