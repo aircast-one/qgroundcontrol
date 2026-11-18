@@ -249,3 +249,16 @@ test('the MAVLink page and the reset confirm read in plain words', async ({ app 
   await confirm.getByRole('button', { name: 'Cancel' }).click();
   await expect(confirm).toBeHidden();
 });
+
+test('a radio channel already working another control is refused with the control it clashes with', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
+  const pitch = app.getByRole('textbox', { name: 'Camera pitch channel' });
+  await pitch.fill('11');
+  await pitch.press('Enter');
+  await expect(app.getByText('Channel 11 is already the payload drop channel. Pick another channel, or set that one to 0 first.')).toBeVisible();
+  await app.reload();
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
+  await expect(app.getByRole('textbox', { name: 'Camera pitch channel' })).toHaveValue('18');
+});
