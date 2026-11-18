@@ -153,6 +153,19 @@ fn on_device(link: Value, device: &str) -> Value {
     }
 }
 
+fn watched_links(on: impl Fn(&str) -> bool, browser: bool) -> Vec<&'static str> {
+    [
+        ("autoConnectPixhawk", "USB"),
+        ("autoConnectSiKRadio", "SiK radio"),
+        ("autoConnectUDP", "Wi\u{2011}Fi"),
+    ]
+    .into_iter()
+    .filter(|(setting, _)| !(browser && *setting == "autoConnectUDP"))
+    .filter(|(setting, _)| on(setting))
+    .map(|(_, name)| name)
+    .collect()
+}
+
 pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = backend.value("links.linkConfigurations");
     let device = crate::deviceviews::paired_host();
@@ -166,15 +179,10 @@ pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 .collect()
         })
         .unwrap_or_default();
-    let watched: Vec<&str> = [
-        ("autoConnectPixhawk", "USB"),
-        ("autoConnectSiKRadio", "SiK radio"),
-        ("autoConnectUDP", "Wi\u{2011}Fi"),
-    ]
-    .into_iter()
-    .filter(|(setting, _)| auto_connect(backend, setting))
-    .map(|(_, name)| name)
-    .collect();
+    let watched = watched_links(
+        |setting| auto_connect(backend, setting),
+        cfg!(target_family = "wasm"),
+    );
     let shown = offline(&links, &watched, |name| {
         connecting_stalled(name, crate::hub::now_ms())
     });
@@ -239,6 +247,19 @@ mod tests {
 
     fn link(name: &str, connected: bool, error: &str, remedy: &str) -> Value {
         json!({ "name": name, "dynamic": false, "connected": connected, "lastError": error, "errorRemedy": if remedy.is_empty() { Value::Null } else { json!(remedy) } })
+    }
+
+    #[test]
+    fn a_browser_never_says_it_looks_on_wi_fi_since_it_cannot_listen_for_udp() {
+        assert_eq!(
+            watched_links(|_| true, false),
+            ["USB", "SiK radio", "Wi\u{2011}Fi"]
+        );
+        assert_eq!(watched_links(|_| true, true), ["USB", "SiK radio"]);
+        assert_eq!(
+            watched_links(|setting| setting != "autoConnectSiKRadio", true),
+            ["USB"]
+        );
     }
 
     #[test]

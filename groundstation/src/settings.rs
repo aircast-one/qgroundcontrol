@@ -390,11 +390,24 @@ const IOS_HIDDEN: &[&str] = &[
     "usbRadioStickChannel",
 ];
 
+const BROWSER: bool = cfg!(target_family = "wasm");
+const BROWSER_HIDDEN: &[&str] = &[
+    "autoConnectUDP",
+    "savePath",
+    "forwardMavlink",
+    "forwardMavlinkHostName",
+    "forwardMavlinkAPMSupportHostName",
+];
+
 fn user_visible(name: &str, ios: bool) -> bool {
     !HIDDEN.contains(&name)
         && !DESKTOP_ONLY.iter().any(|(d, _)| *d == name)
         && !(MOBILE && name == "savePath")
         && !(ios && IOS_HIDDEN.contains(&name))
+}
+
+fn head_shows(name: &str, browser: bool) -> bool {
+    !(browser && BROWSER_HIDDEN.contains(&name))
 }
 
 fn choices_json(fact: &Value, labels: Vec<String>, raws: Vec<Value>) -> Value {
@@ -1728,7 +1741,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .filter(|f| {
             f.get("name")
                 .and_then(Value::as_str)
-                .is_some_and(|n| user_visible(n, IOS))
+                .is_some_and(|n| user_visible(n, IOS) && head_shows(n, BROWSER))
         })
         .filter(|f| {
             let maker = facts
@@ -2105,6 +2118,32 @@ mod tests {
         assert!(
             user_visible("autoConnectUDP", true),
             "UDP auto-connect still works on iOS"
+        );
+    }
+
+    #[test]
+    fn a_browser_hides_what_needs_a_udp_socket_or_a_folder_and_keeps_what_an_aircast_device_relays()
+    {
+        let gone = [
+            "autoConnectUDP",
+            "savePath",
+            "forwardMavlink",
+            "forwardMavlinkHostName",
+            "forwardMavlinkAPMSupportHostName",
+        ];
+        assert!(
+            gone.iter().all(|n| !head_shows(n, true)),
+            "a browser cannot open a UDP socket or pick a folder"
+        );
+        assert!(
+            gone.iter().all(|n| head_shows(n, false)),
+            "the desktop app keeps them"
+        );
+        assert!(
+            ["nmeaUdpPort", "adsbServerConnectEnabled", "adsbServerPort"]
+                .iter()
+                .all(|n| head_shows(n, true)),
+            "NMEA over UDP and ADS-B reach a browser through the Aircast device"
         );
     }
 
@@ -2772,6 +2811,7 @@ mod tests {
             .copied()
             .chain(DESKTOP_ONLY.iter().map(|(name, _)| *name))
             .chain(IOS_HIDDEN.iter().copied())
+            .chain(BROWSER_HIDDEN.iter().copied())
             .chain(
                 GATED
                     .iter()

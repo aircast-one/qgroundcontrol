@@ -205,3 +205,19 @@ test('UI scaling makes the app text larger and 100% puts it back', async ({ app 
   await app.getByRole('menuitem', { name: '100%' }).click();
   await expect.poll(size).toBeCloseTo(normal, 1);
 });
+
+test('a browser offers no UDP auto-connect, MAVLink forwarding or save folder it cannot use', async ({ app }) => {
+  await openGeneral(app);
+  await expect(app.getByText('Mute all audio output', { exact: true })).toBeVisible();
+  await expect(app.getByText('Application load/save path', { exact: true })).toHaveCount(0);
+  await expect(app.getByRole('switch', { name: "Don't save any data" })).toBeVisible();
+  await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await app.getByRole('button', { name: /^MAVLink/ }).click();
+  await expect(app.getByText('Telemetry logs', { exact: true })).toBeVisible();
+  await expect(app.getByText('MAVLink forwarding', { exact: true })).toHaveCount(0);
+  await app.getByRole('button', { name: 'Back', exact: true }).click();
+  await app.getByRole('button', { name: /^Links/ }).first().click();
+  await app.getByRole('button', { name: 'Advanced', exact: true }).click();
+  await expect(app.getByRole('switch', { name: 'Pixhawk' })).toBeVisible();
+  await expect(app.getByRole('switch', { name: 'UDP', exact: true })).toHaveCount(0);
+});
