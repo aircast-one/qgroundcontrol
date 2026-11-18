@@ -558,12 +558,16 @@ fn specified_speed(sections: &[crate::plandoc::Simple]) -> Option<f64> {
         .and_then(|s| s.params[1])
 }
 
+fn held_seconds(s: &crate::plandoc::Simple) -> f64 {
+    match s.command {
+        16 | 19 | 112 | 93 => s.params[0].unwrap_or(0.0),
+        _ => 0.0,
+    }
+}
+
 fn additional_delay(item: &crate::plandoc::Item) -> f64 {
     match item {
-        crate::plandoc::Item::Simple(s) => match s.command {
-            16 | 112 | 93 => s.params[0].unwrap_or(0.0),
-            _ => 0.0,
-        },
+        crate::plandoc::Item::Simple(s) => held_seconds(s),
         crate::plandoc::Item::Complex { json, .. } => {
             let survey = json.get("complexItemType").and_then(Value::as_str) == Some("survey");
             let hover = json
@@ -1080,7 +1084,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "altitudeFrame": altitude.map_or(match s.frame { 10 => crate::altitudemodes::TERRAIN_FRAME, 0 => crate::altitudemodes::ABSOLUTE, _ => crate::altitudemodes::RELATIVE }, |a| a.mode),
                 "specifiedFlightSpeed": specified_speed(&s.sections).or_else(|| (s.command == 178).then_some(s.params[1]).flatten().filter(|speed| *speed > 0.0)),
                 "facts": altitude_fact("altitude", altitude.map_or(0.0, |a| a.altitude)),
-                "additionalTimeDelay": match s.command { 16 | 112 | 93 => s.params[0].unwrap_or(0.0), _ => 0.0 },
+                "additionalTimeDelay": held_seconds(s),
                 "specifiedVehicleYaw": if s.command == 16 { s.params[3] } else { None },
                 "specifiedGimbalYaw": sections_gimbal_yaw(&s.sections).or_else(|| mount_gimbal_yaw(s)),
                 "altDifference": leg.alt_difference,
@@ -2225,6 +2229,36 @@ mod tests {
             9,
             "a VTOL has no speed section, so its speed changes stay rows of their own"
         );
+    }
+
+    #[test]
+    fn a_timed_loiter_adds_its_wait_to_the_mission_time() {
+        let plan = |loiter: i64| {
+            json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": 2, "plannedHomePosition": [47.0, 8.0, 0], "items": [
+            { "type": "SimpleItem", "autoContinue": true, "command": 22, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 0, 0, 30] },
+            { "type": "SimpleItem", "autoContinue": true, "command": loiter, "frame": 3, "doJumpId": 2, "params": [120, 0, 0, 0, 47.01, 8.0, 30] },
+        ] } }).to_string()
+        };
+        let speeds = Speeds {
+            hover: 5.0,
+            cruise: 15.0,
+            ascent: 3.0,
+            descent: 1.0,
+        };
+        let timed = |command: i64| {
+            let doc = crate::plandoc::load(&plan(command), 2).unwrap();
+            (
+                flight_status(&doc, &speeds).unwrap().total_time,
+                document_reads(&doc, 0).unwrap()[2]["additionalTimeDelay"].as_f64(),
+            )
+        };
+        let (waypoint, _) = timed(17);
+        let (loiter, delay) = timed(19);
+        assert!(
+            (loiter - waypoint - 120.0).abs() < 1e-6,
+            "a 120 s Loiter (time) waits 120 s: {loiter} vs {waypoint}"
+        );
+        assert_eq!(delay, Some(120.0));
     }
 
     struct Plan(Vec<Value>, i64);
