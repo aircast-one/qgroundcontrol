@@ -180,7 +180,10 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
   const panelJson = useQgcPath(MULTI_VEHICLE_PANEL);
   const panelEnabled = multiVehiclePanelEnabled(panelJson);
   const panelFact = useQgcPath(MULTI_VEHICLE_PANEL_SETTING);
-  const [offline, setOffline] = useState(false);
+  const offline = useValue(flyScreen.offlineSheetOpen);
+  const setOffline = (open: boolean) => {
+    flyScreen.offlineSheetOpen.value = open;
+  };
   const [statusSettings, setStatusSettings] = useState(false);
   const [modeMenu, setModeMenu] = useState(false);
   const offlineNow = useMemo(() => offlineStatus(offlineJson), [offlineJson]);

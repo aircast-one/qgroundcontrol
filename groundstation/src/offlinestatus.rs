@@ -64,6 +64,9 @@ pub fn offline(
         .and_then(|l| l["name"].as_str())
         .unwrap_or("")
         .to_string();
+    let unreachable = connected
+        .and_then(|l| l["lastError"].as_str())
+        .is_some_and(|e| !e.is_empty());
     let failed = configured
         .iter()
         .find(|l| l["connected"] != true && l["lastError"].as_str().is_some_and(|e| !e.is_empty()));
@@ -96,6 +99,9 @@ pub fn offline(
         _ if no_autopilot => format!(
             "{connecting} hears no flight controller. Check it is plugged in and powered on."
         ),
+        _ if !connecting.is_empty() && unreachable => {
+            format!("Can't reach {connecting}. Check its address and that the aircraft is on.")
+        }
         _ if !connecting.is_empty() && stalled && on_device => format!(
             "No telemetry from {connecting} yet. Check the drone is powered on and the device hears its flight controller."
         ),
@@ -259,6 +265,29 @@ mod tests {
         assert_eq!(
             watched_links(|setting| setting != "autoConnectSiKRadio", true),
             ["USB"]
+        );
+    }
+
+    #[test]
+    fn a_link_that_cannot_reach_its_address_says_so_instead_of_blaming_the_port() {
+        let refused = offline(
+            &[link(
+                "10.0.0.9:5760",
+                true,
+                "No MAVLink WebSocket answered at ws://10.0.0.9:5760",
+                "",
+            )],
+            &[],
+            |_| true,
+        );
+        assert_eq!(
+            refused.footnote,
+            "Can't reach 10.0.0.9:5760. Check its address and that the aircraft is on."
+        );
+        let quiet = offline(&[link("10.0.0.9:5760", true, "", "")], &[], |_| true);
+        assert_eq!(
+            quiet.footnote,
+            "No telemetry from 10.0.0.9:5760 yet. Check the port is the drone's MAVLink port."
         );
     }
 

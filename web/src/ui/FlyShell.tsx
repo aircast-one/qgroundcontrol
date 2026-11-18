@@ -425,6 +425,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const hasVehicle = useHasVehicle();
   const armed = useArmed();
   const lostFlight = useValue(lostVehicle) !== null;
+  const offlineSheet = useValue(shellState.offlineSheetOpen);
   const mapAboveOsd = view === FlyView.Map && stickPad === null && hasVehicle && !deciding ? osd.size.height : 0;
   const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : mapAboveOsd;
   const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE + mapAboveOsd;
@@ -552,7 +553,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     overlaysAboveBottom
                     message={
                       lostFlight ? null : guideMessage ? (
-                        <OfflineGuideCard inVideo={videoMessage} />
+                        offlineSheet ? null : (
+                          <OfflineGuideCard inVideo={videoMessage} />
+                        )
                       ) : videoMessage ? (
                         <div className={`size-full ${osdShadow()}`}>
                           <FlyNoVideoMessage />

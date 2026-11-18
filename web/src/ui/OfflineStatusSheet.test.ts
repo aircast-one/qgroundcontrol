@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { LOOKING_TITLE } from './ConnectingCard';
-import { NO_CAMERA_GUIDE, offlineGuide, offlineStatus } from './OfflineStatusSheet';
+import { NO_CAMERA_GUIDE, offlineGuide, offlineLinkAction, offlineStatus } from './OfflineStatusSheet';
 
 describe('OfflineStatusTest', () => {
+  it('a saved link says what tapping it does, so a tap never disconnects without saying so', () => {
+    const link = { index: 0, text: 'bridge', description: '', action: 'connect', actionLabel: 'Connect', failed: false, connected: false };
+    expect(offlineLinkAction(link)).toBe('Connect');
+    expect(offlineLinkAction({ ...link, action: 'retry', actionLabel: 'Retry', failed: true })).toBe('Retry');
+    expect(offlineLinkAction({ ...link, connected: true, failed: true })).toBe('Disconnect');
+  });
+
   it("the offline page reads the core's footnote and links", () => {
     const status = offlineStatus(
       parseJson(`{"title":"Connection Failed","footnote":"Couldn't connect to Drone.","busy":false,"noLinks":false,"editAddress":true,

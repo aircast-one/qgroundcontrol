@@ -90,6 +90,8 @@ const useOpenSignIn = (url: string): void =>
     openUri(url);
   }, [url]);
 
+export const offlineLinkAction = (link: OfflineLink): string => (link.connected ? 'Disconnect' : link.actionLabel);
+
 export const linkAction = (link: OfflineLink, edit: () => void): Promise<unknown> =>
   link.connected
     ? LinkCommands.disconnect(link.index)
@@ -134,10 +136,13 @@ const OfflineLinkRow = ({
         )
       }
       trailingContent={
-        acting || (link.connected && busy) ? (
+        acting ? (
           <CircularProgressIndicator size={16} strokeWidth={2} />
-        ) : link.connected ? null : (
-          <span className="inline-flex h-10 items-center rounded-full bg-secondary-container px-6 text-label-large text-on-secondary-container">{link.actionLabel}</span>
+        ) : (
+          <span className="inline-flex items-center gap-3">
+            {link.connected && busy ? <CircularProgressIndicator size={16} strokeWidth={2} /> : null}
+            <span className={`inline-flex h-10 items-center rounded-full px-6 text-label-large ${link.connected ? 'text-primary' : 'bg-secondary-container text-on-secondary-container'}`}>{offlineLinkAction(link)}</span>
+          </span>
         )
       }
       onClick={act}
@@ -206,11 +211,11 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
   useTicker(OFFLINE_POLL_MS, [], refresh);
   useOpenSignIn(status?.signInUrl ?? '');
   return (
-    <AircastSheet onDismissRequest={onDismiss} label={status?.title ?? 'Connection'}>
+    <AircastSheet onDismissRequest={onDismiss} label={status === null ? 'Connection' : sentenceCase(status.title)}>
       {status !== null ? (
         <div className="flex w-full flex-col gap-1 pb-6">
           <Text typography="titleMedium" className="px-sheet">
-            {status.title}
+            {sentenceCase(status.title)}
           </Text>
           {status.onDevice ? null : (
             <Text typography="bodyMedium" className="px-sheet">

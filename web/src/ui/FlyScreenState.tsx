@@ -11,6 +11,7 @@ export class FlyScreenState {
   readonly refusal = mutableStateOf<string | null>(null);
   readonly deckRequest = mutableStateOf<string | null>(null);
   readonly requestedSheet = mutableStateOf<string | null>(null);
+  readonly offlineSheetOpen = mutableStateOf(false);
   readonly offeredSheets = mutableStateListOf<string>();
   readonly choosingReadings = mutableStateOf(false);
   readonly pendingMode = mutableStateOf<string | null>(null);

@@ -151,3 +151,27 @@ test('a WebSocket link that keeps failing waits apart from Connected, and its ad
   await app.getByRole('button', { name: 'Save and connect' }).click();
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
 });
+
+test('How to connect replaces the Fly card instead of saying the same thing twice', async ({ app }) => {
+  await expect(app.getByRole('button', { name: 'Add a link' })).toHaveCount(1);
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  const sheet = app.getByRole('dialog', { name: 'Not connected' });
+  await expect(sheet.getByText('Not connected', { exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Add a link' })).toHaveCount(1);
+  await expect(sheet.getByRole('button', { name: 'Add a link' })).toBeVisible();
+});
+
+test('a saved link still trying its address says a tap disconnects it, and that the address did not answer', async ({ app }) => {
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add a link' }).click();
+  await app.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
+  await app.getByRole('textbox', { name: 'WebSocket address' }).fill('localhost:1');
+  await app.getByRole('button', { name: 'Connect', exact: true }).click();
+  await closeSettings(app);
+  const row = app.getByRole('button', { name: /ws:\/\/localhost:1/ });
+  await expect(row).toContainText('Disconnect', { timeout: 15_000 });
+  await expect(app.getByText("Can't reach localhost:1. Check its address and that the aircraft is on.")).toBeVisible({ timeout: 15_000 });
+  await row.click();
+  await expect(row).toContainText('Connect');
+  await expect(row).not.toContainText('Disconnect');
+});
