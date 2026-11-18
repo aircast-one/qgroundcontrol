@@ -812,7 +812,7 @@ export const PlanMapContent = ({
               icon="plan_flight_land"
               label={kindLabel(insertable, KIND_LAND)}
               enabled={itemCount.value > 0}
-              onClick={() => addMissionItem(KIND_LAND, 'Adding a landing', placeAt(), insertAfter(selected.value, allItems.value))}
+              onClick={() => addMissionItem(KIND_LAND, 'Adding a landing', placeAt(), AT_END)}
             />
             {kindOffered(insertable, KIND_DROP) ? (
               <RailButton icon="plan_drop" label="Drop" enabled={itemCount.value > 0 && addable(KIND_DROP)} onClick={() => addMissionItem(KIND_DROP, 'Adding a drop', placeAt(), insertAfter(selected.value, allItems.value))} />

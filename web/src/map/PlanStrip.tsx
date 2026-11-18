@@ -10,7 +10,7 @@ import { HOME_ITEM } from './MissionKinds';
 import { summaryRow } from './MissionSummary';
 import type { MissionItem } from './PlanBridge';
 import type { Deletion } from './PlanEditing';
-import { type ItemRow, legText, patternName, sequenceLabel } from './PlanItems';
+import { type ItemRow, legText, patternName, routeEnd, sequenceLabel } from './PlanItems';
 import { sentenceCase } from './SentenceCase';
 import type { Survey } from './SurveyBridge';
 import { metresBetween } from './TerrainProfile';
@@ -51,8 +51,10 @@ export const placedPattern = (surveys: readonly Survey[], wanted: number): Surve
   surveys.find((it) => it.index === wanted) ??
   (wanted === NEWEST_PATTERN ? surveys.reduce<Survey | null>((best, it) => (best === null || it.index > best.index ? it : best), null) : null);
 
-export const appendSequence = (items: readonly MissionItem[]): number =>
-  items.reduce<MissionItem | null>((best, it) => (best === null || it.index > best.index ? it : best), null)?.sequence ?? HOME_ITEM;
+export const appendSequence = (items: readonly MissionItem[]): number => {
+  const end = routeEnd(items);
+  return (end === null ? items : items.filter((it) => it.index < end.index)).reduce<MissionItem | null>((best, it) => (best === null || it.index > best.index ? it : best), null)?.sequence ?? HOME_ITEM;
+};
 
 const FAR_FROM_AIRCRAFT_METRES = 1000.0;
 const METRES_PER_MILE = 1609.344;

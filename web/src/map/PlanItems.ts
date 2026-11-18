@@ -131,9 +131,12 @@ export const missionItemIndex = (selected: MapHit | null): number | null => {
   }
 };
 
+export const routeEnd = (items: readonly MissionItem[]): MissionItem | null =>
+  items.filter((it) => it.index !== HOME_ITEM && it.endsRoute).reduce<MissionItem | null>((first, it) => (first === null || it.index < first.index ? it : first), null);
+
 export const insertAfter = (selected: MapHit | null, items: readonly MissionItem[]): number => {
   const index = missionItemIndex(selected);
-  if (index === null || !items.some((it) => it.index === index)) return AT_END;
+  if (index === null || !items.some((it) => it.index === index)) return routeEnd(items)?.index ?? AT_END;
   return index + 1 >= items.length ? AT_END : index + 1;
 };
 

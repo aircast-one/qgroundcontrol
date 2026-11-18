@@ -132,7 +132,7 @@ const ALREADY_TAKES_OFF: &str = "The mission already takes off before this point
 const NEEDS_HOME_FIRST: &str = "Set the home position before adding anything to the mission.";
 const LAND_COMES_LAST: &str =
     "A landing goes after the takeoff and after every place the vehicle flies through.";
-const NOT_AFTER_LANDING: &str = "The vehicle has already landed at this point in the mission.";
+const NOT_AFTER_LANDING: &str = "The mission has already ended here. Select an item before the return or landing to add after it.";
 const NOT_BEFORE_TAKEOFF: &str = "The vehicle has not taken off yet at this point in the mission.";
 const NOT_FOR_THIS_VEHICLE: &str = "This kind of vehicle does not fly that pattern.";
 

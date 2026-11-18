@@ -124,6 +124,7 @@ export type MissionItem = {
   heading: number;
   gimbalYaw: number;
   closesRoute: boolean;
+  endsRoute: boolean;
   legBroken: boolean;
   abbreviation: string;
   dropsPayload: boolean;
@@ -165,6 +166,7 @@ export const MissionItem = (fields: MissionItemRequired & Partial<MissionItem>):
   heading: NaN,
   gimbalYaw: NaN,
   closesRoute: false,
+  endsRoute: false,
   legBroken: false,
   abbreviation: '',
   dropsPayload: false,
@@ -236,6 +238,7 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
         heading: optDouble(element, 'heading', NaN),
         gimbalYaw: optDouble(element, 'gimbalYaw', NaN),
         closesRoute: optBoolean(element, 'closesRoute'),
+        endsRoute: optBoolean(element, 'endsRoute'),
         legBroken: broken.has(index),
         abbreviation: optText(element, 'abbreviation'),
         dropsPayload: optBoolean(element, 'dropsPayload'),

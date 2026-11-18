@@ -85,6 +85,14 @@ describe('PlanStripTest', () => {
     expect(appendSequence([])).toBe(0);
   });
 
+  it('with nothing selected and a return at the end, the core weighs new items before the return', () => {
+    const items = [
+      ...[0, 1, 2].map((it) => MissionItem({ index: it, sequence: it, latitude: 41.0, longitude: 44.0, command: 'Waypoint', selected: false, altitude: 50.0 })),
+      MissionItem({ index: 3, sequence: 3, latitude: NaN, longitude: NaN, command: 'Return to launch', selected: false, altitude: NaN, endsRoute: true }),
+    ];
+    expect(appendSequence(items), 'weighed after the return, a pattern was refused as if the vehicle had landed').toBe(2);
+  });
+
   it('a route that begins more than a kilometre from the aircraft is flagged with the distance', () => {
     const home = MissionItem({ index: 0, sequence: 0, latitude: 37.0, longitude: -122.0, command: 'Home', selected: false, altitude: NaN });
     const takeoff = MissionItem({ index: 1, sequence: 1, latitude: 39.237, longitude: -123.149, command: 'Takeoff', selected: false, altitude: 50.0 });

@@ -196,6 +196,12 @@ describe('InsertAfterTest', () => {
     expect(insertAfter(waypoint(9), plan)).toBe(AT_END);
   });
 
+  it('with nothing selected an item goes before the return that ends the route, where it is still flown', () => {
+    const returning = [...plan, MissionItem({ ...item(3), command: 'Return to launch', kind: 'land', endsRoute: true })];
+    expect(insertAfter(null, returning)).toBe(3);
+    expect(insertAfter(waypoint(2), returning), 'the item before the return keeps the new one before it too').toBe(3);
+  });
+
   it('a selected pattern corner inserts after its pattern, and a non-mission selection appends', () => {
     expect(insertAfter({ kind: 'SurveyVertex', item: 1, vertex: 0 }, plan)).toBe(2);
     expect(insertAfter({ kind: 'Rally', index: 1 }, plan)).toBe(AT_END);
