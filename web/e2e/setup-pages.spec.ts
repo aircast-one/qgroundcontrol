@@ -115,6 +115,18 @@ test('an ArduPilot frame change can be rebooted from the Frame page after the pr
   await expect(app.getByRole('button', { name: 'Reboot vehicle', exact: true })).toBeVisible();
 });
 
+test('the ArduPilot radio calibration start can be backed out of', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Radio / }).click();
+  await app.getByRole('button', { name: 'Calibrate', exact: true }).click();
+  const zero = app.getByRole('dialog').filter({ hasText: 'Zero Trims' });
+  await zero.getByRole('button', { name: 'Cancel' }).click();
+  await expect(zero).toHaveCount(0);
+  await expect(app.getByRole('button', { name: 'Calibrate', exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
+});
+
 test('PX4 airframe and PID tuning open here instead of pointing at a desktop app', async ({ app }) => {
   await connectMock(app);
   await openAircraftSetup(app);

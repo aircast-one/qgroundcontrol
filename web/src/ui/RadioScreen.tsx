@@ -180,6 +180,7 @@ const CalibrationStart = ({
               Ok
             </TextButton>
           }
+          dismissButton={<TextButton onClick={() => setPrompting(false)}>Cancel</TextButton>}
         />
       ) : null}
       {notReady !== null ? (

@@ -92,7 +92,10 @@ export const RADIO_CAL = 'radioCal';
 export const radioCalAction = (action: string): string => `${RADIO_CAL}.${action}`;
 
 export const calibrationStep = (statusText: string): string => {
-  const lines = statusText.trim().split(/\r\n|\n|\r/);
+  const lines = statusText
+    .trim()
+    .split(/\r\n|\n|\r/)
+    .map((it) => it.replace(/^\s*\*\s+/, ''));
   const kept = lines.findLastIndex((it) => !(it.trim() === '' || it.trim().startsWith('Click ')));
   return lines.slice(0, kept + 1).join('\n').trim();
 };

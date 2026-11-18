@@ -93,6 +93,14 @@ describe('CalibrationStepTest', () => {
     expect(calibrationStep(served)).toBe(served);
   });
 
+  it('the core\'s asterisk bullets are not shown as text, and the bulleted click line still goes', () => {
+    const served =
+      '* Lower the Throttle stick all the way down as shown in diagram\n* Please ensure all motor power is disconnected AND all props are removed from the vehicle.\n* Click Next to continue';
+    expect(calibrationStep(served)).toBe(
+      'Lower the Throttle stick all the way down as shown in diagram\nPlease ensure all motor power is disconnected AND all props are removed from the vehicle.',
+    );
+  });
+
   it('nothing served is nothing shown', () => {
     expect(calibrationStep('')).toBe('');
     expect(calibrationStep('   \n  ')).toBe('');
