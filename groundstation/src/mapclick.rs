@@ -294,6 +294,7 @@ struct GotoFlight {
     in_goto_mode: bool,
     armed: bool,
     flying: bool,
+    orbiting: bool,
     mode: String,
 }
 
@@ -308,6 +309,7 @@ static LAST_GOTO: std::sync::Mutex<GotoState> = std::sync::Mutex::new(GotoState 
         in_goto_mode: false,
         armed: false,
         flying: false,
+        orbiting: false,
         mode: String::new(),
     },
 });
@@ -334,7 +336,8 @@ fn goto_outlived(was: &GotoFlight, now: &GotoFlight) -> bool {
     let left_goto = was.in_goto_mode && !now.in_goto_mode;
     let mode_changed = !was.mode.is_empty() && was.mode != now.mode && !now.in_goto_mode;
     let took_off = now.flying && !was.flying;
-    !now.armed || left_goto || mode_changed || took_off
+    let began_orbit = now.orbiting && !was.orbiting;
+    !now.armed || left_goto || mode_changed || took_off || began_orbit
 }
 
 fn goto_shown(now: GotoFlight) -> Option<GotoMark> {
@@ -356,6 +359,7 @@ fn goto_vehicle(backend: &dyn Backend) -> (Value, GotoFlight) {
             && vehicle.get("flightMode") == vehicle.get("gotoFlightMode"),
         armed: flag(&vehicle, "armed"),
         flying: flag(&vehicle, "flying"),
+        orbiting: flag(&vehicle, "orbitActive"),
         mode: crate::read::text(&vehicle, "flightMode"),
     };
     (vehicle, flight)
@@ -1291,6 +1295,7 @@ mod tests {
             in_goto_mode: false,
             armed: true,
             flying: true,
+            orbiting: false,
             mode: "Loiter".to_string(),
         };
         let guided = GotoFlight {
@@ -1440,6 +1445,7 @@ mod tests {
             in_goto_mode: true,
             armed: true,
             flying: true,
+            orbiting: false,
             mode: "Guided".to_string(),
         };
         goto_shown(guided.clone());
@@ -1487,6 +1493,48 @@ mod tests {
             "switching into the goto mode is the goto starting, not a change of mind"
         );
         assert!(!goto_outlived(&guided, &guided));
+        goto_shown(GotoFlight::default());
+    }
+
+    #[test]
+    fn an_orbit_started_after_a_goto_ends_the_going_to_point_progress() {
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guided = GotoFlight {
+            in_goto_mode: true,
+            armed: true,
+            flying: true,
+            orbiting: false,
+            mode: "Guided".to_string(),
+        };
+        let orbiting = GotoFlight {
+            orbiting: true,
+            ..guided.clone()
+        };
+        goto_shown(guided.clone());
+        remember_goto(GotoMark {
+            latitude: 47.4,
+            longitude: 8.5,
+            radius: 0.0,
+        });
+        assert!(goto_shown(guided.clone()).is_some());
+        assert_eq!(
+            goto_shown(orbiting.clone()),
+            None,
+            "an ArduCopter orbit stays in Guided, so only the orbit starting retires the old point"
+        );
+        assert_eq!(goto_shown(guided.clone()), None);
+        goto_shown(orbiting.clone());
+        remember_goto(GotoMark {
+            latitude: 47.5,
+            longitude: 8.6,
+            radius: 0.0,
+        });
+        assert!(
+            goto_shown(orbiting).is_some(),
+            "a goto sent while the orbit watchdog still reports orbiting keeps its point"
+        );
         goto_shown(GotoFlight::default());
     }
 }
