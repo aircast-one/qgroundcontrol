@@ -766,7 +766,14 @@ fn kind_fields(kind: &Kind) -> (&'static str, &'static str, &'static str, String
             "UDPConfiguration",
             "UdpSettings.qml",
             "UDP Link Settings",
-            format!("UDP port {local_port}"),
+            match hosts.is_empty() {
+                true => format!("UDP port {local_port}"),
+                false => hosts
+                    .iter()
+                    .map(|(host, port)| format!("{host}:{port}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            },
             json!({ "localPort": local_port, "hostList": hosts.iter().map(|(host, port)| format!("{host}:{port}")).collect::<Vec<_>>() }),
         ),
         Kind::Serial {
@@ -2085,7 +2092,22 @@ mod tests {
                 shown["hostList"][0].as_str(),
                 shown["localPort"].as_u64()
             ),
-            (Some("UDP port 14550"), Some("10.0.0.2:14551"), Some(14550))
+            (Some("10.0.0.2:14551"), Some("10.0.0.2:14551"), Some(14550)),
+            "a UDP link that calls a host reads as that host, not its local port"
+        );
+        let listening = Entry {
+            config: LinkConfig {
+                kind: Kind::Udp {
+                    local_port: 14550,
+                    hosts: vec![],
+                },
+                ..udp.config.clone()
+            },
+            dynamic: true,
+        };
+        assert_eq!(
+            element(&listening, &table, &idle)["summary"],
+            "UDP port 14550"
         );
         assert_eq!(
             (
