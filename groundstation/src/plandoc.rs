@@ -581,14 +581,22 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
         firmware(template.firmware_type) == Firmware::ArduPilot,
     );
     let (settings_sections, items) = fold(landings, vehicle_class(template.vehicle_type));
+    let modes: Vec<i64> = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Simple(s) => s.altitude.as_ref().map(|held| held.mode),
+            Item::Complex { .. } => Some(crate::altitudemodes::MIXED),
+        })
+        .collect();
     Document {
         home,
         settings_sections,
-        items,
-        global_altitude_mode: match listed.is_empty() {
-            true => crate::altitudemodes::RELATIVE,
-            false => crate::altitudemodes::MIXED,
+        global_altitude_mode: match modes.first() {
+            None => crate::altitudemodes::RELATIVE,
+            Some(first) if modes.iter().all(|mode| mode == first) => *first,
+            Some(_) => crate::altitudemodes::MIXED,
         },
+        items,
         ..template.clone()
     }
 }
@@ -3320,6 +3328,39 @@ mod tests {
         assert!(
             move_item(&doc, 0, true).is_err(),
             "home is not an item to move"
+        );
+    }
+
+    #[test]
+    fn a_mission_read_back_keeps_the_one_altitude_frame_all_its_items_share() {
+        let row = |command: i64, frame: i64, latitude: f64| Downloaded {
+            frame,
+            command,
+            params: [0.0, 0.0, 0.0, 0.0, latitude, 8.0, 50.0],
+            auto_continue: true,
+        };
+        let template = Document {
+            firmware_type: 3,
+            vehicle_type: 2,
+            ..section()
+        };
+        let relative = [
+            row(16, 0, 47.0),
+            row(22, 3, 0.0),
+            row(16, 3, 47.01),
+            row(178, 2, 0.0),
+            row(16, 3, 47.02),
+            row(20, 2, 0.0),
+        ];
+        assert_eq!(
+            from_vehicle(&relative, true, &template).global_altitude_mode,
+            crate::altitudemodes::RELATIVE,
+            "a route uploaded relative to launch reads back relative to launch, not as Mixed modes"
+        );
+        let mixed = [row(16, 0, 47.0), row(16, 3, 47.01), row(16, 0, 47.02)];
+        assert_eq!(
+            from_vehicle(&mixed, true, &template).global_altitude_mode,
+            crate::altitudemodes::MIXED
         );
     }
 
