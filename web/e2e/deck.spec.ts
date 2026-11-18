@@ -14,6 +14,16 @@ test('on a desktop the Fly menu holds where to go, what the aircraft can do and 
   await expect(section('Screen').getByRole('button', { name: 'Edit layout', exact: true })).toBeVisible();
 });
 
+test('on the ground Force arm sits in the menu in the same ink as Arm and still asks for a slide', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
+  const aircraft = vehicle.getByRole('dialog').getByRole('region', { name: 'Aircraft' });
+  const ink = (name: string) => aircraft.getByRole('button', { name, exact: true }).evaluate((tile) => getComputedStyle(tile).color);
+  await expect(aircraft.getByRole('button', { name: 'Force arm', exact: true })).toBeVisible();
+  expect(await ink('Force arm'), 'bypassing the arming checks does not shout louder than arming').toBe(await ink('Arm'));
+  await aircraft.getByRole('button', { name: 'Force arm', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: 'Slide to force arm' })).toBeVisible();
+});
+
 test('edit layout from more actions starts and ends layout editing', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();

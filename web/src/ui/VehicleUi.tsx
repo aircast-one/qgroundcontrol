@@ -783,7 +783,6 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
               label: offer.title,
               icon: guidedIcon(offer.id),
               enabled: offer.ready,
-              warning: offer.destructive,
               onClick: () => {
                 if (offer.id === PAUSE) {
                   openAltitude(true);
