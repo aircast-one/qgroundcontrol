@@ -55,7 +55,7 @@ export const sensorSettings = (view: Json | null): SensorSettings | null => {
   };
 };
 
-export const ORIENTATIONS_HELP = 'Adjust orientations as needed.\n\nROTATION_NONE indicates component points in direction of flight.';
+export const ORIENTATIONS_HELP = 'Adjust orientations as needed.\n\nNo rotation means the component points in the direction of flight.';
 
 const useSensorSettings = (calibrating: boolean): readonly [SensorSettings | null, () => void] => {
   const [revision, setRevision] = useState(0);

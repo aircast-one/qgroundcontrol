@@ -13,7 +13,8 @@ pub const DEPS: &[&str] = &[
 pub const SET_PRIORITY: &str = "sensorSettings.priority";
 pub const FACTORY_RESET: &str = "sensorSettings.factoryReset";
 const PX4_MAX_MAGS: usize = 50;
-const PX4_ROTATION_NOTE: &str = "ROTATION_NONE indicates component points in direction of flight.";
+const PX4_ROTATION_NOTE: &str =
+    "No rotation means the component points in the direction of flight.";
 const COMPASSES: usize = 3;
 const PRIORITY_NOT_SET: usize = 3;
 const AUTO_ROT_ENABLED: f64 = 2.0;
@@ -356,6 +357,15 @@ mod tests {
             priority_of(5.0, &[Some(1.0), None, None]),
             3,
             "a compass in no slot reads Not Set"
+        );
+    }
+
+    #[test]
+    fn the_px4_orientation_help_names_the_choice_as_the_menu_shows_it() {
+        assert!(
+            !PX4_ROTATION_NOTE.contains("ROTATION_NONE")
+                && PX4_ROTATION_NOTE.contains("No rotation"),
+            "the dropdown reads No rotation while the help spoke the firmware's enum name"
         );
     }
 

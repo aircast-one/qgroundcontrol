@@ -80,6 +80,7 @@
                     "label": "Collision prevention minimum distance",
                     "control": "slider",
                     "enableCheckbox": {
+                        "label": "Collision prevention",
                         "checked": "_cpDist.rawValue > 0",
                         "onClicked": "{ _cpDist.rawValue = enableCheckBoxChecked ? 5 : -1 }"
                     }

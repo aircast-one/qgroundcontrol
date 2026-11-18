@@ -3683,6 +3683,22 @@ mod tests {
             true
         );
         assert_eq!(fake.params.borrow()["GF_MAX_HOR_DIST"], 100.0);
+        let avoidance: Vec<String> = served["sections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default())
+            .filter(|c| c["name"].as_str().is_some_and(|n| n.starts_with("CP_DIST")))
+            .map(|c| c["label"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            avoidance,
+            [
+                "Collision prevention",
+                "Collision prevention minimum distance"
+            ],
+            "the switch and its slider both read Collision prevention minimum distance"
+        );
     }
 
     #[test]

@@ -38,6 +38,13 @@ const CAL_START_POLL_MS = 150;
 
 export const calibrationFailure = (name: string, started: boolean): string | null => (started ? null : `${name} calibration did not start.`);
 
+const CALIBRATE_WHERE = 'Calibrate where the aircraft will fly, away from metal, with the propellers off.';
+
+export const sensorsFootNote = (routines: readonly CalibrationRoutine[]): string =>
+  routines.some((it) => it.id === 'compassMot')
+    ? `${CALIBRATE_WHERE} CompassMot is the exception and says so when you open it: it runs the motors, with the propellers inverted.`
+    : CALIBRATE_WHERE;
+
 export const UNCANCELLABLE_BLOCK = 'Finish this calibration first: the autopilot cannot cancel it once it has started';
 
 export const calibrationLeaveBlock = (state: CalibrationState | null): string | null =>
@@ -444,7 +451,7 @@ export const SensorsScreen = ({ className }: { className?: string }) => {
             </div>
           ) : null}
 
-          <FootNote text="Calibrate where the aircraft will fly, away from metal, with the propellers off. CompassMot is the exception and says so when you open it: it runs the motors, with the propellers inverted." />
+          <FootNote text={sensorsFootNote(state.routines)} />
         </div>
       )}
     </>
