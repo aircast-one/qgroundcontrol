@@ -75,7 +75,9 @@ pub fn mission_progress_view(backend: &dyn Backend, _args: &[String]) -> Value {
             &text("missionFlightMode"),
             &progress,
         );
-    let distance = backend.value("vehicle.distanceToNextWP");
+    let distance = Some(backend.value("vehicle.distanceToNextWP"))
+        .filter(|fact| crate::read::value_number(fact).is_some_and(|metres| metres > 0.0))
+        .unwrap_or(Value::Null);
     json!({
         "kind": "object",
         "class": "MissionProgress",
@@ -122,6 +124,43 @@ mod tests {
             last_sequence(&Core),
             3,
             "home plus three waypoints, and the core serves no visual items to read a lastSequenceNumber from"
+        );
+    }
+
+    struct Distance(Value);
+    impl Backend for Distance {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.distanceToNextWP" => self.0.clone(),
+                _ => json!({ "kind": "null" }),
+            }
+            .to_string()
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            json!({ "kind": "null" }).to_string()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_distance_the_vehicle_never_reported_is_left_off_rather_than_shown_as_zero() {
+        let fact = |metres: f64, text: &str| json!({ "kind": "fact", "value": metres, "valueString": text, "units": "m" });
+        let unsent = mission_progress_view(&Distance(fact(0.0, "0")), &[]);
+        assert_eq!(
+            (&unsent["distanceToNext"], &unsent["distanceUnits"]),
+            (&Value::Null, &Value::Null),
+            "distanceToNextWP stays at its default 0 until NAV_CONTROLLER_OUTPUT arrives, and 0 m to the next waypoint tells the pilot nothing"
+        );
+        let sent = mission_progress_view(&Distance(fact(84.0, "84")), &[]);
+        assert_eq!(
+            (&sent["distanceToNext"], &sent["distanceUnits"]),
+            (&json!("84"), &json!("m"))
         );
     }
 

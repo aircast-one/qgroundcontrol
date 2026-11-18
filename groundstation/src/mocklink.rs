@@ -2857,7 +2857,30 @@ impl Sim {
             .vehicle
             .apm()
             .then(|| self.servo_output_raw(elapsed_ms));
-        core.chain(cameras).chain(rest).chain(servos).collect()
+        let navigation = self
+            .options
+            .vehicle
+            .apm()
+            .then(|| self.nav_controller_output());
+        core.chain(cameras)
+            .chain(rest)
+            .chain(servos)
+            .chain(navigation)
+            .collect()
+    }
+
+    fn nav_controller_output(&self) -> Out {
+        let metres = self.goal().map_or(0.0, |goal| {
+            let (north, east) = self.offset(goal);
+            north.hypot(east)
+        });
+        (
+            AUTOPILOT,
+            MavMessage::NAV_CONTROLLER_OUTPUT(NAV_CONTROLLER_OUTPUT_DATA {
+                wp_dist: metres.round().clamp(0.0, f64::from(u16::MAX)) as u16,
+                ..Default::default()
+            }),
+        )
     }
 
     fn heartbeat(&self) -> Out {
@@ -3909,6 +3932,30 @@ mod tests {
             (Some(1.0), Some(0.0), Some(28.0)),
             "the gripper is set up as a real copter is after its reboot: a servo on output 9 that stays open until told"
         );
+    }
+
+    #[test]
+    fn an_ardupilot_mock_reports_how_far_it_is_from_where_it_is_flying() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        let distance = |sim: &mut Sim| {
+            sim.once_a_second(1_000)
+                .into_iter()
+                .find_map(|(_, m)| match m {
+                    MavMessage::NAV_CONTROLLER_OUTPUT(nav) => Some(nav.wp_dist),
+                    _ => None,
+                })
+                .expect(
+                    "ArduPilot streams NAV_CONTROLLER_OUTPUT, the only source of distanceToNextWP",
+                )
+        };
+        assert_eq!(distance(&mut sim), 0, "on the ground with nowhere to go");
+        sim.armed = true;
+        sim.target = Some(Target::at(
+            sim.lat + 100.0 / METRES_PER_DEG,
+            sim.lon,
+            sim.alt,
+        ));
+        assert_eq!(distance(&mut sim), 100);
     }
 
     #[test]

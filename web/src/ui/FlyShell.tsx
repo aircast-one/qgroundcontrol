@@ -431,6 +431,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE + mapAboveOsd;
   const switchBottom = view === FlyView.Map ? mapButtonsBottom : AircastSpace.s3 + gimbalRoom;
   const syntheticChosen = useRememberSyntheticChosen();
+  const overlaysBottom = useValue(shellState.mapInsets).top;
   const cameraJson = useQgcPath(CAMERA_VIEW);
   const aboveShutter = useMemo(() => railAboveShutter(cameraReading(cameraJson)), [cameraJson]);
   const [layers, setLayers] = useState(false);
@@ -484,6 +485,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       <HudLadders shellWidth={boxWidth} shellHeight={boxHeight} />
       <HudReadings
         startInset={ACTION_RAIL_CLEARANCE + AircastSpace.s3}
+        startBelow={fullScreen ? 0 : overlaysBottom + AircastSpace.s2}
         style={{
           zIndex: layer(2),
           top: `calc(env(safe-area-inset-top, 0px) + ${STATUS_ROW_HEIGHT + AircastSpace.s6}px)`,

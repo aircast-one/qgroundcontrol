@@ -418,13 +418,15 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
   );
 };
 
-export const HudReadings = ({ style, startInset }: { style: CSSProperties; startInset: number }) => {
+export const hudStartTop = (top: CSSProperties['top'], below: number): CSSProperties['top'] => (below > 0 ? `max(${String(top)}, ${below}px)` : top);
+
+export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSProperties; startInset: number; startBelow?: number }) => {
   const { shown, displays, silent, valueSize, sheets } = useTelemetryReadings();
   const column = (side: HudSide, readings: readonly Instrument[]) =>
     readings.length === 0 ? null : (
       <div
         className={`absolute ${side === 'start' ? 'start-0' : 'end-0'} flex flex-col justify-end-safe ${PASS_THROUGH}`}
-        style={{ ...style, ...(side === 'start' ? { paddingInlineStart: startInset } : { paddingInlineEnd: AircastSpace.s3 }) }}
+        style={{ ...style, ...(side === 'start' ? { paddingInlineStart: startInset, top: hudStartTop(style.top, startBelow) } : { paddingInlineEnd: AircastSpace.s3 }) }}
       >
         <LayoutWidget widgetKey={side === 'start' ? 'readingsStart' : 'readingsEnd'} movable={false} hideable={false}>
           <div className={`flex flex-col gap-0.5 ${side === 'start' ? 'items-start' : 'items-end'}`}>

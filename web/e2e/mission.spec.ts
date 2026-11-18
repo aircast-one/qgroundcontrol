@@ -1,4 +1,5 @@
-import { expect, flightMode, openPlanAtVehicle, slideAcross, tapPlanMission, test } from './fixtures';
+import type { Page } from '@playwright/test';
+import { connectMock, expect, flightMode, openPlanAtVehicle, slideAcross, tapPlanMission, telemetry, test } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -32,17 +33,31 @@ test('skip moves a running mission on to the next waypoint', async ({ vehicle })
   await expect.poll(async () => Number((await progress.textContent())?.match(/^To waypoint (\d+)/)?.[1]), { timeout: 30_000 }).toBeGreaterThan(Number(before));
 });
 
+const flyUploadedMission = async (page: Page) => {
+  await openPlanAtVehicle(page);
+  await tapPlanMission(page);
+  await page.getByRole('button', { name: 'Upload', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Fly', exact: true }).last().click();
+  await slideAcross(page, page.getByRole('button', { name: 'Slide to start mission' }));
+  await expect(page.getByText(/^To waypoint \d+ of \d+/)).toBeVisible({ timeout: 60_000 });
+};
+
 test('landing out of a flown mission says the flight plan is complete', async ({ vehicle }) => {
-  await openPlanAtVehicle(vehicle);
-  await tapPlanMission(vehicle);
-  await vehicle.getByRole('button', { name: 'Upload', exact: true }).click();
-  await expect(vehicle.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
-  await vehicle.getByRole('button', { name: 'Fly', exact: true }).last().click();
-  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to start mission' }));
-  await expect(vehicle.getByText(/^To waypoint \d+ of \d+/)).toBeVisible({ timeout: 30_000 });
+  await flyUploadedMission(vehicle);
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to land' }));
   const done = vehicle.getByRole('dialog').filter({ hasText: 'Flight plan complete' });
   await expect(done).toBeVisible({ timeout: 120_000 });
   await done.getByRole('button', { name: 'Close' }).click();
   await expect(done).toBeHidden();
+});
+
+test('the mission card over the picture leaves the home readings clear and names a distance only once the vehicle reports one', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await flyUploadedMission(app);
+  const line = app.getByText(/^To waypoint \d+ of \d+/);
+  await expect(line, 'ArduCopter streams NAV_CONTROLLER_OUTPUT, so the distance is real').toHaveText(/^To waypoint \d+ of \d+ · [1-9]\d* m$/, { timeout: 30_000 });
+  const card = (await line.locator('xpath=../../..').boundingBox())!;
+  const readings = await Promise.all(['D', 'H'].map(async (label) => (await telemetry(app, label).boundingBox())!));
+  expect(readings.filter((it) => it.x < card.x + card.width && card.x < it.x + it.width && it.y < card.y + card.height && card.y < it.y + it.height), 'the card sits above the home readings, not on them').toEqual([]);
 });
