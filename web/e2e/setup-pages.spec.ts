@@ -59,6 +59,15 @@ test('ArduPilot flight safety links the return altitude to Settings › Safety i
   await expect(app.getByRole('textbox', { name: /RTL altitude|Return altitude/i })).toHaveCount(0);
   await link.click();
   await expect(app.getByRole('slider', { name: 'Return-to-home altitude' })).toBeVisible();
+  await expect(app.getByText('Climbs to this height before flying home.', { exact: true })).toBeInViewport();
+});
+
+test('ArduPilot failsafes open Settings › Safety on its own page, not on a blank or General one', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Failsafes / }).click();
+  await app.getByRole('button', { name: /^Low battery In Settings › Safety/ }).click();
+  await expect(app.getByText('When the battery runs low.', { exact: true })).toBeInViewport();
 });
 
 test('ArduPilot setup lists its pages in the order an aircraft is set up', async ({ app }) => {

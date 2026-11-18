@@ -45,6 +45,9 @@ type PagerState = {
   readonly onScroll: (onSettled: (page: number) => void) => void;
 };
 
+export const scrollMoves = (pane: { scrollLeft: number; clientWidth: number } | null, page: number): boolean =>
+  pane !== null && Math.round(pane.scrollLeft) !== page * pane.clientWidth;
+
 const usePagerState = (initialPage: number): PagerState => {
   const element = useRef<HTMLDivElement | null>(null);
   const animating = useRef<number | null>(null);
@@ -62,7 +65,7 @@ const usePagerState = (initialPage: number): PagerState => {
       currentPage: nearest,
       animatingTo: () => animating.current,
       animateScrollToPage: (page) => {
-        animating.current = page;
+        animating.current = scrollMoves(element.current, page) ? page : null;
         setTargetPage(page);
         scroll(page, window.matchMedia(REDUCED_MOTION).matches ? 'instant' : 'smooth');
       },
