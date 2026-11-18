@@ -363,7 +363,7 @@ test('in full screen kill motors stays on the rail, and stopping asks for a slid
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
   await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Kill motors', exact: true }).click();
-  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to emergency stop' }));
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to kill motors' }));
   await expect(vehicle.getByRole('button', { name: /^Not fully ready$|^Ready to fly$/ }).first(), 'the motors are cut').toBeVisible({ timeout: 30_000 });
   await expect(mapButton, 'still in full screen').toBeHidden();
 });

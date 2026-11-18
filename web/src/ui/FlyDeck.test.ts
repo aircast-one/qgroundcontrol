@@ -61,9 +61,9 @@ describe('RailLabelTest', () => {
     expect([deckLabel('Slide to land', 4), deckLabel('Slide to land', 5), deckLabel('Slide to drop 2', 5)]).toEqual(['Slide to land', 'Land', 'Drop 2']);
   });
 
-  it('the motor kill is red and every other action sits on a solid fill', () => {
+  it('the motor kill is red ink on the same fill as its neighbours, as on the desktop rail, so it never outshouts Return', () => {
     const entry = DeckEntry({ id: 'stopMotors', label: 'Kill motors', icon: 'ic_warning', enabled: true, warning: true, onClick: () => undefined });
-    expect(deckColours(entry, false)).toEqual([md('error'), md('onError')]);
+    expect(deckColours(entry, false)).toEqual([md('surfaceContainerHigh'), md('error')]);
     expect(deckColours({ ...entry, warning: false }, true)).toEqual([md('primaryContainer'), md('onPrimaryContainer')]);
     expect(deckColours({ ...entry, warning: false }, false)).toEqual([md('surfaceContainerHigh'), md('onSurface')]);
   });

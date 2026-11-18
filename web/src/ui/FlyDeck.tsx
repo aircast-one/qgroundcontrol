@@ -257,7 +257,7 @@ export const deckLabel = (label: string, buttons: number): string => (buttons >=
 
 export const deckColours = (entry: DeckEntry, primary: boolean): readonly [string, string] => {
   if (!entry.enabled) return [md('surfaceContainerHigh'), withAlpha(md('onSurface'), DISABLED_ALPHA)];
-  if (entry.warning) return [md('error'), md('onError')];
+  if (entry.warning) return [md('surfaceContainerHigh'), md('error')];
   return primary ? [md('primaryContainer'), md('onPrimaryContainer')] : [md('surfaceContainerHigh'), md('onSurface')];
 };
 

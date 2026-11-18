@@ -56,7 +56,7 @@ test('a go-to point does not outlive the motors stopping', async ({ app: vehicle
   }).toPass({ timeout: 20_000 });
   await expect(vehicle.getByText(/^Going to point/)).toBeVisible();
   await vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Kill motors', exact: true }).click();
-  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to emergency stop' }));
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to kill motors' }));
   await expect(vehicle.getByRole('button', { name: /^Not fully ready$|^Ready to fly$/ }).first()).toBeVisible({ timeout: 30_000 });
   await expect(vehicle.getByText(/^(Going to point|Arrived)/)).toHaveCount(0);
 });

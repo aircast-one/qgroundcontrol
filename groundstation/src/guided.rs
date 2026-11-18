@@ -238,7 +238,7 @@ impl Action {
             Action::Grab => "Grab",
             Action::Release => "Drop",
             Action::Hold => "Hold",
-            Action::EmergencyStop => "EMERGENCY STOP",
+            Action::EmergencyStop => "Kill motors",
             Action::VtolTransitionToFixedWing => "Transition to Fixed Wing",
             Action::VtolTransitionToMultiRotor => "Transition to Multi-Rotor",
             Action::ForceArm => "Force Arm",
@@ -268,7 +268,7 @@ impl Action {
             Action::Release => "Open the gripper and drop the payload.",
             Action::Hold => "Stop the gripper where it is.",
             Action::EmergencyStop => {
-                "WARNING: THIS WILL STOP ALL MOTORS. IF VEHICLE IS CURRENTLY IN THE AIR IT WILL CRASH."
+                "This stops every motor at once. If the vehicle is in the air, it will fall and crash."
             }
             Action::VtolTransitionToFixedWing => "Transition VTOL to fixed wing flight.",
             Action::VtolTransitionToMultiRotor => "Transition VTOL to multi-rotor flight.",
@@ -1054,6 +1054,22 @@ pub fn write_vtol(backend: &dyn Backend, path: &str, value: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_motor_kill_confirm_is_named_as_its_button_and_does_not_shout() {
+        let (title, prompt) = (
+            Action::EmergencyStop.title(),
+            Action::EmergencyStop.prompt(),
+        );
+        assert_eq!(
+            title, "Kill motors",
+            "the Fly deck labels the button Kill motors, so its confirm and slide say the same"
+        );
+        assert!(
+            prompt != prompt.to_uppercase(),
+            "a sentence the pilot reads under stress, not a wall of capitals"
+        );
+    }
+
     use super::*;
 
     #[test]
