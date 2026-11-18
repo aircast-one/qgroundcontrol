@@ -654,7 +654,7 @@ pub fn simple_legs(
     rover: bool,
     height: &dyn Fn(f64, f64) -> Option<f64>,
 ) -> Vec<Value> {
-    simple_segments(reads, fixed_wing, rover, height)
+    simple_segments(reads, fixed_wing, rover, None, height)
         .into_iter()
         .filter(|leg| leg.segment["terrainCollision"] == true)
         .map(|leg| leg.line)
@@ -672,6 +672,7 @@ pub fn simple_segments(
     reads: &[Value],
     fixed_wing: bool,
     rover: bool,
+    return_altitude: Option<f64>,
     height: &dyn Fn(f64, f64) -> Option<f64>,
 ) -> Vec<SimpleSegment> {
     let home = reads
@@ -744,6 +745,13 @@ pub fn simple_segments(
                     .get("amslExitAlt")
                     .or_else(|| first.get("amslEntryAlt"))?
                     .as_f64()?
+            };
+            let (from_alt, to_alt) = match to_home(second) {
+                true => {
+                    let cruise = from_alt.max(to_alt + return_altitude.unwrap_or(0.0));
+                    (cruise, cruise)
+                }
+                false => (from_alt, to_alt),
             };
             let terrain_frame = !to_home(second)
                 && first
@@ -871,7 +879,13 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let legs = core
         .as_ref()
         .map(|(reads, fixed_wing, rover)| {
-            simple_segments(reads, *fixed_wing, *rover, &crate::terrainservice::height)
+            simple_segments(
+                reads,
+                *fixed_wing,
+                *rover,
+                crate::battery::return_altitude(backend),
+                &crate::terrainservice::height,
+            )
         })
         .unwrap_or_default();
     let mut all: Vec<Point> = entries
@@ -965,6 +979,7 @@ mod tests {
                 &[home.clone(), takeoff, waypoint.clone()],
                 false,
                 false,
+                None,
                 &flat
             )
             .len(),
@@ -972,11 +987,11 @@ mod tests {
             "ArduPilot's NAV_TAKEOFF has no coordinate and still starts the mission from the ground"
         );
         assert_eq!(
-            simple_segments(&[home.clone(), waypoint.clone()], false, true, &flat).len(),
+            simple_segments(&[home.clone(), waypoint.clone()], false, true, None, &flat).len(),
             1,
             "a rover always starts at home"
         );
-        assert!(simple_segments(&[home, waypoint], false, false, &flat).is_empty());
+        assert!(simple_segments(&[home, waypoint], false, false, None, &flat).is_empty());
     }
 
     #[test]
@@ -1041,7 +1056,7 @@ mod tests {
                 500.0
             })
         };
-        let walked = simple_points(&simple_segments(&reads, false, false, &ridge));
+        let walked = simple_points(&simple_segments(&reads, false, false, None, &ridge));
         assert!(
             walked.len() > 30,
             "sampled every 30 m between the two waypoints, not just at them: {}",
@@ -1071,6 +1086,7 @@ mod tests {
             ],
             false,
             true,
+            None,
             &ridge,
         );
         assert_eq!(
@@ -1080,7 +1096,7 @@ mod tests {
         );
         let survey = json!({ "specifiesCoordinate": true, "isSimpleItem": false, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "exitCoordinate": { "latitude": 47.01, "longitude": 8.0 }, "amslEntryAlt": 600.0, "amslExitAlt": 600.0, "sequenceNumber": 1, "distanceFromStart": 0.0, "complexDistance": 2500.0 });
         let rtl = json!({ "command": 20, "sequenceNumber": 9 });
-        let back = simple_segments(&[home, survey, rtl], false, false, &ridge);
+        let back = simple_segments(&[home, survey, rtl], false, false, None, &ridge);
         assert_eq!(
             back.last().unwrap().start_distance,
             Some(2500.0),
@@ -1120,7 +1136,13 @@ mod tests {
         let after = item(47.02, 300.0, true);
         let rtl = json!({ "command": 20, "sequenceNumber": 9, "specifiesCoordinate": false });
         let home = json!({ "homePosition": true, "coordinate": { "latitude": 46.99, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
-        let flat = |_: f64, _: f64| Some(500.0);
+        let hill = |lat: f64, _: f64| {
+            Some(if lat > 46.994 && lat < 46.996 {
+                550.0
+            } else {
+                500.0
+            })
+        };
         let sequenced = |mut item: Value, seq: i64| {
             item["sequenceNumber"] = json!(seq);
             item
@@ -1132,14 +1154,14 @@ mod tests {
             sequenced(after, 3),
             rtl,
         ];
-        let hits = simple_legs(&route, false, false, &flat);
+        let hits = simple_legs(&route, false, false, &hill);
         assert!(
             hits.iter().all(|leg| leg["from"]["latitude"] != 47.01),
             "no segment is drawn out of a landing"
         );
         assert!(
             hits.iter().any(|leg| leg["to"]["latitude"] == 46.99),
-            "after an RTL the last item links home, and that low leg is red"
+            "after an RTL the last item links home, and a hill above that leg is red"
         );
         assert!(
             !hits.iter().any(|leg| leg["to"]["latitude"] == 47.01),
@@ -1213,6 +1235,47 @@ mod tests {
             home_leg.len(),
             1,
             "QGC keeps the last valid item as lastFlyThroughVI past an incomplete one, so the leg home still starts there: {home_leg:?}"
+        );
+    }
+
+    #[test]
+    fn the_leg_home_is_flown_level_at_the_return_altitude() {
+        let home = json!({ "homePosition": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
+        let takeoff = json!({ "specifiesCoordinate": true, "isTakeoffItem": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 550.0, "sequenceNumber": 1 });
+        let far = json!({ "specifiesCoordinate": true, "coordinate": { "latitude": 47.02, "longitude": 8.0 }, "amslEntryAlt": 550.0, "sequenceNumber": 2 });
+        let rtl = json!({ "command": 20, "sequenceNumber": 3 });
+        let knoll = |lat: f64, _lon: f64| {
+            Some(if lat > 47.004 && lat < 47.006 {
+                530.0
+            } else {
+                500.0
+            })
+        };
+        let reads = [home, takeoff, far, rtl];
+        let back = |return_altitude| {
+            simple_segments(&reads, false, false, return_altitude, &knoll)
+                .last()
+                .map(|leg| leg.segment.clone())
+                .unwrap()
+        };
+        let held = back(None);
+        assert_eq!(
+            (
+                held["coord1AMSLAlt"].clone(),
+                held["coord2AMSLAlt"].clone(),
+                held["terrainCollision"].clone()
+            ),
+            (json!(550.0), json!(550.0), json!(false)),
+            "the vehicle returns at the height it is at and only descends over home, so a knoll it overflies is no conflict"
+        );
+        let raised = back(Some(80.0));
+        assert_eq!(
+            (
+                raised["coord1AMSLAlt"].clone(),
+                raised["coord2AMSLAlt"].clone()
+            ),
+            (json!(580.0), json!(580.0)),
+            "below the return altitude it climbs to it first"
         );
     }
 
@@ -1500,6 +1563,7 @@ mod tests {
             ],
             false,
             false,
+            None,
             &ridge,
         );
         assert_eq!(
