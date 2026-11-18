@@ -92,12 +92,12 @@ test('with a saved link and no aircraft, the Fly screen offers that link, not on
   await app.getByRole('button', { name: 'Connect', exact: true }).click();
   await closeSettings(app);
   await expect(app.getByRole('button', { name: /ws:\/\/localhost:1/ })).toBeVisible({ timeout: 15_000 });
-  await expect(app.getByRole('button', { name: 'Add a link' })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Connection settings' }), 'with a link saved, the way out is its settings, not another new link').toBeVisible();
   await app.setViewportSize({ width: 390, height: 844 });
   await app.getByRole('button', { name: 'Connect', exact: true }).click();
   const sheet = app.getByRole('dialog');
   await expect(sheet.getByRole('button', { name: /ws:\/\/localhost:1/ })).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'Add a link', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Connection settings', exact: true })).toBeVisible();
   await expect(sheet.getByText('New drone? Flash an Aircast card')).toHaveCount(0);
 });
 
