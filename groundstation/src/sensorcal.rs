@@ -225,13 +225,43 @@ const SIDES: [(&str, &str, &str, u32); SIDE_COUNT] = [
     ("NoseDown", "Nose down", "front", 1 << 1),
     ("TailDown", "Tail down", "back", 1 << 0),
 ];
-const ACCEL_POSITIONS: [(u32, usize, f64); SIDE_COUNT] = [
-    (1, 0, 0.0),
-    (2, 2, 0.17),
-    (3, 3, 0.34),
-    (4, 4, 0.51),
-    (5, 5, 0.68),
-    (6, 1, 0.85),
+const ACCEL_POSITIONS: [(u32, usize, f64, &str); SIDE_COUNT] = [
+    (
+        1,
+        0,
+        0.0,
+        "Place the vehicle level, hold it still and press Next",
+    ),
+    (
+        2,
+        2,
+        0.17,
+        "Place the vehicle on its left side, hold it still and press Next",
+    ),
+    (
+        3,
+        3,
+        0.34,
+        "Place the vehicle on its right side, hold it still and press Next",
+    ),
+    (
+        4,
+        4,
+        0.51,
+        "Place the vehicle nose down, hold it still and press Next",
+    ),
+    (
+        5,
+        5,
+        0.68,
+        "Place the vehicle tail down, hold it still and press Next",
+    ),
+    (
+        6,
+        1,
+        0.85,
+        "Place the vehicle upside down, hold it still and press Next",
+    ),
 ];
 
 #[derive(Debug)]
@@ -802,9 +832,12 @@ impl Calibration {
         let newly_complete = !self.compasses[index].complete;
         if newly_complete {
             self.note(if succeeded {
-                format!("Compass {compass_id} calibration complete")
+                format!("Compass {} calibration complete", compass_id + 1)
             } else {
-                format!("Compass {compass_id} calibration below quality threshold")
+                format!(
+                    "Compass {} calibration below quality threshold",
+                    compass_id + 1
+                )
             });
             self.compasses[index] = Compass {
                 progress: self.compasses[index].progress,
@@ -843,15 +876,17 @@ impl Calibration {
             other => {
                 let Some(step) = ACCEL_POSITIONS
                     .iter()
-                    .position(|(code, _, _)| *code == other)
+                    .position(|(code, _, _, _)| *code == other)
                 else {
                     return Vec::new();
                 };
-                let (_, side, progress) = ACCEL_POSITIONS[step];
+                let (_, side, progress, help) = ACCEL_POSITIONS[step];
                 if self.sides[side].stage == Stage::InProgress {
                     return Vec::new();
                 }
-                if let Some(&(_, previous, _)) = step.checked_sub(1).map(|i| &ACCEL_POSITIONS[i]) {
+                self.help = help;
+                if let Some(&(_, previous, _, _)) = step.checked_sub(1).map(|i| &ACCEL_POSITIONS[i])
+                {
                     self.sides[previous] = Side {
                         stage: Stage::Done,
                         rotate: false,
@@ -1636,6 +1671,11 @@ mod tests {
         );
         assert!(cal.on_mag_report(0, MAG_CAL_SUCCESS, 4.5, 0).is_empty());
         assert_eq!(cal.log.last().unwrap(), "Continue rotating...");
+        assert_eq!(
+            cal.log[cal.log.len() - 2],
+            "Compass 1 calibration complete",
+            "the quality bars count compasses from 1, so the log does too"
+        );
         let lines = cal.log.len();
         assert!(cal.on_mag_report(0, MAG_CAL_SUCCESS, 4.5, 0).is_empty());
         assert_eq!(
@@ -1764,6 +1804,21 @@ mod tests {
             }]
         );
         assert_eq!(cal.outcome, Some(Outcome::Cancelled));
+    }
+
+    #[test]
+    fn apm_accel_names_the_side_it_wants() {
+        let mut cal = Calibration::new(false);
+        cal.start(Kind::Accelerometer, Inputs::default(), 0)
+            .unwrap();
+        cal.on_accel_position(1, 0);
+        cal.next().unwrap();
+        cal.on_accel_position(2, 0);
+        let shown = cal.snapshot();
+        assert_eq!(
+            shown["help"], "Place the vehicle on its left side, hold it still and press Next",
+            "\"the current orientation\" left the pilot to work out which tile was lit"
+        );
     }
 
     #[test]

@@ -387,9 +387,25 @@ pub fn needs_attention(accel: bool, compass: bool) -> &'static str {
     }
 }
 
+const APM_SIDE_ORDER: [&str; 6] = [
+    "Down",
+    "Left",
+    "Right",
+    "NoseDown",
+    "TailDown",
+    "UpsideDown",
+];
+
 fn sides(cal: &Value) -> Vec<Value> {
-    SIDES
-        .iter()
+    let asked: Vec<&(&str, &str)> = match flag(cal, "px4") {
+        true => SIDES.iter().collect(),
+        false => APM_SIDE_ORDER
+            .iter()
+            .filter_map(|wanted| SIDES.iter().find(|(key, _)| key == wanted))
+            .collect(),
+    };
+    asked
+        .into_iter()
         .map(|(key, title)| {
             let side = |suffix: &str| flag(cal, &format!("orientationCal{key}Side{suffix}"));
             let stage = match (side("Done"), side("InProgress")) {
@@ -832,6 +848,39 @@ mod tests {
         );
         assert_eq!(view["sides"].as_array().unwrap().len(), 6);
         assert_eq!(view["needsAttention"], "");
+    }
+
+    #[test]
+    fn ardupilot_sides_are_listed_in_the_order_it_asks_for_them() {
+        let keys = |px4: bool| -> Vec<String> {
+            sides(&json!({ "px4": px4 }))
+                .iter()
+                .map(|s| s["key"].as_str().unwrap().to_string())
+                .collect()
+        };
+        assert_eq!(
+            keys(false),
+            [
+                "Down",
+                "Left",
+                "Right",
+                "NoseDown",
+                "TailDown",
+                "UpsideDown"
+            ],
+            "ArduPilot asks level, left, right, nose down, tail down, then upside down; at 2 of 6 the third tile lit up"
+        );
+        assert_eq!(
+            keys(true),
+            [
+                "Down",
+                "UpsideDown",
+                "Left",
+                "Right",
+                "NoseDown",
+                "TailDown"
+            ]
+        );
     }
 
     #[test]
