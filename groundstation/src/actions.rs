@@ -990,7 +990,22 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
     let Some(placed) = inserted_index(backend) else {
         return json!({ "ok": false, "reason": "the item was added and then could not be found, so the plan is not in a state to build on" });
     };
-    match shape(backend, kind, placed, latitude, longitude) {
+    let drawn: Vec<(f64, f64)> = args
+        .get(4)
+        .and_then(Value::as_array)
+        .map(|points| {
+            points
+                .iter()
+                .filter_map(|p| {
+                    Some((
+                        p.get("latitude")?.as_f64().filter(|v| v.is_finite())?,
+                        p.get("longitude")?.as_f64().filter(|v| v.is_finite())?,
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    match shape(backend, kind, placed, (latitude, longitude), &drawn) {
         Ok(()) => {
             json!({ "ok": true, "inserted": kind.id, "index": placed, "atSequence": at_sequence })
         }
@@ -1410,8 +1425,8 @@ fn shape(
     backend: &dyn Backend,
     kind: &crate::missionkinds::Kind,
     index: i64,
-    latitude: f64,
-    longitude: f64,
+    (latitude, longitude): (f64, f64),
+    drawn: &[(f64, f64)],
 ) -> Result<(), String> {
     if kind.id == "takeoff" {
         let at = json!({ "latitude": latitude, "longitude": longitude, "altitude": 0.0 });
@@ -1432,8 +1447,10 @@ fn shape(
     let Some((geometry, property)) = kind.geometry else {
         return Ok(());
     };
-    let points = match geometry {
-        "line" => default_line(latitude, longitude),
+    let points = match (geometry, drawn.len()) {
+        ("line", 2..) => drawn.to_vec(),
+        ("line", _) => default_line(latitude, longitude),
+        (_, 3..) => drawn.to_vec(),
         _ => default_area(latitude, longitude),
     };
     let path = format!("plan.missionController.visualItems.{index}.{property}");
@@ -2553,6 +2570,42 @@ mod tests {
         assert!(
             (first[0]["latitude"].as_f64().unwrap() - 47.0).abs() < 0.01,
             "the area is placed around where the operator tapped"
+        );
+    }
+
+    #[test]
+    fn a_survey_drawn_by_the_head_arrives_with_that_shape_in_the_same_insert() {
+        let plan = Plan::new(flying_mission());
+        let drawn = json!([
+            { "latitude": 47.01, "longitude": 8.01 },
+            { "latitude": 47.01, "longitude": 8.03 },
+            { "latitude": 46.99, "longitude": 8.03 },
+            { "latitude": 46.99, "longitude": 8.01 },
+        ]);
+        assert_eq!(
+            run(
+                &plan,
+                "mission.insert",
+                &json!(["survey", 47.0, 8.02, -1, drawn]).to_string()
+            )["ok"],
+            true
+        );
+        let calls = plan.calls.lock().unwrap();
+        let corners: Vec<(f64, f64)> = calls
+            .iter()
+            .filter(|(called, _)| called.ends_with("surveyAreaPolygon.appendVertex"))
+            .map(|(_, args)| {
+                let at: Value = serde_json::from_str(args).unwrap();
+                (
+                    at[0]["latitude"].as_f64().unwrap(),
+                    at[0]["longitude"].as_f64().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            corners,
+            [(47.01, 8.01), (47.01, 8.03), (46.99, 8.03), (46.99, 8.01)],
+            "the head sizes the area to the map it shows, inside the insert, so the area never jumps and one undo takes the survey away"
         );
     }
 

@@ -30,7 +30,7 @@ const invoked = async (path: string, args: readonly unknown[]): Promise<InsertOu
   }
 };
 
-export const insertMissionItem = (kind: string, latitude: number, longitude: number, index: number): Promise<InsertOutcome> =>
-  invoked('mission.insert', [kind, latitude, longitude, index]);
+export const insertMissionItem = (kind: string, latitude: number, longitude: number, index: number, shape: readonly { latitude: number; longitude: number }[] = []): Promise<InsertOutcome> =>
+  invoked('mission.insert', [kind, latitude, longitude, index, shape]);
 
 export const removeMissionItem = (index: number): Promise<InsertOutcome> => invoked('mission.remove', [index]);

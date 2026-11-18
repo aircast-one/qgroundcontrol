@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { type Json, arrayJSONObject, has, isNull, jsonObjects, jsonStrings, optArrayText, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optString, optText } from '@/bridge/Json';
 import { PlanCommands } from '@/bridge/BridgeCommands';
 import { type Fact, type FactSlider, Qgc, makeFact } from '@/bridge/Qgc';
+import { useQgcPath } from '@/bridge/QgcState';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { useKeyedState, useLaunchedEffect, useProduceState } from '@/kotlin/Compose';
 import { delay, format } from '@/kotlin/Std';
@@ -11,7 +12,7 @@ import { typedNumber } from '@/map/AltitudeEntry';
 import { ItemCameraSection } from '@/map/ItemCameraSection';
 import { PlanBridge } from '@/map/PlanBridge';
 import { sentenceCase } from '@/map/SentenceCase';
-import { type SurveyStats, statisticsRows, surveyStats } from '@/map/SurveyBridge';
+import { statisticsRows, surveyStats } from '@/map/SurveyBridge';
 import { TrackPoint } from '@/map/VehicleMap';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
@@ -216,9 +217,8 @@ export const ItemEditor = ({ index, at, mapCentre, legDetail }: ItemEditorProps)
   const connected = useHasVehicle();
   const advancedShown = useAdvancedUiShown();
   const camera = useMemo(() => cameraCalc(view), [view]);
-  const stats = useProduceState<SurveyStats | null>(null, [index, revision, camera !== null], async (set) => {
-    set(camera === null ? null : surveyStats(await Qgc.get(`view.surveyStats(${index})`)));
-  });
+  const statsView = useQgcPath(`view.surveyStats(${index})`);
+  const stats = useMemo(() => (camera === null ? null : surveyStats(statsView)), [camera, statsView]);
   const presetsFirst = useProduceState<boolean | null>(null, [index], async (set) => {
     set(presetsShownFirst(await Qgc.get(PRESETS_FIRST_SETTING)));
   });

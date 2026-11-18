@@ -314,7 +314,9 @@ export const PlanMapContent = ({
         return;
       }
       busy.value = label;
-      const outcome = await insertMissionItem(kindId, at.latitude, at.longitude, index);
+      const view = visible.value;
+      const drawn = PATTERN_KINDS.has(kindId) && view.length === VIEW_CORNERS ? (kindId === KIND_CORRIDOR ? defaultLine(view) : defaultRectangle(view)) : [];
+      const outcome = await insertMissionItem(kindId, at.latitude, at.longitude, index, drawn);
       if (!outcome.ok) {
         busy.value = outcome.reason;
         await delay(FAILURE_MESSAGE_MS);
@@ -324,7 +326,6 @@ export const PlanMapContent = ({
       busy.value = null;
       const added = outcome.index ?? null;
       if (added === null) return;
-      if (PATTERN_KINDS.has(kindId)) PlanFocus.newPattern.value = added;
       if (kindId === KIND_LAND) await placeLandingIfUnplaced(added, at.latitude, at.longitude);
       else if (kindId === KIND_TAKEOFF) await placeTakeoff(added, at.latitude, at.longitude);
       edits.value += 1;

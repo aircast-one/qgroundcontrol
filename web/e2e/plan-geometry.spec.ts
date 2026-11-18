@@ -1,4 +1,5 @@
 import { connectMock, expect, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
+import type { Page } from '@playwright/test';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -10,6 +11,42 @@ test('a survey pattern computes its area, photo count and interval', async ({ ve
   await expect(vehicle.getByText('PHOTOS', { exact: true })).toBeVisible();
   await expect(vehicle.getByText(/^Survey$/).first()).toBeVisible();
   await expect(vehicle.getByText(/[\d,]+ m² · [\d,]+ photos/)).toBeVisible();
+});
+
+const addSurvey = async (page: Page) => {
+  await page.getByRole('button', { name: 'Pattern', exact: true }).click();
+  await page.getByRole('dialog').filter({ hasText: 'Which pattern?' }).getByRole('button', { name: 'Survey', exact: true }).click();
+  await expect(page.getByText('AREA', { exact: true })).toBeVisible();
+};
+
+const surveyRow = (page: Page) => page.getByRole('button', { name: /Survey .*m² · [\d,]+ photos/ });
+
+test('a new survey arrives in one step, so one undo takes it away', async ({ vehicle }) => {
+  await openPlanAtVehicle(vehicle);
+  await addSurvey(vehicle);
+  await expect(surveyRow(vehicle)).toBeVisible();
+  await vehicle.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(surveyRow(vehicle), 'sizing the area to the map was a second edit, so the first undo only shrank it').toBeHidden();
+});
+
+test("a survey's statistics follow a corner moved on the map", async ({ vehicle }) => {
+  await openPlanAtVehicle(vehicle);
+  await addSurvey(vehicle);
+  const tileArea = async () => (await vehicle.getByText('AREA', { exact: true }).locator('..').textContent())?.match(/[\d,]+/)?.[0] ?? '';
+  const statistics = vehicle.getByText('Area', { exact: true }).locator('..');
+  await expect(statistics).toContainText(await tileArea());
+  const first = await tileArea();
+  await vehicle.evaluate(async ([plan, bridge]) => {
+    type Point = { latitude: number; longitude: number };
+    type Shape = { area: Point[] };
+    const { PlanBridge } = (await import(plan!)) as { PlanBridge: { rawItems: () => Promise<unknown> } };
+    const { SurveyBridge } = (await import(bridge!)) as { SurveyBridge: { surveysFrom: (json: unknown) => Promise<Shape[]>; adjustVertex: (survey: Shape, vertex: number, latitude: number, longitude: number) => Promise<boolean> } };
+    const [survey] = await SurveyBridge.surveysFrom(await PlanBridge.rawItems());
+    const [corner, , opposite] = survey!.area;
+    await SurveyBridge.adjustVertex(survey!, 0, corner!.latitude * 2 - opposite!.latitude, corner!.longitude * 2 - opposite!.longitude);
+  }, ['/src/map/PlanBridge.ts', '/src/map/SurveyBridge.ts']);
+  await expect.poll(tileArea).not.toBe(first);
+  await expect(statistics, 'the Statistics rows were read once and kept the area from before the drag').toContainText(await tileArea());
 });
 
 test('a fence polygon starts as a four-corner inclusion zone and can become keep-out', async ({ vehicle }) => {
