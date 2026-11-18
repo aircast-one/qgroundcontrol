@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { FlyState, flyState } from './FlyState';
 import { GuidedOffer } from './GuidedActions';
-import { ARM_UNAVAILABLE, ArmControls, armControls, armSlideShown, deckRequestRefusal, expandedAfterTap, shownSensors, statusSummary } from './VehicleStatusSheet';
+import { ARM_UNAVAILABLE, ArmControls, NO_SENSOR_FAULTS, SHOW_SENSORS, armControls, armSlideShown, deckRequestRefusal, expandedAfterTap, sensorsNote, sensorsToggle, shownSensors, statusSummary } from './VehicleStatusSheet';
 import { ArmingCheck } from './VehicleMessages';
 
 describe('VehicleStatusSheetTest', () => {
@@ -14,6 +14,18 @@ describe('VehicleStatusSheetTest', () => {
     ];
     expect(shownSensors(sensors, false).map((it) => it.name)).toEqual(['Gyro']);
     expect(shownSensors(sensors, true).map((it) => it.name)).toEqual(['Gyro', 'Baro', 'Geofence']);
+  });
+
+  it('with no faulty sensor the collapsed list says so instead of a bare heading over Show N more', () => {
+    const healthy = [
+      { name: 'Gyro', state: 'healthy', label: 'Normal' },
+      { name: 'Geofence', state: 'disabled', label: 'Disabled' },
+    ];
+    expect([sensorsNote(healthy, false), sensorsToggle(healthy, false)]).toEqual([NO_SENSOR_FAULTS, SHOW_SENSORS]);
+    expect([sensorsNote(healthy, true), sensorsToggle(healthy, true)]).toEqual([null, 'Show less']);
+    const faulty = [{ name: 'Baro', state: 'unhealthy', label: 'Error' }, ...healthy];
+    expect([sensorsNote(faulty, false), sensorsToggle(faulty, false)]).toEqual([null, 'Show 2 more']);
+    expect(sensorsToggle([{ name: 'Baro', state: 'unhealthy', label: 'Error' }], false)).toBeNull();
   });
 
   const state = ({ armed = false, nominal = true, fault = false, canArm = true, phase = '', connected = true }: { armed?: boolean; nominal?: boolean; fault?: boolean; canArm?: boolean; phase?: string; connected?: boolean } = {}) =>

@@ -28,14 +28,16 @@ test('in the air the status sheet drops the disarm slide and the setup links', a
   await expect(sheet.getByText('Signal lost'), 'the sheet has rendered its last section').toBeVisible();
   await expect(sheet.getByRole('button', { name: /^Slide to/ }), 'in the air this slide cut the motors').toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Setup', exact: true })).toHaveCount(0);
-  await sheet.getByRole('button', { name: /^Show \d+ more$/ }).click();
+  await expect(sheet.getByText('No sensor faults'), 'a healthy aircraft says so instead of a bare heading').toBeVisible();
+  await sheet.getByRole('button', { name: 'Show sensors' }).click();
   await expect(sheet.getByText('GPS', { exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: /^GPS / }), 'a sensor row no longer opens setup mid-flight').toHaveCount(0);
 });
 
 test('the status sheet lists sensor health and opens the message log', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
-  await sheet.getByRole('button', { name: 'Show 1 more' }).click();
+  await expect(sheet.getByText('No sensor faults')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Show sensors' }).click();
   await expect(sheet.getByRole('button', { name: 'GPS Normal' }), 'the simulated vehicle reported its GPS switched off over a 12-satellite fix').toBeVisible();
   await sheet.getByRole('button', { name: /^Messages/ }).click();
   const log = vehicle.getByRole('dialog').filter({ hasText: 'messages from the vehicle' });

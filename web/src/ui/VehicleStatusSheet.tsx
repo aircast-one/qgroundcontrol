@@ -61,6 +61,17 @@ export const armSlideShown = (state: FlyState | null): state is FlyState => stat
 
 export const shownSensors = <T extends { state: string }>(sensors: readonly T[], showAll: boolean): readonly T[] => (showAll ? sensors : sensors.filter((it) => it.state === SENSOR_FAULT_STATE));
 
+export const NO_SENSOR_FAULTS = 'No sensor faults';
+export const SHOW_SENSORS = 'Show sensors';
+
+export const sensorsNote = <T extends { state: string }>(sensors: readonly T[], showAll: boolean): string | null => (showAll || shownSensors(sensors, false).length > 0 ? null : NO_SENSOR_FAULTS);
+
+export const sensorsToggle = <T extends { state: string }>(sensors: readonly T[], showAll: boolean): string | null => {
+  const faults = shownSensors(sensors, false).length;
+  const more = sensors.length - faults;
+  return more === 0 ? null : showAll ? 'Show less' : faults === 0 ? SHOW_SENSORS : `Show ${more} more`;
+};
+
 const ChevronRight = ({ size = 24 }: { size?: number }) => <MaterialIcon name="keyboard_arrow_right" filled size={size} style={{ color: md('onSurfaceVariant') }} />;
 
 export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () => void; onDismiss: () => void }) => {
@@ -76,7 +87,8 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
     onDismiss();
   };
   const reading = health !== null && !optBoolean(healthJson, 'healthChecksSupported') && health.available && health.sensors.length > 0 ? health : null;
-  const more = reading === null ? 0 : reading.sensors.length - shownSensors(reading.sensors, false).length;
+  const note = reading === null ? null : sensorsNote(reading.sensors, showAll);
+  const toggle = reading === null ? null : sensorsToggle(reading.sensors, showAll);
 
   return (
     <AircastSheet onDismissRequest={onDismiss} label="Vehicle status">
@@ -89,6 +101,11 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
             <Text typography="titleSmall" className="block px-sheet py-1">
               Sensors
             </Text>
+            {note !== null ? (
+              <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-sheet py-1.5">
+                {note}
+              </Text>
+            ) : null}
             {shownSensors(reading.sensors, showAll).map((sensor) => {
               const fault = sensor.state === SENSOR_FAULT_STATE;
               const look = 'flex w-full items-center gap-2 px-sheet py-1.5 text-left';
@@ -113,9 +130,9 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
                 </button>
               );
             })}
-            {more > 0 ? (
+            {toggle !== null ? (
               <TextButton onClick={() => setShowAll(!showAll)} className="mx-3 self-start">
-                {showAll ? 'Show less' : `Show ${more} more`}
+                {toggle}
               </TextButton>
             ) : null}
           </>
