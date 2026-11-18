@@ -86,7 +86,10 @@ describe('PilotSettingsTest', () => {
     expect(pilotChoice('Return mode')).toBe('Return home');
     expect(pilotChoice('Terminate')).toBe('Stop motors');
     expect(pilotChoice('Disabled/NoAction'), 'ArduPilot words its off choice differently').toBe('Do nothing');
-    expect(pilotChoice('Enabled always RTL')).toBe('Enabled always RTL');
+    expect(pilotChoice('Enabled always RTL'), "ArduPilot's radio failsafe reads like the others").toBe('Return home');
+    expect(pilotChoice('Enabled always SmartRTL or Land')).toBe('Retrace the path home, or land');
+    expect(pilotChoice('Enabled always Brake or Land')).toBe('Brake, or land');
+    expect(pilotChoice('Something a newer firmware adds'), 'a choice with no plain wording yet keeps its own').toBe('Something a newer firmware adds');
   });
 
   it("search finds a pilot setting by its words and by either firmware's parameter name", () => {

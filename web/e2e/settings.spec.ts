@@ -232,3 +232,20 @@ test('settings search finds UI scaling and the measurement system by the words o
   await expect(app.getByText('General › Units', { exact: true })).toBeVisible();
   await expect(app.getByRole('button', { name: 'Imperial', exact: true })).toBeVisible();
 });
+
+test('the MAVLink page and the reset confirm read in plain words', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await app.getByRole('button', { name: /^MAVLink/ }).click();
+  await expect(app.getByText('Link status', { exact: true })).toBeVisible();
+  await expect(app.getByText('Messages sent', { exact: true })).toBeVisible();
+  await expect(app.getByText('Attitude (extra 1)', { exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Raw sensors, 2 Hz' })).toBeVisible();
+  await app.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+  await app.getByRole('button', { name: 'Reset all settings…' }).click();
+  const confirm = app.getByRole('dialog').filter({ hasText: 'All settings will be cleared the next time Aircast starts.' });
+  await expect(confirm.getByRole('button', { name: 'Reset', exact: true })).toBeVisible();
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toBeHidden();
+});

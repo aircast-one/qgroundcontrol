@@ -538,7 +538,7 @@ const NTRIP_NO_FORWARD: &str = "Has no effect while UDP forwarding is off.";
 const RTCM_NO_INPUT: &str = "Has no effect while UDP RTCM input is off.";
 const FORWARDING_OFF: &str = "Has no effect while MAVLink forwarding is off.";
 const TELEMETRY_SAVE_OFF: &str = "Has no effect while saving telemetry logs is off.";
-const STORAGE_LIMIT_OFF: &str = "Has no effect while the storage limit is off.";
+const STORAGE_LIMIT_OFF: &str = "Has no effect while Delete old recordings automatically is off.";
 const STREAMS_FROM_VEHICLE: &str = "Stream rates are controlled by the vehicle.";
 const ADSB_SERVER_OFF: &str = "Has no effect while the ADS-B server connection is off.";
 const BASIC_ID_OFF: &str = "Has no effect while Basic ID broadcast is off.";
@@ -737,6 +737,23 @@ const INVERTED: &[(&str, &str)] = &[
 ];
 
 const QML_LABELS: &[(&str, &str, &str)] = &[
+    ("rtkSettings", "baseReceiverManufacturers", "Base receiver"),
+    ("rtkSettings", "useFixedBasePosition", "Base position"),
+    (
+        "apmMavlinkStreamRateSettings",
+        "streamRateExtra1",
+        "Attitude (Extra 1)",
+    ),
+    (
+        "apmMavlinkStreamRateSettings",
+        "streamRateExtra2",
+        "Speed and altitude (Extra 2)",
+    ),
+    (
+        "apmMavlinkStreamRateSettings",
+        "streamRateExtra3",
+        "Battery, EKF and vibration (Extra 3)",
+    ),
     ("appSettings", "audioMuted", "Mute all audio output"),
     (
         "appSettings",
@@ -2144,6 +2161,31 @@ mod tests {
                 .iter()
                 .all(|n| head_shows(n, true)),
             "NMEA over UDP and ADS-B reach a browser through the Aircast device"
+        );
+    }
+
+    #[test]
+    fn rtk_and_stream_rate_rows_read_in_plain_words() {
+        let label = |group: &str, name: &str| {
+            qml_labelled(group, json!({ "name": name, "label": name }))["label"]
+                .as_str()
+                .map(str::to_string)
+        };
+        assert_eq!(
+            [
+                label("rtkSettings", "baseReceiverManufacturers"),
+                label("rtkSettings", "useFixedBasePosition"),
+                label("apmMavlinkStreamRateSettings", "streamRateExtra1"),
+            ],
+            [
+                Some("Base receiver".to_string()),
+                Some("Base position".to_string()),
+                Some("Attitude (Extra 1)".to_string()),
+            ]
+        );
+        assert!(
+            STORAGE_LIMIT_OFF.contains("Delete old recordings automatically"),
+            "the note names the switch on the page, not a storage limit the page never calls one"
         );
     }
 

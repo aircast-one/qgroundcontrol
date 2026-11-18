@@ -15,7 +15,7 @@ export const LinkStatusSection = () => {
   const rows = useMemo(() => linkStatusRows(json), [json]);
   return (
     <>
-      <SectionHeader text="Link Status (Current Vehicle)" />
+      <SectionHeader text="Link status" />
       {rows.length === 0 ? (
         <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-4">
           Not connected

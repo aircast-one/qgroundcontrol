@@ -45,7 +45,7 @@ export const ResetAllSettingsRow = () => {
                 write(true);
               }}
             >
-              Ok
+              Reset
             </TextButton>
           }
           dismissButton={<TextButton onClick={() => setAsking(false)}>Cancel</TextButton>}

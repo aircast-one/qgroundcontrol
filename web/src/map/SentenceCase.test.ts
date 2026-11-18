@@ -11,4 +11,8 @@ describe('sentence case', () => {
     expect(sentenceCase('GPS Lock/ArmingCheck')).toBe('GPS lock/arming check');
     expect(sentenceCase('Herelink AirUnit Setup')).toBe('Herelink AirUnit setup');
   });
+
+  it('keeps the hertz symbol, which is a unit and not a word', () => {
+    expect(sentenceCase('20 Hz')).toBe('20 Hz');
+  });
 });

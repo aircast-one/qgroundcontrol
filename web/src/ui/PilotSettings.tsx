@@ -406,6 +406,19 @@ const PILOT_CHOICES: ReadonlyMap<string, string> = new Map([
   ['Warning', 'Warn only'],
   ['Return at critical level, land at emergency level', 'Return home, land if critical'],
   ['Terminate', 'Stop motors'],
+  ['RTL', 'Return home'],
+  ['Enabled always RTL', 'Return home'],
+  ['Enabled always Land', 'Land'],
+  ['SmartRTL or RTL', 'Retrace the path home, or return home'],
+  ['Enabled always SmartRTL or RTL', 'Retrace the path home, or return home'],
+  ['SmartRTL or Land', 'Retrace the path home, or land'],
+  ['Enabled always SmartRTL or Land', 'Retrace the path home, or land'],
+  ['Brake or Land', 'Brake, or land'],
+  ['Enabled always Brake or Land', 'Brake, or land'],
+  ['Auto DO_LAND_START or RTL', "Fly the mission's landing, or return home"],
+  ['Enabled Auto DO_LAND_START or RTL', "Fly the mission's landing, or return home"],
+  ['Auto DO_LAND_START/DO_RETURN_PATH_START or RTL', "Fly the mission's landing or return path, or return home"],
+  ['Enabled Auto DO_LAND_START/DO_RETURN_PATH_START or RTL', "Fly the mission's landing or return path, or return home"],
 ]);
 
 export const pilotChoice = (label: string): string => PILOT_CHOICES.get(label) ?? label;

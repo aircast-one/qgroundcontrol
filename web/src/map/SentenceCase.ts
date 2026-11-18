@@ -1,4 +1,4 @@
-const PROPER_NOUNS = new Set(['Aircast', 'Android', 'ArduPilot', 'Pixhawk', 'Herelink', 'Trimble', 'Septentrio', 'Bing', 'Esri', 'Google', 'Mapbox', 'Tianditu', 'VWorld', 'OpenAIP', 'QGroundControl', 'Wi-Fi', 'Starlink']);
+const PROPER_NOUNS = new Set(['Aircast', 'Android', 'ArduPilot', 'Pixhawk', 'Herelink', 'Trimble', 'Septentrio', 'Bing', 'Esri', 'Google', 'Mapbox', 'Tianditu', 'VWorld', 'OpenAIP', 'QGroundControl', 'Wi-Fi', 'Starlink', 'Hz']);
 
 const isUpper = (char: string) => char !== char.toLowerCase() && char === char.toUpperCase();
 const isLower = (char: string) => char !== char.toUpperCase() && char === char.toLowerCase();

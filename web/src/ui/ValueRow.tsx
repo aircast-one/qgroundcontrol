@@ -44,9 +44,11 @@ const boundOf = (text: string, isDefaultForType: boolean): number | null => {
 
 export const valueBounds = (fact: Fact): readonly [number | null, number | null] => [boundOf(fact.minString, fact.minIsDefaultForType), boundOf(fact.maxString, fact.maxIsDefaultForType)];
 
+const COORDINATE = /(latitude|longitude)$/i;
+
 export const derivedSlider = (fact: Fact): FactSlider | null => {
   const [min, max] = valueBounds(fact);
-  return min !== null && max !== null && max > min && max - min <= SLIDER_SPAN_LIMIT ? { from: min, to: max, decimals: valueDecimals(fact), hint: '' } : null;
+  return min !== null && max !== null && max > min && max - min <= SLIDER_SPAN_LIMIT && !COORDINATE.test(fact.name) ? { from: min, to: max, decimals: valueDecimals(fact), hint: '' } : null;
 };
 
 const ALTITUDE_BAND: ClosedRange = { start: 20.0, endInclusive: 500.0 };

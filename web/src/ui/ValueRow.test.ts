@@ -61,6 +61,12 @@ describe('ValueRowTest', () => {
     expect(derivedSlider(number('30', { min: '0', max: '340282346638528859811704183484516925440', bounded: true }))).toBeNull();
   });
 
+  it('a coordinate is typed, never dragged across the globe on a slider', () => {
+    expect(derivedSlider(number('0', { min: '-90', max: '90', bounded: true, name: 'fixedBasePositionLatitude', units: 'deg' }))).toBeNull();
+    expect(derivedSlider(number('0', { min: '-180', max: '180', bounded: true, name: 'fixedBasePositionLongitude', units: 'deg' }))).toBeNull();
+    expect(derivedSlider(number('0', { min: '-180', max: '180', bounded: true, name: 'MNT1_YAW_MIN', units: 'deg' }))?.to).toBe(180);
+  });
+
   it('numbers open as a value row and text stays a field', () => {
     expect(opensAsValue(number('30'))).toBe(true);
     expect(opensAsValue(number('127.0.0.1', { isString: true }))).toBe(false);

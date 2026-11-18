@@ -120,7 +120,7 @@ pub fn link_status_view(
         "class": "LinkStatus",
         "connected": connected,
         "rows": match connected {
-            true => [("Total messages sent (computed)", whole("mavlinkSentCount")), ("Total messages received", whole("mavlinkReceivedCount")), ("Total message loss", whole("mavlinkLossCount")), ("Loss rate", format!("{percent:.0}%"))]
+            true => [("Messages sent", whole("mavlinkSentCount")), ("Messages received", whole("mavlinkReceivedCount")), ("Messages lost", whole("mavlinkLossCount")), ("Loss rate", format!("{percent:.0}%"))]
                 .into_iter()
                 .chain(signing_rows(&active_signing()))
                 .collect::<Vec<_>>(),
@@ -178,6 +178,46 @@ mod tests {
             LinkCount::default().counted(1, 1, 9).counted(1, 2, 40).lost,
             0,
             "each component keeps its own sequence"
+        );
+    }
+
+    #[test]
+    fn the_link_status_rows_read_in_plain_words() {
+        struct Linked;
+        impl crate::router::Backend for Linked {
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => serde_json::json!({ "activeVehicleAvailable": true }),
+                    _ => serde_json::json!({ "mavlinkSentCount": 10, "mavlinkReceivedCount": 9, "mavlinkLossCount": 1, "mavlinkLossPercent": 10.0 }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let labels: Vec<String> = link_status_view(&Linked, &[])["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .take(4)
+            .filter_map(|row| row["label"].as_str().map(str::to_string))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Messages sent",
+                "Messages received",
+                "Messages lost",
+                "Loss rate"
+            ]
         );
     }
 
