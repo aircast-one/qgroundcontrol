@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Json } from '@/bridge/Json';
-import { NOT_SUPPORTED_SCREEN } from '@/ui/SetupPages';
+import { NOT_SUPPORTED_SCREEN, headCanOpen, headPage } from '@/ui/SetupPages';
 import {
   PARAMETERS_STOPPED,
   SetupComponent,
@@ -15,9 +15,35 @@ import {
   setupMatches,
   firstToOpen,
 } from '@/ui/SetupScreen';
-import { SetupPage, parametersReady } from '@/ui/SetupView';
+import { SetupPage, parametersReady, setupPage } from '@/ui/SetupView';
 
 describe('SetupScreenTest', () => {
+  it("a PX4 component opens the page the core names for it, not a page spelled like the component", () => {
+    const view: Json = {
+      components: [
+        { name: 'Airframe', page: 'Frame', className: 'AirframeComponent' },
+        { name: 'PID Tuning', page: 'Tuning', className: 'PX4TuningComponent' },
+        { name: 'Joystick', className: 'JoystickComponent' },
+      ],
+      groups: [
+        {
+          title: 'Advanced',
+          pages: [
+            { name: 'Frame', parameterSections: false, screen: 'px4Airframe' },
+            { name: 'Tuning', parameterSections: false, screen: 'px4Tuning' },
+            { name: 'Joystick', parameterSections: false, screen: 'joystick' },
+          ],
+        },
+      ],
+    };
+    const opens = setupComponents(view).map((it) => [it.name, it.page, headCanOpen(setupPage(view, it.page), headPage(it))]);
+    expect(opens).toEqual([
+      ['Airframe', 'Frame', true],
+      ['PID Tuning', 'Tuning', true],
+      ['Joystick', 'Joystick', true],
+    ]);
+  });
+
   it('the firmware line is the one the core spelled', () => {
     const line = firmwareLine({ kind: 'object', available: true, summary: 'PX4 Pro 1.15.0 beta', vehicleType: 'Quadrotor' });
     expect(line).toEqual({ summary: 'PX4 Pro 1.15.0 beta', vehicleType: 'Quadrotor' });

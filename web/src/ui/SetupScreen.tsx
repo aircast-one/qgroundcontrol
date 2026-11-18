@@ -47,6 +47,7 @@ export const firmwareLine = (view: Json | null): FirmwareLine => ({ summary: opt
 export type SetupComponent = {
   index: number;
   name: string;
+  page: string;
   known: string | null;
   className: string;
   needsAttention: boolean;
@@ -59,12 +60,13 @@ export const SetupComponent = (fields: {
   index: number;
   name: string;
   needsAttention: boolean;
+  page?: string;
   known?: string | null;
   className?: string;
   faulty?: boolean;
   blockedReason?: string | null;
   prerequisite?: string | null;
-}): SetupComponent => ({ known: null, className: '', faulty: false, blockedReason: null, prerequisite: null, ...fields });
+}): SetupComponent => ({ page: fields.name, known: null, className: '', faulty: false, blockedReason: null, prerequisite: null, ...fields });
 
 export const setupIcon = (known: string | null, className: string = ''): DrawableName =>
   known === 'radio' || known === 'joystick'
@@ -214,8 +216,8 @@ export const useFormSections = (searching: boolean, components: readonly SetupCo
     if (!searching) return set(new Map());
     const read = await Promise.all(
       components
-        .filter((it) => setupPage(setupJson, it.name)?.parameterSections === true && !OWN_SCREEN_HEADS.has(headPage(it)))
-        .map(async (component) => [component.name, await readPage(component.name)] as const),
+        .filter((it) => setupPage(setupJson, it.page)?.parameterSections === true && !OWN_SCREEN_HEADS.has(headPage(it)))
+        .map(async (component) => [component.name, await readPage(component.page)] as const),
     );
     set(new Map(read));
   });
@@ -248,6 +250,7 @@ const listedComponents = (view: Json | null): readonly SetupComponent[] =>
           SetupComponent({
             index,
             name,
+            page: textOrNull(json, 'page') ?? name,
             known: textOrNull(json, 'known'),
             className: optText(json, 'className'),
             needsAttention: optBoolean(json, 'needsAttention'),
@@ -272,6 +275,10 @@ export const workflowRank = (component: SetupComponent): number => {
   const step = WORKFLOW.findIndex((matches) => matches(component));
   return step < 0 ? WORKFLOW.length : step;
 };
+
+export const NOT_IN_AIRCAST = 'Not in Aircast yet';
+
+export const notInAircast = (name: string): string => `${sentenceCase(name)} can't be set up in Aircast yet.`;
 
 export const setupComponents = (view: Json | null): readonly SetupComponent[] =>
   listedComponents(view).toSorted((a, b) => workflowRank(a) - workflowRank(b) || a.index - b.index);
@@ -401,7 +408,7 @@ export const SetupScreen = ({ className }: { className?: string }) => {
 
   useLaunchedEffect([wide && panesShown, components, requestedPage], () => {
     if (!(wide && panesShown) || opened !== null || parametersOpen || firmwareOpen || requestedPage !== null) return;
-    const first = firstToOpen(components, (it) => headCanOpen(setupPage(setupJson, it.name), it.name));
+    const first = firstToOpen(components, (it) => headCanOpen(setupPage(setupJson, it.page), it.name));
     if (first !== undefined) setOpened([first, null]);
   });
 
@@ -447,7 +454,7 @@ export const SetupScreen = ({ className }: { className?: string }) => {
     );
   }
 
-  const componentOpens = openComponent !== null && headCanOpen(setupPage(setupJson, openComponent.name), openComponent.name);
+  const componentOpens = openComponent !== null && headCanOpen(setupPage(setupJson, openComponent.page), openComponent.name);
   const shownDetail: ReactNode = parametersOpen ? (
     <ParametersPage initialSearch={parametersSearch} onBack={() => setParametersOpen(false)} />
   ) : firmwareOpen ? (
@@ -570,12 +577,12 @@ const ComponentPage = ({
   onBack: () => void;
   onOpen: (opened: Opened | null) => void;
 }) => {
-  const nativePage = setupPage(setupJson, open.name);
+  const nativePage = setupPage(setupJson, open.page);
   const blocked = open.blockedReason;
   const first = open.prerequisite;
   const reportsLookups = reportsOpening(first, nativePage);
-  useLaunchedEffect([open.name, reportsLookups], async () => {
-    if (reportsLookups) await Qgc.invoke(SETUP_PAGE_OPENED, open.name);
+  useLaunchedEffect([open.page, reportsLookups], async () => {
+    if (reportsLookups) await Qgc.invoke(SETUP_PAGE_OPENED, open.page);
   });
   const head = headPage(open);
   const screen = nativePage?.screen ?? null;
@@ -605,12 +612,12 @@ const ComponentPage = ({
       () => (
         <>
           {open.known === 'power' ? <PowerLiveCard /> : null}
-          <ParameterForm page={open.name} className={FILL} section={section} />
+          <ParameterForm page={open.page} className={FILL} section={section} />
         </>
       ),
     ],
   ];
-  const body = routes.find(([matches]) => matches)?.[1]() ?? <SetupNotice text={`${open.name} is set up on the desktop.`} className={FILL} />;
+  const body = routes.find(([matches]) => matches)?.[1]() ?? <SetupNotice text={notInAircast(open.name)} className={FILL} />;
   return (
     <>
       <SetupPageBar title={sentenceCase(open.name)} onBack={onBack} />
@@ -730,17 +737,17 @@ const SetupOverview = ({
 
   const summaryOf = (name: string): readonly SummaryLine[] => summaries.get(name) ?? [];
   const remaining = remainingSetup(components).filter(searchHit);
-  const [usable, desktopOnly] = splitDesktopOnly(remaining, (it) => headCanOpen(setupPage(setupJson, it.name), headPage(it)));
+  const [usable, desktopOnly] = splitDesktopOnly(remaining, (it) => headCanOpen(setupPage(setupJson, it.page), headPage(it)));
   const incomplete = parametersIncomplete(setupJson);
 
   const readyRow = (component: SetupComponent) => {
-    const openable = headCanOpen(setupPage(setupJson, component.name), headPage(component));
+    const openable = headCanOpen(setupPage(setupJson, component.page), headPage(component));
     const blocked = component.blockedReason;
     return (
       <ComponentRow
         key={component.index}
         component={component}
-        status={blocked !== null ? `Not while ${blocked}` : component.needsAttention ? attentionAction(component.className) : !openable ? 'On desktop' : ''}
+        status={blocked !== null ? `Not while ${blocked}` : component.needsAttention ? attentionAction(component.className) : !openable ? NOT_IN_AIRCAST : ''}
         state={blocked !== null ? SetupState.Unavailable : component.needsAttention ? SetupState.NeedsAttention : !openable ? SetupState.Unavailable : SetupState.Neutral}
         onClick={openable ? () => onOpenFromList(component, null) : null}
         selected={same(component, openComponent)}
@@ -767,7 +774,7 @@ const SetupOverview = ({
           <SectionHeader text="Needs attention" />
           {needSetup.map((component) => {
             const blocked = component.blockedReason;
-            const page = setupPage(setupJson, component.name);
+            const page = setupPage(setupJson, component.page);
             return (
               <ComponentRow
                 key={`a${component.index}`}

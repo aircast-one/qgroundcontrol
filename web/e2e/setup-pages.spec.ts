@@ -103,6 +103,16 @@ test('an ArduPilot accelerometer calibration keeps the pilot on Sensors, since i
   await expect(app.getByText('Calibration failed. Calibration log will be displayed.')).toHaveCount(0);
 });
 
+test('PX4 airframe and PID tuning open here instead of pointing at a desktop app', async ({ app }) => {
+  await connectMock(app);
+  await openAircraftSetup(app);
+  await expect(app.getByText('On desktop', { exact: true })).toHaveCount(0);
+  await app.getByRole('button', { name: /^Airframe / }).click();
+  await expect(app.getByRole('button', { name: 'Apply and Restart' })).toBeVisible();
+  await app.getByRole('button', { name: /^PID tuning / }).click();
+  await expect(app.getByText('Use manual tuning', { exact: true })).toBeVisible();
+});
+
 test('ArduPilot setup lists its pages in the order an aircraft is set up', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
