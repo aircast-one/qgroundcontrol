@@ -581,9 +581,14 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
         firmware(template.firmware_type) == Firmware::ArduPilot,
     );
     let (settings_sections, items) = fold(landings, vehicle_class(template.vehicle_type));
+    let climbs_from_launch = |s: &Simple| {
+        commands.get(&s.command).is_some_and(|c| c.is_takeoff)
+            && s.altitude.as_ref().map(|held| held.mode) == Some(crate::altitudemodes::RELATIVE)
+    };
     let modes: Vec<i64> = items
         .iter()
         .filter_map(|item| match item {
+            Item::Simple(s) if climbs_from_launch(s) => None,
             Item::Simple(s) => s.altitude.as_ref().map(|held| held.mode),
             Item::Complex { .. } => Some(crate::altitudemodes::MIXED),
         })
@@ -3361,6 +3366,46 @@ mod tests {
         assert_eq!(
             from_vehicle(&mixed, true, &template).global_altitude_mode,
             crate::altitudemodes::MIXED
+        );
+    }
+
+    #[test]
+    fn a_terrain_or_amsl_mission_read_back_keeps_its_frame_past_the_takeoff_it_climbs_from_launch()
+    {
+        let row = |command: i64, frame: i64, latitude: f64| Downloaded {
+            frame,
+            command,
+            params: [0.0, 0.0, 0.0, 0.0, latitude, 8.0, 50.0],
+            auto_continue: true,
+        };
+        let template = Document {
+            firmware_type: 3,
+            vehicle_type: 2,
+            ..section()
+        };
+        let read_back = |frame: i64| {
+            from_vehicle(
+                &[
+                    row(16, 0, 47.0),
+                    row(22, 3, 0.0),
+                    row(16, frame, 47.01),
+                    row(16, frame, 47.02),
+                ],
+                true,
+                &template,
+            )
+            .global_altitude_mode
+        };
+        assert_eq!(
+            read_back(FRAME_GLOBAL_TERRAIN_ALT),
+            crate::altitudemodes::TERRAIN_FRAME,
+            "a terrain plan always climbs out relative to launch, so its takeoff does not make it Mixed modes"
+        );
+        assert_eq!(read_back(FRAME_GLOBAL), crate::altitudemodes::ABSOLUTE);
+        let takeoff_alone = [row(16, 0, 47.0), row(22, 3, 0.0)];
+        assert_eq!(
+            from_vehicle(&takeoff_alone, true, &template).global_altitude_mode,
+            crate::altitudemodes::RELATIVE
         );
     }
 
