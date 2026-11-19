@@ -22,6 +22,17 @@ test('moving a compass to priority 2 swaps it with the compass there instead of 
   await expect(settings).not.toContainText('Not Set');
 });
 
+test('leaving Sensors in the middle of a compass calibration asks to finish or cancel it first', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Sensors/ }).first().click();
+  await app.getByRole('button', { name: /^Compass/ }).first().click();
+  await app.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+  await expect(app.getByText('Calibrating Compass', { exact: true })).toBeVisible();
+  await app.getByRole('button', { name: /^Radio / }).click();
+  await expect(app.getByText('Complete or cancel the current calibration first')).toBeVisible();
+});
+
 test('a sub opens Motors without an Unable to send command popup', async ({ app }) => {
   await connectMock(app, [], 'APM ArduSub Vehicle');
   await openAircraftSetup(app);

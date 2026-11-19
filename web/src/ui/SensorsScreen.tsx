@@ -48,7 +48,7 @@ export const sensorsFootNote = (routines: readonly CalibrationRoutine[]): string
 export const UNCANCELLABLE_BLOCK = 'Finish this calibration first: the autopilot cannot cancel it once it has started';
 
 export const calibrationLeaveBlock = (state: CalibrationState | null): string | null =>
-  state === null || !state.inProgress ? null : !state.cancelEnabled ? UNCANCELLABLE_BLOCK : state.px4 ? CALIBRATION_BLOCK : null;
+  state === null || !state.inProgress ? null : !state.cancelEnabled ? UNCANCELLABLE_BLOCK : CALIBRATION_BLOCK;
 
 const calibrationStatus = async (): Promise<string> => calibrationState(await Qgc.get(CALIBRATION))?.statusText ?? '';
 

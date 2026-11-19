@@ -24,7 +24,7 @@ describe('CalibrationLeaveBlockTest', () => {
     expect(calibrationLeaveBlock(running({ cancelEnabled: false, px4: false }))).toBe(UNCANCELLABLE_BLOCK);
     expect(calibrationLeaveBlock(running({ cancelEnabled: false, px4: true }))).toBe(UNCANCELLABLE_BLOCK);
     expect(calibrationLeaveBlock(running({ cancelEnabled: true, px4: true }))).toBe(CALIBRATION_BLOCK);
-    expect(calibrationLeaveBlock(running({ cancelEnabled: true, px4: false })), 'an ArduPilot compass run is cancelled on the way out').toBeNull();
+    expect(calibrationLeaveBlock(running({ cancelEnabled: true, px4: false })), 'an ArduPilot compass run was cancelled silently on the way out; it now asks to be finished or cancelled like a PX4 one').toBe(CALIBRATION_BLOCK);
     expect(calibrationLeaveBlock(calibrationState({ class: 'Calibration', inProgress: false, cancelEnabled: false }))).toBeNull();
     expect(calibrationLeaveBlock(null)).toBeNull();
   });
