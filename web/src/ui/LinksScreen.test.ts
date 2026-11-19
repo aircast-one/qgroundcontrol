@@ -3,6 +3,7 @@ import { type Json, parseJson } from '@/bridge/Json';
 import {
   noLinksNote,
   webSocketTaken,
+  removeWarning,
   AddOutcome,
   dialFailure,
   dialState,
@@ -246,6 +247,15 @@ describe('LinkEditRulesTest', () => {
     expect(webSocketTaken('ws://127.0.0.1:5760/', [saved]), 'the same address with a trailing slash is the same socket').not.toBeNull();
     expect(webSocketTaken('ws://127.0.0.1:5761', [saved])).toBeNull();
     expect(webSocketTaken('ws://127.0.0.1:5760', [])).toBeNull();
+  });
+
+  it('removing a link that never reached the aircraft does not call it connected', () => {
+    const retrying = LinkRow({ index: 0, name: 'ws', statusLine: 'Reconnecting', connected: true, heard: false, lastError: 'No MAVLink WebSocket answered', editing: LinkEditing.HostAndPort });
+    const flying = LinkRow({ index: 1, name: 'udp', statusLine: 'Connected', connected: true, heard: true, lastError: '', editing: LinkEditing.PortOnly });
+    const saved = LinkRow({ index: 2, name: 'tcp', statusLine: '', connected: false, heard: false, lastError: '', editing: LinkEditing.HostAndPort });
+    expect(removeWarning(retrying)).toBe('This link is still trying to reach the aircraft. Removing it stops it and forgets the settings.');
+    expect(removeWarning(flying)).toBe('This link is connected. Removing it disconnects it first and forgets the settings.');
+    expect(removeWarning(saved)).toBe('Aircast will forget this link and its settings.');
   });
 
   it('a link that keeps failing waits apart from the links that hear a vehicle', () => {

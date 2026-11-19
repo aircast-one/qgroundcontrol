@@ -196,6 +196,13 @@ export const noLinksNote = (desktop: boolean): string =>
     ? 'No links saved. A USB cable or telemetry radio connects by itself; add a link for Wi-Fi or a network connection.'
     : 'No links saved. Add a link for a network (WebSocket) bridge or a USB telemetry radio.';
 
+export const removeWarning = (row: LinkRow): string =>
+  row.connected && row.heard
+    ? 'This link is connected. Removing it disconnects it first and forgets the settings.'
+    : row.connected
+      ? 'This link is still trying to reach the aircraft. Removing it stops it and forgets the settings.'
+      : 'Aircast will forget this link and its settings.';
+
 export const linkIsEditable = (row: LinkRow): boolean => !row.heard && row.editing !== LinkEditing.None;
 
 export type LinkSection = { title: string; rows: readonly LinkRow[]; auto: readonly AutoLink[] };
@@ -1631,7 +1638,7 @@ export const LinksScreen = ({ className, footer = null }: { className?: string; 
         <AlertDialog
           onDismissRequest={() => setConfirmingRemove(null)}
           title={`Remove ${confirmingRemove.name}?`}
-          text={confirmingRemove.connected ? 'This link is connected. Removing it disconnects it first and forgets the settings.' : 'Aircast will forget this link and its settings.'}
+          text={removeWarning(confirmingRemove)}
           confirmButton={
             <Button
               onClick={() => {
