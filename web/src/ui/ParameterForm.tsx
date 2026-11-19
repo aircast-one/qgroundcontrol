@@ -133,7 +133,7 @@ export const withPilotLinks = (rows: readonly ParameterRows[]): ParameterRows[] 
 
 export const EMPTY_PAGE_TEXTS: ReadonlyMap<string, string> = new Map([['Gimbal', 'Gimbal settings are not available for this firmware version.']]);
 
-export const ParameterForm = ({ page, className, highlighted = new Set(), section = null }: { page: string; className?: string; highlighted?: ReadonlySet<string>; section?: string | null }) => {
+export const ParameterForm = ({ page, className, highlighted = new Set(), section = null, quietWhenEmpty = false }: { page: string; className?: string; highlighted?: ReadonlySet<string>; section?: string | null; quietWhenEmpty?: boolean }) => {
   const [rows, setRows] = useState<ParameterRows[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [reloads, setReloads] = useState(0);
@@ -159,6 +159,8 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
   });
 
   if (!ready || !loaded) return <Text className={`block px-list py-4 ${className ?? ''}`}>{(ready ? '' : optText(setup, 'parametersText').trim()) || 'Reading parameters from the vehicle.'}</Text>;
+
+  if (rows.length === 0 && quietWhenEmpty) return null;
 
   if (rows.length === 0) return <EmptyState icon="ic_tune" title="Nothing to set here" text={EMPTY_PAGE_TEXTS.get(page) ?? 'This vehicle exposes none of these parameters.'} className={className} />;
 

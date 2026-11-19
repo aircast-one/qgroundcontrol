@@ -4,7 +4,7 @@ import { connectMock, expect, flightMode, openMenu, slideAcross, takeOff, test, 
 test('the status sheet arms the aircraft without starting layout editing', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
   await expect(sheet.getByText('Sensors', { exact: true }), 'the sheet has its sensors, so it stops growing around the slider').toBeVisible();
-  await expect(sheet.getByText('Ground control comm loss failsafe'), 'the sheet has its failsafe settings, so it stops growing around the slider').toBeVisible();
+  await expect(sheet.getByText('If the aircraft loses this app'), 'the sheet has its failsafe settings, so it stops growing around the slider').toBeVisible();
   await slideAcross(vehicle, sheet.getByRole('button', { name: 'Slide to arm' }));
   await expect(vehicle.getByText('Arm the vehicle.')).toBeVisible();
   await expect(vehicle.getByRole('button', { name: 'Layout options' })).toBeHidden();

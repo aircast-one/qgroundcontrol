@@ -143,7 +143,7 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
             {AIRCRAFT_SETUP}
           </TextButton>
         )}
-        <ParameterForm page={STATUS_SETTINGS_PAGE} />
+        <ParameterForm page={STATUS_SETTINGS_PAGE} quietWhenEmpty />
         {advanced && !airborne
           ? [['Vehicle parameters', SETUP_PARAMETERS_PAGE] as const].map(([label, page]) => (
               <div key={page} className="flex w-full items-center px-sheet py-0.5">

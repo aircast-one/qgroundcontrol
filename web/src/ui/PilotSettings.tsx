@@ -102,7 +102,7 @@ export const pilotSettings = (group: SettingsGroup): readonly PilotSetting[] => 
         fenceBit: FENCE_MAX_ALTITUDE,
       }),
       PilotSetting({ label: 'Max distance', parameters: ['GF_MAX_HOR_DIST', 'FENCE_RADIUS'], section: FLIGHT_PROTECTION, hint: 'The aircraft will not fly farther from home than this.', quantity: DISTANCE, fenceBit: FENCE_CIRCLE }),
-      PilotSetting({ label: 'Signal lost', parameters: ['NAV_DLL_ACT', 'FS_GCS_ENABLE'], section: FAILSAFES, hint: 'When the link to this app drops.' }),
+      PilotSetting({ label: 'Signal lost', parameters: ['NAV_DLL_ACT', 'FS_GCS_ENABLE', 'FS_GCS_ENABL'], section: FAILSAFES, hint: 'When the link to this app drops.' }),
       PilotSetting({ label: 'Remote controller lost', parameters: ['NAV_RCL_ACT', 'FS_THR_ENABLE'], section: FAILSAFES, hint: 'When the remote controller drops.' }),
       PilotSetting({ label: 'Low battery', parameters: ['COM_LOW_BAT_ACT', 'BATT_FS_LOW_ACT'], section: FAILSAFES, hint: 'When the battery runs low.' }),
     ];

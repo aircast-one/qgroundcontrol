@@ -3,10 +3,16 @@
     "version": 1,
     "sections": [
         {
-            "title": "Ground Control Comm Loss Failsafe",
+            "title": "If the aircraft loses this app",
             "controls": [
                 {
                     "param": "FS_GCS_ENABLE",
+                    "label": "Vehicle Action",
+                    "control": "combobox",
+                    "optional": true
+                },
+                {
+                    "param": "FS_GCS_ENABL",
                     "label": "Vehicle Action",
                     "control": "combobox",
                     "optional": true

@@ -6,7 +6,7 @@
     },
     "sections": [
         {
-            "title": "Ground Control Comm Loss Failsafe",
+            "title": "If the aircraft loses this app",
             "controls": [
                 {
                     "param": "NAV_DLL_ACT",

@@ -3346,6 +3346,11 @@ mod tests {
             ),
             ["Vehicle Action"]
         );
+        assert_eq!(
+            labels(&Fake::new(&[("FS_GCS_ENABL", 1.0)]), false),
+            ["Vehicle Action"],
+            "ArduPlane spells it FS_GCS_ENABL, and without it the sheet showed Nothing to set here"
+        );
     }
 
     #[test]
