@@ -84,6 +84,9 @@ const MAP_ATTRIBUTION_CLEARANCE = 28;
 
 export const portraitSplit = (view: FlyView, hasVideo: boolean): boolean => view === FlyView.Video && hasVideo;
 
+export const portraitOrnamentsBottom = (deckHeight: number, boxHeight: number, buttonsBottom: number): number =>
+  boxHeight <= 0 ? deckHeight : Math.max(0, Math.min(deckHeight, boxHeight - buttonsBottom - MAP_SCALE_CLEARANCE));
+
 export const portraitShowsCamera = (reading: VideoReading | null): boolean => reading !== null && (reading.available || (!reading.streamEnabled && reading.sourceChosen));
 
 export const portraitVideoThumbnail = (split: boolean, reading: VideoReading | null): boolean => !split && reading?.available === true;
@@ -123,9 +126,6 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const barTopPx = Math.round(barTop);
   const deckHeightPx = deck.size.height;
   const boxHeightPx = box.size.height;
-  useEffect(() => {
-    flyScreen.mapInsets.value = MapInsets({ top: split ? 0 : barTopPx, bottom: deckHeightPx });
-  }, [split, barTopPx, deckHeightPx]);
   const screenWidth = screen.width;
   const videoHeight = screenWidth / VIDEO_ASPECT;
   const videoTop = barTop;
@@ -139,6 +139,10 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const room = pipRoom(thumbnail, tucked);
   const roomAt = (at: PipCorner): number => (corner === at ? room : 0);
   const buttonsTop = AircastSpace.s3 + roomAt(PipCorner.TopEnd);
+  const ornamentsPx = Math.round(portraitOrnamentsBottom(deckHeightPx, boxHeightPx, controlsTop + buttonsTop + MAP_BUTTON_SIZE + AircastSpace.s2));
+  useEffect(() => {
+    flyScreen.mapInsets.value = MapInsets({ top: split ? 0 : barTopPx, bottom: deckHeightPx, ornaments: ornamentsPx });
+  }, [split, barTopPx, deckHeightPx, ornamentsPx]);
   const overlaysTop = Math.max(AircastSpace.s3 + roomAt(PipCorner.TopEnd) + MAP_BUTTON_SIZE + AircastSpace.s2, AircastSpace.s3 + roomAt(PipCorner.TopStart));
   const compassLift = roomAt(PipCorner.BottomStart);
   const railLift = roomAt(PipCorner.BottomEnd);

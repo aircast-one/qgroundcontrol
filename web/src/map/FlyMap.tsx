@@ -141,6 +141,7 @@ export type FlyMapProps = {
   cameraBottomPx?: number;
   topInsetPx?: number;
   bottomInsetPx?: number;
+  ornamentBottomPx?: number | null;
   logoEndInsetPx?: number | null;
   pip?: boolean;
   onMapClick?: ((latitude: number, longitude: number) => void) | null;
@@ -156,6 +157,7 @@ export const FlyMap = ({
   cameraBottomPx = 0,
   topInsetPx = 0,
   bottomInsetPx = 0,
+  ornamentBottomPx = null,
   logoEndInsetPx = null,
   pip = false,
   onMapClick = null,
@@ -267,6 +269,7 @@ export const FlyMap = ({
               cameraBottomPx={cameraBottomPx}
               topInsetPx={topInsetPx}
               bottomInsetPx={bottomInsetPx}
+              ornamentBottomPx={ornamentBottomPx}
               logoEndInsetPx={logoEndInsetPx}
               missionItems={plan.items}
               linkStartToHome={plan.linkStartToHome}
@@ -309,7 +312,7 @@ export const FlyMap = ({
             latitude={centre.latitude}
             zoom={zoom}
             className={logoEndInsetPx === null ? 'absolute bottom-0 left-0 pb-1 pl-1' : 'absolute bottom-0 right-0'}
-            style={logoEndInsetPx === null ? undefined : { paddingRight: logoEndInsetPx, paddingBottom: bottomInsetPx + SCALE_ABOVE_LOGO }}
+            style={logoEndInsetPx === null ? undefined : { paddingRight: logoEndInsetPx, paddingBottom: (ornamentBottomPx ?? bottomInsetPx) + SCALE_ABOVE_LOGO }}
           />
         ) : null}
       </div>

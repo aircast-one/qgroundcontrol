@@ -838,8 +838,8 @@ const Map3dToggle = () => {
   ) : null;
 };
 
-export type MapInsets = { top: number; bottom: number };
-export const MapInsets = (fields: MapInsets): MapInsets => ({ ...fields });
+export type MapInsets = { top: number; bottom: number; ornaments: number };
+export const MapInsets = (fields: { top: number; bottom: number; ornaments?: number }): MapInsets => ({ ornaments: fields.bottom, ...fields });
 
 export type Letterbox = { start: number; end: number };
 export const Letterbox = (fields: Letterbox): Letterbox => ({ ...fields });

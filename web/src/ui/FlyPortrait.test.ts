@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PipGeometry, PlaceholderUnits, pipRoom, placeholderUnits, portraitShowsCamera, portraitVideoThumbnail } from './FlyPortrait';
+import { PipGeometry, pipRoom, placeholderUnits, PlaceholderUnits, portraitOrnamentsBottom, portraitShowsCamera, portraitVideoThumbnail } from './FlyPortrait';
 import { Offset, Rect, Size, rectCenter } from './FlyShell';
 import { PipCorner, VideoSwipe, cameraStep, growingSwipe, hidingSwipe, videoSwipe } from '@/ui/VideoGestures';
 import { parseDeviceStatus } from '@/ui/DeviceStatus';
@@ -93,5 +93,14 @@ describe('FlyPortraitTest', () => {
     expect(awaitingStep(false, device(0, 1), null)).toBe(AwaitingStep.SetUpTelemetry);
     expect(awaitingStep(false, device(0, 0), null)).toBe(AwaitingStep.PlugIn);
     expect(awaitingText(AwaitingStep.PlugIn, true)).toBe('Plug in your aircraft to start the synthetic view');
+  });
+});
+
+describe('PortraitOrnamentsTest', () => {
+  it('the map credits and scale rise with the deck but stop below the map buttons', () => {
+    expect(portraitOrnamentsBottom(120, 800, 300), 'a short deck leaves them just above it').toBe(120);
+    expect(portraitOrnamentsBottom(450, 800, 300), 'a tall panel would lift them onto the map buttons, so they stop under them').toBe(800 - 300 - 72);
+    expect(portraitOrnamentsBottom(700, 800, 760)).toBe(0);
+    expect(portraitOrnamentsBottom(120, 0, 300), 'before the box is measured the deck decides').toBe(120);
   });
 });

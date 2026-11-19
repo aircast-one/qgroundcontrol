@@ -357,6 +357,7 @@ export const AircastShell = () => {
           cameraBottomPx={0}
           topInsetPx={mapOwnsInsets ? mapInsets.top : 0}
           bottomInsetPx={mapBottomInset}
+          ornamentBottomPx={mapOrnamentBottom}
           logoEndInsetPx={mapLogoEndInset}
           pip={mapPip}
           onMapClick={openMapClick}
@@ -508,6 +509,7 @@ export const AircastShell = () => {
   const mapPip = shownFlyView === FlyView.Video && !portrait;
   const mapOwnsInsets = shownFlyView === FlyView.Map || portrait;
   const mapBottomInset = mapOwnsInsets ? mapInsets.bottom : 0;
+  const mapOrnamentBottom = mapOwnsInsets ? mapInsets.ornaments : 0;
   const mapLogoEndInset = mapOwnsInsets ? Math.round(mapOrnamentEnd ?? MAP_LAYERS_CLEARANCE) : null;
 
   const vehicles = useQgcPath(VEHICLES_VIEW);

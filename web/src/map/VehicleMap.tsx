@@ -224,6 +224,7 @@ export type VehicleMapProps = {
   onViewChanged?: (corners: readonly TrackPoint[]) => void;
   onWindowChanged?: (seen: MapWindow) => void;
   bottomInsetPx?: number;
+  ornamentBottomPx?: number | null;
   topInsetPx?: number;
   leftInsetPx?: number;
   rightInsetPx?: number;
@@ -296,6 +297,7 @@ export const VehicleMap = ({
   onViewChanged = ignore,
   onWindowChanged = ignore,
   bottomInsetPx = 0,
+  ornamentBottomPx = null,
   topInsetPx = 0,
   leftInsetPx = 0,
   rightInsetPx = 0,
@@ -708,8 +710,8 @@ export const VehicleMap = ({
   }, [map, cameraBottomPx]);
 
   useEffect(() => {
-    if (map !== null) placeMapChrome(map, bottomInsetPx, leftInsetPx, logoEndInsetPx);
-  }, [map, bottomInsetPx, leftInsetPx, logoEndInsetPx, pip]);
+    if (map !== null) placeMapChrome(map, ornamentBottomPx ?? bottomInsetPx, leftInsetPx, logoEndInsetPx);
+  }, [map, bottomInsetPx, ornamentBottomPx, leftInsetPx, logoEndInsetPx, pip]);
 
   const centred = useRef(0);
   const focused = useRef<TrackPoint | null>(null);

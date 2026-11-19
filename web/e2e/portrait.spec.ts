@@ -24,6 +24,20 @@ test('on a phone the take off panel replaces the deck instead of pushing it up o
   await expect(page.getByRole('button', { name: /^(Slide to take off|Take off)$/ })).toBeVisible();
 });
 
+test('on a phone the map credits stay under the map buttons while a guided panel is open', async ({ page }) => {
+  await openApp(page);
+  await connectMock(page, ['Enable camera']);
+  await page.getByRole('button', { name: /^(Slide to take off|Take off)$/ }).click();
+  await expect(page.getByRole('button', { name: /^Slide to take off( anyway)? · / })).toBeVisible();
+  const layers = page.getByRole('button', { name: 'Map layers' });
+  const box = (await layers.boundingBox())!;
+  await expect
+    .poll(() => page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[aria-label]')?.getAttribute('aria-label') ?? null, [box.x + box.width / 2, box.y + box.height / 2]), {
+      message: 'a tap on Map layers reaches Map layers, not the map credits lifted over it',
+    })
+    .toBe('Map layers');
+});
+
 const gimbalPitch = (page: Page) =>
   page.evaluate(
     async (module) => (((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal') as Promise<{ gimbals?: { pitch: number | null }[] } | null>).then((it) => it?.gimbals?.[0]?.pitch ?? null),
