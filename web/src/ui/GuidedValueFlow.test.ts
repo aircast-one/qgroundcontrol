@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GuidedAltitude } from './GuidedAltitude';
-import { type GuidedReading, GuidedValueKind, altitudeReading, openedGuidedValue, takeoffReading } from './GuidedValueFlow';
+import { GuidedOffer } from './GuidedActions';
+import { type GuidedReading, GuidedValueKind, altitudeReading, openedGuidedValue, speedValue, takeoffReading } from './GuidedValueFlow';
 
 const kind = GuidedValueKind({
   offerId: 'takeoff',
@@ -32,5 +33,13 @@ describe('GuidedValueFlowTest', () => {
     const altitude = altitudeReading(GuidedAltitude({ available: true, label: 'Alt', unit: 'm', current: 25.0, minimum: 1.0, maximum: 120.0, sentence: '', deltaMeters: 0.0, sends: false }));
     expect(altitude?.initial).toBe(25.0);
     expect(altitude?.sendable).toBe(false);
+  });
+});
+
+describe('GuidedValueTitleTest', () => {
+  it('a guided panel title reads in sentence case like its neighbours', () => {
+    const offer = GuidedOffer({ id: 'changeSpeed', title: 'Change Max Ground Speed', offer: 'ready', reason: '', prompt: '', destructive: false, carriesValue: true });
+    expect(speedValue(offer).title).toBe('Change max ground speed');
+    expect(speedValue(null).title).toBe('Change max ground speed');
   });
 });

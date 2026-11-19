@@ -9,10 +9,13 @@ pub const DEPS: &[&str] = &[
     "vehicle.vtolInFwdFlight",
     "vehicle.fixedWing",
     "vehicle.airSpeed",
+    "vehicle.groundSpeed",
     "settings.unitsSettings.speedUnits",
 ];
 
 const SLOWEST_GROUND_SPEED_METERS_SECOND: f64 = 0.1;
+const MOVING_METERS_SECOND: f64 = 0.5;
+const WAYPOINT_SPEED_PARAMETERS: &[&str] = &["MPC_XY_CRUISE", "WP_SPD", "WPNAV_SPEED"];
 
 struct Range {
     label: &'static str,
@@ -56,11 +59,6 @@ pub fn speed_view(backend: &dyn Backend, args: &[String]) -> Value {
     }
 }
 
-// The heads invoked vehicle.<command> with whatever view.guidedSpeed named, and QGC forwards a speed
-// change without a bound: a stale command after a VTOL transition asks for ground speed on a vehicle
-// now flying on airspeed, and a figure past maximumEquivalentAirspeed goes to the autopilot as asked.
-// The view clamps the target it shows; an invoke with a number outside it is refused rather than
-// silently flown at a different speed than the operator typed.
 fn speed_refusal(
     range: Option<&Range>,
     command: &str,
@@ -139,12 +137,19 @@ fn range_meters_second(backend: &dyn Backend) -> Option<Range> {
         }
         false => {
             let maximum = number("vehicle.maximumHorizontalSpeedMultirotorMetersSecond")?;
+            let moving = backend
+                .raw("vehicle.groundSpeed")
+                .filter(|v| *v >= MOVING_METERS_SECOND);
+            let planned = crate::battery::parameter_si(backend, WAYPOINT_SPEED_PARAMETERS)
+                .filter(|v| v.is_finite() && *v > 0.0);
             Range {
                 label: "Speed",
                 command: "guidedModeChangeGroundSpeedMetersSecond",
                 minimum: SLOWEST_GROUND_SPEED_METERS_SECOND,
                 maximum,
-                initial: maximum / 2.0,
+                initial: moving.or(planned).map_or(maximum / 2.0, |v| {
+                    v.clamp(SLOWEST_GROUND_SPEED_METERS_SECOND, maximum)
+                }),
             }
         }
     };
@@ -206,6 +211,79 @@ mod tests {
         assert_eq!(view["initial"], 7.5);
         assert_eq!(view["targetMetersSecond"], 15.0);
         assert_eq!(view["sentence"], "The aircraft will fly at 15.0 m/s.");
+    }
+
+    struct Flying {
+        ground_speed: Option<f64>,
+        waypoint_speed: Option<(&'static str, f64, &'static str)>,
+    }
+
+    impl Backend for Flying {
+        fn get(&self, path: &str) -> String {
+            let parameter = self.waypoint_speed.filter(|(name, ..)| {
+                path == format!("vehicle.parameterManager.getParameter(-1,{name})")
+            });
+            match (path, self.ground_speed, parameter) {
+                ("vehicle.groundSpeed", Some(v), _) => {
+                    json!({ "kind": "fact", "rawValue": v })
+                }
+                (_, _, Some((name, value, units))) => {
+                    json!({ "kind": "fact", "name": name, "rawValue": value, "rawUnits": units })
+                }
+                _ => json!({ "kind": "null" }),
+            }
+            .to_string()
+        }
+        fn get_fields(&self, path: &str, fields: &str) -> String {
+            Fake {
+                connected: true,
+                forward: false,
+                maximum: 15.0,
+            }
+            .get_fields(path, fields)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, path: &str, args: &str) -> String {
+            Fake {
+                connected: true,
+                forward: false,
+                maximum: 15.0,
+            }
+            .invoke(path, args)
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_multirotor_speed_change_opens_at_the_speed_it_flies() {
+        let initial = |ground_speed, waypoint_speed| {
+            speed_view(
+                &Flying {
+                    ground_speed,
+                    waypoint_speed,
+                },
+                &[],
+            )["initial"]
+                .clone()
+        };
+        assert_eq!(
+            initial(Some(6.2), Some(("WPNAV_SPEED", 1000.0, "cm/s"))),
+            6.2,
+            "a vehicle already moving changes from the speed it is flying"
+        );
+        assert_eq!(
+            initial(Some(0.0), Some(("WPNAV_SPEED", 1000.0, "cm/s"))),
+            10.0,
+            "a hovering copter opens at the waypoint speed its missions fly, not at half the maximum"
+        );
+        assert_eq!(
+            initial(None, Some(("MPC_XY_CRUISE", 30.0, "m/s"))),
+            15.0,
+            "a cruise speed past the guided maximum opens at the maximum"
+        );
+        assert_eq!(initial(None, None), 7.5);
     }
 
     #[test]

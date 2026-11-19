@@ -4,6 +4,7 @@ import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { Slider, stepsFor } from '@/m3';
+import { sentenceCase } from '@/map/SentenceCase';
 import { type ClosedRange } from '@/map/SettingStepper';
 import type { GuidedOffer } from './GuidedActions';
 import { GUIDED_ALTITUDE, type GuidedAltitude, altitudeDelta, guidedAltitude, guidedAltitudePath, rangeLabel } from './GuidedAltitude';
@@ -78,7 +79,7 @@ export const altitudeReading = (altitude: GuidedAltitude | null): GuidedReading 
 
 const titleOr = (offer: GuidedOffer | null, fallback: string): string => {
   const title = offer?.title ?? '';
-  return title.trim() === '' ? fallback : title;
+  return sentenceCase(title.trim() === '' ? fallback : title);
 };
 
 export const takeoffValue = (offer: GuidedOffer | null): GuidedValueKind =>
