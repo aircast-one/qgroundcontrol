@@ -5,11 +5,17 @@ import { AlertDialog, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
 import { SpeedSectionRow, speedSectionOf } from '@/ui/ItemEditor';
 import { factFromControl } from '@/ui/ParameterForm';
+import { pilotWorded } from '@/ui/PilotSettings';
 import { FactRow } from '@/ui/SettingsScreen';
 
 export const PLAN_DEFAULT_KEYS: readonly string[] = ['altitude', 'cruise', 'hover', 'ascent', 'descent'];
 
 const SPEEDS_SET_BY_FLIGHT_SPEED: ReadonlySet<string> = new Set(['cruise', 'hover']);
+
+const settingsWorded = (fact: Fact): Fact => {
+  const worded = pilotWorded(fact);
+  return makeFact({ ...worded, description: worded.heading });
+};
 
 export const planDefaults = (view: Json | null): readonly Fact[] => {
   const served = optJSONObject(view, 'defaults');
@@ -17,7 +23,8 @@ export const planDefaults = (view: Json | null): readonly Fact[] => {
   const flightSpeedSpecified = optBoolean(optJSONObject(served, 'flightSpeed'), 'specified');
   return PLAN_DEFAULT_KEYS.flatMap((key) => {
     const control = optJSONObject(served, key);
-    const fact = control === null ? null : factFromControl(control);
+    const read = control === null ? null : factFromControl(control);
+    const fact = read === null ? null : settingsWorded(read);
     if (fact === null) return [];
     return [flightSpeedSpecified && SPEEDS_SET_BY_FLIGHT_SPEED.has(key) ? makeFact({ ...fact, enabled: false, disabledReason: 'The mission flight speed is used instead' }) : fact];
   });

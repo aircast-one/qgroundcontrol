@@ -27,8 +27,16 @@ describe('PlanDefaultsDialog', () => {
     render(<PlanDefaultsDialog view={view} onDismiss={() => undefined} />);
     const note = screen.getByText(NOTE);
     const flightSpeed = screen.getByRole('switch', { name: 'Flight speed' });
-    const hover = screen.getByText('Offline editing hover speed');
+    const hover = screen.getByText('Planning hover speed');
     expect(flightSpeed.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING, 'the Flight speed switch adds a speed command to the mission, so the note must not claim it').toBeTruthy();
     expect(note.compareDocumentPosition(hover) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('names each default as Settings › General › Planning defaults does', () => {
+    render(<PlanDefaultsDialog view={view} onDismiss={() => undefined} />);
+    expect(screen.getByText('Default waypoint altitude')).toBeTruthy();
+    expect(screen.getByText('Planning hover speed')).toBeTruthy();
+    expect(screen.queryByText('Default mission altitude')).toBeNull();
+    expect(screen.queryByText('Offline editing hover speed')).toBeNull();
   });
 });
