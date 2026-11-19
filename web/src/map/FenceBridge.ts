@@ -101,14 +101,19 @@ const insideRing = (at: TrackPoint, ring: readonly TrackPoint[]): boolean =>
     return crosses ? !inside : inside;
   }, false);
 
-export const launchBreachesFence = (launch: TrackPoint | null, polygons: readonly FencePolygon[], circles: readonly FenceCircle[]): boolean => {
+export type KeepInRule = 'any' | 'every';
+
+export const keepInRule = (plan: Json | null): KeepInRule => (optBoolean(optJSONObject(plan, 'planningFor'), 'apmFirmware') ? 'every' : 'any');
+
+export const launchBreachesFence = (launch: TrackPoint | null, polygons: readonly FencePolygon[], circles: readonly FenceCircle[], rule: KeepInRule): boolean => {
   if (launch === null || !isPlottable(launch.latitude, launch.longitude)) return false;
   const zones = [
     ...polygons.filter((it) => it.vertices.length >= 3).map((it) => [it.inclusion, insideRing(launch, it.vertices)] as const),
     ...circles.map((it) => [it.inclusion, metresBetween(launch, it.centre) <= it.radiusMetres] as const),
   ];
-  const keepIns = zones.filter(([inclusion]) => inclusion);
-  return (keepIns.length > 0 && !keepIns.some(([, inside]) => inside)) || zones.some(([inclusion, inside]) => !inclusion && inside);
+  const keepIns = zones.filter(([inclusion]) => inclusion).map(([, inside]) => inside);
+  const outsideKeepIn = rule === 'every' ? keepIns.some((inside) => !inside) : keepIns.length > 0 && !keepIns.some((inside) => inside);
+  return outsideKeepIn || zones.some(([inclusion, inside]) => !inclusion && inside);
 };
 export const NO_RALLY_POINTS = `No rally points – alternate landing points for Return to Launch. ${TAP} the map to place one.`;
 export const GEOFENCE_NOT_SUPPORTED = 'Not supported – this vehicle does not support geofence.';

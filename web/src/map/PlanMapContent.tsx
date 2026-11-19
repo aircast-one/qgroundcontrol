@@ -36,6 +36,7 @@ import {
   fenceSelectionAfterRemove,
   firmwareFence,
   grownRadius,
+  keepInRule,
   launchBreachesFence,
   rallyAfterRemove,
   rallyPoints,
@@ -1128,7 +1129,7 @@ export const PlanMapContent = ({
               ) : (
                 <>
                   {support.fenceRefused ? <PaletteNote text={GEOFENCE_NOT_SUPPORTED} /> : fences.value.length === 0 && circles.value.length === 0 ? <PaletteNote text={NO_GEOFENCE} /> : null}
-                  {launchBreachesFence(launchPoint, fences.value, circles.value) ? (
+                  {launchBreachesFence(launchPoint, fences.value, circles.value, keepInRule(planStatus)) ? (
                     <Text typography="bodySmall" color={aircast('warning')} className="block w-full p-1">
                       {LAUNCH_BREACHES_FENCE}
                     </Text>

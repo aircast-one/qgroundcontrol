@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { FenceCircle, FencePolygon, fenceCircles, fencePolygons, launchBreachesFence, rallyPoints } from './FenceBridge';
+import { FenceCircle, FencePolygon, fenceCircles, fencePolygons, keepInRule, launchBreachesFence, rallyPoints } from './FenceBridge';
 
 const vertex = (latitude: number, longitude: number) => `{"latitude":${latitude},"longitude":${longitude}}`;
 
@@ -77,20 +77,28 @@ describe('LaunchBreachesFenceTest', () => {
   const outside = { latitude: 41.02, longitude: 44.005 };
 
   it('a launch outside every keep-in zone breaches the fence on takeoff', () => {
-    expect(launchBreachesFence(outside, [square(true)], [])).toBe(true);
-    expect(launchBreachesFence(inside, [square(true)], [])).toBe(false);
+    expect(launchBreachesFence(outside, [square(true)], [], 'any')).toBe(true);
+    expect(launchBreachesFence(inside, [square(true)], [], 'any')).toBe(false);
   });
 
   it('a launch inside a keep-out zone breaches it, and no fence means nothing to breach', () => {
-    expect(launchBreachesFence(inside, [square(false)], [])).toBe(true);
-    expect(launchBreachesFence(outside, [square(false)], [])).toBe(false);
-    expect(launchBreachesFence(outside, [], [])).toBe(false);
-    expect(launchBreachesFence(null, [square(true)], [])).toBe(false);
+    expect(launchBreachesFence(inside, [square(false)], [], 'any')).toBe(true);
+    expect(launchBreachesFence(outside, [square(false)], [], 'any')).toBe(false);
+    expect(launchBreachesFence(outside, [], [], 'any')).toBe(false);
+    expect(launchBreachesFence(null, [square(true)], [], 'any')).toBe(false);
   });
 
   it('a keep-in circle around the launch keeps it inside', () => {
     const circle = FenceCircle({ index: 0, inclusion: true, centre: inside, radius: 200, radiusMetres: 200 });
-    expect(launchBreachesFence(inside, [], [circle])).toBe(false);
-    expect(launchBreachesFence(outside, [], [circle])).toBe(true);
+    expect(launchBreachesFence(inside, [], [circle], 'any')).toBe(false);
+    expect(launchBreachesFence(outside, [], [circle], 'any')).toBe(true);
+  });
+
+  it('ArduPilot holds the vehicle inside every keep-in zone, so leaving one of two breaches it, while PX4 needs only one', () => {
+    const elsewhere = FenceCircle({ index: 0, inclusion: true, centre: outside, radius: 200, radiusMetres: 200 });
+    expect(launchBreachesFence(inside, [square(true)], [elsewhere], 'every')).toBe(true);
+    expect(launchBreachesFence(inside, [square(true)], [elsewhere], 'any')).toBe(false);
+    expect(keepInRule({ planningFor: { firmware: 'ArduPilot', apmFirmware: true } })).toBe('every');
+    expect(keepInRule({ planningFor: { firmware: 'PX4 Pro', apmFirmware: false } })).toBe('any');
   });
 });
