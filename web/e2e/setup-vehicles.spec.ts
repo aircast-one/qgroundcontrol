@@ -56,3 +56,21 @@ test('a plane offers its flight modes and failsafe actions in plain words, witho
   await expect(app.getByRole('menuitem', { name: 'Circle, or carry on if on a mission, guided or loitering', exact: true })).toBeVisible();
   await expect(app.getByRole('menuitem', { name: /\|/ })).toHaveCount(0);
 });
+
+test('a plane says why it has no motor test instead of offering eight motors', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduPlane Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Motors / }).click();
+  await expect(app.getByText(/^ArduPilot only spins VTOL lift motors in a motor test\./)).toBeVisible();
+  await expect(app.getByText('Warning: Unable to determine motor count')).toHaveCount(0);
+});
+
+test('a rover tests its throttle and steering instead of eight unknown motors', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduRover Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Motors / }).click();
+  await expect(app.getByRole('button', { name: /^Throttle/ })).toBeVisible();
+  await expect(app.getByRole('button', { name: /^Steering/ })).toBeVisible();
+  await expect(app.getByText('Warning: Unable to determine motor count')).toHaveCount(0);
+  await expect(app.getByRole('button', { name: /^Motor H/ })).toHaveCount(0);
+});

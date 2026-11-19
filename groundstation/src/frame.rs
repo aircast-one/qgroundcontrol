@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::read::{flag, integer, object, text};
-use crate::router::Backend;
+use crate::router::{Backend, raw_of};
 
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
@@ -23,6 +23,34 @@ pub const DEPS: &[&str] = &[
 const FIELDS: &str =
     "vehicleTypeString,motorCount,apmFirmware,armed,multiRotor,vtol,rover,sub,fixedWing,airship";
 const NO_MOTOR_COUNT: i64 = -1;
+const SERVO_OUTPUTS: i64 = 32;
+const ROVER_OUTPUTS: [(i64, i64, &str); 5] = [
+    (70, 1, "Throttle"),
+    (26, 2, "Steering"),
+    (73, 3, "Left throttle"),
+    (74, 4, "Right throttle"),
+    (89, 5, "Mainsail"),
+];
+pub const FIXED_WING_MOTOR_TEST: &str = "ArduPilot only spins VTOL lift motors in a motor test. On a fixed-wing plane, check the throttle and control surfaces under Servo outputs instead.";
+
+pub fn rover_motors(functions: &[i64]) -> Vec<(i64, &'static str)> {
+    ROVER_OUTPUTS
+        .iter()
+        .filter(|(function, _, _)| functions.contains(function))
+        .map(|(_, motor, label)| (*motor, *label))
+        .collect()
+}
+
+fn servo_functions(backend: &dyn Backend) -> Vec<i64> {
+    (1..=SERVO_OUTPUTS)
+        .filter_map(|output| {
+            raw_of(&backend.value(&format!(
+                "vehicle.parameterManager.getParameter(-1,SERVO{output}_FUNCTION)"
+            )))
+        })
+        .map(|function| function as i64)
+        .collect()
+}
 
 fn token(vehicle: &Value) -> &'static str {
     match () {
@@ -61,13 +89,25 @@ pub fn frame_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let lost = contact_lost(backend);
     let vehicle = backend.value_fields("vehicle", FIELDS);
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
+    let ardupilot = flag(&vehicle, "apmFirmware");
+    let labelled = match ardupilot && flag(&vehicle, "rover") && ready {
+        true => rover_motors(&servo_functions(backend)),
+        false => vec![],
+    };
+    let counted = match labelled.is_empty() {
+        true => connected.then(|| motors(&vehicle, ready)).flatten(),
+        false => labelled.iter().map(|(motor, _)| *motor).max(),
+    };
+    let fixed_wing_only = ardupilot && flag(&vehicle, "fixedWing") && !flag(&vehicle, "vtol");
     json!({
         "kind": "object",
         "class": "Frame",
         "connected": connected,
         "vehicleType": connected.then(|| token(&vehicle)),
         "vehicleTypeText": text(&vehicle, "vehicleTypeString"),
-        "motorCount": connected.then(|| motors(&vehicle, ready)).flatten(),
+        "motorCount": counted,
+        "motors": labelled.iter().map(|(motor, label)| json!({ "motor": motor, "label": label })).collect::<Vec<_>>(),
+        "motorTestNote": (connected && fixed_wing_only).then_some(FIXED_WING_MOTOR_TEST),
         "apmFirmware": flag(&vehicle, "apmFirmware"),
         "armed": flag(&vehicle, "armed"),
         "contactLost": connected.then_some(lost).flatten(),
@@ -210,6 +250,72 @@ mod tests {
 
         let view = frame_view(&Aircraft(vehicle("multiRotor", 4), true), &[]);
         assert_eq!(view["motorCount"], 4);
+    }
+
+    #[test]
+    fn a_rover_names_its_throttle_and_steering_and_a_plane_says_why_it_has_no_motor_test() {
+        struct Ardupilot(&'static str, &'static [(i64, f64)]);
+        impl Backend for Ardupilot {
+            fn get(&self, path: &str) -> String {
+                let function = (1..=SERVO_OUTPUTS)
+                    .find(|output| {
+                        path == format!(
+                            "vehicle.parameterManager.getParameter(-1,SERVO{output}_FUNCTION)"
+                        )
+                    })
+                    .and_then(|output| self.1.iter().find(|(o, _)| *o == output))
+                    .map(|(_, f)| *f);
+                match (path, function) {
+                    ("vehicle.parameterManager.parametersReady", _) => {
+                        json!({ "kind": "value", "value": true }).to_string()
+                    }
+                    (_, Some(f)) => json!({ "kind": "fact", "rawValue": f }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicle" => Value::Object(
+                        vehicle(self.0, -1)
+                            .as_object()
+                            .cloned()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .chain([("apmFirmware".to_string(), json!(true))])
+                            .collect(),
+                    )
+                    .to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let rover = frame_view(&Ardupilot("rover", &[(1, 26.0), (3, 70.0)]), &[]);
+        assert_eq!(
+            rover["motors"],
+            json!([{ "motor": 1, "label": "Throttle" }, { "motor": 2, "label": "Steering" }]),
+            "a rover showed eight motors A to H and Unable to determine motor count"
+        );
+        assert_eq!(rover["motorCount"], 2);
+        let skid = frame_view(&Ardupilot("rover", &[(1, 73.0), (3, 74.0)]), &[]);
+        assert_eq!(
+            skid["motors"],
+            json!([{ "motor": 3, "label": "Left throttle" }, { "motor": 4, "label": "Right throttle" }])
+        );
+        let plane = frame_view(&Ardupilot("fixedWing", &[(3, 70.0)]), &[]);
+        assert_eq!(plane["motorTestNote"], FIXED_WING_MOTOR_TEST);
+        assert_eq!(plane["motors"], json!([]));
+        assert_eq!(
+            frame_view(&Ardupilot("vtol", &[]), &[])["motorTestNote"],
+            Value::Null,
+            "a quadplane's lift motors do answer a motor test"
+        );
     }
 
     #[test]

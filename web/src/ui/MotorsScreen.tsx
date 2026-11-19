@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { type Json, isNull, optBoolean, optInt } from '@/bridge/Json';
+import { type Json, isNull, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { FilledTonalButton, OutlinedButton, Slider, Surface, Switch, Text, stepsFor } from '@/m3';
@@ -20,6 +20,18 @@ export const reportedMotors = (view: Json | null): number | null => {
 };
 
 export const motorCount = (reported: number | null): number => reported ?? UNKNOWN_MOTOR_COUNT;
+
+export type TestedMotor = { motor: number; label: string };
+
+export const testedMotors = (view: Json | null, reported: number | null, letters: boolean): readonly TestedMotor[] => {
+  const named = jsonObjects(optJSONArray(view, 'motors')).map((it) => ({ motor: optInt(it, 'motor'), label: optText(it, 'label') }));
+  return named.length > 0 ? named : motorNumbers(motorCount(reported)).map((motor) => ({ motor, label: `Motor ${motorLabel(motor, letters)}` }));
+};
+
+export const motorTestNote = (view: Json | null): string | null => {
+  const note = optText(view, 'motorTestNote');
+  return note.trim() === '' ? null : note;
+};
 
 export const motorCountNotice = (reported: number | null): string | null => (reported === null ? 'Warning: Unable to determine motor count' : null);
 
@@ -59,18 +71,28 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
   const frameJson = useQgcPath(FRAME_VIEW);
   const reported = useMemo(() => reportedMotors(frameJson), [frameJson]);
   const gate = useMemo(() => motorGate(frameJson), [frameJson]);
-  const motors = motorCount(reported);
   const [propsOff, setPropsOff] = useState(false);
   const [throttle, setThrottle] = useState(0);
   const [testRefusal, setTestRefusal] = useState<string | null>(null);
   const spinAll = (spun: readonly number[], at: number) => void Promise.all(spun.map((it) => spin(it, at))).then((refusals) => setTestRefusal(firstRefusal(refusals)));
   const setupJson = useQgcPath(SETUP);
   const letters = useMemo(() => setupReadiness(setupJson)?.firmware === 'apm', [setupJson]);
+  const tested = useMemo(() => testedMotors(frameJson, reported, letters), [frameJson, reported, letters]);
+  const spun = tested.map((it) => it.motor);
+  const note = motorTestNote(frameJson);
   const testable = canTest(gate, propsOff);
   const percent = Math.trunc(throttle);
   const countNotice = motorCountNotice(reported);
   const refusal = motorRefusal(gate);
   const switchText = propsOff ? 'Careful: motors are enabled' : 'Propellers are removed - enable slider and motors';
+
+  if (note !== null) {
+    return (
+      <div className={`flex flex-col gap-3 overflow-y-auto p-4 ${className ?? ''}`}>
+        <Text typography="bodyLarge">{note}</Text>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex flex-col gap-3 overflow-y-auto p-4 ${className ?? ''}`}>
@@ -115,12 +137,12 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
       </div>
       <Slider value={throttle} onValueChange={setThrottle} valueRange={[0, 100]} steps={stepsFor(0, 100, 1)} enabled={testable} label="Throttle" />
 
-      {chunked(motorNumbers(motors), 2).map((pair) => (
-        <div key={pair[0]} className="flex gap-3">
-          {pair.map((motor) => (
+      {chunked(tested, 2).map((pair) => (
+        <div key={pair.map((it) => it.motor).join()} className="flex gap-3">
+          {pair.map(({ motor, label }) => (
             <Surface key={motor} onClick={() => spinAll([motor], percent)} enabled={testable} shape="large" color={md('surfaceContainer')} className="flex-1">
               <span className="flex w-full flex-col items-center py-5">
-                <Text typography="bodyLarge">{`Motor ${motorLabel(motor, letters)}`}</Text>
+                <Text typography="bodyLarge">{label}</Text>
                 <Text typography="labelMedium" color={md('onSurfaceVariant')}>
                   {testable ? `${TAP} to spin` : 'Locked'}
                 </Text>
@@ -132,10 +154,10 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
       ))}
 
       <div className="flex flex-wrap gap-2">
-        <FilledTonalButton onClick={() => spinAll(motorNumbers(motors), percent)} enabled={testable}>
+        <FilledTonalButton onClick={() => spinAll(spun, percent)} enabled={testable}>
           All
         </FilledTonalButton>
-        <OutlinedButton onClick={() => spinAll(motorNumbers(motors), 0)} enabled={canStop(gate)}>
+        <OutlinedButton onClick={() => spinAll(spun, 0)} enabled={canStop(gate)}>
           Stop
         </OutlinedButton>
       </div>

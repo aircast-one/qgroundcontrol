@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Json } from '@/bridge/Json';
-import { canStop, canTest, firstRefusal, motorGate, motorLabel, motorRefusal } from '@/ui/MotorsScreen';
+import { canStop, canTest, firstRefusal, motorGate, motorLabel, motorRefusal, motorTestNote, testedMotors } from '@/ui/MotorsScreen';
 
 const frame = ({ connected = true, armed = false, contactLost = false as boolean | null } = {}): Json => ({
   kind: 'object',
@@ -57,5 +57,22 @@ describe('MotorGateTest', () => {
   it('a motor that would not spin says why, so a click is never silent', () => {
     expect(firstRefusal([null, 'The vehicle did not take the motor test.', 'The vehicle did not answer.'])).toBe('The vehicle did not take the motor test.');
     expect(firstRefusal([null, null])).toBeNull();
+  });
+});
+
+describe('TestedMotorsTest', () => {
+  it('a rover tests the outputs the core names instead of eight unknown motors', () => {
+    const rover: Json = { ...frame(), apmFirmware: true, motorCount: 2, motors: [{ motor: 1, label: 'Throttle' }, { motor: 2, label: 'Steering' }] };
+    expect(testedMotors(rover, 2, true)).toEqual([
+      { motor: 1, label: 'Throttle' },
+      { motor: 2, label: 'Steering' },
+    ]);
+    expect(testedMotors(frame(), 4, true).map((it) => it.label)).toEqual(['Motor A', 'Motor B', 'Motor C', 'Motor D']);
+    expect(testedMotors(frame(), null, false)).toHaveLength(8);
+  });
+
+  it('a fixed-wing plane says why it has no motor test instead of offering motors that will not answer', () => {
+    expect(motorTestNote({ ...frame(), motorTestNote: 'ArduPilot only spins VTOL lift motors in a motor test.' })).toBe('ArduPilot only spins VTOL lift motors in a motor test.');
+    expect(motorTestNote(frame())).toBeNull();
   });
 });
