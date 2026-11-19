@@ -131,6 +131,20 @@ test('a typed altitude past the limit says it was capped', async ({ app }) => {
   await expect(app.getByRole('button', { name: /^3 Waypoint 500 m/ })).toBeVisible({ timeout: 15_000 });
 });
 
+test('pressing Enter in a typed altitude sets it and closes the entry', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.getByRole('button', { name: /^Altitude: / }).click();
+  const typed = app.getByRole('dialog').getByRole('textbox');
+  await typed.fill('70');
+  await typed.press('Enter');
+  await expect(app.getByRole('button', { name: /^3 Waypoint 70\.0 m/ })).toBeVisible({ timeout: 15_000 });
+  await expect(typed, 'the Enter used to land on the altitude button behind the entry and open it again').toHaveCount(0);
+});
+
 test('switching a waypoint to AMSL keeps its height above the launch', async ({ vehicle }) => {
   await openPlanAtVehicle(vehicle);
   await tapPlanMission(vehicle);

@@ -65,7 +65,7 @@ const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, 
             aria-invalid={isError || undefined}
             aria-label={ariaLabel}
             onChange={(event) => onValueChange(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && onDone?.()}
+            onKeyDown={(event) => doneOnEnter(event, onDone)}
           />
         ) : (
           <textarea id={id} className={`${control} py-3`} rows={minLines} value={value} placeholder={placeholder} disabled={!enabled} readOnly={readOnly} autoFocus={autoFocus} aria-invalid={isError || undefined} aria-label={ariaLabel} onChange={(event) => onValueChange(event.target.value)} onKeyDown={(event) => doneOnEnter(event, onDone)} />
