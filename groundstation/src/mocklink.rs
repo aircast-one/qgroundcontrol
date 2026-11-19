@@ -607,6 +607,7 @@ pub struct Conditions {
     pub endurance_min: Option<f64>,
     pub home: Option<(f64, f64)>,
     pub roads: bool,
+    pub refused_parameter: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -619,6 +620,7 @@ pub enum Change {
     Home(f64, f64),
     Roads(bool),
     Payload { mass_g: f64, drag_area_cm2: f64 },
+    RefuseParameter(Option<String>),
 }
 
 impl Conditions {
@@ -652,6 +654,10 @@ impl Conditions {
                 },
                 Change::Roads(on) => Conditions {
                     roads: *on,
+                    ..conditions
+                },
+                Change::RefuseParameter(name) => Conditions {
+                    refused_parameter: name.clone(),
                     ..conditions
                 },
                 Change::Payload {
@@ -1098,10 +1104,13 @@ impl Sim {
                 let name = text_of(&m.param_id);
                 let bytewise = self.bytewise();
                 let index = self.params.iter().position(|p| p.name == name);
+                let refused = self.conditions.refused_parameter.as_deref() == Some(name.as_str());
                 let echoed: Vec<Out> = index
                     .map(|at| {
                         let kind = self.params[at].kind;
-                        self.params[at].value = unwire(kind, m.param_value, bytewise);
+                        if !refused {
+                            self.params[at].value = unwire(kind, m.param_value, bytewise);
+                        }
                         self.param_value(at)
                     })
                     .into_iter()
@@ -4090,6 +4099,40 @@ mod tests {
         );
         fly(&mut sim, 12);
         assert_eq!((sim.alt, sim.armed), (0.0, false));
+    }
+
+    #[test]
+    fn a_refused_parameter_keeps_its_value_and_echoes_it_back() {
+        let mut sim = Sim::new(options(Vehicle::Plane), 128, None);
+        sim.condition(
+            Conditions::default()
+                .changed(&[Change::RefuseParameter(Some("TKOFF_ALT".to_string()))]),
+        );
+        let at = sim
+            .params
+            .iter()
+            .position(|p| p.name == "TKOFF_ALT")
+            .unwrap();
+        let before = sim.params[at].value;
+        let set = Param {
+            value: 30.0,
+            ..sim.params[at].clone()
+        };
+        let echoed = sim.receive(
+            gcs(),
+            &MavMessage::PARAM_SET(PARAM_SET_DATA {
+                param_value: wire(&set, false),
+                target_system: 128,
+                target_component: 1,
+                param_id: crate::mavout::param_id("TKOFF_ALT"),
+                param_type: set.kind,
+            }),
+        );
+        assert!(
+            matches!(&echoed[..], [(_, MavMessage::PARAM_VALUE(v))] if f64::from(v.param_value) == before),
+            "an autopilot that rejects a value answers with the one it kept"
+        );
+        assert_eq!(sim.params[at].value, before);
     }
 
     #[test]

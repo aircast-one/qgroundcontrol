@@ -2583,9 +2583,13 @@ impl Vehicle {
                     Vec::new()
                 }
                 params::Action::WriteFailed { component, name, error } => {
-                    self.guided.on_parameter_failed(&name);
                     let text = failure_text("write", &name, &self.params.component_label(component), error);
-                    crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
+                    match self.guided.awaited_parameter() == Some(name.as_str()) {
+                        true => self.guided.on_parameter_failed(&name),
+                        false => {
+                            crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
+                        }
+                    }
                     self.note(text);
                     Vec::new()
                 }

@@ -218,7 +218,8 @@ fn mock_video_stream(name: &str) -> Option<i64> {
         .map(|(_, kind)| *kind)
 }
 
-const MOCK_CONDITIONS: [&str; 8] = [
+const MOCK_CONDITIONS: [&str; 9] = [
+    "refuseParam",
     "payload",
     "prearm",
     "wind",
@@ -272,7 +273,7 @@ const HOME_USAGE: &str = "home must be latitude,longitude within ±90 and ±180"
 const PAYLOAD_USAGE: &str =
     "payload must be grams,drag-area-cm2 (drag coefficient times frontal area), both 0 or more";
 
-fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Change>, String> {
+pub fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Change>, String> {
     use crate::mocklink::Change;
     let wind = numbers(pairs, "wind", &[1, 2], WIND_USAGE)?;
     let endurance = numbers(pairs, "endurance", &[1], ENDURANCE_USAGE)?;
@@ -305,6 +306,8 @@ fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Change
     Ok([
         present(pairs, "prearm")
             .then(|| Change::Prearm(given(pairs, "prearm").map(str::to_string))),
+        present(pairs, "refuseParam")
+            .then(|| Change::RefuseParameter(given(pairs, "refuseParam").map(str::to_string))),
         present(pairs, "wind").then(|| {
             let values = wind.unwrap_or_default();
             Change::Wind {
@@ -339,6 +342,7 @@ fn applied(changes: &[crate::mocklink::Change]) -> Value {
             Change::Endurance(minutes) => ("enduranceMin", json!(minutes)),
             Change::Home(lat, lon) => ("home", json!([lat, lon])),
             Change::Roads(on) => ("roads", json!(on)),
+            Change::RefuseParameter(name) => ("refuseParam", json!(name)),
             Change::Payload {
                 mass_g,
                 drag_area_cm2,

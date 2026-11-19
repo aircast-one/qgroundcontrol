@@ -378,6 +378,7 @@ fn create_cloud(name: &str, api_base: &str, device_id: &str) -> bool {
 
 pub const START_MOCK_LINK: &str = "links.startMockLink";
 pub const STOP_ONE_MOCK_LINK: &str = "links.stopOneMockLink";
+pub const CHANGE_MOCK_LINKS: &str = "links.changeMockLinks";
 
 fn live_mocks() -> Vec<crate::transport::LinkId> {
     live()
@@ -432,6 +433,28 @@ fn start_mock(vehicle: &str, given: &Value) -> bool {
         },
     };
     open(config).is_ok()
+}
+
+fn change_mocks(given: &Value) -> usize {
+    let pairs: Vec<(String, String)> = given
+        .get(0)
+        .and_then(Value::as_object)
+        .map(|asked| {
+            asked
+                .iter()
+                .map(|(key, value)| (key.clone(), value.as_str().unwrap_or_default().to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    match (
+        crate::mocklink::available(),
+        crate::debugapi::mock_change(&pairs),
+    ) {
+        (true, Ok(changes)) => {
+            crate::linkhost::change_mock_conditions(&crate::linkhost::TRANSPORTS, &changes)
+        }
+        _ => 0,
+    }
 }
 
 fn stop_one_mock() -> bool {
@@ -1527,6 +1550,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "links.createDeviceUdpLink" => json!(create_device_udp(&text(0), &text(1), whole(2))),
         START_MOCK_LINK => json!(start_mock(&text(0), &given)),
         STOP_ONE_MOCK_LINK => json!(stop_one_mock()),
+        CHANGE_MOCK_LINKS => json!(change_mocks(&given)),
         crate::platformbluetooth::SCAN => return crate::platformbluetooth::scan(args),
         "links.removeConfiguration" => json!(remove(
             given.get(0).and_then(Value::as_str).and_then(indexed)?

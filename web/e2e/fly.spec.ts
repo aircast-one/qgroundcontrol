@@ -76,6 +76,33 @@ test('an ArduPlane picks its takeoff height in the take-off panel, writes it bef
   await expect(app.getByRole('menu').getByRole('menuitem', { name: /^Take ?off/ }), 'taking off already, the menu offers no second Take off row').toHaveCount(1);
 });
 
+const refuseParameter = (page: Page, name: string) =>
+  page.evaluate(
+    async ([module, refused]) => {
+      const { Qgc } = (await import(module!)) as { Qgc: { invoke: (path: string, ...args: unknown[]) => Promise<unknown> } };
+      return Qgc.invoke('links.changeMockLinks', { refuseParam: refused });
+    },
+    ['/src/bridge/Qgc.ts', name],
+  );
+
+test('an ArduPlane whose autopilot refuses the new takeoff height says so and does not take off', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduPlane Vehicle');
+  await expect.poll(() => parameterValue(app, 'TKOFF_ALT'), { timeout: 60_000 }).toBe(50);
+  expect(await refuseParameter(app, 'TKOFF_ALT'), 'the simulated plane now keeps TKOFF_ALT whatever it is sent').toBe(true);
+  await expect(async () => {
+    if (await app.getByRole('button', { name: 'Cancel' }).isVisible()) await app.getByRole('button', { name: 'Cancel' }).click();
+    await app.getByRole('button', { name: 'Take off' }).click();
+    await expect(app.getByText('Height above launch')).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await app.getByRole('button', { name: '20 m', exact: true }).click();
+  await slideAcross(app, app.getByRole('button', { name: /^Slide to take off anyway · 20(\.0)? m$/ }));
+  await expect(app.getByText('The aircraft did not take the 20.0 m takeoff height, so it did not take off.').first()).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByText(/^Parameter write failed/), 'one message says what happened, not a second one about the parameter').toHaveCount(0);
+  expect(await parameterValue(app, 'TKOFF_ALT'), 'the aircraft kept its own height').toBe(50);
+  await app.getByRole('dialog').filter({ hasText: 'did not take the 20.0 m takeoff height' }).getByRole('button', { name: 'OK' }).click();
+  await expect(flightMode(app), 'it never switched to Takeoff or armed').toHaveAccessibleName(/^Manual Not fully ready/);
+});
+
 test('Escape cancels the takeoff panel', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'Take off' }).click();
   await expect(vehicle.getByText('Height above launch')).toBeVisible();
