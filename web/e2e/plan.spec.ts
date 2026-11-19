@@ -227,6 +227,20 @@ test('after undoing a move, the selected waypoint shows its own actions, not the
   await expect(app.getByRole('button', { name: 'Take photo', exact: true }), 'waypoint 2 has no photo; the panel kept the moved waypoint’s camera').toHaveCount(0);
 });
 
+test('a new fixed-wing landing says how to finish its setup, and finishing it clears the upload block', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduPlane Vehicle');
+  await openPlanAtVehicle(app);
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Land', exact: true }).click();
+  const unfinished = app.getByRole('button', { name: /Landing pattern .*Finish the landing setup/ });
+  await expect(unfinished).toBeVisible({ timeout: 15_000 });
+  await expect(app.getByText(/^Drag the loiter point/), 'the editor offered no way to finish the setup the upload asked for').toBeVisible();
+  await app.getByRole('button', { name: 'Done', exact: true }).last().click();
+  await expect(unfinished).toHaveCount(0, { timeout: 15_000 });
+});
+
 test('a plan the connected vehicle cannot fly says which items, and is not converted', async ({ app }) => {
   await openMenu(app, 'Plan');
   await app.getByRole('button', { name: /^Vehicle, / }).click();
