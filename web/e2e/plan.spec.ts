@@ -145,6 +145,27 @@ test('pressing Enter in a typed altitude sets it and closes the entry', async ({
   await expect(typed, 'the Enter used to land on the altitude button behind the entry and open it again').toHaveCount(0);
 });
 
+test('a new route altitude asks in plain words whether to change every waypoint, and says new ones copy the one before', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.getByRole('button', { name: 'Increase Altitude' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
+  await app.getByRole('button', { name: 'Done' }).click();
+  await expect(app.getByText('Sets the first waypoint; the rest copy the one before'), 'the note used to say new waypoints use this, while they copied the one before').toBeVisible();
+  await app.getByRole('button', { name: 'Altitude: 50 m' }).click();
+  await app.getByRole('dialog').getByRole('textbox').fill('70');
+  await app.getByRole('dialog').getByRole('button', { name: 'Set' }).click();
+  const asked = app.getByRole('dialog').filter({ hasText: 'Change every waypoint to the new route altitude?' });
+  await expect(asked).toBeVisible();
+  await expect(asked.getByText(/default altitude for mission items/)).toHaveCount(0);
+  await asked.getByRole('button', { name: 'Keep their altitudes' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint 51\.0 m/ })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Change all' })).toHaveCount(0);
+});
+
 test('switching a waypoint to AMSL keeps its height above the launch', async ({ vehicle }) => {
   await openPlanAtVehicle(vehicle);
   await tapPlanMission(vehicle);

@@ -499,8 +499,8 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
           onDismissRequest={dismissAltitude}
           title={sentenceCase(altitudePrompt.title)}
           text={altitudePrompt.text}
-          confirmButton={<TextButton onClick={() => void Qgc.invoke(APPLY_DEFAULT_ALTITUDE)}>Yes</TextButton>}
-          dismissButton={<TextButton onClick={dismissAltitude}>No</TextButton>}
+          confirmButton={<TextButton onClick={() => void Qgc.invoke(APPLY_DEFAULT_ALTITUDE)}>Change all</TextButton>}
+          dismissButton={<TextButton onClick={dismissAltitude}>Keep their altitudes</TextButton>}
         />
       ) : null}
       {showTransform ? <PlanTransformDialog onDismiss={() => setShowTransform(false)} /> : null}

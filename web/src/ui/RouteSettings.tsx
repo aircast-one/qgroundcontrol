@@ -13,7 +13,7 @@ import { factFromControl } from '@/ui/ParameterForm';
 
 const ALTITUDE_STEP = 1.0;
 const SPEED_STEP = 0.5;
-const ROUTE_ALTITUDE_NOTE = 'New waypoints use this';
+const ROUTE_ALTITUDE_NOTE = 'Sets the first waypoint; the rest copy the one before';
 const VEHICLE_SPEED_NOTE = 'Vehicle default';
 
 export type RouteAltitude = { value: number; units: string; path: string };
