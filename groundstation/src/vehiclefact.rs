@@ -515,10 +515,11 @@ pub const RADIO: GroupSpec = GroupSpec {
 
 pub const SIK_SYSTEM: u8 = b'3';
 pub const SIK_COMPONENT: u8 = b'D';
+const RECEIVED_DBM: std::ops::RangeInclusive<i64> = -127..=-1;
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct RadioStatusFacts {
-    pub values: [i64; 7],
+    pub values: [Option<i64>; 7],
     pub telemetry: bool,
 }
 
@@ -531,21 +532,22 @@ impl RadioStatusFacts {
         let mavlink::dialects::ardupilotmega::MavMessage::RADIO_STATUS(r) = message else {
             return;
         };
-        let sik = |raw: u8| ((f64::from(raw) / 1.9 - 127.0).round() as i64).clamp(-120, 0);
+        let sik = |raw: u8| Some(((f64::from(raw) / 1.9 - 127.0).round() as i64).clamp(-120, 0));
         let signed = |raw: u8| i64::from(raw as i8);
+        let received = |raw: u8| Some(signed(raw)).filter(|dbm| RECEIVED_DBM.contains(dbm));
         let (rssi, remote) = match from == (SIK_SYSTEM, SIK_COMPONENT) {
             true => (sik(r.rssi), sik(r.remrssi)),
-            false => (signed(r.rssi), signed(r.remrssi)),
+            false => (received(r.rssi), received(r.remrssi)),
         };
         *self = RadioStatusFacts {
             values: [
                 rssi,
                 remote,
-                i64::from(r.rxerrors),
-                i64::from(r.fixed),
-                i64::from(r.txbuf),
-                signed(r.noise),
-                signed(r.remnoise),
+                Some(i64::from(r.rxerrors)),
+                Some(i64::from(r.fixed)),
+                Some(i64::from(r.txbuf)),
+                Some(signed(r.noise)),
+                Some(signed(r.remnoise)),
             ],
             telemetry: true,
         };
@@ -1666,6 +1668,44 @@ pub fn gps_aggregate_fact(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_radio_rssi_that_cannot_be_a_received_level_is_left_unreported() {
+        let heard = |from: (u8, u8), rssi: u8, remrssi: u8| {
+            let mut facts = RadioStatusFacts::default();
+            facts.apply(
+                from,
+                &mavlink::dialects::ardupilotmega::MavMessage::RADIO_STATUS(
+                    mavlink::dialects::ardupilotmega::RADIO_STATUS_DATA {
+                        rssi,
+                        remrssi,
+                        rxerrors: 3,
+                        ..Default::default()
+                    },
+                ),
+            );
+            (
+                facts.raw("lrssi"),
+                facts.raw("rrssi"),
+                facts.raw("rxErrors"),
+            )
+        };
+        assert_eq!(
+            heard((1, 68), 100, (-82i8) as u8),
+            (Value::Null, json!(-82), json!(3)),
+            "a radio that is not SiK and reports a raw 100 would read +100 dBm, which no receiver measures, so it is hidden rather than shown"
+        );
+        assert_eq!(
+            heard((1, 68), 0, (-128i8) as u8).0,
+            Value::Null,
+            "0 dBm is not a received level either"
+        );
+        assert_eq!(
+            heard((SIK_SYSTEM, SIK_COMPONENT), 100, 100),
+            (json!(-74), json!(-74), json!(3)),
+            "a SiK radio still converts its register as before"
+        );
+    }
 
     #[test]
     fn every_group_lists_its_facts_in_the_fact_groups_add_fact_order() {
