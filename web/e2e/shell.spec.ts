@@ -77,7 +77,7 @@ test('on a desktop Fly leaves the whole window to the flight and keeps the other
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
-  await vehicle.getByRole('button', { name: 'Show', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Show mini map' }).click();
   await vehicle.getByRole('button', { name: 'Done' }).click();
   await expect.poll(inset).toBeGreaterThanOrEqual(320);
 });
