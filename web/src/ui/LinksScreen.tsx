@@ -191,6 +191,11 @@ export const pruneReplayFolder = (link: string, keep: string): Promise<void> => 
 
 const discardStagedLog = async (staged: string): Promise<void> => void (await unstage(staged));
 
+export const noLinksNote = (desktop: boolean): string =>
+  desktop
+    ? 'No links saved. A USB cable or telemetry radio connects by itself; add a link for Wi-Fi or a network connection.'
+    : 'No links saved. Add a link for a network (WebSocket) bridge or a USB telemetry radio.';
+
 export const linkIsEditable = (row: LinkRow): boolean => !row.heard && row.editing !== LinkEditing.None;
 
 export type LinkSection = { title: string; rows: readonly LinkRow[]; auto: readonly AutoLink[] };
@@ -1549,7 +1554,7 @@ export const LinksScreen = ({ className, footer = null }: { className?: string; 
         </Text>
       ) : null}
       <div className="pane-scroll flex min-h-0 flex-1 flex-col overflow-auto">
-        {rows.length === 0 && auto.length === 0 ? <FootNote text="No links saved. A USB cable or telemetry radio connects by itself; add a link for Wi-Fi or a network connection." /> : null}
+        {rows.length === 0 && auto.length === 0 ? <FootNote text={noLinksNote(__DESKTOP__)} /> : null}
         {linkSections(rows, auto).map((section) => (
           <div key={`head${section.title}`} className="flex flex-col">
             {section.rows.length > 0 || section.auto.length > 0 ? <SectionHeader text={section.title} /> : null}

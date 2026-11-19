@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import {
+  noLinksNote,
   AddOutcome,
   dialFailure,
   dialState,
@@ -230,6 +231,12 @@ describe('LinkEditRulesTest', () => {
       ['highLatency', false],
       ['url', 'ws://127.0.0.1:5760'],
     ]);
+  });
+
+  it('with no links a browser is not told a USB radio connects by itself, since it needs Allow a USB port first', () => {
+    expect(noLinksNote(false)).not.toContain('connects by itself');
+    expect(noLinksNote(false)).toContain('USB telemetry radio');
+    expect(noLinksNote(true)).toContain('connects by itself');
   });
 
   it('a link that keeps failing waits apart from the links that hear a vehicle', () => {
