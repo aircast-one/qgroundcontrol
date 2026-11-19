@@ -55,6 +55,7 @@ struct Routine {
 
 const ANY_VEHICLE: fn(&Classes) -> bool = |_| true;
 const ROTOR_OR_GROUND: fn(&Classes) -> bool = |c| c.multi_rotor || c.rover || c.sub;
+const MULTI_ROTOR_ONLY: fn(&Classes) -> bool = |c| c.multi_rotor;
 const ACCEL_NEEDED: &str = "accelSetupNeeded";
 const GYRO_NEEDED: &str = "gyroSetupNeeded";
 const COMPASS_NEEDED: &str = "compassSetupNeeded";
@@ -163,7 +164,7 @@ const APM_ROUTINES: &[Routine] = &[
         dialog_help: "Disconnect your props, flip them over and rotate them one position around the frame. In this configuration they should push the copter down into the ground when the throttle is raised.\n\nSecure the copter (perhaps with tape) so that it does not move.\n\nTurn on your transmitter and keep throttle at zero.\n\nClick Ok to start CompassMot calibration.",
         warning: "This spins the motors. This is recommended for vehicles that have only an internal compass and on vehicles where there is significant interference on the compass from the motors, power wires, etc. CompassMot only works well if you have a battery current monitor because the magnetic interference is linear with current drawn. It is technically possible to set-up CompassMot using throttle but this is not recommended.",
         spins_propeller: true,
-        visible: ANY_VEHICLE,
+        visible: MULTI_ROTOR_ONLY,
         on_fixed_wing: None,
     },
 ];
@@ -808,6 +809,23 @@ mod tests {
             pressure.1, "Baro/Airspeed",
             "on a plane the same routine zeroes the airspeed sensor too, and the name is what tells the operator to shield it"
         );
+    }
+
+    #[test]
+    fn compassmot_is_offered_only_to_a_multirotor_since_only_arducopter_runs_it() {
+        let offered = |vehicle: Value| listed(vehicle).iter().any(|(id, _)| id == "compassMot");
+        assert!(
+            !offered(
+                json!({ "kind": "object", "multiRotor": false, "rover": false, "sub": false, "fixedWing": true })
+            ),
+            "a plane was offered CompassMot with copter wording, and ArduPlane refuses it"
+        );
+        assert!(!offered(
+            json!({ "kind": "object", "multiRotor": false, "rover": true, "sub": false, "fixedWing": false })
+        ));
+        assert!(offered(
+            json!({ "kind": "object", "multiRotor": true, "rover": false, "sub": false, "fixedWing": false })
+        ));
     }
 
     #[test]

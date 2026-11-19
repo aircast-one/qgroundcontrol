@@ -277,7 +277,7 @@ fn supports(autopilot: u8, vehicle_type: u8) -> Value {
         "terrainFrame": !px4,
         "radio": !sub,
         "jsButton": sub,
-        "motorInterference": !sub,
+        "motorInterference": !apm || class == MultiRotor,
         "negativeThrust": (apm && matches!(class, Sub | Rover)) || (px4 && matches!(vehicle_type, 10 | 12)),
         "smartRTL": apm && matches!(class, MultiRotor | Rover),
         "throttleModeCenterZero": true,

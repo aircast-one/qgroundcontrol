@@ -67,6 +67,14 @@ test('a plane offers its flight modes and failsafe actions in plain words, witho
   await expect(app.getByRole('menuitem', { name: /\|/ })).toHaveCount(0);
 });
 
+test('a plane offers no CompassMot, which only ArduCopter runs', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduPlane Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Sensors/ }).first().click();
+  await expect(app.getByRole('button', { name: /^Compass/ }).first()).toBeVisible();
+  await expect(app.getByRole('button', { name: /^CompassMot/ })).toHaveCount(0);
+});
+
 test('a plane says why it has no motor test instead of offering eight motors', async ({ app }) => {
   await connectMock(app, [], 'APM ArduPlane Vehicle');
   await openAircraftSetup(app);
