@@ -108,6 +108,14 @@ func offeredActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: Camer
     return (hover + camera + rest).compactMap { $0 }
 }
 
+private let OFFER_VERBS = [("Photo", "take a photo"), ("Video", "film"), ("Hover", "hover"), ("Turn aircraft", "turn"), (DROP_TITLE, "drop")]
+
+func addActionsHint(_ offers: [ActionOffer]) -> String {
+    let verbs = OFFER_VERBS.filter { verb in offers.contains { $0.title == verb.0 } }.map { $0.1 }
+    guard let last = verbs.last else { return "Tap Add to give the camera something to do here." }
+    return "Tap Add to \(verbs.count == 1 ? last : "\(verbs.dropLast().joined(separator: ", ")) or \(last)") here."
+}
+
 struct WaypointActions: View {
     let index: Int
     let hold: WaypointHold?
@@ -147,7 +155,7 @@ struct WaypointActions: View {
                         }
                     }
                     if active.isEmpty {
-                        Text("Tap Add to take a photo, film, hover, turn or drop here.")
+                        Text(addActionsHint(offers))
                             .font(.bodySmall)
                             .foregroundStyle(theme.colors.onSurfaceVariant)
                     }

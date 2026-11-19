@@ -15,6 +15,13 @@ final class WaypointActionsTests: XCTestCase {
         )
     }
 
+    func testAPlaneWhichFliesThroughItsWaypointsIsNotOfferedAHoverOrToldItCanHover() {
+        let offers = offeredActions(nil, nil, CameraChoices(labels: labels, chosen: 0), idleCamera)
+        XCTAssertFalse(offers.map(\.title).contains("Hover"))
+        XCTAssertEqual("Tap Add to take a photo or film here.", addActionsHint(offers))
+        XCTAssertEqual("Tap Add to take a photo, film, hover or turn here.", addActionsHint(offeredActions(noHold, noTurn, CameraChoices(labels: labels, chosen: 0), idleCamera)))
+    }
+
     func testEachActionSetOnTheWaypointShowsOnceWithItsValueAndLeavesTheOffers() {
         let active = activeActions(
             WaypointHold(seconds: 5.0, units: "s", path: "h"),
