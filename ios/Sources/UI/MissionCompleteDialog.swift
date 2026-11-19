@@ -64,7 +64,7 @@ struct MissionCompleteDialog: View {
                 Button {
                     close(notice) { PlanCommands.resumeMission(waypoint) }
                 } label: {
-                    Text(notice.resumeLabel.ifBlank("Resume mission from waypoint \(waypoint)")).fontWeight(.semibold)
+                    Text(notice.resumeLabel).fontWeight(.semibold)
                 }
             }
             Button("Leave plan on vehicle") { close(notice) }
