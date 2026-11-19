@@ -234,7 +234,7 @@ test('a new fixed-wing landing says how to finish its setup, and finishing it cl
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   await app.getByRole('button', { name: 'Done' }).click();
   await app.getByRole('button', { name: 'Land', exact: true }).click();
-  const unfinished = app.getByRole('button', { name: /Landing pattern .*Finish the landing setup/ });
+  const unfinished = app.getByRole('button', { name: /^\S+ Landing pattern .*Finish the landing setup/ });
   await expect(unfinished).toBeVisible({ timeout: 15_000 });
   await expect(app.getByText(/^Drag the loiter point/), 'the editor offered no way to finish the setup the upload asked for').toBeVisible();
   await app.getByRole('button', { name: 'Done', exact: true }).last().click();
