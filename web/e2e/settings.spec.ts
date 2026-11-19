@@ -292,3 +292,14 @@ test('a page found by search that is drawn inside a tab opens at that page, not 
   await app.getByRole('button', { name: 'Fly view', exact: true }).click();
   await expect(app.getByText('Map and compass', { exact: true })).toBeInViewport();
 });
+
+test('the two zoom channel rows on Control are named by the radio they read, on the page and in search', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
+  await expect(app.getByRole('textbox', { name: 'Camera zoom channel (USB radio)', exact: true })).toHaveCount(1);
+  await expect(app.getByRole('textbox', { name: 'Camera zoom channel (aircraft receiver)', exact: true })).toHaveCount(1);
+  await expect(app.getByRole('textbox', { name: 'Camera zoom channel', exact: true })).toHaveCount(0);
+  await app.getByRole('textbox', { name: 'Search settings' }).fill('zoom channel');
+  await expect(app.getByRole('textbox', { name: 'Camera zoom channel (USB radio)', exact: true })).toBeVisible();
+  await expect(app.getByRole('textbox', { name: 'Camera zoom channel (aircraft receiver)', exact: true })).toBeVisible();
+});

@@ -781,6 +781,11 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
         "goToLocationRequiresConfirmInGuided",
         "Confirm before Go To Location in guided mode",
     ),
+    (
+        "flyViewSettings",
+        "cameraZoomChannel",
+        "Camera zoom channel (aircraft receiver)",
+    ),
     ("viewer3DSettings", "enabled", "Enabled"),
     ("viewer3DSettings", "osmFilePath", "3D Map File"),
     (
@@ -822,7 +827,7 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
     (
         "autoConnectSettings",
         "usbRadioZoomChannel",
-        "Camera zoom channel",
+        "Camera zoom channel (USB radio)",
     ),
     (
         "autoConnectSettings",
@@ -2431,6 +2436,45 @@ mod tests {
                 .all(|p| page_shown(p, true, false, false)),
             "and drops nothing else"
         );
+    }
+
+    #[test]
+    fn no_channel_row_of_the_usb_radio_shares_a_name_with_one_of_the_aircraft_receiver() {
+        let shown = |group: &str, store: &str, title: &str| -> Vec<String> {
+            SUBSECTIONS
+                .iter()
+                .find(|(g, _)| *g == group)
+                .and_then(|(_, blocks)| blocks.iter().find(|(t, _)| *t == title))
+                .map(|(_, names)| names.to_vec())
+                .unwrap_or_default()
+                .iter()
+                .map(|name| {
+                    QML_LABELS
+                        .iter()
+                        .find(|(g, n, _)| *g == group && n == name)
+                        .map(|(_, _, label)| label.to_string())
+                        .or_else(|| {
+                            crate::settingsstore::metadata(store, name).map(|meta| meta.label)
+                        })
+                        .unwrap_or_default()
+                })
+                .collect()
+        };
+        let receiver = shown(
+            "flyViewSettings",
+            "FlyView",
+            "Camera & gimbal on the aircraft's receiver",
+        );
+        let radio = shown(
+            "autoConnectSettings",
+            "AutoConnect",
+            "Radio on USB (EdgeTX script)",
+        );
+        assert!(receiver.len() == 5 && radio.len() > 10);
+        let shared: Vec<&String> = receiver.iter().filter(|it| radio.contains(it)).collect();
+        assert!(shared.is_empty(), "both groups sit on Control: {shared:?}");
+        assert!(receiver.contains(&"Camera zoom channel (aircraft receiver)".to_string()));
+        assert!(radio.contains(&"Camera zoom channel (USB radio)".to_string()));
     }
 
     #[test]
