@@ -1,7 +1,7 @@
-import { type CSSProperties, type HTMLAttributes, type ReactNode, type SyntheticEvent, useCallback, useContext, useMemo, useState } from 'react';
+import { type CSSProperties, type HTMLAttributes, type ReactNode, type SyntheticEvent, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { type Json, isNull, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useQgcPath } from '@/bridge/QgcState';
+import { useQgcPath, useQgcPathHoldingLast } from '@/bridge/QgcState';
 import { useBackHandler, useLaunchedEffect, useProduceState } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { delay, format, same } from '@/kotlin/Std';
@@ -336,11 +336,18 @@ const useMaxWidth = (): readonly [(node: HTMLDivElement | null) => (() => void) 
 
 type Opened = readonly [SetupComponent, string | null];
 
+export type SetupMemory = { page: string | null };
+
+export const LocalSetupMemory = createContext<SetupMemory | null>(null);
+
+export const rememberedSetupPage = (page: string | null, components: readonly SetupComponent[]): SetupComponent | typeof SETUP_PARAMETERS_PAGE | null =>
+  page === null ? null : page === SETUP_PARAMETERS_PAGE ? SETUP_PARAMETERS_PAGE : (components.find((it) => it.name === page) ?? null);
+
 export const SetupScreen = ({ className }: { className?: string }) => {
   const navigation = useContext(LocalAppNavigation);
   const requestedPage = useValue(navigation.setupPage);
   const outerTwoPane = useContext(LocalTwoPane);
-  const setupJson = useQgcPath(SETUP);
+  const setupJson = useQgcPathHoldingLast(SETUP);
   const setup = useMemo(() => setupReadiness(setupJson), [setupJson]);
   const hasVehicle = setup?.connected === true;
   const firmwareJson = useQgcPath(FIRMWARE);
@@ -405,9 +412,23 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   const waiting = parameterWait(setupJson);
   const wide = maxWidth >= LIST_DETAIL_MIN_WIDTH;
   const panesShown = hasVehicle && waiting === null;
+  const memory = useContext(LocalSetupMemory);
+  const [restoring, setRestoring] = useState(() => memory?.page ?? null);
+  const remembered = rememberedSetupPage(restoring, components);
 
-  useLaunchedEffect([wide && panesShown, components, requestedPage], () => {
-    if (!(wide && panesShown) || opened !== null || parametersOpen || firmwareOpen || requestedPage !== null) return;
+  useLaunchedEffect([restoring, remembered === null, components.length > 0], () => {
+    if (restoring === null || (remembered === null && components.length === 0)) return;
+    if (remembered === SETUP_PARAMETERS_PAGE) setParametersOpen(true);
+    else if (remembered !== null) setOpened([remembered, null]);
+    setRestoring(null);
+  });
+
+  useEffect(() => {
+    if (memory !== null && restoring === null) memory.page = parametersOpen ? SETUP_PARAMETERS_PAGE : (openComponent?.name ?? null);
+  }, [memory, restoring, parametersOpen, openComponent]);
+
+  useLaunchedEffect([wide && panesShown, components, requestedPage, restoring], () => {
+    if (!(wide && panesShown) || opened !== null || parametersOpen || firmwareOpen || requestedPage !== null || restoring !== null) return;
     const first = firstToOpen(components, (it) => headCanOpen(setupPage(setupJson, it.page), it.name));
     if (first !== undefined) setOpened([first, null]);
   });

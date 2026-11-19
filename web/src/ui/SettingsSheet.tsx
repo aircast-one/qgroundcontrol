@@ -10,7 +10,7 @@ import { onMac } from '@/kotlin/Keys';
 
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SETTINGS_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
-import { SetupScreen } from '@/ui/SetupScreen';
+import { LocalSetupMemory, type SetupMemory, SetupScreen } from '@/ui/SetupScreen';
 import { LocalChangeNotice, useChangeNotice } from '@/ui/ValueRow';
 import { useFocusReturn } from '@/ui/FocusReturn';
 import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
@@ -203,6 +203,7 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
     navigation.settingsTab.value = null;
   });
   const contentKey = `${group.name}|${page ?? ''}|${query !== null}|${setupOpen}`;
+  const [setupMemory] = useKeyedState<SetupMemory>([contentKey], () => ({ page: null }));
   const setupDestination = setupOpen && enteredForSetup;
   const headerBack = drilledTitle !== null && !(setupDestination && heading === null && !setupFromTab);
   const content =
@@ -242,7 +243,7 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
         }}
       />
     ) : (
-      <SetupBranch key={contentKey} heading={pageHeading} enabled={setupFromTab && query === null} onBack={setupBack} />
+      <SetupBranch key={contentKey} heading={pageHeading} memory={setupMemory} enabled={setupFromTab && query === null} onBack={setupBack} />
     );
   const snackbarHost = (
     <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex pb-[max(16px,env(safe-area-inset-bottom))] ${desktop ? 'justify-start px-menu' : 'justify-center'}`}>
@@ -354,12 +355,14 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
   );
 };
 
-const SetupBranch = ({ heading, enabled, onBack }: { heading: MutableState<PageHeading | null>; enabled: boolean; onBack: () => void }) => {
+const SetupBranch = ({ heading, memory, enabled, onBack }: { heading: MutableState<PageHeading | null>; memory: SetupMemory; enabled: boolean; onBack: () => void }) => {
   useBackHandler(enabled, onBack);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <LocalPageHeading.Provider value={heading}>
-        <SetupScreen className="min-h-0 flex-1" />
+        <LocalSetupMemory.Provider value={memory}>
+          <SetupScreen className="min-h-0 flex-1" />
+        </LocalSetupMemory.Provider>
       </LocalPageHeading.Provider>
     </div>
   );

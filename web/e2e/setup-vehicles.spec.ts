@@ -150,6 +150,17 @@ test('PX4 safety names the geofence action as Settings does and lists each limit
   await expect(app.getByText('-1.000 m')).toHaveCount(0);
 });
 
+test('an open Setup page stays open when the window narrows to a phone', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Power / }).click();
+  await expect(app.getByText('Battery capacity').first()).toBeVisible();
+  await app.setViewportSize({ width: 412, height: 860 });
+  await expect(app.getByText('Battery capacity').first()).toBeVisible();
+  await app.getByRole('button', { name: 'Back' }).first().click();
+  await expect(app.getByRole('button', { name: /^Sensors/ })).toBeVisible();
+});
+
 test('the copter frame tiles keep their names inside the tile', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
