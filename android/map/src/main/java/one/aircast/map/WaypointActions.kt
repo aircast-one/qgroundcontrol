@@ -121,6 +121,17 @@ internal fun offeredActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: Cam
             drop?.takeIf { it.index == null }?.let { ActionOffer(DROP_TITLE, R.drawable.plan_drop, ActionKind.Drop) },
         )
 
+private val OFFER_VERBS = listOf("Photo" to "take a photo", "Video" to "film", "Hover" to "hover", "Turn aircraft" to "turn", DROP_TITLE to "drop")
+
+internal fun addActionsHint(offers: List<ActionOffer>): String {
+    val verbs = OFFER_VERBS.filter { (title, _) -> offers.any { it.title == title } }.map { it.second }
+    return when (verbs.size) {
+        0 -> "Tap Add to give the camera something to do here."
+        1 -> "Tap Add to ${verbs.single()} here."
+        else -> "Tap Add to ${verbs.dropLast(1).joinToString(", ")} or ${verbs.last()} here."
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?, drop: WaypointDrop? = null) {
@@ -188,7 +199,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?,
             }
         }
         if (active.isEmpty()) {
-            Text("Tap Add to take a photo, film, hover, turn or drop here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(addActionsHint(offers), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             active.forEach { action -> ActionChip(action, onClick = { editing = action.kind.takeIf { it != ActionKind.Drop } }, onRemove = { remove(action.kind) }) }

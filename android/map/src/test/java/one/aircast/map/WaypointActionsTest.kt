@@ -2,6 +2,7 @@ package one.aircast.map
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -18,6 +19,14 @@ class WaypointActionsTest {
             listOf("Hover", "Photo", "Video", "Tilt camera", "Camera mode", "Turn aircraft"),
             offeredActions(noHold, noTurn, CameraChoices(labels, 0), idleCamera).map { it.title },
         )
+    }
+
+    @Test
+    fun `a plane, which flies through its waypoints, is not offered a hover or told it can hover`() {
+        val offers = offeredActions(null, null, CameraChoices(labels, 0), idleCamera)
+        assertFalse(offers.map { it.title }.contains("Hover"))
+        assertEquals("Tap Add to take a photo or film here.", addActionsHint(offers))
+        assertEquals("Tap Add to take a photo, film, hover or turn here.", addActionsHint(offeredActions(noHold, noTurn, CameraChoices(labels, 0), idleCamera)))
     }
 
     @Test
