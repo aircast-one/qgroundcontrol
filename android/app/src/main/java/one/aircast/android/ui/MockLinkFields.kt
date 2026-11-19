@@ -19,6 +19,7 @@ import org.json.JSONObject
 
 internal val MOCK_VEHICLES = listOf(
     "px4" to "PX4 Vehicle",
+    "px4Plane" to "PX4 Fixed Wing Vehicle",
     "apmCopter" to "APM ArduCopter Vehicle",
     "apmPlane" to "APM ArduPlane Vehicle",
     "apmSub" to "APM ArduSub Vehicle",
