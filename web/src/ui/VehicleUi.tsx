@@ -53,7 +53,7 @@ import {
 import { ValueDisplay, ValueDisplayDialog, ValueIcon, ValueLabel, displayColour, displayIcon, readDisplays, writeDisplay } from './InstrumentDisplay';
 import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapClickUnits } from './MapClickMenu';
 import { FlyViewMavlinkActions } from './MavlinkActions';
-import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
+import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
 import { LayoutWidget } from './OverlayLayout';
 import { LocalFlyOsd } from './Osd';
@@ -491,13 +491,16 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const liveActions = useMemo(() => (actionsJson === null ? null : JSON.stringify(actionsJson)), [actionsJson]);
   const automaticMissionPopups = useQgcBool(settingControl('settings.flyViewSettings.enableAutomaticMissionPopups'));
   const [missionReady, setMissionReady] = useState<ReadonlySet<string> | null>(null);
+  const [flownMission, setFlownMission] = useKeyedState([activeId], () => false);
   const [popupDue, setPopupDue] = useState<GuidedOffer | null>(null);
   const deckRequest = useValue(flyScreen.deckRequest);
 
   useLaunchedEffect([offers], () => {
     if (offerWithdrawn(pending?.offerId ?? null, offers)) setPending(null);
     if (offerWithdrawn(guidedValue?.kind.offerId ?? null, offers)) setGuidedValue(null);
-    const popup = missionReady === null ? null : autoMissionPopup(missionReady, offers, automaticMissionPopups);
+    const flown = missionFlown(flownMission, armed, optBoolean(actionsJson, 'missionAvailable'));
+    const popup = missionReady === null ? null : autoMissionPopup(missionReady, offers, automaticMissionPopups, flown);
+    setFlownMission(flown);
     setMissionReady(new Set(AUTO_POPUP_ACTIONS.filter((it) => offers.get(it)?.ready === true)));
     if (popup !== null) setPopupDue(popup);
   });

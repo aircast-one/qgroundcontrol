@@ -407,6 +407,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "GuidedActions",
         "connected": state.connected,
         "missionActive": state.mission_active(),
+        "missionAvailable": state.mission_available,
         "resumeFromSequence": (state.resume_from_sequence > 0).then_some(state.resume_from_sequence),
         "roiSupported": state.roi_supported,
         "roiActive": state.roi_active,
@@ -1583,6 +1584,39 @@ mod tests {
             Value::Null,
             "zero is not a waypoint to resume from, so it is withheld rather than served as a number a head might pass straight to resumeMission"
         );
+    }
+
+    #[test]
+    fn the_view_says_whether_a_mission_is_on_the_vehicle() {
+        struct Planned(bool);
+        impl Backend for Planned {
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                    "planFly.missionController" => {
+                        json!({ "kind": "object", "containsItems": self.0 })
+                    }
+                    _ => json!({ "kind": "object" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": true, "result": false }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(
+            guided_view(&Planned(true), &[])["missionAvailable"],
+            true,
+            "a head that stops offering Start mission after a flight needs to know when the flown mission is gone"
+        );
+        assert_eq!(guided_view(&Planned(false), &[])["missionAvailable"], false);
     }
 
     #[test]

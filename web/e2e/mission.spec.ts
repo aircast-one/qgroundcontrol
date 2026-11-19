@@ -11,7 +11,8 @@ test('an uploaded plan flies as a mission with a progress card', async ({ vehicl
   await expect(vehicle.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
   await fly.click();
   await expect(vehicle.getByText('Start mission', { exact: true })).toBeVisible();
-  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to start mission' }));
+  await expect(vehicle.getByText(/^Not fully ready\./), 'starting a mission takes off, so it warns like Take off does').toBeVisible();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to start mission anyway', exact: true }));
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Mission/, { timeout: 30_000 });
   await expect(vehicle.getByText(/^To waypoint \d+ of \d+/)).toBeVisible({ timeout: 30_000 });
   await expect(vehicle.getByRole('button', { name: 'Skip' })).toBeVisible();

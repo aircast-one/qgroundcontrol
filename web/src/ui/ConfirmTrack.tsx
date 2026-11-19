@@ -5,6 +5,8 @@ import { Checkbox, Surface, Text, TextButton } from '@/m3';
 import { summaryRow } from '@/map/MissionSummary';
 import { sentenceCase } from '@/map/SentenceCase';
 import { aircast, md } from '@/theme/Colors';
+import { FLY_STATE, type Readiness, flyState, useGuidedReadiness } from '@/ui/FlyState';
+import { ReadinessNote, guidedCommitLabel } from '@/ui/GuidedValuePanel';
 import { HoldToConfirm, holdLabel } from '@/ui/HoldToConfirm';
 import { planStatusText, planTitle } from '@/ui/PlanFileRules';
 import { useKeyedState } from '@/kotlin/Compose';
@@ -107,8 +109,14 @@ const LandFromTile = () => {
   return from === null ? null : <FactTile label="FROM" value={from[0]} units={from[1]} />;
 };
 
+const TAKES_OFF: ReadonlySet<string> = new Set([...MISSION_ACTIONS, 'takeoff']);
+
+export const confirmReadiness = (offerId: string | null, readiness: Readiness | null): Readiness | null => (offerId !== null && TAKES_OFF.has(offerId) ? readiness : null);
+
 export const ConfirmTrack = ({ action, onSent, onCancel, className }: { action: GuidedAction; onSent: () => void; onCancel: () => void; className?: string }) => {
   const [optionChecked, setOptionChecked] = useKeyedState([action.name, action.confirm, action.destructive, action.offerId, action.option?.label], () => false);
+  const flyJson = useQgcPath(FLY_STATE);
+  const readiness = confirmReadiness(action.offerId, useGuidedReadiness(useMemo(() => flyState(flyJson), [flyJson])));
   const confirm = () => {
     if (action.option) action.option.run(optionChecked);
     else action.run();
@@ -138,7 +146,8 @@ export const ConfirmTrack = ({ action, onSent, onCancel, className }: { action: 
           )}
         </div>
       ) : null}
-      <HoldToConfirm label={holdLabel(action.name)} destructive={action.destructive} className="mt-2" onConfirm={confirm} />
+      {readiness !== null ? <ReadinessNote readiness={readiness} /> : null}
+      <HoldToConfirm label={holdLabel(guidedCommitLabel(action.name, readiness))} enabled={readiness?.blocks !== true} destructive={action.destructive} className="mt-2" onConfirm={confirm} />
       <TextButton onClick={onCancel} className="self-center">
         Cancel
       </TextButton>

@@ -24,12 +24,16 @@ export const moreActions = (offers: ReadonlyMap<string, GuidedOffer>): readonly 
 
 const LAND_ABORT = 'landAbort';
 
-export const AUTO_POPUP_ACTIONS: readonly string[] = [LAND_ABORT, 'startMission', 'continueMission'];
+const START_MISSION = 'startMission';
+
+export const AUTO_POPUP_ACTIONS: readonly string[] = [LAND_ABORT, START_MISSION, 'continueMission'];
 
 export const popupReplacesOpenConfirm = (id: string): boolean => id === LAND_ABORT;
 
-export const autoMissionPopup = (wasReady: ReadonlySet<string>, offers: ReadonlyMap<string, GuidedOffer>, enabled: boolean): GuidedOffer | null =>
-  AUTO_POPUP_ACTIONS.flatMap((id) => offers.get(id) ?? []).find((it) => (enabled || it.id === LAND_ABORT) && it.ready && !wasReady.has(it.id)) ?? null;
+export const missionFlown = (flown: boolean, armed: boolean, missionAvailable: boolean): boolean => armed || (flown && missionAvailable);
+
+export const autoMissionPopup = (wasReady: ReadonlySet<string>, offers: ReadonlyMap<string, GuidedOffer>, enabled: boolean, flown = false): GuidedOffer | null =>
+  AUTO_POPUP_ACTIONS.flatMap((id) => offers.get(id) ?? []).find((it) => (enabled || it.id === LAND_ABORT) && it.ready && !wasReady.has(it.id) && !(flown && it.id === START_MISSION)) ?? null;
 
 export const guidedCommand = (id: string, resumeFrom: number | null): (() => void) | null => {
   switch (id) {

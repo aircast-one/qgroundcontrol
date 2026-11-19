@@ -3,7 +3,7 @@ import { type Json, parseJson } from '@/bridge/Json';
 import { EMERGENCY_STOP } from './EmergencyStop';
 import { GuidedOffer, guidedOffers, resumeFromSequence } from './GuidedActions';
 import { gripperOffers } from './GripperPanel';
-import { PAUSE, SHEET_ACTIONS, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
+import { PAUSE, SHEET_ACTIONS, autoMissionPopup, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 
 const json = (text: string): Json => parseJson(text) ?? {};
 
@@ -97,6 +97,16 @@ describe('AutoMissionPopupTest', () => {
     expect(autoMissionPopup(new Set(['landAbort']), approach, false)).toBeNull();
     expect(popupReplacesOpenConfirm('landAbort'), 'confirmAction(actionLandAbort) replaces whatever confirm is open').toBe(true);
     expect(popupReplacesOpenConfirm('startMission')).toBe(false);
+  });
+
+  it('start mission does not pop up again after the mission on the vehicle has been flown', () => {
+    const ready = new Map([['startMission', offer('startMission', 'ready')]]);
+    const flown = [true, false, false].reduce((latch, armed) => missionFlown(latch, armed, true), false);
+    expect(flown, 'landing keeps the flown mission on the vehicle').toBe(true);
+    expect(autoMissionPopup(new Set(), ready, true, flown), 'a landing ends the flight; the pilot did not ask to start again').toBeNull();
+    expect(missionFlown(flown, false, false), 'removing the flown plan clears it, so the next upload offers to start').toBe(false);
+    expect(autoMissionPopup(new Set(), ready, true, missionFlown(false, false, true))?.id).toBe('startMission');
+    expect(autoMissionPopup(new Set(), new Map([['continueMission', offer('continueMission', 'ready')]]), true, true)?.id).toBe('continueMission');
   });
 
   it('continue mission pops up too', () => {

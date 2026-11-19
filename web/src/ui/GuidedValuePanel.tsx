@@ -60,15 +60,7 @@ export const GuidedValuePanel = ({
               {named !== null ? <Text typography="labelLarge" color={md('primary')}>{named}</Text> : null}
               {sentence.trim() !== '' ? <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="whitespace-pre-line">{sentence}</Text> : null}
               {note}
-              {readiness !== null ? (
-                <Surface
-                  color={readiness.blocks ? md('errorContainer') : aircast('warningContainer')}
-                  contentColor={readiness.blocks ? md('onErrorContainer') : md('onSurface')}
-                  shape="medium"
-                >
-                  <Text typography="bodyMedium" className="block p-3">{readiness.text}</Text>
-                </Surface>
-              ) : null}
+              {readiness !== null ? <ReadinessNote readiness={readiness} /> : null}
               <div className={`flex flex-col empty:hidden ${compact ? 'gap-2' : 'mt-2 gap-4'}`}>{children}</div>
             </div>
             {portrait ? (
@@ -88,6 +80,12 @@ export const GuidedValuePanel = ({
     </div>
   );
 };
+
+export const ReadinessNote = ({ readiness }: { readiness: Readiness }) => (
+  <Surface color={readiness.blocks ? md('errorContainer') : aircast('warningContainer')} contentColor={readiness.blocks ? md('onErrorContainer') : md('onSurface')} shape="medium">
+    <Text typography="bodyMedium" className="block p-3">{readiness.text}</Text>
+  </Surface>
+);
 
 export const LocalGuidedCompact = createContext(false);
 

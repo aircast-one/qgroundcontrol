@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { holdLabel } from './HoldToConfirm';
-import { MISSION_ACTIONS, MISSION_ON_DRONE, MissionIdentity, landFrom, missionIdentity, rtlPreview, sentIsStillShowing, sentText, sentUnlessRefused } from './ConfirmTrack';
+import { MISSION_ACTIONS, MISSION_ON_DRONE, MissionIdentity, confirmReadiness, landFrom, missionIdentity, rtlPreview, sentIsStillShowing, sentText, sentUnlessRefused } from './ConfirmTrack';
+import { Readiness } from './FlyState';
+import { guidedCommitLabel } from './GuidedValuePanel';
 
 describe('ConfirmTrackTest', () => {
   it('sent stands until the served actions change', () => {
@@ -48,6 +50,16 @@ describe('ConfirmTrackTest', () => {
     expect(holdLabel('Land')).toBe('Slide to land');
     expect(holdLabel('')).toBe('Slide to confirm');
     expect(MISSION_ACTIONS.has('land')).toBe(false);
+  });
+
+  it('starting a mission warns like take off does, since it takes off too', () => {
+    const warning = Readiness({ text: 'Not fully ready. Battery at 6%. Charge or swap it before flight.', blocks: false });
+    expect(confirmReadiness('startMission', warning)).toEqual(warning);
+    expect(holdLabel(guidedCommitLabel('Start mission', confirmReadiness('startMission', warning)))).toBe('Slide to start mission anyway');
+    expect(confirmReadiness('takeoff', warning), 'a wing takes off from this confirm rather than the height panel').toEqual(warning);
+    expect(holdLabel(guidedCommitLabel('Take off', confirmReadiness('takeoff', warning)))).toBe('Slide to take off anyway');
+    expect(confirmReadiness('land', warning), 'landing is never refused for an unready aircraft').toBeNull();
+    expect(confirmReadiness(null, warning)).toBeNull();
   });
 
   it('the return confirm reads how far home is, the height it flies back at and the charge on landing', () => {
