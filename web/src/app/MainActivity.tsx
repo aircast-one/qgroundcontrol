@@ -66,7 +66,7 @@ import { ObstacleArc } from '@/ui/ObstacleArc';
 import { ObstacleReadout } from '@/ui/ObstacleReadout';
 import { OrbitReadout } from '@/ui/OrbitReadout';
 import { useAppDarkTheme } from '@/ui/Palette';
-import { LayoutDoneButton, LayoutGroup, LayoutOptionsMenu, LayoutWidget, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
+import { LAYOUT_EDITING_IN_FLIGHT, LayoutDoneButton, LayoutGroup, LayoutOptionsMenu, LayoutWidget, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
 import { PlanTab } from '@/ui/PlanTab';
 import { RcControlsLayer } from '@/ui/RcControlsLayer';
 import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
@@ -87,6 +87,7 @@ import { VtolStateCell } from '@/ui/VtolStateCell';
 import { LocalChangeNotice, useChangeNotice } from '@/ui/ValueRow';
 
 const FLY_NOTICE_TOP = 76;
+const FLY_NOTICE_BELOW_CHROME = 30;
 
 const FLY_NOTICE_MAX_WIDTH = 560;
 
@@ -466,6 +467,16 @@ export const AircastShell = () => {
 
   const flyNow = useQgcDerived(FLY_STATE, shellFly);
   const armedNow = flyNow !== null && flyNow.connected && flyNow.armed;
+  const editingInFlight = layoutEditing && armedNow;
+  const flyChromeBottom = useValue(flyScreen.widgetInsets).top;
+  useEffect(() => {
+    if (!editingInFlight) return undefined;
+    const shown = new AbortController();
+    void snackbars.showSnackbar(LAYOUT_EDITING_IN_FLIGHT, 'Done', 'Indefinite', shown.signal).then((result) => {
+      if (result === 'ActionPerformed') overlayLayout.editing.value = false;
+    });
+    return () => shown.abort();
+  }, [editingInFlight]);
   const activeId = useRememberActiveVehicleId();
   const armedSession = useRef(NO_ARMED_SESSION);
   const armedBattery = useRef<number | null>(null);
@@ -624,7 +635,7 @@ export const AircastShell = () => {
       </LayoutWidget>
       <ControlRequestPrompt />
       <DeviceStatusChip />
-      <div className="min-w-0" {...statusPillHold}>
+      <div className={layoutEditing && portrait ? 'order-last min-w-0 basis-full pt-2 pb-2' : 'min-w-0'} {...statusPillHold}>
         <StatusPill />
       </div>
       {layoutEditing ? <LayoutDoneButton /> : <FlyMenuButton />}
@@ -754,7 +765,7 @@ export const AircastShell = () => {
                   </Fragment>
                 </div>
                 {onFly ? (
-                  <div className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4" style={{ top: `calc(env(safe-area-inset-top) + ${FLY_NOTICE_TOP}px)` }}>
+                  <div className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4" style={{ top: `max(calc(env(safe-area-inset-top) + ${FLY_NOTICE_TOP}px), ${flyChromeBottom + FLY_NOTICE_BELOW_CHROME}px)` }}>
                     <div className="flex w-full flex-col gap-2" style={{ maxWidth: FLY_NOTICE_MAX_WIDTH }}>
                       {settingsOpen ? null : <LinkLostCard className="pointer-events-auto" />}
                       <SnackbarHost hostState={snackbars} />

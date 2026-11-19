@@ -48,9 +48,9 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { LayoutWidget, MINIMAP_KEY, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
-import { BATTERY_BAR_BADGE, BATTERY_BAR_KEY, BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
+import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, VIDEO_CORNER_ROOM, useRememberSyntheticAims, useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
 import { UpdateBanner } from '@/ui/AppUpdates';
@@ -169,7 +169,7 @@ const ZERO_SIZE = Size(0, 0);
 
 const MinimapWidget = ({ editing, children }: { editing: boolean; children: ReactNode }) =>
   editing ? (
-    <LayoutWidget widgetKey={MINIMAP_KEY} movable={false}>
+    <LayoutWidget widgetKey={MINIMAP_KEY} movable={false} name={MINIMAP_NAME}>
       {children}
     </LayoutWidget>
   ) : (
@@ -540,7 +540,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                           </div>
                         </FlyTopBar>
                         <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
-                          <LayoutWidget widgetKey={BATTERY_BAR_KEY} movable={false} live badgePlace={BATTERY_BAR_BADGE}>
+                          <LayoutWidget widgetKey={BATTERY_BAR_KEY} movable={false} live hideable={false}>
                             <BatteryReturnBar />
                           </LayoutWidget>
                         </div>
@@ -734,7 +734,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               </div>
             ) : mapIsPip ? (
               <div className="absolute" style={{ ...thumbStyle, zIndex: layer(2) }}>
-                <LayoutWidget widgetKey={MINIMAP_KEY} movable={false}>
+                <LayoutWidget widgetKey={MINIMAP_KEY} movable={false} name={MINIMAP_NAME}>
                   <div
                     role="button"
                     tabIndex={0}

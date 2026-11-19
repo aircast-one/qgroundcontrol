@@ -110,7 +110,7 @@ export const valueSizeAt = (ordinal: number): ValueSize => ValueSizeEntries[ordi
 
 export const nextValueSize = (size: ValueSize): ValueSize => valueSizeAt((size.ordinal + 1) % ValueSizeEntries.length);
 
-export const valueSizePillText = (size: ValueSize): string => `Size: ${size.label}`;
+export const valueSizePillText = (size: ValueSize): string => `Readout size: ${size.label}`;
 
 export const readValueSize = (vehicleClass: string): ValueSize => valueSizeAt(getSharedPreferences(STORE).getInt(`${VALUE_SIZE_KEY}-${vehicleClass}`, 0));
 

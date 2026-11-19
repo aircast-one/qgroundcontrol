@@ -44,8 +44,8 @@ import {
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { LayoutWidget, badgeRoom } from '@/ui/OverlayLayout';
-import { BATTERY_BAR_BADGE, BATTERY_BAR_KEY, BatteryReturnBar } from '@/ui/StatusStrip';
+import { BATTERY_BAR_KEY, LayoutWidget, badgeRoom } from '@/ui/OverlayLayout';
+import { BatteryReturnBar } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
@@ -339,11 +339,11 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
             </AnimatedVisibility>
             <div ref={chrome.ref} className={`absolute inset-x-0 top-0 flex w-full flex-col ${PASS_THROUGH}`}>
               <div className="relative w-full" style={{ background: `linear-gradient(to bottom, ${withAlpha(Color.Black, SCRIM_ALPHA)}, transparent)`, paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-                <div ref={statusRow} data-status-row className="flex w-full items-center gap-2 px-3" style={{ height: PORTRAIT_BAR_HEIGHT }}>
+                <div ref={statusRow} data-status-row className={`flex w-full items-center gap-2 px-3 ${editing ? 'flex-wrap' : ''}`} style={{ minHeight: PORTRAIT_BAR_HEIGHT }}>
                   {status}
                 </div>
                 <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
-                  <LayoutWidget widgetKey={BATTERY_BAR_KEY} movable={false} live badgePlace={BATTERY_BAR_BADGE}>
+                  <LayoutWidget widgetKey={BATTERY_BAR_KEY} movable={false} live hideable={false}>
                     <BatteryReturnBar />
                   </LayoutWidget>
                 </div>

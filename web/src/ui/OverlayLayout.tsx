@@ -34,7 +34,9 @@ export const ResetTap = (fields: ResetTap): ResetTap => ({ ...fields });
 
 export const resetTap = (armed: boolean): ResetTap => ResetTap({ reset: armed, armed: !armed });
 
-export const resetPillText = (armed: boolean): string => (armed ? `${TAP} again to reset` : 'Reset layout');
+export const resetPillText = (armed: boolean): string => (armed ? `${TAP} again to reset` : 'Reset positions and hidden items');
+
+export const LAYOUT_EDITING_IN_FLIGHT = 'Editing the layout. Return, Land and Kill motors still work.';
 
 const INDICATOR_ORDER = 'FlyViewIndicatorOrder';
 
@@ -151,15 +153,27 @@ export const movedAmongShown = (keys: readonly string[], shown: ReadonlySet<stri
   return moved === null ? null : reorderedAmongShown(keys, moved);
 };
 
-export const droppedOrder = (keys: readonly string[], centres: ReadonlyMap<string, number>, key: string, dx: number): string[] => {
-  const at = (shown: string) => (centres.get(shown) ?? 0) + (shown === key ? dx : 0);
+const nearestIndex = (lines: readonly number[], y: number): number => lines.reduce((best, line, index) => (Math.abs(line - y) < Math.abs((lines[best] ?? 0) - y) ? index : best), 0);
+
+export const droppedOrder = (keys: readonly string[], centres: ReadonlyMap<string, Offset>, key: string, dx: number, dy: number): string[] => {
+  const lines = [...new Set([...centres.values()].map(([, y]) => Math.round(y)))].toSorted((a, b) => a - b);
+  const place = (shown: string): Offset => {
+    const [x, y] = centres.get(shown) ?? NO_OFFSET;
+    return shown === key ? [nearestIndex(lines, y + dy), x + dx] : [nearestIndex(lines, y), x];
+  };
   return reorderedAmongShown(
     keys,
-    keys.filter((it) => centres.has(it)).toSorted((a, b) => at(a) - at(b)),
+    keys.filter((it) => centres.has(it)).toSorted((a, b) => place(a)[0] - place(b)[0] || place(a)[1] - place(b)[1]),
   );
 };
 
 export const MINIMAP_KEY = 'minimap';
+
+export const MINIMAP_NAME = 'Mini map';
+
+export const BATTERY_BAR_KEY = 'batteryBar';
+
+export const batteryBarPillText = (hidden: boolean): string => `Battery bar: ${hidden ? 'Hidden' : 'Shown'}`;
 
 const HIDDEN_BY_DEFAULT: readonly string[] = [MINIMAP_KEY];
 
@@ -330,7 +344,9 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, className }: { wi
   );
 };
 
-const BADGE = "absolute grid place-items-center after:absolute after:-inset-[3px] after:content-['']";
+const BADGE = "absolute grid place-items-center after:absolute after:-inset-[13px] after:content-['']";
+
+const NAMED_BADGE = "absolute flex items-center gap-0.5 whitespace-nowrap pe-1.5 text-label-small after:absolute after:-inset-[13px] after:content-['']";
 
 const BADGE_RISE = (BADGE_SIZE * 3) / 4;
 
@@ -362,22 +378,24 @@ export const LayoutGroup = ({ widgetKey, className, children }: { widgetKey: str
   );
 };
 
+export const badgeLabel = (hidden: boolean, name: string | undefined): string => [hidden ? 'Show' : 'Hide', ...(name === undefined ? [] : [name.toLowerCase()])].join(' ');
+
 export const LayoutWidget = ({
   widgetKey,
   movable = true,
   hideable = true,
   live = false,
   dragsWith,
-  badgePlace,
+  name,
   className,
   children,
 }: {
   widgetKey: string;
+  name?: string;
   movable?: boolean;
   hideable?: boolean;
   live?: boolean;
   dragsWith?: string;
-  badgePlace?: CSSProperties;
   className?: string;
   children?: ReactNode;
 }) => {
@@ -429,15 +447,16 @@ export const LayoutWidget = ({
         {decorated && hideable ? (
           <Surface
             onClick={() => layout.setHidden(widgetKey, !hidden)}
-            className={BADGE}
-            style={{ ...BADGE_PLACE, ...badgePlace }}
+            className={name === undefined ? BADGE : NAMED_BADGE}
+            style={name === undefined ? BADGE_PLACE : { ...BADGE_PLACE, width: 'auto' }}
             shape="full"
             color={hidden ? md('primary') : md('inverseSurface')}
             contentColor={hidden ? md('onPrimary') : md('inverseOnSurface')}
             shadow
-            label={hidden ? 'Show' : 'Hide'}
+            label={badgeLabel(hidden, name)}
           >
-            <MaterialIcon name={hidden ? 'add' : 'close'} filled size={BADGE_SIZE - 6} />
+            <MaterialIcon name={hidden ? 'add' : 'close'} filled size={BADGE_SIZE - 6} className="mx-[3px]" />
+            {name === undefined ? null : <span aria-hidden>{name}</span>}
           </Surface>
         ) : null}
       </div>
@@ -448,6 +467,7 @@ export const LayoutWidget = ({
 export const LayoutOptionsMenu = () => {
   const layout = useContext(LocalFlyScreenState).layout;
   const valueSize = useValue(layout.valueSize);
+  const barHidden = useValue(layout.hidden).has(BATTERY_BAR_KEY);
   const vehicleClass = instrumentVehicleClass(useQgcPath(INSTRUMENTS_VIEW));
   const backdrop = useOsdBackdrop(OSD_SCRIM);
   const [open, setOpen] = useState(false);
@@ -480,6 +500,7 @@ export const LayoutOptionsMenu = () => {
             writeValueSize(vehicleClass, next);
           }}
         />
+        <DropdownMenuItem text={batteryBarPillText(barHidden)} closeOnClick={false} onClick={() => layout.setHidden(BATTERY_BAR_KEY, !barHidden)} />
         <DropdownMenuItem
           text={resetPillText(armed)}
           color={armed ? md('error') : undefined}

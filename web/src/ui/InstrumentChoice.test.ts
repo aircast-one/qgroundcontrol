@@ -138,7 +138,7 @@ describe('InstrumentChoiceTest', () => {
     expect(nextValueSize(ValueSize.Default)).toBe(ValueSize.Small);
     expect(nextValueSize(ValueSize.Large)).toBe(ValueSize.Default);
     expect(valueSizeAt(9)).toBe(ValueSize.Default);
-    expect(valueSizePillText(ValueSize.Medium)).toBe('Size: Medium');
+    expect(valueSizePillText(ValueSize.Medium)).toBe('Readout size: Medium');
     expect(ValueSizeEntries.map((it) => it.scale)).toEqual([1, 0.86, 1.25, 1.5]);
   });
 

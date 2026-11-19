@@ -49,11 +49,11 @@ test('the layout edit controls replace the menu, leave the map and video alone, 
 
   await vehicle.mouse.click(mapPip.x + mapPip.width / 2, mapPip.y + mapPip.height / 2);
   await options.click();
-  const size = vehicle.getByRole('menuitem', { name: /^Size: / });
-  await expect(size).toHaveText('Size: Default');
+  const size = vehicle.getByRole('menuitem', { name: /^Readout size: / });
+  await expect(size).toHaveText('Readout size: Default');
   await size.click();
   await size.click();
-  await expect(size).toHaveText('Size: Medium');
+  await expect(size).toHaveText('Readout size: Medium');
   await expect.poll(height).toBeCloseTo(before * 1.25, 0);
   await vehicle.keyboard.press('Escape');
   await vehicle.getByRole('button', { name: 'Done' }).click();
@@ -65,7 +65,7 @@ test('reset layout in the layout options asks for a second tap before it resets'
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();
   await vehicle.getByRole('button', { name: 'Layout options' }).click();
-  await vehicle.getByRole('menuitem', { name: 'Reset layout' }).click();
+  await vehicle.getByRole('menuitem', { name: 'Reset positions and hidden items' }).click();
   await vehicle.getByRole('menuitem', { name: /again to reset$/ }).click();
   await expect(vehicle.getByRole('menu')).toBeHidden();
   await expect(vehicle.getByRole('button', { name: 'Layout options' }), 'still editing after the reset').toBeVisible();

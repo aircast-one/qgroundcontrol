@@ -44,7 +44,7 @@ import {
 import { JoystickIndicatorCell } from '@/ui/JoystickIndicator';
 import { USB_RADIO_VIEW, usbRadioBadge, usbRadioTone } from '@/ui/UsbRadioIndicator';
 import { useOsdBackdrop } from '@/ui/Osd';
-import { LayoutWidget, badgeRoom, droppedOrder, movedAmongShown, orderedKeys, swallowReleaseClick } from '@/ui/OverlayLayout';
+import { LayoutWidget, type Offset, badgeRoom, droppedOrder, movedAmongShown, orderedKeys, swallowReleaseClick } from '@/ui/OverlayLayout';
 import { ParameterForm } from '@/ui/ParameterForm';
 import { RemoteIdIndicatorCell } from '@/ui/RemoteIdIndicator';
 import { RtkIndicatorCell, RtkSettingsSheetContent, type RtkStatus, useRememberRtkStatus } from '@/ui/RtkIndicator';
@@ -162,12 +162,13 @@ export const StatusPill = ({ className }: { className?: string }) => {
   }, []);
   if (!statusPillShown(vehicle, rtk !== null, gcsBattery !== null)) return null;
   const narrow = portrait || maxWidth < NARROW_PILL_WIDTH;
+  const wrapped = editing && portrait;
   return (
     <div ref={measure} className={`min-w-0 ${className ?? ''}`}>
-      <Surface shape="full" color={backdrop} contentColor={aircast('outdoorForeground')} className={`max-w-full ${editing ? 'overflow-visible' : 'overflow-hidden'}`}>
+      <Surface shape={wrapped ? 'large' : 'full'} color={backdrop} contentColor={aircast('outdoorForeground')} className={`max-w-full ${editing ? 'overflow-visible' : 'overflow-hidden'}`}>
         <LocalCompactStatus.Provider value>
           <LocalNarrowStatus.Provider value={narrow}>
-            <StatusReadingsInline rtk={rtk} gcsBattery={gcsBattery} style={{ paddingInlineEnd: stripGap(narrow), paddingTop: 6, paddingBottom: 6 }} />
+            <StatusReadingsInline rtk={rtk} gcsBattery={gcsBattery} className={wrapped ? 'flex-wrap' : undefined} style={{ paddingInlineEnd: stripGap(narrow), paddingTop: 6, paddingBottom: 6, rowGap: wrapped ? WRAPPED_ROW_GAP : undefined }} />
           </LocalNarrowStatus.Provider>
         </LocalCompactStatus.Provider>
       </Surface>
@@ -187,6 +188,7 @@ export const widthLeftInRow = (row: HTMLElement, element: HTMLElement): number =
 const STRIP_GAP = 14;
 const NARROW_STRIP_GAP = 6;
 const NARROW_PILL_WIDTH = 120;
+const WRAPPED_ROW_GAP = 18;
 const NARROW_STATUS_CELLS = 1;
 
 export const LocalNarrowStatus = createContext(false);
@@ -200,12 +202,12 @@ export const stripKeys = (ordered: readonly string[], room: number, alarmed: Rea
 const REORDER_HOLD_MS = 150;
 const REORDER_SLOP = 8;
 
-type ReorderPress = { readonly key: string; readonly id: number; readonly x: number; readonly y: number; readonly timer: ReturnType<typeof setTimeout>; readonly centres: ReadonlyMap<string, number> | null };
+type ReorderPress = { readonly key: string; readonly id: number; readonly x: number; readonly y: number; readonly timer: ReturnType<typeof setTimeout>; readonly centres: ReadonlyMap<string, Offset> | null };
 
 const useIndicatorReorder = (keys: readonly string[], shown: ReadonlySet<string>, save: (keys: readonly string[]) => void) => {
   const nodes = useRef(new Map<string, HTMLElement>());
   const press = useRef<ReorderPress | null>(null);
-  const [dragged, setDragged] = useState<{ key: string; dx: number } | null>(null);
+  const [dragged, setDragged] = useState<{ key: string; dx: number; dy: number } | null>(null);
   const stop = () => {
     if (press.current !== null) clearTimeout(press.current.timer);
     press.current = null;
@@ -217,13 +219,13 @@ const useIndicatorReorder = (keys: readonly string[], shown: ReadonlySet<string>
     },
     [],
   );
-  const centres = (): ReadonlyMap<string, number> =>
+  const centres = (): ReadonlyMap<string, Offset> =>
     new Map(
       [...nodes.current]
         .filter(([key]) => shown.has(key))
         .map(([key, node]) => {
           const box = node.getBoundingClientRect();
-          return [key, (box.left + box.right) / 2] as const;
+          return [key, [(box.left + box.right) / 2, (box.top + box.bottom) / 2] as const] as const;
         }),
     );
   const bind = (key: string): HTMLAttributes<HTMLDivElement> & { ref: (node: HTMLDivElement | null) => void } => ({
@@ -241,20 +243,20 @@ const useIndicatorReorder = (keys: readonly string[], shown: ReadonlySet<string>
         if (down === null || down.id !== id) return;
         press.current = { ...down, centres: centres() };
         target.setPointerCapture(id);
-        setDragged({ key, dx: 0 });
+        setDragged({ key, dx: 0, dy: 0 });
       }, REORDER_HOLD_MS);
       press.current = { key, id, x: event.clientX, y: event.clientY, timer, centres: null };
     },
     onPointerMove: (event) => {
       const down = press.current;
       if (down === null || down.id !== event.pointerId) return;
-      if (down.centres !== null) setDragged({ key: down.key, dx: event.clientX - down.x });
+      if (down.centres !== null) setDragged({ key: down.key, dx: event.clientX - down.x, dy: event.clientY - down.y });
       else if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > REORDER_SLOP) stop();
     },
     onPointerUp: (event) => {
       const down = press.current;
       if (down !== null && down.id === event.pointerId && down.centres !== null) {
-        save(droppedOrder(keys, down.centres, down.key, event.clientX - down.x));
+        save(droppedOrder(keys, down.centres, down.key, event.clientX - down.x, event.clientY - down.y));
         swallowReleaseClick();
       }
       stop();
@@ -476,7 +478,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
             <div
               {...(editing && shown.has(key) ? { ...reorder(key), 'data-gesture': true, tabIndex: 0, 'aria-description': 'Move with the left and right arrow keys' } : {})}
               className={editing ? 'relative touch-none' : 'relative'}
-              style={dragged?.key === key ? { translate: `${dragged.dx}px 0`, zIndex: 1 } : undefined}
+              style={dragged?.key === key ? { translate: `${dragged.dx}px ${dragged.dy}px`, zIndex: 1 } : undefined}
             >
               <LayoutWidget widgetKey={`indicator-${key}`} movable={false}>
                 <IndicatorSlot name={key} onShown={seen}>
@@ -598,12 +600,6 @@ const BATTERY_BAR_HEIGHT = 3;
 const RETURN_MARKER = 12;
 const BATTERY_BAR_TRACK_ALPHA = 0.25;
 const PERCENT = 100;
-
-export const BATTERY_BAR_KEY = 'batteryBar';
-
-const BATTERY_BAR_BADGE_INSET = 4;
-
-export const BATTERY_BAR_BADGE: CSSProperties = { top: BATTERY_BAR_BADGE_INSET, insetInlineStart: BATTERY_BAR_BADGE_INSET };
 
 export const BatteryReturnBar = ({ className }: { className?: string }) => {
   const batteryJson = useQgcPath(BATTERY_VIEW);

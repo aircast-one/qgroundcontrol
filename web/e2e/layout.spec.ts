@@ -226,10 +226,15 @@ test('in flight, holding an item edits the layout, and Return still works while 
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
   await holdUntilEditing(vehicle, vehicle.getByRole('button', { name: /^Battery \d+%/ }).first());
+  const notice = vehicle.getByRole('status').filter({ hasText: 'Editing the layout. Return, Land and Kill motors still work.' });
+  await expect(notice, 'in flight the screen says why most of it stopped answering').toBeVisible();
   await vehicle.getByRole('button', { name: 'Return', exact: true }).click();
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to return' }));
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Return/);
   await expect(editBar(vehicle)).toBeVisible();
+  await notice.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(vehicle)).toBeHidden();
+  await expect(notice).toBeHidden();
 });
 
 test('in flight, holding Land lands without starting layout editing', async ({ vehicle }) => {
@@ -324,4 +329,42 @@ test('each camera control hides on its own and the panel closes up around it', a
   await expect(editBar(app)).toBeHidden();
   await expect(shutter, 'the hidden shutter').toBeHidden();
   await expect(app.getByRole('button', { name: /^Zoom \d+%$/ }), 'the zoom stays').toBeVisible();
+});
+
+test('the hidden mini map names itself on its badge, and the battery bar hides from the layout options', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(vehicle.getByRole('img', { name: /^Battery / })).toHaveCount(1);
+  await editLayout(vehicle);
+  await expect(vehicle.getByRole('button', { name: 'Show mini map' })).toHaveText(/Mini map/);
+  await editBar(vehicle).click();
+  await vehicle.getByRole('menuitem', { name: 'Battery bar: Shown' }).click();
+  await expect(vehicle.getByRole('menuitem', { name: 'Battery bar: Hidden' })).toBeVisible();
+  await vehicle.keyboard.press('Escape');
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await expect(vehicle.getByRole('img', { name: /^Battery / })).toHaveCount(0);
+});
+
+test('a hide badge takes a tap that lands next to it, not only on its small dot', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await editLayout(vehicle);
+  const badge = vehicle.getByRole('button', { name: 'Show mini map' });
+  const box = await badge.boundingBox();
+  if (box === null) throw new Error('badge is not on screen');
+  await vehicle.mouse.click(box.x + box.width / 2, box.y + box.height + 10);
+  await expect(vehicle.getByRole('button', { name: 'Hide mini map' })).toBeVisible();
+});
+
+test('in portrait, editing puts the whole status strip on its own line, every indicator on screen and none under Done', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await vehicle.setViewportSize({ width: 412, height: 860 });
+  await editLayout(vehicle);
+  const done = await vehicle.getByRole('button', { name: 'Done' }).boundingBox();
+  const badges = await vehicle.locator('[data-status-row] [aria-label=Hide], [data-status-row] [aria-label=Show]').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON() as DOMRect));
+  if (done === null) throw new Error('Done is not on screen');
+  expect(badges.length).toBeGreaterThan(2);
+  badges.forEach((badge) => {
+    expect(badge.left).toBeGreaterThanOrEqual(0);
+    expect(badge.right).toBeLessThanOrEqual(412);
+    expect(badge.top > done.y + done.height || badge.right < done.x, 'the badge is clear of Done').toBe(true);
+  });
 });

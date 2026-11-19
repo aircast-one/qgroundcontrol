@@ -28,7 +28,7 @@ describe('OverlayLayoutTest', () => {
   it('reset layout arms on the first tap and resets on the second, like resetPill', () => {
     expect(resetTap(false)).toEqual(ResetTap({ reset: false, armed: true }));
     expect(resetTap(true)).toEqual(ResetTap({ reset: true, armed: false }));
-    expect(resetPillText(false)).toBe('Reset layout');
+    expect(resetPillText(false)).toBe('Reset positions and hidden items');
     expect(resetPillText(true)).toBe('Tap again to reset');
     expect(RESET_ARM_MILLIS).toBe(4000);
   });
@@ -106,13 +106,25 @@ describe('IndicatorOrderTest', () => {
 
   it('a dropped indicator lands where it was let go', () => {
     const keys = ['battery', 'rc', 'gps', 'links'];
-    const centres = new Map([
-      ['battery', 20],
-      ['gps', 80],
-      ['links', 140],
+    const centres = new Map<string, readonly [number, number]>([
+      ['battery', [20, 10]],
+      ['gps', [80, 10]],
+      ['links', [140, 10]],
     ]);
-    expect(droppedOrder(keys, centres, 'battery', 90)).toEqual(['gps', 'rc', 'battery', 'links']);
-    expect(droppedOrder(keys, centres, 'links', -200)).toEqual(['links', 'rc', 'battery', 'gps']);
-    expect(droppedOrder(keys, centres, 'gps', 10)).toEqual(keys);
+    expect(droppedOrder(keys, centres, 'battery', 90, 0)).toEqual(['gps', 'rc', 'battery', 'links']);
+    expect(droppedOrder(keys, centres, 'links', -200, 0)).toEqual(['links', 'rc', 'battery', 'gps']);
+    expect(droppedOrder(keys, centres, 'gps', 10, 30)).toEqual(keys);
+  });
+
+  it('on a strip wrapped onto two lines, an indicator dropped on the second line goes after everything on the first', () => {
+    const keys = ['battery', 'gps', 'links', 'rc'];
+    const centres = new Map<string, readonly [number, number]>([
+      ['battery', [20, 10]],
+      ['gps', [200, 10]],
+      ['links', [20, 50]],
+      ['rc', [80, 50]],
+    ]);
+    expect(droppedOrder(keys, centres, 'battery', 30, 40)).toEqual(['gps', 'links', 'battery', 'rc']);
+    expect(droppedOrder(keys, centres, 'rc', 100, -40)).toEqual(['battery', 'rc', 'gps', 'links']);
   });
 });
