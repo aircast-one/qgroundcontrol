@@ -4,7 +4,7 @@ const isUpper = (char: string) => char !== char.toLowerCase() && char === char.t
 const isLower = (char: string) => char !== char.toUpperCase() && char === char.toLowerCase();
 const isLetterOrDigit = (char: string) => /[\p{L}\p{N}]/u.test(char);
 
-const keepsCase = (word: string): boolean => PROPER_NOUNS.has(word) || [...word.slice(1)].some(isUpper) || ![...word].some(isLower);
+export const keepsCase = (word: string): boolean => PROPER_NOUNS.has(word) || [...word.slice(1)].some(isUpper) || ![...word].some(isLower);
 
 const PROPER_PHRASES = ['PX4 Pro', '3DR Solo', 'Parrot Discovery', 'Yuneec Mantis G', 'Herelink AirUnit', 'Herelink Hotspot'];
 

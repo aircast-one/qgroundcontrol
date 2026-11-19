@@ -22,6 +22,7 @@ describe('GuidedStepperTest', () => {
     expect(guidedCommitLabel('Take off · 3.0 m', Readiness({ text: 'GPS off', blocks: false }))).toBe('Take off anyway · 3.0 m');
     expect(guidedCommitLabel('Take off · 3.0 m', Readiness({ text: 'GPS off', blocks: true }))).toBe('Take off · 3.0 m');
     expect(holdLabel(guidedCommitLabel('Take off · 3.0 m', Readiness({ text: 'GPS off', blocks: false })))).toBe('Slide to take off anyway · 3.0 m');
+    expect(holdLabel('Cancel ROI'), 'an acronym keeps its capitals').toBe('Slide to cancel ROI');
   });
 
   it('takeoff presets are the common heights the vehicle allows', () => {

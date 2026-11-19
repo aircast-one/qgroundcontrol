@@ -1,4 +1,5 @@
 import { Text } from '@/m3';
+import { keepsCase } from '@/map/SentenceCase';
 import { md, withAlpha } from '@/theme/Colors';
 import { HoldFill, useRememberHold } from '@/ui/FlyDeck';
 
@@ -8,7 +9,8 @@ const TRACK_HEIGHT = 64;
 
 const HOLD_TRACK_FILL_ALPHA = 0.45;
 
-export const holdLabel = (name: string): string => (name.trim() === '' ? 'Slide to confirm' : `Slide to ${name.toLowerCase()}`);
+export const holdLabel = (name: string): string =>
+  name.trim() === '' ? 'Slide to confirm' : `Slide to ${name.split(' ').map((word) => (keepsCase(word) ? word : word.toLowerCase())).join(' ')}`;
 
 export const HoldToConfirm = ({
   label,
