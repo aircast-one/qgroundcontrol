@@ -61,7 +61,7 @@ export const MissionCompleteDialog = () => {
           {images !== null ? <Text typography="bodyMedium">{images}</Text> : null}
           {waypoint !== null ? (
             <Button className="w-full" onClick={() => resume(waypoint)}>
-              {notice.resumeLabel || `Resume mission from waypoint ${waypoint}`}
+              {notice.resumeLabel}
             </Button>
           ) : null}
           <OutlinedButton className="w-full" onClick={close}>

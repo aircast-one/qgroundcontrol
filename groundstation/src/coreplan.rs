@@ -1951,6 +1951,43 @@ pub struct FlownRow {
     pub at: i64,
     pub of: i64,
     pub name: String,
+    pub within: Option<(usize, usize)>,
+}
+
+fn pattern_commands(kind: &str, json: &Value) -> Vec<i64> {
+    match kind {
+        k if plandoc::TRANSECT_STYLE.contains(&k) => json
+            .pointer("/TransectStyleComplexItem/Items")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.get("command").and_then(Value::as_i64))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        "StructureScan" => crate::structurescan::saved_items(json)
+            .map(|items| items.iter().map(|item| i64::from(item.command)).collect())
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn waypoint_within(document: &Document, at: i64, sequence: i64) -> Option<(usize, usize)> {
+    let Some(plandoc::Item::Complex { kind, json, .. }) =
+        document.items.get(usize::try_from(at - 1).ok()?)
+    else {
+        return None;
+    };
+    let (first, _) = *visual_spans(document).get(usize::try_from(at).ok()?)?;
+    let commands = pattern_commands(kind, json);
+    let waypoints = |list: &[i64]| {
+        list.iter()
+            .filter(|command| **command == plandoc::CMD_NAV_WAYPOINT)
+            .count()
+    };
+    let reached = waypoints(commands.get(..=usize::try_from(sequence - first).ok()?)?);
+    Some((reached.max(1), waypoints(&commands))).filter(|(_, total)| *total > 1)
 }
 
 fn row_of_sequence(document: &Document, sequence: i64) -> Option<FlownRow> {
@@ -1965,6 +2002,7 @@ fn row_of_sequence(document: &Document, sequence: i64) -> Option<FlownRow> {
         at,
         of: document.items.len() as i64,
         name,
+        within: waypoint_within(document, at, sequence),
     })
 }
 
@@ -5093,6 +5131,37 @@ mod tests {
         let surveyed = row_of_sequence(&survey, midway).unwrap();
         assert_eq!(surveyed.of, rows, "a survey counts as one row");
         assert_eq!(surveyed.name, "survey");
+        let (first, last) = visual_spans(&survey)[usize::try_from(surveyed.at).unwrap()];
+        let Some(plandoc::Item::Complex { kind, json, .. }) =
+            survey.items.get(usize::try_from(surveyed.at - 1).unwrap())
+        else {
+            panic!("the survey row is a pattern")
+        };
+        let commands = pattern_commands(kind, json);
+        let total = commands
+            .iter()
+            .filter(|command| **command == plandoc::CMD_NAV_WAYPOINT)
+            .count();
+        let third = commands
+            .iter()
+            .enumerate()
+            .filter(|(_, command)| **command == plandoc::CMD_NAV_WAYPOINT)
+            .nth(2)
+            .map(|(offset, _)| first + offset as i64)
+            .unwrap();
+        assert_eq!(
+            row_of_sequence(&survey, third).unwrap().within,
+            Some((3, total)),
+            "the core knows which of the survey's own waypoints a sequence is, so a resume can say where inside the survey it starts"
+        );
+        assert_eq!(
+            row_of_sequence(&survey, last)
+                .unwrap()
+                .within
+                .map(|(_, of)| of),
+            Some(total)
+        );
+        assert_eq!(takeoff.within, None, "a simple row has nothing inside it");
         let planned = Some(&survey);
         assert_eq!(
             sequence_count(&flown_rows_document(planned, &mission)),

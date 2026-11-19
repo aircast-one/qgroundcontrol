@@ -160,7 +160,12 @@ pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .open
         .then(|| crate::guided::resume_offer(backend))
         .flatten();
-    let summary = resume.and_then(resume_summary);
+    let summary = resume.and_then(resume_summary).map(|(first, drops)| {
+        (
+            resume_place(first, crate::coreplan::flown_row(first as i64).as_ref()),
+            drops,
+        )
+    });
     let interrupted = resume.is_some();
     json!({
         "kind": "object",
@@ -176,8 +181,8 @@ pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
             latch.reached,
             crate::coreplan::flown_row(latch.reached.waypoint).as_ref()
         ),
-        "detail": summary.map(|(waypoint, drops)| interrupted_detail(waypoint, drops)).unwrap_or_else(|| stopped_detail(latch.finished).to_string()),
-        "resumeLabel": summary.map(|(waypoint, _)| format!("Resume from waypoint {waypoint}")).or_else(|| resume.map(|at| format!("Resume mission from waypoint {at}"))),
+        "detail": summary.as_ref().map(|(place, drops)| interrupted_detail(place, *drops)).unwrap_or_else(|| stopped_detail(latch.finished).to_string()),
+        "resumeLabel": summary.as_ref().map(|(place, _)| resume_label(place)).or_else(|| resume.map(|at| format!("Resume mission from waypoint {at}"))),
     })
 }
 
@@ -206,13 +211,29 @@ fn stopped_detail(finished: bool) -> &'static str {
     }
 }
 
-pub fn interrupted_detail(waypoint: usize, drops: usize) -> String {
+pub fn resume_place(first: usize, row: Option<&crate::coreplan::FlownRow>) -> String {
+    match row {
+        Some(row) => {
+            let inside = row.within.map_or(String::new(), |(at, of)| {
+                format!(", at its waypoint {at} of {of}")
+            });
+            format!("the {} ({} of {}){inside}", row.name, row.at, row.of)
+        }
+        None => format!("waypoint {first}"),
+    }
+}
+
+pub fn resume_label(place: &str) -> String {
+    format!("Resume from {place}")
+}
+
+pub fn interrupted_detail(place: &str, drops: usize) -> String {
     let rest = match drops {
         0 => String::new(),
         1 => " One drop is still to come.".to_string(),
         n => format!(" {n} drops are still to come."),
     };
-    format!("{STOPPED_DETAIL} Resuming flies it again from waypoint {waypoint}.{rest}")
+    format!("{STOPPED_DETAIL} Resuming flies it again from {place}.{rest}")
 }
 
 fn resume_summary(offer: i64) -> Option<(usize, usize)> {
@@ -253,16 +274,50 @@ mod tests {
     #[test]
     fn an_interrupted_mission_says_where_it_resumes_and_what_is_left() {
         assert_eq!(
-            interrupted_detail(4, 2),
+            interrupted_detail(&resume_place(4, None), 2),
             "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. 2 drops are still to come."
         );
         assert_eq!(
-            interrupted_detail(4, 1),
+            interrupted_detail(&resume_place(4, None), 1),
             "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. One drop is still to come."
         );
         assert_eq!(
-            interrupted_detail(6, 0),
+            interrupted_detail(&resume_place(6, None), 0),
             "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 6."
+        );
+    }
+
+    #[test]
+    fn a_resume_names_the_plan_row_and_where_inside_a_pattern_it_starts() {
+        let survey = crate::coreplan::FlownRow {
+            at: 2,
+            of: 3,
+            name: "survey".to_string(),
+            within: Some((14, 40)),
+        };
+        assert_eq!(
+            resume_label(&resume_place(49, Some(&survey))),
+            "Resume from the survey (2 of 3), at its waypoint 14 of 40",
+            "the title names the survey as row 2 of 3, so the button must not fall back to the vehicle's command 49"
+        );
+        let waypoint = crate::coreplan::FlownRow {
+            at: 3,
+            of: 5,
+            name: "waypoint".to_string(),
+            within: None,
+        };
+        assert_eq!(
+            resume_label(&resume_place(4, Some(&waypoint))),
+            "Resume from the waypoint (3 of 5)"
+        );
+        assert_eq!(
+            interrupted_detail(&resume_place(49, Some(&survey)), 0),
+            "The aircraft left the mission before finishing it. Resuming flies it again from the survey (2 of 3), at its waypoint 14 of 40."
+        );
+        assert_eq!(
+            resume_label(&resume_place(4, None)),
+            "Resume from waypoint 4",
+            "with no plan rows to read, the vehicle's own number is all there is"
         );
     }
 
@@ -352,6 +407,7 @@ mod tests {
             at: 2,
             of: 3,
             name: "survey".to_string(),
+            within: None,
         };
         assert_eq!(
             title(returned.finished, returned.reached, Some(&survey)),
