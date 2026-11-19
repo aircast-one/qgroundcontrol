@@ -145,7 +145,7 @@ func valueSizeAt(_ ordinal: Int) -> ValueSize { ValueSize(rawValue: ordinal) ?? 
 
 func nextValueSize(_ size: ValueSize) -> ValueSize { valueSizeAt((size.ordinal + 1) % ValueSize.allCases.count) }
 
-func valueSizePillText(_ size: ValueSize) -> String { "Size: \(size.label)" }
+func valueSizePillText(_ size: ValueSize) -> String { "Readout size: \(size.label)" }
 
 func readValueSize(_ vehicleClass: String) -> ValueSize {
     valueSizeAt(store.integer(forKey: "\(VALUE_SIZE_KEY)-\(vehicleClass)"))

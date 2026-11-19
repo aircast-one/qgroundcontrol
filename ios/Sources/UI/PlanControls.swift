@@ -154,10 +154,15 @@ func flowPositions(_ sizes: [CGSize], _ width: CGFloat, spacing: CGFloat, lineSp
     }
 }
 
+func lastAtLineEnd(_ positions: [CGPoint], _ sizes: [CGSize], _ width: CGFloat) -> [CGPoint] {
+    positions.indices.map { at in at == positions.count - 1 ? CGPoint(x: width - sizes[at].width, y: positions[at].y) : positions[at] }
+}
+
 struct PlanFlowRow: Layout {
     var spacing: CGFloat = 8
     var lineSpacing: CGFloat = 8
     var alignment: HorizontalAlignment = .leading
+    var lastAtEnd = false
 
     private func sizes(_ proposal: ProposedViewSize, _ subviews: Subviews) -> [CGSize] {
         subviews.map { $0.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) }
@@ -169,7 +174,8 @@ struct PlanFlowRow: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let measured = sizes(proposal, subviews)
-        let positions = flowPositions(measured, bounds.width, spacing: spacing, lineSpacing: lineSpacing, centred: alignment == .center)
+        let flowed = flowPositions(measured, bounds.width, spacing: spacing, lineSpacing: lineSpacing, centred: alignment == .center)
+        let positions = lastAtEnd ? lastAtLineEnd(flowed, measured, bounds.width) : flowed
         zip(subviews, zip(positions, measured)).forEach { subview, placement in
             subview.place(at: CGPoint(x: bounds.minX + placement.0.x, y: bounds.minY + placement.0.y), proposal: ProposedViewSize(placement.1))
         }

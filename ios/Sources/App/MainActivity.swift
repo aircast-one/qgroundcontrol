@@ -260,7 +260,6 @@ struct AircastShell: View {
             "flyView": .string(flyView.rawValue),
             "landscape": .bool(landscape),
             "layoutEditing": .bool(flyScreen.layout.editing),
-            "layoutLocked": .bool(flyScreen.layout.locked),
             "guidedPanelOpen": .bool(flyScreen.guidedPanelOpen),
             "pendingOpen": (flyScreen.requestedSheet ?? flyScreen.deckRequest).map(JSON.string) ?? .null,
         ]).text
@@ -335,6 +334,7 @@ struct AircastShell: View {
             .accessibilityHidden(navigation.settingsOpen)
             if tab == .Fly {
                 OverlayEditBar()
+                    .padding(.bottom, onFly && portrait ? flyScreen.mapInsets.bottom : 0)
                     .padding(8)
                     .frame(maxWidth: EDIT_BAR_MAX_WIDTH)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)

@@ -55,3 +55,8 @@ are expected and are not gaps: `QgcCalls.kt` (Kotlin's off-main helpers, which i
   until the core has an iOS camera source.
 - A double tap on the picture-hold reticle's Stop or on the gimbal mode switch can also count as a double tap
   on the video. Android keeps video gestures off on-screen controls with `videoControl()`, which iOS lacks.
+- Landscape Fly still has the large map and video picture-in-picture and the compass mini map that Android
+  dropped in 254b22de8d. The mini map hidden by default collapses whichever of them is showing to the round
+  Map button, and layout editing badges it as the mini map.
+- The camera zoom slider sits in the camera details sheet, not on the rail, so it is outside every hold-to-edit
+  area and needs no `ownsLayoutHold()`. Only the RC slider has it.

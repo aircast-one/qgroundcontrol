@@ -4,7 +4,51 @@ import XCTest
 final class OverlayLayoutTests: XCTestCase {
     func testHiddenWidgetsAreReadFromTheStoredRigKeysOnly() {
         let stored: [String: Any] = ["OverlayRigHidden-orbit": true, "OverlayRigHidden-traffic": false, "other": true]
-        XCTAssertEqual(hiddenKeys(stored), ["orbit"])
+        XCTAssertEqual(hiddenKeys(stored), ["minimap", "orbit"])
+    }
+
+    func testTheMiniMapStartsHiddenAndStaysShownOnceThePilotShowsIt() {
+        XCTAssertEqual(hiddenKeys([:]), ["minimap"])
+        XCTAssertEqual(hiddenKeys(["OverlayRigHidden-minimap": false]), [])
+    }
+
+    func testASmallWidgetJigglesTheFullAngleAndAWideOneTurnsLessSoNoCornerSwingsMoreThanAFewPoints() {
+        XCTAssertEqual(jiggleDegrees(48, 48), 1.2)
+        XCTAssertEqual(550 * jiggleDegrees(1100, 12) * .pi / 180, 4, accuracy: 0.1)
+    }
+
+    func testANamedBadgeSaysWhatItShowsOrHides() {
+        XCTAssertEqual(badgeLabel(true, "Mini map"), "Show mini map")
+        XCTAssertEqual(badgeLabel(false, nil), "Hide")
+    }
+
+    func testTheBatteryBarButtonSaysWhetherTheBarIsShown() {
+        XCTAssertEqual(batteryBarPillText(false), "Battery bar: Shown")
+        XCTAssertEqual(batteryBarPillText(true), "Battery bar: Hidden")
+    }
+
+    func testResetHidesTheMiniMapAgain() {
+        let layout = OverlayLayoutState(overlayLayoutStore())
+        layout.reset()
+        layout.setHidden(MINIMAP_KEY, false)
+        layout.setHidden(BATTERY_BAR_KEY, true)
+        XCTAssertEqual(layout.hidden, [BATTERY_BAR_KEY])
+        XCTAssertEqual(OverlayLayoutState(overlayLayoutStore()).hidden, [BATTERY_BAR_KEY])
+        layout.reset()
+        XCTAssertEqual(layout.hidden, [MINIMAP_KEY])
+    }
+
+    func testAHeldControlKeepsHoldToEditAwayUntilEveryHoldEnds() {
+        let layout = OverlayLayoutState(overlayLayoutStore())
+        layout.holdGesture(true)
+        layout.holdGesture(true)
+        layout.holdGesture(false)
+        XCTAssertTrue(layout.gestureHeld)
+        layout.holdGesture(false)
+        layout.holdGesture(false)
+        XCTAssertFalse(layout.gestureHeld)
+        layout.holdGesture(true)
+        XCTAssertTrue(layout.gestureHeld)
     }
 
     func testHidingAndShowingTogglesOneKey() {
@@ -15,7 +59,7 @@ final class OverlayLayoutTests: XCTestCase {
     func testResetLayoutArmsOnTheFirstTapAndResetsOnTheSecondLikeResetPill() {
         XCTAssertEqual(resetTap(false), ResetTap(reset: false, armed: true))
         XCTAssertEqual(resetTap(true), ResetTap(reset: true, armed: false))
-        XCTAssertEqual(resetPillText(false), "Reset layout")
+        XCTAssertEqual(resetPillText(false), "Reset positions and hidden items")
         XCTAssertEqual(resetPillText(true), "Tap again to reset")
     }
 
@@ -33,7 +77,7 @@ final class OverlayLayoutTests: XCTestCase {
     func testTheStoredLayoutYieldsHiddenWidgetsOffsetsAndTheIndicatorOrder() {
         let stored: [String: Any] = ["OverlayRigOffset-instrumentPanel": "10.0,20.0", "OverlayRigHidden-orbit": true, "FlyViewIndicatorOrder": "gps,battery"]
         XCTAssertEqual(storedOffsets(stored), ["instrumentPanel": CGSize(width: 10, height: 20)])
-        XCTAssertEqual(hiddenKeys(stored), ["orbit"])
+        XCTAssertEqual(hiddenKeys(stored), ["minimap", "orbit"])
         XCTAssertEqual(storedIndicatorOrder(stored), ["gps", "battery"])
     }
 

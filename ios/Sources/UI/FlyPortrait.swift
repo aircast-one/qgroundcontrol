@@ -236,7 +236,7 @@ struct FlyPortrait: View {
                 .frame(height: PORTRAIT_BAR_HEIGHT)
                 .padding(.top, safeTop)
                 .background(LinearGradient(colors: [Color.black.opacity(SCRIM_ALPHA), .clear], startPoint: .top, endPoint: .bottom).allowsHitTesting(false))
-            BatteryReturnBar()
+            LayoutWidget(key: BATTERY_BAR_KEY, movable: false, badged: false) { BatteryReturnBar() }
                 .padding(.horizontal, Space.s3)
             TrafficBanner()
                 .padding(.horizontal, Space.s3)

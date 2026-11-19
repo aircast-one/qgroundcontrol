@@ -8,6 +8,7 @@ private let HIDDEN_ALPHA = 0.35
 private let JIGGLE_DEGREES = 1.2
 private let JIGGLE_MILLIS = 120
 private let JIGGLE_SPREAD = 0x1f
+private let JIGGLE_REACH: CGFloat = 4
 let BADGE_SIZE: CGFloat = 24
 
 enum BadgeSpot {
@@ -33,7 +34,21 @@ struct ResetTap: Equatable {
 
 func resetTap(_ armed: Bool) -> ResetTap { ResetTap(reset: armed, armed: !armed) }
 
-func resetPillText(_ armed: Bool) -> String { armed ? "Tap again to reset" : "Reset layout" }
+func resetPillText(_ armed: Bool) -> String { armed ? "Tap again to reset" : "Reset positions and hidden items" }
+
+let LAYOUT_EDITING_IN_FLIGHT = "Editing the layout. Return, Land and Kill motors still work."
+
+let MINIMAP_KEY = "minimap"
+
+let MINIMAP_NAME = "Mini map"
+
+let BATTERY_BAR_KEY = "batteryBar"
+
+func batteryBarPillText(_ hidden: Bool) -> String { "Battery bar: \(hidden ? "Hidden" : "Shown")" }
+
+func badgeLabel(_ hidden: Bool, _ name: String?) -> String { [hidden ? "Show" : "Hide", name?.lowercased()].compactMap { $0 }.joined(separator: " ") }
+
+private let HIDDEN_BY_DEFAULT = [MINIMAP_KEY]
 
 private let INDICATOR_ORDER = "FlyViewIndicatorOrder"
 
@@ -41,7 +56,7 @@ private let INDICATOR_ORDER = "FlyViewIndicatorOrder"
 final class OverlayLayoutState {
     @ObservationIgnored private let prefs: UserDefaults
     var editing = false
-    private(set) var locked = false
+    private var gesturesHeld = 0
     private(set) var hidden: Set<String>
     private(set) var indicatorOrder: [String]
     var valueSize = ValueSize.Default
@@ -56,12 +71,13 @@ final class OverlayLayoutState {
     }
 
     func startEditing() {
-        if !locked { editing = true }
+        editing = true
     }
 
-    func lockWhileArmed(_ armed: Bool) {
-        locked = armed
-        if armed { editing = false }
+    var gestureHeld: Bool { gesturesHeld > 0 }
+
+    func holdGesture(_ held: Bool) {
+        gesturesHeld = max(gesturesHeld + (held ? 1 : -1), 0)
     }
 
     func setHidden(_ key: String, _ hide: Bool) {
@@ -86,7 +102,7 @@ final class OverlayLayoutState {
 
     func reset() {
         prefs.removePersistentDomain(forName: LAYOUT_STORE)
-        hidden = []
+        hidden = hiddenKeys([:])
         indicatorOrder = []
         offsets = [:]
     }
@@ -141,7 +157,8 @@ func droppedOrder(_ keys: [String], _ centres: [String: CGFloat], _ key: String,
 }
 
 func hiddenKeys(_ stored: [String: Any]) -> Set<String> {
-    Set(stored.filter { key, value in key.hasPrefix(HIDDEN_PREFIX) && (value as? Bool) == true }.keys.map { $0.removingPrefix(HIDDEN_PREFIX) })
+    Set(HIDDEN_BY_DEFAULT.filter { (stored[HIDDEN_PREFIX + $0] as? Bool) != false })
+        .union(stored.filter { key, value in key.hasPrefix(HIDDEN_PREFIX) && (value as? Bool) == true }.keys.map { $0.removingPrefix(HIDDEN_PREFIX) })
 }
 
 func withHidden(_ hidden: Set<String>, _ key: String, _ hide: Bool) -> Set<String> {
@@ -167,17 +184,25 @@ private func jiggleSpread(_ key: String) -> Int {
     key.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xffff } & JIGGLE_SPREAD
 }
 
-func jiggleDegrees(_ seconds: Double, _ key: String) -> Double {
+func jiggleAngle(_ seconds: Double, _ key: String) -> Double {
     JIGGLE_DEGREES * sin(seconds * .pi * 1000 / Double(JIGGLE_MILLIS + jiggleSpread(key)))
+}
+
+func jiggleDegrees(_ width: CGFloat, _ height: CGFloat) -> Double {
+    let reach = hypot(width, height) / 2
+    return reach <= 0 ? JIGGLE_DEGREES : min(JIGGLE_DEGREES, Double(JIGGLE_REACH / reach) * 180 / .pi)
 }
 
 private struct Jiggle: ViewModifier {
     let key: String
     let active: Bool
+    @State private var size = CGSize.zero
 
     func body(content: Content) -> some View {
         TimelineView(.animation(paused: !active)) { timeline in
-            content.rotationEffect(.degrees(active ? jiggleDegrees(timeline.date.timeIntervalSinceReferenceDate, key) : 0))
+            content
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+                .rotationEffect(.degrees(active ? jiggleAngle(timeline.date.timeIntervalSinceReferenceDate, key) / JIGGLE_DEGREES * jiggleDegrees(size.width, size.height) : 0))
         }
     }
 }
@@ -212,19 +237,41 @@ private struct HoldToEditLayout: ViewModifier {
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: HOLD_TO_EDIT_SECONDS)
                     .onEnded { _ in
+                        guard !layout.gestureHeld else { return }
                         heldIntoEditing = true
                         layout.startEditing()
                     }
                     .sequenced(before: DragGesture(minimumDistance: 0))
                     .updating($pressing) { _, pressing, _ in pressing = true },
-                including: layout.locked || (layout.editing && !heldIntoEditing) ? .subviews : .all
+                including: layout.editing && !heldIntoEditing ? .subviews : .all
             )
             .onChange(of: pressing) { _, now in if !now { heldIntoEditing = false } }
     }
 }
 
+private struct OwnsLayoutHold: ViewModifier {
+    @Environment(FlyScreenState.self) private var flyScreen
+    @GestureState private var pressing = false
+    @State private var held = false
+
+    private func hold(_ now: Bool) {
+        guard now != held else { return }
+        held = now
+        flyScreen.layout.holdGesture(now)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(DragGesture(minimumDistance: 0).updating($pressing) { _, pressing, _ in pressing = true })
+            .onChange(of: pressing) { _, now in hold(now) }
+            .onDisappear { hold(false) }
+    }
+}
+
 extension View {
     func holdToEditLayout() -> some View { modifier(HoldToEditLayout()) }
+
+    func ownsLayoutHold() -> some View { modifier(OwnsLayoutHold()) }
 
     func layoutPlacement(_ key: String, keepOnScreen: Bool, active: Bool = true) -> some View {
         modifier(LayoutPlacement(key: key, keepOnScreen: keepOnScreen, active: active))
@@ -313,8 +360,10 @@ struct LayoutWidget<Content: View>: View {
     let key: String
     var movable: Bool = true
     var hideable: Bool = true
+    var badged: Bool = true
     var badgeSpot: BadgeSpot = .inside
     var dragsWith: String? = nil
+    var name: String? = nil
     @ViewBuilder let content: () -> Content
     @Environment(FlyScreenState.self) private var flyScreen
     @Environment(\.LocalAvoidedByVideoMessage) private var avoided
@@ -343,7 +392,7 @@ struct LayoutWidget<Content: View>: View {
                     if decorated && (movable || dragsWith != nil) { LayoutDragArea(key: dragsWith ?? key) }
                 }
                 .overlay(alignment: badgeSpot.alignment) {
-                    if decorated {
+                    if decorated && badged {
                         badge(layout, hidden).offset(badgeSpot.offset)
                     }
                 }
@@ -359,16 +408,25 @@ struct LayoutWidget<Content: View>: View {
     private func badge(_ layout: OverlayLayoutState, _ hidden: Bool) -> some View {
         if hideable {
             Button { layout.setHidden(key, !hidden) } label: {
-                Image(hidden ? .add : .close)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(hidden ? theme.colors.onPrimary : theme.colors.inverseOnSurface)
-                    .frame(width: BADGE_SIZE, height: BADGE_SIZE)
-                    .background(hidden ? theme.colors.primary : theme.colors.inverseSurface, in: Circle())
-                    .shadow(radius: 2)
-                    .contentShape(BadgeTouchTarget())
+                HStack(spacing: 0) {
+                    Image(hidden ? .add : .close)
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: BADGE_SIZE, height: BADGE_SIZE)
+                    if let name {
+                        Text(name)
+                            .font(.labelSmall)
+                            .padding(.trailing, 8)
+                    }
+                }
+                .foregroundStyle(hidden ? theme.colors.onPrimary : theme.colors.inverseOnSurface)
+                .frame(height: BADGE_SIZE)
+                .background(hidden ? theme.colors.primary : theme.colors.inverseSurface, in: Capsule())
+                .shadow(radius: 2)
+                .contentShape(BadgeTouchTarget())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(hidden ? "Show" : "Hide")
+            .fixedSize()
+            .accessibilityLabel(badgeLabel(hidden, name))
         } else {
             Image(.lock)
                 .font(.system(size: 11, weight: .bold))
@@ -383,7 +441,7 @@ struct LayoutWidget<Content: View>: View {
 
 private struct BadgeTouchTarget: Shape {
     func path(in rect: CGRect) -> Path {
-        let reach = max(0, (MINIMUM_TOUCH_TARGET - rect.width) / 2)
+        let reach = max(0, (MINIMUM_TOUCH_TARGET - rect.height) / 2)
         return Path { path in
             path.addRects([
                 rect,
@@ -396,45 +454,65 @@ private struct BadgeTouchTarget: Shape {
 
 struct OverlayEditBar: View {
     @Environment(FlyScreenState.self) private var flyScreen
+    @QgcPath(FLY_STATE) private var flyJson
 
     var body: some View {
-        if flyScreen.layout.editing { OverlayEditBarContent(layout: flyScreen.layout) }
+        if flyScreen.layout.editing && !flyScreen.guidedPanelOpen {
+            OverlayEditBarContent(layout: flyScreen.layout, inFlight: flyState(flyJson).map { $0.connected && $0.armed } == true)
+        }
     }
 }
 
-private struct OverlayEditBarContent: View {
+struct OverlayEditBarContent: View {
     let layout: OverlayLayoutState
+    let inFlight: Bool
     @Environment(\.theme) private var theme
     @QgcPath(INSTRUMENTS_VIEW) private var classView
     @State private var armed = false
 
     var body: some View {
-        HStack(spacing: Space.s2) {
-            Button(valueSizePillText(layout.valueSize)) {
-                layout.valueSize = nextValueSize(layout.valueSize)
-                writeValueSize(instrumentVehicleClass(classView), layout.valueSize)
+        VStack(alignment: .leading, spacing: 0) {
+            if inFlight {
+                Text(LAYOUT_EDITING_IN_FLIGHT)
+                    .font(.bodyMedium)
+                    .foregroundStyle(theme.colors.onSurface)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
             }
-            .buttonStyle(.text)
-            Button(resetPillText(armed)) {
-                let tap = resetTap(armed)
-                if tap.reset { layout.reset() }
-                armed = tap.armed
+            PlanFlowRow(spacing: Space.s2, lineSpacing: 0, lastAtEnd: true) {
+                options
+                Button("Done") { layout.editing = false }
+                    .buttonStyle(.filled)
             }
-            .buttonStyle(.text)
-            .foregroundStyle(armed ? theme.colors.error : theme.colors.primary)
-            Spacer(minLength: 0)
-            Button("Done") { layout.editing = false }
-                .buttonStyle(.filled)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
         }
         .font(.labelLarge)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.large))
         .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
         .task(id: armed) {
             guard armed, (try? await Task.sleep(for: .milliseconds(RESET_ARM_MILLIS))) != nil else { return }
             armed = false
         }
+    }
+
+    @ViewBuilder private var options: some View {
+        let barHidden = layout.hidden.contains(BATTERY_BAR_KEY)
+        Button(valueSizePillText(layout.valueSize)) {
+            layout.valueSize = nextValueSize(layout.valueSize)
+            writeValueSize(instrumentVehicleClass(classView), layout.valueSize)
+        }
+        .buttonStyle(.text)
+        Button(batteryBarPillText(barHidden)) { layout.setHidden(BATTERY_BAR_KEY, !barHidden) }
+            .buttonStyle(.text)
+        Button(resetPillText(armed)) {
+            let tap = resetTap(armed)
+            if tap.reset { layout.reset() }
+            armed = tap.armed
+        }
+        .buttonStyle(.text)
+        .foregroundStyle(armed ? theme.colors.error : theme.colors.primary)
     }
 }

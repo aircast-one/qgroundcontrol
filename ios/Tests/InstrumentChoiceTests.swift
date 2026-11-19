@@ -126,7 +126,7 @@ final class InstrumentChoiceTests: XCTestCase {
         XCTAssertEqual(nextValueSize(.Default), .Small)
         XCTAssertEqual(nextValueSize(.Large), .Default)
         XCTAssertEqual(valueSizeAt(9), .Default)
-        XCTAssertEqual(valueSizePillText(.Medium), "Size: Medium")
+        XCTAssertEqual(valueSizePillText(.Medium), "Readout size: Medium")
         XCTAssertEqual(ValueSize.allCases.map(\.scale), [1, 0.86, 1.25, 1.5])
     }
 

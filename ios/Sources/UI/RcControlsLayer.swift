@@ -105,6 +105,7 @@ private struct RcSlider: View {
                 }
             )
             .frame(maxWidth: .infinity)
+            .ownsLayoutHold()
         }
     }
 }
