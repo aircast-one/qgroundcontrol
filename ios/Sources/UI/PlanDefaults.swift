@@ -6,11 +6,15 @@ private let SPEEDS_SET_BY_FLIGHT_SPEED: Set<String> = ["cruise", "hover"]
 private let FLIGHT_SPEED_USED = "The mission flight speed is used instead"
 private let DEFAULT_ALTITUDE_SUFFIX = ".defaultMissionItemAltitude"
 
+private func settingsWorded(_ fact: Fact) -> Fact {
+    withChanges(pilotWorded(fact)) { $0.description = $0.heading }
+}
+
 func planDefaults(_ view: JSON?) -> [Fact] {
     guard let served = view?["defaults"], served.object != nil else { return [] }
     let flightSpeedSpecified = served["flightSpeed"]["specified"].bool
     return PLAN_DEFAULT_KEYS.compactMap { key in
-        guard served[key].object != nil, let fact = factFromControl(served[key]) else { return nil }
+        guard served[key].object != nil, let fact = factFromControl(served[key]).map(settingsWorded) else { return nil }
         guard flightSpeedSpecified, SPEEDS_SET_BY_FLIGHT_SPEED.contains(key) else { return fact }
         return withChanges(fact) {
             $0.enabled = false

@@ -14,6 +14,14 @@ final class PlanDefaultsTests: XCTestCase {
         JSON.parse(#"{"kind":"object","class":"Plan","defaults":\#(defaults)}"#)
     }
 
+    func testNamesEachDefaultAsSettingsGeneralPlanningDefaultsDoes() {
+        let altitude = control("defaultMissionItemAltitude", 50, "m").replacingOccurrences(of: #""label":"defaultMissionItemAltitude""#, with: #""label":"Default mission altitude""#)
+        let hover = control("offlineEditingHoverSpeed", 5, "m/s").replacingOccurrences(of: #""label":"offlineEditingHoverSpeed""#, with: #""label":"Offline editing hover speed""#)
+        let facts = planDefaults(plan(#"{"altitude":\#(altitude),"hover":\#(hover)}"#))
+        XCTAssertEqual(["Default waypoint altitude", "Planning hover speed"], facts.map(\.heading))
+        XCTAssertEqual(["", ""], facts.map(\.detail))
+    }
+
     func testTheThreeTheCoreServesAreTheThreeOffered() {
         let facts = planDefaults(plan(#"""
         {"altitude":\#(control("defaultMissionItemAltitude", 50, "m")),
