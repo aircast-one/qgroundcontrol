@@ -105,9 +105,9 @@ export const vibrationVerdict = (reading: VibrationReading): string => {
     .join(' and ');
   const level =
     worst === 'danger'
-      ? `Vibration on ${axes} is over the unsafe limit of ${Math.trunc(reading.dangerLevel)}.`
+      ? `Vibration on ${axes} has reached the unsafe limit of ${Math.trunc(reading.dangerLevel)}.`
       : worst === 'warning'
-        ? `Vibration on ${axes} is above ${Math.trunc(reading.warningLevel)}; watch it.`
+        ? `Vibration on ${axes} has reached ${Math.trunc(reading.warningLevel)}; watch it.`
         : 'Vibration is well under the limit.';
   const clips = reading.clipCounts.reduce((sum, it) => sum + it, 0);
   const clipping = clips === 0 ? 'No clipping.' : `The accelerometers clipped ${clips} times; expect zero in flight.`;
@@ -132,7 +132,7 @@ export const vibrationHeading = (units: string): string => (units.trim() === '' 
 export const bandCaption = (warningLevel: number, dangerLevel: number): string => {
   const warn = Math.trunc(warningLevel);
   const danger = Math.trunc(dangerLevel);
-  return `Under ${warn} healthy · ${warn}-${danger} watch · over ${danger} unsafe`;
+  return `Under ${warn} healthy · under ${danger} watch · ${danger} and over unsafe`;
 };
 
 export const scaleLabels = (scaleMaximum: number, warningLevel: number, dangerLevel: number): readonly string[] =>

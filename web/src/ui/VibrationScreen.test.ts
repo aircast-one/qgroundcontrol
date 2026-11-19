@@ -98,7 +98,7 @@ describe('VibrationScreenTest', () => {
 
   it("the scale and the caption are built from the core's own levels", () => {
     expect(scaleLabels(90.0, 30.0, 60.0)).toEqual(['90', '60', '30', '0']);
-    expect(bandCaption(30.0, 60.0)).toBe('Under 30 healthy · 30-60 watch · over 60 unsafe');
+    expect(bandCaption(30.0, 60.0), 'vibration.rs counts exactly 60 as unsafe, so over 60 misread a reading of 60.0').toBe('Under 30 healthy · under 60 watch · 60 and over unsafe');
   });
 
   it('a blank unit leaves no empty brackets in the heading', () => {
@@ -148,8 +148,8 @@ describe('SilentStateTest', () => {
   });
 
   it('theVerdictNamesTheWorstAxesAndTheClipping', () => {
-    expect(vibrationVerdict(reading(['normal', 'warning', 'danger'], [0, 3, 12]))).toBe('Vibration on Z is over the unsafe limit of 60. The accelerometers clipped 15 times; expect zero in flight.');
-    expect(vibrationVerdict(reading(['warning', 'warning', 'normal']))).toBe('Vibration on X and Y is above 30; watch it. No clipping.');
+    expect(vibrationVerdict(reading(['normal', 'warning', 'danger'], [0, 3, 12]))).toBe('Vibration on Z has reached the unsafe limit of 60. The accelerometers clipped 15 times; expect zero in flight.');
+    expect(vibrationVerdict(reading(['warning', 'warning', 'normal']))).toBe('Vibration on X and Y has reached 30; watch it. No clipping.');
     expect(vibrationVerdict(reading(['normal', 'normal', 'normal']))).toBe('Vibration is well under the limit. No clipping.');
   });
 });
