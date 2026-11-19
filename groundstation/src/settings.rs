@@ -1498,6 +1498,11 @@ fn qstr<'a>(element: &'a str, field: &str) -> Option<&'a str> {
         .and_then(|rest| rest.strip_suffix("\")"))
 }
 
+const AIRCAST_PAGE_KEYWORDS: &[(&str, &str)] = &[(
+    "Connections",
+    "add a link, websocket, network, telemetry radio, usb radio, aircast cloud, rc transmitter, edgetx, replay a flight log",
+)];
+
 pub fn page_keywords(title: &str) -> String {
     let names = QGC_PAGE_NAMES
         .iter()
@@ -1509,6 +1514,12 @@ pub fn page_keywords(title: &str) -> String {
         .filter(|element| qstr(element, "name").is_some_and(|name| names.contains(&name)))
         .flat_map(|element| [qstr(element, "summary"), qstr(element, "keywords")])
         .flatten()
+        .chain(
+            AIRCAST_PAGE_KEYWORDS
+                .iter()
+                .filter(|(page, _)| *page == title)
+                .map(|(_, words)| *words),
+        )
         .collect::<Vec<_>>()
         .join(", ")
         .to_lowercase()
@@ -2419,6 +2430,23 @@ mod tests {
                     && !UNLISTED.contains(&p.title))
                 .all(|p| page_shown(p, true, false, false)),
             "and drops nothing else"
+        );
+    }
+
+    #[test]
+    fn searching_the_words_on_the_add_a_link_page_finds_the_links_page() {
+        let words = page_keywords("Connections");
+        assert!(
+            [
+                "websocket",
+                "telemetry radio",
+                "add a link",
+                "aircast cloud",
+                "rc transmitter"
+            ]
+            .iter()
+            .all(|word| words.contains(word)),
+            "{words}"
         );
     }
 
