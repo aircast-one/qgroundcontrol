@@ -6,7 +6,7 @@ import { parameterPath } from '@/ui/ParametersScreen';
 import { bitmaskEntryEnabled, bitmaskToggled, factConstraintNote, factKeyboard, factRebootNote, inertNote, isAddress, ratioText, ratioValue, validationMessage } from '@/ui/SettingsScreen';
 import { sectionImageAsset } from '@/ui/SetupRow';
 import { setupGroups, setupPage, setupPagePath } from '@/ui/SetupView';
-import { KNOWN_CONTROL_KINDS, ParameterRows, bitmaskRaw, bitmaskSummary, controlIsUnderstood, factFromControl, factFromParameter, readOnlyNote, sectionMatches, sliderSnapped, sliderTitle, sliderValue, withPilotLinks } from './ParameterForm';
+import { KNOWN_CONTROL_KINDS, ParameterRows, bitmaskRaw, bitmaskSummary, controlIsUnderstood, factFromControl, factFromParameter, readOnlyNote, sectionMatches, pilotWordedAction, sliderSnapped, sliderTitle, sliderValue, switchedOff, withPilotLinks } from './ParameterForm';
 
 const control = (extra: Json = {}): Json => ({
   kind: 'control',
@@ -431,5 +431,26 @@ describe('a setup page links to the setting Settings already owns instead of edi
       ['Return to launch', ['choice', 'loiter']],
       ['Labels only', []],
     ]);
+  });
+  it('drops the on/off switch beside a limit Settings owns, so the page no longer reads Max altitude twice', () => {
+    const rows = [ParameterRows({ title: 'Geofence failsafe', note: '', facts: [fact('GF_ACTION', 'action'), fact('GF_MAX_VER_DIST.enable', 'switch'), fact('GF_MAX_VER_DIST', 'limit')] })];
+    expect(withPilotLinks(rows).map((it) => it.facts.map((each) => each.path))).toEqual([['action', 'limit']]);
+  });
+});
+
+describe('PX4 safety reads like Settings › Safety', () => {
+  const base = { path: 'p', description: '', units: 'm', valueString: '-1', value: -1, enumIndex: 1, isBool: false, isString: false, readOnly: false };
+
+  it('the geofence action names Hold mode as the Hover the link rows use', () => {
+    const action = makeFact({ ...base, name: 'GF_ACTION', enumStrings: ['None', 'Hold mode', 'Return mode'], enumValues: ['0', '1', '2'] });
+    expect(pilotWordedAction(action).enumStrings).toEqual(['None', 'Hover', 'Return home']);
+    const other = makeFact({ ...base, name: 'COM_ARM_SWISBTN', enumStrings: ['Hold mode'], enumValues: ['1'] });
+    expect(pilotWordedAction(other).enumStrings).toEqual(['Hold mode']);
+  });
+
+  it('a slider behind a switch that is off reads Off rather than -1.000 m', () => {
+    expect(switchedOff(makeFact({ ...base, name: 'CP_DIST', enumStrings: [], enabled: false, disabledReason: 'Turn on Collision prevention to edit' }))).toBe(true);
+    expect(switchedOff(makeFact({ ...base, name: 'CP_DIST', enumStrings: [], enabled: true }))).toBe(false);
+    expect(switchedOff(makeFact({ ...base, name: 'CP_DIST', enumStrings: [], enabled: false, disabledReason: 'Disarm to edit' }))).toBe(false);
   });
 });

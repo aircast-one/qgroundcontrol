@@ -140,6 +140,16 @@ test('a PX4 vehicle on MAVLink-only control reads its radio and mode switch as n
   await expect(app.getByText(/^This vehicle takes manual control over MAVLink only/)).toBeVisible();
 });
 
+test('PX4 safety names the geofence action as Settings does and lists each limit once', async ({ app }) => {
+  await connectMock(app);
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Safety / }).click();
+  await expect(app.getByRole('button', { name: /^Geofence violation action, Hover/ })).toBeVisible();
+  await expect(app.getByText('Max altitude', { exact: true })).toHaveCount(1);
+  await expect(app.getByRole('switch', { name: 'Max radius' })).toHaveCount(0);
+  await expect(app.getByText('-1.000 m')).toHaveCount(0);
+});
+
 test('the copter frame tiles keep their names inside the tile', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);

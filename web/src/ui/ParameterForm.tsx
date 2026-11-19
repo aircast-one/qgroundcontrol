@@ -10,11 +10,12 @@ import { sentenceCase } from '@/map/SentenceCase';
 import { aircast, md, withAlpha } from '@/theme/Colors';
 import { DIALOG_CONTROL, EscCalibrationDialog } from '@/ui/EscCalibration';
 import { parameterPath } from '@/ui/ParametersScreen';
-import { PilotLinkRow, pilotOwner } from '@/ui/PilotSettings';
+import { PilotLinkRow, pilotChoices, pilotOwner } from '@/ui/PilotSettings';
 import { type PowerCalculator, PowerCalcDialog, powerCalculator } from '@/ui/PowerCalc';
 import { FactRow } from '@/ui/SettingsScreen';
 import { EmptyState, SectionHeader } from '@/ui/SetupRow';
 import { SETUP, parametersReady, setupPagePath } from '@/ui/SetupView';
+import { VALUE_OFF } from '@/ui/ValueRow';
 import { withUnit } from './Quantity';
 
 export type ParameterRows = {
@@ -125,11 +126,23 @@ export const readPage = async (page: string): Promise<ParameterRows[]> =>
 
 export const SETUP_PAGE_OPENED = 'setup.pageOpened';
 
+const ENABLE_SUFFIX = '.enable';
+
+const switchesALink = (fact: Fact): boolean => fact.name.endsWith(ENABLE_SUFFIX) && pilotOwner(fact.name.slice(0, -ENABLE_SUFFIX.length)) !== null;
+
 export const withPilotLinks = (rows: readonly ParameterRows[]): ParameterRows[] => {
   const owned = rows.flatMap((it) => it.facts).filter((fact) => pilotOwner(fact.name) !== null);
   const linked = new Set(owned.filter((fact, at) => owned.findIndex((it) => it.name === fact.name) === at).map((fact) => fact.path));
-  return rows.map((it) => ({ ...it, facts: it.facts.filter((fact) => pilotOwner(fact.name) === null || linked.has(fact.path)) })).filter((it, at) => it.facts.length > 0 || rows[at]?.facts.length === 0);
+  return rows
+    .map((it) => ({ ...it, facts: it.facts.filter((fact) => (pilotOwner(fact.name) === null || linked.has(fact.path)) && !switchesALink(fact)) }))
+    .filter((it, at) => it.facts.length > 0 || rows[at]?.facts.length === 0);
 };
+
+const PILOT_WORDED_ACTIONS: ReadonlySet<string> = new Set(['GF_ACTION']);
+
+export const pilotWordedAction = (fact: Fact): Fact => (PILOT_WORDED_ACTIONS.has(fact.name) ? pilotChoices(fact) : fact);
+
+export const switchedOff = (fact: Fact): boolean => !fact.enabled && (fact.disabledReason ?? '').startsWith('Turn on ');
 
 export const EMPTY_PAGE_TEXTS: ReadonlyMap<string, string> = new Map([['Gimbal', 'Gimbal settings are not available for this firmware version.']]);
 
@@ -196,7 +209,7 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
     const calculator = rowsSection.calculators.get(fact.path);
     return (
       <>
-        <FactRow fact={fact} titleColor={highlighted.has(fact.name) ? aircast('warning') : undefined} onWrite={reload} />
+        <FactRow fact={pilotWordedAction(fact)} titleColor={highlighted.has(fact.name) ? aircast('warning') : undefined} onWrite={reload} />
         {calculator ? (
           <Surface className="mx-4 my-2" color={md('surfaceContainer')} shape="medium">
             <div className="flex items-center gap-3 p-4">
@@ -316,7 +329,7 @@ const FactSliderRow = ({ fact, slider, onWrite }: { fact: Fact; slider: FactSlid
           {sliderTitle(fact)}
         </Text>
         <Text typography="labelLarge" color={md('primary')}>
-          {sliderValue(shown, slider.decimals, fact.units)}
+          {switchedOff(fact) ? VALUE_OFF : sliderValue(shown, slider.decimals, fact.units)}
         </Text>
       </div>
       <Slider
