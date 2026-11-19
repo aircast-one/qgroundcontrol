@@ -273,7 +273,7 @@ impl Status {
     fn button(self) -> &'static str {
         match self {
             Status::Connecting => "Connecting…",
-            Status::Reconnecting => "Reconnecting…",
+            Status::Reconnecting => "Stop",
             Status::Connected => "Disconnect",
             _ => "Connect",
         }
@@ -1172,12 +1172,55 @@ pub fn ntrip_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     snapshot["active"] = json!(active);
     snapshot["buttonEnabled"] =
         json!(snapshot["buttonEnabled"].as_bool().unwrap_or(false) && can_connect);
-    snapshot
+    without_device(
+        snapshot,
+        !cfg!(target_family = "wasm") || crate::device::paired(),
+        active,
+    )
+}
+
+fn without_device(snapshot: Value, reaches: bool, active: bool) -> Value {
+    match reaches || active {
+        true => snapshot,
+        false => {
+            let mut told = snapshot;
+            told["statusMessage"] = json!(crate::device::NEEDS_DEVICE);
+            told["buttonEnabled"] = json!(false);
+            told
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_browser_with_no_device_is_told_before_connecting_and_can_still_switch_a_saved_connection_off()
+     {
+        let idle = json!({ "status": "disconnected", "statusMessage": "Disconnected", "buttonEnabled": true });
+        let told = without_device(idle.clone(), false, false);
+        assert_eq!(
+            (
+                told["statusMessage"].as_str(),
+                told["buttonEnabled"].as_bool()
+            ),
+            (Some(crate::device::NEEDS_DEVICE), Some(false)),
+            "a caster a browser cannot dial is named up front instead of after a Connect that retries forever"
+        );
+        assert_eq!(without_device(idle.clone(), true, false), idle);
+        assert_eq!(
+            without_device(idle.clone(), false, true),
+            idle,
+            "a connection left on must stay switchable off"
+        );
+        assert!(!crate::device::NEEDS_DEVICE.contains("QGroundControl"));
+    }
+
+    #[test]
+    fn retrying_offers_stop_rather_than_naming_what_it_is_doing() {
+        assert_eq!(Status::Reconnecting.button(), "Stop");
+    }
 
     fn frame(id: u16, payload_len: usize) -> Vec<u8> {
         let mut body = vec![(id >> 4) as u8, ((id & 0x0F) << 4) as u8];

@@ -262,3 +262,14 @@ test('a radio channel already working another control is refused with the contro
   await app.getByRole('tablist').getByRole('tab', { name: 'Control' }).click();
   await expect(app.getByRole('textbox', { name: 'Camera pitch channel' })).toHaveValue('18');
 });
+
+test('a browser with no Aircast device is told NTRIP needs one before Connect, instead of a Connect that retries forever', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await app.getByRole('button', { name: /^NTRIP/ }).click();
+  const host = app.getByRole('textbox', { name: 'Host address' });
+  await host.fill('rtk2go.com');
+  await host.press('Enter');
+  await expect(app.getByText('A browser reaches this only through an Aircast device. Open Aircast from your Aircast device to use it.')).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Connect', exact: true })).toBeDisabled();
+});

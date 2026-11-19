@@ -124,7 +124,7 @@ impl Session {
                 self.heard = now;
                 false
             }
-            Err(detail) => self.fail(now, false, &detail),
+            Err(detail) => self.fail(now, detail == crate::device::NEEDS_DEVICE, &detail),
         }
     }
 
@@ -424,6 +424,30 @@ mod tests {
             Some(Ok("STR;MOUNT;\r\nENDSOURCETABLE\r\n".to_string()))
         );
         crate::device::unpair();
+    }
+
+    #[test]
+    fn a_browser_with_no_device_says_so_once_instead_of_redialling_forever() {
+        let _host = crate::hostsocket::fake::install();
+        let _pairing = crate::device::TEST_PAIRING
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        crate::device::unpair();
+        let generation = lock()
+            .retarget(Some(caster_config()))
+            .map(|(_, generation)| generation)
+            .unwrap();
+        let mut session = Session::new(caster_config(), generation);
+        assert!(
+            session.step(Instant::now()),
+            "trying again cannot change the answer, so the session ends"
+        );
+        let status = lock().snapshot(0);
+        assert_eq!(
+            (status["status"].as_str(), status["statusMessage"].as_str()),
+            (Some("error"), Some(crate::device::NEEDS_DEVICE))
+        );
+        lock().retarget(None);
     }
 
     #[test]

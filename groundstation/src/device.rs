@@ -3,8 +3,7 @@ use std::sync::{Mutex, PoisonError};
 
 use url::Url;
 
-pub const NEEDS_DEVICE: &str =
-    "Open QGroundControl from your Aircast device to use this in a browser.";
+pub const NEEDS_DEVICE: &str = "A browser reaches this only through an Aircast device. Open Aircast from your Aircast device to use it.";
 pub const PAIR: &str = "device.pair";
 pub const PROXY_TARGET: &str = "Aircast-Target";
 
