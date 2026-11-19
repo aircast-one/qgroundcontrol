@@ -16,10 +16,10 @@ final class MissionCompleteDialogTests: XCTestCase {
         XCTAssertNil(imagesTakenText(0))
     }
 
-    func testAnInterruptedMissionSaysSoAndNamesWhereItResumes() throws {
-        let notice = try XCTUnwrap(missionComplete(JSON.parse(#"{"open":true,"id":2,"imagesTaken":0,"resumeFromWaypoint":5,"batteryWarning":true,"interrupted":true,"title":"Mission interrupted","detail":"2 drops are still to come.","resumeLabel":"Resume from waypoint 4"}"#)))
-        XCTAssertEqual([notice.title, notice.resumeLabel], ["Mission interrupted", "Resume from waypoint 4"])
-        XCTAssertTrue(notice.interrupted)
+    func testAStoppedMissionSaysWhereItStoppedAndNamesWhereItResumes() throws {
+        let notice = try XCTUnwrap(missionComplete(JSON.parse(#"{"open":true,"id":2,"imagesTaken":0,"resumeFromWaypoint":5,"batteryWarning":true,"interrupted":true,"title":"Mission stopped at waypoint 6 of 9","detail":"2 drops are still to come.","resumeLabel":"Resume from waypoint 4"}"#)))
+        XCTAssertEqual([notice.title, notice.resumeLabel, notice.detail], ["Mission stopped at waypoint 6 of 9", "Resume from waypoint 4", "2 drops are still to come."])
+        XCTAssertEqual(notice.resumeFromWaypoint, 5)
         XCTAssertEqual(missionComplete(JSON.parse(#"{"open":true,"id":3,"resumeFromWaypoint":null}"#))?.title, "Flight plan complete")
     }
 }

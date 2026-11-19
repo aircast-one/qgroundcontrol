@@ -9,7 +9,6 @@ struct MissionComplete: Equatable {
     var imagesTaken: Int
     var resumeFromWaypoint: Int?
     var batteryWarning: Bool
-    var interrupted = false
     var title = COMPLETE_TITLE
     var detail = ""
     var resumeLabel = ""
@@ -22,7 +21,6 @@ func missionComplete(_ view: JSON?) -> MissionComplete? {
         imagesTaken: view["imagesTaken"].int(0),
         resumeFromWaypoint: view["resumeFromWaypoint"].isNull ? nil : view["resumeFromWaypoint"].int(0),
         batteryWarning: view["batteryWarning"].bool,
-        interrupted: view["interrupted"].bool,
         title: view["title"].string.ifBlank(COMPLETE_TITLE),
         detail: view["detail"].string,
         resumeLabel: view["resumeLabel"].string
@@ -57,12 +55,17 @@ struct MissionCompleteDialog: View {
     }
 
     @ViewBuilder
-    private func interrupted(_ notice: MissionComplete, at waypoint: Int) -> some View {
+    private func choices(_ notice: MissionComplete) -> some View {
         Section {
-            Button {
-                close(notice) { PlanCommands.resumeMission(waypoint) }
-            } label: {
-                Text(notice.resumeLabel.ifBlank("Resume mission from waypoint \(waypoint)")).fontWeight(.semibold)
+            if let images = imagesTakenText(notice.imagesTaken) {
+                Text(images)
+            }
+            if let waypoint = notice.resumeFromWaypoint {
+                Button {
+                    close(notice) { PlanCommands.resumeMission(waypoint) }
+                } label: {
+                    Text(notice.resumeLabel.ifBlank("Resume mission from waypoint \(waypoint)")).fontWeight(.semibold)
+                }
             }
             Button("Leave plan on vehicle") { close(notice) }
         } footer: {
@@ -75,36 +78,10 @@ struct MissionCompleteDialog: View {
         }
     }
 
-    @ViewBuilder
-    private func finished(_ notice: MissionComplete) -> some View {
-        Section {
-            if let images = imagesTakenText(notice.imagesTaken) {
-                Text(images)
-            }
-            Button("Remove plan from vehicle", role: .destructive) {
-                close(notice) { PlanCommands.removeAllFromVehicle() }
-            }
-            Button("Leave plan on vehicle") { close(notice) }
-        }
-        if let waypoint = notice.resumeFromWaypoint {
-            Section {
-                Button("Resume mission from waypoint \(waypoint)") {
-                    close(notice) { PlanCommands.resumeMission(waypoint) }
-                }
-            } footer: {
-                Text("Resume Mission will rebuild the current mission from the last flown waypoint and upload it to the vehicle for the next flight.")
-            }
-        }
-    }
-
     private func content(_ notice: MissionComplete) -> some View {
         NativeDialogStack(title: notice.title) {
             NativeForm {
-                if let waypoint = notice.resumeFromWaypoint, notice.interrupted {
-                    interrupted(notice, at: waypoint)
-                } else {
-                    finished(notice)
-                }
+                choices(notice)
                 if notice.batteryWarning {
                     FormNote(text: BATTERY_SWAP, color: theme.aircast.warning)
                 }
