@@ -1,4 +1,4 @@
-import { connectMock, expect, flightMode, mapMenuAt, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { closeSettings, connectMock, expect, flightMode, mapMenuAt, openMenu, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -162,4 +162,13 @@ test('an orbit opened below the lowest guided height starts at that height and f
   await expect(vehicle.getByText('20.0 m', { exact: true })).toBeVisible();
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to orbit' }));
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Orbit/, { timeout: 30_000 });
+});
+
+test('the Fly map scale bar follows a change of units without the map moving', async ({ app }) => {
+  await expect(app.getByText(/^\d+(\.\d+)? k?m$/)).toBeVisible();
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+  await app.getByRole('button', { name: 'Imperial', exact: true }).click();
+  await closeSettings(app);
+  await expect(app.getByText(/^\d+ (ft|miles?)$/)).toBeVisible();
 });
