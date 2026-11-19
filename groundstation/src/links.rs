@@ -433,6 +433,26 @@ mod tests {
     }
 
     #[test]
+    fn the_support_host_opens_empty_and_asks_for_the_address_instead_of_flagging_a_placeholder() {
+        let group: Value = serde_json::from_str(include_str!(
+            "../../src/Settings/Mavlink.SettingsGroup.json"
+        ))
+        .unwrap();
+        let shipped = group["QGC.MetaData.Facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|fact| fact["name"] == "forwardMavlinkAPMSupportHostName")
+            .map(|fact| fact["default"].clone())
+            .unwrap();
+        assert_eq!(shipped, "");
+        assert_eq!(
+            support_host_view(&Nothing, &[String::new()])["error"],
+            "Enter the address of the support engineer's ground station."
+        );
+    }
+
+    #[test]
     fn the_support_host_shipped_as_a_placeholder_is_refused_rather_than_dialled() {
         let judged = |typed: &str| support_host_view(&Nothing, &[typed.to_string()]);
 

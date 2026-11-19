@@ -43,6 +43,13 @@ struct Entry {
 
 const COPTER_TYPES: [u8; 6] = [2, 3, 4, 13, 14, 15];
 
+const BROWSER: bool = cfg!(target_family = "wasm");
+const BROWSER_HIDDEN: &[&str] = &["APMRemoteSupportComponent"];
+
+fn head_offers(class: &str, browser: bool) -> bool {
+    !(browser && BROWSER_HIDDEN.contains(&class))
+}
+
 fn entry(name: &'static str, class: &'static str, known: i64, armed: bool, flying: bool) -> Entry {
     Entry {
         name,
@@ -414,13 +421,15 @@ fn ardupilot_entries(vehicle: &Vehicle) -> Vec<Entry> {
             .is_some()
             .then(|| entry("WiFi Bridge", "ESP8266Component", UNKNOWN, false, false)),
         Some(entry("Logging", "APMLoggingComponent", UNKNOWN, true, true)),
-        Some(entry(
-            "Remote Support",
-            "APMRemoteSupportComponent",
-            UNKNOWN,
-            false,
-            false,
-        )),
+        head_offers("APMRemoteSupportComponent", BROWSER).then(|| {
+            entry(
+                "Remote Support",
+                "APMRemoteSupportComponent",
+                UNKNOWN,
+                false,
+                false,
+            )
+        }),
         Some(Entry {
             setup_complete: !crate::joystickhost::active_uncalibrated(),
             ..entry(
@@ -697,6 +706,16 @@ mod tests {
             px4(&simulated, None).iter().all(|c| c["name"] != "Sensors"),
             "PX4AutoPilotPlugin leaves Sensors out in HIL mode"
         );
+    }
+
+    #[test]
+    fn a_browser_leaves_out_remote_support_since_it_forwards_over_a_udp_socket() {
+        assert!(
+            !head_offers("APMRemoteSupportComponent", true),
+            "a browser cannot open the UDP link that forwards telemetry to a support engineer"
+        );
+        assert!(head_offers("APMRemoteSupportComponent", false));
+        assert!(head_offers("APMLoggingComponent", true));
     }
 
     #[test]

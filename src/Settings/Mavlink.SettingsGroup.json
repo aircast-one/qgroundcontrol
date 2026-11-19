@@ -62,7 +62,7 @@
             "shortDesc": "Ardupilot Support Host name",
             "longDesc": "Ardupilot Support server to forward mavlink to. i.e: support.ardupilot.org:xxxx",
             "type": "string",
-            "default": "support.ardupilot.org:xxxx",
+            "default": "",
             "label": "ArduPilot support host"
         },
         {
