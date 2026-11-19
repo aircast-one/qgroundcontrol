@@ -217,6 +217,7 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
               shown={current}
               everyPage={everyPage}
               open={current ? openPage : null}
+              reveal={current && page !== null && pageLook(page).inline ? page : null}
               onOpen={setOpenPage}
               onClose={closePage}
               heading={pageHeading}

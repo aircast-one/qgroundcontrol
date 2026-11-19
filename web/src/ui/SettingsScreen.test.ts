@@ -300,6 +300,13 @@ describe('SettingsViewTest', () => {
     expect(matchesIn('Connections', settingsSections(links), 'nmea').map((it) => it.title)).toEqual(['Links › Auto connect']);
   });
 
+  it('a setting drawn straight on a tab is named under that tab, not under a page the tabs do not show', () => {
+    const fly = { title: 'Fly View', sections: [{ title: 'Fly View', group: 'flyViewSettings', subsections: [{ title: 'Map and compass', controls: [{ name: 'showAdditionalIndicatorsCompass', label: 'Extra compass markers', control: 'switch', path: 'settings.flyViewSettings.showAdditionalIndicatorsCompass' }] }] }] };
+    expect(matchesIn('Fly View', settingsSections(fly), 'compass').map((it) => it.title)).toEqual(['Control › Fly view › Map and compass']);
+    const radio = { title: 'Connections', sections: [{ title: 'Links', group: 'appSettings', subsections: [{ title: RADIO_ON_USB_BLOCK, controls: [{ name: 'usbRadioZoomChannel', label: 'Camera zoom channel', control: 'number', path: 'settings.appSettings.usbRadioZoomChannel' }] }] }] };
+    expect(matchesIn('Connections', settingsSections(radio), 'zoom').map((it) => it.title)).toEqual([`Control › ${RADIO_ON_USB_BLOCK}`]);
+  });
+
   it('the measurement system is found by what pilots call it', () => {
     const read = settingsSections(general);
     expect(['units', 'Measurement system', 'imperial', 'metric'].map((word) => matchesIn('General', read, word).map((it) => [it.title, it.group]))).toEqual(

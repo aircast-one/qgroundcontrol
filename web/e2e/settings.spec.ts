@@ -285,3 +285,10 @@ test('switching the measurement system relabels the other rows on the page at on
   await expect(app.getByRole('button', { name: 'Metric', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(altitude).toHaveValue('50');
 });
+
+test('a page found by search that is drawn inside a tab opens at that page, not at the top of the tab', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  await app.getByRole('textbox', { name: 'Search settings' }).fill('compass');
+  await app.getByRole('button', { name: 'Fly view', exact: true }).click();
+  await expect(app.getByText('Map and compass', { exact: true })).toBeInViewport();
+});

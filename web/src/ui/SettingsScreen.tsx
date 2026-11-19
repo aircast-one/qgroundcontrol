@@ -297,9 +297,13 @@ export const pageMatches = (page: SettingsPageEntry, needle: string): boolean =>
 
 const UNITS_SEARCH_TERMS = 'units measurement system metric imperial';
 
-const searchCrumb = (page: string, heading: string): string => {
-  const shown = pageTitle(page);
-  return notBlank(heading) && heading.toLowerCase() !== page.toLowerCase() && heading.toLowerCase() !== shown.toLowerCase() ? `${shown} › ${heading}` : shown;
+const searchCrumb = (page: string, heading: string, home: SettingsGroup = pageLook(page).group): string => {
+  const look = pageLook(page);
+  const onTab = look.inline || home !== look.group;
+  return [...(onTab ? [home.title] : []), ...(home === look.group ? [pageTitle(page)] : []), heading]
+    .filter(notBlank)
+    .reduce<readonly string[]>((kept, part) => (kept.some((it) => it.toLowerCase() === part.toLowerCase()) ? kept : [...kept, part]), [])
+    .join(' › ');
 };
 
 const factFound = (fact: Fact, wanted: string): boolean =>
@@ -315,7 +319,7 @@ export const matchesIn = (page: string, sections: readonly SettingsSectionRows[]
         : []
       : section.blocks.flatMap((block) => {
           const hits = block.facts.filter((fact) => factFound(fact, wanted));
-          return hits.length === 0 ? [] : [{ ...section, title: searchCrumb(page, blockHeading(page, section, block)), note: '', blocks: [{ title: '', facts: hits }] }];
+          return hits.length === 0 ? [] : [{ ...section, title: searchCrumb(page, blockHeading(page, section, block), blockGroup(page, block)), note: '', blocks: [{ title: '', facts: hits }] }];
         }),
   );
 };
@@ -385,6 +389,7 @@ export const SettingsScreen = ({
   shown = true,
   everyPage,
   open,
+  reveal = null,
   onOpen,
   onClose,
   heading,
@@ -394,6 +399,7 @@ export const SettingsScreen = ({
   group: SettingsGroup;
   shown?: boolean;
   everyPage: readonly SettingsPageEntry[];
+  reveal?: string | null;
   open: string | null;
   onOpen: (title: string) => void;
   onClose: () => void;
@@ -411,7 +417,7 @@ export const SettingsScreen = ({
         <div className={`h-full w-full ${className ?? ''}`}>
           {group !== SettingsGroup.Device ? (
             current === null ? (
-              <SettingsTab group={group} everyPage={everyPage} className="h-full w-full" onOpenSetup={onOpenSetup} onOpen={onOpen} />
+              <SettingsTab group={group} everyPage={everyPage} reveal={reveal} className="h-full w-full" onOpenSetup={onOpenSetup} onOpen={onOpen} />
             ) : (
               <SettingsPageBody page={current} className="h-full w-full" />
             )
@@ -458,12 +464,14 @@ export const pageRuns = (pages: readonly SettingsPageEntry[], inline: (page: Set
 const SettingsTab = ({
   group,
   everyPage,
+  reveal,
   className,
   onOpenSetup,
   onOpen,
 }: {
   group: SettingsGroup;
   everyPage: readonly SettingsPageEntry[];
+  reveal: string | null;
   className: string;
   onOpenSetup: (component: string | null) => void;
   onOpen: (title: string) => void;
@@ -474,7 +482,7 @@ const SettingsTab = ({
   const foldsInline = group === SettingsGroup.Safety;
   const drawnInline = (page: SettingsPageEntry): boolean => pageLook(page.title).inline || pageLook(page.title).group !== group;
   const pageEntry = (page: SettingsPageEntry): ReactNode =>
-    drawnInline(page) ? <InlinePage key={page.title} page={page} group={group} /> : <PageEntryRow key={page.title} page={page} linksJson={linksJson} onOpen={onOpen} />;
+    drawnInline(page) ? <InlinePage key={page.title} page={page} group={group} revealed={reveal === page.title} /> : <PageEntryRow key={page.title} page={page} linksJson={linksJson} onOpen={onOpen} />;
   const folded = pages.filter(drawnInline);
   const shown = pages.filter((page) => !drawnInline(page));
   const groundStationLinks = useDeviceStatus()?.pages.find((page) => page.href === GROUND_STATION_LINKS) ?? null;
@@ -513,19 +521,25 @@ const SettingsTab = ({
   );
 };
 
-const InlinePage = ({ page, group }: { page: SettingsPageEntry; group: SettingsGroup }) => {
+const InlinePage = ({ page, group, revealed }: { page: SettingsPageEntry; group: SettingsGroup; revealed: boolean }) => {
   const [sections, setSections] = useKeyedState<readonly SettingsSectionRows[] | null>([page.title], () => null);
   const [reloads, setReloads] = useKeyedState([page.title], () => 0);
+  const top = useRef<HTMLDivElement>(null);
   useLaunchedEffect([page.title, reloads], async (scope) => {
     const read = settingsSections(await Qgc.get(settingsPagePath(page.title)));
     if (scope.isActive()) setSections(read);
   });
   const shown = sections === null ? [] : sectionsIn(group, page.title, sections);
-  if (shown.length === 0) return null;
+  const drawn = shown.length > 0;
+  useEffect(() => {
+    if (revealed && drawn) top.current?.scrollIntoView({ block: 'start' });
+  }, [revealed, drawn]);
+  if (!drawn) return null;
   const look = pageLook(page.title);
   const home = look.group === group;
   return (
     <>
+      <div ref={top} />
       {!(home && look.tabHome) ? <PageHeader icon={look.icon} title={home ? pageTitle(page.title) : borrowedTitle(shown)} /> : null}
       <SettingsControls page={page} sections={shown} home={home} blockHeadings={home} onWrite={() => setReloads((it) => it + 1)} />
       {home && page.title === GENERAL_PAGE ? <ResetAllSettingsRow /> : null}
