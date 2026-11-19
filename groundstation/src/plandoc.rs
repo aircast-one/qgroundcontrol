@@ -835,11 +835,16 @@ pub fn insert_simple(
     let inherited = previous_altitude(doc, &commands, visual_index)
         .filter(|_| fresh.altitude.is_some() && !land);
     let placed = match inherited {
-        Some((altitude, previous_mode)) => {
+        Some((previous, previous_mode)) => {
             let mode = match (takeoff, doc.global_altitude_mode) {
                 (true, _) | (false, crate::altitudemodes::MIXED) => previous_mode,
                 _ => fresh.altitude.as_ref().map_or(previous_mode, |a| a.mode),
             };
+            let altitude = fresh
+                .altitude
+                .as_ref()
+                .filter(|route| route.mode == mode)
+                .map_or(previous, |route| route.altitude);
             Simple {
                 frame: frame_for(mode),
                 params: [
@@ -2719,10 +2724,53 @@ mod tests {
     }
 
     #[test]
-    fn an_inserted_waypoint_copies_the_altitude_before_it() {
+    fn an_inserted_waypoint_takes_the_route_altitude_the_pilot_set_where_qt_copies_the_one_before_it()
+     {
+        let placed = insert_waypoint(&section(), 47.6335, -122.0885, 3, &QT_DEFAULTS);
+        let Some(Item::Simple(inserted)) = placed.items.get(2) else {
+            panic!("the waypoint goes in at visual index 3")
+        };
+        assert_eq!(
+            inserted.altitude.as_ref().map(|a| a.altitude),
+            Some(QT_DEFAULTS.mission_item_altitude),
+            "the route settings promise new waypoints the route altitude, so a new waypoint no longer copies the 20 m before it as Qt does"
+        );
         matches_qt(
-            &insert_waypoint(&section(), 47.6335, -122.0885, 3, &QT_DEFAULTS),
+            &set_altitude(&placed, 3, 20.0).unwrap(),
             include_str!("../tests/fixtures/edit-B-by-qt.plan"),
+        );
+    }
+
+    #[test]
+    fn an_inserted_waypoint_in_a_frame_other_than_the_route_keeps_the_altitude_before_it() {
+        let amsl = Document {
+            global_altitude_mode: crate::altitudemodes::MIXED,
+            items: section()
+                .items
+                .iter()
+                .map(|item| match item {
+                    Item::Simple(s) if s.altitude.is_some() => Item::Simple(Simple {
+                        frame: FRAME_GLOBAL,
+                        altitude: s.altitude.clone().map(|a| Altitude {
+                            mode: crate::altitudemodes::ABSOLUTE,
+                            altitude: 520.0,
+                            ..a
+                        }),
+                        ..s.clone()
+                    }),
+                    other => other.clone(),
+                })
+                .collect(),
+            ..section()
+        };
+        let placed = insert_waypoint(&amsl, 47.6335, -122.0885, 3, &QT_DEFAULTS);
+        let Some(Item::Simple(inserted)) = placed.items.get(2) else {
+            panic!("the waypoint goes in at visual index 3")
+        };
+        assert_eq!(
+            inserted.altitude.as_ref().map(|a| (a.mode, a.altitude)),
+            Some((crate::altitudemodes::ABSOLUTE, 520.0)),
+            "the route altitude is above launch, so it would put an AMSL waypoint underground"
         );
     }
 

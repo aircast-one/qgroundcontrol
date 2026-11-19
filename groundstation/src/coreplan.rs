@@ -46,7 +46,7 @@ const ACTIONS: &[&str] = &[
 const CMD_NAV_LAND: i64 = 21;
 const CMD_NAV_VTOL_LAND: i64 = 85;
 const APPLY_ALTITUDE_TITLE: &str = "Change every waypoint to the new route altitude?";
-const APPLY_ALTITUDE_TEXT: &str = "The waypoints already placed keep their own altitudes unless you change them all. New waypoints copy the altitude of the waypoint before them.";
+const APPLY_ALTITUDE_TEXT: &str = "New waypoints use the new altitude. The waypoints already placed keep their own altitudes unless you change them all.";
 static ASK_APPLY_ALTITUDE: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 const DEFAULT_ALTITUDE: &str = "settings.appSettings.defaultMissionItemAltitude";
