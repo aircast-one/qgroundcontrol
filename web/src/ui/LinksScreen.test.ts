@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import {
   noLinksNote,
+  webSocketTaken,
   AddOutcome,
   dialFailure,
   dialState,
@@ -237,6 +238,14 @@ describe('LinkEditRulesTest', () => {
     expect(noLinksNote(false)).not.toContain('connects by itself');
     expect(noLinksNote(false)).toContain('USB telemetry radio');
     expect(noLinksNote(true)).toContain('connects by itself');
+  });
+
+  it('a second link to an address already saved is refused with the link that has it', () => {
+    const saved = LinkRow({ index: 0, name: 'Bench', statusLine: '', connected: false, heard: false, lastError: '', type: LinkType.WebSocket, url: 'ws://127.0.0.1:5760' });
+    expect(webSocketTaken('ws://127.0.0.1:5760', [saved])).toBe('ws://127.0.0.1:5760 is already saved as Bench.');
+    expect(webSocketTaken('ws://127.0.0.1:5760/', [saved]), 'the same address with a trailing slash is the same socket').not.toBeNull();
+    expect(webSocketTaken('ws://127.0.0.1:5761', [saved])).toBeNull();
+    expect(webSocketTaken('ws://127.0.0.1:5760', [])).toBeNull();
   });
 
   it('a link that keeps failing waits apart from the links that hear a vehicle', () => {

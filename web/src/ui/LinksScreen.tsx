@@ -884,6 +884,11 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
         setError(EDIT_WHILE_CONNECTED);
         return;
       }
+      const duplicate = row.editing === LinkEditing.Url ? webSocketTaken(webSocketAddress(edit.host), rows.filter((it) => it.index !== row.index)) : null;
+      if (duplicate !== null) {
+        setError(duplicate);
+        return;
+      }
       if (current.connected) {
         await LinkCommands.disconnect(row.index);
         if (!(await settledWithin(Date.now() + LINK_SETTLE_MS, async () => rowConnected(await currentRows(), row.index) === false))) {
@@ -1275,6 +1280,19 @@ const portOutOfRange = (typed: string): boolean => {
   return port !== undefined && !inPortRange(Number(port));
 };
 
+const sameAddress = (one: string, other: string): boolean => {
+  try {
+    return new URL(one).href === new URL(other).href;
+  } catch {
+    return false;
+  }
+};
+
+export const webSocketTaken = (address: string, others: readonly LinkRow[]): string | null => {
+  const saved = others.find((it) => sameAddress(it.url, address));
+  return saved === undefined ? null : `${address} is already saved as ${saved.name}.`;
+};
+
 export const webSocketUrlError = (typed: string): string | null => {
   if (portOutOfRange(typed)) return 'Port must be a number between 1 and 65535.';
   try {
@@ -1291,12 +1309,13 @@ const WebSocketLinkPage = ({ onBack, onAdded, className }: { onBack: () => void;
   const [busy, setBusy] = useState(false);
   const kind = linkKind(LinkType.WebSocket);
   const linksJson = useQgcPath(LINKS_VIEW);
-  const taken = useMemo(() => linkRows(linksJson).map((it) => it.name), [linksJson]);
+  const rows = useMemo(() => linkRows(linksJson), [linksJson]);
+  const taken = useMemo(() => rows.map((it) => it.name), [rows]);
   useBackHandler(true, onBack);
   const connect = () => {
     const address = webSocketAddress(typed);
     setTyped(address);
-    const invalid = webSocketUrlError(address);
+    const invalid = webSocketUrlError(address) ?? webSocketTaken(address, rows);
     setError(invalid);
     if (invalid !== null) return;
     setBusy(true);
