@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeFact } from '@/bridge/Qgc';
 import { parseJson } from '@/bridge/Json';
 import { factFromControl } from '@/ui/ParameterForm';
-import { FORCE_EDIT_NOTE, READ_ONLY_NOTE, forceEditNote, manualEntryFact, paramLinkName, parameterDefault, valueDetailsNotes } from './ParameterLinks';
+import { FORCE_EDIT_NOTE, READ_ONLY_NOTE, forceEditNote, manualEntryFact, paramLinkName, parameterDefault, valueDetailsNotes, valueText } from './ParameterLinks';
 
 describe('ParameterLinksTest', () => {
   it('a param link names the parameter and other links are left to the browser', () => {
@@ -35,5 +35,15 @@ describe('ParameterLinksTest', () => {
     const fact = control === null ? null : factFromControl(control);
     expect(fact?.valueDetails).toBe('Altitude to begin landing approach from.');
     expect(fact === null ? null : valueDetailsNotes(fact)).toEqual(['Altitude to begin landing approach from.', 'default 40.0 m']);
+  });
+});
+
+describe('ResetNoticeTest', () => {
+  it('a choice reset to its default is named by its label, not the raw number', () => {
+    const fields = { path: 'p', description: '', units: '', valueString: '1', value: 1, enumIndex: 1, isBool: false, isString: false, readOnly: false };
+    const mode = makeFact({ ...fields, name: 'COM_RC_IN_MODE', enumStrings: ['RC only', 'MAVLink only', 'RC or MAVLink keep first'], enumValues: ['0', '1', '3'] });
+    expect(valueText(mode, 3), 'the snackbar read Manual control input source configuration: 3').toBe('RC or MAVLink keep first');
+    expect(valueText(mode, '1')).toBe('MAVLink only');
+    expect(valueText(makeFact({ ...fields, name: 'RTL_ALT_M', enumStrings: [], enumIndex: -1 }), 15)).toBe('15');
   });
 });

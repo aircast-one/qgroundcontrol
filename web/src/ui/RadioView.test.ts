@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
-import { RADIO_ENTER_ACTIONS, RADIO_LEAVE_ACTIONS, stickReading } from '@/ui/RadioScreen';
+import { RADIO_ENTER_ACTIONS, RADIO_LEAVE_ACTIONS, rcInputNote, stickReading } from '@/ui/RadioScreen';
 import { RadioStick, type RadioView, calibrationStep, radioCalAction, radioView } from '@/ui/RadioView';
 
 const TWO_DEAD = `
@@ -116,5 +116,14 @@ describe('CalibrationStepTest', () => {
     expect(stickReading(RadioStick({ title: 'Yaw', valueText: '1595', fraction: 0.6, mapped: true, reversed: true }))).toBe('1595 µs · reversed');
     expect(stickReading(RadioStick({ title: 'Yaw', valueText: '', fraction: 0, mapped: false, reversed: false }))).toBe('Not mapped');
     expect(stickReading(RadioStick({ title: 'Throttle', valueText: '1100', fraction: 0.1, mapped: true, reversed: false, channel: 3 }))).toBe('Ch 3 · 1100 µs');
+  });
+});
+
+describe('RcInputNoteTest', () => {
+  it('a vehicle told to take manual control over MAVLink only says why its sticks read Not mapped', () => {
+    expect(rcInputNote({ kind: 'fact', rawValue: 1 })).toMatch(/MAVLink only/);
+    expect(rcInputNote({ kind: 'fact', rawValue: 4 })).not.toBeNull();
+    expect(rcInputNote({ kind: 'fact', rawValue: 3 })).toBeNull();
+    expect(rcInputNote(null), 'ArduPilot has no such parameter').toBeNull();
   });
 });

@@ -113,6 +113,11 @@ const CheckRow = ({ text, checked, onChecked }: { text: string; checked: boolean
 export const IN_FLIGHT_WARNING =
   'Warning: Modifying values while vehicle is in flight can lead to vehicle instability and possible vehicle loss. Make sure you know what you are doing and double-check your values before Save!';
 
+export const valueText = (fact: Fact, value: unknown): string => {
+  const index = (fact.enumValues ?? []).indexOf(String(value));
+  return index >= 0 ? (fact.enumStrings[index] ?? String(value)) : String(value);
+};
+
 export const parameterDefault = (json: Json | null): unknown =>
   json !== null && optBoolean(json, 'defaultValueAvailable') && has(json, 'defaultValue') && !isNull(json, 'defaultValue') ? opt(json, 'defaultValue') : null;
 
@@ -246,7 +251,7 @@ export const ParameterEditDialog = ({ name, title = name, onWrite = () => undefi
       const refused = await writer(loaded.path, defaultValue);
       setRefusal(refused);
       if (refused !== null) return;
-      announce(loaded, String(defaultValue), fieldText(loaded), onWrite);
+      announce(loaded, valueText(loaded, defaultValue), fieldText(loaded), onWrite);
       onDismiss();
     })();
 
@@ -314,7 +319,7 @@ export const ValueDetailsSheet = ({ fact, title = VALUE_DETAILS_TITLE, onWrite, 
       setRefusal(refused);
       if (refused !== null) return;
       onWrite();
-      announce(fact, fact.defaultValueString, fieldText(fact), onWrite);
+      announce(fact, valueText(fact, fact.defaultValueString), fieldText(fact), onWrite);
       onDismiss();
     })();
   return (

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { type Json, optInt } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
@@ -218,8 +219,17 @@ const invokeInOrder = (actions: readonly string[]): void => void Promise.all(act
 
 const invokeAction = (action: string): void => void Qgc.invoke(radioCalAction(action));
 
+const RC_IN_MODE = 'vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE)';
+const RC_IN_UNUSED: readonly number[] = [1, 4];
+
+export const rcInputNote = (mode: Json | null): string | null =>
+  mode !== null && RC_IN_UNUSED.includes(optInt(mode, 'rawValue', -1))
+    ? 'This vehicle takes manual control over MAVLink only, so it ignores the radio and nothing below needs mapping. To fly with a transmitter, change the manual control input source in Parameters.'
+    : null;
+
 export const RadioScreen = ({ className }: { className?: string }) => {
   const json = useQgcPath(RADIO_VIEW);
+  const rcNote = rcInputNote(useQgcPath(RC_IN_MODE));
   const view = useMemo(() => radioView(json), [json]);
   useEffect(() => {
     invokeInOrder(RADIO_ENTER_ACTIONS);
@@ -250,6 +260,7 @@ export const RadioScreen = ({ className }: { className?: string }) => {
         />
       ) : null}
       <div className={`flex h-full w-full flex-col overflow-y-auto ${className ?? ''}`}>
+        {rcNote !== null ? <RadioNotice text={rcNote} /> : null}
         {view.channelCount === 0 ? <RadioNotice text="No transmitter signal. Turn the transmitter on and check the receiver is bound." /> : null}
 
         {view.calibration.running ? (

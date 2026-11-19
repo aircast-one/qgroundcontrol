@@ -131,6 +131,15 @@ test('a servo minimum above its trim is refused, and a kept change offers Undo',
   await expect(minimum).toHaveValue('1100');
 });
 
+test('a PX4 vehicle on MAVLink-only control reads its radio and mode switch as not used, and says why on Radio', async ({ app }) => {
+  await connectMock(app);
+  await openAircraftSetup(app);
+  await expect(app.getByRole('button', { name: /^Radio Not used: MAVLink only/ })).toBeVisible();
+  await expect(app.getByRole('button', { name: /^Flight modes Not used: MAVLink only/ })).toBeVisible();
+  await app.getByRole('button', { name: /^Radio / }).click();
+  await expect(app.getByText(/^This vehicle takes manual control over MAVLink only/)).toBeVisible();
+});
+
 test('the copter frame tiles keep their names inside the tile', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);

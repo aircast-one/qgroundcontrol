@@ -189,7 +189,19 @@ fn apm_radio(facts: Facts) -> Rows {
     .collect()
 }
 
+const RC_IN_MODE: &str = "COM_RC_IN_MODE";
+const RC_IN_UNUSED: [f64; 2] = [1.0, 4.0];
+
+fn rc_unused(facts: Facts) -> Option<String> {
+    facts(RC_IN_MODE)
+        .filter(|mode| RC_IN_UNUSED.contains(&number(mode)))
+        .map(|mode| format!("Not used: {}", enum_text(&mode)))
+}
+
 fn px4_radio(facts: Facts, vehicle: &Vehicle) -> Rows {
+    if let Some(unused) = rc_unused(facts) {
+        return vec![row("RC input", unused)];
+    }
     let mapped = |name: &str, unset: &str| {
         facts(name)
             .map(|f| {
@@ -231,6 +243,9 @@ fn apm_flight_modes(facts: Facts, vehicle: &Vehicle) -> Rows {
 }
 
 fn px4_flight_modes(facts: Facts) -> Rows {
+    if let Some(unused) = rc_unused(facts) {
+        return vec![row("Mode switch", unused)];
+    }
     let switch = facts("RC_MAP_FLTMODE")
         .map(|f| {
             if number(&f) == 0.0 {
@@ -894,6 +909,7 @@ const DEFAULT_COMPONENT: i64 = -1;
 const APM_RADIO_SUMMARY_LOOKUPS: &[&str] =
     &["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_YAW", "RCMAP_THROTTLE"];
 const PX4_RADIO_SUMMARY_LOOKUPS: &[&str] = &[
+    RC_IN_MODE,
     "RC_MAP_ROLL",
     "RC_MAP_PITCH",
     "RC_MAP_YAW",
@@ -944,7 +960,9 @@ fn summary_lookups(class: &str, facts: Facts, vehicle: &Vehicle) -> Vec<(i64, St
                 )
             })
             .collect()),
-        "FlightModesComponent" => at((1..=6).map(|slot| format!("COM_FLTMODE{slot}")).collect()),
+        "FlightModesComponent" => at(std::iter::once(RC_IN_MODE.to_string())
+            .chain((1..=6).map(|slot| format!("COM_FLTMODE{slot}")))
+            .collect()),
         "APMPowerComponent" => listed(&["BATT_MONITOR"]),
         "APMSensorsComponent" => {
             listed(&crate::vehicleconfig::apm_sensor_params_lookups(&|name| {
@@ -1058,6 +1076,32 @@ mod tests {
         assert!(
             rows.contains(&row("Airspeed", SETUP_REQUIRED)),
             "with an airspeed sensor and no offset, the Airspeed row asks for setup: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn a_px4_vehicle_on_mavlink_control_reads_its_radio_and_mode_switch_as_not_used() {
+        let unmapped = |mode: f64, label: &str| -> HashMap<&'static str, Value> {
+            HashMap::from([
+                (RC_IN_MODE, fact(mode, &mode.to_string(), label, "")),
+                ("RC_MAP_ROLL", fact(0.0, "0", "", "")),
+                ("RC_MAP_FLTMODE", fact(0.0, "0", "", "")),
+            ])
+        };
+        let mavlink = unmapped(1.0, "MAVLink only");
+        assert_eq!(
+            px4_radio(&lookup(&mavlink), &copter()),
+            [row("RC input", "Not used: MAVLink only")],
+            "Radio said Setup required for sticks the vehicle was told to ignore"
+        );
+        assert_eq!(
+            px4_flight_modes(&lookup(&mavlink)),
+            [row("Mode switch", "Not used: MAVLink only")]
+        );
+        let radio = unmapped(0.0, "RC only");
+        assert_eq!(
+            px4_radio(&lookup(&radio), &copter())[0],
+            row("Roll", SETUP_REQUIRED)
         );
     }
 
