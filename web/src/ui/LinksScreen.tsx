@@ -4,7 +4,7 @@ import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, 
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { stageFile, stagedLocation, unstage, unstageAll } from '@/core/files';
-import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
+import { forgetSaveable, useBackHandler, useLaunchedEffect, useSaveable, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
 import { delay, same } from '@/kotlin/Std';
@@ -832,12 +832,16 @@ const PageColumn = ({ title, backLabel, onBack, className, padded = true, childr
   );
 };
 
+export const ADD_LINK_FORM = 'links.add.';
+export const ADD_LINK_DRAFT = `${ADD_LINK_FORM}draft.`;
+export const EDIT_LINK_FORM = 'links.edit.';
+
 const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; onDismiss: () => void; onSaved: () => void; className?: string }) => {
-  const [edit, setEdit] = useState(() => linkEdit(row));
+  const [edit, setEdit] = useSaveable(`${EDIT_LINK_FORM}${row.name}.edit`, () => linkEdit(row));
   const [device, setDevice] = useState<BluetoothDeviceChoice | null>(null);
-  const [advanced, setAdvanced] = useState(() => editShowsAdvanced(row));
+  const [advanced, setAdvanced] = useSaveable(`${EDIT_LINK_FORM}${row.name}.advanced`, () => editShowsAdvanced(row));
   const [error, setError] = useState<string | null>(null);
-  const [server, setServer] = useState('');
+  const [server, setServer] = useSaveable(`${EDIT_LINK_FORM}${row.name}.server`, () => '');
   const cancel = () => {
     if (row.editing === LinkEditing.LogFile) void pruneReplayFolder(row.name, row.filename);
     onDismiss();
@@ -1078,8 +1082,12 @@ const addLink = async (draft: LinkDraft, name: string, udpDefault: string, repla
 };
 
 const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void; onAdded: () => void; className?: string }) => {
-  const [type, setType] = useState<LinkType | null>(null);
-  const [transmitter, setTransmitter] = useState(false);
+  const [type, setType] = useSaveable<LinkType | null>(`${ADD_LINK_FORM}type`, () => null);
+  const [transmitter, setTransmitter] = useSaveable(`${ADD_LINK_FORM}transmitter`, () => false);
+  const backToTypes = () => {
+    forgetSaveable(ADD_LINK_DRAFT);
+    setType(null);
+  };
   const linksJson = useQgcPath(LINKS_VIEW);
   const ports = useMemo(() => serialPortChoices(linksJson), [linksJson]);
   const offered = useMemo(() => addableLinkTypes(linksJson, __DESKTOP__), [linksJson]);
@@ -1092,8 +1100,8 @@ const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void;
   useBackHandler(type === null && !transmitter, onDismiss);
 
   if (transmitter) return <RcTransmitterPage onBack={() => setTransmitter(false)} onDone={onAdded} className={className} />;
-  if (type === LinkType.WebSocket) return <WebSocketLinkPage onBack={() => setType(null)} onAdded={onAdded} className={className} />;
-  if (type !== null) return <AddLinkDetails type={type} onBack={() => setType(null)} onAdded={onAdded} className={className} />;
+  if (type === LinkType.WebSocket) return <WebSocketLinkPage onBack={backToTypes} onAdded={onAdded} className={className} />;
+  if (type !== null) return <AddLinkDetails type={type} onBack={backToTypes} onAdded={onAdded} className={className} />;
 
   const row = (kind: LinkKind) => <SetupRow key={kind.type.name} title={kind.title} subtitle={kind.detail} icon={linkIcon(kind.type)} onClick={() => setType(kind.type)} />;
   const tools = toolLinkKinds(choices);
@@ -1273,7 +1281,7 @@ export const webSocketUrlError = (typed: string): string | null => {
 };
 
 const WebSocketLinkPage = ({ onBack, onAdded, className }: { onBack: () => void; onAdded: () => void; className?: string }) => {
-  const [typed, setTyped] = useState('');
+  const [typed, setTyped] = useSaveable(`${ADD_LINK_DRAFT}webSocket`, () => '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const kind = linkKind(LinkType.WebSocket);
@@ -1333,10 +1341,10 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
   const taken = useMemo(() => linkRows(linksJson).map((it) => it.name), [linksJson]);
   const udpDefault = udpDefaultOf(useQgcValue(UDP_LISTEN_PORT));
   const navigation = useContext(LocalAppNavigation);
-  const [typed, setTyped] = useState(() => LinkDraft({ type, port: portFor(type, udpDefault), mock: preferredMockChoices(linksJson), autoConnect: rememberedByDefault(type) }));
-  const [replayFile, setReplayFile] = useState<File | null>(null);
+  const [typed, setTyped] = useSaveable(`${ADD_LINK_DRAFT}${type.name}`, () => LinkDraft({ type, port: portFor(type, udpDefault), mock: preferredMockChoices(linksJson), autoConnect: rememberedByDefault(type) }));
+  const [replayFile, setReplayFile] = useSaveable<File | null>(`${ADD_LINK_DRAFT}${type.name}.replay`, () => null);
   const draft = withPluggedPort(typed, ports);
-  const [advanced, setAdvanced] = useState(false);
+  const [advanced, setAdvanced] = useSaveable(`${ADD_LINK_DRAFT}${type.name}.advanced`, () => false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cloudErrors, setCloudErrors] = useState(false);
@@ -1500,11 +1508,19 @@ export const LinksScreen = ({ className, footer = null }: { className?: string; 
   const navigation = useContext(LocalAppNavigation);
   const addLinkRequested = useValue(navigation.addLinkRequested);
   const [notice, setNotice] = useState<string | null>(null);
-  const [adding, setAdding] = useState(() => navigation.addLinkRequested.value);
+  const [adding, setAdding] = useSaveable('links.adding', () => navigation.addLinkRequested.value);
   const [advanced, setAdvanced] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState<LinkRow | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState<LinkRow | null>(null);
-  const [editing, setEditing] = useState<LinkRow | null>(null);
+  const [editing, setEditing] = useSaveable<LinkRow | null>('links.editing', () => null);
+  const closeAdd = () => {
+    forgetSaveable(ADD_LINK_FORM);
+    setAdding(false);
+  };
+  const closeEdit = () => {
+    forgetSaveable(EDIT_LINK_FORM);
+    setEditing(null);
+  };
 
   useEffect(() => {
     if (!addLinkRequested) return;
@@ -1522,8 +1538,8 @@ export const LinksScreen = ({ className, footer = null }: { className?: string; 
   const disconnect = (row: LinkRow) =>
     attempt('disconnect', async () => rowConnected(await currentRows(), row.index) !== true, () => LinkCommands.disconnect(row.index));
 
-  if (adding) return <AddLinkPage onDismiss={() => setAdding(false)} onAdded={() => setAdding(false)} className={className} />;
-  if (editing !== null) return <EditLinkPage row={editing} onDismiss={() => setEditing(null)} onSaved={() => setEditing(null)} className={className} />;
+  if (adding) return <AddLinkPage onDismiss={closeAdd} onAdded={closeAdd} className={className} />;
+  if (editing !== null) return <EditLinkPage row={editing} onDismiss={closeEdit} onSaved={closeEdit} className={className} />;
 
   return (
     <div className={`relative flex h-full w-full flex-col ${className ?? ''}`}>

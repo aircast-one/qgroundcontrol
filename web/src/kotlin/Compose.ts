@@ -2,6 +2,7 @@ import { type DependencyList, useCallback, useEffect, useRef, useState } from 'r
 import { flushSync } from 'react-dom';
 import { repeat } from './Std';
 import { OPEN_POPUP } from './Keys';
+import { mutableStateOf } from './State';
 
 export type Scope = { isActive: () => boolean };
 
@@ -124,4 +125,18 @@ export const useKeyedState = <T,>(keys: readonly unknown[], initial: () => T): r
   if (stale) setHeld(current);
   const set = useCallback((next: T | ((previous: T) => T)) => setHeld((previous) => ({ keys: previous.keys, value: typeof next === 'function' ? (next as (previous: T) => T)(previous.value) : next })), []);
   return [current.value, set];
+};
+
+const saveable = mutableStateOf<Readonly<Record<string, unknown>>>({});
+
+export const useSaveable = <T,>(key: string, initial: () => T): readonly [T, (next: T | ((previous: T) => T)) => void] => {
+  const [value, setValue] = useState<T>(() => (key in saveable.value ? (saveable.value[key] as T) : initial()));
+  useEffect(() => {
+    saveable.value = { ...saveable.value, [key]: value };
+  }, [key, value]);
+  return [value, setValue];
+};
+
+export const forgetSaveable = (prefix: string): void => {
+  saveable.value = Object.fromEntries(Object.entries(saveable.value).filter(([key]) => !key.startsWith(prefix)));
 };

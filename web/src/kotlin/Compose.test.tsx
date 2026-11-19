@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { historyDepth, useBackHandler, useEscapeHandler } from './Compose';
+import { forgetSaveable, historyDepth, useBackHandler, useEscapeHandler, useSaveable } from './Compose';
 
 const Screen = ({ onPage }: { onPage: (page: string) => void }) => {
   const [page, setPage] = useState('home');
@@ -115,5 +115,34 @@ describe('Escape and Back', () => {
     expect(historyDepth({ aircastDepth: 2 })).toBe(2);
     expect(historyDepth(null)).toBe(0);
     expect(historyDepth({ aircastDepth: 'x' })).toBe(0);
+  });
+});
+
+const Draft = () => {
+  const [typed, setTyped] = useSaveable('test.draft', () => '');
+  return <input aria-label="draft" value={typed} onChange={(event) => setTyped(event.target.value)} />;
+};
+
+describe('useSaveable', () => {
+  afterEach(() => {
+    cleanup();
+    forgetSaveable('test.');
+  });
+
+  it('a half-typed value survives its screen being drawn again, as when the layout switches between phone and desktop', () => {
+    const first = render(<Draft />);
+    fireEvent.change(first.getByLabelText('draft'), { target: { value: 'ws://192.168.1.50:5760' } });
+    first.unmount();
+    const again = render(<Draft />);
+    expect((again.getByLabelText('draft') as HTMLInputElement).value).toBe('ws://192.168.1.50:5760');
+  });
+
+  it('a forgotten value starts again from blank', () => {
+    const first = render(<Draft />);
+    fireEvent.change(first.getByLabelText('draft'), { target: { value: 'ws://192.168.1.50:5760' } });
+    first.unmount();
+    forgetSaveable('test.');
+    const again = render(<Draft />);
+    expect((again.getByLabelText('draft') as HTMLInputElement).value).toBe('');
   });
 });

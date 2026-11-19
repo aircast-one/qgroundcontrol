@@ -175,3 +175,15 @@ test('a saved link still trying its address says a tap disconnects it, and that 
   await expect(row).toContainText('Connect');
   await expect(row).not.toContainText('Disconnect');
 });
+
+test('a half-typed WebSocket address survives the window switching between phone and desktop width', async ({ app }) => {
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add a link' }).click();
+  await app.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
+  const address = app.getByRole('textbox', { name: 'WebSocket address' });
+  await address.fill('ws://192.168.1.50:5760');
+  await app.setViewportSize({ width: 412, height: 860 });
+  await expect(address).toHaveValue('ws://192.168.1.50:5760');
+  await app.setViewportSize({ width: 1280, height: 800 });
+  await expect(address).toHaveValue('ws://192.168.1.50:5760');
+});
