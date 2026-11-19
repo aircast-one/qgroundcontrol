@@ -98,6 +98,19 @@ const ALTITUDE = 'altitude';
 const DISTANCE = 'distance';
 const SPEED = 'speed';
 
+const ARDUPILOT_MAX_BATTERIES = 16;
+const NUMBERED_BATTERY_PREFIXES = 9;
+
+export const batteryPrefix = (index: number): string =>
+  index === 0 ? 'BATT' : index < NUMBERED_BATTERY_PREFIXES ? `BATT${index + 1}` : `BATT${String.fromCharCode('A'.charCodeAt(0) + index - NUMBERED_BATTERY_PREFIXES)}`;
+
+const ARDUPILOT_BATTERIES: readonly number[] = Array.from({ length: ARDUPILOT_MAX_BATTERIES }, (_, index) => index);
+
+const batteryActions = (index: number): readonly PilotSetting[] => [
+  PilotSetting({ label: `Battery ${index + 1} low`, parameters: [`${batteryPrefix(index)}_FS_LOW_ACT`], section: FAILSAFES, hint: `When battery ${index + 1} runs low.`, reportedOnly: true }),
+  PilotSetting({ label: `Battery ${index + 1} critical`, parameters: [`${batteryPrefix(index)}_FS_CRT_ACT`], section: FAILSAFES, hint: `When battery ${index + 1} is nearly empty.`, reportedOnly: true }),
+];
+
 export const pilotSettings = (group: SettingsGroup): readonly PilotSetting[] => {
   if (group === SettingsGroup.Safety) {
     return [
@@ -116,8 +129,7 @@ export const pilotSettings = (group: SettingsGroup): readonly PilotSetting[] => 
       PilotSetting({ label: 'Remote controller lost', parameters: ['NAV_RCL_ACT', 'FS_THR_ENABLE'], section: FAILSAFES, hint: 'When the remote controller drops.' }),
       PilotSetting({ label: 'Low battery', parameters: ['COM_LOW_BAT_ACT', 'BATT_FS_LOW_ACT'], section: FAILSAFES, hint: 'When the battery runs low.' }),
       PilotSetting({ label: 'Critical battery', parameters: ['BATT_FS_CRT_ACT'], section: FAILSAFES, hint: 'When the battery is nearly empty.', reportedOnly: true }),
-      PilotSetting({ label: 'Battery 2 low', parameters: ['BATT2_FS_LOW_ACT'], section: FAILSAFES, hint: 'When the second battery runs low.', reportedOnly: true }),
-      PilotSetting({ label: 'Battery 2 critical', parameters: ['BATT2_FS_CRT_ACT'], section: FAILSAFES, hint: 'When the second battery is nearly empty.', reportedOnly: true }),
+      ...ARDUPILOT_BATTERIES.slice(1).flatMap(batteryActions),
     ];
   }
   if (group === SettingsGroup.Control) {

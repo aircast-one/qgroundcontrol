@@ -4,7 +4,7 @@ import { calibrationState } from '@/ui/CalibrationView';
 import { SENSORS } from '@/ui/SetupPages';
 import { SetupComponent, splitDesktopOnly } from '@/ui/SetupScreen';
 import { SettingsGroup } from '@/ui/SettingsScreen';
-import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, firstReported, offlineSettings, type ParameterWriter, readingOf, writeAllOrNone, holdWord, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
+import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, batteryPrefix, firstReported, offlineSettings, type ParameterWriter, readingOf, writeAllOrNone, holdWord, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
 
 const parameter = (name: string, description = 'Engineer description') =>
   makeFact({
@@ -128,6 +128,16 @@ describe('PilotSettingsTest', () => {
     const offline = offlineSettings(pilotSettings(SettingsGroup.Safety)).map((it) => it.label);
     expect(offline, 'with no aircraft only the rows every vehicle has are listed').toContain('Low battery');
     expect(offline).not.toContain('Battery 2 low');
+  });
+
+  it('every battery ArduPilot can report links to Settings › Safety, named as ArduPilot prefixes them', () => {
+    expect([0, 1, 8, 9, 15].map(batteryPrefix)).toEqual(['BATT', 'BATT2', 'BATT9', 'BATTA', 'BATTG']);
+    expect(
+      ['BATT3_FS_LOW_ACT', 'BATT9_FS_CRT_ACT', 'BATTA_FS_LOW_ACT', 'BATTG_FS_CRT_ACT'].map((name) => pilotOwner(name)?.setting.label),
+      'batteries 3 and up still edited their actions inline in Failsafes',
+    ).toEqual(['Battery 3 low', 'Battery 9 critical', 'Battery 10 low', 'Battery 16 critical']);
+    expect(pilotOwner('BATTH_FS_LOW_ACT'), 'ArduPilot stops at sixteen batteries').toBeNull();
+    expect(offlineSettings(pilotSettings(SettingsGroup.Safety)).map((it) => it.label)).not.toContain('Battery 3 low');
   });
 });
 

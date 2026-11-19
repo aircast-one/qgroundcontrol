@@ -78,7 +78,7 @@ test('ArduPilot failsafes link both batteries to Settings › Safety instead of 
   await expect(app.getByRole('button', { name: /^Battery 2 critical In Settings › Safety/ })).toBeVisible();
   await expect(app.getByRole('button', { name: /^Low battery failsafe action, / })).toHaveCount(0);
   await app.getByRole('button', { name: /^Battery 2 low In Settings › Safety/ }).click();
-  await expect(app.getByText('When the second battery runs low.', { exact: true })).toBeInViewport();
+  await expect(app.getByText('When battery 2 runs low.', { exact: true })).toBeInViewport();
 });
 
 test('ArduPilot ESC calibration says what happens before it arms, and can be taken back', async ({ app }) => {
