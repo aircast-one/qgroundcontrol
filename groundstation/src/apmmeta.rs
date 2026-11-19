@@ -125,6 +125,74 @@ pub fn parse_json(text: &str) -> Result<JsonParameters, String> {
     Ok(JsonParameters { by_name })
 }
 
+const PLANE_MODE_PARAMS: [&str; 7] = [
+    "FLTMODE1",
+    "FLTMODE2",
+    "FLTMODE3",
+    "FLTMODE4",
+    "FLTMODE5",
+    "FLTMODE6",
+    "INITIAL_MODE",
+];
+const PLANE_MODES_OUTSIDE_THE_TABLE: [(i64, &str); 1] = [(26, "Autoland")];
+const PLANE_FAILSAFE_ACTIONS: [(&str, i64, &str); 11] = [
+    (
+        "FS_SHORT_ACTN",
+        0,
+        "Circle, or carry on if on a mission, guided or loitering",
+    ),
+    ("FS_SHORT_ACTN", 1, "Circle"),
+    ("FS_SHORT_ACTN", 2, "Glide in FBW A at zero throttle"),
+    ("FS_SHORT_ACTN", 3, "Off"),
+    ("FS_SHORT_ACTN", 4, "FBW B"),
+    ("FS_LONG_ACTN", 0, "Continue"),
+    ("FS_LONG_ACTN", 1, "Return to launch"),
+    ("FS_LONG_ACTN", 2, "Glide"),
+    ("FS_LONG_ACTN", 3, "Deploy parachute"),
+    ("FS_LONG_ACTN", 4, "Continue the mission"),
+    ("FS_LONG_ACTN", 5, "Autoland"),
+];
+
+pub fn plain_label(vehicle: &str, name: &str, value: i64, label: &str) -> String {
+    match vehicle {
+        "Plane" if PLANE_MODE_PARAMS.contains(&name) => crate::modes::PLANE_MODES
+            .iter()
+            .find(|mode| i64::from(mode.custom_mode) == value)
+            .map(|mode| mode.name)
+            .or_else(|| {
+                PLANE_MODES_OUTSIDE_THE_TABLE
+                    .iter()
+                    .find(|(raw, _)| *raw == value)
+                    .map(|(_, named)| *named)
+            })
+            .unwrap_or(label)
+            .to_string(),
+        "Plane" => PLANE_FAILSAFE_ACTIONS
+            .iter()
+            .find(|(param, raw, _)| *param == name && *raw == value)
+            .map_or(label, |(_, _, plain)| plain)
+            .to_string(),
+        _ => label.to_string(),
+    }
+}
+
+pub fn plain_metadata(vehicle: &str, meta: MetaData) -> MetaData {
+    let enums = meta
+        .enums
+        .iter()
+        .map(|entry| EnumEntry {
+            label: plain_label(
+                vehicle,
+                &meta.name,
+                entry.value.as_i64().unwrap_or(-1),
+                &entry.label,
+            ),
+            value: entry.value.clone(),
+        })
+        .collect();
+    MetaData { enums, ..meta }
+}
+
 pub fn vehicle_file_name(mav_type: u8) -> Option<&'static str> {
     Some(match crate::modes::vehicle_class(mav_type) {
         crate::modes::VehicleClass::MultiRotor => "Copter",
@@ -389,6 +457,50 @@ mod tests {
             unzipped(json.as_bytes()).as_deref(),
             Some(json),
             "a server that already unzipped it"
+        );
+    }
+
+    #[test]
+    fn a_plane_reads_its_modes_as_fly_names_them_and_its_failsafe_actions_in_plain_words() {
+        let parameters = load("Plane", 4, 5).unwrap();
+        let labels = |name: &str| -> Vec<String> {
+            plain_metadata("Plane", json_metadata(&parameters, name, ValueType::Int8))
+                .enums
+                .into_iter()
+                .map(|e| e.label)
+                .collect()
+        };
+        let modes = labels("FLTMODE1");
+        assert!(
+            ["Stabilize", "FBW A", "QuadPlane Hover", "Avoid ADSB"]
+                .iter()
+                .all(|mode| modes.contains(&mode.to_string())),
+            "the slots offered STABILIZE, FBWA, QHOVER and AVOID_ADSB beside Manual and Auto: {modes:?}"
+        );
+        assert!(
+            ["STABILIZE", "FBWA", "QHOVER", "AVOID_ADSB", "AUTOLAND"]
+                .iter()
+                .all(|raw| !modes.contains(&raw.to_string())),
+            "{modes:?}"
+        );
+        assert_eq!(labels("INITIAL_MODE"), modes);
+        let short = labels("FS_SHORT_ACTN");
+        assert!(
+            short
+                .iter()
+                .all(|label| !label.contains('|') && !label.contains("(if")),
+            "{short:?}"
+        );
+        let long = labels("FS_LONG_ACTN");
+        assert!(
+            long.contains(&"Return to launch".to_string())
+                && !long.contains(&"ReturnToLaunch".to_string())
+                && !long.contains(&"AUTOLAND".to_string()),
+            "{long:?}"
+        );
+        assert_eq!(
+            plain_label("Copter", "FLTMODE1", 0, "Stabilize"),
+            "Stabilize"
         );
     }
 

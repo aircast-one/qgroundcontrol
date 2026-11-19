@@ -838,6 +838,40 @@ fn apm_mode_row(name: &str, mut row: Value, px4: bool) -> Value {
     row
 }
 
+const QUADPLANE_MODES: [i64; 8] = [17, 18, 19, 20, 21, 22, 23, 25];
+
+fn without_quadplane_modes(name: &str, row: Value, plain_plane: bool) -> Value {
+    let mode_row = name == "INITIAL_MODE"
+        || name
+            .strip_prefix("FLTMODE")
+            .is_some_and(|slot| slot.parse::<usize>().is_ok());
+    if !(plain_plane && mode_row) {
+        return row;
+    }
+    let current = row["value"].as_f64().map(|v| v as i64);
+    let kept: Vec<Value> = row["options"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|option| {
+            let raw = option["raw"].as_str().and_then(|r| r.parse::<i64>().ok());
+            raw == current || !raw.is_some_and(|r| QUADPLANE_MODES.contains(&r))
+        })
+        .cloned()
+        .collect();
+    Value::Object(
+        row.as_object()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(key, value)| match key.as_str() {
+                "options" => (key, json!(kept)),
+                _ => (key, value),
+            })
+            .collect(),
+    )
+}
+
 const LABEL_ROW: &str = "label:";
 
 fn servo_column_row(name: &str, mut row: Value) -> Value {
@@ -896,7 +930,7 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         .iter()
         .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter(|p| switch_applies(p, vtol, fixed_wing)).filter_map(|p| match p.strip_prefix(LABEL_ROW) {
             Some(text) => Some(json!({ "control": "label", "name": text, "label": text, "path": format!("{page}.{text}"), "enabled": true })),
-            None => read(p).map(|row| servo_column_row(p, apm_mode_row(p, row, px4))),
+            None => read(p).map(|row| without_quadplane_modes(p, servo_column_row(p, apm_mode_row(p, row, px4)), !px4 && fixed_wing && !vtol)),
         }).collect::<Vec<_>>() }))
         .chain(simple_modes)
         .filter(|s| s["controls"].as_array().is_some_and(|rows| rows.iter().any(|row| row["control"] != "label")))
@@ -954,6 +988,41 @@ mod tests {
             Some("Airspeed")
         );
         assert_eq!(fault_page("GPS", &["Sensors"]), None);
+    }
+
+    #[test]
+    fn a_plane_without_quadplane_motors_is_not_offered_quadplane_modes() {
+        let row = json!({
+            "value": 17,
+            "options": [
+                { "label": "Manual", "raw": "0" },
+                { "label": "FBW A", "raw": "5" },
+                { "label": "QuadPlane Stabilize", "raw": "17" },
+                { "label": "QuadPlane Hover", "raw": "18" },
+                { "label": "Loiter to QLand", "raw": "25" },
+                { "label": "Autoland", "raw": "26" }
+            ]
+        });
+        let offered = |name: &str, plain_plane: bool| -> Vec<String> {
+            without_quadplane_modes(name, row.clone(), plain_plane)["options"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|o| o["label"].as_str().unwrap().to_string())
+                .collect()
+        };
+        assert_eq!(
+            offered("FLTMODE1", true),
+            ["Manual", "FBW A", "QuadPlane Stabilize", "Autoland"],
+            "a fixed-wing plane was offered QSTABILIZE, QHOVER and the other VTOL modes it cannot fly; the slot keeps the one it is set to"
+        );
+        assert_eq!(offered("INITIAL_MODE", true).len(), 4);
+        assert_eq!(
+            offered("FLTMODE1", false).len(),
+            6,
+            "a quadplane keeps them"
+        );
+        assert_eq!(offered("FS_SHORT_ACTN", true).len(), 6);
     }
 
     #[test]

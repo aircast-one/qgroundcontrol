@@ -2419,14 +2419,20 @@ fn parameter_definition_of(
                 .map_or((-1, -1), |(major, minor, _, _)| {
                     (i64::from(major), i64::from(minor))
                 });
-            let definitions = crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)
-                .and_then(|file| crate::apmmeta::load(file, version.0, version.1));
+            let file = crate::apmmeta::vehicle_file_name(vehicle.vehicle_type);
+            let definitions =
+                file.and_then(|file| crate::apmmeta::load(file, version.0, version.1));
             Some(definitions.map_or_else(
                 || crate::factmeta::MetaData {
                     name: name.to_string(),
                     ..crate::px4meta::bare(value_type)
                 },
-                |definitions| crate::apmmeta::json_metadata(&definitions, name, value_type),
+                |definitions| {
+                    crate::apmmeta::plain_metadata(
+                        file.unwrap_or_default(),
+                        crate::apmmeta::json_metadata(&definitions, name, value_type),
+                    )
+                },
             ))
         }
         false => Some(vehicle.parameter_definition(name, value_type)),

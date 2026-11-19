@@ -41,3 +41,18 @@ test('a sub gathers its failsafes on Failsafes and heads its safety rows in plai
   await expect(app.getByText(/\(bitmask\)/)).toHaveCount(0);
   await expect(app.getByText('Leak failsafe', { exact: true })).toHaveCount(0);
 });
+
+test('a plane offers its flight modes and failsafe actions in plain words, without QuadPlane modes', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduPlane Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Flight modes / }).click();
+  await app.getByRole('button', { name: /^Flight mode 1, / }).click();
+  await expect(app.getByRole('menuitem', { name: 'FBW A', exact: true })).toBeVisible();
+  await expect(app.getByRole('menuitem', { name: 'Stabilize', exact: true })).toBeVisible();
+  await expect(app.getByRole('menuitem', { name: /^(QuadPlane|QSTABILIZE|QHOVER|STABILIZE$|FBWA$)/ })).toHaveCount(0);
+  await app.keyboard.press('Escape');
+  await app.getByRole('button', { name: /^Failsafes / }).click();
+  await app.getByRole('button', { name: /^Short failsafe action, / }).click();
+  await expect(app.getByRole('menuitem', { name: 'Circle, or carry on if on a mission, guided or loitering', exact: true })).toBeVisible();
+  await expect(app.getByRole('menuitem', { name: /\|/ })).toHaveCount(0);
+});
