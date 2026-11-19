@@ -4136,6 +4136,53 @@ mod tests {
     }
 
     #[test]
+    fn a_new_fixed_wing_landing_offers_its_own_setup_step_rather_than_the_takeoff_one() {
+        let plane = Document {
+            vehicle_type: 1,
+            firmware_type: 3,
+            ..empty_document()
+        };
+        let landing = crate::landingpattern::fresh(&crate::landingpattern::Fresh {
+            vtol: false,
+            land: (47.3977, 8.5456),
+            ardupilot: true,
+            relative: true,
+            transition_distance: None,
+        });
+        let planned = plandoc::insert_complex(
+            &plane,
+            crate::landingpattern::FIXED_WING_PATTERN,
+            landing,
+            (47.3977, 8.5456),
+            -1,
+        );
+        let facts = facts_in(&Flown(Vec::new()), &planned, None, 1);
+        assert_eq!(
+            facts["wizardMode"],
+            json!(true),
+            "the plan holds the landing unfinished, so its editor must offer the step that finishes it"
+        );
+        assert_ne!(facts["wizardText"], json!([]));
+        let takeoff = plandoc::insert_simple(
+            &plane,
+            22,
+            47.3977,
+            8.5456,
+            -1,
+            &plandoc::EditDefaults {
+                mission_item_altitude: 50.0,
+                map_center: None,
+                vtol_transition_distance: plandoc::VTOL_TRANSITION_DISTANCE_DEFAULT,
+            },
+        );
+        assert_eq!(
+            facts_in(&Flown(Vec::new()), &takeoff, Some(1), 1)["wizardMode"],
+            json!(true),
+            "the takeoff's climb-out step still shows"
+        );
+    }
+
+    #[test]
     fn a_waypoint_offers_its_hold_time_which_qgc_keeps_among_the_advanced_fields() {
         let waypoint = |hold: Option<f64>| plandoc::Simple {
             command: 16,
@@ -5804,14 +5851,29 @@ pub fn mission_speed_section(backend: &dyn Backend) -> Value {
 }
 
 pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
-    let document = held().document.clone().unwrap_or_else(empty_document);
+    let (document, wizard_at) = {
+        let state = held();
+        (
+            state.document.clone().unwrap_or_else(empty_document),
+            state.wizard,
+        )
+    };
+    facts_in(backend, &document, wizard_at, index)
+}
+
+fn facts_in(
+    backend: &dyn Backend,
+    document: &Document,
+    wizard_at: Option<usize>,
+    index: usize,
+) -> Value {
     let speeds = planning_speeds(backend);
     let (vertical, horizontal) = (
         crate::read::Unit::vertical(backend),
         crate::read::Unit::horizontal(backend),
     );
     let facts = document_facts(
-        &document,
+        document,
         index,
         speeds.hover,
         speeds.cruise,
@@ -5828,41 +5890,47 @@ pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
             })
         })
         .flatten();
-    let read = crate::missionitems::document_reads(&document, -1)
+    let read = crate::missionitems::document_reads(document, -1)
         .ok()
         .and_then(|reads| reads.get(index).cloned())
         .unwrap_or_default();
-    let wizard = held().wizard == Some(index)
+    let wizard = wizard_at == Some(index)
         && read.get("isTakeoffItem").and_then(Value::as_bool) == Some(true);
     let wizard_rows = crate::itemfacts::wizard_info(
         wizard,
         plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol,
     );
-    match with_previous_coordinate(facts, plandoc::previous_coordinate(&document, index as i64)) {
-        Value::Object(map) => crate::itemfacts::without_hidden_mission_speed(
-            Value::Object(
-                map.into_iter()
-                    .chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))])
-                    .chain([(
-                        "drop".to_string(),
-                        plandoc::drop_after(
-                            &document,
-                            index,
-                            &crate::payloadcheck::servo_bays(
-                                plandoc::firmware(document.firmware_type)
-                                    == crate::cmdinfo::Firmware::ArduPilot,
-                            ),
-                        )
-                        .map_or(Value::Null, |drop| json!({ "index": drop })),
-                    )])
-                    .chain(crate::itemfacts::command_info(&read))
-                    .chain(wizard_rows)
-                    .collect(),
-            ),
-            index,
-            plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol,
-            plandoc::firmware(document.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
-        ),
+    match with_previous_coordinate(facts, plandoc::previous_coordinate(document, index as i64)) {
+        Value::Object(map) => {
+            let takeoff_wizard: Vec<(String, Value)> = wizard_rows
+                .into_iter()
+                .filter(|(key, _)| !map.contains_key(key))
+                .collect();
+            crate::itemfacts::without_hidden_mission_speed(
+                Value::Object(
+                    map.into_iter()
+                        .chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))])
+                        .chain([(
+                            "drop".to_string(),
+                            plandoc::drop_after(
+                                document,
+                                index,
+                                &crate::payloadcheck::servo_bays(
+                                    plandoc::firmware(document.firmware_type)
+                                        == crate::cmdinfo::Firmware::ArduPilot,
+                                ),
+                            )
+                            .map_or(Value::Null, |drop| json!({ "index": drop })),
+                        )])
+                        .chain(crate::itemfacts::command_info(&read))
+                        .chain(takeoff_wizard)
+                        .collect(),
+                ),
+                index,
+                plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol,
+                plandoc::firmware(document.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
+            )
+        }
         other => other,
     }
 }
