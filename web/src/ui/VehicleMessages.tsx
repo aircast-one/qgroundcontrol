@@ -64,6 +64,8 @@ export const worstFirst = (messages: readonly VehicleMessage[]): readonly Vehicl
     .toSorted((a, b) => severityRank(a.message) - severityRank(b.message) || b.at - a.at)
     .map((it) => it.message);
 
+export const newestFirst = (messages: readonly VehicleMessage[]): readonly VehicleMessage[] => messages.toReversed();
+
 export const bannerText = (messages: readonly VehicleMessage[]): string | null => {
   if (messages.length === 0) return null;
   const worst = worstFirst(messages)[0] ?? null;
@@ -254,7 +256,7 @@ const VehicleMessageLog = ({ messages, checks, blocker, onDismiss }: { messages:
 
 export const VehicleMessagesPage = ({ className }: { className?: string }) => {
   const messagesJson = useQgcPath(MESSAGES);
-  const lines = useMemo(() => worstFirst(vehicleMessages(messagesJson)), [messagesJson]);
+  const lines = useMemo(() => newestFirst(vehicleMessages(messagesJson)), [messagesJson]);
   useLaunchedEffect([], () => void VehicleCommands.resetAllMessages());
 
   if (lines.length === 0) return <EmptyState icon="ic_description" title="No messages" text="The vehicle has not said anything yet." className={className} />;

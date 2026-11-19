@@ -46,3 +46,14 @@ test('messages lists what the vehicle has said', async ({ app }) => {
   await expect(app.getByText('Status text warning').last()).toBeVisible({ timeout: 30_000 });
   await expect(app.getByText('No messages')).toBeHidden();
 });
+
+test('Analyze › Messages lists the newest message first, as a log', async ({ app }) => {
+  await connectMock(app, ['Send status text + voice']);
+  await openMenu(app, 'Analyze');
+  await app.getByRole('button', { name: /^Messages/ }).click();
+  const newest = app.getByText('Status text info', { exact: true }).last();
+  const oldest = app.getByText('Status text emergency', { exact: true }).last();
+  await expect(newest).toBeVisible({ timeout: 30_000 });
+  await expect(oldest).toBeVisible();
+  await expect.poll(async () => ((await newest.boundingBox())?.y ?? 0) < ((await oldest.boundingBox())?.y ?? 0)).toBe(true);
+});

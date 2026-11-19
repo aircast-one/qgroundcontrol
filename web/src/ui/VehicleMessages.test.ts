@@ -18,6 +18,7 @@ import {
   unreadCount,
   unreadMessages,
   vehicleMessages,
+  newestFirst,
   worstFirst,
 } from './VehicleMessages';
 
@@ -68,7 +69,7 @@ describe('VehicleMessagesTest', () => {
     expect(bannerText(bannerMessages(unread))).toBe('Battery low');
   });
 
-  it('the most severe message leads the log and the banner, newest first within a severity', () => {
+  it('the most severe message leads the Fly sheet and the banner, newest first within a severity', () => {
     const said = (severity: string, level: MessageSeverity, text: string) => VehicleMessage({ index: 0, time: '', severity, level, text });
     const log = [
       said('Emergency', MessageSeverity.Error, 'Status text emergency'),
@@ -141,9 +142,10 @@ describe('VehicleMessagesTest', () => {
     expect(bannerText(messages)).toBe('EKF variance');
   });
 
-  it("the log renders newest first, which is the order QGC's own log uses", () => {
-    const messages = oldestFirst(message(0, MessageSeverity.Normal, 'oldest'), message(1, MessageSeverity.Normal, 'newest'));
-    expect(messages.toReversed().map((it) => it.text)).toEqual(['newest', 'oldest']);
+  it("the Analyze log renders newest first whatever the severity, which is the order QGC's own log uses", () => {
+    const messages = oldestFirst(message(0, MessageSeverity.Error, 'oldest error'), message(1, MessageSeverity.Normal, 'newest info'));
+    expect(newestFirst(messages).map((it) => it.text), 'Analyze › Messages sorted worst first, so a log read out of order').toEqual(['newest info', 'oldest error']);
+    expect(worstFirst(messages).map((it) => it.text), 'the Fly sheet keeps triage order').toEqual(['oldest error', 'newest info']);
   });
 
   it('a view that says newest first is turned round rather than trusted to match', () => {
