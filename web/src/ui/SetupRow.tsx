@@ -204,7 +204,9 @@ const GLANCE_SEPARATOR = ' · ';
 const NUMBER_WITH_UNIT = /^(-?\d+(?:\.\d+)?)(?:\s+(\S+))?$/;
 const ON_OFF: ReadonlySet<string> = new Set(['Enabled', 'Disabled', 'On', 'Off']);
 
-const unreadable = (value: string): boolean => UNREAD_VALUES.has(value) || value.startsWith('Unknown:');
+const DEVICE_ON_BUS = /\((I2C|SPI|UAVCAN|SITL|MSP|EAHRS)\d+\)$/;
+
+const unreadable = (value: string): boolean => UNREAD_VALUES.has(value) || value.startsWith('Unknown:') || DEVICE_ON_BUS.test(value);
 
 const said = (label: string, value: string): string => {
   const subject = sentenceCase(label).replace(/\s+enabled?$/i, '');

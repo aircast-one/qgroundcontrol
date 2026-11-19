@@ -41,4 +41,15 @@ describe('SetupSummaryTest', () => {
     expect(summaryGlance(safety)).toBe('Arming checks enabled · GeoFence disabled · RTL min alt 15 m');
     expect(summaryGlance([SummaryLine({ label: 'Rate', value: 'Unknown: 0' })])).toBeNull();
   });
+
+  it('a sensor glance leaves out the driver and bus names a pilot cannot act on', () => {
+    const sensors = [
+      SummaryLine({ label: 'Compasses:', value: '' }),
+      SummaryLine({ label: 'Compass 1 (primary, external)', value: 'UAVCAN (UAVCAN0)' }),
+      SummaryLine({ label: 'Compass 2 (internal)', value: 'LSM303D (SPI4)' }),
+      SummaryLine({ label: 'Accelerometer(s):', value: 'Ready' }),
+      SummaryLine({ label: '', value: 'SITL (SITL0)' }),
+    ];
+    expect(summaryGlance(sensors), 'the Sensors row read UAVCAN (UAVCAN0) · LSM303D (SPI4) · Ready · SITL (SITL0)').toBe('Ready');
+  });
 });
