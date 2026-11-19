@@ -304,7 +304,7 @@ private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitD
         height = withContext(Dispatchers.Default) {
             guidedAltitude(Qgc.get(settled?.let { guidedAltitudePath(it) } ?: GUIDED_ALTITUDE))
         }
-        if (target == null) target = height?.current
+        if (target == null) target = height?.start
     }
 
     Box(Modifier.fillMaxSize().navigationBarsPadding().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
@@ -314,7 +314,7 @@ private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitD
             commitLabel = action.title,
             commitEnabled = height != null,
             onCommit = {
-                val above = height?.targetMeters ?: height?.currentMeters
+                val above = height?.targetMeters ?: height?.startMeters
                 if (above == null) {
                     refusal = "Choose a radius and a height for the orbit."
                 } else {
@@ -344,7 +344,7 @@ private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitD
             height?.let { reading ->
                 Text(reading.label, style = MaterialTheme.typography.bodySmall)
                 Slider(
-                    value = (target ?: reading.current ?: 0.0).toFloat(),
+                    value = (target ?: reading.start ?: 0.0).toFloat(),
                     onValueChange = { target = it.toDouble() },
                     onValueChangeFinished = { settled = target },
                     valueRange = (reading.minimum ?: 0.0).toFloat()..(reading.maximum ?: 0.0).toFloat(),

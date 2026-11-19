@@ -14,12 +14,14 @@ export type GuidedAltitude = {
   readonly deltaMeters: number;
   readonly sends: boolean;
   readonly targetMeters: number | null;
-  readonly currentMeters: number | null;
+  readonly start: number | null;
+  readonly startMeters: number | null;
 };
 
-export const GuidedAltitude = (fields: Omit<GuidedAltitude, 'targetMeters' | 'currentMeters'> & { targetMeters?: number | null; currentMeters?: number | null }): GuidedAltitude => ({
+export const GuidedAltitude = (fields: Omit<GuidedAltitude, 'targetMeters' | 'start' | 'startMeters'> & { targetMeters?: number | null; start?: number | null; startMeters?: number | null }): GuidedAltitude => ({
   targetMeters: null,
-  currentMeters: null,
+  start: null,
+  startMeters: null,
   ...fields,
 });
 
@@ -45,7 +47,8 @@ export const guidedAltitude = (view: Json | null): GuidedAltitude | null => {
     deltaMeters: optDouble(view, 'deltaMeters', 0.0),
     sends: optBoolean(view, 'sends'),
     targetMeters: numberOrNull(view, 'targetMeters'),
-    currentMeters: numberOrNull(view, 'currentMeters'),
+    start: numberOrNull(view, 'start'),
+    startMeters: numberOrNull(view, 'startMeters'),
   });
 };
 

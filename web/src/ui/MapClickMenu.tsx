@@ -377,11 +377,11 @@ const OrbitPanel = ({ point, action, defaults, onDone }: { point: MapPoint; acti
     const reading = guidedAltitude(await Qgc.get(settled === null ? GUIDED_ALTITUDE : guidedAltitudePath(settled)));
     if (!scope.isActive()) return;
     setHeight(reading);
-    if (targetNow.current === null) setTarget(reading?.current ?? null);
+    if (targetNow.current === null) setTarget(reading?.start ?? null);
   });
 
   const commit = () => {
-    const above = height?.targetMeters ?? height?.currentMeters ?? null;
+    const above = height?.targetMeters ?? height?.startMeters ?? null;
     if (above === null) {
       setRefusal('Choose a radius and a height for the orbit.');
       return;
@@ -429,11 +429,11 @@ const OrbitPanel = ({ point, action, defaults, onDone }: { point: MapPoint; acti
             <div className="flex items-baseline">
               <Text className="flex-1">{height.label}</Text>
               <Text typography="titleMedium" className="tabular-nums">
-                {guidedReading(target ?? height.current ?? 0.0, height.unit)}
+                {guidedReading(target ?? height.start ?? 0.0, height.unit)}
               </Text>
             </div>
             <Slider
-              value={target ?? height.current ?? 0.0}
+              value={target ?? height.start ?? 0.0}
               onValueChange={(it) => {
                 targetNow.current = it;
                 setTarget(it);

@@ -148,3 +148,18 @@ test('in flight the map menu flies an orbit around the clicked point', async ({ 
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to orbit' }));
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Orbit/, { timeout: 30_000 });
 });
+
+test('an orbit opened below the lowest guided height starts at that height and flies there', async ({ vehicle }) => {
+  await takeOff(vehicle, '10 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await vehicle.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.flyViewSettings.guidedMinimumAltitude', 20);
+  }, '/src/bridge/Qgc.ts');
+  await showMapFull(vehicle);
+  await mapMenuAt(vehicle, 150, -80);
+  await vehicle.getByRole('button', { name: 'Orbit at location' }).click();
+  await expect(vehicle.getByText('20.0 m', { exact: true })).toBeVisible();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to orbit' }));
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Orbit/, { timeout: 30_000 });
+});

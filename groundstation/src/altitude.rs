@@ -18,6 +18,12 @@ pub(crate) struct Range {
     pub(crate) maximum: f64,
 }
 
+impl Range {
+    fn start(&self) -> f64 {
+        self.current.clamp(self.minimum, self.maximum)
+    }
+}
+
 pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
     let unit = Unit::vertical(backend);
     let range = range_meters(backend);
@@ -37,7 +43,8 @@ pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
         "current": range.as_ref().map(|r| unit.show(r.current)),
         "minimum": range.as_ref().map(|r| unit.show(r.minimum)),
         "maximum": range.as_ref().map(|r| unit.show(r.maximum)),
-        "currentMeters": range.as_ref().map(|r| r.current),
+        "start": range.as_ref().map(|r| unit.show(r.start())),
+        "startMeters": range.as_ref().map(|r| r.start()),
         "currentText": range.as_ref().map(|r| unit.label(r.current)),
         "rangeText": range.as_ref().map(|r| crate::read::range_text(r.minimum, r.maximum, &unit)),
     });
@@ -173,6 +180,7 @@ mod tests {
             "one precision comes from the wider end, so both ends lose the tenth together rather than reading 2.0 m to 150 m - and both heads were formatting these themselves"
         );
         assert_eq!(view["currentText"], "150.0 m");
+        assert_eq!(view["startMeters"], 121.0);
 
         let grounded = altitude_view(
             &Fake {
@@ -184,6 +192,11 @@ mod tests {
         assert_eq!(
             grounded["currentText"], "0.0 m",
             "which is the reading two heads reported independently, and it is spelled here now rather than three times over"
+        );
+        assert_eq!(
+            (grounded["start"].clone(), grounded["startMeters"].clone()),
+            (json!(2.0), json!(2.0)),
+            "an orbit opened on the ground starts at the lowest allowed height, not at 0 m where it would be refused"
         );
     }
 

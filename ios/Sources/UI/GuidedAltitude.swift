@@ -13,7 +13,8 @@ struct GuidedAltitude: Equatable {
     var deltaMeters: Double
     var sends: Bool
     var targetMeters: Double? = nil
-    var currentMeters: Double? = nil
+    var start: Double? = nil
+    var startMeters: Double? = nil
 }
 
 func guidedAltitudePath(_ target: Double, pause: Bool = false) -> String {
@@ -33,7 +34,8 @@ func guidedAltitude(_ view: JSON?) -> GuidedAltitude? {
         deltaMeters: view["deltaMeters"].double(0),
         sends: view["sends"].bool,
         targetMeters: view["targetMeters"].nonNanDouble,
-        currentMeters: view["currentMeters"].nonNanDouble
+        start: view["start"].nonNanDouble,
+        startMeters: view["startMeters"].nonNanDouble
     )
 }
 

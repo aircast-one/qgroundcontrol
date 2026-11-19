@@ -16,7 +16,8 @@ internal data class GuidedAltitude(
     val deltaMeters: Double,
     val sends: Boolean,
     val targetMeters: Double? = null,
-    val currentMeters: Double? = null,
+    val start: Double? = null,
+    val startMeters: Double? = null,
 )
 
 internal fun guidedAltitudePath(target: Double, pause: Boolean = false): String =
@@ -38,7 +39,8 @@ internal fun guidedAltitude(view: JSONObject?): GuidedAltitude? {
         deltaMeters = view.optDouble("deltaMeters", 0.0),
         sends = view.optBoolean("sends"),
         targetMeters = view.numberOrNull("targetMeters"),
-        currentMeters = view.numberOrNull("currentMeters"),
+        start = view.numberOrNull("start"),
+        startMeters = view.numberOrNull("startMeters"),
     )
 }
 

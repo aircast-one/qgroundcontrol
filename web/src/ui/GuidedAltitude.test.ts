@@ -14,7 +14,7 @@ const served = (text: string) => {
 describe('GuidedAltitudeTest', () => {
   it('the served reading carries the sentence and the metric delta', () => {
     const reading = served(`{"available":true,"label":"Alt (Rel)","unit":"m","current":25.0,
-      "currentMeters":25.0,"minimum":0.0,"maximum":121.0,"target":68.5,
+      "start":25.0,"startMeters":25.0,"minimum":0.0,"maximum":121.0,"target":68.5,
       "targetMeters":68.5,"delta":43.5,"deltaMeters":43.5,"sends":true,
       "sentence":"The aircraft will climb 43.5 m to 68.5 m."}`);
 
@@ -25,7 +25,7 @@ describe('GuidedAltitudeTest', () => {
 
   it('a vehicle with no altitude yet reads as absent, not as zero', () => {
     const reading = served(`{"available":true,"label":"Alt (Rel)","unit":"m","current":null,
-      "currentMeters":null,"minimum":null,"maximum":null}`);
+      "start":null,"startMeters":null,"minimum":null,"maximum":null}`);
 
     expect(reading.current).toBeNull();
     expect(reading.minimum).toBeNull();

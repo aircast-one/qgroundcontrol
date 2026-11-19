@@ -397,7 +397,7 @@ private struct OrbitPanel: View {
                 let low = reading.minimum ?? 0
                 Text(reading.label).font(.bodySmall)
                 Slider(
-                    value: Binding(get: { target ?? reading.current ?? 0 }, set: { target = $0 }),
+                    value: Binding(get: { target ?? reading.start ?? 0 }, set: { target = $0 }),
                     in: low...max(low, reading.maximum ?? 0),
                     onEditingChanged: { editing in if !editing { settled = target } }
                 )
@@ -421,7 +421,7 @@ private struct OrbitPanel: View {
             let read = await offMain { guidedAltitude(Qgc.get(at.map { guidedAltitudePath($0) } ?? GUIDED_ALTITUDE)) }
             guard !Task.isCancelled else { return }
             height = read
-            if target == nil { target = read?.current }
+            if target == nil { target = read?.start }
         }
     }
 
@@ -437,7 +437,7 @@ private struct OrbitPanel: View {
     }
 
     private func commit(_ circle: OrbitCircle) {
-        guard let above = height?.targetMeters ?? height?.currentMeters else {
+        guard let above = height?.targetMeters ?? height?.startMeters else {
             refused = "Choose a radius and a height for the orbit."
             return
         }

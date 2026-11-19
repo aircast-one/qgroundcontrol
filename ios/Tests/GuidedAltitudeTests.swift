@@ -5,7 +5,7 @@ final class GuidedAltitudeTests: XCTestCase {
     func testTheServedReadingCarriesTheSentenceAndTheMetricDelta() {
         let reading = guidedAltitude(JSON.parse(#"""
             {"available":true,"label":"Alt (Rel)","unit":"m","current":25.0,
-            "currentMeters":25.0,"minimum":0.0,"maximum":121.0,"target":68.5,
+            "start":25.0,"startMeters":25.0,"minimum":0.0,"maximum":121.0,"target":68.5,
             "targetMeters":68.5,"delta":43.5,"deltaMeters":43.5,"sends":true,
             "sentence":"The aircraft will climb 43.5 m to 68.5 m."}
             """#))!
@@ -17,7 +17,7 @@ final class GuidedAltitudeTests: XCTestCase {
     func testAVehicleWithNoAltitudeYetReadsAsAbsentNotAsZero() {
         let reading = guidedAltitude(JSON.parse(#"""
             {"available":true,"label":"Alt (Rel)","unit":"m","current":null,
-            "currentMeters":null,"minimum":null,"maximum":null}
+            "start":null,"startMeters":null,"minimum":null,"maximum":null}
             """#))!
         XCTAssertNil(reading.current)
         XCTAssertNil(reading.minimum)
