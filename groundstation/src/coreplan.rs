@@ -95,25 +95,13 @@ pub fn vehicle_change_prompt_for(offline: Option<bool>, dirty: bool) -> Value {
     }
 }
 
-const MAV_AUTOPILOT_ARDUPILOTMEGA: u8 = 3;
-
-fn stored_mission_items(listed: usize, autopilot: u8) -> Option<usize> {
-    let home = usize::from(autopilot == MAV_AUTOPILOT_ARDUPILOTMEGA);
-    Some(listed.saturating_sub(home)).filter(|count| *count > 0)
-}
-
 pub fn vehicle_change_prompt() -> Value {
     let (prompt, dirty) = {
         let state = held();
         (state.vehicle_prompt, state.dirty_for_save)
     };
     let stored = match prompt {
-        Some(false) => crate::hub::lock().active().and_then(|v| {
-            stored_mission_items(
-                v.mission_snapshot()["items"].as_array().map_or(0, Vec::len),
-                v.autopilot,
-            )
-        }),
+        Some(false) => stored_rows(),
         _ => None,
     };
     match vehicle_change_prompt_for(prompt, dirty) {
@@ -1940,20 +1928,77 @@ fn flown_mission(v: &crate::hub::Vehicle) -> FlownMission {
     }
 }
 
-fn flown_view(backend: &dyn Backend, mission: &FlownMission) -> Result<Value, String> {
-    if mission.items.is_empty() {
-        return Err("The vehicle holds no mission.".to_string());
-    }
+fn flown_document(mission: &FlownMission) -> Document {
     let template = Document {
         firmware_type: mission.types.0,
         vehicle_type: mission.types.1,
         ..empty_document()
     };
     let downloaded = plandoc::from_vehicle(&mission.items, mission.sends_home, &template);
-    let document = Document {
+    Document {
         home: downloaded.home.or(mission.home),
         ..downloaded
+    }
+}
+
+fn sequence_count(document: &Document) -> i64 {
+    visual_spans(document)
+        .last()
+        .map_or(0, |(_, last)| last + 1)
+}
+
+pub struct FlownRow {
+    pub at: i64,
+    pub of: i64,
+    pub name: String,
+}
+
+fn row_of_sequence(document: &Document, sequence: i64) -> Option<FlownRow> {
+    let at = visual_index_of_sequence(document, sequence).filter(|at| *at > 0)?;
+    let name = crate::missionitems::document_reads(document, -1)
+        .ok()?
+        .get(usize::try_from(at).ok()?)?
+        .get("commandName")?
+        .as_str()?
+        .to_lowercase();
+    Some(FlownRow {
+        at,
+        of: document.items.len() as i64,
+        name,
+    })
+}
+
+fn flown_rows_document(planned: Option<&Document>, mission: &FlownMission) -> Document {
+    let flown = flown_document(mission);
+    planned
+        .filter(|plan| sequence_count(plan) == sequence_count(&flown))
+        .cloned()
+        .unwrap_or(flown)
+}
+
+pub fn flown_row(sequence: i64) -> Option<FlownRow> {
+    let mission = crate::hub::lock().active().map(flown_mission)?;
+    let planned = {
+        let state = held();
+        state.document.clone().filter(|_| !state.dirty)
     };
+    row_of_sequence(&flown_rows_document(planned.as_ref(), &mission), sequence)
+}
+
+fn rows_of(mission: &FlownMission) -> Option<usize> {
+    Some(flown_document(mission).items.len()).filter(|rows| *rows > 0)
+}
+
+pub fn stored_rows() -> Option<usize> {
+    let mission = crate::hub::lock().active().map(flown_mission)?;
+    rows_of(&mission)
+}
+
+fn flown_view(backend: &dyn Backend, mission: &FlownMission) -> Result<Value, String> {
+    if mission.items.is_empty() {
+        return Err("The vehicle holds no mission.".to_string());
+    }
+    let document = flown_document(mission);
     let rover = plandoc::vehicle_class(mission.types.1) == crate::cmdinfo::VehicleClass::Rover;
     let selected = visual_index_of_sequence(&document, mission.current)
         .filter(|index| *index > 0)
@@ -4976,20 +5021,84 @@ mod tests {
         );
     }
 
+    const SPEED_SECTION: i64 = 178;
+
+    fn flown(commands: &[i64], sends_home: bool, current: i64) -> FlownMission {
+        FlownMission {
+            items: commands
+                .iter()
+                .enumerate()
+                .map(|(at, command)| Downloaded {
+                    frame: if at == 0 && sends_home { 0 } else { 3 },
+                    command: *command,
+                    params: match *command {
+                        SPEED_SECTION => [1.0, 5.0, -1.0, 0.0, 0.0, 0.0, 0.0],
+                        _ => [0.0, 0.0, 0.0, 0.0, 47.0 + at as f64 * 0.001, 8.0, 50.0],
+                    },
+                    auto_continue: true,
+                })
+                .collect(),
+            sends_home,
+            types: (if sends_home { 3 } else { 12 }, 2),
+            current,
+            home: Some([47.0, 8.0, 400.0]),
+        }
+    }
+
     #[test]
-    fn the_aircraft_route_is_counted_without_ardupilots_home_row() {
+    fn the_aircraft_route_is_counted_in_the_rows_the_plan_list_shows() {
         assert_eq!(
-            stored_mission_items(13, 3),
-            Some(12),
-            "ArduPilot sends its home as mission row 0"
+            rows_of(&flown(&[16, 22, 16, SPEED_SECTION, 16, 20], true, 0)),
+            Some(4),
+            "ArduPilot sends its home as row 0, and the speed change is the waypoint's own speed setting, so the pilot is offered four rows, not five commands"
         );
         assert_eq!(
-            stored_mission_items(12, 12),
-            Some(12),
+            rows_of(&flown(&[22, 16, 16, 20], false, 0)),
+            Some(4),
             "PX4 sends only the mission"
         );
-        assert_eq!(stored_mission_items(1, 3), None, "a home alone is no route");
-        assert_eq!(stored_mission_items(0, 12), None);
+        assert_eq!(
+            rows_of(&flown(&[16], true, 0)),
+            None,
+            "a home alone is no route"
+        );
+        assert_eq!(rows_of(&flown(&[], false, 0)), None);
+    }
+
+    #[test]
+    fn a_flown_sequence_is_numbered_by_the_plan_row_that_holds_it() {
+        let commands = [16, 22, 16, SPEED_SECTION, 16, 20];
+        let mission = flown(&commands, true, 0);
+        let vehicle = flown_document(&mission);
+        let takeoff = row_of_sequence(&vehicle, 1).unwrap();
+        assert_eq!(
+            (takeoff.at, takeoff.of, takeoff.name.as_str()),
+            (1, 4, "takeoff")
+        );
+        let after_mount = row_of_sequence(&vehicle, 4).unwrap();
+        assert_eq!(
+            (after_mount.at, after_mount.of),
+            (3, 4),
+            "sequence 4 follows the waypoint whose speed setting is sequence 3, so it is the third row of four, not waypoint 4 of 5"
+        );
+        assert!(row_of_sequence(&vehicle, 0).is_none(), "home is not a row");
+        let survey =
+            plandoc::load(include_str!("../tests/fixtures/survey-upload.plan"), 2).unwrap();
+        let rows = survey.items.len() as i64;
+        let midway = visual_spans(&survey)
+            .iter()
+            .find(|(first, last)| last > first && *first > 0)
+            .map(|(first, last)| (first + last) / 2)
+            .unwrap();
+        let surveyed = row_of_sequence(&survey, midway).unwrap();
+        assert_eq!(surveyed.of, rows, "a survey counts as one row");
+        assert_eq!(surveyed.name, "survey");
+        let planned = Some(&survey);
+        assert_eq!(
+            sequence_count(&flown_rows_document(planned, &mission)),
+            sequence_count(&vehicle),
+            "a plan that is not the one on the aircraft is not used to number its rows"
+        );
     }
 
     #[test]

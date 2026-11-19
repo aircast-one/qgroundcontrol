@@ -13,4 +13,10 @@ describe('MissionProgressCardTest', () => {
     expect(missionProgress({ ...view, shown: false })).toBeNull();
     expect(missionProgress(json('{"shown":true,"current":6,"last":6,"canSkip":false,"skipTo":6}'))!.skipTo).toBeNull();
   });
+
+  it('the card counts the plan rows the pilot sees, so a takeoff after a camera setting is the takeoff, row 1 of 3, not waypoint 2 of 140', () => {
+    const view = json('{"shown":true,"current":2,"last":140,"row":1,"rows":3,"rowName":"takeoff","fraction":0.01,"canSkip":true,"skipTo":3}');
+    expect(missionProgressLine(missionProgress(view)!)).toBe('To takeoff 1 of 3');
+    expect(missionProgress(view)!.skipTo, 'skipping still names the vehicle command after this one').toBe(3);
+  });
 });

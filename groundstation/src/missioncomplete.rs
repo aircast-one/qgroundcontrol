@@ -171,7 +171,11 @@ pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "resumeFromWaypoint": resume,
         "batteryWarning": resume.is_some(),
         "interrupted": interrupted,
-        "title": title(latch.finished, latch.reached),
+        "title": title(
+            latch.finished,
+            latch.reached,
+            crate::coreplan::flown_row(latch.reached.waypoint).as_ref()
+        ),
         "detail": summary.map(|(waypoint, drops)| interrupted_detail(waypoint, drops)).unwrap_or_else(|| stopped_detail(latch.finished).to_string()),
         "resumeLabel": summary.map(|(waypoint, _)| format!("Resume from waypoint {waypoint}")).or_else(|| resume.map(|at| format!("Resume mission from waypoint {at}"))),
     })
@@ -181,14 +185,17 @@ const COMPLETE_TITLE: &str = "Flight plan complete";
 const STOPPED_TITLE: &str = "Mission stopped";
 const STOPPED_DETAIL: &str = "The aircraft left the mission before finishing it.";
 
-pub fn title(finished: bool, reached: Progress) -> String {
-    match (finished, reached.waypoint > 0) {
-        (true, _) => COMPLETE_TITLE.to_string(),
-        (false, true) => format!(
+pub fn title(finished: bool, reached: Progress, row: Option<&crate::coreplan::FlownRow>) -> String {
+    match (finished, reached.waypoint > 0, row) {
+        (true, ..) => COMPLETE_TITLE.to_string(),
+        (false, true, Some(row)) => {
+            format!("{STOPPED_TITLE} at {} {} of {}", row.name, row.at, row.of)
+        }
+        (false, true, None) => format!(
             "{STOPPED_TITLE} at waypoint {} of {}",
             reached.waypoint, reached.of
         ),
-        (false, false) => STOPPED_TITLE.to_string(),
+        (false, false, _) => STOPPED_TITLE.to_string(),
     }
 }
 
@@ -293,7 +300,7 @@ mod tests {
         ]);
         assert!(returned.open);
         assert_eq!(
-            title(returned.finished, returned.reached),
+            title(returned.finished, returned.reached, None),
             "Mission stopped at waypoint 49 of 140",
             "a plan sent again while returning clears the vehicle's index, so the latch keeps the last waypoint flown"
         );
@@ -311,12 +318,12 @@ mod tests {
             },
         ]);
         assert_eq!(
-            title(finished.finished, finished.reached),
+            title(finished.finished, finished.reached, None),
             "Flight plan complete",
             "the core reads an index past the last sequence once MISSION_CURRENT says MISSION_STATE_COMPLETE"
         );
         assert_eq!(
-            title(false, Progress::default()),
+            title(false, Progress::default(), None),
             "Mission stopped",
             "with no waypoint seen there is nothing to name"
         );
@@ -337,9 +344,19 @@ mod tests {
             at(false, false),
         ]);
         assert_eq!(
-            title(next.finished, next.reached),
+            title(next.finished, next.reached, None),
             "Mission stopped at waypoint 5 of 140",
             "ArduPilot still says complete when it arms again, and the mission flown after that is a new one"
+        );
+        let survey = crate::coreplan::FlownRow {
+            at: 2,
+            of: 3,
+            name: "survey".to_string(),
+        };
+        assert_eq!(
+            title(returned.finished, returned.reached, Some(&survey)),
+            "Mission stopped at survey 2 of 3",
+            "a plan row is what the pilot sees, so command 49 of 140 inside a survey reads as the survey, row 2 of 3"
         );
     }
 

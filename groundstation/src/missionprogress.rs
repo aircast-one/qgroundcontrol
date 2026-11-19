@@ -75,6 +75,9 @@ pub fn mission_progress_view(backend: &dyn Backend, _args: &[String]) -> Value {
             &text("missionFlightMode"),
             &progress,
         );
+    let row = visible
+        .then(|| crate::coreplan::flown_row(progress.current))
+        .flatten();
     let distance = Some(backend.value("vehicle.distanceToNextWP"))
         .filter(|fact| crate::read::value_number(fact).is_some_and(|metres| metres > 0.0))
         .unwrap_or(Value::Null);
@@ -84,6 +87,9 @@ pub fn mission_progress_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "shown": visible,
         "current": progress.current,
         "last": progress.last,
+        "row": row.as_ref().map(|r| r.at),
+        "rows": row.as_ref().map(|r| r.of),
+        "rowName": row.as_ref().map(|r| r.name.clone()),
         "fraction": fraction(&progress),
         "distanceToNext": distance.get("valueString").cloned().unwrap_or(Value::Null),
         "distanceUnits": distance.get("units").cloned().unwrap_or(Value::Null),
