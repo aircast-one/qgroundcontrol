@@ -58,7 +58,7 @@ const UnitSystemRow = ({ system, onPick }: { system: number; onPick: (index: num
   );
 };
 
-export const UnitsSection = ({ className }: { className?: string }) => {
+export const UnitsSection = ({ className, onWrite = () => undefined }: { className?: string; onWrite?: () => void }) => {
   const page = useQgcPath(GENERAL_SETTINGS);
   const facts = useMemo(() => unitFacts(page), [page]);
   const system = useQgcDouble(UNIT_SYSTEM_PATH);
@@ -66,9 +66,9 @@ export const UnitsSection = ({ className }: { className?: string }) => {
   const chosen = Math.trunc(system);
   return (
     <div className={`flex flex-col ${className ?? ''}`}>
-      <UnitSystemRow system={chosen} onPick={(picked) => void Qgc.invoke(SET_UNIT_SYSTEM, picked)} />
+      <UnitSystemRow system={chosen} onPick={(picked) => void Qgc.invoke(SET_UNIT_SYSTEM, picked).then(onWrite)} />
       <FootNote text={unitSystemNote(chosen)} />
-      <FactRuns facts={unitRowsFor(chosen, facts)} />
+      <FactRuns facts={unitRowsFor(chosen, facts)} onWrite={onWrite} />
     </div>
   );
 };

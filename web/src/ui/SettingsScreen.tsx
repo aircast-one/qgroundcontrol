@@ -732,7 +732,7 @@ const SettingsControls = ({
       section.group === UNITS_GROUP ? (
         <Fragment key={`${section.group}#${at}`}>
           <SectionHeader text={section.title} />
-          <UnitsSection />
+          <UnitsSection onWrite={onWrite} />
         </Fragment>
       ) : (
         <Fragment key={`${section.group}#${at}`}>

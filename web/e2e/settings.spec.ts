@@ -273,3 +273,15 @@ test('a browser with no Aircast device is told NTRIP needs one before Connect, i
   await expect(app.getByText('A browser reaches this only through an Aircast device. Open Aircast from your Aircast device to use it.')).toBeVisible();
   await expect(app.getByRole('button', { name: 'Connect', exact: true })).toBeDisabled();
 });
+
+test('switching the measurement system relabels the other rows on the page at once', async ({ app }) => {
+  await openGeneral(app);
+  const altitude = app.getByRole('textbox', { name: 'Default waypoint altitude' });
+  await expect(altitude).toHaveValue('50');
+  await app.getByRole('button', { name: 'Imperial', exact: true }).click();
+  await expect(app.getByRole('button', { name: 'Imperial', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(altitude).toHaveValue('164');
+  await app.getByRole('button', { name: 'Metric', exact: true }).click();
+  await expect(app.getByRole('button', { name: 'Metric', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(altitude).toHaveValue('50');
+});
