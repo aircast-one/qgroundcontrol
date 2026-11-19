@@ -8,15 +8,16 @@ final class MockLinkFieldsTests: XCTestCase {
     }
 
     func testStartSendsTheVehicleKeyAndOptionsInTheOrderTheCoreReadsThem() {
-        let choices = MockLinkChoices(sendStatusText: true, camera: true, proximity: true, freshParams: true, vehicle: 1, videoStream: 3)
+        let choices = MockLinkChoices(sendStatusText: true, camera: true, proximity: true, freshParams: true, vehicle: 2, videoStream: 3)
         XCTAssertEqual(JSON(mockLinkArguments(choices)), JSON.parse(#"["apmCopter",true,true,false,true,true,3]"#))
     }
 
     func testFreshFirmwareParametersOnlyReachAnArduPilotVehicle() {
         let px4 = MockLinkChoices(freshParams: true, vehicle: 0)
         XCTAssertEqual(mockLinkArguments(px4)[5] as? Bool, false)
-        XCTAssertEqual(withMockVehicle(MockLinkChoices(freshParams: true, vehicle: 1), 0).freshParams, false)
-        XCTAssertEqual(MOCK_VEHICLES.map(\.0), ["px4", "apmCopter", "apmPlane", "apmSub", "apmRover", "generic"])
+        XCTAssertEqual(withMockVehicle(MockLinkChoices(freshParams: true, vehicle: 2), 0).freshParams, false)
+        XCTAssertEqual(mockLinkArguments(MockLinkChoices(freshParams: true, vehicle: 1))[5] as? Bool, false, "a PX4 plane has no ArduPilot parameter set to start fresh from")
+        XCTAssertEqual(MOCK_VEHICLES.map(\.0), ["px4", "px4Plane", "apmCopter", "apmPlane", "apmSub", "apmRover", "generic"])
         XCTAssertEqual(MOCK_VIDEO_STREAMS.count, 6)
     }
 
