@@ -36,7 +36,7 @@ const uplinkAt = (tick: number): number => (tick < 8 ? UPLINK_WIFI : tick < 16 ?
 const store = mkdtempSync(join(tmpdir(), 'aircastd-store-'));
 const seen = { uploads: [] as string[], firmware: [] as number[], relays: [] as string[], gcsHeartbeats: 0, tcpHeartbeats: 0, tracks: [] as string[], secure: [] as string[] };
 const tracker = { on: false };
-const settings = { text: '' };
+const settings = new Map<number, string>();
 
 const scenes = new Map<string, { x: number; y: number }>([['e2e', { x: 0.4, y: 0.4 }], ['lens', { x: 0.4, y: 0.4 }]]);
 
@@ -58,10 +58,11 @@ const stored = (path: string): string | null => {
 };
 
 const deviceSettings = async (request: IncomingMessage, response: ServerResponse) => {
-  if (request.method !== 'PUT') return json(response, 200, { text: settings.text });
+  const device = request.socket.localPort ?? 0;
+  if (request.method !== 'PUT') return json(response, 200, { text: settings.get(device) ?? '' });
   const sent = JSON.parse((await body(request)).toString()) as { text?: unknown };
   if (typeof sent.text !== 'string') return json(response, 400, { error: 'settings are sent as {"text": "<ini>"}' });
-  settings.text = sent.text;
+  settings.set(device, sent.text);
   return response.writeHead(204).end();
 };
 

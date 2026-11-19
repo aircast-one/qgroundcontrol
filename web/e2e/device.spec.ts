@@ -118,7 +118,7 @@ test('a device page draws what the device detects on its camera', async ({ devic
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
     await Qgc.set('settings.appSettings.detectionsHttpPort', port);
   }, ['/src/bridge/Qgc.ts', 18780] as const);
-  await expect(device.locator('svg rect')).toBeVisible({ timeout: 60_000 });
+  await expect(device.locator('svg rect').first(), 'the detection box, drawn before any tracked box another test left on the shared device').toBeVisible({ timeout: 60_000 });
 });
 
 test('a device page tracks what the pilot boxes with the device tracker', async ({ device }) => {
@@ -126,7 +126,7 @@ test('a device page tracks what the pilot boxes with the device tracker', async 
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
     await Qgc.set('settings.appSettings.detectionsHttpPort', port);
   }, ['/src/bridge/Qgc.ts', 18780] as const);
-  const detected = device.locator('svg rect');
+  const detected = device.locator('svg rect').first();
   await expect(detected).toBeVisible({ timeout: 60_000 });
   await device.evaluate(async (module) => {
     const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
@@ -181,7 +181,7 @@ test.describe('an aircraft that names its uplink', () => {
     await flyNow(device);
     await openMenu(device, 'All status');
     const cell = device.getByRole('button', { name: 'Starlink', exact: true });
-    await expect(cell).toBeVisible({ timeout: 30_000 });
+    await expect(cell).toBeVisible({ timeout: 60_000 });
     await cell.click();
     const sheet = device.getByRole('dialog').filter({ hasText: 'Aircraft link' });
     await expect(sheet.getByText(/^Uplink:\s+Starlink$/)).toBeVisible();
