@@ -42,6 +42,16 @@ test('a sub gathers its failsafes on Failsafes and heads its safety rows in plai
   await expect(app.getByText('Leak failsafe', { exact: true })).toHaveCount(0);
 });
 
+test('a sub frame change can be rebooted from the Frame page after its prompt was dismissed', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduSub Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Frame / }).click();
+  await app.getByRole('button', { name: 'Vectored-6DOF Vectored-6DOF' }).click();
+  await app.getByRole('dialog').filter({ hasText: 'Reboot vehicle for changes to take effect.' }).getByRole('button', { name: 'Cancel' }).click();
+  await expect(app.getByText('The new frame takes effect after the vehicle reboots.', { exact: true })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Reboot vehicle', exact: true })).toBeVisible();
+});
+
 test('a plane offers its flight modes and failsafe actions in plain words, without QuadPlane modes', async ({ app }) => {
   await connectMock(app, [], 'APM ArduPlane Vehicle');
   await openAircraftSetup(app);

@@ -17,6 +17,15 @@ export const FRAME_REBOOT_TEXT = 'The new frame takes effect after the vehicle r
 
 export type FrameTypeChoice = { name: string; value: number };
 
+export const FrameRebootNotice = ({ onReboot }: { onReboot: () => void }) => (
+  <div className="flex flex-wrap items-center gap-3">
+    <Text typography="bodyMedium" className="min-w-0 flex-1">
+      {FRAME_REBOOT_TEXT}
+    </Text>
+    <FilledTonalButton onClick={onReboot}>Reboot vehicle</FilledTonalButton>
+  </div>
+);
+
 export type FrameClassCard = { name: string; value: number; chosen: boolean; image: string; types: readonly FrameTypeChoice[]; valid: boolean };
 
 export type ApmAirframe = { help: string; frameType: number | null; invalidText: string; classes: readonly FrameClassCard[] };
@@ -75,14 +84,7 @@ export const ApmAirframeScreen = ({ className }: { className?: string }) => {
           {state.help}
         </Text>
       </Surface>
-      {rebootDue ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <Text typography="bodyMedium" className="min-w-0 flex-1">
-            {FRAME_REBOOT_TEXT}
-          </Text>
-          <FilledTonalButton onClick={reboot}>Reboot vehicle</FilledTonalButton>
-        </div>
-      ) : null}
+      {rebootDue ? <FrameRebootNotice onReboot={reboot} /> : null}
       {refusal !== null ? <Text color={md('error')}>{refusal}</Text> : null}
       {chosen !== null ? <FrameTypeChips types={chosen.types} frameType={state.frameType} onPick={(it) => act(APM_AIRFRAME_PICK_TYPE, it)} /> : null}
       <div className="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${FRAME_TILE_MIN}px, 1fr))` }}>

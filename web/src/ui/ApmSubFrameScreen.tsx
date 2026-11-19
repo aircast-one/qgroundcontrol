@@ -5,6 +5,8 @@ import { useLaunchedEffect, useProduceState } from '@/kotlin/Compose';
 import { delay } from '@/kotlin/Std';
 import { AlertDialog, Surface, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
+import { FrameRebootNotice } from '@/ui/ApmAirframeScreen';
+import { REBOOT_VEHICLE } from '@/ui/CalibrationView';
 
 export const APM_SUB_FRAME_SCREEN = 'apmSubFrame';
 export const APM_SUB_FRAME_VIEW = 'view.apmSubFrame';
@@ -37,6 +39,7 @@ export const ApmSubFrameScreen = ({ className }: { className?: string }) => {
   const [read, setRead] = useState<SubFrames | null>(null);
   const [picked, setPicked] = useState<SubFrame | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [rebootDue, setRebootDue] = useState(false);
   useLaunchedEffect([revision], async (scope) => {
     const next = subFrames(await Qgc.get(APM_SUB_FRAME_VIEW));
     if (!scope.isActive()) return;
@@ -46,7 +49,15 @@ export const ApmSubFrameScreen = ({ className }: { className?: string }) => {
   });
   const act = (path: string, frame: SubFrame) =>
     void (async () => {
-      setRefusal(await Qgc.refusalOf(path, frame.value));
+      const refused = await Qgc.refusalOf(path, frame.value);
+      setRefusal(refused);
+      if (refused === null) setRebootDue(true);
+    })();
+  const reboot = () =>
+    void (async () => {
+      const refused = await Qgc.refusalOf(REBOOT_VEHICLE);
+      setRefusal(refused);
+      if (refused === null) setRebootDue(false);
     })();
   const state = read;
   if (state === null) {
@@ -57,6 +68,7 @@ export const ApmSubFrameScreen = ({ className }: { className?: string }) => {
     <>
       <div className={`flex w-full flex-col gap-2 p-3 ${className ?? ''}`}>
         {state.loading ? <Text typography="bodySmall">{"Loading the frame's default parameters…"}</Text> : null}
+        {rebootDue ? <FrameRebootNotice onReboot={reboot} /> : null}
         {error !== null ? <Text color={md('error')}>{error}</Text> : null}
         <div className="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
           {state.frames.map((frame) => (
