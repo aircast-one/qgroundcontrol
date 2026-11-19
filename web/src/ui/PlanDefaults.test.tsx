@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseJson } from '@/bridge/Json';
+import { Qgc } from '@/bridge/Qgc';
 import { PlanDefaultsDialog } from './PlanDefaults';
 
 const NOTE = 'The speeds below only estimate the mission time. They do not change how fast the aircraft flies.';
@@ -20,7 +21,10 @@ beforeEach(() => {
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addEventListener: () => undefined, removeEventListener: () => undefined }) });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe('PlanDefaultsDialog', () => {
   it('the estimate-only note sits under the mission flight speed, above the speeds it is about', () => {
@@ -38,5 +42,15 @@ describe('PlanDefaultsDialog', () => {
     expect(screen.getByText('Planning hover speed')).toBeTruthy();
     expect(screen.queryByText('Default mission altitude')).toBeNull();
     expect(screen.queryByText('Offline editing hover speed')).toBeNull();
+  });
+
+  it('Enter in a typed mission flight speed sets it like the Set button', async () => {
+    const written = vi.spyOn(Qgc, 'writeRefusal').mockResolvedValue(null);
+    const specified = parseJson(JSON.stringify({ ...view, defaults: { ...(view as { defaults: object }).defaults, flightSpeed: { available: true, specified: true, value: 5.0, units: 'm/s', path: 'plan.speed', specifyPath: 'plan.specify' } } }));
+    render(<PlanDefaultsDialog view={specified} onDismiss={() => undefined} />);
+    const typed = screen.getByRole('textbox', { name: 'Speed m/s' });
+    fireEvent.change(typed, { target: { value: '6' } });
+    fireEvent.keyDown(typed, { key: 'Enter' });
+    await vi.waitFor(() => expect(written).toHaveBeenCalledWith('plan.speed', 6));
   });
 });

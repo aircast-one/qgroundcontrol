@@ -583,6 +583,9 @@ const kotlinDouble = (value: number): string => (Number.isInteger(value) ? value
 export const SpeedSectionRow = ({ speed, withSlider = false, onWrite }: { speed: SpeedSection; withSlider?: boolean; onWrite: (written: () => Promise<string | null>) => void }) => {
   const [typed, setTyped] = useKeyedState([speed.value], () => (speed.value === null ? '' : kotlinDouble(speed.value)));
   const entered = typedNumber(typed);
+  const set = () => {
+    if (entered !== null) onWrite(() => Qgc.writeRefusal(speed.path, entered));
+  };
   return (
     <div className="flex w-full flex-col px-5 py-2">
       <div className="flex items-center">
@@ -598,9 +601,10 @@ export const SpeedSectionRow = ({ speed, withSlider = false, onWrite }: { speed:
               label={['Speed', speed.units].filter((it) => it.trim() !== '').join(' ')}
               singleLine
               keyboardType="decimal"
+              onDone={set}
               className="min-w-0 flex-1"
             />
-            <TextButton enabled={entered !== null} onClick={() => entered !== null && onWrite(() => Qgc.writeRefusal(speed.path, entered))}>
+            <TextButton enabled={entered !== null} onClick={set}>
               Set
             </TextButton>
           </div>
