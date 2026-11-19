@@ -21,6 +21,13 @@ const addSurvey = async (page: Page) => {
 
 const surveyRow = (page: Page) => page.getByRole('button', { name: /Survey .*m² · [\d,]+ photos/ });
 
+test('a survey flown relative to launch lists its height above launch, as its editor does, not a sea-level one', async ({ vehicle }) => {
+  await openPlanAtVehicle(vehicle);
+  await addSurvey(vehicle);
+  await expect(surveyRow(vehicle)).toHaveAccessibleName(/Survey \d+(\.\d)? m · /);
+  await expect(surveyRow(vehicle)).not.toHaveAccessibleName(/AMSL/);
+});
+
 test('a new survey arrives in one step, so one undo takes it away', async ({ vehicle }) => {
   await openPlanAtVehicle(vehicle);
   await addSurvey(vehicle);
