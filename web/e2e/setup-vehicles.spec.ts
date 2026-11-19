@@ -119,3 +119,13 @@ test('a servo minimum above its trim is refused, and a kept change offers Undo',
   await notice.getByRole('button', { name: 'Undo' }).click();
   await expect(minimum).toHaveValue('1100');
 });
+
+test('the copter frame tiles keep their names inside the tile', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  const tile = app.getByRole('button', { name: /^6DoF Scripting/ });
+  const label = tile.getByText('6DoF Scripting', { exact: true });
+  const [outer, inner] = await Promise.all([tile.boundingBox(), label.boundingBox()]);
+  expect(inner !== null && outer !== null && inner.x >= outer.x && inner.x + inner.width <= outer.x + outer.width + 1).toBe(true);
+  await expect(app.getByRole('button', { name: /^Heli Dual/ })).toBeVisible();
+});

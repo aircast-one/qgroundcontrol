@@ -112,7 +112,7 @@ const FrameClassTile = ({ card, invalidText, onPickClass }: { card: FrameClassCa
     >
       <div className="flex flex-col items-center gap-1 p-2" style={{ opacity: card.valid ? 1 : 0.5 }}>
         {asset !== null ? <img src={asset} alt={card.name} className="aspect-square w-full object-contain" /> : <span className="aspect-square w-full" />}
-        <Text typography="labelLarge" maxLines={1}>
+        <Text typography="labelLarge" maxLines={2} textAlign="center" className="w-full break-words">
           {card.name}
         </Text>
       </div>

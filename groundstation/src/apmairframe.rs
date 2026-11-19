@@ -143,7 +143,7 @@ pub fn frame_classes(
                 .filter(|(c, _, _)| copter && c == value)
                 .collect();
             FrameClass {
-                name: name.clone(),
+                name: name.replace('_', " "),
                 value: *value,
                 default_type: rows.first().map(|(_, t, _)| *t),
                 types: rows
@@ -377,6 +377,24 @@ mod tests {
         );
         assert_eq!(listed[3].default_type, Some(ANY_TYPE));
         assert!(listed[3].types.is_empty(), "Tri hides the frame type list");
+    }
+
+    #[test]
+    fn a_frame_class_reads_without_the_firmware_underscore() {
+        let listed = frame_classes(
+            &pairs(&[
+                ("Undefined", 0),
+                ("Heli_Dual", 11),
+                ("Scripting Matrix", 15),
+            ]),
+            &types(),
+            true,
+        );
+        assert_eq!(
+            listed.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["Heli Dual", "Scripting Matrix"],
+            "the tile read Heli_Dual"
+        );
     }
 
     #[test]
