@@ -428,6 +428,11 @@ describe('FactKeyboardTest', () => {
     ).toBe(4);
   });
 
+  it('a password keeps one line, because only a one-line field can hide what is typed', () => {
+    const password = makeFact({ path: 'p', name: 'ntripPassword', description: '', units: '', valueString: 'secret', value: 'secret', enumStrings: [], enumIndex: -1, isBool: false, isString: true, readOnly: false, minString: '', wholeNumbersOnly: false });
+    expect(factValueLines(password)).toBe(1);
+  });
+
   it('a number keeps one line, because a number does not overflow', () => {
     expect(factValueLines(fact('200'))).toBe(1);
     expect(factValueLines(fact('-50'))).toBe(1);

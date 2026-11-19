@@ -1418,7 +1418,7 @@ export const ChoiceField = ({
   );
 };
 
-export const factValueLines = (fact: Fact): number => (fact.isString ? 4 : 1);
+export const factValueLines = (fact: Fact): number => (fact.isString && !isSecret(fact) ? 4 : 1);
 
 const toDoubleOrNull = (text: string): number | null => {
   const trimmed = text.trim();
