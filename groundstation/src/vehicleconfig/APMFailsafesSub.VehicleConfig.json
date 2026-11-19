@@ -1,0 +1,36 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "params": {
+        "_leakEnable": { "name": "FS_LEAK_ENABLE", "required": true },
+        "_ekfEnable": { "name": "FS_EKF_ACTION", "required": true },
+        "_pilotEnable": { "name": "FS_PILOT_INPUT", "required": false },
+        "_temperatureEnable": { "name": "FS_TEMP_ENABLE", "required": true },
+        "_pressureEnable": { "name": "FS_PRESS_ENABLE", "required": true },
+        "_requiredFsGcsEnable": { "name": "FS_GCS_ENABLE", "required": true },
+        "_requiredFsPressMax": { "name": "FS_PRESS_MAX", "required": true },
+        "_requiredFsTempMax": { "name": "FS_TEMP_MAX", "required": true },
+        "_requiredLeak1Pin": { "name": "LEAK1_PIN", "required": true },
+        "_requiredLeak1Logic": { "name": "LEAK1_LOGIC", "required": true },
+        "_requiredFsEkfThresh": { "name": "FS_EKF_THRESH", "required": true }
+    },
+    "sections": [
+        {
+            "title": "Failsafe Actions",
+            "controls": [
+                { "param": "FS_GCS_ENABLE", "label": "GCS Heartbeat", "control": "combobox" },
+                { "param": "FS_LEAK_ENABLE", "label": "Leak", "heading": "Leak failsafe", "control": "combobox" },
+                { "param": "LEAK1_PIN", "label": "Detector Pin", "heading": "Leak detector pin", "control": "combobox", "indent": true, "showWhen": "_leakEnable.rawValue !== 0" },
+                { "param": "LEAK1_LOGIC", "label": "Logic when Dry", "heading": "Leak detector reading when dry", "control": "combobox", "indent": true, "showWhen": "_leakEnable.rawValue !== 0" },
+                { "param": "FS_EKF_ACTION", "label": "EKF", "heading": "EKF failsafe", "control": "combobox", "showWhen": "_pilotEnable" },
+                { "param": "FS_EKF_THRESH", "label": "Threshold", "heading": "EKF failsafe threshold", "control": "textfield", "indent": true, "showWhen": "_pilotEnable && _ekfEnable.rawValue !== 0" },
+                { "param": "FS_PILOT_INPUT", "label": "Pilot Input", "heading": "Pilot input failsafe", "control": "combobox", "optional": true },
+                { "param": "FS_PILOT_TIMEOUT", "label": "Timeout", "heading": "Pilot input timeout", "control": "textfield", "optional": true, "indent": true, "showWhen": "_pilotEnable && _pilotEnable.rawValue !== 0" },
+                { "param": "FS_TEMP_ENABLE", "label": "Internal Temperature", "heading": "Internal temperature failsafe", "control": "combobox" },
+                { "param": "FS_TEMP_MAX", "label": "Threshold", "heading": "Internal temperature limit", "control": "textfield", "indent": true, "showWhen": "_temperatureEnable.rawValue !== 0" },
+                { "param": "FS_PRESS_ENABLE", "label": "Internal Pressure", "heading": "Internal pressure failsafe", "control": "combobox" },
+                { "param": "FS_PRESS_MAX", "label": "Threshold", "heading": "Internal pressure limit", "control": "textfield", "indent": true, "showWhen": "_pressureEnable.rawValue !== 0" }
+            ]
+        }
+    ]
+}

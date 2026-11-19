@@ -29,3 +29,15 @@ test('a sub opens Motors without an Unable to send command popup', async ({ app 
   await expect(app.getByText('Automatic motor direction detection', { exact: true })).toBeVisible();
   await expect(app.getByText(/Unable to send command/)).toHaveCount(0);
 });
+
+test('a sub gathers its failsafes on Failsafes and heads its safety rows in plain words', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduSub Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Failsafes / }).click();
+  await expect(app.getByText('Leak failsafe', { exact: true })).toBeVisible();
+  await expect(app.getByText('Internal pressure failsafe', { exact: true })).toBeVisible();
+  await app.getByRole('button', { name: /^Flight safety / }).click();
+  await expect(app.getByText('Arming checks to skip', { exact: true })).toBeVisible();
+  await expect(app.getByText(/\(bitmask\)/)).toHaveCount(0);
+  await expect(app.getByText('Leak failsafe', { exact: true })).toHaveCount(0);
+});

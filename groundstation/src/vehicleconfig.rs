@@ -43,8 +43,11 @@ const PX4_FLIGHT_BEHAVIOR: &str =
     include_str!("vehicleconfig/PX4FlightBehavior.VehicleConfig.json");
 const APM_FLIGHT_SAFETY_SUB: &str =
     include_str!("vehicleconfig/APMFlightSafetySub.VehicleConfig.json");
+const APM_FAILSAFES_SUB: &str = include_str!("vehicleconfig/APMFailsafesSub.VehicleConfig.json");
 const FLIGHT_SAFETY: &str = "Flight Safety";
 const FLIGHT_SAFETY_SUB: &str = "Flight Safety (Sub)";
+const FAILSAFES: &str = "Failsafes";
+const FAILSAFES_SUB: &str = "Failsafes (Sub)";
 const PX4_RADIO_SWITCHES: &str = include_str!("vehicleconfig/PX4RadioSwitches.VehicleConfig.json");
 pub const RADIO_SWITCHES: &str = "Radio Switches";
 pub const FLIGHT_MODE_SETTINGS: &str = "Flight Mode Settings";
@@ -55,7 +58,8 @@ const CONFIGS: &[(&str, bool, &str)] = &[
     ("ESC", false, APM_ESC),
     (FLIGHT_SAFETY, false, APM_FLIGHT_SAFETY),
     (FLIGHT_SAFETY_SUB, false, APM_FLIGHT_SAFETY_SUB),
-    ("Failsafes", false, APM_FAILSAFES),
+    (FAILSAFES, false, APM_FAILSAFES),
+    (FAILSAFES_SUB, false, APM_FAILSAFES_SUB),
     ("Logging", false, APM_LOGGING),
     ("Power", false, APM_POWER),
     ("Tuning", false, APM_TUNING_COPTER),
@@ -83,13 +87,51 @@ pub fn has(page: &str, px4: bool) -> bool {
         .any(|(name, firmware, _)| *name == page && *firmware == px4)
 }
 
-fn config(backend: &dyn Backend, page: &str, px4: bool) -> Option<Value> {
-    let sub = !px4 && page == FLIGHT_SAFETY && flag(&backend.value_fields("vehicle", "sub"), "sub");
-    let page = if sub { FLIGHT_SAFETY_SUB } else { page };
+fn shipped(page: &str, px4: bool) -> Option<Value> {
     CONFIGS
         .iter()
         .find(|(name, firmware, _)| *name == page && *firmware == px4)
         .and_then(|(_, _, text)| serde_json::from_str(text).ok())
+}
+
+fn joined(base: Value, extra: Value) -> Value {
+    let params: serde_json::Map<String, Value> = base["params"]
+        .as_object()
+        .into_iter()
+        .chain(extra["params"].as_object())
+        .flat_map(|o| o.clone())
+        .collect();
+    let sections: Vec<Value> = base["sections"]
+        .as_array()
+        .into_iter()
+        .chain(extra["sections"].as_array())
+        .flat_map(|s| s.clone())
+        .collect();
+    Value::Object(
+        base.as_object()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(key, _)| key != "params" && key != "sections")
+            .chain([
+                ("params".to_string(), Value::Object(params)),
+                ("sections".to_string(), Value::Array(sections)),
+            ])
+            .collect(),
+    )
+}
+
+fn config(backend: &dyn Backend, page: &str, px4: bool) -> Option<Value> {
+    let sub = !px4
+        && [FLIGHT_SAFETY, FAILSAFES].contains(&page)
+        && flag(&backend.value_fields("vehicle", "sub"), "sub");
+    match (sub, page) {
+        (true, FLIGHT_SAFETY) => shipped(FLIGHT_SAFETY_SUB, px4),
+        (true, _) => shipped(FAILSAFES, px4)
+            .zip(shipped(FAILSAFES_SUB, px4))
+            .map(|(base, extra)| joined(base, extra)),
+        _ => shipped(page, px4),
+    }
 }
 
 fn parameter_path(name: &str) -> String {
@@ -3954,7 +3996,7 @@ mod tests {
     }
 
     #[test]
-    fn a_sub_gets_its_own_flight_safety_page() {
+    fn a_sub_gets_its_failsafes_on_the_failsafes_page_and_its_arming_checks_on_flight_safety() {
         let params = [
             ("FS_GCS_ENABLE", 1.0),
             ("FS_LEAK_ENABLE", 0.0),
@@ -3978,8 +4020,21 @@ mod tests {
             sub: true,
             ..Fake::new(&params)
         };
-        assert_eq!(titles(&sub), ["Failsafe Actions", "Arming Checks"]);
-        let labels: Vec<String> = page(&sub, "Flight Safety", false)["sections"][0]["controls"]
+        assert_eq!(
+            titles(&sub),
+            ["Arming Checks"],
+            "the sub's failsafes sat on Flight safety while the Failsafes page held only the battery and its summary named the rest"
+        );
+        let failsafes: Vec<Value> = page(&sub, "Failsafes", false)["sections"]
+            .as_array()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            failsafes.last().unwrap()["title"],
+            "Failsafe Actions",
+            "Failsafes gathers the leak, EKF, pilot input, temperature and pressure failsafes its summary lists"
+        );
+        let labels: Vec<String> = failsafes.last().unwrap()["controls"]
             .as_array()
             .unwrap()
             .iter()
@@ -4000,6 +4055,64 @@ mod tests {
             !titles(&Fake::new(&params)).contains(&"Failsafe Actions".to_string()),
             "a copter keeps the fence page"
         );
+    }
+
+    #[test]
+    fn a_sub_heads_its_safety_rows_in_plain_words_like_copter_and_plane() {
+        let sub = Fake {
+            sub: true,
+            ..Fake::new(&[
+                ("FS_GCS_ENABLE", 1.0),
+                ("FS_LEAK_ENABLE", 1.0),
+                ("LEAK1_PIN", 27.0),
+                ("LEAK1_LOGIC", 0.0),
+                ("FS_TEMP_ENABLE", 0.0),
+                ("FS_TEMP_MAX", 62.0),
+                ("FS_PRESS_ENABLE", 0.0),
+                ("FS_PRESS_MAX", 105000.0),
+                ("FS_EKF_ACTION", 0.0),
+                ("FS_EKF_THRESH", 0.8),
+                ("FS_PILOT_INPUT", 1.0),
+                ("FS_PILOT_TIMEOUT", 3.0),
+                ("ARMING_SKIPCHK", 0.0),
+            ])
+        };
+        let headings = |name: &str| -> Vec<(String, String)> {
+            page(&sub, name, false)["sections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default())
+                .filter(|r| r["shortLabel"].is_string())
+                .map(|r| {
+                    (
+                        r["name"].as_str().unwrap_or_default().to_string(),
+                        r["shortLabel"].as_str().unwrap().to_string(),
+                    )
+                })
+                .collect()
+        };
+        let safety = headings("Flight Safety");
+        assert!(
+            safety.contains(&(
+                "ARMING_SKIPCHK".to_string(),
+                "Arming checks to skip".to_string()
+            )),
+            "Arm checks to skip (bitmask) still headed the sub's Flight safety: {safety:?}"
+        );
+        let failsafes = headings("Failsafes");
+        [
+            ("FS_LEAK_ENABLE", "Leak failsafe"),
+            ("LEAK1_PIN", "Leak detector pin"),
+            ("FS_PILOT_TIMEOUT", "Pilot input timeout"),
+        ]
+        .iter()
+        .for_each(|(name, heading)| {
+            assert!(
+                failsafes.contains(&(name.to_string(), heading.to_string())),
+                "Leak failsafe enable and Pin that leak detector is connected to headed the sub's failsafes: {failsafes:?}"
+            )
+        });
     }
 
     #[test]
