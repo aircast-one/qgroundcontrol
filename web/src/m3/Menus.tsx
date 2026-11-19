@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useCallback, useState } from 'react';
 import { Menu } from '@base-ui/react';
 import { MaterialIcon } from '@/res/Icon';
 
@@ -13,9 +13,10 @@ export type DropdownMenuProps = {
 
 export const DropdownMenu = ({ expanded, onDismissRequest, children, side = 'bottom', align = 'start', className }: DropdownMenuProps) => {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const anchorToParent = useCallback((node: HTMLSpanElement | null) => setAnchor(node?.parentElement ?? null), []);
   return (
     <>
-      <span ref={(node) => setAnchor(node?.parentElement ?? null)} hidden />
+      <span ref={anchorToParent} hidden />
       {anchor ? (
         <Menu.Root open={expanded} onOpenChange={(open) => !open && onDismissRequest()} modal={false}>
           <Menu.Portal>
