@@ -1948,10 +1948,14 @@ fn subsections(group: &str, controls: &[Value]) -> Vec<Value> {
     }
 }
 
-fn page_shown(page: &Page, connected: bool, px4: bool, ios: bool) -> bool {
+fn hosts_packet_radio(ios: bool, browser: bool) -> bool {
+    !ios && !browser
+}
+
+fn page_shown(page: &Page, connected: bool, px4: bool, packet_radio: bool) -> bool {
     !UNLISTED.contains(&page.title)
         && (!page.shows_px4_logs || !connected || px4)
-        && (!page.shows_packet_radio || !ios)
+        && (!page.shows_packet_radio || packet_radio)
 }
 
 pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -1970,7 +1974,7 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
                 &backend.value_fields("vehicle", "px4Firmware"),
                 "px4Firmware",
             );
-            json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().filter(|p| page_shown(p, connected, px4, IOS)).map(|p| page_json(p, None)).collect::<Vec<_>>() })
+            json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().filter(|p| page_shown(p, connected, px4, hosts_packet_radio(IOS, BROWSER))).map(|p| page_json(p, None)).collect::<Vec<_>>() })
         }
     }
 }
@@ -2377,29 +2381,35 @@ mod tests {
     fn px4_log_transfer_is_listed_only_for_px4_or_with_no_vehicle() {
         let page = PAGES.iter().find(|p| p.shows_px4_logs).unwrap();
         assert!(
-            page_shown(page, false, false, false),
+            page_shown(page, false, false, true),
             "SettingsPagesModel shows it with no vehicle"
         );
-        assert!(page_shown(page, true, true, false));
+        assert!(page_shown(page, true, true, true));
         assert!(
-            !page_shown(page, true, false, false),
+            !page_shown(page, true, false, true),
             "an ArduPilot vehicle does not get it"
         );
         assert!(
             PAGES
                 .iter()
                 .filter(|p| !p.shows_px4_logs && !UNLISTED.contains(&p.title))
-                .all(|p| page_shown(p, true, false, false))
+                .all(|p| page_shown(p, true, false, true))
         );
     }
 
     #[test]
-    fn packet_radio_is_listed_everywhere_but_ios() {
+    fn packet_radio_is_listed_only_where_the_app_can_host_a_radio() {
         let radio = PAGES.iter().find(|p| p.shows_packet_radio).unwrap();
-        assert!(page_shown(radio, true, false, false) && page_shown(radio, false, false, false));
+        assert!(page_shown(radio, true, false, true) && page_shown(radio, false, false, true));
+        assert!(!page_shown(radio, true, false, false) && !page_shown(radio, false, false, false));
+        assert!(hosts_packet_radio(false, false));
         assert!(
-            !page_shown(radio, true, false, true) && !page_shown(radio, false, false, true),
+            !hosts_packet_radio(true, false),
             "iOS hosts no packet radio"
+        );
+        assert!(
+            !hosts_packet_radio(false, true),
+            "nor does a browser, which cannot reach a Wi-Fi adapter, so the page only ever read Unavailable"
         );
         assert!(
             PAGES
@@ -2407,7 +2417,7 @@ mod tests {
                 .filter(|p| !p.shows_packet_radio
                     && !p.shows_px4_logs
                     && !UNLISTED.contains(&p.title))
-                .all(|p| page_shown(p, true, false, true)),
+                .all(|p| page_shown(p, true, false, false)),
             "and drops nothing else"
         );
     }

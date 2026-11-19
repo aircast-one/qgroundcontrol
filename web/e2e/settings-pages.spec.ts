@@ -4,7 +4,6 @@ const PAGES: readonly (readonly [string, string, string?])[] = [
   ['Camera', 'Video sources'],
   ['General', 'Maps'],
   ['Transmission', 'MAVLink'],
-  ['Transmission', 'Packet radio'],
   ['Transmission', 'RTK GPS'],
   ['Transmission', 'NTRIP / RTK'],
   ['Safety', 'Remote ID'],
@@ -30,6 +29,13 @@ PAGES.map(([tab, page, title = page]) =>
     await expect(row).toBeVisible();
   }),
 );
+
+test('a browser does not list Packet radio, which needs a Wi-Fi adapter a browser cannot reach', async ({ vehicle }) => {
+  await openMenu(vehicle, 'Settings');
+  await vehicle.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await expect(vehicle.getByRole('button', { name: /^NTRIP/ })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: /^Packet radio/ })).toHaveCount(0);
+});
 
 test('a setup row clicked before the tab pager settles opens its page and stays there', async ({ vehicle }) => {
   await openMenu(vehicle, 'Settings');
