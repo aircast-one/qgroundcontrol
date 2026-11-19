@@ -129,8 +129,15 @@ const Stepper = ({ servo, title, fact }: { servo: number; title: string; fact: F
         setPending(null);
         return;
       }
-      if (previous !== null) notice.show(servoNotice(servo, title, next), () => Qgc.writeRefusal(fact.path, previous));
+      if (previous !== null) notice.show(servoNotice(servo, title, next), () => undo(previous));
     })();
+  };
+
+  const undo = async (previous: number): Promise<string | null> => {
+    setPending(previous);
+    const refused = await Qgc.writeRefusal(fact.path, previous);
+    if (refused !== null) setPending(null);
+    return refused;
   };
 
   const step = (direction: number) => {
