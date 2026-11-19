@@ -350,7 +350,9 @@ internal fun FlyPortrait(
                         verticalAlignment = Alignment.CenterVertically,
                         content = status,
                     )
-                    BatteryReturnBar(Modifier.align(Alignment.TopCenter))
+                    Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+                        LayoutWidget(BATTERY_BAR_KEY, movable = false, badged = false) { BatteryReturnBar() }
+                    }
                 }
                 TrafficBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
                 UpdateBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))

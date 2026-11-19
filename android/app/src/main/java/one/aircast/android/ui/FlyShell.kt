@@ -186,27 +186,25 @@ internal fun FlyScreen(
     SideEffect { shellState.mapOrnamentEnd = ornamentEnd }
     DisposableEffect(Unit) { onDispose { shellState.mapOrnamentEnd = null } }
     val cornerRoom = if (stickPad != null) MAP_LAYERS_CLEARANCE else 0.dp
-    val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
-    val armed = flyState(flyJson)?.armed == true
-    LaunchedEffect(armed) { layout.lockWhileArmed(armed) }
     Box(Modifier.fillMaxSize().onSizeChanged { boxSize = it }.onGloballyPositioned { letterbox = letterboxOf(hostView, it, rootDensity) }) {
         val mapIsPip = view == FlyView.Video
         val videoIsPip = view == FlyView.Map
         val videoShown = view != FlyView.ThreeD && (view != FlyView.Map || hasVideo)
         val thumbShown = mapIsPip || (videoIsPip && hasVideo)
         if (view == FlyView.ThreeD) one.aircast.map.Viewer3DPane(Modifier.fillMaxSize())
-        val thumbShape = MaterialTheme.shapes.medium
-        val thumbPlace = Modifier
+        val minimapCollapsed = mapIsPip && MINIMAP_KEY in layout.hidden && !layout.editing
+        val thumbShape = if (minimapCollapsed) CircleShape else MaterialTheme.shapes.medium
+        val thumbAt = Modifier
             .align(Alignment.BottomStart)
             .windowInsetsPadding(WindowInsets.displayCutout)
-            .padding(start = bottomLead)
+            .padding(start = if (minimapCollapsed) 0.dp else bottomLead)
             .padding(AircastSpace.s3)
-            .size(MINIMAP_THUMB)
-            .clip(thumbShape)
+            .size(if (minimapCollapsed) MAP_LAYERS_SIZE else MINIMAP_THUMB)
+        val thumbPlace = thumbAt.clip(thumbShape)
 
         if (view != FlyView.ThreeD) {
             map(
-                (if (mapIsPip) Modifier.zIndex(1f).then(thumbPlace).border(2.dp, MaterialTheme.colorScheme.onSurface, thumbShape) else Modifier.fillMaxSize())
+                (if (mapIsPip) Modifier.zIndex(1f).then(thumbPlace).then(if (minimapCollapsed) Modifier else Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, thumbShape)) else Modifier.fillMaxSize())
                     .then(if (fullScreen) Modifier.clearAndSetSemantics {} else Modifier),
             )
         }
@@ -267,13 +265,25 @@ internal fun FlyScreen(
                 .height(TOP_SCRIM_HEIGHT)
                 .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(alpha = TOP_SCRIM_ALPHA), Color.Transparent))),
         )
-        if (mapIsPip) Box(
-            Modifier
-                .zIndex(2f)
-                .then(thumbPlace)
-                .clickable(onClickLabel = "Show the map") { onView(FlyView.Map) }
-                .semantics { contentDescription = "Map" },
-        )
+        if (minimapCollapsed) Surface(
+            onClick = { onView(FlyView.Map) },
+            modifier = Modifier.zIndex(2f).then(thumbAt).semantics { contentDescription = "Map" },
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_map), contentDescription = null) }
+        } else if (mapIsPip) Box(Modifier.zIndex(2f).then(thumbAt)) {
+            LayoutWidget(MINIMAP_KEY, movable = false, name = MINIMAP_NAME) {
+                Box(
+                    Modifier
+                        .size(MINIMAP_THUMB)
+                        .clip(thumbShape)
+                        .clickable(onClickLabel = "Show the map") { onView(FlyView.Map) }
+                        .semantics { contentDescription = "Map" },
+                )
+            }
+        }
         if (videoIsPip && hasVideo) Box(
             Modifier
                 .zIndex(3f)
@@ -348,7 +358,9 @@ internal fun FlyScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) { keyRow() }
                         }
-                        BatteryReturnBar(Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.statusBars))
+                        Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars)) {
+                            LayoutWidget(BATTERY_BAR_KEY, movable = false, badged = false) { BatteryReturnBar() }
+                        }
                     }
                 },
                 overlays = {
@@ -396,7 +408,7 @@ internal fun FlyScreen(
                 CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { cameraSwitch(mapIsPip, Modifier) }
             }
             if (hasVehicle() && !flyScreen.guidedPanelOpen) {
-            val besideThumb = if (thumbShown) MINIMAP_THUMB else 0.dp
+            val besideThumb = if (thumbShown && !minimapCollapsed) MINIMAP_THUMB else 0.dp
             Box(
                 Modifier
                     .zIndex(2f)

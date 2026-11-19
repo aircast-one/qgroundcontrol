@@ -262,7 +262,7 @@ private fun ZoomSlider(camera: CameraReading, onIdle: () -> Unit) {
                 },
                 interactionSource = interaction,
                 valueRange = ZOOM_LOWEST.toFloat()..ZOOM_HIGHEST.toFloat(),
-                modifier = Modifier.railSlider().semantics { contentDescription = "Zoom" },
+                modifier = Modifier.railSlider().ownsLayoutHold().semantics { contentDescription = "Zoom" },
             )
         }
     }

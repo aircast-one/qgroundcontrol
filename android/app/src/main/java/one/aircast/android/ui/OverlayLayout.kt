@@ -14,11 +14,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
@@ -52,7 +55,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -66,6 +74,7 @@ private const val HIDDEN_ALPHA = 0.35f
 private const val JIGGLE_DEGREES = 1.2f
 private const val JIGGLE_MILLIS = 120
 private const val JIGGLE_SPREAD = 0x1f
+private const val JIGGLE_REACH_DP = 4f
 internal val BADGE_SIZE = 24.dp
 internal const val RESET_ARM_MILLIS = 4000L
 
@@ -81,13 +90,26 @@ internal fun resetTap(armed: Boolean): ResetTap = ResetTap(reset = armed, armed 
 
 internal fun resetPillText(armed: Boolean): String = if (armed) "Tap again to reset" else "Reset positions and hidden items"
 
+internal const val LAYOUT_EDITING_IN_FLIGHT = "Editing the layout. Return, Land and Kill motors still work."
+
+internal const val MINIMAP_KEY = "minimap"
+
+internal const val MINIMAP_NAME = "Mini map"
+
+internal const val BATTERY_BAR_KEY = "batteryBar"
+
+internal fun batteryBarPillText(hidden: Boolean): String = "Battery bar: ${if (hidden) "Hidden" else "Shown"}"
+
+internal fun badgeLabel(hidden: Boolean, name: String?): String = listOfNotNull(if (hidden) "Show" else "Hide", name?.lowercase()).joinToString(" ")
+
+private val HIDDEN_BY_DEFAULT = listOf(MINIMAP_KEY)
+
 private const val INDICATOR_ORDER = "FlyViewIndicatorOrder"
 
 internal class OverlayLayoutState(private val prefs: SharedPreferences) {
     private val stored = prefs.all
     var editing by mutableStateOf(false)
-    var locked by mutableStateOf(false)
-        private set
+    private var gesturesHeld by mutableStateOf(0)
     var hidden by mutableStateOf(hiddenKeys(stored))
         private set
     var indicatorOrder by mutableStateOf(storedIndicatorOrder(stored))
@@ -97,12 +119,13 @@ internal class OverlayLayoutState(private val prefs: SharedPreferences) {
         private set
 
     fun startEditing() {
-        if (!locked) editing = true
+        editing = true
     }
 
-    fun lockWhileArmed(armed: Boolean) {
-        locked = armed
-        if (armed) editing = false
+    val gestureHeld: Boolean get() = gesturesHeld > 0
+
+    fun holdGesture(held: Boolean) {
+        gesturesHeld = (gesturesHeld + if (held) 1 else -1).coerceAtLeast(0)
     }
 
     fun setHidden(key: String, hide: Boolean) {
@@ -126,7 +149,7 @@ internal class OverlayLayoutState(private val prefs: SharedPreferences) {
 
     fun reset() {
         prefs.edit().clear().apply()
-        hidden = emptySet()
+        hidden = hiddenKeys(emptyMap<String, Any>())
         indicatorOrder = emptyList()
         offsets = emptyMap()
     }
@@ -174,7 +197,8 @@ internal fun droppedOrder(keys: List<String>, centres: Map<String, Float>, key: 
 
 
 internal fun hiddenKeys(stored: Map<String, *>): Set<String> =
-    stored.filter { (key, value) -> key.startsWith(HIDDEN_PREFIX) && value == true }.keys.map { it.removePrefix(HIDDEN_PREFIX) }.toSet()
+    HIDDEN_BY_DEFAULT.filter { stored[HIDDEN_PREFIX + it] != false }.toSet() +
+        stored.filter { (key, value) -> key.startsWith(HIDDEN_PREFIX) && value == true }.keys.map { it.removePrefix(HIDDEN_PREFIX) }
 
 internal fun withHidden(hidden: Set<String>, key: String, hide: Boolean): Set<String> = if (hide) hidden + key else hidden - key
 
@@ -208,21 +232,43 @@ private fun keptOnScreen(key: String): Modifier {
     }
 }
 
+private suspend fun AwaitPointerEventScope.awaitUpOrMove(down: PointerInputChange, slop: Float) {
+    while (true) {
+        val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: return
+        if (!change.pressed || (change.position - down.position).getDistance() > slop) return
+    }
+}
+
 private fun Modifier.onHold(action: () -> Unit): Modifier = pointerInput(Unit) {
     awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-            waitForUpOrCancellation(PointerEventPass.Initial)
-            true
-        }
-        if (released == null) action()
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        val ended = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { awaitUpOrMove(down, viewConfiguration.touchSlop) }
+        if (ended == null) action()
     }
 }
 
 @Composable
 internal fun Modifier.holdToEditLayout(): Modifier {
     val layout = LocalFlyScreenState.current.layout
-    return if (layout.editing || layout.locked) this else onHold { layout.startEditing() }
+    return if (layout.editing) this else onHold { if (!layout.gestureHeld) layout.startEditing() }
+}
+
+@Composable
+internal fun Modifier.ownsLayoutHold(): Modifier {
+    val layout = LocalFlyScreenState.current.layout
+    return pointerInput(layout) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            layout.holdGesture(true)
+            try {
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                } while (event.changes.any { it.pressed })
+            } finally {
+                layout.holdGesture(false)
+            }
+        }
+    }
 }
 
 @Composable
@@ -234,6 +280,11 @@ private fun jiggleAngle(key: String): Float {
         label = "jiggle",
     )
     return swing
+}
+
+internal fun jiggleDegrees(widthDp: Float, heightDp: Float): Float {
+    val reach = kotlin.math.hypot(widthDp, heightDp) / 2f
+    return if (reach <= 0f) JIGGLE_DEGREES else minOf(JIGGLE_DEGREES, Math.toDegrees((JIGGLE_REACH_DP / reach).toDouble()).toFloat())
 }
 
 internal fun clampedDrag(left: Float, top: Float, right: Float, bottom: Float, width: Float, height: Float, dx: Float, dy: Float): Pair<Float, Float> =
@@ -280,8 +331,10 @@ internal fun LayoutWidget(
     key: String,
     movable: Boolean = true,
     hideable: Boolean = true,
+    badged: Boolean = true,
     badgeSpot: BadgeSpot = BadgeSpot.Inside,
     dragsWith: String? = null,
+    name: String? = null,
     content: @Composable () -> Unit,
 ) {
     val flyScreen = LocalFlyScreenState.current
@@ -293,36 +346,41 @@ internal fun LayoutWidget(
     val placedKey = layoutKey(key)
     val moved = layout.offsets[placedKey]?.takeIf { movable } ?: (0f to 0f)
     val angle = if (editing) jiggleAngle(key) else 0f
-    var shown by remember { mutableStateOf(false) }
+    var size by remember { mutableStateOf(Size.Zero) }
+    val shown = size.width > 0f && size.height > 0f
     val decorated = editing && shown
+    val density = LocalDensity.current.density
     Box(
         Modifier
             .offset(moved.first.dp, moved.second.dp)
             .then(if (movable) keptOnScreen(placedKey) else Modifier)
             .holdToEditLayout()
-            .graphicsLayer { rotationZ = if (decorated) angle else 0f }
+            .graphicsLayer { rotationZ = if (decorated) angle / JIGGLE_DEGREES * jiggleDegrees(size.width / density, size.height / density) else 0f }
             .then(if (avoided) Modifier.avoidedByVideoMessage(key) else Modifier),
     ) {
         Box(
             Modifier
-                .onSizeChanged { shown = it.width > 0 && it.height > 0 }
+                .onSizeChanged { size = it.toSize() }
                 .then(if (decorated) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium) else Modifier)
                 .alpha(if (hidden) HIDDEN_ALPHA else 1f)
                 .then(if (LocalFlyOsd.current) Modifier.osdShadow() else Modifier),
         ) { content() }
         if (decorated && (movable || dragsWith != null)) LayoutDragArea(dragsWith ?: key, Modifier.matchParentSize())
-        val badgeAt = Modifier.align(badgeSpot.alignment).offset(BADGE_SIZE * badgeSpot.x, BADGE_SIZE * badgeSpot.y).size(BADGE_SIZE)
-        if (decorated && hideable) Surface(
+        val badgeAt = Modifier.align(badgeSpot.alignment).offset(BADGE_SIZE * badgeSpot.x, BADGE_SIZE * badgeSpot.y).then(if (name == null) Modifier.width(BADGE_SIZE) else Modifier.wrapContentWidth(Alignment.End, unbounded = true)).height(BADGE_SIZE)
+        if (decorated && badged && hideable) Surface(
             onClick = { layout.setHidden(key, !hidden) },
-            modifier = badgeAt,
+            modifier = badgeAt.semantics { contentDescription = badgeLabel(hidden, name) },
             shape = CircleShape,
             color = if (hidden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.inverseSurface,
             contentColor = if (hidden) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.inverseOnSurface,
             shadowElevation = 2.dp,
         ) {
-            Icon(if (hidden) Icons.Default.Add else Icons.Default.Close, contentDescription = if (hidden) "Show" else "Hide", modifier = Modifier.padding(4.dp))
+            Row(Modifier.clearAndSetSemantics {}.padding(end = if (name == null) 0.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (hidden) Icons.Default.Add else Icons.Default.Close, contentDescription = null, modifier = Modifier.padding(4.dp))
+                if (name != null) Text(name, style = MaterialTheme.typography.labelSmall)
+            }
         }
-        if (decorated && !hideable) Surface(
+        if (decorated && badged && !hideable) Surface(
             modifier = badgeAt,
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -337,35 +395,42 @@ internal fun LayoutWidget(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun OverlayEditBar(modifier: Modifier = Modifier) {
-    val layout = LocalFlyScreenState.current.layout
-    if (!layout.editing) return
+    val flyScreen = LocalFlyScreenState.current
+    val layout = flyScreen.layout
+    if (!layout.editing || flyScreen.guidedPanelOpen) return
     BackHandler { layout.editing = false }
     val context = LocalContext.current
     val classView by one.aircast.android.bridge.qgcPath(INSTRUMENTS_VIEW)
     val vehicleClass = instrumentVehicleClass(classView)
+    val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
+    val inFlight = flyState(flyJson)?.let { it.connected && it.armed } == true
+    val barHidden = BATTERY_BAR_KEY in layout.hidden
     Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 3.dp) {
-        FlowRow(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-            TextButton(onClick = {
-                layout.valueSize = nextValueSize(layout.valueSize)
-                writeValueSize(context, vehicleClass, layout.valueSize)
-            }) { Text(valueSizePillText(layout.valueSize)) }
-            var armed by remember { mutableStateOf(false) }
-            LaunchedEffect(armed) {
-                if (armed) {
-                    delay(RESET_ARM_MILLIS)
-                    armed = false
+        Column {
+            if (inFlight) Text(LAYOUT_EDITING_IN_FLIGHT, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), style = MaterialTheme.typography.bodyMedium)
+            FlowRow(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                TextButton(onClick = {
+                    layout.valueSize = nextValueSize(layout.valueSize)
+                    writeValueSize(context, vehicleClass, layout.valueSize)
+                }) { Text(valueSizePillText(layout.valueSize)) }
+                TextButton(onClick = { layout.setHidden(BATTERY_BAR_KEY, !barHidden) }) { Text(batteryBarPillText(barHidden)) }
+                var armed by remember { mutableStateOf(false) }
+                LaunchedEffect(armed) {
+                    if (armed) {
+                        delay(RESET_ARM_MILLIS)
+                        armed = false
+                    }
                 }
+                TextButton(
+                    onClick = {
+                        val tap = resetTap(armed)
+                        if (tap.reset) layout.reset()
+                        armed = tap.armed
+                    },
+                    colors = if (armed) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors(),
+                ) { Text(resetPillText(armed)) }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { Button(onClick = { layout.editing = false }) { Text("Done") } }
             }
-            TextButton(
-                onClick = {
-                    val tap = resetTap(armed)
-                    if (tap.reset) layout.reset()
-                    armed = tap.armed
-                },
-                colors = if (armed) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors(),
-            ) { Text(resetPillText(armed)) }
-            Spacer(Modifier.weight(1f))
-            Button(onClick = { layout.editing = false }) { Text("Done") }
         }
     }
 }

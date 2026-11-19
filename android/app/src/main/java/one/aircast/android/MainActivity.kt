@@ -301,7 +301,6 @@ fun AircastShell(hostView: android.view.View?) {
             .put("flyView", flyView.name)
             .put("landscape", debugLandscape)
             .put("layoutEditing", overlayLayout.editing)
-            .put("layoutLocked", overlayLayout.locked)
             .put("guidedPanelOpen", flyScreen.guidedPanelOpen)
             .put("pendingOpen", flyScreen.requestedSheet ?: flyScreen.deckRequest ?: org.json.JSONObject.NULL)
             .toString()
@@ -605,7 +604,8 @@ fun AircastShell(hostView: android.view.View?) {
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 hostView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
-                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.BottomCenter).zIndex(2f).then(if (onFly) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier).padding(8.dp).widthIn(max = 560.dp))
+                val aboveDeck = if (onFly && one.aircast.android.ui.flyIsPortrait()) with(androidx.compose.ui.platform.LocalDensity.current) { flyScreen.mapInsets.bottom.toDp() } else 0.dp
+                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.BottomCenter).zIndex(2f).then(if (onFly) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier).padding(bottom = aboveDeck).padding(8.dp).widthIn(max = 560.dp))
 
                 if (onFly) {
                     val flyStatus: @Composable RowScope.() -> Unit = {

@@ -9,7 +9,26 @@ class OverlayLayoutTest {
     @Test
     fun `hidden widgets are read from the stored rig keys only`() {
         val stored = mapOf("OverlayRigHidden-orbit" to true, "OverlayRigHidden-traffic" to false, "other" to true)
-        assertEquals(setOf("orbit"), hiddenKeys(stored))
+        assertEquals(setOf("minimap", "orbit"), hiddenKeys(stored))
+    }
+
+    @Test
+    fun `the mini map starts hidden and stays shown once the pilot shows it`() {
+        assertEquals(setOf("minimap"), hiddenKeys(emptyMap<String, Any>()))
+        assertEquals(emptySet<String>(), hiddenKeys(mapOf("OverlayRigHidden-minimap" to false)))
+    }
+
+    @Test
+    fun `a small widget jiggles the full angle and a wide one turns less, so no corner swings more than a few dp`() {
+        assertEquals(1.2f, jiggleDegrees(48f, 48f))
+        val swing = 550f * Math.toRadians(jiggleDegrees(1100f, 12f).toDouble()).toFloat()
+        assertEquals(4f, swing, 0.1f)
+    }
+
+    @Test
+    fun `a named badge says what it shows or hides`() {
+        assertEquals("Show mini map", badgeLabel(hidden = true, name = "Mini map"))
+        assertEquals("Hide", badgeLabel(hidden = false, name = null))
     }
 
     @Test
@@ -44,7 +63,7 @@ class OverlayLayoutTest {
     fun `the stored layout yields hidden widgets, offsets and the indicator order`() {
         val stored = mapOf("OverlayRigOffset-instrumentPanel" to "10.0,20.0", "OverlayRigHidden-orbit" to true, "FlyViewIndicatorOrder" to "gps,battery")
         assertEquals(mapOf("instrumentPanel" to (10f to 20f)), storedOffsets(stored))
-        assertEquals(setOf("orbit"), hiddenKeys(stored))
+        assertEquals(setOf("minimap", "orbit"), hiddenKeys(stored))
         assertEquals(listOf("gps", "battery"), storedIndicatorOrder(stored))
     }
 

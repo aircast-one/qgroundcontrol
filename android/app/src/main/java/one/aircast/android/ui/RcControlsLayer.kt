@@ -102,7 +102,7 @@ private fun RcSlider(state: RcControlState) {
                 dragging = null
             },
             valueRange = PWM_MIN.toFloat()..PWM_MAX.toFloat(),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().ownsLayoutHold(),
         )
     }
 }
