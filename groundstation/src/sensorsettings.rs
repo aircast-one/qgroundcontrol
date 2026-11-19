@@ -291,16 +291,41 @@ pub fn set_priority(backend: &dyn Backend, args: &str) -> Value {
     let (Some(compass), Some(priority)) = (index(0).filter(|c| *c < COMPASSES), index(1)) else {
         return json!({ "ok": false, "reason": "sensorSettings.priority takes a compass and a priority slot" });
     };
-    if priority >= PRIORITY_NOT_SET {
-        return json!({ "ok": true });
-    }
     let Some(id) = number(backend, ID_PARAMS[compass]) else {
         return json!({ "ok": false, "reason": "That compass is not on this vehicle." });
     };
-    object(&backend.set(
-        &format!("{}.rawValue", path(PRIO_PARAMS[priority])),
-        &json!({ "value": id }).to_string(),
-    ))
+    let priorities: Vec<Option<f64>> = PRIO_PARAMS.iter().map(|p| number(backend, p)).collect();
+    priority_writes(id, priority, &priorities)
+        .into_iter()
+        .map(|(slot, value)| {
+            object(&backend.set(
+                &format!("{}.rawValue", path(PRIO_PARAMS[slot])),
+                &json!({ "value": value }).to_string(),
+            ))
+        })
+        .find(|written| written.get("ok") == Some(&json!(false)))
+        .unwrap_or_else(|| json!({ "ok": true }))
+}
+
+pub fn priority_writes(id: f64, target: usize, priorities: &[Option<f64>]) -> Vec<(usize, f64)> {
+    let current = priority_of(id, priorities);
+    let cleared: Vec<f64> = priorities
+        .iter()
+        .map(|p| p.filter(|v| *v != id).unwrap_or(0.0))
+        .collect();
+    let displaced = cleared.get(target).copied().unwrap_or(0.0);
+    let placed = |slot: usize| match slot {
+        s if s == target => id,
+        s if s == current => displaced,
+        s => cleared[s],
+    };
+    priorities
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, old)| old.map(|old| (slot, placed(slot), old)))
+        .filter(|(_, new, old)| new != old)
+        .map(|(slot, new, _)| (slot, new))
+        .collect()
 }
 
 pub fn factory_reset(backend: &dyn Backend) -> Value {
@@ -358,6 +383,29 @@ mod tests {
             3,
             "a compass in no slot reads Not Set"
         );
+    }
+
+    #[test]
+    fn a_priority_change_swaps_slots_so_no_compass_sits_in_two_and_not_set_clears_its_slot() {
+        let (a, b, c) = (97539.0, 263178.0, 131874.0);
+        let slots = [Some(a), Some(b), Some(c)];
+        assert_eq!(
+            priority_writes(a, 1, &slots),
+            [(0, b), (1, a)],
+            "moving the first compass to priority 2 put it in both slots and dropped the second compass to Not Set"
+        );
+        assert_eq!(priority_writes(a, 0, &slots), []);
+        assert_eq!(
+            priority_writes(c, PRIORITY_NOT_SET, &slots),
+            [(2, 0.0)],
+            "Not Set wrote nothing, so the compass stayed in its slot"
+        );
+        assert_eq!(
+            priority_writes(a, 1, &[Some(a), Some(a), Some(c)]),
+            [(0, 0.0)],
+            "a compass already listed twice keeps only the slot chosen"
+        );
+        assert_eq!(priority_writes(b, 0, &[Some(a), None, None]), [(0, b)]);
     }
 
     #[test]
