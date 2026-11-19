@@ -313,7 +313,7 @@ const reportSwitchShown = (element: HTMLElement | null) => {
   };
 };
 
-export const GimbalModeSwitch = ({ className }: { className?: string }) => {
+export const GimbalModeSwitch = ({ className, onPicture = false }: { className?: string; onPicture?: boolean }) => {
   const view = useQgcPath(GIMBAL_INDICATOR_PATH);
   const control = useMemo(() => onScreenGimbal(view), [view]);
   if (control === null) return null;
@@ -321,7 +321,7 @@ export const GimbalModeSwitch = ({ className }: { className?: string }) => {
   const next = modeChoice(nextVideoGimbalMode(current.mode));
   return (
     <button
-      ref={reportSwitchShown}
+      ref={onPicture ? reportSwitchShown : undefined}
       type="button"
       aria-label={`Video gimbal mode, ${current.label}`}
       aria-description={`Switch to ${next.label}`}

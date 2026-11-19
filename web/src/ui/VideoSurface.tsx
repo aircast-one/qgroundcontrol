@@ -332,7 +332,6 @@ const MainPane = ({
           </>
         ) : null}
       </div>
-      {expanded && decoding ? <GimbalModeSwitch className="absolute end-3 bottom-3" /> : null}
       {!decoding && synthetic && !expanded ? (
         <SyntheticThumb className="absolute inset-0" />
       ) : !decoding && synthetic ? (
@@ -342,6 +341,7 @@ const MainPane = ({
           <NoVideoArea underFlyChrome={expanded && !fullScreen} thumb={!expanded} video={video} />
         </Surface>
       ) : null}
+      {expanded && (decoding || synthetic) ? <GimbalModeSwitch onPicture className="absolute end-3 bottom-3" /> : null}
     </div>
   );
 };

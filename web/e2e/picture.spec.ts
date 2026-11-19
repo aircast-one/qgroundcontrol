@@ -89,7 +89,7 @@ test('a click on the picture teaches the right-click, and a right-click on the s
   await expect(app.getByRole('button', { name: 'Go to location' })).toHaveCount(0);
 });
 
-test('with a gimbal and no camera picture, the camera rail switches the gimbal mode', async ({ app }) => {
+test('with a gimbal and no camera picture, the gimbal mode still switches', async ({ app }) => {
   await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
   await flyNow(app);
   const mode = app.getByRole('button', { name: /^Video gimbal mode/ });

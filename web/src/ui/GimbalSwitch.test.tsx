@@ -23,7 +23,7 @@ describe('the camera rail says which gimbal it steers and switches to another', 
     expect(onPick).toHaveBeenCalledWith(fpv);
   });
 
-  it('the rail carries the gimbal mode whenever a gimbal is there and no camera picture shows the switch', () => {
+  it('the rail carries the gimbal mode whenever a gimbal is there and the picture does not show the switch', () => {
     expect(railShowsGimbalMode(true, false)).toBe(true);
     expect(railShowsGimbalMode(true, true)).toBe(false);
     expect(railShowsGimbalMode(false, false)).toBe(false);
