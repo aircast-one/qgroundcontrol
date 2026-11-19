@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { type RefObject, useMemo, useRef } from 'react';
 import { Dialog } from '@base-ui/react';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
@@ -53,6 +53,11 @@ const VehicleQuestion = ({ fact }: { fact: Fact }) => (
   <Question title="Vehicle type" options={fact.enumStrings.map(sentenceCase)} chosen={fact.enumIndex} onPick={(index) => void Qgc.set(`${fact.path}.enumIndex`, index)} />
 );
 
+const focusQuietly = (target: RefObject<HTMLButtonElement | null>) => () => {
+  target.current?.focus({ preventScroll: true, focusVisible: false });
+  return false;
+};
+
 export const WELCOME_NOTE = 'Two questions so numbers and controls match your drone.';
 
 export const FirstRunDialog = () => {
@@ -71,10 +76,10 @@ export const FirstRunDialog = () => {
     </>
   );
   const heading = (
-    <div className="flex w-full flex-col items-center gap-3 text-center">
+    <div className="flex w-full flex-col items-start gap-3">
       <AircastMark size={desktop ? 64 : 88} />
       <Dialog.Title className="m-0 text-headline-small">{`Welcome to ${APP_NAME}`}</Dialog.Title>
-      <Text typography="bodyMedium" color={md('onSurfaceVariant')} textAlign="center">
+      <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
         {WELCOME_NOTE}
       </Text>
     </div>
@@ -85,10 +90,10 @@ export const FirstRunDialog = () => {
       <Dialog.Portal>
         {desktop ? (
           <>
-            <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/50" />
+            <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
             <Dialog.Popup
               aria-label={prompt.title}
-              initialFocus={continueRef}
+              initialFocus={focusQuietly(continueRef)}
               className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-48px)] w-[min(620px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 overflow-auto rounded-shape-xl bg-surface-container-high p-8 text-on-surface shadow-2xl outline-none"
             >
               {heading}
