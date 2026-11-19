@@ -87,10 +87,24 @@ final class PilotSettingsTests: XCTestCase {
     }
 
     func testFailsafeChoicesReadInDjisWords() {
-        XCTAssertEqual(pilotChoice("Hold mode"), "Hover")
-        XCTAssertEqual(pilotChoice("Return mode"), "Return home")
-        XCTAssertEqual(pilotChoice("Terminate"), "Stop motors")
-        XCTAssertEqual(pilotChoice("Enabled always RTL"), "Enabled always RTL")
+        XCTAssertEqual(pilotChoice("Hold mode", "Hover"), "Hover")
+        XCTAssertEqual(pilotChoice("Return mode", "Hover"), "Return home")
+        XCTAssertEqual(pilotChoice("Terminate", "Hover"), "Stop motors")
+        XCTAssertEqual(pilotChoice("Disabled/NoAction", "Hover"), "Do nothing", "ArduPilot words its off choice differently")
+        XCTAssertEqual(pilotChoice("Enabled always RTL", "Hover"), "Return home", "ArduPilot's radio failsafe reads like the others")
+        XCTAssertEqual(pilotChoice("Enabled always SmartRTL or Land", "Hover"), "Retrace the path home, or land")
+        XCTAssertEqual(pilotChoice("Enabled always Brake or Land", "Hover"), "Brake, or land")
+        XCTAssertEqual(pilotChoice("Something a newer firmware adds", "Hover"), "Something a newer firmware adds", "a choice with no plain wording yet keeps its own")
+    }
+
+    func testHoldingInPlaceIsNamedForWhatTheVehicleDoesACopterHoversAPlaneCircles() {
+        let plane = holdWord(VehicleShape(fixedWing: true))
+        XCTAssertEqual(holdWord(VehicleShape()), "Hover", "a multirotor or helicopter")
+        XCTAssertEqual(plane, "Circle")
+        XCTAssertEqual(holdWord(VehicleShape(fixedWing: true, vtol: true)), "Hover, or circle in forward flight", "a VTOL hovers until it is in forward flight")
+        XCTAssertEqual(holdWord(VehicleShape(rover: true)), "Stop")
+        XCTAssertEqual(holdWord(VehicleShape(sub: true)), "Hold position")
+        XCTAssertEqual(["Hold mode", "Loiter mode"].map { pilotChoice($0, plane) }, ["Circle", "Circle"])
     }
 
     func testSearchFindsAPilotSettingByItsWordsAndByEitherFirmwaresParameterName() {

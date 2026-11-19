@@ -347,6 +347,10 @@ private struct PilotFactRow: View {
     @State private var revision = 0
     @QgcPath private var live: JSON?
     @State private var fact: Fact
+    @QgcBool("vehicle.fixedWing") private var fixedWing
+    @QgcBool("vehicle.vtol") private var vtol
+    @QgcBool("vehicle.rover") private var rover
+    @QgcBool("vehicle.sub") private var sub
 
     init(shown: Fact, setting: PilotSetting) {
         self.shown = shown
@@ -357,7 +361,7 @@ private struct PilotFactRow: View {
 
     var body: some View {
         FactRow(
-            fact: pilotChoices(fact),
+            fact: pilotChoices(fact, holdWord(VehicleShape(fixedWing: fixedWing, vtol: vtol, rover: rover, sub: sub))),
             subtitle: setting.hint,
             warning: factNumber(fact) == 0 ? setting.whenUnlimited : nil,
             onWrite: { revision += 1 }
@@ -372,23 +376,48 @@ private struct PilotFactRow: View {
     }
 }
 
+private let DO_NOTHING = "Do nothing"
+
 private let PILOT_CHOICES = [
-    "Disabled": "Do nothing",
-    "Hold mode": "Hover",
-    "Loiter mode": "Hover",
+    "Disabled": DO_NOTHING,
+    "Disabled/NoAction": DO_NOTHING,
     "Return mode": "Return home",
     "Land mode": "Land",
     "Warning": "Warn only",
     "Return at critical level, land at emergency level": "Return home, land if critical",
     "Terminate": "Stop motors",
+    "RTL": "Return home",
+    "Enabled always RTL": "Return home",
+    "Enabled always Land": "Land",
+    "SmartRTL or RTL": "Retrace the path home, or return home",
+    "Enabled always SmartRTL or RTL": "Retrace the path home, or return home",
+    "SmartRTL or Land": "Retrace the path home, or land",
+    "Enabled always SmartRTL or Land": "Retrace the path home, or land",
+    "Brake or Land": "Brake, or land",
+    "Enabled always Brake or Land": "Brake, or land",
+    "Auto DO_LAND_START or RTL": "Fly the mission's landing, or return home",
+    "Enabled Auto DO_LAND_START or RTL": "Fly the mission's landing, or return home",
+    "Auto DO_LAND_START/DO_RETURN_PATH_START or RTL": "Fly the mission's landing or return path, or return home",
+    "Enabled Auto DO_LAND_START/DO_RETURN_PATH_START or RTL": "Fly the mission's landing or return path, or return home",
 ]
 
-func pilotChoice(_ label: String) -> String { PILOT_CHOICES[label] ?? label }
+private let HOLD_CHOICES: Set<String> = ["Hold mode", "Loiter mode"]
 
-func pilotChoices(_ fact: Fact) -> Fact {
-    var copy = fact
-    copy.enumStrings = fact.enumStrings.map(pilotChoice)
-    return copy
+struct VehicleShape {
+    var fixedWing = false
+    var vtol = false
+    var rover = false
+    var sub = false
+}
+
+func holdWord(_ shape: VehicleShape) -> String {
+    shape.vtol ? "Hover, or circle in forward flight" : shape.fixedWing ? "Circle" : shape.rover ? "Stop" : shape.sub ? "Hold position" : "Hover"
+}
+
+func pilotChoice(_ label: String, _ hold: String) -> String { HOLD_CHOICES.contains(label) ? hold : PILOT_CHOICES[label] ?? label }
+
+func pilotChoices(_ fact: Fact, _ hold: String) -> Fact {
+    withChanges(fact) { $0.enumStrings = fact.enumStrings.map { pilotChoice($0, hold) } }
 }
 
 private let PILOT_LABELS = [
