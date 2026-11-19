@@ -16,7 +16,7 @@ Settings that control the behavior and appearance of the [Fly View](../fly_view/
 ## Guided Commands
 
 - **Minimum Altitude** — lowest altitude allowed for guided mode commands (default: 2 m)
-- **Maximum Altitude** — highest altitude allowed for guided mode commands (default: 121.92 m / 400 ft)
+- **Maximum Altitude** — highest altitude allowed for guided mode commands (default: 500 m)
 - **Go To Location Max Distance** — maximum distance for Go To commands (default: 1000 m)
 - **Loiter Radius in Forward Flight Guided Mode** — loiter radius for fixed-wing guided mode (default: 80 m)
 - **Require Confirmation for Go To Location in Guided Mode** — require confirmation before executing Go To

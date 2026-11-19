@@ -16,7 +16,7 @@
             "shortDesc": "Maximum altitude allowed for guided mode actions like takeoff and altitude changes.",
             "type": "double",
             "units": "vertical m",
-            "default": 121.92,
+            "default": 500,
             "label": "Maximum Altitude",
             "keywords": "altitude,guided,maximum"
         },
