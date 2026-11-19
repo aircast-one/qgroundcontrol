@@ -113,6 +113,13 @@ fn dispatch(backend: &dyn Backend, action: Value) -> Value {
     )
 }
 
+fn disarmed_on_open(backend: &dyn Backend) -> Value {
+    match flag(&backend.value_fields("vehicle", "armed"), "armed") {
+        true => dispatch(backend, json!({ "action": "arm", "arm": false })),
+        false => json!({ "ok": true }),
+    }
+}
+
 pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
     let number = |at: usize| given.get(at).and_then(Value::as_f64);
@@ -160,7 +167,7 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .clear();
-            dispatch(backend, json!({ "action": "arm", "arm": false }))
+            disarmed_on_open(backend)
         }
         AUTO_DETECT => dispatch(
             backend,
@@ -200,6 +207,45 @@ mod tests {
         assert!(is_detection_text("Thruster 1 is reversed"));
         assert!(is_detection_text("MOTOR 3 ok"));
         assert!(!is_detection_text("EKF3 IMU0 is using GPS"));
+    }
+
+    #[test]
+    fn opening_the_page_disarms_only_an_armed_vehicle_so_a_second_open_sends_nothing() {
+        struct Sub {
+            armed: bool,
+            sent: Mutex<usize>,
+        }
+        impl Backend for Sub {
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "armed": self.armed }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                *self.sent.lock().unwrap() += 1;
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let opened = |armed: bool| {
+            let sub = Sub {
+                armed,
+                sent: Mutex::new(0),
+            };
+            let answer = disarmed_on_open(&sub);
+            let sent = *sub.sent.lock().unwrap();
+            (answer["ok"].clone(), sent)
+        };
+        assert_eq!(
+            opened(false),
+            (json!(true), 0),
+            "a disarm sent to a disarmed sub on every open came back as Unable to send command: Waiting on previous response"
+        );
+        assert_eq!(opened(true), (json!(true), 1));
     }
 
     #[test]
