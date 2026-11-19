@@ -85,10 +85,25 @@ class PilotSettingsTest {
 
     @Test
     fun `failsafe choices read in DJI's words`() {
-        assertEquals("Hover", pilotChoice("Hold mode"))
-        assertEquals("Return home", pilotChoice("Return mode"))
-        assertEquals("Stop motors", pilotChoice("Terminate"))
-        assertEquals("Enabled always RTL", pilotChoice("Enabled always RTL"))
+        assertEquals("Hover", pilotChoice("Hold mode", "Hover"))
+        assertEquals("Return home", pilotChoice("Return mode", "Hover"))
+        assertEquals("Stop motors", pilotChoice("Terminate", "Hover"))
+        assertEquals("ArduPilot words its off choice differently", "Do nothing", pilotChoice("Disabled/NoAction", "Hover"))
+        assertEquals("ArduPilot's radio failsafe reads like the others", "Return home", pilotChoice("Enabled always RTL", "Hover"))
+        assertEquals("Retrace the path home, or land", pilotChoice("Enabled always SmartRTL or Land", "Hover"))
+        assertEquals("Brake, or land", pilotChoice("Enabled always Brake or Land", "Hover"))
+        assertEquals("a choice with no plain wording yet keeps its own", "Something a newer firmware adds", pilotChoice("Something a newer firmware adds", "Hover"))
+    }
+
+    @Test
+    fun `holding in place is named for what the vehicle does - a copter hovers, a plane circles`() {
+        val plane = holdWord(VehicleShape(fixedWing = true))
+        assertEquals("a multirotor or helicopter", "Hover", holdWord(VehicleShape()))
+        assertEquals("Circle", plane)
+        assertEquals("a VTOL hovers until it is in forward flight", "Hover, or circle in forward flight", holdWord(VehicleShape(fixedWing = true, vtol = true)))
+        assertEquals("Stop", holdWord(VehicleShape(rover = true)))
+        assertEquals("Hold position", holdWord(VehicleShape(sub = true)))
+        assertEquals(listOf("Circle", "Circle"), listOf("Hold mode", "Loiter mode").map { pilotChoice(it, plane) })
     }
 
     @Test

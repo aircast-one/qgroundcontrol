@@ -21,6 +21,7 @@ import androidx.compose.runtime.produceState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
+import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
 internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String, val whenUnlimited: String? = null, val quantity: String? = null)
@@ -163,23 +164,59 @@ private fun PilotFactRow(shown: Fact, setting: PilotSetting) {
     val fact by produceState(shown, name, live, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name, setting.quantity)?.copy(shortLabel = shown.shortLabel) } ?: shown
     }
-    FactRow(pilotChoices(fact), subtitle = setting.hint, warning = setting.whenUnlimited?.takeIf { factNumber(fact) == 0f }, onWrite = { revision++ })
+    val hold = vehicleHoldWord()
+    FactRow(pilotChoices(fact, hold), subtitle = setting.hint, warning = setting.whenUnlimited?.takeIf { factNumber(fact) == 0f }, onWrite = { revision++ })
 }
 
+private const val DO_NOTHING = "Do nothing"
+
 private val PILOT_CHOICES = mapOf(
-    "Disabled" to "Do nothing",
-    "Hold mode" to "Hover",
-    "Loiter mode" to "Hover",
+    "Disabled" to DO_NOTHING,
+    "Disabled/NoAction" to DO_NOTHING,
     "Return mode" to "Return home",
     "Land mode" to "Land",
     "Warning" to "Warn only",
     "Return at critical level, land at emergency level" to "Return home, land if critical",
     "Terminate" to "Stop motors",
+    "RTL" to "Return home",
+    "Enabled always RTL" to "Return home",
+    "Enabled always Land" to "Land",
+    "SmartRTL or RTL" to "Retrace the path home, or return home",
+    "Enabled always SmartRTL or RTL" to "Retrace the path home, or return home",
+    "SmartRTL or Land" to "Retrace the path home, or land",
+    "Enabled always SmartRTL or Land" to "Retrace the path home, or land",
+    "Brake or Land" to "Brake, or land",
+    "Enabled always Brake or Land" to "Brake, or land",
+    "Auto DO_LAND_START or RTL" to "Fly the mission's landing, or return home",
+    "Enabled Auto DO_LAND_START or RTL" to "Fly the mission's landing, or return home",
+    "Auto DO_LAND_START/DO_RETURN_PATH_START or RTL" to "Fly the mission's landing or return path, or return home",
+    "Enabled Auto DO_LAND_START/DO_RETURN_PATH_START or RTL" to "Fly the mission's landing or return path, or return home",
 )
 
-internal fun pilotChoice(label: String): String = PILOT_CHOICES[label] ?: label
+private val HOLD_CHOICES = setOf("Hold mode", "Loiter mode")
 
-internal fun pilotChoices(fact: Fact): Fact = fact.copy(enumStrings = fact.enumStrings.map(::pilotChoice))
+internal data class VehicleShape(val fixedWing: Boolean = false, val vtol: Boolean = false, val rover: Boolean = false, val sub: Boolean = false)
+
+internal fun holdWord(shape: VehicleShape): String = when {
+    shape.vtol -> "Hover, or circle in forward flight"
+    shape.fixedWing -> "Circle"
+    shape.rover -> "Stop"
+    shape.sub -> "Hold position"
+    else -> "Hover"
+}
+
+@Composable
+internal fun vehicleHoldWord(): String {
+    val fixedWing by qgcBool("vehicle.fixedWing")
+    val vtol by qgcBool("vehicle.vtol")
+    val rover by qgcBool("vehicle.rover")
+    val sub by qgcBool("vehicle.sub")
+    return holdWord(VehicleShape(fixedWing, vtol, rover, sub))
+}
+
+internal fun pilotChoice(label: String, hold: String): String = if (label in HOLD_CHOICES) hold else PILOT_CHOICES[label] ?: label
+
+internal fun pilotChoices(fact: Fact, hold: String): Fact = fact.copy(enumStrings = fact.enumStrings.map { pilotChoice(it, hold) })
 
 private val PILOT_LABELS = mapOf(
     "guidedMinimumAltitude" to "Lowest altitude for takeoff and fly-to",
