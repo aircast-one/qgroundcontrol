@@ -18,7 +18,7 @@ import { useAdvancedUiShown } from './AdvancedUi';
 import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnlessRefused } from './ConfirmTrack';
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
-import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
+import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeConfirmText, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
 import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET } from './FlyScreenState';
 import { AnimatedVisibility, PASS_THROUGH, useElementSize } from './FlyShell';
@@ -1073,7 +1073,7 @@ export const FlightModeMenu = ({ expanded, onDismiss, onStatus }: { expanded: bo
         <AlertDialog
           onDismissRequest={() => setConfirming(null)}
           title="Set flight mode"
-          text={`Set the vehicle flight mode to ${confirming.name}`}
+          text={modeConfirmText(confirming)}
           confirmButton={
             <TextButton
               onClick={() => {

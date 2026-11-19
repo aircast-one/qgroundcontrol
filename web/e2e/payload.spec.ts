@@ -94,6 +94,8 @@ test('a pilot flying by hand drops from the payload strip, and a drop that canno
   await expect(vehicle.getByRole('button', { name: 'Slide to land' })).toBeVisible({ timeout: 60_000 });
   await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).click();
   await vehicle.getByRole('menu').getByRole('menuitem', { name: 'Loiter' }).click();
+  const asked = vehicle.getByRole('dialog').filter({ hasText: 'Set the vehicle flight mode to Loiter. Flown with the RC transmitter, which has no signal.' });
+  await asked.getByRole('button', { name: 'Confirm' }).click();
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Loiter/);
   await dropFromStrip(vehicle);
   await expect(vehicle.getByText('Payload dropped')).toBeVisible({ timeout: 30_000 });
@@ -135,6 +137,7 @@ test('four bays on their own servos drop one after another by hand, each from it
   await expect(vehicle.getByRole('button', { name: 'Slide to land' })).toBeVisible({ timeout: 60_000 });
   await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).click();
   await vehicle.getByRole('menu').getByRole('menuitem', { name: 'Loiter' }).click();
+  await vehicle.getByRole('dialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Loiter/);
   await armPayload(vehicle);
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();

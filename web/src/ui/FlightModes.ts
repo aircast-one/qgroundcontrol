@@ -19,6 +19,9 @@ export const FlightModeOption = (fields: { name: string; summary: string; curren
   ...fields,
 });
 
+export const modeConfirmText = (mode: FlightModeOption): string =>
+  [`Set the vehicle flight mode to ${mode.name}.`, mode.caution.trim() === '' ? null : `${mode.caution}.`].filter((part): part is string => part !== null).join(' ');
+
 export type FlightModesView = {
   canSet: boolean;
   current: string;

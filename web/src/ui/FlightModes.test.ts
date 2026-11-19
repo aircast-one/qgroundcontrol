@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
-import { MODE_REPLY_MS, ModeOutcome, flightModesView, modeAck, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
+import { FlightModeOption, MODE_REPLY_MS, ModeOutcome, flightModesView, modeAck, modeConfirmText, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
 import { flightModeIcon } from './VehicleUi';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -135,5 +135,14 @@ describe('ModeOutcomeTest', () => {
   it("the core's ack reads into the head", () => {
     expect(modeAck(json('{"modeAck":{"serial":2,"accepted":false,"wording":"refused for now"}}'))).toEqual({ serial: 2, accepted: false });
     expect(modeAck(json('{"modeAck":null}'))).toBeNull();
+  });
+});
+
+describe('ModeConfirmTest', () => {
+  it('a mode flown by hand says why it asks when the RC has no signal', () => {
+    expect(modeConfirmText(FlightModeOption({ name: 'Manual', summary: '', current: false, needsConfirm: true, caution: 'Flown with the RC transmitter, which has no signal' }))).toBe(
+      'Set the vehicle flight mode to Manual. Flown with the RC transmitter, which has no signal.',
+    );
+    expect(modeConfirmText(FlightModeOption({ name: 'Return', summary: '', current: false, needsConfirm: true }))).toBe('Set the vehicle flight mode to Return.');
   });
 });

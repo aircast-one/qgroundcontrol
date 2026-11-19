@@ -23,6 +23,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.airship",
     "vehicle.gps.telemetryAvailable",
     "vehicle.gps.lock",
+    "vehicle.rcRSSI",
     "settings.flightModeSettings.px4HiddenFlightModesMultiRotor",
     "settings.flightModeSettings.px4HiddenFlightModesFixedWing",
     "settings.flightModeSettings.px4HiddenFlightModesVTOL",
@@ -137,8 +138,36 @@ const GPS_MODES: &[&str] = &[
     "ZigZag",
     "Takeoff",
 ];
+const RC_MODES: &[&str] = &[
+    "Manual",
+    "Stabilize",
+    "Stabilized",
+    "Acro",
+    "Rattitude",
+    "Altitude",
+    "Altitude Hold",
+    "Position",
+    "Position Slow",
+    "PosHold",
+    "Sport",
+    "Drift",
+    "Flip",
+    "Flow Hold",
+    "ZigZag",
+    "Turtle",
+    "FBW A",
+    "FBW B",
+    "Cruise",
+    "Training",
+    "QuadPlane Stabilize",
+    "QuadPlane Hover",
+    "QuadPlane Loiter",
+    "QuadPlane Acro",
+    "Steering",
+];
 const GPS_3D_FIX: i64 = 3;
 const NEEDS_GPS: &str = "Needs GPS";
+pub const NEEDS_RC: &str = "Flown with the RC transmitter, which has no signal";
 const CANNOT_SET: &str = "This vehicle does not accept a flight mode change from here.";
 
 const DESCRIPTIONS: &[(&str, &str)] = &[
@@ -347,6 +376,14 @@ pub fn needs_gps(mode: &str, class: Option<&str>) -> bool {
     }
 }
 
+pub fn needs_rc(mode: &str, class: Option<&str>) -> bool {
+    match class {
+        Some("Sub") => false,
+        Some("MultiRotor") => mode == "Loiter" || RC_MODES.contains(&mode),
+        _ => RC_MODES.contains(&mode),
+    }
+}
+
 pub fn quick_modes(
     all: &[String],
     advanced: &[String],
@@ -435,7 +472,7 @@ fn listed_modes(backend: &dyn Backend, setting: Option<&str>) -> Vec<String> {
 }
 
 pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = backend.value_fields("vehicle", "flightMode,flightModes,advancedFlightModes,armed,flying,flightModeSetAvailable,px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship");
+    let vehicle = backend.value_fields("vehicle", "flightMode,flightModes,advancedFlightModes,armed,flying,flightModeSetAvailable,px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship,rcRSSI");
     let hidden_setting = hidden_modes_setting(&vehicle);
     let hidden = listed_modes(backend, hidden_setting.as_deref());
     let pinned_setting = pinned_modes_setting(&vehicle);
@@ -465,6 +502,7 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
         class,
     );
     let gps_missing = connected && no_gps_fix(backend);
+    let rc_missing = connected && crate::flystate::rc_signal(&vehicle) == Some(0);
     let modes: Vec<Value> = all
         .iter()
         .map(|name| {
@@ -474,10 +512,14 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "hidden": hidden.contains(name),
                 "current": *name == current,
                 "summary": description(name),
-                "needsConfirm": needs_confirming(name, armed, flying),
+                "needsConfirm": needs_confirming(name, armed, flying) || (armed && rc_missing && needs_rc(name, class)),
                 "section": section(name),
                 "quick": quick.contains(name),
-                "caution": if gps_missing && needs_gps(name, class) { NEEDS_GPS } else { "" },
+                "caution": match (gps_missing && needs_gps(name, class), rc_missing && needs_rc(name, class)) {
+                    (true, _) => NEEDS_GPS,
+                    (false, true) => NEEDS_RC,
+                    (false, false) => "",
+                },
             })
         })
         .collect::<Vec<_>>()
@@ -1094,6 +1136,74 @@ mod tests {
         assert!(
             cautions(3).iter().all(|(_, caution)| caution.is_empty()),
             "a 3D fix clears it"
+        );
+    }
+
+    #[test]
+    fn a_mode_flown_with_the_sticks_asks_first_while_the_rc_has_no_signal() {
+        assert!(needs_rc("Manual", Some("MultiRotor")));
+        assert!(needs_rc("Loiter", Some("MultiRotor")));
+        assert!(
+            !needs_rc("Loiter", Some("FixedWing")),
+            "a wing circles in Loiter on its own"
+        );
+        assert!(!needs_rc("Hold", Some("MultiRotor")));
+        assert!(
+            !needs_rc("Manual", Some("Sub")),
+            "a sub is flown from a joystick, not an RC transmitter"
+        );
+
+        struct Rc(i64);
+        impl Backend for Rc {
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "flightMode": "Hold", "flightModes": ["Manual", "Position", "Hold", "Return"], "advancedFlightModes": [], "armed": true, "flying": true, "flightModeSetAvailable": true, "px4Firmware": true, "multiRotor": true, "facts": [{ "property": "rcRSSI", "value": self.0 }] }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        struct Grounded;
+        impl Backend for Grounded {
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "flightMode": "Hold", "flightModes": ["Manual"], "advancedFlightModes": [], "armed": false, "flightModeSetAvailable": true, "px4Firmware": true, "multiRotor": true, "facts": [{ "property": "rcRSSI", "value": 0 }] }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let manual = |rssi: i64| {
+            flight_modes_view(&Rc(rssi), &[])["modes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["name"] == "Manual")
+                .map(|m| (m["needsConfirm"].clone(), m["caution"].clone()))
+                .unwrap()
+        };
+        assert_eq!(
+            manual(0),
+            (json!(true), json!(NEEDS_RC)),
+            "switching to Manual with no RC signal in the air hands the aircraft to sticks nobody holds"
+        );
+        assert_eq!(manual(80), (json!(false), json!("")));
+        assert_eq!(
+            flight_modes_view(&Grounded, &[])["modes"][0]["needsConfirm"],
+            false,
+            "on the ground and disarmed nothing flies on the sticks, so it only says why"
         );
     }
 

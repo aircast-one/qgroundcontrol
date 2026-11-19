@@ -174,7 +174,7 @@ fn vehicle_rc_required(backend: &dyn Backend, vehicle: &Value) -> bool {
     )
 }
 
-fn rc_signal(vehicle: &Value) -> Option<i64> {
+pub(crate) fn rc_signal(vehicle: &Value) -> Option<i64> {
     crate::read::fact_property(vehicle, "rcRSSI")
         .and_then(|fact| fact.get("value"))
         .and_then(Value::as_i64)
