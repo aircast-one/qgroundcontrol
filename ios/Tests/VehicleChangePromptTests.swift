@@ -25,6 +25,7 @@ final class VehicleChangePromptTests: XCTestCase {
         let altitude = corePrompt(JSON.parse(#"{"vehicleChangePrompt":null,"applyAltitudePrompt":{"title":"apply","text":"a"}}"#))
         XCTAssertEqual([APPLY_DEFAULT_ALTITUDE, DISMISS_ALTITUDE_PROMPT], altitude?.choices.map(\.invoke))
         XCTAssertEqual([false, true], altitude?.choices.map(\.cancel))
+        XCTAssertEqual(["Change all", "Keep their altitudes"], altitude?.choices.map(\.label))
         XCTAssertNil(corePrompt(JSON.parse(#"{"vehicleChangePrompt":null,"applyAltitudePrompt":null}"#)))
     }
 }

@@ -79,8 +79,8 @@ func corePrompt(_ view: JSON?) -> CorePrompt? {
     }
     return vehicle ?? applyAltitudePrompt(view).map { prompt in
         CorePrompt(title: sentenceCase(prompt.title), text: prompt.text, choices: [
-            CorePromptChoice(label: "Yes", invoke: APPLY_DEFAULT_ALTITUDE),
-            CorePromptChoice(label: "No", invoke: DISMISS_ALTITUDE_PROMPT, cancel: true),
+            CorePromptChoice(label: "Change all", invoke: APPLY_DEFAULT_ALTITUDE),
+            CorePromptChoice(label: "Keep their altitudes", invoke: DISMISS_ALTITUDE_PROMPT, cancel: true),
         ])
     }
 }
