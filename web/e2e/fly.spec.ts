@@ -46,25 +46,32 @@ test('a red reading that makes the chip say not fully ready is the take-off warn
   await expect(flightMode(vehicle)).toHaveAccessibleName(/Flying/, { timeout: 60_000 });
 });
 
-const takeoffPrompt = (page: Page) =>
-  page.evaluate(async (module) => {
-    const { Qgc } = (await import(module)) as { Qgc: { get: (path: string) => Promise<{ actions?: { id: string; prompt: string }[] } | null> } };
-    return (await Qgc.get('view.guidedActions'))?.actions?.find((it) => it.id === 'takeoff')?.prompt ?? '';
-  }, '/src/bridge/Qgc.ts');
+const parameterValue = (page: Page, name: string) =>
+  page.evaluate(
+    async ([module, asked]) => {
+      const { Qgc } = (await import(module!)) as { Qgc: { get: (path: string) => Promise<{ rawValue?: number } | null> } };
+      return (await Qgc.get(`vehicle.parameterManager.getParameter(-1,${asked})`))?.rawValue ?? null;
+    },
+    ['/src/bridge/Qgc.ts', name],
+  );
 
-test('an ArduPlane takes off to its takeoff height in its own words, and the mode menu lists Takeoff once', async ({ app }) => {
+test('an ArduPlane picks its takeoff height in the take-off panel, writes it before taking off, and the mode menu lists Takeoff once', async ({ app }) => {
   await connectMock(app, [], 'APM ArduPlane Vehicle');
-  await expect.poll(() => takeoffPrompt(app), { message: 'TKOFF_ALT has arrived with the parameters', timeout: 60_000 }).toContain('50.0 m');
-  const wording = app.getByText('The aircraft throttles up, climbs to 50.0 m above launch and circles there.');
+  await expect.poll(() => parameterValue(app, 'TKOFF_ALT'), { message: 'TKOFF_ALT has arrived with the parameters', timeout: 60_000 }).toBe(50);
+  const panel = app.getByText('Height above launch');
   await expect(async () => {
     if (await app.getByRole('button', { name: 'Cancel' }).isVisible()) await app.getByRole('button', { name: 'Cancel' }).click();
     await app.getByRole('button', { name: 'Take off' }).click();
-    await expect(wording, 'a wing does not hold position').toBeVisible({ timeout: 2_000 });
+    await expect(panel, 'a wing picks its height like a copter once TKOFF_ALT is known').toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
+  await expect(app.getByText(/^50(\.0)? m$/).first(), 'it opens at the takeoff height the aircraft already has').toBeVisible();
+  await app.getByRole('button', { name: '20 m', exact: true }).click();
+  await expect(app.getByText('The aircraft throttles up, climbs to 20.0 m above launch and circles there.'), 'a wing does not hold position').toBeVisible();
   await expect(app.getByText(/^Not fully ready\./), 'taking off warns the same way on every frame').toBeVisible();
-  await slideAcross(app, app.getByRole('button', { name: 'Slide to take off anyway', exact: true }));
+  await slideAcross(app, app.getByRole('button', { name: /^Slide to take off anyway · 20(\.0)? m$/ }));
+  await expect.poll(() => parameterValue(app, 'TKOFF_ALT'), { message: 'the chosen height is written to TKOFF_ALT', timeout: 30_000 }).toBe(20);
   await expect(flightMode(app)).toHaveAccessibleName(/^Takeoff/, { timeout: 30_000 });
-  await expect(telemetry(app, 'H')).not.toHaveText(/^H0\.0 m$/, { timeout: 60_000 });
+  await expect(telemetry(app, 'H')).toHaveText(/^H(1[5-9]|2[0-4])\.\d m$/, { timeout: 90_000 });
   await app.getByRole('button', { name: 'Change flight mode', exact: true }).click();
   await expect(app.getByRole('menu').getByRole('menuitem', { name: /^Take ?off/ }), 'taking off already, the menu offers no second Take off row').toHaveCount(1);
 });

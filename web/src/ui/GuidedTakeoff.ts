@@ -10,6 +10,7 @@ export type GuidedTakeoff = {
   readonly minimum: number | null;
   readonly maximum: number | null;
   readonly sentence: string;
+  readonly circles: boolean;
   readonly targetMeters: number;
 };
 
@@ -30,6 +31,7 @@ export const guidedTakeoff = (view: Json | null): GuidedTakeoff | null => {
     minimum: numberOrNull(view, 'minimum'),
     maximum: numberOrNull(view, 'maximum'),
     sentence: isNull(view, 'sentence') ? '' : optText(view, 'sentence'),
+    circles: optBoolean(view, 'circles'),
     targetMeters: optDouble(view, 'targetMeters', 0.0),
   };
 };

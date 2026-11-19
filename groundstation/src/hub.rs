@@ -2583,6 +2583,7 @@ impl Vehicle {
                     Vec::new()
                 }
                 params::Action::WriteFailed { component, name, error } => {
+                    self.guided.on_parameter_failed(&name);
                     let text = failure_text("write", &name, &self.params.component_label(component), error);
                     crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
                     self.note(text);
@@ -2671,6 +2672,16 @@ impl Vehicle {
             armed: self.armed(),
             flying: self.flying,
             round_trip_ms: self.commands.round_trip_ms,
+            parameter: self
+                .guided
+                .awaited_parameter()
+                .map(|name| crate::guidedexec::Written {
+                    pending: self.params.writing(self.component, name),
+                    value: self
+                        .params
+                        .value(self.component, name)
+                        .map(ParamValue::as_f64),
+                }),
         }
     }
 
@@ -2711,6 +2722,9 @@ impl Vehicle {
         match action.get("action").and_then(Value::as_str).unwrap_or("") {
             "takeoff" if guidedcmd::guided_takeoff_with_altitude(&state) => {
                 guidedcmd::takeoff(&state, number("altitude"))
+            }
+            "takeoff" if number("altitude").is_finite() => {
+                guidedcmd::wing_takeoff(&state, number("altitude"), self.flying)
             }
             "takeoff" => guidedcmd::start_takeoff(&state, self.flying),
             "goto" if !guidedcmd::guided_mode(&state) => {
@@ -4838,6 +4852,22 @@ impl Vehicle {
                     })
                     .into_iter()
                     .collect(),
+                Emit::SetParameter { name, value } => {
+                    match self
+                        .params
+                        .value(self.component, &name)
+                        .and_then(|known| ParamValue::from_f64(known.param_type(), value))
+                    {
+                        Some(typed) => {
+                            let actions = self.params.write(self.component, &name, typed);
+                            self.follow_params(actions, now_ms)
+                        }
+                        None => {
+                            self.guided.on_parameter_failed(&name);
+                            Vec::new()
+                        }
+                    }
+                }
                 Emit::Tell(text) => {
                     self.pending_notices
                         .push((crate::noticeboard::MESSAGE, text.clone()));

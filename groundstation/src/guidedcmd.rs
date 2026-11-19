@@ -96,6 +96,11 @@ pub enum Step {
         mode: String,
         arm: String,
     },
+    SetParameter {
+        name: String,
+        value: f64,
+        failure: String,
+    },
 }
 
 fn failing_with(mode: &str, arm: &str, steps: Vec<Step>) -> Vec<Step> {
@@ -302,6 +307,27 @@ pub fn start_takeoff(state: &VehicleState, flying: bool) -> Plan {
             "Unable to start takeoff: Vehicle not changing to Takeoff flight mode.",
             "Unable to start takeoff: Vehicle rejected arming.",
         ),
+    }
+}
+
+pub const WING_TAKEOFF_HEIGHT: &str = "TKOFF_ALT";
+
+pub fn wing_takeoff_refused(metres: f64) -> String {
+    format!("The aircraft did not take the {metres:.1} m takeoff height, so it did not take off.")
+}
+
+pub fn wing_takeoff(state: &VehicleState, metres: f64, flying: bool) -> Plan {
+    match start_takeoff(state, flying) {
+        Plan::Steps(steps) => Plan::Steps(
+            std::iter::once(Step::SetParameter {
+                name: WING_TAKEOFF_HEIGHT.to_string(),
+                value: metres,
+                failure: wing_takeoff_refused(metres),
+            })
+            .chain(steps)
+            .collect(),
+        ),
+        refused => refused,
     }
 }
 

@@ -69,7 +69,9 @@ const usableRange = (minimum: number | null, maximum: number | null): ClosedRang
   minimum !== null && maximum !== null && maximum > minimum ? { start: minimum, endInclusive: maximum } : null;
 
 export const takeoffReading = (takeoff: GuidedTakeoff | null): GuidedReading | null =>
-  takeoff === null ? null : { label: takeoff.label, unit: takeoff.unit, range: usableRange(takeoff.minimum, takeoff.maximum), initial: takeoff.initial, sentence: takeoff.sentence, sendable: true };
+  takeoff === null
+    ? null
+    : { label: takeoff.label, unit: takeoff.unit, range: usableRange(takeoff.minimum, takeoff.maximum), initial: takeoff.initial, sentence: takeoff.circles ? takeoff.sentence : '', sendable: true };
 
 export const speedReading = (speed: GuidedSpeed | null): GuidedReading | null =>
   speed === null ? null : { label: speed.label, unit: speed.unit, range: speed.command !== null ? usableRange(speed.minimum, speed.maximum) : null, initial: speed.initial, sentence: speed.sentence, sendable: true };
@@ -86,12 +88,11 @@ export const takeoffValue = (offer: GuidedOffer | null): GuidedValueKind =>
   GuidedValueKind({
     offerId: 'takeoff',
     title: titleOr(offer, 'Takeoff'),
-    prompt: offer?.prompt ?? null,
+    prompt: null,
     commitLabel: 'Take off',
     missingRange: 'This vehicle did not report a takeoff height range.',
     quickPicks: false,
     presets: true,
-    explains: false,
     read: async (target) => takeoffReading(guidedTakeoff(await Qgc.get(target === null ? GUIDED_TAKEOFF : guidedTakeoffPath(target)))),
     commit: async (target) => {
       const fresh = guidedTakeoff(await Qgc.get(guidedTakeoffPath(target)));

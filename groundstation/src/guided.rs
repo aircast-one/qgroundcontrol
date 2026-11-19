@@ -116,6 +116,10 @@ pub struct GuidedState {
 }
 
 impl GuidedState {
+    fn takeoff_without_height(&self) -> bool {
+        !self.takeoff_with_altitude && self.wing_takeoff_height.is_none()
+    }
+
     fn mission_active(&self) -> bool {
         self.armed && (self.in_land || self.in_rtl || self.in_mission)
     }
@@ -392,7 +396,7 @@ impl Action {
             destructive: matches!(self, Action::EmergencyStop | Action::ForceArm),
             confirm: self != Action::Disarm,
             carries_value: self.carries_value()
-                && !(self == Action::Takeoff && !s.takeoff_with_altitude),
+                && !(self == Action::Takeoff && s.takeoff_without_height()),
             option: match (self, s.smart_rtl_supported) {
                 (Action::Rtl, true) => "Smart RTL",
                 _ => "",
@@ -406,6 +410,18 @@ impl Action {
 }
 
 pub const TAKEOFF_MODE: &str = "Takeoff";
+
+pub fn wing_takeoff_metres(backend: &dyn Backend) -> Option<f64> {
+    let wing = flag(&backend.value_fields("vehicle", "fixedWing"), "fixedWing");
+    let with_altitude = flag(
+        &backend.value_fields("vehicle.supports", "guidedTakeoffWithAltitude"),
+        "guidedTakeoffWithAltitude",
+    );
+    (wing && !with_altitude)
+        .then(|| crate::battery::parameter_si(backend, &[crate::guidedcmd::WING_TAKEOFF_HEIGHT]))
+        .flatten()
+        .filter(|metres| *metres > 0.0)
+}
 
 pub fn wing_takeoff_prompt(height: Option<&str>) -> String {
     format!(
@@ -576,10 +592,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         in_rtl: same_mode("rtlFlightMode") || same_mode("smartRTLFlightMode"),
         in_land: same_mode("landFlightMode"),
         in_takeoff: mode == TAKEOFF_MODE,
-        wing_takeoff_height: (fixed_wing && !flag(&supports, "guidedTakeoffWithAltitude"))
-            .then(|| crate::battery::parameter_si(backend, &["TKOFF_ALT"]))
-            .flatten()
-            .filter(|metres| *metres > 0.0)
+        wing_takeoff_height: wing_takeoff_metres(backend)
             .map(|metres| crate::read::Unit::vertical(backend).label(metres)),
         in_mission: same_mode("missionFlightMode"),
         paused: same_mode("pauseFlightMode"),
@@ -727,7 +740,7 @@ fn core_action(offered: &[Action], args: &str, state: &GuidedState) -> Option<Va
         [Action::ResumeMission] => given.get(0).and_then(Value::as_i64).map(|index| json!({ "action": "resumeMission", "index": index })),
         [Action::LandAbort] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "abortLanding", "climbOut": metres })),
         [Action::Grab] | [Action::Release] | [Action::Hold] => given.get(0).and_then(Value::as_f64).map(|grip| json!({ "action": "gripper", "gripAction": grip, "bay": given.get(1).and_then(Value::as_f64).unwrap_or(0.0) })),
-        [Action::Takeoff] if !state.takeoff_with_altitude => Some(json!({ "action": "takeoff" })),
+        [Action::Takeoff] if state.takeoff_without_height() => Some(json!({ "action": "takeoff" })),
         [Action::Takeoff] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "takeoff", "altitude": metres })),
         [Action::ChangeAltitude] | [Action::Pause, Action::ChangeAltitude] => given.get(0).and_then(Value::as_f64).map(|delta| json!({
             "action": "changeAltitude",
@@ -898,7 +911,7 @@ fn valued_check(
     let malformed = |what: &str| Err(("malformed", what.to_string()));
     match kind {
         Valued::Pause => Ok((vec![Action::Pause], "[]".to_string())),
-        Valued::Takeoff if !s.takeoff_with_altitude => {
+        Valued::Takeoff if s.takeoff_without_height() => {
             Ok((vec![Action::Takeoff], "[]".to_string()))
         }
         Valued::Takeoff => {
@@ -1414,6 +1427,24 @@ mod tests {
         );
         assert_eq!(Action::Takeoff.offer(&wing).title, "Take off");
         assert_eq!(offer_of(&wing, Action::Takeoff), "ready");
+        assert!(
+            Action::Takeoff.offer(&wing).carries_value,
+            "a wing with TKOFF_ALT picks its height in the take-off panel like a copter"
+        );
+        assert_eq!(
+            core_action(&[Action::Takeoff], "[30.0]", &wing),
+            Some(json!({ "action": "takeoff", "altitude": 30.0 })),
+            "the chosen height reaches the core, which writes TKOFF_ALT before taking off"
+        );
+        let unknown = GuidedState {
+            wing_takeoff_height: None,
+            ..wing.clone()
+        };
+        assert!(!Action::Takeoff.offer(&unknown).carries_value);
+        assert_eq!(
+            core_action(&[Action::Takeoff], "[30.0]", &unknown),
+            Some(json!({ "action": "takeoff" }))
+        );
         let launching = GuidedState {
             armed: true,
             in_takeoff: true,

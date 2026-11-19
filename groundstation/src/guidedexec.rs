@@ -8,6 +8,8 @@ const ARM_ANSWER_WAIT_MS: u64 = 3000;
 const ARMED_AFTER_ACK_WAIT_MS: u64 = 2500;
 const LATE_ARM_WATCH_MS: u64 = 10_000;
 pub const ACCEPT_WAIT_MS: u64 = 10_000;
+pub const PARAMETER_WAIT_MS: u64 = 15_000;
+const PARAMETER_TOLERANCE: f64 = 0.05;
 pub const ARM_UNCONFIRMED: &str = "The aircraft accepted the arm command but never reported itself armed. Check the link and try again.";
 pub const LATE_ARM_DISARMED: &str = "The aircraft armed only after the app had stopped waiting for it, so the app disarmed it. Check the link and try again.";
 pub const LATE_ARM_FLYING: &str =
@@ -50,6 +52,10 @@ pub enum Emit {
         custom_mode: u32,
         unanswered: bool,
     },
+    SetParameter {
+        name: String,
+        value: f64,
+    },
     Tell(String),
 }
 
@@ -59,6 +65,13 @@ pub struct Observed {
     pub armed: bool,
     pub flying: bool,
     pub round_trip_ms: u64,
+    pub parameter: Option<Written>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Written {
+    pub pending: bool,
+    pub value: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -78,6 +91,12 @@ enum Wait {
         command: u16,
         since_ms: u64,
         failure: Option<String>,
+    },
+    Parameter {
+        name: String,
+        value: f64,
+        since_ms: u64,
+        failure: String,
     },
 }
 
@@ -102,6 +121,7 @@ pub struct Executor {
     clock: LiveClock,
     late_arm_until: Option<u64>,
     told: Option<Emit>,
+    parameter_failed: Option<String>,
 }
 
 fn patience(wait_ms: u64, round_trips: u64, observed: &Observed) -> u64 {
@@ -120,6 +140,7 @@ fn label(step: &Step) -> String {
         Step::SkipIfNoDelta => String::new(),
         Step::AwaitAccepted { command, .. } => format!("Waiting for command {command}"),
         Step::FailWith { .. } => String::new(),
+        Step::SetParameter { name, .. } => format!("Setting {name}"),
     }
 }
 
@@ -178,6 +199,19 @@ fn mode_emit(step: &Step) -> Option<Emit> {
 impl Executor {
     pub fn running(&self) -> bool {
         self.state == State::Running
+    }
+
+    pub fn awaited_parameter(&self) -> Option<&str> {
+        match &self.wait {
+            Wait::Parameter { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
+    pub fn on_parameter_failed(&mut self, name: &str) {
+        if self.awaited_parameter() == Some(name) {
+            self.parameter_failed = Some(name.to_string());
+        }
     }
 
     pub fn start(&mut self, steps: Vec<Step>, observed: &Observed, now_ms: u64) -> Vec<Emit> {
@@ -366,6 +400,43 @@ impl Executor {
                     }
                     return out;
                 }
+                Wait::Parameter {
+                    ref name,
+                    value,
+                    since_ms,
+                    ref failure,
+                } => {
+                    let failure = failure.clone();
+                    let failed = self.parameter_failed.take().as_deref() == Some(name.as_str());
+                    match (failed, observed.parameter) {
+                        (
+                            false,
+                            Some(Written {
+                                pending: false,
+                                value: Some(now),
+                            }),
+                        ) if (now - value).abs() <= PARAMETER_TOLERANCE => {
+                            self.wait = Wait::None;
+                            self.at += 1;
+                            continue;
+                        }
+                        (true, _)
+                        | (
+                            false,
+                            Some(Written {
+                                pending: false,
+                                value: _,
+                            }),
+                        ) => self.fail(failure.clone(), Emit::Tell(failure)),
+                        _ if live_ms.saturating_sub(since_ms)
+                            >= patience(PARAMETER_WAIT_MS, 2, observed) =>
+                        {
+                            self.fail(failure.clone(), Emit::Tell(failure))
+                        }
+                        _ => {}
+                    }
+                    return out;
+                }
                 Wait::Armed { since_ms, accepted } => {
                     if observed.armed {
                         self.wait = Wait::None;
@@ -518,6 +589,23 @@ impl Executor {
                     self.failures = Some((mode, arm));
                     self.at += 1;
                 }
+                Step::SetParameter {
+                    name,
+                    value,
+                    failure,
+                } => {
+                    out.push(Emit::SetParameter {
+                        name: name.clone(),
+                        value,
+                    });
+                    self.wait = Wait::Parameter {
+                        name,
+                        value,
+                        since_ms: live_ms,
+                        failure,
+                    };
+                    return out;
+                }
             }
         }
         out
@@ -571,7 +659,105 @@ mod tests {
             armed,
             flying: false,
             round_trip_ms: 0,
+            parameter: None,
         }
+    }
+
+    fn plane() -> VehicleState {
+        VehicleState {
+            vehicle_type: 1,
+            flight_mode: "Manual".into(),
+            ..copter()
+        }
+    }
+
+    fn writing(pending: bool, value: f64) -> Observed {
+        Observed {
+            parameter: Some(Written {
+                pending,
+                value: Some(value),
+            }),
+            ..observed("Manual", false)
+        }
+    }
+
+    fn sets_mode(emits: &[Emit]) -> bool {
+        emits.iter().any(|emit| {
+            matches!(emit, Emit::SetMode { .. })
+                || matches!(emit, Emit::Command { command, .. } if *command == guidedcmd::CMD_DO_SET_MODE)
+        })
+    }
+
+    #[test]
+    fn a_wing_takes_off_only_after_the_aircraft_has_taken_its_takeoff_height() {
+        let mut executor = Executor::default();
+        let first = executor.start(
+            steps(guidedcmd::wing_takeoff(&plane(), 30.0, false)),
+            &observed("Manual", false),
+            0,
+        );
+        assert_eq!(
+            first,
+            vec![Emit::SetParameter {
+                name: "TKOFF_ALT".into(),
+                value: 30.0
+            }],
+            "TKOFF_ALT goes first and nothing else until it is confirmed"
+        );
+        assert_eq!(executor.awaited_parameter(), Some("TKOFF_ALT"));
+        assert!(
+            executor.advance(&writing(true, 30.0), 500).is_empty(),
+            "a write still in flight holds the take-off back"
+        );
+        let after = executor.advance(&writing(false, 30.0), 900);
+        assert!(
+            sets_mode(&after),
+            "once the aircraft has echoed the height it switches to Takeoff: {after:?}"
+        );
+    }
+
+    #[test]
+    fn a_wing_whose_takeoff_height_was_not_taken_says_so_and_does_not_take_off() {
+        let refused = |failed: bool, echoed: f64| {
+            let mut executor = Executor::default();
+            executor.start(
+                steps(guidedcmd::wing_takeoff(&plane(), 30.0, false)),
+                &observed("Manual", false),
+                0,
+            );
+            if failed {
+                executor.on_parameter_failed("TKOFF_ALT");
+            }
+            let emits = executor.advance(&writing(false, echoed), 900);
+            (emits, executor.snapshot()["state"].clone())
+        };
+        let told = Emit::Tell(guidedcmd::wing_takeoff_refused(30.0));
+        assert_eq!(
+            refused(true, 30.0),
+            (vec![told.clone()], json!("failed")),
+            "a write the autopilot never acknowledged fails even though the app already shows the new value"
+        );
+        assert_eq!(
+            refused(false, 50.0),
+            (vec![told], json!("failed")),
+            "an autopilot that kept a different value did not take the height"
+        );
+        let mut silent = Executor::default();
+        silent.start(
+            steps(guidedcmd::wing_takeoff(&plane(), 30.0, false)),
+            &observed("Manual", false),
+            0,
+        );
+        assert!(
+            !sets_mode(&ticks(
+                &mut silent,
+                &writing(true, 30.0),
+                100,
+                PARAMETER_WAIT_MS + 1000
+            )),
+            "a write that never settles never takes off"
+        );
+        assert_eq!(silent.snapshot()["state"], "failed");
     }
 
     fn ticks(executor: &mut Executor, seen: &Observed, from_ms: u64, to_ms: u64) -> Vec<Emit> {

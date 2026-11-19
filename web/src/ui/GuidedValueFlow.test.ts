@@ -25,10 +25,10 @@ describe('GuidedValueFlowTest', () => {
   });
 
   it('each guided reading maps onto the shared shape', () => {
-    const takeoff = takeoffReading({ label: 'Height', unit: 'ft', initial: 10.0, minimum: 10.0, maximum: 400.0, sentence: 'climb', targetMeters: 3.0 });
+    const takeoff = takeoffReading({ label: 'Height', unit: 'ft', initial: 10.0, minimum: 10.0, maximum: 400.0, sentence: 'climb', circles: false, targetMeters: 3.0 });
     expect(takeoff?.range).toEqual({ start: 10.0, endInclusive: 400.0 });
     expect(takeoff?.initial).toBe(10.0);
-    expect(takeoffReading({ label: 'Height', unit: 'ft', initial: 10.0, minimum: 400.0, maximum: 10.0, sentence: '', targetMeters: 3.0 })?.range).toBeNull();
+    expect(takeoffReading({ label: 'Height', unit: 'ft', initial: 10.0, minimum: 400.0, maximum: 10.0, sentence: '', circles: false, targetMeters: 3.0 })?.range).toBeNull();
 
     const altitude = altitudeReading(GuidedAltitude({ available: true, label: 'Alt', unit: 'm', current: 25.0, minimum: 1.0, maximum: 120.0, sentence: '', deltaMeters: 0.0, sends: false }));
     expect(altitude?.initial).toBe(25.0);
@@ -41,5 +41,13 @@ describe('GuidedValueTitleTest', () => {
     const offer = GuidedOffer({ id: 'changeSpeed', title: 'Change Max Ground Speed', offer: 'ready', reason: '', prompt: '', destructive: false, carriesValue: true });
     expect(speedValue(offer).title).toBe('Change max ground speed');
     expect(speedValue(null).title).toBe('Change max ground speed');
+  });
+});
+
+describe('WingTakeoffTest', () => {
+  it('a wing take-off says it circles at the height, a copter take-off stays a bare height', () => {
+    const read = (circles: boolean) => takeoffReading({ label: 'Height above launch', unit: 'm', initial: 50.0, minimum: 3.0, maximum: 121.0, sentence: 'The aircraft throttles up, climbs to 30.0 m above launch and circles there.', circles, targetMeters: 30.0 })?.sentence;
+    expect(read(true)).toBe('The aircraft throttles up, climbs to 30.0 m above launch and circles there.');
+    expect(read(false)).toBe('');
   });
 });

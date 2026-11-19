@@ -47,6 +47,7 @@ describe('GuidedTakeoffTest', () => {
     const takeoff = (initial: number | null, minimum: number | null, maximum: number | null): GuidedTakeoff => ({
       label: 'Takeoff altitude',
       unit: 'm',
+      circles: false,
       initial,
       minimum,
       maximum,
