@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -15,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -31,7 +29,6 @@ internal data class MissionComplete(
     val imagesTaken: Int,
     val resumeFromWaypoint: Int?,
     val batteryWarning: Boolean,
-    val interrupted: Boolean = false,
     val title: String = COMPLETE_TITLE,
     val detail: String = "",
     val resumeLabel: String = "",
@@ -40,7 +37,6 @@ internal data class MissionComplete(
 private const val COMPLETE_TITLE = "Flight plan complete"
 private const val BATTERY_SWAP = "If you are changing batteries for Resume Mission do not disconnect from the vehicle."
 
-
 internal fun missionComplete(view: JSONObject?): MissionComplete? =
     view?.takeIf { it.optBoolean("open") }?.let {
         MissionComplete(
@@ -48,7 +44,6 @@ internal fun missionComplete(view: JSONObject?): MissionComplete? =
             imagesTaken = it.optInt("imagesTaken"),
             resumeFromWaypoint = if (it.isNull("resumeFromWaypoint")) null else it.optInt("resumeFromWaypoint"),
             batteryWarning = it.optBoolean("batteryWarning"),
-            interrupted = it.optBoolean("interrupted"),
             title = it.optText("title").ifBlank { COMPLETE_TITLE },
             detail = it.optText("detail"),
             resumeLabel = it.optText("resumeLabel"),
@@ -74,49 +69,22 @@ fun MissionCompleteDialog() {
             PlanCommands.dismissMissionComplete(notice.id)
         }
     }
-    val interruptedAt = notice.resumeFromWaypoint?.takeIf { notice.interrupted }
-    if (interruptedAt != null) {
-        AlertDialog(
-            onDismissRequest = close,
-            title = { Text(notice.title) },
-            confirmButton = { TextButton(onClick = close) { Text("Close") } },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(notice.detail, style = MaterialTheme.typography.bodyMedium)
-                    Button(onClick = { resume(interruptedAt) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(notice.resumeLabel.ifBlank { "Resume mission from waypoint $interruptedAt" })
-                    }
-                    OutlinedButton(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Leave plan on vehicle") }
-                    TextButton(onClick = remove, modifier = Modifier.fillMaxWidth()) { Text("Remove plan from vehicle") }
-                    if (notice.batteryWarning) Text(BATTERY_SWAP, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
-                }
-            },
-        )
-        return
-    }
-
     AlertDialog(
         onDismissRequest = close,
         title = { Text(notice.title) },
         confirmButton = { TextButton(onClick = close) { Text("Close") } },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                imagesTakenText(notice.imagesTaken)?.let {
-                    Text(it, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                }
-                Button(onClick = remove, modifier = Modifier.fillMaxWidth()) { Text("Remove plan from vehicle") }
-                OutlinedButton(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Leave plan on vehicle") }
+                if (notice.detail.isNotBlank()) Text(notice.detail, style = MaterialTheme.typography.bodyMedium)
+                imagesTakenText(notice.imagesTaken)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 notice.resumeFromWaypoint?.let { waypoint ->
-                    HorizontalDivider()
-                    OutlinedButton(onClick = { resume(waypoint) }, modifier = Modifier.fillMaxWidth()) { Text("Resume mission from waypoint $waypoint") }
-                    Text(
-                        "Resume Mission will rebuild the current mission from the last flown waypoint and upload it to the vehicle for the next flight.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Button(onClick = { resume(waypoint) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(notice.resumeLabel.ifBlank { "Resume mission from waypoint $waypoint" })
+                    }
                 }
-                if (notice.batteryWarning) {
-                    Text(BATTERY_SWAP, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
-                }
+                OutlinedButton(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Leave plan on vehicle") }
+                TextButton(onClick = remove, modifier = Modifier.fillMaxWidth()) { Text("Remove plan from vehicle") }
+                if (notice.batteryWarning) Text(BATTERY_SWAP, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
             }
         },
     )
