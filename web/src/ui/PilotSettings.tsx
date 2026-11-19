@@ -471,6 +471,13 @@ const PILOT_LABELS: ReadonlyMap<string, string> = new Map([
   ['enableMultiVehiclePanel', 'Show the multi-aircraft panel'],
   ['androidDontSaveToSDCard', 'Save data to the SD card'],
   ['disableAllPersistence', "Don't save any data"],
+  ['horizontalDistanceUnits', 'Distance'],
+  ['verticalDistanceUnits', 'Altitude'],
+  ['areaUnits', 'Area'],
+  ['speedUnits', 'Speed'],
+  ['temperatureUnits', 'Temperature'],
+  ['minZoomLevelDownload', 'Lowest zoom to download'],
+  ['maxZoomLevelDownload', 'Highest zoom to download'],
 ]);
 
 export const pilotWorded = (fact: Fact): Fact => {

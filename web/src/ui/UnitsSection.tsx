@@ -4,6 +4,7 @@ import { useQgcDouble, useQgcPath } from '@/bridge/QgcState';
 import { type Json, jsonObjects, optJSONArray, optText } from '@/bridge/Json';
 import { FilterChip, Text } from '@/m3';
 import { factFromControl } from '@/ui/ParameterForm';
+import { pilotWorded } from '@/ui/PilotSettings';
 import { FootNote } from '@/ui/SetupRow';
 import { FactRuns } from '@/ui/SettingsScreen';
 
@@ -27,7 +28,7 @@ export const unitFacts = (page: Json | null): readonly Fact[] => {
   return jsonObjects(optJSONArray(units, 'subsections')).flatMap((subsection) =>
     jsonObjects(optJSONArray(subsection, 'controls')).flatMap((control) => {
       const fact = factFromControl(control);
-      return fact === null ? [] : [fact];
+      return fact === null ? [] : [pilotWorded(fact)];
     }),
   );
 };

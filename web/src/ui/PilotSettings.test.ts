@@ -58,6 +58,10 @@ describe('PilotSettingsTest', () => {
     expect(pilotWorded(parameter('somethingElse')).shortLabel).toBe('');
   });
 
+  it('the offline map zoom rows are named, not described with a full stop', () => {
+    expect([pilotWorded(parameter('minZoomLevelDownload')).heading, pilotWorded(parameter('maxZoomLevelDownload')).heading]).toEqual(['Lowest zoom to download', 'Highest zoom to download']);
+  });
+
   it('desktop-only setup pages fold away from the ones that open here', () => {
     const components = ['Airframe', 'Sensors', 'PID Tuning'].map((name, index) => SetupComponent({ index, name, needsAttention: false }));
     const [here, desktop] = splitDesktopOnly(components, (it: SetupComponent) => it.name === SENSORS);

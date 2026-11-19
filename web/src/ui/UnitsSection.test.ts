@@ -68,4 +68,25 @@ describe('UnitsSectionTest', () => {
     expect(facts[0]?.enumIndex).toBe(1);
     expect(unitFacts(null).map((it) => it.name)).toEqual([]);
   });
+
+  it('a unit row is named by what it measures, not by its help sentence', () => {
+    const page = {
+      sections: [
+        {
+          group: 'unitsSettings',
+          subsections: [
+            {
+              title: '',
+              controls: [
+                { name: 'horizontalDistanceUnits', label: 'Display unit for horizontal distances and ranges.', control: 'choice', options: [], display: '' },
+                { name: 'verticalDistanceUnits', label: 'Display unit for altitudes and vertical heights.', control: 'choice', options: [], display: '' },
+                { name: 'speedUnits', label: 'Display unit for speed and velocity values.', control: 'choice', options: [], display: '' },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(unitFacts(page).map((it) => it.heading)).toEqual(['Distance', 'Altitude', 'Speed']);
+  });
 });

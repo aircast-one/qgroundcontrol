@@ -8,7 +8,7 @@ import { md } from '@/theme/Colors';
 export const MAVLINK_ACTIONS_VIEW = 'view.mavlinkActions';
 export const MAVLINK_ACTIONS_SEND = 'mavlinkActions.send';
 export const MAVLINK_ACTIONS_GROUP = 'mavlinkActionsSettings';
-export const NO_ACTIONS_FILE = '<None>';
+export const NO_ACTIONS_FILE = 'None';
 
 export type MavlinkActionEntry = { label: string; description: string };
 

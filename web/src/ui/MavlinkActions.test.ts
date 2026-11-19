@@ -8,6 +8,7 @@ describe('MavlinkActionsTest', () => {
     const read = mavlinkActions(parseJson('{"files":["fly.json"],"flyViewFile":"fly.json","joystickFile":"","flyViewPath":"a","joystickPath":"b","actions":[{"label":"Lights","description":"toggle"}]}'));
     expect(read?.actions).toEqual([{ label: 'Lights', description: 'toggle' }]);
     expect(chosenFile(NO_ACTIONS_FILE)).toBe('');
+    expect(NO_ACTIONS_FILE, 'an empty choice reads as a word, not as a placeholder in angle brackets').toBe('None');
     expect(chosenFile('fly.json')).toBe('fly.json');
   });
 });
