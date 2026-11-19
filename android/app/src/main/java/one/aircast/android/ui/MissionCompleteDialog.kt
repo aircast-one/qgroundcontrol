@@ -79,7 +79,7 @@ fun MissionCompleteDialog() {
                 imagesTakenText(notice.imagesTaken)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 notice.resumeFromWaypoint?.let { waypoint ->
                     Button(onClick = { resume(waypoint) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(notice.resumeLabel.ifBlank { "Resume mission from waypoint $waypoint" })
+                        Text(notice.resumeLabel)
                     }
                 }
                 OutlinedButton(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Leave plan on vehicle") }

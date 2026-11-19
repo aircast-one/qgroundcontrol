@@ -28,10 +28,14 @@ class MissionCompleteDialogTest {
     @Test
     fun `a stopped mission says where it stopped and names where it resumes`() {
         val notice = missionComplete(
-            JSONObject("""{"open":true,"id":2,"imagesTaken":0,"resumeFromWaypoint":5,"batteryWarning":true,"interrupted":true,"title":"Mission stopped at waypoint 6 of 9","detail":"2 drops are still to come.","resumeLabel":"Resume from waypoint 4"}"""),
+            JSONObject("""{"open":true,"id":2,"imagesTaken":0,"resumeFromWaypoint":48,"batteryWarning":true,"interrupted":true,"title":"Mission stopped at survey 2 of 3","detail":"2 drops are still to come.","resumeLabel":"Resume from the survey (2 of 3), at its waypoint 14 of 40"}"""),
         )!!
-        assertEquals(listOf("Mission stopped at waypoint 6 of 9", "Resume from waypoint 4", "2 drops are still to come."), listOf(notice.title, notice.resumeLabel, notice.detail))
-        assertEquals(5, notice.resumeFromWaypoint)
+        assertEquals(
+            "the button reads the core label, which names the plan row as the title does",
+            listOf("Mission stopped at survey 2 of 3", "Resume from the survey (2 of 3), at its waypoint 14 of 40", "2 drops are still to come."),
+            listOf(notice.title, notice.resumeLabel, notice.detail),
+        )
+        assertEquals(48, notice.resumeFromWaypoint)
         assertEquals("Flight plan complete", missionComplete(JSONObject("""{"open":true,"id":3,"resumeFromWaypoint":null}"""))!!.title)
     }
 }
