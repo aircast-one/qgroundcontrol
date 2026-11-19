@@ -22,7 +22,7 @@ class OverlayLayoutTest {
     fun `reset layout arms on the first tap and resets on the second, like resetPill`() {
         assertEquals(ResetTap(reset = false, armed = true), resetTap(armed = false))
         assertEquals(ResetTap(reset = true, armed = false), resetTap(armed = true))
-        assertEquals("Reset layout", resetPillText(false))
+        assertEquals("Reset positions and hidden items", resetPillText(false))
         assertEquals("Tap again to reset", resetPillText(true))
         assertEquals(4000L, RESET_ARM_MILLIS)
     }

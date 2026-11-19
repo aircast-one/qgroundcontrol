@@ -16,7 +16,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -78,7 +79,7 @@ internal data class ResetTap(val reset: Boolean, val armed: Boolean)
 
 internal fun resetTap(armed: Boolean): ResetTap = ResetTap(reset = armed, armed = !armed)
 
-internal fun resetPillText(armed: Boolean): String = if (armed) "Tap again to reset" else "Reset layout"
+internal fun resetPillText(armed: Boolean): String = if (armed) "Tap again to reset" else "Reset positions and hidden items"
 
 private const val INDICATOR_ORDER = "FlyViewIndicatorOrder"
 
@@ -333,6 +334,7 @@ internal fun LayoutWidget(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun OverlayEditBar(modifier: Modifier = Modifier) {
     val layout = LocalFlyScreenState.current.layout
@@ -342,7 +344,7 @@ internal fun OverlayEditBar(modifier: Modifier = Modifier) {
     val classView by one.aircast.android.bridge.qgcPath(INSTRUMENTS_VIEW)
     val vehicleClass = instrumentVehicleClass(classView)
     Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 3.dp) {
-        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        FlowRow(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
             TextButton(onClick = {
                 layout.valueSize = nextValueSize(layout.valueSize)
                 writeValueSize(context, vehicleClass, layout.valueSize)

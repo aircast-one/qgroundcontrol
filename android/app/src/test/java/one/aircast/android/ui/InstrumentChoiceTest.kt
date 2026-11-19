@@ -174,7 +174,7 @@ class InstrumentChoiceTest {
         assertEquals(ValueSize.Small, nextValueSize(ValueSize.Default))
         assertEquals(ValueSize.Default, nextValueSize(ValueSize.Large))
         assertEquals(ValueSize.Default, valueSizeAt(9))
-        assertEquals("Size: Medium", valueSizePillText(ValueSize.Medium))
+        assertEquals("Readout size: Medium", valueSizePillText(ValueSize.Medium))
         assertEquals(listOf(1f, 0.86f, 1.25f, 1.5f), ValueSize.entries.map { it.scale })
     }
 

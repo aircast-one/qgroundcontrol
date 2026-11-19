@@ -137,7 +137,7 @@ internal fun valueSizeAt(ordinal: Int): ValueSize = ValueSize.entries.getOrElse(
 
 internal fun nextValueSize(size: ValueSize): ValueSize = valueSizeAt((size.ordinal + 1) % ValueSize.entries.size)
 
-internal fun valueSizePillText(size: ValueSize): String = "Size: ${size.label}"
+internal fun valueSizePillText(size: ValueSize): String = "Readout size: ${size.label}"
 
 internal fun readValueSize(context: Context, vehicleClass: String): ValueSize =
     valueSizeAt(context.getSharedPreferences(STORE, Context.MODE_PRIVATE).getInt("$VALUE_SIZE_KEY-$vehicleClass", 0))
