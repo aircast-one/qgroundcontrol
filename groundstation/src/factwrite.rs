@@ -128,6 +128,103 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
     }
 }
 
+const PARAMETER: &str = "vehicle.parameterManager.getParameter(-1,";
+const AIRSPEEDS: [&str; 4] = [
+    "AIRSPEED_STALL",
+    "AIRSPEED_MIN",
+    "AIRSPEED_CRUISE",
+    "AIRSPEED_MAX",
+];
+const SERVO_LIMITS: [(&str, &str); 3] = [("MIN", "minimum"), ("TRIM", "trim"), ("MAX", "maximum")];
+const UNSET_STALL: &str = "AIRSPEED_STALL";
+
+fn ordered_with(name: &str) -> Option<Vec<String>> {
+    if AIRSPEEDS.contains(&name) {
+        return Some(AIRSPEEDS.iter().map(|n| n.to_string()).collect());
+    }
+    let (servo, limit) = name.strip_prefix("SERVO")?.split_once('_')?;
+    servo.parse::<u8>().ok()?;
+    SERVO_LIMITS.iter().any(|(l, _)| *l == limit).then(|| {
+        SERVO_LIMITS
+            .iter()
+            .map(|(l, _)| format!("SERVO{servo}_{l}"))
+            .collect()
+    })
+}
+
+fn spoken(name: &str, subject: bool) -> String {
+    let servo = name
+        .strip_prefix("SERVO")
+        .and_then(|rest| rest.split_once('_'))
+        .and_then(|(servo, limit)| {
+            SERVO_LIMITS
+                .iter()
+                .find(|(l, _)| *l == limit)
+                .map(|(_, word)| (servo, *word))
+        });
+    match (servo, subject) {
+        (Some((servo, word)), true) => format!("Servo {servo} {word}"),
+        (Some((_, word)), false) => format!("its {word}"),
+        (None, _) => {
+            let word = name
+                .strip_prefix("AIRSPEED_")
+                .map(|kind| match kind {
+                    "MIN" => "minimum",
+                    "MAX" => "maximum",
+                    "CRUISE" => "cruise",
+                    _ => "stall",
+                })
+                .unwrap_or_default();
+            match subject {
+                true => format!("{}{} airspeed", word[..1].to_uppercase(), &word[1..]),
+                false => format!("the {word} airspeed"),
+            }
+        }
+    }
+}
+
+pub fn order_refusal(name: &str, asked: f64, held: &dyn Fn(&str) -> Option<f64>) -> Option<String> {
+    let chain = ordered_with(name)?;
+    let at = chain.iter().position(|n| n == name)?;
+    let set = |other: &String| {
+        held(other)
+            .filter(|v| other != UNSET_STALL || *v > 0.0)
+            .map(|v| (other.clone(), v))
+    };
+    let below = chain[..at]
+        .iter()
+        .rev()
+        .find_map(set)
+        .filter(|(_, v)| asked < *v)
+        .map(|(other, v)| (other, v, "below"));
+    let above = chain[at + 1..]
+        .iter()
+        .find_map(set)
+        .filter(|(_, v)| asked > *v)
+        .map(|(other, v)| (other, v, "above"));
+    (name != UNSET_STALL || asked > 0.0)
+        .then_some(below.or(above))
+        .flatten()
+        .map(|(other, v, side)| {
+            format!(
+                "{} cannot be {side} {} ({}).",
+                spoken(name, true),
+                spoken(&other, false),
+                crate::coreplan::qt_number(v)
+            )
+        })
+}
+
+fn cross_refusal(
+    backend: &dyn Backend,
+    path: &str,
+    asked: &Value,
+) -> Option<(&'static str, String)> {
+    let name = path.strip_prefix(PARAMETER)?.strip_suffix(')')?;
+    let held = |other: &str| crate::router::raw_of(&backend.value(&format!("{PARAMETER}{other})")));
+    order_refusal(name, number(asked)?, &held).map(|reason| ("outOfOrder", reason))
+}
+
 fn same(held: &Value, asked: &Value) -> bool {
     match (number(held), number(asked)) {
         (Some(h), Some(a)) => h == a,
@@ -199,6 +296,7 @@ pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {
             .unwrap_or_else(|| json!(entered)),
     };
     let found = refusal(&decode(&fact, fact_path), &fact, &asked)
+        .or_else(|| cross_refusal(backend, fact_path, &asked))
         .filter(|_| !unchanged(&fact, &asked))
         .filter(|(token, _)| !convert_only || CONVERSION_REFUSALS.contains(token));
     json!({
@@ -353,6 +451,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         false => fact.clone(),
     };
     if let Some((token, reason)) = refusal(&control, &judged, &asked)
+        .or_else(|| cross_refusal(backend, path, &asked))
         .filter(|_| !unchanged(&fact, &asked))
         .filter(|(token, _)| !forced || CONVERSION_REFUSALS.contains(token))
     {
@@ -370,6 +469,46 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    #[test]
+    fn contradictory_airspeeds_and_a_servo_minimum_above_its_maximum_are_refused() {
+        let held = |name: &str| match name {
+            "AIRSPEED_MIN" => Some(10.0),
+            "AIRSPEED_CRUISE" => Some(22.0),
+            "AIRSPEED_MAX" => Some(30.0),
+            "AIRSPEED_STALL" => Some(0.0),
+            "SERVO1_MIN" => Some(1100.0),
+            "SERVO1_TRIM" => Some(1500.0),
+            "SERVO1_MAX" => Some(1900.0),
+            _ => None,
+        };
+        assert_eq!(
+            order_refusal("AIRSPEED_CRUISE", 35.0, &held).as_deref(),
+            Some("Cruise airspeed cannot be above the maximum airspeed (30)."),
+            "a cruise of 35 was saved with the maximum at 30"
+        );
+        assert_eq!(
+            order_refusal("AIRSPEED_STALL", 40.0, &held).as_deref(),
+            Some("Stall airspeed cannot be above the minimum airspeed (10).")
+        );
+        assert_eq!(
+            order_refusal("SERVO1_MIN", 2000.0, &held).as_deref(),
+            Some("Servo 1 minimum cannot be above its trim (1500)."),
+            "a minimum of 2000 was saved above the maximum of 1900"
+        );
+        assert_eq!(
+            order_refusal("SERVO1_MAX", 1000.0, &held).as_deref(),
+            Some("Servo 1 maximum cannot be below its trim (1500).")
+        );
+        assert_eq!(order_refusal("AIRSPEED_CRUISE", 25.0, &held), None);
+        assert_eq!(
+            order_refusal("AIRSPEED_MIN", 5.0, &held),
+            None,
+            "a stall airspeed of zero is unset and not a floor"
+        );
+        assert_eq!(order_refusal("AIRSPEED_STALL", 0.0, &held), None);
+        assert_eq!(order_refusal("SERVO1_FUNCTION", 4.0, &held), None);
+    }
 
     #[test]
     fn reboot_flags_follow_the_fact_and_leave_restart_messages_to_qt_when_it_is_there() {

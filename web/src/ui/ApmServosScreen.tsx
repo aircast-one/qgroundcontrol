@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { type Json, isNull, jsonObjects, optDouble, optInt, optJSONArray, optJSONObject } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
 import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
@@ -10,6 +10,7 @@ import { md } from '@/theme/Colors';
 import { factFromControl } from '@/ui/ParameterForm';
 import { FactRow } from '@/ui/SettingsScreen';
 import { SectionHeader } from '@/ui/SetupRow';
+import { LocalChangeNotice } from '@/ui/ValueRow';
 
 export const APM_SERVOS_VIEW = 'view.apmServos';
 export const APM_SERVOS_SCREEN = 'apmServos';
@@ -54,6 +55,8 @@ export const stepped = (fact: Fact, direction: number): number | null => {
   return current === null ? null : current + direction;
 };
 
+export const servoNotice = (servo: number, title: string, value: number): string => `Servo ${servo} ${title.toLowerCase()}: ${Math.trunc(value)}`;
+
 export const ApmServosScreen = ({ className }: { className?: string }) => {
   const [revision, setRevision] = useState(0);
   const [servos, setServos] = useState<readonly ApmServo[] | null>(null);
@@ -95,14 +98,16 @@ const ServoCard = ({ servo }: { servo: ApmServo }) => (
       </Text>
     </div>
     {servo.function !== null ? <FactRow fact={servo.function} title="Function" /> : null}
-    {servo.min !== null ? <Stepper title="Min" fact={servo.min} /> : null}
-    {servo.trim !== null ? <Stepper title="Trim" fact={servo.trim} /> : null}
-    {servo.max !== null ? <Stepper title="Max" fact={servo.max} /> : null}
+    {servo.min !== null ? <Stepper servo={servo.index} title="Min" fact={servo.min} /> : null}
+    {servo.trim !== null ? <Stepper servo={servo.index} title="Trim" fact={servo.trim} /> : null}
+    {servo.max !== null ? <Stepper servo={servo.index} title="Max" fact={servo.max} /> : null}
     {servo.reversed !== null ? <FactRow fact={servo.reversed} title="Reversed" /> : null}
   </div>
 );
 
-const Stepper = ({ title, fact }: { title: string; fact: Fact }) => {
+const Stepper = ({ servo, title, fact }: { servo: number; title: string; fact: Fact }) => {
+  const notice = useContext(LocalChangeNotice);
+  const before = useRef<number | null>(null);
   const [refusal, setRefusal] = useKeyedState<string | null>([fact.path], () => null);
   const latest = useUpdatedRef(fact);
   const [pending, setPendingState] = useKeyedState<number | null>([fact.path], () => null);
@@ -114,11 +119,17 @@ const Stepper = ({ title, fact }: { title: string; fact: Fact }) => {
   };
 
   const write = (next: number) => {
+    const previous = pendingRef.current === null ? stepped(latest.current, 0) : before.current;
+    before.current = previous;
     setPending(next);
     void (async () => {
       const refused = await Qgc.writeRefusal(fact.path, next);
       setRefusal(refused);
-      if (refused !== null) setPending(null);
+      if (refused !== null) {
+        setPending(null);
+        return;
+      }
+      if (previous !== null) notice.show(servoNotice(servo, title, next), () => Qgc.writeRefusal(fact.path, previous));
     })();
   };
 

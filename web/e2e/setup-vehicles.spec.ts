@@ -74,3 +74,30 @@ test('a rover tests its throttle and steering instead of eight unknown motors', 
   await expect(app.getByText('Warning: Unable to determine motor count')).toHaveCount(0);
   await expect(app.getByRole('button', { name: /^Motor H/ })).toHaveCount(0);
 });
+
+test('a plane refuses a cruise airspeed above its maximum', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduPlane Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Airspeed / }).click();
+  const cruise = app.getByRole('textbox', { name: 'Cruise airspeed' });
+  await cruise.fill('35');
+  await cruise.press('Enter');
+  await expect(app.getByText('Cruise airspeed cannot be above the maximum airspeed (30).')).toBeVisible();
+  await expect(app.getByRole('button', { name: /^Airspeed .*Cruise airspeed 22/ })).toBeVisible();
+});
+
+test('a servo minimum above its trim is refused, and a kept change offers Undo', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduPlane Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Servo outputs / }).click();
+  const minimum = app.getByRole('textbox', { name: 'Min, SERVO1_MIN' });
+  await minimum.fill('2000');
+  await minimum.press('Enter');
+  await expect(app.getByText('Servo 1 minimum cannot be above its trim (1500).')).toBeVisible();
+  await minimum.fill('1050');
+  await minimum.press('Enter');
+  const notice = app.getByRole('status').filter({ hasText: 'Servo 1 min: 1050' });
+  await expect(notice).toBeVisible();
+  await notice.getByRole('button', { name: 'Undo' }).click();
+  await expect(minimum).toHaveValue('1100');
+});
