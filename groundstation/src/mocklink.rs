@@ -176,6 +176,7 @@ pub fn available() -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Vehicle {
     Px4,
+    Px4Plane,
     Copter,
     Plane,
     Sub,
@@ -183,8 +184,9 @@ pub enum Vehicle {
     Generic,
 }
 
-pub const VEHICLES: [(Vehicle, &str, &str); 6] = [
+pub const VEHICLES: [(Vehicle, &str, &str); 7] = [
     (Vehicle::Px4, "px4", "PX4 Vehicle"),
+    (Vehicle::Px4Plane, "px4Plane", "PX4 Fixed Wing Vehicle"),
     (Vehicle::Copter, "apmCopter", "APM ArduCopter Vehicle"),
     (Vehicle::Plane, "apmPlane", "APM ArduPlane Vehicle"),
     (Vehicle::Sub, "apmSub", "APM ArduSub Vehicle"),
@@ -221,6 +223,7 @@ impl Vehicle {
     pub fn link_name(self) -> &'static str {
         match self {
             Vehicle::Px4 => "Simulated vehicle (PX4)",
+            Vehicle::Px4Plane => "Simulated vehicle (PX4 fixed wing)",
             Vehicle::Copter => "Simulated vehicle (ArduCopter)",
             Vehicle::Plane => "Simulated vehicle (ArduPlane)",
             Vehicle::Sub => "Simulated vehicle (ArduSub)",
@@ -232,6 +235,10 @@ impl Vehicle {
     pub fn codes(self) -> (i64, i64) {
         let (autopilot, kind) = match self {
             Vehicle::Px4 => (MavAutopilot::MAV_AUTOPILOT_PX4, MavType::MAV_TYPE_QUADROTOR),
+            Vehicle::Px4Plane => (
+                MavAutopilot::MAV_AUTOPILOT_PX4,
+                MavType::MAV_TYPE_FIXED_WING,
+            ),
             Vehicle::Copter => (
                 MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA,
                 MavType::MAV_TYPE_QUADROTOR,
@@ -261,6 +268,7 @@ impl Vehicle {
         let generic = firmware == MavAutopilot::MAV_AUTOPILOT_GENERIC as i64;
         match MavType::from_i64(kind) {
             _ if generic => Vehicle::Generic,
+            Some(MavType::MAV_TYPE_FIXED_WING) if !apm => Vehicle::Px4Plane,
             _ if !apm => Vehicle::Px4,
             Some(MavType::MAV_TYPE_FIXED_WING) => Vehicle::Plane,
             Some(MavType::MAV_TYPE_SUBMARINE) => Vehicle::Sub,
@@ -270,12 +278,16 @@ impl Vehicle {
     }
 
     fn apm(self) -> bool {
-        !matches!(self, Vehicle::Px4 | Vehicle::Generic)
+        !matches!(self, Vehicle::Px4 | Vehicle::Px4Plane | Vehicle::Generic)
+    }
+
+    fn px4(self) -> bool {
+        matches!(self, Vehicle::Px4 | Vehicle::Px4Plane)
     }
 
     fn params(self) -> &'static str {
         match self {
-            Vehicle::Px4 => PX4_PARAMS,
+            Vehicle::Px4 | Vehicle::Px4Plane => PX4_PARAMS,
             Vehicle::Generic => GENERIC_PARAMS,
             Vehicle::Copter => COPTER_PARAMS,
             Vehicle::Plane => PLANE_PARAMS,
@@ -803,7 +815,7 @@ impl Sim {
             armed: false,
             base_mode: MavModeFlag::MAV_MODE_FLAG_MANUAL_INPUT_ENABLED
                 | MavModeFlag::MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-            custom_mode: if options.vehicle == Vehicle::Px4 {
+            custom_mode: if options.vehicle.px4() {
                 px4_mode(PX4_MANUAL, 0)
             } else {
                 0
@@ -1230,7 +1242,7 @@ impl Sim {
     fn vehicle_message(&mut self, from: (u8, u8), message: &MavMessage) -> Vec<Out> {
         match message {
             MavMessage::SERIAL_CONTROL(m)
-                if self.options.vehicle == Vehicle::Px4
+                if self.options.vehicle.px4()
                     && m.device == SerialControlDev::SERIAL_CONTROL_DEV_SHELL
                     && m.count > 0 =>
             {
@@ -1601,7 +1613,7 @@ impl Sim {
                 });
                 accepted(Vec::new())
             }
-            MavCmd::MAV_CMD_DO_ORBIT if self.options.vehicle == Vehicle::Px4 && self.airborne() => {
+            MavCmd::MAV_CMD_DO_ORBIT if self.options.vehicle.px4() && self.airborne() => {
                 let (lat, lon, alt) = position;
                 let place = self.placed(
                     frame,
@@ -1624,7 +1636,7 @@ impl Sim {
                 self.guidance.speed = (params[1] > 0.0).then(|| f64::from(params[1]));
                 accepted(Vec::new())
             }
-            MavCmd::MAV_CMD_DO_ORBIT if self.options.vehicle == Vehicle::Px4 => {
+            MavCmd::MAV_CMD_DO_ORBIT if self.options.vehicle.px4() => {
                 (MavResult::MAV_RESULT_TEMPORARILY_REJECTED, Vec::new())
             }
             MavCmd::MAV_CMD_DO_SET_SERVO if self.options.vehicle.apm() => {
@@ -1706,7 +1718,7 @@ impl Sim {
 
     fn auto_mode(&self) -> u32 {
         match self.options.vehicle {
-            Vehicle::Px4 => px4_mode(PX4_AUTO, PX4_MISSION),
+            Vehicle::Px4 | Vehicle::Px4Plane => px4_mode(PX4_AUTO, PX4_MISSION),
             Vehicle::Plane | Vehicle::Rover => APM_WHEELED_AUTO,
             _ => APM_AUTO,
         }
@@ -1714,9 +1726,15 @@ impl Sim {
 
     fn reaction_mode(&self, reaction: Reaction) -> Option<u32> {
         match (self.options.vehicle, reaction) {
-            (Vehicle::Px4, Reaction::Land) => Some(px4_mode(PX4_AUTO, PX4_LAND)),
-            (Vehicle::Px4, Reaction::Return) => Some(px4_mode(PX4_AUTO, PX4_RTL)),
-            (Vehicle::Px4, Reaction::Hold) => Some(px4_mode(PX4_AUTO, PX4_LOITER)),
+            (Vehicle::Px4 | Vehicle::Px4Plane, Reaction::Land) => {
+                Some(px4_mode(PX4_AUTO, PX4_LAND))
+            }
+            (Vehicle::Px4 | Vehicle::Px4Plane, Reaction::Return) => {
+                Some(px4_mode(PX4_AUTO, PX4_RTL))
+            }
+            (Vehicle::Px4 | Vehicle::Px4Plane, Reaction::Hold) => {
+                Some(px4_mode(PX4_AUTO, PX4_LOITER))
+            }
             (Vehicle::Copter, Reaction::Land) => Some(COPTER_LAND),
             (Vehicle::Copter, Reaction::Return) => Some(COPTER_RTL),
             (Vehicle::Copter, Reaction::Hold) => Some(COPTER_BRAKE),
@@ -1732,8 +1750,12 @@ impl Sim {
     fn phase_of(&self, custom: u32) -> Phase {
         let (main, sub) = ((custom >> 16) & 0xFF, (custom >> 24) & 0xFF);
         match self.options.vehicle {
-            Vehicle::Px4 if main == PX4_AUTO && sub == PX4_LAND => Phase::Landing,
-            Vehicle::Px4 if main == PX4_AUTO && sub == PX4_RTL => Phase::Returning,
+            Vehicle::Px4 | Vehicle::Px4Plane if main == PX4_AUTO && sub == PX4_LAND => {
+                Phase::Landing
+            }
+            Vehicle::Px4 | Vehicle::Px4Plane if main == PX4_AUTO && sub == PX4_RTL => {
+                Phase::Returning
+            }
             Vehicle::Copter if custom == COPTER_LAND => Phase::Landing,
             Vehicle::Copter if matches!(custom, COPTER_RTL | COPTER_SMART_RTL) => Phase::Returning,
             Vehicle::Plane if custom == PLANE_QLAND => Phase::Landing,
@@ -1746,7 +1768,7 @@ impl Sim {
     fn piloted(&self) -> bool {
         match self.options.vehicle {
             Vehicle::Copter => COPTER_PILOT_MODES.contains(&self.custom_mode),
-            Vehicle::Px4 => {
+            Vehicle::Px4 | Vehicle::Px4Plane => {
                 [PX4_MANUAL, PX4_ALTCTL, PX4_POSCTL].contains(&((self.custom_mode >> 16) & 0xFF))
             }
             _ => false,
@@ -1756,7 +1778,9 @@ impl Sim {
     fn navigates_by_gps(&self) -> bool {
         match self.options.vehicle {
             Vehicle::Copter => !COPTER_NON_GPS_MODES.contains(&self.custom_mode),
-            Vehicle::Px4 => ![PX4_MANUAL, PX4_ALTCTL].contains(&((self.custom_mode >> 16) & 0xFF)),
+            Vehicle::Px4 | Vehicle::Px4Plane => {
+                ![PX4_MANUAL, PX4_ALTCTL].contains(&((self.custom_mode >> 16) & 0xFF))
+            }
             _ => false,
         }
     }
@@ -1778,7 +1802,7 @@ impl Sim {
         self.mission.pause();
         match custom {
             _ if !self.armed => {}
-            c if self.options.vehicle == Vehicle::Px4 && c == px4_mode(PX4_AUTO, PX4_TAKEOFF) => {
+            c if self.options.vehicle.px4() && c == px4_mode(PX4_AUTO, PX4_TAKEOFF) => {
                 self.takeoff(f64::NAN)
             }
             c if self.wing_takeoff_mode(c) => self.takeoff(self.tuning.takeoff_alt),
@@ -1816,7 +1840,7 @@ impl Sim {
     }
 
     fn takeoff(&mut self, asked: f64) {
-        let px4 = self.options.vehicle == Vehicle::Px4;
+        let px4 = self.options.vehicle.px4();
         self.arm();
         let alt = match (asked.is_nan() || asked <= 0.0, px4) {
             (true, true) => PX4_TAKEOFF_ALT_M,
@@ -2009,7 +2033,7 @@ impl Sim {
 
     fn finish_mission(&mut self) {
         self.guidance = Guidance::default();
-        self.custom_mode = if self.options.vehicle == Vehicle::Px4 {
+        self.custom_mode = if self.options.vehicle.px4() {
             px4_mode(PX4_AUTO, PX4_LOITER)
         } else {
             self.custom_mode
@@ -2590,8 +2614,8 @@ impl Sim {
         let goal = self.goal();
         let arrived = goal.is_some_and(|g| self.reached(g, POSITION_M));
         let home_leg = goal.is_some_and(|g| (g.lat, g.lon) == self.home);
-        let px4_takeoff = self.options.vehicle == Vehicle::Px4
-            && self.custom_mode == px4_mode(PX4_AUTO, PX4_TAKEOFF);
+        let px4_takeoff =
+            self.options.vehicle.px4() && self.custom_mode == px4_mode(PX4_AUTO, PX4_TAKEOFF);
         match self.phase {
             Phase::Returning
                 if self.options.vehicle == Vehicle::Plane
@@ -4133,6 +4157,31 @@ mod tests {
             "an autopilot that rejects a value answers with the one it kept"
         );
         assert_eq!(sim.params[at].value, before);
+    }
+
+    #[test]
+    fn a_px4_fixed_wing_is_a_px4_plane_with_px4_parameters() {
+        assert_eq!(
+            Vehicle::Px4Plane.codes(),
+            (
+                MavAutopilot::MAV_AUTOPILOT_PX4 as i64,
+                MavType::MAV_TYPE_FIXED_WING as i64
+            )
+        );
+        assert_eq!(
+            Vehicle::of(
+                MavAutopilot::MAV_AUTOPILOT_PX4 as i64,
+                MavType::MAV_TYPE_FIXED_WING as i64
+            ),
+            Vehicle::Px4Plane,
+            "a saved PX4 fixed-wing link reopens as one"
+        );
+        assert_eq!(Vehicle::from_key("px4Plane"), Some(Vehicle::Px4Plane));
+        let sim = Sim::new(options(Vehicle::Px4Plane), 128, None);
+        assert!(
+            sim.params.iter().any(|p| p.name == "NAV_DLL_ACT"),
+            "Settings › Safety has its failsafes to show"
+        );
     }
 
     #[test]

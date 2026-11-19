@@ -1,4 +1,4 @@
-import { expect, openMenu, test } from './fixtures';
+import { connectMock, expect, openMenu, test } from './fixtures';
 
 const PAGES: readonly (readonly [string, string, string?])[] = [
   ['Camera', 'Video sources'],
@@ -55,4 +55,14 @@ test('in a browser the Aircast card page points to the desktop app rather than s
   await app.getByRole('button', { name: /^Aircast card/ }).click();
   await expect(app.getByText(/^A browser cannot write SD cards\./)).toBeVisible();
   await expect(app.getByRole('button', { name: 'Get the desktop app' })).toBeVisible();
+});
+
+test('a PX4 plane reads its hold failsafes in Settings › Safety as Circle, since a plane cannot hover', async ({ app }) => {
+  await connectMock(app, [], 'PX4 Fixed Wing Vehicle');
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Safety' }).click();
+  const signalLost = app.getByRole('button', { name: /^Signal lost/ });
+  await expect(signalLost).toBeVisible({ timeout: 60_000 });
+  await expect(signalLost, 'NAV_DLL_ACT 1 is Hold mode, which a fixed wing flies as a circle').toHaveAccessibleName(/Circle/);
+  await expect(app.getByRole('button', { name: /^(Signal lost|Remote controller lost).*Hover/ })).toHaveCount(0);
 });

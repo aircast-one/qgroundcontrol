@@ -14,15 +14,16 @@ describe('MockLinkFieldsTest', () => {
   });
 
   it('start sends the vehicle key and options in the order the core reads them', () => {
-    const choices = MockLinkChoices({ sendStatusText: true, camera: true, proximity: true, freshParams: true, vehicle: 1, videoStream: 3 });
+    const choices = MockLinkChoices({ sendStatusText: true, camera: true, proximity: true, freshParams: true, vehicle: 2, videoStream: 3 });
     expect(mockLinkArguments(choices)).toEqual(['apmCopter', true, true, false, true, true, 3]);
   });
 
   it('fresh firmware parameters only reach an ArduPilot vehicle', () => {
     const px4 = MockLinkChoices({ freshParams: true, vehicle: 0 });
     expect(mockLinkArguments(px4)[5]).toBe(false);
-    expect(withMockVehicle(MockLinkChoices({ freshParams: true, vehicle: 1 }), 0).freshParams).toBe(false);
-    expect(MOCK_VEHICLES.map((it) => it[0])).toEqual(['px4', 'apmCopter', 'apmPlane', 'apmSub', 'apmRover', 'generic']);
+    expect(withMockVehicle(MockLinkChoices({ freshParams: true, vehicle: 2 }), 0).freshParams).toBe(false);
+    expect(mockLinkArguments(MockLinkChoices({ freshParams: true, vehicle: 1 }))[5], 'a PX4 plane has no ArduPilot parameter set to start fresh from').toBe(false);
+    expect(MOCK_VEHICLES.map((it) => it[0])).toEqual(['px4', 'px4Plane', 'apmCopter', 'apmPlane', 'apmSub', 'apmRover', 'generic']);
     expect(MOCK_VIDEO_STREAMS).toHaveLength(6);
   });
 

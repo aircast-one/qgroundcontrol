@@ -249,7 +249,7 @@ pub fn failsafes(read: &dyn Fn(&str) -> Option<f64>, vehicle: Vehicle) -> Failsa
         |name: &str, fallback: f64| read(name).filter(|value| *value > 0.0).unwrap_or(fallback);
     let options = whole("FS_OPTIONS");
     match vehicle {
-        Vehicle::Px4 => Failsafes {
+        Vehicle::Px4 | Vehicle::Px4Plane => Failsafes {
             battery: vec![
                 Level {
                     name: "low",

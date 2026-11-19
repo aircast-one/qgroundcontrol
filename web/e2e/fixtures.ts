@@ -34,7 +34,7 @@ export const closeSettings = async (page: Page) => {
 
 export type MockOption = 'Enable camera' | 'Enable gimbal' | 'Enable proximity sensors' | 'Send status text + voice';
 
-export type MockVehicle = 'PX4 Vehicle' | 'APM ArduCopter Vehicle' | 'APM ArduPlane Vehicle' | 'APM ArduSub Vehicle' | 'APM ArduRover Vehicle' | 'Generic Vehicle';
+export type MockVehicle = 'PX4 Vehicle' | 'PX4 Fixed Wing Vehicle' | 'APM ArduCopter Vehicle' | 'APM ArduPlane Vehicle' | 'APM ArduSub Vehicle' | 'APM ArduRover Vehicle' | 'Generic Vehicle';
 
 export const chooseCameraJoystick = (page: Page) =>
   page.evaluate(async (module) => {

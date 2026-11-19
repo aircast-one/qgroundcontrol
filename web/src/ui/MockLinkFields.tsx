@@ -4,6 +4,7 @@ import { ChoiceField } from '@/ui/SettingsScreen';
 
 export const MOCK_VEHICLES: readonly (readonly [string, string])[] = [
   ['px4', 'PX4 Vehicle'],
+  ['px4Plane', 'PX4 Fixed Wing Vehicle'],
   ['apmCopter', 'APM ArduCopter Vehicle'],
   ['apmPlane', 'APM ArduPlane Vehicle'],
   ['apmSub', 'APM ArduSub Vehicle'],
