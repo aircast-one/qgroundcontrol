@@ -17,6 +17,7 @@ pub struct Tuning {
     pub pilot_descent: f64,
     pub pilot_yaw: f64,
     pub rtl_alt: f64,
+    pub takeoff_alt: f64,
     pub arrive: f64,
     pub loiter_radius: f64,
     pub circle_radius: f64,
@@ -184,6 +185,7 @@ pub fn tuning(read: &dyn Fn(&str) -> Option<f64>, vehicle: Vehicle) -> Tuning {
             ],
             0.0,
         ),
+        takeoff_alt: get(&[("TKOFF_ALT", 1.0)], 0.0),
         arrive: get(
             &[
                 ("WP_RADIUS_M", 1.0),

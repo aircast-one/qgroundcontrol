@@ -62,6 +62,7 @@ pub const DEPS: &[&str] = &[
     "settings.appSettings.enforceChecklist",
     "vehicle.vehicleLinkManager.communicationLost",
     "vehicle.vehicleLinkManager.communicationLostEnabled",
+    "settings.unitsSettings.verticalDistanceUnits",
 ];
 
 const CHECKLIST_PASSED: i64 = 1;
@@ -94,6 +95,8 @@ pub struct GuidedState {
     pub initial_connect_complete: bool,
     pub in_rtl: bool,
     pub in_land: bool,
+    pub in_takeoff: bool,
+    pub wing_takeoff_height: Option<String>,
     pub in_mission: bool,
     pub paused: bool,
     pub checklist_passed: bool,
@@ -223,7 +226,7 @@ impl Action {
     fn title(self) -> &'static str {
         match self {
             Action::Arm => "Arm",
-            Action::Takeoff => "Takeoff",
+            Action::Takeoff => "Take off",
             Action::StartMission => "Start Mission",
             Action::ContinueMission => "Continue Mission",
             Action::ResumeMission => "Resume Mission",
@@ -294,7 +297,7 @@ impl Action {
                 Action::Release => s.has_gripper,
                 Action::Hold => s.has_gripper && !s.apm,
                 Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl,
-                Action::Takeoff => s.takeoff_supported && !s.flying,
+                Action::Takeoff => s.takeoff_supported && !s.flying && !(s.armed && s.in_takeoff),
                 Action::Land => s.guided_supported && s.armed && !s.fixed_wing && !s.in_land,
                 Action::StartMission => s.mission_available && !s.mission_active() && !s.flying,
                 Action::ContinueMission => {
@@ -374,6 +377,9 @@ impl Action {
                 (Action::Release, _, Some(bay)) if s.empty_bays.contains(&bay) => {
                     format!("Bay {bay} is counted empty. Drop it only if you reloaded it.")
                 }
+                (Action::Takeoff, true, _) if !s.takeoff_with_altitude => {
+                    wing_takeoff_prompt(s.wing_takeoff_height.as_deref())
+                }
                 _ => self.prompt().to_string(),
             },
             offer,
@@ -397,6 +403,18 @@ impl Action {
             },
         }
     }
+}
+
+pub const TAKEOFF_MODE: &str = "Takeoff";
+
+pub fn wing_takeoff_prompt(height: Option<&str>) -> String {
+    format!(
+        "The aircraft throttles up, climbs to {} and circles there.",
+        height.map_or_else(
+            || "its takeoff height".to_string(),
+            |h| format!("{h} above launch")
+        )
+    )
 }
 
 pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -557,6 +575,12 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         initial_connect_complete: flag(&vehicle, "initialConnectComplete"),
         in_rtl: same_mode("rtlFlightMode") || same_mode("smartRTLFlightMode"),
         in_land: same_mode("landFlightMode"),
+        in_takeoff: mode == TAKEOFF_MODE,
+        wing_takeoff_height: (fixed_wing && !flag(&supports, "guidedTakeoffWithAltitude"))
+            .then(|| crate::battery::parameter_si(backend, &["TKOFF_ALT"]))
+            .flatten()
+            .filter(|metres| *metres > 0.0)
+            .map(|metres| crate::read::Unit::vertical(backend).label(metres)),
         in_mission: same_mode("missionFlightMode"),
         paused: same_mode("pauseFlightMode"),
         checklist_passed,
@@ -1370,6 +1394,49 @@ mod tests {
 
     fn offer_of(state: &GuidedState, action: Action) -> &'static str {
         action.offer(state).offer
+    }
+
+    #[test]
+    fn a_wing_takes_off_to_its_takeoff_height_and_is_not_offered_it_again_once_taking_off() {
+        let wing = GuidedState {
+            connected: true,
+            takeoff_supported: true,
+            fixed_wing: true,
+            can_takeoff: true,
+            checklist_passed: true,
+            wing_takeoff_height: Some("50 m".to_string()),
+            ..GuidedState::default()
+        };
+        assert_eq!(
+            Action::Takeoff.offer(&wing).prompt,
+            "The aircraft throttles up, climbs to 50 m above launch and circles there.",
+            "a wing does not hold position, and ArduPlane climbs to TKOFF_ALT"
+        );
+        assert_eq!(Action::Takeoff.offer(&wing).title, "Take off");
+        assert_eq!(offer_of(&wing, Action::Takeoff), "ready");
+        let launching = GuidedState {
+            armed: true,
+            in_takeoff: true,
+            ..wing.clone()
+        };
+        assert_eq!(
+            offer_of(&launching, Action::Takeoff),
+            "hidden",
+            "armed in Takeoff mode it is already taking off, and a second take off sends nothing"
+        );
+        assert_eq!(
+            wing_takeoff_prompt(None),
+            "The aircraft throttles up, climbs to its takeoff height and circles there."
+        );
+        let copter = GuidedState {
+            fixed_wing: false,
+            takeoff_with_altitude: true,
+            ..wing
+        };
+        assert_eq!(
+            Action::Takeoff.offer(&copter).prompt,
+            "Takeoff and hold position"
+        );
     }
 
     #[test]

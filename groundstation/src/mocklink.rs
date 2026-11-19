@@ -103,6 +103,7 @@ const ROVER_SMART_RTL: u32 = 12;
 const PLANE_RTL: u32 = 11;
 const PLANE_LOITER: u32 = 12;
 const PLANE_QLAND: u32 = 20;
+const PLANE_TAKEOFF: u32 = 13;
 const ROVER_HOLD: u32 = 4;
 const ROVER_RTL: u32 = 11;
 const ROVER_GUIDED: u32 = 15;
@@ -1512,6 +1513,9 @@ impl Sim {
                     if self.custom_mode == self.auto_mode() {
                         self.start_mission();
                     }
+                    if self.wing_takeoff_mode(self.custom_mode) {
+                        self.takeoff(self.tuning.takeoff_alt);
+                    }
                     accepted(Vec::new())
                 }
                 (false, _)
@@ -1768,6 +1772,7 @@ impl Sim {
             c if self.options.vehicle == Vehicle::Px4 && c == px4_mode(PX4_AUTO, PX4_TAKEOFF) => {
                 self.takeoff(f64::NAN)
             }
+            c if self.wing_takeoff_mode(c) => self.takeoff(self.tuning.takeoff_alt),
             c if c == self.auto_mode() => self.start_mission(),
             _ => {}
         }
@@ -1795,6 +1800,10 @@ impl Sim {
             self.still_since = None;
         }
         self.armed = true;
+    }
+
+    fn wing_takeoff_mode(&self, custom: u32) -> bool {
+        self.options.vehicle == Vehicle::Plane && custom == PLANE_TAKEOFF
     }
 
     fn takeoff(&mut self, asked: f64) {
@@ -4081,6 +4090,28 @@ mod tests {
         );
         fly(&mut sim, 12);
         assert_eq!((sim.alt, sim.armed), (0.0, false));
+    }
+
+    #[test]
+    fn an_arduplane_armed_in_takeoff_mode_climbs_to_tkoff_alt() {
+        let mut sim = Sim::new(options(Vehicle::Plane), 128, None);
+        command(
+            &mut sim,
+            MavCmd::MAV_CMD_DO_SET_MODE,
+            [1.0, PLANE_TAKEOFF as f32, 0.0, 0.0, 0.0, 0.0, 0.0],
+        );
+        command(
+            &mut sim,
+            MavCmd::MAV_CMD_COMPONENT_ARM_DISARM,
+            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        );
+        fly(&mut sim, 30);
+        assert!(
+            sim.armed && (sim.alt - sim.tuning.takeoff_alt).abs() < PLANE_ALT_SLACK_M,
+            "ArduPlane's TAKEOFF mode launches on arming and climbs to TKOFF_ALT {}, reached {}",
+            sim.tuning.takeoff_alt,
+            sim.alt
+        );
     }
 
     #[test]

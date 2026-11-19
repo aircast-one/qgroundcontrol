@@ -279,14 +279,15 @@ pub fn guided_takeoff_with_altitude(state: &VehicleState) -> bool {
 }
 
 pub fn start_takeoff(state: &VehicleState, flying: bool) -> Plan {
-    let mode_then_arm = |refusal: &str, arm: &str| match set_mode(state, "Takeoff") {
-        Some(steps) => Plan::Steps(failing_with(
-            refusal,
-            arm,
-            steps.into_iter().chain([Step::Arm]).collect(),
-        )),
-        None => Plan::Refused(refusal.to_string()),
-    };
+    let mode_then_arm =
+        |refusal: &str, arm: &str| match set_mode(state, crate::guided::TAKEOFF_MODE) {
+            Some(steps) => Plan::Steps(failing_with(
+                refusal,
+                arm,
+                steps.into_iter().chain([Step::Arm]).collect(),
+            )),
+            None => Plan::Refused(refusal.to_string()),
+        };
     match (state.autopilot, flying, state.armed) {
         _ if !guided_mode(state) => Plan::Refused(GUIDED_NOT_SUPPORTED.into()),
         (AUTOPILOT_ARDUPILOT, true, _) => {
