@@ -88,7 +88,7 @@ pub const KINDS: &[Kind] = &[
     },
     Kind {
         id: "corridor",
-        title: "Corridor Scan",
+        title: "Corridor scan",
         invokable: "insertComplexMissionItem",
         complex_name: Some("Corridor Scan"),
         class_name: Some("CorridorScanComplexItem"),
@@ -97,7 +97,7 @@ pub const KINDS: &[Kind] = &[
     },
     Kind {
         id: "structure",
-        title: "Structure Scan",
+        title: "Structure scan",
         invokable: "insertComplexMissionItem",
         complex_name: Some("Structure Scan"),
         class_name: Some("StructureScanComplexItem"),
@@ -746,6 +746,10 @@ mod tests {
         );
         let corridor = kinds_view(&Nothing, &["Corridor Scan".to_string()]);
         assert_eq!(corridor["id"], "corridor");
+        assert_eq!(
+            corridor["title"], "Corridor scan",
+            "the pattern chooser names it as New plan and the item list do"
+        );
         assert_eq!(corridor["invokable"], "insertComplexMissionItem");
         assert_eq!(corridor["geometryProperty"], "corridorPolyline");
         assert_eq!(corridor["shapeNoun"], "path");
