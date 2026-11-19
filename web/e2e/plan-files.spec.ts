@@ -95,3 +95,31 @@ test('starting a new plan over changes can save them first', async ({ app }, tes
   expect((await saving).suggestedFilename()).toBe('mission.plan');
   await expect.poll(() => itemCount(app)).toBeLessThan(4);
 });
+
+test('a new plan from a template is untitled, so saving it does not write over the plan it replaced', async ({ app }, testInfo) => {
+  await openMenu(app, 'Plan');
+  await app.getByRole('button', { name: 'Center', exact: true }).click();
+  await app.getByRole('menuitem', { name: 'Coordinates…' }).click();
+  const centre = app.getByRole('dialog').filter({ hasText: 'Center map on coordinate' });
+  await centre.getByRole('textbox', { name: 'Latitude' }).fill('47.3977');
+  await centre.getByRole('textbox', { name: 'Longitude' }).fill('8.5456');
+  await centre.getByRole('button', { name: 'Center' }).click();
+  await expect(app.locator('span.text-label-small').getByText(/^\d+ (m|km)$/)).toHaveText(/^\d+ m$/, { timeout: 30_000 });
+  await tapPlanMission(app);
+  const naming = app.waitForEvent('download');
+  await planMenu(app, 'Save as…');
+  const named = app.getByRole('dialog').filter({ hasText: 'Save plan as' });
+  await named.getByRole('textbox', { name: 'File name' }).fill('North field');
+  await named.getByRole('button', { name: 'Save', exact: true }).click();
+  await (await naming).saveAs(testInfo.outputPath('North field.plan'));
+  await expect(app.getByText('North field', { exact: true })).toBeVisible();
+  await planMenu(app, 'New plan…');
+  await app.getByRole('dialog').filter({ hasText: 'New plan' }).getByRole('button', { name: 'Survey', exact: true }).click();
+  await app.getByRole('dialog').filter({ hasText: 'Start a new plan?' }).getByRole('button', { name: 'Start new plan', exact: true }).click();
+  await expect(app.getByRole('button', { name: /^\d+–\d+ Survey / })).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByText('Untitled plan', { exact: true }), 'the survey used to keep the replaced plan’s name').toBeVisible();
+  const saving = app.waitForEvent('download');
+  await planMenu(app, 'Save as…');
+  await app.getByRole('dialog').filter({ hasText: 'Save plan as' }).getByRole('button', { name: 'Save', exact: true }).click();
+  expect((await saving).suggestedFilename()).toBe('mission.plan');
+});

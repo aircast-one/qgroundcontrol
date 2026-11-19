@@ -51,6 +51,7 @@ export type PlanFileActions = {
   importBoundary: () => void;
   patternChoice: PatternChoice;
   newPlan: () => void;
+  untitled: () => void;
   clearMission: () => void;
   download: () => void;
   documentName: () => string | null;
@@ -286,6 +287,7 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
       cancel: () => setPendingImport(null),
     },
     newPlan: () => discard('removeAll', 'New plan.', 'The plan could not be cleared.'),
+    untitled: forget,
     clearMission: () => discard('removeAllFromVehicle', 'Clear sent to the vehicle.', 'The clear could not be sent to the vehicle.'),
     download: () =>
       void (async () => {

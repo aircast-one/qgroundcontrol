@@ -182,8 +182,9 @@ export const PlanTab = ({ className, onFly = () => undefined }: { className?: st
       }
       const [lat, lon] = centre;
       const refused = await Qgc.refusalOf(CREATE_FROM_TEMPLATE, template, lat, lon);
-      if (refused === null) PlanFocus.newPattern.value = NEWEST_PATTERN;
-      else setNotice(refused);
+      if (refused !== null) return setNotice(refused);
+      files.untitled();
+      PlanFocus.newPattern.value = NEWEST_PATTERN;
     })();
   };
 
