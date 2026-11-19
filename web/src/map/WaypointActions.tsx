@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { type Json, isNull, optDouble, optInt, optJSONObject, optText } from '@/bridge/Json';
-import { useKeyedState, useProduceState } from '@/kotlin/Compose';
+import { useKeyedState } from '@/kotlin/Compose';
 import { AlertDialog, DropdownMenu, DropdownMenuItem, FilterChip, IconButton, RadioButton, Text, TextButton } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { md } from '@/theme/Colors';
 import { setOk, settingJson } from './BridgeCalls';
 import { CAMERA_MODES, trimmedNumber } from './CameraSectionExtras';
-import { type CameraChoices, type CameraExtras, ItemCameraBridge, cameraChoices, cameraExtras } from './ItemCamera';
+import { type CameraChoices, type CameraExtras, ItemCameraBridge, cameraChoices, cameraExtras, itemCameraPath } from './ItemCamera';
+import { useMapPath } from './MapBridge';
 import { insertMissionItem, removeMissionItem } from './MissionKinds';
 import { sentenceCase } from './SentenceCase';
 import { type ClosedRange, SettingStepper } from './SettingStepper';
@@ -107,8 +108,7 @@ export const offeredActions = (hold: WaypointHold | null, yaw: WaypointYaw | nul
 };
 
 export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: number; hold: WaypointHold | null; yaw: WaypointYaw | null; drop?: WaypointDrop | null }) => {
-  const [revision, setRevision] = useState(0);
-  const camera = useProduceState<Json | null>(null, [index, revision], async (set) => set(await ItemCameraBridge.read(index)));
+  const camera = useMapPath(itemCameraPath(index));
   const choices = cameraChoices(camera);
   const extras = cameraExtras(camera);
   const active = activeActions(hold, yaw, choices, extras, drop);
@@ -116,12 +116,7 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useKeyedState<ActionKind | null>([index], () => null);
   if (active.length === 0 && offers.length === 0) return null;
-  const write = (work: () => Promise<boolean>) => {
-    void (async () => {
-      await work();
-      setRevision((it) => it + 1);
-    })();
-  };
+  const write = (work: () => Promise<boolean>) => void work();
   const setHold = (seconds: number) => {
     if (hold !== null) write(() => setOk(hold.path, settingJson(`${seconds}`)));
   };

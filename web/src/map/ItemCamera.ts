@@ -10,8 +10,10 @@ const cameraSection = (index: number): string => `plan.missionController.visualI
 
 const written = (path: string, value: unknown): Promise<boolean> => setOk(path, JSON.stringify({ value })).catch(() => false);
 
+export const itemCameraPath = (index: number): string => `view.itemCamera(${index})`;
+
 export const ItemCameraBridge = {
-  read: (index: number): Promise<Json | null> => MapBridge.read(`view.itemCamera(${index})`),
+  read: (index: number): Promise<Json | null> => MapBridge.read(itemCameraPath(index)),
 
   set: (index: number, member: string, value: unknown): Promise<boolean> => written(`${cameraSection(index)}.${member}`, value),
 

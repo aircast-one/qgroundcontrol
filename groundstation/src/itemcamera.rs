@@ -7,6 +7,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.currentPlanViewVIIndex",
     "plan.controllerVehicle.apmFirmware",
     "plan.missionController@visualItemsReset",
+    crate::coreplan::CHANGED,
 ];
 
 const NO_CAMERA_ACTION: i64 = 0;
@@ -92,6 +93,14 @@ pub fn item_camera_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_camera_view_follows_every_plan_edit_so_a_reordered_item_shows_its_own_camera() {
+        assert!(
+            DEPS.contains(&crate::coreplan::CHANGED),
+            "an undo or a move changes which item sits at an index without resetting the visual items"
+        );
+    }
 
     #[test]
     fn the_mission_start_camera_section_is_not_offered_for_ardupilot_like_mission_settings_editor()
