@@ -59,6 +59,20 @@ test('a fence polygon starts as a four-corner inclusion zone and can become keep
   await expect(vehicle.getByText(/Polygon 1 · Exclusion · 4 vertices/)).toBeVisible();
 });
 
+test('a fence circle can become keep-out from its editor and back to keep-in from the fence list', async ({ vehicle }) => {
+  await openPlanAtVehicle(vehicle);
+  await vehicle.getByRole('button', { name: 'Fence', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Circle', exact: true }).click();
+  await expect(vehicle.getByText(/Circle 1 · Inclusion · /)).toBeVisible();
+  await vehicle.getByRole('button', { name: 'Make keep-out' }).click();
+  await expect(vehicle.getByText(/Circle 1 · Exclusion · /)).toBeVisible();
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  const keepsIn = vehicle.getByRole('switch', { name: 'Circle 1 keeps the aircraft inside' });
+  await expect(keepsIn).not.toBeChecked();
+  await keepsIn.click();
+  await expect(keepsIn).toBeChecked();
+});
+
 test('the corridor scan template starts a corridor pattern', async ({ vehicle }) => {
   await openPlanAtVehicle(vehicle);
   await vehicle.getByRole('button', { name: 'Templates' }).click();

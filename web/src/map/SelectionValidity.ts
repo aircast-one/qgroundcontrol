@@ -78,7 +78,7 @@ const circleFence = (circle: FenceCircle): SelectedFence => ({
   keepsIn: circle.inclusion,
   kindText: circle.kindText,
   detailText: circle.detailText,
-  flip: null,
+  flip: () => FenceBridge.setCircleInclusion(circle.index, !circle.inclusion),
 });
 
 export const selectedFence = (selected: MapHit | null, polygons: readonly FencePolygon[], circles: readonly FenceCircle[]): SelectedFence | null => {

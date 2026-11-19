@@ -50,6 +50,7 @@ export const fenceRows = (polygons: readonly FencePolygon[], circles: readonly F
       circle: true,
       title: orBlank(it.kindText, `Circle ${it.index + 1}`),
       detail: inclusionText(it.inclusion),
+      inclusion: it.inclusion,
       radius: [trimmedRadius(it.radius), it.radiusUnits].filter((part) => part.trim() !== '').join(' '),
     }),
   ),
@@ -366,6 +367,8 @@ export const FenceBridge = {
   removeRallyPoint: (index: number): Promise<boolean> => invokeOk(`${RALLY_ROOT}.removePoint`, `["@${RALLY_POINTS}.${index}"]`),
 
   setPolygonInclusion: (index: number, inclusion: boolean): Promise<boolean> => setOk(`${FENCE_POLYGONS}.${index}.inclusion`, settingJson(String(inclusion))),
+
+  setCircleInclusion: (index: number, inclusion: boolean): Promise<boolean> => setOk(`${FENCE_CIRCLES}.${index}.inclusion`, settingJson(String(inclusion))),
 
   removeVertex: (polygon: number, vertex: number): Promise<boolean> => invokeOk(`${FENCE_POLYGONS}.${polygon}.removeVertex`, `[${vertex}]`),
 

@@ -8,7 +8,7 @@ describe('FenceRowsTest', () => {
     const circle = FenceCircle({ index: 0, inclusion: true, centre: { latitude: 0.0, longitude: 0.0 }, radius: 137.0, detailText: '137 m radius', kindText: 'Circle 1', radiusUnits: 'm' });
     expect(fenceRows([polygon], [circle])).toEqual([
       FenceRow({ index: 0, circle: false, title: 'Polygon 1', detail: 'Exclusion', inclusion: false }),
-      FenceRow({ index: 0, circle: true, title: 'Circle 1', detail: 'Inclusion', radius: '137 m' }),
+      FenceRow({ index: 0, circle: true, title: 'Circle 1', detail: 'Inclusion', inclusion: true, radius: '137 m' }),
     ]);
   });
 

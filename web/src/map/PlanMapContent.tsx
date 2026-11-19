@@ -1146,7 +1146,7 @@ export const PlanMapContent = ({
                           onSelect={() => {
                             selected.value = fenceRowHit(row);
                           }}
-                          onInclusion={inclusion === null ? null : (keep) => onBridge(() => FenceBridge.setPolygonInclusion(row.index, keep), { label: `Changing ${row.title.toLowerCase()}` })}
+                          onInclusion={inclusion === null ? null : (keep) => onBridge(() => (row.circle ? FenceBridge.setCircleInclusion(row.index, keep) : FenceBridge.setPolygonInclusion(row.index, keep)), { label: `Changing ${row.title.toLowerCase()}` })}
                           onRemove={() => {
                             onBridge(() => (row.circle ? FenceBridge.deleteCircle(row.index) : FenceBridge.deletePolygon(row.index)), {
                               label: `Removing ${row.title.toLowerCase()}`,

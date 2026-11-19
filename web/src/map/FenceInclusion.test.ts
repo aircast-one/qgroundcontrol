@@ -16,11 +16,11 @@ describe('FenceInclusionTest', () => {
     expect(keepOut?.keepsIn).toBe(false);
   });
 
-  it('a circle is named by its edge or its centre and only described, like GeoFenceEditor', () => {
+  it('a circle is named by its edge or its centre and can become keep-out like a polygon', () => {
     const circles = [circle(2, false)];
     expect(selectedFence({ kind: 'Circle', index: 2 }, [], circles)?.keepsIn).toBe(false);
     expect(selectedFence({ kind: 'CircleCentre', index: 2 }, [], circles)?.keepsIn).toBe(false);
-    expect(selectedFence({ kind: 'Circle', index: 2 }, [], circles)?.flip).toBeNull();
+    expect(selectedFence({ kind: 'Circle', index: 2 }, [], circles)?.flip != null, 'a keep-out circle could not be made at all').toBe(true);
     expect(selectedFence({ kind: 'FenceVertex', polygon: 0, vertex: 0 }, [polygon(0, true)], [])?.flip != null).toBe(true);
   });
 
