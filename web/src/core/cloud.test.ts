@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { cloudBackoffMs, relayTokenRefusal, usesWebSocket } from './cloud';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SOCKET_ANSWER_MS, cloudBackoffMs, relayTokenRefusal, socketAnswered, usesWebSocket } from './cloud';
 
 describe('the browser cloud relay', () => {
   it('backs off like the native relay, doubling from 2 s to a 60 s ceiling', () => {
@@ -16,5 +16,32 @@ describe('the browser cloud relay', () => {
     expect(usesWebSocket('', 'wss://sitl.aircast.one/ws/mavlink')).toBe(true);
     expect(usesWebSocket('', 'ws://192.168.1.10:5760')).toBe(true);
     expect(usesWebSocket('https://api.aircast.one/v1/user/devices/d/webtransport-token', 'https://api.aircast.one/v1/mavlink/device/d/webtransport')).toBe(false);
+  });
+
+  describe('a WebSocket that never answers', () => {
+    afterEach(() => vi.useRealTimers());
+
+    const silentSocket = () => ({ onopen: null, onerror: null, close: vi.fn() }) as unknown as Pick<WebSocket, 'onopen' | 'onerror' | 'close'>;
+
+    it('is given up within seconds, so a blackholed address is named as unreachable instead of waiting out the browser', async () => {
+      vi.useFakeTimers();
+      const socket = silentSocket();
+      const answer = socketAnswered(socket, 'ws://10.255.255.1:5760');
+      const settled = expect(answer).rejects.toThrow('No MAVLink WebSocket answered at ws://10.255.255.1:5760');
+      await vi.advanceTimersByTimeAsync(SOCKET_ANSWER_MS);
+      await settled;
+      expect(socket.close).toHaveBeenCalledOnce();
+      expect(SOCKET_ANSWER_MS).toBeLessThanOrEqual(10_000);
+    });
+
+    it('that opens in time is kept', async () => {
+      vi.useFakeTimers();
+      const socket = silentSocket();
+      const answer = socketAnswered(socket, 'ws://192.168.1.10:5760');
+      socket.onopen?.call(socket as WebSocket, new Event('open'));
+      await expect(answer).resolves.toBeUndefined();
+      await vi.advanceTimersByTimeAsync(SOCKET_ANSWER_MS);
+      expect(socket.close).not.toHaveBeenCalled();
+    });
   });
 });

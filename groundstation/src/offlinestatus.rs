@@ -85,14 +85,16 @@ pub fn offline(
     let state = |failed: &'static str| match (
         no_autopilot,
         connecting.is_empty(),
+        unreachable,
         stalled,
         failed_name.is_empty(),
     ) {
-        (true, _, _, _) => "No Flight Controller",
-        (false, false, true, _) => "No Telemetry",
-        (false, false, false, _) => "Connecting…",
-        (false, true, _, false) => failed,
-        (false, true, _, true) => "Not Connected",
+        (true, _, _, _, _) => "No Flight Controller",
+        (false, false, true, _, _) => "Can't Connect",
+        (false, false, false, true, _) => "No Telemetry",
+        (false, false, false, false, _) => "Connecting…",
+        (false, true, _, _, false) => failed,
+        (false, true, _, _, true) => "Not Connected",
     };
     let (title, main_status) = (state("Connection Failed"), state("Can't Connect"));
     let footnote = match () {
@@ -283,6 +285,11 @@ mod tests {
         assert_eq!(
             refused.footnote,
             "Can't reach 10.0.0.9:5760. Check its address and that the aircraft is on."
+        );
+        assert_eq!(
+            (refused.title.as_str(), refused.main_status.as_str()),
+            ("Can't Connect", "Can't Connect"),
+            "the status beside the footnote must not say No Telemetry about an address that never answered"
         );
         let quiet = offline(&[link("10.0.0.9:5760", true, "", "")], &[], |_| true);
         assert_eq!(

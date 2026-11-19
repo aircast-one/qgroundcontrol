@@ -18,6 +18,26 @@ export const cloudBackoffMs = (failures: number): number => Math.min(INITIAL_BAC
 export const relayTokenRefusal = (status: number): string =>
   status === 401 ? 'Sign in to your Aircast account again.' : status === 403 ? 'This account cannot reach that device.' : `The Aircast account server answered ${status}.`;
 
+export const SOCKET_ANSWER_MS = 10_000;
+
+export const unanswered = (url: string): Error => new Error(`No MAVLink WebSocket answered at ${url}`);
+
+export const socketAnswered = (socket: Pick<WebSocket, 'onopen' | 'onerror' | 'close'>, url: string, waitMs: number = SOCKET_ANSWER_MS): Promise<void> =>
+  new Promise<void>((resolve, reject) => {
+    const silent = setTimeout(() => {
+      socket.close();
+      reject(unanswered(url));
+    }, waitMs);
+    socket.onopen = () => {
+      clearTimeout(silent);
+      resolve();
+    };
+    socket.onerror = () => {
+      clearTimeout(silent);
+      reject(unanswered(url));
+    };
+  });
+
 export const usesWebSocket = (tokenUrl: string, sessionUrl: string): boolean => tokenUrl === '' && /^wss?:\/\//.test(sessionUrl);
 
 const relayToken = async (tokenUrl: string, bearer: string): Promise<string> => {
@@ -61,10 +81,7 @@ export const cloudHost = (core: CloudCore) => {
       const socket = new WebSocket(url);
       socket.binaryType = 'arraybuffer';
       session.close = () => socket.close();
-      await new Promise<void>((resolve, reject) => {
-        socket.onopen = () => resolve();
-        socket.onerror = () => reject(new Error(`No MAVLink WebSocket answered at ${url}`));
-      });
+      await socketAnswered(socket, url);
       session.send = (bytes) => socket.send(new Uint8Array(bytes));
       core.cloudOpened(id);
       await new Promise<void>((resolve) => {
