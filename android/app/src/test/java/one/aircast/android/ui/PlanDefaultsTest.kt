@@ -37,6 +37,16 @@ class PlanDefaultsTest {
     }
 
     @Test
+    fun `names each default as Settings, General, Planning defaults does`() {
+        val altitude = control("defaultMissionItemAltitude", 50.0, "m").replace("\"label\":\"defaultMissionItemAltitude\"", "\"label\":\"Default mission altitude\"")
+        val hover = control("offlineEditingHoverSpeed", 5.0, "m/s").replace("\"label\":\"offlineEditingHoverSpeed\"", "\"label\":\"Offline editing hover speed\"")
+        val facts = planDefaults(plan("""{"altitude":$altitude,"hover":$hover}"""))
+
+        assertEquals(listOf("Default waypoint altitude", "Planning hover speed"), facts.map { it.heading })
+        assertEquals(listOf("", ""), facts.map { it.detail })
+    }
+
+    @Test
     fun `the order is the list's, not whatever order the keys arrive in`() {
         val facts = planDefaults(
             plan(
