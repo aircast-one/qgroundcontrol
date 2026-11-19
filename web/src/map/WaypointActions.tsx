@@ -107,6 +107,21 @@ export const offeredActions = (hold: WaypointHold | null, yaw: WaypointYaw | nul
   return offers.filter((it) => it !== null);
 };
 
+const OFFER_VERBS: readonly (readonly [string, string])[] = [
+  ['Photo', 'take a photo'],
+  ['Video', 'film'],
+  ['Hover', 'hover'],
+  ['Turn aircraft', 'turn'],
+  [DROP_TITLE, 'drop'],
+];
+
+export const addActionsHint = (offers: readonly ActionOffer[]): string => {
+  const verbs = OFFER_VERBS.filter(([title]) => offers.some((it) => it.title === title)).map(([, verb]) => verb);
+  const last = verbs.at(-1);
+  if (last === undefined) return 'Tap Add to give the camera something to do here.';
+  return `Tap Add to ${verbs.length === 1 ? last : `${verbs.slice(0, -1).join(', ')} or ${last}`} here.`;
+};
+
 export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: number; hold: WaypointHold | null; yaw: WaypointYaw | null; drop?: WaypointDrop | null }) => {
   const camera = useMapPath(itemCameraPath(index));
   const choices = cameraChoices(camera);
@@ -219,7 +234,7 @@ export const WaypointActions = ({ index, hold, yaw, drop = null }: { index: numb
         </div>
         {active.length === 0 ? (
           <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-            Tap Add to take a photo, film, hover, turn or drop here.
+            {addActionsHint(offers)}
           </Text>
         ) : null}
         <div className="flex flex-wrap gap-2">

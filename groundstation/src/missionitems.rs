@@ -558,16 +558,26 @@ fn specified_speed(sections: &[crate::plandoc::Simple]) -> Option<f64> {
         .and_then(|s| s.params[1])
 }
 
-fn held_seconds(s: &crate::plandoc::Simple) -> f64 {
-    match s.command {
-        16 | 19 | 112 | 93 => s.params[0].unwrap_or(0.0),
+fn held_seconds(
+    s: &crate::plandoc::Simple,
+    commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>,
+) -> f64 {
+    let ignored = commands
+        .get(&s.command)
+        .is_some_and(|c| c.hidden.contains(&1));
+    match (s.command, ignored) {
+        (_, true) => 0.0,
+        (16 | 19 | 112 | 93, false) => s.params[0].unwrap_or(0.0),
         _ => 0.0,
     }
 }
 
-fn additional_delay(item: &crate::plandoc::Item) -> f64 {
+fn additional_delay(
+    item: &crate::plandoc::Item,
+    commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>,
+) -> f64 {
     match item {
-        crate::plandoc::Item::Simple(s) => held_seconds(s),
+        crate::plandoc::Item::Simple(s) => held_seconds(s, commands),
         crate::plandoc::Item::Complex { json, .. } => {
             let survey = json.get("complexItemType").and_then(Value::as_str) == Some("survey");
             let hover = json
@@ -719,7 +729,7 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
                 }
             }
             if !w.past_land {
-                add(&mut w, 0.0, additional_delay(item));
+                add(&mut w, 0.0, additional_delay(item, &commands));
             }
             if let crate::plandoc::Item::Simple(s) = item
                 && commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && c.standalone_coordinate)
@@ -1084,7 +1094,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "altitudeFrame": altitude.map_or(match s.frame { 10 => crate::altitudemodes::TERRAIN_FRAME, 0 => crate::altitudemodes::ABSOLUTE, _ => crate::altitudemodes::RELATIVE }, |a| a.mode),
                 "specifiedFlightSpeed": specified_speed(&s.sections).or_else(|| (s.command == 178).then_some(s.params[1]).flatten().filter(|speed| *speed > 0.0)),
                 "facts": altitude_fact("altitude", altitude.map_or(0.0, |a| a.altitude)),
-                "additionalTimeDelay": held_seconds(s),
+                "additionalTimeDelay": held_seconds(s, item_commands),
                 "specifiedVehicleYaw": if s.command == 16 { s.params[3] } else { None },
                 "specifiedGimbalYaw": sections_gimbal_yaw(&s.sections).or_else(|| mount_gimbal_yaw(s)),
                 "altDifference": leg.alt_difference,
@@ -1946,14 +1956,18 @@ mod from_the_document {
             item_count: 4,
             json: json!({ "complexItemType": kind, "TransectStyleComplexItem": { "HoverAndCapture": hover, "Items": points } }),
         };
+        let commands = crate::cmdinfo::tree(
+            crate::cmdinfo::Firmware::Px4,
+            crate::cmdinfo::VehicleClass::MultiRotor,
+        );
         assert_eq!(
-            additional_delay(&complex("survey", true)),
+            additional_delay(&complex("survey", true), &commands),
             12.0,
             "SurveyComplexItem counts every transect point, turnarounds included"
         );
-        assert_eq!(additional_delay(&complex("survey", false)), 0.0);
+        assert_eq!(additional_delay(&complex("survey", false), &commands), 0.0);
         assert_eq!(
-            additional_delay(&complex("CorridorScan", true)),
+            additional_delay(&complex("CorridorScan", true), &commands),
             0.0,
             "CorridorScanComplexItem adds no delay"
         );
@@ -2259,6 +2273,39 @@ mod tests {
             "a 120 s Loiter (time) waits 120 s: {loiter} vs {waypoint}"
         );
         assert_eq!(delay, Some(120.0));
+    }
+
+    #[test]
+    fn a_plane_flies_through_a_waypoint_hold_so_it_adds_no_time() {
+        let plan = |vehicle: i64, hold: f64| {
+            json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [47.0, 8.0, 0], "items": [
+            { "type": "SimpleItem", "autoContinue": true, "command": 22, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 0, 0, 30] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "doJumpId": 2, "params": [hold, 0, 0, 0, 47.01, 8.0, 30] },
+        ] } }).to_string()
+        };
+        let speeds = Speeds {
+            hover: 5.0,
+            cruise: 15.0,
+            ascent: 3.0,
+            descent: 1.0,
+        };
+        let timed = |vehicle: i64, hold: f64| {
+            let doc = crate::plandoc::load(&plan(vehicle, hold), 2).unwrap();
+            (
+                flight_status(&doc, &speeds).unwrap().total_time,
+                document_reads(&doc, 0).unwrap()[2]["additionalTimeDelay"].as_f64(),
+            )
+        };
+        let (plane, plane_delay) = timed(1, 30.0);
+        assert!(
+            (plane - timed(1, 0.0).0).abs() < 1e-6,
+            "ArduPlane ignores a waypoint's hold, so the time does not grow"
+        );
+        assert_eq!(plane_delay, Some(0.0));
+        assert!(
+            (timed(2, 30.0).0 - timed(2, 0.0).0 - 30.0).abs() < 1e-6,
+            "a copter still hovers for it"
+        );
     }
 
     struct Plan(Vec<Value>, i64);

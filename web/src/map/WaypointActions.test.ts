@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CameraExtras } from './ItemCamera';
 import { legLabels } from './MissionLayers';
 import { MissionItem } from './PlanBridge';
-import { activeActions, cameraIcon, offeredActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
+import { activeActions, addActionsHint, cameraIcon, offeredActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
 
 describe('WaypointActionsTest', () => {
   const labels = ['No change', 'Take photo', 'Take photos (time)', 'Take photos (distance)', 'Stop taking photos', 'Start recording video', 'Stop recording video'];
@@ -13,6 +13,13 @@ describe('WaypointActionsTest', () => {
   it('a plain waypoint has no actions and offers every one it can carry', () => {
     expect(activeActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera)).toEqual([]);
     expect(offeredActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera).map((it) => it.title)).toEqual(['Hover', 'Photo', 'Video', 'Tilt camera', 'Camera mode', 'Turn aircraft']);
+  });
+
+  it('a plane, which flies through its waypoints, is not offered a hover or told it can hover', () => {
+    const offers = offeredActions(null, null, { labels, chosen: 0 }, idleCamera);
+    expect(offers.map((it) => it.title)).not.toContain('Hover');
+    expect(addActionsHint(offers)).toBe('Tap Add to take a photo or film here.');
+    expect(addActionsHint(offeredActions(noHold, noTurn, { labels, chosen: 0 }, idleCamera))).toBe('Tap Add to take a photo, film, hover or turn here.');
   });
 
   it('each action set on the waypoint shows once with its value and leaves the offers', () => {

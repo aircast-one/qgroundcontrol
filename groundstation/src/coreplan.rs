@@ -4232,6 +4232,15 @@ mod tests {
             hold_field(&takeoff, commands.get(&22), false, "x"),
             Value::Null
         );
+        let plane = crate::cmdinfo::tree(
+            crate::cmdinfo::Firmware::ArduPilot,
+            crate::cmdinfo::VehicleClass::FixedWing,
+        );
+        assert_eq!(
+            hold_field(&waypoint(Some(5.0)), plane.get(&16), false, "x"),
+            Value::Null,
+            "a plane flies through a waypoint, so it is not offered a hover it ignores"
+        );
     }
 
     #[test]
@@ -5778,6 +5787,7 @@ fn hold_field(
     item: &str,
 ) -> Value {
     let label = info
+        .filter(|c| !c.hidden.contains(&HOLD_PARAM))
         .and_then(|c| c.params.get(&HOLD_PARAM))
         .and_then(|p| p.get("label"))
         .and_then(Value::as_str);
