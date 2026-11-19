@@ -70,6 +70,17 @@ test('ArduPilot failsafes open Settings › Safety on its own page, not on a bla
   await expect(app.getByText('When the battery runs low.', { exact: true })).toBeInViewport();
 });
 
+test('ArduPilot failsafes link both batteries to Settings › Safety instead of editing battery 2 inline', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Failsafes / }).click();
+  await expect(app.getByRole('button', { name: /^Critical battery In Settings › Safety/ })).toBeVisible();
+  await expect(app.getByRole('button', { name: /^Battery 2 critical In Settings › Safety/ })).toBeVisible();
+  await expect(app.getByRole('button', { name: /^Low battery failsafe action, / })).toHaveCount(0);
+  await app.getByRole('button', { name: /^Battery 2 low In Settings › Safety/ }).click();
+  await expect(app.getByText('When the second battery runs low.', { exact: true })).toBeInViewport();
+});
+
 test('ArduPilot ESC calibration says what happens before it arms, and can be taken back', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);

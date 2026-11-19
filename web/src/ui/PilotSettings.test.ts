@@ -4,7 +4,7 @@ import { calibrationState } from '@/ui/CalibrationView';
 import { SENSORS } from '@/ui/SetupPages';
 import { SetupComponent, splitDesktopOnly } from '@/ui/SetupScreen';
 import { SettingsGroup } from '@/ui/SettingsScreen';
-import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, firstReported, type ParameterWriter, readingOf, writeAllOrNone, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
+import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, firstReported, offlineSettings, type ParameterWriter, readingOf, writeAllOrNone, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
 
 const parameter = (name: string, description = 'Engineer description') =>
   makeFact({
@@ -106,6 +106,17 @@ describe('PilotSettingsTest', () => {
 
   it("offline, safety still lists its sections in DJI's order so the pilot knows they exist", () => {
     expect([...pilotSections(pilotSettings(SettingsGroup.Safety)).keys()]).toEqual(['Return to home', 'Flight protection', 'If something goes wrong']);
+  });
+
+  it('both ArduPilot batteries take their failsafe actions from Settings › Safety, so Failsafes links to them alike', () => {
+    expect(
+      ['BATT_FS_LOW_ACT', 'BATT_FS_CRT_ACT', 'BATT2_FS_LOW_ACT', 'BATT2_FS_CRT_ACT'].map((name) => pilotOwner(name)?.group),
+      "battery 2's low and critical actions were edited inline in Failsafes while battery 1's low action lived in Settings › Safety",
+    ).toEqual([SettingsGroup.Safety, SettingsGroup.Safety, SettingsGroup.Safety, SettingsGroup.Safety]);
+    expect(pilotOwner('COM_LOW_BAT_ACT')?.setting.label, 'PX4 has one action for every battery').toBe('Low battery');
+    const offline = offlineSettings(pilotSettings(SettingsGroup.Safety)).map((it) => it.label);
+    expect(offline, 'with no aircraft only the rows every vehicle has are listed').toContain('Low battery');
+    expect(offline).not.toContain('Battery 2 low');
   });
 });
 

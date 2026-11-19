@@ -15,11 +15,21 @@ import { SETUP, parametersReady } from '@/ui/SetupView';
 import { CONNECTIONS_PAGE, FactRow, SettingsGroup, SettingsGroupEntries, sentenceCase } from '@/ui/SettingsScreen';
 import { LocalChangeNotice, VALUE_OFF, valueText } from '@/ui/ValueRow';
 
-export type PilotSetting = { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited: string | null; quantity: string | null; fenceBit: number | null };
-export const PilotSetting = (fields: { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited?: string | null; quantity?: string | null; fenceBit?: number | null }): PilotSetting => ({
+export type PilotSetting = { label: string; parameters: readonly string[]; section: string; hint: string; whenUnlimited: string | null; quantity: string | null; fenceBit: number | null; reportedOnly: boolean };
+export const PilotSetting = (fields: {
+  label: string;
+  parameters: readonly string[];
+  section: string;
+  hint: string;
+  whenUnlimited?: string | null;
+  quantity?: string | null;
+  fenceBit?: number | null;
+  reportedOnly?: boolean;
+}): PilotSetting => ({
   whenUnlimited: null,
   quantity: null,
   fenceBit: null,
+  reportedOnly: false,
   ...fields,
 });
 
@@ -105,6 +115,9 @@ export const pilotSettings = (group: SettingsGroup): readonly PilotSetting[] => 
       PilotSetting({ label: 'Signal lost', parameters: ['NAV_DLL_ACT', 'FS_GCS_ENABLE', 'FS_GCS_ENABL'], section: FAILSAFES, hint: 'When the link to this app drops.' }),
       PilotSetting({ label: 'Remote controller lost', parameters: ['NAV_RCL_ACT', 'FS_THR_ENABLE'], section: FAILSAFES, hint: 'When the remote controller drops.' }),
       PilotSetting({ label: 'Low battery', parameters: ['COM_LOW_BAT_ACT', 'BATT_FS_LOW_ACT'], section: FAILSAFES, hint: 'When the battery runs low.' }),
+      PilotSetting({ label: 'Critical battery', parameters: ['BATT_FS_CRT_ACT'], section: FAILSAFES, hint: 'When the battery is nearly empty.', reportedOnly: true }),
+      PilotSetting({ label: 'Battery 2 low', parameters: ['BATT2_FS_LOW_ACT'], section: FAILSAFES, hint: 'When the second battery runs low.', reportedOnly: true }),
+      PilotSetting({ label: 'Battery 2 critical', parameters: ['BATT2_FS_CRT_ACT'], section: FAILSAFES, hint: 'When the second battery is nearly empty.', reportedOnly: true }),
     ];
   }
   if (group === SettingsGroup.Control) {
@@ -146,13 +159,13 @@ export const PilotSettings = (props: { group: SettingsGroup } | { settings: read
   const settings = useMemo(() => listed ?? (group === null ? [] : pilotSettings(group)), [group, listed]);
   const vehicle = useHasVehicle();
   if (settings.length === 0) return null;
-  if (!vehicle) return <OfflinePilotSettings settings={settings} note={OFFLINE_PILOT_NOTE} offersLink />;
+  if (!vehicle) return <OfflinePilotSettings settings={offlineSettings(settings)} note={OFFLINE_PILOT_NOTE} offersLink />;
   return <VehiclePilotSettings settings={settings} />;
 };
 
 const VehiclePilotSettings = ({ settings }: { settings: readonly PilotSetting[] }) => {
   const setup = useQgcPath(SETUP);
-  if (!parametersReady(setup)) return <OfflinePilotSettings settings={settings} note={LOADING_PILOT_NOTE} offersLink={false} />;
+  if (!parametersReady(setup)) return <OfflinePilotSettings settings={offlineSettings(settings)} note={LOADING_PILOT_NOTE} offersLink={false} />;
   return <ReportedPilotSettings settings={settings} setup={setup} />;
 };
 
@@ -187,6 +200,8 @@ export const OFFLINE_PILOT_NOTE = 'Connect the aircraft to see and change these.
 export const LOADING_PILOT_NOTE = 'Loading these from the aircraft…';
 const OFFLINE_VALUE = '—';
 const OFFLINE_ALPHA = 0.38;
+
+export const offlineSettings = (settings: readonly PilotSetting[]): readonly PilotSetting[] => settings.filter((it) => !it.reportedOnly);
 
 export const pilotSections = (settings: readonly PilotSetting[]): ReadonlyMap<string, readonly PilotSetting[]> => groupBy(settings, (setting) => setting.section);
 
