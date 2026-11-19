@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { type Json, optInt, optText } from '@/bridge/Json';
-import { useQgcValue } from '@/bridge/QgcState';
+import { Qgc } from '@/bridge/Qgc';
+import { useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { useTicker } from '@/kotlin/Compose';
 import { OutlinedButton, Text } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
@@ -9,6 +10,7 @@ import { md } from '@/theme/Colors';
 import { type GuidedOffer, type Payload, type PayloadProblem, bayNumbers, bayOutput, multiBay } from './GuidedActions';
 import { HoldToConfirm, holdLabel } from './HoldToConfirm';
 import { GRIPPER_GRAB, GRIPPER_HOLD, GRIPPER_RELEASE } from './MoreActions';
+import { PAYLOAD_RAIL_ARM, PAYLOAD_RAIL_VIEW, type PayloadRail, payloadRailOf } from './PayloadRail';
 
 export const GRIPPER_ACTIONS: readonly string[] = ['release', 'grab', 'hold'];
 export const PAYLOAD_STATE = 'vehicle.gripper';
@@ -57,12 +59,26 @@ const offerReady = (offers: readonly GuidedOffer[], id: string): boolean => offe
 
 const send = (action: number, bay: number, onRefused: Refused) => void VehicleCommands.gripperRefusal(action, bay).then(onRefused);
 
-const SingleGripper = ({ offers, onRefused }: { offers: readonly GuidedOffer[]; onRefused: Refused }) => (
+export type PayloadLock = { readonly text: string; readonly button: string; readonly arms: boolean };
+
+export const payloadLock = (rail: PayloadRail | null): PayloadLock | null =>
+  rail === null ? null : rail.armed ? { text: 'The payload is armed.', button: 'Make safe', arms: false } : { text: 'The payload is safe. Arm it to drop.', button: 'Arm payload', arms: true };
+
+const LockRow = ({ lock, onRefused }: { lock: PayloadLock; onRefused: Refused }) => (
+  <div className="flex items-center gap-2">
+    <Text className="flex-1" typography="bodyMedium" color={lock.arms ? md('onSurfaceVariant') : md('error')}>
+      {lock.text}
+    </Text>
+    <OutlinedButton onClick={() => void Qgc.refusalOf(PAYLOAD_RAIL_ARM, lock.arms).then(onRefused)}>{lock.button}</OutlinedButton>
+  </div>
+);
+
+const SingleGripper = ({ offers, safe, onRefused }: { offers: readonly GuidedOffer[]; safe: boolean; onRefused: Refused }) => (
   <>
     {offers
       .filter((it) => it.id === 'release')
       .map((offer) => (
-        <HoldToConfirm key={offer.id} label={holdLabel(offer.title)} enabled={offer.ready} onConfirm={() => send(GRIPPER_RELEASE, 0, onRefused)} />
+        <HoldToConfirm key={offer.id} label={holdLabel(offer.title)} enabled={offer.ready && !safe} onConfirm={() => send(GRIPPER_RELEASE, 0, onRefused)} />
       ))}
     <div className="flex gap-2">
       {offers
@@ -76,7 +92,7 @@ const SingleGripper = ({ offers, onRefused }: { offers: readonly GuidedOffer[]; 
   </>
 );
 
-const Bays = ({ offers, payload, onRefused }: { offers: readonly GuidedOffer[]; payload: Payload; onRefused: Refused }) => (
+const Bays = ({ offers, payload, safe, onRefused }: { offers: readonly GuidedOffer[]; payload: Payload; safe: boolean; onRefused: Refused }) => (
   <>
     {bayNumbers(payload).map((bay) => (
       <div key={bay} className="flex flex-col gap-1">
@@ -86,7 +102,7 @@ const Bays = ({ offers, payload, onRefused }: { offers: readonly GuidedOffer[]; 
           </Text>
         )}
         <div className="flex items-center gap-2">
-          <HoldToConfirm className="flex-1" label={bayLabel(bay, payload)} enabled={offerReady(offers, 'release')} onConfirm={() => send(GRIPPER_RELEASE, bay, onRefused)} />
+          <HoldToConfirm className="flex-1" label={bayLabel(bay, payload)} enabled={offerReady(offers, 'release') && !safe} onConfirm={() => send(GRIPPER_RELEASE, bay, onRefused)} />
           <OutlinedButton enabled={offerReady(offers, 'grab')} label={`Grab bay ${bay}`} onClick={() => send(GRIPPER_GRAB, bay, onRefused)}>
             Grab
           </OutlinedButton>
@@ -118,14 +134,18 @@ export const GripperPanel = ({ offers, payload, onDismiss }: { offers: readonly 
   useTicker(STATUS_TICK_MS, [], () => setNow(Date.now()));
   const [refusal, setRefusal] = useState<string | null>(null);
   const status = refusal === null ? payloadStatus(stateJson, now) : { text: refusal, warning: true };
+  const lock = payloadLock(payloadRailOf(useQgcPath(PAYLOAD_RAIL_VIEW) as Json | null));
+  const safe = lock?.arms === true;
   return (
     <AircastSheet onDismissRequest={onDismiss} label="Payload">
       <div className="flex w-full flex-col gap-3 px-sheet pb-6">
+        <Text typography="titleLarge">Payload</Text>
+        {lock !== null ? <LockRow lock={lock} onRefused={setRefusal} /> : null}
         <Problems problems={payload.problems} onRefused={setRefusal} />
         <Text typography="bodyMedium" color={status?.warning === true ? md('error') : md('onSurfaceVariant')}>
           {status?.text ?? 'No payload command sent yet'}
         </Text>
-        {multiBay(payload) ? <Bays offers={offers} payload={payload} onRefused={setRefusal} /> : <SingleGripper offers={offers} onRefused={setRefusal} />}
+        {multiBay(payload) ? <Bays offers={offers} payload={payload} safe={safe} onRefused={setRefusal} /> : <SingleGripper offers={offers} safe={safe} onRefused={setRefusal} />}
       </div>
     </AircastSheet>
   );

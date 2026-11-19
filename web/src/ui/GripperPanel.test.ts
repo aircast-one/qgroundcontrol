@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { agoText, bayLabel, payloadStatus } from './GripperPanel';
+import { agoText, bayLabel, payloadLock, payloadStatus } from './GripperPanel';
+import { payloadRailOf } from './PayloadRail';
 
 const at = 1_000_000;
 
@@ -29,5 +30,13 @@ describe('PayloadStatusTest', () => {
 
   it('time since is coarse and never negative', () => {
     expect([agoText(at, at - 5_000), agoText(at, at + 59_999), agoText(at, at + 3_600_000)]).toEqual(['0 s ago', '59 s ago', '1 h ago']);
+  });
+});
+
+describe('PayloadLockTest', () => {
+  it('a safe payload says so in the sheet and offers to arm it there, instead of a drop that is refused', () => {
+    expect(payloadLock(payloadRailOf({ shown: true, armed: false }))).toEqual({ text: 'The payload is safe. Arm it to drop.', button: 'Arm payload', arms: true });
+    expect(payloadLock(payloadRailOf({ shown: true, armed: true }))?.button).toBe('Make safe');
+    expect(payloadLock(null), 'a payload without a rail has no lock to show').toBeNull();
   });
 });

@@ -108,6 +108,20 @@ test('the payload sheet offers drop and grab and reports what the aircraft answe
   await expect(vehicle.getByRole('dialog').getByRole('button', { name: 'Slide to drop' })).toBeVisible();
 });
 
+test('the payload sheet names itself, says a safe payload cannot drop and arms it in place', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Payload').click();
+  const sheet = vehicle.getByRole('dialog', { name: 'Payload' });
+  await expect(sheet.getByText('Payload', { exact: true })).toBeVisible();
+  await expect(sheet.getByText('The payload is safe. Arm it to drop.')).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Slide to drop' }), 'a drop the rail would refuse is not offered').toBeDisabled();
+  await sheet.getByRole('button', { name: 'Arm payload' }).click();
+  await expect(sheet.getByRole('button', { name: 'Make safe' })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Slide to drop' })).toBeEnabled();
+  await vehicle.keyboard.press('Escape');
+  await expect(vehicle.getByRole('group', { name: 'Payload', exact: true }).getByRole('button', { name: 'Payload armed, click to make safe' }), 'it is the same lock as the strip').toBeVisible();
+});
+
 test('in flight the payload strip is the only drop: the deck offers none, and the strip drops once armed', async ({ vehicle }) => {
   test.setTimeout(120_000);
   await expect(vehicle.getByRole('button', { name: 'Take off' })).toBeVisible();

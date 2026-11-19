@@ -11,7 +11,7 @@ import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { TAP_LOWER } from '@/kotlin/Platform';
 
 export const PAYLOAD_RAIL_VIEW = 'view.payloadRail';
-const ARM = 'payloadRail.arm';
+export const PAYLOAD_RAIL_ARM = 'payloadRail.arm';
 const SELECT = 'payloadRail.select';
 const DROP = 'payloadRail.drop';
 const DROP_ALL = 'payloadRail.dropAll';
@@ -105,7 +105,7 @@ export const PayloadRailStrip = () => {
     <div role="group" aria-label="Payload" className="flex flex-col items-center gap-1">
       <div className="flex items-start gap-2">
         <Labelled text={rail.armed ? 'Armed' : 'Safe'} tone={rail.armed ? md('error') : aircast('outdoorForeground')}>
-          <Tile label={lockLabel(rail)} enabled ring={false} fill={rail.armed ? md('error') : dim} hollow={false} onClick={() => run(ARM, !rail.armed)}>
+          <Tile label={lockLabel(rail)} enabled ring={false} fill={rail.armed ? md('error') : dim} hollow={false} onClick={() => run(PAYLOAD_RAIL_ARM, !rail.armed)}>
             <Drawable name="ic_shield" size={24} className={osdShadow()} />
           </Tile>
         </Labelled>
