@@ -9,7 +9,7 @@ import { md } from '@/theme/Colors';
 import { ParameterEditDialog } from '@/ui/ParameterLinks';
 import { bitmaskSummary, factFromParameter } from '@/ui/ParameterForm';
 import { ParameterToolsMenu } from '@/ui/ParameterTools';
-import { RcToParamDialog } from '@/ui/RcToParamDialog';
+import { RcToParamDialog, TUNE_BY_RC } from '@/ui/RcToParamDialog';
 import { enumLabel } from '@/ui/SettingsScreen';
 import { SearchPill } from '@/ui/SetupRow';
 import { SETUP, isPx4, parametersReady, setupReadiness } from '@/ui/SetupView';
@@ -181,7 +181,7 @@ const ParameterRow = ({ name, offersRcToParam }: { name: string; offersRcToParam
         </Text>
         {offersRcToParam && !fact.readOnly && !name.includes(':') ? (
           <span className="flex shrink-0" onClick={(event) => event.stopPropagation()}>
-            <TextButton onClick={() => setMapping(true)}>RC</TextButton>
+            <TextButton onClick={() => setMapping(true)}>{TUNE_BY_RC}</TextButton>
           </span>
         ) : null}
       </div>

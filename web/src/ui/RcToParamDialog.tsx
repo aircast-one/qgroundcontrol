@@ -22,9 +22,13 @@ export const rcToParam = (scale: string, center: string, tuningIndex: number, mi
   return { scale: s, center: c, tuningIndex, min: lo, max: hi };
 };
 
+export const TUNE_BY_RC = 'Tune by RC';
+
+export const rcCenter = (fact: Fact): string => (toDoubleOrNull(fact.valueString.trim()) !== null ? fact.valueString.trim() : typeof fact.value === 'number' ? String(fact.value) : fact.valueString);
+
 export const RcToParamDialog = ({ fact, onDismiss }: { fact: Fact; onDismiss: () => void }) => {
   const [scale, setScale] = useState(DEFAULT_RC_SCALE);
-  const [center, setCenter] = useState(() => (typeof fact.value === 'number' ? String(fact.value) : fact.valueString));
+  const [center, setCenter] = useState(() => rcCenter(fact));
   const [min, setMin] = useState(fact.minString);
   const [max, setMax] = useState(fact.maxString);
   const [tuningIndex, setTuningIndex] = useState(0);
@@ -57,7 +61,7 @@ export const RcToParamDialog = ({ fact, onDismiss }: { fact: Fact; onDismiss: ()
   return (
     <AlertDialog
       onDismissRequest={onDismiss}
-      title="RC To Param"
+      title={TUNE_BY_RC}
       text={
         <div className="flex flex-col gap-2">
           <Text typography="bodySmall">Bind an RC Channel to a parameter value. Tuning IDs can be mapped to an RC Channel from Radio Setup page.</Text>
