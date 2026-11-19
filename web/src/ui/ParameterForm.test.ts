@@ -441,11 +441,12 @@ describe('a setup page links to the setting Settings already owns instead of edi
 describe('PX4 safety reads like Settings › Safety', () => {
   const base = { path: 'p', description: '', units: 'm', valueString: '-1', value: -1, enumIndex: 1, isBool: false, isString: false, readOnly: false };
 
-  it('the geofence action names Hold mode as the Hover the link rows use', () => {
+  it('the geofence action names Hold mode as the link rows do, for the vehicle it is on', () => {
     const action = makeFact({ ...base, name: 'GF_ACTION', enumStrings: ['None', 'Hold mode', 'Return mode'], enumValues: ['0', '1', '2'] });
-    expect(pilotWordedAction(action).enumStrings).toEqual(['None', 'Hover', 'Return home']);
+    expect(pilotWordedAction(action, 'Hover').enumStrings).toEqual(['None', 'Hover', 'Return home']);
+    expect(pilotWordedAction(action, 'Circle').enumStrings, 'a plane on PX4 circles').toEqual(['None', 'Circle', 'Return home']);
     const other = makeFact({ ...base, name: 'COM_ARM_SWISBTN', enumStrings: ['Hold mode'], enumValues: ['1'] });
-    expect(pilotWordedAction(other).enumStrings).toEqual(['Hold mode']);
+    expect(pilotWordedAction(other, 'Circle').enumStrings).toEqual(['Hold mode']);
   });
 
   it('a slider behind a switch that is off reads Off rather than -1.000 m', () => {

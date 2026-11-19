@@ -1,6 +1,6 @@
 import { Fragment, useContext, useMemo, useState } from 'react';
 import { type Fact, Qgc, makeFact } from '@/bridge/Qgc';
-import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
+import { useQgcBool, useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import type { Json } from '@/bridge/Json';
 import { useProduceState } from '@/kotlin/Compose';
 import { AlertDialog, Text, TextButton } from '@/m3';
@@ -383,9 +383,10 @@ const PilotValueRow = ({ shown, setting }: { shown: Fact; setting: PilotSetting 
     const read = await parameterFact(name, setting.quantity);
     set(read === null ? shown : makeFact({ ...read, shortLabel: shown.shortLabel }));
   });
+  const hold = useHoldWord();
   return (
     <FactRow
-      fact={pilotChoices(fact)}
+      fact={pilotChoices(fact, hold)}
       subtitle={setting.hint}
       warning={setting.whenUnlimited !== null && factNumber(fact) === 0 ? setting.whenUnlimited : null}
       onWrite={() => setRevision((it) => it + 1)}
@@ -399,7 +400,8 @@ export const PilotLinkRow = ({ name, owner }: { name: string; owner: PilotOwner 
   const navigation = useContext(LocalAppNavigation);
   const live = useQgcPath(parameterPath(name, owner.setting.quantity));
   const fact = useProduceState<Fact | null>(null, [name, live], async (set) => set(await parameterFact(name, owner.setting.quantity)));
-  const status = fact === null ? '' : fact.isEnum ? pilotChoice(fact.enumStrings[fact.enumIndex] ?? fact.valueString) : valueText(fact);
+  const hold = useHoldWord();
+  const status = fact === null ? '' : fact.isEnum ? pilotChoice(fact.enumStrings[fact.enumIndex] ?? fact.valueString, hold) : valueText(fact);
   return (
     <SetupRow
       title={owner.setting.label}
@@ -414,8 +416,6 @@ export const PilotLinkRow = ({ name, owner }: { name: string; owner: PilotOwner 
 const PILOT_CHOICES: ReadonlyMap<string, string> = new Map([
   ['Disabled', DO_NOTHING],
   ['Disabled/NoAction', DO_NOTHING],
-  ['Hold mode', 'Hover'],
-  ['Loiter mode', 'Hover'],
   ['Return mode', 'Return home'],
   ['Land mode', 'Land'],
   ['Warning', 'Warn only'],
@@ -436,9 +436,19 @@ const PILOT_CHOICES: ReadonlyMap<string, string> = new Map([
   ['Enabled Auto DO_LAND_START/DO_RETURN_PATH_START or RTL', "Fly the mission's landing or return path, or return home"],
 ]);
 
-export const pilotChoice = (label: string): string => PILOT_CHOICES.get(label) ?? label;
+const HOLD_CHOICES: ReadonlySet<string> = new Set(['Hold mode', 'Loiter mode']);
 
-export const pilotChoices = (fact: Fact): Fact => makeFact({ ...fact, enumStrings: fact.enumStrings.map(pilotChoice) });
+export type VehicleShape = { fixedWing: boolean; vtol: boolean; rover: boolean; sub: boolean };
+
+export const holdWord = (shape: VehicleShape): string =>
+  shape.vtol ? 'Hover, or circle in forward flight' : shape.fixedWing ? 'Circle' : shape.rover ? 'Stop' : shape.sub ? 'Hold position' : 'Hover';
+
+export const useHoldWord = (): string =>
+  holdWord({ fixedWing: useQgcBool('vehicle.fixedWing'), vtol: useQgcBool('vehicle.vtol'), rover: useQgcBool('vehicle.rover'), sub: useQgcBool('vehicle.sub') });
+
+export const pilotChoice = (label: string, hold: string): string => (HOLD_CHOICES.has(label) ? hold : (PILOT_CHOICES.get(label) ?? label));
+
+export const pilotChoices = (fact: Fact, hold: string): Fact => makeFact({ ...fact, enumStrings: fact.enumStrings.map((it) => pilotChoice(it, hold)) });
 
 const PILOT_LABELS: ReadonlyMap<string, string> = new Map([
   ['guidedMinimumAltitude', 'Lowest altitude for takeoff and fly-to'],

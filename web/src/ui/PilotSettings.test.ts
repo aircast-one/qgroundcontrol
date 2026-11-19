@@ -4,7 +4,7 @@ import { calibrationState } from '@/ui/CalibrationView';
 import { SENSORS } from '@/ui/SetupPages';
 import { SetupComponent, splitDesktopOnly } from '@/ui/SetupScreen';
 import { SettingsGroup } from '@/ui/SettingsScreen';
-import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, firstReported, offlineSettings, type ParameterWriter, readingOf, writeAllOrNone, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
+import { FENCE_CIRCLE, FENCE_MAX_ALTITUDE, fenceOff, pilotOwner, fenceRestore, fenceTurnOn, firstReported, offlineSettings, type ParameterWriter, readingOf, writeAllOrNone, holdWord, pilotChoice, pilotSearchHits, pilotSections, pilotSettings, pilotWorded, sensorChecks, sensorHealthy } from './PilotSettings';
 
 const parameter = (name: string, description = 'Engineer description') =>
   makeFact({
@@ -86,14 +86,25 @@ describe('PilotSettingsTest', () => {
   });
 
   it("failsafe choices read in DJI's words", () => {
-    expect(pilotChoice('Hold mode')).toBe('Hover');
-    expect(pilotChoice('Return mode')).toBe('Return home');
-    expect(pilotChoice('Terminate')).toBe('Stop motors');
-    expect(pilotChoice('Disabled/NoAction'), 'ArduPilot words its off choice differently').toBe('Do nothing');
-    expect(pilotChoice('Enabled always RTL'), "ArduPilot's radio failsafe reads like the others").toBe('Return home');
-    expect(pilotChoice('Enabled always SmartRTL or Land')).toBe('Retrace the path home, or land');
-    expect(pilotChoice('Enabled always Brake or Land')).toBe('Brake, or land');
-    expect(pilotChoice('Something a newer firmware adds'), 'a choice with no plain wording yet keeps its own').toBe('Something a newer firmware adds');
+    expect(pilotChoice('Hold mode', 'Hover')).toBe('Hover');
+    expect(pilotChoice('Return mode', 'Hover')).toBe('Return home');
+    expect(pilotChoice('Terminate', 'Hover')).toBe('Stop motors');
+    expect(pilotChoice('Disabled/NoAction', 'Hover'), 'ArduPilot words its off choice differently').toBe('Do nothing');
+    expect(pilotChoice('Enabled always RTL', 'Hover'), "ArduPilot's radio failsafe reads like the others").toBe('Return home');
+    expect(pilotChoice('Enabled always SmartRTL or Land', 'Hover')).toBe('Retrace the path home, or land');
+    expect(pilotChoice('Enabled always Brake or Land', 'Hover')).toBe('Brake, or land');
+    expect(pilotChoice('Something a newer firmware adds', 'Hover'), 'a choice with no plain wording yet keeps its own').toBe('Something a newer firmware adds');
+  });
+
+  it('holding in place is named for what the vehicle does: a copter hovers, a plane circles', () => {
+    const shape = { fixedWing: false, vtol: false, rover: false, sub: false };
+    const plane = holdWord({ ...shape, fixedWing: true });
+    expect(holdWord(shape), 'a multirotor or helicopter').toBe('Hover');
+    expect(plane).toBe('Circle');
+    expect(holdWord({ ...shape, fixedWing: true, vtol: true }), 'a VTOL hovers until it is in forward flight').toBe('Hover, or circle in forward flight');
+    expect(holdWord({ ...shape, rover: true })).toBe('Stop');
+    expect(holdWord({ ...shape, sub: true })).toBe('Hold position');
+    expect(['Hold mode', 'Loiter mode'].map((it) => pilotChoice(it, plane))).toEqual(['Circle', 'Circle']);
   });
 
   it("search finds a pilot setting by its words and by either firmware's parameter name", () => {

@@ -10,7 +10,7 @@ import { sentenceCase } from '@/map/SentenceCase';
 import { aircast, md, withAlpha } from '@/theme/Colors';
 import { DIALOG_CONTROL, EscCalibrationDialog } from '@/ui/EscCalibration';
 import { parameterPath } from '@/ui/ParametersScreen';
-import { PilotLinkRow, pilotChoices, pilotOwner } from '@/ui/PilotSettings';
+import { PilotLinkRow, pilotChoices, pilotOwner, useHoldWord } from '@/ui/PilotSettings';
 import { type PowerCalculator, PowerCalcDialog, powerCalculator } from '@/ui/PowerCalc';
 import { FactRow } from '@/ui/SettingsScreen';
 import { EmptyState, SectionHeader } from '@/ui/SetupRow';
@@ -140,7 +140,7 @@ export const withPilotLinks = (rows: readonly ParameterRows[]): ParameterRows[] 
 
 const PILOT_WORDED_ACTIONS: ReadonlySet<string> = new Set(['GF_ACTION']);
 
-export const pilotWordedAction = (fact: Fact): Fact => (PILOT_WORDED_ACTIONS.has(fact.name) ? pilotChoices(fact) : fact);
+export const pilotWordedAction = (fact: Fact, hold: string): Fact => (PILOT_WORDED_ACTIONS.has(fact.name) ? pilotChoices(fact, hold) : fact);
 
 export const switchedOff = (fact: Fact): boolean => !fact.enabled && (fact.disabledReason ?? '').startsWith('Turn on ');
 
@@ -154,6 +154,7 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
   const [calibratingEscs, setCalibratingEscs] = useState(false);
   const [confirming, setConfirming] = useState<Fact | null>(null);
   const reload = () => setReloads((it) => it + 1);
+  const hold = useHoldWord();
   const press = (fact: Fact) =>
     void (async () => {
       await Qgc.set(fact.path, true);
@@ -209,7 +210,7 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
     const calculator = rowsSection.calculators.get(fact.path);
     return (
       <>
-        <FactRow fact={pilotWordedAction(fact)} titleColor={highlighted.has(fact.name) ? aircast('warning') : undefined} onWrite={reload} />
+        <FactRow fact={pilotWordedAction(fact, hold)} titleColor={highlighted.has(fact.name) ? aircast('warning') : undefined} onWrite={reload} />
         {calculator ? (
           <Surface className="mx-4 my-2" color={md('surfaceContainer')} shape="medium">
             <div className="flex items-center gap-3 p-4">
