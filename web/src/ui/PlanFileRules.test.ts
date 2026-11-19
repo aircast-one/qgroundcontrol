@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KML_EXTENSION, PLAN_EXTENSION, mainBoundaryName, saveBlockedReason, withExtension } from './PlanFileRules';
+import { KML_EXTENSION, PLAN_EXTENSION, kmlNameFor, mainBoundaryName, saveBlockedReason, withExtension } from './PlanFileRules';
 
 describe('PlanFileRulesTest', () => {
   it('a reason the core declines to give does not reach the screen as the word null', () => {
@@ -22,5 +22,11 @@ describe('PlanFileRulesTest', () => {
     expect(withExtension('survey.PLAN', PLAN_EXTENSION)).toBe('survey.PLAN');
     expect(withExtension('survey.txt', PLAN_EXTENSION)).toBe('survey.txt.plan');
     expect(withExtension('area', KML_EXTENSION)).toBe('area.kml');
+  });
+
+  it('a KML export is named after the plan, and only an unnamed plan falls back to mission.kml', () => {
+    expect(kmlNameFor('North field.plan')).toBe('North field.kml');
+    expect(kmlNameFor(null)).toBe('mission.kml');
+    expect(kmlNameFor(' ')).toBe('mission.kml');
   });
 });

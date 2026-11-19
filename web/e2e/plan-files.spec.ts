@@ -25,6 +25,9 @@ test('save as downloads the plan and open plan loads it back', async ({ app }, t
   expect(plan.fileType).toBe('Plan');
   expect(plan.mission.items.length).toBeGreaterThanOrEqual(4);
   await expect(app.getByText('Plan saved.')).toBeVisible();
+  const exporting = app.waitForEvent('download');
+  await planMenu(app, 'Export KML…');
+  expect((await exporting).suggestedFilename(), 'the KML of a named plan was always called mission.kml').toBe('North field.kml');
 
   await planMenu(app, 'New plan…');
   await app.getByRole('dialog').filter({ hasText: 'New plan' }).getByText('Blank mission').click();

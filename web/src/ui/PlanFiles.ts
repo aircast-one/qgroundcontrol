@@ -10,13 +10,13 @@ import { delay } from '@/kotlin/Std';
 import { PlanFocus, freshPlanView } from '@/map/VehicleSync';
 import { LocalOpenPlan } from '@/ui/AppNavigation';
 import {
-  DEFAULT_KML_NAME,
   DEFAULT_PLAN_NAME,
   DOWNLOADED_PLAN,
   KML_EXTENSION,
   PLAN_EXTENSION,
   boundaryCacheName,
   importedNothing,
+  kmlNameFor,
   mainBoundaryName,
   planIsSyncing,
   saveBlockedReason,
@@ -275,7 +275,7 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
       }),
     saveAs: (name: string) => guarded(() => writeTo(name.trim() === '' ? (openPlan.name.value ?? DEFAULT_PLAN_NAME) : name.trim())),
     save,
-    exportKml: () => void guarded(() => exportKmlTo(DEFAULT_KML_NAME)),
+    exportKml: () => void guarded(() => exportKmlTo(kmlNameFor(openPlan.name.value))),
     importBoundary,
     patternChoice: {
       options: () => (pendingImport !== null ? patterns : []),

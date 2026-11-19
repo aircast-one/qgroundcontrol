@@ -422,7 +422,7 @@ pub fn document(plan: &Value, planned: &Planned) -> Result<String, String> {
         .collect();
     let body = [
         vec![
-            text("name", format!("{} Plan KML", planned.application)),
+            text("name", format!("{} Plan KML", planned.application).trim()),
             text("open", "1"),
         ],
         styles(),
@@ -477,6 +477,20 @@ mod tests {
         };
         let kml = document(&plan, &planned).unwrap();
         assert!(kml.contains("<name>QGC Plan KML</name>"));
+        let unnamed = Planned {
+            application: String::new(),
+            ..planned
+        };
+        assert!(
+            document(&plan, &unnamed)
+                .unwrap()
+                .contains("<name>Plan KML</name>"),
+            "a head that names no application does not start the document name with a space"
+        );
+        let planned = Planned {
+            application: "QGC".into(),
+            ..unnamed
+        };
         assert!(kml.contains("<coordinates>8.0000000,47.0000000,400.00\n8.0000000,47.0000000,430.00\n8.0010000,47.0010000,450.00\n</coordinates>"), "{kml}");
         assert!(
             kml.contains("<name>0 </name>")

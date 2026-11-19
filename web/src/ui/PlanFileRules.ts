@@ -133,6 +133,8 @@ export const planTitle = (documentName: string | null): string => {
   return dot > 0 ? documentName.slice(0, dot) : documentName;
 };
 
+export const kmlNameFor = (documentName: string | null): string => (documentName === null || documentName.trim() === '' ? DEFAULT_KML_NAME : withExtension(planTitle(documentName), KML_EXTENSION));
+
 export const planStatusText = (view: Json | null): string => optText(view, 'status');
 
 export const DRAWN_KINDS: ReadonlySet<string> = new Set(['settings', 'takeoff', 'land', 'waypoint', 'command', 'altitude', 'roi', 'survey', 'corridor', 'structure']);
