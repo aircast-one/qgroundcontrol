@@ -241,6 +241,23 @@ test('a new fixed-wing landing says how to finish its setup, and finishing it cl
   await expect(unfinished).toHaveCount(0, { timeout: 15_000 });
 });
 
+test('an AMSL plan read back from the aircraft keeps its AMSL frame instead of showing Mixed modes', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(app);
+  await app.getByRole('button', { name: 'Relative to launch', exact: true }).click();
+  await app.getByRole('menuitem', { name: /^AMSL/ }).click();
+  await expect(app.getByRole('button', { name: 'AMSL', exact: true })).toBeVisible();
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Upload', exact: true }).click();
+  await expect(app.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
+  await planMenu(app, 'Download from vehicle');
+  await expect(app.getByText('Plan downloaded from the vehicle.')).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByRole('button', { name: 'AMSL', exact: true }), 'the takeoff climbs relative to launch, which made the read-back plan Mixed modes').toBeVisible();
+  await expect(app.getByRole('button', { name: 'Mixed modes', exact: true })).toHaveCount(0);
+});
+
 test('a plan the connected vehicle cannot fly says which items, and is not converted', async ({ app }) => {
   await openMenu(app, 'Plan');
   await app.getByRole('button', { name: /^Vehicle, / }).click();
