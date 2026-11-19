@@ -5,42 +5,42 @@
 [
 {
     "name":             "x",
-    "shortDesc": "X",
+    "shortDesc": "North",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "m"
 },
 {
     "name":             "y",
-    "shortDesc": "Y",
+    "shortDesc": "East",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "m"
 },
 {
     "name":             "z",
-    "shortDesc": "Z",
+    "shortDesc": "Down",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "vertical m"
 },
 {
     "name":             "vx",
-    "shortDesc": "VX",
+    "shortDesc": "North Velocity",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "m/s"
 },
 {
     "name":             "vy",
-    "shortDesc": "Vy",
+    "shortDesc": "East Velocity",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "m/s"
 },
 {
     "name":             "vz",
-    "shortDesc": "Vz",
+    "shortDesc": "Down Velocity",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "m/s"

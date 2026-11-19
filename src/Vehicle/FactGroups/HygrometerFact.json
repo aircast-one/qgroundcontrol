@@ -12,14 +12,14 @@
 },
 {
     "name":             "humidity",
-    "shortDesc": "Humidity %",
+    "shortDesc": "Humidity",
     "type":             "double",
     "decimalPlaces":    3,
     "units":            "%"
 },
 {
     "name":             "hygrometerid",
-    "shortDesc": "ID",
+    "shortDesc": "Hygrometer ID",
     "type":             "uint16",
     "decimalPlaces":    0
 }

@@ -105,7 +105,7 @@ describe('FlightDeckEntriesTest', () => {
 
 describe('OsdLabelTest', () => {
   it("the flying readings shorten to DJI's letters and anything else keeps its name", () => {
-    expect(['Distance to home', 'Alt (Rel)', 'Ground Speed', 'Climb Rate'].map(osdLabel)).toEqual(['D', 'H', 'H.S', 'V.S']);
+    expect(['Distance to home', 'Altitude Above Home', 'Ground Speed', 'Climb Rate', 'Airspeed'].map(osdLabel)).toEqual(['D', 'H', 'H.S', 'V.S', 'A.S']);
     expect(osdLabel('Flight time')).toBe('FLIGHT TIME');
     expect(osdLabel('From you')).toBe('D.OP');
     expect(['distanceToHome', 'altitudeRelative', 'groundSpeed', 'climbRate'].map(osdLabel)).toEqual(['D', 'H', 'H.S', 'V.S']);
@@ -120,7 +120,7 @@ describe('DjiChromeTest', () => {
   });
 
   it('speeds go on the small top row and the rest on the large one', () => {
-    expect(['Ground Speed', 'Climb Rate', 'Alt (Rel)', 'Distance to home'].map(osdIsSpeed)).toEqual([true, true, false, false]);
+    expect(['Ground Speed', 'Climb Rate', 'Altitude Above Home', 'Distance to home'].map(osdIsSpeed)).toEqual([true, true, false, false]);
   });
 });
 

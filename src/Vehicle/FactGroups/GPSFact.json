@@ -22,13 +22,13 @@
 },
 {
     "name":             "hdop",
-    "shortDesc": "HDOP",
+    "shortDesc": "Horizontal Precision (HDOP)",
     "type":             "double",
     "decimalPlaces":    1
 },
 {
     "name":             "vdop",
-    "shortDesc": "VDOP",
+    "shortDesc": "Vertical Precision (VDOP)",
     "type":             "double",
     "decimalPlaces":    1
 },
@@ -56,12 +56,12 @@
 },
 {
     "name":             "count",
-    "shortDesc": "Sat Count",
+    "shortDesc": "Satellites",
     "type":             "uint32"
 },
 {
     "name":             "systemErrors",
-    "shortDesc": "General System Errors",
+    "shortDesc": "System Errors",
     "type":             "uint32"
 },
 {
@@ -100,7 +100,7 @@
 },
 {
     "name":             "gnssSignalQuality",
-    "shortDesc": "Gnss Signal Quality",
+    "shortDesc": "GNSS Signal Quality",
     "type":             "uint8"
 },
 {

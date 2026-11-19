@@ -10,14 +10,14 @@
 },
 {
     "name":             "ecuIndex",
-    "shortDesc":        "Ecu Index",
+    "shortDesc":        "ECU Index",
     "type":             "float",
     "decimalPlaces":    1,
     "units":            "A"
 },
 {
     "name":             "rpm",
-    "shortDesc":        "Rpm",
+    "shortDesc":        "RPM",
     "type":             "float",
     "decimalPlaces":    1
 },
@@ -51,35 +51,35 @@
 },
 {
     "name":             "sparkTime",
-    "shortDesc":        "Spark dwell time",
+    "shortDesc":        "Spark Dwell Time",
     "type":             "float",
     "decimalPlaces":    1,
     "units":            "ms"
 },
 {
     "name":             "baroPress",
-    "shortDesc":        "BarometricPressure",
+    "shortDesc":        "Barometric Pressure",
     "type":             "float",
     "decimalPlaces":    1,
     "units":            "kPa"
 },
 {
     "name":             "intakePress",
-    "shortDesc":        "Intake mainfold pressure",
+    "shortDesc":        "Intake Manifold Pressure",
     "type":             "float",
     "decimalPlaces":    1,
     "units":            "kPa"
 },
 {
     "name":             "intakeTemp",
-    "shortDesc":        "Intake mainfold temperature",
+    "shortDesc":        "Intake Manifold Temperature",
     "type":             "float",
     "decimalPlaces":    1,
     "units":            "°C"
 },
 {
     "name":             "cylinderTemp",
-    "shortDesc":        "Cylinder head temperature",
+    "shortDesc":        "Cylinder Head Temperature",
     "type":             "float",
     "decimalPlaces":    1,
     "units":            "°C"
@@ -100,7 +100,7 @@
 },
 {
     "name":             "exGasTemp",
-    "shortDesc":        "Exhaust gas Temperature",
+    "shortDesc":        "Exhaust Gas Temperature",
     "type":             "float",
     "decimalPlaces":    1,
     "units":            "°C"
@@ -114,7 +114,7 @@
 },
 {
     "name":             "ptComp",
-    "shortDesc":        "Pt Compensation",
+    "shortDesc":        "Pressure and Temperature Compensation",
     "type":             "float",
     "decimalPlaces":    1
 },

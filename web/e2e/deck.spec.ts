@@ -87,6 +87,8 @@ test('choose readings opens a chooser of the same name whose groups and readings
   await expect(chooser.getByText('Battery 1', { exact: true })).toBeVisible();
   await expect(chooser.getByText(/^(EstimatorStatus|Gimbal\d+|Battery\d|managerCompid|runtime)$/)).toHaveCount(0);
   await expect(chooser.getByText('Time remaining', { exact: true }), 'one Time remaining row per pack').toHaveCount(2);
+  await expect(chooser.getByText('Altitude above home', { exact: true })).toBeVisible();
+  await expect(chooser.getByText(/Alt \(|esimate|mainfold|BarometricPressure|^Vibe |spd|Next WP|Hobbs|^Imu |X track|Range finder dist|^Is stale$|^Manager compid$/), 'every reading reads as words').toHaveCount(0);
 });
 
 test('map layers switches the base map', async ({ vehicle: app }) => {

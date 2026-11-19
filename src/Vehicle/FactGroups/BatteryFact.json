@@ -5,7 +5,7 @@
 [
 {
     "name":             "id",
-    "shortDesc":        "Battery Id",
+    "shortDesc":        "Battery ID",
     "type":             "uint32"
 },
 {
@@ -33,7 +33,7 @@
 },
 {
     "name":             "percentRemaining",
-    "shortDesc":        "Percent",
+    "shortDesc":        "Charge",
     "type":             "double",
     "decimalPlaces":    0,
     "units":            "%"
@@ -61,7 +61,7 @@
 },
 {
     "name":             "instantPower",
-    "shortDesc":        "Watts",
+    "shortDesc":        "Power",
     "type":             "double",
     "decimalPlaces":    2,
     "units":            "W"

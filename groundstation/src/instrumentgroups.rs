@@ -38,7 +38,7 @@ fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
                 json!({
                     "name": property,
                     "selection": format!("{prefix}{property}"),
-                    "label": described.map_or_else(|| sentence(named), crate::label::capitalised),
+                    "label": described.map_or_else(|| undescribed_label(property, named), crate::label::capitalised),
                 })
             })
         })
@@ -46,6 +46,23 @@ fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
 }
 
 const TEXT_TWIN: &str = "Str";
+
+const UNDESCRIBED_LABELS: &[(&str, &str)] = &[
+    ("airSpeedSetpoint", "Airspeed target"),
+    ("altitudeTuning", "Altitude change since connecting"),
+    ("altitudeTuningSetpoint", "Altitude target since connecting"),
+    ("xTrackError", "Distance off the track"),
+    ("rangeFinderDist", "Rangefinder distance"),
+    ("isStale", "GPS data out of date"),
+    ("managerCompid", "Gimbal manager ID"),
+];
+
+fn undescribed_label(property: &str, named: &str) -> String {
+    UNDESCRIBED_LABELS
+        .iter()
+        .find(|(name, _)| *name == property)
+        .map_or_else(|| sentence(named), |(_, label)| label.to_string())
+}
 
 fn property_of(fact: &Value) -> Option<&str> {
     fact.get("property").and_then(Value::as_str)
@@ -339,6 +356,47 @@ mod tests {
             "vehicle.altitudeRelative",
             "a bare selection is the vehicle's own reading"
         );
+    }
+
+    #[test]
+    fn every_reading_in_the_chooser_reads_as_words() {
+        let (groups, vehicle) = crate::vehiclefact::instrument_catalogue(false);
+        let labels: Vec<String> = groups
+            .iter()
+            .map(|(group, facts)| facts_of(facts, &format!("{group}/")))
+            .chain(std::iter::once(facts_of(&vehicle, "")))
+            .flatten()
+            .filter_map(|fact| fact["label"].as_str().map(str::to_string))
+            .collect();
+        let jargon = [
+            "Alt (",
+            "Esimate",
+            "mainfold",
+            "BarometricPressure",
+            "Vibe ",
+            "Spd",
+            "Next WP",
+            "Sat Count",
+            "Throttle %",
+            "Imu ",
+            "Hobbs",
+            "X track",
+            "Range finder dist",
+            "Is stale",
+            "Manager compid",
+            "Altitude tuning",
+            "Air Speed",
+        ];
+        let found: Vec<&String> = labels
+            .iter()
+            .filter(|label| jargon.iter().any(|word| label.contains(word)))
+            .collect();
+        assert!(
+            found.is_empty(),
+            "jargon left in Choose readings: {found:?}"
+        );
+        assert!(labels.contains(&"Altitude Above Home".to_string()));
+        assert!(labels.contains(&"Distance off the track".to_string()));
     }
 
     #[test]

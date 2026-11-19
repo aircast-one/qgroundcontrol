@@ -5,128 +5,128 @@
 [
 {
     "name":         "goodAttitudeEsimate",
-    "shortDesc":    "Good Attitude Esimate",
+    "shortDesc":    "Good Attitude Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodHorizVelEstimate",
-    "shortDesc":    "Good Horiz Vel Estimate",
+    "shortDesc":    "Good Horizontal Velocity Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodVertVelEstimate",
-    "shortDesc":    "Good Vert Vel Estimate",
+    "shortDesc":    "Good Vertical Velocity Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodHorizPosRelEstimate",
-    "shortDesc":    "Good Horiz Pos Rel Estimate",
+    "shortDesc":    "Good Relative Horizontal Position Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodHorizPosAbsEstimate",
-    "shortDesc":    "Good Horiz Pos Abs Estimate",
+    "shortDesc":    "Good Absolute Horizontal Position Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodVertPosAbsEstimate",
-    "shortDesc":    "Good Vert Pos Abs Estimate",
+    "shortDesc":    "Good Absolute Vertical Position Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodVertPosAGLEstimate",
-    "shortDesc":    "Good Vert Pos AGL Estimate",
+    "shortDesc":    "Good Height Above Ground Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodConstPosModeEstimate",
-    "shortDesc":    "Good Const Pos Mode Estimate",
+    "shortDesc":    "Good Constant Position Mode Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodPredHorizPosRelEstimate",
-    "shortDesc":    "Good Pred Horiz Pos Rel Estimate",
+    "shortDesc":    "Good Predicted Relative Horizontal Position Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "goodPredHorizPosAbsEstimate",
-    "shortDesc":    "Good Pred Horiz Pos Abs Estimate",
+    "shortDesc":    "Good Predicted Absolute Horizontal Position Estimate",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "gpsGlitch",
-    "shortDesc":    "Gps Glitch",
+    "shortDesc":    "GPS Glitch",
     "type":         "bool",
     "default":      false
 },
 {
     "name":         "accelError",
-    "shortDesc":    "Accel Error",
+    "shortDesc":    "Accelerometer Error",
     "type":         "bool",
     "default":      false
 },
 {
     "name":             "velRatio",
-    "shortDesc":        "Vel Ratio",
+    "shortDesc":        "Velocity Test Ratio",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null
 },
 {
     "name":             "horizPosRatio",
-    "shortDesc":        "Horiz Pos Ratio",
+    "shortDesc":        "Horizontal Position Test Ratio",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null
 },
 {
     "name":             "vertPosRatio",
-    "shortDesc":        "Vert Pos Ratio",
+    "shortDesc":        "Vertical Position Test Ratio",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null
 },
 {
     "name":             "magRatio",
-    "shortDesc":        "Mag Ratio",
+    "shortDesc":        "Compass Test Ratio",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null
 },
 {
     "name":             "haglRatio",
-    "shortDesc":        "HAGL Ratio",
+    "shortDesc":        "Height Above Ground Test Ratio",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null
 },
 {
     "name":             "tasRatio",
-    "shortDesc":        "TAS Ratio",
+    "shortDesc":        "Airspeed Test Ratio",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null
 },
 {
     "name":             "horizPosAccuracy",
-    "shortDesc":        "Horiz Pos Accuracy",
+    "shortDesc":        "Horizontal Position Accuracy",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null
 },
 {
     "name":             "vertPosAccuracy",
-    "shortDesc":        "Vert Pos Accuracy",
+    "shortDesc":        "Vertical Position Accuracy",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null

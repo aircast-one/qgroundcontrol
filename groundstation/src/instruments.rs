@@ -25,12 +25,12 @@ pub const DEFAULTS: &[&str] = &[
     "vehicle/climbRate",
 ];
 pub const FORWARD_FLIGHT_DEFAULTS: &[&str] = &["vehicle/airSpeed"];
-const DEFAULT_TEXT: &[(&str, &str)] = &[("vehicle/airSpeed", "AirSpd")];
 const DEFAULT_ICONS: &[(&str, &str)] = &[
     ("vehicle/distanceToHome", "home.svg"),
     ("vehicle/altitudeRelative", "arrow-thick-up.svg"),
     ("vehicle/groundSpeed", "arrow-simple-right.svg"),
     ("vehicle/climbRate", "arrow-simple-up.svg"),
+    ("vehicle/airSpeed", "dashboard.svg"),
 ];
 
 const ABSENT: &str = "\u{2014}";
@@ -171,7 +171,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
                 "id": format!("{group}/{name}"),
                 "group": group,
                 "name": name,
-                "label": args.is_empty().then(|| DEFAULT_TEXT.iter().find(|(id, _)| *id == format!("{group}/{name}")).map(|(_, text)| text.to_string())).flatten().or(described).unwrap_or_else(|| capitalised(name)),
+                "label": described.unwrap_or_else(|| capitalised(name)),
                 "defaultIcon": DEFAULT_ICONS.iter().find(|(id, _)| *id == format!("{group}/{name}")).map_or("", |(_, icon)| icon),
                 "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
@@ -308,9 +308,12 @@ mod tests {
             fn watch(&self, _p: &[String]) {}
         }
         assert_eq!(
-            instruments_view(&Plane, &[])["items"][4]["label"],
-            "AirSpd",
-            "the default cell carries QGCCorePlugin's own text"
+            (
+                &instruments_view(&Plane, &[])["items"][4]["label"],
+                &instruments_view(&Plane, &[])["items"][4]["defaultIcon"]
+            ),
+            (&json!("Air Speed"), &json!("dashboard.svg")),
+            "the default airspeed over the picture is a glyph and its value, like the readings beside it, not AIRSPD"
         );
         assert_eq!(
             instruments_view(&Plane, &["vehicle/airSpeed".to_string()])["items"][0]["label"],

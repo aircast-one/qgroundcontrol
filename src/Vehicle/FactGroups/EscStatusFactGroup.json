@@ -10,7 +10,7 @@
 },
 {
     "name":             "rpm",
-    "shortDesc":        "Rotation Per Minute",
+    "shortDesc":        "RPM",
     "type":             "float",
     "decimalPlaces":    2,
     "default":          null
@@ -34,7 +34,7 @@
 },
 {
     "name":             "count",
-    "shortDesc":        "Total number of ESCs",
+    "shortDesc":        "ESC Count",
     "type":             "uint8",
     "default":          0
 },
@@ -48,7 +48,7 @@
 },
 {
     "name":             "info",
-    "shortDesc":        "Online/Offline status",
+    "shortDesc":        "Online Status",
     "type":             "uint8",
     "default":          0
 },

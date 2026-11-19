@@ -6,7 +6,7 @@ import org.junit.Test
 class OsdLabelTest {
     @Test
     fun `the flying readings shorten to DJI's letters and anything else keeps its name`() {
-        assertEquals(listOf("D", "H", "H.S", "V.S"), listOf("Distance to home", "Alt (Rel)", "Ground Speed", "Climb Rate").map(::osdLabel))
+        assertEquals(listOf("D", "H", "H.S", "V.S"), listOf("Distance to home", "Altitude Above Home", "Ground Speed", "Climb Rate").map(::osdLabel))
         assertEquals("FLIGHT TIME", osdLabel("Flight time"))
         assertEquals("D.OP", osdLabel("From you"))
         assertEquals(listOf("D", "H", "H.S", "V.S"), listOf("distanceToHome", "altitudeRelative", "groundSpeed", "climbRate").map(::osdLabel))
@@ -23,7 +23,7 @@ class DjiChromeTest {
 
     @Test
     fun `speeds go on the small top row and the rest on the large one`() {
-        assertEquals(listOf(true, true, false, false), listOf("Ground Speed", "Climb Rate", "Alt (Rel)", "Distance to home").map(::osdIsSpeed))
+        assertEquals(listOf(true, true, false, false), listOf("Ground Speed", "Climb Rate", "Altitude Above Home", "Distance to home").map(::osdIsSpeed))
     }
 
     @Test

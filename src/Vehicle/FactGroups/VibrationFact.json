@@ -5,35 +5,35 @@
 [
 {
     "name":             "xAxis",
-    "shortDesc": "Vibe xAxis",
+    "shortDesc": "Vibration X",
     "type":             "double",
     "decimalPlaces":    1
 },
 {
     "name":             "yAxis",
-    "shortDesc": "Vibe yAxis",
+    "shortDesc": "Vibration Y",
     "type":             "double",
     "decimalPlaces":    1
 },
 {
     "name":             "zAxis",
-    "shortDesc": "Vibe zAxis",
+    "shortDesc": "Vibration Z",
     "type":             "double",
     "decimalPlaces":    1
 },
 {
     "name":             "clipCount1",
-    "shortDesc": "Clip Count (1)",
+    "shortDesc": "Accelerometer 1 Clipping",
     "type":             "uint32"
 },
 {
     "name":             "clipCount2",
-    "shortDesc": "Clip Count (2)",
+    "shortDesc": "Accelerometer 2 Clipping",
     "type":             "uint32"
 },
 {
     "name":             "clipCount3",
-    "shortDesc": "Clip Count (3)",
+    "shortDesc": "Accelerometer 3 Clipping",
     "type":             "uint32"
 }
 ]

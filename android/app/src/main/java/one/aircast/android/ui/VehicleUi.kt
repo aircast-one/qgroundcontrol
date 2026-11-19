@@ -769,11 +769,10 @@ private val RAIL_LIFT = 56.dp
 
 private val OSD_LABELS = mapOf(
     "distance to home" to "D",
-    "alt (rel)" to "H",
+    "altitude above home" to "H",
     "altitude" to "H",
     "ground speed" to "H.S",
     "climb rate" to "V.S",
-    "air speed" to "A.S",
     "airspeed" to "A.S",
     "distance to operator" to "D.OP",
     "from you" to "D.OP",

@@ -873,11 +873,10 @@ private let RAIL_LIFT: CGFloat = 56
 
 private let OSD_LABELS = [
     "distance to home": "D",
-    "alt (rel)": "H",
+    "altitude above home": "H",
     "altitude": "H",
     "ground speed": "H.S",
     "climb rate": "V.S",
-    "air speed": "A.S",
     "airspeed": "A.S",
     "distance to operator": "D.OP",
     "from you": "D.OP",

@@ -85,7 +85,7 @@
 },
 {
     "name":             "minDistance",
-    "shortDesc":        "Minimum distance sensor can detect",
+    "shortDesc":        "Minimum Range",
     "type":             "double",
     "default":          null,
     "decimalPlaces":    2,
@@ -93,7 +93,7 @@
 },
 {
     "name":             "maxDistance",
-    "shortDesc":        "Maximum distance sensor can detect",
+    "shortDesc":        "Maximum Range",
     "type":             "double",
     "default":          null,
     "decimalPlaces":    2,

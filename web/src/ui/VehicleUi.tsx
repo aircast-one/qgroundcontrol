@@ -891,11 +891,10 @@ const RAIL_LIFT = 56;
 
 const OSD_LABELS: ReadonlyMap<string, string> = new Map([
   ['distance to home', 'D'],
-  ['alt (rel)', 'H'],
+  ['altitude above home', 'H'],
   ['altitude', 'H'],
   ['ground speed', 'H.S'],
   ['climb rate', 'V.S'],
-  ['air speed', 'A.S'],
   ['airspeed', 'A.S'],
   ['distance to operator', 'D.OP'],
   ['from you', 'D.OP'],

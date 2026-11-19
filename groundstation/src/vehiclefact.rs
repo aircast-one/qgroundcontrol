@@ -1918,7 +1918,7 @@ mod tests {
                 fact("deviceId")["value"].clone(),
                 fact("deviceId")["shortDescription"].clone()
             ),
-            (json!(154), json!("gimbal device Id"))
+            (json!(154), json!("Gimbal Device ID"))
         );
         assert_eq!(
             (
@@ -1947,7 +1947,7 @@ mod tests {
                 json!("Gimbal Pitch"),
                 json!("Gimbal Yaw"),
                 json!("Azimuth"),
-                json!("gimbal device Id"),
+                json!("Gimbal Device ID"),
                 json!("")
             ]
         );

@@ -3,7 +3,7 @@ import XCTest
 
 final class OsdLabelTests: XCTestCase {
     func testTheFlyingReadingsShortenToDjisLettersAndAnythingElseKeepsItsName() {
-        XCTAssertEqual(["Distance to home", "Alt (Rel)", "Ground Speed", "Climb Rate"].map(osdLabel), ["D", "H", "H.S", "V.S"])
+        XCTAssertEqual(["Distance to home", "Altitude Above Home", "Ground Speed", "Climb Rate"].map(osdLabel), ["D", "H", "H.S", "V.S"])
         XCTAssertEqual(osdLabel("Flight time"), "FLIGHT TIME")
         XCTAssertEqual(osdLabel("From you"), "D.OP")
         XCTAssertEqual(["distanceToHome", "altitudeRelative", "groundSpeed", "climbRate"].map(osdLabel), ["D", "H", "H.S", "V.S"])
@@ -18,7 +18,7 @@ final class DjiChromeTests: XCTestCase {
     }
 
     func testSpeedsGoOnTheSmallTopRowAndTheRestOnTheLargeOne() {
-        XCTAssertEqual(["Ground Speed", "Climb Rate", "Alt (Rel)", "Distance to home"].map(osdIsSpeed), [true, true, false, false])
+        XCTAssertEqual(["Ground Speed", "Climb Rate", "Altitude Above Home", "Distance to home"].map(osdIsSpeed), [true, true, false, false])
     }
 
     func testTheBatteryRingReadsThePercentageOutOfTheCellText() {

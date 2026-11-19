@@ -54,7 +54,7 @@
 },
 {
     "name":             "airSpeed",
-    "shortDesc": "Air Speed",
+    "shortDesc": "Airspeed",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "m/s"
@@ -68,21 +68,21 @@
 },
 {
     "name":             "altitudeRelative",
-    "shortDesc": "Alt (Rel)",
+    "shortDesc": "Altitude Above Home",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "vertical m"
 },
 {
     "name":             "altitudeAMSL",
-    "shortDesc": "Alt (AMSL)",
+    "shortDesc": "Altitude Above Sea Level",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "vertical m"
 },
 {
     "name":             "altitudeAboveTerr",
-    "shortDesc": "Alt (Above Terrain)",
+    "shortDesc": "Altitude Above Terrain",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "vertical m"
@@ -124,33 +124,33 @@
 },
 {
     "name":             "headingFromGCS",
-    "shortDesc": "Heading from GCS",
+    "shortDesc": "Heading from Ground Station",
     "type":             "double",
     "decimalPlaces":    0,
     "units":            "deg"
 },
 {
     "name":             "distanceToGCS",
-    "shortDesc": "Distance to GCS",
+    "shortDesc": "Distance to Ground Station",
     "type":             "double",
     "decimalPlaces":    1,
     "units":            "m"
 },
 {
     "name":             "missionItemIndex",
-    "shortDesc": "Mission Item Index",
+    "shortDesc": "Current Mission Item",
     "type":             "uint16"
 },
 {
     "name":             "headingToNextWP",
-    "shortDesc": "Next WP Heading",
+    "shortDesc": "Heading to Next Waypoint",
     "type":             "double",
     "decimalPlaces":    0,
     "units":            "deg"
 },
 {
     "name":             "distanceToNextWP",
-    "shortDesc": "Next WP distance",
+    "shortDesc": "Distance to Next Waypoint",
     "type":             "double",
     "decimalPlaces":    0,
     "units":            "m"
@@ -163,24 +163,24 @@
 },
 {
     "name":             "hobbs",
-    "shortDesc": "Hobbs Meter",
+    "shortDesc": "Total Flight Hours",
     "type":             "string"
 },
 {
     "name":             "throttlePct",
-    "shortDesc": "Throttle %",
+    "shortDesc": "Throttle",
     "type":             "uint16",
     "units":            "%"
 },
 {
     "name":             "imuTemp",
-    "shortDesc": "Imu temperature",
+    "shortDesc": "IMU Temperature",
     "type":             "int16",
     "units":            "°C"
 },
 {
     "name":             "rcRSSI",
-    "shortDesc": "RC RSSI",
+    "shortDesc": "RC Signal Strength",
     "type":             "uint8",
     "units":            "%"
 }

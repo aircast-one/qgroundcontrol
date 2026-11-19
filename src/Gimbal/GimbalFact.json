@@ -33,7 +33,7 @@
 },
 {
     "name":             "deviceId",
-    "shortDesc":        "gimbal device Id",
+    "shortDesc":        "Gimbal Device ID",
     "type":             "uint8"
 }
 ]
