@@ -108,13 +108,15 @@ private fun sendPlan(
     done: () -> Unit,
     pauseFirst: Boolean = false,
 ) {
-    say("Uploading to vehicle")
+    say(if (pauseFirst) "Pausing the aircraft" else "Uploading to vehicle")
     scope.launch {
-        val outcome = withContext(Dispatchers.Default) {
-            if (pauseFirst) PlanBridge.pauseVehicle()
-            uploadOutcome(PlanBridge.sendToVehicle())
+        val refused = if (pauseFirst) withContext(Dispatchers.Default) { PlanBridge.pauseRefusal() } else null
+        if (refused != null) {
+            say(pauseRefusedText(refused))
+        } else {
+            if (pauseFirst) say("Uploading to vehicle")
+            say(uploadMessage(withContext(Dispatchers.Default) { uploadOutcome(PlanBridge.sendToVehicle()) }))
         }
-        say(uploadMessage(outcome))
         delay(FAILURE_MESSAGE_MS)
         done()
     }

@@ -19,6 +19,12 @@ const val PLAN_UNDO = "plan.undo"
 fun invokeOk(path: String, args: String = "[]"): Boolean =
     runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)
 
+fun refusalIn(answer: JSONObject?, fallback: String): String? =
+    if (answer?.optBoolean("ok") == true) null else answer?.optText("reason")?.ifBlank { null } ?: fallback
+
+fun invokeRefusal(path: String, args: String, fallback: String): String? =
+    refusalIn(runCatching { JSONObject(QGCBridge.invoke(path, args)) }.getOrNull(), fallback)
+
 fun JSONObject.optText(key: String): String = if (isNull(key)) "" else optString(key)
 
 fun JSONArray.optText(index: Int): String = if (isNull(index)) "" else optString(index)

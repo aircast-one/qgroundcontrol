@@ -21,4 +21,12 @@ class UploadOutcomeTest {
         assertEquals(UploadOutcome.NotStarted, uploadOutcome(invoked = false))
         assertEquals("Upload did not start", uploadMessage(UploadOutcome.NotStarted))
     }
+
+    @Test
+    fun `a pause the aircraft refuses stops the upload and says why, so a mission it is still flying is not replaced`() {
+        assertEquals("Pause is not available right now.", refusalIn(org.json.JSONObject("""{"ok":false,"reason":"Pause is not available right now."}"""), "The aircraft did not pause."))
+        assertEquals("The aircraft did not pause.", refusalIn(null, "The aircraft did not pause."))
+        assertEquals(null, refusalIn(org.json.JSONObject("""{"ok":true}"""), "The aircraft did not pause."))
+        assertEquals("The aircraft did not pause, so the plan was not uploaded. Pause is not available right now.", pauseRefusedText("Pause is not available right now."))
+    }
 }

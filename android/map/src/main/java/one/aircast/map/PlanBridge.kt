@@ -217,7 +217,7 @@ object PlanBridge {
 
     fun sendToVehicle() = invokeOk("$PLAN_ROOT.sendToVehicle")
 
-    fun pauseVehicle() = invokeOk("vehicle.pauseVehicle")
+    fun pauseRefusal(): String? = invokeRefusal("vehicle.pauseVehicle", "[]", "The aircraft did not pause.")
 
     fun setAltitude(index: Int, shown: Double): Boolean =
         setOk("$PLAN_ITEMS.$index.altitude", settingJson("$shown"))

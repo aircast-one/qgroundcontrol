@@ -10,6 +10,8 @@ fun uploadMessage(outcome: UploadOutcome): String = when (outcome) {
     UploadOutcome.NotStarted -> "Upload did not start"
 }
 
+fun pauseRefusedText(reason: String): String = "The aircraft did not pause, so the plan was not uploaded. $reason"
+
 fun downloadMessage(outcome: UploadOutcome): String = when (outcome) {
     UploadOutcome.Sent -> "Download requested from vehicle"
     UploadOutcome.NotStarted -> "Download did not start"
