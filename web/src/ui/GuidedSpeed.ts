@@ -1,5 +1,4 @@
 import { type Json, isNull, optBoolean, optDouble, optString, optText } from '@/bridge/Json';
-import { format } from '@/kotlin/Std';
 
 export const GUIDED_SPEED = 'view.guidedSpeed';
 
@@ -14,7 +13,7 @@ export type GuidedSpeed = {
   readonly targetMetersSecond: number;
 };
 
-export const guidedSpeedPath = (target: number): string => `${GUIDED_SPEED}(${format('%.2f', target)})`;
+export const guidedSpeedPath = (target: number): string => `${GUIDED_SPEED}(${target})`;
 
 const numberOrNull = (json: Json, key: string): number | null => {
   if (isNull(json, key)) return null;

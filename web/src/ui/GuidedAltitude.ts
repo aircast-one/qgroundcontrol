@@ -26,7 +26,7 @@ export const GuidedAltitude = (fields: Omit<GuidedAltitude, 'targetMeters' | 'st
 });
 
 export const guidedAltitudePath = (target: number, pause = false): string =>
-  `${GUIDED_ALTITUDE}(${format('%.2f', target)}${pause ? ',pause' : ''})`;
+  `${GUIDED_ALTITUDE}(${target}${pause ? ',pause' : ''})`;
 
 const numberOrNull = (json: Json, key: string): number | null => {
   if (isNull(json, key)) return null;

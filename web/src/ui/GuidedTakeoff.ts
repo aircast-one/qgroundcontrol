@@ -1,5 +1,4 @@
 import { type Json, isNull, optBoolean, optDouble, optText } from '@/bridge/Json';
-import { format } from '@/kotlin/Std';
 
 export const GUIDED_TAKEOFF = 'view.guidedTakeoff';
 
@@ -14,7 +13,7 @@ export type GuidedTakeoff = {
   readonly targetMeters: number;
 };
 
-export const guidedTakeoffPath = (target: number): string => `${GUIDED_TAKEOFF}(${format('%.2f', target)})`;
+export const guidedTakeoffPath = (target: number): string => `${GUIDED_TAKEOFF}(${target})`;
 
 const numberOrNull = (json: Json, key: string): number | null => {
   if (isNull(json, key)) return null;

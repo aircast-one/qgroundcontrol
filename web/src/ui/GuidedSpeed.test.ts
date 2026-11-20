@@ -48,7 +48,7 @@ describe('GuidedSpeedTest', () => {
   });
 
   it('the argument path carries the target and no separators', () => {
-    expect(guidedSpeedPath(7.5)).toBe('view.guidedSpeed(7.50)');
+    expect(guidedSpeedPath(7.5)).toBe('view.guidedSpeed(7.5)');
     expect(guidedSpeedPath(7.5).includes(',')).toBe(false);
   });
 });

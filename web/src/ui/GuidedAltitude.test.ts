@@ -40,12 +40,16 @@ describe('GuidedAltitudeTest', () => {
   });
 
   it('the argument path carries the target and no stray separators', () => {
-    expect(guidedAltitudePath(68.5)).toBe('view.guidedAltitude(68.50)');
+    expect(guidedAltitudePath(68.5)).toBe('view.guidedAltitude(68.5)');
     expect(guidedAltitudePath(68.5).includes(',')).toBe(false);
   });
 
+  it('the target reaches the core whole, so the sentence rounds the same number the panel shows', () => {
+    expect(guidedAltitudePath(40.2537, true), 'cut to 40.25, the core rounds it half to even and says 40.2 m beside a panel reading 40.3 m').toBe('view.guidedAltitude(40.2537,pause)');
+  });
+
   it('a pause asks the core for the pause intent', () => {
-    expect(guidedAltitudePath(25.0, true)).toBe('view.guidedAltitude(25.00,pause)');
+    expect(guidedAltitudePath(25.0, true)).toBe('view.guidedAltitude(25,pause)');
   });
 
   it('the command carries the change, never the height the operator typed', () => {

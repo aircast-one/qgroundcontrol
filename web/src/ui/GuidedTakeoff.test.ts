@@ -39,7 +39,7 @@ describe('GuidedTakeoffTest', () => {
   });
 
   it('the argument path carries the target and no separators', () => {
-    expect(guidedTakeoffPath(10.0)).toBe('view.guidedTakeoff(10.00)');
+    expect(guidedTakeoffPath(10.0)).toBe('view.guidedTakeoff(10)');
     expect(guidedTakeoffPath(10.0).includes(',')).toBe(false);
   });
 
