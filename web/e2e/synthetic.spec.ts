@@ -250,3 +250,17 @@ test('a Mac trackpad twist turns the 3D map, as WebKit reports it with gesture e
   const turned = async () => Math.abs((((((await map3dHeading(vehicle)) - before) % 360) + 540) % 360) - 180);
   await expect.poll(turned, { message: 'the view turned with the fingers' }).toBeGreaterThan(20);
 });
+
+test('over the 3D map the readings and map buttons go bare like over the picture, while the flat map keeps their backing', async ({ vehicle }) => {
+  await showMapFull(vehicle);
+  const layers = vehicle.getByRole('button', { name: 'Map layers' });
+  const backing = () => layers.evaluate((node) => getComputedStyle(node).backgroundColor);
+  const boxedReadings = vehicle.locator('.bg-black\\/55').filter({ hasText: 'm/s' });
+  await expect.poll(backing, 'over the flat map the button keeps its backing').not.toBe('rgba(0, 0, 0, 0)');
+  await expect(boxedReadings, 'over the flat map the readings sit on a dark box').toHaveCount(1);
+  await vehicle.getByRole('button', { name: 'Show the 3D map' }).click();
+  await expect(vehicle.getByRole('button', { name: /^Compass\./ })).toBeVisible({ timeout: 30_000 });
+  await expect.poll(backing, 'over the 3D map it is bare').toBe('rgba(0, 0, 0, 0)');
+  await expect(boxedReadings).toHaveCount(0);
+  expect(await vehicle.getByRole('button', { name: /^Compass\./ }).evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+});

@@ -42,7 +42,7 @@ import {
   viewer3dEnabled,
 } from '@/ui/FlyShell';
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
-import { LocalFlyOsd, OSD_SCRIM, osdShadow } from '@/ui/Osd';
+import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { BATTERY_BAR_KEY, LayoutWidget, badgeRoom, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
@@ -527,8 +527,9 @@ const MapButtons = ({ view, split, hasVideo, onView }: { view: FlyView; split: b
   const shown3d = useMap3dShown();
   const [layers, setLayers] = useState(false);
   const threeD = view === FlyView.ThreeD;
+  const pictured = native && shown3d && !threeD;
   return (
-    <>
+    <LocalFlyOsd.Provider value={pictured}>
       <div className="flex gap-2">
         {split ? <MapButton icon="ic_fullscreen" label="Enlarge the map" onClick={() => onView(FlyView.Map)} /> : null}
         {!split && hasVideo && threeD ? <MapButton icon="ic_videocam" label="Show the camera above the map" onClick={() => onView(FlyView.Video)} /> : null}
@@ -543,7 +544,7 @@ const MapButtons = ({ view, split, hasVideo, onView }: { view: FlyView; split: b
         ) : null}
       </div>
       {layers ? <MapLayersSheet onDismiss={() => setLayers(false)} /> : null}
-    </>
+    </LocalFlyOsd.Provider>
   );
 };
 
@@ -557,10 +558,10 @@ const MapButtonSurface = ({ label, onClick, children }: { label: string; onClick
   <Surface
     onClick={onClick}
     shape="full"
-    color={OSD_SCRIM}
+    color={useOsdBackdrop(OSD_SCRIM)}
     contentColor={aircast('outdoorForeground')}
     label={label}
-    className="grid place-items-center"
+    className={`grid place-items-center ${useContext(LocalFlyOsd) ? osdShadow() : ''}`}
     style={{ width: MAP_BUTTON_SIZE, height: MAP_BUTTON_SIZE }}
   >
     {children}

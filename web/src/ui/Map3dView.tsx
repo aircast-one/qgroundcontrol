@@ -1,10 +1,10 @@
 import { type CSSProperties, type PointerEvent, type RefObject, useEffect, useRef, useState } from 'react';
 import { type Json, optBoolean, optDouble, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useQgcPath } from '@/bridge/QgcState';
+import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import { coerceAtLeast } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
-import { Map3d } from '@/map/Map3d';
+import { Map3d, useMap3dShown } from '@/map/Map3d';
 import { type SavedCamera, readCamera } from '@/map/MapCamera';
 import { FlightMapPosition, type TrackPoint } from '@/map/VehicleMap';
 import { Drawable } from '@/res/Icon';
@@ -13,7 +13,7 @@ import { LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { Offset, PASS_THROUGH, type Rect, minus } from '@/ui/FlyShell';
 import { OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { groundPoint } from '@/ui/PictureHold';
-import { SyntheticSurface, nativeDraw } from '@/ui/SyntheticSurface';
+import { SyntheticSurface, nativeChosen, nativeDraw } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, syntheticAvailable } from '@/ui/SyntheticView';
 import { DOUBLE_TAP_TIMEOUT_MS, LONG_PRESS_TIMEOUT_MS, TOUCH_SLOP, usePointerGestures } from '@/ui/VideoGestures';
 import { TAP_LOWER } from '@/kotlin/Platform';
@@ -173,8 +173,8 @@ const Compass = ({ heading, view }: { heading: number; view: RefObject<HTMLDivEl
       onClick={() => (dragged.current ? undefined : send(MAP3D_NORTH))}
       aria-label={COMPASS_LABEL}
       title={COMPASS_LABEL}
-      className="grid touch-none place-items-center rounded-full"
-      style={{ width: CONTROL_SIZE, height: CONTROL_SIZE, background: OSD_SCRIM, color: aircast('outdoorForeground') }}
+      className={`grid touch-none place-items-center rounded-full ${osdShadow()}`}
+      style={{ width: CONTROL_SIZE, height: CONTROL_SIZE, color: aircast('outdoorForeground') }}
     >
       <svg width={CONTROL_ICON} height={CONTROL_ICON} viewBox={`0 0 ${CONTROL_ICON} ${CONTROL_ICON}`} aria-hidden style={{ transform: `rotate(${-heading}deg)` }}>
         <path d={needle(NORTH)} style={{ fill: md('error') }} />
@@ -199,15 +199,21 @@ const BackToAircraft = () => (
   <Surface
     onClick={() => send(MAP3D_FOLLOW)}
     shape="full"
-    color={OSD_SCRIM}
+    color="transparent"
     contentColor={aircast('outdoorForeground')}
-    className="inline-flex items-center"
+    className={`inline-flex items-center ${osdShadow()}`}
     style={{ gap: AircastSpace.s2, paddingInline: AircastSpace.s3, paddingBlock: AircastSpace.s2 }}
   >
     <Drawable name="ic_my_location" size={CONTROL_ICON} />
     <Text typography="labelLarge">{BACK_TO_AIRCRAFT}</Text>
   </Surface>
 );
+
+export const useMap3dDrawn = (): boolean => {
+  const chosen = useMap3dShown();
+  const native = useQgcDerived(SYNTHETIC_VIEW, nativeChosen);
+  return chosen && native;
+};
 
 export const Map3dView = ({
   className,

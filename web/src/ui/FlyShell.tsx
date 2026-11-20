@@ -45,9 +45,9 @@ import { LocalFlyScreenState, MENU_SHEET } from '@/ui/FlyScreenState';
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { ApproximateAimNote, gimbalSwitchShown } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
-import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
-import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
+import { map3dToggleLabel, map3dToggleText, useMap3dDrawn } from '@/ui/Map3dView';
 import { BATTERY_BAR_KEY, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, badgeRoom, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
@@ -378,6 +378,8 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const videoJson = useQgcPath(VIDEO_VIEW);
   const syntheticReady = useRememberSyntheticAvailable();
   const hasPicture = optBoolean(videoJson, 'available') || syntheticReady;
+  const map3dDrawn = useMap3dDrawn();
+  const pictured = view === FlyView.Video || (view === FlyView.Map && map3dDrawn);
   const [rootRef, box] = useShellBox();
   const screen = useScreenSize();
   const boxHeight = box.size.height > 0 ? box.size.height : screen.height;
@@ -496,7 +498,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
     </>
   );
   const deckLayer = (
-    <LocalFlyOsd.Provider value={view === FlyView.Video}>
+    <LocalFlyOsd.Provider value={pictured}>
       <div
         className={`absolute inset-0 ${PASS_THROUGH}`}
         style={{ zIndex: layer(fullScreen ? FULL_SCREEN_LAYER + 0.5 : deciding ? DECISION_LAYER : 2), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING, paddingTop: STATUS_ROW_HEIGHT + AircastSpace.s4 }}
@@ -525,7 +527,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           <>
             <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(1), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING }}>
               <div className="relative size-full">
-                <LocalFlyOsd.Provider value={view === FlyView.Video}>
+                <LocalFlyOsd.Provider value={pictured}>
                   <FlyChromeLayout
                     top={
                       <div className="relative">
@@ -612,32 +614,26 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     >
                       <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="shrink-0">
                         <LocalFlyOsd.Provider value>
-                          <TelemetryRow valuesShown chooser={false} compact stacked className="rounded-shape-md bg-black/55 px-3 py-1.5" />
+                          <TelemetryRow valuesShown chooser={false} compact stacked className={pictured ? undefined : 'rounded-shape-md bg-black/55 px-3 py-1.5'} />
                         </LocalFlyOsd.Provider>
                       </LayoutWidget>
                     </div>
                   ) : null}
                 </LocalFlyOsd.Provider>
                 {view === FlyView.Map ? (
-                  <div className="absolute end-0 bottom-0" style={{ marginInlineEnd: AircastSpace.s3, marginBottom: mapButtonsBottom }}>
-                    <LayoutWidget widgetKey="mapLayers" hideable={false}>
-                      <div ref={mapButtons.ref} className="flex flex-col gap-2">
-                        <FollowButton />
-                        <Map3dToggle />
-                        <Surface
-                          onClick={() => setLayers(true)}
-                          shape="full"
-                          color={md('surfaceContainerHigh')}
-                          contentColor={md('onSurface')}
-                          label="Map layers"
-                          className="grid place-items-center"
-                          style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
-                        >
-                          <Drawable name="ic_layers" />
-                        </Surface>
-                      </div>
-                    </LayoutWidget>
-                  </div>
+                  <LocalFlyOsd.Provider value={pictured}>
+                    <div className="absolute end-0 bottom-0" style={{ marginInlineEnd: AircastSpace.s3, marginBottom: mapButtonsBottom }}>
+                      <LayoutWidget widgetKey="mapLayers" hideable={false}>
+                        <div ref={mapButtons.ref} className="flex flex-col gap-2">
+                          <FollowButton />
+                          <Map3dToggle />
+                          <MapFab color={md('surfaceContainerHigh')} contentColor={md('onSurface')} label="Map layers" onClick={() => setLayers(true)}>
+                            <Drawable name="ic_layers" />
+                          </MapFab>
+                        </div>
+                      </LayoutWidget>
+                    </div>
+                  </LocalFlyOsd.Provider>
                 ) : null}
                 {view === FlyView.Map && layers ? <MapLayersSheet onDismiss={() => setLayers(false)} /> : null}
               </div>
@@ -659,7 +655,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
         ) : null}
         {deckLayer}
         {stickPad !== null ? (
-          <LocalFlyOsd.Provider value={view === FlyView.Video}>
+          <LocalFlyOsd.Provider value={pictured}>
             <LocalAvoidedByVideoMessage.Provider value>
               <div
                 className={`absolute inset-x-0 bottom-0 flex justify-center ${PASS_THROUGH}`}
@@ -804,38 +800,41 @@ const FollowButton = () => {
   const away = vehicleOffScreen(shown, vehicle);
   const label = away === null ? FOLLOW_VEHICLE : `${FOLLOW_VEHICLE}. ${away.text}`;
   return (
-    <Surface
-      onClick={() => {
-        mapFollowing.value = true;
-      }}
-      shape="full"
+    <MapFab
       color={md('primaryContainer')}
       contentColor={md('onPrimaryContainer')}
       label={label}
-      title={label}
-      className="grid place-items-center"
-      style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
+      onClick={() => {
+        mapFollowing.value = true;
+      }}
     >
       {away === null ? <Drawable name="ic_my_location" /> : <Drawable name="ic_navigation" style={{ transform: `rotate(${away.bearing}deg)` }} />}
-    </Surface>
+    </MapFab>
   );
 };
+
+const MapFab = ({ color, contentColor, label, onClick, children }: { color: string; contentColor: string; label: string; onClick: () => void; children: ReactNode }) => (
+  <Surface
+    onClick={onClick}
+    shape="full"
+    color={useOsdBackdrop(color)}
+    contentColor={useOsdTint(contentColor, aircast('outdoorForeground'))}
+    label={label}
+    title={label}
+    className={`grid place-items-center ${useContext(LocalFlyOsd) ? osdShadow() : ''}`}
+    style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
+  >
+    {children}
+  </Surface>
+);
 
 const Map3dToggle = () => {
   const shown = useMap3dShown();
   const offered = useQgcDerived(SYNTHETIC_VIEW, nativeChosen);
   return offered ? (
-    <Surface
-      onClick={() => Map3d.show(!shown)}
-      shape="full"
-      color={md('surfaceContainerHigh')}
-      contentColor={md('onSurface')}
-      label={map3dToggleLabel(shown)}
-      className="grid place-items-center"
-      style={{ width: MAP_LAYERS_SIZE, height: MAP_LAYERS_SIZE }}
-    >
+    <MapFab color={md('surfaceContainerHigh')} contentColor={md('onSurface')} label={map3dToggleLabel(shown)} onClick={() => Map3d.show(!shown)}>
       <Text typography="labelLarge">{map3dToggleText(shown)}</Text>
-    </Surface>
+    </MapFab>
   ) : null;
 };
 

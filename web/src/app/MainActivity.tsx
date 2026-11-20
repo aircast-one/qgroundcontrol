@@ -20,7 +20,6 @@ import { VehicleLinkKeeper } from '@/app/VehicleLinkService';
 import { LocalImmersive } from '@/map/AircastSheet';
 import { FlyMap, plainTaps } from '@/map/FlyMap';
 import { LocalFlyMapEdits } from '@/map/FlyMapEdits';
-import { useMap3dShown } from '@/map/Map3d';
 import { AircastTheme } from '@/map/Theme';
 import type { TrackPoint } from '@/map/VehicleMap';
 import { lostVehicle } from '@/map/LostVehicle';
@@ -58,7 +57,7 @@ import { GimbalTakeControlDialog, gimbalRefused } from '@/ui/GimbalIndicator';
 import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners, showLatest } from '@/ui/HostNotices';
 import { LinkLostCard, LinkLostWatch } from '@/ui/LinkLost';
 import { LogReplayBar } from '@/ui/LogReplayBar';
-import { Map3dView } from '@/ui/Map3dView';
+import { Map3dView, useMap3dDrawn } from '@/ui/Map3dView';
 import { MapClickMenu, MapHoldHint, type MapPoint, RoiSheet, SetWaypointSheet, mapHoldHintText } from '@/ui/MapClickMenu';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { MissionCompleteDialog } from '@/ui/MissionCompleteDialog';
@@ -75,8 +74,7 @@ import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
 import { AIRCRAFT_SETUP, SettingsGroup } from '@/ui/SettingsScreen';
 import { SettingsSheet } from '@/ui/SettingsSheet';
 import { StatusPill, batteryPercentNow, flightTimeNow } from '@/ui/StatusStrip';
-import { nativeChosen } from '@/ui/SyntheticSurface';
-import { SYNTHETIC_VIEW, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
+import { useRememberSyntheticAvailable } from '@/ui/SyntheticView';
 import { TerrainDataWarning } from '@/ui/TerrainDataWarning';
 import { AppSnackbar, VehicleMessageBanner } from '@/ui/VehicleMessages';
 import { FlightActions } from '@/ui/VehicleUi';
@@ -307,9 +305,7 @@ export const AircastShell = () => {
   const [roiTapped, setRoiTapped] = useState<TrackPoint | null>(null);
   const mapInsets = useValue(flyScreen.mapInsets);
   const mapOrnamentEnd = useValue(flyScreen.mapOrnamentEnd);
-  const map3dChosen = useMap3dShown();
-  const nativeRenderer = useQgcDerived(SYNTHETIC_VIEW, nativeChosen);
-  const map3dShown = map3dChosen && nativeRenderer;
+  const map3dShown = useMap3dDrawn();
 
   const flightActions = (layout: FlyDeckLayout) => <FlightActions layout={layout} center={<CameraShutters />} />;
   const pressPicture = (press: PicturePress) => {
