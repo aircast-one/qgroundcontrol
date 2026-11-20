@@ -41,6 +41,8 @@ export const BACK_TO_AIRCRAFT = 'Back to aircraft';
 const COMPASS_LABEL = `Compass. Drag to turn and tilt the view, ${TAP_LOWER} to face north`;
 const MAP3D_TOUCH_HINT = 'Drag to move · Two fingers to turn and tilt';
 const MAP3D_MOUSE_HINT = 'Drag to move · Right-drag or Shift-drag to turn and tilt';
+const MAP3D_TRACKPAD_HINT = 'Drag to move · Pinch to zoom, twist to turn · Right-drag to tilt';
+const TRACKPAD_GESTURES = 'GestureEvent';
 const COARSE_POINTER = '(pointer: coarse)';
 const HINT_SHOWN_MS = 8_000;
 const NEEDLE_HALF_WIDTH = 0.22;
@@ -53,7 +55,7 @@ export const map3dToggleText = (shown: boolean): string => (shown ? '2D' : '3D')
 
 export const map3dToggleLabel = (shown: boolean): string => (shown ? 'Show the flat map' : 'Show the 3D map');
 
-export const map3dHint = (coarse: boolean): string => (coarse ? MAP3D_TOUCH_HINT : MAP3D_MOUSE_HINT);
+export const map3dHint = (coarse: boolean, trackpad: boolean): string => (coarse ? MAP3D_TOUCH_HINT : trackpad ? MAP3D_TRACKPAD_HINT : MAP3D_MOUSE_HINT);
 
 export type Map3dState = { readonly heading: number; readonly following: boolean; readonly aircraft: boolean };
 
@@ -86,6 +88,18 @@ export const pinchStep = (before: Pair, after: Pair): PinchStep => ({
   turn: wrapped(angle(after) - angle(before)),
   up: (before[0].y + before[1].y - after[0].y - after[1].y) / 2,
 });
+
+export type Twist = { readonly rotation: number; readonly scale: number };
+
+export const twistStep = (before: Twist, after: Twist): { readonly turn: number; readonly scale: number } => ({
+  turn: wrapped(after.rotation - before.rotation),
+  scale: before.scale > 0 ? after.scale / before.scale : 1.0,
+});
+
+const twistOf = (event: Event): Twist => {
+  const { rotation, scale } = event as Event & Twist;
+  return { rotation, scale };
+};
 
 export const mouseTurn = (dx: number, widthPx: number): number => (dx / coerceAtLeast(widthPx, 1)) * TURN_PER_VIEW_WIDTH_DEG;
 
@@ -177,7 +191,7 @@ const Hint = () => (
     contentColor={aircast('outdoorForeground')}
     style={{ paddingInline: AircastSpace.s3, paddingBlock: AircastSpace.s2 }}
   >
-    <Text typography="labelLarge">{map3dHint(window.matchMedia(COARSE_POINTER).matches)}</Text>
+    <Text typography="labelLarge">{map3dHint(window.matchMedia(COARSE_POINTER).matches, TRACKPAD_GESTURES in window)}</Text>
   </Surface>
 );
 
@@ -232,17 +246,53 @@ export const Map3dView = ({
     held: false,
     samples: [] as readonly PointerSample[],
     spins: [] as readonly SpinSample[],
+    twisting: null as Twist | null,
     timer: undefined as ReturnType<typeof setTimeout> | undefined,
   });
   useEffect(() => {
     const element = host.current;
     if (element === null) return undefined;
+    const now = press.current;
     const zoom = (event: WheelEvent) => {
       event.preventDefault();
+      if (event.ctrlKey && now.twisting !== null) return;
       send(MAP3D_ZOOM, wheelScale(event.deltaY, event.deltaMode));
     };
+    const twistStart = (event: Event) => {
+      event.preventDefault();
+      setHinting(false);
+      send(MAP3D_STOP);
+      now.twisting = twistOf(event);
+      now.spins = [];
+    };
+    const twistChange = (event: Event) => {
+      event.preventDefault();
+      const before = now.twisting;
+      if (before === null) return;
+      const after = twistOf(event);
+      const step = twistStep(before, after);
+      if (step.turn !== 0) send(MAP3D_TURN, step.turn);
+      if (step.scale !== 1) send(MAP3D_ZOOM, step.scale);
+      now.twisting = after;
+      now.spins = recentSpins(now.spins, { turn: step.turn, up: 0, zoom: Math.log(step.scale), time: event.timeStamp });
+    };
+    const twistEnd = (event: Event) => {
+      event.preventDefault();
+      if (now.twisting === null) return;
+      now.twisting = null;
+      const [turn, , zoomRate] = spinRates(now.spins, event.timeStamp);
+      send(MAP3D_SPIN, turn, 0, element.clientHeight, zoomRate);
+    };
     element.addEventListener('wheel', zoom, { passive: false });
-    return () => element.removeEventListener('wheel', zoom);
+    element.addEventListener('gesturestart', twistStart);
+    element.addEventListener('gesturechange', twistChange);
+    element.addEventListener('gestureend', twistEnd);
+    return () => {
+      element.removeEventListener('wheel', zoom);
+      element.removeEventListener('gesturestart', twistStart);
+      element.removeEventListener('gesturechange', twistChange);
+      element.removeEventListener('gestureend', twistEnd);
+    };
   }, []);
   const pick = (element: Element, at: Offset) =>
     void Qgc.call(MAP3D_PICK, ...map3dPickArgs(at, element.getBoundingClientRect())).then((answer) => {

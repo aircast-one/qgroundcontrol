@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LOOKING_TITLE } from '@/ui/ConnectingCard';
 import { Offset, Rect } from '@/ui/FlyShell';
-import { flingVelocity, map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dPickArgs, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, recentSamples, recentSpins, spinRates, wheelScale } from '@/ui/Map3dView';
+import { flingVelocity, map3dControlsAt, map3dHint, map3dNote, map3dOpenAt, map3dPickArgs, map3dState, map3dToggleLabel, map3dToggleText, mouseTurn, pinchStep, recentSamples, recentSpins, spinRates, twistStep, wheelScale } from '@/ui/Map3dView';
 import { SyntheticDraw } from '@/ui/SyntheticView';
 
 describe('Map3dNoteTest', () => {
@@ -57,8 +57,17 @@ describe('Map3dToggleTest', () => {
 
 describe('Map3dHintTest', () => {
   it('the hint names the gestures of the pointer in hand', () => {
-    expect(map3dHint(true)).toBe('Drag to move · Two fingers to turn and tilt');
-    expect(map3dHint(false)).toBe('Drag to move · Right-drag or Shift-drag to turn and tilt');
+    expect(map3dHint(true, false)).toBe('Drag to move · Two fingers to turn and tilt');
+    expect(map3dHint(false, false)).toBe('Drag to move · Right-drag or Shift-drag to turn and tilt');
+    expect(map3dHint(false, true), 'a Mac trackpad twists and pinches').toBe('Drag to move · Pinch to zoom, twist to turn · Right-drag to tilt');
+  });
+});
+
+describe('Map3dTwistTest', () => {
+  it('a trackpad twist turns the view by how far the fingers turned since the last step, and a pinch zooms by its change in scale', () => {
+    expect(twistStep({ rotation: 10, scale: 1 }, { rotation: 25, scale: 1.5 })).toEqual({ turn: 15, scale: 1.5 });
+    expect(twistStep({ rotation: 170, scale: 2 }, { rotation: -170, scale: 1 })).toEqual({ turn: 20, scale: 0.5 });
+    expect(twistStep({ rotation: 0, scale: 0 }, { rotation: -5, scale: 1 })).toEqual({ turn: -5, scale: 1 });
   });
 });
 

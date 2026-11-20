@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { chooseCameraJoystick, connectMock, dropFromStrip, expect, flightMode, flyNow, takeOff, test } from './fixtures';
+import { chooseCameraJoystick, connectMock, dropFromStrip, expect, flightMode, flyNow, showMapFull, takeOff, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -229,4 +229,24 @@ test('a dropped water bottle falls from the drone and lies on the ground below t
   expect(landed!.aboveHome, 'on the ground, not in the air').toBeLessThan(drone.aboveHome - 5);
   await app.screenshot({ path: testInfo.outputPath('bottle-on-the-ground.png') });
   expect((await view()).bottles, 'and it stays where it landed').toEqual([landed]);
+});
+
+const map3dHeading = (page: Page) => page.evaluate(async (module) => ((await (await import(module)).Qgc.get('view.map3d')) as { heading: number }).heading, '/src/bridge/Qgc.ts');
+
+test('a Mac trackpad twist turns the 3D map, as WebKit reports it with gesture events rather than pointers', async ({ vehicle }) => {
+  await flyNow(vehicle);
+  await showMapFull(vehicle);
+  await vehicle.getByRole('button', { name: 'Show the 3D map' }).click();
+  await expect(vehicle.getByRole('button', { name: /^Compass\./ })).toBeVisible({ timeout: 30_000 });
+  const before = await map3dHeading(vehicle);
+  await vehicle.evaluate(() => {
+    const at = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    const fire = (type: string, rotation: number) => at?.dispatchEvent(Object.assign(new Event(type, { bubbles: true, cancelable: true }), { rotation, scale: 1 }));
+    fire('gesturestart', 0);
+    fire('gesturechange', 15);
+    fire('gesturechange', 30);
+    fire('gestureend', 30);
+  });
+  const turned = async () => Math.abs((((((await map3dHeading(vehicle)) - before) % 360) + 540) % 360) - 180);
+  await expect.poll(turned, { message: 'the view turned with the fingers' }).toBeGreaterThan(20);
 });
