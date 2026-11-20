@@ -175,7 +175,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
                 )
             }
         } else {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(CAMERA_CLUSTER_GAP)) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(CAMERA_CLUSTER_GAP)) {
                 zoomText(camera)?.let { label -> CameraElement("cameraZoom") { ZoomChip(camera, label) } }
                 CameraElement("cameraGimbal") { RcCameraControls(tiltSlider = false) }
             }
