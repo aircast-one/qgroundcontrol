@@ -12,6 +12,7 @@ import {
   gpsDetail,
   gpsStatus,
   linkDetail,
+  lossFailsafeLine,
   lowestVoltage,
   notYetComputed,
   signalLostTitle,
@@ -103,6 +104,13 @@ describe('InstrumentDetailTest', () => {
     expect(signalLostTitle(12, home)).toBe('Signal lost · 12 s · Return home');
     expect(signalLostTitle(7, LossFailsafe('No failsafe', null))).toBe('Signal lost · 7 s · No failsafe');
     expect(signalLostTitle(2, home, true), 'the portrait chip keeps the countdown and shortens the rest').toBe('Lost 2 s · Return home in 8 s');
+  });
+
+  it('the lost-link menu names what the aircraft does about the lost link, which the portrait chip has no room for', () => {
+    expect(lossFailsafeLine(2, LossFailsafe('Return home', 10.0))).toBe('On link loss: Return home in 8 s');
+    expect(lossFailsafeLine(12, LossFailsafe('Return home', 10.0))).toBe('On link loss: Return home');
+    expect(lossFailsafeLine(4, LossFailsafe('No failsafe', null))).toBe('No failsafe on link loss');
+    expect(lossFailsafeLine(4, null)).toBeNull();
   });
 
   it('every placeholder QGC prints for an uncomputed fact is treated as one', () => {

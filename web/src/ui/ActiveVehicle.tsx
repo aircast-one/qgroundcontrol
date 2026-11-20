@@ -33,7 +33,7 @@ import { ConfirmTrack } from './ConfirmTrack';
 import { StopPropagation, activate, useFlyIsPortrait } from './FlyShell';
 import { LocalFlyScreenState, OpenOnRequest } from './FlyScreenState';
 import { ChipTone, FLY_STATE, type FlyState, WARNINGS, armingBlocker, chipBlocker, chipTone, flyState, offlineMainStatus, vehicleSubtitle } from './FlyState';
-import { LOST_LINK_HINT, SIGNAL_LOST, signalLostTitle, silenceText } from './InstrumentDetail';
+import { LOST_LINK_HINT, SIGNAL_LOST, lossFailsafeLine, signalLostTitle, silenceText } from './InstrumentDetail';
 import { MAP_CLICK_PATH } from './MapClickMenu';
 import { OFFLINE_SHEET, OFFLINE_STATUS_VIEW, type OfflineLink, OfflineStatusSheet, offlineStatus } from './OfflineStatusSheet';
 import {
@@ -204,6 +204,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
   const searching = disconnected && offlineNow?.busy === true;
   const title = lost ? signalLostTitle(silentFor, failsafe, narrow) : vanished ? LINK_LOST : gotoProgress !== '' && !choices.ambiguous ? gotoProgress : activeVehicleTitle(choices, subtitle);
   const note = narrow ? null : osdStatusNote(title);
+  const lossFailsafe = lossFailsafeLine(silentFor, failsafe);
   const alarm = lostVehiclesText(lostVehicles(choices)) ?? (taken ? controlLine(station) : null);
 
   const chipClick = () => {
@@ -287,6 +288,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
         </div>
         <DropdownMenu expanded={lostMenu && lost} onDismissRequest={() => setLostMenu(false)}>
           <DropdownMenuItem text={<Text typography="labelLarge" color={md('onSurfaceVariant')}>{silentFor !== null ? silenceText(silentFor) : SIGNAL_LOST}</Text>} onClick={() => undefined} enabled={false} />
+          {lossFailsafe !== null ? <DropdownMenuItem text={<Text typography="labelLarge">{lossFailsafe}</Text>} onClick={() => undefined} enabled={false} /> : null}
           <DropdownMenuItem text={<Text typography="bodySmall" className="block max-w-[280px]">{LOST_LINK_HINT}</Text>} onClick={() => undefined} enabled={false} />
           <HorizontalDivider />
           <DropdownMenuItem

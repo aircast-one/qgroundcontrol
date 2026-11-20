@@ -123,6 +123,11 @@ export const failsafeCountdown = (seconds: number | null, failsafe: LossFailsafe
   return left === null ? failsafe.action : `${failsafe.action} in ${silenceDuration(left)}`;
 };
 
+const NO_FAILSAFE = 'No failsafe';
+
+export const lossFailsafeLine = (seconds: number | null, failsafe: LossFailsafe | null): string | null =>
+  failsafe === null ? null : failsafe.action === NO_FAILSAFE ? 'No failsafe on link loss' : `On link loss: ${failsafeCountdown(seconds, failsafe)}`;
+
 const LOST = 'Lost';
 
 export const LOST_LINK_HINT = 'Point the antenna at the aircraft or move closer.';
