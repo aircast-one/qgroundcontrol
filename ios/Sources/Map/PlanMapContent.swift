@@ -1358,13 +1358,15 @@ struct PlanMapContent: View {
     }
 
     private func sendPlan(pauseFirst: Bool = false) {
-        busy = "Uploading to vehicle"
+        busy = pauseFirst ? "Pausing the aircraft" : "Uploading to vehicle"
         Task { @MainActor in
-            let outcome = await offMain { () -> UploadOutcome in
-                if pauseFirst { PlanBridge.pauseVehicle() }
-                return uploadOutcome(PlanBridge.sendToVehicle())
+            let refused = pauseFirst ? await offMain { PlanBridge.pauseRefusal() } : nil
+            if let refused {
+                busy = pauseRefusedText(refused)
+            } else {
+                if pauseFirst { busy = "Uploading to vehicle" }
+                busy = uploadMessage(await offMain { uploadOutcome(PlanBridge.sendToVehicle()) })
             }
-            busy = uploadMessage(outcome)
             await pause(FAILURE_MESSAGE_MS)
             busy = nil
         }

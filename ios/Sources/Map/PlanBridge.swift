@@ -236,7 +236,7 @@ enum PlanBridge {
 
     @discardableResult static func sendToVehicle() -> Bool { invokeOk("\(PLAN_ROOT).sendToVehicle") }
 
-    @discardableResult static func pauseVehicle() -> Bool { invokeOk("vehicle.pauseVehicle") }
+    static func pauseRefusal() -> String? { refusalIn(Qgc.call("vehicle.pauseVehicle"), "The aircraft did not pause.") }
 
     @discardableResult static func setAltitude(_ index: Int, _ shown: Double) -> Bool {
         setOk("\(PLAN_ITEMS).\(index).altitude", shown)

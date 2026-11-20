@@ -16,4 +16,11 @@ final class UploadOutcomeTests: XCTestCase {
         XCTAssertEqual(uploadOutcome(false), .NotStarted)
         XCTAssertEqual(uploadMessage(.NotStarted), "Upload did not start")
     }
+
+    func testAPauseTheAircraftRefusesStopsTheUploadAndSaysWhySoAMissionItIsStillFlyingIsNotReplaced() {
+        XCTAssertEqual(refusalIn(JSON.parse(#"{"ok":false,"reason":"Pause is not available right now."}"#), "The aircraft did not pause."), "Pause is not available right now.")
+        XCTAssertEqual(refusalIn(nil, "The aircraft did not pause."), "The aircraft did not pause.")
+        XCTAssertNil(refusalIn(JSON.parse(#"{"ok":true}"#), "The aircraft did not pause."))
+        XCTAssertEqual(pauseRefusedText("Pause is not available right now."), "The aircraft did not pause, so the plan was not uploaded. Pause is not available right now.")
+    }
 }
