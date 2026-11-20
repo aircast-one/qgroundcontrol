@@ -481,7 +481,9 @@ export const AircastShell = () => {
     return () => shown.abort();
   }, [editingInFlight]);
   const activeId = useRememberActiveVehicleId();
-  const lands = !useQgcBool('vehicle.sub') && !useQgcBool('vehicle.rover');
+  const sub = useQgcBool('vehicle.sub');
+  const rover = useQgcBool('vehicle.rover');
+  const lands = !sub && !rover;
   const armedSession = useRef(NO_ARMED_SESSION);
   const armedBattery = useRef<number | null>(null);
 
