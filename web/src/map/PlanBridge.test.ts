@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { type Json, optJSONArray, parseJson } from '@/bridge/Json';
 import { refusalIn } from './BridgeCalls';
 import { legArrows, missionPath } from './MissionLayers';
-import { type MissionKind, allMissionItems, blockedReason, kindAllows, kindOffered, legsAfterLanding, missionItems, missionKinds, placed, planItemCount, planShape, routeEndsAfter, scanPatterns } from './PlanBridge';
+import { type MissionKind, allMissionItems, blockedReason, kindAllows, kindOffered, legsAfterLanding, missionItems, missionKinds, patternTitle, placed, planItemCount, planShape, routeEndsAfter, scanPatterns } from './PlanBridge';
 import { TrackPoint } from './VehicleMap';
 
 const json = (text: string): Json => parseJson(text)!;
@@ -178,6 +178,11 @@ describe('ScanPatternsTest', () => {
     expect(structure.enabled).toBe(false);
     expect(structure.disabledReason).toContain('takeoff');
     expect(scanPatterns(missionKinds(served)).find((it) => it.id === 'survey')!.enabled).toBe(true);
+  });
+
+  it('the chooser names a pattern by its title, as New plan and the item list do, not by its file name', () => {
+    const titled = json('{"kind":"object","kinds":[{"id":"corridor","complexName":"Corridor Scan","title":"Corridor scan","enabled":true},{"id":"spiral","complexName":"Spiral Scan","enabled":true}]}');
+    expect(scanPatterns(missionKinds(titled)).map(patternTitle)).toEqual(['Corridor scan', 'Spiral Scan']);
   });
 
   it('a fourth pattern the core adds is offered without this head being changed', () => {

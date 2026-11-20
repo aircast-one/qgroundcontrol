@@ -46,6 +46,8 @@ export const missionKinds = (view: Json | null): readonly MissionKind[] =>
 
 export const scanPatterns = (kinds: readonly MissionKind[]): readonly MissionKind[] => kinds.filter((it) => it.label.trim() !== '');
 
+export const patternTitle = (kind: MissionKind): string => (kind.title.trim() === '' ? kind.label : kind.title);
+
 export const kindOffered = (kinds: readonly MissionKind[], id: string): boolean => kinds.length === 0 || kinds.some((it) => it.id === id);
 
 export const kindAllows = (kinds: readonly MissionKind[], id: string): boolean => kinds.find((it) => it.id === id)?.enabled ?? true;

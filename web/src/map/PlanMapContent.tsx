@@ -73,6 +73,7 @@ import {
   landingPatterns,
   linksStartToHome,
   missionKinds,
+  patternTitle,
   placeLandingIfUnplaced,
   placeTakeoff,
   planItemCount,
@@ -951,10 +952,10 @@ export const PlanMapContent = ({
                   enabled={addablePattern(kind) && !zoomedOutForTemplates(zoom.value)}
                   onClick={() => {
                     patternWanted.value = [];
-                    addMissionItem(kind.id, `Adding ${kind.label.toLowerCase()}`, placeAt(), insertAfter(selected.value, allItems.value));
+                    addMissionItem(kind.id, `Adding ${patternTitle(kind).toLowerCase()}`, placeAt(), insertAfter(selected.value, allItems.value));
                   }}
                 >
-                  {kind.label}
+                  {patternTitle(kind)}
                 </TextButton>
               ))}
             </div>
