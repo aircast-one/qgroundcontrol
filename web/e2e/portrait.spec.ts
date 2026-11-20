@@ -62,6 +62,23 @@ test('on a phone a guided panel or a confirm slide clears the compass and camera
   await expect(compass).toBeVisible();
 });
 
+test('on a phone in flight the camera zoom chip sits above the gimbal controls at the edge, clear of the mission card', async ({ page }) => {
+  await openApp(page);
+  await connectMock(page, ['Enable camera', 'Enable gimbal'], 'APM ArduCopter Vehicle');
+  await page.getByRole('button', { name: 'Enlarge the map' }).click();
+  await takeOff(page, '5 m');
+  await expect(page.getByRole('button', { name: /Flying Change flight mode$|^(Takeoff|Hold|Guided)\b.*Change flight mode$/ })).toBeVisible({ timeout: 60_000 });
+  const zoom = page.getByRole('button', { name: /^Zoom \d+%$/ });
+  const gimbal = page.getByRole('button', { name: /gimbal mode/ }).first();
+  await expect(zoom).toBeVisible();
+  await expect(gimbal).toBeVisible({ timeout: 60_000 });
+  const chip = (await zoom.boundingBox())!;
+  const aim = (await gimbal.boundingBox())!;
+  const screen = page.viewportSize()!;
+  expect(chip.y + chip.height, 'the chip stands above the gimbal controls rather than beside them').toBeLessThanOrEqual(aim.y);
+  expect(chip.x + chip.width, 'and keeps to the right edge, clear of the mission card on the left').toBeGreaterThan(screen.width - 24);
+});
+
 const gimbalPitch = (page: Page) =>
   page.evaluate(
     async (module) => (((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal') as Promise<{ gimbals?: { pitch: number | null }[] } | null>).then((it) => it?.gimbals?.[0]?.pitch ?? null),

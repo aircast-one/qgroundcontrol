@@ -206,7 +206,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
             </div>
           </div>
         ) : (
-          <div className="flex items-center" style={{ gap: CAMERA_CLUSTER_GAP }}>
+          <div className="flex flex-col items-end" style={{ gap: CAMERA_CLUSTER_GAP }}>
             {zoomLabel !== null ? (
               <CameraElement widgetKey="cameraZoom">
                 <ZoomChip camera={camera} label={zoomLabel} />
