@@ -32,12 +32,13 @@ final class GuidedAltitudeTests: XCTestCase {
     }
 
     func testTheArgumentPathCarriesTheTargetAndNoStraySeparators() {
-        XCTAssertEqual(guidedAltitudePath(68.5), "view.guidedAltitude(68.50)")
+        XCTAssertEqual(guidedAltitudePath(68.5), "view.guidedAltitude(68.5)")
+        XCTAssertEqual(guidedAltitudePath(40.2537, pause: true), "view.guidedAltitude(40.2537,pause)", "cut to 40.25, the core rounds it half to even and says 40.2 m beside a panel reading 40.3 m")
         XCTAssertFalse(guidedAltitudePath(68.5).contains(","))
     }
 
     func testAPauseAsksTheCoreForThePauseIntent() {
-        XCTAssertEqual(guidedAltitudePath(25.0, pause: true), "view.guidedAltitude(25.00,pause)")
+        XCTAssertEqual(guidedAltitudePath(25.0, pause: true), "view.guidedAltitude(25.0,pause)")
     }
 
     func testTheCommandCarriesTheChangeNeverTheHeightTheOperatorTyped() {

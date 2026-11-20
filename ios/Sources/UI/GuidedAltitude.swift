@@ -18,7 +18,7 @@ struct GuidedAltitude: Equatable {
 }
 
 func guidedAltitudePath(_ target: Double, pause: Bool = false) -> String {
-    "\(GUIDED_ALTITUDE)(\(String(format: "%.2f", target))\(pause ? ",pause" : ""))"
+    "\(GUIDED_ALTITUDE)(\(target)\(pause ? ",pause" : ""))"
 }
 
 func guidedAltitude(_ view: JSON?) -> GuidedAltitude? {

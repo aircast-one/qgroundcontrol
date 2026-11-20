@@ -31,7 +31,7 @@ final class GuidedTakeoffTests: XCTestCase {
     }
 
     func testTheArgumentPathCarriesTheTargetAndNoSeparators() {
-        XCTAssertEqual(guidedTakeoffPath(10.0), "view.guidedTakeoff(10.00)")
+        XCTAssertEqual(guidedTakeoffPath(10.0), "view.guidedTakeoff(10.0)")
         XCTAssertFalse(guidedTakeoffPath(10.0).contains(","))
     }
 

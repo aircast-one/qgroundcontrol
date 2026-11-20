@@ -13,7 +13,7 @@ struct GuidedTakeoff: Equatable {
 }
 
 func guidedTakeoffPath(_ target: Double) -> String {
-    "\(GUIDED_TAKEOFF)(\(String(format: "%.2f", target)))"
+    "\(GUIDED_TAKEOFF)(\(target))"
 }
 
 func guidedTakeoff(_ view: JSON?) -> GuidedTakeoff? {

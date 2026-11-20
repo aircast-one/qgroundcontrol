@@ -40,7 +40,7 @@ final class GuidedSpeedTests: XCTestCase {
     }
 
     func testTheArgumentPathCarriesTheTargetAndNoSeparators() {
-        XCTAssertEqual(guidedSpeedPath(7.5), "view.guidedSpeed(7.50)")
+        XCTAssertEqual(guidedSpeedPath(7.5), "view.guidedSpeed(7.5)")
         XCTAssertFalse(guidedSpeedPath(7.5).contains(","))
     }
 }

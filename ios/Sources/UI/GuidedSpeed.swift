@@ -14,7 +14,7 @@ struct GuidedSpeed: Equatable {
 }
 
 func guidedSpeedPath(_ target: Double) -> String {
-    "\(GUIDED_SPEED)(\(String(format: "%.2f", target)))"
+    "\(GUIDED_SPEED)(\(target))"
 }
 
 private func textOrNull(_ view: JSON, _ key: String) -> String? {
