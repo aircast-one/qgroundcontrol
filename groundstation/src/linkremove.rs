@@ -21,20 +21,31 @@ fn configured_names(backend: &dyn Backend) -> Option<Vec<String>> {
     )
 }
 
+const COMM_LOST: &str = "Comm Lost";
+
+fn carrying(links: &Value) -> Vec<String> {
+    let listed = |key: &str| {
+        links
+            .get(key)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let statuses = listed("linkStatuses");
+    listed("linkNames")
+        .iter()
+        .enumerate()
+        .filter(|(at, _)| statuses.get(*at).and_then(Value::as_str) != Some(COMM_LOST))
+        .filter_map(|(_, name)| name.as_str().map(str::to_string))
+        .collect()
+}
+
 pub(crate) fn armed_vehicle_links(backend: &dyn Backend) -> Vec<String> {
     let vehicle = backend.value_fields("vehicle", "armed");
     match crate::read::flag(&vehicle, "armed") {
-        true => backend
-            .value_fields("vehicle.vehicleLinkManager", "linkNames")
-            .get("linkNames")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default(),
+        true => {
+            carrying(&backend.value_fields("vehicle.vehicleLinkManager", "linkNames,linkStatuses"))
+        }
         false => Vec::new(),
     }
 }
@@ -140,6 +151,11 @@ mod tests {
         assert_eq!(
             removal_refusal(Some(0), None, None, &[]).map(|(t, _)| t),
             Some("unavailable")
+        );
+        assert_eq!(
+            carrying(&json!({ "linkNames": ["SITL", "Radio"], "linkStatuses": ["Comm Lost", ""] })),
+            vec!["Radio".to_string()],
+            "a link the armed vehicle is no longer heard on carries nothing, and the pilot cannot disarm through it, so it can be removed"
         );
 
         use std::cell::RefCell;
