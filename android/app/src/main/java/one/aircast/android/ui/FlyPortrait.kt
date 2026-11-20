@@ -292,7 +292,7 @@ internal fun FlyPortrait(
                             verticalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Column(Modifier.weight(1f, fill = false).clipToBounds(), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) { overlays() }
-                            if (!split) OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.padding(top = AircastSpace.s2))
+                            if (!split && !flyScreen.guidedPanelOpen) OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.padding(top = AircastSpace.s2))
                         }
                         Column(
                             Modifier
@@ -303,7 +303,7 @@ internal fun FlyPortrait(
                         ) {
                             MapButtons(view = view, split = split, hasVideo = hasVideo, onView = onView, modifier = Modifier)
                             Spacer(Modifier.weight(1f))
-                            if (!split) Box(Modifier.padding(top = AircastSpace.s2)) { rail(false) }
+                            if (!split && !flyScreen.guidedPanelOpen) Box(Modifier.padding(top = AircastSpace.s2)) { rail(false) }
                         }
                     }
                 },
