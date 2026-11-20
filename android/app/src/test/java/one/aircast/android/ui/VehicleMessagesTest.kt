@@ -213,4 +213,20 @@ class VehicleMessagesContractTest {
         assertEquals("2 messages from the vehicle", messageCountText(2))
     }
 
+
+    @Test
+    fun `a failsafe the vehicle has since cleared leaves the banner, and a newer alarm is not hidden behind an older one`() {
+        val log = vehicleMessages(
+            JSONObject(
+                """{"class":"VehicleMessages","order":"oldestFirst","items":[
+                {"index":0,"time":"","severity":"Emergency","level":"error","text":"Status text emergency"},
+                {"index":1,"time":"","severity":"Critical","level":"error","text":"EKF Failsafe: changed to LAND Mode","resolved":true},
+                {"index":2,"time":"","severity":"Critical","level":"error","text":"Fence Breached"},
+                {"index":3,"time":"","severity":"Critical","level":"normal","text":"EKF Failsafe Cleared"}]}""",
+            ),
+        )
+        assertEquals(listOf("Status text emergency", "Fence Breached"), bannerMessages(log).map { it.text })
+        assertEquals("Fence Breached", bannerText(bannerMessages(log)))
+        assertEquals("the line saying a failsafe cleared is not an alarm", listOf("Status text emergency"), bannerMessages(log.filter { it.index != 2 }).map { it.text })
+    }
 }

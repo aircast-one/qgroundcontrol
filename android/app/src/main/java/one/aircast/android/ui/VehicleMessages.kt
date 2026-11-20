@@ -60,6 +60,7 @@ data class VehicleMessage(
     val level: MessageSeverity,
     val text: String,
     val toldElsewhere: Boolean = false,
+    val resolved: Boolean = false,
 )
 
 private const val PREARM_PREFIX = "PreArm:"
@@ -68,7 +69,7 @@ internal fun chipBlocker(blocker: String): String =
     blocker.trim().removePrefix(PREARM_PREFIX).trim().substringBefore(". ").trimEnd('.')
 
 internal fun bannerMessages(unread: List<VehicleMessage>): List<VehicleMessage> =
-    unread.filter { (it.level == MessageSeverity.Error || it.level == MessageSeverity.Warning) && !it.toldElsewhere }
+    unread.filter { (it.level == MessageSeverity.Error || it.level == MessageSeverity.Warning) && !it.toldElsewhere && !it.resolved }
 
 internal fun bannerText(messages: List<VehicleMessage>): String? {
     if (messages.isEmpty()) return null
@@ -120,6 +121,7 @@ internal fun vehicleMessages(view: JSONObject?): List<VehicleMessage> {
                     level = levelOf(item.optText("level")),
                     text = text,
                     toldElsewhere = item.optBoolean("toldElsewhere"),
+                    resolved = item.optBoolean("resolved"),
                 )
             }
         }
