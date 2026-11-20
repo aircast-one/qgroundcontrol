@@ -45,6 +45,7 @@ import {
   linkFormErrorField,
   linkIcon,
   linkIsEditable,
+  linkLive,
   linkSections,
   LINK_WAITING,
   linkKind,
@@ -266,6 +267,18 @@ describe('LinkEditRulesTest', () => {
       ['Connected', ['udp']],
       [LINK_WAITING, ['ws']],
       ['Saved', ['tcp']],
+    ]);
+  });
+
+  it('a link that dropped after hearing the aircraft, or no longer hears it, is not listed or marked as connected', () => {
+    const dropped = LinkRow({ index: 0, name: 'ws', statusLine: 'Reconnecting · ws://127.0.0.1:5760', connected: true, heard: true, down: true, lastError: 'No MAVLink WebSocket answered', editing: LinkEditing.HostAndPort });
+    const quiet = LinkRow({ index: 1, name: 'radio', statusLine: 'Not hearing the vehicle', connected: true, heard: true, goneQuiet: true, lastError: '' });
+    const flying = LinkRow({ index: 2, name: 'udp', statusLine: 'Connected', connected: true, heard: true, lastError: '' });
+    expect([dropped, quiet, flying].map(linkLive)).toEqual([false, false, true]);
+    expect(linkSections([dropped, quiet, flying], []).map((it) => [it.title, it.rows.map((each) => each.name)])).toEqual([
+      ['Connected', ['udp']],
+      [LINK_WAITING, ['ws', 'radio']],
+      ['Saved', []],
     ]);
   });
 

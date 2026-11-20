@@ -156,6 +156,7 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "displaySummary": display_summary,
         "statusLine": status_line,
         "connected": connected,
+        "linkDown": connected && flag("linkDown"),
         "heardVehicle": heard,
         "goneQuiet": gone_quiet,
         "autoConnect": flag("autoConnect"),
@@ -635,6 +636,11 @@ mod tests {
             (Some("url"), Some("wss://sitl.aircast.one/ws/mavlink")),
             "a WebSocket link with a mistyped address is fixed in place, not deleted and added again"
         );
+        assert_eq!(
+            socket["linkDown"], true,
+            "a link that is reconnecting tells the head, so it is not marked Connected beside its Reconnecting line"
+        );
+        assert_eq!(tcp["linkDown"], false);
         let cloud = link_json(
             1,
             &json!({ "name": "Aircast cloud", "settingsURL": "AircastCloudSettings.qml", "summary": "Aircast cloud \u{b7} zzz", "apiBase": "https://api.aircast.one", "deviceId": "zzz" }),

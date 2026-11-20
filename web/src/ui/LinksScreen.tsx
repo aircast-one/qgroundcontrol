@@ -79,6 +79,7 @@ export type LinkRow = {
   name: string;
   statusLine: string;
   goneQuiet: boolean;
+  down: boolean;
   connected: boolean;
   heard: boolean;
   lastError: string;
@@ -101,6 +102,7 @@ export type LinkRow = {
 
 export const LinkRow = (fields: Pick<LinkRow, 'index' | 'name' | 'statusLine' | 'connected' | 'heard' | 'lastError'> & Partial<LinkRow>): LinkRow => ({
   goneQuiet: false,
+  down: false,
   errorRemedy: '',
   editing: LinkEditing.None,
   host: '',
@@ -138,6 +140,7 @@ export const linkRows = (view: Json | null): readonly LinkRow[] =>
       name: optText(link, 'name'),
       statusLine: optText(link, 'statusLine'),
       goneQuiet: optBoolean(link, 'goneQuiet'),
+      down: optBoolean(link, 'linkDown'),
       connected: optBoolean(link, 'connected'),
       heard: optBoolean(link, 'heardVehicle'),
       lastError: optText(link, 'lastError'),
@@ -209,9 +212,11 @@ export type LinkSection = { title: string; rows: readonly LinkRow[]; auto: reado
 
 export const LINK_WAITING = 'Waiting for a vehicle';
 
+export const linkLive = (row: LinkRow): boolean => row.connected && row.heard && !row.down && !row.goneQuiet;
+
 export const linkSections = (rows: readonly LinkRow[], auto: readonly AutoLink[]): readonly LinkSection[] => [
-  { title: 'Connected', rows: rows.filter((it) => it.connected && it.heard), auto: auto.filter((it) => it.heard) },
-  { title: LINK_WAITING, rows: rows.filter((it) => it.connected && !it.heard), auto: auto.filter((it) => !it.heard) },
+  { title: 'Connected', rows: rows.filter(linkLive), auto: auto.filter((it) => it.heard) },
+  { title: LINK_WAITING, rows: rows.filter((it) => it.connected && !linkLive(it)), auto: auto.filter((it) => !it.heard) },
   { title: 'Saved', rows: rows.filter((it) => !it.connected), auto: [] },
 ];
 
@@ -482,7 +487,7 @@ const LinkRowItem = ({ row, onConnect, onDisconnect, onRemove, onEdit }: { row: 
             </>
           ) : null}
         </span>
-        {row.connected && row.heard ? (
+        {linkLive(row) ? (
           <Text typography="labelLarge" color={aircast('success')}>
             {CONNECTED_STATUS}
           </Text>
