@@ -8,11 +8,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.offMainDetached
+import kotlinx.coroutines.launch
+import one.aircast.map.sentenceCase
 
 internal data class GuidedReading(
     val label: String,
@@ -33,7 +35,7 @@ internal class GuidedValueKind(
     val presets: Boolean = false,
     val explains: Boolean = true,
     val read: (Double?) -> GuidedReading?,
-    val commit: (Double) -> Unit,
+    val commit: (Double) -> String?,
 )
 
 internal class OpenGuidedValue(val kind: GuidedValueKind, val reading: GuidedReading, val range: ClosedFloatingPointRange<Double>, initial: Double) {
@@ -72,7 +74,7 @@ internal fun takeoffValue(offer: GuidedOffer?): GuidedValueKind = GuidedValueKin
     presets = true,
     explains = false,
     read = { target -> takeoffReading(guidedTakeoff(Qgc.get(target?.let(::guidedTakeoffPath) ?: GUIDED_TAKEOFF))) },
-    commit = { target -> guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))?.let { VehicleCommands.takeoff(it.targetMeters) } },
+    commit = { target -> guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))?.let { VehicleCommands.takeoffRefusal(it.targetMeters) } },
 )
 
 internal fun speedValue(offer: GuidedOffer?): GuidedValueKind = GuidedValueKind(
@@ -85,21 +87,21 @@ internal fun speedValue(offer: GuidedOffer?): GuidedValueKind = GuidedValueKind(
     read = { target -> speedReading(guidedSpeed(Qgc.get(target?.let(::guidedSpeedPath) ?: GUIDED_SPEED))) },
     commit = { target ->
         guidedSpeed(Qgc.get(guidedSpeedPath(target)))?.let { fresh ->
-            fresh.command?.let { method -> VehicleCommands.changeSpeed(method, fresh.targetMetersSecond) }
+            fresh.command?.let { method -> VehicleCommands.changeSpeedRefusal(method, fresh.targetMetersSecond) }
         }
     },
 )
 
-internal fun altitudeValue(pauses: Boolean): GuidedValueKind = GuidedValueKind(
+internal fun altitudeValue(pauses: Boolean, offer: GuidedOffer? = null): GuidedValueKind = GuidedValueKind(
     offerId = if (pauses) PAUSE else "changeAltitude",
-    title = if (pauses) "Pause" else "Change altitude",
+    title = if (pauses) "Pause" else sentenceCase(offer?.title?.ifBlank { null } ?: "Change altitude"),
     prompt = null,
     commitLabel = if (pauses) "Pause" else "Change",
     missingRange = "This vehicle did not report an altitude range.",
     quickPicks = true,
     read = { target -> altitudeReading(guidedAltitude(Qgc.get(target?.let { guidedAltitudePath(it, pauses) } ?: GUIDED_ALTITUDE))) },
     commit = { target ->
-        guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))?.let(::altitudeDelta)?.let { VehicleCommands.changeAltitude(it, pauses) }
+        guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))?.let(::altitudeDelta)?.let { VehicleCommands.changeAltitudeRefusal(it, pauses) }
     },
 )
 
@@ -107,10 +109,11 @@ internal suspend fun openGuidedValue(kind: GuidedValueKind): OpenGuidedValue? =
     withContext(Dispatchers.Default) { openedGuidedValue(kind, kind.read(null)) }
 
 @Composable
-internal fun GuidedValueFlow(open: OpenGuidedValue, onClose: () -> Unit) {
+internal fun GuidedValueFlow(open: OpenGuidedValue, onClose: () -> Unit, onRefused: (String?) -> Unit) {
     val kind = open.kind
     val unit = open.reading.unit
     var probe by remember(open) { mutableStateOf<GuidedReading?>(null) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(open, open.settled) {
         val at = open.settled
         probe = withContext(Dispatchers.Default) { kind.read(at) }
@@ -123,7 +126,7 @@ internal fun GuidedValueFlow(open: OpenGuidedValue, onClose: () -> Unit) {
         onCommit = {
             val target = open.target
             onClose()
-            offMainDetached { kind.commit(target) }
+            scope.launch { onRefused(withContext(Dispatchers.Default) { kind.commit(target) }) }
         },
         onCancel = onClose,
     ) {

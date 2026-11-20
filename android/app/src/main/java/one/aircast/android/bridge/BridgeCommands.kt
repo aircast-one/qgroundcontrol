@@ -84,6 +84,7 @@ internal object PlanCommands {
     fun setUndoTracking(tracking: Boolean): Boolean = Qgc.set(PLAN_UNDO_TRACKING, tracking)
     fun removeAllFromVehicle(): Boolean = Qgc.invoke(PLAN_REMOVE_ALL_FROM_VEHICLE)
     fun resumeMission(waypoint: Int): Boolean = Qgc.invoke(PLAN_RESUME_MISSION, waypoint)
+    fun resumeMissionRefusal(waypoint: Int): String? = Qgc.refusalOf(PLAN_RESUME_MISSION, waypoint)
     fun dismissMissionComplete(notice: Long): Boolean = Qgc.invoke(MISSION_COMPLETE_DISMISS, notice)
     fun commandCategories(): Any? = Qgc.invokeResult(PLAN_COMMAND_CATEGORIES)
     fun commandsForCategory(category: String): Any? = Qgc.invokeResult(PLAN_COMMANDS_FOR_CATEGORY, null, category, true)

@@ -31,6 +31,32 @@ class FlightDeckEntriesTest {
     }
 
     @Test
+    fun `a landing the vehicle refuses waits for the core's answer instead of vanishing`() {
+        val confirmed = mutableListOf<GuidedAction>()
+        flightDeckEntries(deck(listOf(offer("land")), armed = true, confirmed = confirmed)).first { it.id == "land" }.onClick()
+        assertEquals(true, confirmed.single().answer != null)
+    }
+
+    @Test
+    fun `a pause that carries no height, as on a rover, slides a plain pause that waits for the core's answer`() {
+        val confirmed = mutableListOf<GuidedAction>()
+        val opened = mutableListOf<String>()
+        flightDeckEntries(deck(listOf(offer(PAUSE, carriesValue = false).copy(title = "Pause")), armed = true, opened = opened, confirmed = confirmed)).first { it.id == PAUSE }.onClick()
+        assertEquals(emptyList<String>(), opened)
+        assertEquals(listOf(PAUSE, "Pause", "true"), confirmed.single().let { listOf(it.offerId, it.name, (it.answer != null).toString()) })
+        flightDeckEntries(deck(listOf(offer(PAUSE).copy(title = "Pause")), armed = true, opened = opened)).first { it.id == PAUSE }.onClick()
+        assertEquals(listOf(PAUSE), opened)
+    }
+
+    @Test
+    fun `a sub's height change reads Depth on the deck, as the core titles it`() {
+        val depth = flightDeckEntries(deck(listOf(offer("changeAltitude").copy(title = "Change Depth")))).first { it.id == "changeAltitude" }
+        val altitude = flightDeckEntries(deck(listOf(offer("changeAltitude").copy(title = "Change Altitude")))).first { it.id == "changeAltitude" }
+        assertEquals(listOf("Depth", "Altitude"), listOf(depth.label, altitude.label))
+        assertEquals(listOf("Change depth", "Change altitude", "Pause"), listOf(altitudeValue(false, offer("changeAltitude").copy(title = "Change Depth")).title, altitudeValue(false).title, altitudeValue(true).title))
+    }
+
+    @Test
     fun `a vehicle with a gripper gets a drop on the deck that lands on a hold, like land`() {
         val entries = flightDeckEntries(deck(listOf(offer("arm"), offer(RELEASE).copy(title = "Drop"))))
         val drop = entries.first { it.id == RELEASE }

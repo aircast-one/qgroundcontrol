@@ -12,6 +12,7 @@ private const val VEHICLE_TAKEOFF = "vehicle.guidedModeTakeoff"
 private const val VEHICLE_LAND = "vehicle.guidedModeLand"
 private const val VEHICLE_RETURN_TO_LAUNCH = "vehicle.guidedModeRTL"
 private const val VEHICLE_CHANGE_ALTITUDE = "vehicle.guidedModeChangeAltitude"
+private const val VEHICLE_PAUSE = "vehicle.pauseVehicle"
 private const val VEHICLE_START_MISSION = "vehicle.startMission"
 private const val VEHICLE_ABORT_LANDING = "vehicle.abortLanding"
 private const val VEHICLE_GRIPPER = "vehicle.sendGripperAction"
@@ -31,29 +32,27 @@ internal object VehicleCommands {
     fun setArmed(armed: Boolean): Boolean = Qgc.set(VEHICLE_ARMED, armed)
     fun setFlightMode(mode: String): Boolean = Qgc.set(VEHICLE_FLIGHT_MODE, mode)
     fun setChecklistState(state: Int): Boolean = Qgc.set(VEHICLE_CHECKLIST_STATE, state)
-    fun setForwardFlight(forward: Boolean): Boolean = Qgc.set(VEHICLE_VTOL_FORWARD_FLIGHT, forward)
 
     fun heading(): JSONObject = Qgc.get(VEHICLE_HEADING)
     fun coordinate(): JSONObject = Qgc.get(VEHICLE_COORDINATE)
 
-    fun takeoff(): Boolean = Qgc.invoke(VEHICLE_TAKEOFF)
-    fun takeoff(meters: Double): Boolean = Qgc.invoke(VEHICLE_TAKEOFF, meters)
     fun takeoffRefusal(): String? = Qgc.refusalOf(VEHICLE_TAKEOFF)
     fun takeoffRefusal(meters: Double): String? = Qgc.refusalOf(VEHICLE_TAKEOFF, meters)
-    fun land(): Boolean = Qgc.invoke(VEHICLE_LAND)
     fun landRefusal(): String? = Qgc.refusalOf(VEHICLE_LAND)
     fun returnToLaunch(smart: Boolean): Boolean = Qgc.invoke(VEHICLE_RETURN_TO_LAUNCH, smart)
-    fun changeSpeed(command: String, metersSecond: Double): Boolean =
+    fun returnToLaunchRefusal(smart: Boolean): String? = Qgc.refusalOf(VEHICLE_RETURN_TO_LAUNCH, smart)
+    fun pauseRefusal(): String? = Qgc.refusalOf(VEHICLE_PAUSE)
+    fun changeSpeedRefusal(command: String, metersSecond: Double): String? =
         // qtpaths: vehicle.guidedModeChangeGroundSpeedMetersSecond, vehicle.guidedModeChangeEquivalentAirspeedMetersSecond
-        Qgc.invoke("vehicle.$command", metersSecond)
-    fun changeAltitude(deltaMeters: Double, pause: Boolean): Boolean = Qgc.invoke(VEHICLE_CHANGE_ALTITUDE, deltaMeters, pause)
-    fun startMission(): Boolean = Qgc.invoke(VEHICLE_START_MISSION)
-    fun abortLanding(climbMeters: Double): Boolean = Qgc.invoke(VEHICLE_ABORT_LANDING, climbMeters)
-    fun gripper(action: Int, bay: Int = 0): Boolean = Qgc.invoke(VEHICLE_GRIPPER, action, bay)
+        Qgc.refusalOf("vehicle.$command", metersSecond)
+    fun changeAltitudeRefusal(deltaMeters: Double, pause: Boolean): String? = Qgc.refusalOf(VEHICLE_CHANGE_ALTITUDE, deltaMeters, pause)
+    fun startMissionRefusal(): String? = Qgc.refusalOf(VEHICLE_START_MISSION)
+    fun abortLandingRefusal(climbMeters: Double): String? = Qgc.refusalOf(VEHICLE_ABORT_LANDING, climbMeters)
     fun gripperRefusal(action: Int, bay: Int = 0): String? = Qgc.refusalOf(VEHICLE_GRIPPER, action, bay)
     fun fixPayloadRefusal(code: String): String? = Qgc.refusalOf(VEHICLE_FIX_PAYLOAD, code)
-    fun stopRoi(): Boolean = Qgc.invoke(VEHICLE_STOP_ROI)
-    fun forceArm(): Boolean = Qgc.invoke(VEHICLE_FORCE_ARM)
+    fun stopRoiRefusal(): String? = Qgc.refusalOf(VEHICLE_STOP_ROI)
+    fun forceArmRefusal(): String? = Qgc.refusalOf(VEHICLE_FORCE_ARM)
+    fun forwardFlightRefusal(forward: Boolean): String? = Qgc.writeRefusal(VEHICLE_VTOL_FORWARD_FLIGHT, forward)
     fun emergencyStop(): Boolean = Qgc.invoke(VEHICLE_EMERGENCY_STOP)
     fun motorTest(motor: Int, percent: Int, seconds: Int, inOrder: Boolean): Boolean = Qgc.invoke(VEHICLE_MOTOR_TEST, motor, percent, seconds, inOrder)
     fun overrideRcChannel(channel: Int, pwm: Int): Boolean = Qgc.invoke(VEHICLE_RC_OVERRIDE, channel, pwm)

@@ -9,8 +9,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
 import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
 
@@ -28,6 +30,7 @@ internal fun VtolStateCell() {
     val state = remember(view) { vtolState(view) } ?: return
     val offer = remember(view, state) { guidedOffers(view)[state.transition] }
     var confirming by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     Text(
         state.label,
         style = if (state.flying) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
@@ -42,7 +45,7 @@ internal fun VtolStateCell() {
             confirmButton = {
                 TextButton(enabled = offer?.ready == true && command != null, onClick = {
                     confirming = false
-                    command?.invoke()
+                    command?.let { scope.launch { it() } }
                 }) { Text(if (state.forward) "Transition to Multi-Rotor" else "Transition to Fixed Wing") }
             },
             dismissButton = { TextButton(onClick = { confirming = false }) { Text("Cancel") } },

@@ -7,7 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GuidedValueFlowTest {
-    private val kind = GuidedValueKind("takeoff", "Takeoff", null, "Take off", "no range", quickPicks = false, read = { null }, commit = {})
+    private val kind = GuidedValueKind("takeoff", "Takeoff", null, "Take off", "no range", quickPicks = false, read = { null }, commit = { null })
 
     @Test
     fun `a value opens only with a usable range and a starting value`() {

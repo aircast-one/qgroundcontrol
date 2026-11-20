@@ -499,7 +499,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         val settled = latestOffers[due.id]?.takeIf { it.ready } ?: return@LaunchedEffect
         if (pending == null || popupReplacesOpenConfirm(settled.id)) {
             guidedCommand(settled.id, resumeFrom)?.let { command ->
-                ask(GuidedAction(name = settled.title, confirm = settled.prompt, destructive = settled.destructive, offerId = settled.id, run = command))
+                ask(GuidedAction(name = settled.title, confirm = settled.prompt, destructive = settled.destructive, offerId = settled.id, answer = command))
             }
         }
     }
@@ -528,7 +528,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             if (opened == null) refusal = kind.missingRange else guidedValue = opened
         }
     }
-    val openAltitude: (Boolean) -> Unit = { pauses -> openValue(altitudeValue(pauses)) }
 
     val liveActions = actionsJson?.toString()
     val confirming = pending
@@ -574,7 +573,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             }
             else -> entries.firstOrNull { it.id == asked && it.enabled }?.onClick?.invoke() ?: offers[asked]?.takeIf { it.ready }?.let { offer ->
                 guidedCommand(offer.id, resumeFrom)?.let { command ->
-                    ask(GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command))
+                    ask(GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, answer = command))
                 }
             }
         }
@@ -674,7 +673,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     }
 
     val rail = layout == FlyDeckLayout.Rail
-    guidedValue?.let { open -> DecisionHost(rail) { GuidedValueFlow(open) { guidedValue = null } } }
+    guidedValue?.let { open -> DecisionHost(rail) { GuidedValueFlow(open, onClose = { guidedValue = null }, onRefused = { refusal = it }) } }
 
     LaunchedEffect(loiter == null) {
         if (loiter == null) editingLoiter = null
@@ -703,7 +702,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 extras.filter { offer -> entries.none { it.id == offer.id } && offer.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
                         if (offer.id == PAUSE) {
-                            openAltitude(true)
+                            pauseClick(offer, ask, openValue)
                         } else {
                             guidedCommand(offer.id, resumeFrom)?.let { command ->
                                 ask(
@@ -712,7 +711,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                                         name = offer.title,
                                         confirm = offer.prompt,
                                         destructive = offer.destructive,
-                                        run = command,
+                                        answer = command,
                                     ),
                                 )
                             }
@@ -1120,6 +1119,21 @@ internal class FlightDeckContext(
 
 private fun dropLabel(title: String, payload: Payload): String = holdLabel(payload.label.ifBlank { title })
 
+internal fun altitudeLabel(offer: GuidedOffer): String = sentenceCase(offer.title.replace(Regex("^Change\\s+", RegexOption.IGNORE_CASE), ""))
+
+internal fun pauseClick(pause: GuidedOffer, confirm: (GuidedAction) -> Unit, openValue: (GuidedValueKind) -> Unit) =
+    if (pause.carriesValue) {
+        openValue(altitudeValue(true))
+    } else {
+        confirm(GuidedAction(
+            offerId = PAUSE,
+            name = pause.title,
+            confirm = pause.prompt.ifBlank { "Pause at current position" },
+            destructive = false,
+            answer = { withContext(Dispatchers.Default) { VehicleCommands.pauseRefusal() } },
+        ))
+    }
+
 internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(deck) {
     val armAction = offers[if (armed) "disarm" else "arm"]
     listOfNotNull(
@@ -1169,16 +1183,15 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                     name = offers["takeoff"]?.title ?: "Takeoff",
                     confirm = offers["takeoff"]?.prompt?.ifBlank { null } ?: "Takeoff from ground and hold position.",
                     destructive = false,
-                ) {
-                    offMainDetached { VehicleCommands.takeoff() }
-                })
+                    answer = { withContext(Dispatchers.Default) { VehicleCommands.takeoffRefusal() } },
+                ))
                 return@DeckEntry
             }
             openValue(takeoffValue(offers["takeoff"]))
         }.takeIf { offers["takeoff"]?.let { it.shown || it.reasonCode == NO_SIGNAL_CODE } == true },
-        DeckEntry(PAUSE, offers[PAUSE]?.title ?: "Pause", R.drawable.ic_pause, offers[PAUSE]?.ready == true) {
-            openValue(altitudeValue(true))
-        }.takeIf { offers[PAUSE]?.shown == true },
+        offers[PAUSE]?.takeIf { it.shown }?.let { pause ->
+            DeckEntry(PAUSE, pause.title, R.drawable.ic_pause, pause.ready) { pauseClick(pause, confirm, openValue) }
+        },
         DeckEntry("rtl", "Return", R.drawable.ic_home, offers["rtl"]?.ready == true) {
             confirm(GuidedAction(
                 offerId = "rtl",
@@ -1186,10 +1199,10 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                 confirm = offers["rtl"]?.prompt?.ifBlank { null } ?: "Return to the launch position of the vehicle",
                 destructive = false,
                 option = offers["rtl"]?.option?.ifBlank { null }?.let { label ->
-                    ConfirmOption(label) { smart -> offMainDetached { VehicleCommands.returnToLaunch(smart) } }
+                    ConfirmOption(label) { smart -> scope.launch { report(withContext(Dispatchers.Default) { VehicleCommands.returnToLaunchRefusal(smart) }) } }
                 },
             ) {
-                offMainDetached { VehicleCommands.returnToLaunch(false) }
+                scope.launch { report(withContext(Dispatchers.Default) { VehicleCommands.returnToLaunchRefusal(false) }) }
             })
         }.takeIf { offers["rtl"]?.shown == true },
         DeckEntry(
@@ -1207,16 +1220,15 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                 confirm = offers["land"]?.prompt?.ifBlank { null }
                     ?: "Land the vehicle at the current position",
                 destructive = false,
-            ) {
-                offMainDetached { VehicleCommands.land() }
-            })
+                answer = { withContext(Dispatchers.Default) { VehicleCommands.landRefusal() } },
+            ))
         }.takeIf { offers["land"]?.shown == true },
         DeckEntry("changeSpeed", "Speed", R.drawable.ic_speed, offers["changeSpeed"]?.ready == true) {
             openValue(speedValue(offers["changeSpeed"]))
         }.takeIf { offers["changeSpeed"]?.shown == true },
-        DeckEntry("changeAltitude", "Altitude", R.drawable.ic_height, offers["changeAltitude"]?.ready == true) {
-            openValue(altitudeValue(false))
-        }.takeIf { offers["changeAltitude"]?.shown == true },
+        offers["changeAltitude"]?.takeIf { it.shown }?.let { altitude ->
+            DeckEntry("changeAltitude", altitudeLabel(altitude), R.drawable.ic_height, altitude.ready) { openValue(altitudeValue(false, altitude)) }
+        },
         DeckEntry(
             RELEASE,
             dropLabel(offers[RELEASE]?.title ?: "Drop", payload),

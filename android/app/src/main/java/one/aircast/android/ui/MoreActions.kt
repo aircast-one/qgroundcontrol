@@ -3,7 +3,8 @@ package one.aircast.android.ui
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.PlanCommands
 import one.aircast.android.bridge.VehicleCommands
-import one.aircast.android.bridge.offMainDetached
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal const val PAUSE = "pause"
 
@@ -53,18 +54,18 @@ internal fun clickMenuAllowed(decision: String?): Boolean = decision == null || 
 internal fun autoMissionPopup(wasReady: Set<String>, offers: Map<String, GuidedOffer>, enabled: Boolean): GuidedOffer? =
     AUTO_POPUP_ACTIONS.mapNotNull { offers[it] }.firstOrNull { (enabled || it.id == LAND_ABORT) && it.ready && it.id !in wasReady }
 
-internal fun guidedCommand(id: String, resumeFrom: Int?): (() -> Unit)? = when (id) {
-    "startMission", "continueMission" -> ({ offMainDetached { VehicleCommands.startMission() } })
-    "landAbort" -> ({ offMainDetached { VehicleCommands.abortLanding(LAND_ABORT_CLIMB_METERS) } })
-    "grab" -> ({ offMainDetached { VehicleCommands.gripper(GRIPPER_GRAB) } })
-    "release" -> ({ offMainDetached { VehicleCommands.gripper(GRIPPER_RELEASE) } })
-    "hold" -> ({ offMainDetached { VehicleCommands.gripper(GRIPPER_HOLD) } })
-    "cancelRoi" -> ({ offMainDetached { VehicleCommands.stopRoi() } })
-    "vtolTransitionToFixedWing" -> ({ offMainDetached { VehicleCommands.setForwardFlight(true) } })
-    "vtolTransitionToMultiRotor" -> ({ offMainDetached { VehicleCommands.setForwardFlight(false) } })
-    "forceArm" -> ({ offMainDetached { VehicleCommands.forceArm() } })
-    "resumeMission" -> resumeFrom?.let { at ->
-        ({ offMainDetached { PlanCommands.resumeMission(at) } })
-    }
+internal fun guidedCommand(id: String, resumeFrom: Int?): (suspend () -> String?)? = when (id) {
+    "startMission", "continueMission" -> offMainRefusal { VehicleCommands.startMissionRefusal() }
+    "landAbort" -> offMainRefusal { VehicleCommands.abortLandingRefusal(LAND_ABORT_CLIMB_METERS) }
+    "grab" -> offMainRefusal { VehicleCommands.gripperRefusal(GRIPPER_GRAB) }
+    "release" -> offMainRefusal { VehicleCommands.gripperRefusal(GRIPPER_RELEASE) }
+    "hold" -> offMainRefusal { VehicleCommands.gripperRefusal(GRIPPER_HOLD) }
+    "cancelRoi" -> offMainRefusal { VehicleCommands.stopRoiRefusal() }
+    "vtolTransitionToFixedWing" -> offMainRefusal { VehicleCommands.forwardFlightRefusal(true) }
+    "vtolTransitionToMultiRotor" -> offMainRefusal { VehicleCommands.forwardFlightRefusal(false) }
+    "forceArm" -> offMainRefusal { VehicleCommands.forceArmRefusal() }
+    "resumeMission" -> resumeFrom?.let { at -> offMainRefusal { PlanCommands.resumeMissionRefusal(at) } }
     else -> null
 }
+
+private fun offMainRefusal(command: () -> String?): suspend () -> String? = { withContext(Dispatchers.Default) { command() } }
