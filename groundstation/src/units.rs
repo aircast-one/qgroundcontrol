@@ -109,9 +109,9 @@ fn conversion(kind: Kind, choice: u32) -> Option<Conversion> {
             |v| (v * HOUR_SECONDS) / (1000.0 * KNOTS_TO_KPH),
             |v| v * (1000.0 * KNOTS_TO_KPH / HOUR_SECONDS),
         ),
-        (Kind::Temperature, 0) => ("C", |v| v, |v| v),
+        (Kind::Temperature, 0) => (CELSIUS, |v| v, |v| v),
         (Kind::Temperature, 1) => (
-            "F",
+            FAHRENHEIT,
             |v| (v * (9.0 / 5.0)) + 32.0,
             |v| (v - 32.0) * (5.0 / 9.0),
         ),
@@ -174,7 +174,40 @@ pub fn cooking(raw_units: &str) -> Option<Conversion> {
     cooking_with(raw_units, crate::settingsstore::stored_text, METRIC)
 }
 
-const BUILT_IN: [(&str, Conversion); 6] = [
+const CELSIUS: &str = "\u{b0}C";
+const FAHRENHEIT: &str = "\u{b0}F";
+
+const CENTI_CELSIUS: &str = "centi-celsius";
+
+const CENTI_CELSIUS_AS_CELSIUS: Conversion = Conversion {
+    name: CELSIUS,
+    shown: |v| v / 100.0,
+    base: |v| v * 100.0,
+};
+
+const CENTI_CELSIUS_AS_FAHRENHEIT: Conversion = Conversion {
+    name: FAHRENHEIT,
+    shown: |v| (v / 100.0) * (9.0 / 5.0) + 32.0,
+    base: |v| (v - 32.0) * (5.0 / 9.0) * 100.0,
+};
+
+fn centi_celsius(preference: impl Fn(&str) -> Option<Conversion>) -> Conversion {
+    match preference("C").map(|c| c.name) {
+        Some(FAHRENHEIT) => CENTI_CELSIUS_AS_FAHRENHEIT,
+        _ => CENTI_CELSIUS_AS_CELSIUS,
+    }
+}
+
+pub fn temperature_text(celsius: f64) -> String {
+    let unit = cooking("C");
+    format!(
+        "{:.0} {}",
+        unit.map_or(celsius, |u| (u.shown)(celsius)),
+        unit.map_or(CELSIUS, |u| u.name)
+    )
+}
+
+const BUILT_IN: [(&str, Conversion); 5] = [
     (
         "centi-degrees",
         Conversion {
@@ -215,18 +248,13 @@ const BUILT_IN: [(&str, Conversion); 6] = [
             base: |v| v / 100.0,
         },
     ),
-    (
-        "centi-celsius",
-        Conversion {
-            name: "C",
-            shown: |v| v / 100.0,
-            base: |v| v * 100.0,
-        },
-    ),
 ];
 
 pub fn built_in(raw_units: &str) -> Option<Conversion> {
     let lowered = raw_units.to_lowercase();
+    if lowered == CENTI_CELSIUS {
+        return Some(centi_celsius(cooking));
+    }
     BUILT_IN
         .iter()
         .find(|(units, _)| *units == lowered)
@@ -261,6 +289,9 @@ pub fn for_fact(
         meta.value_type,
         crate::factmeta::ValueType::Float | crate::factmeta::ValueType::Double
     );
+    if lowered == CENTI_CELSIUS {
+        return Some(centi_celsius(preference));
+    }
     BUILT_IN
         .iter()
         .find(|(units, _)| *units == lowered)
@@ -564,6 +595,26 @@ mod tests {
     }
 
     #[test]
+    fn an_esc_temperature_follows_the_temperature_unit() {
+        let fahrenheit = |key: &str| (key == "Units/temperatureUnits").then(|| "1".to_string());
+        let meta = crate::factmeta::MetaData {
+            name: "temperature".to_string(),
+            units: Some(CENTI_CELSIUS.to_string()),
+            ..crate::px4meta::bare(crate::factmeta::ValueType::Float)
+        };
+        let shown = |stored: &dyn Fn(&str) -> Option<String>| {
+            for_fact(&meta, |units| cooking_with(units, stored, METRIC))
+                .map(|c| ((c.shown)(3000.0), c.name))
+        };
+        assert_eq!(
+            shown(&fahrenheit),
+            Some((86.0, "\u{b0}F")),
+            "an ESC at 30 C reads 86 F once Fahrenheit is chosen, not 30 C"
+        );
+        assert_eq!(shown(&|_: &str| None), Some((30.0, "\u{b0}C")));
+    }
+
+    #[test]
     fn conversions_follow_qgcs_table() {
         let feet = conversion(Kind::Horizontal, 0).unwrap();
         assert_eq!(((feet.shown)(100.0), feet.name), (100.0 / 0.3048, "ft"));
@@ -585,7 +636,7 @@ mod tests {
         let imperial = |_: &str| None;
         assert_eq!(
             cooking_with("C", imperial, IMPERIAL_US).map(|c| ((c.shown)(100.0), c.name)),
-            Some((212.0, "F"))
+            Some((212.0, "\u{b0}F"))
         );
         assert_eq!(
             cooking_with("cm/px", imperial, IMPERIAL_US).map(|c| c.name),

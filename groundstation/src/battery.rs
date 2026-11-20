@@ -605,7 +605,7 @@ pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
             .map(|c| consumed_row(c, pack.capacity_mah)),
         pack.temperature
             .clone()
-            .map(|t| row("Temperature", format!("{t}\u{00b0}C"), SECONDARY)),
+            .map(|t| row("Temperature", t, SECONDARY)),
         pack.function.clone().map(|f| row("Function", f, SECONDARY)),
     ]
     .into_iter()
@@ -652,7 +652,14 @@ fn popup_pack(fact: &dyn Fn(&str) -> Value) -> PopupPack {
         voltage: spelled("voltage"),
         consumed_mah: raw("mahConsumed"),
         capacity_mah: None,
-        temperature: spelled("temperature"),
+        temperature: spelled("temperature").map(|t| {
+            let units = fact("temperature")
+                .get("units")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            format!("{t} {units}").trim_end().to_string()
+        }),
         function,
     }
 }
@@ -1495,6 +1502,24 @@ mod tests {
             popup_rows(&popup(1, "Ok", Some(80.0), None))[0]["severity"].as_i64(),
             Some(-1),
             "a healthy pack's charge is grey, as _packColor defaults to colorGrey"
+        );
+    }
+
+    #[test]
+    fn a_pack_temperature_reads_in_the_unit_its_fact_was_cooked_in() {
+        let fahrenheit = |name: &str| match name {
+            "temperature" => {
+                json!({ "kind": "fact", "name": "temperature", "rawValue": 21.0, "value": 69.8, "valueString": "70", "units": "\u{b0}F" })
+            }
+            _ => Value::Null,
+        };
+        let rows = popup_rows(&popup_pack(&fahrenheit));
+        assert_eq!(
+            rows.iter()
+                .find(|r| r["label"] == "Temperature")
+                .and_then(|r| r["value"].as_str()),
+            Some("70 \u{b0}F"),
+            "a pack cooked to Fahrenheit says so instead of labelling 70 F as 70 C"
         );
     }
 

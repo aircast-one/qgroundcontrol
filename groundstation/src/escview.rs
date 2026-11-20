@@ -165,15 +165,17 @@ impl Rotor {
             "critical" => Some((
                 2,
                 format!(
-                    "Motor {motor} is at {:.0} C, past the {TEMPERATURE_CRITICAL_C:.0} C limit.",
-                    self.temperature
+                    "Motor {motor} is at {}, past the {} limit.",
+                    crate::units::temperature_text(self.temperature),
+                    crate::units::temperature_text(TEMPERATURE_CRITICAL_C)
                 ),
             )),
             "elevated" => Some((
                 1,
                 format!(
-                    "Motor {motor} is warm at {:.0} C; {TEMPERATURE_CRITICAL_C:.0} C is critical.",
-                    self.temperature
+                    "Motor {motor} is warm at {}; {} is critical.",
+                    crate::units::temperature_text(self.temperature),
+                    crate::units::temperature_text(TEMPERATURE_CRITICAL_C)
                 ),
             )),
             _ => None,
@@ -197,7 +199,7 @@ impl Rotor {
             "motor": self.motor,
             "angle": self.angle,
             "state": self.state,
-            "temperature": format!("{:.0} C", self.temperature),
+            "temperature": crate::units::temperature_text(self.temperature),
             "current": format!("{:.1}", self.current),
             "rpm": if self.rpm >= RPM_IN_THOUSANDS {
                 format!("{:.0}k", self.rpm / 1000.0)
@@ -712,7 +714,7 @@ mod tests {
         assert_eq!(
             shown["hints"],
             json!([
-                "Motor 5 is warm at 75 C; 90 C is critical.",
+                "Motor 5 is warm at 75 \u{b0}C; 90 \u{b0}C is critical.",
                 "Motors 1, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering.",
                 "ESC 8 matches no motor: its output drives none and the frame has fewer motors. Number each ESC after its motor, or shift DroneCAN ESCs with CAN_D1_UC_ESC_OF onto their motors' outputs."
             ])
@@ -920,7 +922,10 @@ mod tests {
             (hot.level(), hot.reasons(Some(31.0))),
             (
                 "critical",
-                vec![(2, "Motor 3 is at 92 C, past the 90 C limit.".to_string())]
+                vec![(
+                    2,
+                    "Motor 3 is at 92 \u{b0}C, past the 90 \u{b0}C limit.".to_string()
+                )]
             )
         );
     }
