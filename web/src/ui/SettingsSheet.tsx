@@ -144,7 +144,18 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
   }, [group, setupOpen]);
   useBackHandler(true, onClose);
   useEscapeHandler(!desktop, onClose);
-  useEscapeHandler(query !== null, () => setQuery(null));
+  const searchButton = useRef<HTMLButtonElement>(null);
+  const [searchClosed, setSearchClosed] = useState(false);
+  const closeSearch = () => {
+    setQuery(null);
+    setSearchClosed(true);
+  };
+  useEffect(() => {
+    if (!searchClosed) return;
+    setSearchClosed(false);
+    searchButton.current?.focus({ preventScroll: true });
+  }, [searchClosed]);
+  useEscapeHandler(query !== null, closeSearch);
   useBackHandler(setupOpen && query === null, closeSetup);
   const initialPage = page !== null && pageLook(page).group === group ? page : null;
   const [openPage, setOpenPage] = useKeyedState<string | null>([group, page, query !== null, setupOpen], () => (initialPage !== null && !pageLook(initialPage).inline ? initialPage : null));
@@ -157,6 +168,7 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
   const pageBack = () => (heading !== null ? heading.back() : closePage());
   const setupBack = () => (heading !== null && !setupFromTab ? heading.back() : closeSetup());
   const openSetup = (component: string | null) => {
+    setupMemory.page = null;
     navigation.setupPage.value = component;
     setSetupFromTab(component !== null);
     setSetupOpen(true);
@@ -203,7 +215,7 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
     navigation.settingsTab.value = null;
   });
   const contentKey = `${group.name}|${page ?? ''}|${query !== null}|${setupOpen}`;
-  const [setupMemory] = useKeyedState<SetupMemory>([contentKey], () => ({ page: null }));
+  const [setupMemory] = useKeyedState<SetupMemory>([group.name, page, setupOpen], () => ({ page: null }));
   const setupDestination = setupOpen && enteredForSetup;
   const headerBack = drilledTitle !== null && !(setupDestination && heading === null && !setupFromTab);
   const content =
@@ -305,7 +317,7 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
                     <FocusedOnShow className="min-w-0 flex-1">
                       <SearchPill value={query} onValueChange={setQuery} placeholder="Search settings" />
                     </FocusedOnShow>
-                    <TextButton onClick={() => setQuery(null)}>Cancel</TextButton>
+                    <TextButton onClick={closeSearch}>Cancel</TextButton>
                   </>
                 ) : (
                   <>
@@ -330,12 +342,12 @@ export const SettingsSheet = ({ requested, onClose, overFly, status }: { request
                         </div>
                       </>
                     )}
-                    <IconButton onClick={() => setQuery('')} label="Search settings">
+                    <IconButton ref={searchButton} onClick={() => setQuery('')} label={setupOpen ? 'Search setup and settings' : 'Search settings'}>
                       <Drawable name="ic_search" />
                     </IconButton>
                   </>
                 )}
-                <IconButton onClick={onClose} label="Close settings">
+                <IconButton onClick={onClose} label={setupOpen ? 'Close setup' : 'Close settings'}>
                   <Drawable name="ic_close" />
                 </IconButton>
               </div>

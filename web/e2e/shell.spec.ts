@@ -1,4 +1,4 @@
-import { APP, closeSettings, expect, openAircraftSetup, openApp, openMenu, takeOff, test } from './fixtures';
+import { APP, closeSettings, connectMock, expect, openAircraftSetup, openApp, openMenu, takeOff, test } from './fixtures';
 
 test('first run sets units once and stays dismissed', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 600 });
@@ -175,6 +175,21 @@ test('in the browser Alt with a digit or comma moves between screens', async ({ 
   await app.keyboard.press('Alt+Digit1');
   await expect(rail).toHaveCount(0);
   await expect(app.getByRole('button', { name: 'Menu', exact: true })).toBeVisible();
+});
+
+test('on a phone, leaving a search started on a Setup page goes back to that page with the search button focused', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await vehicle.setViewportSize({ width: 412, height: 860 });
+  await openMenu(vehicle, 'Setup');
+  await vehicle.getByRole('button', { name: /^Flight modes/ }).click();
+  await expect(vehicle.getByText('Flight mode channel', { exact: true })).toBeVisible();
+  const search = vehicle.getByRole('button', { name: 'Search setup and settings' });
+  await search.click();
+  await vehicle.keyboard.type('return');
+  await vehicle.keyboard.press('Escape');
+  await expect(vehicle.getByText('Flight mode channel', { exact: true }), 'the page the search started from, not the Setup list').toBeVisible();
+  await expect(search).toBeFocused();
+  await expect(vehicle.getByRole('button', { name: 'Close setup' })).toBeVisible();
 });
 
 test('a vehicle connected from Setup lands on Fly, not on the screen left open under Settings', async ({ app }) => {
