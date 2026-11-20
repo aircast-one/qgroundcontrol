@@ -133,18 +133,30 @@ fn write(recording: &mut Recording, bytes: &[u8]) {
     let entry = stamped(bytes);
     match open.sink.write_at(open.written, &entry) {
         Ok(()) => open.written += entry.len() as u64,
-        Err(_) => {
+        Err(error) => {
+            log::warn!(
+                "Telemetry log write to {} failed: {error}",
+                open.path.display()
+            );
             crate::noticeboard::post(
                 crate::noticeboard::MESSAGE,
-                "MAVLink",
-                &format!(
-                    "MAVLink Logging failed. Could not write to file {}, logging disabled.",
-                    open.path.display()
-                ),
+                "Flight log stopped",
+                &write_failed_text(&error),
             );
             stop(recording);
             recording.suspended = true;
         }
+    }
+}
+
+pub fn write_failed_text(error: &std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::StorageFull => {
+            "The disk is full, so this flight is no longer being recorded. Free up space and restart the app to record again.".to_string()
+        }
+        _ => format!(
+            "This flight is no longer being recorded: {error}. Restart the app to record again."
+        ),
     }
 }
 
@@ -377,6 +389,14 @@ mod tests {
             "2026-10-02 09-05-07.1.tlog"
         );
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_failed_write_names_its_cause() {
+        let full = write_failed_text(&std::io::Error::from(std::io::ErrorKind::StorageFull));
+        assert!(full.starts_with("The disk is full"));
+        let other = write_failed_text(&std::io::Error::other("device gone"));
+        assert!(other.contains("device gone"));
     }
 
     #[test]

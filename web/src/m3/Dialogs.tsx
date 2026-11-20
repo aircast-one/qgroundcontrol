@@ -46,8 +46,8 @@ export const AlertDialog = ({ onDismissRequest, dismissOnClickOutside, title, te
   <Shell onDismissRequest={onDismissRequest} dismissOnClickOutside={dismissOnClickOutside}>
     <div className="grid gap-4 p-dialog">
       {icon ? <div className="flex justify-center text-secondary">{icon}</div> : null}
-      {title ? <Dialog.Title className={`text-headline-small text-on-surface ${icon ? 'text-center' : ''}`}>{title}</Dialog.Title> : null}
-      {text ? <Dialog.Description render={<div />} className="text-body-medium text-on-surface-variant">{text}</Dialog.Description> : null}
+      {title ? <Dialog.Title className={`text-headline-small text-on-surface wrap-anywhere ${icon ? 'text-center' : ''}`}>{title}</Dialog.Title> : null}
+      {text ? <Dialog.Description render={<div />} className="text-body-medium text-on-surface-variant wrap-anywhere">{text}</Dialog.Description> : null}
       {confirmButton || dismissButton ? (
         <div className="flex flex-wrap justify-end gap-2 pt-2">
           {dismissButton}
