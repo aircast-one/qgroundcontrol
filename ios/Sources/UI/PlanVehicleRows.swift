@@ -15,6 +15,11 @@ private func offlineClassFacts() -> [(String, Fact)] {
     }
 }
 
+func plannedVehicleRows(_ plan: JSON?) -> [(String, String)] {
+    guard let vehicle = plan?["planningFor"], vehicle.object != nil else { return [] }
+    return [("Firmware", vehicle["firmware"].string), ("Vehicle", sentenceCase(vehicle["type"].string))].filter { !$0.1.isBlank }
+}
+
 struct PlanVehicleRows: View {
     @QgcPath("view.plan") private var plan
     @HasVehicle private var connected
@@ -28,8 +33,8 @@ struct PlanVehicleRows: View {
                 ForEach(facts, id: \.1.path) { label, fact in
                     FactRow(fact: fact, title: label, onWrite: { reloads += 1 })
                 }
-            } else if let vehicle = plan?["planningFor"], vehicle.object != nil {
-                ForEach([("Firmware", vehicle["firmware"].string), ("Vehicle", vehicle["type"].string)].filter { !$0.1.isBlank }, id: \.0) { label, value in
+            } else {
+                ForEach(plannedVehicleRows(plan), id: \.0) { label, value in
                     HStack {
                         Text(label).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
                         Text(value).font(.bodyMedium)

@@ -11,4 +11,11 @@ final class PlanVehicleRowsTests: XCTestCase {
             "a fence alone leaves the vehicle choosable, as MissionSettingsEditor counts mission items only"
         )
     }
+
+    func testAnOfflinePlanNamesItsVehicleAsTheVehicleTypeSettingDoes() {
+        let named = plannedVehicleRows(JSON.parse(#"{"planningFor":{"firmware":"ArduPilot","type":"Multi-Rotor"}}"#))
+        XCTAssertEqual(named.map(\.0), ["Firmware", "Vehicle"])
+        XCTAssertEqual(named.map(\.1), ["ArduPilot", "Multi-rotor"])
+        XCTAssertEqual(plannedVehicleRows(JSON.parse(#"{"planningFor":{"firmware":"","type":"Quadrotor"}}"#)).map(\.1), ["Quadrotor"])
+    }
 }

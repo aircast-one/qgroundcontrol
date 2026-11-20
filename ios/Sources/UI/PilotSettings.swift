@@ -9,7 +9,7 @@ struct PilotSetting: Equatable {
     var quantity: String? = nil
 }
 
-private let RETURN_HOME = "Return to home"
+private let RETURN_HOME = "Return home"
 private let FLIGHT_PROTECTION = "Flight protection"
 private let FAILSAFES = "If something goes wrong"
 private let FLIGHT_LIMITS = "Flight limits"
@@ -21,12 +21,12 @@ func pilotSettings(_ group: SettingsGroup) -> [PilotSetting] {
     switch group {
     case .Safety:
         return [
-            PilotSetting(label: "Return-to-home altitude", parameters: ["RTL_RETURN_ALT", "RTL_ALT_M", "RTL_ALT"], section: RETURN_HOME, hint: "Climbs to this height before flying home.", quantity: ALTITUDE),
+            PilotSetting(label: "Return altitude", parameters: ["RTL_RETURN_ALT", "RTL_ALT_M", "RTL_ALT"], section: RETURN_HOME, hint: "Climbs to this height before flying home.", quantity: ALTITUDE),
             PilotSetting(label: "Max altitude", parameters: ["GF_MAX_VER_DIST", "FENCE_ALT_MAX"], section: FLIGHT_PROTECTION, hint: "The aircraft will not climb above this.", whenUnlimited: "Most countries cap flights at 120 m.", quantity: ALTITUDE),
             PilotSetting(label: "Max distance", parameters: ["GF_MAX_HOR_DIST", "FENCE_RADIUS"], section: FLIGHT_PROTECTION, hint: "The aircraft will not fly farther from home than this.", quantity: DISTANCE),
             PilotSetting(label: "Signal lost", parameters: ["NAV_DLL_ACT", "FS_GCS_ENABLE"], section: FAILSAFES, hint: "When the link to this app drops."),
             PilotSetting(label: "Remote controller lost", parameters: ["NAV_RCL_ACT", "FS_THR_ENABLE"], section: FAILSAFES, hint: "When the remote controller drops."),
-            PilotSetting(label: "Low battery", parameters: ["COM_LOW_BAT_ACT", "BATT_FS_LOW_ACT"], section: FAILSAFES, hint: "When the battery runs low."),
+            PilotSetting(label: "Battery low", parameters: ["COM_LOW_BAT_ACT", "BATT_FS_LOW_ACT"], section: FAILSAFES, hint: "When the battery runs low."),
         ]
     case .Control:
         return [
@@ -73,7 +73,6 @@ private struct ShownKey: Equatable {
     let setup: JSON?
 }
 
-// What a host form keys its pilot-settings read on, so the rows reload when the vehicle's parameters change.
 struct PilotShownKey: Equatable {
     let settings: [PilotSetting]
     let setup: JSON?
@@ -87,8 +86,6 @@ func loadPilotShown(_ settings: [PilotSetting]) async -> [ShownPilotSetting] {
     }
 }
 
-// The pilot settings as sections of a NativeForm. A form's rows cannot each carry the read, so the host form reads
-// them (loadPilotShown, keyed on PilotShownKey) and hands them in.
 struct PilotSettingSections: View {
     let settings: [PilotSetting]
     let shown: [ShownPilotSetting]
@@ -269,7 +266,6 @@ struct SensorChecks: View {
         }
     }
 
-    // Inside a NativeForm: one Sensors section, each check a row with its state and, when it needs it, Calibrate.
     @ViewBuilder private var nativeSection: some View {
         let checks = hasVehicle ? sensorChecks(calibrationState(json)) : []
         if !hasVehicle || !checks.isEmpty {
@@ -457,7 +453,7 @@ private let PILOT_LABELS = [
     "aspectRatio": "Aspect ratio",
     "defaultMissionItemAltitude": "Default waypoint altitude",
     "offlineEditingFirmwareClass": "Plan offline for firmware",
-    "offlineEditingVehicleClass": "Plan offline for aircraft type",
+    "offlineEditingVehicleClass": "Plan offline for vehicle type",
     "offlineEditingCruiseSpeed": "Planning cruise speed",
     "offlineEditingHoverSpeed": "Planning hover speed",
     "offlineEditingAscentSpeed": "Planning climb speed",

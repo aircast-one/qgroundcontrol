@@ -23,14 +23,14 @@ private func parameter(_ name: String, _ description: String = "Engineer descrip
 }
 
 final class PilotSettingsTests: XCTestCase {
-    private let returnHome = pilotSettings(.Safety).first { $0.label == "Return-to-home altitude" }!
+    private let returnHome = pilotSettings(.Safety).first { $0.label == "Return altitude" }!
 
     func testAPilotSettingUsesWhicheverFirmwareParameterTheAircraftReportsUnderThePilotsWord() {
         let px4 = firstReported(returnHome) { $0 == "RTL_RETURN_ALT" ? parameter($0) : nil }
         let ardupilot = firstReported(returnHome) { $0 == "RTL_ALT" ? parameter($0) : nil }
         XCTAssertEqual(px4?.name, "RTL_RETURN_ALT")
         XCTAssertEqual(ardupilot?.name, "RTL_ALT")
-        XCTAssertEqual(px4?.heading, "Return-to-home altitude")
+        XCTAssertEqual(px4?.heading, "Return altitude")
     }
 
     func testTheEngineerDescriptionMovesBehindHelpOnceTheRowHasAPilotLabel() {
@@ -108,10 +108,10 @@ final class PilotSettingsTests: XCTestCase {
     }
 
     func testSearchFindsAPilotSettingByItsWordsAndByEitherFirmwaresParameterName() {
-        XCTAssertEqual(pilotSearchHits("return").map(\.label), ["Return-to-home altitude"])
-        XCTAssertEqual(pilotSearchHits("rtl_alt").map(\.label), ["Return-to-home altitude"])
+        XCTAssertEqual(pilotSearchHits("return").map(\.label), ["Return altitude"])
+        XCTAssertEqual(pilotSearchHits("rtl_alt").map(\.label), ["Return altitude"])
         XCTAssertEqual(pilotSearchHits("MPC_XY_VEL_MAX").map(\.label), ["Max horizontal speed"])
-        XCTAssertEqual(pilotSearchHits("return").map(\.section), ["Safety \u{203a} Return to home"])
+        XCTAssertEqual(pilotSearchHits("return").map(\.section), ["Safety \u{203a} Return home"])
         XCTAssertTrue(pilotSearchHits("  ").isEmpty)
     }
 
@@ -133,12 +133,12 @@ final class PilotSettingsTests: XCTestCase {
     func testEveryLimitInAUnitReadsInThePilotsUnitAndFailsafeChoicesStayRaw() {
         let quantities = Dictionary(uniqueKeysWithValues: (pilotSettings(.Safety) + pilotSettings(.Control)).map { ($0.label, $0.quantity) })
         XCTAssertEqual(quantities, [
-            "Return-to-home altitude": "altitude",
+            "Return altitude": "altitude",
             "Max altitude": "altitude",
             "Max distance": "distance",
             "Signal lost": nil,
             "Remote controller lost": nil,
-            "Low battery": nil,
+            "Battery low": nil,
             "Max horizontal speed": "speed",
             "Max climb speed": "speed",
             "Max descent speed": "speed",
@@ -146,7 +146,7 @@ final class PilotSettingsTests: XCTestCase {
     }
 
     func testOfflineSafetyStillListsItsSectionsInDjisOrderSoThePilotKnowsTheyExist() {
-        XCTAssertEqual(pilotSections(pilotSettings(.Safety)).map(\.key), ["Return to home", "Flight protection", "If something goes wrong"])
+        XCTAssertEqual(pilotSections(pilotSettings(.Safety)).map(\.key), ["Return home", "Flight protection", "If something goes wrong"])
     }
 }
 
