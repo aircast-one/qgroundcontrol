@@ -11,6 +11,7 @@ export type RotorState = 'reporting' | 'lost' | 'none';
 
 export type MotorLoad = {
   motor: number;
+  name: string;
   angle: number;
   state: RotorState;
   current: string;
@@ -38,6 +39,7 @@ export const motorLoads = (view: Json | null): readonly MotorLoad[] =>
   view !== null && optBoolean(view, 'shown')
     ? jsonObjects(optJSONArray(view, 'frame')).map((motor) => ({
         motor: optInt(motor, 'motor'),
+        name: optText(motor, 'name') || String(optInt(motor, 'motor')),
         angle: optDouble(motor, 'angle', 0),
         state: rotorState(motor),
         current: optText(motor, 'current'),
@@ -65,8 +67,8 @@ const place = (frame: Frame, angle: number, reach: number = frame.arm): readonly
 
 const compactAmps = (current: string): string => (Number(current) >= 10 ? Math.round(Number(current)).toString() : current);
 
-const rotorTitle = (load: MotorLoad): string =>
-  load.state === 'reporting' ? `Motor ${load.motor}: ${load.current} A, ${load.rpm} rpm, ${load.temperature}` : load.state === 'lost' ? `Motor ${load.motor}: ESC telemetry lost` : `Motor ${load.motor}: no ESC data`;
+export const rotorTitle = (load: MotorLoad): string =>
+  load.state === 'reporting' ? `Motor ${load.name}: ${load.current} A, ${load.rpm} rpm, ${load.temperature}` : load.state === 'lost' ? `Motor ${load.name}: ESC telemetry lost` : `Motor ${load.name}: no ESC data`;
 
 const Unit = ({ children }: { children: string }) => (
   <tspan fontSize="0.75em" fontWeight={400}>

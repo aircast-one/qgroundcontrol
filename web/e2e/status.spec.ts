@@ -27,6 +27,7 @@ test('the ESC status panel takes the keyboard, and Escape closes it back onto th
   await app.keyboard.press('Enter');
   const panel = app.getByRole('dialog', { name: 'ESC status' });
   await expect(panel).toBeVisible();
+  await expect(panel.getByText('Motor A', { exact: true }), 'the motors are lettered as Setup › Motors tests them').toBeVisible();
   await expect.poll(() => panel.evaluate((it) => it.contains(document.activeElement)), { message: 'focus moves into the panel, as it does for the GPS panel' }).toBe(true);
   await app.keyboard.press('Escape');
   await expect(panel).toBeHidden();

@@ -36,9 +36,45 @@ const ARDUPILOT_MOTOR_ANGLES: &[(i64, i64, &[f64])] = &[
     ),
 ];
 
+const ARDUPILOT_TEST_ORDER: &[(i64, i64, &[u8])] = &[
+    (1, 0, &[2, 4, 1, 3]),
+    (1, 1, &[1, 3, 4, 2]),
+    (2, 0, &[1, 4, 5, 2, 6, 3]),
+    (2, 1, &[2, 5, 6, 3, 1, 4]),
+    (3, 0, &[1, 5, 2, 4, 8, 6, 7, 3]),
+    (3, 1, &[1, 5, 2, 4, 8, 6, 7, 3]),
+];
+
+pub fn motor_test_order(class: Option<i64>, frame_type: Option<i64>) -> &'static [u8] {
+    ARDUPILOT_TEST_ORDER
+        .iter()
+        .find(|(c, t, _)| Some(*c) == class && Some(*t) == frame_type)
+        .map_or(&[], |(_, _, order)| *order)
+}
+
+fn motor_rank(test_order: &[u8], motor: i64) -> i64 {
+    usize::try_from(motor)
+        .ok()
+        .and_then(|motor| motor.checked_sub(1))
+        .and_then(|at| test_order.get(at))
+        .map_or(motor, |order| i64::from(*order))
+}
+
+pub fn motor_name(test_order: &[u8], motor: i64) -> String {
+    usize::try_from(motor)
+        .ok()
+        .and_then(|motor| motor.checked_sub(1))
+        .and_then(|at| test_order.get(at))
+        .map_or_else(
+            || motor.to_string(),
+            |order| char::from(b'A' + order - 1).to_string(),
+        )
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Wiring {
     pub angles: &'static [f64],
+    pub test_order: &'static [u8],
     pub outputs: Vec<i64>,
     pub motors: Vec<Option<i64>>,
 }
@@ -98,7 +134,7 @@ fn title(index: usize, esc: &Value, wiring: Option<&Wiring>) -> String {
     match wiring {
         None => format!("Motor {}", raw(esc, "id") + 1),
         Some(w) => match (w.motors.get(index).copied().flatten(), w.outputs.get(index)) {
-            (Some(motor), _) => format!("Motor {motor}"),
+            (Some(motor), _) => format!("Motor {}", motor_name(w.test_order, motor)),
             (None, Some(output)) => format!("ESC {output}"),
             (None, None) => format!("ESC {}", raw(esc, "id") + 1),
         },
@@ -138,6 +174,7 @@ fn rank(level: &str) -> u8 {
 
 struct Rotor {
     motor: i64,
+    name: String,
     angle: f64,
     at: Option<usize>,
     state: &'static str,
@@ -158,7 +195,7 @@ impl Rotor {
     }
 
     fn reasons(&self, middle: Option<f64>) -> Vec<(u8, String)> {
-        let motor = self.motor;
+        let motor = &self.name;
         let lost = (self.state == "lost")
             .then(|| (3, format!("Motor {motor} stopped sending ESC telemetry.")));
         let heat = match self.temperature_level {
@@ -197,6 +234,7 @@ impl Rotor {
     fn json(&self) -> Value {
         json!({
             "motor": self.motor,
+            "name": self.name,
             "angle": self.angle,
             "state": self.state,
             "temperature": crate::units::temperature_text(self.temperature),
@@ -246,6 +284,7 @@ fn rotors(
             let temperature = esc.map_or(0.0, |e| reading(e, "temperature") / 100.0);
             Rotor {
                 motor: *motor,
+                name: motor_name(wiring.test_order, *motor),
                 angle: *angle,
                 at: *at,
                 state: match (at, esc) {
@@ -268,7 +307,7 @@ fn rotors(
     (placed_rotors, middle)
 }
 
-fn unwired_hint(unwired: &[i64]) -> Option<String> {
+fn unwired_hint(unwired: &[String]) -> Option<String> {
     match unwired {
         [] => None,
         [motor] => Some(format!(
@@ -276,10 +315,7 @@ fn unwired_hint(unwired: &[i64]) -> Option<String> {
         )),
         [rest @ .., last] => Some(format!(
             "Motors {} and {last} send no ESC telemetry: check their ESCs' telemetry connection and numbering.",
-            rest.iter()
-                .map(i64::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
+            rest.join(", ")
         )),
     }
 }
@@ -289,11 +325,12 @@ fn hints(wiring: &Wiring, rotors: &[Rotor], middle: Option<f64>) -> Vec<String> 
         .iter()
         .flat_map(|rotor| rotor.reasons(middle))
         .collect();
-    let unwired: Vec<i64> = rotors
+    let mut silent: Vec<&Rotor> = rotors
         .iter()
         .filter(|rotor| rotor.state == "none")
-        .map(|rotor| rotor.motor)
         .collect();
+    silent.sort_by_key(|rotor| motor_rank(wiring.test_order, rotor.motor));
+    let unwired: Vec<String> = silent.iter().map(|rotor| rotor.name.clone()).collect();
     let unmatched = wiring
         .motors
         .iter()
@@ -382,7 +419,9 @@ pub fn summary(escs: &[Value], wiring: Option<&Wiring>, steady: &[f64]) -> Value
     motors.sort_by_key(|(level, motor, index, _)| {
         (
             std::cmp::Reverse(rank(level)),
-            motor.unwrap_or(i64::MAX),
+            motor.map_or(i64::MAX, |m| {
+                motor_rank(wiring.map_or(&[][..], |w| w.test_order), m)
+            }),
             *index,
         )
     });
@@ -445,6 +484,14 @@ fn ardupilot_wiring(backend: &dyn Backend, escs: &[Value]) -> Option<Wiring> {
         let motor_count = angles.len() as i64;
         Wiring {
             angles,
+            test_order: if flag(&vehicle, "multiRotor") {
+                motor_test_order(
+                    parameter(backend, "FRAME_CLASS"),
+                    parameter(backend, "FRAME_TYPE"),
+                )
+            } else {
+                &[]
+            },
             motors: outputs
                 .iter()
                 .map(|output| {
@@ -482,6 +529,48 @@ mod tests {
     fn esc(id: i64, count: i64, info: i64, failures: i64, errors: i64) -> Value {
         let f = |name: &str, value: i64, units: &str| json!({ "name": name, "rawValue": value, "valueString": value.to_string(), "units": units });
         json!({ "facts": [f("id", id, ""), f("count", count, ""), f("info", info, ""), f("failureFlags", failures, ""), f("errorCount", errors, ""), f("rpm", 4200, "rpm"), f("voltage", 16, "V")] })
+    }
+
+    #[test]
+    fn motors_take_the_letter_ardupilot_tests_them_by() {
+        let letters = |class: i64, frame_type: i64| {
+            let order = motor_test_order(Some(class), Some(frame_type));
+            (1..=order.len() as i64)
+                .map(|motor| motor_name(order, motor))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            letters(1, 1),
+            ["A", "C", "D", "B"],
+            "Quad X: motor 1 front right is A, then clockwise, so motor 4 rear right is B"
+        );
+        assert_eq!(
+            letters(1, 0),
+            ["B", "D", "A", "C"],
+            "Quad +: motor 3 at the front is A and motor 1 on the right is B"
+        );
+        assert_eq!(letters(2, 1), ["B", "E", "F", "C", "A", "D"], "Hexa X");
+        assert_eq!(
+            motor_name(motor_test_order(Some(7), Some(1)), 3),
+            "3",
+            "a frame outside the table keeps its motor number rather than a guessed letter"
+        );
+        ARDUPILOT_TEST_ORDER
+            .iter()
+            .for_each(|(class, frame_type, order)| {
+                let angles = motor_angles(Some(*class), Some(*frame_type));
+                let clockwise = |motor: usize| angles[motor].rem_euclid(360.0);
+                let mut by_angle: Vec<usize> = (0..angles.len()).collect();
+                by_angle.sort_by(|a, b| clockwise(*a).total_cmp(&clockwise(*b)));
+                assert_eq!(
+                    by_angle
+                        .iter()
+                        .map(|motor| order[*motor])
+                        .collect::<Vec<_>>(),
+                    (1..=order.len() as u8).collect::<Vec<_>>(),
+                    "AP_MotorsMatrix tests frame {class}/{frame_type} clockwise from the front"
+                );
+            });
     }
 
     #[test]
@@ -679,8 +768,8 @@ mod tests {
                 .iter()
                 .map(|motor| motor["title"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec!["Motor 5", "Motor 2", "ESC 8"],
-            "ESC 13 is on SERVO13 = Motor 5 and leads because it runs warm; ESC 2's output drives nothing, so it is Motor 2; a hexa has no motor 8, so ESC 8 comes last"
+            vec!["Motor A", "Motor E", "ESC 8"],
+            "ESC 13 is on SERVO13 = Motor 5, which a Hexa X tests as A, and leads because it runs warm; ESC 2's output drives nothing, so it is Motor 2, tested as E; a hexa has no motor 8, so ESC 8 comes last"
         );
         let frame = shown["frame"].as_array().unwrap();
         assert_eq!(
@@ -714,8 +803,8 @@ mod tests {
         assert_eq!(
             shown["hints"],
             json!([
-                "Motor 5 is warm at 75 \u{b0}C; 90 \u{b0}C is critical.",
-                "Motors 1, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering.",
+                "Motor A is warm at 75 \u{b0}C; 90 \u{b0}C is critical.",
+                "Motors B, C, D and F send no ESC telemetry: check their ESCs' telemetry connection and numbering.",
                 "ESC 8 matches no motor: its output drives none and the frame has fewer motors. Number each ESC after its motor, or shift DroneCAN ESCs with CAN_D1_UC_ESC_OF onto their motors' outputs."
             ])
         );
@@ -754,7 +843,7 @@ mod tests {
         assert_eq!(
             shown["hints"],
             json!([
-                "Motors 1, 2, 3, 4 and 6 send no ESC telemetry: check their ESCs' telemetry connection and numbering."
+                "Motors B, C, D, E and F send no ESC telemetry: check their ESCs' telemetry connection and numbering."
             ])
         );
     }
@@ -829,10 +918,10 @@ mod tests {
             ),
             (
                 Some("ERR"),
-                Some("Motor 6 - OFFLINE"),
+                Some("Motor D - OFFLINE"),
                 Some(6),
-                json!(["Motor 6 stopped sending ESC telemetry."]),
-                json!(["Motor 6 stopped sending ESC telemetry."])
+                json!(["Motor D stopped sending ESC telemetry."]),
+                json!(["Motor D stopped sending ESC telemetry."])
             ),
             "the summary and the motor's own entry say the same words"
         );
@@ -897,7 +986,7 @@ mod tests {
             (
                 Some("ERR"),
                 json!([
-                    "Motor 1 draws 60 A while the others draw about 30 A: check its propeller and motor."
+                    "Motor B draws 60 A while the others draw about 30 A: check its propeller and motor."
                 ]),
                 Some(1)
             ),
@@ -909,6 +998,7 @@ mod tests {
     fn a_hot_motor_says_how_hot_against_the_limit() {
         let hot = Rotor {
             motor: 3,
+            name: "3".to_string(),
             angle: 0.0,
             at: Some(2),
             state: "reporting",
