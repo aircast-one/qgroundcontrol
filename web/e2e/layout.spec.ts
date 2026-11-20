@@ -416,3 +416,29 @@ test('the camera panel lifts as one piece while held and settles back when let g
   await editLayout(app);
   await liftsWhileHeld(app, shutter);
 });
+
+test('the pitch ladder drags to a new place, while the crosshair stays on the aim point', async ({ vehicle }) => {
+  const sight = vehicle.getByRole('group', { name: 'Sight' });
+  const pitch = sight.locator('[data-layout-item]').filter({ has: vehicle.getByRole('img', { name: /^Pitch / }) });
+  const crosshair = sight.locator('[data-layout-item]').first();
+  await expect(pitch).toBeVisible({ timeout: 30_000 });
+  await editLayout(vehicle);
+  const drag = async (target: Locator, dx: number, dy: number) => {
+    const [x, y] = await centre(target);
+    await vehicle.mouse.move(x, y);
+    await vehicle.mouse.down();
+    await vehicle.mouse.move(x + dx, y + dy, { steps: 12 });
+    await vehicle.mouse.up();
+  };
+  const [pitchX, pitchY] = await centre(pitch);
+  const [crossX, crossY] = await centre(crosshair);
+  await drag(pitch, 160, -60);
+  await drag(crosshair, 160, -60);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(vehicle)).toBeHidden();
+  const [movedX, movedY] = await centre(pitch);
+  expect(movedX - pitchX).toBeGreaterThan(140);
+  expect(pitchY - movedY).toBeGreaterThan(40);
+  const [stillX, stillY] = await centre(crosshair);
+  expect(Math.hypot(stillX - crossX, stillY - crossY), 'the crosshair marks where the camera points').toBeLessThan(4);
+});

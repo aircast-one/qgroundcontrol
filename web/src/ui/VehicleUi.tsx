@@ -439,7 +439,7 @@ export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSP
         className={`absolute ${side === 'start' ? 'start-0' : 'end-0'} flex flex-col justify-end-safe ${PASS_THROUGH}`}
         style={{ ...style, ...(side === 'start' ? { paddingInlineStart: startInset, top: hudStartTop(style.top, startBelow) } : { paddingInlineEnd: AircastSpace.s3 }) }}
       >
-        <LayoutWidget widgetKey={side === 'start' ? 'readingsStart' : 'readingsEnd'} movable={false} hideable={false}>
+        <LayoutWidget widgetKey={side === 'start' ? 'readingsStart' : 'readingsEnd'} hideable={false}>
           <div className={`flex flex-col gap-0.5 ${side === 'start' ? 'items-start' : 'items-end'}`}>
             {silent && side === noteSide ? (
               <Text typography="labelMedium" color={md('error')} className={`max-w-[220px] ${osdShadow()}`}>
