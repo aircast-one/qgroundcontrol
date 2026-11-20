@@ -96,7 +96,7 @@ test('a stepped go-to height is the height commanded, even when the slide follow
   await mapMenuAt(vehicle, 200, -100);
   await vehicle.getByRole('button', { name: 'Go to location' }).click();
   await expect(vehicle.getByText('Height above launch (current)')).toBeVisible();
-  const before = Number((await vehicle.getByRole('button', { name: /^\d+\.\d m$/ }).textContent())?.replace(' m', ''));
+  const before = Number((await vehicle.getByRole('button', { name: /: \d+\.\d m, type a value$/ }).textContent())?.replace(' m', ''));
   const increase = await vehicle.getByRole('button', { name: '+10 m' }).boundingBox();
   const slide = await vehicle.getByRole('button', { name: 'Slide to go to location', exact: true }).boundingBox();
   if (increase === null || slide === null) throw new Error('the go-to card is not on screen');
