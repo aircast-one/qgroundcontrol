@@ -148,9 +148,9 @@ final class FlyReadinessTests: XCTestCase {
         XCTAssertEqual(readinessWarning(state(ready: false)), "Not ready. 2 checks need attention before arming.")
         XCTAssertNil(readinessWarning(state()))
         XCTAssertNil(readinessWarning(state(armed: true, ready: false)))
-        var passed = state(ready: false)
-        passed.summaryDetail = ALL_CHECKS_PASSED
-        XCTAssertEqual(readinessWarning(passed), "Not ready. Aircraft setup is not complete.")
+        var radio = state(ready: false)
+        radio.summaryDetail = "Radio needs setup before this vehicle can fly."
+        XCTAssertEqual(readinessWarning(radio), "Not ready. Radio needs setup before this vehicle can fly.", "the core names the setup left, so the warning passes it on")
     }
 
     func testTheFlyDeckGivesTheReasonWithoutRepeatingTheChip() {

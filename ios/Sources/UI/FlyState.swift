@@ -38,13 +38,9 @@ func chipTone(_ state: FlyState?, _ lost: Bool) -> ChipTone {
     return notReadyToFly(state) ? .Neutral : .Success
 }
 
-let ALL_CHECKS_PASSED = "All checks passed."
-let SETUP_NOT_COMPLETE = "Aircraft setup is not complete."
-
-/// `named` leads with the state ("Not ready. ..."); the Fly deck leaves it out, as the vehicle chip above already says it.
 func readinessWarning(_ state: FlyState?, named: Bool = true) -> String? {
     guard let state, state.connected, !state.armed, state.contactLost != true, notReadyToFly(state) || !state.nominal else { return nil }
-    let detail = notReadyToFly(state) && state.summaryDetail == ALL_CHECKS_PASSED ? SETUP_NOT_COMPLETE : state.summaryDetail
+    let detail = state.summaryDetail
     let text = [named || detail.isBlank ? state.stateText : "", detail].filter { !$0.isBlank }.joined(separator: ". ")
     return text.isBlank ? nil : text
 }
