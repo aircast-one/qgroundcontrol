@@ -146,7 +146,7 @@ pub struct Insertable {
     pub patterns: Option<Vec<String>>,
     pub has_land: bool,
     pub before_takeoff: Option<bool>,
-    pub multi_rotor: bool,
+    pub returns: bool,
     pub rover: bool,
 }
 
@@ -278,9 +278,8 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         fly_through: answered("flyThroughCommandsAllowed", true),
         has_land: answered("hasLandItem", false),
         before_takeoff: mission.get("insertBeforeTakeoff").and_then(Value::as_bool),
-        multi_rotor: crate::read::flag(
-            &backend.value_fields("plan.controllerVehicle", "multiRotor"),
-            "multiRotor",
+        returns: lands_by_returning(
+            &backend.value_fields("plan.controllerVehicle", "fixedWing,vtol"),
         ),
         rover: crate::read::flag(
             &backend.value_fields("plan.controllerVehicle", "rover"),
@@ -357,8 +356,12 @@ fn kind_json(kind: &Kind) -> Value {
     })
 }
 
-pub fn land_title(multi_rotor: bool, land_insertable: bool, has_land: bool) -> &'static str {
-    match (multi_rotor, land_insertable && has_land) {
+pub fn lands_by_returning(vehicle: &Value) -> bool {
+    !crate::read::flag(vehicle, "fixedWing") && !crate::read::flag(vehicle, "vtol")
+}
+
+pub fn land_title(returns: bool, land_insertable: bool, has_land: bool) -> &'static str {
+    match (returns, land_insertable && has_land) {
         (true, _) => "Return",
         (false, true) => "Alt Land",
         (false, false) => "Land",
@@ -370,7 +373,7 @@ fn offered(kind: &Kind, insertable: &Insertable) -> Value {
     let mut json = kind_json(kind);
     if kind.id == "land" {
         json["title"] = json!(land_title(
-            insertable.multi_rotor,
+            insertable.returns,
             insertable.land,
             insertable.has_land
         ));
@@ -470,7 +473,7 @@ mod tests {
             patterns: None,
             has_land: false,
             before_takeoff: None,
-            multi_rotor: false,
+            returns: rover,
             rover,
         };
         let takeoff = KINDS.iter().find(|k| k.id == "takeoff").unwrap();
@@ -492,6 +495,19 @@ mod tests {
             "a second landing where multiple patterns are allowed"
         );
         assert_eq!(land_title(false, false, true), "Land");
+        assert_eq!(
+            [
+                json!({ "kind": "object", "rover": true }),
+                json!({ "kind": "object", "sub": true }),
+                json!({ "kind": "object", "fixedWing": true }),
+                json!({ "kind": "object", "vtol": true }),
+            ]
+            .iter()
+            .map(|vehicle| land_title(lands_by_returning(vehicle), false, false))
+            .collect::<Vec<_>>(),
+            ["Return", "Return", "Land", "Land"],
+            "a rover's or a sub's land button adds a return to launch, so it says so"
+        );
         assert_eq!(land_title(false, true, false), "Land");
     }
 
