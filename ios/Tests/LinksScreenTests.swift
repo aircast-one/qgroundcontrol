@@ -312,5 +312,11 @@ final class ReplayLogStagingTests: XCTestCase {
         pruneReplayFolder(link, kept)
         XCTAssertEqual(try files.contentsOfDirectory(atPath: URL(fileURLWithPath: kept).deletingLastPathComponent().path), ["kept.tlog"])
     }
-}
 
+    func testALinkThatDroppedAfterHearingTheAircraftOrNoLongerHearsItIsNotMarkedAsConnected() {
+        let dropped = LinkRow(index: 0, name: "ws", statusLine: "Reconnecting", connected: true, heard: true, down: true, lastError: "No MAVLink WebSocket answered")
+        let quiet = LinkRow(index: 1, name: "radio", statusLine: "Not hearing the vehicle", goneQuiet: true, connected: true, heard: true, lastError: "")
+        let flying = LinkRow(index: 2, name: "udp", statusLine: "Connected", connected: true, heard: true, lastError: "")
+        XCTAssertEqual([dropped, quiet, flying].map(linkLive), [false, false, true])
+    }
+}

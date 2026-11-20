@@ -43,6 +43,7 @@ struct LinkRow: Equatable {
     var goneQuiet = false
     var connected: Bool
     var heard: Bool
+    var down = false
     var lastError: String
     var errorRemedy = ""
     var editing: LinkEditing = .None
@@ -91,6 +92,7 @@ func linkRows(_ view: JSON?) -> [LinkRow] {
             goneQuiet: link["goneQuiet"].bool,
             connected: link["connected"].bool,
             heard: link["heardVehicle"].bool,
+            down: link["linkDown"].bool,
             lastError: link["lastError"].string,
             errorRemedy: link["errorRemedy"].string,
             editing: LinkEditing.from(link["editing"].string),
@@ -156,6 +158,8 @@ func pruneReplayFolder(_ link: String, _ keep: String) {
         .filter { $0.resolvingSymlinksInPath().path != kept }
         .forEach { try? files.removeItem(at: $0) }
 }
+
+func linkLive(_ row: LinkRow) -> Bool { row.connected && row.heard && !row.down && !row.goneQuiet }
 
 func linkIsEditable(_ row: LinkRow) -> Bool { !row.connected && row.editing != .None }
 
@@ -411,7 +415,7 @@ private struct LinkRowItem: View {
             LinkIconBadge(type: row.type, lit: row.connected)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name).font(.bodyLarge).foregroundStyle(theme.colors.onSurface).lineLimit(1)
-                if !(row.connected && row.statusLine == CONNECTED_STATUS) {
+                if !(linkLive(row) && row.statusLine == CONNECTED_STATUS) {
                     Text(row.statusLine).font(.bodyMedium).foregroundStyle(row.goneQuiet ? theme.colors.error : theme.colors.onSurfaceVariant)
                 }
                 if !row.lastError.isBlank {
@@ -423,7 +427,7 @@ private struct LinkRowItem: View {
             }
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
-            if row.connected {
+            if linkLive(row) {
                 Text(CONNECTED_STATUS).font(.labelLarge).foregroundStyle(theme.aircast.success)
             }
             Image(systemName: "ellipsis.circle").foregroundStyle(theme.colors.primary)
