@@ -14,11 +14,11 @@ test('a vehicle that connects with setup left says what is left, and Open Setup 
   await expect(page.getByRole('button', { name: 'Calibrate', exact: true })).toBeVisible();
 });
 
-test('ArduPilot setup names the frame and failsafe actions from the parameter metadata', async ({ app }) => {
+test('ArduPilot setup names the frame from the parameter metadata and its failsafe actions in the words Settings uses', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
   await expect(app.getByRole('button', { name: /^Frame Quad/ })).toBeVisible();
-  await expect(app.getByRole('button', { name: /^Failsafes .*RTL/ })).toBeVisible();
+  await expect(app.getByRole('button', { name: /^Failsafes .*Return home/ })).toBeVisible();
   await expect(app.getByRole('button', { name: /^Flight modes .*Stabilize/ })).toBeVisible();
 });
 

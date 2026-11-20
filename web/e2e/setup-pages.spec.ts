@@ -54,11 +54,11 @@ test('ArduPilot flight safety links the return altitude to Settings › Safety i
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
   await app.getByRole('button', { name: /^Flight safety / }).click();
-  const link = app.getByRole('button', { name: /^Return-to-home altitude In Settings › Safety/ });
+  const link = app.getByRole('button', { name: /^Return altitude In Settings › Safety/ });
   await expect(link).toContainText('15 m');
   await expect(app.getByRole('textbox', { name: /RTL altitude|Return altitude/i })).toHaveCount(0);
   await link.click();
-  await expect(app.getByRole('slider', { name: 'Return-to-home altitude' })).toBeVisible();
+  await expect(app.getByRole('slider', { name: 'Return altitude' })).toBeVisible();
   await expect(app.getByText('Climbs to this height before flying home.', { exact: true })).toBeInViewport();
 });
 
@@ -66,7 +66,7 @@ test('ArduPilot failsafes open Settings › Safety on its own page, not on a bla
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
   await app.getByRole('button', { name: /^Failsafes / }).click();
-  await app.getByRole('button', { name: /^Low battery In Settings › Safety/ }).click();
+  await app.getByRole('button', { name: /^Battery low In Settings › Safety/ }).click();
   await expect(app.getByText('When the battery runs low.', { exact: true })).toBeInViewport();
 });
 
@@ -74,7 +74,7 @@ test('ArduPilot failsafes link both batteries to Settings › Safety instead of 
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
   await app.getByRole('button', { name: /^Failsafes / }).click();
-  await expect(app.getByRole('button', { name: /^Critical battery In Settings › Safety/ })).toBeVisible();
+  await expect(app.getByRole('button', { name: /^Battery critical In Settings › Safety/ })).toBeVisible();
   await expect(app.getByRole('button', { name: /^Battery 2 critical In Settings › Safety/ })).toBeVisible();
   await expect(app.getByRole('button', { name: /^Low battery failsafe action, / })).toHaveCount(0);
   await app.getByRole('button', { name: /^Battery 2 low In Settings › Safety/ }).click();

@@ -26,7 +26,7 @@ const parameter = (name: string, description = 'Engineer description') =>
     defaultValueString: '',
   });
 
-const returnHome = pilotSettings(SettingsGroup.Safety).find((it) => it.label === 'Return-to-home altitude')!;
+const returnHome = pilotSettings(SettingsGroup.Safety).find((it) => it.label === 'Return altitude')!;
 
 describe('PilotSettingsTest', () => {
   it("a pilot setting uses whichever firmware parameter the aircraft reports, under the pilot's word", () => {
@@ -36,7 +36,7 @@ describe('PilotSettingsTest', () => {
     expect(px4?.name).toBe('RTL_RETURN_ALT');
     expect(ardupilot?.name, 'the 4.7 name, which the core also reads as RTL_ALT on older ArduCopter').toBe('RTL_ALT_M');
     expect(versionless?.name, 'the old name still answers before the firmware version is known').toBe('RTL_ALT');
-    expect(px4?.heading).toBe('Return-to-home altitude');
+    expect(px4?.heading).toBe('Return altitude');
   });
 
   it('the engineer description moves behind help once the row has a pilot label', () => {
@@ -108,15 +108,15 @@ describe('PilotSettingsTest', () => {
   });
 
   it("search finds a pilot setting by its words and by either firmware's parameter name", () => {
-    expect(pilotSearchHits('return').map((it) => it.label)).toEqual(['Return-to-home altitude']);
-    expect(pilotSearchHits('rtl_alt').map((it) => it.label)).toEqual(['Return-to-home altitude']);
+    expect(pilotSearchHits('return').map((it) => it.label)).toEqual(['Return altitude']);
+    expect(pilotSearchHits('rtl_alt').map((it) => it.label)).toEqual(['Return altitude']);
     expect(pilotSearchHits('MPC_XY_VEL_MAX').map((it) => it.label)).toEqual(['Max horizontal speed']);
-    expect(pilotSearchHits('return').map((it) => it.section)).toEqual(['Safety › Return to home']);
+    expect(pilotSearchHits('return').map((it) => it.section)).toEqual(['Safety › Return home']);
     expect(pilotSearchHits('  ')).toEqual([]);
   });
 
   it("offline, safety still lists its sections in DJI's order so the pilot knows they exist", () => {
-    expect([...pilotSections(pilotSettings(SettingsGroup.Safety)).keys()]).toEqual(['Return to home', 'Flight protection', 'If something goes wrong']);
+    expect([...pilotSections(pilotSettings(SettingsGroup.Safety)).keys()]).toEqual(['Return home', 'Flight protection', 'If something goes wrong']);
   });
 
   it('both ArduPilot batteries take their failsafe actions from Settings › Safety, so Failsafes links to them alike', () => {
@@ -124,9 +124,9 @@ describe('PilotSettingsTest', () => {
       ['BATT_FS_LOW_ACT', 'BATT_FS_CRT_ACT', 'BATT2_FS_LOW_ACT', 'BATT2_FS_CRT_ACT'].map((name) => pilotOwner(name)?.group),
       "battery 2's low and critical actions were edited inline in Failsafes while battery 1's low action lived in Settings › Safety",
     ).toEqual([SettingsGroup.Safety, SettingsGroup.Safety, SettingsGroup.Safety, SettingsGroup.Safety]);
-    expect(pilotOwner('COM_LOW_BAT_ACT')?.setting.label, 'PX4 has one action for every battery').toBe('Low battery');
+    expect(pilotOwner('COM_LOW_BAT_ACT')?.setting.label, 'PX4 has one action for every battery').toBe('Battery low');
     const offline = offlineSettings(pilotSettings(SettingsGroup.Safety)).map((it) => it.label);
-    expect(offline, 'with no aircraft only the rows every vehicle has are listed').toContain('Low battery');
+    expect(offline, 'with no aircraft only the rows every vehicle has are listed').toContain('Battery low');
     expect(offline).not.toContain('Battery 2 low');
   });
 

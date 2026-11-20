@@ -1296,6 +1296,12 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
     }
     if let Some(heading) = control["heading"].as_str() {
         decoded["shortLabel"] = json!(heading);
+        if decoded["name"].is_string() && control["param"].is_string() {
+            decoded["label"] = decoded["name"].clone();
+        }
+    }
+    if let Some(units) = control["units"].as_str() {
+        decoded["units"] = json!(units);
     }
     if let Some(zero) = control["labelWhenZero"]
         .as_str()
@@ -2415,6 +2421,81 @@ mod tests {
     }
 
     #[test]
+    fn copter_failsafes_read_in_plain_words_with_the_parameter_beneath() {
+        let fake = Fake::new(&[
+            ("FS_GCS_ENABLE", 1.0),
+            ("FS_GCS_TIMEOUT", 5.0),
+            ("FS_THR_ENABLE", 1.0),
+            ("FS_THR_VALUE", 975.0),
+            ("FS_EKF_ACTION", 1.0),
+            ("FS_EKF_THRESH", 0.8),
+            ("FS_DR_ENABLE", 2.0),
+            ("FS_DR_TIMEOUT", 30.0),
+            ("BATT_MONITOR", 4.0),
+            ("BATT_LOW_VOLT", 10.5),
+        ]);
+        let served = page(&fake, "Failsafes", false);
+        let sections = served["sections"].as_array().unwrap();
+        let row = |name: &str| {
+            sections
+                .iter()
+                .flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default())
+                .find(|c| c["name"] == name)
+                .unwrap()
+        };
+        assert_eq!(
+            (
+                row("FS_DR_TIMEOUT")["shortLabel"].clone(),
+                row("FS_DR_TIMEOUT")["label"].clone(),
+                row("FS_DR_TIMEOUT")["units"].clone()
+            ),
+            (
+                json!("Wait before acting"),
+                json!("FS_DR_TIMEOUT"),
+                json!("s")
+            ),
+            "DeadReckon Failsafe Timeout with no unit read as firmware jargon"
+        );
+        assert_eq!(
+            (
+                row("BATT_LOW_VOLT")["shortLabel"].clone(),
+                row("BATT_LOW_VOLT")["label"].clone()
+            ),
+            (json!("Low voltage"), json!("BATT_LOW_VOLT"))
+        );
+        assert_eq!(row("FS_EKF_THRESH")["shortLabel"], "Sensitivity");
+        let titles: Vec<&str> = sections
+            .iter()
+            .filter_map(|s| s["title"].as_str())
+            .collect();
+        [
+            "Battery",
+            "Signal lost",
+            "Remote controller lost",
+            "Throttle signal lost",
+            "Position estimate poor",
+            "Flying without GPS",
+        ]
+        .iter()
+        .for_each(|title| assert!(titles.contains(title), "{title} in {titles:?}"));
+        let switches: Vec<String> = sections
+            .iter()
+            .flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default())
+            .filter(|c| c["control"] == "toggle")
+            .filter_map(|c| c["label"].as_str().map(str::to_string))
+            .collect();
+        assert!(
+            !switches.iter().any(|it| it == "Enabled"),
+            "each failsafe's switch says what it turns on, so three switches are not all called Enabled: {switches:?}"
+        );
+        let gcs_action = row("FS_GCS_ENABLE");
+        assert_eq!(
+            gcs_action["display"], "Return home",
+            "RTL reads as Settings words it"
+        );
+    }
+
+    #[test]
     fn failsafes_show_copter_rows_and_hide_the_disabled_detail() {
         let fake = Fake::new(&[
             ("FS_GCS_ENABLE", 0.0),
@@ -2435,16 +2516,16 @@ mod tests {
             .iter()
             .map(|s| s["title"].as_str().unwrap())
             .collect();
-        assert!(titles.contains(&"Battery Failsafe 1"), "{titles:?}");
+        assert!(titles.contains(&"Battery 1"), "{titles:?}");
         assert!(
-            !titles.contains(&"Battery Failsafe 2"),
+            !titles.contains(&"Battery 2"),
             "a battery whose monitor is off shows no failsafe section, as QGC's repeater hides it"
         );
         let gcs = served["sections"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s["title"] == "Ground Station Failsafe")
+            .find(|s| s["title"] == "Signal lost")
             .unwrap();
         assert_eq!(
             gcs["controls"].as_array().unwrap().len(),
@@ -2456,9 +2537,9 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s["title"] == "Throttle Failsafe")
+            .find(|s| s["title"] == "Throttle signal lost")
             .unwrap();
-        assert_eq!(throttle["controls"][2]["display"], "Always RTL");
+        assert_eq!(throttle["controls"][2]["display"], "Return home");
     }
 
     #[test]
@@ -2507,7 +2588,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s["title"] == "Ground Station Failsafe")
+            .find(|s| s["title"] == "Signal lost")
             .unwrap();
         let toggle = gcs["controls"][0]["path"].as_str().unwrap().to_string();
         assert!(owns(&toggle));
@@ -2522,7 +2603,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s["title"] == "Ground Station Failsafe")
+            .find(|s| s["title"] == "Signal lost")
             .unwrap()["controls"][2]
             .clone();
         assert_eq!(radio["control"], "choice");
@@ -2545,7 +2626,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s["title"] == "GeoFence")
+            .find(|s| s["title"] == "Geofence")
             .unwrap()["controls"]
             .as_array()
             .unwrap()
@@ -2577,7 +2658,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s["title"].as_str().is_some_and(|t| t.contains("RC")))
+            .find(|s| s["title"] == "Remote controller lost")
             .cloned();
         assert!(
             rc.is_some(),
@@ -2932,7 +3013,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s["title"] == "Ground Station Failsafe")
+            .find(|s| s["title"] == "Signal lost")
             .unwrap();
         let terms: Vec<&str> = gcs["keywords"]
             .as_array()
@@ -2941,7 +3022,8 @@ mod tests {
             .filter_map(Value::as_str)
             .collect();
         [
-            "ground station failsafe",
+            "signal lost",
+            "ground station",
             "heartbeat",
             "fs_gcs_timeout",
             "timeout",
@@ -4044,10 +4126,10 @@ mod tests {
             labels,
             [
                 "GCS Heartbeat",
-                "Leak",
-                "Internal Temperature",
-                "Threshold",
-                "Internal Pressure"
+                "FS_LEAK_ENABLE",
+                "FS_TEMP_ENABLE",
+                "FS_TEMP_MAX",
+                "FS_PRESS_ENABLE"
             ],
             "leak pin and pressure threshold hide while disabled; EKF waits for 3.5 parameters"
         );

@@ -1086,7 +1086,7 @@ export const FactRow = ({
             {fact.isEnum && !fact.valueIsOffTheEnumList ? (
               <EnumField fact={fact} shown={chosen} title={title} style={{ minWidth: CHOICE_VALUE_WIDTH, maxWidth: '50%' }} write={write} />
             ) : (
-              <FactTextField fact={fact} label={settingsList ? title : fact.title} onWrite={onWrite} onRejected={onRejected} onTheRight />
+              <FactTextField fact={fact} label={fact.title === fact.name && title !== fact.title ? `${title}, ${fact.name}` : settingsList ? title : fact.title} onWrite={onWrite} onRejected={onRejected} onTheRight />
             )}
           </div>
         ) : (

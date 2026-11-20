@@ -31,7 +31,7 @@
     },
     "sections": [
         {
-            "title": "Return to Launch",
+            "title": "Return home",
             "keywords": [
                 "rtl",
                 "return home",
@@ -67,7 +67,7 @@
                 },
                 {
                     "param": "RTL_LOIT_TIME",
-                    "label": "Loiter above Home",
+                    "label": "Wait above home",
                     "control": "toggleCheckbox",
                     "toggleCheckbox": {
                         "checked": "_rtlLoitTimeFact.value > 0",
@@ -78,20 +78,23 @@
                 {
                     "param": "RTL_LOIT_TIME",
                     "label": "Loiter time",
-                    "enableWhen": "_rtlLoitTimeFact && _rtlLoitTimeFact.value > 0"
+                    "enableWhen": "_rtlLoitTimeFact && _rtlLoitTimeFact.value > 0",
+                    "heading": "Wait above home for"
                 },
                 {
                     "param": "RTL_ALT_FINAL_M",
-                    "label": "Final land stage altitude"
+                    "label": "Final land stage altitude",
+                    "heading": "Height to stop at (0 lands)"
                 },
                 {
                     "param": "LAND_SPD_MS",
-                    "label": "Final land stage descent speed"
+                    "label": "Final land stage descent speed",
+                    "heading": "Landing speed"
                 }
             ]
         },
         {
-            "title": "Return to Launch",
+            "title": "Return home",
             "keywords": [
                 "rtl",
                 "return home",
@@ -105,7 +108,7 @@
             "controls": [
                 {
                     "param": "RTL_ALTITUDE",
-                    "label": "Return altitude:",
+                    "label": "Altitude on return",
                     "optional": true,
                     "control": "radiogroup",
                     "options": [
@@ -130,7 +133,8 @@
                 {
                     "param": "RTL_RADIUS",
                     "label": "Loiter radius",
-                    "optional": true
+                    "optional": true,
+                    "heading": "Circle radius at home"
                 },
                 {
                     "control": "label",
@@ -147,7 +151,7 @@
             ]
         },
         {
-            "title": "GeoFence",
+            "title": "Geofence",
             "keywords": [
                 "geofence",
                 "boundary",
@@ -232,7 +236,7 @@
             ]
         },
         {
-            "title": "GeoFence",
+            "title": "Geofence",
             "keywords": [
                 "geofence",
                 "boundary",

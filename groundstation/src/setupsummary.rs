@@ -89,6 +89,62 @@ fn with_units(fact: &Value) -> String {
     format!("{} {}", text(fact, "valueString"), text(fact, "units"))
 }
 
+const PLAIN_ACTIONS: [(&str, &str); 22] = [
+    ("Disabled", "Do nothing"),
+    ("Warning", "Warn only"),
+    ("RTL", "Return home"),
+    ("Enabled always RTL", "Return home"),
+    ("Enabled always Land", "Land"),
+    ("SmartRTL or RTL", "Retrace the path home, or return home"),
+    (
+        "Enabled always SmartRTL or RTL",
+        "Retrace the path home, or return home",
+    ),
+    ("SmartRTL or Land", "Retrace the path home, or land"),
+    (
+        "Enabled always SmartRTL or Land",
+        "Retrace the path home, or land",
+    ),
+    ("Brake or Land", "Brake, or land"),
+    ("Enabled always Brake or Land", "Brake, or land"),
+    (
+        "Auto DO_LAND_START or RTL",
+        "Fly the mission's landing, or return home",
+    ),
+    (
+        "Enabled Auto DO_LAND_START or RTL",
+        "Fly the mission's landing, or return home",
+    ),
+    (
+        "Auto DO_LAND_START/DO_RETURN_PATH_START or RTL",
+        "Fly the mission's landing or return path, or return home",
+    ),
+    (
+        "Enabled Auto DO_LAND_START/DO_RETURN_PATH_START or RTL",
+        "Fly the mission's landing or return path, or return home",
+    ),
+    ("Terminate", "Stop motors"),
+    ("Return mode", "Return home"),
+    ("Land mode", "Land"),
+    ("Enabled Always RTL", "Return home"),
+    ("Enabled Always Land", "Land"),
+    (
+        "Enabled Always SmartRTL or RTL",
+        "Retrace the path home, or return home",
+    ),
+    (
+        "Enabled Always SmartRTL or Land",
+        "Retrace the path home, or land",
+    ),
+];
+
+fn plain_action(text: &str) -> String {
+    PLAIN_ACTIONS
+        .iter()
+        .find(|(firmware, _)| *firmware == text)
+        .map_or_else(|| text.to_string(), |(_, plain)| plain.to_string())
+}
+
 fn enum_of(facts: Facts, name: &str) -> String {
     facts(name).map(|f| enum_text(&f)).unwrap_or_default()
 }
@@ -273,9 +329,13 @@ fn apm_power(facts: Facts) -> Rows {
         .filter(|(_, monitor)| number(monitor) != 0.0)
         .flat_map(|(index, monitor)| {
             let label = battery_label(index);
-            std::iter::once(row(&format!("Batt{label} monitor"), enum_text(&monitor))).chain(
+            std::iter::once(row(
+                &format!("Battery {label} monitor"),
+                enum_text(&monitor),
+            ))
+            .chain(
                 facts(&format!("{}CAPACITY", battery_prefix(index)))
-                    .map(|c| row(&format!("Batt{label} capacity"), with_units(&c))),
+                    .map(|c| row(&format!("Battery {label} capacity"), with_units(&c))),
             )
         })
         .collect()
@@ -497,20 +557,35 @@ fn apm_failsafes(facts: Facts, vehicle: &Vehicle) -> Rows {
         _ => None,
     };
     [
-        throttle.map(|name| row("Throttle failsafe:", enum_of(facts, name))),
+        throttle.map(|name| {
+            row(
+                "Remote controller lost:",
+                plain_action(&enum_of(facts, name)),
+            )
+        }),
         vehicle
             .rover
             .then(|| row("Failsafe Action:", enum_of(facts, "FS_ACTION"))),
         vehicle
             .rover
             .then(|| row("Failsafe Crash Check:", enum_of(facts, "FS_CRASH_CHECK"))),
-        batt1.then(|| row("Batt1 low failsafe:", enum_of(facts, "BATT_FS_LOW_ACT"))),
-        facts("BATT_FS_CRT_ACT").map(|f| row("Batt1 critical failsafe:", enum_text(&f))),
-        batt2.then(|| row("Batt2 low failsafe:", enum_of(facts, "BATT2_FS_LOW_ACT"))),
+        batt1.then(|| {
+            row(
+                "Battery 1 low:",
+                plain_action(&enum_of(facts, "BATT_FS_LOW_ACT")),
+            )
+        }),
+        facts("BATT_FS_CRT_ACT").map(|f| row("Battery 1 critical:", plain_action(&enum_text(&f)))),
         batt2.then(|| {
             row(
-                "Batt2 critical failsafe:",
-                enum_of(facts, "BATT2_FS_CRT_ACT"),
+                "Battery 2 low:",
+                plain_action(&enum_of(facts, "BATT2_FS_LOW_ACT")),
+            )
+        }),
+        batt2.then(|| {
+            row(
+                "Battery 2 critical:",
+                plain_action(&enum_of(facts, "BATT2_FS_CRT_ACT")),
             )
         }),
     ]
@@ -596,7 +671,7 @@ fn apm_flight_safety(facts: Facts, vehicle: &Vehicle) -> Rows {
         Some(row("Arming Checks:", arming_checks(facts))),
         vehicle.multi_rotor.then(|| {
             row(
-                "GeoFence:",
+                "Geofence:",
                 enable
                     .as_ref()
                     .zip(facts("FENCE_TYPE").as_ref())
@@ -605,13 +680,13 @@ fn apm_flight_safety(facts: Facts, vehicle: &Vehicle) -> Rows {
             )
         }),
         (vehicle.multi_rotor && enable.as_ref().is_some_and(|e| number(e) != 0.0))
-            .then(|| row("GeoFence:", action.unwrap_or(""))),
+            .then(|| row("Geofence:", action.unwrap_or(""))),
         vehicle
             .multi_rotor
-            .then(|| row("RTL min alt:", rtl("RTL_ALT_M", |v| v == 0.0))),
+            .then(|| row("Return altitude:", rtl("RTL_ALT_M", |v| v == 0.0))),
         vehicle
             .fixed_wing
-            .then(|| row("RTL min alt:", rtl("RTL_ALTITUDE", |v| v < 0.0))),
+            .then(|| row("Return altitude:", rtl("RTL_ALTITUDE", |v| v < 0.0))),
     ]
     .into_iter()
     .flatten()
@@ -1386,8 +1461,8 @@ mod tests {
         assert_eq!(
             rows("APMPowerComponent", &lookup(&map), &copter()).unwrap(),
             [
-                row("Batt1 monitor", "Analog Voltage and Current"),
-                row("Batt1 capacity", "5000 mAh")
+                row("Battery 1 monitor", "Analog Voltage and Current"),
+                row("Battery 1 capacity", "5000 mAh")
             ]
         );
         assert_eq!(
@@ -1518,6 +1593,37 @@ mod tests {
     }
 
     #[test]
+    fn copter_failsafes_and_safety_read_in_the_words_settings_uses() {
+        let map = HashMap::from([
+            (
+                "FS_THR_ENABLE",
+                json!({ "kind": "fact", "enumOrValueString": "Enabled always RTL", "valueString": "1" }),
+            ),
+            ("BATT_MONITOR", fact(4.0, "4", "", "")),
+            (
+                "BATT_FS_LOW_ACT",
+                json!({ "kind": "fact", "enumOrValueString": "Warning", "valueString": "0" }),
+            ),
+            ("RTL_ALT_M", fact(15.0, "15", "m", "")),
+            ("ARMING_SKIPCHK", fact(0.0, "0", "", "")),
+        ]);
+        let failsafes = rows("APMFailsafesComponent", &lookup(&map), &copter()).unwrap();
+        assert_eq!(
+            failsafes[..2],
+            [
+                row("Remote controller lost:", "Return home"),
+                row("Battery 1 low:", "Warn only")
+            ],
+            "Settings › Safety calls these Remote controller lost and Return home, not Throttle failsafe and Enabled always RTL"
+        );
+        let safety = rows("APMFlightSafetyComponent", &lookup(&map), &copter()).unwrap();
+        assert!(
+            safety.iter().any(|it| it.label == "Return altitude:"),
+            "the return altitude is named as Settings names it, not RTL min alt: {safety:?}"
+        );
+    }
+
+    #[test]
     fn sub_failsafes_drop_the_rows_older_firmware_lacks() {
         let map = HashMap::from([
             (
@@ -1580,9 +1686,9 @@ mod tests {
             rows("APMFlightSafetyComponent", &facts, &copter()).unwrap(),
             [
                 row("Arming Checks:", "Some disabled"),
-                row("GeoFence:", "Altitude,Circle"),
-                row("GeoFence:", "RTL or Land"),
-                row("RTL min alt:", "current")
+                row("Geofence:", "Altitude,Circle"),
+                row("Geofence:", "RTL or Land"),
+                row("Return altitude:", "current")
             ]
         );
         assert_eq!(

@@ -636,7 +636,7 @@ pub const GO_TO_NOT_TAKEN: &str = "The aircraft did not take the go-to point. Tr
 
 fn transfer_failed(kind: u8, error: &str) -> String {
     let name = match kind {
-        plantransfer::PLAN_FENCE => "GeoFence",
+        plantransfer::PLAN_FENCE => "Geofence",
         plantransfer::PLAN_RALLY => "Rally Point",
         _ => "Mission",
     };
@@ -18781,7 +18781,7 @@ mod tests {
         );
         assert_eq!(
             transfer_failed(plantransfer::PLAN_FENCE, "x"),
-            "GeoFence transfer failed. Error: x"
+            "Geofence transfer failed. Error: x"
         );
         assert_eq!(
             transfer_failed(plantransfer::PLAN_RALLY, "x"),

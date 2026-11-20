@@ -90,7 +90,7 @@ export const FENCE_ARMED_NOTE = 'If the aircraft is already past this limit, the
 const groupBy = <T,>(items: readonly T[], keyOf: (item: T) => string): ReadonlyMap<string, readonly T[]> =>
   items.reduce((groups, item) => new Map(groups).set(keyOf(item), [...(groups.get(keyOf(item)) ?? []), item]), new Map<string, readonly T[]>());
 
-const RETURN_HOME = 'Return to home';
+const RETURN_HOME = 'Return home';
 const FLIGHT_PROTECTION = 'Flight protection';
 const FAILSAFES = 'If something goes wrong';
 const FLIGHT_LIMITS = 'Flight limits';
@@ -114,7 +114,7 @@ const batteryActions = (index: number): readonly PilotSetting[] => [
 export const pilotSettings = (group: SettingsGroup): readonly PilotSetting[] => {
   if (group === SettingsGroup.Safety) {
     return [
-      PilotSetting({ label: 'Return-to-home altitude', parameters: ['RTL_RETURN_ALT', 'RTL_ALT_M', 'RTL_ALT'], section: RETURN_HOME, hint: 'Climbs to this height before flying home.', quantity: ALTITUDE }),
+      PilotSetting({ label: 'Return altitude', parameters: ['RTL_RETURN_ALT', 'RTL_ALT_M', 'RTL_ALT'], section: RETURN_HOME, hint: 'Climbs to this height before flying home.', quantity: ALTITUDE }),
       PilotSetting({
         label: 'Max altitude',
         parameters: ['GF_MAX_VER_DIST', 'FENCE_ALT_MAX'],
@@ -127,8 +127,8 @@ export const pilotSettings = (group: SettingsGroup): readonly PilotSetting[] => 
       PilotSetting({ label: 'Max distance', parameters: ['GF_MAX_HOR_DIST', 'FENCE_RADIUS'], section: FLIGHT_PROTECTION, hint: 'The aircraft will not fly farther from home than this.', quantity: DISTANCE, fenceBit: FENCE_CIRCLE }),
       PilotSetting({ label: 'Signal lost', parameters: ['NAV_DLL_ACT', 'FS_GCS_ENABLE', 'FS_GCS_ENABL'], section: FAILSAFES, hint: 'When the link to this app drops.' }),
       PilotSetting({ label: 'Remote controller lost', parameters: ['NAV_RCL_ACT', 'FS_THR_ENABLE'], section: FAILSAFES, hint: 'When the remote controller drops.' }),
-      PilotSetting({ label: 'Low battery', parameters: ['COM_LOW_BAT_ACT', 'BATT_FS_LOW_ACT'], section: FAILSAFES, hint: 'When the battery runs low.' }),
-      PilotSetting({ label: 'Critical battery', parameters: ['BATT_FS_CRT_ACT'], section: FAILSAFES, hint: 'When the battery is nearly empty.', reportedOnly: true }),
+      PilotSetting({ label: 'Battery low', parameters: ['COM_LOW_BAT_ACT', 'BATT_FS_LOW_ACT'], section: FAILSAFES, hint: 'When the battery runs low.' }),
+      PilotSetting({ label: 'Battery critical', parameters: ['BATT_FS_CRT_ACT'], section: FAILSAFES, hint: 'When the battery is nearly empty.', reportedOnly: true }),
       ...ARDUPILOT_BATTERIES.slice(1).flatMap(batteryActions),
     ];
   }

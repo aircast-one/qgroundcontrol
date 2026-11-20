@@ -146,7 +146,7 @@ const PLANE_FAILSAFE_ACTIONS: [(&str, i64, &str); 11] = [
     ("FS_SHORT_ACTN", 3, "Off"),
     ("FS_SHORT_ACTN", 4, "FBW B"),
     ("FS_LONG_ACTN", 0, "Continue"),
-    ("FS_LONG_ACTN", 1, "Return to launch"),
+    ("FS_LONG_ACTN", 1, "Return home"),
     ("FS_LONG_ACTN", 2, "Glide"),
     ("FS_LONG_ACTN", 3, "Deploy parachute"),
     ("FS_LONG_ACTN", 4, "Continue the mission"),
@@ -493,7 +493,7 @@ mod tests {
         );
         let long = labels("FS_LONG_ACTN");
         assert!(
-            long.contains(&"Return to launch".to_string())
+            long.contains(&"Return home".to_string())
                 && !long.contains(&"ReturnToLaunch".to_string())
                 && !long.contains(&"AUTOLAND".to_string()),
             "{long:?}"

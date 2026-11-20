@@ -324,3 +324,12 @@ describe('the parameter editor', () => {
     expect(Qgc.writeRefusal).not.toHaveBeenCalled();
   });
 });
+
+describe('a setup row headed in plain words', () => {
+  it('is named by its heading and its parameter, so two batteries no longer share one name', () => {
+    const second = makeFact({ path: 'parameter.BATT2_LOW_VOLT', name: 'BATT2_LOW_VOLT', description: 'BATT2_LOW_VOLT', shortLabel: 'Low voltage', units: 'V', valueString: '10.5', value: 10.5, enumStrings: [], enumIndex: -1, isBool: false, isString: false, readOnly: false });
+    render(<FactRow fact={second} />);
+    expect(screen.getByRole('textbox', { name: 'Low voltage, BATT2_LOW_VOLT' })).toBeTruthy();
+    expect(screen.getByText('BATT2_LOW_VOLT')).toBeTruthy();
+  });
+});
