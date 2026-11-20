@@ -131,7 +131,8 @@ final class PilotSettingsTests: XCTestCase {
     }
 
     func testEveryLimitInAUnitReadsInThePilotsUnitAndFailsafeChoicesStayRaw() {
-        let quantities = Dictionary(uniqueKeysWithValues: (pilotSettings(.Safety) + pilotSettings(.Control)).map { ($0.label, $0.quantity) })
+        let quantities = Dictionary(uniqueKeysWithValues: (offlineSettings(pilotSettings(.Safety)) + pilotSettings(.Control)).map { ($0.label, $0.quantity) })
+        XCTAssertTrue(pilotSettings(.Safety).filter(\.reportedOnly).allSatisfy { $0.quantity == nil }, "every battery's failsafe action is a raw choice")
         XCTAssertEqual(quantities, [
             "Return altitude": "altitude",
             "Max altitude": "altitude",
@@ -153,4 +154,22 @@ final class PilotSettingsTests: XCTestCase {
 private final class AskedNames {
     private(set) var names: [String] = []
     func add(_ name: String) { names = names + [name] }
+
+    func testEachPilotSettingHasOneHomeTab() {
+        XCTAssertEqual(pilotOwner("FENCE_ALT_MAX")?.group, .Safety)
+        XCTAssertEqual(pilotOwner("FENCE_ALT_MAX")?.setting.label, "Max altitude")
+        XCTAssertEqual(pilotOwner("LOIT_SPEED_MS")?.group, .Control)
+        XCTAssertNil(pilotOwner("RTL_LOIT_TIME"))
+    }
+
+    func testEveryArduPilotBatteryTakesItsFailsafeActionsFromSettingsSafetyNamedAsArduPilotPrefixesThem() {
+        XCTAssertEqual([0, 1, 8, 9, 15].map(batteryPrefix), ["BATT", "BATT2", "BATT9", "BATTA", "BATTG"])
+        XCTAssertEqual(["BATT_FS_LOW_ACT", "BATT_FS_CRT_ACT", "BATT2_FS_LOW_ACT", "BATT2_FS_CRT_ACT"].map { pilotOwner($0)?.group }, [.Safety, .Safety, .Safety, .Safety], "batteries 2 and up edited their actions inline in Failsafes")
+        XCTAssertEqual(["BATT3_FS_LOW_ACT", "BATT9_FS_CRT_ACT", "BATTA_FS_LOW_ACT", "BATTG_FS_CRT_ACT"].map { pilotOwner($0)?.setting.label }, ["Battery 3 low", "Battery 9 critical", "Battery 10 low", "Battery 16 critical"])
+        XCTAssertNil(pilotOwner("BATTH_FS_LOW_ACT"), "ArduPilot stops at sixteen batteries")
+        XCTAssertEqual(pilotOwner("COM_LOW_BAT_ACT")?.setting.label, "Battery low", "PX4 has one action for every battery")
+        let offline = offlineSettings(pilotSettings(.Safety)).map(\.label)
+        XCTAssertTrue(offline.contains("Battery low"), "with no aircraft only the rows every vehicle has are listed")
+        XCTAssertFalse(["Battery critical", "Battery 2 low", "Battery 3 low"].contains { offline.contains($0) })
+    }
 }

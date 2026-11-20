@@ -337,3 +337,26 @@ final class ControlBoundsTests: XCTestCase {
         XCTAssertNil(parameterFormWait(JSON.parse(#"{"connected":true,"parametersReady":true}"#)))
     }
 }
+
+final class PilotLinksTests: XCTestCase {
+    private func fact(_ name: String, _ path: String) -> Fact {
+        Fact(path: path, name: name, description: name, units: "", valueString: "0", value: .number(0), enumStrings: [], enumIndex: -1, isBool: false, isString: false, readOnly: false)
+    }
+
+    func testASetupPageKeepsTheFirstControlOfEachParameterSettingsOwnsAsItsLinkAndDropsTheRest() {
+        let rows = [
+            ParameterRows(title: "Return to launch", facts: [fact("RTL_ALT_M", "choice"), fact("RTL_ALT_M", "value"), fact("RTL_LOIT_TIME", "loiter")], note: ""),
+            ParameterRows(title: "Only owned", facts: [fact("RTL_ALT_M", "again")], note: ""),
+            ParameterRows(title: "Labels only", facts: [], note: ""),
+        ]
+        let linked = withPilotLinks(rows)
+        XCTAssertEqual(linked.map(\.title), ["Return to launch", "Labels only"])
+        XCTAssertEqual(linked.map { $0.facts.map(\.path) }, [["choice", "loiter"], []])
+    }
+
+    func testEveryBatterysFailsafeActionsInFailsafesLinkToSettingsSafety() {
+        let rows = [ParameterRows(title: "Battery 2", facts: [fact("BATT2_FS_LOW_ACT", "low"), fact("BATT2_FS_CRT_ACT", "critical"), fact("BATT2_LOW_VOLT", "volt")], note: "")]
+        XCTAssertEqual(withPilotLinks(rows).first?.facts.map(\.path), ["low", "critical", "volt"])
+        XCTAssertEqual(rows[0].facts.map { pilotOwner($0.name)?.setting.label }, ["Battery 2 low", "Battery 2 critical", nil])
+    }
+}

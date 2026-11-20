@@ -95,7 +95,11 @@ struct PageLook: Equatable {
     var tabHome: Bool = false
 }
 
+func tabPage(_ group: SettingsGroup) -> String { "\(group.rawValue) tab" }
+
 private let PAGE_LOOK_ORDER: [(String, PageLook)] = [
+    (tabPage(.Safety), PageLook(group: .Safety, icon: .shield, inline: true)),
+    (tabPage(.Control), PageLook(group: .Control, icon: .flight, inline: true)),
     ("ADSB Server", PageLook(group: .Safety, icon: .navigation, inline: true)),
     ("Remote ID", PageLook(group: .Safety, icon: .shield)),
     ("Fly View", PageLook(group: .Control, icon: .flight, inline: true)),

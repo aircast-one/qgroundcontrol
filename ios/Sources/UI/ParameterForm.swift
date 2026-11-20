@@ -114,6 +114,21 @@ let EMPTY_PAGE_TEXTS = ["Gimbal": "Gimbal settings are not available for this fi
 // A setup page's parameter sections. Pushed as a page (inside a host's nativePage) it is a NativeForm, a Section per
 // parameter group; placed inside another NativeForm it is one row with the groups stacked; in a fly-view sheet it
 // keeps its hand-laid-out column.
+private let ENABLE_SUFFIX = ".enable"
+
+private func switchesALink(_ fact: Fact) -> Bool {
+    fact.name.hasSuffix(ENABLE_SUFFIX) && pilotOwner(String(fact.name.dropLast(ENABLE_SUFFIX.count))) != nil
+}
+
+func withPilotLinks(_ rows: [ParameterRows]) -> [ParameterRows] {
+    let owned = rows.flatMap(\.facts).filter { pilotOwner($0.name) != nil }
+    let linked = Set(owned.enumerated().filter { at, fact in owned.firstIndex { $0.name == fact.name } == at }.map(\.element.path))
+    let kept = { (fact: Fact) in (pilotOwner(fact.name) == nil || linked.contains(fact.path)) && !switchesALink(fact) }
+    return zip(rows, rows.map { row in ParameterRows(title: row.title, facts: row.facts.filter(kept), note: row.note, calculators: row.calculators, image: row.image, keywords: row.keywords) })
+        .filter { original, kept in !kept.facts.isEmpty || original.facts.isEmpty }
+        .map(\.1)
+}
+
 struct ParameterForm: View {
     let page: String
     var highlighted: Set<String> = []
@@ -156,7 +171,7 @@ struct ParameterForm: View {
                 let page = page, section = section, first = reloads == 0
                 rows = await offMain {
                     if first { Qgc.invoke(SETUP_PAGE_OPENED, page) }
-                    return readPage(page).filter { section == nil || $0.title == section }
+                    return withPilotLinks(readPage(page).filter { section == nil || $0.title == section })
                 }
                 loaded = true
             }
@@ -268,7 +283,10 @@ struct ParameterForm: View {
     }
 
     @ViewBuilder private func factRow(_ fact: Fact, _ section: ParameterRows) -> some View {
-        if fact.controlKind == DIALOG_CONTROL {
+        if let owner = pilotOwner(fact.name) {
+            PilotLinkRow(name: fact.name, owner: owner)
+                .padding(.leading, fact.indent ? INDENT : 0)
+        } else if fact.controlKind == DIALOG_CONTROL {
             Button(fact.title) { calibratingEscs = true }
                 .modifier(RowActionLook(inForm: inForm || pageHost != nil))
                 .disabled(!fact.enabled)

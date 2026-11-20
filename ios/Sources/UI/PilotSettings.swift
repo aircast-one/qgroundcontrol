@@ -7,6 +7,7 @@ struct PilotSetting: Equatable {
     let hint: String
     var whenUnlimited: String? = nil
     var quantity: String? = nil
+    var reportedOnly = false
 }
 
 private let RETURN_HOME = "Return home"
@@ -17,6 +18,22 @@ private let ALTITUDE = "altitude"
 private let DISTANCE = "distance"
 private let SPEED = "speed"
 
+private let ARDUPILOT_MAX_BATTERIES = 16
+private let NUMBERED_BATTERY_PREFIXES = 9
+
+func batteryPrefix(_ index: Int) -> String {
+    index == 0 ? "BATT"
+        : index < NUMBERED_BATTERY_PREFIXES ? "BATT\(index + 1)"
+        : "BATT\(Character(UnicodeScalar(UInt8(ascii: "A") + UInt8(index - NUMBERED_BATTERY_PREFIXES))))"
+}
+
+private func batteryActions(_ index: Int) -> [PilotSetting] {
+    [
+        PilotSetting(label: "Battery \(index + 1) low", parameters: ["\(batteryPrefix(index))_FS_LOW_ACT"], section: FAILSAFES, hint: "When battery \(index + 1) runs low.", reportedOnly: true),
+        PilotSetting(label: "Battery \(index + 1) critical", parameters: ["\(batteryPrefix(index))_FS_CRT_ACT"], section: FAILSAFES, hint: "When battery \(index + 1) is nearly empty.", reportedOnly: true),
+    ]
+}
+
 func pilotSettings(_ group: SettingsGroup) -> [PilotSetting] {
     switch group {
     case .Safety:
@@ -24,10 +41,11 @@ func pilotSettings(_ group: SettingsGroup) -> [PilotSetting] {
             PilotSetting(label: "Return altitude", parameters: ["RTL_RETURN_ALT", "RTL_ALT_M", "RTL_ALT"], section: RETURN_HOME, hint: "Climbs to this height before flying home.", quantity: ALTITUDE),
             PilotSetting(label: "Max altitude", parameters: ["GF_MAX_VER_DIST", "FENCE_ALT_MAX"], section: FLIGHT_PROTECTION, hint: "The aircraft will not climb above this.", whenUnlimited: "Most countries cap flights at 120 m.", quantity: ALTITUDE),
             PilotSetting(label: "Max distance", parameters: ["GF_MAX_HOR_DIST", "FENCE_RADIUS"], section: FLIGHT_PROTECTION, hint: "The aircraft will not fly farther from home than this.", quantity: DISTANCE),
-            PilotSetting(label: "Signal lost", parameters: ["NAV_DLL_ACT", "FS_GCS_ENABLE"], section: FAILSAFES, hint: "When the link to this app drops."),
+            PilotSetting(label: "Signal lost", parameters: ["NAV_DLL_ACT", "FS_GCS_ENABLE", "FS_GCS_ENABL"], section: FAILSAFES, hint: "When the link to this app drops."),
             PilotSetting(label: "Remote controller lost", parameters: ["NAV_RCL_ACT", "FS_THR_ENABLE"], section: FAILSAFES, hint: "When the remote controller drops."),
             PilotSetting(label: "Battery low", parameters: ["COM_LOW_BAT_ACT", "BATT_FS_LOW_ACT"], section: FAILSAFES, hint: "When the battery runs low."),
-        ]
+            PilotSetting(label: "Battery critical", parameters: ["BATT_FS_CRT_ACT"], section: FAILSAFES, hint: "When the battery is nearly empty.", reportedOnly: true),
+        ] + (1..<ARDUPILOT_MAX_BATTERIES).flatMap(batteryActions)
     case .Control:
         return [
             PilotSetting(label: "Max horizontal speed", parameters: ["MPC_XY_VEL_MAX", "LOIT_SPEED_MS", "LOIT_SPEED"], section: FLIGHT_LIMITS, hint: "Fastest the aircraft flies forward and sideways.", quantity: SPEED),
@@ -45,6 +63,19 @@ func pilotSearchHits(_ query: String) -> [PilotSetting] {
     return SettingsGroup.allCases
         .flatMap { group in pilotSettings(group).map { setting in withChanges(setting) { $0.section = "\(group.title) \u{203a} \(setting.section)" } } }
         .filter { setting in ([setting.label, setting.section] + setting.parameters).contains { $0.lowercased().contains(wanted) } }
+}
+
+struct PilotOwner: Equatable {
+    let setting: PilotSetting
+    let group: SettingsGroup
+}
+
+func pilotOwner(_ name: String) -> PilotOwner? {
+    SettingsGroup.allCases.flatMap { group in pilotSettings(group).map { PilotOwner(setting: $0, group: group) } }.first { $0.setting.parameters.contains(name) }
+}
+
+func offlineSettings(_ settings: [PilotSetting]) -> [PilotSetting] {
+    settings.filter { !$0.reportedOnly }
 }
 
 struct ShownPilotSetting: Equatable {
@@ -98,7 +129,7 @@ struct PilotSettingSections: View {
             EmptyView()
         } else if !hasVehicle || !parametersReady(setup) {
             let offline = !hasVehicle
-            ForEach(Array(pilotSections(settings).enumerated()), id: \.element.key) { at, section in
+            ForEach(Array(pilotSections(offlineSettings(settings)).enumerated()), id: \.element.key) { at, section in
                 Section {
                     ForEach(section.value, id: \.label) { setting in
                         OfflineRow(label: setting.label, hint: setting.hint)
@@ -150,9 +181,9 @@ struct PilotSettings: View {
         if settings.isEmpty {
             EmptyView()
         } else if !hasVehicle {
-            OfflinePilotSettings(settings: settings, note: OFFLINE_PILOT_NOTE, offersLink: true)
+            OfflinePilotSettings(settings: offlineSettings(settings), note: OFFLINE_PILOT_NOTE, offersLink: true)
         } else if !parametersReady(setup) {
-            OfflinePilotSettings(settings: settings, note: LOADING_PILOT_NOTE, offersLink: false)
+            OfflinePilotSettings(settings: offlineSettings(settings), note: LOADING_PILOT_NOTE, offersLink: false)
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(groupedInOrder(shown) { $0.setting.section }, id: \.key) { section in
@@ -373,6 +404,43 @@ private struct PilotFactRow: View {
 }
 
 private let DO_NOTHING = "Do nothing"
+
+struct PilotLinkRow: View {
+    let name: String
+    let owner: PilotOwner
+    @QgcPath private var live: JSON?
+    @State private var fact: Fact?
+    @Environment(AppNavigationState.self) private var navigation
+    @QgcBool("vehicle.fixedWing") private var fixedWing
+    @QgcBool("vehicle.vtol") private var vtol
+    @QgcBool("vehicle.rover") private var rover
+    @QgcBool("vehicle.sub") private var sub
+
+    init(name: String, owner: PilotOwner) {
+        self.name = name
+        self.owner = owner
+        _live = QgcPath(parameterPath(name, owner.setting.quantity))
+    }
+
+    var body: some View {
+        let hold = holdWord(VehicleShape(fixedWing: fixedWing, vtol: vtol, rover: rover, sub: sub))
+        let status = fact.map { read in
+            read.isEnum ? pilotChoice(read.enumStrings.indices.contains(read.enumIndex) ? read.enumStrings[read.enumIndex] : read.valueString, hold) : valueText(read)
+        } ?? ""
+        SetupRow(
+            title: owner.setting.label,
+            status: status,
+            state: status == DO_NOTHING ? .NeedsAttention : .Neutral,
+            onClick: { navigation.settingsPage = tabPage(owner.group) },
+            subtitle: "In Settings \u{203a} \(owner.group.title)"
+        )
+        .task(id: RowKey(name: name, live: live, revision: 0)) {
+            let name = name
+            let quantity = owner.setting.quantity
+            fact = await offMain { parameterFact(name, quantity) }
+        }
+    }
+}
 
 private let PILOT_CHOICES = [
     "Disabled": DO_NOTHING,
