@@ -91,6 +91,7 @@ struct MissionItem: Equatable {
     var commandId: Int = 0
     var placed: Bool = true
     var afterRouteEnds: Bool = false
+    var endsRoute: Bool = false
     var altitudeText: String = ""
     var specifiesCoordinate: Bool = false
     var distance: Double = .nan
@@ -196,6 +197,7 @@ func allMissionItems(_ json: JSON?) -> [MissionItem] {
             commandId: element["command"].int(0),
             placed: at != nil,
             afterRouteEnds: index > endsAfter,
+            endsRoute: element["endsRoute"].bool,
             altitudeText: element["altitudeText"].string,
             specifiesCoordinate: element["specifiesCoordinate"].bool,
             distance: element["distance"].double(.nan),

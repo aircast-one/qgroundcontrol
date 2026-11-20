@@ -38,7 +38,8 @@ func placedPattern(_ surveys: [Survey], _ wanted: Int) -> Survey? {
 }
 
 func appendSequence(_ items: [MissionItem]) -> Int {
-    items.max { $0.index < $1.index }?.sequence ?? HOME_ITEM
+    let end = routeEnd(items)
+    return items.filter { item in end.map { item.index < $0.index } ?? true }.max { $0.index < $1.index }?.sequence ?? HOME_ITEM
 }
 
 private let FAR_FROM_AIRCRAFT_METRES = 1000.0

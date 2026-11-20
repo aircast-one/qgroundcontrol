@@ -114,9 +114,17 @@ func missionItemIndex(_ selected: MapHit?) -> Int? {
     }
 }
 
+func routeEnd(_ items: [MissionItem]) -> MissionItem? {
+    items.filter { $0.index != HOME_ITEM && $0.endsRoute }.min { $0.index < $1.index }
+}
+
+private func pastRouteEnd(_ index: Int, _ items: [MissionItem]) -> MissionItem? {
+    routeEnd(items).flatMap { index >= $0.index ? $0 : nil }
+}
+
 func insertAfter(_ selected: MapHit?, _ items: [MissionItem]) -> Int {
-    guard let index = missionItemIndex(selected), items.contains(where: { $0.index == index }) else { return AT_END }
-    return index + 1 >= items.count ? AT_END : index + 1
+    guard let index = missionItemIndex(selected), items.contains(where: { $0.index == index }) else { return routeEnd(items)?.index ?? AT_END }
+    return pastRouteEnd(index, items)?.index ?? (index + 1 >= items.count ? AT_END : index + 1)
 }
 
 func selectionSequence(_ selected: MapHit?, _ items: [MissionItem]) -> Int? {
@@ -124,7 +132,9 @@ func selectionSequence(_ selected: MapHit?, _ items: [MissionItem]) -> Int? {
 }
 
 func addingAfterText(_ selected: MapHit?, _ items: [MissionItem]) -> String? {
-    missionItemIndex(selected).flatMap { index in items.first { $0.index == index } }.map { "Tap the map to add after #\($0.sequence)" }
+    missionItemIndex(selected).flatMap { index in items.first { $0.index == index } }.map { item in
+        pastRouteEnd(item.index, items).map { "Tap the map to add before #\($0.sequence)" } ?? "Tap the map to add after #\(item.sequence)"
+    }
 }
 
 func legText(_ item: MissionItem) -> String? {

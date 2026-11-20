@@ -570,7 +570,7 @@ struct PlanMapContent: View {
                     }, enabled: addable(KIND_TAKEOFF))
                 }
                 RailButton(icon: .flightLand, label: kindLabel(insertable, KIND_LAND), onClick: {
-                    addMissionItem(KIND_LAND, "Adding a landing", placeAt(), insertAfter(selected, allItems))
+                    addMissionItem(KIND_LAND, "Adding a landing", placeAt(), AT_END)
                 }, enabled: itemCount > 0)
                 if kindOffered(insertable, KIND_DROP) {
                     RailButton(icon: .planDrop, label: "Drop", onClick: {

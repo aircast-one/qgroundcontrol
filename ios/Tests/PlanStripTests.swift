@@ -83,6 +83,12 @@ final class PlanStripTests: XCTestCase {
         XCTAssertEqual(0, appendSequence([]))
     }
 
+    func testWithNothingSelectedAndAReturnAtTheEndTheCoreWeighsNewItemsBeforeTheReturn() {
+        let items = [0, 1, 2].map { MissionItem(index: $0, sequence: $0, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: 50.0) }
+            + [MissionItem(index: 3, sequence: 3, latitude: .nan, longitude: .nan, command: "Return to launch", selected: false, altitude: .nan, endsRoute: true)]
+        XCTAssertEqual(2, appendSequence(items), "weighed after the return, a pattern was refused as if the vehicle had landed")
+    }
+
     func testARouteThatBeginsMoreThanAKilometreFromTheAircraftIsFlaggedWithTheDistance() {
         let home = MissionItem(index: 0, sequence: 0, latitude: 37.0, longitude: -122.0, command: "Home", selected: false, altitude: .nan)
         let takeoff = MissionItem(index: 1, sequence: 1, latitude: 39.237, longitude: -123.149, command: "Takeoff", selected: false, altitude: 50.0)

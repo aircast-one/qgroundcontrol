@@ -193,6 +193,13 @@ final class InsertAfterTests: XCTestCase {
         XCTAssertEqual(AT_END, insertAfter(.Waypoint(index: 9), plan))
     }
 
+    func testWithNothingSelectedAnItemGoesBeforeTheReturnThatEndsTheRouteWhereItIsStillFlown() {
+        let returning = plan + [mission(3, 3, 41.0, 44.0, "Return to launch", 50.0) { $0.kind = "land"; $0.endsRoute = true }]
+        XCTAssertEqual(3, insertAfter(nil, returning))
+        XCTAssertEqual(3, insertAfter(.Waypoint(index: 2), returning), "the item before the return keeps the new one before it too")
+        XCTAssertEqual(3, insertAfter(.Waypoint(index: 3), returning), "with the return itself selected, as it is right after Return is tapped, the new one still goes before it and is flown")
+    }
+
     func testASelectedPatternCornerInsertsAfterItsPatternAndANonMissionSelectionAppends() {
         XCTAssertEqual(2, insertAfter(.SurveyVertex(item: 1, vertex: 0), plan))
         XCTAssertEqual(AT_END, insertAfter(.Rally(index: 1), plan))
@@ -231,6 +238,12 @@ final class AddingAfterTextTests: XCTestCase {
 
     func testTheLineNamesTheSequenceTheOperatorSeesOnTheMarker() {
         XCTAssertEqual("Tap the map to add after #5", addingAfterText(.Waypoint(index: 2), plan))
+    }
+
+    func testWithTheReturnSelectedTheLineSaysTheNewItemGoesBeforeIt() {
+        let returning = plan + [mission(3, 6, 41.0, 44.0, "Return to launch", .nan) { $0.kind = "land"; $0.endsRoute = true }]
+        XCTAssertEqual("Tap the map to add before #6", addingAfterText(.Waypoint(index: 3), returning))
+        XCTAssertEqual("Tap the map to add after #5", addingAfterText(.Waypoint(index: 2), returning))
     }
 
     func testWithNothingSelectedTheInsertionPointIsTheEndAndNeedsNoLine() {
