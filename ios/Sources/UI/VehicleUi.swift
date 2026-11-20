@@ -318,7 +318,7 @@ private struct TelemetryReadings: View {
         let silent = !stale.isBlank
         if !shown.isEmpty {
             if compact {
-                compactReadings(shown, silent)
+                compactReadings(shown, stale, silent)
             } else if valuesShown {
                 fullReadings(shown, stale, silent)
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -340,14 +340,20 @@ private struct TelemetryReadings: View {
                 .fixedSize()
                 .foregroundStyle(silent ? theme.colors.onSurfaceVariant : displayColour(displayFor(displays, instrument), instrument.raw).map(argbColor) ?? theme.aircast.outdoorForeground)
         }
+        .opacity(silent ? STALE_OPACITY : 1)
+    }
+
+    private func staleNote(_ stale: String) -> some View {
+        Text(stale).font(.labelMedium).foregroundStyle(theme.colors.error).multilineTextAlignment(.center)
     }
 
     @ViewBuilder
-    private func compactReadings(_ shown: [Instrument], _ silent: Bool) -> some View {
+    private func compactReadings(_ shown: [Instrument], _ stale: String, _ silent: Bool) -> some View {
         if stacked {
             let speeds = shown.filter { osdIsSpeed($0.label) }
             let places = shown.filter { !osdIsSpeed($0.label) }
             VStack(alignment: .leading, spacing: 2) {
+                if silent { staleNote(stale) }
                 if !speeds.isEmpty {
                     PlanFlowRow(spacing: Space.s4, lineSpacing: 2) { ForEach(Array(speeds.enumerated()), id: \.offset) { osdReading($0.element, .headlineMedium, silent) } }
                 }
@@ -356,9 +362,12 @@ private struct TelemetryReadings: View {
                 }
             }
         } else {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Space.s4) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium, silent) } }
-                PlanFlowRow(spacing: Space.s4, lineSpacing: 2, alignment: .center) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium, silent) } }
+            VStack(spacing: 2) {
+                if silent { staleNote(stale) }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Space.s4) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium, silent) } }
+                    PlanFlowRow(spacing: Space.s4, lineSpacing: 2, alignment: .center) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium, silent) } }
+                }
             }
         }
     }
@@ -386,7 +395,7 @@ private struct TelemetryReadings: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .opacity(silent ? 0.45 : 1)
+            .opacity(silent ? STALE_OPACITY : 1)
         }
     }
 

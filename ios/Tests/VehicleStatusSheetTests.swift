@@ -8,9 +8,9 @@ final class VehicleStatusSheetTests: XCTestCase {
         XCTAssertEqual(shownSensors(sensors, true).map(\.name), ["Gyro", "Baro"])
     }
 
-    private func state(armed: Bool = false, nominal: Bool = true, fault: Bool = false, canArm: Bool = true) -> FlyState {
+    private func state(armed: Bool = false, nominal: Bool = true, fault: Bool = false, canArm: Bool = true, phase: String = "", contactLost: Bool = false) -> FlyState {
         FlyState(
-            connected: true, armed: armed, contactLost: false, state: "", stateText: "", staleNotice: "", mode: "",
+            connected: true, armed: armed, contactLost: contactLost, state: phase, stateText: "", staleNotice: "", mode: "",
             rcSupported: false, rcSignalText: "", rcSignal: nil, rcOverride: nil, telemetry: nil,
             nominal: nominal, fault: fault, canArm: canArm
         )
@@ -54,5 +54,12 @@ final class VehicleStatusSheetTests: XCTestCase {
         )
         XCTAssertEqual(statusSummary(view("null")), StatusSummaryLines(title: "Not fully ready", detail: open, problem: nil))
         XCTAssertNil(statusSummary(flyState(JSON.parse(#"{"class":"FlyState","summaryDetail":""}"#))))
+    }
+
+    func testWithContactLostTheAircraftMayStillBeInTheAirSoTheSheetOffersNoDisarmSlide() {
+        XCTAssertFalse(armSlideShown(state(armed: true, phase: "contactLost", contactLost: true)))
+        XCTAssertFalse(armSlideShown(state(phase: "contactLost", contactLost: true)), "an arm slide for a vehicle that cannot hear it")
+        XCTAssertFalse(armSlideShown(state(armed: true, phase: "flying")))
+        XCTAssertTrue(armSlideShown(state(armed: true)))
     }
 }

@@ -63,6 +63,14 @@ func guidedReadiness(_ state: FlyState?, named: Bool = true) -> Readiness? {
     }
 }
 
+let STALE_OPACITY = 0.45
+
+private let IN_AIR_STATES: Set<String> = ["flying", "landing"]
+
+func inAir(_ state: FlyState?) -> Bool {
+    state.map { IN_AIR_STATES.contains($0.state) || $0.contactLost == true } ?? false
+}
+
 let LANDED_AND_DISARMED = "Landed and disarmed"
 let MOTORS_STOPPED = "Motors stopped"
 

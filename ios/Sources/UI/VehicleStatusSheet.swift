@@ -213,6 +213,10 @@ private struct StatusSummary: View {
     }
 }
 
+func armSlideShown(_ state: FlyState?) -> Bool {
+    state.map { $0.connected && !inAir($0) } ?? false
+}
+
 private struct ArmSection: View {
     @Environment(FlyScreenState.self) private var flyScreen
     @QgcPath(FLY_STATE) private var stateJson
@@ -220,7 +224,7 @@ private struct ArmSection: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        if let state = flyState(stateJson), state.connected {
+        if let state = flyState(stateJson), armSlideShown(state) {
             let controls = armControls(state, forceOpen)
             Section {
                 VStack(alignment: .leading, spacing: Space.s1) {
