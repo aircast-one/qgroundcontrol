@@ -337,4 +337,12 @@ class UdpServerFormTest {
         assertEquals(null, linkFormErrorField(LinkType.Udp, "", "", "14550"))
         assertEquals(null, linkFormErrorField(LinkType.Tcp, "10.0.0.2", "5760"))
     }
+
+    @Test
+    fun `a link that dropped after hearing the aircraft, or no longer hears it, is not marked as connected`() {
+        val dropped = LinkRow(index = 0, name = "ws", statusLine = "Reconnecting", connected = true, heard = true, down = true, lastError = "No MAVLink WebSocket answered")
+        val quiet = LinkRow(index = 1, name = "radio", statusLine = "Not hearing the vehicle", connected = true, heard = true, goneQuiet = true, lastError = "")
+        val flying = LinkRow(index = 2, name = "udp", statusLine = "Connected", connected = true, heard = true, lastError = "")
+        org.junit.Assert.assertEquals(listOf(false, false, true), listOf(dropped, quiet, flying).map(::linkLive))
+    }
 }

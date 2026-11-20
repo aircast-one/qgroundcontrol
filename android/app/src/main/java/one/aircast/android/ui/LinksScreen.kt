@@ -113,6 +113,7 @@ internal data class LinkRow(
     val goneQuiet: Boolean = false,
     val connected: Boolean,
     val heard: Boolean,
+    val down: Boolean = false,
     val lastError: String,
     val errorRemedy: String = "",
     val editing: LinkEditing = LinkEditing.None,
@@ -127,6 +128,8 @@ internal data class LinkRow(
     val type: LinkType = LinkType.Other,
     val filename: String = "",
 )
+
+internal fun linkLive(row: LinkRow): Boolean = row.connected && row.heard && !row.down && !row.goneQuiet
 
 internal data class AutoLink(val name: String, val summary: String, val heard: Boolean, val type: LinkType = LinkType.Other, val index: Int = 0)
 
@@ -153,6 +156,7 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 goneQuiet = link.optBoolean("goneQuiet"),
                 connected = link.optBoolean("connected"),
                 heard = link.optBoolean("heardVehicle"),
+                down = link.optBoolean("linkDown"),
                 lastError = link.optText("lastError"),
                 errorRemedy = link.optText("errorRemedy"),
                 editing = LinkEditing.from(link.optText("editing")),
@@ -458,7 +462,7 @@ private fun LinkRowItem(
                     }
                 }
             }
-            if (row.connected) {
+            if (linkLive(row)) {
                 Text(CONNECTED_STATUS, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.success)
             }
             Icon(painterResource(R.drawable.ic_chevron_right), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
