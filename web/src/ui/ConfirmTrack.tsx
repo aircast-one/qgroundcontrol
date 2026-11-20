@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { type Json, optBoolean, optJSONArray, arrayJSONObject, optString, optText } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
 import { Checkbox, Surface, Text, TextButton } from '@/m3';
@@ -6,7 +6,7 @@ import { summaryRow } from '@/map/MissionSummary';
 import { sentenceCase } from '@/map/SentenceCase';
 import { aircast, md } from '@/theme/Colors';
 import { FLY_STATE, type Readiness, flyState, useGuidedReadiness } from '@/ui/FlyState';
-import { ReadinessNote, guidedCommitLabel } from '@/ui/GuidedValuePanel';
+import { ReadinessNote, focusLost, guidedCommitLabel } from '@/ui/GuidedValuePanel';
 import { HoldToConfirm, holdLabel } from '@/ui/HoldToConfirm';
 import { planStatusText, planTitle } from '@/ui/PlanFileRules';
 import { useKeyedState } from '@/kotlin/Compose';
@@ -122,8 +122,12 @@ export const ConfirmTrack = ({ action, onSent, onCancel, className }: { action: 
     else action.run();
     onSent();
   };
+  const card = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusLost()) card.current?.focus({ preventScroll: true });
+  }, []);
   return (
-    <div className={`flex w-full flex-col gap-2 ${className ?? ''}`}>
+    <div ref={card} tabIndex={-1} role="group" aria-label={sentenceCase(action.name)} className={`flex w-full flex-col gap-2 outline-none ${className ?? ''}`}>
       <Text typography="titleLarge">{sentenceCase(action.name)}</Text>
       {action.confirm.trim() !== '' ? (
         <Text typography="bodyMedium" color={md('onSurfaceVariant')}>

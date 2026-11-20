@@ -35,6 +35,22 @@ test('a take-off height being chosen survives the window narrowing to a phone an
   await expect(slide).toBeVisible();
 });
 
+test('the keyboard follows a take-off: into the panel when it opens, and back onto the deck once the aircraft is up', async ({ app: vehicle }) => {
+  test.setTimeout(120_000);
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await vehicle.getByRole('button', { name: 'Take off' }).focus();
+  await vehicle.keyboard.press('Enter');
+  const panel = vehicle.getByRole('group', { name: 'Take off' });
+  await expect(panel, 'focus is not dropped onto the page when the button it was on gives way to the panel').toBeFocused();
+  const slide = panel.getByRole('button', { name: /^Slide to take off anyway/ });
+  await expect(slide, 'the simulated copter is never fully ready, so the label is settled before the hold starts').toBeVisible();
+  await slide.focus();
+  await vehicle.keyboard.down('Enter');
+  await expect(slide).toBeHidden({ timeout: 30_000 });
+  await vehicle.keyboard.up('Enter');
+  await expect.poll(() => vehicle.evaluate(() => document.activeElement?.closest('[role="group"][aria-label="Flight actions"]') !== null), { message: 'the deck that replaced the panel takes the focus back' }).toBe(true);
+});
+
 test('edit layout from more actions starts and ends layout editing', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();

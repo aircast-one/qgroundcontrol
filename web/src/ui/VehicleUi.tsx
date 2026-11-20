@@ -1,4 +1,4 @@
-import { type CSSProperties, Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Menu } from '@base-ui/react';
 import { type Json, isNull, jsonObjects, optBoolean, optDouble, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
@@ -27,6 +27,7 @@ import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
 import { AUTO_PURSUIT, type AutoPursuit, GUIDED_ACTIONS, type GuidedOffer, type PursuitAction, type Payload, SINGLE_GRIPPER, autoPursuit, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
 import { type GuidedValueKind, GuidedValueFlow, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
+import { focusLost } from './GuidedValuePanel';
 import { holdLabel } from './HoldToConfirm';
 import {
   INSTRUMENTS_VIEW,
@@ -626,6 +627,13 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   ];
   const closeMenu = () => setMenuOpen(false);
 
+  const anyDecision = pending !== null || guidedValue !== null || editingLoiter !== null || panelOpen;
+  const decidedBefore = useRef(anyDecision);
+  useEffect(() => {
+    if (decidedBefore.current && !anyDecision && focusLost()) room.node.current?.querySelector<HTMLElement>('button:not([disabled]), [role="button"]:not([aria-disabled="true"])')?.focus({ preventScroll: true });
+    decidedBefore.current = anyDecision;
+  }, [anyDecision]);
+
   if (!available) {
     return (
       <>
@@ -646,7 +654,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     );
   }
 
-  const deciding = pending !== null || guidedValue !== null || editingLoiter !== null || panelOpen;
+  const deciding = anyDecision;
   const confirming = pending;
   const stop = armedStopOffer(offers, armed);
   const stopEntry = stop === null ? null : DeckEntry({ id: 'stopMotors', label: STOP_MOTORS, icon: 'ic_warning', enabled: true, warning: true, onClick: () => setPending(emergencyStopAction(stop)) });

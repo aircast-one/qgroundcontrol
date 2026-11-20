@@ -1,4 +1,4 @@
-import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
 import { useEscapeHandler } from '@/kotlin/Compose';
 import { coerceIn, format } from '@/kotlin/Std';
@@ -42,6 +42,10 @@ export const GuidedValuePanel = ({
       flyScreen.guidedPanels.value -= 1;
     };
   }, [flyScreen]);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusLost()) panel.current?.focus({ preventScroll: true });
+  }, []);
   const flyJson = useQgcPath(FLY_STATE);
   const readiness = useGuidedReadiness(useMemo(() => flyState(flyJson), [flyJson]));
   const vehiclesJson = useQgcPath(VEHICLES_VIEW);
@@ -51,7 +55,7 @@ export const GuidedValuePanel = ({
   const holdEnabled = commitEnabled && readiness?.blocks !== true;
   const compact = guidedCompact(portrait, available);
   return (
-    <div className={`w-full ${className ?? ''}`}>
+    <div ref={panel} tabIndex={-1} role="group" aria-label={title} className={`w-full outline-none ${className ?? ''}`}>
       <LocalGuidedCompact.Provider value={compact}>
         <Surface className="w-full" color={md('surfaceContainerLow')} shape="extraLarge">
           <div className={`flex max-h-[calc(100dvh-32px)] w-full flex-col gap-2 px-4 ${compact ? 'pt-4' : 'pt-6'} ${portrait ? 'pb-4' : 'pb-6'}`}>
@@ -86,6 +90,8 @@ export const ReadinessNote = ({ readiness }: { readiness: Readiness }) => (
     <Text typography="bodyMedium" className="block p-3">{readiness.text}</Text>
   </Surface>
 );
+
+export const focusLost = (): boolean => document.activeElement === null || document.activeElement === document.body;
 
 export const LocalGuidedCompact = createContext(false);
 
