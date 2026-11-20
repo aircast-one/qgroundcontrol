@@ -499,7 +499,7 @@ const PILOT_LABELS: ReadonlyMap<string, string> = new Map([
   ['aspectRatio', 'Aspect ratio'],
   ['defaultMissionItemAltitude', 'Default waypoint altitude'],
   ['offlineEditingFirmwareClass', 'Plan offline for firmware'],
-  ['offlineEditingVehicleClass', 'Plan offline for aircraft type'],
+  ['offlineEditingVehicleClass', 'Plan offline for vehicle type'],
   ['offlineEditingCruiseSpeed', 'Planning cruise speed'],
   ['offlineEditingHoverSpeed', 'Planning hover speed'],
   ['offlineEditingAscentSpeed', 'Planning climb speed'],

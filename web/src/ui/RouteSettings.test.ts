@@ -3,7 +3,7 @@ import type { PlanStat } from '@/map/PlanStrip';
 import { withoutHeroFields } from '@/ui/ItemEditor';
 import { factFromControl } from '@/ui/ParameterForm';
 import { headerLine, planStatsLine } from '@/ui/PlanTab';
-import { routeAltitude } from './RouteSettings';
+import { plannedFor, routeAltitude } from './RouteSettings';
 
 const stats: PlanStat[] = [
   { label: 'Items', value: '3' },
@@ -43,5 +43,12 @@ describe('RouteSettingsTest', () => {
     const accept = fact('Acceptance radius');
     expect(withoutHeroFields([hold, accept], { hold: { value: 0, units: 's', path: 'p' } })).toEqual([accept]);
     expect(withoutHeroFields([hold, accept], { hold: null })).toEqual([hold, accept]);
+  });
+});
+
+describe('plannedFor', () => {
+  it('names the planned vehicle as the Vehicle choice beside it does', () => {
+    expect(plannedFor({ planningFor: { firmware: 'ArduPilot', type: 'Multi-Rotor' } })).toBe('For ArduPilot · Multi-rotor');
+    expect(plannedFor({ planningFor: { firmware: 'ArduPilot', type: 'Quadrotor' } })).toBe('For ArduPilot · Quadrotor');
   });
 });

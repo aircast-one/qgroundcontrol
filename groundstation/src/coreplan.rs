@@ -2186,6 +2186,22 @@ fn planned_types() -> (i64, i64) {
         })
 }
 
+fn planned_type_text(
+    connected: bool,
+    vehicle_type: i64,
+    class: crate::cmdinfo::VehicleClass,
+) -> &'static str {
+    match (connected, class) {
+        (true, _) => u8::try_from(vehicle_type).map_or("", crate::vehiclefacade::mav_type_text),
+        (false, crate::cmdinfo::VehicleClass::FixedWing) => "Fixed Wing",
+        (false, crate::cmdinfo::VehicleClass::MultiRotor) => "Multi-Rotor",
+        (false, crate::cmdinfo::VehicleClass::Vtol) => "VTOL",
+        (false, crate::cmdinfo::VehicleClass::Rover) => "Rover",
+        (false, crate::cmdinfo::VehicleClass::Sub) => "Sub",
+        (false, _) => "Unknown",
+    }
+}
+
 fn camera_calc_index(path: &str) -> Option<usize> {
     path.strip_prefix("plan.missionController.visualItems.")?
         .strip_suffix(".cameraCalc")?
@@ -2223,7 +2239,7 @@ pub fn controller_fields(path: &str) -> Option<Value> {
                 crate::cmdinfo::Firmware::ArduPilot => "ArduPilot",
                 crate::cmdinfo::Firmware::Generic => "Generic",
             },
-            "vehicleTypeString": u8::try_from(vehicle_type).map_or("", crate::vehiclefacade::mav_type_text),
+            "vehicleTypeString": planned_type_text(crate::hub::lock().active().is_some(), vehicle_type, class),
             "homePosition": crate::hub::lock().active().and_then(|v| v.home).map(|(latitude, longitude, _)| json!({ "valid": true, "latitude": latitude, "longitude": longitude })),
         })),
         "plan.missionController.visualItems" => {
@@ -3935,6 +3951,20 @@ mod tests {
             String::new()
         }
         fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn an_offline_plan_names_its_vehicle_by_the_class_the_vehicle_setting_offers() {
+        assert_eq!(
+            planned_type_text(false, 2, crate::cmdinfo::VehicleClass::MultiRotor),
+            "Multi-Rotor",
+            "offline, type 2 is the Multi-Rotor choice, not a Quadrotor beside a dropdown saying Multi-rotor"
+        );
+        assert_eq!(
+            planned_type_text(true, 2, crate::cmdinfo::VehicleClass::MultiRotor),
+            "Quadrotor",
+            "a connected vehicle is named by what it reports"
+        );
     }
 
     #[test]

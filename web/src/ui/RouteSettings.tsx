@@ -3,6 +3,7 @@ import { Qgc } from '@/bridge/Qgc';
 import { type Json, optJSONObject, optText } from '@/bridge/Json';
 import { FilterChip, Text } from '@/m3';
 import { altitudeCeiling } from '@/map/AltitudeEntry';
+import { sentenceCase } from '@/map/SentenceCase';
 import { type ClosedRange, SettingStepper } from '@/map/SettingStepper';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
@@ -34,7 +35,7 @@ const ROOMY_HEIGHT = 800;
 
 export const plannedFor = (plan: Json | null): string | null => {
   const vehicle = optJSONObject(plan, 'planningFor');
-  const named = [optText(vehicle, 'firmware'), optText(vehicle, 'type')].filter((it) => it.trim() !== '');
+  const named = [optText(vehicle, 'firmware'), sentenceCase(optText(vehicle, 'type'))].filter((it) => it.trim() !== '');
   return named.length === 0 ? null : `For ${named.join(' · ')}`;
 };
 
