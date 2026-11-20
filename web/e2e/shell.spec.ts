@@ -149,7 +149,7 @@ test('Settings keeps the keyboard inside it and hands focus back to the control 
 test('while armed every other screen keeps the flight in view and leads back to Fly', async ({ vehicle }) => {
   await takeOff(vehicle, '5 m');
   await expect(vehicle.getByRole('button', { name: /^Armed$|Flying/ }).first()).toBeVisible({ timeout: 60_000 });
-  const status = vehicle.getByRole('status', { name: 'Flight status' });
+  const status = vehicle.getByRole('group', { name: 'Flight status' });
   await expect(status).toBeHidden();
   await openMenu(vehicle, 'Settings');
   await expect(status).toBeVisible();

@@ -67,10 +67,13 @@ export const ArmedFlightBar = ({ onFly }: { onFly: () => void }) => {
     () => (lost !== null ? lostGlance(lost) : flightGlance(flyState(stateJson), landFrom(altitudeJson), batteryReadings(batteryJson), vehicleLinks(linksJson))),
     [lost, stateJson, altitudeJson, batteryJson, linksJson],
   );
-  if (glance === null) return null;
-  return (
-    <Surface color={md('surfaceContainerHigh')} contentColor={md('onSurface')} className="shrink-0">
-      <div role={glance.dropped ? 'alert' : 'status'} aria-label={glance.dropped ? LINK_LOST : 'Flight status'} className="flex min-h-12 items-center gap-4 overflow-x-auto px-4 py-1">
+  return glance === null ? null : <FlightGlanceBar glance={glance} onFly={onFly} />;
+};
+
+export const FlightGlanceBar = ({ glance, onFly }: { glance: FlightGlance; onFly: () => void }) => (
+  <Surface color={md('surfaceContainerHigh')} contentColor={md('onSurface')} className="shrink-0">
+    <div role={glance.dropped ? 'alert' : 'group'} aria-label={glance.dropped ? LINK_LOST : 'Flight status'} className="flex min-h-12 items-center gap-2 py-1 ps-4 pe-2">
+      <div className="flex min-w-0 flex-1 items-center gap-4 overflow-x-auto">
         <span className="flex items-center gap-2 whitespace-nowrap">
           <Drawable name={glance.dropped ? 'ic_warning' : 'ic_flight'} size={20} style={glance.dropped ? { color: md('error') } : undefined} />
           <Text typography="titleSmall" color={glance.dropped ? md('error') : undefined}>{glance.mode}</Text>
@@ -78,9 +81,10 @@ export const ArmedFlightBar = ({ onFly }: { onFly: () => void }) => {
         {glance.altitude !== null ? <Reading label={glance.dropped ? 'Last alt' : 'Alt'} value={glance.altitude} /> : null}
         {glance.battery !== null ? <Reading label={glance.dropped ? 'Last battery' : 'Battery'} value={glance.battery} alert={glance.batteryLow} /> : null}
         {glance.dropped ? null : <Reading label="Link" value={glance.link} alert={glance.linkLost} />}
-        <span className="flex-1" />
-        <TextButton onClick={onFly}>Back to Fly</TextButton>
       </div>
-    </Surface>
-  );
-};
+      <TextButton onClick={onFly} className="shrink-0 whitespace-nowrap">
+        Back to Fly
+      </TextButton>
+    </div>
+  </Surface>
+);
