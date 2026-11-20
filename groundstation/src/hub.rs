@@ -5534,7 +5534,7 @@ impl Vehicle {
         if let Some(message) = message {
             self.battery_announced.insert(id, charge_state);
             let numbered = if self.batteries.by_id.len() > 1 {
-                id.to_string()
+                (u16::from(id) + 1).to_string()
             } else {
                 String::new()
             };
@@ -5632,7 +5632,7 @@ impl Vehicle {
             }
         }
         if let Some(spoken) = self.spoken_status(&status, now_ms) {
-            crate::speech::say(&spoken.to_lowercase());
+            crate::speech::say(&format!("{}{spoken}", self.speech_prefix).to_lowercase());
         }
         self.log_status(&status);
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
@@ -18750,6 +18750,17 @@ mod tests {
         vehicle.announce_fence(true, FENCE_BREACH_MAXALT, 11_000);
         vehicle.announce_fence(true, FENCE_BREACH_MAXALT, 14_000);
         assert_eq!(count("maximum altitude fence breached") - before, 2);
+        vehicle.batteries.by_id = [0, 1]
+            .into_iter()
+            .map(|id| (id, Default::default()))
+            .collect();
+        vehicle.announce_battery(0, BATTERY_OK);
+        vehicle.announce_battery(0, BATTERY_LOW);
+        assert_eq!(
+            (count("battery 1 level low"), count("battery 0 level low")),
+            (1, 0),
+            "the first pack reports id 0 but the battery bar calls it B1, so it is battery 1 aloud too"
+        );
     }
 
     #[test]
@@ -18862,6 +18873,41 @@ mod tests {
             vehicle.message_log.count(),
             2,
             "MAVLinkEventManager::_handleEvent leaves PX4 [cal] events to the calibration flow"
+        );
+    }
+
+    #[test]
+    fn a_failsafe_text_from_one_of_several_vehicles_is_said_with_its_name() {
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        vehicle.announce(&crate::speech::vehicle_prefix(1, 2));
+        vehicle.take_status(
+            StatusText {
+                component: 1,
+                severity: 2,
+                text: "EKF Failsafe".into(),
+            },
+            1_000,
+        );
+        let spoken: Vec<String> = crate::speech::speech_view(&NullBackend, &[])
+            .get("lines")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|l| l["text"].as_str().map(str::to_string))
+            .collect();
+        assert!(
+            spoken
+                .iter()
+                .any(|t| t.starts_with("vehicle 1 ") && t.ends_with("failsafe")),
+            "with two vehicles up, a failsafe said without a name could be either: {spoken:?}"
         );
     }
 
