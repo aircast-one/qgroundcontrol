@@ -4,6 +4,7 @@ import { NOT_SUPPORTED_SCREEN, headCanOpen, headPage } from '@/ui/SetupPages';
 import {
   PARAMETERS_STOPPED,
   SetupComponent,
+  currentComponent,
   disabledWhile,
   firmwareLine,
   parameterWait,
@@ -18,6 +19,14 @@ import {
 import { SetupPage, parametersReady, setupPage } from '@/ui/SetupView';
 
 describe('SetupScreenTest', () => {
+  it('an open page follows its component, so Sensors opened before the frame write landed stops asking for the frame once it has', () => {
+    const waiting = SetupComponent({ index: 1, name: 'Sensors', needsAttention: true, prerequisite: 'Frame' });
+    const framed = SetupComponent({ index: 1, name: 'Sensors', needsAttention: true, prerequisite: null });
+    expect(currentComponent(waiting, [framed])?.prerequisite).toBeNull();
+    expect(currentComponent(waiting, []), 'a component gone from the list keeps what was opened').toBe(waiting);
+    expect(currentComponent(null, [framed])).toBeNull();
+  });
+
   it("a PX4 component opens the page the core names for it, not a page spelled like the component", () => {
     const view: Json = {
       components: [

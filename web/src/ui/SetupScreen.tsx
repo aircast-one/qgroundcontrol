@@ -343,6 +343,9 @@ export const LocalSetupMemory = createContext<SetupMemory | null>(null);
 export const rememberedSetupPage = (page: string | null, components: readonly SetupComponent[]): SetupComponent | typeof SETUP_PARAMETERS_PAGE | null =>
   page === null ? null : page === SETUP_PARAMETERS_PAGE ? SETUP_PARAMETERS_PAGE : (components.find((it) => it.name === page) ?? null);
 
+export const currentComponent = (opened: SetupComponent | null, components: readonly SetupComponent[]): SetupComponent | null =>
+  opened === null ? null : (components.find((it) => it.name === opened.name) ?? opened);
+
 export const SetupScreen = ({ className }: { className?: string }) => {
   const navigation = useContext(LocalAppNavigation);
   const requestedPage = useValue(navigation.setupPage);
@@ -354,7 +357,8 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   const line = useMemo(() => firmwareLine(firmwareJson), [firmwareJson]);
   const vehicleType = line.vehicleType;
   const [opened, setOpened] = useState<Opened | null>(null);
-  const openComponent = opened?.[0] ?? null;
+  const components = useMemo(() => setupComponents(setupJson), [setupJson]);
+  const openComponent = currentComponent(opened?.[0] ?? null, components);
   const openSection = opened?.[1] ?? null;
   const [parametersOpen, setParametersOpen] = useState(false);
   const [firmwareOpen, setFirmwareOpen] = useState(false);
@@ -375,7 +379,6 @@ export const SetupScreen = ({ className }: { className?: string }) => {
   useBackHandler(openComponent !== null, leaving(() => setOpened(null)));
   useBackHandler(firmwareOpen, () => setFirmwareOpen(false));
 
-  const components = useMemo(() => setupComponents(setupJson), [setupJson]);
   const searching = setupSearch.trim() !== '';
   const formSections = useFormSections(searching, components, setupJson);
   const sectionHits = new Map([...formSections].map(([name, rows]) => [name, rows.filter((it) => sectionMatches(it, setupSearch)).map((it) => it.title)]));
