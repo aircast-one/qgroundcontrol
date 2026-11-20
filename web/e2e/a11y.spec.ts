@@ -110,3 +110,14 @@ test('the welcome asks each question as a named group of one-click choices', asy
   await expect(fixedWing).toHaveAttribute('aria-pressed', 'true');
   expect(await valueOnlyNames(page)).toEqual([]);
 });
+
+test('the welcome opens on the card, so Enter continues and Tab reaches the first choice', async ({ page }) => {
+  await openApp(page, { firstRun: false });
+  const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
+  await expect(welcome).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(welcome.getByRole('button', { name: 'Metric', exact: true })).toBeFocused();
+  await welcome.focus();
+  await page.keyboard.press('Enter');
+  await expect(welcome).toBeHidden();
+});

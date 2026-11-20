@@ -1,4 +1,4 @@
-import { type RefObject, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { Dialog } from '@base-ui/react';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
@@ -53,18 +53,13 @@ const VehicleQuestion = ({ fact }: { fact: Fact }) => (
   <Question title="Vehicle type" options={fact.enumStrings.map(sentenceCase)} chosen={fact.enumIndex} onPick={(index) => void Qgc.set(`${fact.path}.enumIndex`, index)} />
 );
 
-const focusQuietly = (target: RefObject<HTMLButtonElement | null>) => () => {
-  target.current?.focus({ preventScroll: true, focusVisible: false });
-  return false;
-};
-
 export const WELCOME_NOTE = 'Two questions so numbers and controls match your drone.';
 
 export const FirstRunDialog = () => {
   const view = useQgcPath(FIRST_RUN_PATH);
   const prompt = useMemo(() => firstRun(view), [view]);
   const desktop = useDesktopLayout();
-  const continueRef = useRef<HTMLButtonElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   if (prompt === null) return null;
   const close = () => void AppCommands.markFirstRunShown();
   const questions = (
@@ -93,13 +88,15 @@ export const FirstRunDialog = () => {
             <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
             <Dialog.Popup
               aria-label={prompt.title}
-              initialFocus={focusQuietly(continueRef)}
+              ref={cardRef}
+              initialFocus={cardRef}
+              onKeyDown={(event) => event.key === 'Enter' && event.target === event.currentTarget && close()}
               className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-48px)] w-[min(620px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 overflow-auto rounded-shape-xl bg-surface-container-high p-8 text-on-surface shadow-2xl outline-none"
             >
               {heading}
               <div className="flex w-full flex-col gap-5">{questions}</div>
               <div className="flex w-full justify-end">
-                <Button ref={continueRef} onClick={close}>
+                <Button onClick={close}>
                   Continue
                 </Button>
               </div>
