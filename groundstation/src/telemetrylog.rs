@@ -1,10 +1,11 @@
 #![allow(deprecated)]
-use std::fs::File;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
 use mavlink::dialects::ardupilotmega::MavMessage;
+use serde_json::{Value, json};
+
+use crate::vfs::Sink;
 
 const TEMP_FOLDER: &str = "TelemetryTemp";
 const TEMP_EXTENSION: &str = "mavlink";
@@ -14,9 +15,15 @@ const SIGNED_FLAG: u8 = 0x01;
 const MAVLINK_V2_STX: u8 = 0xfd;
 const ARMED_FLAG: u8 = 128;
 
+struct Open {
+    path: PathBuf,
+    sink: Sink,
+    written: u64,
+}
+
 #[derive(Default)]
 struct Recording {
-    open: Option<(PathBuf, File)>,
+    open: Option<Open>,
     vehicle_was_armed: bool,
     suspended: bool,
 }
@@ -34,7 +41,9 @@ fn setting_bool(path: &str, unset: bool) -> bool {
 }
 
 fn temp_folder() -> Option<PathBuf> {
-    crate::settingsstore::folder().map(|folder| folder.join(TEMP_FOLDER))
+    crate::settingsstore::folder()
+        .or_else(|| crate::settingsstore::save_root().map(PathBuf::from))
+        .map(|folder| folder.join(TEMP_FOLDER))
 }
 
 fn save_folder() -> Option<PathBuf> {
@@ -83,16 +92,20 @@ fn start(recording: &mut Recording) {
         return;
     }
     let Some(folder) = temp_folder() else { return };
-    if std::fs::create_dir_all(&folder).is_err() {
+    if crate::vfs::create_dir_all(&folder).is_err() {
         return;
     }
     let path = folder.join(format!(
         "FlightData{}.{TEMP_EXTENSION}",
         chrono::Utc::now().timestamp_micros()
     ));
-    match File::create(&path) {
-        Ok(file) => {
-            recording.open = Some((path, file));
+    match Sink::create(&path) {
+        Ok(sink) => {
+            recording.open = Some(Open {
+                path,
+                sink,
+                written: 0,
+            });
             check_save_path();
         }
         Err(error) => {
@@ -114,20 +127,24 @@ fn start(recording: &mut Recording) {
 }
 
 fn write(recording: &mut Recording, bytes: &[u8]) {
-    let Some((path, file)) = recording.open.as_mut() else {
+    let Some(open) = recording.open.as_mut() else {
         return;
     };
-    if file.write_all(&stamped(bytes)).is_err() {
-        crate::noticeboard::post(
-            crate::noticeboard::MESSAGE,
-            "MAVLink",
-            &format!(
-                "MAVLink Logging failed. Could not write to file {}, logging disabled.",
-                path.display()
-            ),
-        );
-        stop(recording);
-        recording.suspended = true;
+    let entry = stamped(bytes);
+    match open.sink.write_at(open.written, &entry) {
+        Ok(()) => open.written += entry.len() as u64,
+        Err(_) => {
+            crate::noticeboard::post(
+                crate::noticeboard::MESSAGE,
+                "MAVLink",
+                &format!(
+                    "MAVLink Logging failed. Could not write to file {}, logging disabled.",
+                    open.path.display()
+                ),
+            );
+            stop(recording);
+            recording.suspended = true;
+        }
     }
 }
 
@@ -175,12 +192,15 @@ pub fn vehicles(count: usize) {
 }
 
 fn stop(recording: &mut Recording) {
-    if let Some((path, file)) = recording.open.take() {
-        drop(file);
-        let empty = std::fs::metadata(&path)
-            .map(|m| m.len() == 0)
-            .unwrap_or(true);
-        let keep = !empty
+    if let Some(Open {
+        path,
+        sink,
+        written,
+    }) = recording.open.take()
+    {
+        let finished = sink.finish().is_ok();
+        let keep = finished
+            && written > 0
             && (recording.vehicle_was_armed
                 || setting_bool("settings.mavlinkSettings.telemetrySaveNotArmed", false))
             && setting_bool("settings.mavlinkSettings.telemetrySave", true)
@@ -188,7 +208,7 @@ fn stop(recording: &mut Recording) {
         match keep {
             true => save(&path),
             false => {
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::vfs::remove(&path);
             }
         }
     }
@@ -200,8 +220,13 @@ pub fn saved_name(folder: &Path, now: chrono::DateTime<chrono::Local>) -> PathBu
     std::iter::once(format!("{stamp}.{SAVED_EXTENSION}"))
         .chain((1..).map(|index| format!("{stamp}.{index}.{SAVED_EXTENSION}")))
         .map(|name| folder.join(name))
-        .find(|candidate| !candidate.exists())
+        .find(|candidate| !crate::vfs::exists(candidate))
         .unwrap_or_else(|| folder.join(format!("{stamp}.{SAVED_EXTENSION}")))
+}
+
+fn usable(folder: &Path) -> bool {
+    crate::vfs::create_dir_all(folder).is_ok()
+        && (cfg!(target_family = "wasm") || crate::vfs::kind(folder) == Some(crate::vfs::Kind::Dir))
 }
 
 fn check_save_path() {
@@ -209,7 +234,7 @@ fn check_save_path() {
         None => {
             Some("Unable to save telemetry log. Application save directory is not set.".to_string())
         }
-        Some(folder) if !folder.is_dir() => Some(format!(
+        Some(folder) if !usable(&folder) => Some(format!(
             "Unable to save telemetry log. Telemetry save directory \"{}\" does not exist.",
             folder.display()
         )),
@@ -227,10 +252,10 @@ fn save(temp: &Path) {
             "",
             "Unable to save telemetry log. Application save directory is not set.",
         );
-        let _ = std::fs::remove_file(temp);
+        let _ = crate::vfs::remove(temp);
         return;
     };
-    if !folder.is_dir() {
+    if !usable(&folder) {
         crate::noticeboard::post(
             crate::noticeboard::MESSAGE,
             "",
@@ -239,12 +264,11 @@ fn save(temp: &Path) {
                 folder.display()
             ),
         );
-        let _ = std::fs::remove_file(temp);
+        let _ = crate::vfs::remove(temp);
         return;
     }
     let target = saved_name(&folder, chrono::Local::now());
-    let moved =
-        std::fs::rename(temp, &target).or_else(|_| std::fs::copy(temp, &target).map(|_| ()));
+    let moved = crate::vfs::read(temp).and_then(|bytes| crate::vfs::write(&target, bytes));
     match moved {
         Ok(()) => log::info!("Telemetry log saved to {}", target.display()),
         Err(error) => {
@@ -258,26 +282,49 @@ fn save(temp: &Path) {
             );
         }
     }
-    let _ = std::fs::remove_file(temp);
+    let _ = crate::vfs::remove(temp);
 }
 
 pub fn recover_lost() {
     let Some(folder) = temp_folder() else { return };
-    let Ok(entries) = std::fs::read_dir(&folder) else {
-        return;
-    };
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == TEMP_EXTENSION))
-        .for_each(
-            |path| match std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) {
-                0 => {
-                    let _ = std::fs::remove_file(&path);
-                }
-                _ => save(&path),
-            },
-        );
+    crate::vfs::list(&folder)
+        .into_iter()
+        .filter(|entry| !entry.dir && entry.name.ends_with(&format!(".{TEMP_EXTENSION}")))
+        .for_each(|entry| match entry.size {
+            0 => {
+                let _ = crate::vfs::remove(folder.join(&entry.name));
+            }
+            _ => save(&folder.join(&entry.name)),
+        });
+}
+
+pub const SAVED_LOGS: &str = "telemetry.savedLogs";
+
+pub fn saved_logs(folder: &Path) -> Vec<Value> {
+    crate::vfs::list(folder)
+        .into_iter()
+        .filter(|entry| !entry.dir && entry.name.ends_with(&format!(".{SAVED_EXTENSION}")))
+        .map(|entry| (std::cmp::Reverse(entry.name.clone()), entry))
+        .collect::<std::collections::BTreeMap<_, _>>()
+        .into_values()
+        .map(|entry| json!({ "name": entry.name, "path": folder.join(&entry.name).to_string_lossy(), "size": entry.size }))
+        .collect()
+}
+
+pub fn finish() {
+    stop(&mut RECORDING.lock().unwrap_or_else(PoisonError::into_inner));
+}
+
+pub fn latest() -> Option<String> {
+    save_folder()
+        .map(|folder| saved_logs(&folder))
+        .and_then(|logs| logs.first()?.get("path")?.as_str().map(str::to_string))
+}
+
+pub fn invoke(path: &str, _args: &str) -> Option<Value> {
+    (path == SAVED_LOGS).then(|| {
+        json!({ "ok": true, "result": save_folder().map(|folder| saved_logs(&folder)).unwrap_or_default() })
+    })
 }
 
 #[cfg(test)]
@@ -293,6 +340,26 @@ mod tests {
             "a gimbal or GCS heartbeat opens the log without making a vehicle, and that is no vehicle leaving"
         );
         assert!(!last_vehicle_left(1, 2));
+    }
+
+    #[test]
+    fn saved_flights_list_newest_first_and_leave_out_anything_but_telemetry_logs() {
+        let folder = std::env::temp_dir().join(format!("qgc-tlog-list-{}", std::process::id()));
+        std::fs::create_dir_all(folder.join("nested")).unwrap();
+        std::fs::write(folder.join("2026-10-02 09-05-07.tlog"), b"older").unwrap();
+        std::fs::write(folder.join("2026-11-20 06-30-00.tlog"), b"newest").unwrap();
+        std::fs::write(folder.join("notes.txt"), b"x").unwrap();
+        let names: Vec<String> = saved_logs(&folder)
+            .iter()
+            .map(|log| log["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            ["2026-11-20 06-30-00.tlog", "2026-10-02 09-05-07.tlog"],
+            "the flight just flown leads, so Review flight plays it"
+        );
+        assert_eq!(saved_logs(&folder)[0]["size"], 6);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]

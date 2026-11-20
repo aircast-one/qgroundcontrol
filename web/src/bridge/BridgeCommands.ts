@@ -14,6 +14,8 @@ const LINKS_CREATE_CLOUD = 'links.createAircastCloudLink';
 const LINKS_CREATE_WEBSOCKET = 'links.createWebSocketLink';
 const LINKS_CREATE_DEVICE_UDP = 'links.createDeviceUdpLink';
 const LINKS_CREATE_REPLAY = 'links.createLogReplayConfiguration';
+const LINKS_REVIEW_FLIGHT = 'links.reviewFlight';
+const TELEMETRY_SAVED_LOGS = 'telemetry.savedLogs';
 const LINKS_CREATE_BLUETOOTH = 'links.createBluetoothLink';
 const LINKS_CREATE_SERIAL = 'links.createSerialConfiguration';
 const LINKS_CREATE_SUPPORT = 'links.createMavlinkForwardingSupportLink';
@@ -77,6 +79,8 @@ export const LinkCommands = {
   createWebSocket: async (name: string, url: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_WEBSOCKET, name, url)) === true,
   createDeviceUdp: async (name: string, host: string, port: number): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_DEVICE_UDP, name, host, port)) === true,
   createLogReplay: async (name: string, log: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_REPLAY, name, log)) === true,
+  reviewFlight: async (log = ''): Promise<boolean> => (await Qgc.invokeResult(LINKS_REVIEW_FLIGHT, log)) === true,
+  savedFlights: (): Promise<unknown> => Qgc.invokeResult(TELEMETRY_SAVED_LOGS),
   createBluetooth: async (name: string, deviceName: string, address: string): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_BLUETOOTH, name, deviceName, address)) === true,
   createSerial: async (name: string, port: string, baud: number): Promise<boolean> => (await Qgc.invokeResult(LINKS_CREATE_SERIAL, name, port, baud)) === true,
   createSupportForwarding: (): Promise<boolean> => Qgc.invoke(LINKS_CREATE_SUPPORT),

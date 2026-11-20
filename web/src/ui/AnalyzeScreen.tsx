@@ -40,7 +40,7 @@ export type AnalyzePage = {
 };
 
 export const AnalyzePage = {
-  LogDownload: { name: 'LogDownload', ordinal: 0, label: 'Flight logs', description: 'Download flight logs from the vehicle', section: AnalyzeSection.FlightData, icon: 'ic_download', requiresVehicle: true },
+  LogDownload: { name: 'LogDownload', ordinal: 0, label: 'Flight logs', description: 'Review a flight, or download the logs on the vehicle', section: AnalyzeSection.FlightData, icon: 'ic_download', requiresVehicle: false },
   GeoTag: { name: 'GeoTag', ordinal: 1, label: 'Geotag images', description: 'Match photos to the flight log', section: AnalyzeSection.FlightData, icon: 'ic_photo_camera', requiresVehicle: false },
   Vibration: { name: 'Vibration', ordinal: 2, label: 'Vibration', description: 'Accelerometer vibration levels and clipping', section: AnalyzeSection.Live, icon: 'ic_vibration', requiresVehicle: true },
   Inspector: { name: 'Inspector', ordinal: 3, label: 'MAVLink inspector', description: 'Live message rates and field values', section: AnalyzeSection.Live, icon: 'ic_analytics', requiresVehicle: true },
@@ -185,7 +185,7 @@ const PAGE_BODIES: Readonly<Record<AnalyzePage['name'], () => ReactNode>> = {
 const AnalyzePageBody = ({ page, leave, style }: { page: AnalyzePage; leave: () => void; style?: CSSProperties }) => {
   const gate = analyzeGate(page, useHasVehicle());
   const vehiclesJson = useQgcPath(VEHICLES_VIEW);
-  const reloadKey = useMemo(() => (page.requiresVehicle ? activeVehicleId(vehiclesJson) : null), [vehiclesJson, page]);
+  const reloadKey = useMemo(() => (page.requiresVehicle || page === AnalyzePage.LogDownload ? activeVehicleId(vehiclesJson) : null), [vehiclesJson, page]);
   return (
     <div className="flex size-full flex-col" style={gate === null ? style : undefined}>
       <PageTopBar title={page.label} backLabel="Back to Analyze" onBack={leave} />

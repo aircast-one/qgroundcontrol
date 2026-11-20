@@ -54,6 +54,7 @@ test('landing out of a flown mission says where it stopped, and removing the pla
   await expect(done.getByText(/^Mission stopped at waypoint \d+ of \d+$/), 'a mission left early is not complete').toBeVisible();
   const choices = await done.getByRole('button').allTextContents();
   expect(choices.indexOf('Remove plan from vehicle'), 'removing the plan comes after keeping it').toBeGreaterThan(choices.indexOf('Leave plan on vehicle'));
+  await expect(done.getByRole('button', { name: 'Review this flight' }), 'once landed and disarmed the card points to reviewing the flight').toBeVisible({ timeout: 60_000 });
   await done.getByRole('button', { name: 'Close' }).click();
   await expect(done).toBeHidden();
 });

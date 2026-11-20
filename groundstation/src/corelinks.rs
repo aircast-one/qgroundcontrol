@@ -376,6 +376,41 @@ fn create_cloud(name: &str, api_base: &str, device_id: &str) -> bool {
     })
 }
 
+pub const REVIEW_FLIGHT: &str = "links.reviewFlight";
+pub const REVIEW_LINK_NAME: &str = "Log Replay";
+
+fn any_armed() -> bool {
+    let hub = crate::hub::lock();
+    hub.vehicle_ids()
+        .iter()
+        .any(|id| hub.vehicle(*id).is_some_and(|vehicle| vehicle.armed()))
+}
+
+fn review_flight(file: &str) -> bool {
+    let Some((_, close)) = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner) else {
+        return false;
+    };
+    if any_armed() {
+        return false;
+    }
+    live().into_iter().for_each(|(id, config)| {
+        update_runtime(&config.name, |run| run.suppressed = true);
+        close(id);
+    });
+    crate::telemetrylog::finish();
+    let log = Some(file.to_string())
+        .filter(|file| !file.is_empty())
+        .or_else(crate::telemetrylog::latest);
+    log.is_some_and(|file| {
+        replace_and_connect(LinkConfig {
+            name: REVIEW_LINK_NAME.to_string(),
+            auto_connect: false,
+            high_latency: false,
+            kind: Kind::LogReplay { file },
+        })
+    })
+}
+
 pub const START_MOCK_LINK: &str = "links.startMockLink";
 pub const STOP_ONE_MOCK_LINK: &str = "links.stopOneMockLink";
 pub const CHANGE_MOCK_LINKS: &str = "links.changeMockLinks";
@@ -1583,6 +1618,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "links.createAircastCloudLink" => json!(create_cloud(&text(0), &text(1), &text(2))),
         "links.createWebSocketLink" => json!(create_websocket(&text(0), &text(1))),
         "links.createDeviceUdpLink" => json!(create_device_udp(&text(0), &text(1), whole(2))),
+        REVIEW_FLIGHT => json!(review_flight(&text(0))),
         START_MOCK_LINK => json!(start_mock(&text(0), &given)),
         STOP_ONE_MOCK_LINK => json!(stop_one_mock()),
         CHANGE_MOCK_LINKS => json!(change_mocks(&given)),

@@ -68,7 +68,7 @@ describe('AnalyzeNoteTest', () => {
   });
 
   it('the pages QGCCorePlugin marks requiresVehicle say so with no vehicle, like AnalyzeView', () => {
-    expect(new Set(AnalyzePageEntries.filter((it) => analyzeGate(it, false) !== null))).toEqual(new Set([AnalyzePage.LogDownload, AnalyzePage.Vibration, AnalyzePage.Inspector, AnalyzePage.Console]));
+    expect(new Set(AnalyzePageEntries.filter((it) => analyzeGate(it, false) !== null))).toEqual(new Set([AnalyzePage.Vibration, AnalyzePage.Inspector, AnalyzePage.Console]));
     expect(analyzeGate(AnalyzePage.Console, false)).toBe('Requires a connected vehicle');
     expect(AnalyzePageEntries.map((it) => analyzeGate(it, true))).toEqual(AnalyzePageEntries.map(() => null));
   });

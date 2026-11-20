@@ -11,6 +11,7 @@ import { sentenceCase } from '@/map/SentenceCase';
 import { Drawable } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { BlocksNavigation, LOG_DOWNLOAD_BLOCK } from '@/ui/AppNavigation';
+import { RecordedFlights } from '@/ui/RecordedFlights';
 import { EmptyState, SectionHeader } from '@/ui/SetupRow';
 
 const LOG_ROOT = 'logDownload';
@@ -273,15 +274,15 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
 
   if (logs === null || !connected) {
     return (
-      <>
+      <div className={`flex h-full w-full flex-col overflow-auto ${className ?? ''}`}>
         {blocks}
+        <RecordedFlights />
         <EmptyState
           icon="ic_description"
           title="No vehicle"
           text={logs !== null && logs.emptyText.trim() !== '' ? logs.emptyText : 'Connect a vehicle to download its flight logs.'}
-          className={className}
         />
-      </>
+      </div>
     );
   }
 
@@ -292,6 +293,7 @@ export const LogDownloadScreen = ({ className }: { className?: string }) => {
       {blocks}
       {confirmErase !== null ? <EraseConfirmDialog erase={confirmErase} onConfirm={() => invoke(confirmErase.action)} onDismiss={() => setConfirmErase(null)} /> : null}
       <div className="flex h-full w-full flex-col">
+        <RecordedFlights />
         <div className="flex w-full flex-wrap gap-2 px-4 py-2">
           <FilledTonalButton onClick={() => invoke('refresh')} enabled={logs.canRefresh}>
             Refresh
