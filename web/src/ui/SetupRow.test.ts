@@ -42,6 +42,18 @@ describe('SetupSummaryTest', () => {
     expect(summaryGlance([SummaryLine({ label: 'Rate', value: 'Unknown: 0' })])).toBeNull();
   });
 
+  it('a glance names what still needs setup, so a Sensors row with an uncalibrated compass never reads Ready', () => {
+    const afterAccelerometer = [
+      SummaryLine({ label: 'Compass:', value: 'Setup required' }),
+      SummaryLine({ label: 'Setup required', value: 'LSM303D (SPI4)' }),
+      SummaryLine({ label: 'Accelerometer:', value: 'Ready' }),
+    ];
+    expect(summaryGlance(afterAccelerometer)).toBe('Compass setup required');
+    expect(summaryGlance([SummaryLine({ label: 'Compass:', value: 'Ready' }), SummaryLine({ label: 'Accelerometer:', value: 'Ready' })])).toBe('Ready');
+    const radio = [SummaryLine({ label: 'Roll', value: 'Channel 1' }), SummaryLine({ label: 'Pitch', value: 'Setup required' })];
+    expect(summaryGlance(radio), 'the Radio row read Channel 1 · Setup required without saying which stick').toBe('Pitch setup required');
+  });
+
   it('a sensor glance leaves out the driver and bus names a pilot cannot act on', () => {
     const sensors = [
       SummaryLine({ label: 'Compasses:', value: '' }),

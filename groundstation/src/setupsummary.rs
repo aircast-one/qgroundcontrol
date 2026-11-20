@@ -295,11 +295,35 @@ fn device(facts: Facts, name: &str) -> String {
         .unwrap_or_default()
 }
 
+fn compass_installed(facts: Facts, index: usize) -> bool {
+    facts(COMPASS_IDS[index]).map_or(0.0, |f| number(&f)) > 0.0
+}
+
+fn compass_calibrated(facts: Facts, index: usize) -> bool {
+    ["X", "Y", "Z"].iter().all(|axis| {
+        facts(&format!("{}_{axis}", COMPASS_OFFSETS[index])).is_some_and(|f| number(&f) != 0.0)
+    })
+}
+
+fn compasses_text(facts: Facts) -> &'static str {
+    let installed: Vec<usize> = (0..COMPASS_IDS.len())
+        .filter(|index| compass_installed(facts, *index))
+        .collect();
+    match (
+        installed.is_empty(),
+        installed
+            .iter()
+            .all(|index| compass_calibrated(facts, *index)),
+    ) {
+        (true, _) => "",
+        (false, true) => READY,
+        (false, false) => SETUP_REQUIRED,
+    }
+}
+
 fn compass_text(facts: Facts, index: usize) -> String {
     let id = facts(COMPASS_IDS[index]).map_or(0.0, |f| number(&f));
-    let calibrated = ["X", "Y", "Z"].iter().all(|axis| {
-        facts(&format!("{}_{axis}", COMPASS_OFFSETS[index])).is_some_and(|f| number(&f) != 0.0)
-    });
+    let calibrated = compass_calibrated(facts, index);
     let priority = COMPASS_PRIOS
         .iter()
         .position(|name| facts(name).is_some_and(|f| number(&f) == id))
@@ -332,7 +356,7 @@ fn apm_sensors(facts: Facts) -> Rows {
             .map(|text| row("", text))
             .collect::<Vec<_>>()
     };
-    std::iter::once(row("Compasses:", ""))
+    std::iter::once(row("Compass:", compasses_text(facts)))
         .chain((0..COMPASS_IDS.len()).map(|index| {
             row(
                 &compass_text(facts, index),
@@ -340,7 +364,7 @@ fn apm_sensors(facts: Facts) -> Rows {
             )
         }))
         .chain(std::iter::once(row(
-            "Accelerometer(s):",
+            "Accelerometer:",
             if accel_needed { SETUP_REQUIRED } else { READY },
         )))
         .chain(decoded(&INS_IDS))
@@ -1437,6 +1461,32 @@ mod tests {
     }
 
     #[test]
+    fn apm_sensors_read_ready_only_once_every_installed_compass_is_calibrated() {
+        let calibrated = HashMap::from([
+            ("COMPASS_DEV_ID", fact(5.0, "", "", "")),
+            ("COMPASS_OFS_X", fact(1.0, "", "", "")),
+            ("COMPASS_OFS_Y", fact(1.0, "", "", "")),
+            ("COMPASS_OFS_Z", fact(1.0, "", "", "")),
+            ("INS_ACCOFFS_X", fact(0.1, "", "", "")),
+        ]);
+        let uncalibrated = HashMap::from([
+            ("COMPASS_DEV_ID", fact(5.0, "", "", "")),
+            ("INS_ACCOFFS_X", fact(0.1, "", "", "")),
+        ]);
+        let none = HashMap::from([("INS_ACCOFFS_X", fact(0.1, "", "", ""))]);
+        let compass = |map: &HashMap<&str, Value>| {
+            rows("APMSensorsComponent", &lookup(map), &copter()).unwrap()[0].clone()
+        };
+        assert_eq!(compass(&calibrated), row("Compass:", READY));
+        assert_eq!(
+            compass(&uncalibrated),
+            row("Compass:", SETUP_REQUIRED),
+            "after the accelerometer the Sensors row read Ready over a compass that was never calibrated"
+        );
+        assert_eq!(compass(&none), row("Compass:", ""));
+    }
+
+    #[test]
     fn apm_sensors_name_each_compass_by_its_priority_and_decode_the_devices() {
         let ist = f64::from((0x0A << 16) | (1 << 3) | 1);
         let map = HashMap::from([
@@ -1453,13 +1503,14 @@ mod tests {
         assert_eq!(
             shown[..4],
             [
-                row("Compasses:", ""),
+                row("Compass:", SETUP_REQUIRED),
                 row("Primary, External", "IST8310 (I2C1)"),
                 row(SETUP_REQUIRED, ""),
                 row("Not installed", "")
-            ]
+            ],
+            "the second compass still needs calibrating, so the compass line says so in its value, where the Sensors row reads it"
         );
-        assert_eq!(shown[4], row("Accelerometer(s):", READY));
+        assert_eq!(shown[4], row("Accelerometer:", READY));
         assert_eq!(
             shown.last(),
             Some(&row("Barometer(s):", "Not Supported(Over APM 4.1)"))

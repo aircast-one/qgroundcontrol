@@ -203,6 +203,7 @@ const GLANCE_SEPARATOR = ' · ';
 
 const NUMBER_WITH_UNIT = /^(-?\d+(?:\.\d+)?)(?:\s+(\S+))?$/;
 const ON_OFF: ReadonlySet<string> = new Set(['Enabled', 'Disabled', 'On', 'Off']);
+const SETUP_REQUIRED = 'Setup required';
 
 const DEVICE_ON_BUS = /\((I2C|SPI|UAVCAN|SITL|MSP|EAHRS)\d+\)$/;
 
@@ -224,6 +225,8 @@ export const summaryGlanceParts = (summary: readonly SummaryLine[]): SummaryLine
   const read = summary
     .map((it) => ({ ...it, label: it.label.replace(/[: ]+$/, ''), value: it.value.trim().replace(/(\S)\(/g, '$1 (') }))
     .filter((it) => !unreadable(it.value));
+  const needed = read.filter((it) => it.value === SETUP_REQUIRED);
+  if (needed.length > 0) return needed.map((it) => ({ ...it, value: sentenceCase(`${it.label} ${SETUP_REQUIRED.toLowerCase()}`.trim()) }));
   const prefixes = [...new Set(read.map((it) => firstWord(it.value)))];
   const only = prefixes.length === 1 ? (prefixes[0] ?? '') : '';
   const shared = only !== '' && read.length > 1 ? only : null;

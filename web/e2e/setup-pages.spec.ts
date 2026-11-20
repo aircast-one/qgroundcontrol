@@ -1,4 +1,4 @@
-import { connectMock, expect, openAircraftSetup, openMenu, test } from './fixtures';
+import { connectFreshMock, connectMock, expect, openAircraftSetup, openMenu, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -172,4 +172,25 @@ test('Setup flashes firmware with or without a vehicle', async ({ app }) => {
   await openAircraftSetup(app);
   await app.getByRole('button', { name: /^Firmware Flash a board/ }).click();
   await expect(app.getByText(/^(No USB serial devices attached|Flash a board over USB|Flash the flight controller)/)).toBeVisible();
+});
+
+test('after the accelerometer the Sensors row names the compass still to calibrate instead of reading Ready', async ({ app }) => {
+  const prompt = await connectFreshMock(app, 'APM ArduCopter Vehicle');
+  await prompt.getByRole('button', { name: 'Open Setup', exact: true }).click();
+  await app.getByRole('button', { name: 'Quad Quad' }).click();
+  const sensors = app.getByRole('button', { name: /^Sensors / }).first();
+  await sensors.click();
+  await app.getByRole('button', { name: /^Accelerometer/ }).first().click();
+  await app.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+  await [1, 2, 3, 4, 5, 6].reduce(
+    (done, step) =>
+      done.then(async () => {
+        await expect(app.getByText(`${step} of 6 positions`, { exact: true })).toBeVisible({ timeout: 30_000 });
+        await app.getByRole('button', { name: 'Next', exact: true }).click();
+      }),
+    Promise.resolve(),
+  );
+  await app.getByRole('dialog').filter({ hasText: 'Calibration complete' }).getByRole('button', { name: 'Close' }).click();
+  await expect(app.getByRole('button', { name: /^Accelerometer Calibrated/ })).toBeVisible();
+  await expect(sensors, 'the row read Ready over a compass that was never calibrated').toHaveAccessibleName(/^Sensors Compass setup required/);
 });

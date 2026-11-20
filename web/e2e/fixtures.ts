@@ -61,6 +61,13 @@ export const connectMock = async (page: Page, options: readonly MockOption[] = [
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
 };
 
+export const connectFreshMock = async (page: Page, vehicle: MockVehicle) => {
+  await startMock(page, [FRESH_PARAMETERS], vehicle);
+  const prompt = page.getByRole('dialog').filter({ hasText: /needs? setup before this vehicle can fly\./ });
+  await expect(prompt).toBeVisible({ timeout: 60_000 });
+  return prompt;
+};
+
 export const flightMode = (page: Page): Locator => page.getByRole('button', { name: /Change flight mode$/ }).first();
 
 export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: new RegExp(`^${label.replace('.', '\\.')}-?[\\d.]+ (m|m/s|ft|ft/s)$`) });
