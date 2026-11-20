@@ -159,7 +159,11 @@ internal enum class SettingsGroup(val title: String) { General("General"), Safet
 
 internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int, val inline: Boolean = false, val tabHome: Boolean = false)
 
+internal fun tabPage(group: SettingsGroup): String = "${group.name} tab"
+
 internal val PAGE_LOOKS = mapOf(
+    tabPage(SettingsGroup.Safety) to PageLook(SettingsGroup.Safety, R.drawable.ic_shield, inline = true),
+    tabPage(SettingsGroup.Control) to PageLook(SettingsGroup.Control, R.drawable.ic_flight, inline = true),
     "ADSB Server" to PageLook(SettingsGroup.Safety, R.drawable.ic_navigation, inline = true),
     "Remote ID" to PageLook(SettingsGroup.Safety, R.drawable.ic_shield),
     "Fly View" to PageLook(SettingsGroup.Control, R.drawable.ic_flight, inline = true),

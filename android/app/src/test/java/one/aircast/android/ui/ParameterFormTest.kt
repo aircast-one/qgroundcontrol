@@ -404,3 +404,31 @@ class ControlBoundsTest {
         assertNull(parameterFormWait(JSONObject("""{"connected":true,"parametersReady":true}""")))
     }
 }
+
+class PilotLinksTest {
+    private fun fact(name: String, path: String) = Fact(
+        path = path, name = name, description = name, units = "",
+        valueString = "0", value = 0, enumStrings = emptyList(), enumIndex = -1,
+        isBool = false, isString = false, readOnly = false,
+    )
+
+    @Test
+    fun `a setup page keeps the first control of each parameter Settings owns as its link and drops the rest`() {
+        val rows = listOf(
+            ParameterRows("Return to launch", listOf(fact("RTL_ALT_M", "choice"), fact("RTL_ALT_M", "value"), fact("RTL_LOIT_TIME", "loiter")), ""),
+            ParameterRows("Only owned", listOf(fact("RTL_ALT_M", "again")), ""),
+            ParameterRows("Labels only", emptyList(), ""),
+        )
+        assertEquals(
+            listOf("Return to launch" to listOf("choice", "loiter"), "Labels only" to emptyList<String>()),
+            withPilotLinks(rows).map { it.title to it.facts.map { fact -> fact.path } },
+        )
+    }
+
+    @Test
+    fun `every battery's failsafe actions in Failsafes link to Settings, Safety`() {
+        val rows = listOf(ParameterRows("Battery 2", listOf(fact("BATT2_FS_LOW_ACT", "low"), fact("BATT2_FS_CRT_ACT", "critical"), fact("BATT2_LOW_VOLT", "volt")), ""))
+        assertEquals(listOf("low", "critical", "volt"), withPilotLinks(rows).single().facts.map { it.path })
+        assertEquals(listOf("Battery 2 low", "Battery 2 critical", null), rows.single().facts.map { pilotOwner(it.name)?.setting?.label })
+    }
+}

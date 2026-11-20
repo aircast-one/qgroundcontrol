@@ -24,7 +24,7 @@ import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
-internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String, val whenUnlimited: String? = null, val quantity: String? = null)
+internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String, val whenUnlimited: String? = null, val quantity: String? = null, val reportedOnly: Boolean = false)
 
 private const val RETURN_HOME = "Return home"
 private const val FLIGHT_PROTECTION = "Flight protection"
@@ -34,15 +34,30 @@ private const val ALTITUDE = "altitude"
 private const val DISTANCE = "distance"
 private const val SPEED = "speed"
 
+private const val ARDUPILOT_MAX_BATTERIES = 16
+private const val NUMBERED_BATTERY_PREFIXES = 9
+
+internal fun batteryPrefix(index: Int): String = when {
+    index == 0 -> "BATT"
+    index < NUMBERED_BATTERY_PREFIXES -> "BATT${index + 1}"
+    else -> "BATT${'A' + (index - NUMBERED_BATTERY_PREFIXES)}"
+}
+
+private fun batteryActions(index: Int): List<PilotSetting> = listOf(
+    PilotSetting("Battery ${index + 1} low", listOf("${batteryPrefix(index)}_FS_LOW_ACT"), FAILSAFES, "When battery ${index + 1} runs low.", reportedOnly = true),
+    PilotSetting("Battery ${index + 1} critical", listOf("${batteryPrefix(index)}_FS_CRT_ACT"), FAILSAFES, "When battery ${index + 1} is nearly empty.", reportedOnly = true),
+)
+
 internal fun pilotSettings(group: SettingsGroup): List<PilotSetting> = when (group) {
     SettingsGroup.Safety -> listOf(
         PilotSetting("Return altitude", listOf("RTL_RETURN_ALT", "RTL_ALT_M", "RTL_ALT"), RETURN_HOME, "Climbs to this height before flying home.", quantity = ALTITUDE),
         PilotSetting("Max altitude", listOf("GF_MAX_VER_DIST", "FENCE_ALT_MAX"), FLIGHT_PROTECTION, "The aircraft will not climb above this.", "Most countries cap flights at 120 m.", ALTITUDE),
         PilotSetting("Max distance", listOf("GF_MAX_HOR_DIST", "FENCE_RADIUS"), FLIGHT_PROTECTION, "The aircraft will not fly farther from home than this.", quantity = DISTANCE),
-        PilotSetting("Signal lost", listOf("NAV_DLL_ACT", "FS_GCS_ENABLE"), FAILSAFES, "When the link to this app drops."),
+        PilotSetting("Signal lost", listOf("NAV_DLL_ACT", "FS_GCS_ENABLE", "FS_GCS_ENABL"), FAILSAFES, "When the link to this app drops."),
         PilotSetting("Remote controller lost", listOf("NAV_RCL_ACT", "FS_THR_ENABLE"), FAILSAFES, "When the remote controller drops."),
         PilotSetting("Battery low", listOf("COM_LOW_BAT_ACT", "BATT_FS_LOW_ACT"), FAILSAFES, "When the battery runs low."),
-    )
+        PilotSetting("Battery critical", listOf("BATT_FS_CRT_ACT"), FAILSAFES, "When the battery is nearly empty.", reportedOnly = true),
+    ) + (1 until ARDUPILOT_MAX_BATTERIES).flatMap(::batteryActions)
     SettingsGroup.Control -> listOf(
         PilotSetting("Max horizontal speed", listOf("MPC_XY_VEL_MAX", "LOIT_SPEED_MS", "LOIT_SPEED"), FLIGHT_LIMITS, "Fastest the aircraft flies forward and sideways.", quantity = SPEED),
         PilotSetting("Max climb speed", listOf("MPC_Z_VEL_MAX_UP", "PILOT_SPD_UP", "PILOT_SPEED_UP"), FLIGHT_LIMITS, "Fastest the aircraft climbs.", quantity = SPEED),
@@ -58,6 +73,13 @@ internal fun pilotSearchHits(query: String): List<PilotSetting> =
             .filter { setting -> (listOf(setting.label, setting.section) + setting.parameters).any { it.lowercase().contains(wanted) } }
     }.orEmpty()
 
+internal data class PilotOwner(val setting: PilotSetting, val group: SettingsGroup)
+
+internal fun pilotOwner(name: String): PilotOwner? =
+    SettingsGroup.entries.flatMap { group -> pilotSettings(group).map { PilotOwner(it, group) } }.firstOrNull { name in it.setting.parameters }
+
+internal fun offlineSettings(settings: List<PilotSetting>): List<PilotSetting> = settings.filterNot { it.reportedOnly }
+
 internal data class ShownPilotSetting(val setting: PilotSetting, val fact: Fact)
 
 internal fun firstReported(setting: PilotSetting, reported: (String) -> Fact?): Fact? =
@@ -69,9 +91,9 @@ internal fun PilotSettings(group: SettingsGroup) = PilotSettings(pilotSettings(g
 @Composable
 internal fun PilotSettings(settings: List<PilotSetting>) {
     if (settings.isEmpty()) return
-    if (!hasVehicle()) return OfflinePilotSettings(settings, OFFLINE_PILOT_NOTE, offersLink = true)
+    if (!hasVehicle()) return OfflinePilotSettings(offlineSettings(settings), OFFLINE_PILOT_NOTE, offersLink = true)
     val setup by qgcPath(SETUP)
-    if (!parametersReady(setup)) return OfflinePilotSettings(settings, LOADING_PILOT_NOTE, offersLink = false)
+    if (!parametersReady(setup)) return OfflinePilotSettings(offlineSettings(settings), LOADING_PILOT_NOTE, offersLink = false)
     val shown by produceState(emptyList<ShownPilotSetting>(), settings, setup) {
         value = withContext(Dispatchers.Default) { settings.mapNotNull { setting -> firstReported(setting) { parameterFact(it, setting.quantity) }?.let { ShownPilotSetting(setting, it) } } }
     }
@@ -169,6 +191,24 @@ private fun PilotFactRow(shown: Fact, setting: PilotSetting) {
 }
 
 private const val DO_NOTHING = "Do nothing"
+
+@Composable
+internal fun PilotLinkRow(name: String, owner: PilotOwner) {
+    val navigation = LocalAppNavigation.current
+    val live by qgcPath(parameterPath(name, owner.setting.quantity))
+    val fact by produceState<Fact?>(null, name, live) {
+        value = withContext(Dispatchers.Default) { parameterFact(name, owner.setting.quantity) }
+    }
+    val hold = vehicleHoldWord()
+    val status = fact?.let { if (it.isEnum) pilotChoice(it.enumStrings.getOrNull(it.enumIndex) ?: it.valueString, hold) else valueText(it) }.orEmpty()
+    SetupRow(
+        title = owner.setting.label,
+        subtitle = "In Settings \u203a ${owner.group.title}",
+        status = status,
+        state = if (status == DO_NOTHING) SetupState.NeedsAttention else SetupState.Neutral,
+        onClick = { navigation.settingsPage = tabPage(owner.group) },
+    )
+}
 
 private val PILOT_CHOICES = mapOf(
     "Disabled" to DO_NOTHING,

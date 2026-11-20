@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import one.aircast.android.bridge.Fact
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -118,5 +119,29 @@ class PilotSettingsTest {
     @Test
     fun `offline, safety still lists its sections in DJI's order so the pilot knows they exist`() {
         assertEquals(listOf("Return home", "Flight protection", "If something goes wrong"), pilotSections(pilotSettings(SettingsGroup.Safety)).keys.toList())
+    }
+
+    @Test
+    fun `each pilot setting has one home tab`() {
+        assertEquals(SettingsGroup.Safety, pilotOwner("FENCE_ALT_MAX")?.group)
+        assertEquals("Max altitude", pilotOwner("FENCE_ALT_MAX")?.setting?.label)
+        assertEquals(SettingsGroup.Control, pilotOwner("LOIT_SPEED_MS")?.group)
+        assertNull(pilotOwner("RTL_LOIT_TIME"))
+    }
+
+    @Test
+    fun `every ArduPilot battery takes its failsafe actions from Settings, Safety, named as ArduPilot prefixes them`() {
+        assertEquals(listOf("BATT", "BATT2", "BATT9", "BATTA", "BATTG"), listOf(0, 1, 8, 9, 15).map(::batteryPrefix))
+        assertEquals(
+            "batteries 2 and up edited their actions inline in Failsafes",
+            List(4) { SettingsGroup.Safety },
+            listOf("BATT_FS_LOW_ACT", "BATT_FS_CRT_ACT", "BATT2_FS_LOW_ACT", "BATT2_FS_CRT_ACT").map { pilotOwner(it)?.group },
+        )
+        assertEquals(listOf("Battery 3 low", "Battery 9 critical", "Battery 10 low", "Battery 16 critical"), listOf("BATT3_FS_LOW_ACT", "BATT9_FS_CRT_ACT", "BATTA_FS_LOW_ACT", "BATTG_FS_CRT_ACT").map { pilotOwner(it)?.setting?.label })
+        assertNull("ArduPilot stops at sixteen batteries", pilotOwner("BATTH_FS_LOW_ACT"))
+        assertEquals("PX4 has one action for every battery", "Battery low", pilotOwner("COM_LOW_BAT_ACT")?.setting?.label)
+        val offline = offlineSettings(pilotSettings(SettingsGroup.Safety)).map { it.label }
+        assertTrue("with no aircraft only the rows every vehicle has are listed", "Battery low" in offline)
+        assertFalse(listOf("Battery critical", "Battery 2 low", "Battery 3 low").any { it in offline })
     }
 }

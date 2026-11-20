@@ -157,6 +157,16 @@ internal fun parameterFormWait(setup: JSONObject?): String? =
     if (parametersReady(setup)) null
     else setup?.optString("parametersText").orEmpty().trim().ifBlank { READING_PARAMETERS }
 
+private const val ENABLE_SUFFIX = ".enable"
+
+private fun switchesALink(fact: Fact): Boolean = fact.name.endsWith(ENABLE_SUFFIX) && pilotOwner(fact.name.removeSuffix(ENABLE_SUFFIX)) != null
+
+internal fun withPilotLinks(rows: List<ParameterRows>): List<ParameterRows> {
+    val linked = rows.flatMap { it.facts }.filter { pilotOwner(it.name) != null }.distinctBy { it.name }.map { it.path }.toSet()
+    val kept: (Fact) -> Boolean = { fact -> (pilotOwner(fact.name) == null || fact.path in linked) && !switchesALink(fact) }
+    return rows.map { it.copy(facts = it.facts.filter(kept)) }.filterIndexed { at, it -> it.facts.isNotEmpty() || rows[at].facts.isEmpty() }
+}
+
 internal val EMPTY_PAGE_TEXTS = mapOf("Gimbal" to "Gimbal settings are not available for this firmware version.")
 
 @Composable
@@ -180,7 +190,7 @@ internal fun ParameterForm(
         if (waiting != null) return@LaunchedEffect
         rows = withContext(Dispatchers.Default) {
             if (reloads == 0) Qgc.invoke(SETUP_PAGE_OPENED, page)
-            readPage(page).filter { section == null || it.title == section } }
+            withPilotLinks(readPage(page).filter { section == null || it.title == section }) }
         loaded = true
     }
 
@@ -212,7 +222,10 @@ internal fun ParameterForm(
             }
             items(section.facts, key = { it.path }) { fact ->
                 Column(Modifier.padding(start = if (fact.indent) INDENT else 0.dp)) {
-                    if (fact.controlKind == DIALOG_CONTROL) {
+                    val owner = pilotOwner(fact.name)
+                    if (owner != null) {
+                        PilotLinkRow(fact.name, owner)
+                    } else if (fact.controlKind == DIALOG_CONTROL) {
                         OutlinedButton(enabled = fact.enabled, onClick = { calibratingEscs = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Text(fact.title) }
                     } else if (fact.controlKind == BUTTON_CONTROL) {
                         OutlinedButton(
