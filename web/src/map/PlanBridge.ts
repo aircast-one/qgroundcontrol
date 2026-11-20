@@ -272,7 +272,7 @@ export const PlanBridge = {
 
   reorder: async (index: number, later: boolean): Promise<Reorder> => reorderOf(await invokeAnswer(MOVE_ITEM, `[${index},${later ? 1 : -1}]`)),
 
-  pauseVehicle: (): Promise<boolean> => invokeOk('vehicle.pauseVehicle'),
+  pauseRefusal: (): Promise<string | null> => invokeRefusal('vehicle.pauseVehicle', '[]', 'The aircraft did not pause.'),
 
   setAltitude: (index: number, shown: number): Promise<boolean> => setOk(`${PLAN_ITEMS}.${index}.altitude`, settingJson(`${shown}`)),
 

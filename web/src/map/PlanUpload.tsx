@@ -27,10 +27,19 @@ export type PlanUpload = {
 
 export const PlanUpload = (fields: { enabled: boolean; emphasised: boolean; label: string; shown: boolean; downloading: boolean; onClick: () => void }): PlanUpload => ({ ...fields, done: fields.label === UPLOADED });
 
-const sendPlan = (say: (message: string | null) => void, done: () => void, pauseFirst = false): void => {
-  say('Uploading to vehicle');
+export const pauseRefusedText = (reason: string): string => `The aircraft did not pause, so the plan was not uploaded. ${reason}`;
+
+export const sendPlan = (say: (message: string | null) => void, done: () => void, pauseFirst = false): void => {
+  say(pauseFirst ? 'Pausing the aircraft' : 'Uploading to vehicle');
   void (async () => {
-    if (pauseFirst) await PlanBridge.pauseVehicle();
+    const refused = pauseFirst ? await PlanBridge.pauseRefusal() : null;
+    if (refused !== null) {
+      say(pauseRefusedText(refused));
+      await delay(FAILURE_MESSAGE_MS);
+      done();
+      return;
+    }
+    if (pauseFirst) say('Uploading to vehicle');
     const outcome = uploadOutcome(await PlanBridge.sendToVehicle());
     say(uploadMessage(outcome));
     if (outcome === UploadOutcome.NotStarted) await delay(FAILURE_MESSAGE_MS);
