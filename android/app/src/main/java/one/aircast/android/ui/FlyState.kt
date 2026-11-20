@@ -44,12 +44,9 @@ internal fun chipTone(state: FlyState?, lost: Boolean): ChipTone = when {
     else -> ChipTone.Success
 }
 
-internal const val ALL_CHECKS_PASSED = "All checks passed."
-internal const val SETUP_NOT_COMPLETE = "Aircraft setup is not complete."
-
 internal fun readinessWarning(state: FlyState?): String? =
     state?.takeIf { it.connected && !it.armed && it.contactLost != true && (notReadyToFly(it) || !it.nominal) }
-        ?.let { listOfNotNull(it.stateText.ifBlank { null }, (if (notReadyToFly(it) && it.summaryDetail == ALL_CHECKS_PASSED) SETUP_NOT_COMPLETE else it.summaryDetail).ifBlank { null }).joinToString(". ") }
+        ?.let { listOfNotNull(it.stateText.ifBlank { null }, it.summaryDetail.ifBlank { null }).joinToString(". ") }
         ?.ifBlank { null }
 
 internal data class Readiness(val text: String, val blocks: Boolean)
