@@ -10,22 +10,59 @@ pub struct Message {
     pub text: String,
     #[serde(rename = "toldElsewhere")]
     pub told_elsewhere: bool,
+    pub resolved: bool,
 }
 
 // StatusTextHandler prepends each new message, so the string arrives newest first. Every other
 // list the core serves runs oldest first, and a head reading last() for the newest is right on two
 // of them and wrong on the third with no way to tell. They all run the same way now.
 pub fn parse(formatted: &str) -> Vec<Message> {
-    formatted
+    let oldest_first: Vec<Message> = formatted
         .split("</font><br/>")
         .filter(|chunk| !chunk.trim().is_empty())
         .filter_map(parse_one)
         .collect::<Vec<Message>>()
         .into_iter()
         .rev()
+        .collect();
+    let cleared: Vec<Option<String>> = oldest_first
+        .iter()
+        .map(|message| cleared_subject(&message.text))
+        .collect();
+    oldest_first
+        .into_iter()
         .enumerate()
-        .map(|(index, message)| Message { index, ..message })
+        .map(|(index, message)| {
+            let resolved = cleared[index + 1..].iter().flatten().any(|subject| {
+                cleared[index].is_none() && message.text.to_lowercase().starts_with(subject)
+            });
+            Message {
+                index,
+                level: match cleared[index] {
+                    Some(_) => "normal",
+                    None => message.level,
+                },
+                resolved,
+                ..message
+            }
+        })
         .collect()
+}
+
+const CLEARING_WORDS: &[&str] = &["cleared", "regained", "resolved"];
+
+pub fn cleared_subject(text: &str) -> Option<String> {
+    let lower = text.trim().trim_end_matches('.').to_lowercase();
+    CLEARING_WORDS
+        .iter()
+        .find_map(|word| lower.strip_suffix(word))
+        .or_else(|| {
+            lower
+                .strip_suffix(" off")
+                .filter(|rest| rest.ends_with("failsafe"))
+        })
+        .map(|rest| rest.trim_end_matches([' ', ':']).to_string())
+        .filter(|subject| subject.len() >= 3)
 }
 
 pub const LEVELS: &[&str] = &["normal", "warning", "error"];
@@ -57,6 +94,7 @@ fn parse_one(chunk: &str) -> Option<Message> {
         severity: severity.to_string(),
         level: level_of(style),
         told_elsewhere: crate::refusal::told_elsewhere(&text),
+        resolved: false,
         text,
     })
 }
@@ -142,6 +180,41 @@ mod tests {
             (parsed[0].index, parsed[1].index),
             (0, 1),
             "the index counts from the oldest, so it does not jump around as messages arrive"
+        );
+    }
+
+    #[test]
+    fn a_failsafe_cleared_later_is_resolved_and_the_clearing_line_is_no_error() {
+        let parsed = parse(concat!(
+            "<font style=\"<#E>\">[10:00:09.000 ] Critical: EKF Failsafe Cleared</font><br/>",
+            "<font style=\"<#I>\">[10:00:08.000 ] Warning: Throttle failsafe off</font><br/>",
+            "<font style=\"<#E>\">[10:00:07.000 ] Critical: Battery 1 is low 10.50V</font><br/>",
+            "<font style=\"<#I>\">[10:00:06.000 ] Warning: Throttle failsafe on</font><br/>",
+            "<font style=\"<#E>\">[10:00:05.000 ] Critical: EKF Failsafe: changed to LAND Mode</font><br/>",
+        ));
+        let read: Vec<(&str, &str, bool)> = parsed
+            .iter()
+            .map(|m| (m.text.as_str(), m.level, m.resolved))
+            .collect();
+        assert_eq!(
+            read,
+            vec![
+                ("EKF Failsafe: changed to LAND Mode", "error", true),
+                ("Throttle failsafe on", "warning", true),
+                ("Battery 1 is low 10.50V", "error", false),
+                ("Throttle failsafe off", "normal", false),
+                ("EKF Failsafe Cleared", "normal", false),
+            ],
+            "a cleared failsafe is over, so neither it nor the line saying so stays up as an alarm"
+        );
+        assert_eq!(
+            cleared_subject("Data link regained"),
+            Some("data link".to_string())
+        );
+        assert_eq!(
+            cleared_subject("Motors off"),
+            None,
+            "only a failsafe is cleared by off"
         );
     }
 

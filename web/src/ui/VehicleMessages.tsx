@@ -31,10 +31,12 @@ export type VehicleMessage = {
   level: MessageSeverity;
   text: string;
   toldElsewhere: boolean;
+  resolved: boolean;
 };
 
-export const VehicleMessage = (fields: { index: number; time: string; severity: string; level: MessageSeverity; text: string; toldElsewhere?: boolean }): VehicleMessage => ({
+export const VehicleMessage = (fields: { index: number; time: string; severity: string; level: MessageSeverity; text: string; toldElsewhere?: boolean; resolved?: boolean }): VehicleMessage => ({
   toldElsewhere: false,
+  resolved: false,
   ...fields,
 });
 
@@ -48,7 +50,7 @@ export const chipBlocker = (blocker: string): string => {
 };
 
 export const bannerMessages = (unread: readonly VehicleMessage[]): readonly VehicleMessage[] =>
-  unread.filter((it) => (it.level === MessageSeverity.Error || it.level === MessageSeverity.Warning) && !it.toldElsewhere);
+  unread.filter((it) => (it.level === MessageSeverity.Error || it.level === MessageSeverity.Warning) && !it.toldElsewhere && !it.resolved);
 
 const SEVERITY_RANK: readonly string[] = ['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug'];
 
@@ -66,11 +68,16 @@ export const worstFirst = (messages: readonly VehicleMessage[]): readonly Vehicl
 
 export const newestFirst = (messages: readonly VehicleMessage[]): readonly VehicleMessage[] => messages.toReversed();
 
+const newestOfWorstLevel = (messages: readonly VehicleMessage[]): VehicleMessage | null =>
+  messages
+    .map((message, at) => ({ message, at }))
+    .toSorted((a, b) => a.message.level.ordinal - b.message.level.ordinal || b.at - a.at)
+    .map((it) => it.message)[0] ?? null;
+
 export const bannerText = (messages: readonly VehicleMessage[]): string | null => {
   if (messages.length === 0) return null;
-  const worst = worstFirst(messages)[0] ?? null;
-  const count = messageCountText(messages.length);
-  return worst !== null && worst.text.trim() !== '' ? worst.text : count;
+  const lead = newestOfWorstLevel(messages);
+  return lead !== null && lead.text.trim() !== '' ? lead.text : messageCountText(messages.length);
 };
 
 export const severitySummary = (messages: readonly VehicleMessage[]): string => {
@@ -118,6 +125,7 @@ export const vehicleMessages = (view: Json | null): readonly VehicleMessage[] =>
             level: levelOf(optText(item, 'level')),
             text,
             toldElsewhere: optBoolean(item, 'toldElsewhere'),
+            resolved: optBoolean(item, 'resolved'),
           }),
         ];
   });

@@ -69,7 +69,7 @@ describe('VehicleMessagesTest', () => {
     expect(bannerText(bannerMessages(unread))).toBe('Battery low');
   });
 
-  it('the most severe message leads the Fly sheet and the banner, newest first within a severity', () => {
+  it('the most severe message leads the Fly sheet, newest first within a severity, and the newest error leads the banner', () => {
     const said = (severity: string, level: MessageSeverity, text: string) => VehicleMessage({ index: 0, time: '', severity, level, text });
     const log = [
       said('Emergency', MessageSeverity.Error, 'Status text emergency'),
@@ -79,8 +79,21 @@ describe('VehicleMessagesTest', () => {
       said('Error', MessageSeverity.Error, 'Newer error'),
     ];
     expect(worstFirst(log).map((it) => it.text)).toEqual(['Status text emergency', 'Newer error', 'Status text error', 'Status text warning', 'Status text info']);
-    expect(bannerText(bannerMessages(log))).toBe('Status text emergency');
+    expect(bannerText(bannerMessages(log)), 'an older emergency must not hide a failsafe that just happened').toBe('Newer error');
     expect(severityRank(said('Fehler', MessageSeverity.Error, 'kaputt'))).toBe(severityRank(said('Error', MessageSeverity.Error, 'x')));
+  });
+
+  it('a failsafe the vehicle has since cleared leaves the banner, and a newer alarm is not hidden behind an older one', () => {
+    const log = vehicleMessages(
+      json(`{"class":"VehicleMessages","order":"oldestFirst","items":[
+        {"index":0,"time":"","severity":"Emergency","level":"error","text":"Status text emergency"},
+        {"index":1,"time":"","severity":"Critical","level":"error","text":"EKF Failsafe: changed to LAND Mode","resolved":true},
+        {"index":2,"time":"","severity":"Critical","level":"error","text":"Fence Breached"},
+        {"index":3,"time":"","severity":"Critical","level":"normal","text":"EKF Failsafe Cleared"}]}`),
+    );
+    expect(bannerMessages(log).map((it) => it.text)).toEqual(['Status text emergency', 'Fence Breached']);
+    expect(bannerText(bannerMessages(log))).toBe('Fence Breached');
+    expect(bannerMessages(log.filter((it) => it.index !== 2)).map((it) => it.text), 'the line saying a failsafe cleared is not an alarm').toEqual(['Status text emergency']);
   });
 
   it('a message time drops the milliseconds QGC stamps it with', () => {

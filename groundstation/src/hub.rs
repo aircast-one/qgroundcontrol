@@ -6978,7 +6978,11 @@ impl Vehicle {
                 }
                 self.custom_mode = h.custom_mode;
                 self.system_status = h.system_status as u8;
-                self.vehicle_type = assumed_type(h.mavtype as u8, self.autopilot);
+                let kind = assumed_type(h.mavtype as u8, self.autopilot);
+                if another_class(self.vehicle_type, kind) {
+                    self.message_log.reset_all();
+                }
+                self.vehicle_type = kind;
                 if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT
                     && header.component_id == COMP_AUTOPILOT1
                 {
@@ -8195,6 +8199,12 @@ fn assumed_type(kind: u8, autopilot: u8) -> u8 {
     } else {
         kind
     }
+}
+
+fn another_class(was: u8, now: u8) -> bool {
+    let class = |kind: u8| crate::plandoc::vehicle_class(i64::from(kind));
+    ![class(was), class(now)].contains(&crate::cmdinfo::VehicleClass::Generic)
+        && class(was) != class(now)
 }
 
 fn heartbeat_info(message: &MavMessage) -> Option<(u8, u8)> {
@@ -18908,6 +18918,63 @@ mod tests {
                 .iter()
                 .any(|t| t.starts_with("vehicle 1 ") && t.ends_with("failsafe")),
             "with two vehicles up, a failsafe said without a name could be either: {spoken:?}"
+        );
+    }
+
+    #[test]
+    fn a_different_kind_of_aircraft_answering_under_the_same_id_leaves_the_last_ones_messages_read()
+    {
+        use mavlink::dialects::ardupilotmega::MavType;
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let alarm = |hub: &mut Hub| {
+            hub.vehicles.get_mut(&1).unwrap().take_status(
+                StatusText {
+                    component: 1,
+                    severity: 2,
+                    text: "EKF Failsafe".into(),
+                },
+                1_000,
+            );
+        };
+        let unread = |hub: &Hub| hub.vehicles[&1].message_log.unread();
+        let beat = |kind: MavType| match copter_heartbeat(0, false) {
+            MavMessage::HEARTBEAT(h) => {
+                MavMessage::HEARTBEAT(mavlink::dialects::ardupilotmega::HEARTBEAT_DATA {
+                    mavtype: kind,
+                    ..h
+                })
+            }
+            other => other,
+        };
+        alarm(&mut hub);
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &beat(MavType::MAV_TYPE_HEXAROTOR),
+            8,
+            8,
+        );
+        assert!(
+            unread(&hub) > 0,
+            "a copter rebuilt with six arms is the same aircraft, so its alarm stays up"
+        );
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &beat(MavType::MAV_TYPE_FIXED_WING),
+            9,
+            9,
+        );
+        assert_eq!(
+            unread(&hub),
+            0,
+            "a plane on the copter's system id is another aircraft, so the copter's alarm does not stay up over it"
         );
     }
 
