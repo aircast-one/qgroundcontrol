@@ -157,4 +157,17 @@ final class VehicleMessagesTests: XCTestCase {
     func testAnEntryWithNoMessageIsNotAReason() {
         XCTAssertEqual(armingChecks(warnings(#"[{"message":"","description":"","severity":"error"}]"#)), [])
     }
+
+    func testAFailsafeTheVehicleHasSinceClearedLeavesTheBannerAndANewerAlarmIsNotHiddenBehindAnOlderOne() {
+        let log = vehicleMessages(JSON.parse(#"""
+        {"class":"VehicleMessages","order":"oldestFirst","items":[
+        {"index":0,"time":"","severity":"Emergency","level":"error","text":"Status text emergency"},
+        {"index":1,"time":"","severity":"Critical","level":"error","text":"EKF Failsafe: changed to LAND Mode","resolved":true},
+        {"index":2,"time":"","severity":"Critical","level":"error","text":"Fence Breached"},
+        {"index":3,"time":"","severity":"Critical","level":"normal","text":"EKF Failsafe Cleared"}]}
+        """#))
+        XCTAssertEqual(bannerMessages(log).map(\.text), ["Status text emergency", "Fence Breached"])
+        XCTAssertEqual(bannerText(bannerMessages(log)), "Fence Breached")
+        XCTAssertEqual(bannerMessages(log.filter { $0.index != 2 }).map(\.text), ["Status text emergency"], "the line saying a failsafe cleared is not an alarm")
+    }
 }

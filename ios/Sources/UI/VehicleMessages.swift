@@ -13,6 +13,7 @@ struct VehicleMessage: Equatable, Hashable {
     let level: MessageSeverity
     let text: String
     var toldElsewhere = false
+    var resolved = false
 }
 
 private let PREARM_PREFIX = "PreArm:"
@@ -24,7 +25,7 @@ func chipBlocker(_ blocker: String) -> String {
 }
 
 func bannerMessages(_ unread: [VehicleMessage]) -> [VehicleMessage] {
-    unread.filter { ($0.level == .Error || $0.level == .Warning) && !$0.toldElsewhere }
+    unread.filter { ($0.level == .Error || $0.level == .Warning) && !$0.toldElsewhere && !$0.resolved }
 }
 
 func bannerText(_ messages: [VehicleMessage]) -> String? {
@@ -75,7 +76,8 @@ func vehicleMessages(_ view: JSON?) -> [VehicleMessage] {
             severity: item["severity"].string,
             level: levelOf(item["level"].string),
             text: text,
-            toldElsewhere: item["toldElsewhere"].bool
+            toldElsewhere: item["toldElsewhere"].bool,
+            resolved: item["resolved"].bool
         )
     }
     return view["order"].string == OLDEST_FIRST ? read : read.reversed()
