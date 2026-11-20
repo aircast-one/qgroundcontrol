@@ -711,7 +711,7 @@ internal fun PlanMapContent(
                         })
                     }
                     RailButton(R.drawable.plan_flight_land, kindLabel(insertable, KIND_LAND), enabled = itemCount > 0, onClick = {
-                        addMissionItem(KIND_LAND, "Adding a landing", placeAt(), insertAfter(selected, allItems))
+                        addMissionItem(KIND_LAND, "Adding a landing", placeAt(), AT_END)
                     })
                     if (kindOffered(insertable, KIND_DROP)) {
                         RailButton(R.drawable.plan_drop, "Drop", enabled = itemCount > 0 && addable(KIND_DROP), onClick = {

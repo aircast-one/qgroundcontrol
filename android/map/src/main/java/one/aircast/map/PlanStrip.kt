@@ -57,7 +57,7 @@ internal fun placedPattern(surveys: List<Survey>, wanted: Int): Survey? =
     surveys.firstOrNull { it.index == wanted } ?: surveys.maxByOrNull { it.index }?.takeIf { wanted == NEWEST_PATTERN }
 
 internal fun appendSequence(items: List<MissionItem>): Int =
-    items.maxByOrNull { it.index }?.sequence ?: HOME_ITEM
+    (routeEnd(items)?.let { end -> items.filter { it.index < end.index } } ?: items).maxByOrNull { it.index }?.sequence ?: HOME_ITEM
 
 private const val FAR_FROM_AIRCRAFT_METRES = 1000.0
 private const val METRES_PER_MILE = 1609.344

@@ -100,6 +100,13 @@ class PlanStripTest {
     }
 
     @Test
+    fun `with nothing selected and a return at the end, the core weighs new items before the return`() {
+        val items = listOf(0, 1, 2).map { MissionItem(it, it, 41.0, 44.0, "Waypoint", false, 50.0) } +
+            MissionItem(3, 3, Double.NaN, Double.NaN, "Return to launch", false, Double.NaN, endsRoute = true)
+        assertEquals("weighed after the return, a pattern was refused as if the vehicle had landed", 2, appendSequence(items))
+    }
+
+    @Test
     fun `a route that begins more than a kilometre from the aircraft is flagged with the distance`() {
         val home = MissionItem(0, 0, 37.0, -122.0, "Home", false, Double.NaN)
         val takeoff = MissionItem(1, 1, 39.237, -123.149, "Takeoff", false, 50.0)

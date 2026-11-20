@@ -100,6 +100,7 @@ data class MissionItem(
     val commandId: Int = 0,
     val placed: Boolean = true,
     val afterRouteEnds: Boolean = false,
+    val endsRoute: Boolean = false,
     val altitudeText: String = "",
     val specifiesCoordinate: Boolean = false,
     val distance: Double = Double.NaN,
@@ -199,6 +200,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             dropsPayload = element.optBoolean("dropsPayload"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
+            endsRoute = element.optBoolean("endsRoute"),
             placed = at != null,
             exit = placed(element, "exitCoordinate")
                 ?.takeIf { at == null || it.latitude != at.latitude || it.longitude != at.longitude },

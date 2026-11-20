@@ -241,6 +241,14 @@ class InsertAfterTest {
     }
 
     @Test
+    fun `with nothing selected an item goes before the return that ends the route, where it is still flown`() {
+        val returning = plan + item(3).copy(command = "Return to launch", kind = "land", endsRoute = true)
+        assertEquals(3, insertAfter(null, returning))
+        assertEquals("the item before the return keeps the new one before it too", 3, insertAfter(MapHit.Waypoint(2), returning))
+        assertEquals("with the return itself selected, as it is right after Return is tapped, the new one still goes before it and is flown", 3, insertAfter(MapHit.Waypoint(3), returning))
+    }
+
+    @Test
     fun `a selected pattern corner inserts after its pattern, and a non-mission selection appends`() {
         assertEquals(2, insertAfter(MapHit.SurveyVertex(1, 0), plan))
         assertEquals(AT_END, insertAfter(MapHit.Rally(1), plan))
@@ -284,6 +292,13 @@ class AddingAfterTextTest {
     @Test
     fun `the line names the sequence the operator sees on the marker`() {
         assertEquals("Tap the map to add after #5", addingAfterText(MapHit.Waypoint(2), plan))
+    }
+
+    @Test
+    fun `with the return selected the line says the new item goes before it`() {
+        val returning = plan + MissionItem(3, 6, 41.0, 44.0, "Return to launch", false, Double.NaN, kind = "land", endsRoute = true)
+        assertEquals("Tap the map to add before #6", addingAfterText(MapHit.Waypoint(3), returning))
+        assertEquals("Tap the map to add after #5", addingAfterText(MapHit.Waypoint(2), returning))
     }
 
     @Test

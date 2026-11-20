@@ -109,10 +109,13 @@ fun missionItemIndex(selected: MapHit?): Int? = when (selected) {
     else -> null
 }
 
+fun routeEnd(items: List<MissionItem>): MissionItem? = items.filter { it.index != HOME_ITEM && it.endsRoute }.minByOrNull { it.index }
+
+private fun pastRouteEnd(index: Int, items: List<MissionItem>): MissionItem? = routeEnd(items)?.takeIf { index >= it.index }
+
 fun insertAfter(selected: MapHit?, items: List<MissionItem>): Int {
-    val index = missionItemIndex(selected) ?: return AT_END
-    if (items.none { it.index == index }) return AT_END
-    return if (index + 1 >= items.size) AT_END else index + 1
+    val index = missionItemIndex(selected)?.takeIf { at -> items.any { it.index == at } } ?: return routeEnd(items)?.index ?: AT_END
+    return pastRouteEnd(index, items)?.index ?: if (index + 1 >= items.size) AT_END else index + 1
 }
 
 fun selectionSequence(selected: MapHit?, items: List<MissionItem>): Int? {
@@ -123,7 +126,7 @@ fun selectionSequence(selected: MapHit?, items: List<MissionItem>): Int? {
 fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
     val index = missionItemIndex(selected) ?: return null
     val item = items.firstOrNull { it.index == index } ?: return null
-    return "Tap the map to add after #${item.sequence}"
+    return pastRouteEnd(item.index, items)?.let { "Tap the map to add before #${it.sequence}" } ?: "Tap the map to add after #${item.sequence}"
 }
 
 fun legText(item: MissionItem): String? =
