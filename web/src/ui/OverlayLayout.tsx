@@ -253,7 +253,13 @@ export const swallowReleaseClick = (): void => {
   window.addEventListener('keydown', () => release.abort(), listening);
 };
 
-export const useHoldToEditLayout = (): HTMLAttributes<HTMLElement> => {
+const LAYOUT_ITEM = 'data-layout-item';
+
+const within = (box: DOMRect, x: number, y: number): boolean => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+
+const overLayoutItem = (x: number, y: number): boolean => Array.from(document.querySelectorAll(`[${LAYOUT_ITEM}]`)).some((item) => within(item.getBoundingClientRect(), x, y));
+
+const useHoldToEdit = (accepts: (event: PointerEvent<HTMLElement>) => boolean): HTMLAttributes<HTMLElement> => {
   const layout = useContext(LocalFlyScreenState).layout;
   const editing = useValue(layout.editing);
   const press = useRef<{ id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -266,7 +272,7 @@ export const useHoldToEditLayout = (): HTMLAttributes<HTMLElement> => {
   return {
     onPointerDownCapture: (event) => {
       cancel();
-      if (!event.isPrimary || event.button !== 0 || !event.currentTarget.contains(event.target as Node) || (event.target as Element).closest('[data-gesture]') !== null) return;
+      if (!event.isPrimary || event.button !== 0 || !accepts(event)) return;
       const timer = setTimeout(() => {
         press.current = null;
         layout.startEditing();
@@ -283,6 +289,16 @@ export const useHoldToEditLayout = (): HTMLAttributes<HTMLElement> => {
     onPointerLeave: cancel,
   };
 };
+
+export const useHoldToEditLayout = (): HTMLAttributes<HTMLElement> =>
+  useHoldToEdit((event) => event.currentTarget.contains(event.target as Node) && (event.target as Element).closest('[data-gesture]') === null);
+
+export const useHoldThroughToEditLayout = (): HTMLAttributes<HTMLElement> =>
+  useHoldToEdit((event) => {
+    const target = event.target as Element;
+    const pictureHolds = event.pointerType !== 'mouse' && target.closest('[data-hold]') !== null;
+    return !pictureHolds && target.closest(`[${LAYOUT_ITEM}]`) === null && overLayoutItem(event.clientX, event.clientY);
+  });
 
 const hashCode = (text: string): number => Array.from({ length: text.length }, (_, index) => text.charCodeAt(index)).reduce((hash, char) => (Math.imul(hash, 31) + char) | 0, 0);
 
@@ -434,6 +450,7 @@ export const LayoutWidget = ({
       <div ref={avoided ? avoidedRef : undefined} className="relative" style={jiggle}>
         <div
           ref={sized}
+          data-layout-item
           className={osd ? osdShadow() : undefined}
           style={{ opacity: hidden ? HIDDEN_ALPHA : 1 }}
         >

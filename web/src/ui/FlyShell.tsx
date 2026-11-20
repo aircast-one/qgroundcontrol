@@ -48,7 +48,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, badgeRoom, useJiggleAngle } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, badgeRoom, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -451,6 +451,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const thumbStyle = thumbPlace(thumb, thumbLead);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + thumbLead, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
+  const holdThrough = useHoldThroughToEditLayout();
   const pipJiggle = useJiggleAngle(mapIsPip ? MINIMAP_KEY : 'pip', editing && thumbShown && !fullScreen, thumb);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
   const frame = useRememberVideoFrame(videoTarget, false);
@@ -518,7 +519,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   );
 
   return (
-    <div ref={rootRef} className="relative size-full overflow-hidden">
+    <div ref={rootRef} className="relative size-full overflow-hidden" {...holdThrough}>
       <LocalCompactHud.Provider value={compactHud(boxHeight)}>
         {fullScreen ? null : (
           <>

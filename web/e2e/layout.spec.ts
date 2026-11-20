@@ -260,6 +260,20 @@ test('holding the flight mode chip, which stays where it is while editing, start
   await expect(vehicle.getByRole('menu'), 'a tap still opens it').toBeVisible();
 });
 
+test('holding a reading the picture shows through starts layout editing, and dragging from it does not', async ({ vehicle }) => {
+  const reading = vehicle.getByText('H.S', { exact: true }).locator('..');
+  await expect(reading).toBeVisible({ timeout: 30_000 });
+  const [x, y] = await centre(reading);
+  await vehicle.mouse.move(x, y);
+  await vehicle.mouse.down();
+  await vehicle.mouse.move(x + 60, y, { steps: 6 });
+  await pastLongPress(vehicle, await vehicle.evaluate(() => performance.now()));
+  await vehicle.mouse.up();
+  await expect(editBar(vehicle)).toBeHidden();
+  await holdUntilEditing(vehicle, reading);
+  await expect(vehicle.getByRole('button', { name: 'Done' })).toBeVisible();
+});
+
 test('a three-axis gimbal gets a camera joystick: held down it tilts, held right it turns, let go it stops, and it never starts layout editing', async ({ app }) => {
   test.setTimeout(120_000);
   await withCamera(app);

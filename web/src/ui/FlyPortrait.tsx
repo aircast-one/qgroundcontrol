@@ -44,7 +44,7 @@ import {
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutWidget, badgeRoom } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutWidget, badgeRoom, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
@@ -136,6 +136,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const corner = useValue(flyScreen.pipCorner);
   const deciding = useValue(flyScreen.guidedPanels) > 0;
   const editing = useValue(flyScreen.layout.editing);
+  const holdThrough = useHoldThroughToEditLayout();
   const room = pipRoom(thumbnail, tucked);
   const roomAt = (at: PipCorner): number => (corner === at ? room : 0);
   const buttonsTop = AircastSpace.s3 + roomAt(PipCorner.TopEnd);
@@ -215,7 +216,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const underVideo = fullScreen || undefined;
 
   return (
-    <div className="flex size-full flex-col" style={{ background: aircast('outdoorBackground') }}>
+    <div className="flex size-full flex-col" style={{ background: aircast('outdoorBackground') }} {...holdThrough}>
       <div ref={box.ref} className="relative w-full min-h-0 flex-1 overflow-hidden">
         {view === FlyView.ThreeD ? (
           <div className="absolute inset-x-0 bottom-0" style={{ top: mapTop }} aria-hidden={underVideo}>
