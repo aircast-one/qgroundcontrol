@@ -91,7 +91,7 @@ export const armingBlocker = (view: Json | null): string | null => {
 };
 
 export const refusedArming = (state: FlyState | null, blocker: string | null): string | null => {
-  if (blocker === null || state === null || !state.connected || state.armed || state.contactLost === true) return null;
+  if (blocker === null || !blocker.trim().startsWith(PREARM_PREFIX) || state === null || !state.connected || state.armed || state.contactLost === true) return null;
   const said = chipBlocker(blocker);
   return said === '' ? null : `Can't arm: ${said}.`;
 };

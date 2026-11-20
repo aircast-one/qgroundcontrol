@@ -208,6 +208,7 @@ describe('FlyReadinessTest', () => {
     );
     expect(guidedReadiness(state(), [], 'PreArm: Compass not calibrated'), 'the refusal alone is reason enough to warn').toEqual(Readiness({ text: "Can't arm: Compass not calibrated.", blocks: false }));
     expect(guidedReadiness(state({ armed: true }), [], 'PreArm: Compass not calibrated')).toBeNull();
+    expect(guidedReadiness(state(), [], 'A sensor is reporting unhealthy. The vehicle will refuse to arm.'), 'a guess the status line already makes is not a refusal').toBeNull();
   });
 
   it('disarmingSaysWhetherTheVehicleFlew', () => {
