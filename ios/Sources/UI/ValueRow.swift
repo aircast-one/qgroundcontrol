@@ -31,7 +31,7 @@ func valueDecimals(_ fact: Fact) -> Int {
 }
 
 func valueStep(_ fact: Fact) -> Double {
-    USEFUL_BANDS[fact.name] != nil ? metresScale(fact) : pow(10, -Double(valueDecimals(fact)))
+    USEFUL_BANDS[fact.name] != nil ? (fact.units.trimmed == "cm" ? CENTIMETRES_PER_METRE : 1) : pow(10, -Double(valueDecimals(fact)))
 }
 
 private func boundOf(_ text: String, _ isDefaultForType: Bool) -> Double? {
@@ -70,7 +70,18 @@ private let TURN_ON_VALUES: [String: Double] = [
     "FENCE_RADIUS": DISTANCE_ON,
 ]
 
-private func metresScale(_ fact: Fact) -> Double { fact.units.trimmed == "cm" ? 100 : 1 }
+private let CENTIMETRES_PER_METRE = 100.0
+private let METRES_PER_FOOT = 0.3048
+
+private func unitsPerMetre(_ fact: Fact) -> Double {
+    switch fact.units.trimmed {
+    case "cm": CENTIMETRES_PER_METRE
+    case "ft": 1 / METRES_PER_FOOT
+    default: 1
+    }
+}
+
+private func inUnits(_ fact: Fact, _ metres: Double) -> Double { (metres * unitsPerMetre(fact)).rounded() }
 
 private func clampToBounds(_ fact: Fact, _ value: Double) -> Double {
     let (min, max) = valueBounds(fact)
@@ -79,8 +90,9 @@ private func clampToBounds(_ fact: Fact, _ value: Double) -> Double {
 
 func sliderFor(_ fact: Fact) -> FactSlider? {
     USEFUL_BANDS[fact.name].flatMap { band in
-        let from = clampToBounds(fact, band.lowerBound * metresScale(fact))
-        let to = clampToBounds(fact, band.upperBound * metresScale(fact))
+        let held = numberOf(fact).flatMap { $0 > 0 ? $0 : nil }
+        let from = clampToBounds(fact, min(inUnits(fact, band.lowerBound), held ?? .infinity))
+        let to = clampToBounds(fact, max(inUnits(fact, band.upperBound), held ?? -.infinity))
         return to > from ? FactSlider(from: from, to: to, decimals: valueDecimals(fact), hint: "") : nil
     } ?? fact.slider ?? derivedSlider(fact)
 }
@@ -357,7 +369,7 @@ struct SafeChoiceMenu<Label: View>: View {
 
 func turnOnValue(_ fact: Fact) -> Double {
     let declared = fact.defaultValueString.doubleOrNil.flatMap { $0 > 0 ? $0 : nil }
-    let named = TURN_ON_VALUES[fact.name].map { $0 * metresScale(fact) }
+    let named = TURN_ON_VALUES[fact.name].map { inUnits(fact, $0) }
     let smallest = valueBounds(fact).0.flatMap { $0 > 0 ? $0 : nil } ?? valueStep(fact)
     return clampToBounds(fact, declared ?? named ?? smallest)
 }

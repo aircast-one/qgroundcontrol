@@ -78,13 +78,26 @@ final class ValueRowTests: XCTestCase {
         XCTAssertEqual(nudged(number("30"), 30.0, 1, 12), 40.0, accuracy: 1e-9)
     }
 
+    func testABandSetInMetresCoversTheSameHeightsWhenAltitudesReadInFeet() {
+        let feet = sliderFor(number("100", name: "RTL_RETURN_ALT", units: "ft"))
+        XCTAssertEqual([feet?.from, feet?.to], [66, 1640])
+        XCTAssertEqual(turnOnValue(number("0", "Disabled if 0.", name: "GF_MAX_VER_DIST", units: "ft")), 394, accuracy: 1e-9)
+        XCTAssertEqual(valueStep(number("100", name: "RTL_RETURN_ALT", units: "ft")), 1, accuracy: 1e-9)
+    }
+
+    func testAValueBelowTheUsefulBandWidensTheSliderToHoldItInsteadOfPinningItAtTheBandStart() {
+        let low = sliderFor(number("15", name: "RTL_ALT_M"))
+        XCTAssertEqual([low?.from, low?.to], [15, 500])
+        XCTAssertEqual(sliderFor(number("800", name: "RTL_ALT_M"))?.to, 800)
+    }
+
     func testReturnAndFenceSlidersCoverTheUsefulBandNotTheWholeTypeRange() {
         let slider = sliderFor(number("30", name: "RTL_RETURN_ALT"))
         XCTAssertEqual(slider?.from, 20)
         XCTAssertEqual(slider?.to, 500)
         XCTAssertEqual(sliderFor(number("0", min: "0", max: "10000", bounded: true, name: "GF_MAX_HOR_DIST"))?.from, 50)
-        let copter45 = sliderFor(number("1500", min: "200", max: "300000", bounded: true, name: "RTL_ALT", units: "cm"))
-        let copter47 = sliderFor(number("15", min: "2", max: "3000", bounded: true, name: "RTL_ALT_M"))
+        let copter45 = sliderFor(number("3000", min: "200", max: "300000", bounded: true, name: "RTL_ALT", units: "cm"))
+        let copter47 = sliderFor(number("30", min: "2", max: "3000", bounded: true, name: "RTL_ALT_M"))
         XCTAssertEqual([copter45?.from, copter45?.to], [2000, 50000])
         XCTAssertEqual([copter47?.from, copter47?.to], [20, 500], "ArduCopter 4.7 renamed RTL_ALT to RTL_ALT_M in metres")
     }
