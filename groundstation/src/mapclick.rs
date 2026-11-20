@@ -64,6 +64,7 @@ pub const PREVIEW_DEPS: &[&str] = &[
     "vehicle.homePosition",
     "vehicle.altitudeRelative",
     "vehicle.distanceToHome",
+    "vehicle.sub",
     "vehicle.flying",
     "vehicle.batteries.count",
     "settings.unitsSettings.horizontalDistanceUnits",
@@ -251,7 +252,11 @@ pub fn rtl_verdict(budget: GotoBudget) -> String {
 }
 
 pub fn rtl_preview_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let Some(distance) = raw(backend, "vehicle.distanceToHome").filter(|d| d.is_finite()) else {
+    let surfaces = crate::read::flag(&backend.value_fields("vehicle", "sub"), "sub");
+    let Some(distance) = raw(backend, "vehicle.distanceToHome")
+        .filter(|d| d.is_finite())
+        .filter(|_| !surfaces)
+    else {
         return json!({ "kind": "object", "class": "RtlPreview", "available": false });
     };
     let (horizontal, vertical) = (
@@ -1387,6 +1392,40 @@ mod tests {
             String::new()
         }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    struct Diving;
+
+    impl Backend for Diving {
+        fn get(&self, path: &str) -> String {
+            Homeward {
+                altitude: -12.0,
+                percent: 80.0,
+            }
+            .get(path)
+        }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            match path {
+                "vehicle" => json!({ "kind": "object", "sub": true }).to_string(),
+                _ => self.get(path),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_sub_surfacing_where_it_is_shows_no_trip_home() {
+        assert_eq!(
+            rtl_preview_view(&Diving, &[])["available"],
+            false,
+            "a sub's return rises where it is, so the distance home and return height would describe a trip it does not make"
+        );
     }
 
     #[test]

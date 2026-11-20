@@ -582,7 +582,7 @@ fn mode_fields(
         ),
         (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(
             4,
-            None,
+            Some(9),
             None,
             Some(3),
             (None, ""),
@@ -4484,8 +4484,8 @@ mod tests {
         );
         assert_eq!(
             mode_fields(3, 12, &[], &[])["rtlFlightMode"],
-            "RTL",
-            "a sub has no RTL number, so the name falls back"
+            "Surface",
+            "a sub has no RTL mode, and its return is Surface, so Fly knows when it is surfacing"
         );
         assert_eq!(
             mode_fields(3, 12, &[], &[])["pauseFlightMode"],

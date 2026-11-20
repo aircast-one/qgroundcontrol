@@ -126,6 +126,18 @@ describe('FlightDeckEntriesTest', () => {
     refused.mockRestore();
   });
 
+  it("a sub's return reads Surface with a rising icon, and its confirm slides the core's surface prompt", () => {
+    const confirmed = vi.fn((action: GuidedAction) => action);
+    const surface = { ...offer('rtl'), title: 'Surface', prompt: 'The sub rises to the surface and holds there.' };
+    const entry = flightDeckEntries(deck([surface], { armed: true, confirm: confirmed })).find((it) => it.id === 'rtl');
+    expect([entry?.label, entry?.icon]).toEqual(['Surface', 'ic_upload']);
+    entry?.onClick();
+    const action = confirmed.mock.results[0]?.value as GuidedAction;
+    expect([action.offerId, action.name, action.confirm]).toEqual(['rtl', 'Surface', 'The sub rises to the surface and holds there.']);
+    const plain = flightDeckEntries(deck([{ ...offer('rtl'), title: 'Return' }], { armed: true })).find((it) => it.id === 'rtl');
+    expect([plain?.label, plain?.icon]).toEqual(['Return', 'ic_home']);
+  });
+
   it("a sub's height change reads Depth on the deck, as the core titles it", () => {
     const entries = flightDeckEntries(deck([{ ...offer('changeAltitude'), title: 'Change Depth' }, { ...offer('changeSpeed'), title: 'Change Max Ground Speed' }]));
     expect(entries.find((it) => it.id === 'changeAltitude')?.label).toBe('Depth');

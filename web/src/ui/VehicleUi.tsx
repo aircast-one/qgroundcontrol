@@ -1330,6 +1330,12 @@ const takeoffHoldRefusal = async (offers: ReadonlyMap<string, GuidedOffer>): Pro
   return target === null ? 'This vehicle did not report a takeoff height range.' : VehicleCommands.takeoffRefusal(target.targetMeters);
 };
 
+const SURFACE = 'Surface';
+
+export const returnLabel = (offer: GuidedOffer): string => (offer.title.trim() === '' ? 'Return' : sentenceCase(offer.title));
+
+export const returnIcon = (offer: GuidedOffer): DrawableName => (offer.title === SURFACE ? 'ic_upload' : 'ic_home');
+
 export const altitudeLabel = (offer: GuidedOffer): string => sentenceCase(offer.title.replace(/^Change\s+/i, ''));
 
 export const pauseClick = (pause: GuidedOffer, confirm: (action: GuidedAction) => void, openValue: (kind: GuidedValueKind) => void): void =>
@@ -1394,8 +1400,8 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
     rtl?.shown === true
       ? DeckEntry({
           id: 'rtl',
-          label: 'Return',
-          icon: 'ic_home',
+          label: returnLabel(rtl),
+          icon: returnIcon(rtl),
           enabled: rtl.ready,
           onClick: () =>
             confirm(

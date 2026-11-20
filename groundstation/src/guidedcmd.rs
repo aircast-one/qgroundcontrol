@@ -260,10 +260,15 @@ pub fn pause(state: &VehicleState) -> Plan {
 }
 
 pub fn rtl(state: &VehicleState, smart: bool) -> Plan {
-    let mode = match (state.autopilot, smart) {
-        (AUTOPILOT_PX4, _) => "Return",
-        (_, true) => "Smart RTL",
-        (_, false) => "RTL",
+    let mode = match (
+        state.autopilot,
+        modes::vehicle_class(state.vehicle_type),
+        smart,
+    ) {
+        (AUTOPILOT_PX4, _, _) => "Return",
+        (_, VehicleClass::Sub, _) => "Surface",
+        (_, _, true) => "Smart RTL",
+        (_, _, false) => "RTL",
     };
     match mode_or_refuse(state, mode) {
         Ok(steps) => Plan::Steps(steps),
@@ -2156,6 +2161,10 @@ mod tests {
         );
         assert!(
             matches!(rtl(&state, true), Plan::Steps(s) if matches!(&s[0], Step::SetMode { custom_mode: 21, .. }))
+        );
+        assert!(
+            matches!(rtl(&VehicleState { vehicle_type: 12, ..copter() }, false), Plan::Steps(s) if matches!(&s[0], Step::SetMode { mode, custom_mode: 9, .. } if mode == "Surface")),
+            "ArduSub has no RTL mode, so a sub's return is Surface"
         );
         assert!(matches!(
             takeoff(

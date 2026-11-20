@@ -73,6 +73,7 @@ const REBOOT_PATH: &str = "vehicle.rebootVehicle";
 const PAYLOAD_BLOCKED: &str =
     "The mission's drops would not all fall. The gripper panel says what to change.";
 pub const NO_SIGNAL_CODE: &str = "noSignal";
+const SURFACE_PROMPT: &str = "The sub rises to the surface and holds there.";
 
 #[derive(Default, PartialEq, Debug, Clone)]
 pub struct GuidedState {
@@ -304,7 +305,7 @@ impl Action {
                 Action::Grab => s.has_gripper && s.payload.device_bays == 0,
                 Action::Release => s.has_gripper,
                 Action::Hold => s.has_gripper && !s.apm,
-                Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl && !s.sub,
+                Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl,
                 Action::Takeoff => s.takeoff_supported && !s.flying && !(s.armed && s.in_takeoff),
                 Action::Land => {
                     s.guided_supported
@@ -384,6 +385,7 @@ impl Action {
                 (Action::ChangeSpeed, true, _) => "Change Airspeed".to_string(),
                 (Action::Release, _, Some(bay)) => format!("Drop bay {bay}"),
                 (Action::ChangeAltitude, _, _) if s.sub => "Change Depth".to_string(),
+                (Action::Rtl, _, _) if s.sub => "Surface".to_string(),
                 _ => self.title().to_string(),
             },
             prompt: match (self, s.fixed_wing || s.vtol_in_fwd_flight, s.next_bay()) {
@@ -402,6 +404,7 @@ impl Action {
                 (Action::ChangeAltitude, _, _) if s.sub => {
                     "Change the depth of the vehicle up or down".to_string()
                 }
+                (Action::Rtl, _, _) if s.sub => SURFACE_PROMPT.to_string(),
                 (Action::EmergencyStop, _, _) if s.sub => {
                     "This stops every thruster at once. The vehicle drifts with no control until it is armed again.".to_string()
                 }
@@ -1968,8 +1971,25 @@ mod tests {
                 offer_of(&sub, Action::Rtl),
                 offer_of(&sub, Action::Pause)
             ),
-            ("hidden", "hidden", "ready"),
-            "ArduSub has neither a Land nor an RTL mode, and holds in Position Hold"
+            ("hidden", "ready", "ready"),
+            "ArduSub has no Land mode and holds in Position Hold, and its return is Surface"
+        );
+        let surface = Action::Rtl.offer(&sub);
+        assert_eq!(
+            (surface.title.as_str(), surface.prompt.as_str()),
+            ("Surface", SURFACE_PROMPT),
+            "a sub's return rises to the surface where it is rather than going home"
+        );
+        assert_eq!(
+            offer_of(
+                &GuidedState {
+                    in_rtl: true,
+                    ..sub.clone()
+                },
+                Action::Rtl
+            ),
+            "hidden",
+            "and is not offered again while it surfaces"
         );
     }
 

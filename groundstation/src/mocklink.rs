@@ -97,6 +97,7 @@ const COPTER_NON_GPS_MODES: [u32; 3] = [0, 1, 2];
 const COPTER_RTL: u32 = 6;
 const COPTER_LAND: u32 = 9;
 const COPTER_BRAKE: u32 = 17;
+const SUB_SURFACE: u32 = 9;
 const COPTER_SMART_RTL: u32 = 21;
 const PLANE_QRTL: u32 = 21;
 const ROVER_SMART_RTL: u32 = 12;
@@ -1857,6 +1858,9 @@ impl Sim {
             }
             c if self.wing_takeoff_mode(c) => self.takeoff(self.tuning.takeoff_alt),
             c if c == self.auto_mode() => self.start_mission(),
+            SUB_SURFACE if self.options.vehicle == Vehicle::Sub => {
+                self.target = Some(Target::at(self.lat, self.lon, 0.0))
+            }
             _ => {}
         }
     }
@@ -6374,6 +6378,25 @@ mod tests {
         assert!(px4.armed && !px4.airborne());
         steer(&mut px4, 0, 0, 0, 0, 2);
         assert!(!px4.armed, "COM_DISARM_LAND is 2 s");
+    }
+
+    #[test]
+    fn a_sub_told_to_surface_rises_where_it_is_and_holds_at_the_surface() {
+        let mut sim = Sim::new(options(Vehicle::Sub), 128, None);
+        arm(&mut sim);
+        sim.alt = 20.0;
+        sim.lat += 0.0003;
+        let (lat, lon) = (sim.lat, sim.lon);
+        mode(&mut sim, SUB_SURFACE);
+        (0..60 * TICKS_PER_SECOND).for_each(|_| {
+            sim.tick(sim.ticks * 100);
+            sim.pump();
+        });
+        assert!(sim.alt.abs() < 1.0, "at the surface, {} m", sim.alt);
+        assert!(
+            metres_to(&sim, lat, lon) < 2.0,
+            "it surfaces where it is rather than heading home"
+        );
     }
 
     #[test]
