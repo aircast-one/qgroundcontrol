@@ -480,6 +480,7 @@ struct FlightActions<Center: View>: View {
     @Environment(FlyMapEdits.self) private var mapEdits
     @Environment(\.LocalRailFloor) private var railFloor
     @QgcPath(FLY_STATE) private var stateJson
+    @QgcPath(WARNINGS) private var warningsJson
     @QgcPath(MAP_CLICK_PATH) private var mapClickJson
     @QgcPath(PREFLIGHT) private var preflightJson
     @QgcPath(GUIDED_ACTIONS) private var actionsJson
@@ -546,7 +547,7 @@ struct FlightActions<Center: View>: View {
         .task(id: actions.popupDue) { await popupSettles() }
     }
 
-    private var readiness: Readiness? { guidedReadiness(state, named: false) }
+    private var readiness: Readiness? { guidedReadiness(state, named: false, blocker: armingBlocker(warningsJson)) }
 
     private func entries() -> [DeckEntry] {
         let actions = actions

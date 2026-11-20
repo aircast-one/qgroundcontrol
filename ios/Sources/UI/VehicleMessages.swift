@@ -16,7 +16,7 @@ struct VehicleMessage: Equatable, Hashable {
     var resolved = false
 }
 
-private let PREARM_PREFIX = "PreArm:"
+let PREARM_PREFIX = "PreArm:"
 
 func chipBlocker(_ blocker: String) -> String {
     let reason = blocker.trimmed.removingPrefix(PREARM_PREFIX).trimmed

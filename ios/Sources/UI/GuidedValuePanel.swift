@@ -11,13 +11,14 @@ struct GuidedValuePanel<Content: View>: View {
     @Environment(FlyScreenState.self) private var flyScreen
     @Environment(\.theme) private var theme
     @QgcPath(FLY_STATE) private var flyJson
+    @QgcPath(WARNINGS) private var warningsJson
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
     @FlyIsPortrait private var portrait
     @State private var contentHeight: CGFloat = 0
     @State private var available: CGFloat = .infinity
 
     var body: some View {
-        let readiness = guidedReadiness(flyState(flyJson))
+        let readiness = guidedReadiness(flyState(flyJson), blocker: armingBlocker(warningsJson))
         let vehicles = vehicleChoices(vehiclesJson)
         let hold = holdLabel(guidedCommitLabel(commitLabel, readiness))
         let holdEnabled = commitEnabled && readiness?.blocks != true

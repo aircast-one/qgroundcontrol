@@ -166,6 +166,10 @@ final class FlyReadinessTests: XCTestCase {
         refusing.canArm = false
         XCTAssertEqual(guidedReadiness(refusing), Readiness(text: "Not ready. 2 checks need attention before arming. \(READINESS_BLOCKED)", blocks: true))
         XCTAssertNil(guidedReadiness(state()))
+        XCTAssertEqual(guidedReadiness(state(ready: false), blocker: "PreArm: Compass not calibrated")?.text, "Can't arm: Compass not calibrated. Not ready. 2 checks need attention before arming.", "a check the aircraft refused to arm for leads the take-off warning")
+        XCTAssertEqual(guidedReadiness(state(), blocker: "PreArm: Compass not calibrated"), Readiness(text: "Can't arm: Compass not calibrated.", blocks: false), "the refusal alone is reason enough to warn")
+        XCTAssertNil(guidedReadiness(state(armed: true), blocker: "PreArm: Compass not calibrated"))
+        XCTAssertNil(guidedReadiness(state(), blocker: "A sensor is reporting unhealthy. The vehicle will refuse to arm."), "a guess the status line already makes is not a refusal")
     }
 
     func testDisarmingSaysWhetherTheVehicleFlew() {

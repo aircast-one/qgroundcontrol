@@ -52,8 +52,13 @@ struct Readiness: Equatable {
 
 let READINESS_BLOCKED = "The vehicle will refuse to arm until this is fixed."
 
-func guidedReadiness(_ state: FlyState?, named: Bool = true) -> Readiness? {
-    readinessWarning(state, named: named).map { text in
+func refusedArming(_ state: FlyState?, _ blocker: String?) -> String? {
+    guard let blocker, blocker.trimmed.hasPrefix(PREARM_PREFIX), let state, state.connected, !state.armed, state.contactLost != true else { return nil }
+    return chipBlocker(blocker).nonBlank.map { "Can't arm: \($0)." }
+}
+
+func guidedReadiness(_ state: FlyState?, named: Bool = true, blocker: String? = nil) -> Readiness? {
+    [refusedArming(state, blocker), readinessWarning(state, named: named)].compactMap { $0 }.joined(separator: " ").nonBlank.map { text in
         let blocks = state?.canArm == false
         return Readiness(text: blocks ? "\(text.removingSuffix(".")). \(READINESS_BLOCKED)" : text, blocks: blocks)
     }
