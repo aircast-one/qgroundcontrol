@@ -33,7 +33,7 @@ export type GuidedValueKind = {
   readonly presets: boolean;
   readonly explains: boolean;
   readonly read: (target: number | null) => Promise<GuidedReading | null>;
-  readonly commit: (target: number) => Promise<void>;
+  readonly commit: (target: number) => Promise<string | null>;
 };
 
 export const GuidedValueKind = (fields: Omit<GuidedValueKind, 'presets' | 'explains'> & { presets?: boolean; explains?: boolean }): GuidedValueKind => ({
@@ -96,7 +96,7 @@ export const takeoffValue = (offer: GuidedOffer | null): GuidedValueKind =>
     read: async (target) => takeoffReading(guidedTakeoff(await Qgc.get(target === null ? GUIDED_TAKEOFF : guidedTakeoffPath(target)))),
     commit: async (target) => {
       const fresh = guidedTakeoff(await Qgc.get(guidedTakeoffPath(target)));
-      if (fresh !== null) await VehicleCommands.takeoff(fresh.targetMeters);
+      return fresh === null ? null : VehicleCommands.takeoffRefusal(fresh.targetMeters);
     },
   });
 
@@ -111,14 +111,14 @@ export const speedValue = (offer: GuidedOffer | null): GuidedValueKind =>
     read: async (target) => speedReading(guidedSpeed(await Qgc.get(target === null ? GUIDED_SPEED : guidedSpeedPath(target)))),
     commit: async (target) => {
       const fresh = guidedSpeed(await Qgc.get(guidedSpeedPath(target)));
-      if (fresh?.command) await VehicleCommands.changeSpeed(fresh.command, fresh.targetMetersSecond);
+      return fresh?.command ? VehicleCommands.changeSpeedRefusal(fresh.command, fresh.targetMetersSecond) : null;
     },
   });
 
-export const altitudeValue = (pauses: boolean): GuidedValueKind =>
+export const altitudeValue = (pauses: boolean, offer: GuidedOffer | null = null): GuidedValueKind =>
   GuidedValueKind({
     offerId: pauses ? PAUSE : 'changeAltitude',
-    title: pauses ? 'Pause' : 'Change altitude',
+    title: pauses ? 'Pause' : titleOr(offer, 'Change altitude'),
     prompt: null,
     commitLabel: pauses ? 'Pause' : 'Change',
     missingRange: 'This vehicle did not report an altitude range.',
@@ -127,7 +127,7 @@ export const altitudeValue = (pauses: boolean): GuidedValueKind =>
     commit: async (target) => {
       const fresh = guidedAltitude(await Qgc.get(guidedAltitudePath(target, pauses)));
       const delta = fresh === null ? null : altitudeDelta(fresh);
-      if (delta !== null) await VehicleCommands.changeAltitude(delta, pauses);
+      return delta === null ? null : VehicleCommands.changeAltitudeRefusal(delta, pauses);
     },
   });
 
@@ -199,7 +199,7 @@ const GuidedValueContent = ({ open }: { open: OpenGuidedValue }) => (
   />
 );
 
-export const GuidedValueFlow = ({ open, onClose }: { open: OpenGuidedValue; onClose: () => void }) => {
+export const GuidedValueFlow = ({ open, onClose, onRefused }: { open: OpenGuidedValue; onClose: () => void; onRefused: (refusal: string | null) => void }) => {
   const kind = open.kind;
   const unit = open.reading.unit;
   const target = useValue(open.target);
@@ -218,7 +218,7 @@ export const GuidedValueFlow = ({ open, onClose }: { open: OpenGuidedValue; onCl
       onCommit={() => {
         const chosen = open.target.value;
         onClose();
-        void kind.commit(chosen);
+        void kind.commit(chosen).then(onRefused);
       }}
       onCancel={onClose}
     >

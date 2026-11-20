@@ -229,6 +229,7 @@ pub fn pause_mode(state: &VehicleState) -> &'static str {
         (AUTOPILOT_PX4, _) => "Hold",
         (_, VehicleClass::FixedWing) => "Loiter",
         (_, VehicleClass::Rover) => "Hold",
+        (_, VehicleClass::Sub) => "Position Hold",
         _ => "Brake",
     }
 }
@@ -2148,6 +2149,10 @@ mod tests {
         assert_eq!(hold.last(), Some(&Step::SkipIfNoDelta));
         assert!(
             matches!(pause(&VehicleState { vehicle_type: 1, ..copter() }), Plan::Steps(s) if matches!(&s[0], Step::SetMode { mode, .. } if mode == "Loiter"))
+        );
+        assert!(
+            matches!(pause(&VehicleState { vehicle_type: 12, ..copter() }), Plan::Steps(s) if matches!(&s[0], Step::SetMode { mode, .. } if mode == "Position Hold")),
+            "ArduSub has no Brake mode, so a sub pauses in Position Hold"
         );
         assert!(
             matches!(rtl(&state, true), Plan::Steps(s) if matches!(&s[0], Step::SetMode { custom_mode: 21, .. }))

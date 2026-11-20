@@ -7,6 +7,7 @@ pub const DEPS: &[&str] = &[
     "settings.flyViewSettings.guidedMinimumAltitude",
     "settings.flyViewSettings.guidedMaximumAltitude",
     "vehicle.altitudeRelative",
+    "vehicle.sub",
     "settings.unitsSettings.verticalDistanceUnits",
 ];
 
@@ -27,6 +28,8 @@ impl Range {
 pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
     let unit = Unit::vertical(backend);
     let range = range_meters(backend);
+    let sub = diving(backend);
+    let shown = |metres: f64| unit.show(if sub { -metres } else { metres });
     let target = args
         .first()
         .and_then(|a| a.parse::<f64>().ok())
@@ -34,59 +37,82 @@ pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
     let pause = args
         .get(1)
         .is_some_and(|a| a.trim().eq_ignore_ascii_case("pause"));
+    let ends = |r: &Range| match sub {
+        true => (r.maximum, r.minimum),
+        false => (r.minimum, r.maximum),
+    };
     let base = json!({
         "kind": "object",
         "class": "GuidedAltitude",
-        "label": "Height above launch",
+        "label": if sub { "Depth" } else { "Height above launch" },
         "available": range.is_some(),
         "unit": unit.name,
-        "current": range.as_ref().map(|r| unit.show(r.current)),
-        "minimum": range.as_ref().map(|r| unit.show(r.minimum)),
-        "maximum": range.as_ref().map(|r| unit.show(r.maximum)),
-        "start": range.as_ref().map(|r| unit.show(r.start())),
+        "current": range.as_ref().map(|r| shown(r.current)),
+        "minimum": range.as_ref().map(|r| shown(ends(r).0)),
+        "maximum": range.as_ref().map(|r| shown(ends(r).1)),
+        "start": range.as_ref().map(|r| shown(r.start())),
         "startMeters": range.as_ref().map(|r| r.start()),
-        "currentText": range.as_ref().map(|r| unit.label(r.current)),
-        "rangeText": range.as_ref().map(|r| crate::read::range_text(r.minimum, r.maximum, &unit)),
+        "currentText": range.as_ref().map(|r| unit.label(if sub { -r.current } else { r.current })),
+        "rangeText": range.as_ref().map(|r| {
+            let (low, high) = ends(r);
+            match sub {
+                true => crate::read::range_text(-low, -high, &unit),
+                false => crate::read::range_text(low, high, &unit),
+            }
+        }),
     });
     match (range, target) {
-        (Some(range), Some(target)) => merge(base, with_target(&range, target, &unit, pause)),
+        (Some(range), Some(target)) => merge(base, with_target(&range, target, &unit, pause, sub)),
         _ => base,
     }
 }
 
-fn with_target(range: &Range, target: f64, unit: &Unit, pause: bool) -> Value {
-    let target_meters = unit.meters(target);
+fn diving(backend: &dyn Backend) -> bool {
+    crate::read::flag(&backend.value_fields("vehicle", "sub"), "sub")
+}
+
+fn with_target(range: &Range, target: f64, unit: &Unit, pause: bool, sub: bool) -> Value {
+    let (subject, up, down) = match sub {
+        true => ("The vehicle", "rise", "dive"),
+        false => ("The aircraft", "climb", "descend"),
+    };
+    let level = |metres: f64| match sub {
+        true => format!("a depth of {}", unit.label(-metres)),
+        false => unit.label(metres),
+    };
+    let target_meters = if sub {
+        -unit.meters(target)
+    } else {
+        unit.meters(target)
+    };
     let delta_meters = target_meters - range.current;
     let changes = delta_meters.abs() >= SMALLEST_CHANGE_METERS;
     let sends = pause || changes;
     let sentence = match (pause, changes, delta_meters > 0.0) {
-        (true, false, _) => format!(
-            "The aircraft will stop and hold at {}.",
-            unit.label(range.current)
-        ),
+        (true, false, _) => format!("{subject} will stop and hold at {}.", level(range.current)),
         (true, true, true) => format!(
-            "The aircraft will stop, then climb {} to {}.",
+            "{subject} will stop, then {up} {} to {}.",
             unit.label(delta_meters),
-            unit.label(target_meters)
+            level(target_meters)
         ),
         (true, true, false) => format!(
-            "The aircraft will stop, then descend {} to {}.",
+            "{subject} will stop, then {down} {} to {}.",
             unit.label(-delta_meters),
-            unit.label(target_meters)
+            level(target_meters)
         ),
         (false, false, _) => format!(
-            "The aircraft is already at {} and will not move.",
-            unit.label(range.current)
+            "{subject} is already at {} and will not move.",
+            level(range.current)
         ),
         (false, true, true) => format!(
-            "The aircraft will climb {} to {}.",
+            "{subject} will {up} {} to {}.",
             unit.label(delta_meters),
-            unit.label(target_meters)
+            level(target_meters)
         ),
         (false, true, false) => format!(
-            "The aircraft will descend {} to {}.",
+            "{subject} will {down} {} to {}.",
             unit.label(-delta_meters),
-            unit.label(target_meters)
+            level(target_meters)
         ),
     };
     json!({
@@ -115,11 +141,18 @@ pub(crate) fn range_meters(backend: &dyn Backend) -> Option<Range> {
         value_number(&backend.value("settings.flyViewSettings.guidedMinimumAltitude.rawValue"))?;
     let maximum =
         value_number(&backend.value("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
-    (maximum > minimum).then_some(Range {
-        current,
-        minimum,
-        maximum,
-    })
+    match diving(backend) {
+        true => (maximum > 0.0).then_some(Range {
+            current,
+            minimum: -maximum,
+            maximum: 0.0,
+        }),
+        false => (maximum > minimum).then_some(Range {
+            current,
+            minimum,
+            maximum,
+        }),
+    }
 }
 
 #[cfg(test)]
@@ -295,6 +328,72 @@ mod tests {
         assert_eq!(
             feet["sentence"],
             "The aircraft will climb 32.8 ft to 65.6 ft."
+        );
+    }
+
+    struct Diving(f64);
+
+    impl Backend for Diving {
+        fn get(&self, path: &str) -> String {
+            Fake {
+                current: Some(self.0),
+                feet: false,
+            }
+            .get(path)
+        }
+        fn get_fields(&self, path: &str, fields: &str) -> String {
+            match path {
+                "vehicle" => json!({ "kind": "object", "sub": true }).to_string(),
+                _ => Fake {
+                    current: Some(self.0),
+                    feet: false,
+                }
+                .get_fields(path, fields),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            json!({ "ok": true, "result": 1.0 }).to_string()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_sub_is_held_and_moved_by_its_depth_below_the_surface() {
+        let view = altitude_view(&Diving(-10.0), &[]);
+        assert_eq!(
+            (
+                view["label"].clone(),
+                view["current"].clone(),
+                view["minimum"].clone(),
+                view["maximum"].clone(),
+                view["rangeText"].clone()
+            ),
+            (
+                json!("Depth"),
+                json!(10.0),
+                json!(0.0),
+                json!(121.0),
+                json!("0 m to 121 m")
+            ),
+            "a sub works below the surface, where every height above launch is negative and under the 2 m guided floor"
+        );
+        let deeper = altitude_view(&Diving(-10.0), &["15".to_string(), "pause".to_string()]);
+        assert_eq!(deeper["deltaMeters"], -5.0);
+        assert_eq!(
+            deeper["sentence"],
+            "The vehicle will stop, then dive 5.0 m to a depth of 15.0 m."
+        );
+        let hold = altitude_view(&Diving(-10.0), &["10".to_string(), "pause".to_string()]);
+        assert_eq!(
+            hold["sentence"],
+            "The vehicle will stop and hold at a depth of 10.0 m."
+        );
+        assert_eq!(
+            altitude_view(&Diving(-10.0), &["4".to_string()])["sentence"],
+            "The vehicle will rise 6.0 m to a depth of 4.0 m."
         );
     }
 

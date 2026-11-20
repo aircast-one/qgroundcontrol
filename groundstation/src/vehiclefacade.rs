@@ -585,7 +585,7 @@ fn mode_fields(
             None,
             Some(3),
             (None, ""),
-            (None, ""),
+            (Some(16), "Position Hold"),
             (None, ""),
             (0, "Stabilize"),
         ),
@@ -4479,6 +4479,11 @@ mod tests {
             mode_fields(3, 12, &[], &[])["rtlFlightMode"],
             "RTL",
             "a sub has no RTL number, so the name falls back"
+        );
+        assert_eq!(
+            mode_fields(3, 12, &[], &[])["pauseFlightMode"],
+            "Position Hold",
+            "a sub pauses in Position Hold, so Fly knows when it is paused"
         );
         assert_eq!(
             (

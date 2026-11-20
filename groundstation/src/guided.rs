@@ -44,6 +44,8 @@ pub const DEPS: &[&str] = &[
     "vehicle.vtol",
     "vehicle.vtolInFwdFlight",
     "vehicle.fixedWing",
+    "vehicle.rover",
+    "vehicle.sub",
     "vehicle.haveFWSpeedLimits",
     "vehicle.haveMRSpeedLimits",
     "vehicle.px4Firmware",
@@ -81,6 +83,8 @@ pub struct GuidedState {
     pub takeoff_supported: bool,
     pub pause_supported: bool,
     pub fixed_wing: bool,
+    pub rover: bool,
+    pub sub: bool,
     pub vtol: bool,
     pub vtol_in_fwd_flight: bool,
     pub forward_flight: bool,
@@ -300,9 +304,16 @@ impl Action {
                 Action::Grab => s.has_gripper && s.payload.device_bays == 0,
                 Action::Release => s.has_gripper,
                 Action::Hold => s.has_gripper && !s.apm,
-                Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl,
+                Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl && !s.sub,
                 Action::Takeoff => s.takeoff_supported && !s.flying && !(s.armed && s.in_takeoff),
-                Action::Land => s.guided_supported && s.armed && !s.fixed_wing && !s.in_land,
+                Action::Land => {
+                    s.guided_supported
+                        && s.armed
+                        && !s.fixed_wing
+                        && !s.rover
+                        && !s.sub
+                        && !s.in_land
+                }
                 Action::StartMission => s.mission_available && !s.mission_active() && !s.flying,
                 Action::ContinueMission => {
                     s.mission_available
@@ -372,6 +383,7 @@ impl Action {
             title: match (self, s.fixed_wing || s.vtol_in_fwd_flight, s.next_bay()) {
                 (Action::ChangeSpeed, true, _) => "Change Airspeed".to_string(),
                 (Action::Release, _, Some(bay)) => format!("Drop bay {bay}"),
+                (Action::ChangeAltitude, _, _) if s.sub => "Change Depth".to_string(),
                 _ => self.title().to_string(),
             },
             prompt: match (self, s.fixed_wing || s.vtol_in_fwd_flight, s.next_bay()) {
@@ -383,6 +395,15 @@ impl Action {
                 }
                 (Action::Takeoff, true, _) if !s.takeoff_with_altitude => {
                     wing_takeoff_prompt(s.wing_takeoff_height.as_deref())
+                }
+                (Action::StartMission, _, _) if s.rover || s.sub => {
+                    "Start the current mission".to_string()
+                }
+                (Action::ChangeAltitude, _, _) if s.sub => {
+                    "Change the depth of the vehicle up or down".to_string()
+                }
+                (Action::EmergencyStop, _, _) if s.sub => {
+                    "This stops every thruster at once. The vehicle drifts with no control until it is armed again.".to_string()
                 }
                 _ => self.prompt().to_string(),
             },
@@ -396,7 +417,8 @@ impl Action {
             destructive: matches!(self, Action::EmergencyStop | Action::ForceArm),
             confirm: self != Action::Disarm,
             carries_value: self.carries_value()
-                && !(self == Action::Takeoff && s.takeoff_without_height()),
+                && !(self == Action::Takeoff && s.takeoff_without_height())
+                && !(self == Action::Pause && s.rover),
             option: match (self, s.smart_rtl_supported) {
                 (Action::Rtl, true) => "Smart RTL",
                 _ => "",
@@ -501,7 +523,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
     let vehicle = backend.value_fields(
         "vehicle",
-        "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,payloadSetup,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
+        "id,armed,flying,isROIEnabled,fixedWing,rover,sub,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,payloadSetup,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     );
     let supports = backend.value_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude,smartRTL");
     let report = backend.value_fields(
@@ -542,6 +564,8 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         takeoff_with_altitude: flag(&supports, "guidedTakeoffWithAltitude"),
         pause_supported: flag(&supports, "pauseVehicle"),
         fixed_wing,
+        rover: flag(&vehicle, "rover"),
+        sub: flag(&vehicle, "sub"),
         vtol: flag(&vehicle, "vtol"),
         vtol_in_fwd_flight,
         forward_flight,
@@ -1905,6 +1929,82 @@ mod tests {
         assert_eq!(offer_of(&returning, Action::Rtl), "hidden");
         assert_eq!(offer_of(&returning, Action::ChangeAltitude), "hidden");
         assert_eq!(offer_of(&returning, Action::Pause), "ready");
+    }
+
+    #[test]
+    fn a_rover_and_a_sub_are_offered_only_the_commands_their_modes_carry_out() {
+        let flying = GuidedState {
+            armed: true,
+            flying: true,
+            ..ready_on_ground()
+        };
+        let rover = GuidedState {
+            rover: true,
+            ..flying.clone()
+        };
+        let sub = GuidedState {
+            sub: true,
+            ..flying.clone()
+        };
+        assert_eq!(
+            (
+                offer_of(&flying, Action::Land),
+                offer_of(&flying, Action::Rtl)
+            ),
+            ("ready", "ready")
+        );
+        assert_eq!(
+            (
+                offer_of(&rover, Action::Land),
+                offer_of(&rover, Action::Rtl),
+                offer_of(&rover, Action::Pause)
+            ),
+            ("hidden", "ready", "ready"),
+            "ArduRover has no Land mode, so landing it is refused"
+        );
+        assert_eq!(
+            (
+                offer_of(&sub, Action::Land),
+                offer_of(&sub, Action::Rtl),
+                offer_of(&sub, Action::Pause)
+            ),
+            ("hidden", "hidden", "ready"),
+            "ArduSub has neither a Land nor an RTL mode, and holds in Position Hold"
+        );
+    }
+
+    #[test]
+    fn a_rover_pauses_without_a_height_and_a_sub_reads_in_depth() {
+        let flying = GuidedState {
+            armed: true,
+            flying: true,
+            ..ready_on_ground()
+        };
+        let rover = GuidedState {
+            rover: true,
+            ..flying.clone()
+        };
+        let sub = GuidedState {
+            sub: true,
+            ..flying.clone()
+        };
+        assert!(Action::Pause.offer(&flying).carries_value);
+        assert!(
+            !Action::Pause.offer(&rover).carries_value,
+            "ArduRover refuses an altitude change, so its pause holds where it is"
+        );
+        assert_eq!(Action::ChangeAltitude.offer(&sub).title, "Change Depth");
+        assert!(
+            !Action::EmergencyStop
+                .offer(&sub)
+                .prompt
+                .contains("fall and crash")
+        );
+        assert_eq!(
+            [&rover, &sub].map(|s| Action::StartMission.offer(s).prompt),
+            ["Start the current mission", "Start the current mission"],
+            "neither a rover nor a sub takes off"
+        );
     }
 
     #[test]

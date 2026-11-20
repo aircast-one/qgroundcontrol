@@ -95,6 +95,43 @@ describe('FlightDeckEntriesTest', () => {
     expect(openValue.mock.results.map((it) => it.value)).toEqual(ids);
   });
 
+  it('a landing or a return the vehicle refuses says why instead of vanishing', async () => {
+    const refusal = 'Land is not a mode of this vehicle';
+    const landing = vi.spyOn(VehicleCommands, 'landRefusal').mockResolvedValue(refusal);
+    const returning = vi.spyOn(VehicleCommands, 'returnToLaunchRefusal').mockResolvedValue('No RTL here');
+    const confirmed = vi.fn((action: GuidedAction) => action);
+    const reported = vi.fn();
+    const entries = flightDeckEntries({ ...deck([offer('land'), offer('rtl')], { armed: true, confirm: confirmed }), report: reported });
+    entries.find((it) => it.id === 'land')?.onClick();
+    const land = confirmed.mock.results[0]?.value as GuidedAction;
+    expect(await land.answer?.()).toBe(refusal);
+    entries.find((it) => it.id === 'rtl')?.onClick();
+    (confirmed.mock.results[1]?.value as GuidedAction).run();
+    await vi.waitFor(() => expect(reported).toHaveBeenCalledWith('No RTL here'));
+    landing.mockRestore();
+    returning.mockRestore();
+  });
+
+  it('a pause that carries no height, as on a rover, slides a plain pause and reports a refusal', async () => {
+    const refused = vi.spyOn(VehicleCommands, 'pauseRefusal').mockResolvedValue('Hold is not a mode of this vehicle');
+    const openValue = vi.fn();
+    const confirmed = vi.fn((action: GuidedAction) => action);
+    flightDeckEntries(deck([{ ...offer(PAUSE, 'ready', false), title: 'Pause' }], { armed: true, confirm: confirmed, openValue }))
+      .find((it) => it.id === PAUSE)
+      ?.onClick();
+    expect(openValue).not.toHaveBeenCalled();
+    const pause = confirmed.mock.results[0]?.value as GuidedAction;
+    expect([pause.offerId, pause.name]).toEqual([PAUSE, 'Pause']);
+    expect(await pause.answer?.()).toBe('Hold is not a mode of this vehicle');
+    refused.mockRestore();
+  });
+
+  it("a sub's height change reads Depth on the deck, as the core titles it", () => {
+    const entries = flightDeckEntries(deck([{ ...offer('changeAltitude'), title: 'Change Depth' }, { ...offer('changeSpeed'), title: 'Change Max Ground Speed' }]));
+    expect(entries.find((it) => it.id === 'changeAltitude')?.label).toBe('Depth');
+    expect(flightDeckEntries(deck([{ ...offer('changeAltitude'), title: 'Change Altitude' }])).find((it) => it.id === 'changeAltitude')?.label).toBe('Altitude');
+  });
+
   it('a vehicle that is not fully ready cannot be held straight into the air, the tap opens the warning first', () => {
     const ready = flightDeckEntries(deck([offer('takeoff')])).find((it) => it.id === 'takeoff');
     expect([ready?.label, (ready?.onHold ?? null) !== null]).toEqual([HOLD_TO_TAKE_OFF, true]);

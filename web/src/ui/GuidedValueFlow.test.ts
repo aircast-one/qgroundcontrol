@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { Qgc } from '@/bridge/Qgc';
+import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { GuidedAltitude } from './GuidedAltitude';
 import { GuidedOffer } from './GuidedActions';
-import { type GuidedReading, GuidedValueKind, altitudeReading, openedGuidedValue, speedValue, takeoffReading } from './GuidedValueFlow';
+import { type GuidedReading, GuidedValueKind, altitudeReading, altitudeValue, openedGuidedValue, speedValue, takeoffReading } from './GuidedValueFlow';
 
 const kind = GuidedValueKind({
   offerId: 'takeoff',
@@ -11,7 +13,7 @@ const kind = GuidedValueKind({
   missingRange: 'no range',
   quickPicks: false,
   read: async () => null,
-  commit: async () => undefined,
+  commit: async () => null,
 });
 
 describe('GuidedValueFlowTest', () => {
@@ -41,6 +43,19 @@ describe('GuidedValueTitleTest', () => {
     const offer = GuidedOffer({ id: 'changeSpeed', title: 'Change Max Ground Speed', offer: 'ready', reason: '', prompt: '', destructive: false, carriesValue: true });
     expect(speedValue(offer).title).toBe('Change max ground speed');
     expect(speedValue(null).title).toBe('Change max ground speed');
+    const depth = GuidedOffer({ id: 'changeAltitude', title: 'Change Depth', offer: 'ready', reason: '', prompt: '', destructive: false, carriesValue: true });
+    expect([altitudeValue(false, depth).title, altitudeValue(false).title, altitudeValue(true, depth).title]).toEqual(['Change depth', 'Change altitude', 'Pause']);
+  });
+});
+
+describe('GuidedValueRefusalTest', () => {
+  it('a height change or pause the vehicle refuses hands the refusal back instead of dropping it', async () => {
+    const view = vi.spyOn(Qgc, 'get').mockResolvedValue({ available: true, sends: true, deltaMeters: -2.0, label: 'Depth', unit: 'm' });
+    const refused = vi.spyOn(VehicleCommands, 'changeAltitudeRefusal').mockResolvedValue('Brake is not a mode of this vehicle');
+    expect(await altitudeValue(true).commit(12.0)).toBe('Brake is not a mode of this vehicle');
+    expect(refused).toHaveBeenCalledWith(-2.0, true);
+    view.mockRestore();
+    refused.mockRestore();
   });
 });
 

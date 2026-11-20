@@ -35,29 +35,29 @@ export const missionFlown = (flown: boolean, armed: boolean, missionAvailable: b
 export const autoMissionPopup = (wasReady: ReadonlySet<string>, offers: ReadonlyMap<string, GuidedOffer>, enabled: boolean, flown = false): GuidedOffer | null =>
   AUTO_POPUP_ACTIONS.flatMap((id) => offers.get(id) ?? []).find((it) => (enabled || it.id === LAND_ABORT) && it.ready && !wasReady.has(it.id) && !(flown && it.id === START_MISSION)) ?? null;
 
-export const guidedCommand = (id: string, resumeFrom: number | null): (() => void) | null => {
+export const guidedCommand = (id: string, resumeFrom: number | null): (() => Promise<string | null>) | null => {
   switch (id) {
     case 'startMission':
     case 'continueMission':
-      return () => void VehicleCommands.startMission();
+      return () => VehicleCommands.startMissionRefusal();
     case 'landAbort':
-      return () => void VehicleCommands.abortLanding(LAND_ABORT_CLIMB_METERS);
+      return () => VehicleCommands.abortLandingRefusal(LAND_ABORT_CLIMB_METERS);
     case 'grab':
-      return () => void VehicleCommands.gripper(GRIPPER_GRAB);
+      return () => VehicleCommands.gripperRefusal(GRIPPER_GRAB);
     case 'release':
-      return () => void VehicleCommands.gripper(GRIPPER_RELEASE);
+      return () => VehicleCommands.gripperRefusal(GRIPPER_RELEASE);
     case 'hold':
-      return () => void VehicleCommands.gripper(GRIPPER_HOLD);
+      return () => VehicleCommands.gripperRefusal(GRIPPER_HOLD);
     case 'cancelRoi':
-      return () => void VehicleCommands.stopRoi();
+      return () => VehicleCommands.stopRoiRefusal();
     case 'vtolTransitionToFixedWing':
-      return () => void VehicleCommands.setForwardFlight(true);
+      return () => VehicleCommands.forwardFlightRefusal(true);
     case 'vtolTransitionToMultiRotor':
-      return () => void VehicleCommands.setForwardFlight(false);
+      return () => VehicleCommands.forwardFlightRefusal(false);
     case 'forceArm':
-      return () => void VehicleCommands.forceArm();
+      return () => VehicleCommands.forceArmRefusal();
     case 'resumeMission':
-      return resumeFrom === null ? null : () => void PlanCommands.resumeMission(resumeFrom);
+      return resumeFrom === null ? null : () => PlanCommands.resumeMissionRefusal(resumeFrom);
     default:
       return null;
   }

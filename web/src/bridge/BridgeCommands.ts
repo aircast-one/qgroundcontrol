@@ -96,6 +96,7 @@ export const PlanCommands = {
   setUndoTracking: (tracking: boolean): Promise<boolean> => Qgc.set(PLAN_UNDO_TRACKING, tracking),
   removeAllFromVehicle: (): Promise<boolean> => Qgc.invoke(PLAN_REMOVE_ALL_FROM_VEHICLE),
   resumeMission: (waypoint: number): Promise<boolean> => Qgc.invoke(PLAN_RESUME_MISSION, waypoint),
+  resumeMissionRefusal: (waypoint: number): Promise<string | null> => Qgc.refusalOf(PLAN_RESUME_MISSION, waypoint),
   dismissMissionComplete: (notice: number): Promise<boolean> => Qgc.invoke(MISSION_COMPLETE_DISMISS, notice),
   commandCategories: (): Promise<unknown> => Qgc.invokeResult(PLAN_COMMAND_CATEGORIES),
   commandsForCategory: (category: string): Promise<unknown> => Qgc.invokeResult(PLAN_COMMANDS_FOR_CATEGORY, null, category, true),

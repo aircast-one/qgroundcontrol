@@ -532,8 +532,8 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     picked.confirm === null
       ? void Qgc.invoke(picked.path, ...picked.args)
       : ask(GuidedAction({ name: picked.confirm.title, confirm: picked.confirm.text, destructive: false, answer: () => Qgc.refusalOf(picked.path, ...picked.args) }));
-  const offerAction = (offer: GuidedOffer, command: () => void): GuidedAction =>
-    GuidedAction({ offerId: offer.id, name: offer.title, confirm: offer.prompt, destructive: offer.destructive, run: command });
+  const offerAction = (offer: GuidedOffer, command: () => Promise<string | null>): GuidedAction =>
+    GuidedAction({ offerId: offer.id, name: offer.title, confirm: offer.prompt, destructive: offer.destructive, answer: command });
 
   useLaunchedEffect([popupDue], async (scope) => {
     const due = popupDue;
@@ -555,7 +555,6 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       if (opened === null) setRefusal(kind.missingRange);
       else setGuidedValue(opened);
     })();
-  const openAltitude = (pauses: boolean) => openValue(altitudeValue(pauses));
 
   const entries = flightDeckEntries(
     FlightDeckContext({
@@ -684,7 +683,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     <>
       {guidedValue !== null ? (
         <DecisionHost rail={rail}>
-          <GuidedValueFlow open={guidedValue} onClose={() => setGuidedValue(null)} />
+          <GuidedValueFlow open={guidedValue} onClose={() => setGuidedValue(null)} onRefused={setRefusal} />
         </DecisionHost>
       ) : null}
       {editingLoiter !== null ? (
@@ -798,7 +797,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
               enabled: offer.ready,
               onClick: () => {
                 if (offer.id === PAUSE) {
-                  openAltitude(true);
+                  pauseClick(offer, ask, openValue);
                 } else {
                   const command = guidedCommand(offer.id, resumeFrom);
                   if (command !== null) ask(offerAction(offer, command));
@@ -1315,6 +1314,13 @@ const takeoffHoldRefusal = async (offers: ReadonlyMap<string, GuidedOffer>): Pro
   return target === null ? 'This vehicle did not report a takeoff height range.' : VehicleCommands.takeoffRefusal(target.targetMeters);
 };
 
+export const altitudeLabel = (offer: GuidedOffer): string => sentenceCase(offer.title.replace(/^Change\s+/i, ''));
+
+export const pauseClick = (pause: GuidedOffer, confirm: (action: GuidedAction) => void, openValue: (kind: GuidedValueKind) => void): void =>
+  pause.carriesValue
+    ? openValue(altitudeValue(true))
+    : confirm(GuidedAction({ offerId: PAUSE, name: pause.title, confirm: promptOr(pause, 'Pause at current position'), destructive: false, answer: () => VehicleCommands.pauseRefusal() }));
+
 export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[] => {
   const { offers, armed, confirm, openValue, report, openChecklist, readiness, payload } = deck;
   const dropBay = payload.next ?? 0;
@@ -1362,13 +1368,13 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
                     name: takeoff.title,
                     confirm: promptOr(takeoff, 'Take off from the ground and hold position.'),
                     destructive: false,
-                    run: () => void VehicleCommands.takeoff(),
+                    answer: () => VehicleCommands.takeoffRefusal(),
                   }),
                 )
               : openValue(takeoffValue(takeoff)),
         })
       : null,
-    pause?.shown === true ? DeckEntry({ id: PAUSE, label: pause.title, icon: 'ic_pause', enabled: pause.ready, onClick: () => openValue(altitudeValue(true)) }) : null,
+    pause?.shown === true ? DeckEntry({ id: PAUSE, label: pause.title, icon: 'ic_pause', enabled: pause.ready, onClick: () => pauseClick(pause, confirm, openValue) }) : null,
     rtl?.shown === true
       ? DeckEntry({
           id: 'rtl',
@@ -1382,8 +1388,8 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
                 name: rtl.title,
                 confirm: promptOr(rtl, 'Return to the launch position of the vehicle'),
                 destructive: false,
-                option: rtlOption === null ? null : ConfirmOption({ label: rtlOption, hint: rtl?.optionHint ?? '', run: (smart) => void VehicleCommands.returnToLaunch(smart) }),
-                run: () => void VehicleCommands.returnToLaunch(false),
+                option: rtlOption === null ? null : ConfirmOption({ label: rtlOption, hint: rtl?.optionHint ?? '', run: (smart) => void VehicleCommands.returnToLaunchRefusal(smart).then(report) }),
+                run: () => void VehicleCommands.returnToLaunchRefusal(false).then(report),
               }),
             ),
         })
@@ -1402,13 +1408,13 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
                 name: land.title,
                 confirm: promptOr(land, 'Land the vehicle at the current position'),
                 destructive: false,
-                run: () => void VehicleCommands.land(),
+                answer: () => VehicleCommands.landRefusal(),
               }),
             ),
         })
       : null,
     speed?.shown === true ? DeckEntry({ id: 'changeSpeed', label: 'Speed', icon: 'ic_speed', enabled: speed.ready, onClick: () => openValue(speedValue(speed)) }) : null,
-    altitude?.shown === true ? DeckEntry({ id: 'changeAltitude', label: 'Altitude', icon: 'ic_height', enabled: altitude.ready, onClick: () => openValue(altitudeValue(false)) }) : null,
+    altitude?.shown === true ? DeckEntry({ id: 'changeAltitude', label: altitudeLabel(altitude), icon: 'ic_height', enabled: altitude.ready, onClick: () => openValue(altitudeValue(false, altitude)) }) : null,
     release?.shown === true
       ? DeckEntry({
           id: RELEASE,
