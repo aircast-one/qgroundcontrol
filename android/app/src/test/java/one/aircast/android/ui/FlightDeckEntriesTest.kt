@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import kotlinx.coroutines.CoroutineScope
+import one.aircast.android.R
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import kotlin.coroutines.EmptyCoroutineContext
@@ -28,6 +29,27 @@ class FlightDeckEntriesTest {
         assertEquals(listOf("arm", "takeoff", "land"), flightDeckEntries(deck(offers)).map { it.id })
         assertEquals(listOf("arm", "takeoff", "land", CHECKLIST), flightDeckEntries(deck(offers, openChecklist = {})).map { it.id })
         assertEquals(listOf("takeoff", "land"), flightDeckEntries(deck(offers, armed = true, openChecklist = {})).map { it.id })
+    }
+
+    @Test
+    fun `the return on the deck is named Return home and confirms with a slide of that name`() {
+        val confirmed = mutableListOf<GuidedAction>()
+        val back = flightDeckEntries(deck(listOf(offer("rtl", carriesValue = false).copy(title = "Return home")), armed = true, confirmed = confirmed)).first { it.id == "rtl" }
+        assertEquals("Return home", back.label)
+        back.onClick()
+        assertEquals("Slide to return home", holdLabel(confirmed.single().name))
+    }
+
+    @Test
+    fun `a sub's return reads Surface with a rising icon, and its confirm slides the core's surface prompt`() {
+        val confirmed = mutableListOf<GuidedAction>()
+        val surface = offer("rtl").copy(title = "Surface", prompt = "The sub rises to the surface and holds there.")
+        val entry = flightDeckEntries(deck(listOf(surface), armed = true, confirmed = confirmed)).first { it.id == "rtl" }
+        assertEquals("Surface" to R.drawable.ic_upload, entry.label to entry.icon)
+        entry.onClick()
+        assertEquals(listOf("rtl", "Surface", "The sub rises to the surface and holds there."), confirmed.single().let { listOf(it.offerId, it.name, it.confirm) })
+        val plain = flightDeckEntries(deck(listOf(offer("rtl").copy(title = "Return home")), armed = true)).first { it.id == "rtl" }
+        assertEquals("Return home" to R.drawable.ic_home, plain.label to plain.icon)
     }
 
     @Test

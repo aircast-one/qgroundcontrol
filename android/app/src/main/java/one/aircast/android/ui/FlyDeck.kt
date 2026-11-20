@@ -77,6 +77,7 @@ internal class DeckEntry(
 
 internal const val HOLD_TO_TAKE_OFF = "Slide to take off"
 internal const val TAKE_OFF = "Take off"
+internal const val RETURN_HOME = "Return home"
 internal const val NO_LINK = "No link"
 internal const val NO_SIGNAL_CODE = "noSignal"
 

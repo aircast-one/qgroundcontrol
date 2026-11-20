@@ -743,7 +743,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
 
 private val OFFLINE_DECK = listOf(
     DeckEntry("takeoff", TAKE_OFF, R.drawable.ic_flight_takeoff, enabled = false) {},
-    DeckEntry("rtl", "Return", R.drawable.ic_home, enabled = false) {},
+    DeckEntry("rtl", RETURN_HOME, R.drawable.ic_home, enabled = false) {},
 )
 
 @Composable
@@ -1128,6 +1128,12 @@ internal class FlightDeckContext(
 
 private fun dropLabel(title: String, payload: Payload): String = holdLabel(payload.label.ifBlank { title })
 
+private const val SURFACE = "Surface"
+
+internal fun returnLabel(offer: GuidedOffer): String = offer.title.ifBlank { null }?.let(::sentenceCase) ?: RETURN_HOME
+
+internal fun returnIcon(offer: GuidedOffer): Int = if (offer.title == SURFACE) R.drawable.ic_upload else R.drawable.ic_home
+
 internal fun altitudeLabel(offer: GuidedOffer): String = sentenceCase(offer.title.replace(Regex("^Change\\s+", RegexOption.IGNORE_CASE), ""))
 
 internal fun pauseClick(pause: GuidedOffer, confirm: (GuidedAction) -> Unit, openValue: (GuidedValueKind) -> Unit) =
@@ -1201,10 +1207,10 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
         offers[PAUSE]?.takeIf { it.shown }?.let { pause ->
             DeckEntry(PAUSE, pause.title, R.drawable.ic_pause, pause.ready) { pauseClick(pause, confirm, openValue) }
         },
-        DeckEntry("rtl", "Return", R.drawable.ic_home, offers["rtl"]?.ready == true) {
+        DeckEntry("rtl", offers["rtl"]?.let(::returnLabel) ?: RETURN_HOME, offers["rtl"]?.let(::returnIcon) ?: R.drawable.ic_home, offers["rtl"]?.ready == true) {
             confirm(GuidedAction(
                 offerId = "rtl",
-                name = offers["rtl"]?.title ?: "Return",
+                name = offers["rtl"]?.title?.ifBlank { null } ?: RETURN_HOME,
                 confirm = offers["rtl"]?.prompt?.ifBlank { null } ?: "Return to the launch position of the vehicle",
                 destructive = false,
                 option = offers["rtl"]?.option?.ifBlank { null }?.let { label ->

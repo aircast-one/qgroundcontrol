@@ -719,11 +719,11 @@ private fun BatteryReturnButton(onClosed: () -> Unit) {
         enabled = rtl.ready,
         onClick = { confirming = true },
         modifier = Modifier.padding(horizontal = 12.dp),
-    ) { Text("Return", color = MaterialTheme.colorScheme.error) }
+    ) { Text(RETURN_HOME, color = MaterialTheme.colorScheme.error) }
     if (confirming) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirming = false },
-            title = { Text("Return") },
+            title = { Text(RETURN_HOME) },
             text = { Text("Return to the launch position of the vehicle") },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {

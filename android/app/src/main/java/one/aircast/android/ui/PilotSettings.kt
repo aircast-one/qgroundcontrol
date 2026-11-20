@@ -26,7 +26,6 @@ import one.aircast.android.bridge.qgcPath
 
 internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String, val whenUnlimited: String? = null, val quantity: String? = null, val reportedOnly: Boolean = false)
 
-private const val RETURN_HOME = "Return home"
 private const val FLIGHT_PROTECTION = "Flight protection"
 private const val FAILSAFES = "If something goes wrong"
 private const val FLIGHT_LIMITS = "Flight limits"
