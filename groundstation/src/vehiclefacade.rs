@@ -968,6 +968,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "messagesSent": v.messages_sent,
         "messagesLost": v.messages_lost,
         "id": v.id,
+        "instance": v.instance,
         "armed": v.armed(),
         "flying": v.flying,
         "fightMode": v.fight,

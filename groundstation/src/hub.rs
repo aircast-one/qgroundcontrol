@@ -37,6 +37,7 @@ use crate::vehiclefacts::VehicleFacts;
 
 static PARAMETER_METADATA_GENERATIONS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
+static VEHICLE_INSTANCES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub const TYPE_GCS: u8 = 6;
 const TYPE_GENERIC: u8 = 0;
@@ -375,6 +376,7 @@ fn follow_needed(current: Option<(f64, f64)>, (heading, pitch): (f64, f64)) -> b
 pub struct Vehicle {
     payload_lock: PayloadLock,
     pub id: u8,
+    pub instance: u64,
     pub component: u8,
     pub link: LinkId,
     pub autopilot: u8,
@@ -668,6 +670,7 @@ impl Vehicle {
         Vehicle {
             payload_lock: PayloadLock::default(),
             id,
+            instance: VEHICLE_INSTANCES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1,
             component,
             link,
             autopilot,
@@ -8201,6 +8204,13 @@ fn assumed_type(kind: u8, autopilot: u8) -> u8 {
     }
 }
 
+impl Vehicle {
+    fn another_aircraft(&self, autopilot: u8, kind: u8) -> bool {
+        (autopilot != self.autopilot && autopilot != AUTOPILOT_INVALID)
+            || another_class(self.vehicle_type, kind)
+    }
+}
+
 fn another_class(was: u8, now: u8) -> bool {
     let class = |kind: u8| crate::plandoc::vehicle_class(i64::from(kind));
     ![class(was), class(now)].contains(&crate::cmdinfo::VehicleClass::Generic)
@@ -8391,6 +8401,23 @@ impl Hub {
                 kind,
                 TYPE_GCS | TYPE_ONBOARD_CONTROLLER | TYPE_GIMBAL | TYPE_ADSB
             );
+            let replaced = self
+                .vehicles
+                .get(&header.system_id)
+                .filter(|_| {
+                    header.component_id == COMP_AUTOPILOT1
+                        && !excluded_type
+                        && matches!(message, MavMessage::HEARTBEAT(_))
+                })
+                .filter(|vehicle| {
+                    vehicle.connection_lost
+                        && vehicle.another_aircraft(autopilot, assumed_type(kind, autopilot))
+                })
+                .map(|vehicle| (vehicle.id, self.active == Some(vehicle.id)));
+            if let Some((id, _)) = replaced {
+                log::info!("Vehicle {id} answers as another kind of aircraft, so it starts afresh");
+                self.remove(id);
+            }
             if header.component_id == COMP_AUTOPILOT1
                 && !excluded_type
                 && autopilot != AUTOPILOT_INVALID
@@ -8441,7 +8468,7 @@ impl Hub {
                         &format!("Connected to Vehicle {}", header.system_id),
                     );
                 }
-                if self.vehicles.len() == 1 {
+                if self.vehicles.len() == 1 || replaced.is_some_and(|(_, active)| active) {
                     self.active = Some(header.system_id);
                 }
             }
@@ -18918,6 +18945,105 @@ mod tests {
                 .iter()
                 .any(|t| t.starts_with("vehicle 1 ") && t.ends_with("failsafe")),
             "with two vehicles up, a failsafe said without a name could be either: {spoken:?}"
+        );
+    }
+
+    #[test]
+    fn another_kind_of_aircraft_on_a_lost_vehicles_id_starts_afresh_and_the_same_one_coming_back_keeps_everything()
+     {
+        use mavlink::dialects::ardupilotmega::{MavAutopilot, MavType};
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let beat = |kind: MavType, pilot: MavAutopilot| match copter_heartbeat(0, false) {
+            MavMessage::HEARTBEAT(h) => {
+                MavMessage::HEARTBEAT(mavlink::dialects::ardupilotmega::HEARTBEAT_DATA {
+                    mavtype: kind,
+                    autopilot: pilot,
+                    ..h
+                })
+            }
+            other => other,
+        };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let copter = hub.vehicles[&1].instance;
+        assert!(hub.vehicles[&1].parameter(1, "RTL_ALT").is_some());
+        hub.vehicles.get_mut(&1).unwrap().take_status(
+            StatusText {
+                component: 1,
+                severity: 2,
+                text: "EKF Failsafe".into(),
+            },
+            1_000,
+        );
+        let ardupilot = MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA;
+        hub.vehicles.get_mut(&1).unwrap().connection_lost = true;
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &beat(MavType::MAV_TYPE_QUADROTOR, ardupilot),
+            9,
+            9,
+        );
+        assert_eq!(
+            hub.vehicles[&1].instance, copter,
+            "the same aircraft coming back keeps its parameters and messages"
+        );
+        assert!(hub.vehicles[&1].parameter(1, "RTL_ALT").is_some());
+        hub.vehicles.get_mut(&1).unwrap().connection_lost = true;
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &beat(MavType::MAV_TYPE_FIXED_WING, ardupilot),
+            10,
+            10,
+        );
+        let plane = &hub.vehicles[&1];
+        assert_ne!(
+            plane.instance, copter,
+            "a plane on the lost copter's id is another aircraft"
+        );
+        assert_eq!(plane.vehicle_type, MavType::MAV_TYPE_FIXED_WING as u8);
+        assert!(
+            plane.parameter(1, "RTL_ALT").is_none(),
+            "the copter's parameters, and the names its metadata gave their values, do not carry over to the plane"
+        );
+        assert_eq!(plane.message_log.count(), 0, "nor does the copter's alarm");
+        assert!(!plane.connection_lost);
+        assert_eq!(
+            hub.active_id(),
+            Some(1),
+            "the aircraft flown before stays the one flown"
+        );
+        hub.vehicles.get_mut(&1).unwrap().connection_lost = true;
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &beat(MavType::MAV_TYPE_QUADROTOR, MavAutopilot::MAV_AUTOPILOT_PX4),
+            11,
+            11,
+        );
+        assert_eq!(
+            hub.vehicles[&1].autopilot,
+            crate::modes::AUTOPILOT_PX4,
+            "another autopilot on the same id is another aircraft too"
+        );
+        let mut talking = Hub::default();
+        connect_copter(&mut talking, &autopilot);
+        let first = talking.vehicles[&1].instance;
+        talking.on_frame(
+            origin(4),
+            &autopilot,
+            &beat(MavType::MAV_TYPE_FIXED_WING, ardupilot),
+            8,
+            8,
+        );
+        assert_eq!(
+            talking.vehicles[&1].instance, first,
+            "two aircraft talking on one id at once is not a swap, so the vehicle is not rebuilt on every heartbeat"
         );
     }
 

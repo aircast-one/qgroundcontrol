@@ -169,11 +169,11 @@ export const MainActivity = () => {
   );
 };
 
-type ShellFly = { connected: boolean; armed: boolean; state: string | null };
+type ShellFly = { connected: boolean; instance: number | null; armed: boolean; state: string | null };
 
 const shellFly = (json: Json | null): ShellFly | null => {
   const it = flyState(json);
-  return it === null ? null : { connected: it.connected, armed: it.armed, state: it.state };
+  return it === null ? null : { connected: it.connected, instance: it.instance, armed: it.armed, state: it.state };
 };
 
 const noVideoSourceOf = (json: Json | null): boolean => {
@@ -497,7 +497,7 @@ export const AircastShell = () => {
   };
 
   useEffect(() => {
-    const step = armedSessionStep(armedSession.current, flyNow?.connected === true, activeId, armedNow, flyNow?.state ?? null, { killed: killedRecently(motorsKilledAt.value, performance.now()), lands });
+    const step = armedSessionStep(armedSession.current, flyNow?.connected === true, flyNow?.instance ?? activeId, armedNow, flyNow?.state ?? null, { killed: killedRecently(motorsKilledAt.value, performance.now()), lands });
     if (step.started) {
       void batteryPercentNow().then((percent) => {
         armedBattery.current = percent;
@@ -505,7 +505,7 @@ export const AircastShell = () => {
     }
     if (step.notice !== null) void announceDisarm(step.notice, step.landed, armedBattery.current);
     armedSession.current = step.session;
-  }, [flyNow?.armed, flyNow?.state, flyNow?.connected, activeId]);
+  }, [flyNow?.armed, flyNow?.state, flyNow?.connected, flyNow?.instance, activeId]);
 
   const noVideoSource = useQgcDerived(VIDEO_VIEW, noVideoSourceOf);
   const pictureNow = useQgcDerived(VIDEO_VIEW, videoDecodingOf);

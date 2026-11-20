@@ -7,6 +7,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
+    "vehicle.instance",
     "vehicle.armed",
     "vehicle.flightMode",
     "vehicle.cameraTriggerPoints.count",
@@ -20,6 +21,7 @@ pub const DEPS: &[&str] = &[
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Latch {
+    instance: Option<u64>,
     armed: Option<bool>,
     was_armed: bool,
     was_in_mission: bool,
@@ -36,6 +38,7 @@ pub struct Progress {
 }
 
 pub struct Reading {
+    pub instance: Option<u64>,
     pub connected: bool,
     pub armed: bool,
     pub in_mission: bool,
@@ -49,11 +52,19 @@ impl Reading {
     }
 }
 
-pub fn step(latch: Latch, now: &Reading) -> Latch {
+pub fn step(held: Latch, now: &Reading) -> Latch {
+    let latch = match (held.instance, now.instance) {
+        (Some(was), Some(is)) if was != is => Latch {
+            shown: held.shown,
+            ..Latch::default()
+        },
+        _ => held,
+    };
     let armed = !now.connected || now.armed;
     let in_mission = now.connected && now.in_mission;
     let flying_it = in_mission && (1..=now.progress.of).contains(&now.progress.waypoint);
     let base = Latch {
+        instance: now.instance.or(latch.instance),
         armed: now.connected.then_some(now.armed),
         open: latch.open && now.connected,
         reached: if flying_it {
@@ -95,6 +106,7 @@ pub fn step(latch: Latch, now: &Reading) -> Latch {
 }
 
 static LATCH: Mutex<Latch> = Mutex::new(Latch {
+    instance: None,
     armed: None,
     was_armed: false,
     was_in_mission: false,
@@ -112,7 +124,7 @@ fn contains(backend: &dyn Backend, controller: &str) -> bool {
 }
 
 fn reading(backend: &dyn Backend) -> (Reading, i64) {
-    let vehicle = backend.value_fields("vehicle", "armed,flightMode,missionFlightMode");
+    let vehicle = backend.value_fields("vehicle", "instance,armed,flightMode,missionFlightMode");
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let in_mission = vehicle.get("flightMode").is_some()
         && vehicle.get("flightMode") == vehicle.get("missionFlightMode");
@@ -139,6 +151,7 @@ fn reading(backend: &dyn Backend) -> (Reading, i64) {
     };
     (
         Reading {
+            instance: vehicle.get("instance").and_then(Value::as_u64),
             connected,
             armed: flag(&vehicle, "armed"),
             in_mission,
@@ -323,6 +336,7 @@ mod tests {
 
     fn at(armed: bool, in_mission: bool) -> Reading {
         Reading {
+            instance: Some(1),
             connected: true,
             armed,
             in_mission,
@@ -482,6 +496,14 @@ mod tests {
         assert!(
             run(&[at(false, false), at(true, true), gone, at(false, false)]).open,
             "a link lost in flight that returns disarmed is the finished mission QGC reports"
+        );
+        let another = Reading {
+            instance: Some(2),
+            ..at(false, false)
+        };
+        assert!(
+            !run(&[at(false, false), at(true, true), another]).open,
+            "another aircraft taking the lost one's id did not finish the lost one's mission"
         );
     }
 

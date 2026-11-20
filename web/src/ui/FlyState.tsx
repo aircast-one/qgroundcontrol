@@ -10,6 +10,7 @@ export const FLY_STATE = 'view.flyState';
 
 export type FlyState = {
   connected: boolean;
+  instance: number | null;
   armed: boolean;
   contactLost: boolean | null;
   state: string;
@@ -30,7 +31,8 @@ export type FlyState = {
   readyToFly: boolean;
 };
 
-export const FlyState = (fields: Omit<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly' | 'rcRequired'> & Partial<Pick<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly' | 'rcRequired'>>): FlyState => ({
+export const FlyState = (fields: Omit<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly' | 'rcRequired' | 'instance'> & Partial<Pick<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly' | 'rcRequired' | 'instance'>>): FlyState => ({
+  instance: null,
   rcRequired: true,
   summaryDetail: '',
   summaryProblem: null,
@@ -198,6 +200,7 @@ export const flyState = (view: Json | null): FlyState | null => {
   const problem = optJSONObject(view, 'summaryProblem');
   return FlyState({
     connected: optBoolean(view, 'connected'),
+    instance: intOrNull(view, 'instance'),
     armed: optBoolean(view, 'armed'),
     contactLost: booleanOrNull(view, 'contactLost'),
     state: optText(view, 'state'),

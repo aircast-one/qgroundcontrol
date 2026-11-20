@@ -5,6 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
+    "vehicle.instance",
     "vehicle.armed",
     "vehicle.payloadSetup",
     "settings.flyViewSettings.payloadBays",
@@ -212,7 +213,7 @@ fn telemetry(radio: &Value) -> Value {
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = backend.value_fields(
         "vehicle",
-        "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive,payloadSetup,px4Firmware,apmFirmware",
+        "instance,armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive,payloadSetup,px4Firmware,apmFirmware",
     );
     let radio = backend.value_fields(
         "vehicle.radioStatus",
@@ -268,6 +269,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "kind": "object",
         "class": "FlyState",
         "connected": connected,
+        "instance": vehicle.get("instance").filter(|_| connected).cloned().unwrap_or(Value::Null),
         "armed": flag(&vehicle, "armed"),
         "flying": flag(&vehicle, "flying"),
         "landing": flag(&vehicle, "landing"),
@@ -1165,6 +1167,17 @@ mod tests {
 
     fn aloft(armed: bool, flying: bool, landing: bool) -> Value {
         json!({ "kind": "object", "armed": armed, "flying": flying, "landing": landing, "flightMode": "Hold" })
+    }
+
+    #[test]
+    fn the_view_names_which_aircraft_it_describes_so_a_head_can_tell_another_one_on_the_same_id() {
+        let mut copter = aloft(true, true, false);
+        copter["instance"] = json!(7);
+        assert_eq!(read(copter, true)["instance"], json!(7));
+        assert_eq!(
+            read(json!({ "kind": "null" }), false)["instance"],
+            Value::Null
+        );
     }
 
     #[test]

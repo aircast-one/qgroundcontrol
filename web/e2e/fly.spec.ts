@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, flightMode, mapMenuAt, openMenu, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { connectMock, expect, flightMode, mapMenuAt, openMenu, showMapFull, slideAcross, takeOff, telemetry, test, vehicleStatus } from './fixtures';
 import { type Sitl, connectSitl, startSitl } from './sitl';
 
 test.describe.configure({ timeout: 120_000 });
@@ -319,5 +319,37 @@ test.describe('against ArduPilot', () => {
     await expect(app.getByText("Can't arm: battery 1 below minimum arming voltage.")).toBeVisible({ timeout: 30_000 });
     await expect(app.getByText(/^(Can't arm|The aircraft refused to arm|The aircraft didn't answer|The aircraft accepted the arm)/)).toHaveCount(1);
     await expect(flightMode(app)).not.toHaveAccessibleName(/Flying/);
+  });
+});
+
+test.describe('against an ArduPilot that comes back as another aircraft', () => {
+  const sitl: { running: Sitl | null } = { running: null };
+
+  test.describe.configure({ mode: 'serial' });
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    const running = startSitl();
+    sitl.running = running;
+    await expect.poll(() => running.heard.heartbeat, { timeout: 90_000 }).toBe(true);
+  });
+
+  test.afterAll(() => sitl.running?.stop());
+
+  test("a plane answering on the lost copter's system id starts afresh, with its own modes and its own named failsafe", async ({ app }) => {
+    test.setTimeout(420_000);
+    await app.addLocatorHandler(app.getByText(/ before this vehicle can fly\.$/), () => app.getByRole('button', { name: 'Later', exact: true }).click());
+    await connectSitl(app, sitl.running?.ws ?? '');
+    await expect(flightMode(app)).toHaveAccessibleName(/^Stabilize/, { timeout: 60_000 });
+    await expect.poll(async () => (await core(app, 'vehicle.parameterManager.parametersReady')).value, { timeout: 180_000 }).toBe(true);
+    const copter = (await core(app, 'view.flyState')) as { instance?: number };
+    sitl.running?.becomes('plane');
+    await expect(flightMode(app), 'the plane flies its own modes, not the copter it replaced').toHaveAccessibleName(/^Manual/, { timeout: 120_000 });
+    await expect.poll(async () => ((await core(app, 'view.flyState')) as { instance?: number }).instance, { message: 'the core made the plane a vehicle of its own' }).not.toBe(copter.instance);
+    await expect.poll(async () => (await core(app, 'vehicle.parameterManager.parametersReady')).value, { timeout: 180_000 }).toBe(true);
+    const sheet = await vehicleStatus(app);
+    await expect(sheet.getByText('If the aircraft loses this app')).toBeVisible();
+    await expect(sheet.getByText('Do nothing', { exact: true }), "the plane's FS_GCS_ENABL reads by its name, from the plane's own metadata").toBeVisible();
+    await expect(sheet.getByText('0', { exact: true }), 'no raw number left over from the copter').toHaveCount(0);
   });
 });

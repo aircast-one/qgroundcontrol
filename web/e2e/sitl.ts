@@ -32,7 +32,9 @@ const channels = (payload: Buffer): number[] => {
   return Array.from({ length: 18 }, (_, index) => full.readUInt16LE(4 + index * 2));
 };
 
-export type Sitl = { ws: string; heard: { heartbeat: boolean; rc: readonly number[] }; stop: () => void };
+export type SitlVehicle = 'copter' | 'plane';
+
+export type Sitl = { ws: string; heard: { heartbeat: boolean; rc: readonly number[] }; becomes: (vehicle: SitlVehicle) => void; stop: () => void };
 
 const docker = (...args: string[]) => execFileSync('docker', args, { stdio: 'pipe' }).toString().trim();
 
@@ -65,6 +67,9 @@ export const startSitl = (): Sitl => {
     ws: `ws://127.0.0.1:${publishedPort(name, WS_PORT)}/ws/mavlink`,
     get heard() {
       return state.heard;
+    },
+    becomes: (vehicle: SitlVehicle) => {
+      docker('exec', name, 'sh', '-c', `mkdir -p /var/lib/aircast && echo ${vehicle} > /var/lib/aircast/vehicle && (pkill -x arducopter; pkill -x arduplane; true)`);
     },
     stop: () => {
       state.stopped = true;
