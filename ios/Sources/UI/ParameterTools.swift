@@ -84,7 +84,7 @@ func reviewSummary(_ review: ParameterReview) -> String {
     return clauses.isEmpty ? "\(loaded)." : "\(loaded): \(clauses.joined(separator: ", "))."
 }
 
-let SEND_HINT = "Click 'Ok' to update the parameters below on the Vehicle."
+let SEND_HINT = "Click OK to update the parameters below on the vehicle."
 let CANNOT_SEND_HINT = "Parameters marked 'not on Vehicle' cannot be sent since the file does not include type information. They may only exist after another parameter is changed and the Vehicle is rebooted, after which you can load this file again."
 
 func checkedAll(_ review: ParameterReview, _ chosen: Set<String>, _ on: Bool) -> Set<String> {
@@ -131,7 +131,7 @@ func diffLine(_ row: ParameterDiffRow) -> String {
     return parts.filter { !$0.isBlank }.joined(separator: " · ")
 }
 
-func confirmLabel(_ tool: ParameterTool) -> String { tool.confirmTitle == "Reset All" ? "Reset" : "Ok" }
+func confirmLabel(_ tool: ParameterTool) -> String { tool.confirmTitle == "Reset All" ? "Reset" : "OK" }
 
 private struct ParameterFile: FileDocument {
     static var readableContentTypes: [UTType] { [.plainText] }

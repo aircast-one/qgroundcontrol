@@ -3,7 +3,7 @@ import XCTest
 
 final class PostCalibrationTests: XCTestCase {
     func testOnlyACompletedArdupilotAccelOrCompassCalibrationAsksForAReboot() throws {
-        XCTAssertEqual(postCalibrationPrompt(ACCEL_ROUTINE, CALIBRATION_COMPLETE, ACCEL_ROUTINE, false), "YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION.")
+        XCTAssertEqual(postCalibrationPrompt(ACCEL_ROUTINE, CALIBRATION_COMPLETE, ACCEL_ROUTINE, false), "Reboot the vehicle so the new calibration takes effect.")
         XCTAssertTrue(try XCTUnwrap(postCalibrationPrompt(COMPASS_ROUTINE, "", COMPASS_ROUTINE, false)).hasPrefix("Shown in the indicator bars"))
         XCTAssertNil(postCalibrationPrompt(COMPASS_ROUTINE, CALIBRATION_COMPLETE, "", false), "a cancelled or failed run offers nothing")
         XCTAssertNil(postCalibrationPrompt("compassMot", CALIBRATION_COMPLETE, "", false), "CompassMot completes with the same help text but QGC opens no dialog")

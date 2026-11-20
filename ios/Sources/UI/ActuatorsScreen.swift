@@ -327,7 +327,7 @@ struct ActuatorsScreen: View {
             groupSections(group)
         }
         .alert("Error", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } }), presenting: failure) { _ in
-            Button("Ok") { failure = nil }
+            Button("OK") { failure = nil }
         } message: { Text($0) }
     }
 
@@ -353,7 +353,6 @@ struct ActuatorsScreen: View {
         }
     }
 
-    // The chosen output group: its enable, a section per subgroup and per channel, then its own parameters and notes.
     @ViewBuilder private func groupSections(_ group: ActuatorGroup) -> some View {
         if let enable = group.enable {
             Section {
@@ -421,8 +420,6 @@ struct ActuatorsScreen: View {
 
 func mixerEditable(_ testing: Bool, _ assigning: Bool) -> Bool { !testing && !assigning }
 
-// The vehicle geometry: its picture (tap a motor while assigning), then a section per geometry group and channel.
-// While testing or assigning, the mixer rows are locked.
 private struct GeometrySection: View {
     let geometry: Geometry
     let advanced: Bool

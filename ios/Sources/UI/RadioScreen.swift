@@ -46,8 +46,6 @@ private struct AttitudeRow: View {
     }
 }
 
-// The running calibration's section: the step to do, the stick diagram, and Skip / Cancel (Next is the page's
-// primary action in the navigation bar).
 private struct CalibrationStep: View {
     let cal: RadioCalibration
     let onAction: (String) -> Void
@@ -159,7 +157,6 @@ struct RadioScreen: View {
         }
     }
 
-    // Calibrate: refused while the vehicle says it is not ready, asked first when it has a start prompt.
     private func start(_ view: RadioView) {
         if view.notReady != nil {
             refusing = true
@@ -246,7 +243,7 @@ struct RadioScreen: View {
             }
         }
         .alert(view.startPrompt?.first ?? "", isPresented: Binding(get: { prompting && view.startPrompt != nil }, set: { if !$0 { prompting = false } })) {
-            Button("Ok") {
+            Button("OK") {
                 prompting = false
                 radioAction("nextButtonClicked")
             }
@@ -255,7 +252,7 @@ struct RadioScreen: View {
             Text(view.startPrompt?.second ?? "")
         }
         .alert(view.notReady?.first ?? "", isPresented: Binding(get: { refusing && view.notReady != nil }, set: { if !$0 { refusing = false } })) {
-            Button("Ok") { refusing = false }
+            Button("OK") { refusing = false }
         } message: {
             Text(view.notReady?.second ?? "")
         }

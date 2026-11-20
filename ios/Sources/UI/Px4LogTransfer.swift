@@ -94,7 +94,7 @@ struct Px4LogTransferPage: View {
                 }
             }
             .alert(confirming?.title ?? "", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }), presenting: confirming) { confirm in
-                Button("Ok") {
+                Button("OK") {
                     confirming = nil
                     confirm.run()
                 }
@@ -149,8 +149,6 @@ struct Px4LogTransferPage: View {
         act(unsavedCalls(log) + [(path, args)])
     }
 
-    // The logging controls, the upload details and the saved files as sections of a native form; Delete, the
-    // destructive action, in a section of its own with its confirmation.
     private func page(_ log: MavlinkLog) -> some View {
         let editable = log.persistence
         let idle = logListIdle(log)

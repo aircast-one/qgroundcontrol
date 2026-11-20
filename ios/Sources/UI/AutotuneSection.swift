@@ -30,7 +30,7 @@ struct AutotuneSection: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .alert("Start AutoTune", isPresented: $confirming) {
-                Button("Ok") { offMain { Qgc.invoke(AUTOTUNE_REQUEST) } }
+                Button("OK") { offMain { Qgc.invoke(AUTOTUNE_REQUEST) } }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(state.warning)

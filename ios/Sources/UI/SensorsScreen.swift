@@ -45,7 +45,7 @@ private struct SensorsNotice: View {
 
 let ACCEL_ROUTINE = "accelerometer"
 let CALIBRATION_COMPLETE = "Calibration complete"
-private let MUST_REBOOT = "YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION."
+private let MUST_REBOOT = "Reboot the vehicle so the new calibration takes effect."
 private let COMPASS_QUALITY = "Shown in the indicator bars is the quality of the calibration for each compass.\n\n"
     + "- Green indicates a well functioning compass.\n"
     + "- Yellow indicates a questionable compass or calibration.\n"

@@ -25,7 +25,7 @@ struct ResetAllSettingsRow: View {
             pending = await offMain { resetPending(Qgc.get(CLEAR_SETTINGS_NEXT_BOOT)["value"]) }
         }
         .alert("Reset all settings", isPresented: $asking) {
-            Button("Ok") { write(true) }
+            Button("OK") { write(true) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("All settings will be cleared the next time Aircast starts. This cannot be undone.")

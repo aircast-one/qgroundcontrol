@@ -11,7 +11,7 @@ final class ParameterToolsTests: XCTestCase {
         XCTAssertEqual(tools.map(\.label), ["Refresh", "Reset all to firmware's defaults", "Reboot Vehicle"])
         XCTAssertFalse(tools[0].confirm)
         XCTAssertEqual(confirmLabel(tools[1]), "Reset")
-        XCTAssertEqual(confirmLabel(tools[2]), "Ok")
+        XCTAssertEqual(confirmLabel(tools[2]), "OK")
     }
 
     func testTheModifiedFilterKeepsOnlyParametersChangedFromStock() {
