@@ -79,6 +79,10 @@ fn ardupilot_esc_block(message: &MavMessage) -> Option<ArduPilotEscBlock> {
 }
 
 impl Escs {
+    pub fn online_while_heard(&self, now_ms: u64, vehicle_heard_ms: Option<u64>) -> Escs {
+        self.online_at(vehicle_heard_ms.map_or(now_ms, |heard| heard.min(now_ms)))
+    }
+
     pub fn online_at(&self, now_ms: u64) -> Escs {
         let heard = self
             .by_id
@@ -761,6 +765,34 @@ mod tests {
         assert!(!position.apply(&MavMessage::POSITION_TARGET_LOCAL_NED(target.clone())));
         assert!(position.apply_target(&MavMessage::POSITION_TARGET_LOCAL_NED(target)));
         assert_eq!((position.x, position.vz, position.seen), (1.5, -0.25, true));
+    }
+
+    #[test]
+    fn an_esc_stays_online_while_the_whole_vehicle_is_silent_and_drops_only_when_the_rest_keeps_talking()
+     {
+        use mavlink::dialects::ardupilotmega::ESC_STATUS_DATA;
+        let mut escs = Escs::default();
+        escs.apply(
+            &MavMessage::ESC_STATUS(ESC_STATUS_DATA {
+                index: 0,
+                rpm: [100, 200, 300, 400],
+                ..Default::default()
+            }),
+            1_000,
+        );
+        escs.by_id.values_mut().for_each(|esc| esc.info = 0b1111);
+        let online = |escs: &Escs| escs.by_id.values().filter(|esc| esc.info != 0).count();
+        assert_eq!(
+            online(&escs.online_while_heard(20_000, Some(1_200))),
+            4,
+            "a link that went quiet silences the ESCs with everything else, so they are not lost on their own"
+        );
+        assert_eq!(
+            online(&escs.online_while_heard(20_000, Some(19_900))),
+            0,
+            "ESC data that stops while the vehicle keeps talking is lost"
+        );
+        assert_eq!(online(&escs.online_while_heard(20_000, None)), 0);
     }
 
     #[test]

@@ -215,6 +215,7 @@ struct Known {
     sub_info: crate::sensorfacts::SubInfoFacts,
     terrain_blocks: (u16, u16),
     escs: crate::sensorfacts::Escs,
+    heard_ms: Option<u64>,
     trigger_points: (Vec<(f64, f64, f64)>, bool),
     mission_indices: (i32, i32, usize),
     links: (Vec<(u32, bool)>, Option<u32>),
@@ -1132,6 +1133,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         sub_info: v.sub_info.clone(),
         terrain_blocks: v.terrain_blocks,
         escs: v.escs.clone(),
+        heard_ms: v.link_states.iter().map(|(_, heard, _)| *heard).max(),
         trigger_points: (v.trigger_points.clone(), v.trigger_points_appended),
         mission_indices: (
             v.current_mission_index(),
@@ -2142,7 +2144,9 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         }
         "vehicle.escs" => {
             return Some(crate::vehiclefact::esc_list(
-                &known.escs.online_at(crate::hub::now_ms()),
+                &known
+                    .escs
+                    .online_while_heard(crate::hub::now_ms(), known.heard_ms),
             ));
         }
         "vehicle.escs.count" => {
@@ -4753,6 +4757,7 @@ mod tests {
             sub_info: Default::default(),
             terrain_blocks: (0, 0),
             escs: Default::default(),
+            heard_ms: None,
             trigger_points: Default::default(),
             mission_indices: (-1, 0, 1),
             links: (Vec::new(), None),
