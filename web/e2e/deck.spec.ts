@@ -24,6 +24,17 @@ test('on the ground Force arm sits in the menu in the same ink as Arm and still 
   await expect(vehicle.getByRole('button', { name: 'Slide to force arm' })).toBeVisible();
 });
 
+test('a take-off height being chosen survives the window narrowing to a phone and widening back', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'Take off' }).click();
+  await vehicle.getByRole('button', { name: '50 m', exact: true }).click();
+  const slide = vehicle.getByRole('button', { name: /^Slide to take off( anyway)? · 50(\.0)? m$/ });
+  await expect(slide).toBeVisible();
+  await vehicle.setViewportSize({ width: 412, height: 860 });
+  await expect(slide, 'the panel and its height outlive the phone layout taking over').toBeVisible();
+  await vehicle.setViewportSize({ width: 1280, height: 800 });
+  await expect(slide).toBeVisible();
+});
+
 test('edit layout from more actions starts and ends layout editing', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'Menu', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Edit layout').click();

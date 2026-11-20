@@ -1,10 +1,14 @@
 import { createContext, useContext, useEffect } from 'react';
 import { useUpdatedRef } from '@/kotlin/Compose';
-import { mutableStateListOf, mutableStateMapOf, mutableStateOf, useValue } from '@/kotlin/State';
+import { type MutableState, mutableStateListOf, mutableStateMapOf, mutableStateOf, useValue } from '@/kotlin/State';
 import { FlyMapEdits } from '@/map/FlyMapEdits';
 import { type Insets, MapInsets, NO_INSETS, type Rect } from '@/ui/FlyShell';
 import type { OverlayLayoutState } from '@/ui/OverlayLayout';
 import { PipCorner } from '@/ui/VideoGestures';
+import type { OpenGuidedValue } from './GuidedValueFlow';
+import type { GuidedAction } from './VehicleUi';
+
+export type VehicleScoped<T> = { readonly vehicle: number | null; readonly value: T };
 
 export class FlyScreenState {
   readonly layout: OverlayLayoutState;
@@ -17,6 +21,8 @@ export class FlyScreenState {
   readonly pendingMode = mutableStateOf<string | null>(null);
   readonly instrumentEdits = mutableStateOf(0);
   readonly guidedPanels = mutableStateOf(0);
+  readonly confirming = mutableStateOf<VehicleScoped<GuidedAction> | null>(null);
+  readonly choosingValue = mutableStateOf<VehicleScoped<OpenGuidedValue> | null>(null);
   readonly controlRequestDeadlines = mutableStateMapOf<number, number>();
   readonly mapEdits = new FlyMapEdits();
   readonly obstacles = mutableStateMapOf<string, Rect>();
@@ -35,6 +41,14 @@ export class FlyScreenState {
     return this.guidedPanels.value > 0;
   }
 }
+
+export const useVehicleScoped = <T,>(state: MutableState<VehicleScoped<T> | null>, vehicle: number | null): readonly [T | null, (next: T | null) => void] => {
+  const held = useValue(state);
+  const set = (next: T | null) => {
+    state.value = next === null ? null : { vehicle, value: next };
+  };
+  return [held !== null && held.vehicle === vehicle ? held.value : null, set];
+};
 
 const unprovided = new Proxy({} as FlyScreenState, {
   get: () => {

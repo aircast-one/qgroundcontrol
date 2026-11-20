@@ -20,13 +20,13 @@ import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnless
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeConfirmText, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
 import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
-import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET } from './FlyScreenState';
+import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET, useVehicleScoped } from './FlyScreenState';
 import { AnimatedVisibility, PASS_THROUGH, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, useGuidedReadiness, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
 import { AUTO_PURSUIT, type AutoPursuit, GUIDED_ACTIONS, type GuidedOffer, type PursuitAction, type Payload, SINGLE_GRIPPER, autoPursuit, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
-import { type GuidedValueKind, GuidedValueFlow, type OpenGuidedValue, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
+import { type GuidedValueKind, GuidedValueFlow, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
 import { holdLabel } from './HoldToConfirm';
 import {
   INSTRUMENTS_VIEW,
@@ -464,8 +464,8 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const available = state?.connected === true;
   const armed = state?.armed === true;
   const activeId = useRememberActiveVehicleId();
-  const [pending, setPending] = useKeyedState<GuidedAction | null>([activeId], () => null);
-  const [guidedValue, setGuidedValue] = useKeyedState<OpenGuidedValue | null>([activeId], () => null);
+  const [pending, setPending] = useVehicleScoped(flyScreen.confirming, activeId);
+  const [guidedValue, setGuidedValue] = useVehicleScoped(flyScreen.choosingValue, activeId);
   const [sentName, setSentName] = useState<string | null>(null);
   const [sentSnapshot, setSentSnapshot] = useState<string | null>(null);
   const refusal = useValue(flyScreen.refusal);
