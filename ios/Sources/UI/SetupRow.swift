@@ -258,6 +258,8 @@ private func leadingWord(_ text: String) -> String {
     text.firstIndex(of: " ").map { String(text[..<$0]) } ?? ""
 }
 
+private let SETUP_REQUIRED = "Setup required"
+
 func summaryGlanceParts(_ summary: [SummaryLine]) -> [SummaryLine] {
     let read = summary.map {
         SummaryLine(
@@ -266,6 +268,10 @@ func summaryGlanceParts(_ summary: [SummaryLine]) -> [SummaryLine] {
             warn: $0.warn
         )
     }.filter { !UNREAD_VALUES.contains($0.value) }
+    let needed = read.filter { $0.value == SETUP_REQUIRED }
+    if !needed.isEmpty {
+        return needed.map { SummaryLine(label: $0.label, value: sentenceCase("\($0.label) \(SETUP_REQUIRED.lowercased())".trimmed), warn: $0.warn) }
+    }
     let leads = Set(read.map { leadingWord($0.value) })
     let shared = leads.count == 1 && read.count > 1 ? leads.first.flatMap { $0.isEmpty ? nil : $0 } : nil
     let parts = shared.map { prefix in

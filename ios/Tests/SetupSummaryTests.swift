@@ -33,4 +33,11 @@ final class SetupSummaryTests: XCTestCase {
             "Ready \u{00b7} Not supported (over APM 4.1)"
         )
     }
+
+    func testAGlanceNamesWhatStillNeedsSetupSoASensorsRowWithAnUncalibratedCompassNeverReadsReady() {
+        let afterAccelerometer = [SummaryLine(label: "Compass:", value: "Setup required"), SummaryLine(label: "Setup required", value: "LSM303D (SPI4)"), SummaryLine(label: "Accelerometer:", value: "Ready")]
+        XCTAssertEqual(summaryGlance(afterAccelerometer), "Compass setup required")
+        XCTAssertEqual(summaryGlance([SummaryLine(label: "Compass:", value: "Ready"), SummaryLine(label: "Accelerometer:", value: "Ready")]), "Ready")
+        XCTAssertEqual(summaryGlance([SummaryLine(label: "Roll", value: "Channel 1"), SummaryLine(label: "Pitch", value: "Setup required")]), "Pitch setup required", "the Radio row read Channel 1 · Setup required without saying which stick")
+    }
 }
