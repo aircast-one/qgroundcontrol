@@ -157,10 +157,10 @@ internal fun WaypointStripBar(
 }
 
 @Composable
-internal fun EmptyMissionStrip(homeSet: Boolean, onTemplates: (() -> Unit)?, onDownload: (() -> Unit)?) {
+internal fun EmptyMissionStrip(setsHome: Boolean, onTemplates: (() -> Unit)?, onDownload: (() -> Unit)?) {
     Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp)) {
         Text(TAP_TO_ADD, style = MaterialTheme.typography.titleMedium)
-        if (!homeSet) {
+        if (setsHome) {
             Text(FIRST_TAP_SETS_HOME, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (onTemplates != null || onDownload != null) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

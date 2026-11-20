@@ -941,7 +941,7 @@ internal fun PlanMapContent(
                         onDone = { selected = null },
                     )
                     layer == PlanLayer.Mission && itemCount == 0 -> EmptyMissionStrip(
-                        homeSet = homeSet,
+                        setsHome = planStatus?.optJSONObject("templates")?.optBoolean("firstClickSetsHome") == true,
                         onTemplates = onTemplates,
                         onDownload = { requestDownload() }.takeIf { !planOffline },
                     )
