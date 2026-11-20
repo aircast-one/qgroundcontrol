@@ -185,10 +185,10 @@ export const WaypointStripBar = ({
   </div>
 );
 
-export const EmptyMissionStrip = ({ homeSet, onTemplates, onDownload }: { homeSet: boolean; onTemplates: (() => void) | null; onDownload: (() => void) | null }) => (
+export const EmptyMissionStrip = ({ setsHome, onTemplates, onDownload }: { setsHome: boolean; onTemplates: (() => void) | null; onDownload: (() => void) | null }) => (
   <div className="flex w-full flex-col px-3 pb-1">
     <Text typography="titleMedium">{TAP_TO_ADD}</Text>
-    {homeSet ? null : (
+    {!setsHome ? null : (
       <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
         {FIRST_TAP_SETS_HOME}
       </Text>

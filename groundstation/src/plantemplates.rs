@@ -45,10 +45,15 @@ pub fn templates_json(backend: &dyn Backend, patterns: &[String], contains_items
         "show": show(contains_items),
         "enabled": home_set || crate::coreplan::enabled(),
         "homeSet": home_set,
+        "firstClickSetsHome": first_click_sets_home(home_set, crate::coreplan::launches_from_vehicle()),
         "blank": NO_TEMPLATE,
         "prompt": if home_set { "Drag to move home position. Click to set new position." } else { "Click in map to set position" },
         "names": patterns.iter().map(String::as_str).chain(std::iter::once(NO_TEMPLATE)).collect::<Vec<_>>(),
     })
+}
+
+fn first_click_sets_home(home_set: bool, launches_from_vehicle: bool) -> bool {
+    !home_set && !launches_from_vehicle
 }
 
 pub fn steps(name: &str, latitude: f64, longitude: f64) -> Vec<(&'static str, Value)> {
@@ -142,6 +147,19 @@ pub fn create(backend: &dyn Backend, args: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_first_click_sets_home_only_when_no_aircraft_supplies_it() {
+        assert_eq!(
+            [
+                first_click_sets_home(false, false),
+                first_click_sets_home(false, true),
+                first_click_sets_home(true, false),
+            ],
+            [true, false, false],
+            "a mission that takes off from a connected aircraft starts at the aircraft's home, wherever the first click lands"
+        );
+    }
 
     #[test]
     fn a_template_clears_then_adds_takeoff_pattern_and_land_at_the_centre() {

@@ -2542,6 +2542,10 @@ fn clear_kinds(fresh: Option<Document>, kinds: &[&str]) {
     changed();
 }
 
+pub fn launches_from_vehicle() -> bool {
+    takeoff_required_first() && active_vehicle_home().is_some()
+}
+
 fn takeoff_required_first() -> bool {
     let state = held();
     state.document.as_ref().is_some_and(|document| {

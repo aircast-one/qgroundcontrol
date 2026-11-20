@@ -1062,7 +1062,7 @@ export const PlanMapContent = ({
                 deleteEnabled={!removing}
               />
             ) : layer.value === PlanLayer.Mission && itemCount.value === 0 ? (
-              <EmptyMissionStrip homeSet={homeSet} onTemplates={onTemplates} onDownload={planOffline ? null : onDownload} />
+              <EmptyMissionStrip setsHome={optBoolean(templates, 'firstClickSetsHome')} onTemplates={onTemplates} onDownload={planOffline ? null : onDownload} />
             ) : layer.value !== PlanLayer.Mission ? (
               <Text typography="titleMedium" className="block pb-1 pl-3">
                 {layer.value.label}
