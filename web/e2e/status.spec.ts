@@ -20,6 +20,20 @@ test('the status sheet scrolls as one page, with no scroll box nested inside it'
   expect(nested, 'the failsafe settings scroll inside the sheet instead of with it').toBe(0);
 });
 
+test('a sheet opened from all status closes with one Escape, and the next Escape closes all status', async ({ vehicle }) => {
+  await openMenu(vehicle, 'All status');
+  const status = vehicle.getByRole('dialog', { name: 'Status' });
+  await expect(status).toBeVisible();
+  await status.getByRole('button', { name: /^\d+%/ }).first().focus();
+  await vehicle.keyboard.press('Enter');
+  const battery = vehicle.getByRole('dialog', { name: 'Battery' });
+  await expect(battery).toBeVisible();
+  await vehicle.keyboard.press('Escape');
+  await expect(battery).toBeHidden();
+  await vehicle.keyboard.press('Escape');
+  await expect(status, 'the tooltip on the button that got its focus back no longer eats the Escape').toBeHidden();
+});
+
 test('in the air the status sheet drops the disarm slide and the setup links', async ({ vehicle }) => {
   test.setTimeout(120_000);
   await takeOff(vehicle, '5 m');

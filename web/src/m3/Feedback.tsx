@@ -57,7 +57,12 @@ export const SnackbarHost = ({ hostState, className }: { hostState: SnackbarHost
 };
 
 export const Tooltipped = ({ tooltip, children }: { tooltip: ReactNode; children: ReactElement }) => (
-  <Tooltip.Root disableHoverablePopup>
+  <Tooltip.Root
+    disableHoverablePopup
+    onOpenChange={(open, details) => {
+      if (!open && details.reason === 'escape-key') details.allowPropagation();
+    }}
+  >
     <Tooltip.Trigger render={children} />
     <Tooltip.Portal>
       <Tooltip.Positioner sideOffset={6} className="pointer-events-none z-[60]">
