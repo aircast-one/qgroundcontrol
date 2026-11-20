@@ -2264,6 +2264,7 @@ impl Sim {
 
     fn return_alt(&self) -> f64 {
         match self.options.vehicle {
+            Vehicle::Rover => self.alt,
             Vehicle::Plane if self.tuning.rtl_alt > 0.0 => self.tuning.rtl_alt,
             _ => self.alt.max(self.tuning.rtl_alt),
         }
@@ -2627,6 +2628,7 @@ impl Sim {
                 Vehicle::Plane => {}
                 Vehicle::Rover => {
                     self.phase = Phase::Holding;
+                    self.target = None;
                     self.finish_item(returns);
                 }
                 _ => self.phase = Phase::Landing,
@@ -6190,6 +6192,45 @@ mod tests {
         assert!(px4.armed && !px4.airborne());
         steer(&mut px4, 0, 0, 0, 0, 2);
         assert!(!px4.armed, "COM_DISARM_LAND is 2 s");
+    }
+
+    #[test]
+    fn a_rover_mission_that_ends_in_a_return_drives_home_and_completes() {
+        let mut sim = Sim::new(options(Vehicle::Rover), 128, None);
+        let home = sim.home;
+        upload(
+            &mut sim,
+            &[
+                item(0, MavCmd::MAV_CMD_NAV_WAYPOINT, None, 0.0),
+                item(
+                    1,
+                    MavCmd::MAV_CMD_NAV_WAYPOINT,
+                    Some((home.0 + 0.0006, home.1)),
+                    50.0,
+                ),
+                item(2, MavCmd::MAV_CMD_NAV_RETURN_TO_LAUNCH, None, 0.0),
+            ],
+        );
+        mode(&mut sim, APM_WHEELED_AUTO);
+        arm(&mut sim);
+        command(&mut sim, MavCmd::MAV_CMD_MISSION_START, [0.0; 7]);
+        let farthest = (0..240 * TICKS_PER_SECOND)
+            .map(|_| {
+                sim.tick(sim.ticks * 100);
+                sim.pump();
+                metres_to(&sim, home.0, home.1)
+            })
+            .fold(0.0, f64::max);
+        assert!(
+            farthest > 50.0,
+            "it drove out to the waypoint, {farthest} m"
+        );
+        assert!(
+            metres_to(&sim, home.0, home.1) < 5.0,
+            "a rover cannot climb to RTL_ALT, so its return drives home on the ground instead of stopping where it is: {} m away",
+            metres_to(&sim, home.0, home.1)
+        );
+        assert_eq!(sim.mission.state, MissionState::MISSION_STATE_COMPLETE);
     }
 
     #[test]
