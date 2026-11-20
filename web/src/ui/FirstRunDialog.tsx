@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { type KeyboardEvent, useMemo, useRef } from 'react';
 import { Dialog } from '@base-ui/react';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
@@ -62,6 +62,11 @@ export const FirstRunDialog = () => {
   const cardRef = useRef<HTMLDivElement>(null);
   if (prompt === null) return null;
   const close = () => void AppCommands.markFirstRunShown();
+  const takesFocus = {
+    ref: cardRef,
+    initialFocus: cardRef,
+    onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => event.key === 'Enter' && event.target === event.currentTarget && close(),
+  };
   const questions = (
     <>
       <FirstRunUnits />
@@ -88,9 +93,7 @@ export const FirstRunDialog = () => {
             <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
             <Dialog.Popup
               aria-label={prompt.title}
-              ref={cardRef}
-              initialFocus={cardRef}
-              onKeyDown={(event) => event.key === 'Enter' && event.target === event.currentTarget && close()}
+              {...takesFocus}
               className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-48px)] w-[min(620px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 overflow-auto rounded-shape-xl bg-surface-container-high p-8 text-on-surface shadow-2xl outline-none"
             >
               {heading}
@@ -103,7 +106,7 @@ export const FirstRunDialog = () => {
             </Dialog.Popup>
           </>
         ) : (
-          <Dialog.Popup aria-label={prompt.title} className="fixed inset-0 z-50 flex flex-col bg-surface text-on-surface outline-none">
+          <Dialog.Popup aria-label={prompt.title} {...takesFocus} className="fixed inset-0 z-50 flex flex-col bg-surface text-on-surface outline-none">
             <div className="min-h-0 w-full flex-1 overflow-auto">
               <div className="mx-auto flex w-full flex-col gap-6 px-6 pt-12 pb-4" style={{ maxWidth: FIRST_RUN_WIDTH }}>
                 {heading}

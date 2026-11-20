@@ -111,13 +111,21 @@ test('the welcome asks each question as a named group of one-click choices', asy
   expect(await valueOnlyNames(page)).toEqual([]);
 });
 
-test('the welcome opens on the card, so Enter continues and Tab reaches the first choice', async ({ page }) => {
-  await openApp(page, { firstRun: false });
-  const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
-  await expect(welcome).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(welcome.getByRole('button', { name: 'Metric', exact: true })).toBeFocused();
-  await welcome.focus();
-  await page.keyboard.press('Enter');
-  await expect(welcome).toBeHidden();
-});
+(
+  [
+    ['a desktop', 1280, 800],
+    ['a phone', 412, 860],
+  ] as const
+).forEach(([screen, width, height]) =>
+  test(`on ${screen} the welcome opens on the card, so Enter continues and Tab reaches the first choice`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await openApp(page, { firstRun: false });
+    const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
+    await expect(welcome, 'no choice opens wearing a focus ring').toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(welcome.getByRole('button', { name: 'Metric', exact: true })).toBeFocused();
+    await welcome.focus();
+    await page.keyboard.press('Enter');
+    await expect(welcome).toBeHidden();
+  }),
+);
