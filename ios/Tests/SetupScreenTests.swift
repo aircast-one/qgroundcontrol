@@ -132,4 +132,12 @@ final class SetupScreenTests: XCTestCase {
         XCTAssertNil(parametersIncomplete(JSON.parse(#"{"parametersReady":true,"parametersReason":""}"#)))
         XCTAssertNil(parameterWait(view), "ready parameters never block setup")
     }
+
+    func testAnOpenPageFollowsItsComponentSoSensorsOpenedBeforeTheFrameWriteLandedStopsAskingForTheFrameOnceItHas() {
+        let waiting = SetupComponent(index: 1, name: "Sensors", needsAttention: true, prerequisite: "Frame")
+        let framed = SetupComponent(index: 1, name: "Sensors", needsAttention: true, prerequisite: nil)
+        XCTAssertNil(currentComponent(waiting, [framed])?.prerequisite)
+        XCTAssertEqual(currentComponent(waiting, []), waiting, "a component gone from the list keeps what was opened")
+        XCTAssertNil(currentComponent(nil, [framed]))
+    }
 }

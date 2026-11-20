@@ -233,9 +233,10 @@ private struct NavigationRequest: Equatable {
     let hasVehicle: Bool
 }
 
-// Aircraft setup, pushed onto the Settings NavigationStack: the components in a native list, each opening its page
-// as a further push (openComponent / parametersOpen drive navigationDestination), so the page gets the system back
-// and swipe-back, and BlocksNavigation (a calibration) holds them.
+func currentComponent(_ opened: SetupComponent?, _ components: [SetupComponent]) -> SetupComponent? {
+    opened.map { open in components.first { $0.name == open.name } ?? open }
+}
+
 struct SetupScreen: View {
     @Environment(AppNavigationState.self) private var navigation
     @Environment(\.theme) private var theme
@@ -252,7 +253,6 @@ struct SetupScreen: View {
 
     private var hasVehicle: Bool { setupReadiness(setupJson)?.connected == true }
 
-    // The open component, when it has a page here to push.
     private var shownComponent: Binding<SetupComponent?> {
         Binding(
             get: { openComponent.flatMap { headCanOpen(setupPage(setupJson, $0.name), $0.name) ? $0 : nil } },
@@ -266,7 +266,7 @@ struct SetupScreen: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .navigationDestination(item: shownComponent) { open in
                 ComponentPage(
-                    open: open,
+                    open: currentComponent(open, components) ?? open,
                     section: openSection,
                     setupJson: setupJson,
                     onOpen: { first in
@@ -613,7 +613,6 @@ private struct ReadinessHeader: View {
     let vehicleId: Int?
     let note: String?
 
-    // The navigation bar carries "Aircraft setup"; this is the line under it, on the form's background.
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(setupSubtitle(vehicle, firmware)).font(.subheadline)
