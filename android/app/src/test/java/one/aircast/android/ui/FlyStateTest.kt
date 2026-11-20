@@ -222,6 +222,27 @@ class FlyReadinessTest {
     }
 
     @Test
+    fun `an armed flight outlives a link loss, a landing during the outage still reads as landed, and the start is not re-read`() {
+        val flying = armedSessionStep(armedSessionStep(NO_ARMED_SESSION, true, 1, true, "disarmed").session, true, 1, true, "flying").session
+        assertEquals(ArmedSession(1, armed = true, flew = true), flying)
+        val outage = armedSessionStep(flying, false, null, false, null)
+        assertEquals(ArmedSessionStep(flying, null, landed = false, started = false), outage)
+        assertEquals(ArmedSessionStep(ArmedSession(1, armed = false, flew = false), "Landed and disarmed", landed = true, started = false), armedSessionStep(outage.session, true, 1, false, "landed"))
+        assertEquals("still armed on its return, the flight carries on", ArmedSessionStep(flying, null, landed = true, started = false), armedSessionStep(outage.session, true, 1, true, "landed"))
+        assertEquals("nothing is said until the vehicle is named", ArmedSessionStep(flying, null, landed = false, started = false), armedSessionStep(outage.session, true, null, false, "disarmed"))
+        assertEquals(MOTORS_STOPPED, armedSessionStep(flying, true, 1, false, "disarmed", DisarmCause(killed = true, lands = true)).notice)
+    }
+
+    @Test
+    fun `a different aircraft on the lost one's id starts afresh and announces nothing about the lost one`() {
+        val flying = armedSessionStep(armedSessionStep(NO_ARMED_SESSION, true, 1, true, "flying").session, false, null, false, null).session
+        assertEquals(ArmedSessionStep(ArmedSession(2, armed = false, flew = false), null, landed = false, started = false), armedSessionStep(flying, true, 2, false, "disarmed"))
+        assertEquals(true, armedSessionStep(flying, true, 2, true, "disarmed").started)
+        assertEquals(2, flyState(JSONObject("""{"class":"FlyState","connected":true,"instance":2}"""))?.instance)
+        assertEquals(null, flyState(JSONObject("""{"class":"FlyState","connected":true}"""))?.instance)
+    }
+
+    @Test
     fun aLandingSaysHowLongHowFarAndHowMuchBatteryTheFlightTook() {
         assertEquals("03'12\" \u00b7 240 m \u00b7 23% battery used", landedSummary(192.0, "240 m", 23))
         assertEquals("00'45\"", landedSummary(45.0, null, null))

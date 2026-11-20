@@ -29,6 +29,7 @@ internal data class FlyState(
     val canArm: Boolean = true,
     val readyToFly: Boolean = true,
     val rcRequired: Boolean = true,
+    val instance: Int? = null,
 )
 
 internal enum class ChipTone { Error, Neutral, Warning, Success }
@@ -81,6 +82,25 @@ internal fun disarmNotice(wasArmed: Boolean, flewWhileArmed: Boolean, armedNow: 
     cause.killed -> MOTORS_STOPPED
     flewWhileArmed && cause.lands -> LANDED_AND_DISARMED
     else -> "Disarmed"
+}
+
+internal data class ArmedSession(val vehicle: Int?, val armed: Boolean, val flew: Boolean)
+
+internal val NO_ARMED_SESSION = ArmedSession(vehicle = null, armed = false, flew = false)
+
+internal data class ArmedSessionStep(val session: ArmedSession, val notice: String?, val landed: Boolean, val started: Boolean)
+
+internal fun armedSessionStep(held: ArmedSession, connected: Boolean, vehicle: Int?, armed: Boolean, state: String?, cause: DisarmCause = LANDING): ArmedSessionStep {
+    if (!connected || (vehicle == null && held.vehicle != null)) return ArmedSessionStep(held, notice = null, landed = false, started = false)
+    val same = held.vehicle == null || held.vehicle == vehicle
+    val was = same && held.armed
+    val flew = same && held.flew
+    return ArmedSessionStep(
+        session = ArmedSession(vehicle, armed, armed && (flew || state in IN_AIR_STATES)),
+        notice = disarmNotice(was, flew, armed, cause),
+        landed = flew,
+        started = armed && !was,
+    )
 }
 
 internal const val VEHICLE_FLIGHT_DISTANCE = "vehicle.flightDistance"
@@ -138,6 +158,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
         mode = view.optText("mode"),
         rcSupported = view.optBoolean("rcSupported"),
         rcRequired = view.optBoolean("rcRequired", true),
+        instance = if (view.isNull("instance")) null else view.optInt("instance"),
         rcSignalText = view.optText("rcSignalText"),
         rcSignal = if (view.isNull("rcSignal")) null else view.optInt("rcSignal"),
         rcOverride = if (view.isNull("rcOverride")) null else view.optBoolean("rcOverride"),

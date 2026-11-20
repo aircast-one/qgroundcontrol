@@ -351,7 +351,7 @@ fun AircastShell(hostView: android.view.View?) {
     var waypointTapped by remember { mutableStateOf<Int?>(null) }
     var roiTapped by remember { mutableStateOf<TrackPoint?>(null) }
     val flyNow by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.FLY_STATE) { json ->
-        one.aircast.android.ui.flyState(json)?.let { ShellFly(it.connected, it.armed, it.state) }
+        one.aircast.android.ui.flyState(json)?.let { ShellFly(it.connected, it.instance, it.armed, it.state) }
     }
     val noVideoSource by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.VIDEO_VIEW) { json ->
         one.aircast.android.ui.videoReading(json)?.let { !it.available && !it.sourceChosen } == true
@@ -452,18 +452,17 @@ fun AircastShell(hostView: android.view.View?) {
 
     val sub by one.aircast.android.bridge.qgcBool("vehicle.sub")
     val rover by one.aircast.android.bridge.qgcBool("vehicle.rover")
-    var wasArmed by remember { mutableStateOf(false) }
-    var flewWhileArmed by remember { mutableStateOf(false) }
+    var armedSession by remember { mutableStateOf(one.aircast.android.ui.NO_ARMED_SESSION) }
     var armedBattery by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(flyNow?.armed, flyNow?.state) {
-        val armedNow = flyNow?.let { it.connected && it.armed } == true
-        if (armedNow && !wasArmed) noticeScope.launch { armedBattery = withContext(Dispatchers.Default) { one.aircast.android.ui.batteryPercentNow() } }
+    LaunchedEffect(flyNow) {
         val cause = one.aircast.android.ui.DisarmCause(
             killed = one.aircast.android.ui.killedRecently(one.aircast.android.ui.motorsKilledAt.get(), one.aircast.android.ui.monotonicMillis()),
             lands = !sub && !rover,
         )
-        one.aircast.android.ui.disarmNotice(wasArmed, flewWhileArmed, armedNow, cause)?.let { said ->
-            val landed = flewWhileArmed
+        val step = one.aircast.android.ui.armedSessionStep(armedSession, flyNow?.connected == true, flyNow?.instance, flyNow?.armed == true, flyNow?.state, cause)
+        if (step.started) noticeScope.launch { armedBattery = withContext(Dispatchers.Default) { one.aircast.android.ui.batteryPercentNow() } }
+        step.notice?.let { said ->
+            val landed = step.landed
             val startBattery = armedBattery
             noticeScope.launch {
                 val summary = if (!landed) "" else withContext(Dispatchers.Default) {
@@ -476,8 +475,7 @@ fun AircastShell(hostView: android.view.View?) {
                 snackbars.showSnackbar(listOf(said, summary).filter { it.isNotBlank() }.joinToString(" \u00b7 "))
             }
         }
-        flewWhileArmed = armedNow && (flewWhileArmed || flyNow?.state == "flying" || flyNow?.state == "landing")
-        wasArmed = armedNow
+        armedSession = step.session
     }
     val shownFlyView = one.aircast.android.ui.flyViewShown(flyView, armed = flyNow?.armed == true, noVideoSource = noVideoSource)
 
@@ -734,4 +732,4 @@ fun AircastShell(hostView: android.view.View?) {
     }
 }
 
-private data class ShellFly(val connected: Boolean, val armed: Boolean, val state: String?)
+private data class ShellFly(val connected: Boolean, val instance: Int?, val armed: Boolean, val state: String?)
