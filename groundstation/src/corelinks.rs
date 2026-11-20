@@ -450,9 +450,14 @@ fn change_mocks(given: &Value) -> usize {
         crate::mocklink::available(),
         crate::debugapi::mock_change(&pairs),
     ) {
-        (true, Ok(changes)) => {
-            crate::linkhost::change_mock_conditions(&crate::linkhost::TRANSPORTS, &changes)
-        }
+        (true, Ok(changes)) => crate::debugapi::mock_silence(&pairs)
+            .map_or(0, |silent| {
+                crate::linkhost::silence_mocks(&crate::linkhost::TRANSPORTS, silent)
+            })
+            .max(crate::linkhost::change_mock_conditions(
+                &crate::linkhost::TRANSPORTS,
+                &changes,
+            )),
         _ => 0,
     }
 }

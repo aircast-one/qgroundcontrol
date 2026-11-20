@@ -186,6 +186,47 @@ test('a link that drops mid-flight says the link is lost and where the aircraft 
   await expect(vehicle.getByText(/^Turn on the aircraft/)).toHaveCount(0);
 });
 
+const silenceLink = (page: Page, silent: boolean) =>
+  page.evaluate(
+    async ({ module, silent }) => {
+      const { Qgc } = (await import(module)) as { Qgc: { invoke: (path: string, ...args: unknown[]) => Promise<unknown> } };
+      return Qgc.invoke('links.changeMockLinks', { silent: silent ? '1' : '0' });
+    },
+    { module: QGC, silent },
+  );
+
+const listenForWords = (page: Page) =>
+  page.evaluate(async (module) => {
+    const { SpeechOut } = (await import(module)) as { SpeechOut: { say: (text: string, clip: string) => void } };
+    const say = SpeechOut.say;
+    SpeechOut.say = (text: string, clip: string) => {
+      const record = window as unknown as Heard;
+      record.heard = [...record.heard, text];
+      say(text, clip);
+    };
+  }, '/src/app/SpeechOut.ts');
+
+test('a link that goes quiet in the air says the link is lost rather than naming the motors, marks the readings stale and offers no disarm', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/Flying/, { timeout: 60_000 });
+  await expect(vehicle.getByRole('img', { name: 'Motor load' }), 'the motors report their telemetry before the link goes').toBeVisible();
+  await listenForSpeech(vehicle);
+  await listenForWords(vehicle);
+  expect(await silenceLink(vehicle, true), 'the simulated link goes quiet both ways, like a radio out of range').toBeTruthy();
+  await expect.poll(() => heard(vehicle), { timeout: 20_000 }).toContainEqual(expect.stringMatching(/signal_lost/));
+  expect((await heard(vehicle)).filter((it) => /telemetry lost/i.test(it)), 'every motor going quiet with the link is the link, not the motors').toEqual([]);
+  const stale = vehicle.getByText('No contact — these are the last values the vehicle sent.');
+  await expect(stale, 'the readings over the picture say they are the last ones heard').toBeVisible();
+  await vehicle.getByRole('button', { name: /^\d+ s · / }).first().click();
+  const sheet = vehicle.getByRole('dialog', { name: 'Vehicle status' });
+  await expect(sheet.getByText('If the aircraft loses this app')).toBeVisible();
+  await expect(sheet.getByText('Slide to disarm'), 'with contact lost the aircraft may still be in the air').toHaveCount(0);
+  await vehicle.keyboard.press('Escape');
+  await silenceLink(vehicle, false);
+  await expect(stale).toBeHidden({ timeout: 20_000 });
+});
+
 const dropsOn = (screen: 'Settings' | 'Plan') =>
   test(`a link that drops while ${screen} is open raises the link-lost bar and says so aloud`, async ({ vehicle }) => {
     await takeOff(vehicle, '5 m');

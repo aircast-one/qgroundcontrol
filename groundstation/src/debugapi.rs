@@ -356,6 +356,10 @@ fn applied(changes: &[crate::mocklink::Change]) -> Value {
     Value::Object(fields)
 }
 
+pub fn mock_silence(pairs: &[(String, String)]) -> Option<bool> {
+    present(pairs, "silent").then(|| switched_on(pairs, "silent"))
+}
+
 fn switched_on(pairs: &[(String, String)], key: &str) -> bool {
     first(pairs, key).is_some_and(|v| {
         v.is_empty() || matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")

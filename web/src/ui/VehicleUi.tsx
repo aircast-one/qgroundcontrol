@@ -22,7 +22,7 @@ import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeConf
 import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET, useVehicleScoped } from './FlyScreenState';
 import { AnimatedVisibility, PASS_THROUGH, useElementSize } from './FlyShell';
-import { FLY_STATE, type Readiness, flyState, useGuidedReadiness, useHasVehicle, vehicleSubtitle } from './FlyState';
+import { FLY_STATE, type Readiness, STALE_OPACITY, flyState, useGuidedReadiness, useHasVehicle, useStaleNotice, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
 import { AUTO_PURSUIT, type AutoPursuit, GUIDED_ACTIONS, type GuidedOffer, type PursuitAction, type Payload, SINGLE_GRIPPER, autoPursuit, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
@@ -57,7 +57,7 @@ import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
 import { LayoutWidget } from './OverlayLayout';
-import { LocalFlyOsd } from './Osd';
+import { LocalFlyOsd, osdShadow } from './Osd';
 import { ParameterForm } from './ParameterForm';
 import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
@@ -216,9 +216,8 @@ const useTelemetryReadings = () => {
   const view = useQgcPathHoldingLast(instrumentsPath(chosen, vehicleClass));
   const gcsJson = useQgcPath(GCS_POSITION);
   const shown = useMemo(() => [...(showsInstruments(chosen) ? instruments(view) : []), ...operatorDistance(gcsJson)], [view, gcsJson, chosen]);
-  const stateJson = useQgcPath(FLY_STATE);
-  const stale = useMemo(() => flyState(stateJson)?.staleNotice ?? '', [stateJson]);
-  const silent = stale.trim() !== '';
+  const stale = useStaleNotice();
+  const silent = stale !== '';
   const choosingReadings = useValue(flyScreen.choosingReadings);
   const valueSize = useValue(flyScreen.layout.valueSize);
   const [replacing, setReplacing] = useState<readonly [number, string] | null>(null);
@@ -322,7 +321,7 @@ export const TelemetryRow = ({
 
   if (compact) {
     const reading = (instrument: Instrument, typography: Typography) => (
-      <div key={`${instrument.id}|${instrument.label}`} className="flex items-baseline gap-1">
+      <div key={`${instrument.id}|${instrument.label}`} className="flex items-baseline gap-1" style={{ opacity: silent ? STALE_OPACITY : 1 }}>
         <Text typography="labelLarge" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
           {osdLabel(instrument.label)}
         </Text>
@@ -333,16 +332,25 @@ export const TelemetryRow = ({
     );
     const speeds = shown.filter((it) => osdIsSpeed(it.label));
     const places = shown.filter((it) => !osdIsSpeed(it.label));
+    const staleNote = silent ? (
+      <Text typography="labelMedium" color={md('error')} className="block basis-full">
+        {stale}
+      </Text>
+    ) : null;
     return (
       <>
         {sheets}
         {stacked ? (
           <div className={`flex flex-col gap-0.5 ${className ?? ''}`}>
+            {staleNote}
             {speeds.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{speeds.map((it) => reading(it, 'headlineMedium'))}</div> : null}
             {places.length > 0 ? <div className="flex flex-wrap gap-x-4 gap-y-0.5">{places.map((it) => reading(it, 'displaySmall'))}</div> : null}
           </div>
         ) : (
-          <div className={`flex flex-wrap justify-center gap-x-4 gap-y-0.5 ${className ?? ''}`}>{shown.map((it) => reading(it, 'titleMedium'))}</div>
+          <div className={`flex flex-wrap justify-center gap-x-4 gap-y-0.5 ${className ?? ''}`}>
+            {staleNote}
+            {shown.map((it) => reading(it, 'titleMedium'))}
+          </div>
         )}
       </>
     );
@@ -356,7 +364,7 @@ export const TelemetryRow = ({
           {silent ? <Text typography="bodySmall" color={md('error')} className="block w-full px-2">{stale}</Text> : null}
           <div
             className={`grid w-full justify-between gap-y-1.5 ${className ?? ''}`}
-            style={{ gridTemplateColumns: `repeat(${columns ?? rowWidth(shown.length + 1)}, auto)`, opacity: silent ? 0.45 : 1 }}
+            style={{ gridTemplateColumns: `repeat(${columns ?? rowWidth(shown.length + 1)}, auto)`, opacity: silent ? STALE_OPACITY : 1 }}
           >
             {shown.map((instrument) => {
               const display = displayFor(displays, instrument);
@@ -399,7 +407,7 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
   const icon = hudIcon(display, instrument);
   const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5" style={{ opacity: silent ? STALE_OPACITY : 1 }}>
       {icon !== null ? (
         <>
           <span aria-hidden className="contents">
@@ -422,7 +430,9 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
 export const hudStartTop = (top: CSSProperties['top'], below: number): CSSProperties['top'] => (below > 0 ? `max(${String(top)}, ${below}px)` : top);
 
 export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSProperties; startInset: number; startBelow?: number }) => {
-  const { shown, displays, silent, valueSize, sheets } = useTelemetryReadings();
+  const { shown, displays, silent, stale, valueSize, sheets } = useTelemetryReadings();
+  const starts = shown.filter((it) => !osdIsSpeed(it.label));
+  const noteSide: HudSide = starts.length > 0 ? 'start' : 'end';
   const column = (side: HudSide, readings: readonly Instrument[]) =>
     readings.length === 0 ? null : (
       <div
@@ -431,6 +441,11 @@ export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSP
       >
         <LayoutWidget widgetKey={side === 'start' ? 'readingsStart' : 'readingsEnd'} movable={false} hideable={false}>
           <div className={`flex flex-col gap-0.5 ${side === 'start' ? 'items-start' : 'items-end'}`}>
+            {silent && side === noteSide ? (
+              <Text typography="labelMedium" color={md('error')} className={`max-w-[220px] ${osdShadow()}`}>
+                {stale}
+              </Text>
+            ) : null}
             {readings.map((it) => (
               <HudReading key={`${it.id}|${it.label}`} instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} />
             ))}
@@ -441,7 +456,7 @@ export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSP
   return (
     <LocalFlyOsd.Provider value>
       {sheets}
-      {column('start', shown.filter((it) => !osdIsSpeed(it.label)))}
+      {column('start', starts)}
       {column('end', shown.filter((it) => osdIsSpeed(it.label)))}
     </LocalFlyOsd.Provider>
   );

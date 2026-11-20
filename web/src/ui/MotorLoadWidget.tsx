@@ -4,6 +4,7 @@ import { useQgcDerived } from '@/bridge/QgcState';
 import type { SheetAnchor } from '@/m3';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { ESC_PATH, EscStatusPanel, type Level, level } from '@/ui/EscIndicator';
+import { STALE_OPACITY, useStaleNotice } from '@/ui/FlyState';
 import { LocalCompactHud, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
 export type RotorState = 'reporting' | 'lost' | 'none';
@@ -120,6 +121,7 @@ type Opened = { readonly anchor: SheetAnchor; readonly focus: number | null };
 
 export const MotorLoadWidget = () => {
   const loads = useQgcDerived(ESC_PATH, motorLoads);
+  const stale = useStaleNotice() !== '';
   const frame = useContext(LocalCompactHud) ? COMPACT_FRAME : FULL_FRAME;
   const [opened, setOpened] = useState<Opened | null>(null);
   if (loads.length === 0) return null;
@@ -130,6 +132,7 @@ export const MotorLoadWidget = () => {
         type="button"
         aria-label="Motor load: open ESC status"
         aria-expanded={opened !== null}
+        style={{ opacity: stale ? STALE_OPACITY : 1 }}
         onClick={(event) => {
           const tapped = (event.target as Element).closest('[data-motor]')?.getAttribute('data-motor') ?? null;
           const next = { anchor: besideWidget(event.currentTarget.getBoundingClientRect(), window.innerWidth), focus: tapped === null ? null : Number(tapped) };
