@@ -56,6 +56,8 @@ export const takeoffLabel = (offer: GuidedOffer | null, readiness: Readiness | n
 };
 
 export const DECK_HOLD_MS = 1500;
+
+export const HOLD_KEYS_HINT = 'Hold Enter or Space to confirm';
 const SLIDE_SPAN = 0.6;
 
 export const slideProgress = (slidPx: number, widthPx: number): number => coerceIn(slidPx / (coerceAtLeast(widthPx, 1) * SLIDE_SPAN), 0, 1);
@@ -141,6 +143,7 @@ export const useRememberHold = (key: unknown, enabled: boolean, onTap: () => voi
       role: 'button',
       tabIndex: 0,
       'aria-label': label,
+      'aria-description': HOLD_KEYS_HINT,
       'data-gesture': true,
       style: { touchAction: 'none' },
       onClick: (event) => {

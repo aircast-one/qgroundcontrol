@@ -174,13 +174,14 @@ export const GuidedStepper = ({
 }) => {
   const [typing, setTyping] = useState<string | null>(null);
   const compact = useContext(LocalGuidedCompact);
+  const named = label.trim() !== '' ? label : 'value';
   const size = compact ? 'text-headline-medium' : 'text-display-small @max-[220px]:text-headline-medium';
   return (
     <div className="@container w-full">
       <div className="flex w-full items-center @max-[220px]:flex-col @max-[220px]:items-start @max-[220px]:gap-2">
         <div className="flex min-w-0 flex-1 flex-col @max-[220px]:flex-none">
           {typing === null ? (
-            <button type="button" className={`${size} whitespace-nowrap text-left tabular-nums`} onClick={() => setTyping(guidedValueText(value, unit))}>
+            <button type="button" aria-label={`${named}: ${guidedReading(value, unit)}, type a value`} className={`${size} whitespace-nowrap text-left tabular-nums`} onClick={() => setTyping(guidedValueText(value, unit))}>
               {guidedReading(value, unit)}
             </button>
           ) : (
@@ -194,6 +195,7 @@ export const GuidedStepper = ({
               singleLine
               keyboardType="decimal"
               autoFocus
+              ariaLabel={named}
               onDone={() => {
                 if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
                 setTyping(null);
@@ -205,7 +207,7 @@ export const GuidedStepper = ({
         </div>
         <div className="flex gap-2">
           {([[-1, '−'], [1, '+']] as const).map(([delta, sign]) => (
-            <FilledTonalIconButton key={delta} onClick={() => onValue(guidedStepped(value, delta, minimum, maximum, unit))} containerColor={md('surfaceContainerHighest')} contentColor={md('onSurface')}>
+            <FilledTonalIconButton key={delta} label={`${delta < 0 ? 'Decrease' : 'Increase'} ${named}`} onClick={() => onValue(guidedStepped(value, delta, minimum, maximum, unit))} containerColor={md('surfaceContainerHighest')} contentColor={md('onSurface')}>
               <Text typography="titleLarge">{sign}</Text>
             </FilledTonalIconButton>
           ))}

@@ -14,7 +14,7 @@ describe('SettingStepper', () => {
     const onSet = vi.fn();
     render(<SettingStepper label="Altitude" value={50} unit="m" step={1} onSet={onSet} />);
     fireEvent.click(screen.getByRole('button', { name: 'Altitude: 50 m' }));
-    const field = screen.getByRole('textbox');
+    const field = screen.getByRole('textbox', { name: 'Altitude in m' });
     fireEvent.change(field, { target: { value: '120' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(onSet).toHaveBeenCalledWith(120);

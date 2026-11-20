@@ -107,7 +107,7 @@ const StepperEntry = ({ label, unit, initial, range, onSet, onDismiss }: { label
     <AlertDialog
       onDismissRequest={onDismiss}
       title={label}
-      text={<OutlinedTextField value={text} onValueChange={setText} suffix={unit.trim() !== '' ? unit : undefined} supportingText={note ?? undefined} isError={note !== null} singleLine keyboardType="decimal" onDone={confirm} />}
+      text={<OutlinedTextField value={text} onValueChange={setText} ariaLabel={unit.trim() !== '' ? `${label} in ${unit}` : label} suffix={unit.trim() !== '' ? unit : undefined} supportingText={note ?? undefined} isError={note !== null} singleLine keyboardType="decimal" onDone={confirm} />}
       confirmButton={
         <TextButton enabled={typed !== null} onClick={confirm}>
           Set

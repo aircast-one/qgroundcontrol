@@ -22,6 +22,11 @@ describe('HoldToConfirmUiTest', () => {
     vi.useRealTimers();
   });
 
+  it('tells a keyboard user to hold Enter or Space, since its name only speaks of sliding', () => {
+    render(<HoldToConfirm label="Slide to land" onConfirm={() => undefined} />);
+    expect(screen.getByRole('button', { name: 'Slide to land' }).getAttribute('aria-description')).toBe('Hold Enter or Space to confirm');
+  });
+
   it('holding for the full time confirms once', () => {
     const fired = vi.fn();
     render(<HoldToConfirm label="Slide to land" onConfirm={fired} />);
