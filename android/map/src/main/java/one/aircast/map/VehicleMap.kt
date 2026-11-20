@@ -33,6 +33,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.rememberTextMeasurer
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdate
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -76,6 +77,11 @@ private const val ROUTE_SOURCE = "aircast-recorded-route"
 private const val ROUTE_LAYER = "aircast-recorded-route-layer"
 
 private const val DEFAULT_ZOOM = 17.0
+private const val WORLD_ZOOM = 1.0
+
+internal fun placedBefore(zoom: Double): Boolean = zoom > WORLD_ZOOM
+
+private fun MapLibreMap.place(update: CameraUpdate) = if (placedBefore(cameraPosition.zoom)) animateCamera(update) else moveCamera(update)
 
 private const val MIN_FIT_SPAN_DEGREES = 1e-5
 private const val FIT_PADDING_PIXELS = 80
@@ -609,13 +615,13 @@ fun VehicleMap(
         val target = LatLng(at.latitude, at.longitude)
         when {
             centreZoom != null -> loaded.moveCamera(CameraUpdateFactory.newLatLngZoom(target, centreZoom))
-            centreMinZoom != null && loaded.cameraPosition.zoom < centreMinZoom -> loaded.animateCamera(CameraUpdateFactory.newLatLngZoom(target, centreMinZoom))
-            loaded.cameraPosition.zoom > 1.0 -> {
+            centreMinZoom != null && loaded.cameraPosition.zoom < centreMinZoom -> loaded.place(CameraUpdateFactory.newLatLngZoom(target, centreMinZoom))
+            placedBefore(loaded.cameraPosition.zoom) -> {
                 val point = loaded.projection.toScreenLocation(target)
                 val clear = PointF(point.x - leftInsetPx / 2f, point.y - clearAreaLift(topInsetPx.toFloat(), bottomInsetPx.toFloat()))
                 loaded.animateCamera(CameraUpdateFactory.newLatLng(loaded.projection.fromScreenLocation(clear)))
             }
-            else -> loaded.animateCamera(CameraUpdateFactory.newLatLngZoom(target, DEFAULT_ZOOM))
+            else -> loaded.place(CameraUpdateFactory.newLatLngZoom(target, DEFAULT_ZOOM))
         }
     }
 
@@ -635,7 +641,7 @@ fun VehicleMap(
         ) ?: return@LaunchedEffect onFitFailed()
 
         if (bounds.spanDegrees < MIN_FIT_SPAN_DEGREES) {
-            currentMap.animateCamera(
+            currentMap.place(
                 CameraUpdateFactory.newLatLngZoom(
                     LatLng(bounds.centre.latitude, bounds.centre.longitude),
                     DEFAULT_ZOOM,
@@ -644,7 +650,7 @@ fun VehicleMap(
             return@LaunchedEffect
         }
 
-        currentMap.animateCamera(
+        currentMap.place(
             CameraUpdateFactory.newLatLngBounds(
                 LatLngBounds.from(bounds.north, bounds.unwrappedEast, bounds.south, bounds.west),
                 FIT_PADDING_PIXELS + leftInsetPx,
