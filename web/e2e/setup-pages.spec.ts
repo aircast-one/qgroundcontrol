@@ -194,3 +194,16 @@ test('after the accelerometer the Sensors row names the compass still to calibra
   await expect(app.getByRole('button', { name: /^Accelerometer Calibrated/ })).toBeVisible();
   await expect(sensors, 'the row read Ready over a compass that was never calibrated').toHaveAccessibleName(/^Sensors Compass setup required/);
 });
+
+test('a simulated vehicle rebooted from Setup comes back by itself with the frame it rebooted for', async ({ app }) => {
+  const prompt = await connectFreshMock(app, 'APM ArduCopter Vehicle');
+  await prompt.getByRole('button', { name: 'Open Setup', exact: true }).click();
+  await app.getByRole('button', { name: 'Quad Quad' }).click();
+  await app.getByRole('button', { name: 'Reboot vehicle', exact: true }).click();
+  await expect(app.getByText('Looking for your aircraft').first(), 'the vehicle goes away while it reboots').toBeVisible();
+  const back = app.getByRole('dialog').filter({ hasText: /need setup before this vehicle can fly\./ });
+  await expect(back, 'the simulated vehicle never came back from a reboot, so its setup could not be finished').toBeVisible({ timeout: 60_000 });
+  await expect(back).toContainText('Radio and Sensors need setup');
+  await back.getByRole('button', { name: 'Open Setup', exact: true }).click();
+  await expect(app.getByRole('button', { name: /^Frame Quad/ })).toBeVisible();
+});

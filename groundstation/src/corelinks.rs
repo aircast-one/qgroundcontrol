@@ -1375,6 +1375,8 @@ struct PendingClose {
 }
 
 static PENDING_CLOSE: Mutex<Vec<PendingClose>> = Mutex::new(Vec::new());
+static PENDING_BOOT: Mutex<Vec<(u64, LinkConfig)>> = Mutex::new(Vec::new());
+pub const MOCK_BOOT_MS: u64 = 3000;
 
 #[cfg(test)]
 thread_local! {
@@ -1460,14 +1462,42 @@ fn close_if_due(now_ms: u64) {
                 .collect::<Vec<_>>()
         })
         .collect();
-    closing.into_iter().for_each(|(id, reason)| {
-        crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, reason);
+    let booting: Vec<(u64, LinkConfig)> = closing
+        .into_iter()
+        .filter_map(|(id, reason)| {
+            let rebooting = crate::linkhost::take_mock_reboot(&crate::linkhost::TRANSPORTS, id);
+            crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, reason);
+            rebooting.map(|config| (now_ms + MOCK_BOOT_MS, config))
+        })
+        .collect();
+    PENDING_BOOT
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .extend(booting);
+}
+
+fn boot_if_due(now_ms: u64) {
+    let due: Vec<LinkConfig> = {
+        let mut pending = PENDING_BOOT.lock().unwrap_or_else(PoisonError::into_inner);
+        let (due, later): (Vec<_>, Vec<_>) = pending.drain(..).partition(|(at, _)| now_ms >= *at);
+        *pending = later;
+        due.into_iter().map(|(_, config)| config).collect()
+    };
+    let Some((open, _)) = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner) else {
+        return;
+    };
+    due.into_iter().for_each(|config| {
+        let name = config.name.clone();
+        let _ = open_in_background(&name, move || {
+            let _ = open(config);
+        });
     });
 }
 
 pub fn tick(now_ms: u64) {
     if owned() {
         close_if_due(now_ms);
+        boot_if_due(now_ms);
     }
     if !owned()
         || !AUTOCONNECTING.load(Ordering::SeqCst)

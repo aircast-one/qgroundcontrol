@@ -499,9 +499,12 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             let options = crate::mocklink::Options::from_kind(&config.kind)
                 .ok_or_else(|| Failure::retry("not a mock link"))?;
             let shared = shared.clone();
-            crate::mocklink::MockLink::open(options, crate::mocklink::World::live(), move |bytes| {
-                shared.deliver(id, bytes)
-            })
+            crate::mocklink::MockLink::boot(
+                options,
+                crate::mocklink::World::live(),
+                crate::mocklink::take_boot(&config.name),
+                move |bytes| shared.deliver(id, bytes),
+            )
             .map(Owned::Mock)
             .map_err(Failure::retry)
         }
@@ -738,6 +741,17 @@ pub fn write(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) -> bool {
         (None, None) => false,
     };
     sent && shared.registry.lock().unwrap().wrote(id, bytes.len())
+}
+
+pub fn take_mock_reboot(transports: &Mutex<Transports>, id: LinkId) -> Option<LinkConfig> {
+    let guard = transports.lock().unwrap();
+    let Owned::Mock(link) = guard.owned.get(&id)?.as_ref() else {
+        return None;
+    };
+    let boot = link.rebooted()?;
+    let config = guard.configs.get(&id)?.clone();
+    crate::mocklink::hold_boot(&config.name, boot);
+    Some(config)
 }
 
 pub fn close(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {

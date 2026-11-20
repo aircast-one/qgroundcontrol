@@ -746,6 +746,31 @@ pub struct Sim {
     drive: Option<(std::sync::Arc<crate::roads::Network>, crate::roads::Drive)>,
     roads_pending: Option<mpsc::Receiver<crate::roads::Network>>,
     roads_retry_at: u64,
+    flash: Flash,
+}
+
+type Flash = std::sync::Arc<std::sync::Mutex<Option<Boot>>>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Boot {
+    system: u8,
+    params: Vec<Param>,
+}
+
+static BOOTING: std::sync::Mutex<BTreeMap<String, Boot>> = std::sync::Mutex::new(BTreeMap::new());
+
+pub fn hold_boot(name: &str, boot: Boot) {
+    BOOTING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(name.to_string(), boot);
+}
+
+pub fn take_boot(name: &str) -> Option<Boot> {
+    BOOTING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(name)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -800,6 +825,10 @@ impl Sim {
         } else {
             loaded
         };
+        Sim::booted(options, system, served, params)
+    }
+
+    fn booted(options: Options, system: u8, served: Option<String>, params: Vec<Param>) -> Sim {
         let offset = f64::from(system.saturating_sub(FIRST_SYSTEM_ID)) * SYSTEM_SPACING_DEG;
         let home = (HOME_LAT + offset, HOME_LON + offset);
         let tuning = crate::mocktuning::tuning(&lookup(&params), options.vehicle);
@@ -869,7 +898,18 @@ impl Sim {
             drive: None,
             roads_pending: None,
             roads_retry_at: 0,
+            flash: Flash::default(),
         }
+    }
+
+    fn flash_before_reboot(&self) {
+        *self
+            .flash
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Boot {
+            system: self.system,
+            params: self.params.clone(),
+        });
     }
 
     pub fn starting_at(self, place: Option<(f64, f64)>) -> Sim {
@@ -1691,6 +1731,10 @@ impl Sim {
             | MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL => {
                 self.calibration
                     .command(self.options.vehicle.apm(), command, params)
+            }
+            MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN if params[0] == 1.0 => {
+                self.flash_before_reboot();
+                accepted(Vec::new())
             }
             MavCmd::MAV_CMD_DO_MOTOR_TEST
             | MavCmd::MAV_CMD_PREFLIGHT_STORAGE
@@ -3555,6 +3599,7 @@ pub struct MockLink {
     alive: std::sync::Arc<AtomicBool>,
     silent: std::sync::Arc<AtomicBool>,
     conditions: std::sync::Arc<std::sync::Mutex<Conditions>>,
+    flash: Flash,
 }
 
 impl MockLink {
@@ -3563,10 +3608,22 @@ impl MockLink {
         world: World,
         deliver: impl Fn(&[u8]) + Send + 'static,
     ) -> Result<MockLink, String> {
-        let system = match options.increment_vehicle_id {
-            true => NEXT_SYSTEM.fetch_add(1, Ordering::Relaxed),
-            false => NEXT_SYSTEM.load(Ordering::Relaxed),
+        MockLink::boot(options, world, None, deliver)
+    }
+
+    pub fn boot(
+        options: Options,
+        world: World,
+        boot: Option<Boot>,
+        deliver: impl Fn(&[u8]) + Send + 'static,
+    ) -> Result<MockLink, String> {
+        let system = match (&boot, options.increment_vehicle_id) {
+            (Some(boot), _) => boot.system,
+            (None, true) => NEXT_SYSTEM.fetch_add(1, Ordering::Relaxed),
+            (None, false) => NEXT_SYSTEM.load(Ordering::Relaxed),
         };
+        let flash = Flash::default();
+        let flashing = flash.clone();
         let (inbox, incoming) = mpsc::channel::<Vec<u8>>();
         let alive = std::sync::Arc::new(AtomicBool::new(true));
         let running = alive.clone();
@@ -3578,9 +3635,14 @@ impl MockLink {
             let stream = (options.enable_camera && options.video != StreamKind::None)
                 .then(|| serve(options.video))
                 .flatten();
+            let served = stream.as_ref().map(|s| s.uri.clone());
             let sim = Sim {
                 ground: world.ground,
-                ..Sim::new(options, system, stream.as_ref().map(|s| s.uri.clone()))
+                flash: flashing,
+                ..match boot {
+                    Some(boot) => Sim::booted(options, system, served, boot.params),
+                    None => Sim::new(options, system, served),
+                }
             }
             .starting_at(world.start);
             let mut parser = Registry::default();
@@ -3607,7 +3669,15 @@ impl MockLink {
             alive,
             silent,
             conditions,
+            flash,
         })
+    }
+
+    pub fn rebooted(&self) -> Option<Boot> {
+        self.flash
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 
     pub fn write(&self, bytes: &[u8]) -> bool {
@@ -5984,6 +6054,92 @@ mod tests {
             "it stopped just inside the 30 m circle: {} m",
             metres_to(&sim, lat, lon)
         );
+    }
+
+    #[test]
+    fn a_rebooted_vehicle_boots_with_the_parameters_it_flashed_and_keeps_its_system_id() {
+        let fresh = Options {
+            apm_start_fresh_params: true,
+            ..options(Vehicle::Copter)
+        };
+        let mut sim = Sim::new(fresh, 131, None);
+        let class = sim
+            .params
+            .iter()
+            .find(|p| p.name == "FRAME_CLASS")
+            .cloned()
+            .unwrap();
+        assert_eq!(class.value, 0.0, "a fresh flash has no frame");
+        sim.receive(
+            gcs(),
+            &MavMessage::PARAM_SET(PARAM_SET_DATA {
+                param_value: wire(
+                    &Param {
+                        value: 1.0,
+                        ..class.clone()
+                    },
+                    false,
+                ),
+                target_system: 131,
+                target_component: 1,
+                param_id: crate::mavout::param_id("FRAME_CLASS"),
+                param_type: class.kind,
+            }),
+        );
+        command(
+            &mut sim,
+            MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+            [0.0; 7],
+        );
+        assert!(
+            sim.flash.lock().unwrap().is_none(),
+            "only a reboot of the autopilot flashes it"
+        );
+        command(
+            &mut sim,
+            MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        );
+        let boot = sim.flash.lock().unwrap().take().unwrap();
+        assert_eq!(boot.system, 131);
+        let rebooted = Sim::booted(fresh, boot.system, None, boot.params);
+        assert_eq!(
+            rebooted
+                .params
+                .iter()
+                .find(|p| p.name == "FRAME_CLASS")
+                .map(|p| p.value),
+            Some(1.0),
+            "the simulated vehicle came back from a reboot with a fresh flash, losing the frame it was told to reboot for"
+        );
+    }
+
+    #[test]
+    fn a_link_whose_vehicle_accepted_a_reboot_hands_over_what_it_boots_from() {
+        let (sent, received) = mpsc::channel::<Vec<u8>>();
+        let link = MockLink::open(options(Vehicle::Copter), World::flat(), move |bytes| {
+            let _ = sent.send(bytes.to_vec());
+        })
+        .unwrap();
+        let mut request = Vec::new();
+        mavlink::write_v2_msg(
+            &mut request,
+            gcs(),
+            &MavMessage::COMMAND_LONG(COMMAND_LONG_DATA {
+                param1: 1.0,
+                command: MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+                target_system: 0,
+                target_component: 1,
+                ..Default::default()
+            }),
+        )
+        .unwrap();
+        assert!(link.rebooted().is_none());
+        assert!(link.write(&request));
+        assert!(frames(&received).any(|m| matches!(m, MavMessage::COMMAND_ACK(a) if a.command == MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN && a.result == MavResult::MAV_RESULT_ACCEPTED)));
+        assert!(link.rebooted().is_some());
+        assert!(link.rebooted().is_none(), "the boot is handed over once");
+        link.close();
     }
 
     #[test]
