@@ -220,8 +220,12 @@ internal data class SummaryLine(val label: String, val value: String, val warn: 
 private val UNREAD_VALUES = setOf("Unknown", "--", "")
 private const val GLANCE_SEPARATOR = " \u00b7 "
 
+private const val SETUP_REQUIRED = "Setup required"
+
 internal fun summaryGlanceParts(summary: List<SummaryLine>): List<SummaryLine> {
     val read = summary.map { it.copy(label = it.label.trimEnd(':', ' '), value = it.value.trim().replace(Regex("(\\S)\\("), "$1 (")) }.filterNot { it.value in UNREAD_VALUES }
+    val needed = read.filter { it.value == SETUP_REQUIRED }
+    if (needed.isNotEmpty()) return needed.map { it.copy(value = sentenceCase("${it.label} ${SETUP_REQUIRED.lowercase()}".trim())) }
     val shared = read.map { it.value.substringBefore(' ', "") }.distinct().singleOrNull()?.takeIf { it.isNotEmpty() && read.size > 1 }
     val parts = shared?.let { prefix -> read.map { it.copy(value = "${it.label} ${it.value.removePrefix(prefix).trim()}") } } ?: read.distinctBy { it.value }
     return parts.map { it.copy(value = sentenceCase(it.value)) }

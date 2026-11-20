@@ -33,4 +33,12 @@ class SetupSummaryTest {
         org.junit.Assert.assertEquals("Roll 1 \u00b7 Pitch 2 \u00b7 Throttle 3", summaryGlance(radio))
         org.junit.Assert.assertEquals("Ready \u00b7 Not supported (over APM 4.1)", summaryGlance(listOf(SummaryLine("Compass", "Ready"), SummaryLine("Airspeed", "Not Supported(Over APM 4.1)"))))
     }
+
+    @Test
+    fun `a glance names what still needs setup, so a Sensors row with an uncalibrated compass never reads Ready`() {
+        val afterAccelerometer = listOf(SummaryLine("Compass:", "Setup required"), SummaryLine("Setup required", "LSM303D (SPI4)"), SummaryLine("Accelerometer:", "Ready"))
+        assertEquals("Compass setup required", summaryGlance(afterAccelerometer))
+        assertEquals("Ready", summaryGlance(listOf(SummaryLine("Compass:", "Ready"), SummaryLine("Accelerometer:", "Ready"))))
+        assertEquals("the Radio row read Channel 1 · Setup required without saying which stick", "Pitch setup required", summaryGlance(listOf(SummaryLine("Roll", "Channel 1"), SummaryLine("Pitch", "Setup required"))))
+    }
 }
