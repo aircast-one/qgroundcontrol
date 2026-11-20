@@ -171,4 +171,13 @@ class SetupScreenTest {
         assertEquals("ESC", firstToOpen(components.take(1)) { true }?.name)
         assertNull(firstToOpen(emptyList()) { true })
     }
+
+    @Test
+    fun `an open page follows its component, so Sensors opened before the frame write landed stops asking for the frame once it has`() {
+        val waiting = SetupComponent(1, "Sensors", needsAttention = true, prerequisite = "Frame")
+        val framed = SetupComponent(1, "Sensors", needsAttention = true, prerequisite = null)
+        assertNull(currentComponent(waiting, listOf(framed))?.prerequisite)
+        assertEquals("a component gone from the list keeps what was opened", waiting, currentComponent(waiting, emptyList()))
+        assertNull(currentComponent(null, listOf(framed)))
+    }
 }

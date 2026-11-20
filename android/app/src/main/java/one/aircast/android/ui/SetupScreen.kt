@@ -241,6 +241,9 @@ private fun SetupNotice(text: String, modifier: Modifier = Modifier) {
 internal fun reportsOpening(prerequisite: String?, page: SetupPage?): Boolean =
     prerequisite != null || (page?.parameterSections != true && page?.screen != NOT_SUPPORTED_SCREEN)
 
+internal fun currentComponent(opened: SetupComponent?, components: List<SetupComponent>): SetupComponent? =
+    opened?.let { open -> components.firstOrNull { it.name == open.name } ?: open }
+
 @Composable
 fun SetupScreen(modifier: Modifier = Modifier) {
     val navigation = LocalAppNavigation.current
@@ -251,7 +254,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val line = remember(firmwareJson) { firmwareLine(firmwareJson) }
     val vehicleType = line.vehicleType
     var opened by remember { mutableStateOf<Pair<SetupComponent, String?>?>(null) }
-    val openComponent = opened?.first
+    val components = remember(setupJson) { setupComponents(setupJson) }
+    val openComponent = currentComponent(opened?.first, components)
     val openSection = opened?.second
     var parametersOpen by remember { mutableStateOf(false) }
     val advanced = advancedUiShown()
@@ -260,7 +264,6 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     BackHandler(enabled = openComponent != null) { opened = null }
 
-    val components = remember(setupJson) { setupComponents(setupJson) }
     val searching = setupSearch.isNotBlank()
     val formSections by produceState(emptyMap<String, List<ParameterRows>>(), searching, components) {
         value = if (!searching) emptyMap() else withContext(Dispatchers.Default) {
