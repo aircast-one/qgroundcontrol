@@ -69,7 +69,8 @@ internal fun GuidedValuePanel(
     ) {
         HoldsDecision()
         val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
-        val readiness = remember(flyJson) { guidedReadiness(flyState(flyJson)) }
+        val warningsJson by one.aircast.android.bridge.qgcPath(WARNINGS)
+        val readiness = remember(flyJson, warningsJson) { guidedReadiness(flyState(flyJson), armingBlocker(warningsJson)) }
         val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.map.VEHICLES_VIEW)
         val vehicles = remember(vehiclesJson) { one.aircast.map.vehicleChoices(vehiclesJson) }
         Column(

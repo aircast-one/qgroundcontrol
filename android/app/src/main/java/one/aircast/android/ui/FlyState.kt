@@ -53,8 +53,12 @@ internal data class Readiness(val text: String, val blocks: Boolean)
 
 internal const val READINESS_BLOCKED = "The vehicle will refuse to arm until this is fixed."
 
-internal fun guidedReadiness(state: FlyState?): Readiness? =
-    readinessWarning(state)?.let { text ->
+internal fun refusedArming(state: FlyState?, blocker: String?): String? =
+    blocker?.takeIf { it.trim().startsWith(PREARM_PREFIX) && state != null && state.connected && !state.armed && state.contactLost != true }
+        ?.let(::chipBlocker)?.ifBlank { null }?.let { "Can't arm: $it." }
+
+internal fun guidedReadiness(state: FlyState?, blocker: String? = null): Readiness? =
+    listOfNotNull(refusedArming(state, blocker), readinessWarning(state)).joinToString(" ").ifBlank { null }?.let { text ->
         val blocks = state?.canArm == false
         Readiness(if (blocks) "${text.removeSuffix(".")}. $READINESS_BLOCKED" else text, blocks)
     }

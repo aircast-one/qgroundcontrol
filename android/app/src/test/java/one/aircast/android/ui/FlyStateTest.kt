@@ -201,6 +201,14 @@ class FlyReadinessTest {
             guidedReadiness(state(ready = false).copy(canArm = false)),
         )
         assertNull(guidedReadiness(state()))
+        assertEquals(
+            "a check the aircraft refused to arm for leads the take-off warning",
+            "Can't arm: Compass not calibrated. Not ready. 2 checks need attention before arming.",
+            guidedReadiness(state(ready = false), "PreArm: Compass not calibrated")?.text,
+        )
+        assertEquals("the refusal alone is reason enough to warn", Readiness("Can't arm: Compass not calibrated.", blocks = false), guidedReadiness(state(), "PreArm: Compass not calibrated"))
+        assertNull(guidedReadiness(state(armed = true), "PreArm: Compass not calibrated"))
+        assertNull("a guess the status line already makes is not a refusal", guidedReadiness(state(), "A sensor is reporting unhealthy. The vehicle will refuse to arm."))
     }
 
     @Test

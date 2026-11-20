@@ -423,7 +423,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val flyScreen = LocalFlyScreenState.current
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }
-    val readiness = remember(state) { guidedReadiness(state) }
+    val warningsJson by qgcPath(WARNINGS)
+    val readiness = remember(state, warningsJson) { guidedReadiness(state, armingBlocker(warningsJson)) }
     val available = state?.connected == true
     val armed = state?.armed == true
     val activeId = rememberActiveVehicleId()

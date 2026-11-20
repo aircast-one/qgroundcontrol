@@ -63,7 +63,7 @@ data class VehicleMessage(
     val resolved: Boolean = false,
 )
 
-private const val PREARM_PREFIX = "PreArm:"
+internal const val PREARM_PREFIX = "PreArm:"
 
 internal fun chipBlocker(blocker: String): String =
     blocker.trim().removePrefix(PREARM_PREFIX).trim().substringBefore(". ").trimEnd('.')
