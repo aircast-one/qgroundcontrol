@@ -70,7 +70,7 @@ internal fun valueText(fact: Fact): String =
 
 internal fun valueDecimals(fact: Fact): Int = fact.valueString.trim().substringAfter('.', "").takeWhile(Char::isDigit).length
 
-internal fun valueStep(fact: Fact): Double = if (fact.name in USEFUL_BANDS) metresScale(fact) else 10.0.pow(-valueDecimals(fact))
+internal fun valueStep(fact: Fact): Double = if (fact.name in USEFUL_BANDS) (if (fact.units.trim() == "cm") CENTIMETRES_PER_METRE else 1.0) else 10.0.pow(-valueDecimals(fact))
 
 private fun boundOf(text: String, isDefaultForType: Boolean): Double? = text.toDoubleOrNull()?.takeIf { !isDefaultForType && it.isFinite() }
 
@@ -104,7 +104,16 @@ private val TURN_ON_VALUES = mapOf(
     "FENCE_RADIUS" to DISTANCE_ON,
 )
 
-private fun metresScale(fact: Fact): Double = if (fact.units.trim() == "cm") 100.0 else 1.0
+private const val CENTIMETRES_PER_METRE = 100.0
+private const val METRES_PER_FOOT = 0.3048
+
+private fun unitsPerMetre(fact: Fact): Double = when (fact.units.trim()) {
+    "cm" -> CENTIMETRES_PER_METRE
+    "ft" -> 1.0 / METRES_PER_FOOT
+    else -> 1.0
+}
+
+private fun inUnits(fact: Fact, metres: Double): Double = kotlin.math.round(metres * unitsPerMetre(fact))
 
 private fun clampToBounds(fact: Fact, value: Double): Double {
     val (min, max) = valueBounds(fact)
@@ -113,8 +122,9 @@ private fun clampToBounds(fact: Fact, value: Double): Double {
 
 internal fun sliderFor(fact: Fact): FactSlider? =
     USEFUL_BANDS[fact.name]?.let { band ->
-        val from = clampToBounds(fact, band.start * metresScale(fact))
-        val to = clampToBounds(fact, band.endInclusive * metresScale(fact))
+        val held = numberOf(fact)?.takeIf { it > 0.0 }
+        val from = clampToBounds(fact, minOf(inUnits(fact, band.start), held ?: Double.POSITIVE_INFINITY))
+        val to = clampToBounds(fact, maxOf(inUnits(fact, band.endInclusive), held ?: Double.NEGATIVE_INFINITY))
         FactSlider(from.toFloat(), to.toFloat(), valueDecimals(fact), "").takeIf { to > from }
     } ?: fact.slider ?: derivedSlider(fact)
 
@@ -336,7 +346,7 @@ internal fun SafeChoiceMenu(expanded: Boolean, options: List<String>, onDismiss:
 
 internal fun turnOnValue(fact: Fact): Double {
     val default = fact.defaultValueString.toDoubleOrNull()?.takeIf { it > 0 }
-    val named = TURN_ON_VALUES[fact.name]?.times(metresScale(fact))
+    val named = TURN_ON_VALUES[fact.name]?.let { inUnits(fact, it) }
     val smallest = valueBounds(fact).first?.takeIf { it > 0 } ?: valueStep(fact)
     return clampToBounds(fact, default ?: named ?: smallest)
 }

@@ -90,6 +90,21 @@ class ValueRowTest {
     }
 
     @Test
+    fun `a band set in metres covers the same heights when altitudes read in feet`() {
+        val feet = sliderFor(number("100", name = "RTL_RETURN_ALT", units = "ft"))
+        assertEquals(listOf(66f, 1640f), listOf(feet?.from, feet?.to))
+        assertEquals(394.0, turnOnValue(number("0", "Disabled if 0.", name = "GF_MAX_VER_DIST", units = "ft")), 1e-9)
+        assertEquals(1.0, valueStep(number("100", name = "RTL_RETURN_ALT", units = "ft")), 1e-9)
+    }
+
+    @Test
+    fun `a value below the useful band widens the slider to hold it instead of pinning it at the band start`() {
+        val low = sliderFor(number("15", name = "RTL_ALT_M"))
+        assertEquals(listOf(15f, 500f), listOf(low?.from, low?.to))
+        assertEquals(800f, sliderFor(number("800", name = "RTL_ALT_M"))?.to)
+    }
+
+    @Test
     fun `return and fence sliders cover the useful band, not the whole type range`() {
         val slider = sliderFor(number("30", name = "RTL_RETURN_ALT"))
         assertEquals(20f, slider?.from)
