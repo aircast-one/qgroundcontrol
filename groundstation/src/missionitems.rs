@@ -21,7 +21,7 @@ const LOITER_TIME: i64 = 19;
 const LOITER_TO_ALT: i64 = 31;
 const VTOL_TAKEOFF: i64 = 84;
 
-const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw,dropsPayload,heightAboveLaunch";
+const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw,dropsPayload,heightAboveLaunch,heightAboveLaunchLowest,heightAboveLaunchHighest";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -195,6 +195,7 @@ struct Survey {
     shots: i64,
     distance: f64,
     above_launch: Option<f64>,
+    above_launch_band: Option<(f64, f64)>,
 }
 
 fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
@@ -218,6 +219,7 @@ fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         shots: crate::structurescan::camera_shots(&flight, plan.adjusted_side, plan.layers),
         distance: crate::structurescan::scan_distance(&flight, &plan),
         above_launch: None,
+        above_launch_band: None,
     })
 }
 
@@ -242,6 +244,9 @@ fn landing(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         shots: 0,
         distance: row.distance,
         above_launch: None,
+        above_launch_band: row
+            .relative
+            .then_some((row.land_altitude, row.approach_altitude)),
     })
 }
 
@@ -313,6 +318,7 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
             shots: 0,
             distance: 0.0,
             above_launch: None,
+            above_launch_band: None,
         });
     };
     let calc = transect
@@ -407,6 +413,7 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         above_launch: (calc.get("DistanceMode").and_then(Value::as_i64)
             == Some(crate::altitudemodes::RELATIVE))
         .then_some(surface),
+        above_launch_band: None,
     })
 }
 
@@ -1054,6 +1061,8 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                     "minAMSLAltitude": v.lowest,
                     "maxAMSLAltitude": v.highest,
                     "heightAboveLaunch": v.above_launch,
+                    "heightAboveLaunchLowest": v.above_launch_band.map(|band| band.0),
+                    "heightAboveLaunchHighest": v.above_launch_band.map(|band| band.1),
                     "cameraShots": (!v.landing).then_some(v.shots),
                     "complexDistance": v.distance,
                     "additionalTimeDelay": 0.0,
@@ -1484,7 +1493,7 @@ fn altitude_frame(read: &Value, vertical: &Unit) -> Option<&'static str> {
     if flag(read, "homePosition") {
         return Some("amsl");
     }
-    if pattern_above_launch(read).is_some() {
+    if pattern_above_launch(read).is_some() || launch_band(read).is_some() {
         return Some("launch");
     }
     if band(read, vertical).is_some() {
@@ -1512,12 +1521,21 @@ fn altitude_source(read: &Value, vertical: &Unit) -> Option<&'static str> {
     }
 }
 
+fn launch_band(read: &Value) -> Option<(f64, f64)> {
+    let edge = |key: &str| number(read, key).filter(|metres| metres.is_finite());
+    edge("heightAboveLaunchLowest").zip(edge("heightAboveLaunchHighest"))
+}
+
 fn band(read: &Value, vertical: &Unit) -> Option<String> {
     if flag(read, "homePosition") {
         return None;
     }
     let edge = |key: &str| number(read, key).filter(|metres| metres.is_finite());
-    match (edge("minAMSLAltitude"), edge("maxAMSLAltitude")) {
+    let amsl = edge("minAMSLAltitude").zip(edge("maxAMSLAltitude"));
+    match launch_band(read)
+        .or(amsl)
+        .map_or((None, None), |(low, high)| (Some(low), Some(high)))
+    {
         (Some(low), Some(high)) if high > low => Some(crate::read::range_text(low, high, vertical)),
         (Some(low), Some(high)) if high == low => Some(crate::read::altitude_text(low, vertical)),
         _ => None,
@@ -1901,6 +1919,38 @@ mod from_the_document {
         );
     }
 
+    #[test]
+    fn a_landing_flown_relative_to_launch_lists_its_heights_above_launch_as_its_editor_does() {
+        let pattern: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/fwland-pattern.json")).unwrap();
+        let plan = |relative: bool| {
+            let mut landing = pattern.clone();
+            landing["altitudesAreRelative"] = json!(relative);
+            json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": 1, "plannedHomePosition": [-35.36, 149.16, 480.0], "items": [landing] } }).to_string()
+        };
+        let row = |relative: bool| {
+            let (vertical, speed) = metres();
+            let doc = crate::plandoc::load(&plan(relative), 2).unwrap();
+            let view = document_view(&doc, 0, &vertical, &vertical, &speed, false).unwrap();
+            (
+                view["items"][1]["altitudeBandText"].clone(),
+                view["items"][1]["altitudeFrameText"].clone(),
+            )
+        };
+        let (band, frame) = row(true);
+        assert_eq!(
+            frame,
+            json!(""),
+            "every other row of a plan relative to launch reads a plain height, and so does its landing"
+        );
+        assert_eq!(
+            band,
+            json!("0.0 m to 60.0 m"),
+            "the band runs from touchdown to the approach above launch, not with the 480 m launch site added on"
+        );
+        assert_eq!(row(false), (json!("0.0 m to 60.0 m"), json!("AMSL")));
+    }
+
     fn agrees(plan: &str, terrain_under_home: f64, qt: &str) {
         agrees_with(plan, terrain_under_home, serde_json::from_str(qt).unwrap());
     }
@@ -2246,6 +2296,7 @@ mod tests {
             shots: 0,
             distance: 0.0,
             above_launch: None,
+            above_launch_band: None,
         };
         assert_eq!(
             ready_for_save(
