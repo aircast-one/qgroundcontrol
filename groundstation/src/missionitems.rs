@@ -834,7 +834,7 @@ fn altitude_fact_with(
     json!([{ "property": property, "value": shown, "rawValue": metres, "units": cooking.map_or("m", |c| c.name) }])
 }
 
-pub const ALTITUDE_RAW_UNITS: &str = "m";
+pub const ALTITUDE_RAW_UNITS: &str = "vertical m";
 
 pub fn altitude_from_shown(shown: f64) -> f64 {
     crate::units::cooking(ALTITUDE_RAW_UNITS).map_or(shown, |c| (c.base)(shown))
@@ -1969,6 +1969,22 @@ mod from_the_document {
     }
 
     #[test]
+    fn an_item_altitude_follows_the_altitude_unit_not_the_distance_unit() {
+        let feet_wide_metres_high = |key: &str| match key {
+            "Units/horizontalDistanceUnits" => Some("0".to_string()),
+            "Units/verticalDistanceUnits" => Some("1".to_string()),
+            _ => None,
+        };
+        let cooking = crate::units::cooking_with(ALTITUDE_RAW_UNITS, feet_wide_metres_high, 0);
+        let read = altitude_fact_with("altitude", 50.0, cooking);
+        assert_eq!(
+            (read[0]["value"].as_f64(), read[0]["units"].as_str()),
+            (Some(50.0), Some("m")),
+            "a waypoint 50 m up reads 50 m in its editor, as the list beside it does, even with distances in feet"
+        );
+    }
+
+    #[test]
     fn hover_and_capture_adds_four_seconds_per_transect_point_on_a_survey_only() {
         let points = json!([{ "command": 16, "params": [0] }, { "command": 16, "params": [4] }, { "command": 206, "params": [0] }, { "command": 16, "params": [0] }]);
         let complex = |kind: &str, hover: bool| crate::plandoc::Item::Complex {
@@ -2890,7 +2906,7 @@ mod reported {
         );
         assert_eq!(
             twice["altitudeEditUnits"], "ft",
-            "AltitudeFactTextField takes its unitsLabel from fact.units, so the editor's number and unit come from one fact and agree whatever the settings say - altitude follows the HORIZONTAL preference because QGC declares rawUnits m, while altitudeText follows VERTICAL, and pairing the cooked number with the vertical name is what made them disagree"
+            "the editor's number and unit come from one fact, and that fact is cooked in the altitude unit like altitudeText, so the editor and the list agree"
         );
         assert_eq!(
             metric["altitudeEditUnits"],

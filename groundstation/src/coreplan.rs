@@ -6517,12 +6517,14 @@ pub fn survey_stats_inputs(backend: &dyn Backend, index: usize) -> Option<(Value
     let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
     let per_second = |metres: f64| if speed == 0.0 { 0.0 } else { metres / speed };
     let horizontal = crate::read::Unit::horizontal(backend);
+    let vertical = crate::read::Unit::vertical(backend);
     let metres_fact = |property: &str, metres: f64| json!({ "property": property, "value": horizontal.show(metres), "rawValue": metres, "units": horizontal.name });
+    let height_fact = |property: &str, metres: f64| json!({ "property": property, "value": vertical.show(metres), "rawValue": metres, "units": vertical.name });
     let calc_facts = |calc: &Value| {
         json!({ "kind": "object", "facts": [
         metres_fact("adjustedFootprintSide", number(calc, "AdjustedFootprintSide")),
         metres_fact("adjustedFootprintFrontal", number(calc, "AdjustedFootprintFrontal")),
-        metres_fact("distanceToSurface", number(calc, "DistanceToSurface")),
+        height_fact("distanceToSurface", number(calc, "DistanceToSurface")),
         { "property": "minTriggerInterval", "value": number(calc, "MinTriggerInterval"), "rawValue": number(calc, "MinTriggerInterval") },
     ] })
     };

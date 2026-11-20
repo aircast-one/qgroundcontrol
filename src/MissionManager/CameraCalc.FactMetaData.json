@@ -20,7 +20,7 @@
     "shortDesc":        "Distance vehicle is away from surface.",
     "type":             "double",
     "min":              0.1,
-    "units":            "m",
+    "units":            "vertical m",
     "decimalPlaces":    2,
     "default":          50.0
 },

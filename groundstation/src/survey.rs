@@ -143,7 +143,7 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
         "footprintUnits": footprint_units,
         "footprintText": if side > 0.0 && frontal > 0.0 { format!("{:.1} \u{d7} {:.1} {footprint_units}", distance_unit.show(side), distance_unit.show(frontal)) } else { ABSENT.to_string() },
         "surfaceDistanceMetres": surface,
-        "surfaceDistanceText": surface.map(|metres| crate::read::format_measure(distance_unit.show(metres), &distance_unit.name)),
+        "surfaceDistanceText": surface.map(|metres| crate::read::format_measure(vertical.show(metres), &vertical.name)),
         "minimumInterval": minimum_interval,
         "tooFast": !warning(shots, minimum_interval, seconds).is_empty(),
         "warning": warning(shots, minimum_interval, seconds),
@@ -278,7 +278,7 @@ mod tests {
             }
             fn get_fields(&self, path: &str, f: &str) -> String {
                 match path {
-                    "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "ft", "appSettingsAreaUnitsString": "ft\u{b2}" }).to_string(),
+                    "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "ft", "appSettingsVerticalDistanceUnitsString": "ft", "appSettingsAreaUnitsString": "ft\u{b2}" }).to_string(),
                     _ => Camera(Some(self.0)).get_fields(path, f),
                 }
             }
@@ -287,12 +287,39 @@ mod tests {
             }
             fn invoke(&self, path: &str, args: &str) -> String {
                 match path {
-                    "units.metersToAppSettingsHorizontalDistanceUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
+                    "units.metersToAppSettingsHorizontalDistanceUnits" | "units.metersToAppSettingsVerticalDistanceUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
                     _ => json!({ "ok": true, "result": 1.0 }).to_string(),
                 }
             }
             fn watch(&self, _p: &[String]) {}
         }
+        struct FeetWideMetresHigh;
+        impl Backend for FeetWideMetresHigh {
+            fn get(&self, path: &str) -> String {
+                Feet(60.0).get(path)
+            }
+            fn get_fields(&self, path: &str, f: &str) -> String {
+                match path {
+                    "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "ft", "appSettingsVerticalDistanceUnitsString": "m" }).to_string(),
+                    _ => Camera(Some(60.0)).get_fields(path, f),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match path {
+                    "units.metersToAppSettingsHorizontalDistanceUnits" => Feet(60.0).invoke(path, args),
+                    _ => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] }).to_string(),
+                }
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(
+            survey_stats_view(&FeetWideMetresHigh, &["3".to_string()])["surfaceDistanceText"],
+            "60.0 m",
+            "the height above the surface is an altitude, so it reads in the altitude unit even with distances in feet"
+        );
         let feet = survey_stats_view(&Feet(60.0), &["3".to_string()]);
         assert_eq!(
             feet["surfaceDistanceText"], "197 ft",

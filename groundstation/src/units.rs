@@ -233,11 +233,26 @@ pub fn built_in(raw_units: &str) -> Option<Conversion> {
         .map(|(_, conversion)| *conversion)
 }
 
+pub fn is_altitude(name: &str) -> bool {
+    name.split('_').any(|token| {
+        ["ALT", "HGT", "HEIGHT"]
+            .iter()
+            .any(|word| token.contains(word))
+    }) || name.ends_with("VER_DIST")
+}
+
+pub fn quantity_units<'a>(name: &str, raw_units: &'a str) -> &'a str {
+    match raw_units.to_lowercase().as_str() {
+        "m" | "meter" | "meters" if is_altitude(name) => "vertical m",
+        _ => raw_units,
+    }
+}
+
 pub fn for_fact(
     meta: &crate::factmeta::MetaData,
     preference: impl Fn(&str) -> Option<Conversion>,
 ) -> Option<Conversion> {
-    let raw_units = meta.units.as_deref().unwrap_or("");
+    let raw_units = quantity_units(&meta.name, meta.units.as_deref().unwrap_or(""));
     let lowered = raw_units.to_lowercase();
     if !meta.enums.is_empty() || !meta.bits.is_empty() {
         return None;
@@ -507,6 +522,44 @@ mod tests {
         assert_eq!(
             unit_system(&stored(&[("Units/customUnits", "true")]), METRIC),
             2
+        );
+    }
+
+    #[test]
+    fn an_altitude_parameter_follows_the_altitude_unit_and_a_distance_the_distance_unit() {
+        let feet_wide_metres_high = |key: &str| match key {
+            "Units/horizontalDistanceUnits" => Some("0".to_string()),
+            "Units/verticalDistanceUnits" => Some("1".to_string()),
+            _ => None,
+        };
+        let shown = |name: &str| {
+            let meta = crate::factmeta::MetaData {
+                name: name.to_string(),
+                units: Some("m".to_string()),
+                ..crate::px4meta::bare(crate::factmeta::ValueType::Float)
+            };
+            for_fact(&meta, |units| {
+                cooking_with(units, feet_wide_metres_high, METRIC)
+            })
+            .map(|c| c.name)
+        };
+        assert_eq!(
+            [
+                "RTL_ALT_M",
+                "RTL_ALT_FINAL_M",
+                "FENCE_ALT_MAX",
+                "TKOFF_ALT",
+                "RTL_RETURN_ALT",
+                "GF_MAX_VER_DIST",
+                "SENS_FLOW_MAXHGT",
+            ]
+            .map(shown),
+            [Some("m"); 7],
+            "a height is set by the altitude unit, so metres stay metres while distances read in feet"
+        );
+        assert_eq!(
+            ["FENCE_RADIUS", "WPNAV_RADIUS_M", "GF_MAX_HOR_DIST"].map(shown),
+            [Some("ft"); 3]
         );
     }
 

@@ -212,9 +212,13 @@ fn shown(read: &Value, raw: f64) -> String {
                     .get("bitmaskStrings")
                     .and_then(Value::as_array)
                     .is_some_and(|bits| !bits.is_empty());
-            match crate::units::built_in(raw_units)
-                .or_else(|| crate::units::cooking(raw_units).filter(|_| real && !listed))
-            {
+            match crate::units::built_in(raw_units).or_else(|| {
+                crate::units::cooking(crate::units::quantity_units(
+                    read.get("name").and_then(Value::as_str).unwrap_or_default(),
+                    raw_units,
+                ))
+                .filter(|_| real && !listed)
+            }) {
                 Some(conversion) => crate::settingsstore::fixed_as_qt(
                     (conversion.shown)(raw),
                     read.get("decimalPlaces")
