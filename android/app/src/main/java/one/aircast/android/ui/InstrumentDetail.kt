@@ -66,6 +66,11 @@ internal fun silenceText(seconds: Long): String = "No data from the aircraft for
 
 internal const val SIGNAL_LOST = "Signal lost"
 
+private const val NO_FAILSAFE = "No failsafe"
+
+internal fun lossFailsafeLine(seconds: Long?, failsafe: LossFailsafe?): String? =
+    failsafe?.let { if (it.action == NO_FAILSAFE) "No failsafe on link loss" else "On link loss: ${failsafeCountdown(seconds, it)}" }
+
 internal fun failsafeCountdown(seconds: Long?, failsafe: LossFailsafe?): String? = failsafe?.let { (action, after) ->
     val left = after?.let { kotlin.math.ceil(it - (seconds ?: 0L)).toLong() }?.takeIf { it > 0 }
     if (left == null) action else "$action in ${silenceDuration(left)}"

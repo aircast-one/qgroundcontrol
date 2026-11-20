@@ -269,6 +269,9 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             onClick = {},
             enabled = false,
         )
+        lossFailsafeLine(silentFor, failsafe)?.let { line ->
+            androidx.compose.material3.DropdownMenuItem(text = { Text(line, style = MaterialTheme.typography.labelLarge) }, onClick = {}, enabled = false)
+        }
         androidx.compose.material3.DropdownMenuItem(
             text = { Text(LOST_LINK_HINT, style = MaterialTheme.typography.bodySmall, modifier = Modifier.widthIn(max = 280.dp)) },
             onClick = {},

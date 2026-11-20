@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -203,5 +204,13 @@ class InstrumentDetailTest {
         assertFalse(statusPillShown(vehicle = false, rtk = false, gcsBattery = false))
         assertTrue(statusPillShown(vehicle = false, rtk = false, gcsBattery = true))
         assertTrue(statusPillShown(vehicle = true, rtk = false, gcsBattery = false))
+    }
+
+    @Test
+    fun `the lost-link menu names what the aircraft does about the lost link, which the portrait chip has no room for`() {
+        assertEquals("On link loss: Return home in 8 s", lossFailsafeLine(2, LossFailsafe("Return home", 10.0)))
+        assertEquals("On link loss: Return home", lossFailsafeLine(12, LossFailsafe("Return home", 10.0)))
+        assertEquals("No failsafe on link loss", lossFailsafeLine(4, LossFailsafe("No failsafe", null)))
+        assertNull(lossFailsafeLine(4, null))
     }
 }
