@@ -59,4 +59,9 @@ final class MissionKindGateTests: XCTestCase {
         XCTAssertEqual([true, false, true, true], frames.map(itemReferenceShown))
         XCTAssertEqual([true, false, false, true], frames.map(itemReferenceSelectable))
     }
+
+    func testTheChooserNamesAPatternByItsTitleAsNewPlanAndTheItemListDoNotByItsFileName() {
+        let titled = JSON.parse(#"{"kind":"object","kinds":[{"id":"corridor","complexName":"Corridor Scan","title":"Corridor scan","enabled":true},{"id":"spiral","complexName":"Spiral Scan","enabled":true}]}"#)
+        XCTAssertEqual(scanPatterns(missionKinds(titled)).map(patternTitle), ["Corridor scan", "Spiral Scan"])
+    }
 }

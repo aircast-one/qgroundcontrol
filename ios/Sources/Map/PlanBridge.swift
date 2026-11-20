@@ -37,6 +37,8 @@ func scanPatterns(_ kinds: [MissionKind]) -> [MissionKind] {
     kinds.filter { !$0.label.isBlank }
 }
 
+func patternTitle(_ kind: MissionKind) -> String { kind.title.isBlank ? kind.label : kind.title }
+
 func kindOffered(_ kinds: [MissionKind], _ id: String) -> Bool {
     kinds.isEmpty || kinds.contains { $0.id == id }
 }

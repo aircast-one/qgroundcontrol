@@ -1180,9 +1180,9 @@ struct PlanMapContent: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(patternWanted.first { !addablePattern($0) && !$0.disabledReason.isBlank }?.disabledReason ?? "A pattern covers an area or a line with a camera run.")
                     ForEach(patternWanted, id: \.id) { kind in
-                        Button(kind.label) {
+                        Button(patternTitle(kind)) {
                             patternWanted = []
-                            addMissionItem(kind.id, "Adding \(kind.label.lowercased())", patternAt ?? placeAt(), insertAfter(selected, allItems))
+                            addMissionItem(kind.id, "Adding \(patternTitle(kind).lowercased())", patternAt ?? placeAt(), insertAfter(selected, allItems))
                         }
                         .buttonStyle(.text)
                         .disabled(!addablePattern(kind))
