@@ -25,6 +25,9 @@ private let HOME_LABEL_LAYER = "aircast-home-label-layer"
 private let TRAIL_LAYER = "aircast-trail-layer"
 
 private let DEFAULT_ZOOM = 17.0
+private let WORLD_ZOOM = 1.0
+
+func placedBefore(_ zoom: Double) -> Bool { zoom > WORLD_ZOOM }
 
 private let MIN_FIT_SPAN_DEGREES = 1e-5
 private let FIT_PADDING_PIXELS: CGFloat = 80
@@ -809,13 +812,13 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         if let centreZoom {
             mapView.setCenter(at.location, zoomLevel: centreZoom, animated: false)
         } else if let centreMinZoom, mapView.zoomLevel < centreMinZoom {
-            mapView.setCenter(at.location, zoomLevel: centreMinZoom, animated: true)
-        } else if mapView.zoomLevel > 1.0 {
+            mapView.setCenter(at.location, zoomLevel: centreMinZoom, animated: placedBefore(mapView.zoomLevel))
+        } else if placedBefore(mapView.zoomLevel) {
             let point = mapView.screenPoint(at.location)
             let clear = CGPoint(x: point.x - insets.left / 2, y: point.y - clearAreaLift(insets.top, insets.bottom))
             mapView.setCenter(mapView.screenCoordinate(clear), animated: true)
         } else {
-            mapView.setCenter(at.location, zoomLevel: DEFAULT_ZOOM, animated: true)
+            mapView.setCenter(at.location, zoomLevel: DEFAULT_ZOOM, animated: false)
         }
     }
 
@@ -823,7 +826,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         guard let mapView else { return }
         guard let bounds = planBounds(fitPoints(points, latitude, longitude)) else { return onFitFailed() }
         if bounds.spanDegrees < MIN_FIT_SPAN_DEGREES {
-            return mapView.setCenter(bounds.centre.location, zoomLevel: DEFAULT_ZOOM, animated: true)
+            return mapView.setCenter(bounds.centre.location, zoomLevel: DEFAULT_ZOOM, animated: placedBefore(mapView.zoomLevel))
         }
         let padding = FIT_PADDING_PIXELS / max(mapView.traitCollection.displayScale, 1)
         mapView.setVisibleCoordinateBounds(
@@ -837,7 +840,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
                 bottom: padding + insets.bottom + mapView.bounds.height * bottomShare,
                 right: padding
             ),
-            animated: true,
+            animated: placedBefore(mapView.zoomLevel),
             completionHandler: nil
         )
     }

@@ -100,4 +100,9 @@ final class VehicleMapTests: XCTestCase, MLNMapViewDelegate {
         XCTAssertEqual(rally, rally)
         XCTAssertNotEqual(rally, withChanges(rally) { $0.altitude = 30 })
     }
+
+    func testAMapStillShowingTheWholeWorldLandsOnItsPlanAtOnceInsteadOfFlyingInThroughContinentScales() {
+        XCTAssertFalse(placedBefore(0))
+        XCTAssertTrue(placedBefore(15), "a map already placed keeps its smooth moves")
+    }
 }
