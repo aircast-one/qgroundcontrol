@@ -201,6 +201,15 @@ describe('FlyReadinessTest', () => {
     expect(guidedReadiness(state({ armed: true }), red), 'in the air a red reading is not a take-off warning').toBeNull();
   });
 
+  it('a check the aircraft refused to arm for leads the take-off warning, so take off anyway is not a surprise', () => {
+    const red = ['Vibration 60.0 m/s²', RC_NO_SIGNAL];
+    expect(guidedReadiness(state(), red, 'PreArm: Compass not calibrated')?.text).toBe(
+      `Can't arm: Compass not calibrated. ${NOT_FULLY_READY}. Vibration 60.0 m/s². RC has no signal. Tap a red reading to see how to fix it.`,
+    );
+    expect(guidedReadiness(state(), [], 'PreArm: Compass not calibrated'), 'the refusal alone is reason enough to warn').toEqual(Readiness({ text: "Can't arm: Compass not calibrated.", blocks: false }));
+    expect(guidedReadiness(state({ armed: true }), [], 'PreArm: Compass not calibrated')).toBeNull();
+  });
+
   it('disarmingSaysWhetherTheVehicleFlew', () => {
     expect(disarmNotice(true, true, false, true)).toBe('Landed and disarmed');
     expect(disarmNotice(true, false, false, true)).toBe('Disarmed');

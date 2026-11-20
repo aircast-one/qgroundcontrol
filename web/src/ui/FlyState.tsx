@@ -73,16 +73,40 @@ export const Readiness = (fields: Readiness): Readiness => ({ ...fields });
 
 export const READINESS_BLOCKED = 'The vehicle will refuse to arm until this is fixed.';
 
-export const guidedReadiness = (state: FlyState | null, red: readonly string[]): Readiness | null => {
-  const text = readinessWarning(withRedIndicators(state, red));
-  if (text === null) return null;
+const PREARM_PREFIX = 'PreArm:';
+
+export const chipBlocker = (blocker: string): string => {
+  const trimmed = blocker.trim();
+  const rest = (trimmed.startsWith(PREARM_PREFIX) ? trimmed.slice(PREARM_PREFIX.length) : trimmed).trim();
+  const sentence = rest.includes('. ') ? rest.slice(0, rest.indexOf('. ')) : rest;
+  return sentence.replace(/\.+$/, '');
+};
+
+export const WARNINGS = 'view.warnings';
+
+export const armingBlocker = (view: Json | null): string | null => {
+  if (view === null || isNull(view, 'armingBlocker')) return null;
+  const blocker = optText(view, 'armingBlocker');
+  return blocker.trim() === '' ? null : blocker;
+};
+
+export const refusedArming = (state: FlyState | null, blocker: string | null): string | null => {
+  if (blocker === null || state === null || !state.connected || state.armed || state.contactLost === true) return null;
+  const said = chipBlocker(blocker);
+  return said === '' ? null : `Can't arm: ${said}.`;
+};
+
+export const guidedReadiness = (state: FlyState | null, red: readonly string[], blocker: string | null = null): Readiness | null => {
+  const text = [refusedArming(state, blocker), readinessWarning(withRedIndicators(state, red))].filter((part): part is string => part !== null).join(' ');
+  if (text === '') return null;
   const blocks = state?.canArm === false;
   return Readiness({ text: blocks ? `${text.endsWith('.') ? text.slice(0, -1) : text}. ${READINESS_BLOCKED}` : text, blocks });
 };
 
 export const useGuidedReadiness = (state: FlyState | null): Readiness | null => {
   const red = useRedIndicators(state);
-  return useMemo(() => guidedReadiness(state, red), [state, red.join('|')]);
+  const blocker = useQgcDerived(WARNINGS, armingBlocker);
+  return useMemo(() => guidedReadiness(state, red, blocker), [state, red.join('|'), blocker]);
 };
 
 export const LANDED_AND_DISARMED = 'Landed and disarmed';

@@ -12,7 +12,7 @@ import { useAdvancedUiShown } from './AdvancedUi';
 import { LocalAppNavigation } from './AppNavigation';
 import { SENSOR_HEALTH, sensorHealth } from './CalibrationView';
 import { LocalFlyScreenState } from './FlyScreenState';
-import { FLY_STATE, type FlyState, flyState, inAir, useInAir } from './FlyState';
+import { FLY_STATE, type FlyState, WARNINGS, flyState, inAir, useInAir } from './FlyState';
 import { PayloadFixButton } from './GripperPanel';
 import type { GuidedOffer, PayloadProblem } from './GuidedActions';
 import { HoldToConfirm } from './HoldToConfirm';
@@ -21,7 +21,7 @@ import { ParameterForm } from './ParameterForm';
 import { EDIT_PARAMETER_TITLE, LinkedText, ParameterEditDialog } from './ParameterLinks';
 import { AIRCRAFT_SETUP } from './SettingsScreen';
 import { SETUP_OVERVIEW_PAGE, SETUP_PARAMETERS_PAGE } from './SetupScreen';
-import { type ArmingCheck, MESSAGES, MessageSeverity, WARNINGS, armingChecks, severitySummary, vehicleMessages } from './VehicleMessages';
+import { type ArmingCheck, MESSAGES, MessageSeverity, armingChecks, severitySummary, vehicleMessages } from './VehicleMessages';
 
 const SENSOR_FAULT_STATE = 'unhealthy';
 

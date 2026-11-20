@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { readinessSubtitle } from './ActiveVehicle';
-import { FlyState } from './FlyState';
+import { FlyState, armingBlocker, chipBlocker } from './FlyState';
 import {
   MessageSeverity,
   OLDEST_FIRST,
   VehicleMessage,
-  armingBlocker,
   bannerMessages,
   bannerText,
-  chipBlocker,
   levelOf,
   messageCountText,
   messageTime,

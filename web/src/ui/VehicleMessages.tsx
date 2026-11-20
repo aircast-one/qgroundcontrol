@@ -11,6 +11,7 @@ import { aircast, md } from '@/theme/Colors';
 import { useOsdBackdrop, useOsdTint } from './Osd';
 import { EDIT_PARAMETER_TITLE, LinkedText, ParameterEditDialog } from './ParameterLinks';
 import { EmptyState } from './SetupRow';
+import { WARNINGS, armingBlocker } from './FlyState';
 
 export const MESSAGES = 'view.messages';
 
@@ -39,15 +40,6 @@ export const VehicleMessage = (fields: { index: number; time: string; severity: 
   resolved: false,
   ...fields,
 });
-
-const PREARM_PREFIX = 'PreArm:';
-
-export const chipBlocker = (blocker: string): string => {
-  const trimmed = blocker.trim();
-  const rest = (trimmed.startsWith(PREARM_PREFIX) ? trimmed.slice(PREARM_PREFIX.length) : trimmed).trim();
-  const sentence = rest.includes('. ') ? rest.slice(0, rest.indexOf('. ')) : rest;
-  return sentence.replace(/\.+$/, '');
-};
 
 export const bannerMessages = (unread: readonly VehicleMessage[]): readonly VehicleMessage[] =>
   unread.filter((it) => (it.level === MessageSeverity.Error || it.level === MessageSeverity.Warning) && !it.toldElsewhere && !it.resolved);
@@ -130,14 +122,6 @@ export const vehicleMessages = (view: Json | null): readonly VehicleMessage[] =>
         ];
   });
   return optText(view, 'order') === OLDEST_FIRST ? read : read.toReversed();
-};
-
-export const WARNINGS = 'view.warnings';
-
-export const armingBlocker = (view: Json | null): string | null => {
-  if (view === null || isNull(view, 'armingBlocker')) return null;
-  const blocker = optText(view, 'armingBlocker');
-  return blocker.trim() === '' ? null : blocker;
 };
 
 export type ArmingCheck = { message: string; description: string; severity: string };
