@@ -205,13 +205,15 @@ const FOG_HEIGHT_M = 400.0;
 
 struct Air { light: vec3<f32>, through: vec3<f32> };
 
-fn path_height(along: f32, up: f32) -> f32 {
-    let rise = along * along + 2.0 * PLANET_M * along * up;
-    return rise / (sqrt(PLANET_M * PLANET_M + rise) + PLANET_M);
+fn path_height(start: f32, along: f32, up: f32) -> f32 {
+    let radius = PLANET_M + start;
+    let rise = along * along + 2.0 * radius * along * up;
+    return start + rise / (sqrt(radius * radius + rise) + radius);
 }
 
-fn to_space(up: f32) -> f32 {
-    return -PLANET_M * up + sqrt(PLANET_M * PLANET_M * up * up + ATMOSPHERE_M * ATMOSPHERE_M - PLANET_M * PLANET_M);
+fn to_space(start: f32, up: f32) -> f32 {
+    let radius = PLANET_M + start;
+    return -radius * up + sqrt(max(radius * radius * up * up + ATMOSPHERE_M * ATMOSPHERE_M - radius * radius, 0.0));
 }
 
 fn sun_depth(height: f32) -> vec3<f32> {
@@ -219,7 +221,7 @@ fn sun_depth(height: f32) -> vec3<f32> {
     return (RAYLEIGH * RAYLEIGH_H * exp(-height / RAYLEIGH_H) + vec3<f32>(MIE * 1.1 * MIE_H * exp(-height / MIE_H))) / toward;
 }
 
-fn scatter(direction: vec3<f32>, length: f32, samples: i32) -> Air {
+fn scatter(direction: vec3<f32>, length: f32, samples: i32, start: f32) -> Air {
     let up = dot(direction, scene.zenith.xyz);
     let toward_sun = dot(direction, scene.sun.xyz);
     let rayleigh_phase = 3.0 / (16.0 * PI) * (1.0 + toward_sun * toward_sun);
@@ -229,7 +231,7 @@ fn scatter(direction: vec3<f32>, length: f32, samples: i32) -> Air {
     for (var i = 0; i < samples; i++) {
         let fraction = (f32(i) + 0.5) / f32(samples);
         let step = 2.0 * fraction * length / f32(samples);
-        let height = max(path_height(fraction * fraction * length, up), 0.0);
+        let height = max(path_height(start, fraction * fraction * length, up), 0.0);
         let rayleigh_density = exp(-height / RAYLEIGH_H) * step;
         let mie_density = exp(-height / MIE_H) * step;
         let segment = RAYLEIGH * rayleigh_density + vec3<f32>(MIE * 1.1 * mie_density);
@@ -241,14 +243,18 @@ fn scatter(direction: vec3<f32>, length: f32, samples: i32) -> Air {
     return Air(light, exp(-depth));
 }
 
-fn sky_air(direction: vec3<f32>, samples: i32) -> Air {
+fn air_from(direction: vec3<f32>, samples: i32, start: f32) -> Air {
     let up = dot(direction, scene.zenith.xyz);
-    let length = select(to_space(up), -2.0 * PLANET_M * up + 20000.0, up < 0.0);
-    return scatter(direction, length, samples);
+    let length = select(to_space(start, up), -2.0 * (PLANET_M + start) * up + 20000.0, up < 0.0);
+    return scatter(direction, length, samples, start);
+}
+
+fn sky_air(direction: vec3<f32>, samples: i32) -> Air {
+    return air_from(direction, samples, 0.0);
 }
 
 fn sky(direction: vec3<f32>) -> vec3<f32> {
-    let air = sky_air(direction, 8);
+    let air = air_from(direction, 8, scene.eye.w);
     let disc = smoothstep(0.99990, 0.99997, dot(direction, scene.sun.xyz));
     return air.light + air.through * SUN * disc;
 }
@@ -410,7 +416,7 @@ fn clouds(direction: vec3<f32>, jitter: f32, limit: f32) -> vec4<f32> {
 fn cloud_light(direction: vec3<f32>, jitter: f32, limit: f32) -> vec4<f32> {
     let cover = clouds(direction, jitter, limit);
     if (cover.a >= 1.0) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
-    let near = scatter(direction, max(slab_reach(dot(direction, scene.zenith.xyz), limit).x, 1.0), 4);
+    let near = scatter(direction, max(slab_reach(dot(direction, scene.zenith.xyz), limit).x, 1.0), 4, scene.eye.w);
     return vec4<f32>(cover.rgb * near.through + near.light * (1.0 - cover.a), cover.a);
 }
 
@@ -532,7 +538,7 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>, lit: f32) -> ve
 
 fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
     let distance = max(length(f.seen), 1.0);
-    let air = scatter(f.seen / distance, distance * scene.air.y, AERIAL_SAMPLES);
+    let air = scatter(f.seen / distance, distance * scene.air.y, AERIAL_SAMPLES, scene.eye.w);
     let normal = select(vec3<f32>(0.0), facing(f.normal, f.seen), dot(f.normal, f.normal) >= 0.25);
     let lit = sunlight_reaching(f.seen, normal);
     let shaded = fogged(sunlit(colour.rgb, f.normal, f.seen, lit) * air.through + air.light, f.seen);
@@ -559,7 +565,7 @@ fn lit_surface(colour: vec4<f32>, f: Out) -> Frag {
 
 fn sky_seen(direction: vec3<f32>, cover: vec4<f32>) -> vec3<f32> {
     let up = dot(direction, scene.zenith.xyz);
-    let reach = min(select(to_space(up), -2.0 * PLANET_M * up + 20000.0, up < 0.0), 60000.0);
+    let reach = min(select(to_space(scene.eye.w, up), -2.0 * PLANET_M * up + 20000.0, up < 0.0), 60000.0);
     return fogged(sky(direction) * cover.a + cover.rgb, direction * reach);
 }
 
@@ -619,7 +625,7 @@ fn sky_toward(direction: vec3<f32>) -> vec3<f32> {
 @fragment fn fs_water(f: Out) -> Frag {
     let distance = max(length(f.seen), 1.0);
     let seen = f.seen / distance;
-    let air = scatter(seen, distance * scene.air.y, AERIAL_SAMPLES);
+    let air = scatter(seen, distance * scene.air.y, AERIAL_SAMPLES, scene.eye.w);
     let up = scene.zenith.xyz;
     let surface = rippled(f.seen, distance);
     let mirrored = reflect(seen, surface.xyz);
