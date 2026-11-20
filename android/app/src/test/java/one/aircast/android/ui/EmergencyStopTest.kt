@@ -9,6 +9,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EmergencyStopTest {
+    @Test
+    fun `killing the motors is remembered for the disarm that follows it, and only for that one`() {
+        val killedAt = 10_000L
+        assertEquals(true, killedRecently(killedAt, killedAt + 1_000))
+        assertEquals("a later landing is not the kill", false, killedRecently(killedAt, killedAt + KILL_SETTLE_MS + 1))
+        assertEquals(false, killedRecently(null, killedAt))
+    }
+
 
     private fun offers(vararg entries: Pair<String, String>): Map<String, GuidedOffer> {
         val actions = entries.joinToString(",") { (id, offer) ->

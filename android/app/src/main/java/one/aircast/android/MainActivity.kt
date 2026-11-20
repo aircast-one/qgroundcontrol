@@ -450,13 +450,19 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
 
+    val sub by one.aircast.android.bridge.qgcBool("vehicle.sub")
+    val rover by one.aircast.android.bridge.qgcBool("vehicle.rover")
     var wasArmed by remember { mutableStateOf(false) }
     var flewWhileArmed by remember { mutableStateOf(false) }
     var armedBattery by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(flyNow?.armed, flyNow?.state) {
         val armedNow = flyNow?.let { it.connected && it.armed } == true
         if (armedNow && !wasArmed) noticeScope.launch { armedBattery = withContext(Dispatchers.Default) { one.aircast.android.ui.batteryPercentNow() } }
-        one.aircast.android.ui.disarmNotice(wasArmed, flewWhileArmed, armedNow)?.let { said ->
+        val cause = one.aircast.android.ui.DisarmCause(
+            killed = one.aircast.android.ui.killedRecently(one.aircast.android.ui.motorsKilledAt.get(), one.aircast.android.ui.monotonicMillis()),
+            lands = !sub && !rover,
+        )
+        one.aircast.android.ui.disarmNotice(wasArmed, flewWhileArmed, armedNow, cause)?.let { said ->
             val landed = flewWhileArmed
             val startBattery = armedBattery
             noticeScope.launch {

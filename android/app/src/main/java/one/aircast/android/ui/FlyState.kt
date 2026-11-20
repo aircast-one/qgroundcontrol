@@ -62,8 +62,19 @@ internal fun guidedReadiness(state: FlyState?): Readiness? =
         Readiness(if (blocks) "${text.removeSuffix(".")}. $READINESS_BLOCKED" else text, blocks)
     }
 
-internal fun disarmNotice(wasArmed: Boolean, flewWhileArmed: Boolean, armedNow: Boolean): String? =
-    if (wasArmed && !armedNow) (if (flewWhileArmed) "Landed and disarmed" else "Disarmed") else null
+internal const val LANDED_AND_DISARMED = "Landed and disarmed"
+internal const val MOTORS_STOPPED = "Motors stopped"
+
+internal data class DisarmCause(val killed: Boolean, val lands: Boolean)
+
+internal val LANDING = DisarmCause(killed = false, lands = true)
+
+internal fun disarmNotice(wasArmed: Boolean, flewWhileArmed: Boolean, armedNow: Boolean, cause: DisarmCause = LANDING): String? = when {
+    !wasArmed || armedNow -> null
+    cause.killed -> MOTORS_STOPPED
+    flewWhileArmed && cause.lands -> LANDED_AND_DISARMED
+    else -> "Disarmed"
+}
 
 internal const val VEHICLE_FLIGHT_DISTANCE = "vehicle.flightDistance"
 

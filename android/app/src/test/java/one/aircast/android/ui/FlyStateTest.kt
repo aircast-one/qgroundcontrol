@@ -208,6 +208,9 @@ class FlyReadinessTest {
         assertEquals("Landed and disarmed", disarmNotice(wasArmed = true, flewWhileArmed = true, armedNow = false))
         assertEquals("Disarmed", disarmNotice(wasArmed = true, flewWhileArmed = false, armedNow = false))
         assertNull(disarmNotice(wasArmed = false, flewWhileArmed = false, armedNow = false))
+        assertEquals("killed in the air it fell, it did not land", "Motors stopped", disarmNotice(true, true, false, DisarmCause(killed = true, lands = true)))
+        assertEquals("a sub killed at depth", "Motors stopped", disarmNotice(true, true, false, DisarmCause(killed = true, lands = false)))
+        assertEquals("a sub disarmed at the surface", "Disarmed", disarmNotice(true, true, false, DisarmCause(killed = false, lands = false)))
     }
 
     @Test
