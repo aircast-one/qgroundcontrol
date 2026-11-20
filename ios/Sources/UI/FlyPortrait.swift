@@ -254,9 +254,11 @@ struct FlyPortrait: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
                     .clipped()
-                OsdCompassDial(size: PORTRAIT_DIAL_SIZE)
-                    .frame(width: PORTRAIT_DIAL_SIZE, height: PORTRAIT_DIAL_SIZE)
-                    .padding(.top, Space.s2)
+                if !flyScreen.guidedPanelOpen {
+                    OsdCompassDial(size: PORTRAIT_DIAL_SIZE)
+                        .frame(width: PORTRAIT_DIAL_SIZE, height: PORTRAIT_DIAL_SIZE)
+                        .padding(.top, Space.s2)
+                }
             }
             .padding(.leading, Space.s3)
             .padding(.top, overlaysTop)
@@ -267,8 +269,10 @@ struct FlyPortrait: View {
                 .padding(.trailing, Space.s3)
                 .padding(.top, buttonsTop)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            RailPlacement(top: buttonsTop + MAP_BUTTON_SIZE + Space.s2, clearance: MAP_SCALE_CLEARANCE, lift: railLift) {
-                rail(split).padding(.trailing, Space.s3)
+            if !flyScreen.guidedPanelOpen {
+                RailPlacement(top: buttonsTop + MAP_BUTTON_SIZE + Space.s2, clearance: MAP_SCALE_CLEARANCE, lift: railLift) {
+                    rail(split).padding(.trailing, Space.s3)
+                }
             }
         }
     }

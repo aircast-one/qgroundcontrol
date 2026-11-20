@@ -846,6 +846,8 @@ struct FlightActions<Center: View>: View {
                 },
                 onCancel: { actions.pending = nil }
             )
+            .onAppear { flyScreen.guidedPanels += 1 }
+            .onDisappear { flyScreen.guidedPanels -= 1 }
         } else if showingSent {
             SentNotice(name: actions.sentName ?? "", onDismiss: { actions.sentName = nil })
         }
