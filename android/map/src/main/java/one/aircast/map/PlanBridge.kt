@@ -40,6 +40,8 @@ fun missionKinds(view: JSONObject?): List<MissionKind> {
 fun scanPatterns(kinds: List<MissionKind>): List<MissionKind> =
     kinds.filter { it.label.isNotBlank() }
 
+fun patternTitle(kind: MissionKind): String = kind.title.ifBlank { kind.label }
+
 fun kindOffered(kinds: List<MissionKind>, id: String): Boolean =
     kinds.isEmpty() || kinds.any { it.id == id }
 

@@ -849,12 +849,12 @@ internal fun PlanMapContent(
                                     patternWanted = emptyList()
                                     addMissionItem(
                                         kind.id,
-                                        "Adding ${kind.label.lowercase()}",
+                                        "Adding ${patternTitle(kind).lowercase()}",
                                         placeAt(),
                                         insertAfter(selected, allItems),
                                     )
                                 },
-                            ) { Text(kind.label) }
+                            ) { Text(patternTitle(kind)) }
                         }
                     }
                 },

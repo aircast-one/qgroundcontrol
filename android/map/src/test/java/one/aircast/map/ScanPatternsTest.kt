@@ -95,4 +95,10 @@ class MissionKindGateTest {
         assertEquals(listOf(true, false, true, true), listOf(GLOBAL_FRAME_MIXED, GLOBAL_FRAME_RELATIVE, 2, null).map { itemReferenceShown(it) })
         assertEquals(listOf(true, false, false, true), listOf(GLOBAL_FRAME_MIXED, GLOBAL_FRAME_RELATIVE, 2, null).map { itemReferenceSelectable(it) })
     }
+
+    @Test
+    fun `the chooser names a pattern by its title, as New plan and the item list do, not by its file name`() {
+        val titled = JSONObject("""{"kind":"object","kinds":[{"id":"corridor","complexName":"Corridor Scan","title":"Corridor scan","enabled":true},{"id":"spiral","complexName":"Spiral Scan","enabled":true}]}""")
+        assertEquals(listOf("Corridor scan", "Spiral Scan"), scanPatterns(missionKinds(titled)).map(::patternTitle))
+    }
 }
