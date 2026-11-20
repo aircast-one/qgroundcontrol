@@ -17,11 +17,37 @@ pub fn reboot_debounced(last: Option<i64>, now_ms: i64) -> bool {
     last.is_some_and(|previous| now_ms - previous < REBOOT_DEBOUNCE_MS)
 }
 
+thread_local! {
+    static REBOOT_OFFERED_ON_PAGE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub fn with_reboot_offered_on_page<T>(write: impl FnOnce() -> T) -> T {
+    REBOOT_OFFERED_ON_PAGE.set(true);
+    let written = write();
+    REBOOT_OFFERED_ON_PAGE.set(false);
+    written
+}
+
+fn reboot_notice_text(
+    vehicle_reboot: bool,
+    application_restart: bool,
+    offered_on_page: bool,
+) -> Option<&'static str> {
+    match (vehicle_reboot, application_restart) {
+        (true, _) if offered_on_page => None,
+        (true, _) => Some(REBOOT_VEHICLE_TEXT),
+        (false, true) => Some(RESTART_APPLICATION_TEXT),
+        (false, false) => None,
+    }
+}
+
 pub fn reboot_notice_after_write(vehicle_reboot: bool, application_restart: bool, now_ms: i64) {
-    let text = match (vehicle_reboot, application_restart) {
-        (true, _) => REBOOT_VEHICLE_TEXT,
-        (false, true) => RESTART_APPLICATION_TEXT,
-        (false, false) => return,
+    let Some(text) = reboot_notice_text(
+        vehicle_reboot,
+        application_restart,
+        REBOOT_OFFERED_ON_PAGE.get(),
+    ) else {
+        return;
     };
     let debounced = {
         let mut last = LAST_REBOOT_NOTICE_MS
@@ -245,6 +271,27 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_page_that_offers_its_own_reboot_gets_no_reboot_prompt_over_it() {
+        assert_eq!(
+            super::reboot_notice_text(true, false, false),
+            Some(super::REBOOT_VEHICLE_TEXT)
+        );
+        assert_eq!(
+            super::reboot_notice_text(true, false, true),
+            None,
+            "picking a frame class popped Reboot vehicle before the frame type could be chosen, though the Frame page offers the reboot itself"
+        );
+        assert_eq!(
+            super::reboot_notice_text(false, true, true),
+            Some(super::RESTART_APPLICATION_TEXT)
+        );
+        assert!(super::with_reboot_offered_on_page(|| {
+            super::REBOOT_OFFERED_ON_PAGE.get()
+        }));
+        assert!(!super::REBOOT_OFFERED_ON_PAGE.get());
+    }
+
     #[test]
     fn reboot_prompts_debounce_for_two_minutes_like_qgc_application() {
         assert!(!super::reboot_debounced(None, 1_000));

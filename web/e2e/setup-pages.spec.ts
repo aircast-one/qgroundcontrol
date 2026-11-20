@@ -114,15 +114,15 @@ test('an ArduPilot accelerometer calibration keeps the pilot on Sensors, since i
   await expect(app.getByText('Calibration failed. Calibration log will be displayed.')).toHaveCount(0);
 });
 
-test('an ArduPilot frame change can be rebooted from the Frame page after the prompt was dismissed, and keeps its frame type', async ({ app }) => {
+test('an ArduPilot frame class is picked with no reboot prompt over the page, so its frame type is chosen before the page reboots', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
   await expect(app.getByText(/^Currently set to frame class 'Quad' and frame type 'Plus'/)).toBeVisible();
   await app.getByRole('button', { name: 'Hexa Hexa' }).click();
-  const prompt = app.getByRole('dialog').filter({ hasText: 'Reboot vehicle for changes to take effect.' });
-  await prompt.getByRole('button', { name: 'Cancel' }).click();
-  await expect(app.getByText(/^Currently set to frame class 'Hexa' and frame type 'Plus'/)).toBeVisible();
-  await app.getByRole('button', { name: 'Quad Quad' }).click();
+  await expect(app.getByText(/^Currently set to frame class 'Hexa' and frame type 'Plus'/), 'the frame type is kept').toBeVisible();
+  await app.getByRole('button', { name: 'X', exact: true }).click({ timeout: 5_000 });
+  await expect(app.getByText(/^Currently set to frame class 'Hexa' and frame type 'X'/)).toBeVisible();
+  await expect(app.getByRole('dialog').filter({ hasText: 'Reboot vehicle for changes to take effect.' }), 'a reboot prompt over the page took the frame type before it could be chosen').toHaveCount(0);
   await expect(app.getByRole('button', { name: 'Reboot vehicle', exact: true })).toBeVisible();
 });
 

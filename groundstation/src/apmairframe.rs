@@ -250,10 +250,12 @@ pub fn apm_airframe_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn write(backend: &dyn Backend, name: &str, value: i64) -> Value {
-    object(&backend.set(
-        &format!("{}.rawValue", param_path(name)),
-        &json!({ "value": value }).to_string(),
-    ))
+    crate::noticeboard::with_reboot_offered_on_page(|| {
+        object(&backend.set(
+            &format!("{}.rawValue", param_path(name)),
+            &json!({ "value": value }).to_string(),
+        ))
+    })
 }
 
 pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {

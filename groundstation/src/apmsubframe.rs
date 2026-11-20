@@ -220,10 +220,12 @@ fn apply(params: &[(String, f64)]) {
 }
 
 fn set_frame(backend: &dyn Backend, value: i64) -> Value {
-    object(&backend.set(
-        &format!("{}.rawValue", param_path(FRAME_CONFIG)),
-        &json!({ "value": value }).to_string(),
-    ))
+    crate::noticeboard::with_reboot_offered_on_page(|| {
+        object(&backend.set(
+            &format!("{}.rawValue", param_path(FRAME_CONFIG)),
+            &json!({ "value": value }).to_string(),
+        ))
+    })
 }
 
 pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
