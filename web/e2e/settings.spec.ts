@@ -68,6 +68,16 @@ test('the settings tabs move with the arrow keys and the find shortcut jumps to 
   await expect(app.getByPlaceholder('Search settings')).toBeFocused();
 });
 
+test('the settings search wears a focus ring while it has the keyboard', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  const search = app.getByPlaceholder('Search settings');
+  const ring = () => search.evaluate((it) => getComputedStyle(it.closest('label') ?? it).outlineStyle);
+  expect(await ring()).toBe('none');
+  await app.keyboard.press('ControlOrMeta+f');
+  await expect(search).toBeFocused();
+  await expect.poll(ring, { message: 'a focused search field looked exactly like an idle one' }).toBe('solid');
+});
+
 test('settings search finds a setting by name', async ({ app }) => {
   await openMenu(app, 'Settings');
   await app.getByPlaceholder('Search settings').fill('mute');

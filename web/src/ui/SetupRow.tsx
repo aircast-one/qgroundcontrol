@@ -294,7 +294,7 @@ export const SearchPill = ({
   };
   return (
     <div className={`w-full px-4 py-2 ${className ?? ''}`}>
-      <label className="flex min-h-14 w-full items-center gap-3 rounded-full bg-surface-container-high px-4 desktop:min-h-10">
+      <label className="flex min-h-14 w-full items-center gap-3 rounded-full bg-surface-container-high px-4 outline-offset-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[var(--md-primary)] has-[:focus-visible]:outline-solid desktop:min-h-10">
         <Drawable name="ic_search" style={{ color: md('onSurfaceVariant') }} />
         <input
           className="min-w-0 flex-1 bg-transparent text-body-large text-on-surface outline-none placeholder:text-on-surface-variant"
