@@ -97,6 +97,22 @@ describe('ValueRowTest', () => {
     expect(sliderFor(number('0', { name: 'GF_MAX_HOR_DIST', min: '0', max: '10000', bounded: true }))?.from).toBe(50);
   });
 
+  it('a band set in metres covers the same heights when altitudes read in feet', () => {
+    const feet = sliderFor(number('100', { name: 'RTL_RETURN_ALT', units: 'ft' }));
+    expect(feet?.from).toBe(66);
+    expect(feet?.to).toBe(1640);
+    expect(turnOnValue(number('0', { ...disabledAtZero, name: 'GF_MAX_VER_DIST', units: 'ft' }))).toBeCloseTo(394.0, 9);
+    expect(valueStep(number('100', { name: 'RTL_RETURN_ALT', units: 'ft' }))).toBeCloseTo(1.0, 9);
+  });
+
+  it('a value below the useful band widens the slider to hold it instead of pinning it at the band start', () => {
+    const low = sliderFor(number('15', { name: 'RTL_ALT_M' }));
+    expect(low?.from).toBe(15);
+    expect(low?.to).toBe(500);
+    const high = sliderFor(number('800', { name: 'RTL_ALT_M' }));
+    expect(high?.to).toBe(800);
+  });
+
   it('a pending value reads like the row', () => {
     expect(valueTextOf(number('120', disabledAtZero), 0.0)).toBe(VALUE_OFF);
     expect(valueTextOf(number('30.0'), 45.5)).toBe('45.5 m');

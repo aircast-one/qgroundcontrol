@@ -35,7 +35,7 @@ export const valueDecimals = (fact: Fact): number => {
   return (/^\d*/.exec(after)?.[0] ?? '').length;
 };
 
-export const valueStep = (fact: Fact): number => (USEFUL_BANDS.has(fact.name) ? metresScale(fact) : Math.pow(10, -valueDecimals(fact)));
+export const valueStep = (fact: Fact): number => (USEFUL_BANDS.has(fact.name) ? (fact.units.trim() === 'cm' ? CENTIMETRES_PER_METRE : 1.0) : Math.pow(10, -valueDecimals(fact)));
 
 const boundOf = (text: string, isDefaultForType: boolean): number | null => {
   const bound = toDoubleOrNull(text);
@@ -73,7 +73,21 @@ const TURN_ON_VALUES: ReadonlyMap<string, number> = new Map([
   ['FENCE_RADIUS', DISTANCE_ON],
 ]);
 
-const metresScale = (fact: Fact): number => (fact.units.trim() === 'cm' ? 100.0 : 1.0);
+const CENTIMETRES_PER_METRE = 100.0;
+const METRES_PER_FOOT = 0.3048;
+
+const unitsPerMetre = (fact: Fact): number => {
+  switch (fact.units.trim()) {
+    case 'cm':
+      return CENTIMETRES_PER_METRE;
+    case 'ft':
+      return 1.0 / METRES_PER_FOOT;
+    default:
+      return 1.0;
+  }
+};
+
+const inUnits = (fact: Fact, metres: number): number => Math.round(metres * unitsPerMetre(fact));
 
 const clampToBounds = (fact: Fact, value: number): number => {
   const [min, max] = valueBounds(fact);
@@ -83,8 +97,10 @@ const clampToBounds = (fact: Fact, value: number): number => {
 const bandSlider = (fact: Fact): FactSlider | null => {
   const band = USEFUL_BANDS.get(fact.name);
   if (!band) return null;
-  const from = clampToBounds(fact, band.start * metresScale(fact));
-  const to = clampToBounds(fact, band.endInclusive * metresScale(fact));
+  const current = numberOf(fact);
+  const held = current !== null && current > 0 ? current : null;
+  const from = clampToBounds(fact, Math.min(inUnits(fact, band.start), held ?? Number.POSITIVE_INFINITY));
+  const to = clampToBounds(fact, Math.max(inUnits(fact, band.endInclusive), held ?? Number.NEGATIVE_INFINITY));
   return to > from ? { from, to, decimals: valueDecimals(fact), hint: '' } : null;
 };
 
@@ -216,7 +232,7 @@ export const SliderValueRow = ({
           {exact !== null && dragging === null && !writing ? (
             exact
           ) : (
-            <button type="button" onClick={onOpen} title="Set exactly" className={exact === null ? 'px-1 py-2' : 'px-4 py-2 text-right'} style={exact === null ? undefined : { width: NUMBER_VALUE_WIDTH }}>
+            <button type="button" onClick={onOpen} title="Set exactly" aria-label={`${label}: ${valueTextOf(fact, shownValue)}`} className={exact === null ? 'px-1 py-2' : 'px-4 py-2 text-right'} style={exact === null ? undefined : { width: NUMBER_VALUE_WIDTH }}>
               <Text typography="bodyLarge" color={md('onSurfaceVariant')}>
                 {valueTextOf(fact, shownValue)}
               </Text>
@@ -226,6 +242,8 @@ export const SliderValueRow = ({
         <ThinSlider
           value={dragging ?? sliderPosition(slider, numberOf(fact))}
           range={{ start: slider.from, endInclusive: slider.end }}
+          step={valueStep(fact)}
+          valueText={valueTextOf(fact, shownValue)}
           enabled={fact.acceptsWrite && !writing}
           onChange={setDragging}
           onDone={commit}
@@ -250,7 +268,27 @@ export const thumbFraction = (value: number, range: ClosedRange): number => {
 
 export const grabsThumb = (touchX: number, thumbX: number, grabRadius: number): boolean => Math.abs(touchX - thumbX) <= grabRadius;
 
-const ThinSlider = ({ value, range, enabled, onChange, onDone, label, className }: { value: number; range: ClosedRange; enabled: boolean; onChange: (value: number) => void; onDone: () => void; label: string; className?: string }) => {
+const ThinSlider = ({
+  value,
+  range,
+  step,
+  valueText,
+  enabled,
+  onChange,
+  onDone,
+  label,
+  className,
+}: {
+  value: number;
+  range: ClosedRange;
+  step: number;
+  valueText: string;
+  enabled: boolean;
+  onChange: (value: number) => void;
+  onDone: () => void;
+  label: string;
+  className?: string;
+}) => {
   const active = withAlpha(md('onSurface'), enabled ? 1 : DISABLED_SLIDER_ALPHA);
   const inactive = md('outlineVariant');
   const latest = useUpdatedRef(value);
@@ -303,8 +341,9 @@ const ThinSlider = ({ value, range, enabled, onChange, onDone, label, className 
         aria-label={label}
         min={range.start}
         max={range.endInclusive}
-        step={span > 0 ? span / 100 : 'any'}
+        step={span > 0 ? step : 'any'}
         value={value}
+        aria-valuetext={valueText}
         disabled={!enabled}
         onChange={(event) => {
           change.current(coerceIn(Number(event.target.value), range.start, range.endInclusive));
@@ -389,7 +428,7 @@ export const turnOnValue = (fact: Fact): number => {
   const named = TURN_ON_VALUES.get(fact.name);
   const minimum = valueBounds(fact)[0];
   const smallest = minimum !== null && minimum > 0 ? minimum : valueStep(fact);
-  return clampToBounds(fact, fallback ?? (named === undefined ? null : named * metresScale(fact)) ?? smallest);
+  return clampToBounds(fact, fallback ?? (named === undefined ? null : inUnits(fact, named)) ?? smallest);
 };
 
 const roundHalfEven = (value: number): number => (value - Math.floor(value) === 0.5 ? 2 * Math.round(value / 2) : Math.round(value));
@@ -427,7 +466,7 @@ const StepButton = ({ label, description, enabled, onStep }: { label: string; de
   );
 };
 
-export const ValueControls = ({ fact, onWrite, typedEntry }: { fact: Fact; onWrite: () => void; typedEntry: ReactNode }) => {
+export const ValueControls = ({ fact, label = fact.title, onWrite, typedEntry }: { fact: Fact; label?: string; onWrite: () => void; typedEntry: ReactNode }) => {
   const notice = useContext(LocalChangeNotice);
   const [refusal, setRefusal] = useKeyedState<string | null>([fact.path], () => null);
   const [pending, setPendingState] = useKeyedState<number | null>([fact.path, fact.valueString], () => null);
@@ -468,13 +507,13 @@ export const ValueControls = ({ fact, onWrite, typedEntry }: { fact: Fact; onWri
   return (
     <>
       <div className="flex w-full items-center justify-center gap-4">
-        <StepButton label={'−'} description="Decrease" enabled={fact.acceptsWrite} onStep={nudge(-1)} />
-        <button type="button" onClick={() => setTyping(!typing)} title="Type a value" className="px-2 py-1">
+        <StepButton label={'−'} description={`Decrease ${label}`} enabled={fact.acceptsWrite} onStep={nudge(-1)} />
+        <button type="button" onClick={() => setTyping(!typing)} title="Type a value" aria-label={`${label}: ${valueTextOf(fact, shown)}, type a value`} className="px-2 py-1">
           <Text typography="headlineSmall">{valueTextOf(fact, shown)}</Text>
         </button>
-        <StepButton label="+" description="Increase" enabled={fact.acceptsWrite} onStep={nudge(1)} />
+        <StepButton label="+" description={`Increase ${label}`} enabled={fact.acceptsWrite} onStep={nudge(1)} />
       </div>
-      {slider !== null && !(disablesAtZero(fact) && shown === 0) ? <FieldSlider value={shown} slider={slider} label={fact.title} enabled={fact.acceptsWrite} onWrite={setPending} /> : null}
+      {slider !== null && !(disablesAtZero(fact) && shown === 0) ? <FieldSlider value={shown} slider={slider} label={label} enabled={fact.acceptsWrite} onWrite={setPending} /> : null}
       {disablesAtZero(fact) ? (
         shown === 0 ? (
           <TextButton onClick={() => setPending(turnOnValue(fact))}>{limit ? 'Set a limit' : 'Turn on'}</TextButton>

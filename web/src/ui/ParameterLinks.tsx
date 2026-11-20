@@ -328,7 +328,7 @@ export const ValueDetailsSheet = ({ fact, title = VALUE_DETAILS_TITLE, onWrite, 
         <LocalStagedEdits.Provider value={staged}>
           <div className="flex w-full flex-col gap-2 px-sheet pb-6">
             <Text typography="titleLarge">{title}</Text>
-            {opensAsValue(fact) ? <ValueControls fact={fact} onWrite={onWrite} typedEntry={typedEntry} /> : typedEntry}
+            {opensAsValue(fact) ? <ValueControls fact={fact} label={title} onWrite={onWrite} typedEntry={typedEntry} /> : typedEntry}
             {valueDetailsNotes(fact).map((it) => (
               <Text key={it} typography="bodySmall" color={md('onSurfaceVariant')}>
                 {it}

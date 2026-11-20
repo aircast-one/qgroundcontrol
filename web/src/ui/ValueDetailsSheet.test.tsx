@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Fact, Qgc, makeFact } from '@/bridge/Qgc';
 import { ParameterEditDialog, ValueDetailsSheet } from '@/ui/ParameterLinks';
 import { FactRow } from '@/ui/SettingsScreen';
-import { type ChangeNotice, LocalChangeNotice } from '@/ui/ValueRow';
+import { type ChangeNotice, LocalChangeNotice, SliderValueRow, inlineSlider } from '@/ui/ValueRow';
 
 const fact = makeFact({ path: 'parameter.RTL_ALT_M', name: 'RTL_ALT_M', description: 'RTL Altitude', units: 'm', valueString: '15', value: 15, enumStrings: [], enumIndex: -1, isBool: false, isString: false, readOnly: false });
 
@@ -143,10 +143,21 @@ describe('typed values reach the aircraft only on an explicit save', () => {
   });
 });
 
+describe('a settings row with a slider', () => {
+  it('steps a whole metre from the arrow keys and announces the value with its unit', () => {
+    const slider = inlineSlider(fact);
+    if (slider === null) throw new Error('RTL altitude has a slider');
+    render(<SliderValueRow fact={fact} label="Return altitude" slider={slider} title="Return altitude" onOpen={() => undefined} onWrite={() => undefined} />);
+    const thumb = screen.getByRole('slider', { name: 'Return altitude' });
+    expect([thumb.getAttribute('step'), thumb.getAttribute('aria-valuetext'), (thumb as HTMLInputElement).value]).toEqual(['1', '15 m', '15']);
+    expect(screen.getByRole('button', { name: 'Return altitude: 15 m' })).toBeTruthy();
+  });
+});
+
 describe('every control in a sheet waits for Save', () => {
   it('the steppers stay unwritten until Save, then write once', async () => {
     render(sheet(fact));
-    const plus = screen.getByRole('button', { name: 'Increase' });
+    const plus = screen.getByRole('button', { name: 'Increase RTL altitude' });
     fireEvent.pointerDown(plus, { button: 0, pointerId: 1 });
     fireEvent.pointerUp(plus, { button: 0, pointerId: 1 });
     await settled();
@@ -170,7 +181,7 @@ describe('every control in a sheet waits for Save', () => {
 
   it('the slider stays unwritten until Save', async () => {
     render(sheet(fact));
-    const slider = screen.getByRole('slider', { name: 'RTL Altitude' });
+    const slider = screen.getByRole('slider', { name: 'RTL altitude' });
     fireEvent.focus(slider);
     fireEvent.keyDown(slider, { key: 'End' });
     await settled();
@@ -181,11 +192,19 @@ describe('every control in a sheet waits for Save', () => {
     expect(Qgc.writeRefusal).toHaveBeenCalledExactlyOnceWith('parameter.RTL_ALT_M', 500);
   });
 
+  it('the slider starts at the value it holds, so 15 m below the useful band is not shown as 20', () => {
+    render(sheet(fact));
+    const slider = screen.getByRole('slider', { name: 'RTL altitude' });
+    expect(slider.getAttribute('aria-valuenow')).toBe('15');
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    expect(screen.getByTitle('Type a value').textContent).toBe('16 m');
+  });
+
   it('a step after typing replaces the typed value, and typing after a step replaces the step: one write either way', async () => {
     const first = render(sheet(fact));
     fireEvent.click(screen.getByTitle('Type a value'));
     fireEvent.change(field(), { target: { value: '20' } });
-    const plus = () => screen.getByRole('button', { name: 'Increase' });
+    const plus = () => screen.getByRole('button', { name: 'Increase RTL altitude' });
     fireEvent.pointerDown(plus(), { button: 0, pointerId: 1 });
     fireEvent.pointerUp(plus(), { button: 0, pointerId: 1 });
     save();
