@@ -44,7 +44,7 @@ import {
 import { JoystickIndicatorCell } from '@/ui/JoystickIndicator';
 import { USB_RADIO_VIEW, usbRadioBadge, usbRadioTone } from '@/ui/UsbRadioIndicator';
 import { useOsdBackdrop } from '@/ui/Osd';
-import { LayoutWidget, type Offset, badgeRoom, droppedOrder, movedAmongShown, orderedKeys, swallowReleaseClick } from '@/ui/OverlayLayout';
+import { LayoutLifted, LayoutWidget, type Offset, badgeRoom, liftStyle, droppedOrder, movedAmongShown, orderedKeys, swallowReleaseClick } from '@/ui/OverlayLayout';
 import { ParameterForm } from '@/ui/ParameterForm';
 import { RemoteIdIndicatorCell } from '@/ui/RemoteIdIndicator';
 import { RtkIndicatorCell, RtkSettingsSheetContent, type RtkStatus, useRememberRtkStatus } from '@/ui/RtkIndicator';
@@ -478,14 +478,16 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
           <LeadingGap key={key} gap={shown.has(key) ? stripGap(narrow) : 0}>
             <div
               {...(editing && shown.has(key) ? { ...reorder(key), 'data-gesture': true, tabIndex: 0, 'aria-description': 'Move with the left and right arrow keys' } : {})}
-              className={editing ? 'relative touch-none' : 'relative'}
-              style={dragged?.key === key ? { translate: `${dragged.dx}px ${dragged.dy}px`, zIndex: 1 } : undefined}
+              className={editing ? 'relative touch-none select-none' : 'relative'}
+              style={{ ...liftStyle(dragged?.key === key), ...(dragged?.key === key ? { translate: `${dragged.dx}px ${dragged.dy}px`, zIndex: 1 } : {}) }}
             >
-              <LayoutWidget widgetKey={`indicator-${key}`} movable={false}>
-                <IndicatorSlot name={key} onShown={seen}>
-                  {byKey.get(key) ?? null}
-                </IndicatorSlot>
-              </LayoutWidget>
+              <LayoutLifted.Provider value={dragged?.key === key}>
+                <LayoutWidget widgetKey={`indicator-${key}`} movable={false}>
+                  <IndicatorSlot name={key} onShown={seen}>
+                    {byKey.get(key) ?? null}
+                  </IndicatorSlot>
+                </LayoutWidget>
+              </LayoutLifted.Provider>
             </div>
           </LeadingGap>
         ))}

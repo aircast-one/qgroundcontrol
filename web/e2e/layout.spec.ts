@@ -49,6 +49,27 @@ const editLayout = async (page: Page) => {
   await expect(editBar(page)).toBeVisible();
 };
 
+const aloft = (target: Locator) =>
+  target.evaluate((node) => {
+    const chain = (at: Element | null): Element[] => (at === null ? [] : [at, ...chain(at.parentElement)]);
+    const around = chain(node);
+    const jiggling = document
+      .getAnimations()
+      .filter((it): it is CSSAnimation => it instanceof CSSAnimation && it.animationName === 'aircast-overlay-jiggle' && it.playState === 'running')
+      .some((it) => it.effect instanceof KeyframeEffect && it.effect.target !== null && around.includes(it.effect.target));
+    return { scale: Math.max(...around.map((at) => Number(getComputedStyle(at).scale) || 1)), jiggling };
+  });
+
+const liftsWhileHeld = async (page: Page, target: Locator) => {
+  await expect.poll(() => aloft(target)).toEqual({ scale: 1, jiggling: true });
+  const [x, y] = await centre(target);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await expect.poll(() => aloft(target), 'held, it grows and stops jiggling').toEqual({ scale: 1.1, jiggling: false });
+  await page.mouse.up();
+  await expect.poll(() => aloft(target), 'let go, it settles back and jiggles again').toEqual({ scale: 1, jiggling: true });
+};
+
 const dragCameraPanel = async (page: Page, dx: number, dy: number) => {
   await editLayout(page);
   const [x, y] = await centre(page.getByRole('button', { name: 'Start recording' }));
@@ -381,4 +402,17 @@ test('in portrait, editing puts the whole status strip on its own line, every in
     expect(badge.right).toBeLessThanOrEqual(412);
     expect(badge.top > done.y + done.height || badge.right < done.x, 'the badge is clear of Done').toBe(true);
   });
+});
+
+test('a held status indicator lifts out of its jiggle and settles back when let go', async ({ vehicle }) => {
+  await editLayout(vehicle);
+  await liftsWhileHeld(vehicle, vehicle.getByRole('button', { name: /^Battery \d+%/ }).first());
+});
+
+test('the camera panel lifts as one piece while held and settles back when let go', async ({ app }) => {
+  await connectMock(app, ['Enable camera', 'Enable gimbal']);
+  const shutter = app.getByRole('button', { name: 'Start recording' });
+  await expect(shutter).toBeVisible();
+  await editLayout(app);
+  await liftsWhileHeld(app, shutter);
 });

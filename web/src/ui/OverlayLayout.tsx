@@ -23,6 +23,10 @@ const JIGGLE_MILLIS = 120;
 const JIGGLE_SPREAD = 0x1f;
 const JIGGLE_REACH_PX = 4;
 const JIGGLE_ANGLE = '--aircast-jiggle';
+const LIFT_SCALE = 1.1;
+const LIFT_MILLIS = 220;
+const LIFT_EASING = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+const LIFT_SHADOW = 'drop-shadow(0 6px 10px rgb(0 0 0 / 0.5))';
 export const BADGE_SIZE = 18;
 const LONG_PRESS_TIMEOUT_MS = 400;
 const TOUCH_SLOP = 8;
@@ -316,12 +320,20 @@ export const useJiggleAngle = (key: string, on: boolean, size: Size): CSSPropert
     ? ({ animation: `${JIGGLE_KEYFRAMES} ${JIGGLE_MILLIS + (hashCode(key) & JIGGLE_SPREAD)}ms ease-in-out infinite alternate`, [JIGGLE_ANGLE]: `${jiggleDegrees(size)}deg` } as CSSProperties)
     : {};
 
+export const liftStyle = (lifted: boolean): CSSProperties => ({
+  scale: lifted ? LIFT_SCALE : 1,
+  filter: lifted ? LIFT_SHADOW : 'none',
+  transition: reducedMotion() ? 'none' : `scale ${LIFT_MILLIS}ms ${LIFT_EASING}, filter ${LIFT_MILLIS}ms ease-out`,
+});
+
+export const LayoutLifted = createContext(false);
+
 export const clampedInto = (bounds: Bounds, area: Bounds, dx: number, dy: number): Offset => [
   coerceIn(dx, area.left - bounds.left, coerceAtLeast(area.right - bounds.right, area.left - bounds.left)),
   coerceIn(dy, area.top - bounds.top, coerceAtLeast(area.bottom - bounds.bottom, area.top - bounds.top)),
 ];
 
-export const LayoutDragArea = ({ widgetKey, correction, frame, className }: { widgetKey: string; correction: Offset; frame: RefObject<HTMLElement | null>; className?: string }) => {
+export const LayoutDragArea = ({ widgetKey, correction, frame, onLift, className }: { widgetKey: string; correction: Offset; frame: RefObject<HTMLElement | null>; onLift: (lifted: boolean) => void; className?: string }) => {
   const flyScreen = useContext(LocalFlyScreenState);
   const layout = flyScreen.layout;
   const placedKey = useLayoutKey(widgetKey);
@@ -330,15 +342,17 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, className }: { wi
     const held = drag.current;
     if (held === null || held.id !== event.pointerId) return;
     drag.current = null;
+    onLift(false);
     if (held.dragging) layout.saveOffset(placedKey);
   };
   return (
     <div
       data-gesture
-      className={`touch-none ${className ?? ''}`}
+      className={`touch-none select-none cursor-grab active:cursor-grabbing ${className ?? ''}`}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, dragging: false };
+        onLift(true);
       }}
       onPointerMove={(event) => {
         const held = drag.current;
@@ -373,7 +387,7 @@ export const badgeRoom = (editing: boolean, leading: boolean): CSSProperties =>
 
 const LocalLayoutParent = createContext<Dispatch<SetStateAction<number>> | null>(null);
 
-type GroupFrame = { readonly correction: Offset; readonly frame: RefObject<HTMLElement | null> };
+type GroupFrame = { readonly correction: Offset; readonly frame: RefObject<HTMLElement | null>; readonly lift: (lifted: boolean) => void };
 
 const LocalLayoutGroup = createContext<GroupFrame | null>(null);
 
@@ -384,11 +398,14 @@ export const LayoutGroup = ({ widgetKey, className, children }: { widgetKey: str
   const placedKey = useLayoutKey(widgetKey);
   const [correction, kept, frame] = useKeptOnScreen(placedKey);
   const hold = useHoldToEditLayout();
+  const [lifted, setLifted] = useState(false);
   const [x, y] = offsets.get(placedKey) ?? NO_OFFSET;
   return (
-    <div ref={kept} className={className} style={{ translate: `${x + correction[0]}px ${y + correction[1]}px` }} {...hold}>
-      <div ref={avoided ? avoidedRef : undefined}>
-        <LocalLayoutGroup.Provider value={{ correction, frame }}>{children}</LocalLayoutGroup.Provider>
+    <div ref={kept} className={className} style={{ translate: `${x + correction[0]}px ${y + correction[1]}px`, zIndex: lifted ? 1 : undefined }} {...hold}>
+      <div ref={avoided ? avoidedRef : undefined} style={liftStyle(lifted)}>
+        <LocalLayoutGroup.Provider value={{ correction, frame, lift: setLifted }}>
+          <LayoutLifted.Provider value={lifted}>{children}</LayoutLifted.Provider>
+        </LocalLayoutGroup.Provider>
       </div>
     </div>
   );
@@ -428,6 +445,8 @@ export const LayoutWidget = ({
   const group = useContext(LocalLayoutGroup);
   const parent = useContext(LocalLayoutParent);
   const [nested, setNested] = useState(0);
+  const [lifted, setLifted] = useState(false);
+  const carriedAloft = useContext(LayoutLifted);
   useLayoutEffect(() => {
     parent?.((count) => count + 1);
     return () => parent?.((count) => count - 1);
@@ -440,14 +459,14 @@ export const LayoutWidget = ({
     return () => observer.disconnect();
   }, []);
   const decorated = editing && size.width > 0 && size.height > 0 && nested === 0;
-  const jiggle = useJiggleAngle(widgetKey, decorated, size);
+  const jiggle = useJiggleAngle(widgetKey, decorated && !lifted && !carriedAloft, size);
   if (hidden && !editing) return null;
   const [x, y] = movable ? (offsets.get(placedKey) ?? NO_OFFSET) : NO_OFFSET;
   const [cx, cy] = movable ? correction : NO_OFFSET;
   const carried = dragsWith !== undefined && group !== null ? { key: dragsWith, ...group } : null;
   return (
-    <div ref={movable ? kept : undefined} className={className} style={{ translate: `${x + cx}px ${y + cy}px` }} {...hold}>
-      <div ref={avoided ? avoidedRef : undefined} className="relative" style={jiggle}>
+    <div ref={movable ? kept : undefined} className={className} style={{ translate: `${x + cx}px ${y + cy}px`, zIndex: lifted ? 1 : undefined }} {...hold}>
+      <div ref={avoided ? avoidedRef : undefined} className="relative" style={{ ...jiggle, ...liftStyle(lifted) }}>
         <div
           ref={sized}
           data-layout-item
@@ -457,7 +476,7 @@ export const LayoutWidget = ({
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
         {decorated && (movable || carried !== null) ? (
-          <LayoutDragArea widgetKey={carried?.key ?? widgetKey} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} className="absolute inset-0" />
+          <LayoutDragArea widgetKey={carried?.key ?? widgetKey} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} onLift={carried?.lift ?? setLifted} className="absolute inset-0" />
         ) : decorated && !live ? (
           <div data-gesture className="absolute inset-0" />
         ) : null}
