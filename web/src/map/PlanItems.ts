@@ -134,9 +134,16 @@ export const missionItemIndex = (selected: MapHit | null): number | null => {
 export const routeEnd = (items: readonly MissionItem[]): MissionItem | null =>
   items.filter((it) => it.index !== HOME_ITEM && it.endsRoute).reduce<MissionItem | null>((first, it) => (first === null || it.index < first.index ? it : first), null);
 
+const pastRouteEnd = (index: number, items: readonly MissionItem[]): MissionItem | null => {
+  const end = routeEnd(items);
+  return end !== null && index >= end.index ? end : null;
+};
+
 export const insertAfter = (selected: MapHit | null, items: readonly MissionItem[]): number => {
   const index = missionItemIndex(selected);
   if (index === null || !items.some((it) => it.index === index)) return routeEnd(items)?.index ?? AT_END;
+  const end = pastRouteEnd(index, items);
+  if (end !== null) return end.index;
   return index + 1 >= items.length ? AT_END : index + 1;
 };
 
@@ -148,7 +155,9 @@ export const selectionSequence = (selected: MapHit | null, items: readonly Missi
 export const addingAfterText = (selected: MapHit | null, items: readonly MissionItem[]): string | null => {
   const index = missionItemIndex(selected);
   const item = index === null ? undefined : items.find((it) => it.index === index);
-  return item === undefined ? null : `${TAP} the map to add after #${item.sequence}`;
+  if (item === undefined) return null;
+  const end = pastRouteEnd(item.index, items);
+  return end === null ? `${TAP} the map to add after #${item.sequence}` : `${TAP} the map to add before #${end.sequence}`;
 };
 
 export const legText = (item: MissionItem): string | null => {

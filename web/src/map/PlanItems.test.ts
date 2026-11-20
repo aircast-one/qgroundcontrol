@@ -200,6 +200,7 @@ describe('InsertAfterTest', () => {
     const returning = [...plan, MissionItem({ ...item(3), command: 'Return to launch', kind: 'land', endsRoute: true })];
     expect(insertAfter(null, returning)).toBe(3);
     expect(insertAfter(waypoint(2), returning), 'the item before the return keeps the new one before it too').toBe(3);
+    expect(insertAfter(waypoint(3), returning), 'with the return itself selected, as it is right after Return is tapped, the new one still goes before it and is flown').toBe(3);
   });
 
   it('a selected pattern corner inserts after its pattern, and a non-mission selection appends', () => {
@@ -244,6 +245,12 @@ describe('AddingAfterTextTest', () => {
 
   it('with nothing selected the insertion point is the end and needs no line', () => {
     expect(addingAfterText(null, plan)).toBeNull();
+  });
+
+  it('with the return selected the line says the new item goes before it', () => {
+    const returning = [...plan, MissionItem({ index: 3, sequence: 6, latitude: 41.0, longitude: 44.0, command: 'Return to launch', selected: false, altitude: NaN, kind: 'land', endsRoute: true })];
+    expect(addingAfterText(waypoint(3), returning)).toBe('Tap the map to add before #6');
+    expect(addingAfterText(waypoint(2), returning)).toBe('Tap the map to add after #5');
   });
 
   it('a fence vertex does not move the insertion point, so it says nothing', () => {

@@ -39,6 +39,25 @@ test('a return goes on the end of the route, and a later tap still lands before 
   await expect(app.getByText(/after the route ends/)).toHaveCount(0);
 });
 
+test('with the new return still selected, a tap on the map lands before it, where it is flown', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Return', exact: true }).click();
+  const lastRow = app.getByRole('button', { name: /^\d+(–\d+)? (Launch|Takeoff|Waypoint|Return to launch)\b/ }).last();
+  await expect(lastRow).toHaveAccessibleName(/Return to launch/);
+  await expect(app.getByText(/the map to add before #\d+/)).toBeVisible();
+  const drawn = await itemCount(app);
+  const box = await app.getByRole('region', { name: 'Map' }).boundingBox();
+  if (box === null) throw new Error('plan map is not on screen');
+  await expect(async () => {
+    await app.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.25);
+    await expect.poll(() => itemCount(app), { timeout: 10_000 }).toBeGreaterThan(drawn);
+  }).toPass({ timeout: 30_000 });
+  await expect(lastRow, 'the waypoint used to go in after the return, listed after the route ends and never flown').toHaveAccessibleName(/Return to launch/);
+  await expect(app.getByText(/after the route ends/)).toHaveCount(0);
+});
+
 test('upload sends the mission to the vehicle and offers to fly it', async ({ vehicle }) => {
   await openPlanAtVehicle(vehicle);
   await tapPlanMission(vehicle);
