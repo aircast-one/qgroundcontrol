@@ -244,6 +244,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .then(|| payload_problem(backend, &vehicle))
         .flatten();
     let nominal = health.nominal() && low_battery.is_none() && payload.is_none();
+    let setup_left = (state == State::Disarmed && !ready).then(|| not_ready_reason(backend));
     let payload_text = |problem: &Value| {
         problem
             .get("text")
@@ -258,6 +259,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             &health.sensors,
             low_battery.as_deref(),
             payload.as_ref().and_then(payload_text).as_deref(),
+            setup_left.as_deref(),
         )
     });
     let summary_problem =
@@ -447,6 +449,7 @@ pub fn summary_detail(
     sensors: &[(String, bool, bool)],
     low_battery: Option<&str>,
     payload: Option<&str>,
+    setup_left: Option<&str>,
 ) -> String {
     let listed = |pick: fn(bool, bool) -> bool| {
         sensors
@@ -478,11 +481,25 @@ pub fn summary_detail(
         }
         _ if let Some(low) = low_battery => format!("{low} Charge or swap it before flight."),
         _ if let Some(problem) = payload => problem.to_string(),
+        _ if let Some(setup) = setup_left => setup.to_string(),
         _ if !disabled.is_empty() => {
             format!("{disabled} turned off. Everything else reports normal.")
         }
         _ => "All checks passed.".to_string(),
     }
+}
+
+pub const NOT_READY_TO_ARM: &str = "The vehicle reports it is not ready to arm.";
+
+pub fn not_ready_text(outstanding: &[String]) -> String {
+    match outstanding {
+        [] => NOT_READY_TO_ARM.to_string(),
+        _ => crate::connectnotices::setup_incomplete(outstanding, &[]),
+    }
+}
+
+fn not_ready_reason(backend: &dyn Backend) -> String {
+    not_ready_text(&crate::setup::outstanding(backend))
 }
 
 fn disarmed_ready(backend: &dyn Backend) -> bool {
@@ -603,6 +620,30 @@ mod tests {
     }
 
     #[test]
+    fn a_vehicle_not_ready_for_its_setup_says_which_setup_instead_of_all_checks_passed() {
+        let radio = not_ready_text(&["Radio".to_string()]);
+        assert_eq!(radio, "Radio needs setup before this vehicle can fly.");
+        assert_eq!(
+            summary_detail(
+                false,
+                false,
+                0,
+                &[("Mag".to_string(), false, false)],
+                None,
+                None,
+                Some(&radio)
+            ),
+            radio,
+            "the status sheet read Not ready, All checks passed while Radio still needed setup"
+        );
+        assert_eq!(
+            not_ready_text(&[]),
+            NOT_READY_TO_ARM,
+            "with nothing left to set up, the autopilot's own not-ready flag is named rather than a setup that is done"
+        );
+    }
+
+    #[test]
     fn summary_detail_reads_like_main_status_indicator() {
         let sensors = |list: &[(&str, bool, bool)]| {
             list.iter()
@@ -610,7 +651,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(
-            summary_detail(true, true, 3, &[], None, None),
+            summary_detail(true, true, 3, &[], None, None, None),
             "Motors are armed and the vehicle is in the air."
         );
         assert_eq!(
@@ -619,6 +660,7 @@ mod tests {
                 true,
                 0,
                 &sensors(&[("Propulsion", true, false), ("Geofence", false, false)]),
+                None,
                 None,
                 None
             ),
@@ -632,6 +674,7 @@ mod tests {
                 0,
                 &sensors(&[("Logging", true, false), ("Terrain", true, false)]),
                 None,
+                None,
                 None
             ),
             "Logging, Terrain not working.",
@@ -644,12 +687,13 @@ mod tests {
                 0,
                 &sensors(&[("Logging", true, false), ("GPS", true, false)]),
                 None,
+                None,
                 None
             ),
             "Logging, GPS not working. Land as soon as it is safe."
         );
         assert_eq!(
-            summary_detail(true, false, 0, &[], None, None),
+            summary_detail(true, false, 0, &[], None, None, None),
             "Motors are armed. Keep clear of the propellers."
         );
         assert_eq!(
@@ -658,6 +702,7 @@ mod tests {
                 false,
                 2,
                 &sensors(&[("GPS", true, false)]),
+                None,
                 None,
                 None
             ),
@@ -674,6 +719,7 @@ mod tests {
                     ("Mag", false, false)
                 ]),
                 None,
+                None,
                 None
             ),
             "GPS, Gyro not working. Position modes and Return to Launch may not work."
@@ -684,6 +730,7 @@ mod tests {
                 false,
                 0,
                 &sensors(&[("GPS", true, true), ("Mag", false, false)]),
+                None,
                 None,
                 None
             ),
@@ -696,6 +743,7 @@ mod tests {
                 0,
                 &sensors(&[("GPS", true, true)]),
                 None,
+                None,
                 None
             ),
             "All checks passed."
@@ -707,6 +755,7 @@ mod tests {
                 0,
                 &sensors(&[("Mag", false, false)]),
                 Some("Battery at 0%."),
+                None,
                 None
             ),
             "Battery at 0%. Charge or swap it before flight.",
@@ -719,18 +768,19 @@ mod tests {
                 0,
                 &sensors(&[("GPS", true, false)]),
                 Some("Battery at 0%."),
+                None,
                 None
             ),
             "GPS not working. Position modes and Return to Launch may not work.",
             "a fault keeps the line it shares with the red chip"
         );
         assert_eq!(
-            summary_detail(false, false, 1, &[], Some("Battery at 0%."), None),
+            summary_detail(false, false, 1, &[], Some("Battery at 0%."), None, None),
             "1 check(s) need attention before arming.",
             "the refusal to arm stays attached to the checks that cause it"
         );
         assert_eq!(
-            summary_detail(true, false, 0, &[], Some("Battery at 0%."), None),
+            summary_detail(true, false, 0, &[], Some("Battery at 0%."), None, None),
             "Motors are armed. Keep clear of the propellers."
         );
         assert_eq!(
@@ -740,7 +790,8 @@ mod tests {
                 0,
                 &sensors(&[("Mag", false, false)]),
                 None,
-                Some("The gripper stays open.")
+                Some("The gripper stays open."),
+                None
             ),
             "The gripper stays open.",
             "a payload that would not drop outranks a switched-off sensor"
@@ -752,7 +803,8 @@ mod tests {
                 0,
                 &[],
                 Some("Battery at 0%."),
-                Some("The gripper stays open.")
+                Some("The gripper stays open."),
+                None
             ),
             "Battery at 0%. Charge or swap it before flight."
         );

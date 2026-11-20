@@ -622,6 +622,14 @@ fn blocked_by(component: &Value, armed: bool, flying: bool, rover: bool) -> Opti
     }
 }
 
+pub fn outstanding(backend: &dyn Backend) -> Vec<String> {
+    vehicle_components(backend)
+        .into_iter()
+        .filter(|component| !component.setup_complete)
+        .map(|component| component.name)
+        .collect()
+}
+
 pub fn setup_complete(backend: &dyn Backend) -> bool {
     vehicle_components(backend)
         .iter()

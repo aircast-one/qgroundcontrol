@@ -61,15 +61,11 @@ export const chipTone = (state: FlyState | null, lost: boolean): ChipTone => {
   return ChipTone.Success;
 };
 
-export const ALL_CHECKS_PASSED = 'All checks passed.';
-export const SETUP_NOT_COMPLETE = 'Aircraft setup is not complete.';
-
 const blankToNull = (text: string): string | null => (text.trim() === '' ? null : text);
 
 export const readinessWarning = (state: FlyState | null): string | null => {
   if (state === null || !state.connected || state.armed || state.contactLost === true || !(notReadyToFly(state) || !state.nominal)) return null;
-  const detail = notReadyToFly(state) && state.summaryDetail === ALL_CHECKS_PASSED ? SETUP_NOT_COMPLETE : state.summaryDetail;
-  return blankToNull([blankToNull(state.stateText), blankToNull(detail)].filter((part): part is string => part !== null).join('. '));
+  return blankToNull([blankToNull(state.stateText), blankToNull(state.summaryDetail)].filter((part): part is string => part !== null).join('. '));
 };
 
 export type Readiness = { text: string; blocks: boolean };

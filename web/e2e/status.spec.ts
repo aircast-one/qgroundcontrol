@@ -1,5 +1,5 @@
 import { type Locator, type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, openMenu, slideAcross, takeOff, test, vehicleStatus } from './fixtures';
+import { connectMock, expect, FRESH_PARAMETERS, flightMode, openMenu, slideAcross, takeOff, test, vehicleStatus } from './fixtures';
 
 test('the status sheet arms the aircraft without starting layout editing', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
@@ -177,4 +177,13 @@ test('an indicator held and dragged lands where it is let go, its hide badge sit
   await vehicle.getByRole('button', { name: 'Done' }).click();
   await expect(timer, 'the flight time moved rather than hid').toBeVisible();
   expect(await left(timer)).toBeGreaterThan(await left(gps));
+});
+
+test('a vehicle that still needs setup names it on the status sheet instead of saying all checks passed', async ({ app }) => {
+  await connectMock(app, [FRESH_PARAMETERS], 'APM ArduCopter Vehicle');
+  await app.getByRole('button', { name: 'Later', exact: true }).click();
+  await app.getByRole('button', { name: 'Not ready', exact: true }).click();
+  const sheet = app.getByRole('dialog');
+  await expect(sheet.getByText('Frame, Radio and Sensors need setup before this vehicle can fly.')).toBeVisible();
+  await expect(sheet.getByText('All checks passed.')).toHaveCount(0);
 });

@@ -3,7 +3,6 @@ import { type Json, parseJson } from '@/bridge/Json';
 import { HOLD_TO_TAKE_OFF, NO_LINK, NO_SIGNAL_CODE, takeoffLabel } from './FlyDeck';
 import { FlyView, flyViewShown } from './FlyShell';
 import {
-  ALL_CHECKS_PASSED,
   ChipTone,
   FlyState,
   NO_ARMED_SESSION,
@@ -184,7 +183,7 @@ describe('FlyReadinessTest', () => {
     expect(readinessWarning(state({ ready: false }))).toBe('Not ready. 2 checks need attention before arming.');
     expect(readinessWarning(state())).toBeNull();
     expect(readinessWarning(state({ armed: true, ready: false }))).toBeNull();
-    expect(readinessWarning({ ...state({ ready: false }), summaryDetail: ALL_CHECKS_PASSED })).toBe('Not ready. Aircraft setup is not complete.');
+    expect(readinessWarning({ ...state({ ready: false }), summaryDetail: 'Radio needs setup before this vehicle can fly.' }), 'the core names the setup left, so the warning passes it on').toBe('Not ready. Radio needs setup before this vehicle can fly.');
   });
 
   it('aReadinessIssueBlocksOnlyWhenTheVehicleCannotArm', () => {

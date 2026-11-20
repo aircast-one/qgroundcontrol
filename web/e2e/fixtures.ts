@@ -32,7 +32,9 @@ export const closeSettings = async (page: Page) => {
   await expect(desktop ? page.getByRole('navigation', { name: 'Settings' }) : close).toBeHidden();
 };
 
-export type MockOption = 'Enable camera' | 'Enable gimbal' | 'Enable proximity sensors' | 'Send status text + voice';
+export const FRESH_PARAMETERS = 'Start with fresh firmware parameters (setup required)';
+
+export type MockOption = 'Enable camera' | 'Enable gimbal' | 'Enable proximity sensors' | 'Send status text + voice' | typeof FRESH_PARAMETERS;
 
 export type MockVehicle = 'PX4 Vehicle' | 'PX4 Fixed Wing Vehicle' | 'APM ArduCopter Vehicle' | 'APM ArduPlane Vehicle' | 'APM ArduSub Vehicle' | 'APM ArduRover Vehicle' | 'Generic Vehicle';
 
