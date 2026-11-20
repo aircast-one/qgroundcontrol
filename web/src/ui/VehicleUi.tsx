@@ -27,7 +27,7 @@ import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
 import { AUTO_PURSUIT, type AutoPursuit, GUIDED_ACTIONS, type GuidedOffer, type PursuitAction, type Payload, SINGLE_GRIPPER, autoPursuit, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
 import { type GuidedValueKind, GuidedValueFlow, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
-import { focusLost } from './GuidedValuePanel';
+import { focusLost, useGuidedPanelShown } from './GuidedValuePanel';
 import { holdLabel } from './HoldToConfirm';
 import {
   INSTRUMENTS_VIEW,
@@ -640,6 +640,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     MenuTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() }),
   ];
   const closeMenu = () => setMenuOpen(false);
+  useGuidedPanelShown(available && pending !== null);
 
   const anyDecision = pending !== null || guidedValue !== null || editingLoiter !== null || panelOpen;
   const decidedBefore = useRef(anyDecision);

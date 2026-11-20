@@ -38,6 +38,30 @@ test('on a phone the map credits stay under the map buttons while a guided panel
     .toBe('Map layers');
 });
 
+test('on a phone a guided panel or a confirm slide clears the compass and camera chips off the map, so the credits and the mission card are not covered', async ({ page }) => {
+  await openApp(page);
+  await connectMock(page, ['Enable camera', 'Enable gimbal'], 'APM ArduCopter Vehicle');
+  await page.getByRole('button', { name: 'Enlarge the map' }).click();
+  const compass = page.getByRole('img', { name: /^Heading \d+°$/ }).first();
+  const zoom = page.getByRole('button', { name: /^Zoom \d+%$/ });
+  await expect(compass).toBeVisible();
+  await expect(zoom).toBeVisible();
+  await page.getByRole('button', { name: /^(Slide to take off|Take off)$/ }).click();
+  await expect(page.getByRole('button', { name: /^Slide to take off( anyway)? · / })).toBeVisible();
+  await expect(compass, 'the compass stood on the mission card').toBeHidden();
+  await expect(zoom, 'the zoom chip sat under the map credits').toBeHidden();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(zoom).toBeVisible();
+  await takeOff(page, '5 m');
+  await expect(page.getByRole('button', { name: /Flying Change flight mode$|^(Takeoff|Hold|Guided)\b.*Change flight mode$/ })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Return', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Slide to return' })).toBeVisible();
+  await expect(zoom, 'a confirm slide takes the deck like a guided panel does').toBeHidden();
+  await expect(compass).toBeHidden();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(compass).toBeVisible();
+});
+
 const gimbalPitch = (page: Page) =>
   page.evaluate(
     async (module) => (((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal') as Promise<{ gimbals?: { pitch: number | null }[] } | null>).then((it) => it?.gimbals?.[0]?.pitch ?? null),

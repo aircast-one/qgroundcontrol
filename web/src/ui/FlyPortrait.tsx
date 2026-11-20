@@ -283,7 +283,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                       <div className="flex min-h-0 shrink flex-col items-start gap-2 overflow-hidden" style={badgeRoom(editing, true)}>
                         {overlays}
                       </div>
-                      {split ? null : (
+                      {split || deciding ? null : (
                         <LayoutWidget widgetKey="compass" movable={false} hideable={false} className="self-start pt-2">
                           <OsdCompassDial size={PORTRAIT_DIAL_SIZE} />
                         </LayoutWidget>
@@ -297,7 +297,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                         <MapButtons view={view} split={split} hasVideo={hasVideo} onView={onView} />
                       </LayoutWidget>
                       <div className="flex-1" />
-                      {split ? null : <div className="pt-2">{rail(false)}</div>}
+                      {split || deciding ? null : <div className="pt-2">{rail(false)}</div>}
                     </div>
                   </div>
                 </div>

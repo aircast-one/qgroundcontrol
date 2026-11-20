@@ -11,6 +11,17 @@ import { LocalFlyScreenState } from './FlyScreenState';
 import { FLY_STATE, type Readiness, flyState, useGuidedReadiness } from './FlyState';
 import { HoldToConfirm, holdLabel } from './HoldToConfirm';
 
+export const useGuidedPanelShown = (shown: boolean = true) => {
+  const flyScreen = useContext(LocalFlyScreenState);
+  useEffect(() => {
+    if (!shown) return undefined;
+    flyScreen.guidedPanels.value += 1;
+    return () => {
+      flyScreen.guidedPanels.value -= 1;
+    };
+  }, [flyScreen, shown]);
+};
+
 export const GuidedValuePanel = ({
   title,
   sentence,
@@ -32,16 +43,10 @@ export const GuidedValuePanel = ({
   className?: string;
   children?: ReactNode;
 }) => {
-  const flyScreen = useContext(LocalFlyScreenState);
   useEscapeHandler(true, onCancel);
   const portrait = useFlyIsPortrait();
   const available = useScreenSize().height;
-  useEffect(() => {
-    flyScreen.guidedPanels.value += 1;
-    return () => {
-      flyScreen.guidedPanels.value -= 1;
-    };
-  }, [flyScreen]);
+  useGuidedPanelShown();
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (focusLost()) panel.current?.focus({ preventScroll: true });
