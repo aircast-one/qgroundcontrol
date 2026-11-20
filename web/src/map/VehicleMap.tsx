@@ -66,6 +66,9 @@ const VEHICLE_SOURCE = 'aircast-vehicle';
 const TAP_SLOP_DP = 24;
 
 export const NO_FADES = { duration: 0, delay: 0 };
+const WORLD_ZOOM = 1.0;
+
+export const placing = (zoom: number): { animate?: boolean } => (zoom > WORLD_ZOOM ? {} : { animate: false });
 const VEHICLE_LAYER = 'aircast-vehicle-layer';
 const VEHICLE_HEADING_LAYER = 'aircast-vehicle-heading-layer';
 const OTHER_VEHICLE_COLOUR = '#90A4AE';
@@ -723,15 +726,16 @@ export const VehicleMap = ({
     focused.current = at;
     if (at === null) return;
     const target: [number, number] = [at.longitude, at.latitude];
+    const first = placing(map.getZoom());
     if (centreZoom !== null) {
       map.jumpTo({ center: target, zoom: centreZoom });
     } else if (centreMinZoom !== null && map.getZoom() < centreMinZoom) {
-      map.easeTo({ center: target, zoom: centreMinZoom });
-    } else if (map.getZoom() > 1.0) {
+      map.easeTo({ center: target, zoom: centreMinZoom, ...first });
+    } else if (map.getZoom() > WORLD_ZOOM) {
       const point = map.project(target);
       map.easeTo({ center: map.unproject([point.x - leftInsetPx / 2, point.y - clearAreaLift(topInsetPx, bottomInsetPx)]) });
     } else {
-      map.easeTo({ center: target, zoom: DEFAULT_ZOOM });
+      map.easeTo({ center: target, zoom: DEFAULT_ZOOM, ...first });
     }
   }, [centreRequest, style]);
 
@@ -766,11 +770,13 @@ export const VehicleMap = ({
       onFitFailed();
       return;
     }
+    const first = placing(map.getZoom());
     if (bounds.spanDegrees < MIN_FIT_SPAN_DEGREES) {
-      map.easeTo({ center: [bounds.centre.longitude, bounds.centre.latitude], zoom: DEFAULT_ZOOM });
+      map.easeTo({ center: [bounds.centre.longitude, bounds.centre.latitude], zoom: DEFAULT_ZOOM, ...first });
       return;
     }
     map.fitBounds([[bounds.west, bounds.south], [bounds.unwrappedEast, bounds.north]], {
+      ...first,
       padding: {
         left: FIT_PADDING_PIXELS + leftInsetPx + fitLeftPx,
         top: FIT_PADDING_PIXELS + topInsetPx,

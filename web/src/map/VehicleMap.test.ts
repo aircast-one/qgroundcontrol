@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Feature, Point } from 'geojson';
 import { lastSeenText } from './Silence';
 import { vehicleChoices } from './VehiclePicker';
-import { ACTIVE_PROPERTY, HEADING_PROPERTY, STALE_PROPERTY, VEHICLE_LABEL_PROPERTY, clearAreaLift, fleetFeatures, outsideCentreInset, revealingCentre, vehicleFeature, vehicleFeatures } from './VehicleMap';
+import { ACTIVE_PROPERTY, HEADING_PROPERTY, STALE_PROPERTY, VEHICLE_LABEL_PROPERTY, clearAreaLift, fleetFeatures, outsideCentreInset, placing, revealingCentre, vehicleFeature, vehicleFeatures } from './VehicleMap';
 
 const property = (feature: Feature | undefined, name: string): unknown => feature?.properties?.[name];
 
@@ -134,5 +134,12 @@ describe('CentreInsetTest', () => {
     const phone = { top: 120, bottom: 450, left: 0 };
     expect(revealingCentre({ x: 206, y: 500 }, 412, 860, phone), 'under the opened sheet, so the map moves until it sits midway between the header and the sheet').toEqual([206, 665]);
     expect(revealingCentre({ x: 206, y: 260 }, 412, 860, phone), 'already in the clear area, the map stays put').toBeNull();
+  });
+});
+
+describe('FirstPlacementTest', () => {
+  it('a map still showing the whole world lands on its plan at once instead of flying in through continent scales', () => {
+    expect(placing(0)).toEqual({ animate: false });
+    expect(placing(15), 'a map already placed keeps its smooth moves').toEqual({});
   });
 });
