@@ -173,4 +173,11 @@ final class InstrumentDetailTests: XCTestCase {
         XCTAssertTrue(statusPillShown(false, false, true))
         XCTAssertTrue(statusPillShown(true, false, false))
     }
+
+    func testTheLostLinkMenuNamesWhatTheAircraftDoesAboutTheLostLinkWhichThePortraitChipHasNoRoomFor() {
+        XCTAssertEqual(lossFailsafeLine(2, LossFailsafe(action: "Return home", after: 10.0)), "On link loss: Return home in 8 s")
+        XCTAssertEqual(lossFailsafeLine(12, LossFailsafe(action: "Return home", after: 10.0)), "On link loss: Return home")
+        XCTAssertEqual(lossFailsafeLine(4, LossFailsafe(action: "No failsafe", after: nil)), "No failsafe on link loss")
+        XCTAssertNil(lossFailsafeLine(4, nil))
+    }
 }

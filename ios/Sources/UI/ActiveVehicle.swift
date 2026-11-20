@@ -207,7 +207,7 @@ struct VehicleStateChip: View {
                 }
             }
         } message: {
-            Text(LOST_LINK_HINT)
+            Text([lossFailsafeLine(silentFor, failsafe), LOST_LINK_HINT].compactMap { $0 }.joined(separator: "\n\n"))
         }
     }
 

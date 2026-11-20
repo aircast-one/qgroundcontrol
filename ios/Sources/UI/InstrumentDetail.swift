@@ -72,6 +72,12 @@ func silenceText(_ seconds: Int64) -> String { "No data from the aircraft for \(
 
 let SIGNAL_LOST = "Signal lost"
 
+private let NO_FAILSAFE = "No failsafe"
+
+func lossFailsafeLine(_ seconds: Int64?, _ failsafe: LossFailsafe?) -> String? {
+    failsafe.map { $0.action == NO_FAILSAFE ? "No failsafe on link loss" : "On link loss: \(failsafeCountdown(seconds, $0) ?? $0.action)" }
+}
+
 func failsafeCountdown(_ seconds: Int64?, _ failsafe: LossFailsafe?) -> String? {
     guard let failsafe else { return nil }
     let left = failsafe.after.map { Int64(($0 - Double(seconds ?? 0)).rounded(.up)) }.flatMap { $0 > 0 ? $0 : nil }
