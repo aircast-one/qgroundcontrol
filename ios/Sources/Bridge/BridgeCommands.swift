@@ -84,6 +84,7 @@ enum PlanCommands {
     @discardableResult static func setUndoTracking(_ tracking: Bool) -> Bool { Qgc.set(planUndoTracking, tracking) }
     @discardableResult static func removeAllFromVehicle() -> Bool { Qgc.invoke(planRemoveAllFromVehicle) }
     @discardableResult static func resumeMission(_ waypoint: Int) -> Bool { Qgc.invoke(planResumeMission, waypoint) }
+    static func resumeMissionRefusal(_ waypoint: Int) -> String? { Qgc.refusalOf(planResumeMission, waypoint) }
     @discardableResult static func dismissMissionComplete(_ notice: Int64) -> Bool { Qgc.invoke(missionCompleteDismiss, notice) }
     static func commandCategories() -> JSON { Qgc.invokeResult(planCommandCategories) }
     static func commandsForCategory(_ category: String) -> JSON { Qgc.invokeResult(planCommandsForCategory, nil, category, true) }

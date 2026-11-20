@@ -523,7 +523,7 @@ struct FlightActions<Center: View>: View {
                     .onChange(of: loiterOffer(mapClickJson) == nil, initial: true) { _, gone in if gone { actions.editingLoiter = nil } }
                     .onChange(of: gripperOffers(moreActions(offers)).isEmpty, initial: true) { _, empty in if empty { actions.showGripper = false } }
                 if let open = actions.guidedValue {
-                    DecisionHost(rail: rail) { GuidedValueFlow(open: open) { actions.guidedValue = nil } }
+                    DecisionHost(rail: rail) { GuidedValueFlow(open: open, onClose: { actions.guidedValue = nil }, onRefused: { flyScreen.refusal = $0 }) }
                 }
                 if let offer = actions.editingLoiter {
                     DecisionHost(rail: rail) {
@@ -601,7 +601,7 @@ struct FlightActions<Center: View>: View {
 
     private func guidedActionFor(_ offer: GuidedOffer) -> GuidedAction? {
         guidedCommand(offer.id, resumeFromSequence(actionsJson)).map { command in
-            GuidedAction(name: offer.title, confirm: offer.prompt, destructive: offer.destructive, offerId: offer.id, run: command)
+            GuidedAction(name: offer.title, confirm: offer.prompt, destructive: offer.destructive, offerId: offer.id, answer: command)
         }
     }
 
@@ -691,7 +691,7 @@ struct FlightActions<Center: View>: View {
         let offered = extras.filter { !entryIds.contains($0.id) && !GRIPPER_ACTIONS.contains($0.id) }.map { offer in
             MoreTile(label: offer.title, icon: guidedIcon(offer.id), enabled: offer.ready, warning: offer.destructive, onClick: {
                 if offer.id == PAUSE {
-                    openValue(altitudeValue(true))
+                    pauseClick(offer, confirm: ask, openValue: openValue)
                 } else if let action = guidedActionFor(offer) {
                     ask(action)
                 }
@@ -1286,6 +1286,25 @@ final class FlightDeckContext {
 
 let RELEASE = "release"
 
+func altitudeLabel(_ offer: GuidedOffer) -> String {
+    sentenceCase(offer.title.replacingOccurrences(of: #"^Change\s+"#, with: "", options: [.regularExpression, .caseInsensitive]))
+}
+
+@MainActor
+func pauseClick(_ pause: GuidedOffer, confirm: (GuidedAction) -> Void, openValue: (GuidedValueKind) -> Void) {
+    if pause.carriesValue {
+        openValue(altitudeValue(true))
+    } else {
+        confirm(GuidedAction(
+            name: pause.title,
+            confirm: pause.prompt.nonBlank ?? "Pause at current position",
+            destructive: false,
+            offerId: PAUSE,
+            answer: { await offMain { VehicleCommands.pauseRefusal() } }
+        ))
+    }
+}
+
 @MainActor
 func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
     let offers = deck.offers
@@ -1336,26 +1355,26 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
                         confirm: takeoff?.prompt.nonBlank ?? "Takeoff from ground and hold position.",
                         destructive: false,
                         offerId: "takeoff",
-                        run: { offMain { VehicleCommands.takeoff() } }
+                        answer: { await offMain { VehicleCommands.takeoffRefusal() } }
                     ))
                 } else {
                     deck.openValue(takeoffValue(takeoff))
                 }
             }
         ) : nil,
-        offers[PAUSE]?.shown == true ? DeckEntry(id: PAUSE, label: offers[PAUSE]?.title ?? "Pause", icon: .pause, enabled: offers[PAUSE]?.ready == true, onClick: {
-            deck.openValue(altitudeValue(true))
-        }) : nil,
+        offers[PAUSE].flatMap { pause in
+            pause.shown ? DeckEntry(id: PAUSE, label: pause.title, icon: .pause, enabled: pause.ready, onClick: { pauseClick(pause, confirm: deck.confirm, openValue: deck.openValue) }) : nil
+        },
         rtl?.shown == true ? DeckEntry(id: "rtl", label: "Return", icon: .home, enabled: rtl?.ready == true, onClick: {
             deck.confirm(GuidedAction(
                 name: rtl?.title ?? "Return",
                 confirm: rtl?.prompt.nonBlank ?? "Return to the launch position of the vehicle",
                 destructive: false,
                 option: rtl?.option.nonBlank.map { label in
-                    ConfirmOption(label: label, run: { smart in offMain { VehicleCommands.returnToLaunch(smart) } })
+                    ConfirmOption(label: label, run: { smart in deck.scope.launch { deck.report(await offMain { VehicleCommands.returnToLaunchRefusal(smart) }) } })
                 },
                 offerId: "rtl",
-                run: { offMain { VehicleCommands.returnToLaunch(false) } }
+                run: { deck.scope.launch { deck.report(await offMain { VehicleCommands.returnToLaunchRefusal(false) }) } }
             ))
         }) : nil,
         land?.shown == true ? DeckEntry(
@@ -1370,16 +1389,16 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
                     confirm: land?.prompt.nonBlank ?? "Land the vehicle at the current position",
                     destructive: false,
                     offerId: "land",
-                    run: { offMain { VehicleCommands.land() } }
+                    answer: { await offMain { VehicleCommands.landRefusal() } }
                 ))
             }
         ) : nil,
         offers["changeSpeed"]?.shown == true ? DeckEntry(id: "changeSpeed", label: "Speed", icon: .speed, enabled: offers["changeSpeed"]?.ready == true, onClick: {
             deck.openValue(speedValue(offers["changeSpeed"]))
         }) : nil,
-        offers["changeAltitude"]?.shown == true ? DeckEntry(id: "changeAltitude", label: "Altitude", icon: .height, enabled: offers["changeAltitude"]?.ready == true, onClick: {
-            deck.openValue(altitudeValue(false))
-        }) : nil,
+        offers["changeAltitude"].flatMap { altitude in
+            altitude.shown ? DeckEntry(id: "changeAltitude", label: altitudeLabel(altitude), icon: .height, enabled: altitude.ready, onClick: { deck.openValue(altitudeValue(false, altitude)) }) : nil
+        },
         release?.shown == true ? DeckEntry(
             id: RELEASE,
             label: holdLabel(deck.dropLabel.nonBlank ?? dropTitle),

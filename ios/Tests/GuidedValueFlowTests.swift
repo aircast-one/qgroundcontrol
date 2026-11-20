@@ -2,7 +2,7 @@ import XCTest
 @testable import Aircast
 
 final class GuidedValueFlowTests: XCTestCase {
-    private let kind = GuidedValueKind(offerId: "takeoff", title: "Takeoff", prompt: nil, commitLabel: "Take off", missingRange: "no range", quickPicks: false, read: { _ in nil }, commit: { _ in })
+    private let kind = GuidedValueKind(offerId: "takeoff", title: "Takeoff", prompt: nil, commitLabel: "Take off", missingRange: "no range", quickPicks: false, read: { _ in nil }, commit: { _ in nil })
 
     func testAValueOpensOnlyWithAUsableRangeAndAStartingValue() {
         let usable = GuidedReading(label: "Height", unit: "m", range: 1.0...120.0, initial: 10.0, sentence: "", sendable: true)

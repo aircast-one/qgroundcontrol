@@ -10,6 +10,7 @@ private let vehicleTakeoff = "vehicle.guidedModeTakeoff"
 private let vehicleLand = "vehicle.guidedModeLand"
 private let vehicleReturnToLaunch = "vehicle.guidedModeRTL"
 private let vehicleChangeAltitude = "vehicle.guidedModeChangeAltitude"
+private let vehiclePause = "vehicle.pauseVehicle"
 private let vehicleStartMission = "vehicle.startMission"
 private let vehicleAbortLanding = "vehicle.abortLanding"
 private let vehicleGripper = "vehicle.sendGripperAction"
@@ -29,27 +30,25 @@ enum VehicleCommands {
     @discardableResult static func setArmed(_ armed: Bool) -> Bool { Qgc.set(vehicleArmed, armed) }
     @discardableResult static func setFlightMode(_ mode: String) -> Bool { Qgc.set(vehicleFlightMode, mode) }
     @discardableResult static func setChecklistState(_ state: Int) -> Bool { Qgc.set(vehicleChecklistState, state) }
-    @discardableResult static func setForwardFlight(_ forward: Bool) -> Bool { Qgc.set(vehicleVtolForwardFlight, forward) }
 
     static func heading() -> JSON { Qgc.get(vehicleHeading) }
     static func coordinate() -> JSON { Qgc.get(vehicleCoordinate) }
 
-    @discardableResult static func takeoff() -> Bool { Qgc.invoke(vehicleTakeoff) }
-    @discardableResult static func takeoff(_ meters: Double) -> Bool { Qgc.invoke(vehicleTakeoff, meters) }
     static func takeoffRefusal() -> String? { Qgc.refusalOf(vehicleTakeoff) }
     static func takeoffRefusal(_ meters: Double) -> String? { Qgc.refusalOf(vehicleTakeoff, meters) }
-    @discardableResult static func land() -> Bool { Qgc.invoke(vehicleLand) }
     static func landRefusal() -> String? { Qgc.refusalOf(vehicleLand) }
     @discardableResult static func returnToLaunch(_ smart: Bool) -> Bool { Qgc.invoke(vehicleReturnToLaunch, smart) }
-    @discardableResult static func changeSpeed(_ command: String, _ metersSecond: Double) -> Bool { Qgc.invoke("vehicle.\(command)", metersSecond) }
-    @discardableResult static func changeAltitude(_ deltaMeters: Double, pause: Bool) -> Bool { Qgc.invoke(vehicleChangeAltitude, deltaMeters, pause) }
-    @discardableResult static func startMission() -> Bool { Qgc.invoke(vehicleStartMission) }
-    @discardableResult static func abortLanding(_ climbMeters: Double) -> Bool { Qgc.invoke(vehicleAbortLanding, climbMeters) }
-    @discardableResult static func gripper(_ action: Int) -> Bool { Qgc.invoke(vehicleGripper, action) }
+    static func returnToLaunchRefusal(_ smart: Bool) -> String? { Qgc.refusalOf(vehicleReturnToLaunch, smart) }
+    static func pauseRefusal() -> String? { Qgc.refusalOf(vehiclePause) }
+    static func changeSpeedRefusal(_ command: String, _ metersSecond: Double) -> String? { Qgc.refusalOf("vehicle.\(command)", metersSecond) }
+    static func changeAltitudeRefusal(_ deltaMeters: Double, pause: Bool) -> String? { Qgc.refusalOf(vehicleChangeAltitude, deltaMeters, pause) }
+    static func startMissionRefusal() -> String? { Qgc.refusalOf(vehicleStartMission) }
+    static func abortLandingRefusal(_ climbMeters: Double) -> String? { Qgc.refusalOf(vehicleAbortLanding, climbMeters) }
     static func gripperRefusal(_ action: Int, bay: Int = 0) -> String? { Qgc.refusalOf(vehicleGripper, action, bay) }
     static func fixPayloadRefusal(_ code: String) -> String? { Qgc.refusalOf(vehicleFixPayload, code) }
-    @discardableResult static func stopRoi() -> Bool { Qgc.invoke(vehicleStopRoi) }
-    @discardableResult static func forceArm() -> Bool { Qgc.invoke(vehicleForceArm) }
+    static func stopRoiRefusal() -> String? { Qgc.refusalOf(vehicleStopRoi) }
+    static func forceArmRefusal() -> String? { Qgc.refusalOf(vehicleForceArm) }
+    static func forwardFlightRefusal(_ forward: Bool) -> String? { Qgc.writeRefusal(vehicleVtolForwardFlight, forward) }
     @discardableResult static func emergencyStop() -> Bool { Qgc.invoke(vehicleEmergencyStop) }
     @discardableResult static func motorTest(_ motor: Int, percent: Int, seconds: Int, inOrder: Bool) -> Bool { Qgc.invoke(vehicleMotorTest, motor, percent, seconds, inOrder) }
     @discardableResult static func overrideRcChannel(_ channel: Int, pwm: Int) -> Bool { Qgc.invoke(vehicleRcOverride, channel, pwm) }

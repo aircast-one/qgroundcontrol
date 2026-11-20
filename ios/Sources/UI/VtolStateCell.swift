@@ -32,7 +32,7 @@ struct VtolStateCell: View {
                         let command = guidedCommand(state.transition, nil)
                         Button(named) {
                             confirming = false
-                            command?()
+                            if let command { Task { _ = await command() } }
                         }
                         .disabled(offer?.ready != true || command == nil)
                         Button("Cancel", role: .cancel) { confirming = false }

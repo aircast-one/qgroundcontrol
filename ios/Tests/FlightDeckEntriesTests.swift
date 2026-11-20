@@ -32,6 +32,29 @@ final class FlightDeckEntriesTests: XCTestCase {
         XCTAssertNotNil(confirmed.first?.answer)
     }
 
+    func testALandingTheVehicleRefusesWaitsForTheCoresAnswerInsteadOfVanishing() throws {
+        var confirmed: [GuidedAction] = []
+        try XCTUnwrap(flightDeckEntries(deck([offer("land")], armed: true, confirm: { confirmed.append($0) })).first { $0.id == "land" }).onClick()
+        XCTAssertNotNil(confirmed.first?.answer)
+    }
+
+    func testAPauseThatCarriesNoHeightAsOnARoverSlidesAPlainPauseThatWaitsForTheCoresAnswer() throws {
+        var confirmed: [GuidedAction] = []
+        let opened = Opened()
+        let plain = GuidedOffer(id: PAUSE, title: "Pause", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: false)
+        try XCTUnwrap(flightDeckEntries(deck([plain], armed: true, opened: opened, confirm: { confirmed.append($0) })).first { $0.id == PAUSE }).onClick()
+        XCTAssertEqual(opened.ids, [])
+        XCTAssertEqual([confirmed.first?.offerId, confirmed.first?.name], [PAUSE, "Pause"])
+        XCTAssertNotNil(confirmed.first?.answer)
+    }
+
+    func testASubsHeightChangeReadsDepthOnTheDeckAsTheCoreTitlesIt() {
+        let depth = GuidedOffer(id: "changeAltitude", title: "Change Depth", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: true)
+        let altitude = GuidedOffer(id: "changeAltitude", title: "Change Altitude", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: true)
+        XCTAssertEqual([depth, altitude].map { offer in flightDeckEntries(deck([offer])).first { $0.id == "changeAltitude" }?.label }, ["Depth", "Altitude"])
+        XCTAssertEqual([altitudeValue(false, depth).title, altitudeValue(false).title, altitudeValue(true).title], ["Change depth", "Change altitude", "Pause"])
+    }
+
     func testAGripperGetsADropOnTheDeckThatLandsOnAHoldAndNamesTheBay() throws {
         let release = GuidedOffer(id: RELEASE, title: "Drop", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: false)
         let single = try XCTUnwrap(flightDeckEntries(deck([release], armed: true)).first { $0.id == RELEASE })

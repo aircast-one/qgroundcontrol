@@ -31,18 +31,18 @@ func autoMissionPopup(_ wasReady: Set<String>, _ offers: [String: GuidedOffer], 
     AUTO_POPUP_ACTIONS.compactMap { offers[$0] }.first { (enabled || $0.id == LAND_ABORT) && $0.ready && !wasReady.contains($0.id) }
 }
 
-func guidedCommand(_ id: String, _ resumeFrom: Int?) -> (() -> Void)? {
+func guidedCommand(_ id: String, _ resumeFrom: Int?) -> (() async -> String?)? {
     switch id {
-    case "startMission", "continueMission": { offMain { VehicleCommands.startMission() } }
-    case "landAbort": { offMain { VehicleCommands.abortLanding(LAND_ABORT_CLIMB_METERS) } }
-    case "grab": { offMain { VehicleCommands.gripper(GRIPPER_GRAB) } }
-    case "release": { offMain { VehicleCommands.gripper(GRIPPER_RELEASE) } }
-    case "hold": { offMain { VehicleCommands.gripper(GRIPPER_HOLD) } }
-    case "cancelRoi": { offMain { VehicleCommands.stopRoi() } }
-    case "vtolTransitionToFixedWing": { offMain { VehicleCommands.setForwardFlight(true) } }
-    case "vtolTransitionToMultiRotor": { offMain { VehicleCommands.setForwardFlight(false) } }
-    case "forceArm": { offMain { VehicleCommands.forceArm() } }
-    case "resumeMission": resumeFrom.map { at in { offMain { PlanCommands.resumeMission(at) } } }
+    case "startMission", "continueMission": { await offMain { VehicleCommands.startMissionRefusal() } }
+    case "landAbort": { await offMain { VehicleCommands.abortLandingRefusal(LAND_ABORT_CLIMB_METERS) } }
+    case "grab": { await offMain { VehicleCommands.gripperRefusal(GRIPPER_GRAB) } }
+    case "release": { await offMain { VehicleCommands.gripperRefusal(GRIPPER_RELEASE) } }
+    case "hold": { await offMain { VehicleCommands.gripperRefusal(GRIPPER_HOLD) } }
+    case "cancelRoi": { await offMain { VehicleCommands.stopRoiRefusal() } }
+    case "vtolTransitionToFixedWing": { await offMain { VehicleCommands.forwardFlightRefusal(true) } }
+    case "vtolTransitionToMultiRotor": { await offMain { VehicleCommands.forwardFlightRefusal(false) } }
+    case "forceArm": { await offMain { VehicleCommands.forceArmRefusal() } }
+    case "resumeMission": resumeFrom.map { at in { await offMain { PlanCommands.resumeMissionRefusal(at) } } }
     default: nil
     }
 }

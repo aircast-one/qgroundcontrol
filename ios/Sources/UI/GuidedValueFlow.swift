@@ -19,7 +19,7 @@ struct GuidedValueKind {
     var presets: Bool = false
     var explains: Bool = true
     var read: (Double?) -> GuidedReading?
-    var commit: (Double) -> Void
+    var commit: (Double) -> String?
 }
 
 @Observable
@@ -73,7 +73,7 @@ func takeoffValue(_ offer: GuidedOffer?) -> GuidedValueKind {
         explains: false,
         read: { target in takeoffReading(guidedTakeoff(Qgc.get(target.map(guidedTakeoffPath) ?? GUIDED_TAKEOFF))) },
         commit: { target in
-            if let fresh = guidedTakeoff(Qgc.get(guidedTakeoffPath(target))) { VehicleCommands.takeoff(fresh.targetMeters) }
+            guidedTakeoff(Qgc.get(guidedTakeoffPath(target))).flatMap { VehicleCommands.takeoffRefusal($0.targetMeters) }
         }
     )
 }
@@ -88,26 +88,23 @@ func speedValue(_ offer: GuidedOffer?) -> GuidedValueKind {
         quickPicks: false,
         read: { target in speedReading(guidedSpeed(Qgc.get(target.map(guidedSpeedPath) ?? GUIDED_SPEED))) },
         commit: { target in
-            if let fresh = guidedSpeed(Qgc.get(guidedSpeedPath(target))), let method = fresh.command {
-                VehicleCommands.changeSpeed(method, fresh.targetMetersSecond)
-            }
+            guard let fresh = guidedSpeed(Qgc.get(guidedSpeedPath(target))), let method = fresh.command else { return nil }
+            return VehicleCommands.changeSpeedRefusal(method, fresh.targetMetersSecond)
         }
     )
 }
 
-func altitudeValue(_ pauses: Bool) -> GuidedValueKind {
+func altitudeValue(_ pauses: Bool, _ offer: GuidedOffer? = nil) -> GuidedValueKind {
     GuidedValueKind(
         offerId: pauses ? PAUSE : "changeAltitude",
-        title: pauses ? "Pause" : "Change altitude",
+        title: pauses ? "Pause" : sentenceCase(offer?.title.nonBlank ?? "Change altitude"),
         prompt: nil,
         commitLabel: pauses ? "Pause" : "Change",
         missingRange: "This vehicle did not report an altitude range.",
         quickPicks: true,
         read: { target in altitudeReading(guidedAltitude(Qgc.get(target.map { guidedAltitudePath($0, pause: pauses) } ?? GUIDED_ALTITUDE))) },
         commit: { target in
-            if let delta = guidedAltitude(Qgc.get(guidedAltitudePath(target, pause: pauses))).flatMap(altitudeDelta) {
-                VehicleCommands.changeAltitude(delta, pause: pauses)
-            }
+            guidedAltitude(Qgc.get(guidedAltitudePath(target, pause: pauses))).flatMap(altitudeDelta).flatMap { VehicleCommands.changeAltitudeRefusal($0, pause: pauses) }
         }
     )
 }
@@ -125,6 +122,7 @@ private struct ProbeKey: Equatable {
 struct GuidedValueFlow: View {
     let open: OpenGuidedValue
     let onClose: () -> Void
+    let onRefused: (String?) -> Void
     @State private var probe: GuidedReading?
 
     var body: some View {
@@ -142,7 +140,7 @@ struct GuidedValueFlow: View {
             onCommit: {
                 let target = open.target
                 onClose()
-                offMain { kind.commit(target) }
+                Task { onRefused(await offMain { kind.commit(target) }) }
             },
             onCancel: onClose
         ) {
