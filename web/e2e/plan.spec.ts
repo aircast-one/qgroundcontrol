@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { connectMock, expect, itemCount, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
+import { connectMock, expect, itemCount, openApp, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -56,6 +56,25 @@ test('with the new return still selected, a tap on the map lands before it, wher
   }).toPass({ timeout: 30_000 });
   await expect(lastRow, 'the waypoint used to go in after the return, listed after the route ends and never flown').toHaveAccessibleName(/Return to launch/);
   await expect(app.getByText(/after the route ends/)).toHaveCount(0);
+});
+
+test('a plan being drawn survives a reload of the page', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  const drawn = await itemCount(app);
+  await app.waitForFunction(() => new Promise((resolve) => {
+    const opened = indexedDB.open('keyval-store');
+    opened.onsuccess = () => {
+      const read = opened.result.transaction('keyval').objectStore('keyval').get('plan-draft');
+      read.onsuccess = () => resolve(typeof read.result === 'string' && read.result.includes('"items"'));
+      read.onerror = () => resolve(false);
+    };
+    opened.onerror = () => resolve(false);
+  }));
+  await openApp(app, { firstRun: false });
+  await openMenu(app, 'Plan');
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(drawn);
 });
 
 test('upload sends the mission to the vehicle and offers to fly it', async ({ vehicle }) => {

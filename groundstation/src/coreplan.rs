@@ -22,7 +22,10 @@ pub const APPLY_DEFAULT_ALTITUDE: &str = "core.plan.applyDefaultAltitude";
 pub const DISMISS_ALTITUDE_PROMPT: &str = "core.plan.dismissAltitudePrompt";
 pub const CONVERT_TO_VEHICLE: &str = "core.plan.convertToVehicle";
 pub const MOVE_ITEM: &str = "core.plan.moveItem";
+pub const DRAFT_DEPS: &[&str] = &[CHANGED];
+pub const RESTORE_DRAFT: &str = "core.plan.restoreDraft";
 const ACTIONS: &[&str] = &[
+    RESTORE_DRAFT,
     CONVERT_TO_VEHICLE,
     MOVE_ITEM,
     OPEN,
@@ -260,6 +263,10 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
         }
         CORE_REMOVE => remove(args),
         MOVE_ITEM => move_item(args),
+        RESTORE_DRAFT => first_text(args).map_or_else(
+            || refused("Restoring needs the plan that was kept."),
+            |text| restore_draft(&text),
+        ),
         CONVERT_TO_VEHICLE => convert_to_vehicle(),
         _ => refused(format!("{path} is not a plan action the core performs")),
     }
@@ -1332,6 +1339,43 @@ fn launch_at_takeoff(document: &Document, visual_index: usize) -> bool {
         };
         !forward_flight && at_home
     })
+}
+
+pub fn draft_view(_backend: &dyn Backend, _args: &[String]) -> Value {
+    json!({ "kind": "object", "class": "PlanDraft", "text": draft(&held()) })
+}
+
+fn draft(state: &Held) -> Option<String> {
+    state
+        .document
+        .as_ref()
+        .filter(|document| contains_items(document))
+        .map(|document| plandoc::save(document).to_string())
+}
+
+fn restore_draft(text: &str) -> Value {
+    let Ok(document) = load_plan(text) else {
+        return refused("The plan kept from the last session could not be read.");
+    };
+    let restored = restored_into(&mut held(), document);
+    if restored {
+        settle_home_on_terrain(None);
+        changed();
+    }
+    json!({ "ok": true, "result": restored })
+}
+
+fn restored_into(state: &mut Held, document: Document) -> bool {
+    if state.document.as_ref().is_some_and(contains_items) || !contains_items(&document) {
+        return false;
+    }
+    state.document = Some(document);
+    state.selected = 0;
+    state.file = None;
+    state.clean = None;
+    state.dirty = true;
+    state.dirty_for_save = true;
+    true
 }
 
 fn contains_items(document: &Document) -> bool {
@@ -5496,6 +5540,51 @@ mod tests {
         );
         let two = vertex_edit(&line, "removeVertex", &json!([0]), false).unwrap();
         assert!(vertex_edit(&two, "removeVertex", &json!([0]), false).is_none());
+    }
+
+    #[test]
+    fn a_plan_kept_across_a_reload_comes_back_untitled_and_unsent_without_replacing_one_in_progress()
+     {
+        let drawn = Document {
+            items: vec![plandoc::Item::Simple(plandoc::Simple {
+                command: 16,
+                frame: 3,
+                params: [
+                    Some(0.0),
+                    Some(0.0),
+                    Some(0.0),
+                    Some(0.0),
+                    Some(47.0),
+                    Some(8.0),
+                    Some(50.0),
+                ],
+                auto_continue: true,
+                altitude: None,
+                sections: Vec::new(),
+            })],
+            ..empty_document()
+        };
+        let mut fresh = Held::default();
+        assert_eq!(draft(&fresh), None, "nothing drawn, nothing kept");
+        assert!(restored_into(&mut fresh, drawn.clone()));
+        assert_eq!(
+            (fresh.file.clone(), fresh.dirty, fresh.dirty_for_save),
+            (None, true, true),
+            "the reloaded plan is the one being worked on, not on the aircraft and not saved"
+        );
+        assert!(draft(&fresh).is_some());
+        let mut working = Held {
+            document: Some(Document {
+                cruise_speed: 9.0,
+                ..drawn.clone()
+            }),
+            ..Held::default()
+        };
+        assert!(
+            !restored_into(&mut working, drawn),
+            "a plan already in progress is never replaced by the one kept from before"
+        );
+        assert_eq!(working.document.map(|d| d.cruise_speed), Some(9.0));
     }
 
     #[test]

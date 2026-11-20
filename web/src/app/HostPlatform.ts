@@ -1,5 +1,6 @@
 import { startCore } from '@/core/client';
 import { prepareStaging } from '@/core/files';
+import { restorePlanDraft } from '@/ui/PlanDraft';
 import { DeviceLink } from './DeviceLink';
 import { GcsLocation } from './GcsLocation';
 
@@ -12,6 +13,7 @@ export const HostPlatform = {
     await startCore();
     void DeviceLink.start();
     await prepareStaging();
+    await restorePlanDraft();
     GcsLocation.start();
   },
 

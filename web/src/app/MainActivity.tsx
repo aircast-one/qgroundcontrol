@@ -37,6 +37,7 @@ import { CAMERA_CONTROL_KEY, CameraControlLayer, CameraShutters } from '@/ui/Cam
 import { CameraSwitch } from '@/ui/CameraSwitch';
 import { ArmedFlightBar } from '@/ui/ArmedFlightBar';
 import { CloseGuard } from '@/ui/CloseGuard';
+import { PlanDraftKeeper } from '@/ui/PlanDraft';
 import { ConnectingCard } from '@/ui/ConnectingCard';
 import { ConnectionLocks } from '@/ui/ConnectionLocks';
 import { ControlRequestPrompt } from '@/ui/ControlRequestPrompt';
@@ -690,6 +691,7 @@ export const AircastShell = () => {
   return (
     <AircastTheme dark={darkBars}>
       <CloseGuard />
+      <PlanDraftKeeper />
       <GimbalTakeControlDialog />
       {appMessages[0] !== undefined ? <AppMessageDialog message={appMessages[0]} onOpenSetup={() => navigation.openAircraft()} onDismiss={() => setAppMessages((messages) => messages.slice(1))} /> : null}
       <LocalImmersive.Provider value={flyLandscape}>

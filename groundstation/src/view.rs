@@ -258,6 +258,11 @@ pub const VIEWS: &[View] = &[
         compute: plan::plan_view,
     },
     View {
+        path: "view.planDraft",
+        deps: crate::coreplan::DRAFT_DEPS,
+        compute: crate::coreplan::draft_view,
+    },
+    View {
         path: "view.guidedActions",
         deps: guided::DEPS,
         compute: guided::guided_view,
