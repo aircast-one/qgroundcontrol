@@ -55,7 +55,7 @@ class GuidedSpeedTest {
 
     @Test
     fun `the argument path carries the target and no separators`() {
-        assertEquals("view.guidedSpeed(7.50)", guidedSpeedPath(7.5))
+        assertEquals("view.guidedSpeed(7.5)", guidedSpeedPath(7.5))
         assertFalse(guidedSpeedPath(7.5).contains(","))
     }
 }

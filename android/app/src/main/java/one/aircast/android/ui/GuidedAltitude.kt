@@ -21,7 +21,7 @@ internal data class GuidedAltitude(
 )
 
 internal fun guidedAltitudePath(target: Double, pause: Boolean = false): String =
-    "$GUIDED_ALTITUDE(${String.format(java.util.Locale.US, "%.2f", target)}${if (pause) ",pause" else ""})"
+    "$GUIDED_ALTITUDE($target${if (pause) ",pause" else ""})"
 
 private fun JSONObject.numberOrNull(key: String): Double? =
     if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }

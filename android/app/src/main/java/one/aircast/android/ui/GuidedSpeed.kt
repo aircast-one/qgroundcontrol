@@ -1,6 +1,5 @@
 package one.aircast.android.ui
 
-import java.util.Locale
 import org.json.JSONObject
 import one.aircast.map.optText
 
@@ -18,7 +17,7 @@ internal data class GuidedSpeed(
 )
 
 internal fun guidedSpeedPath(target: Double): String =
-    "$GUIDED_SPEED(${String.format(Locale.US, "%.2f", target)})"
+    "$GUIDED_SPEED($target)"
 
 private fun JSONObject.numberOrNull(key: String): Double? =
     if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }

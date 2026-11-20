@@ -45,13 +45,14 @@ class GuidedAltitudeTest {
 
     @Test
     fun `the argument path carries the target and no stray separators`() {
-        assertEquals("view.guidedAltitude(68.50)", guidedAltitudePath(68.5))
+        assertEquals("view.guidedAltitude(68.5)", guidedAltitudePath(68.5))
+        assertEquals("cut to 40.25, the core rounds it half to even and says 40.2 m beside a panel reading 40.3 m", "view.guidedAltitude(40.2537,pause)", guidedAltitudePath(40.2537, pause = true))
         assertFalse(guidedAltitudePath(68.5).contains(","))
     }
 
     @Test
     fun `a pause asks the core for the pause intent`() {
-        assertEquals("view.guidedAltitude(25.00,pause)", guidedAltitudePath(25.0, pause = true))
+        assertEquals("view.guidedAltitude(25.0,pause)", guidedAltitudePath(25.0, pause = true))
     }
 
     @Test

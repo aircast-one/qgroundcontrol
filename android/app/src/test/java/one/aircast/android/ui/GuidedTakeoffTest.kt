@@ -44,7 +44,7 @@ class GuidedTakeoffTest {
 
     @Test
     fun `the argument path carries the target and no separators`() {
-        assertEquals("view.guidedTakeoff(10.00)", guidedTakeoffPath(10.0))
+        assertEquals("view.guidedTakeoff(10.0)", guidedTakeoffPath(10.0))
         assertFalse(guidedTakeoffPath(10.0).contains(","))
     }
 

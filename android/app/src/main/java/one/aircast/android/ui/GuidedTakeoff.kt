@@ -1,6 +1,5 @@
 package one.aircast.android.ui
 
-import java.util.Locale
 import org.json.JSONObject
 import one.aircast.map.optText
 
@@ -17,7 +16,7 @@ internal data class GuidedTakeoff(
 )
 
 internal fun guidedTakeoffPath(target: Double): String =
-    "$GUIDED_TAKEOFF(${String.format(Locale.US, "%.2f", target)})"
+    "$GUIDED_TAKEOFF($target)"
 
 private fun JSONObject.numberOrNull(key: String): Double? =
     if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
