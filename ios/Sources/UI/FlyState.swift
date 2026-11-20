@@ -22,6 +22,7 @@ struct FlyState: Equatable {
     var canArm: Bool = true
     var readyToFly: Bool = true
     var rcRequired: Bool = true
+    var instance: Int? = nil
 }
 
 enum ChipTone { case Error, Neutral, Warning, Success }
@@ -83,6 +84,34 @@ struct DisarmCause {
 func disarmNotice(_ wasArmed: Bool, _ flewWhileArmed: Bool, _ armedNow: Bool, _ cause: DisarmCause = DisarmCause()) -> String? {
     guard wasArmed, !armedNow else { return nil }
     return cause.killed ? MOTORS_STOPPED : flewWhileArmed && cause.lands ? LANDED_AND_DISARMED : "Disarmed"
+}
+
+struct ArmedSession: Equatable {
+    var vehicle: Int?
+    var armed: Bool
+    var flew: Bool
+}
+
+let NO_ARMED_SESSION = ArmedSession(vehicle: nil, armed: false, flew: false)
+
+struct ArmedSessionStep: Equatable {
+    let session: ArmedSession
+    let notice: String?
+    let landed: Bool
+    let started: Bool
+}
+
+func armedSessionStep(_ held: ArmedSession, _ connected: Bool, _ vehicle: Int?, _ armed: Bool, _ state: String?, _ cause: DisarmCause = DisarmCause()) -> ArmedSessionStep {
+    guard connected, vehicle != nil || held.vehicle == nil else { return ArmedSessionStep(session: held, notice: nil, landed: false, started: false) }
+    let same = held.vehicle == nil || held.vehicle == vehicle
+    let was = same && held.armed
+    let flew = same && held.flew
+    return ArmedSessionStep(
+        session: ArmedSession(vehicle: vehicle, armed: armed, flew: armed && (flew || state.map(IN_AIR_STATES.contains) == true)),
+        notice: disarmNotice(was, flew, armed, cause),
+        landed: flew,
+        started: armed && !was
+    )
 }
 
 let VEHICLE_FLIGHT_DISTANCE = "vehicle.flightDistance"
@@ -147,7 +176,8 @@ func flyState(_ view: JSON?) -> FlyState? {
         fault: view["fault"].bool,
         canArm: view["canArm"].bool(true),
         readyToFly: view["readyToFly"].bool(true),
-        rcRequired: view["rcRequired"].bool(true)
+        rcRequired: view["rcRequired"].bool(true),
+        instance: optionalInt(view["instance"])
     )
 }
 

@@ -181,6 +181,25 @@ final class FlyReadinessTests: XCTestCase {
         XCTAssertEqual(disarmNotice(true, true, false, DisarmCause(killed: false, lands: false)), "Disarmed", "a sub disarmed at the surface")
     }
 
+    func testAnArmedFlightOutlivesALinkLossALandingDuringTheOutageStillReadsAsLandedAndTheStartIsNotReRead() {
+        let flying = armedSessionStep(armedSessionStep(NO_ARMED_SESSION, true, 1, true, "disarmed").session, true, 1, true, "flying").session
+        XCTAssertEqual(flying, ArmedSession(vehicle: 1, armed: true, flew: true))
+        let outage = armedSessionStep(flying, false, nil, false, nil)
+        XCTAssertEqual(outage, ArmedSessionStep(session: flying, notice: nil, landed: false, started: false))
+        XCTAssertEqual(armedSessionStep(outage.session, true, 1, false, "landed"), ArmedSessionStep(session: ArmedSession(vehicle: 1, armed: false, flew: false), notice: "Landed and disarmed", landed: true, started: false))
+        XCTAssertEqual(armedSessionStep(outage.session, true, 1, true, "landed"), ArmedSessionStep(session: flying, notice: nil, landed: true, started: false), "still armed on its return, the flight carries on")
+        XCTAssertEqual(armedSessionStep(outage.session, true, nil, false, "disarmed"), ArmedSessionStep(session: flying, notice: nil, landed: false, started: false), "nothing is said until the vehicle is named")
+        XCTAssertEqual(armedSessionStep(flying, true, 1, false, "disarmed", DisarmCause(killed: true, lands: true)).notice, MOTORS_STOPPED)
+    }
+
+    func testADifferentAircraftOnTheLostOnesIdStartsAfreshAndAnnouncesNothingAboutTheLostOne() {
+        let flying = armedSessionStep(armedSessionStep(NO_ARMED_SESSION, true, 1, true, "flying").session, false, nil, false, nil).session
+        XCTAssertEqual(armedSessionStep(flying, true, 2, false, "disarmed"), ArmedSessionStep(session: ArmedSession(vehicle: 2, armed: false, flew: false), notice: nil, landed: false, started: false))
+        XCTAssertTrue(armedSessionStep(flying, true, 2, true, "disarmed").started)
+        XCTAssertEqual(flyState(JSON.parse(#"{"class":"FlyState","connected":true,"instance":2}"#))?.instance, 2)
+        XCTAssertNil(flyState(JSON.parse(#"{"class":"FlyState","connected":true}"#))?.instance)
+    }
+
     func testALandingSaysHowLongHowFarAndHowMuchBatteryTheFlightTook() {
         XCTAssertEqual(landedSummary(192, "240 m", 23), "03'12\" \u{00b7} 240 m \u{00b7} 23% battery used")
         XCTAssertEqual(landedSummary(45, nil, nil), "00'45\"")

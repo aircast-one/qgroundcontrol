@@ -86,6 +86,8 @@ private enum PictureHoldHint {
 }
 
 private struct FlyArming: Equatable {
+    let connected: Bool?
+    let instance: Int?
     let armed: Bool?
     let state: String?
 }
@@ -142,8 +144,7 @@ struct AircastShell: View {
     @State private var acknowledgedThrough: Int64 = -1
     @State private var shownAt: [String: Int64] = [:]
     @State private var payloadShowing: Task<Void, Never>?
-    @State private var wasArmed = false
-    @State private var flewWhileArmed = false
+    @State private var armedSession = NO_ARMED_SESSION
     @State private var armedBattery: Int?
     @State private var lastVehicles: VehicleChoices?
     @State private var settingsRequested: String?
@@ -249,7 +250,7 @@ struct AircastShell: View {
         .onChange(of: flyView) { _, now in saveFlyView(now) }
         .onChange(of: pictureHoldHint) { _, now in pictureHintDue(now) }
         .onChange(of: PlanInbox.shared.received != nil, initial: true) { _, waiting in if waiting && tab != .Plan { selectTab(.Plan) } }
-        .onChange(of: FlyArming(armed: flyNow?.armed, state: flyNow?.state), initial: true) { armingChanged() }
+        .onChange(of: FlyArming(connected: flyNow?.connected, instance: flyNow?.instance, armed: flyNow?.armed, state: flyNow?.state), initial: true) { armingChanged() }
         .onChange(of: vehiclesJson, initial: true) { _, json in vehiclesChanged(json) }
         .onChange(of: videoFullScreen && !fullScreen) { _, stray in if stray { videoFullScreen = false } }
         .onReceive(NotificationCenter.default.publisher(for: DebugUi.commands)) { note in (note.object as? DebugCommand).map(debugApplied) }
@@ -529,13 +530,13 @@ struct AircastShell: View {
     }
 
     private func armingChanged() {
-        let armedNow = flyNow?.connected == true && flyNow?.armed == true
-        if armedNow && !wasArmed {
+        let cause = DisarmCause(killed: killedRecently(motorsKilledAt, ProcessInfo.processInfo.systemUptime), lands: !vehicleIsSub && !vehicleIsRover)
+        let step = armedSessionStep(armedSession, flyNow?.connected == true, flyNow?.instance, flyNow?.armed == true, flyNow?.state, cause)
+        if step.started {
             Task { armedBattery = await offMain { batteryPercentNow() } }
         }
-        let cause = DisarmCause(killed: killedRecently(motorsKilledAt, ProcessInfo.processInfo.systemUptime), lands: !vehicleIsSub && !vehicleIsRover)
-        if let said = disarmNotice(wasArmed, flewWhileArmed, armedNow, cause) {
-            let landed = flewWhileArmed
+        if let said = step.notice {
+            let landed = step.landed
             let startBattery = armedBattery
             let host = snackbars
             Task {
@@ -551,8 +552,7 @@ struct AircastShell: View {
                 await host.showSnackbar([said, summary].filter { !$0.isBlank }.joined(separator: " \u{00b7} "))
             }
         }
-        flewWhileArmed = armedNow && (flewWhileArmed || flyNow?.state == "flying" || flyNow?.state == "landing")
-        wasArmed = armedNow
+        armedSession = step.session
     }
 
     private func vehiclesChanged(_ json: JSON?) {
