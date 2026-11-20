@@ -32,6 +32,27 @@ final class FlightDeckEntriesTests: XCTestCase {
         XCTAssertNotNil(confirmed.first?.answer)
     }
 
+    func testTheReturnOnTheDeckIsNamedReturnHomeAndConfirmsWithASlideOfThatName() throws {
+        var confirmed: [GuidedAction] = []
+        let home = GuidedOffer(id: "rtl", title: "Return home", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: false)
+        let back = try XCTUnwrap(flightDeckEntries(deck([home], armed: true, confirm: { confirmed.append($0) })).first { $0.id == "rtl" })
+        XCTAssertEqual(back.label, "Return home")
+        back.onClick()
+        XCTAssertEqual(confirmed.first.map { holdLabel($0.name) }, "Slide to return home")
+    }
+
+    func testASubsReturnReadsSurfaceWithARisingIconAndItsConfirmSlidesTheCoresSurfacePrompt() throws {
+        var confirmed: [GuidedAction] = []
+        let surface = GuidedOffer(id: "rtl", title: "Surface", offer: "ready", reason: "", prompt: "The sub rises to the surface and holds there.", destructive: false, carriesValue: false)
+        let entry = try XCTUnwrap(flightDeckEntries(deck([surface], armed: true, confirm: { confirmed.append($0) })).first { $0.id == "rtl" })
+        XCTAssertEqual(entry.label, "Surface")
+        XCTAssertEqual(entry.icon, .upload)
+        entry.onClick()
+        XCTAssertEqual([confirmed.first?.offerId, confirmed.first?.name, confirmed.first?.confirm], ["rtl", "Surface", "The sub rises to the surface and holds there."])
+        let home = GuidedOffer(id: "rtl", title: "Return home", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: false)
+        XCTAssertEqual(flightDeckEntries(deck([home], armed: true)).first { $0.id == "rtl" }?.icon, .home)
+    }
+
     func testALandingTheVehicleRefusesWaitsForTheCoresAnswerInsteadOfVanishing() throws {
         var confirmed: [GuidedAction] = []
         try XCTUnwrap(flightDeckEntries(deck([offer("land")], armed: true, confirm: { confirmed.append($0) })).first { $0.id == "land" }).onClick()

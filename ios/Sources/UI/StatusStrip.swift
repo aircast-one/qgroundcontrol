@@ -777,12 +777,12 @@ private struct BatteryReturnButton: View {
     var body: some View {
         if let rtl = guidedOffers(actionsJson)["rtl"], rtl.shown {
             Button { confirming = true } label: {
-                Text("Return").foregroundStyle(theme.colors.error)
+                Text(RETURN_HOME).foregroundStyle(theme.colors.error)
             }
             .buttonStyle(.text)
             .disabled(!rtl.ready)
             .padding(.horizontal, Space.s3)
-            .alert("Return", isPresented: $confirming) {
+            .alert(RETURN_HOME, isPresented: $confirming) {
                 Button("Return") {
                     confirming = false
                     onClosed()

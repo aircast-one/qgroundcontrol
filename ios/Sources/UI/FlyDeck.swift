@@ -22,6 +22,7 @@ struct DeckEntry {
 
 let HOLD_TO_TAKE_OFF = "Slide to take off"
 let TAKE_OFF = "Take off"
+let RETURN_HOME = "Return home"
 let NO_LINK = "No link"
 let NO_SIGNAL_CODE = "noSignal"
 

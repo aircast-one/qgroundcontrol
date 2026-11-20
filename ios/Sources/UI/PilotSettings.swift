@@ -10,7 +10,6 @@ struct PilotSetting: Equatable {
     var reportedOnly = false
 }
 
-private let RETURN_HOME = "Return home"
 private let FLIGHT_PROTECTION = "Flight protection"
 private let FAILSAFES = "If something goes wrong"
 private let FLIGHT_LIMITS = "Flight limits"

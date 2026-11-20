@@ -1298,6 +1298,12 @@ final class FlightDeckContext {
 
 let RELEASE = "release"
 
+private let SURFACE = "Surface"
+
+func returnLabel(_ offer: GuidedOffer) -> String { offer.title.nonBlank.map(sentenceCase) ?? RETURN_HOME }
+
+func returnIcon(_ offer: GuidedOffer) -> Icon { offer.title == SURFACE ? .upload : .home }
+
 func altitudeLabel(_ offer: GuidedOffer) -> String {
     sentenceCase(offer.title.replacingOccurrences(of: #"^Change\s+"#, with: "", options: [.regularExpression, .caseInsensitive]))
 }
@@ -1377,9 +1383,9 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
         offers[PAUSE].flatMap { pause in
             pause.shown ? DeckEntry(id: PAUSE, label: pause.title, icon: .pause, enabled: pause.ready, onClick: { pauseClick(pause, confirm: deck.confirm, openValue: deck.openValue) }) : nil
         },
-        rtl?.shown == true ? DeckEntry(id: "rtl", label: "Return", icon: .home, enabled: rtl?.ready == true, onClick: {
+        rtl?.shown == true ? DeckEntry(id: "rtl", label: rtl.map(returnLabel) ?? RETURN_HOME, icon: rtl.map(returnIcon) ?? .home, enabled: rtl?.ready == true, onClick: {
             deck.confirm(GuidedAction(
-                name: rtl?.title ?? "Return",
+                name: rtl?.title.nonBlank ?? RETURN_HOME,
                 confirm: rtl?.prompt.nonBlank ?? "Return to the launch position of the vehicle",
                 destructive: false,
                 option: rtl?.option.nonBlank.map { label in
@@ -1436,7 +1442,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
 
 private let OFFLINE_DECK = [
     DeckEntry(id: "takeoff", label: TAKE_OFF, icon: .flightTakeoff, enabled: false) {},
-    DeckEntry(id: "rtl", label: "Return", icon: .home, enabled: false) {},
+    DeckEntry(id: "rtl", label: RETURN_HOME, icon: .home, enabled: false) {},
 ]
 
 private struct OfflineDeck: View {
