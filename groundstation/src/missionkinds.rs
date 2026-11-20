@@ -12,7 +12,8 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.isInsertLandValid",
     "plan.missionController.flyThroughCommandsAllowed",
     "plan.missionController.hasLandItem",
-    "plan.controllerVehicle.multiRotor",
+    "plan.controllerVehicle.fixedWing",
+    "plan.controllerVehicle.vtol",
     "plan.controllerVehicle.rover",
     crate::coreplan::CHANGED,
     "settings.planViewSettings.takeoffItemNotRequired",
@@ -245,7 +246,7 @@ pub fn insert_state(
         home_set,
         only_takeoff,
         before_takeoff,
-        takeoff: home_set && sequence == 0 && takeoff_at.is_none(),
+        takeoff: home_set && takeoff_at.is_none(),
         land: home_set
             && !only_takeoff
             && !before_takeoff
@@ -562,6 +563,12 @@ mod tests {
             at(&plan(12, 2, false, Vec::new()), 0),
             state(false, true, false, false, false, false),
             "nothing is insertable before home is set"
+        );
+
+        let untaken = plan(12, 2, true, vec![item(16, 1), item(16, 2)]);
+        assert!(
+            positioned(&untaken, 2).takeoff,
+            "a takeoff always goes in at the start, so a plan without one can take it whichever waypoint is selected"
         );
 
         let flown = plan(12, 2, true, vec![item(22, 1), item(16, 2), item(21, 3)]);
