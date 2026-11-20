@@ -89,7 +89,7 @@ export const reviewSummary = (review: ParameterReview): string => {
   return clauses.length === 0 ? `${loaded}.` : `${loaded}: ${clauses.join(', ')}.`;
 };
 
-export const SEND_HINT = "Click 'Ok' to update the parameters below on the Vehicle.";
+export const SEND_HINT = "Click OK to update the parameters below on the vehicle.";
 export const CANNOT_SEND_HINT =
   "Parameters marked 'not on Vehicle' cannot be sent since the file does not include type information. They may only exist after another parameter is changed and the Vehicle is rebooted, after which you can load this file again.";
 
@@ -125,7 +125,7 @@ export const diffLine = (row: ParameterDiffRow): string => {
   return [`Vehicle ${row.vehicleValue}`, `File ${row.fileValue}`, row.units].filter(notBlank).join(' · ');
 };
 
-export const confirmLabel = (tool: ParameterTool): string => (tool.confirmTitle === 'Reset All' ? 'Reset' : 'Ok');
+export const confirmLabel = (tool: ParameterTool): string => (tool.confirmTitle === 'Reset All' ? 'Reset' : 'OK');
 
 export const ParameterToolsMenu = ({ onRefreshed }: { onRefreshed: () => void }) => {
   const view = useQgcPath(PARAMETER_TOOLS_PATH);
@@ -301,7 +301,7 @@ const ReviewDialog = ({
       confirmButton={
         sendableCount(shown) > 0 ? (
           <TextButton enabled={chosen.size > 0} onClick={onApply}>
-            Ok
+            OK
           </TextButton>
         ) : undefined
       }

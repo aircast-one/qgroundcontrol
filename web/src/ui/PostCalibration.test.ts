@@ -6,7 +6,7 @@ import { ACCEL_ROUTINE, CALIBRATION_COMPLETE, UNCANCELLABLE_BLOCK, calibrationLe
 
 describe('PostCalibrationTest', () => {
   it('only a completed ardupilot accel or compass calibration asks for a reboot', () => {
-    expect(postCalibrationPrompt(ACCEL_ROUTINE, CALIBRATION_COMPLETE, ACCEL_ROUTINE, false)).toBe('YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION.');
+    expect(postCalibrationPrompt(ACCEL_ROUTINE, CALIBRATION_COMPLETE, ACCEL_ROUTINE, false)).toBe('Reboot the vehicle so the new calibration takes effect.');
     expect(postCalibrationPrompt(COMPASS_ROUTINE, '', COMPASS_ROUTINE, false)?.startsWith('Shown in the indicator bars')).toBe(true);
     expect(postCalibrationPrompt(COMPASS_ROUTINE, CALIBRATION_COMPLETE, '', false), 'a cancelled or failed run offers nothing').toBeNull();
     expect(postCalibrationPrompt('compassMot', CALIBRATION_COMPLETE, '', false), 'CompassMot completes with the same help text but QGC opens no dialog').toBeNull();

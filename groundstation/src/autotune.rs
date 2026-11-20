@@ -135,7 +135,7 @@ pub fn autotune_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "progress": tune.get("autotuneProgress").and_then(Value::as_f64).unwrap_or(0.0),
         "status": if blocked.is_empty() { tune.get("autotuneStatus").and_then(Value::as_str).unwrap_or("").to_string() } else { blocked.to_string() },
         "canStart": flying && !landing && !in_progress,
-        "warning": "WARNING!\n\nThe auto-tuning procedure should be executed with caution and requires the vehicle to fly stable enough before attempting the procedure! \n\nBefore starting the auto-tuning process, make sure that: \n1. You have read the auto-tuning guide and have followed the preliminary steps \n2. The current control gains are good enough to stabilize the drone in presence of medium disturbances \n3. You are ready to abort the auto-tuning sequence by moving the RC sticks, if anything unexpected happens. \n\nClick Ok to start the auto-tuning process.\n",
+        "warning": "WARNING!\n\nThe auto-tuning procedure should be executed with caution and requires the vehicle to fly stable enough before attempting the procedure! \n\nBefore starting the auto-tuning process, make sure that: \n1. You have read the auto-tuning guide and have followed the preliminary steps \n2. The current control gains are good enough to stabilize the drone in presence of medium disturbances \n3. You are ready to abort the auto-tuning sequence by moving the RC sticks, if anything unexpected happens. \n\nClick OK to start the auto-tuning process.\n",
     })
 }
 

@@ -91,7 +91,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
             let title = n["title"].as_str().filter(|t| !t.trim().is_empty()).map(str::to_string).unwrap_or_else(|| app.clone());
             let text = n["text"].as_str().unwrap_or_default();
             match text {
-                crate::noticeboard::REBOOT_VEHICLE_TEXT => json!({ "title": title, "text": format!("{text} Click Ok to reboot the vehicle now."), "action": "rebootVehicle" }),
+                crate::noticeboard::REBOOT_VEHICLE_TEXT => json!({ "title": title, "text": format!("{text} Click OK to reboot the vehicle now."), "action": "rebootVehicle" }),
                 text if crate::connectnotices::is_setup_incomplete(text) => json!({ "title": title, "text": text, "action": "openSetup" }),
                 crate::usbradio::RADIO_FOUND => json!({ "title": title, "text": text, "action": "useRadio" }),
                 _ => json!({ "title": title, "text": text, "action": "" }),
@@ -275,7 +275,7 @@ mod tests {
             (dialog["text"].as_str(), dialog["action"].as_str()),
             (
                 Some(
-                    "Reboot vehicle for changes to take effect. Click Ok to reboot the vehicle now."
+                    "Reboot vehicle for changes to take effect. Click OK to reboot the vehicle now."
                 ),
                 Some("rebootVehicle")
             )

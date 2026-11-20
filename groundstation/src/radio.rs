@@ -62,7 +62,7 @@ pub fn start_prompt(connected: bool, joystick: bool, px4: bool) -> Value {
         true => json!({
             "title": "Zero Trims",
             "message": format!(
-                "Before calibrating you should zero all your trims and subtrims. Click Ok to start Calibration.\n\n{}",
+                "Before calibrating you should zero all your trims and subtrims. Click OK to start calibration.\n\n{}",
                 if px4 { "" } else { "Please ensure all motor power is disconnected AND all props are removed from the vehicle." }
             ).trim_end().to_string(),
         }),
@@ -257,7 +257,7 @@ mod tests {
     fn the_zero_trims_prompt_warns_about_props_except_on_px4() {
         assert_eq!(
             start_prompt(true, false, true)["message"],
-            "Before calibrating you should zero all your trims and subtrims. Click Ok to start Calibration."
+            "Before calibrating you should zero all your trims and subtrims. Click OK to start calibration."
         );
         assert!(
             start_prompt(true, false, false)["message"]

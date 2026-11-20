@@ -119,7 +119,7 @@ const ConfirmDialog = ({ prompt, onDismiss, onConfirm }: { prompt: RadioPrompt; 
             onDismiss();
           }}
         >
-          Ok
+          OK
         </TextButton>
       }
       dismissButton={<TextButton onClick={onDismiss}>Cancel</TextButton>}
@@ -178,7 +178,7 @@ const CalibrationStart = ({
                 onAction('nextButtonClicked');
               }}
             >
-              Ok
+              OK
             </TextButton>
           }
           dismissButton={<TextButton onClick={() => setPrompting(false)}>Cancel</TextButton>}
@@ -189,7 +189,7 @@ const CalibrationStart = ({
           onDismissRequest={() => setRefusing(false)}
           title={notReady[0]}
           text={<span className="whitespace-pre-line">{notReady[1]}</span>}
-          confirmButton={<TextButton onClick={() => setRefusing(false)}>Ok</TextButton>}
+          confirmButton={<TextButton onClick={() => setRefusing(false)}>OK</TextButton>}
         />
       ) : null}
       <div className="flex w-full flex-col px-4 py-2">

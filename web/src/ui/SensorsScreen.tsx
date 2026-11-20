@@ -71,7 +71,7 @@ const SensorsNotice = ({ text, className }: { text: string; className?: string }
 
 export const ACCEL_ROUTINE = 'accelerometer';
 export const CALIBRATION_COMPLETE = 'Calibration complete';
-const MUST_REBOOT = 'YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION.';
+const MUST_REBOOT = 'Reboot the vehicle so the new calibration takes effect.';
 const COMPASS_QUALITY =
   'Shown in the indicator bars is the quality of the calibration for each compass.\n\n' +
   '- Green indicates a well functioning compass.\n' +

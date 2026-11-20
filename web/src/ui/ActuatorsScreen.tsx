@@ -328,7 +328,7 @@ export const ActuatorsScreen = ({ className }: { className?: string }) => {
           onDismissRequest={() => setFailure(null)}
           title="Error"
           text={<span className="whitespace-pre-line">{failure}</span>}
-          confirmButton={<TextButton onClick={() => setFailure(null)}>Ok</TextButton>}
+          confirmButton={<TextButton onClick={() => setFailure(null)}>OK</TextButton>}
         />
       ) : null}
       <ScrollableTabRow selectedTabIndex={groupIndex}>

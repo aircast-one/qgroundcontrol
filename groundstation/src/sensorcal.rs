@@ -858,13 +858,11 @@ impl Calibration {
         }
         if self.compasses.iter().all(|c| c.succeeded) {
             self.note("All compasses calibrated successfully");
-            self.note("YOU MUST REBOOT YOUR VEHICLE NOW FOR NEW SETTINGS TO TAKE AFFECT");
+            self.note("Reboot the vehicle now for the new settings to take effect.");
             self.stop(Outcome::Success)
         } else {
             self.note("Compass calibration failed");
-            self.note(
-                "YOU MUST REBOOT YOUR VEHICLE NOW AND RETRY COMPASS CALIBRATION PRIOR TO FLIGHT",
-            );
+            self.note("Reboot the vehicle now and calibrate the compass again before flight.");
             self.stop(Outcome::Failed)
         }
     }
@@ -1713,7 +1711,9 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|l| l.as_str().unwrap().contains("REBOOT"))
+                .any(|l| l.as_str().unwrap()
+                    == "Reboot the vehicle now for the new settings to take effect."),
+            "the log shouted YOU MUST REBOOT YOUR VEHICLE NOW FOR NEW SETTINGS TO TAKE AFFECT"
         );
     }
 

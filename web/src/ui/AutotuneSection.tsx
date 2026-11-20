@@ -33,7 +33,7 @@ export const AutotuneSection = () => {
                 void Qgc.invoke(AUTOTUNE_REQUEST);
               }}
             >
-              Ok
+              OK
             </TextButton>
           }
           dismissButton={<TextButton onClick={() => setConfirming(false)}>Cancel</TextButton>}

@@ -47,7 +47,7 @@ test('ArduPilot compass calibration runs to its reboot reminder', async ({ app }
   await app.getByRole('button', { name: /^Sensors/ }).first().click();
   await app.getByRole('button', { name: /^Compass/ }).first().click();
   await app.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
-  await expect(app.getByText(/YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION/)).toBeVisible({ timeout: 60_000 });
+  await expect(app.getByText(/Reboot the vehicle so the new calibration takes effect/)).toBeVisible({ timeout: 60_000 });
 });
 
 test('ArduPilot flight safety links the return altitude to Settings › Safety instead of a second editor', async ({ app }) => {

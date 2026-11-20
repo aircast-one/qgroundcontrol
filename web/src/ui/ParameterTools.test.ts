@@ -21,7 +21,7 @@ describe('ParameterToolsTest', () => {
     expect(tools.map((it) => it.label)).toEqual(['Refresh', "Reset all to firmware's defaults", 'Reboot Vehicle']);
     expect(tools[0]?.confirm).toBe(false);
     expect(tools[1] && confirmLabel(tools[1])).toBe('Reset');
-    expect(tools[2] && confirmLabel(tools[2])).toBe('Ok');
+    expect(tools[2] && confirmLabel(tools[2])).toBe('OK');
   });
 
   it('the modified filter keeps only parameters changed from stock', () => {
