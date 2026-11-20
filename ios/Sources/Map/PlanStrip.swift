@@ -164,7 +164,7 @@ struct WaypointStripBar: View {
 }
 
 struct EmptyMissionStrip: View {
-    let homeSet: Bool
+    let setsHome: Bool
     let onTemplates: (() -> Void)?
     let onDownload: (() -> Void)?
     @Environment(\.theme) private var theme
@@ -172,7 +172,7 @@ struct EmptyMissionStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(TAP_TO_ADD).font(.titleMedium)
-            if !homeSet {
+            if setsHome {
                 Text(FIRST_TAP_SETS_HOME).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
             }
             if onTemplates != nil || onDownload != nil {

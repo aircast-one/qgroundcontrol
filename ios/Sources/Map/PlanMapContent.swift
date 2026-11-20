@@ -705,7 +705,7 @@ struct PlanMapContent: View {
                         onDone: { selected = nil }
                     )
                 } else if layer == .Mission && itemCount == 0 {
-                    EmptyMissionStrip(homeSet: homeSet, onTemplates: onTemplates, onDownload: planOffline ? nil : { requestDownload() })
+                    EmptyMissionStrip(setsHome: planStatus?["templates"]["firstClickSetsHome"].bool == true, onTemplates: onTemplates, onDownload: planOffline ? nil : { requestDownload() })
                 } else if layer != .Mission {
                     Text(layer.label).font(.titleMedium).padding(.leading, 12).padding(.bottom, 4)
                 }
