@@ -63,8 +63,17 @@ func guidedReadiness(_ state: FlyState?, named: Bool = true) -> Readiness? {
     }
 }
 
-func disarmNotice(_ wasArmed: Bool, _ flewWhileArmed: Bool, _ armedNow: Bool) -> String? {
-    wasArmed && !armedNow ? (flewWhileArmed ? "Landed and disarmed" : "Disarmed") : nil
+let LANDED_AND_DISARMED = "Landed and disarmed"
+let MOTORS_STOPPED = "Motors stopped"
+
+struct DisarmCause {
+    var killed = false
+    var lands = true
+}
+
+func disarmNotice(_ wasArmed: Bool, _ flewWhileArmed: Bool, _ armedNow: Bool, _ cause: DisarmCause = DisarmCause()) -> String? {
+    guard wasArmed, !armedNow else { return nil }
+    return cause.killed ? MOTORS_STOPPED : flewWhileArmed && cause.lands ? LANDED_AND_DISARMED : "Disarmed"
 }
 
 let VEHICLE_FLIGHT_DISTANCE = "vehicle.flightDistance"

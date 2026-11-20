@@ -2,6 +2,14 @@ import Foundation
 
 let EMERGENCY_STOP = "emergencyStop"
 
+let KILL_SETTLE_SECONDS = 5.0
+
+nonisolated(unsafe) var motorsKilledAt: TimeInterval?
+
+func killedRecently(_ killedAt: TimeInterval?, _ now: TimeInterval) -> Bool {
+    killedAt.map { now >= $0 && now - $0 <= KILL_SETTLE_SECONDS } ?? false
+}
+
 func emergencyStopOffer(_ offers: [String: GuidedOffer]) -> GuidedOffer? {
     offers[EMERGENCY_STOP].flatMap { $0.shown ? $0 : nil }
 }
@@ -15,6 +23,9 @@ func emergencyStopAction(_ offer: GuidedOffer) -> GuidedAction {
         name: offer.title,
         confirm: offer.prompt,
         destructive: true,
-        run: { offMain { VehicleCommands.emergencyStop() } }
+        run: {
+            motorsKilledAt = ProcessInfo.processInfo.systemUptime
+            offMain { VehicleCommands.emergencyStop() }
+        }
     )
 }

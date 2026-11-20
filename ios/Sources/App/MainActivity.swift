@@ -120,6 +120,8 @@ struct AircastShell: View {
     @AppDarkTheme private var darkBars
     @QgcPath(settingControl(PALETTE_SETTING)) private var paletteControl
     @QgcPath(FLY_STATE) private var flyStateJson
+    @QgcBool("vehicle.sub") private var vehicleIsSub
+    @QgcBool("vehicle.rover") private var vehicleIsRover
     @QgcPath(VIDEO_VIEW) private var videoJson
     @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
@@ -531,7 +533,8 @@ struct AircastShell: View {
         if armedNow && !wasArmed {
             Task { armedBattery = await offMain { batteryPercentNow() } }
         }
-        if let said = disarmNotice(wasArmed, flewWhileArmed, armedNow) {
+        let cause = DisarmCause(killed: killedRecently(motorsKilledAt, ProcessInfo.processInfo.systemUptime), lands: !vehicleIsSub && !vehicleIsRover)
+        if let said = disarmNotice(wasArmed, flewWhileArmed, armedNow, cause) {
             let landed = flewWhileArmed
             let startBattery = armedBattery
             let host = snackbars

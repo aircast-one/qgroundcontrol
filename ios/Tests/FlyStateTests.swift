@@ -172,6 +172,9 @@ final class FlyReadinessTests: XCTestCase {
         XCTAssertEqual(disarmNotice(true, true, false), "Landed and disarmed")
         XCTAssertEqual(disarmNotice(true, false, false), "Disarmed")
         XCTAssertNil(disarmNotice(false, false, false))
+        XCTAssertEqual(disarmNotice(true, true, false, DisarmCause(killed: true, lands: true)), "Motors stopped", "killed in the air it fell, it did not land")
+        XCTAssertEqual(disarmNotice(true, true, false, DisarmCause(killed: true, lands: false)), "Motors stopped", "a sub killed at depth")
+        XCTAssertEqual(disarmNotice(true, true, false, DisarmCause(killed: false, lands: false)), "Disarmed", "a sub disarmed at the surface")
     }
 
     func testALandingSaysHowLongHowFarAndHowMuchBatteryTheFlightTook() {

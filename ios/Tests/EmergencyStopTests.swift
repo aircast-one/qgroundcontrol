@@ -2,6 +2,13 @@ import XCTest
 @testable import Aircast
 
 final class EmergencyStopTests: XCTestCase {
+    func testKillingTheMotorsIsRememberedForTheDisarmThatFollowsItAndOnlyForThatOne() {
+        let killedAt = 100.0
+        XCTAssertTrue(killedRecently(killedAt, killedAt + 1))
+        XCTAssertFalse(killedRecently(killedAt, killedAt + KILL_SETTLE_SECONDS + 1), "a later landing is not the kill")
+        XCTAssertFalse(killedRecently(nil, killedAt))
+    }
+
     private func offers(_ entries: (String, String)...) -> [String: GuidedOffer] {
         let actions = entries.map { id, offer in
             #"{"id":"\#(id)","title":"\#(id)","offer":"\#(offer)","reason":"","prompt":"","destructive":false,"carriesValue":false}"#
