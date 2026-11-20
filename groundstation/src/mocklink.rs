@@ -620,6 +620,7 @@ pub struct Conditions {
     pub home: Option<(f64, f64)>,
     pub roads: bool,
     pub refused_parameter: Option<String>,
+    pub transmitter: Option<Vec<u16>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -633,6 +634,7 @@ pub enum Change {
     Roads(bool),
     Payload { mass_g: f64, drag_area_cm2: f64 },
     RefuseParameter(Option<String>),
+    Transmitter(Option<Vec<u16>>),
 }
 
 impl Conditions {
@@ -670,6 +672,10 @@ impl Conditions {
                 },
                 Change::RefuseParameter(name) => Conditions {
                     refused_parameter: name.clone(),
+                    ..conditions
+                },
+                Change::Transmitter(channels) => Conditions {
+                    transmitter: channels.clone(),
                     ..conditions
                 },
                 Change::Payload {
@@ -1951,15 +1957,18 @@ impl Sim {
             .radio
             .filter(|(_, at)| self.ticks.saturating_sub(*at) <= STICK_TIMEOUT_TICKS)
             .map(|(channels, _)| channels);
+        let transmitter = self.conditions.transmitter.as_deref();
         let channel = |at: usize| {
             radio
                 .map(|channels| channels[at])
+                .or_else(|| transmitter.and_then(|channels| channels.get(at).copied()))
                 .filter(|pwm| (800..=2200).contains(pwm))
                 .unwrap_or(1500)
         };
         (
             AUTOPILOT,
             MavMessage::RC_CHANNELS(RC_CHANNELS_DATA {
+                rssi: if transmitter.is_some() { 100 } else { 0 },
                 chancount: 16,
                 chan1_raw: channel(0),
                 chan2_raw: channel(1),
@@ -6053,6 +6062,23 @@ mod tests {
             (20.0..30.0).contains(&metres_to(&sim, lat, lon)) && sim.ground_speed() < 0.01,
             "it stopped just inside the 30 m circle: {} m",
             metres_to(&sim, lat, lon)
+        );
+    }
+
+    #[test]
+    fn a_transmitter_condition_moves_the_channels_and_carries_a_signal() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        assert!(
+            matches!(sim.rc_channels(), (_, MavMessage::RC_CHANNELS(c)) if (c.chan3_raw, c.rssi) == (1500, 0)),
+            "with no transmitter the receiver reports no signal"
+        );
+        sim.condition(
+            Conditions::default()
+                .changed(&[Change::Transmitter(Some(vec![1500, 1500, 1950, 1500]))]),
+        );
+        assert!(
+            matches!(sim.rc_channels(), (_, MavMessage::RC_CHANNELS(c)) if (c.chan3_raw, c.chan5_raw, c.rssi) == (1950, 1500, 100)),
+            "a transmitter switched on moves the throttle channel, so a radio calibration can be rehearsed"
         );
     }
 

@@ -9,6 +9,9 @@ const ROUGH_CENTER_DELTA: i32 = 50;
 const MOVE_DELTA: i32 = 300;
 const SETTLE_DELTA: i32 = 20;
 const SETTLE_MS: u64 = 1000;
+pub const NO_MOVEMENT_MS: u64 = 10_000;
+pub const NO_STICK_MOVEMENT: &str =
+    "No stick movement seen yet. Check that the transmitter is on and bound to the receiver.";
 const VALID_MIN: i32 = 1300;
 const VALID_MAX: i32 = 1700;
 const ABSENT_TRIM: i32 = 1500;
@@ -120,6 +123,7 @@ pub struct RcCal {
     detect: Option<usize>,
     detect_value: i32,
     settle_since: Option<u64>,
+    waiting_since: Option<u64>,
     pub next_enabled: bool,
     pub transmitter_mode: i32,
     centered_throttle: bool,
@@ -139,6 +143,7 @@ impl Default for RcCal {
             detect: None,
             detect_value: 0,
             settle_since: None,
+            waiting_since: None,
             next_enabled: true,
             transmitter_mode: 2,
             centered_throttle: false,
@@ -294,6 +299,7 @@ impl RcCal {
         self.status_text = message(step, self.centered_throttle).to_string();
         self.detect = None;
         self.settle_since = None;
+        self.waiting_since = None;
         self.saved = self.raw;
         self.next_enabled = matches!(
             step,
@@ -369,6 +375,30 @@ impl RcCal {
     }
 
     pub fn channel_values(&mut self, values: &[i32], now_ms: u64) -> Outcome {
+        let outcome = self.read_channels(values, now_ms);
+        self.note_stillness(now_ms);
+        outcome
+    }
+
+    fn note_stillness(&mut self, now_ms: u64) {
+        let Some(step) = self.step.and_then(|s| STEPS.get(s)).copied() else {
+            return;
+        };
+        let waiting = matches!(step, Step::Detect(_) | Step::Min(_)) && self.detect.is_none();
+        self.waiting_since = waiting.then(|| self.waiting_since.unwrap_or(now_ms));
+        let still = self
+            .waiting_since
+            .is_some_and(|since| now_ms.saturating_sub(since) >= NO_MOVEMENT_MS);
+        self.status_text = match still {
+            true => format!(
+                "{}\n{NO_STICK_MOVEMENT}",
+                message(step, self.centered_throttle)
+            ),
+            false => message(step, self.centered_throttle).to_string(),
+        };
+    }
+
+    fn read_channels(&mut self, values: &[i32], now_ms: u64) -> Outcome {
         let count = values.len().min(MAX_CHANNELS);
         values
             .iter()
@@ -707,6 +737,38 @@ mod tests {
                 max: 1900,
                 trim: 1500
             }
+        );
+    }
+
+    #[test]
+    fn a_stick_step_that_sees_no_movement_says_to_check_the_transmitter() {
+        let params = apm_params();
+        let lookup = |name: &str| params.get(name).copied();
+        let mut cal = RcCal::for_vehicle(&copter(), 2);
+        let center = [1500, 1500, 1000, 1500, 1500, 1500, 1500, 1500];
+        cal.channel_values(&center, 0);
+        cal.next(&copter(), &lookup);
+        cal.channel_values(&center, 100);
+        cal.next(&copter(), &lookup);
+        cal.channel_values(&center, 200);
+        cal.channel_values(&center, 200 + NO_MOVEMENT_MS - 1);
+        assert_eq!(
+            cal.status_text,
+            message(Step::Detect(Function::Throttle), false)
+        );
+        cal.channel_values(&center, 200 + NO_MOVEMENT_MS);
+        assert!(
+            cal.status_text.ends_with(NO_STICK_MOVEMENT),
+            "the throttle step waited for a stick that never moved without saying so: {}",
+            cal.status_text
+        );
+        let mut up = center;
+        up[2] = 1950;
+        cal.channel_values(&up, 200 + NO_MOVEMENT_MS + 100);
+        assert_eq!(
+            cal.status_text,
+            message(Step::Detect(Function::Throttle), false),
+            "a stick on the move takes the hint away"
         );
     }
 

@@ -91,7 +91,7 @@ pub const ROUTES: &[(&str, Route, &str)] = &[
     (
         "/links/mocklink",
         Route::MockLink,
-        "autopilot,vehicle,add,camera,gimbal,proximity,statustext,video,pattern,silent,prearm,wind,gps,motor,endurance,home",
+        "autopilot,vehicle,add,camera,gimbal,proximity,statustext,video,pattern,silent,prearm,wind,gps,motor,endurance,home,transmitter",
     ),
     ("/mission/upload", Route::MissionUpload, "file"),
     ("/mission/download", Route::MissionDownload, "file"),
@@ -218,8 +218,9 @@ fn mock_video_stream(name: &str) -> Option<i64> {
         .map(|(_, kind)| *kind)
 }
 
-const MOCK_CONDITIONS: [&str; 9] = [
+const MOCK_CONDITIONS: [&str; 10] = [
     "refuseParam",
+    "transmitter",
     "payload",
     "prearm",
     "wind",
@@ -270,6 +271,8 @@ const WIND_USAGE: &str =
     "wind must be speed,from-degrees with a speed of 0 m/s or more, or 0 for calm";
 const ENDURANCE_USAGE: &str = "endurance must be the minutes a full pack hovers for";
 const HOME_USAGE: &str = "home must be latitude,longitude within ±90 and ±180";
+const TRANSMITTER_USAGE: &str =
+    "transmitter must be up to 16 channel values from 800 to 2200, or empty to switch it off";
 const PAYLOAD_USAGE: &str =
     "payload must be grams,drag-area-cm2 (drag coefficient times frontal area), both 0 or more";
 
@@ -279,6 +282,12 @@ pub fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Ch
     let endurance = numbers(pairs, "endurance", &[1], ENDURANCE_USAGE)?;
     let home = numbers(pairs, "home", &[2], HOME_USAGE)?;
     let payload = numbers(pairs, "payload", &[2], PAYLOAD_USAGE)?;
+    let transmitter = numbers(
+        pairs,
+        "transmitter",
+        &(1..=16).collect::<Vec<_>>(),
+        TRANSMITTER_USAGE,
+    )?;
     let checks = [
         (
             payload
@@ -299,6 +308,12 @@ pub fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Ch
                 .is_some_and(|place| place[0].abs() > 90.0 || place[1].abs() > 180.0),
             HOME_USAGE,
         ),
+        (
+            transmitter
+                .as_ref()
+                .is_some_and(|pwm| pwm.iter().any(|v| !(800.0..=2200.0).contains(v))),
+            TRANSMITTER_USAGE,
+        ),
     ];
     if let Some((_, usage)) = checks.iter().find(|(failed, _)| *failed) {
         return Err(usage.to_string());
@@ -308,6 +323,13 @@ pub fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Ch
             .then(|| Change::Prearm(given(pairs, "prearm").map(str::to_string))),
         present(pairs, "refuseParam")
             .then(|| Change::RefuseParameter(given(pairs, "refuseParam").map(str::to_string))),
+        present(pairs, "transmitter").then(|| {
+            Change::Transmitter(
+                transmitter
+                    .as_ref()
+                    .map(|pwm| pwm.iter().map(|v| *v as u16).collect()),
+            )
+        }),
         present(pairs, "wind").then(|| {
             let values = wind.unwrap_or_default();
             Change::Wind {
@@ -343,6 +365,7 @@ fn applied(changes: &[crate::mocklink::Change]) -> Value {
             Change::Home(lat, lon) => ("home", json!([lat, lon])),
             Change::Roads(on) => ("roads", json!(on)),
             Change::RefuseParameter(name) => ("refuseParam", json!(name)),
+            Change::Transmitter(channels) => ("transmitter", json!(channels)),
             Change::Payload {
                 mass_g,
                 drag_area_cm2,
@@ -1701,6 +1724,25 @@ mod tests {
             ENDURANCE_USAGE
         );
         assert_eq!(host.calls().len(), 4, "a refused change reaches no link");
+        assert_eq!(
+            get(
+                &api,
+                &host,
+                "/links/mocklink",
+                "transmitter=1500,1500,1950,1500"
+            )
+            .body["changed"],
+            json!({ "transmitter": [1500, 1500, 1950, 1500] })
+        );
+        assert_eq!(
+            get(&api, &host, "/links/mocklink", "transmitter=").body["changed"],
+            json!({ "transmitter": null }),
+            "an empty transmitter is switched off"
+        );
+        assert_eq!(
+            get(&api, &host, "/links/mocklink", "transmitter=1500,3000").body["error"],
+            TRANSMITTER_USAGE
+        );
     }
 
     #[test]

@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { connectFreshMock, connectMock, expect, openAircraftSetup, openMenu, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
@@ -130,7 +131,7 @@ test('the ArduPilot radio calibration start can be backed out of', async ({ app 
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await openAircraftSetup(app);
   await app.getByRole('button', { name: /^Radio / }).click();
-  await expect(app.getByText(/ carrying a signal\.$/)).toBeVisible();
+  await expect(app.getByText(/ carrying a signal\./)).toBeVisible();
   await app.getByRole('button', { name: 'Calibrate', exact: true }).click();
   const zero = app.getByRole('dialog').filter({ hasText: 'Zero Trims' });
   await zero.getByRole('button', { name: 'Cancel' }).click();
@@ -206,4 +207,32 @@ test('a simulated vehicle rebooted from Setup comes back by itself with the fram
   await expect(back).toContainText('Radio and Sensors need setup');
   await back.getByRole('button', { name: 'Open Setup', exact: true }).click();
   await expect(app.getByRole('button', { name: /^Frame Quad/ })).toBeVisible();
+});
+
+const switchTransmitter = (page: Page, channels: string) =>
+  page.evaluate(
+    async ([module, pwm]) => {
+      const { Qgc } = (await import(module!)) as { Qgc: { invoke: (path: string, ...args: unknown[]) => Promise<unknown> } };
+      return Qgc.invoke('links.changeMockLinks', { transmitter: pwm });
+    },
+    ['/src/bridge/Qgc.ts', channels],
+  );
+
+const NO_STICK_MOVEMENT = 'No stick movement seen yet. Check that the transmitter is on and bound to the receiver.';
+
+test('the radio page counts only channels with a signal, says when no stick moves, and calibrates once the transmitter is on', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Radio / }).click();
+  await expect(app.getByText('16 channels reported, none carrying a signal. Check that the transmitter is on.'), 'the page counted 16 live channels while Fly read RC No signal').toBeVisible();
+  await app.getByRole('button', { name: 'Calibrate', exact: true }).click();
+  await app.getByRole('dialog').filter({ hasText: 'Zero Trims' }).getByRole('button', { name: 'OK', exact: true }).click();
+  await app.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(app.getByText(/Throttle stick all the way up/)).toBeVisible();
+  await expect(app.getByText(NO_STICK_MOVEMENT), 'the step waited forever for a stick that never moved').toBeVisible({ timeout: 20_000 });
+  expect(await switchTransmitter(app, '1500,1500,1950,1500'), 'the simulated transmitter is switched on').toBe(true);
+  await expect(app.getByText(/Throttle stick all the way down/)).toBeVisible();
+  await expect(app.getByText(NO_STICK_MOVEMENT)).toHaveCount(0);
+  await app.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(app.getByText('16 channels reported, 16 carrying a signal.')).toBeVisible();
 });

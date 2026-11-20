@@ -7,6 +7,7 @@ pub const DEPS: &[&str] = &[
     "radioCal",
     "vehicles.activeVehicleAvailable",
     "vehicle.px4Firmware",
+    "vehicle.rcRSSI",
 ];
 
 const LOW_PWM: f64 = 1000.0;
@@ -27,14 +28,19 @@ pub fn fraction(pwm: i64) -> f64 {
 }
 
 pub fn summary(connected: bool, channel_count: i64, live: usize) -> String {
-    match (connected, channel_count) {
-        (false, _) => "No vehicle is connected.".to_string(),
-        (true, 0) => "No transmitter is being heard.".to_string(),
-        (true, n) => format!(
-            "{n} channel{} reported, {live} carrying a signal.",
-            if n == 1 { "" } else { "s" }
+    let plural = if channel_count == 1 { "" } else { "s" };
+    match (connected, channel_count, live) {
+        (false, _, _) => "No vehicle is connected.".to_string(),
+        (true, 0, _) => "No transmitter is being heard.".to_string(),
+        (true, n, 0) => format!(
+            "{n} channel{plural} reported, none carrying a signal. Check that the transmitter is on."
         ),
+        (true, n, live) => format!("{n} channel{plural} reported, {live} carrying a signal."),
     }
+}
+
+fn carrying(pwm: i64, signal: Option<i64>) -> bool {
+    pwm > 0 && signal != Some(0)
 }
 
 pub fn not_ready(connected: bool, joystick: bool, channel_count: i64, minimum: i64) -> Value {
@@ -74,6 +80,7 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let connected = cal.get("kind").and_then(Value::as_str) == Some("object");
     let channel_count = integer(&cal, "channelCount").unwrap_or(0);
     let minimum = integer(&cal, "minChannelCount").unwrap_or(0);
+    let signal = crate::flystate::rc_signal(&backend.value_fields("vehicle", "rcRSSI"));
     let channels: Vec<Value> = cal
         .get("rcValues")
         .and_then(Value::as_array)
@@ -83,7 +90,7 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 .enumerate()
                 .map(|(index, v)| {
                     let pwm = v.as_i64().unwrap_or(0);
-                    json!({ "index": index, "label": (index + 1).to_string(), "value": pwm, "valueText": if pwm > 0 { pwm.to_string() } else { ABSENT.to_string() }, "fraction": fraction(pwm), "live": pwm > 0 })
+                    json!({ "index": index, "label": (index + 1).to_string(), "value": pwm, "valueText": if pwm > 0 { pwm.to_string() } else { ABSENT.to_string() }, "fraction": fraction(pwm), "live": carrying(pwm, signal) })
                 })
                 .collect()
         })
@@ -345,6 +352,10 @@ mod tests {
             "1 channel reported, 1 carrying a signal."
         );
         assert_eq!(
+            summary(true, 16, 0),
+            "16 channels reported, none carrying a signal. Check that the transmitter is on."
+        );
+        assert_eq!(
             not_ready(true, false, 4, 5),
             json!({ "title": "Not Ready", "message": "5 channels or more are needed to fly." })
         );
@@ -358,6 +369,45 @@ mod tests {
         );
         assert_eq!(not_ready(true, false, 8, 5), Value::Null);
         assert_eq!(not_ready(false, false, 0, 4), Value::Null);
+    }
+
+    #[test]
+    fn a_receiver_reporting_no_signal_carries_no_live_channel() {
+        struct Silent;
+        impl Backend for Silent {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    "radioCal" => json!({ "kind": "object", "channelCount": 16, "rcValues": vec![1500; 16] }),
+                    "vehicle" => json!({ "kind": "object", "facts": [{ "kind": "fact", "name": "rcRSSI", "property": "rcRSSI", "value": 0 }] }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = radio_view(&Silent, &[]);
+        assert_eq!(
+            view["liveChannels"], 0,
+            "the page counted 16 channels carrying a signal while Fly read RC No signal"
+        );
+        assert_eq!(view["channels"][0]["live"], false);
+        assert_eq!(
+            view["summary"],
+            "16 channels reported, none carrying a signal. Check that the transmitter is on."
+        );
+        assert!(
+            carrying(1500, None),
+            "an RSSI the receiver cannot measure says nothing about the signal"
+        );
     }
 
     #[test]
