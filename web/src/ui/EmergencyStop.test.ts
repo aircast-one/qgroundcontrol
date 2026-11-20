@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
-import { EMERGENCY_STOP, armedStopOffer, emergencyStopAction, emergencyStopOffer } from './EmergencyStop';
+import { EMERGENCY_STOP, KILL_SETTLE_MS, armedStopOffer, emergencyStopAction, emergencyStopOffer, killedRecently, motorsKilledAt } from './EmergencyStop';
+import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { type GuidedOffer, guidedOffers } from './GuidedActions';
 import { SHEET_ACTIONS, moreActions } from './MoreActions';
 
@@ -16,6 +17,18 @@ const offers = (...entries: readonly (readonly [string, string])[]): ReadonlyMap
   );
 
 describe('EmergencyStopTest', () => {
+  it('killing the motors is remembered for the disarm that follows it, and only for that one', () => {
+    vi.spyOn(VehicleCommands, 'emergencyStop').mockResolvedValue(true);
+    motorsKilledAt.value = null;
+    emergencyStopAction(offers([EMERGENCY_STOP, 'ready']).get(EMERGENCY_STOP)!).run();
+    expect(VehicleCommands.emergencyStop).toHaveBeenCalled();
+    const killedAt = motorsKilledAt.value!;
+    expect(killedRecently(killedAt, killedAt + 1_000)).toBe(true);
+    expect(killedRecently(killedAt, killedAt + KILL_SETTLE_MS + 1), 'a later landing is not the kill').toBe(false);
+    expect(killedRecently(null, killedAt)).toBe(false);
+    vi.restoreAllMocks();
+  });
+
   it('hold to disarm while flying becomes the emergency stop', () => {
     const flying = offers([EMERGENCY_STOP, 'ready'], ['disarm', 'hidden']);
     expect(armedStopOffer(flying, true), 'GuidedActionsController routes a flying disarm to showEmergenyStop').not.toBeNull();

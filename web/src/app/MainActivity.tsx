@@ -2,7 +2,7 @@ import { Fragment, type ReactNode, useContext, useEffect, useRef, useState } fro
 import { AppCommands, VideoCommands } from '@/bridge/BridgeCommands';
 import type { Json } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
+import { useQgcBool, useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import { call } from '@/core/client';
 import { useBackHandler, useEscapeHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
@@ -51,6 +51,7 @@ import { type FlyDeckLayout, LocalFlyDestinations, MenuTile } from '@/ui/FlyDeck
 import { FlyPortrait } from '@/ui/FlyPortrait';
 import { FlyScreenState, LocalFlyScreenState, REQUESTABLE_SHEETS, TRAFFIC_SHEET } from '@/ui/FlyScreenState';
 import { FleetCard, FlyMenuButton, FlyScreen, FlyView, MAP_LAYERS_CLEARANCE, type ModifierProps, flyViewShown, flyViewSwapped, loadFlyView, saveFlyView, useFlyIsPortrait } from '@/ui/FlyShell';
+import { killedRecently, motorsKilledAt } from '@/ui/EmergencyStop';
 import { FLY_STATE, NO_ARMED_SESSION, VEHICLE_FLIGHT_DISTANCE, armedSessionStep, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog, gimbalRefused } from '@/ui/GimbalIndicator';
@@ -480,6 +481,7 @@ export const AircastShell = () => {
     return () => shown.abort();
   }, [editingInFlight]);
   const activeId = useRememberActiveVehicleId();
+  const lands = !useQgcBool('vehicle.sub') && !useQgcBool('vehicle.rover');
   const armedSession = useRef(NO_ARMED_SESSION);
   const armedBattery = useRef<number | null>(null);
 
@@ -493,7 +495,7 @@ export const AircastShell = () => {
   };
 
   useEffect(() => {
-    const step = armedSessionStep(armedSession.current, flyNow?.connected === true, activeId, armedNow, flyNow?.state ?? null);
+    const step = armedSessionStep(armedSession.current, flyNow?.connected === true, activeId, armedNow, flyNow?.state ?? null, { killed: killedRecently(motorsKilledAt.value, performance.now()), lands });
     if (step.started) {
       void batteryPercentNow().then((percent) => {
         armedBattery.current = percent;

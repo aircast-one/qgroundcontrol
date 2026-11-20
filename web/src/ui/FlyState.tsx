@@ -85,8 +85,15 @@ export const useGuidedReadiness = (state: FlyState | null): Readiness | null => 
   return useMemo(() => guidedReadiness(state, red), [state, red.join('|')]);
 };
 
-export const disarmNotice = (wasArmed: boolean, flewWhileArmed: boolean, armedNow: boolean, connectedNow: boolean): string | null =>
-  wasArmed && !armedNow && connectedNow ? (flewWhileArmed ? 'Landed and disarmed' : 'Disarmed') : null;
+export const LANDED_AND_DISARMED = 'Landed and disarmed';
+export const MOTORS_STOPPED = 'Motors stopped';
+
+export type DisarmCause = { readonly killed: boolean; readonly lands: boolean };
+
+export const LANDING: DisarmCause = { killed: false, lands: true };
+
+export const disarmNotice = (wasArmed: boolean, flewWhileArmed: boolean, armedNow: boolean, connectedNow: boolean, cause: DisarmCause = LANDING): string | null =>
+  wasArmed && !armedNow && connectedNow ? (cause.killed ? MOTORS_STOPPED : flewWhileArmed && cause.lands ? LANDED_AND_DISARMED : 'Disarmed') : null;
 
 export type ArmedSession = { readonly vehicle: number | null; readonly armed: boolean; readonly flew: boolean };
 
@@ -98,14 +105,14 @@ const inAirState = (token: string): boolean => IN_AIR_STATES.includes(token);
 
 export type ArmedSessionStep = { readonly session: ArmedSession; readonly notice: string | null; readonly landed: boolean; readonly started: boolean };
 
-export const armedSessionStep = (held: ArmedSession, connected: boolean, vehicle: number | null, armed: boolean, state: string | null): ArmedSessionStep => {
+export const armedSessionStep = (held: ArmedSession, connected: boolean, vehicle: number | null, armed: boolean, state: string | null, cause: DisarmCause = LANDING): ArmedSessionStep => {
   if (!connected || (vehicle === null && held.vehicle !== null)) return { session: held, notice: null, landed: false, started: false };
   const same = held.vehicle === null || held.vehicle === vehicle;
   const was = same && held.armed;
   const flew = same && held.flew;
   return {
     session: { vehicle, armed, flew: armed && (flew || (state !== null && inAirState(state))) },
-    notice: disarmNotice(was, flew, armed, true),
+    notice: disarmNotice(was, flew, armed, true, cause),
     landed: flew,
     started: armed && !was,
   };
@@ -198,6 +205,12 @@ export const vehicleSubtitle = (state: FlyState | null, offline: string | null =
   if (state.contactLost === true) return state.stateText;
   return [blankToNull(state.mode), state.stateText].filter((part): part is string => part !== null).join(' · ');
 };
+
+export const STALE_OPACITY = 0.45;
+
+const staleNoticeOf = (json: Json | null): string => flyState(json)?.staleNotice.trim() ?? '';
+
+export const useStaleNotice = (): string => useQgcDerived(FLY_STATE, staleNoticeOf);
 
 const connectedOf = (json: Json | null): boolean => flyState(json)?.connected === true;
 

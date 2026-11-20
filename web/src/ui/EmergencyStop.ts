@@ -1,8 +1,15 @@
 import { VehicleCommands } from '@/bridge/VehicleCommands';
+import { mutableStateOf } from '@/kotlin/State';
 import type { GuidedOffer } from './GuidedActions';
 import { GuidedAction } from './VehicleUi';
 
 export const EMERGENCY_STOP = 'emergencyStop';
+
+export const KILL_SETTLE_MS = 5000;
+
+export const motorsKilledAt = mutableStateOf<number | null>(null);
+
+export const killedRecently = (killedAt: number | null, now: number): boolean => killedAt !== null && now >= killedAt && now - killedAt <= KILL_SETTLE_MS;
 
 export const emergencyStopOffer = (offers: ReadonlyMap<string, GuidedOffer>): GuidedOffer | null => {
   const offer = offers.get(EMERGENCY_STOP);
@@ -19,5 +26,8 @@ export const emergencyStopAction = (offer: GuidedOffer): GuidedAction =>
     name: offer.title,
     confirm: offer.prompt,
     destructive: true,
-    run: () => void VehicleCommands.emergencyStop(),
+    run: () => {
+      motorsKilledAt.value = performance.now();
+      void VehicleCommands.emergencyStop();
+    },
   });

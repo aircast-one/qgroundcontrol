@@ -59,6 +59,8 @@ test('a go-to point does not outlive the motors stopping', async ({ app: vehicle
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to kill motors' }));
   await expect(vehicle.getByRole('button', { name: /^Not fully ready$|^Ready to fly$/ }).first()).toBeVisible({ timeout: 30_000 });
   await expect(vehicle.getByText(/^(Going to point|Arrived)/)).toHaveCount(0);
+  await expect(vehicle.getByText(/^Motors stopped/), 'the aircraft was killed at 10 m, it did not land').toBeVisible();
+  await expect(vehicle.getByText(/^Landed and disarmed/)).toHaveCount(0);
 });
 
 test('a go-to offers a height that starts at the current height, says how long it takes, and its card keeps clear of the point', async ({ vehicle }) => {

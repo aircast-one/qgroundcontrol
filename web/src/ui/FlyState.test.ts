@@ -207,6 +207,13 @@ describe('FlyReadinessTest', () => {
     expect(disarmNotice(false, false, false, true)).toBeNull();
   });
 
+  it('motors the pilot killed are said to have stopped, not landed, and a sub or rover never lands', () => {
+    expect(disarmNotice(true, true, false, true, { killed: true, lands: true }), 'killed in the air it fell, it did not land').toBe('Motors stopped');
+    expect(disarmNotice(true, true, false, true, { killed: true, lands: false }), 'a sub killed at depth').toBe('Motors stopped');
+    expect(disarmNotice(true, true, false, true, { killed: false, lands: false }), 'a sub disarmed at the surface').toBe('Disarmed');
+    expect(armedSessionStep({ vehicle: 1, armed: true, flew: true }, true, 1, false, 'disarmed', { killed: true, lands: true }).notice).toBe('Motors stopped');
+  });
+
   it('an armed flight outlives a link loss: a landing during the outage still reads as landed, and the start is not re-read', () => {
     const flying = [[true, 1, true, 'disarmed'], [true, 1, true, 'flying']].reduce((held, [connected, vehicle, armed, state]) => armedSessionStep(held, connected as boolean, vehicle as number, armed as boolean, state as string).session, NO_ARMED_SESSION);
     expect(flying).toEqual({ vehicle: 1, armed: true, flew: true });
