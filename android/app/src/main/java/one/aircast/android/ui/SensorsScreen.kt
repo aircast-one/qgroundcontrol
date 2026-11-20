@@ -102,7 +102,7 @@ private fun SensorsNotice(text: String, modifier: Modifier = Modifier) {
 
 internal const val ACCEL_ROUTINE = "accelerometer"
 internal const val CALIBRATION_COMPLETE = "Calibration complete"
-private const val MUST_REBOOT = "YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION."
+private const val MUST_REBOOT = "Reboot the vehicle so the new calibration takes effect."
 private const val COMPASS_QUALITY = "Shown in the indicator bars is the quality of the calibration for each compass.\n\n" +
     "- Green indicates a well functioning compass.\n" +
     "- Yellow indicates a questionable compass or calibration.\n" +

@@ -8,7 +8,7 @@ import org.junit.Test
 class PostCalibrationTest {
     @Test
     fun `only a completed ardupilot accel or compass calibration asks for a reboot`() {
-        assertEquals("YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION.", postCalibrationPrompt(ACCEL_ROUTINE, CALIBRATION_COMPLETE, ACCEL_ROUTINE, px4 = false))
+        assertEquals("Reboot the vehicle so the new calibration takes effect.", postCalibrationPrompt(ACCEL_ROUTINE, CALIBRATION_COMPLETE, ACCEL_ROUTINE, px4 = false))
         assertTrue(postCalibrationPrompt(COMPASS_ROUTINE, "", COMPASS_ROUTINE, px4 = false)!!.startsWith("Shown in the indicator bars"))
         assertNull("a cancelled or failed run offers nothing", postCalibrationPrompt(COMPASS_ROUTINE, CALIBRATION_COMPLETE, "", px4 = false))
         assertNull("CompassMot completes with the same help text but QGC opens no dialog", postCalibrationPrompt("compassMot", CALIBRATION_COMPLETE, "", px4 = false))

@@ -19,7 +19,7 @@ class ParameterToolsTest {
         assertEquals(listOf("Refresh", "Reset all to firmware's defaults", "Reboot Vehicle"), tools.map { it.label })
         assertFalse(tools[0].confirm)
         assertEquals("Reset", confirmLabel(tools[1]))
-        assertEquals("Ok", confirmLabel(tools[2]))
+        assertEquals("OK", confirmLabel(tools[2]))
     }
 
     @Test

@@ -342,7 +342,7 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
                     TextButton(enabled = typedName.isNotBlank(), onClick = {
                         renameWanted(set.name, typedName)?.let(onRename)
                         onDismiss()
-                    }) { Text("Ok") }
+                    }) { Text("OK") }
                 }
                 TextButton(onClick = onDismiss) { Text(if (set.defaultSet) "Close" else "Cancel") }
             }

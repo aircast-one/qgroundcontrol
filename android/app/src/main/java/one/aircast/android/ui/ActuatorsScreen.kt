@@ -290,7 +290,7 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
                 onDismissRequest = { failure = null },
                 title = { Text("Error") },
                 text = { Text(message) },
-                confirmButton = { androidx.compose.material3.TextButton(onClick = { failure = null }) { Text("Ok") } },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = { failure = null }) { Text("OK") } },
             )
         }
         ScrollableTabRow(selectedTabIndex = outputs.groups.indexOf(group)) {

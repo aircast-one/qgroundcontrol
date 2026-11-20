@@ -108,7 +108,7 @@ internal fun reviewSummary(review: ParameterReview): String {
     return if (clauses.isEmpty()) "$loaded." else "$loaded: ${clauses.joinToString(", ")}."
 }
 
-internal const val SEND_HINT = "Click 'Ok' to update the parameters below on the Vehicle."
+internal const val SEND_HINT = "Click OK to update the parameters below on the vehicle."
 internal const val CANNOT_SEND_HINT = "Parameters marked 'not on Vehicle' cannot be sent since the file does not include type information. They may only exist after another parameter is changed and the Vehicle is rebooted, after which you can load this file again."
 
 internal fun checkedAll(review: ParameterReview, chosen: Set<String>, on: Boolean): Set<String> =
@@ -150,7 +150,7 @@ internal fun diffLine(row: ParameterDiffRow): String = when {
     else -> listOf("Vehicle ${row.vehicleValue}", "File ${row.fileValue}", row.units).filter { it.isNotBlank() }.joinToString(" · ")
 }
 
-internal fun confirmLabel(tool: ParameterTool): String = if (tool.confirmTitle == "Reset All") "Reset" else "Ok"
+internal fun confirmLabel(tool: ParameterTool): String = if (tool.confirmTitle == "Reset All") "Reset" else "OK"
 
 @Composable
 internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
@@ -287,7 +287,7 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
                             onRefreshed()
                         }
                     },
-                ) { Text("Ok") }
+                ) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { review = null }) { Text("Cancel") } },
         )

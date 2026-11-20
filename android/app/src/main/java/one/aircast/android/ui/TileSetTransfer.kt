@@ -112,7 +112,7 @@ internal fun TileSetTransfer(sets: List<OfflineSet>, onRefusal: (String?) -> Uni
                 TextButton(enabled = chosen.isNotEmpty(), onClick = {
                     choosingSets = false
                     saver.launch("export.$TILESET_EXTENSION")
-                }) { Text("Ok") }
+                }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { choosingSets = false }) { Text("Cancel") } },
         )
@@ -136,7 +136,7 @@ internal fun TileSetTransfer(sets: List<OfflineSet>, onRefusal: (String?) -> Uni
                 TextButton(onClick = {
                     choosingMode = false
                     opener.launch(arrayOf("*/*"))
-                }) { Text("Ok") }
+                }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { choosingMode = false }) { Text("Cancel") } },
         )

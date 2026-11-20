@@ -223,7 +223,7 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
             onDismissRequest = { confirming = null },
             title = { Text(confirm.title) },
             text = { Text(confirm.question) },
-            confirmButton = { TextButton(onClick = { confirming = null; confirm.run() }) { Text("Ok") } },
+            confirmButton = { TextButton(onClick = { confirming = null; confirm.run() }) { Text("OK") } },
             dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancel") } },
         )
     }

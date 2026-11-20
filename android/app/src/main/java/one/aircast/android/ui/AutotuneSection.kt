@@ -41,7 +41,7 @@ fun AutotuneSection() {
             onDismissRequest = { confirming = false },
             title = { Text("Start AutoTune") },
             text = { Text(state.warning) },
-            confirmButton = { TextButton(onClick = { confirming = false; offMainDetached { Qgc.invoke(AUTOTUNE_REQUEST) } }) { Text("Ok") } },
+            confirmButton = { TextButton(onClick = { confirming = false; offMainDetached { Qgc.invoke(AUTOTUNE_REQUEST) } }) { Text("OK") } },
             dismissButton = { TextButton(onClick = { confirming = false }) { Text("Cancel") } },
         )
     }

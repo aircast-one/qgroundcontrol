@@ -179,7 +179,7 @@ private fun ConfirmDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(choice); onDismiss() }) { Text("Ok") }
+            TextButton(onClick = { onConfirm(choice); onDismiss() }) { Text("OK") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -222,7 +222,7 @@ private fun CalibrationStart(
             onDismissRequest = { prompting = false },
             title = { Text(title) },
             text = { Text(message) },
-            confirmButton = { TextButton(onClick = { prompting = false; onAction("nextButtonClicked") }) { Text("Ok") } },
+            confirmButton = { TextButton(onClick = { prompting = false; onAction("nextButtonClicked") }) { Text("OK") } },
         )
     }
     view.notReady?.takeIf { refusing }?.let { (title, message) ->
@@ -230,7 +230,7 @@ private fun CalibrationStart(
             onDismissRequest = { refusing = false },
             title = { Text(title) },
             text = { Text(message) },
-            confirmButton = { TextButton(onClick = { refusing = false }) { Text("Ok") } },
+            confirmButton = { TextButton(onClick = { refusing = false }) { Text("OK") } },
         )
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
