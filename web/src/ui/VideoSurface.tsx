@@ -1,4 +1,4 @@
-import { type HTMLAttributes, type PointerEvent, useContext, useEffect, useMemo, useRef } from 'react';
+import { type HTMLAttributes, type PointerEvent, type RefObject, useContext, useEffect, useMemo, useRef } from 'react';
 import { AppCommands, VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
@@ -23,6 +23,7 @@ import { type FlyScreenState, LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { Rect, activate, useElementSize } from '@/ui/FlyShell';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GIMBAL_INDICATOR_PATH, GimbalModeSwitch, GimbalScreenControl, onScreenGimbal } from '@/ui/GimbalIndicator';
+import { wheelScale } from '@/ui/Map3dView';
 import { LocalNoVideoSize, NoVideoPanel, NoVideoSize, deviceNeeds, openCameraSetup, useCameraMissing } from '@/ui/NoVideoPanel';
 import { DEVICE_TELEMETRY, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, type OfflineStatus, offlineStatus, openAddLink, openDeviceTelemetry } from '@/ui/OfflineStatusSheet';
 import { osdShadow } from '@/ui/Osd';
@@ -47,16 +48,27 @@ const spread = (points: ReadonlyMap<number, { x: number; y: number }>): number =
   return first === undefined || second === undefined ? 0 : Math.hypot(first.x - second.x, first.y - second.y);
 };
 
-const usePinchZoom = (enabled: boolean): HTMLAttributes<HTMLElement> => {
+const WHEEL_PINCH_GAP_MS = 250;
+
+const gestureScale = (event: Event): number => ('scale' in event && typeof event.scale === 'number' ? event.scale : 1);
+
+const usePinchZoom = (enabled: boolean, node: RefObject<HTMLElement | null>): HTMLAttributes<HTMLElement> => {
   const live = useUpdatedRef(enabled);
-  return useMemo(() => {
-    const state = { points: new Map<number, { x: number; y: number }>(), scale: 1, sent: 0 };
+  const pinch = useMemo(() => {
+    const state = { points: new Map<number, { x: number; y: number }>(), scale: 1, sent: 0, gesturing: false, wheelAt: -Infinity };
+    const begin = () => {
+      state.scale = 1;
+      state.sent = 0;
+    };
+    const scaleTo = (scale: number) => {
+      state.scale = scale;
+      const step = pinchStep(scale);
+      if (step !== state.sent) void Qgc.invoke(CAMERA_STEP_ZOOM, step);
+      state.sent = step;
+    };
     const press = (event: PointerEvent<HTMLElement>) => {
       if (!live.current) return;
-      if (state.points.size === 0) {
-        state.scale = 1;
-        state.sent = 0;
-      }
+      if (state.points.size === 0) begin();
       state.points = new Map(state.points).set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (state.points.size >= 2) event.stopPropagation();
     };
@@ -68,18 +80,54 @@ const usePinchZoom = (enabled: boolean): HTMLAttributes<HTMLElement> => {
       event.stopPropagation();
       event.preventDefault();
       const after = spread(state.points);
-      state.scale = before > 0 && after > 0 ? state.scale * (after / before) : state.scale;
-      const step = pinchStep(state.scale);
-      if (step !== state.sent) void Qgc.invoke(CAMERA_STEP_ZOOM, step);
-      state.sent = step;
+      scaleTo(before > 0 && after > 0 ? state.scale * (after / before) : state.scale);
     };
     const release = (event: PointerEvent<HTMLElement>) => {
       if (!state.points.has(event.pointerId)) return;
       if (state.points.size >= 2) event.stopPropagation();
       state.points = new Map([...state.points].filter(([pointer]) => pointer !== event.pointerId));
     };
-    return { onPointerDownCapture: press, onPointerMoveCapture: move, onPointerUpCapture: release, onPointerCancelCapture: release };
+    const gestureStart = (event: Event) => {
+      if (!live.current) return;
+      event.preventDefault();
+      state.gesturing = true;
+      begin();
+    };
+    const gestureChange = (event: Event) => {
+      if (!state.gesturing) return;
+      event.preventDefault();
+      scaleTo(gestureScale(event));
+    };
+    const gestureEnd = () => {
+      state.gesturing = false;
+    };
+    const wheel = (event: WheelEvent) => {
+      if (!event.ctrlKey || !live.current) return;
+      event.preventDefault();
+      if (state.gesturing) return;
+      if (event.timeStamp - state.wheelAt > WHEEL_PINCH_GAP_MS) begin();
+      state.wheelAt = event.timeStamp;
+      scaleTo(state.scale * wheelScale(event.deltaY, event.deltaMode));
+    };
+    const listeners = [
+      ['gesturestart', gestureStart],
+      ['gesturechange', gestureChange],
+      ['gestureend', gestureEnd],
+      ['wheel', wheel as (event: Event) => void],
+    ] as const;
+    const attach = (element: HTMLElement) => {
+      listeners.map(([type, listener]) => element.addEventListener(type, listener, { passive: false }));
+      return () => listeners.map(([type, listener]) => element.removeEventListener(type, listener));
+    };
+    return { attach, props: { onPointerDownCapture: press, onPointerMoveCapture: move, onPointerUpCapture: release, onPointerCancelCapture: release } };
   }, []);
+  useEffect(() => {
+    const element = node.current;
+    if (element === null) return undefined;
+    const detach = pinch.attach(element);
+    return () => void detach();
+  }, [pinch, node]);
+  return pinch.props;
 };
 
 const NoVideoArea = ({ underFlyChrome, thumb, video }: { underFlyChrome: boolean; thumb: boolean; video: VideoReading | null }) =>
@@ -302,7 +350,8 @@ const MainPane = ({
   const aspectSetting = useQgcValue(settingControl('settings.videoSettings.aspectRatio'));
   const aspect = videoAspect(video?.sourceSize ?? null, numberOf(aspectSetting));
   const decoding = video?.decoding === true;
-  const pinch = usePinchZoom(expanded && zoomable);
+  const { ref, size, node } = useElementSize();
+  const pinch = usePinchZoom(expanded && zoomable, node);
   const taps = usePointerGestures(expanded && decoding ? { onDoubleTap } : null);
   const gimbalJson = useQgcPath(GIMBAL_INDICATOR_PATH);
   const holdDrives = useMemo(() => {
@@ -310,7 +359,6 @@ const MainPane = ({
     return control !== null && control.enabled && control.clickAndDrag;
   }, [gimbalJson]);
   const hold = usePictureHold(decoding ? onGround : null, false, !holdDrives);
-  const { ref, size } = useElementSize();
   const [contentWidth, contentHeight] = videoContentSize(size.width, size.height, aspect, fitOf(fitMode));
   const press: HTMLAttributes<HTMLElement> = expanded ? { ...pinch, ...taps } : { role: 'button', tabIndex: 0, onClick, onKeyDown: activate(onClick) };
 

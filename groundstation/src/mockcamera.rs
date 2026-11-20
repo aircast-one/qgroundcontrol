@@ -10,6 +10,7 @@ const STREAMS: u8 = 2;
 const STORAGE_TOTAL_MIB: f32 = 16384.0;
 const STORAGE_FREE_MIB: f32 = 8192.0;
 const SINGLE_SHOT_MS: u64 = 500;
+const ZOOM_STEP_PERCENT: f32 = 10.0;
 const IMAGE_IDLE: u8 = 0;
 const IMAGE_IN_PROGRESS: u8 = 1;
 const IMAGE_INTERVAL_CAPTURE: u8 = 3;
@@ -568,9 +569,13 @@ impl Cameras {
             MavCmd::MAV_CMD_SET_CAMERA_ZOOM => {
                 match camera.has(CameraCapFlags::CAMERA_CAP_FLAGS_HAS_BASIC_ZOOM) {
                     true => {
-                        if params[0] as u32 == CameraZoomType::ZOOM_TYPE_RANGE as u32 {
-                            camera.zoom = params[1];
-                        }
+                        camera.zoom = match params[0] as u32 {
+                            kind if kind == CameraZoomType::ZOOM_TYPE_RANGE as u32 => params[1],
+                            kind if kind == CameraZoomType::ZOOM_TYPE_STEP as u32 => {
+                                (camera.zoom + params[1] * ZOOM_STEP_PERCENT).clamp(0.0, 100.0)
+                            }
+                            _ => camera.zoom,
+                        };
                         vec![ack(MavResult::MAV_RESULT_ACCEPTED)]
                     }
                     false => vec![ack(MavResult::MAV_RESULT_DENIED)],

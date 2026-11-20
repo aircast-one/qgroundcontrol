@@ -18,6 +18,18 @@ test('a vehicle camera shows its zoom level', async ({ app }) => {
   await expect(app.getByRole('button', { name: /^Zoom \d+%$/ })).toBeVisible();
 });
 
+test('a trackpad pinch on the picture steps the camera zoom', async ({ app }) => {
+  await connectMock(app, ['Enable camera']);
+  const zoom = app.getByRole('button', { name: /^Zoom \d+%$/ });
+  await expect(zoom).toHaveText('1%');
+  const view = app.viewportSize()!;
+  await app.mouse.move(view.width / 2, view.height / 2);
+  await app.keyboard.down('Control');
+  await app.mouse.wheel(0, -200);
+  await app.keyboard.up('Control');
+  await expect(zoom, 'pinching out steps the camera in').toHaveText('21%');
+});
+
 test('the zoom chip above the shutter stays clear of the speed readings beside the picture', async ({ app }) => {
   await connectMock(app, ['Enable camera']);
   const zoom = await app.getByRole('button', { name: /^Zoom \d+%$/ }).boundingBox();
