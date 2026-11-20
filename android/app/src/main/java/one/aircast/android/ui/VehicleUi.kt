@@ -74,6 +74,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -316,7 +317,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
 
     if (compact) {
         val reading: @Composable (Instrument, TextStyle) -> Unit = { instrument, style ->
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
+            Row(Modifier.alpha(if (silent) STALE_ALPHA else 1f), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
                 Text(osdLabel(instrument.label), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = OSD_LABEL_ALPHA), maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline())
                 Text(
                     "${instrument.value}${instrument.units}",
@@ -331,6 +332,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
         if (stacked) {
             val (speeds, places) = shown.partition { osdIsSpeed(it.label) }
             Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (silent) StaleNote(stale)
                 if (speeds.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { speeds.map { reading(it, MaterialTheme.typography.headlineMedium) } }
                 if (places.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { places.map { reading(it, MaterialTheme.typography.displaySmall) } }
             }
@@ -340,6 +342,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
                 horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
+                if (silent) StaleNote(stale, Modifier.fillMaxWidth())
                 shown.map { reading(it, MaterialTheme.typography.titleMedium) }
             }
         }
@@ -363,7 +366,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     FlowRow(
         modifier
             .fillMaxWidth()
-            .alpha(if (silent) 0.45f else 1f),
+            .alpha(if (silent) STALE_ALPHA else 1f),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalArrangement = Arrangement.spacedBy(6.dp),
         maxItemsInEachRow = columns ?: rowWidth(shown.size + 1),
@@ -402,6 +405,11 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     }
     }
     }
+}
+
+@Composable
+private fun StaleNote(stale: String, modifier: Modifier = Modifier) {
+    Text(stale, modifier, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
 }
 
 internal fun scaledNumber(scale: Float): TextStyle = TelemetryNumber.copy(

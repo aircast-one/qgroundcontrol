@@ -62,6 +62,8 @@ internal fun armControls(state: FlyState, forceOpen: Boolean): ArmControls = Arm
     forceHold = !state.armed && forceOpen,
 )
 
+internal fun armSlideShown(state: FlyState?): Boolean = state != null && state.connected && !inAir(state)
+
 internal const val SENSOR_HEALTHY_STATE = "healthy"
 
 internal fun messagesToggleText(shown: Boolean): String = if (shown) "Hide messages" else "Show messages"
@@ -210,7 +212,7 @@ private fun StatusSummary() {
 private fun ArmSection(onDismiss: () -> Unit) {
     val flyScreen = LocalFlyScreenState.current
     val stateJson by qgcPath(FLY_STATE)
-    val state = remember(stateJson) { flyState(stateJson) }?.takeIf { it.connected } ?: return
+    val state = remember(stateJson) { flyState(stateJson) }?.takeIf(::armSlideShown) ?: return
     var forceOpen by remember { mutableStateOf(false) }
     val controls = armControls(state, forceOpen)
     val request: (String) -> Unit = { action ->

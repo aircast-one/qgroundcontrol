@@ -13,11 +13,19 @@ class VehicleStatusSheetTest {
         assertEquals(listOf("Gyro", "Baro"), shownSensors(sensors, showAll = true).map { it.name })
     }
 
-    private fun state(armed: Boolean = false, nominal: Boolean = true, fault: Boolean = false, canArm: Boolean = true) = FlyState(
-        connected = true, armed = armed, contactLost = false, state = "", stateText = "", staleNotice = "", mode = "",
+    private fun state(armed: Boolean = false, nominal: Boolean = true, fault: Boolean = false, canArm: Boolean = true, phase: String = "", contactLost: Boolean = false) = FlyState(
+        connected = true, armed = armed, contactLost = contactLost, state = phase, stateText = "", staleNotice = "", mode = "",
         rcSupported = false, rcSignalText = "", rcSignal = null, rcOverride = null, telemetry = null,
         nominal = nominal, fault = fault, canArm = canArm,
     )
+
+    @Test
+    fun `with contact lost the aircraft may still be in the air, so the sheet offers no disarm slide`() {
+        assertEquals(false, armSlideShown(state(armed = true, phase = "contactLost", contactLost = true)))
+        assertEquals("an arm slide for a vehicle that cannot hear it", false, armSlideShown(state(phase = "contactLost", contactLost = true)))
+        assertEquals(false, armSlideShown(state(armed = true, phase = "flying")))
+        assertEquals(true, armSlideShown(state(armed = true)))
+    }
 
     @Test
     fun `the messages card starts collapsed and toggles like the MainStatusIndicator disclosure`() {

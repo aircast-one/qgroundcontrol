@@ -62,6 +62,12 @@ internal fun guidedReadiness(state: FlyState?): Readiness? =
         Readiness(if (blocks) "${text.removeSuffix(".")}. $READINESS_BLOCKED" else text, blocks)
     }
 
+internal const val STALE_ALPHA = 0.45f
+
+private val IN_AIR_STATES = setOf("flying", "landing")
+
+internal fun inAir(state: FlyState?): Boolean = state != null && (state.state in IN_AIR_STATES || state.contactLost == true)
+
 internal const val LANDED_AND_DISARMED = "Landed and disarmed"
 internal const val MOTORS_STOPPED = "Motors stopped"
 
