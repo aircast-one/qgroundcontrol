@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { type Json, isNull, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { useQgcDerived } from '@/bridge/QgcState';
-import { IconButton, type SheetAnchor, Text, anchorPlacement } from '@/m3';
+import { IconButton, type SheetAnchor, Text } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { Drawable } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
@@ -119,13 +118,8 @@ export const EscStatusSheet = ({ onDismissRequest }: { onDismissRequest: () => v
 export const EscStatusPanel = ({ anchor, focus, onClose }: { anchor: SheetAnchor; focus: number | null; onClose: () => void }) => {
   const summary = useQgcDerived(ESC_PATH, escSummary);
   if (summary === null) return null;
-  return createPortal(
-    <div
-      role="dialog"
-      aria-label="ESC status"
-      className="fixed left-[var(--anchor-left)] top-[var(--anchor-top,auto)] bottom-[var(--anchor-bottom,auto)] z-40 flex max-h-[60vh] w-[320px] max-w-[calc(100vw-32px)] flex-col rounded-shape-md bg-surface-container text-on-surface shadow-lg"
-      style={anchorPlacement(anchor, { width: window.innerWidth, height: window.innerHeight })}
-    >
+  return (
+    <AircastSheet onDismissRequest={onClose} label="ESC status" anchor={anchor}>
       <div className="flex items-center justify-between pl-4 pr-1">
         <Text typography="titleMedium">ESC status</Text>
         <IconButton onClick={onClose} label="Close ESC status">
@@ -135,8 +129,7 @@ export const EscStatusPanel = ({ anchor, focus, onClose }: { anchor: SheetAnchor
       <div className="overflow-auto px-2 pb-3">
         <EscStatusContent summary={summary} focus={focus} />
       </div>
-    </div>,
-    document.body,
+    </AircastSheet>
   );
 };
 

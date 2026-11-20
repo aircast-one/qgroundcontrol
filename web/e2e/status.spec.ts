@@ -20,6 +20,19 @@ test('the status sheet scrolls as one page, with no scroll box nested inside it'
   expect(nested, 'the failsafe settings scroll inside the sheet instead of with it').toBe(0);
 });
 
+test('the ESC status panel takes the keyboard, and Escape closes it back onto the motor load', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  const load = app.getByRole('button', { name: 'Motor load: open ESC status' });
+  await load.focus();
+  await app.keyboard.press('Enter');
+  const panel = app.getByRole('dialog', { name: 'ESC status' });
+  await expect(panel).toBeVisible();
+  await expect.poll(() => panel.evaluate((it) => it.contains(document.activeElement)), { message: 'focus moves into the panel, as it does for the GPS panel' }).toBe(true);
+  await app.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(load).toBeFocused();
+});
+
 test('a sheet opened from all status closes with one Escape, and the next Escape closes all status', async ({ vehicle }) => {
   await openMenu(vehicle, 'All status');
   const status = vehicle.getByRole('dialog', { name: 'Status' });
