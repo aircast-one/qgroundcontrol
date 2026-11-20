@@ -142,6 +142,12 @@ fn settle_uploaded(state: &mut Held) {
     state.clean = state.document.clone();
 }
 
+fn keep_for_this_vehicle(state: &mut Held) {
+    state.vehicle_prompt = None;
+    state.dirty = true;
+    state.clean = None;
+}
+
 fn settle_clean(state: &mut Held) {
     settle_uploaded(state);
     state.dirty_for_save = false;
@@ -243,7 +249,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
             json!({ "ok": true })
         }
         KEEP_CURRENT_PLAN => {
-            held().vehicle_prompt = None;
+            keep_for_this_vehicle(&mut held());
             changed();
             json!({ "ok": true })
         }
@@ -5486,6 +5492,26 @@ mod tests {
         );
         let two = vertex_edit(&line, "removeVertex", &json!([0]), false).unwrap();
         assert!(vertex_edit(&two, "removeVertex", &json!([0]), false).is_none());
+    }
+
+    #[test]
+    fn a_plan_kept_when_another_aircraft_connects_still_has_to_go_up_to_it() {
+        let uploaded = Document {
+            cruise_speed: 12.0,
+            ..empty_document()
+        };
+        let mut state = Held {
+            document: Some(uploaded.clone()),
+            clean: Some(uploaded),
+            vehicle_prompt: Some(false),
+            ..Held::default()
+        };
+        keep_for_this_vehicle(&mut state);
+        assert_eq!(
+            (state.vehicle_prompt, state.dirty, state.clean),
+            (None, true, None),
+            "the plan went up to the aircraft that left, so the new one holds none of it and Plan offers Upload, not Fly"
+        );
     }
 
     #[test]
