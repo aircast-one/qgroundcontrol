@@ -207,7 +207,7 @@ const armedOf = (json: Json | null): boolean => flyState(json)?.armed === true;
 
 export const useArmed = (): boolean => useQgcDerived(FLY_STATE, armedOf);
 
-export const inAir = (state: FlyState | null): boolean => state !== null && inAirState(state.state);
+export const inAir = (state: FlyState | null): boolean => state !== null && (inAirState(state.state) || state.contactLost === true);
 
 const inAirOf = (json: Json | null): boolean => inAir(flyState(json));
 

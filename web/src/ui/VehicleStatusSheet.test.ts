@@ -28,11 +28,11 @@ describe('VehicleStatusSheetTest', () => {
     expect(sensorsToggle([{ name: 'Baro', state: 'unhealthy', label: 'Error' }], false)).toBeNull();
   });
 
-  const state = ({ armed = false, nominal = true, fault = false, canArm = true, phase = '', connected = true }: { armed?: boolean; nominal?: boolean; fault?: boolean; canArm?: boolean; phase?: string; connected?: boolean } = {}) =>
+  const state = ({ armed = false, nominal = true, fault = false, canArm = true, phase = '', connected = true, contactLost = false }: { armed?: boolean; nominal?: boolean; fault?: boolean; canArm?: boolean; phase?: string; connected?: boolean; contactLost?: boolean } = {}) =>
     FlyState({
       connected,
       armed,
-      contactLost: false,
+      contactLost,
       state: phase,
       stateText: '',
       staleNotice: '',
@@ -52,6 +52,11 @@ describe('VehicleStatusSheetTest', () => {
     expect(['armed', 'disarmed'].map((phase) => armSlideShown(state({ armed: phase === 'armed', phase })))).toEqual([true, true]);
     expect(armSlideShown(state({ connected: false, phase: 'disarmed' })), 'nothing to arm without a vehicle').toBe(false);
     expect(armSlideShown(null)).toBe(false);
+  });
+
+  it('with contact lost the aircraft may still be in the air, so the sheet offers no disarm slide', () => {
+    expect(armSlideShown(state({ armed: true, phase: 'contactLost', contactLost: true }))).toBe(false);
+    expect(armSlideShown(state({ armed: false, phase: 'contactLost', contactLost: true })), 'an arm slide for a vehicle that cannot hear it').toBe(false);
   });
 
   it("the status drawer's arm controls follow MainStatusIndicator", () => {
