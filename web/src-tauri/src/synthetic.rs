@@ -6,6 +6,9 @@ use groundstation::nativehost::{synthetic_offscreen, synthetic_offscreen_release
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
+#[cfg(target_os = "macos")]
+pub mod layer;
+
 type Deliver = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
 
 #[derive(Default)]
@@ -20,6 +23,10 @@ impl Views {
         self.shown.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    pub fn page(&self) -> u64 {
+        self.page.load(Ordering::Relaxed)
+    }
+
     pub fn forget_all(&self) -> Vec<usize> {
         let mut shown = self.shown();
         self.page.fetch_add(1, Ordering::Relaxed);
@@ -28,7 +35,7 @@ impl Views {
 
     fn keep(&self, key: usize, page: u64, view: (bool, Deliver)) -> bool {
         let mut shown = self.shown();
-        let current = self.page.load(Ordering::Relaxed) == page;
+        let current = self.page() == page;
         if current {
             shown.insert(key, view);
         }
@@ -65,7 +72,7 @@ pub async fn synthetic_open(
     frames: Channel<InvokeResponseBody>,
     views: tauri::State<'_, Views>,
 ) -> Result<usize, String> {
-    let page = views.page.load(Ordering::Relaxed);
+    let page = views.page();
     let key = views.next.fetch_add(1, Ordering::Relaxed) + 1;
     let deliver: Deliver = Arc::new(move |jpeg| {
         if let Err(error) = frames.send(InvokeResponseBody::Raw(jpeg)) {

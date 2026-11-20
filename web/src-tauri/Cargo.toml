@@ -9,7 +9,8 @@ tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 groundstation = { path = "../../groundstation", features = ["native-host", "synthetic"] }
-tauri = { version = "=2.11.5", features = [] }
+tauri = { version = "=2.11.5", features = ["macos-private-api"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 retina = { git = "https://github.com/aircast-one/retina", rev = "02de52b96f5b0fb70711e8de9ff25fff6ac79e02" }
 futures = "0.3"
@@ -28,6 +29,10 @@ log = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSGraphics", "NSResponder", "NSView", "objc2-core-foundation", "objc2-quartz-core"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGColor"] }
+objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std", "CALayer", "CAMetalLayer", "objc2-core-foundation", "objc2-core-graphics"] }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "=0.38.2"

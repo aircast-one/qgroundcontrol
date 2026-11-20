@@ -39,8 +39,13 @@ dependencies = [
  "mpeg2ts",
  "muxide",
  "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-quartz-core",
  "percent-encoding",
  "retina",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",
@@ -3762,6 +3767,7 @@ dependencies = [
  "objc2",
  "objc2-core-foundation",
  "objc2-foundation",
+ "objc2-quartz-core",
 ]
 
 [[package]]

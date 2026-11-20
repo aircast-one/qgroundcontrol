@@ -257,7 +257,15 @@ fn start_core(version: &str) {
     let arguments: Vec<CString> = given
         .into_iter()
         .chain(head)
-        .chain(["--no-autoconnect", "--no-app-update", "--app-version", version].map(str::to_string))
+        .chain(
+            [
+                "--no-autoconnect",
+                "--no-app-update",
+                "--app-version",
+                version,
+            ]
+            .map(str::to_string),
+        )
         .filter_map(|argument| text(&argument).ok())
         .collect();
     let pointers: Vec<*const c_char> = arguments.iter().map(|a| a.as_ptr()).collect();
@@ -317,6 +325,8 @@ fn main() {
                         let app = shown.app_handle().clone();
                         let streams = app.state::<video::Streams>().page_left();
                         let views = app.state::<synthetic::Views>().forget_all();
+                        #[cfg(target_os = "macos")]
+                        synthetic::layer::page_left(&app);
                         spawn_blocking(move || {
                             app.state::<video::Streams>().close_each(streams);
                             synthetic::Views::release_each(views);
@@ -327,7 +337,10 @@ fn main() {
             #[cfg(windows)]
             webview2::allow_location(&_window)?;
             #[cfg(target_os = "macos")]
-            window::guard_terminate(app.handle());
+            {
+                _window.set_background_color(Some(tauri::window::Color(13, 14, 17, 255)))?;
+                window::guard_terminate(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -350,6 +363,12 @@ fn main() {
             synthetic::synthetic_open,
             synthetic::synthetic_resize,
             synthetic::synthetic_close,
+            #[cfg(target_os = "macos")]
+            synthetic::layer::synthetic_layer_open,
+            #[cfg(target_os = "macos")]
+            synthetic::layer::synthetic_layer_place,
+            #[cfg(target_os = "macos")]
+            synthetic::layer::synthetic_layer_close,
             window::close_anyway,
             window::close_prompt_shown,
             window::close_prompt_dismissed,
@@ -377,6 +396,8 @@ fn main() {
             RunEvent::Exit => {
                 let streams = app.state::<video::Streams>();
                 streams.close_each(streams.page_left());
+                #[cfg(target_os = "macos")]
+                synthetic::layer::release_each(synthetic::layer::forget_all());
                 qgc_shutdown();
             }
             _ => {}
