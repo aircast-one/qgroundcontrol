@@ -22,6 +22,7 @@ import {
   osdLabel,
   rowWidth,
 } from './VehicleUi';
+import { holdLabel } from './HoldToConfirm';
 
 const json = (text: string): Json => parseJson(text) ?? {};
 
@@ -68,6 +69,14 @@ describe('FlightDeckEntriesTest', () => {
     expect(await action.answer?.()).toBe(refusal);
     expect(asked).toHaveBeenCalledWith(0, 4);
     asked.mockRestore();
+  });
+
+  it('the return on the deck is named Return home and confirms with a slide of that name', () => {
+    const confirmed = vi.fn((action: GuidedAction) => action);
+    const back = flightDeckEntries(deck([{ ...offer('rtl', 'ready', false), title: 'Return home' }], { armed: true, confirm: confirmed })).find((it) => it.id === 'rtl');
+    expect(back?.label).toBe('Return home');
+    back?.onClick();
+    expect(holdLabel((confirmed.mock.results[0]?.value as GuidedAction).name)).toBe('Slide to return home');
   });
 
   it('a vehicle with a gripper gets a drop on the deck that lands on a hold, like land', () => {
@@ -134,8 +143,8 @@ describe('FlightDeckEntriesTest', () => {
     entry?.onClick();
     const action = confirmed.mock.results[0]?.value as GuidedAction;
     expect([action.offerId, action.name, action.confirm]).toEqual(['rtl', 'Surface', 'The sub rises to the surface and holds there.']);
-    const plain = flightDeckEntries(deck([{ ...offer('rtl'), title: 'Return' }], { armed: true })).find((it) => it.id === 'rtl');
-    expect([plain?.label, plain?.icon]).toEqual(['Return', 'ic_home']);
+    const plain = flightDeckEntries(deck([{ ...offer('rtl'), title: 'Return home' }], { armed: true })).find((it) => it.id === 'rtl');
+    expect([plain?.label, plain?.icon]).toEqual(['Return home', 'ic_home']);
   });
 
   it("a sub's height change reads Depth on the deck, as the core titles it", () => {

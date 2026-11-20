@@ -228,8 +228,8 @@ test('in flight, holding an item edits the layout, and Return still works while 
   await holdUntilEditing(vehicle, vehicle.getByRole('button', { name: /^Battery \d+%/ }).first());
   const notice = vehicle.getByRole('status').filter({ hasText: 'Editing the layout. Return, Land and Kill motors still work.' });
   await expect(notice, 'in flight the screen says why most of it stopped answering').toBeVisible();
-  await vehicle.getByRole('button', { name: 'Return', exact: true }).click();
-  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to return' }));
+  await vehicle.getByRole('button', { name: 'Return home', exact: true }).click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to return home' }));
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Return/);
   await expect(editBar(vehicle)).toBeVisible();
   await notice.getByRole('button', { name: 'Done' }).click();

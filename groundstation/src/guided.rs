@@ -245,7 +245,7 @@ impl Action {
             Action::ChangeSpeed => "Change Max Ground Speed",
             Action::LandAbort => "Land Abort",
             Action::Land => "Land",
-            Action::Rtl => "Return",
+            Action::Rtl => "Return home",
             Action::Disarm => "Disarm",
             Action::Grab => "Grab",
             Action::Release => "Drop",
@@ -1119,6 +1119,11 @@ pub fn write_vtol(backend: &dyn Backend, path: &str, value: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_return_offer_is_named_return_home_like_every_other_return_in_the_app() {
+        assert_eq!(Action::Rtl.title(), "Return home");
+    }
+
     #[test]
     fn the_motor_kill_confirm_is_named_as_its_button_and_does_not_shout() {
         let (title, prompt) = (

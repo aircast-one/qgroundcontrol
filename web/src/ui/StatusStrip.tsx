@@ -53,6 +53,7 @@ import { useHasSetupPage } from '@/ui/SetupScreen';
 import { SETUP, parametersReady } from '@/ui/SetupView';
 import { SupportForwardingCell } from '@/ui/SupportForwardingCell';
 import { VEHICLE_LINKS, linkCell, linkNames, vehicleLinks } from '@/ui/VehicleLinks';
+import { RETURN_HOME } from './FlyDeck';
 
 const VEHICLE_FLIGHT_TIME = 'vehicle.flightTime';
 const GPS_VIEW = 'view.gps';
@@ -1045,12 +1046,12 @@ const BatteryReturnButton = ({ onClosed }: { onClosed: () => void }) => {
   return (
     <>
       <TextButton enabled={rtl.ready} onClick={() => setConfirming(true)} className="mx-3" contentColor={md('error')}>
-        Return
+        {RETURN_HOME}
       </TextButton>
       {confirming ? (
         <AlertDialog
           onDismissRequest={() => setConfirming(false)}
-          title="Return"
+          title={RETURN_HOME}
           text="Return to the launch position of the vehicle"
           confirmButton={
             <TextButton

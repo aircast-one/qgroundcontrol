@@ -54,8 +54,8 @@ test('on a phone a guided panel or a confirm slide clears the compass and camera
   await expect(zoom).toBeVisible();
   await takeOff(page, '5 m');
   await expect(page.getByRole('button', { name: /Flying Change flight mode$|^(Takeoff|Hold|Guided)\b.*Change flight mode$/ })).toBeVisible({ timeout: 60_000 });
-  await page.getByRole('button', { name: 'Return', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Slide to return' })).toBeVisible();
+  await page.getByRole('button', { name: 'Return home', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Slide to return home' })).toBeVisible();
   await expect(zoom, 'a confirm slide takes the deck like a guided panel does').toBeHidden();
   await expect(compass).toBeHidden();
   await page.getByRole('button', { name: 'Cancel' }).click();
@@ -127,7 +127,7 @@ const pressable = (page: Page, name: string) =>
     return button.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
   });
 
-test('held upright, a hold in flight edits the layout, and Return and Land stay pressable beside the edit bar', async ({ page }) => {
+test('held upright, a hold in flight edits the layout, and Return home and Land stay pressable beside the edit bar', async ({ page }) => {
   test.setTimeout(240_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openApp(page);
@@ -135,9 +135,9 @@ test('held upright, a hold in flight edits the layout, and Return and Land stay 
   await takeOff(page, '5 m');
   await expect(flightMode(page)).toHaveAccessibleName(/^Hold\b/, { timeout: 60_000 });
   await pressAndHold(page, battery(page), () => expect(editBar(page)).toBeVisible());
-  expect(await pressable(page, 'Return'), 'Return is not under the edit bar').toBe(true);
+  expect(await pressable(page, 'Return home'), 'Return home is not under the edit bar').toBe(true);
   expect(await pressable(page, 'Slide to land'), 'Land is not under the edit bar').toBe(true);
-  await page.getByRole('button', { name: 'Return', exact: true }).click();
-  await slideAcross(page, page.getByRole('button', { name: 'Slide to return' }));
+  await page.getByRole('button', { name: 'Return home', exact: true }).click();
+  await slideAcross(page, page.getByRole('button', { name: 'Slide to return home' }));
   await expect(flightMode(page)).toHaveAccessibleName(/^Return/);
 });

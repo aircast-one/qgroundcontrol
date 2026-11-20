@@ -156,7 +156,7 @@ test('in flight the payload strip is the only drop: the deck offers none, and th
   await expect(vehicle.getByRole('button', { name: 'Take off' })).toBeVisible();
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
-  await expect(vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Return' })).toBeVisible();
+  await expect(vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Return home', exact: true })).toBeVisible();
   await expect(vehicle.getByRole('button', { name: 'Slide to drop' })).toBeHidden();
   await dropFromStrip(vehicle);
   await expect(vehicle.getByText('Payload dropped')).toBeVisible();

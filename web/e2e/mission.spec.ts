@@ -63,8 +63,8 @@ test('an ArduCopter mission left with Return names its waypoint and offers to re
   await connectMock(app, [], 'APM ArduCopter Vehicle');
   await flyUploadedMission(app);
   await expect(app.getByText(/^To waypoint [3-9] of \d+/)).toBeVisible({ timeout: 120_000 });
-  await app.getByRole('button', { name: 'Return', exact: true }).click();
-  await slideAcross(app, app.getByRole('button', { name: 'Slide to return' }));
+  await app.getByRole('button', { name: 'Return home', exact: true }).click();
+  await slideAcross(app, app.getByRole('button', { name: 'Slide to return home' }));
   const done = leftOverAction(app);
   await expect(done).toBeVisible({ timeout: 180_000 });
   await expect(done.getByText(/^Mission stopped at waypoint [3-9] of \d+$/)).toBeVisible();

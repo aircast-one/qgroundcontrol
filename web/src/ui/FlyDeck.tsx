@@ -46,6 +46,8 @@ export const DeckEntry = (fields: Omit<DeckEntry, 'warning' | 'onHold' | 'short'
 });
 
 export const HOLD_TO_TAKE_OFF = 'Slide to take off';
+
+export const RETURN_HOME = 'Return home';
 export const TAKE_OFF = 'Take off';
 export const NO_LINK = 'No link';
 export const NO_SIGNAL_CODE = 'noSignal';

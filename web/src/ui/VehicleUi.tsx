@@ -19,7 +19,7 @@ import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnlessRefused } from './ConfirmTrack';
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeConfirmText, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
-import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
+import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RETURN_HOME, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET, useVehicleScoped } from './FlyScreenState';
 import { AnimatedVisibility, PASS_THROUGH, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, STALE_OPACITY, flyState, useGuidedReadiness, useHasVehicle, useStaleNotice, vehicleSubtitle } from './FlyState';
@@ -865,7 +865,7 @@ const DeckRow = ({ deck, entries, extra, center }: { deck: DeckIds; entries: rea
 
 const OFFLINE_DECK = (): readonly DeckEntry[] => [
   DeckEntry({ id: 'takeoff', label: TAKE_OFF, icon: 'ic_flight_takeoff', enabled: false, onClick: () => undefined }),
-  DeckEntry({ id: 'rtl', label: 'Return', icon: 'ic_home', enabled: false, onClick: () => undefined }),
+  DeckEntry({ id: 'rtl', label: RETURN_HOME, icon: 'ic_home', enabled: false, onClick: () => undefined }),
 ];
 
 const OfflineDeck = ({ className }: { className?: string }) => {
@@ -1332,7 +1332,7 @@ const takeoffHoldRefusal = async (offers: ReadonlyMap<string, GuidedOffer>): Pro
 
 const SURFACE = 'Surface';
 
-export const returnLabel = (offer: GuidedOffer): string => (offer.title.trim() === '' ? 'Return' : sentenceCase(offer.title));
+export const returnLabel = (offer: GuidedOffer): string => (offer.title.trim() === '' ? RETURN_HOME : sentenceCase(offer.title));
 
 export const returnIcon = (offer: GuidedOffer): DrawableName => (offer.title === SURFACE ? 'ic_upload' : 'ic_home');
 
