@@ -26,7 +26,7 @@ private fun parameter(name: String, description: String = "Engineer description"
 )
 
 class PilotSettingsTest {
-    private val returnHome = pilotSettings(SettingsGroup.Safety).first { it.label == "Return-to-home altitude" }
+    private val returnHome = pilotSettings(SettingsGroup.Safety).first { it.label == "Return altitude" }
 
     @Test
     fun `a pilot setting uses whichever firmware parameter the aircraft reports, under the pilot's word`() {
@@ -36,7 +36,7 @@ class PilotSettingsTest {
         assertEquals("RTL_RETURN_ALT", px4?.name)
         assertEquals("the 4.7 name, which the core also reads as RTL_ALT on older ArduCopter", "RTL_ALT_M", ardupilot?.name)
         assertEquals("the old name still answers before the firmware version is known", "RTL_ALT", versionless?.name)
-        assertEquals("Return-to-home altitude", px4?.heading)
+        assertEquals("Return altitude", px4?.heading)
     }
 
     @Test
@@ -108,15 +108,15 @@ class PilotSettingsTest {
 
     @Test
     fun `search finds a pilot setting by its words and by either firmware's parameter name`() {
-        assertEquals(listOf("Return-to-home altitude"), pilotSearchHits("return").map { it.label })
-        assertEquals(listOf("Return-to-home altitude"), pilotSearchHits("rtl_alt").map { it.label })
+        assertEquals(listOf("Return altitude"), pilotSearchHits("return").map { it.label })
+        assertEquals(listOf("Return altitude"), pilotSearchHits("rtl_alt").map { it.label })
         assertEquals(listOf("Max horizontal speed"), pilotSearchHits("MPC_XY_VEL_MAX").map { it.label })
-        assertEquals("Safety \u203a Return to home", pilotSearchHits("return").single().section)
+        assertEquals("Safety \u203a Return home", pilotSearchHits("return").single().section)
         assertTrue(pilotSearchHits("  ").isEmpty())
     }
 
     @Test
     fun `offline, safety still lists its sections in DJI's order so the pilot knows they exist`() {
-        assertEquals(listOf("Return to home", "Flight protection", "If something goes wrong"), pilotSections(pilotSettings(SettingsGroup.Safety)).keys.toList())
+        assertEquals(listOf("Return home", "Flight protection", "If something goes wrong"), pilotSections(pilotSettings(SettingsGroup.Safety)).keys.toList())
     }
 }

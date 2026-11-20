@@ -20,6 +20,7 @@ import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.optText
+import one.aircast.map.sentenceCase
 import org.json.JSONObject
 
 private const val APP_SETTINGS = "settings.appSettings"
@@ -27,6 +28,11 @@ private val OFFLINE_CLASSES = listOf("offlineEditingFirmwareClass" to "Firmware"
 
 internal fun choosesPlanVehicle(connected: Boolean, plan: JSONObject?): Boolean =
     !connected && plan?.optBoolean("hasMissionItems") != true
+
+internal fun plannedVehicleRows(plan: JSONObject?): List<Pair<String, String>> =
+    plan?.optJSONObject("planningFor")?.let { vehicle ->
+        listOf("Firmware" to vehicle.optText("firmware"), "Vehicle" to sentenceCase(vehicle.optText("type"))).filter { it.second.isNotBlank() }
+    }.orEmpty()
 
 @Composable
 internal fun PlanVehicleRows() {
@@ -41,12 +47,10 @@ internal fun PlanVehicleRows() {
     }
     when (choosing) {
         true -> facts.forEach { (label, fact) -> FactRow(fact, title = label) { reloads++ } }
-        false -> plan?.optJSONObject("planningFor")?.let { vehicle ->
-            listOf("Firmware" to vehicle.optText("firmware"), "Vehicle" to vehicle.optText("type")).filter { it.second.isNotBlank() }.forEach { (label, value) ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
-                    Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Text(value, style = MaterialTheme.typography.bodyMedium)
-                }
+        false -> plannedVehicleRows(plan).forEach { (label, value) ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(value, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
