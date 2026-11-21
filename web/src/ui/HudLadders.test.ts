@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compactHud } from './Osd';
-import { PITCH_SCALE, THROTTLE_SCALE, ladderHeight, ladderLabel, ladderMarks, ladderReach, ladderTick, ladderY } from './HudLadders';
+import { PITCH_SCALE, THROTTLE_SCALE, horizonDrop, horizonReach, ladderHeight, ladderLabel, ladderMarks, ladderReach, ladderTick, ladderY } from './HudLadders';
 
 describe('HudLaddersTest', () => {
   it('pitch runs from 30 above to 30 below in fives, labelled every ten without a sign, level marked longest', () => {
@@ -28,6 +28,16 @@ describe('HudLaddersTest', () => {
     expect(ladderY(75, PITCH_SCALE, 200)).toBe(ladderY(30, PITCH_SCALE, 200));
     expect(ladderY(-75, PITCH_SCALE, 200)).toBe(ladderY(-30, PITCH_SCALE, 200));
     expect(ladderY(140, THROTTLE_SCALE, 200)).toBe(ladderY(100, THROTTLE_SCALE, 200));
+  });
+
+  it('the horizon line drops as far as the pitch pointer rises, stops at the end of the scale, and never reaches a ladder', () => {
+    expect(horizonDrop(0, 200)).toBe(0);
+    expect(horizonDrop(15, 200)).toBe(100 - ladderY(15, PITCH_SCALE, 200));
+    expect(horizonDrop(-15, 200)).toBe(-horizonDrop(15, 200));
+    expect(horizonDrop(80, 200)).toBe(horizonDrop(30, 200));
+    expect(horizonReach(304)).toBe(122);
+    expect(horizonReach(100)).toBe(68);
+    expect(horizonReach(44)).toBeLessThan(32);
   });
 
   it('the readouts round to whole numbers and never show minus zero', () => {

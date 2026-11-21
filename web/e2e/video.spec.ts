@@ -375,9 +375,11 @@ test('a phone held sideways shows the sight as bare pitch and throttle readouts,
   await expect(sight.getByRole('img', { name: /^Pitch -?\d+°$/ })).toBeVisible();
   await expect(sight.getByRole('img', { name: /^Throttle \d+%$/ })).toBeVisible();
   await expect(sight.locator('text'), 'no ladder scales on a short screen').toHaveCount(0);
+  await expect(sight.getByRole('img', { name: /^Roll -?\d+°$/ }), 'no horizon line on a short screen').toHaveCount(0);
   await vehicle.setViewportSize({ width: 1280, height: 720 });
   await expect(sight.locator('text').first()).toBeVisible();
   await expect(sight.getByRole('img', { name: /^Pitch -?\d+°$/ })).toBeVisible();
+  await expect(sight.getByRole('img', { name: /^Roll -?\d+°$/ }), 'the horizon line through the crosshair').toBeVisible();
 });
 
 test('a double tap leaves only the picture and its flight readings, and another brings the controls back', async ({ vehicle }) => {

@@ -21,6 +21,10 @@ const CROSSHAIR = 44;
 const LADDER_REACH = 0.38;
 const LADDER_EDGE_ROOM = 270;
 const COMPACT_GAP = 10;
+const HORIZON_GAP = 10;
+const HORIZON_BAR = 90;
+const HORIZON_ROOM = 6;
+const HORIZON_STRIP = 12;
 
 export type LadderScale = {
   readonly top: number;
@@ -63,6 +67,10 @@ export const ladderReach = (shellWidth: number, shellHeight: number): number => 
 
 export const ladderY = (value: number, scale: LadderScale, height: number): number =>
   LADDER_PAD + ((scale.top - Math.min(scale.top, Math.max(scale.bottom, value))) / (scale.top - scale.bottom)) * (height - 2 * LADDER_PAD);
+
+export const horizonDrop = (pitch: number, height: number): number => ladderY(0, PITCH_SCALE, height) - ladderY(pitch, PITCH_SCALE, height);
+
+export const horizonReach = (reach: number): number => Math.min(CROSSHAIR / 2 + HORIZON_GAP + HORIZON_BAR, reach - LADDER_WIDTH / 2 - HORIZON_ROOM);
 
 const labelled = (value: number, scale: LadderScale): boolean => (value - scale.bottom) % scale.labelEvery === 0;
 
@@ -130,6 +138,28 @@ export const Crosshair = () => {
   );
 };
 
+const HorizonLine = ({ roll, pitch, height, reach }: { roll: number; pitch: number; height: number; reach: number }) => {
+  const inner = CROSSHAIR / 2 + HORIZON_GAP;
+  return (
+    <svg
+      width={reach * 2}
+      height={HORIZON_STRIP}
+      viewBox={`${-reach} ${-HORIZON_STRIP / 2} ${reach * 2} ${HORIZON_STRIP}`}
+      role="img"
+      aria-label={`Roll ${whole(roll)}°`}
+      className={`block overflow-visible ${osdShadow()}`}
+    >
+      <path
+        d={`M ${-reach} 0 H ${-inner} M ${inner} 0 H ${reach}`}
+        transform={`rotate(${-roll}) translate(0 ${horizonDrop(pitch, height)})`}
+        strokeWidth={2}
+        strokeLinecap="round"
+        style={{ stroke: aircast('outdoorForeground') }}
+      />
+    </svg>
+  );
+};
+
 const CompactSight = ({ pitch, throttle }: { pitch: number; throttle: number | null }) => (
   <div role="group" aria-label="Sight" className="pointer-events-none absolute inset-0">
     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -162,6 +192,7 @@ export const HudLadders = ({ shellWidth, shellHeight }: { shellWidth: number; sh
   if (compact) return <CompactSight pitch={reading.pitch} throttle={throttle} />;
   const height = ladderHeight(shellHeight);
   const reach = `calc(50% - ${ladderReach(shellWidth, shellHeight)}px)`;
+  const horizon = horizonReach(ladderReach(shellWidth, shellHeight));
   return (
     <div role="group" aria-label="Sight" className="pointer-events-none absolute inset-0">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -169,6 +200,13 @@ export const HudLadders = ({ shellWidth, shellHeight }: { shellWidth: number; sh
           <Crosshair />
         </LayoutWidget>
       </div>
+      {horizon > CROSSHAIR / 2 + HORIZON_GAP ? (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+          <LayoutWidget widgetKey="horizonLine" movable={false}>
+            <HorizonLine roll={reading.roll} pitch={reading.pitch} height={height} reach={horizon} />
+          </LayoutWidget>
+        </div>
+      ) : null}
       <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: reach }}>
         <LayoutWidget widgetKey="pitchLadder">
           <Ladder side="start" scale={PITCH_SCALE} value={reading.pitch} height={height} icon="ic_height" label="Pitch" />
