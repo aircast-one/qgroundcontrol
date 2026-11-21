@@ -1,17 +1,19 @@
 import { CSPProvider } from '@base-ui/react';
 import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
 import { DebugRelay } from '@/app/DebugRelay';
 import { DeviceLink } from '@/app/DeviceLink';
 import { HostPlatform } from '@/app/HostPlatform';
 import { Qgc } from '@/bridge/Qgc';
 import { MainActivity } from '@/app/MainActivity';
+import { recoveringRoot } from '@/app/RecoveringRoot';
+import { AppCommands } from '@/bridge/BridgeCommands';
 import { coreLoaded, coreReady } from '@/core/client';
 import { useValue } from '@/kotlin/State';
 import { CircularProgressIndicator, Text } from '@/m3';
 import '@/theme/theme.css';
 
 const LOADING = 'Loading Aircast';
+const UI_LOG = 'Web.UI';
 
 const keepsBrowserMenu = (target: EventTarget | null): boolean => target instanceof Element && target.closest('input, textarea, [contenteditable]') !== null;
 window.addEventListener('contextmenu', (event) => {
@@ -28,8 +30,8 @@ const CoreLoading = () => {
   );
 };
 
-const root = createRoot(document.getElementById('root')!);
-root.render(<StrictMode><CoreLoading /></StrictMode>);
+const show = recoveringRoot(document.getElementById('root')!, (line) => void AppCommands.recordLog(UI_LOG, line).catch(() => false));
+show(<StrictMode><CoreLoading /></StrictMode>);
 const handoff = await DeviceLink.handoff();
 if ('to' in handoff) {
   location.replace(handoff.to);
@@ -39,7 +41,7 @@ if ('to' in handoff) {
   if (import.meta.env.DEV) DebugRelay.start(window.location.search);
   await coreReady();
   DeviceLink.recordStay(handoff);
-  root.render(
+  show(
     <StrictMode>
       <CSPProvider disableStyleElements>
         <MainActivity />
