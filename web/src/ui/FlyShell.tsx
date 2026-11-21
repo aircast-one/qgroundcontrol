@@ -48,7 +48,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText, useMap3dDrawn } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutEditingNotice, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutEditingNotice, LayoutWidget, LocalLayoutBounds, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -79,6 +79,7 @@ const FLY_VIEW_KEY = 'view';
 export const STATUS_ROW_HEIGHT = 32;
 const PAYLOAD_STRIP_CLEARANCE = 64;
 const ACTION_RAIL_CLEARANCE = 72;
+const READINGS_FLOOR = 96;
 const STOP_CLEARANCE = 56;
 const RAIL_CLEARANCE = STOP_CLEARANCE + AircastSpace.s3 * 2;
 const TOP_SCRIM_HEIGHT = 96;
@@ -457,6 +458,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + thumbLead, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
   const holdThrough = useHoldThroughToEditLayout();
+  const readingsArea = useRef<HTMLDivElement | null>(null);
   const pipJiggle = useJiggleAngle(mapIsPip ? MINIMAP_KEY : 'pip', editing && thumbShown && !fullScreen, thumb);
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
   const frame = useRememberVideoFrame(videoTarget, false);
@@ -489,15 +491,18 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const sight = (
     <>
       <HudLadders shellWidth={boxWidth} shellHeight={boxHeight} />
-      <HudReadings
-        startInset={ACTION_RAIL_CLEARANCE + AircastSpace.s3}
-        startBelow={fullScreen ? 0 : overlaysBottom + AircastSpace.s2}
-        style={{
-          zIndex: layer(2),
-          top: `calc(env(safe-area-inset-top, 0px) + ${STATUS_ROW_HEIGHT + AircastSpace.s6}px)`,
-          bottom: `calc(50% + ${RAIL_SHUTTER_ROOM / 2 + aboveShutter + AircastSpace.s4}px)`,
-        }}
-      />
+      <div ref={readingsArea} className="pointer-events-none absolute top-0" style={{ insetInlineStart: ACTION_RAIL_CLEARANCE, insetInlineEnd: 0, bottom: READINGS_FLOOR }} />
+      <LocalLayoutBounds.Provider value={readingsArea}>
+        <HudReadings
+          startInset={ACTION_RAIL_CLEARANCE + AircastSpace.s3}
+          startBelow={fullScreen ? 0 : overlaysBottom + AircastSpace.s2}
+          style={{
+            zIndex: layer(2),
+            top: `calc(env(safe-area-inset-top, 0px) + ${STATUS_ROW_HEIGHT + AircastSpace.s6}px)`,
+            bottom: `calc(50% + ${RAIL_SHUTTER_ROOM / 2 + aboveShutter + AircastSpace.s4}px)`,
+          }}
+        />
+      </LocalLayoutBounds.Provider>
     </>
   );
   const deckLayer = (

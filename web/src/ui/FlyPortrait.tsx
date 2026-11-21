@@ -44,7 +44,7 @@ import {
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutEditingNotice, LayoutWidget, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutEditingNotice, LayoutWidget, LocalLayoutBounds, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
@@ -137,6 +137,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const deciding = useValue(flyScreen.guidedPanels) > 0;
   const editing = useValue(flyScreen.layout.editing);
   const holdThrough = useHoldThroughToEditLayout();
+  const picture = useRef<HTMLDivElement | null>(null);
   const room = pipRoom(thumbnail, tucked);
   const roomAt = (at: PipCorner): number => (corner === at ? room : 0);
   const buttonsTop = AircastSpace.s3 + roomAt(PipCorner.TopEnd);
@@ -245,32 +246,34 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
         {fullScreen ? null : (
           <>
             <AnimatedVisibility visible={split} className={`absolute inset-x-0 top-0 ${PASS_THROUGH}`}>
-              <div className="flex w-full flex-col" style={{ paddingTop: videoTop, height: videoTop + videoHeight }}>
-                <LocalFlyOsd.Provider value>
-                  <div className="flex items-center justify-between gap-2 p-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <LayoutWidget widgetKey="cameraSwitch" movable={false}>
-                        <CameraSwitch splitRoom />
-                      </LayoutWidget>
-                      {keyRow}
+              <div ref={picture} className="flex w-full flex-col" style={{ paddingTop: videoTop, height: videoTop + videoHeight }}>
+                <LocalLayoutBounds.Provider value={picture}>
+                  <LocalFlyOsd.Provider value>
+                    <div className="flex items-center justify-between gap-2 p-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <LayoutWidget widgetKey="cameraSwitchOnPicture">
+                          <CameraSwitch splitRoom />
+                        </LayoutWidget>
+                        {keyRow}
+                      </div>
+                      {split ? rail(true) : null}
                     </div>
-                    {split ? rail(true) : null}
+                  </LocalFlyOsd.Provider>
+                  <div className="relative min-h-0 w-full flex-1">
+                    {reading?.decoding !== true ? (
+                      <div className={`absolute inset-0 ${osdShadow()}`}>
+                        <FlyNoVideoMessage />
+                      </div>
+                    ) : null}
                   </div>
-                </LocalFlyOsd.Provider>
-                <div className="relative min-h-0 w-full flex-1">
-                  {reading?.decoding !== true ? (
-                    <div className={`absolute inset-0 ${osdShadow()}`}>
-                      <FlyNoVideoMessage />
-                    </div>
-                  ) : null}
-                </div>
-                <TelemetryOsd
-                  onSmaller={() => {
-                    flyScreen.videoTucked.value = false;
-                    onView(FlyView.Map);
-                  }}
-                  onFullScreen={onFullScreen}
-                />
+                  <TelemetryOsd
+                    onSmaller={() => {
+                      flyScreen.videoTucked.value = false;
+                      onView(FlyView.Map);
+                    }}
+                    onFullScreen={onFullScreen}
+                  />
+                </LocalLayoutBounds.Provider>
               </div>
             </AnimatedVisibility>
             <div className={`absolute inset-0 flex flex-col ${PASS_THROUGH}`}>
@@ -453,8 +456,8 @@ const TelemetryOsd = ({ onSmaller, onFullScreen }: { onSmaller: () => void; onFu
         <OsdCompassDial size={PORTRAIT_OSD_DIAL} />
       </LayoutWidget>
       <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="min-w-0">
-        <div className={`flex min-w-0 items-center overflow-hidden ${osdShadow()}`}>
-          <LocalFlyOsd.Provider value>{hasVehicle ? <TelemetryRow valuesShown chooser={false} compact stacked /> : <TelemetryPlaceholder />}</LocalFlyOsd.Provider>
+        <div className={`flex min-w-0 items-center ${osdShadow()}`}>
+          <LocalFlyOsd.Provider value>{hasVehicle ? <TelemetryRow valuesShown chooser={false} compact stacked placeable /> : <TelemetryPlaceholder />}</LocalFlyOsd.Provider>
         </div>
       </LayoutWidget>
       <A11yActions

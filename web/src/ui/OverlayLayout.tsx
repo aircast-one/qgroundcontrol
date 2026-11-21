@@ -84,9 +84,16 @@ export class OverlayLayoutState {
     this.indicatorOrder.value = keys;
   }
 
-  nudge(key: string, dx: number, dy: number): void {
-    const [x, y] = this.offsets.value.get(key) ?? [0, 0];
+  nudge(key: string, dx: number, dy: number, from: Offset = NO_OFFSET): void {
+    const [x, y] = this.offsets.value.get(key) ?? from;
     this.offsets.value = new Map(this.offsets.value).set(key, [x + dx, y + dy]);
+  }
+
+  forget(keys: readonly string[]): void {
+    const placed = keys.flatMap((key) => [key, orientedKey(key, true)]);
+    placed.flatMap((key) => [OFFSET_PREFIX + key, HIDDEN_PREFIX + key]).forEach((name) => this.prefs.remove(name));
+    this.offsets.value = new Map([...this.offsets.value].filter(([key]) => !placed.includes(key)));
+    this.hidden.value = new Set([...this.hidden.value].filter((key) => !keys.includes(key)));
   }
 
   saveOffset(key: string): void {
@@ -174,6 +181,16 @@ export const droppedOrder = (keys: readonly string[], centres: ReadonlyMap<strin
   );
 };
 
+export const READING_BAND_PX = 120;
+
+export const rowsCovered = ([x, y]: Offset, pitch: number, height: number): number[] =>
+  Math.abs(x) >= READING_BAND_PX ? [] : Array.from({ length: Math.max(0, Math.ceil((height - y) / pitch) + 1) }, (_, row) => row).filter((row) => y - height < -row * pitch && y > -(row + 1) * pitch);
+
+export const homeRows = (unmoved: readonly string[], taken: ReadonlySet<number>): ReadonlyMap<string, number> => {
+  const free = Array.from({ length: unmoved.length + taken.size }, (_, row) => row).filter((row) => !taken.has(row));
+  return new Map(unmoved.toReversed().map((key, at) => [key, free[at] ?? at]));
+};
+
 export const MINIMAP_KEY = 'minimap';
 
 export const MINIMAP_NAME = 'Mini map';
@@ -234,11 +251,26 @@ const useLayoutKey = (key: string): string => orientedKey(key, !useFlyIsPortrait
 
 const NO_OFFSET: Offset = [0, 0];
 
-const useKeptOnScreen = (key: string): readonly [Offset, (node: HTMLElement | null) => () => void, RefObject<HTMLElement | null>] => {
+export const LocalLayoutBounds = createContext<RefObject<HTMLElement | null> | null>(null);
+
+export const intersected = (a: Bounds, b: Bounds): Bounds => ({ left: Math.max(a.left, b.left), top: Math.max(a.top, b.top), right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom) });
+
+const useLayoutArea = (): (() => Bounds) => {
   const flyScreen = useContext(LocalFlyScreenState);
+  const bounds = useContext(LocalLayoutBounds);
+  return () => {
+    const shown = shownArea(flyScreen.widgetInsets.value);
+    const box = bounds?.current?.getBoundingClientRect();
+    return box === undefined ? shown : intersected(shown, box);
+  };
+};
+
+const useKeptOnScreen = (key: string, home: Offset): readonly [Offset, (node: HTMLElement | null) => () => void, RefObject<HTMLElement | null>] => {
+  const flyScreen = useContext(LocalFlyScreenState);
+  const area = useLayoutArea();
   const [correction, setCorrection] = useState<Offset>(NO_OFFSET);
   const [kept, frame] = useRootBounds((bounds) => {
-    const next = shownCorrection(bounds, shownArea(flyScreen.widgetInsets.value), flyScreen.layout.offsets.value.get(key) ?? NO_OFFSET, correction);
+    const next = shownCorrection(bounds, area(), flyScreen.layout.offsets.value.get(key) ?? home, correction);
     setCorrection((was) => (was[0] === next[0] && was[1] === next[1] ? was : next));
   });
   return [correction, kept, frame];
@@ -342,9 +374,33 @@ export const liftedBounds = (bounds: Bounds): Bounds => {
   return { left: bounds.left - growX, top: bounds.top - growY, right: bounds.right + growX, bottom: bounds.bottom + growY };
 };
 
-export const LayoutDragArea = ({ widgetKey, correction, frame, onLift, className }: { widgetKey: string; correction: Offset; frame: RefObject<HTMLElement | null>; onLift: (lifted: boolean) => void; className?: string }) => {
-  const flyScreen = useContext(LocalFlyScreenState);
-  const layout = flyScreen.layout;
+const ARROW_STEPS: Readonly<Record<string, Offset>> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+export const ARROW_STEP_PX = 8;
+
+export const arrowStep = (key: string, far: boolean): Offset | null => {
+  const step = ARROW_STEPS[key];
+  const scale = far ? ARROW_STEP_PX * 4 : ARROW_STEP_PX;
+  return step === undefined ? null : [step[0] * scale, step[1] * scale];
+};
+
+export const LayoutDragArea = ({
+  widgetKey,
+  home = NO_OFFSET,
+  correction,
+  frame,
+  onLift,
+  className,
+}: {
+  widgetKey: string;
+  home?: Offset;
+  correction: Offset;
+  frame: RefObject<HTMLElement | null>;
+  onLift: (lifted: boolean) => void;
+  className?: string;
+}) => {
+  const layout = useContext(LocalFlyScreenState).layout;
+  const area = useLayoutArea();
   const placedKey = useLayoutKey(widgetKey);
   const drag = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
   const end = (event: PointerEvent<HTMLDivElement>) => {
@@ -357,7 +413,20 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, onLift, className
   return (
     <div
       data-gesture
-      className={`touch-none select-none cursor-grab active:cursor-grabbing ${className ?? ''}`}
+      role="button"
+      tabIndex={0}
+      aria-label="Move"
+      aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
+      className={`touch-none select-none cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-primary active:cursor-grabbing ${className ?? ''}`}
+      onKeyDown={(event) => {
+        const step = arrowStep(event.key, event.shiftKey);
+        const placed = frame.current;
+        if (step === null || placed === null) return;
+        event.preventDefault();
+        const [dx, dy] = clampedInto(placed.getBoundingClientRect(), area(), step[0], step[1]);
+        layout.nudge(placedKey, dx + correction[0], dy + correction[1], home);
+        layout.saveOffset(placedKey);
+      }}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, dragging: false };
@@ -372,10 +441,10 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, onLift, className
         const distance = Math.hypot(rawX, rawY);
         if (!held.dragging && distance <= TOUCH_SLOP) return;
         const past = held.dragging ? 1 : (distance - TOUCH_SLOP) / distance;
-        const [dx, dy] = clampedInto(liftedBounds(placed.getBoundingClientRect()), shownArea(flyScreen.widgetInsets.value), rawX * past, rawY * past);
+        const [dx, dy] = clampedInto(liftedBounds(placed.getBoundingClientRect()), area(), rawX * past, rawY * past);
         const [foldX, foldY] = held.dragging ? NO_OFFSET : correction;
         drag.current = { id: held.id, x: event.clientX, y: event.clientY, dragging: true };
-        layout.nudge(placedKey, dx + foldX, dy + foldY);
+        layout.nudge(placedKey, dx + foldX, dy + foldY, home);
       }}
       onPointerUp={end}
       onPointerCancel={end}
@@ -391,6 +460,8 @@ const BADGE_RISE = (BADGE_SIZE * 3) / 4;
 
 const BADGE_PLACE: CSSProperties = { width: BADGE_SIZE, height: BADGE_SIZE, top: -BADGE_RISE, insetInlineStart: -BADGE_SIZE / 2 };
 
+const BADGE_AT_END: CSSProperties = { width: BADGE_SIZE, height: BADGE_SIZE, top: -BADGE_RISE, insetInlineEnd: -BADGE_SIZE / 2 };
+
 export const badgeRoom = (editing: boolean, leading: boolean): CSSProperties =>
   editing ? { paddingTop: BADGE_RISE, marginTop: -BADGE_RISE, ...(leading ? { paddingInlineStart: BADGE_SIZE / 2, marginInlineStart: -BADGE_SIZE / 2 } : {}) } : {};
 
@@ -405,7 +476,7 @@ export const LayoutGroup = ({ widgetKey, className, children }: { widgetKey: str
   const avoided = useContext(LocalAvoidedByVideoMessage);
   const avoidedRef = useAvoidedByVideoMessage(widgetKey);
   const placedKey = useLayoutKey(widgetKey);
-  const [correction, kept, frame] = useKeptOnScreen(placedKey);
+  const [correction, kept, frame] = useKeptOnScreen(placedKey, NO_OFFSET);
   const hold = useHoldToEditLayout();
   const [lifted, setLifted] = useState(false);
   const [x, y] = offsets.get(placedKey) ?? NO_OFFSET;
@@ -424,6 +495,8 @@ export const badgeLabel = (hidden: boolean, name: string | undefined): string =>
 
 export const LayoutWidget = ({
   widgetKey,
+  home = NO_OFFSET,
+  badgeAtEnd = false,
   movable = true,
   hideable = true,
   live = false,
@@ -433,6 +506,8 @@ export const LayoutWidget = ({
   children,
 }: {
   widgetKey: string;
+  home?: Offset;
+  badgeAtEnd?: boolean;
   name?: string;
   movable?: boolean;
   hideable?: boolean;
@@ -449,7 +524,7 @@ export const LayoutWidget = ({
   const avoidedRef = useAvoidedByVideoMessage(widgetKey);
   const osd = useContext(LocalFlyOsd);
   const placedKey = useLayoutKey(widgetKey);
-  const [correction, kept, frame] = useKeptOnScreen(placedKey);
+  const [correction, kept, frame] = useKeptOnScreen(placedKey, home);
   const hold = useHoldToEditLayout();
   const group = useContext(LocalLayoutGroup);
   const parent = useContext(LocalLayoutParent);
@@ -470,7 +545,7 @@ export const LayoutWidget = ({
   const decorated = editing && size.width > 0 && size.height > 0 && nested === 0;
   const jiggle = useJiggleAngle(widgetKey, decorated && !lifted && !carriedAloft, size);
   if (hidden && !editing) return null;
-  const [x, y] = movable ? (offsets.get(placedKey) ?? NO_OFFSET) : NO_OFFSET;
+  const [x, y] = movable ? (offsets.get(placedKey) ?? home) : NO_OFFSET;
   const [cx, cy] = movable ? correction : NO_OFFSET;
   const carried = dragsWith !== undefined && group !== null ? { key: dragsWith, ...group } : null;
   return (
@@ -485,7 +560,7 @@ export const LayoutWidget = ({
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
         {decorated && (movable || carried !== null) ? (
-          <LayoutDragArea widgetKey={carried?.key ?? widgetKey} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} onLift={carried?.lift ?? setLifted} className="absolute inset-0" />
+          <LayoutDragArea widgetKey={carried?.key ?? widgetKey} home={carried === null ? home : NO_OFFSET} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} onLift={carried?.lift ?? setLifted} className="absolute inset-0" />
         ) : decorated && !live ? (
           <div data-gesture className="absolute inset-0" />
         ) : null}
@@ -493,7 +568,7 @@ export const LayoutWidget = ({
           <Surface
             onClick={() => layout.setHidden(widgetKey, !hidden)}
             className={name === undefined ? BADGE : NAMED_BADGE}
-            style={name === undefined ? BADGE_PLACE : { ...BADGE_PLACE, width: 'auto' }}
+            style={name !== undefined ? { ...BADGE_PLACE, width: 'auto' } : badgeAtEnd ? BADGE_AT_END : BADGE_PLACE}
             shape="full"
             color={hidden ? md('primary') : md('inverseSurface')}
             contentColor={hidden ? md('onPrimary') : md('inverseOnSurface')}

@@ -21,7 +21,7 @@ import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeConfirmText, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
 import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, FlyMenuSheet, MenuTile, NO_SIGNAL_CODE, RAIL_STOP_GAP, RETURN_HOME, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel, useFlyDestinations } from './FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET, OpenOnRequest, STATUS_ALL_SHEET, useVehicleScoped } from './FlyScreenState';
-import { AnimatedVisibility, PASS_THROUGH, useElementSize } from './FlyShell';
+import { AnimatedVisibility, PASS_THROUGH, useElementSize, useFlyIsPortrait } from './FlyShell';
 import { FLY_STATE, type Readiness, STALE_OPACITY, flyState, useGuidedReadiness, useHasVehicle, useStaleNotice, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
 import { AUTO_PURSUIT, type AutoPursuit, GUIDED_ACTIONS, type GuidedOffer, type PursuitAction, type Payload, SINGLE_GRIPPER, autoPursuit, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
@@ -56,7 +56,7 @@ import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapCl
 import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
-import { LayoutWidget } from './OverlayLayout';
+import { LayoutWidget, homeRows, orientedKey, rowsCovered } from './OverlayLayout';
 import { LocalFlyOsd, osdShadow } from './Osd';
 import { ParameterForm } from './ParameterForm';
 import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
@@ -128,6 +128,20 @@ export const displayFor = (displays: ReadonlyMap<string, ValueDisplay>, instrume
   displays.get(instrument.id) ?? ValueDisplay({ icon: instrument.defaultIcon });
 
 export type HudSide = 'start' | 'end';
+
+export const readingKey = (id: string): string => `reading:${id}`;
+
+export const instrumentKey = (instrument: Instrument): string => readingKey(instrument.id.trim() === '' ? instrument.label : instrument.id);
+
+export const hudSide = (instrument: Instrument): HudSide => (osdIsSpeed(instrument.label) ? 'end' : 'start');
+
+export const HUD_READING_HEIGHT = 24;
+
+const HUD_LABEL_HEIGHT = 20;
+
+export const HUD_READING_GAP = 2;
+
+export const hudReadingHeight = (scale: number): number => Math.max(HUD_READING_HEIGHT * scale, HUD_LABEL_HEIGHT);
 
 export const hudIcon = (display: ValueDisplay, instrument: Instrument): string | null =>
   displayIcon(display, instrument.raw) ?? (display.text.trim() === '' && instrument.defaultIcon.trim() !== '' ? instrument.defaultIcon : null);
@@ -222,10 +236,15 @@ const useTelemetryReadings = () => {
   const valueSize = useValue(flyScreen.layout.valueSize);
   const [replacing, setReplacing] = useState<readonly [number, string] | null>(null);
 
-  const change = (next: readonly string[]) => {
+  const keep = (next: readonly string[]) => {
+    flyScreen.layout.forget(chosen.filter((it) => !next.includes(it)).map((it) => readingKey(selectionId(it))));
     setChosen(next);
     writeChosen(vehicleClass, next);
     flyScreen.instrumentEdits.value += 1;
+  };
+
+  const change = (next: readonly string[]) => {
+    keep(next);
     setStyling(null);
   };
 
@@ -284,12 +303,7 @@ const useTelemetryReadings = () => {
       {choosingReadings ? (
         <InstrumentSheet
           chosen={chosen}
-          onToggle={(name) => {
-            const next = withInstrument(chosen, name);
-            setChosen(next);
-            writeChosen(vehicleClass, next);
-            flyScreen.instrumentEdits.value += 1;
-          }}
+          onToggle={(name) => keep(withInstrument(chosen, name))}
           onDismiss={() => {
             flyScreen.choosingReadings.value = false;
           }}
@@ -308,6 +322,7 @@ export const TelemetryRow = ({
   chooser = true,
   compact = false,
   stacked = false,
+  placeable = false,
 }: {
   className?: string;
   columns?: number | null;
@@ -315,13 +330,14 @@ export const TelemetryRow = ({
   chooser?: boolean;
   compact?: boolean;
   stacked?: boolean;
+  placeable?: boolean;
 }) => {
   const { flyScreen, shown, displays, silent, stale, valueSize, sheets, setStyling } = useTelemetryReadings();
   if (shown.length === 0) return sheets;
 
   if (compact) {
-    const reading = (instrument: Instrument, typography: Typography) => (
-      <div key={`${instrument.id}|${instrument.label}`} className="flex items-baseline gap-1" style={{ opacity: silent ? STALE_OPACITY : 1 }}>
+    const shownReading = (instrument: Instrument, typography: Typography) => (
+      <div className="flex items-baseline gap-1" style={{ opacity: silent ? STALE_OPACITY : 1 }}>
         <Text typography="labelLarge" color={withAlpha(aircast('outdoorForeground'), OSD_LABEL_ALPHA)} maxLines={1}>
           {osdLabel(instrument.label)}
         </Text>
@@ -330,6 +346,14 @@ export const TelemetryRow = ({
         </Text>
       </div>
     );
+    const reading = (instrument: Instrument, typography: Typography) =>
+      placeable ? (
+        <LayoutWidget key={instrumentKey(instrument)} widgetKey={instrumentKey(instrument)}>
+          {shownReading(instrument, typography)}
+        </LayoutWidget>
+      ) : (
+        <Fragment key={instrumentKey(instrument)}>{shownReading(instrument, typography)}</Fragment>
+      );
     const speeds = shown.filter((it) => osdIsSpeed(it.label));
     const places = shown.filter((it) => !osdIsSpeed(it.label));
     const staleNote = silent ? (
@@ -407,7 +431,7 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
   const icon = hudIcon(display, instrument);
   const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
   return (
-    <div className="flex items-center gap-1.5" style={{ opacity: silent ? STALE_OPACITY : 1 }}>
+    <div className="flex items-center gap-1.5" style={{ height: hudReadingHeight(scale), opacity: silent ? STALE_OPACITY : 1 }}>
       {icon !== null ? (
         <>
           <span aria-hidden className="contents">
@@ -430,34 +454,45 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
 export const hudStartTop = (top: CSSProperties['top'], below: number): CSSProperties['top'] => (below > 0 ? `max(${String(top)}, ${below}px)` : top);
 
 export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSProperties; startInset: number; startBelow?: number }) => {
-  const { shown, displays, silent, stale, valueSize, sheets } = useTelemetryReadings();
-  const starts = shown.filter((it) => !osdIsSpeed(it.label));
-  const noteSide: HudSide = starts.length > 0 ? 'start' : 'end';
-  const column = (side: HudSide, readings: readonly Instrument[]) =>
-    readings.length === 0 ? null : (
+  const { flyScreen, shown, displays, silent, stale, valueSize, sheets } = useTelemetryReadings();
+  const offsets = useValue(flyScreen.layout.offsets);
+  const landscape = !useFlyIsPortrait();
+  const height = hudReadingHeight(valueSize.scale);
+  const pitch = height + HUD_READING_GAP;
+  const noteSide: HudSide = shown.some((it) => hudSide(it) === 'start') ? 'start' : 'end';
+  const column = (side: HudSide) => {
+    const readings = shown.filter((it) => hudSide(it) === side);
+    const placed = (it: Instrument) => offsets.get(orientedKey(instrumentKey(it), landscape));
+    const taken = new Set(readings.map(placed).flatMap((at) => (at === undefined ? [] : rowsCovered(at, pitch, height))));
+    const rows = homeRows(readings.filter((it) => placed(it) === undefined).map(instrumentKey), taken);
+    const stacked = Math.max(0, ...[...rows.values()].map((row) => row + 1));
+    return readings.length === 0 ? null : (
       <div
-        className={`absolute ${side === 'start' ? 'start-0' : 'end-0'} flex flex-col justify-end-safe ${PASS_THROUGH}`}
+        className={`absolute ${side === 'start' ? 'start-0 items-start' : 'end-0 items-end'} flex flex-col justify-end-safe gap-0.5 ${PASS_THROUGH}`}
         style={{ ...style, ...(side === 'start' ? { paddingInlineStart: startInset, top: hudStartTop(style.top, startBelow) } : { paddingInlineEnd: AircastSpace.s3 }) }}
       >
-        <LayoutWidget widgetKey={side === 'start' ? 'readingsStart' : 'readingsEnd'} hideable={false}>
-          <div className={`flex flex-col gap-0.5 ${side === 'start' ? 'items-start' : 'items-end'}`}>
-            {silent && side === noteSide ? (
-              <Text typography="labelMedium" color={md('error')} className={`max-w-[220px] ${osdShadow()}`}>
-                {stale}
-              </Text>
-            ) : null}
-            {readings.map((it) => (
-              <HudReading key={`${it.id}|${it.label}`} instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} />
-            ))}
-          </div>
-        </LayoutWidget>
+        {silent && side === noteSide ? (
+          <Text typography="labelMedium" color={md('error')} className={`max-w-[220px] ${osdShadow()}`}>
+            {stale}
+          </Text>
+        ) : null}
+        <div className="relative shrink-0" style={{ height: Math.max(0, stacked * pitch - HUD_READING_GAP) }}>
+          {readings.map((it) => (
+            <div key={instrumentKey(it)} className={`absolute bottom-0 w-max ${side === 'start' ? 'start-0' : 'end-0'}`}>
+              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch]} badgeAtEnd={(rows.get(instrumentKey(it)) ?? 0) % 2 === 1}>
+                <HudReading instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} />
+              </LayoutWidget>
+            </div>
+          ))}
+        </div>
       </div>
     );
+  };
   return (
     <LocalFlyOsd.Provider value>
       {sheets}
-      {column('start', starts)}
-      {column('end', shown.filter((it) => osdIsSpeed(it.label)))}
+      {column('start')}
+      {column('end')}
     </LocalFlyOsd.Provider>
   );
 };

@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { chooseCameraJoystick, connectMock, expect, flightMode, slideAcross, takeOff, test } from './fixtures';
+import { chooseCameraJoystick, connectMock, expect, flightMode, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 const LONG_PRESS_MS = 400;
 const CAMERA_PANEL_OFFSET = 'aircast.fly-overlay-layout.OverlayRigOffset-cameraControl@landscape';
@@ -595,4 +595,108 @@ test('the gimbal mode switch and the tilt readout on the camera rail are items o
   await expect(editBar(app)).toBeHidden();
   await expect(tilt).toBeHidden();
   await expect(mode).toBeVisible();
+});
+
+const dragBy = async (page: Page, target: Locator, dx: number, dy: number) => {
+  const [x, y] = await centre(target);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + dx, y + dy, { steps: 12 });
+  await page.mouse.up();
+};
+
+const finishEditing = async (page: Page) => {
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(page)).toBeHidden();
+};
+
+const showBadgeOf = (target: Locator) => target.locator('xpath=ancestor::*[@data-layout-item][1]/..').getByRole('button', { name: 'Show', exact: true });
+
+const boxesOf = (targets: readonly Locator[]) => Promise.all(targets.map(async (it) => (await it.boundingBox())!));
+
+const overlaps = (boxes: readonly { x: number; y: number; width: number; height: number }[]) =>
+  boxes.flatMap((a, i) => boxes.slice(i + 1).filter((b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height).map(() => i));
+
+test('a reading over the picture drags to a place of its own, keeps it after a reload, and the other readings stay put', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const distance = telemetry(vehicle, 'D');
+  const height = telemetry(vehicle, 'H');
+  await expect(distance).toBeVisible({ timeout: 30_000 });
+  const [x, y] = await centre(distance);
+  const before = await centre(height);
+  await editLayout(vehicle);
+  await dragBy(vehicle, distance, 300, 150);
+  await finishEditing(vehicle);
+  const [movedX, movedY] = await centre(distance);
+  expect(movedX - x).toBeGreaterThan(250);
+  expect(movedY - y).toBeGreaterThan(120);
+  expect(await centre(height), 'the height reading stayed where it was').toEqual(before);
+  await vehicle.reload();
+  await connectMock(vehicle);
+  await expect.poll(async () => (await centre(distance))[0], { timeout: 30_000 }).toBeCloseTo(movedX, 0);
+  expect((await centre(distance))[1]).toBeCloseTo(movedY, 0);
+  expect(await centre(height)).toEqual(before);
+});
+
+test('a reading hides with its own badge and comes back from it, and the arrow keys move it', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const speed = telemetry(vehicle, 'H.S');
+  const climb = telemetry(vehicle, 'V.S');
+  await expect(speed).toBeVisible({ timeout: 30_000 });
+  const [x, y] = await centre(speed);
+  await editLayout(vehicle);
+  await hideBadgeOf(speed).click();
+  await finishEditing(vehicle);
+  await expect(speed).toBeHidden();
+  await expect(climb).toBeVisible();
+  await editLayout(vehicle);
+  await showBadgeOf(speed).click();
+  const move = speed.locator('xpath=ancestor::*[@data-layout-item][1]/..').getByRole('button', { name: 'Move', exact: true });
+  await move.focus();
+  await vehicle.keyboard.press('ArrowLeft');
+  await vehicle.keyboard.press('Shift+ArrowLeft');
+  await vehicle.keyboard.press('ArrowDown');
+  await finishEditing(vehicle);
+  await expect(speed).toBeVisible();
+  const [movedX, movedY] = await centre(speed);
+  expect(Math.round(x - movedX)).toBe(40);
+  expect(Math.round(movedY - y)).toBe(8);
+});
+
+test('reset in the layout options puts moved and hidden readings back', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const distance = telemetry(vehicle, 'D');
+  const climb = telemetry(vehicle, 'V.S');
+  await expect(distance).toBeVisible({ timeout: 30_000 });
+  const placed = await centre(distance);
+  await editLayout(vehicle);
+  await dragBy(vehicle, distance, 200, 100);
+  await hideBadgeOf(climb).click();
+  await editBar(vehicle).click();
+  await vehicle.getByRole('menuitem', { name: 'Reset positions and hidden items' }).click();
+  await vehicle.getByRole('menuitem', { name: /again to reset$/ }).click();
+  await finishEditing(vehicle);
+  await expect(climb).toBeVisible();
+  expect(await centre(distance)).toEqual(placed);
+});
+
+test('on a phone the readings over the picture move on their own and stop at the edges of the picture, clear of the deck and the status strip', async ({ app }) => {
+  await app.emulateMedia({ reducedMotion: 'reduce' });
+  await app.setViewportSize({ width: 412, height: 860 });
+  await connectMock(app, ['Enable camera', 'Enable gimbal']);
+  await expect(app.getByRole('button', { name: /^Cameras, showing/ }), 'the picture has opened above the map').toBeVisible({ timeout: 30_000 });
+  const speed = telemetry(app, 'H.S');
+  const climb = telemetry(app, 'V.S');
+  await expect(speed).toBeVisible({ timeout: 30_000 });
+  const map = app.getByRole('region', { name: 'Map' });
+  const still = await centre(climb);
+  await editLayout(app);
+  await dragBy(app, speed, 60, 900);
+  const pictureBottom = (await map.boundingBox())!.y;
+  expect((await speed.boundingBox())!.y + (await speed.boundingBox())!.height, 'held above the map and the deck below it').toBeLessThanOrEqual(pictureBottom + 1);
+  await dragBy(app, speed, 0, -900);
+  const strip = (await app.locator('[data-status-row]').boundingBox())!;
+  expect((await speed.boundingBox())!.y, 'held below the status strip').toBeGreaterThanOrEqual(strip.y + strip.height - 1);
+  await finishEditing(app);
+  expect(await centre(climb), 'the climb rate stayed').toEqual(still);
 });

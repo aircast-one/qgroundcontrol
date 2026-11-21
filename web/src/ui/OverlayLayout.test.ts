@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RESET_ARM_MILLIS, ResetTap, clampedInto, liftedBounds, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
+import type { SharedPreferences } from '@/kotlin/Platform';
+import { ARROW_STEP_PX, OverlayLayoutState, RESET_ARM_MILLIS, ResetTap, arrowStep, clampedInto, homeRows, intersected, liftedBounds, rowsCovered, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
 
@@ -87,6 +88,96 @@ describe('OverlayLayoutTest', () => {
     expect(shownCorrection(rect(900, 500, 1100, 700), small, [274, 160], [0, 0])).toEqual([-200, -140]);
     expect(shownCorrection(rect(700, 360, 900, 560), small, [274, 160], [-200, -140])).toEqual([-200, -140]);
     expect(shownCorrection(rect(700, 360, 900, 560), wide, [274, 160], [-200, -140])).toEqual([0, 0]);
+  });
+});
+
+const memoryPrefs = (): SharedPreferences & { names: () => string[] } => {
+  const stored = new Map<string, string>();
+  return {
+    getString: (name, fallback) => stored.get(name) ?? fallback,
+    getBoolean: (name, fallback) => (stored.has(name) ? stored.get(name) === 'true' : fallback),
+    getInt: (_, fallback) => fallback,
+    getFloat: (_, fallback) => fallback,
+    getStringSet: (_, fallback) => fallback,
+    contains: (name) => stored.has(name),
+    putString: (name, value) => (value === null ? stored.delete(name) : stored.set(name, value)) && undefined,
+    putBoolean: (name, value) => stored.set(name, String(value)) && undefined,
+    putInt: (name, value) => stored.set(name, String(value)) && undefined,
+    putFloat: (name, value) => stored.set(name, String(value)) && undefined,
+    putStringSet: () => undefined,
+    remove: (name) => stored.delete(name) && undefined,
+    getAll: () => Object.fromEntries(stored),
+    names: () => [...stored.keys()].toSorted(),
+  };
+};
+
+describe('ReadingPlacementTest', () => {
+  const pitch = 26;
+  const height = 24;
+
+  it('readings nobody moved stack up from the bottom in reverse, so the first chosen sits on top as before', () => {
+    expect(homeRows(['distance', 'altitude'], new Set())).toEqual(new Map([['altitude', 0], ['distance', 1]]));
+  });
+
+  it('an added reading takes the bottom row and the readings above it move up a row, never onto each other', () => {
+    expect(homeRows(['distance', 'altitude', 'airspeed'], new Set())).toEqual(new Map([['airspeed', 0], ['altitude', 1], ['distance', 2]]));
+  });
+
+  it('a removed reading leaves no gap among the ones nobody moved', () => {
+    expect(homeRows(['altitude'], new Set())).toEqual(new Map([['altitude', 0]]));
+    expect(homeRows([], new Set())).toEqual(new Map());
+  });
+
+  it('a row a moved reading covers is skipped, so an added reading does not land on it', () => {
+    expect(homeRows(['distance', 'airspeed'], new Set([0]))).toEqual(new Map([['airspeed', 1], ['distance', 2]]));
+    expect(homeRows(['distance', 'airspeed'], new Set([1]))).toEqual(new Map([['airspeed', 0], ['distance', 2]]));
+  });
+
+  it('a moved reading covers the rows it overlaps in its own column and none when it is moved away from it', () => {
+    expect(rowsCovered([0, 0], pitch, height)).toEqual([0]);
+    expect(rowsCovered([10, -pitch], pitch, height)).toEqual([1]);
+    expect(rowsCovered([0, -13], pitch, height)).toEqual([0, 1]);
+    expect(rowsCovered([0, 100], pitch, height)).toEqual([]);
+    expect(rowsCovered([300, -pitch], pitch, height)).toEqual([]);
+  });
+});
+
+describe('LayoutStateTest', () => {
+  it('forgetting a reading drops its place in both orientations and its hidden mark, and keeps everyone else', () => {
+    const prefs = memoryPrefs();
+    const layout = new OverlayLayoutState(prefs);
+    layout.nudge('reading:vehicle/distanceToHome', 4, 5);
+    layout.saveOffset('reading:vehicle/distanceToHome');
+    layout.nudge('reading:vehicle/distanceToHome@landscape', 40, -26, [0, -26]);
+    layout.saveOffset('reading:vehicle/distanceToHome@landscape');
+    layout.nudge('orbit', 1, 1);
+    layout.saveOffset('orbit');
+    layout.setHidden('reading:vehicle/distanceToHome', true);
+    expect(layout.offsets.value.get('reading:vehicle/distanceToHome@landscape'), 'the first move starts from its home row').toEqual([40, -52]);
+    expect(prefs.names()).toEqual(['OverlayRigHidden-reading:vehicle/distanceToHome', 'OverlayRigOffset-orbit', 'OverlayRigOffset-reading:vehicle/distanceToHome', 'OverlayRigOffset-reading:vehicle/distanceToHome@landscape']);
+    layout.forget(['reading:vehicle/distanceToHome']);
+    expect(prefs.names()).toEqual(['OverlayRigOffset-orbit']);
+    expect([...layout.offsets.value.keys()]).toEqual(['orbit']);
+    expect(layout.hidden.value.has('reading:vehicle/distanceToHome')).toBe(false);
+  });
+
+  it('reset forgets every reading placement with the rest of the layout', () => {
+    const layout = new OverlayLayoutState(memoryPrefs());
+    layout.nudge('reading:vehicle/groundSpeed@landscape', 10, 10);
+    layout.setHidden('reading:vehicle/climbRate', true);
+    layout.reset();
+    expect(layout.offsets.value).toEqual(new Map());
+    expect(layout.hidden.value).toEqual(new Set(['minimap']));
+  });
+
+  it('the arrow keys step a widget a few pixels, or four times as far with shift, and other keys do nothing', () => {
+    expect(arrowStep('ArrowLeft', false)).toEqual([-ARROW_STEP_PX, 0]);
+    expect(arrowStep('ArrowDown', true)).toEqual([0, ARROW_STEP_PX * 4]);
+    expect(arrowStep('Enter', false)).toBeNull();
+  });
+
+  it('a widget held inside the picture is clamped to where the picture and the free screen overlap', () => {
+    expect(intersected(rect(0, 48, 1280, 800), rect(72, 0, 1280, 704))).toEqual(rect(72, 48, 1280, 704));
   });
 });
 

@@ -15,13 +15,19 @@ import {
   checklistStateValue,
   flightDeckEntries,
   hudIcon,
+  hudReadingHeight,
+  hudSide,
+  instrumentKey,
   instruments,
   offerWithdrawn,
   operatorDistance,
   osdIsSpeed,
   osdLabel,
+  readingKey,
   rowWidth,
 } from './VehicleUi';
+import { orientedKey, storedOffsets } from './OverlayLayout';
+import { selectionId } from './InstrumentChoice';
 import { holdLabel } from './HoldToConfirm';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -179,6 +185,28 @@ describe('DjiChromeTest', () => {
 
   it('speeds go on the small top row and the rest on the large one', () => {
     expect(['Ground Speed', 'Climb Rate', 'Altitude Above Home', 'Distance to home'].map(osdIsSpeed)).toEqual([true, true, false, false]);
+  });
+
+  it('over the picture the speeds stand on the end side and the rest on the start side, as before', () => {
+    expect(['Ground Speed', 'Climb Rate', 'Altitude Above Home', 'Distance to home', 'From you'].map((label) => hudSide(Instrument({ label, reading: '1 m' })))).toEqual(['end', 'end', 'start', 'start', 'start']);
+  });
+
+  it('each reading is laid out under a key of its own, the same for the reading on screen and the choice that put it there', () => {
+    const chosen = 'distanceToHome';
+    expect(instrumentKey(Instrument({ label: 'Distance to home', reading: '3 m', id: 'vehicle/distanceToHome' }))).toBe(readingKey(selectionId(chosen)));
+    expect(instrumentKey(Instrument({ label: 'From you', reading: '40 m' }))).toBe('reading:From you');
+  });
+
+  it('a reading moved in landscape is stored and read back under its own key', () => {
+    const key = orientedKey(readingKey('vehicle/climbRate'), true);
+    expect(key).toBe('reading:vehicle/climbRate@landscape');
+    expect(storedOffsets({ [`OverlayRigOffset-${key}`]: '120.0,-52.0' })).toEqual(new Map([[key, [120, -52]]]));
+  });
+
+  it('a reading row is as tall as its value, and never shorter than its label', () => {
+    expect(hudReadingHeight(1)).toBe(24);
+    expect(hudReadingHeight(1.5)).toBe(36);
+    expect(hudReadingHeight(0.8)).toBe(20);
   });
 });
 
