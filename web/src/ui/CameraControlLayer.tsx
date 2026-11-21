@@ -146,9 +146,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
   if (camera === null || panel === null) {
     return (
       <div className={`flex items-center ${className ?? ''}`}>
-        <CameraElement widgetKey="cameraGimbal">
-          <RcCameraControls />
-        </CameraElement>
+        <RcCameraControls />
         {shutters ? (
           <CameraElement widgetKey={CAMERA_SHUTTER_KEY}>
             <StreamShutter />
@@ -166,9 +164,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
       <div className={className} style={{ color: aircast('outdoorForeground') }}>
         {shutters ? (
           <div className="flex items-center">
-            <CameraElement widgetKey="cameraGimbal">
-              <RcCameraControls />
-            </CameraElement>
+            <RcCameraControls />
             <div className="px-1.5 py-2">
               <ShutterCentredRail
                 centre={panel.shutters.length > 0 && (editing || !shutterHidden) ? SHUTTER_SIZE : 0}
@@ -212,9 +208,7 @@ export const CameraControlLayer = ({ className, shutters = true }: { className?:
                 <ZoomChip camera={camera} label={zoomLabel} />
               </CameraElement>
             ) : null}
-            <CameraElement widgetKey="cameraGimbal">
-              <RcCameraControls tiltSlider={false} />
-            </CameraElement>
+            <RcCameraControls tiltSlider={false} />
           </div>
         )}
       </div>

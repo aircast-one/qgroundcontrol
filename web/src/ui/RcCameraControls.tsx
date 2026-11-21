@@ -20,6 +20,7 @@ import { useHasVehicle } from '@/ui/FlyState';
 import { type GimbalChoice, GimbalModeSwitch, GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalSwitchShown, gimbalRefusal, onScreenGimbal, reportGimbalRefusal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_SEND_INTERVAL_MS, rcSendDue } from '@/ui/RcControls';
 import { OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
+import { LayoutWidget } from '@/ui/OverlayLayout';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
 import { RecenterTarget, TiltReadout, recenter, recenterTarget, tiltText } from '@/ui/RecenterCamera';
 import { DEFAULT_TILT_DEG, SYNTHETIC_AIM, SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
@@ -484,42 +485,60 @@ const RcCameraControlsShown = ({
   const recording = cameraRecording(channels.record, channelRecording, streamRecording);
   const rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0);
   const gimbalCall = (path: string, ...args: unknown[]) => void (async () => setGimbalRefused(gimbalRefusal(await Qgc.call(path, ...args))))();
+  const aim = syntheticAims ? (
+    <AimSliders
+      pitch={syntheticTilt ?? DEFAULT_TILT_DEG}
+      yaw={{ degrees: syntheticPan ?? 0.0, range: FULL_TURN, onYaw: (it) => aimSynthetic(syntheticTilt ?? DEFAULT_TILT_DEG, it) }}
+      onRecenter={onRecenter(RecenterTarget.Synthetic)}
+      slider={tiltSlider}
+      onTilt={(it) => aimSynthetic(it, syntheticPan ?? 0.0)}
+    />
+  ) : gimbal !== null && sticks && gimbal.yawAxis ? (
+    <AimStick pitch={gimbal.pitchDegrees} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} />
+  ) : gimbal !== null && sticks ? (
+    <AimSliders pitch={gimbal.pitchDegrees} yaw={null} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} onTilt={sendTilt} />
+  ) : gimbal !== null ? (
+    <TiltReadout degrees={coerceIn(gimbal.pitchDegrees ?? 0, GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)} onRecenter={onRecenter(RecenterTarget.Gimbal)} />
+  ) : null;
+  const sliders = [
+    ...(!gimbalManager && channels.tilt > 0 ? [<PwmSlider key="tilt" label="Tilt" channel={channels.tilt} pwm={pwm.tilt} onPwm={setPwm.tilt} />] : []),
+    ...(!gimbalManager && channels.pan > 0 ? [<PwmSlider key="pan" label="Pan" channel={channels.pan} pwm={pwm.pan} onPwm={setPwm.pan} />] : []),
+    ...(channels.zoom > 0 ? [<PwmSlider key="zoom" label="Zoom" channel={channels.zoom} pwm={pwm.zoom} onPwm={setPwm.zoom} />] : []),
+  ];
   return (
     <div className={`flex min-h-0 flex-col items-center gap-1 p-1 ${className ?? ''}`}>
       {channels.light > 0 || gimbal !== null || rcGimbal ? <OpenOnRequest name={GIMBAL_SHEET} open={() => setOptions(true)} /> : null}
-      {gimbal !== null && gimbal.gimbals.length > 1 ? <GimbalSwitch choices={gimbal.gimbals} onPick={(choice) => gimbalCall('gimbal.select', choice.managerCompid, choice.deviceId)} /> : null}
-      {railShowsGimbalMode(gimbal !== null, switchOnPicture) ? <GimbalModeSwitch /> : null}
+      {gimbal !== null && gimbal.gimbals.length > 1 ? (
+        <LayoutWidget widgetKey="cameraGimbalSwitch">
+          <GimbalSwitch choices={gimbal.gimbals} onPick={(choice) => gimbalCall('gimbal.select', choice.managerCompid, choice.deviceId)} />
+        </LayoutWidget>
+      ) : null}
+      {railShowsGimbalMode(gimbal !== null, switchOnPicture) ? (
+        <LayoutWidget widgetKey="cameraGimbalMode">
+          <GimbalModeSwitch />
+        </LayoutWidget>
+      ) : null}
       <div className="flex min-h-0 shrink gap-1">
-        {syntheticAims ? (
-          <AimSliders
-            pitch={syntheticTilt ?? DEFAULT_TILT_DEG}
-            yaw={{ degrees: syntheticPan ?? 0.0, range: FULL_TURN, onYaw: (it) => aimSynthetic(syntheticTilt ?? DEFAULT_TILT_DEG, it) }}
-            onRecenter={onRecenter(RecenterTarget.Synthetic)}
-            slider={tiltSlider}
-            onTilt={(it) => aimSynthetic(it, syntheticPan ?? 0.0)}
-          />
-        ) : gimbal !== null && sticks && gimbal.yawAxis ? (
-          <AimStick pitch={gimbal.pitchDegrees} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} />
-        ) : gimbal !== null && sticks ? (
-          <AimSliders pitch={gimbal.pitchDegrees} yaw={null} onRecenter={onRecenter(RecenterTarget.Gimbal)} slider={tiltSlider} onTilt={sendTilt} />
-        ) : gimbal !== null ? (
-          <TiltReadout degrees={coerceIn(gimbal.pitchDegrees ?? 0, GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)} onRecenter={onRecenter(RecenterTarget.Gimbal)} />
+        {aim === null ? null : <LayoutWidget widgetKey="cameraAim">{aim}</LayoutWidget>}
+        {sliders.length > 0 ? (
+          <LayoutWidget widgetKey="cameraRcSliders">
+            <div className="flex gap-1">{sliders}</div>
+          </LayoutWidget>
         ) : null}
-        {!gimbalManager && channels.tilt > 0 ? <PwmSlider label="Tilt" channel={channels.tilt} pwm={pwm.tilt} onPwm={setPwm.tilt} /> : null}
-        {!gimbalManager && channels.pan > 0 ? <PwmSlider label="Pan" channel={channels.pan} pwm={pwm.pan} onPwm={setPwm.pan} /> : null}
-        {channels.zoom > 0 ? <PwmSlider label="Zoom" channel={channels.zoom} pwm={pwm.zoom} onPwm={setPwm.zoom} /> : null}
       </div>
       {channels.record > 0 ? (
-        <FilterChip
-          selected={recording}
-          onClick={() => {
-            const next = !recording;
-            setChannelRecording(next);
-            send(channels.record, next ? PWM_MAX : PWM_MIN);
-            void VideoCommands.setRecording(next);
-          }}
-          label="Record"
-        />
+        <LayoutWidget widgetKey="cameraRecordChip">
+          <FilterChip
+            selected={recording}
+            onClick={() => {
+              const next = !recording;
+              setChannelRecording(next);
+              send(channels.record, next ? PWM_MAX : PWM_MIN);
+              void VideoCommands.setRecording(next);
+            }}
+            label="Record"
+          />
+        </LayoutWidget>
       ) : null}
       {options ? (
         <AircastSheet onDismissRequest={() => setOptions(false)} label="Gimbal">

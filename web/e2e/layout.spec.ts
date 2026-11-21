@@ -568,3 +568,31 @@ const cuttingBoxes = (page: Page) =>
     await expect.poll(() => cuttingBoxes(app)).toEqual([]);
   }),
 );
+
+const hideBadgeOf = (target: Locator) => target.locator('xpath=ancestor::*[@data-layout-item][1]/..').getByRole('button', { name: 'Hide', exact: true });
+
+test('the gimbal mode switch and the tilt readout on the camera rail are items of their own, each moved and hidden without the other', async ({ app }) => {
+  await app.emulateMedia({ reducedMotion: 'reduce' });
+  await connectMock(app, ['Enable gimbal']);
+  const tilt = app.getByLabel(/^Tilt /);
+  await expect(tilt).toBeVisible({ timeout: 60_000 });
+  await app.getByRole('button', { name: 'Map', exact: true }).click();
+  const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
+  await expect(mode, 'with the picture small the mode switch sits on the rail').toBeVisible();
+  await editLayout(app);
+  await expect(hideBadgeOf(tilt)).toHaveCount(1);
+  await expect(hideBadgeOf(mode)).toHaveCount(1);
+  const [modeX, modeY] = await centre(mode);
+  const [x, y] = await centre(tilt);
+  await app.mouse.move(x, y);
+  await app.mouse.down();
+  await app.mouse.move(x - 200, y + 40, { steps: 12 });
+  await app.mouse.up();
+  expect((await centre(tilt))[0], 'the tilt readout moved').toBeLessThan(x - 150);
+  expect(await centre(mode), 'the mode switch stayed').toEqual([modeX, modeY]);
+  await hideBadgeOf(tilt).click();
+  await app.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(app)).toBeHidden();
+  await expect(tilt).toBeHidden();
+  await expect(mode).toBeVisible();
+});
