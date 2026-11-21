@@ -110,6 +110,7 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
         color={backdrop}
         contentColor={white}
         label={`Cameras, showing ${shown.title}`}
+        title={shown.title}
         style={{ height: OSD_CONTROL_SIZE }}
       >
         <span className="flex h-full items-center" style={{ paddingInline: CHIP_PAD_HORIZONTAL, gap: CHIP_GAP }}>

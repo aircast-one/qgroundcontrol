@@ -68,6 +68,24 @@ export const connectFreshMock = async (page: Page, vehicle: MockVehicle) => {
   return prompt;
 };
 
+export const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
+
+export const addVideoSource = async (page: Page, type: RegExp, address: string) => {
+  await openMenu(page, 'Settings');
+  await page.getByRole('tablist').getByRole('tab', { name: 'Camera' }).click();
+  const row = page.getByRole('button', { name: /^Video sources/ });
+  await expect(async () => {
+    if (await row.isVisible()) await row.click();
+    await expect(page.getByRole('button', { name: 'Add a video source' })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Add a video source' }).click();
+  await page.getByRole('dialog').filter({ hasText: 'Add video source' }).getByRole('button', { name: type }).click();
+  await page.getByRole('textbox').first().fill(address);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText(address)).toBeVisible();
+  await closeSettings(page);
+};
+
 export const flightMode = (page: Page): Locator => page.getByRole('button', { name: /Change flight mode$/ }).first();
 
 export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: new RegExp(`^${label.replace('.', '\\.')}-?[\\d.]+ (m|m/s|ft|ft/s)$`) });

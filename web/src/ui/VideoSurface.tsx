@@ -22,7 +22,7 @@ import { type DeviceStatus, useDeviceStatus } from '@/ui/DeviceStatus';
 import { type FlyScreenState, LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { Rect, activate, useElementSize } from '@/ui/FlyShell';
 import { useHasVehicle } from '@/ui/FlyState';
-import { GIMBAL_INDICATOR_PATH, GimbalModeSwitch, GimbalScreenControl, onScreenGimbal } from '@/ui/GimbalIndicator';
+import { GIMBAL_INDICATOR_PATH, GimbalScreenControl, onScreenGimbal } from '@/ui/GimbalIndicator';
 import { wheelScale } from '@/ui/Map3dView';
 import { LocalNoVideoSize, NoVideoPanel, NoVideoSize, deviceNeeds, openCameraSetup, useCameraMissing } from '@/ui/NoVideoPanel';
 import { DEVICE_TELEMETRY, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, type OfflineStatus, offlineStatus, openAddLink, openDeviceTelemetry } from '@/ui/OfflineStatusSheet';
@@ -389,7 +389,6 @@ const MainPane = ({
           <NoVideoArea underFlyChrome={expanded && !fullScreen} thumb={!expanded} video={video} />
         </Surface>
       ) : null}
-      {expanded && (decoding || synthetic) ? <GimbalModeSwitch onPicture className="absolute end-3 bottom-3" /> : null}
     </div>
   );
 };
@@ -426,7 +425,7 @@ const SecondPane = ({ camera, className }: { camera: CameraEntry; className: str
   );
 };
 
-const PANE_DIVIDER = 2;
+export const PANE_DIVIDER = 2;
 
 export const MAIN_VIDEO_CHANNEL = 0;
 export const PIP_VIDEO_CHANNEL = 1;

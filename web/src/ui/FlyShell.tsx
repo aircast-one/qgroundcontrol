@@ -39,11 +39,11 @@ import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { CAMERA_VIEW, cameraReading } from '@/ui/CameraControl';
 import { railAboveShutter } from '@/ui/CameraControlLayer';
 import { HudLadders } from '@/ui/HudLadders';
-import { useRememberDragAims } from '@/ui/CameraSwitch';
+import { useRememberDragAims, useShownSecondCamera } from '@/ui/CameraSwitch';
 import { FLY_MENU, FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState, MENU_SHEET } from '@/ui/FlyScreenState';
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
-import { ApproximateAimNote, gimbalSwitchShown } from '@/ui/GimbalIndicator';
+import { ApproximateAimNote, GIMBAL_INDICATOR_PATH, GimbalModeSwitch, gimbalSwitchShown, onScreenGimbal, reportSwitchShown } from '@/ui/GimbalIndicator';
 import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
@@ -69,7 +69,7 @@ import {
   videoGestures,
   videoSwipe,
 } from '@/ui/VideoGestures';
-import { FlyNoVideoMessage, NO_VIDEO_PILL_HEIGHT, NO_VIDEO_PILL_WIDTH, centredRegion, looksForAircraft, messageRegion } from '@/ui/VideoSurface';
+import { FlyNoVideoMessage, NO_VIDEO_PILL_HEIGHT, NO_VIDEO_PILL_WIDTH, PANE_DIVIDER, centredRegion, looksForAircraft, messageRegion } from '@/ui/VideoSurface';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
@@ -661,6 +661,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
             </div>
           </LocalFlyOsd.Provider>
         ) : null}
+        {videoShown && !pipNow && (videoReading(videoJson)?.decoding === true || syntheticReady) ? (
+          <PictureGimbalMode zIndex={layer(fullScreen ? FULL_SCREEN_LAYER + 0.5 : 1)} />
+        ) : null}
         {deckLayer}
         {stickPad !== null ? (
           <LocalFlyOsd.Provider value={pictured}>
@@ -957,6 +960,17 @@ export const useAvoidedByVideoMessage = (key: string): RefCallback<HTMLElement> 
       };
     },
     [measure],
+  );
+};
+
+export const PictureGimbalMode = ({ zIndex }: { zIndex?: number }) => {
+  const twoPanes = useShownSecondCamera() !== null;
+  return onScreenGimbal(useQgcPath(GIMBAL_INDICATOR_PATH)) === null ? null : (
+    <div ref={reportSwitchShown} className="absolute bottom-3" style={{ zIndex, insetInlineEnd: twoPanes ? `calc(50% + ${PANE_DIVIDER / 2 + AircastSpace.s3}px)` : AircastSpace.s3 }}>
+      <LayoutWidget widgetKey="pictureGimbalMode">
+        <GimbalModeSwitch />
+      </LayoutWidget>
+    </div>
   );
 };
 

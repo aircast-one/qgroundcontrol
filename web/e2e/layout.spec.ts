@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { chooseCameraJoystick, connectMock, expect, flightMode, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { WHEP_STREAM, addVideoSource, chooseCameraJoystick, connectMock, expect, flightMode, flyNow, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 const LONG_PRESS_MS = 400;
 const CAMERA_PANEL_OFFSET = 'aircast.fly-overlay-layout.OverlayRigOffset-cameraControl@landscape';
@@ -612,6 +612,12 @@ const finishEditing = async (page: Page) => {
 
 const showBadgeOf = (target: Locator) => target.locator('xpath=ancestor::*[@data-layout-item][1]/..').getByRole('button', { name: 'Show', exact: true });
 
+const topStart = async (target: Locator): Promise<readonly [number, number]> => {
+  const box = await target.boundingBox();
+  if (box === null) throw new Error('target is not on screen');
+  return [Math.round(box.x), Math.round(box.y)];
+};
+
 const boxesOf = (targets: readonly Locator[]) => Promise.all(targets.map(async (it) => (await it.boundingBox())!));
 
 const overlaps = (boxes: readonly { x: number; y: number; width: number; height: number }[]) =>
@@ -623,19 +629,19 @@ test('a reading over the picture drags to a place of its own, keeps it after a r
   const height = telemetry(vehicle, 'H');
   await expect(distance).toBeVisible({ timeout: 30_000 });
   const [x, y] = await centre(distance);
-  const before = await centre(height);
+  const before = await topStart(height);
   await editLayout(vehicle);
   await dragBy(vehicle, distance, 300, 150);
   await finishEditing(vehicle);
   const [movedX, movedY] = await centre(distance);
   expect(movedX - x).toBeGreaterThan(250);
   expect(movedY - y).toBeGreaterThan(120);
-  expect(await centre(height), 'the height reading stayed where it was').toEqual(before);
+  expect(await topStart(height), 'the height reading stayed where it was').toEqual(before);
   await vehicle.reload();
   await connectMock(vehicle);
   await expect.poll(async () => (await centre(distance))[0], { timeout: 30_000 }).toBeCloseTo(movedX, 0);
   expect((await centre(distance))[1]).toBeCloseTo(movedY, 0);
-  expect(await centre(height)).toEqual(before);
+  expect(await topStart(height)).toEqual(before);
 });
 
 test('a reading hides with its own badge and comes back from it, and the arrow keys move it', async ({ vehicle }) => {
@@ -689,7 +695,7 @@ test('reset in the layout options puts moved and hidden readings back', async ({
   const distance = telemetry(vehicle, 'D');
   const climb = telemetry(vehicle, 'V.S');
   await expect(distance).toBeVisible({ timeout: 30_000 });
-  const placed = await centre(distance);
+  const placed = await topStart(distance);
   await editLayout(vehicle);
   await dragBy(vehicle, distance, 200, 100);
   await hideBadgeOf(climb).click();
@@ -698,7 +704,7 @@ test('reset in the layout options puts moved and hidden readings back', async ({
   await vehicle.getByRole('menuitem', { name: /again to reset$/ }).click();
   await finishEditing(vehicle);
   await expect(climb).toBeVisible();
-  expect(await centre(distance)).toEqual(placed);
+  expect(await topStart(distance)).toEqual(placed);
 });
 
 test('on a phone the readings over the picture move on their own and stop at the edges of the picture, clear of the deck and the status strip', async ({ app }) => {
@@ -718,6 +724,50 @@ test('on a phone the readings over the picture move on their own and stop at the
   await dragBy(app, speed, 0, -900);
   const strip = (await app.locator('[data-status-row]').boundingBox())!;
   expect((await speed.boundingBox())!.y, 'held below the status strip').toBeGreaterThanOrEqual(strip.y + strip.height - 1);
+  const picker = app.getByRole('button', { name: /^Cameras, showing/ });
+  await dragBy(app, picker, 0, 900);
+  expect((await picker.boundingBox())!.y + (await picker.boundingBox())!.height, 'the camera picker stays on the picture too').toBeLessThanOrEqual(pictureBottom + 1);
   await finishEditing(app);
-  expect(await centre(climb), 'the climb rate stayed').toEqual(still);
+  const [climbX, climbY] = await centre(climb);
+  expect(climbY, 'the climb rate stayed on its row').toBeCloseTo(still[1], 0);
+  expect(Math.abs(climbX - still[0]), 'and in its place along it, give or take a digit').toBeLessThan(12);
+});
+
+const withPicture = async (page: Page) => {
+  await connectMock(page, ['Enable gimbal']);
+  await expect.poll(() => page.locator('video').first().evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
+  await flyNow(page);
+};
+
+test('the gimbal mode switch on the picture and the camera picker each move and hide on their own, keep their places and stop at the edge of the picture', async ({ app }) => {
+  test.setTimeout(120_000);
+  await app.emulateMedia({ reducedMotion: 'reduce' });
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await withPicture(app);
+  const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
+  const picker = app.getByRole('button', { name: /^Cameras, showing/ });
+  await expect(mode).toBeVisible({ timeout: 30_000 });
+  await expect(picker, 'the gimbal offers its settings from the picker').toBeVisible({ timeout: 30_000 });
+  await editLayout(app);
+  await expect(hideBadgeOf(mode)).toHaveCount(1);
+  await expect(hideBadgeOf(picker)).toHaveCount(1);
+  const pickerAt = await centre(picker);
+  const [modeX, modeY] = await centre(mode);
+  await dragBy(app, mode, -400, -200);
+  const [movedX, movedY] = await centre(mode);
+  expect(modeX - movedX).toBeGreaterThan(350);
+  expect(modeY - movedY).toBeGreaterThan(150);
+  expect(await centre(picker), 'the picker stayed').toEqual(pickerAt);
+  await dragBy(app, picker, 3000, 3000);
+  await expect.poll(() => shownShare(picker), { message: 'pushed into the corner, the picker shows whole' }).toBe(1);
+  await hideBadgeOf(mode).click();
+  await finishEditing(app);
+  await expect(mode, 'hidden on the picture, and not moved onto the rail').toBeHidden();
+  await expect(picker).toBeVisible();
+  const placed = await centre(picker);
+  await app.reload();
+  await withPicture(app);
+  await expect.poll(async () => (await centre(picker))[0], { timeout: 30_000 }).toBeCloseTo(placed[0], 0);
+  expect((await centre(picker))[1]).toBeCloseTo(placed[1], 0);
+  await expect(mode).toBeHidden();
 });

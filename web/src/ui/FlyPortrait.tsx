@@ -24,6 +24,7 @@ import {
   type ModifierProps,
   Offset,
   PASS_THROUGH,
+  PictureGimbalMode,
   Rect,
   Size,
   VIEWER3D_VIEW,
@@ -47,7 +48,7 @@ import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
 import { BATTERY_BAR_KEY, LayoutEditingNotice, LayoutWidget, LocalLayoutBounds, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
-import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
+import { SYNTHETIC_VIEW, useRememberSyntheticAims, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
 import { LocalDeckTelemetry, TelemetryRow } from '@/ui/VehicleUi';
 import {
@@ -166,6 +167,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const cameras = useRememberCameraStepper();
   const dragAims = useRememberDragAims();
   const syntheticAims = useRememberSyntheticAims();
+  const synthetic = useRememberSyntheticAvailable();
   const latest = useUpdatedRef({ split, target, onExitFullScreen, fullScreen, geometry, onView, onFullScreen, dragAims, syntheticAims, cameras });
   const dragTo = (next: Offset) => {
     drag.current = next;
@@ -246,7 +248,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
         {fullScreen ? null : (
           <>
             <AnimatedVisibility visible={split} className={`absolute inset-x-0 top-0 ${PASS_THROUGH}`}>
-              <div ref={picture} className="flex w-full flex-col" style={{ paddingTop: videoTop, height: videoTop + videoHeight }}>
+              <div ref={picture} className="relative flex w-full flex-col" style={{ paddingTop: videoTop, height: videoTop + videoHeight }}>
                 <LocalLayoutBounds.Provider value={picture}>
                   <LocalFlyOsd.Provider value>
                     <div className="flex items-center justify-between gap-2 p-2">
@@ -273,6 +275,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                     }}
                     onFullScreen={onFullScreen}
                   />
+                  {split && (reading?.decoding === true || synthetic) ? <PictureGimbalMode /> : null}
                 </LocalLayoutBounds.Provider>
               </div>
             </AnimatedVisibility>

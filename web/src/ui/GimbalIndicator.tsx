@@ -305,7 +305,7 @@ export const GimbalVideoMode = () => {
 
 export const gimbalSwitchShown = mutableStateOf(false);
 
-const reportSwitchShown = (element: HTMLElement | null) => {
+export const reportSwitchShown = (element: HTMLElement | null) => {
   if (element === null) return undefined;
   gimbalSwitchShown.value = true;
   return () => {
@@ -313,7 +313,7 @@ const reportSwitchShown = (element: HTMLElement | null) => {
   };
 };
 
-export const GimbalModeSwitch = ({ className, onPicture = false }: { className?: string; onPicture?: boolean }) => {
+export const GimbalModeSwitch = () => {
   const view = useQgcPath(GIMBAL_INDICATOR_PATH);
   const control = useMemo(() => onScreenGimbal(view), [view]);
   if (control === null) return null;
@@ -321,7 +321,6 @@ export const GimbalModeSwitch = ({ className, onPicture = false }: { className?:
   const next = modeChoice(nextVideoGimbalMode(current.mode));
   return (
     <button
-      ref={onPicture ? reportSwitchShown : undefined}
       type="button"
       aria-label={`Video gimbal mode, ${current.label}`}
       aria-description={`Switch to ${next.label}`}
@@ -331,7 +330,7 @@ export const GimbalModeSwitch = ({ className, onPicture = false }: { className?:
         event.stopPropagation();
         chooseVideoGimbalMode(next.mode);
       }}
-      className={`flex items-center gap-1.5 rounded-shape-sm ps-3 pe-4 ${osdShadow()} ${className ?? ''}`}
+      className={`flex items-center gap-1.5 rounded-shape-sm ps-3 pe-4 ${osdShadow()}`}
       style={{ height: OSD_CONTROL_SIZE, color: Color.White }}
     >
       <MaterialIcon name={current.icon} filled size={18} />

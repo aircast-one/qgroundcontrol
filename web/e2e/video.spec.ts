@@ -1,27 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { type Page } from '@playwright/test';
-import { closeSettings, connectMock, expect, flightMode, flyNow, openMenu, slideAcross, takeOff, telemetry, test } from './fixtures';
-
-const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
+import { WHEP_STREAM, addVideoSource, closeSettings, connectMock, expect, flightMode, flyNow, openMenu, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 const coreView = (page: Page, path: string) =>
   page.evaluate(async ([module, watched]) => ((await import(module)) as { Qgc: { path: (path: string) => unknown } }).Qgc.path(watched), ['/src/bridge/Qgc.ts', path] as const);
-
-const addVideoSource = async (page: Page, type: RegExp, address: string) => {
-  await openMenu(page, 'Settings');
-  await page.getByRole('tablist').getByRole('tab', { name: 'Camera' }).click();
-  const row = page.getByRole('button', { name: /^Video sources/ });
-  await expect(async () => {
-    if (await row.isVisible()) await row.click();
-    await expect(page.getByRole('button', { name: 'Add a video source' })).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Add a video source' }).click();
-  await page.getByRole('dialog').filter({ hasText: 'Add video source' }).getByRole('button', { name: type }).click();
-  await page.getByRole('textbox').first().fill(address);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText(address)).toBeVisible();
-  await closeSettings(page);
-};
 
 test('a WHEP camera plays in the Fly view', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
