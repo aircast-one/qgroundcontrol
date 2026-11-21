@@ -460,7 +460,17 @@ const BADGE_RISE = (BADGE_SIZE * 3) / 4;
 
 const BADGE_PLACE: CSSProperties = { width: BADGE_SIZE, height: BADGE_SIZE, top: -BADGE_RISE, insetInlineStart: -BADGE_SIZE / 2 };
 
-const BADGE_AT_END: CSSProperties = { width: BADGE_SIZE, height: BADGE_SIZE, top: -BADGE_RISE, insetInlineEnd: -BADGE_SIZE / 2 };
+const BESIDE_BADGE = "absolute grid place-items-center after:absolute after:-inset-x-[13px] after:-inset-y-[3px] after:content-['']";
+
+const BADGE_GAP = 4;
+
+const besidePlace = (side: 'start' | 'end'): CSSProperties => ({
+  width: BADGE_SIZE,
+  height: BADGE_SIZE,
+  top: '50%',
+  marginTop: -BADGE_SIZE / 2,
+  [side === 'start' ? 'insetInlineStart' : 'insetInlineEnd']: -(BADGE_SIZE + BADGE_GAP),
+});
 
 export const badgeRoom = (editing: boolean, leading: boolean): CSSProperties =>
   editing ? { paddingTop: BADGE_RISE, marginTop: -BADGE_RISE, ...(leading ? { paddingInlineStart: BADGE_SIZE / 2, marginInlineStart: -BADGE_SIZE / 2 } : {}) } : {};
@@ -496,7 +506,7 @@ export const badgeLabel = (hidden: boolean, name: string | undefined): string =>
 export const LayoutWidget = ({
   widgetKey,
   home = NO_OFFSET,
-  badgeAtEnd = false,
+  badgeBeside,
   movable = true,
   hideable = true,
   live = false,
@@ -507,7 +517,7 @@ export const LayoutWidget = ({
 }: {
   widgetKey: string;
   home?: Offset;
-  badgeAtEnd?: boolean;
+  badgeBeside?: 'start' | 'end';
   name?: string;
   movable?: boolean;
   hideable?: boolean;
@@ -567,8 +577,8 @@ export const LayoutWidget = ({
         {decorated && hideable ? (
           <Surface
             onClick={() => layout.setHidden(widgetKey, !hidden)}
-            className={name === undefined ? BADGE : NAMED_BADGE}
-            style={name !== undefined ? { ...BADGE_PLACE, width: 'auto' } : badgeAtEnd ? BADGE_AT_END : BADGE_PLACE}
+            className={name !== undefined ? NAMED_BADGE : badgeBeside !== undefined ? BESIDE_BADGE : BADGE}
+            style={name !== undefined ? { ...BADGE_PLACE, width: 'auto' } : badgeBeside !== undefined ? besidePlace(badgeBeside) : BADGE_PLACE}
             shape="full"
             color={hidden ? md('primary') : md('inverseSurface')}
             contentColor={hidden ? md('onPrimary') : md('inverseOnSurface')}

@@ -480,7 +480,7 @@ export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSP
         <div className="relative shrink-0" style={{ height: Math.max(0, stacked * pitch - HUD_READING_GAP) }}>
           {readings.map((it) => (
             <div key={instrumentKey(it)} className={`absolute bottom-0 w-max ${side === 'start' ? 'start-0' : 'end-0'}`}>
-              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch]} badgeAtEnd={(rows.get(instrumentKey(it)) ?? 0) % 2 === 1}>
+              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch]} badgeBeside={side === 'start' ? 'end' : 'start'}>
                 <HudReading instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} />
               </LayoutWidget>
             </div>
