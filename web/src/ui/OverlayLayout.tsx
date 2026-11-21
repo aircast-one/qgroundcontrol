@@ -333,6 +333,12 @@ export const clampedInto = (bounds: Bounds, area: Bounds, dx: number, dy: number
   coerceIn(dy, area.top - bounds.top, coerceAtLeast(area.bottom - bounds.bottom, area.top - bounds.top)),
 ];
 
+export const liftedBounds = (bounds: Bounds): Bounds => {
+  const growX = Math.max(((LIFT_SCALE - 1) / 2) * (bounds.right - bounds.left), JIGGLE_REACH_PX);
+  const growY = Math.max(((LIFT_SCALE - 1) / 2) * (bounds.bottom - bounds.top), JIGGLE_REACH_PX);
+  return { left: bounds.left - growX, top: bounds.top - growY, right: bounds.right + growX, bottom: bounds.bottom + growY };
+};
+
 export const LayoutDragArea = ({ widgetKey, correction, frame, onLift, className }: { widgetKey: string; correction: Offset; frame: RefObject<HTMLElement | null>; onLift: (lifted: boolean) => void; className?: string }) => {
   const flyScreen = useContext(LocalFlyScreenState);
   const layout = flyScreen.layout;
@@ -363,7 +369,7 @@ export const LayoutDragArea = ({ widgetKey, correction, frame, onLift, className
         const distance = Math.hypot(rawX, rawY);
         if (!held.dragging && distance <= TOUCH_SLOP) return;
         const past = held.dragging ? 1 : (distance - TOUCH_SLOP) / distance;
-        const [dx, dy] = clampedInto(placed.getBoundingClientRect(), shownArea(flyScreen.widgetInsets.value), rawX * past, rawY * past);
+        const [dx, dy] = clampedInto(liftedBounds(placed.getBoundingClientRect()), shownArea(flyScreen.widgetInsets.value), rawX * past, rawY * past);
         const [foldX, foldY] = held.dragging ? NO_OFFSET : correction;
         drag.current = { id: held.id, x: event.clientX, y: event.clientY, dragging: true };
         layout.nudge(placedKey, dx + foldX, dy + foldY);

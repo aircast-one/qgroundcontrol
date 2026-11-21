@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RESET_ARM_MILLIS, ResetTap, clampedInto, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
+import { RESET_ARM_MILLIS, ResetTap, clampedInto, liftedBounds, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
 
@@ -38,6 +38,13 @@ describe('OverlayLayoutTest', () => {
     expect(clampedInto(rect(100, 40, 200, 140), screen, 30, -80)).toEqual([30, -40]);
     expect(clampedInto(rect(100, 40, 200, 140), screen, -500, 5000)).toEqual([-100, 1860]);
     expect(clampedInto(rect(100, 40, 200, 140), screen, 900, 0)).toEqual([800, 0]);
+  });
+
+  it('a held widget stops where its lifted, larger self still fits, so the edge never cuts it', () => {
+    const screen = rect(0, 0, 1000, 800);
+    expect(liftedBounds(rect(100, 100, 240, 240))).toEqual(rect(93, 93, 247, 247));
+    expect(liftedBounds(rect(100, 100, 124, 124))).toEqual(rect(96, 96, 128, 128));
+    expect(clampedInto(liftedBounds(rect(100, 100, 240, 240)), screen, 5000, 5000)).toEqual([753, 553]);
   });
 
   it('stored offsets are read back per widget and malformed ones are dropped', () => {

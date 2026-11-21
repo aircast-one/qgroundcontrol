@@ -458,3 +458,86 @@ test('the heading tape drags to a new place', async ({ vehicle }) => {
   expect(x - movedX).toBeGreaterThan(140);
   expect(movedY - y).toBeGreaterThan(100);
 });
+
+const shownShare = (target: Locator) =>
+  target.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const chain = (at: Element | null): Element[] => (at === null ? [] : [at, ...chain(at.parentElement)]);
+    const clip = chain(node.parentElement).reduce(
+      (seen, at) => {
+        const style = getComputedStyle(at);
+        const edge = at.getBoundingClientRect();
+        const clipsX = style.overflowX !== 'visible';
+        const clipsY = style.overflowY !== 'visible';
+        return {
+          left: clipsX ? Math.max(seen.left, edge.left) : seen.left,
+          right: clipsX ? Math.min(seen.right, edge.right) : seen.right,
+          top: clipsY ? Math.max(seen.top, edge.top) : seen.top,
+          bottom: clipsY ? Math.min(seen.bottom, edge.bottom) : seen.bottom,
+        };
+      },
+      { left: 0, top: 0, right: innerWidth, bottom: innerHeight },
+    );
+    const width = Math.max(0, Math.min(box.right, clip.right) - Math.max(box.left, clip.left));
+    const height = Math.max(0, Math.min(box.bottom, clip.bottom) - Math.max(box.top, clip.top));
+    return Math.round(((width * height) / (box.width * box.height)) * 100) / 100;
+  });
+
+test('the motor load widget shows whole while held, dropped lower, hidden, and pushed against the picture edge', async ({ app }) => {
+  test.setTimeout(150_000);
+  await app.emulateMedia({ reducedMotion: 'reduce' });
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await takeOff(app, '5 m');
+  await expect(flightMode(app)).toHaveAccessibleName(/Flying/, { timeout: 60_000 });
+  const motors = app.getByRole('img', { name: 'Motor load' });
+  await expect(motors).toBeVisible();
+  await editLayout(app);
+  const whole = (state: string) => expect.poll(() => shownShare(motors), { message: `${state}, the whole widget shows` }).toBe(1);
+  await whole('in place');
+  const [x, y] = await centre(motors);
+  await app.mouse.move(x, y);
+  await app.mouse.down();
+  await whole('held');
+  await app.mouse.move(x + 120, y + 160, { steps: 12 });
+  await whole('carried lower');
+  await app.mouse.up();
+  await whole('dropped lower');
+  await motors.locator('xpath=ancestor::div[contains(@class,"relative")][1]').getByRole('button', { name: 'Hide' }).click();
+  await whole('hidden');
+  const [hiddenX, hiddenY] = await centre(motors);
+  await app.mouse.move(hiddenX, hiddenY);
+  await app.mouse.down();
+  await app.mouse.move(hiddenX + 3000, hiddenY + 3000, { steps: 12 });
+  await whole('held against the corner');
+  await app.mouse.up();
+  await whole('dropped in the corner');
+});
+
+const cuttingBoxes = (page: Page) =>
+  page.evaluate(() => {
+    const chain = (at: Element | null): Element[] => (at === null ? [] : [at, ...chain(at.parentElement)]);
+    const cuts = (at: Element) => {
+      const style = getComputedStyle(at);
+      const box = at.getBoundingClientRect();
+      return (style.overflowX !== 'visible' && box.width < innerWidth - 1) || (style.overflowY !== 'visible' && box.height < innerHeight - 1);
+    };
+    return [...document.querySelectorAll('[data-layout-item]')]
+      .filter((item) => item.parentElement?.querySelector(':scope > .cursor-grab') != null)
+      .filter((item) => chain(item.parentElement).some(cuts))
+      .map((item) => item.querySelector('[aria-label]')?.getAttribute('aria-label') ?? item.textContent?.trim() ?? '?');
+  });
+
+(
+  [
+    ['landscape', 1280, 800],
+    ['portrait', 412, 860],
+  ] as const
+).forEach(([orientation, width, height]) =>
+  test(`in ${orientation} no item that drags sits inside a box smaller than the screen that would cut it off`, async ({ app }) => {
+    await app.setViewportSize({ width, height });
+    await connectMock(app, ['Enable camera', 'Enable gimbal', 'Enable proximity sensors', 'Send status text + voice']);
+    await expect(app.getByRole('button', { name: 'Dismiss messages', exact: true })).toBeVisible();
+    await editLayout(app);
+    await expect.poll(() => cuttingBoxes(app)).toEqual([]);
+  }),
+);

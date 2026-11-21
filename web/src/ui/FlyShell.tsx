@@ -48,7 +48,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText, useMap3dDrawn } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, badgeRoom, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -538,7 +538,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                           {view === FlyView.Video ? <ApproximateAimNote /> : null}
                           <TrafficBanner />
                           <UpdateBanner />
-                          <div className="flex items-center gap-2 overflow-x-auto" style={badgeRoom(editing, true)}>
+                          <div className="flex items-center gap-2">
                             {keyRow}
                           </div>
                         </FlyTopBar>
@@ -550,7 +550,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                       </div>
                     }
                     overlays={
-                      <div className="flex w-full flex-col items-start gap-2 overflow-hidden" style={{ ...badgeRoom(editing, false), paddingInlineStart: insets.overlaysStart, paddingInlineEnd: insets.overlaysEnd }}>
+                      <div className="flex w-full flex-col items-start gap-2" style={{ paddingInlineStart: insets.overlaysStart, paddingInlineEnd: insets.overlaysEnd }}>
                         <LocalAvoidedByVideoMessage.Provider value>{overlays}</LocalAvoidedByVideoMessage.Provider>
                       </div>
                     }
@@ -911,7 +911,7 @@ const FlyChromeLayout = ({ top, overlays, bottom, overlaysAboveBottom, message, 
       <div ref={topSlot.ref} className="absolute inset-x-0 top-0">
         {top}
       </div>
-      <div ref={overlaySlot.ref} className="absolute inset-x-0 overflow-hidden" style={{ top: topHeight, maxHeight: overlayRoom }}>
+      <div ref={overlaySlot.ref} className="absolute inset-x-0" style={{ top: topHeight, maxHeight: overlayRoom }}>
         {overlays}
       </div>
       <div ref={bottomSlot.ref} className="absolute end-0 bottom-0">

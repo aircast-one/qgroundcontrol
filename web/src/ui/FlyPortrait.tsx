@@ -44,7 +44,7 @@ import {
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutWidget, badgeRoom, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutWidget, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
@@ -248,7 +248,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
               <div className="flex w-full flex-col" style={{ paddingTop: videoTop, height: videoTop + videoHeight }}>
                 <LocalFlyOsd.Provider value>
                   <div className="flex items-center justify-between gap-2 p-2">
-                    <div className="flex min-w-0 items-center gap-2 overflow-x-auto" style={badgeRoom(editing, true)}>
+                    <div className="flex min-w-0 items-center gap-2">
                       <LayoutWidget widgetKey="cameraSwitch" movable={false}>
                         <CameraSwitch splitRoom />
                       </LayoutWidget>
@@ -281,7 +281,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                       className={`flex h-full flex-col justify-between ${ANIMATED_PADDING}`}
                       style={{ paddingInlineStart: AircastSpace.s3, paddingTop: overlaysTop, paddingInlineEnd: AircastSpace.s3, paddingBottom: MAP_ATTRIBUTION_CLEARANCE + compassLift }}
                     >
-                      <div className="flex min-h-0 shrink flex-col items-start gap-2 overflow-hidden" style={badgeRoom(editing, true)}>
+                      <div className="flex min-h-0 shrink flex-col items-start gap-2">
                         {overlays}
                       </div>
                       {split || deciding ? null : (
