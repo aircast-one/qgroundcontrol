@@ -532,7 +532,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     top={
                       <div className="relative">
                         <FlyTopBar status={status} statusRef={statusRow}>
-                          <LayoutWidget widgetKey="headingTape" movable={false} hideable={false} className="self-center">
+                          <LayoutWidget widgetKey="headingTape" hideable={false} className="self-center">
                             <HeadingTape />
                           </LayoutWidget>
                           {view === FlyView.Video ? <ApproximateAimNote /> : null}

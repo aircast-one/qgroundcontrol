@@ -442,3 +442,19 @@ test('the pitch ladder drags to a new place, while the crosshair stays on the ai
   const [stillX, stillY] = await centre(crosshair);
   expect(Math.hypot(stillX - crossX, stillY - crossY), 'the crosshair marks where the camera points').toBeLessThan(4);
 });
+
+test('the heading tape drags to a new place', async ({ vehicle }) => {
+  const tape = vehicle.locator('[data-layout-item]').filter({ has: vehicle.getByLabel(/^Heading /) });
+  await expect(tape).toBeVisible({ timeout: 30_000 });
+  await editLayout(vehicle);
+  const [x, y] = await centre(tape);
+  await vehicle.mouse.move(x, y);
+  await vehicle.mouse.down();
+  await vehicle.mouse.move(x - 160, y + 120, { steps: 12 });
+  await vehicle.mouse.up();
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(vehicle)).toBeHidden();
+  const [movedX, movedY] = await centre(tape);
+  expect(x - movedX).toBeGreaterThan(140);
+  expect(movedY - y).toBeGreaterThan(100);
+});
