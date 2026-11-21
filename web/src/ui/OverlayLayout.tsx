@@ -11,7 +11,7 @@ import { AircastSpace, aircast, md } from '@/theme/Colors';
 import { LocalAvoidedByVideoMessage, STATUS_ROW_HEIGHT, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { useArmed } from '@/ui/FlyState';
-import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
+import { CHOOSE_READINGS, INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
 const LAYOUT_STORE = 'fly-overlay-layout';
@@ -585,7 +585,8 @@ export const LayoutWidget = ({
 };
 
 export const LayoutOptionsMenu = () => {
-  const layout = useContext(LocalFlyScreenState).layout;
+  const flyScreen = useContext(LocalFlyScreenState);
+  const layout = flyScreen.layout;
   const valueSize = useValue(layout.valueSize);
   const barHidden = useValue(layout.hidden).has(BATTERY_BAR_KEY);
   const vehicleClass = instrumentVehicleClass(useQgcPath(INSTRUMENTS_VIEW));
@@ -611,6 +612,13 @@ export const LayoutOptionsMenu = () => {
         <Drawable name="ic_tune" size={22} />
       </Surface>
       <DropdownMenu expanded={open} onDismissRequest={() => setOpen(false)}>
+        <DropdownMenuItem
+          text={CHOOSE_READINGS}
+          onClick={() => {
+            setOpen(false);
+            flyScreen.choosingReadings.value = true;
+          }}
+        />
         <DropdownMenuItem
           text={valueSizePillText(valueSize)}
           closeOnClick={false}

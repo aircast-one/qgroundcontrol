@@ -30,6 +30,7 @@ import { type GuidedValueKind, GuidedValueFlow, altitudeValue, openGuidedValue, 
 import { focusLost, useGuidedPanelShown } from './GuidedValuePanel';
 import { holdLabel } from './HoldToConfirm';
 import {
+  CHOOSE_READINGS,
   INSTRUMENTS_VIEW,
   INSTRUMENT_GROUPS,
   type InstrumentFact,
@@ -1248,7 +1249,6 @@ export const FlightModeMenu = ({ expanded, onDismiss, onStatus }: { expanded: bo
 
 const MODE_TEXT_WIDTH = 260;
 export const ALL_MODES = 'All modes';
-export const CHOOSE_READINGS = 'Choose readings';
 export const TAKEOFF_REQUEST = 'takeoff';
 const QUICK_LIST_HINT = `Shown first when you ${TAP_LOWER} the mode`;
 

@@ -663,6 +663,27 @@ test('a reading hides with its own badge and comes back from it, and the arrow k
   expect(Math.round(movedY - y)).toBe(8);
 });
 
+test('from the layout options a reading is added where nothing else stands and a removed one leaves the layout', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const readings = ['D', 'H', 'H.S', 'V.S'].map((label) => telemetry(vehicle, label));
+  await expect(readings[0]!).toBeVisible({ timeout: 30_000 });
+  await editLayout(vehicle);
+  await dragBy(vehicle, readings[1]!, 0, 30);
+  await editBar(vehicle).click();
+  await vehicle.getByRole('menuitem', { name: 'Choose readings' }).click();
+  const chooser = vehicle.getByRole('dialog', { name: 'Choose readings' });
+  await chooser.getByText('Heading', { exact: true }).first().click();
+  await chooser.getByText('Ground speed', { exact: true }).click();
+  await vehicle.keyboard.press('Escape');
+  await expect(chooser).toBeHidden();
+  await expect(editBar(vehicle), 'still editing the layout').toBeVisible();
+  const heading = vehicle.getByText('HDG', { exact: true }).locator('..');
+  await expect(heading).toBeVisible();
+  await expect(readings[2]!, 'the ground speed reading left with its choice').toHaveCount(0);
+  await expect(hideBadgeOf(heading)).toHaveCount(1);
+  await expect.poll(async () => overlaps(await boxesOf([heading, readings[0]!, readings[1]!, readings[3]!])), { message: 'no reading on another' }).toEqual([]);
+});
+
 test('reset in the layout options puts moved and hidden readings back', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const distance = telemetry(vehicle, 'D');

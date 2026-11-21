@@ -4,6 +4,8 @@ import { getSharedPreferences } from '@/kotlin/Platform';
 
 export const INSTRUMENT_GROUPS = 'view.instrumentGroups';
 
+export const CHOOSE_READINGS = 'Choose readings';
+
 export const DEFAULT_INSTRUMENTS: readonly string[] = ['distanceToHome', 'altitudeRelative', 'groundSpeed', 'climbRate'];
 
 const FORWARD_FLIGHT_CLASSES: ReadonlySet<string> = new Set(['fixedWing', 'vtol', 'airship']);
