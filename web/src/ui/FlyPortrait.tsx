@@ -44,7 +44,7 @@ import {
 import { useArmed, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { map3dToggleLabel, map3dToggleText } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutWidget, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutEditingNotice, LayoutWidget, useHoldThroughToEditLayout } from '@/ui/OverlayLayout';
 import { BatteryReturnBar } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, useRememberSyntheticAims } from '@/ui/SyntheticView';
@@ -343,9 +343,12 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
               />
             </AnimatedVisibility>
             <div ref={chrome.ref} className={`absolute inset-x-0 top-0 flex w-full flex-col ${PASS_THROUGH}`}>
-              <div className="relative w-full" style={{ background: `linear-gradient(to bottom, ${withAlpha(Color.Black, SCRIM_ALPHA)}, transparent)`, paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-                <div ref={statusRow} data-status-row className={`flex w-full items-center gap-2 px-3 ${editing ? 'flex-wrap' : ''}`} style={{ minHeight: PORTRAIT_BAR_HEIGHT }}>
+              <div ref={statusRow} className="relative flex w-full flex-col" style={{ background: `linear-gradient(to bottom, ${withAlpha(Color.Black, SCRIM_ALPHA)}, transparent)`, paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+                <div data-status-row className={`flex w-full items-center gap-2 px-3 ${editing ? 'flex-wrap' : ''}`} style={{ minHeight: PORTRAIT_BAR_HEIGHT }}>
                   {status}
+                </div>
+                <div className="flex justify-center px-3 pb-2 empty:hidden">
+                  <LayoutEditingNotice />
                 </div>
                 <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
                   <LayoutWidget widgetKey={BATTERY_BAR_KEY} movable={false} live hideable={false}>

@@ -48,7 +48,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText, useMap3dDrawn } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, LayoutEditingNotice, LayoutWidget, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -205,11 +205,14 @@ const TopScrim = () => (
 
 const FlyTopBar = ({ status, statusRef, children }: { status: ReactNode; statusRef: RefCallback<HTMLElement> | undefined; children: ReactNode }) => (
   <div className="flex flex-col gap-2 px-3 pb-2" style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${AircastSpace.s2}px)` }}>
-    <LocalCompactStatus.Provider value>
-      <div ref={statusRef} data-status-row className="flex w-full items-center gap-2" style={{ minHeight: STATUS_ROW_HEIGHT }}>
-        {status}
-      </div>
-    </LocalCompactStatus.Provider>
+    <div ref={statusRef} className="flex flex-col gap-2">
+      <LocalCompactStatus.Provider value>
+        <div data-status-row className="flex w-full items-center gap-2" style={{ minHeight: STATUS_ROW_HEIGHT }}>
+          {status}
+        </div>
+      </LocalCompactStatus.Provider>
+      <LayoutEditingNotice />
+    </div>
     {children}
   </div>
 );

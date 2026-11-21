@@ -1,6 +1,6 @@
 import { type CSSProperties, type Dispatch, type HTMLAttributes, type PointerEvent, type ReactNode, type RefObject, type SetStateAction, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
-import { Button, DropdownMenu, DropdownMenuItem, Surface } from '@/m3';
+import { Button, DropdownMenu, DropdownMenuItem, Surface, Text } from '@/m3';
 import { useEscapeHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type SharedPreferences, getSharedPreferences, TAP } from '@/kotlin/Platform';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
@@ -10,6 +10,7 @@ import { Drawable, MaterialIcon } from '@/res/Icon';
 import { AircastSpace, aircast, md } from '@/theme/Colors';
 import { LocalAvoidedByVideoMessage, STATUS_ROW_HEIGHT, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
+import { useArmed } from '@/ui/FlyState';
 import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
@@ -41,6 +42,8 @@ export const resetTap = (armed: boolean): ResetTap => ResetTap({ reset: armed, a
 export const resetPillText = (armed: boolean): string => (armed ? `${TAP} again to reset` : 'Reset positions and hidden items');
 
 export const LAYOUT_EDITING_IN_FLIGHT = 'Editing the layout. Return, Land and Kill motors still work.';
+
+const LAYOUT_NOTICE_MAX_WIDTH = 560;
 
 const INDICATOR_ORDER = 'FlyViewIndicatorOrder';
 
@@ -557,6 +560,18 @@ export const LayoutOptionsMenu = () => {
       </DropdownMenu>
     </div>
   );
+};
+
+export const LayoutEditingNotice = () => {
+  const armed = useArmed();
+  const editing = useValue(useContext(LocalFlyScreenState).layout.editing);
+  return editing && armed ? (
+    <div role="status" className="self-center rounded-shape-sm px-3 py-1.5 text-center" style={{ background: OSD_SCRIM, maxWidth: LAYOUT_NOTICE_MAX_WIDTH }}>
+      <Text typography="labelMedium" color={aircast('outdoorForeground')}>
+        {LAYOUT_EDITING_IN_FLIGHT}
+      </Text>
+    </div>
+  ) : null;
 };
 
 export const LayoutDoneButton = () => {

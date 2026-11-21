@@ -67,7 +67,7 @@ import { ObstacleArc } from '@/ui/ObstacleArc';
 import { ObstacleReadout } from '@/ui/ObstacleReadout';
 import { OrbitReadout } from '@/ui/OrbitReadout';
 import { useAppDarkTheme } from '@/ui/Palette';
-import { LAYOUT_EDITING_IN_FLIGHT, LayoutDoneButton, LayoutGroup, LayoutOptionsMenu, LayoutWidget, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
+import { LayoutDoneButton, LayoutGroup, LayoutOptionsMenu, LayoutWidget, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
 import { PlanTab } from '@/ui/PlanTab';
 import { RcControlsLayer } from '@/ui/RcControlsLayer';
 import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
@@ -466,16 +466,7 @@ export const AircastShell = () => {
 
   const flyNow = useQgcDerived(FLY_STATE, shellFly);
   const armedNow = flyNow !== null && flyNow.connected && flyNow.armed;
-  const editingInFlight = layoutEditing && armedNow;
   const flyChromeBottom = useValue(flyScreen.widgetInsets).top;
-  useEffect(() => {
-    if (!editingInFlight) return undefined;
-    const shown = new AbortController();
-    void snackbars.showSnackbar(LAYOUT_EDITING_IN_FLIGHT, 'Done', 'Indefinite', shown.signal).then((result) => {
-      if (result === 'ActionPerformed') overlayLayout.editing.value = false;
-    });
-    return () => shown.abort();
-  }, [editingInFlight]);
   const activeId = useRememberActiveVehicleId();
   const sub = useQgcBool('vehicle.sub');
   const rover = useQgcBool('vehicle.rover');

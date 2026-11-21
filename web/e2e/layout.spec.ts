@@ -253,9 +253,36 @@ test('in flight, holding an item edits the layout, and Return still works while 
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to return home' }));
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Return/);
   await expect(editBar(vehicle)).toBeVisible();
-  await notice.getByRole('button', { name: 'Done' }).click();
+  await vehicle.getByRole('button', { name: 'Done' }).click();
   await expect(editBar(vehicle)).toBeHidden();
   await expect(notice).toBeHidden();
+});
+
+const overlapping = (page: Page, notice: Locator) =>
+  notice.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const crosses = (other: DOMRect) => other.width > 0 && other.left < box.right && other.right > box.left && other.top < box.bottom && other.bottom > box.top;
+    const items = [...document.querySelectorAll('[data-layout-item], [role=img][aria-label^="Heading "]')].filter((it) => !node.contains(it) && !it.contains(node));
+    return items.filter((it) => crosses(it.getBoundingClientRect())).map((it) => it.getAttribute('aria-label') ?? it.querySelector('[aria-label]')?.getAttribute('aria-label') ?? it.textContent?.trim() ?? '?');
+  });
+
+test('in flight, the layout editing notice covers neither the heading tape nor any item, and wraps in a narrow window', async ({ vehicle }) => {
+  test.setTimeout(120_000);
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await vehicle.setViewportSize({ width: 1440, height: 900 });
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await editLayout(vehicle);
+  const notice = vehicle.getByRole('status').filter({ hasText: 'Editing the layout. Return, Land and Kill motors still work.' });
+  await expect(notice).toBeVisible();
+  await expect.poll(() => overlapping(vehicle, notice)).toEqual([]);
+  await vehicle.setViewportSize({ width: 320, height: 860 });
+  await expect(notice).toBeVisible();
+  await expect.poll(() => overlapping(vehicle, notice)).toEqual([]);
+  const box = await notice.boundingBox();
+  expect(box?.x, 'its start is on screen').toBeGreaterThanOrEqual(0);
+  expect((box?.x ?? 0) + (box?.width ?? 0), 'its end is on screen').toBeLessThanOrEqual(320);
+  expect(box?.height, 'it wraps onto a second line').toBeGreaterThan(40);
 });
 
 test('in flight, holding Land lands without starting layout editing', async ({ vehicle }) => {
