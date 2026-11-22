@@ -207,6 +207,7 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
   const navigation = useContext(LocalAppNavigation);
   const [status, setStatus] = useState<OfflineStatus | null>(null);
   const hint = useRememberLookingHint(status !== null && !status.noLinks);
+  useDeviceStatus();
   const refresh = async () => setStatus(offlineStatus(await Qgc.get(OFFLINE_STATUS_VIEW)));
   useTicker(OFFLINE_POLL_MS, [], refresh);
   useOpenSignIn(status?.signInUrl ?? '');

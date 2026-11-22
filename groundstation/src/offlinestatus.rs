@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
+    crate::deviceviews::VIEWS_CHANGED,
     "links.linkConfigurations",
     "settings.autoConnectSettings.autoConnectPixhawk",
     "settings.autoConnectSettings.autoConnectSiKRadio",
@@ -134,9 +135,10 @@ pub fn offline(
     }
 }
 
-fn on_device(link: Value, device: &str) -> Value {
+fn on_device(link: Value, device: &str, seen: bool) -> Value {
     let bare = crate::devicesetup::bare_host(device);
     let reaches = !device.is_empty()
+        && (seen || link["type"] != "udp")
         && match link["type"].as_str() {
             Some("websocket") => link["summary"]
                 .as_str()
@@ -177,13 +179,14 @@ fn watched_links(on: impl Fn(&str) -> bool, browser: bool) -> Vec<&'static str> 
 pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = backend.value("links.linkConfigurations");
     let device = crate::deviceviews::paired_host();
+    let seen = crate::deviceviews::seen();
     let links: Vec<Value> = model
         .get("elements")
         .and_then(Value::as_array)
         .map(|e| {
             e.iter()
                 .enumerate()
-                .map(|(i, el)| on_device(crate::links::link_json(i, el), &device))
+                .map(|(i, el)| on_device(crate::links::link_json(i, el), &device, seen))
                 .collect()
         })
         .unwrap_or_default();
@@ -434,38 +437,52 @@ mod tests {
     fn only_a_link_that_calls_the_paired_device_is_the_devices_link() {
         let socket = |url: &str| json!({ "type": "websocket", "summary": url });
         assert_eq!(
-            on_device(socket("ws://zero3w/fly/mavlink"), "zero3w")["device"],
+            on_device(socket("ws://zero3w/fly/mavlink"), "zero3w", false)["device"],
+            true,
+            "a socket only connects once the device answers, so it needs no other proof"
+        );
+        assert_eq!(
+            on_device(
+                socket("wss://localhost:8813/mavlink"),
+                "localhost:8813",
+                false
+            )["device"],
             true
         );
         assert_eq!(
-            on_device(socket("wss://localhost:8813/mavlink"), "localhost:8813")["device"],
-            true
-        );
-        assert_eq!(
-            on_device(socket("ws://falcon/fly/mavlink"), "zero3w")["device"],
+            on_device(socket("ws://falcon/fly/mavlink"), "zero3w", true)["device"],
             false
         );
         assert_eq!(
-            on_device(socket("ws://zero3w/fly/mavlink"), "")["device"],
+            on_device(socket("ws://zero3w/fly/mavlink"), "", true)["device"],
             false
         );
         let udp = |hosts: Value| json!({ "type": "udp", "hostList": hosts });
         assert_eq!(
-            on_device(udp(json!(["100.64.0.18:14550"])), "100.64.0.18")["device"],
+            on_device(udp(json!(["100.64.0.18:14550"])), "100.64.0.18", true)["device"],
             true,
             "the telemetry link device setup made calls the device"
         );
         assert_eq!(
-            on_device(udp(json!(["10.0.0.9:14550"])), "100.64.0.18")["device"],
+            on_device(udp(json!(["100.64.0.18:14550"])), "100.64.0.18", false)["device"],
+            false,
+            "until the device answers, a UDP link to its address is a plain telemetry link"
+        );
+        assert_eq!(
+            on_device(udp(json!(["10.0.0.9:14550"])), "100.64.0.18", true)["device"],
             false
         );
         assert_eq!(
-            on_device(udp(Value::Null), "zero3w")["device"],
+            on_device(udp(Value::Null), "zero3w", true)["device"],
             false,
             "a listening UDP link reaches no one in particular"
         );
         assert_eq!(
-            on_device(json!({ "type": "tcp", "host": "zero3w" }), "zero3w:8080")["device"],
+            on_device(
+                json!({ "type": "tcp", "host": "zero3w" }),
+                "zero3w:8080",
+                false
+            )["device"],
             true
         );
     }

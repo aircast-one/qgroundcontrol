@@ -198,6 +198,13 @@ pub fn paired_host() -> String {
     host_of(&lock().origin())
 }
 
+pub fn seen() -> bool {
+    lock()
+        .pages
+        .values()
+        .any(|page| !page.view.is_null() && page.problem.is_none())
+}
+
 pub fn host_of(origin: &str) -> String {
     Url::parse(origin)
         .ok()
