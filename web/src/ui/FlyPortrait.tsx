@@ -219,7 +219,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const underVideo = fullScreen || undefined;
 
   return (
-    <div className="flex size-full flex-col" style={{ background: aircast('outdoorBackground') }} {...holdThrough}>
+    <div className="flex size-full select-none flex-col" style={{ background: aircast('outdoorBackground') }} {...holdThrough}>
       <div ref={box.ref} className="relative w-full min-h-0 flex-1 overflow-hidden">
         {view === FlyView.ThreeD ? (
           <div className="absolute inset-x-0 bottom-0" style={{ top: mapTop }} aria-hidden={underVideo}>

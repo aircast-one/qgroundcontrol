@@ -529,7 +529,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   );
 
   return (
-    <div ref={rootRef} className="relative size-full overflow-hidden" {...holdThrough}>
+    <div ref={rootRef} className="relative size-full select-none overflow-hidden" {...holdThrough}>
       <LocalCompactHud.Provider value={compactHud(boxHeight)}>
         {fullScreen ? null : (
           <>

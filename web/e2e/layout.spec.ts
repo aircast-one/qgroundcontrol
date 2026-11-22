@@ -227,6 +227,32 @@ test('while editing the layout the video takes no input, a click on it ends edit
   await expect.poll(presses, { message: 'the probe point is the video' }).toBe(1);
 });
 
+(
+  [
+    ['landscape', 1280, 800],
+    ['portrait', 412, 860],
+  ] as const
+).forEach(([orientation, width, height]) =>
+  test(`in ${orientation} a mouse drag across the Fly screen selects no text, while editing the layout too`, async ({ app }) => {
+    await app.setViewportSize({ width, height });
+    await withCamera(app);
+    const selectedBy = async (fromX: number, fromY: number, toX: number, toY: number) => {
+      await app.mouse.move(fromX, fromY);
+      await app.mouse.down();
+      await app.mouse.move(toX, toY, { steps: 12 });
+      await app.mouse.up();
+      return app.evaluate(() => getSelection()?.toString() ?? '');
+    };
+    const across = () => selectedBy(8, 60, width - 8, height - 8);
+    const down = () => selectedBy(width / 2, 8, width / 2, height - 8);
+    expect(await across(), 'flying, corner to corner').toBe('');
+    expect(await down(), 'flying, top to bottom').toBe('');
+    await editLayout(app);
+    expect(await across(), 'editing the layout, corner to corner').toBe('');
+    expect(await down(), 'editing the layout, top to bottom').toBe('');
+  }),
+);
+
 test('a widget dragged up stops below the status row, also after turning the screen and back', async ({ app }) => {
   await withCamera(app);
   const rowWidth = async () => (await app.locator('[data-status-row]').boundingBox())?.width ?? 0;
