@@ -209,7 +209,7 @@ test('the message banner hugs its text, so its jiggle swings a few pixels and no
   expect(bannerBox.x + bannerBox.width - (dismissBox.x + dismissBox.width), 'room past the dismiss button').toBeLessThan(24);
 });
 
-test('while editing the layout the video takes no input, and it does again after Done', async ({ app }) => {
+test('while editing the layout the video takes no input, a click on it ends editing, and it takes input again after', async ({ app }) => {
   await withCamera(app);
   const [x, y] = await app.evaluate(() => [Math.round(innerWidth * 0.4), Math.round(innerHeight * 0.6)] as const);
   await app.evaluate(([px, py]) => {
@@ -221,8 +221,7 @@ test('while editing the layout the video takes no input, and it does again after
   const presses = () => app.evaluate(() => (window as unknown as { videoPresses: number }).videoPresses);
   await editLayout(app);
   await app.mouse.click(x, y);
-  await app.getByRole('button', { name: 'Done' }).click();
-  await expect(editBar(app)).toBeHidden();
+  await expect(editBar(app), 'a click on the picture is a click on empty space').toBeHidden();
   expect(await presses(), 'the press made while editing').toBe(0);
   await app.mouse.click(x, y);
   await expect.poll(presses, { message: 'the probe point is the video' }).toBe(1);
@@ -770,4 +769,21 @@ test('the gimbal mode switch on the picture and the camera picker each move and 
   await expect.poll(async () => (await centre(picker))[0], { timeout: 30_000 }).toBeCloseTo(placed[0], 0);
   expect((await centre(picker))[1]).toBeCloseTo(placed[1], 0);
   await expect(mode).toBeHidden();
+});
+
+
+test('a click on empty space ends layout editing, while a click on an item or with the options menu open keeps it', async ({ vehicle }) => {
+  await editLayout(vehicle);
+  const [x, y] = await centre(vehicle.getByRole('timer', { name: 'Flight time' }));
+  await vehicle.mouse.click(x, y);
+  await expect(editBar(vehicle), 'a click on an item keeps editing').toBeVisible();
+  await editBar(vehicle).click();
+  await expect(vehicle.getByRole('menu')).toBeVisible();
+  const view = vehicle.viewportSize()!;
+  await vehicle.mouse.click(view.width * 0.35, view.height * 0.72);
+  await expect(vehicle.getByRole('menu')).toBeHidden();
+  await expect(editBar(vehicle), 'the first click outside only closed the menu').toBeVisible();
+  await vehicle.mouse.click(view.width * 0.35, view.height * 0.72);
+  await expect(editBar(vehicle), 'a click on empty space ends editing, like tapping the iPhone home screen').toBeHidden();
+  await expect(vehicle.getByRole('button', { name: 'Menu', exact: true })).toBeVisible();
 });

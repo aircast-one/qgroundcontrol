@@ -298,6 +298,15 @@ const within = (box: DOMRect, x: number, y: number): boolean => x >= box.left &&
 
 const overLayoutItem = (x: number, y: number): boolean => Array.from(document.querySelectorAll(`[${LAYOUT_ITEM}]`)).some((item) => within(item.getBoundingClientRect(), x, y));
 
+const KEEPS_EDITING = `[${LAYOUT_ITEM}], button, a, input, select, textarea, [role="button"], [role="slider"], [role="switch"], [role="checkbox"], [role="menuitem"]`;
+
+const OPEN_POPUP = '[role="dialog"], [role="menu"], [role="listbox"]';
+
+const CLICK_SLOP_PX = 6;
+
+export const endsLayoutEditing = (target: Element | null, x: number, y: number): boolean =>
+  document.querySelector(OPEN_POPUP) === null && (target === null || target.closest(KEEPS_EDITING) === null) && !overLayoutItem(x, y);
+
 const useHoldToEdit = (accepts: (event: PointerEvent<HTMLElement>) => boolean): HTMLAttributes<HTMLElement> => {
   const layout = useContext(LocalFlyScreenState).layout;
   const editing = useValue(layout.editing);
@@ -672,6 +681,24 @@ export const LayoutDoneButton = () => {
   useEscapeHandler(true, () => {
     layout.editing.value = false;
   });
+  useEffect(() => {
+    const pressed = { x: 0, y: 0, outside: false };
+    const ends = (event: MouseEvent) => endsLayoutEditing(event.target instanceof Element ? event.target : null, event.clientX, event.clientY);
+    const press = (event: MouseEvent) => {
+      pressed.x = event.clientX;
+      pressed.y = event.clientY;
+      pressed.outside = ends(event);
+    };
+    const click = (event: MouseEvent) => {
+      if (pressed.outside && Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) <= CLICK_SLOP_PX && ends(event)) layout.editing.value = false;
+    };
+    document.addEventListener('pointerdown', press, true);
+    document.addEventListener('click', click, true);
+    return () => {
+      document.removeEventListener('pointerdown', press, true);
+      document.removeEventListener('click', click, true);
+    };
+  }, [layout]);
   return (
     <Button
       onClick={() => {
