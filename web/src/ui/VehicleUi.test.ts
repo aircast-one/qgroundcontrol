@@ -329,3 +329,14 @@ describe('HudIconTest', () => {
     expect(hudTag(ValueDisplay({ showIcon: true, icon: 'home.svg' }), shake)).toBeNull();
   });
 });
+
+describe('ReadingActionTest', () => {
+  const reading = (id: string) => ({ id, label: '', reading: '', value: '', units: '', raw: null, defaultIcon: '' });
+  it('the height reading opens altitude, the speed readings open speed, and the rest stay plain', async () => {
+    const { readingAction } = await import('./VehicleUi');
+    expect(readingAction(reading('vehicle/altitudeRelative'))).toEqual(['changeAltitude', 'change altitude']);
+    expect(readingAction(reading('vehicle/groundSpeed'))).toEqual(['changeSpeed', 'change speed']);
+    expect(readingAction(reading('vehicle/airSpeed'))).toEqual(['changeSpeed', 'change speed']);
+    expect(readingAction(reading('vehicle/distanceToHome'))).toBeNull();
+  });
+});

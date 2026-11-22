@@ -441,13 +441,28 @@ export const TelemetryRow = ({
   );
 };
 
-const HudReading = ({ instrument, display, silent, scale }: { instrument: Instrument; display: ValueDisplay; silent: boolean; scale: number }) => {
+const READING_ACTIONS: ReadonlyMap<string, readonly [string, string]> = new Map([
+  ['altitudeRelative', ['changeAltitude', 'change altitude']],
+  ['groundSpeed', ['changeSpeed', 'change speed']],
+  ['airSpeed', ['changeSpeed', 'change speed']],
+]);
+
+export const readingAction = (instrument: Instrument): readonly [string, string] | null => READING_ACTIONS.get(instrument.id.slice(instrument.id.lastIndexOf('/') + 1)) ?? null;
+
+type ReadingAct = { readonly label: string; readonly run: () => void };
+
+const HudReading = ({ instrument, display, silent, scale, act }: { instrument: Instrument; display: ValueDisplay; silent: boolean; scale: number; act: ReadingAct | null }) => {
   const icon = hudIcon(display, instrument);
   const tag = hudTag(display, instrument);
   const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
   const bare = useContext(LocalFlyOsd);
+  const Root = act === null ? 'div' : 'button';
   return (
-    <div className={`flex items-center gap-1.5 ${bare ? '' : 'rounded-shape-sm px-1.5'}`} style={{ height: hudReadingHeight(scale), opacity: silent ? STALE_OPACITY : 1, background: bare ? undefined : OSD_SCRIM }}>
+    <Root
+      {...(act === null ? {} : { type: 'button' as const, onClick: act.run, 'aria-label': `${osdLabel(instrument.label)} ${withUnit(instrument.value, instrument.units)}, ${act.label}`, title: act.label })}
+      className={`flex items-center gap-1.5 ${act === null ? '' : 'cursor-pointer'} ${bare ? '' : 'rounded-shape-sm px-1.5'}`}
+      style={{ height: hudReadingHeight(scale), opacity: silent ? STALE_OPACITY : 1, background: bare ? undefined : OSD_SCRIM }}
+    >
       {icon !== null ? (
         <>
           <span aria-hidden className="contents">
@@ -470,7 +485,7 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
       <Text typography="titleMedium" fontWeight={700} className="tabular-nums" maxLines={1} style={{ zoom: scale }} color={tint}>
         {withUnit(instrument.value, instrument.units)}
       </Text>
-    </div>
+    </Root>
   );
 };
 
@@ -479,6 +494,21 @@ export const hudStartTop = (top: CSSProperties['top'], below: number): CSSProper
 export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: { style: CSSProperties; startInset: number; startBelow?: number; endLift?: number }) => {
   const { flyScreen, shown, displays, silent, stale, valueSize, sheets } = useTelemetryReadings();
   const offsets = useValue(flyScreen.layout.offsets);
+  const editing = useValue(flyScreen.layout.editing);
+  const actionsJson = useQgcPath(GUIDED_ACTIONS);
+  const offers = useMemo(() => guidedOffers(actionsJson), [actionsJson]);
+  const actFor = (it: Instrument): ReadingAct | null => {
+    const action = readingAction(it);
+    const offer = action === null ? undefined : offers.get(action[0]);
+    return action !== null && offer !== undefined && offer.shown && offer.ready && !editing
+      ? {
+          label: action[1],
+          run: () => {
+            flyScreen.deckRequest.value = action[0];
+          },
+        }
+      : null;
+  };
   const landscape = !useFlyIsPortrait();
   const height = hudReadingHeight(valueSize.scale);
   const pitch = height + HUD_READING_GAP;
@@ -504,7 +534,7 @@ export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: 
           {readings.map((it) => (
             <div key={instrumentKey(it)} className={`absolute bottom-0 w-max ${side === 'start' ? 'start-0' : 'end-0'}`}>
               <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch - lift]} badgeBeside={side === 'start' ? 'end' : 'start'}>
-                <HudReading instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} />
+                <HudReading instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} act={actFor(it)} />
               </LayoutWidget>
             </div>
           ))}

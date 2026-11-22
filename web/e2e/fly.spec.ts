@@ -353,3 +353,11 @@ test.describe('against an ArduPilot that comes back as another aircraft', () => 
     await expect(sheet.getByText('0', { exact: true }), 'no raw number left over from the copter').toHaveCount(0);
   });
 });
+
+test('in flight a tap on the height reading opens the altitude change, so it is found where the height is shown', async ({ vehicle }) => {
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await vehicle.getByRole('button', { name: /, change altitude$/ }).click();
+  await expect(vehicle.getByText('Change altitude', { exact: true })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: /^Slide to / })).toBeVisible();
+});
