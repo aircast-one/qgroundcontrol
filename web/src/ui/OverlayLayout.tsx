@@ -1,4 +1,4 @@
-import { type CSSProperties, type Dispatch, type HTMLAttributes, type PointerEvent, type ReactNode, type RefObject, type SetStateAction, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, type Dispatch, type HTMLAttributes, type PointerEvent, type ReactNode, type RefCallback, type RefObject, type SetStateAction, createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
 import { Button, DropdownMenu, DropdownMenuItem, Surface, Text } from '@/m3';
 import { useEscapeHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
@@ -252,6 +252,15 @@ const useRootBounds = (seen: (bounds: Bounds) => void): readonly [(node: HTMLEle
 };
 
 const useLayoutKey = (key: string): string => orientedKey(key, !useFlyIsPortrait());
+
+const useBothRefs = (first: RefCallback<HTMLElement> | undefined, second: RefCallback<HTMLElement> | undefined): RefCallback<HTMLElement> =>
+  useCallback(
+    (node: HTMLElement | null) => {
+      const released = [first?.(node), second?.(node)];
+      return () => released.forEach((release) => release?.());
+    },
+    [first, second],
+  );
 
 const NO_OFFSET: Offset = [0, 0];
 
@@ -538,10 +547,11 @@ export const LayoutGroup = ({ widgetKey, className, children }: { widgetKey: str
   const [correction, kept, frame] = useKeptOnScreen(placedKey, NO_OFFSET);
   const hold = useHoldToEditLayout();
   const [lifted, setLifted] = useState(false);
+  const placed = useBothRefs(kept, avoided ? avoidedRef : undefined);
   const [x, y] = offsets.get(placedKey) ?? NO_OFFSET;
   return (
-    <div ref={kept} className={className} style={{ translate: `${x + correction[0]}px ${y + correction[1]}px`, zIndex: lifted ? 1 : undefined }} {...hold}>
-      <div ref={avoided ? avoidedRef : undefined} style={liftStyle(lifted)}>
+    <div ref={placed} className={className} style={{ translate: `${x + correction[0]}px ${y + correction[1]}px`, zIndex: lifted ? 1 : undefined }} {...hold}>
+      <div style={liftStyle(lifted)}>
         <LocalLayoutGroup.Provider value={{ correction, frame, lift: setLifted }}>
           <LayoutLifted.Provider value={lifted}>{children}</LayoutLifted.Provider>
         </LocalLayoutGroup.Provider>
@@ -608,13 +618,14 @@ export const LayoutWidget = ({
   }, []);
   const decorated = editing && size.width > 0 && size.height > 0 && nested === 0;
   const jiggle = useJiggleAngle(widgetKey, decorated && !lifted && !carriedAloft, size);
+  const placed = useBothRefs(movable ? kept : undefined, avoided ? avoidedRef : undefined);
   if (hidden && !editing) return null;
   const [x, y] = movable ? (offsets.get(placedKey) ?? home) : NO_OFFSET;
   const [cx, cy] = movable ? correction : NO_OFFSET;
   const carried = dragsWith !== undefined && group !== null ? { key: dragsWith, ...group } : null;
   return (
-    <div ref={movable ? kept : undefined} className={className} style={{ translate: `${x + cx}px ${y + cy}px`, zIndex: lifted ? 1 : undefined }} {...hold}>
-      <div ref={avoided ? avoidedRef : undefined} className="relative" style={{ ...jiggle, ...liftStyle(lifted) }}>
+    <div ref={placed} className={className} style={{ translate: `${x + cx}px ${y + cy}px`, zIndex: lifted ? 1 : undefined }} {...hold}>
+      <div className="relative" style={{ ...jiggle, ...liftStyle(lifted) }}>
         <div
           ref={sized}
           data-layout-item
