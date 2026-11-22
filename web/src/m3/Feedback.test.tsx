@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useSnackbarHostState } from './Feedback';
+import { SnackbarHost, type SnackbarHostState, useSnackbarHostState } from './Feedback';
 
 const settle = () => act(async () => undefined);
 
@@ -40,5 +40,21 @@ describe('SnackbarHostTest', () => {
     await act(async () => vi.advanceTimersByTime(4_000));
     expect(result.current.current?.message).toBe('Bay 2 dropped');
     await expect(skipped).resolves.toBe('Dismissed');
+  });
+
+  it('the close button takes the snackbar off the screen before its time runs out', async () => {
+    const host = { state: null as SnackbarHostState | null };
+    const Screen = () => {
+      const state = useSnackbarHostState();
+      host.state = state;
+      return <SnackbarHost hostState={state} />;
+    };
+    render(<Screen />);
+    const shown = host.state?.showSnackbar('Right-click the picture to fly there');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await settle();
+    expect(screen.queryByText('Right-click the picture to fly there')).toBeNull();
+    await expect(shown).resolves.toBe('Dismissed');
   });
 });

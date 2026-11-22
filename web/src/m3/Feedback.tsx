@@ -1,5 +1,6 @@
 import { type ReactElement, type ReactNode, useMemo, useRef, useState } from 'react';
 import { Tooltip } from '@base-ui/react';
+import { Drawable } from '@/res/Icon';
 
 export type SnackbarResult = 'Dismissed' | 'ActionPerformed';
 export type SnackbarDuration = 'Short' | 'Long' | 'Indefinite';
@@ -52,6 +53,9 @@ export const SnackbarHost = ({ hostState, className }: { hostState: SnackbarHost
           {shown.actionLabel}
         </button>
       ) : null}
+      <button type="button" aria-label="Dismiss" className="-mr-2 grid size-10 shrink-0 place-items-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_8%,transparent)]" onClick={() => shown.settle('Dismissed')}>
+        <Drawable name="ic_close" size={24} />
+      </button>
     </div>
   ) : null;
 };
