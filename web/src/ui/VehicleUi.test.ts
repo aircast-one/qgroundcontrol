@@ -331,7 +331,7 @@ describe('HudIconTest', () => {
 });
 
 describe('ReadingActionTest', () => {
-  const reading = (id: string) => ({ id, label: '', reading: '', value: '', units: '', raw: null, defaultIcon: '' });
+  const reading = (id: string) => Instrument({ id, label: '', reading: '' });
   it('the height reading opens altitude, the speed readings open speed, and the rest stay plain', async () => {
     const { readingAction } = await import('./VehicleUi');
     expect(readingAction(reading('vehicle/altitudeRelative'))).toEqual(['changeAltitude', 'change altitude']);
