@@ -35,14 +35,19 @@ fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
                 .and_then(Value::as_str)
                 .filter(|d| !d.is_empty() && *d != named);
             (!has_text_twin(property)).then(|| {
+                let label = described.map_or_else(
+                    || undescribed_label(property, named),
+                    crate::label::capitalised,
+                );
+                let group = match prefix.trim_end_matches('/') {
+                    "" => "vehicle",
+                    group => group,
+                };
                 json!({
                     "name": property,
-                    "icon": crate::instruments::glyph(match prefix.trim_end_matches('/') {
-                        "" => "vehicle",
-                        group => group,
-                    }, property),
+                    "icon": crate::instruments::glyph(group, property, &label),
                     "selection": format!("{prefix}{property}"),
-                    "label": described.map_or_else(|| undescribed_label(property, named), crate::label::capitalised),
+                    "label": label,
                 })
             })
         })

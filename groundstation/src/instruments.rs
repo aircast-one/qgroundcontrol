@@ -91,9 +91,58 @@ fn group_icon(group: &str) -> &'static str {
         .map_or(UNGROUPED_ICON, |(_, icon)| icon)
 }
 
-pub fn glyph(group: &str, name: &str) -> &'static str {
+const KIND_ICONS: &[(&str, &str)] = &[
+    ("temperature", "thermometer.svg"),
+    ("voltage", "bolt.svg"),
+    ("fuel", "location-gas-station.svg"),
+    ("rpm", "refresh.svg"),
+    ("pressure", "dashboard.svg"),
+    ("time", "time.svg"),
+    ("timing", "time.svg"),
+    ("runtime", "time.svg"),
+    ("health", "stethoscope.svg"),
+    ("status", "stethoscope.svg"),
+    ("throttle", "tuning.svg"),
+    ("load", "chart-bar.svg"),
+    ("altitude", "arrow-thick-up.svg"),
+    ("heading", "explore.svg"),
+    ("humidity", "cloud.svg"),
+];
+const MIXED_GROUPS: &[&str] = &["vehicle", "efi", "generator", "batteries", "hygrometer"];
+
+fn words(label: &str) -> Vec<&str> {
+    label
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
+fn kind(group: &str, label: &str) -> Option<(&'static str, &'static str)> {
+    let said = words(label);
+    KIND_ICONS
+        .iter()
+        .filter(|_| MIXED_GROUPS.contains(&family(group)))
+        .find(|(word, _)| said.iter().any(|spoken| spoken.eq_ignore_ascii_case(word)))
+        .copied()
+}
+
+fn shared_glyph(group: &str, label: &str) -> (&'static str, String) {
+    match kind(group, label) {
+        Some((word, icon)) => (
+            icon,
+            words(label)
+                .into_iter()
+                .filter(|spoken| !spoken.eq_ignore_ascii_case(word))
+                .collect::<Vec<_>>()
+                .join(" "),
+        ),
+        None => (group_icon(group), tag(group, label)),
+    }
+}
+
+pub fn glyph(group: &str, name: &str, label: &str) -> &'static str {
     match reading_icon(group, name) {
-        "" => group_icon(group),
+        "" => shared_glyph(group, label).0,
         own => own,
     }
 }
@@ -246,13 +295,14 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
             };
             let label = described.unwrap_or_else(|| capitalised(name));
             let own_icon = reading_icon(group, name);
+            let (shared_icon, shared_tag) = shared_glyph(group, &label);
             json!({
                 "id": format!("{group}/{name}"),
                 "group": group,
                 "name": name,
                 "defaultIcon": own_icon,
-                "groupIcon": if own_icon.is_empty() { group_icon(group) } else { "" },
-                "tag": if own_icon.is_empty() { tag(group, &label) } else { String::new() },
+                "groupIcon": if own_icon.is_empty() { shared_icon } else { "" },
+                "tag": if own_icon.is_empty() { shared_tag } else { String::new() },
                 "label": label,
                 "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
@@ -429,11 +479,37 @@ mod tests {
         );
         assert_eq!(tag("temperature", "Temperature"), "Temperature");
         assert_eq!(group_icon("somethingNew"), UNGROUPED_ICON);
+        assert_eq!(
+            [
+                shared_glyph("efi", "Cylinder Head Temperature"),
+                shared_glyph("efi", "Fuel Flow"),
+                shared_glyph("efi", "RPM"),
+                shared_glyph("efi", "ECU Index"),
+            ],
+            [
+                ("thermometer.svg", "Cylinder Head".to_string()),
+                ("location-gas-station.svg", "Flow".to_string()),
+                ("refresh.svg", String::new()),
+                ("cog.svg", "ECU Index".to_string()),
+            ],
+            "in a group of unlike readings the glyph says what kind each is and the tag only what is left; a cog on every engine row said nothing"
+        );
+        assert_eq!(
+            shared_glyph("gimbal11", "Gimbal Yaw"),
+            ("gimbal-1.svg", "Yaw".to_string()),
+            "a group whose glyph already says what it reads keeps it"
+        );
+        assert_eq!(
+            glyph("vehicle", "altitudeAMSL", "Altitude Above Sea Level"),
+            "arrow-thick-up.svg"
+        );
+        assert_eq!(glyph("wind", "speed", "Wind Speed"), "wind.svg");
         let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../resources/InstrumentValueIcons");
         let missing: Vec<&str> = READING_ICONS
             .iter()
             .chain(GROUP_ICONS)
+            .chain(KIND_ICONS)
             .map(|(_, icon)| *icon)
             .chain([UNGROUPED_ICON])
             .filter(|icon| !icons.join(icon).exists())
