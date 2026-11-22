@@ -14,9 +14,9 @@ export const defaultInstruments = (vehicleClass: string): readonly string[] => [
 
 export const INSTRUMENTS_VIEW = 'view.instruments';
 
-export type InstrumentFact = { name: string; label: string; path: string };
+export type InstrumentFact = { name: string; label: string; path: string; icon: string };
 
-export const InstrumentFact = (name: string, label: string, path: string): InstrumentFact => ({ name, label, path });
+export const InstrumentFact = (name: string, label: string, path: string, icon = ''): InstrumentFact => ({ name, label, path, icon });
 
 export type InstrumentGroup = { group: string; title: string; facts: readonly InstrumentFact[] };
 
@@ -24,7 +24,7 @@ export const InstrumentGroup = (group: string, title: string, facts: readonly In
 
 const availableView = (view: Json | null): Json | null => (view !== null && optBoolean(view, 'available') ? view : null);
 
-const instrumentFact = (it: Json): InstrumentFact => InstrumentFact(optText(it, 'name'), optText(it, 'label'), optText(it, 'selection'));
+const instrumentFact = (it: Json): InstrumentFact => InstrumentFact(optText(it, 'name'), optText(it, 'label'), optText(it, 'selection'), optText(it, 'icon'));
 
 const askable = (fact: InstrumentFact): boolean => fact.name.trim() !== '' && fact.path.trim() !== '';
 

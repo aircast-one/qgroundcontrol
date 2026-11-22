@@ -37,6 +37,10 @@ fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
             (!has_text_twin(property)).then(|| {
                 json!({
                     "name": property,
+                    "icon": crate::instruments::glyph(match prefix.trim_end_matches('/') {
+                        "" => "vehicle",
+                        group => group,
+                    }, property),
                     "selection": format!("{prefix}{property}"),
                     "label": described.map_or_else(|| undescribed_label(property, named), crate::label::capitalised),
                 })
@@ -330,6 +334,14 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["voltage", "timeRemainingStr"],
             "a reading with a formatted Str twin is offered once, as the twin, instead of two Time remaining rows"
+        );
+        assert_eq!(
+            (
+                &packs[0]["facts"][0]["icon"],
+                &gps_group["facts"][0]["icon"]
+            ),
+            (&json!("bolt.svg"), &json!("satellite.svg")),
+            "each reading is listed with the glyph it will show, its own or its group's"
         );
         let voltage = packs[0]["facts"][0]["selection"].as_str().unwrap();
         assert_eq!(

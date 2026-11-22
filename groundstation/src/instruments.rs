@@ -25,13 +25,90 @@ pub const DEFAULTS: &[&str] = &[
     "vehicle/climbRate",
 ];
 pub const FORWARD_FLIGHT_DEFAULTS: &[&str] = &["vehicle/airSpeed"];
-const DEFAULT_ICONS: &[(&str, &str)] = &[
+const READING_ICONS: &[(&str, &str)] = &[
     ("vehicle/distanceToHome", "home.svg"),
     ("vehicle/altitudeRelative", "arrow-thick-up.svg"),
     ("vehicle/groundSpeed", "arrow-simple-right.svg"),
     ("vehicle/climbRate", "arrow-simple-up.svg"),
     ("vehicle/airSpeed", "dashboard.svg"),
+    ("vehicle/heading", "explore.svg"),
+    ("vehicle/flightTime", "timer.svg"),
+    ("vehicle/missionItemIndex", "flag.svg"),
+    ("vehicle/imuTemp", "thermometer.svg"),
+    ("vehicle/rcRSSI", "radio.svg"),
+    ("aircastLink/quality", "signal.svg"),
+    ("aircastLink/videoBitrate", "video-camera.svg"),
+    ("aircastLink/uplink", "cloud-upload.svg"),
+    ("clock/currentTime", "time.svg"),
+    ("clock/currentDate", "calendar.svg"),
+    ("gps/count", "satellite.svg"),
+    ("gps/mgrs", "location.svg"),
+    ("wind/speed", "wind.svg"),
+    ("batteries/voltage", "bolt.svg"),
+    ("batteries/percentRemaining", "battery-half.svg"),
 ];
+const GROUP_ICONS: &[(&str, &str)] = &[
+    ("vehicle", "drone.svg"),
+    ("aircastLink", "network.svg"),
+    ("clock", "time.svg"),
+    ("distanceSensors", "radar.svg"),
+    ("efi", "cog.svg"),
+    ("estimatorStatus", "checkmark-outline.svg"),
+    ("gps", "satellite.svg"),
+    ("gpsAggregate", "shield.svg"),
+    ("generator", "plugin.svg"),
+    ("gimbal", "gimbal-1.svg"),
+    ("hygrometer", "cloud.svg"),
+    ("localPosition", "location-current.svg"),
+    ("localPositionSetpoint", "target.svg"),
+    ("rpm", "refresh.svg"),
+    ("setpoint", "target.svg"),
+    ("radioStatus", "radio.svg"),
+    ("temperature", "thermometer.svg"),
+    ("terrain", "layers.svg"),
+    ("vibration", "vibration.svg"),
+    ("wind", "wind.svg"),
+    ("batteries", "battery-full.svg"),
+];
+const UNGROUPED_ICON: &str = "dashboard.svg";
+
+fn family(group: &str) -> &str {
+    group.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.')
+}
+
+fn reading_icon(group: &str, name: &str) -> &'static str {
+    let id = format!("{}/{name}", family(group));
+    READING_ICONS
+        .iter()
+        .find(|(reading, _)| *reading == id)
+        .map_or("", |(_, icon)| icon)
+}
+
+fn group_icon(group: &str) -> &'static str {
+    GROUP_ICONS
+        .iter()
+        .find(|(named, _)| *named == family(group))
+        .map_or(UNGROUPED_ICON, |(_, icon)| icon)
+}
+
+pub fn glyph(group: &str, name: &str) -> &'static str {
+    match reading_icon(group, name) {
+        "" => group_icon(group),
+        own => own,
+    }
+}
+
+fn tag(group: &str, label: &str) -> String {
+    let named = family(group);
+    let rest = label
+        .get(..named.len())
+        .filter(|start| start.eq_ignore_ascii_case(named))
+        .map_or("", |_| label[named.len()..].trim());
+    match rest.is_empty() {
+        true => label.to_string(),
+        false => rest.to_string(),
+    }
+}
 
 const ABSENT: &str = "\u{2014}";
 
@@ -167,12 +244,16 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
                 Some((_, name)) => display_units(name.as_str()),
                 None => fact.get("units").and_then(Value::as_str).map(display_units).unwrap_or(""),
             };
+            let label = described.unwrap_or_else(|| capitalised(name));
+            let own_icon = reading_icon(group, name);
             json!({
                 "id": format!("{group}/{name}"),
                 "group": group,
                 "name": name,
-                "label": described.unwrap_or_else(|| capitalised(name)),
-                "defaultIcon": DEFAULT_ICONS.iter().find(|(id, _)| *id == format!("{group}/{name}")).map_or("", |(_, icon)| icon),
+                "defaultIcon": own_icon,
+                "groupIcon": if own_icon.is_empty() { group_icon(group) } else { "" },
+                "tag": if own_icon.is_empty() { tag(group, &label) } else { String::new() },
+                "label": label,
                 "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
                 "missing": value.is_none(),
@@ -319,6 +400,48 @@ mod tests {
             instruments_view(&Plane, &["vehicle/airSpeed".to_string()])["items"][0]["label"],
             "Air Speed",
             "a picked cell takes the fact's description"
+        );
+    }
+
+    #[test]
+    fn every_reading_has_a_glyph_its_own_or_its_groups_with_a_short_tag_to_tell_it_apart() {
+        assert_eq!(reading_icon("wind", "speed"), "wind.svg");
+        assert_eq!(
+            reading_icon("batteries.1", "voltage"),
+            "bolt.svg",
+            "the second battery's voltage is a voltage too"
+        );
+        assert_eq!(reading_icon("gps2", "count"), "satellite.svg");
+        assert_eq!(reading_icon("vibration", "xAxis"), "");
+        assert_eq!(
+            (group_icon("vibration"), tag("vibration", "Vibration X")),
+            ("vibration.svg", "X".to_string()),
+            "three vibration axes share a glyph, so each says which axis it is"
+        );
+        assert_eq!(
+            (group_icon("gimbal12"), tag("gimbal12", "Gimbal Roll")),
+            ("gimbal-1.svg", "Roll".to_string())
+        );
+        assert_eq!(
+            tag("vibration", "Accelerometer 1 Clipping"),
+            "Accelerometer 1 Clipping",
+            "a label that does not start with its group stays whole"
+        );
+        assert_eq!(tag("temperature", "Temperature"), "Temperature");
+        assert_eq!(group_icon("somethingNew"), UNGROUPED_ICON);
+        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../resources/InstrumentValueIcons");
+        let missing: Vec<&str> = READING_ICONS
+            .iter()
+            .chain(GROUP_ICONS)
+            .map(|(_, icon)| *icon)
+            .chain([UNGROUPED_ICON])
+            .filter(|icon| !icons.join(icon).exists())
+            .collect();
+        assert_eq!(
+            missing,
+            Vec::<&str>::new(),
+            "every glyph named here ships with the apps"
         );
     }
 

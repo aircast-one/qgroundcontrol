@@ -731,6 +731,25 @@ test('from Add reading on the editing bar a reading is added where nothing else 
   await expect.poll(async () => overlaps(await boxesOf([heading, readings[0]!, readings[1]!, readings[3]!])), { message: 'no reading on another' }).toEqual([]);
 });
 
+test('an added reading shows as a glyph and its value, with a short tag where readings share the glyph, never as a spelled-out label', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(telemetry(vehicle, 'D')).toBeVisible({ timeout: 30_000 });
+  await editLayout(vehicle);
+  await vehicle.getByRole('button', { name: 'Add reading' }).click();
+  const chooser = vehicle.getByRole('dialog', { name: 'Choose readings' });
+  await chooser.getByText('Vibration X', { exact: true }).click();
+  await chooser.getByText('Voltage', { exact: true }).first().click();
+  await vehicle.keyboard.press('Escape');
+  await expect(chooser).toBeHidden();
+  const shake = vehicle.locator('[role=img][aria-label=vibration]').locator('xpath=ancestor::*[@data-layout-item][1]');
+  await expect(shake).toBeVisible();
+  await expect(shake.getByText('X', { exact: true }), 'the axis it reads').toBeVisible();
+  await expect(vehicle.locator('[data-layout-item] [role=img][aria-label=bolt]'), 'voltage has a glyph of its own').toBeVisible();
+  const spelled = await vehicle.evaluate(() => [...document.querySelectorAll('[data-layout-item] *')].filter((node) => node.children.length === 0 && node.closest('.sr-only') === null).map((node) => node.textContent?.trim() ?? '').filter((shown) => /^(VIBRATION X|VOLTAGE)$/.test(shown)));
+  expect(spelled, 'no reading spells its name out').toEqual([]);
+  await finishEditing(vehicle);
+});
+
 test('reset in the layout options puts moved and hidden readings back', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const distance = telemetry(vehicle, 'D');

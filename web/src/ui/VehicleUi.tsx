@@ -114,19 +114,25 @@ export type Instrument = {
   readonly units: string;
   readonly raw: number | null;
   readonly defaultIcon: string;
+  readonly groupIcon: string;
+  readonly tag: string;
 };
 
-export const Instrument = (fields: { label: string; reading: string; id?: string; value?: string; units?: string; raw?: number | null; defaultIcon?: string }): Instrument => ({
+export const Instrument = (fields: { label: string; reading: string; id?: string; value?: string; units?: string; raw?: number | null; defaultIcon?: string; groupIcon?: string; tag?: string }): Instrument => ({
   id: '',
   value: fields.reading,
   units: '',
   raw: null,
   defaultIcon: '',
+  groupIcon: '',
+  tag: '',
   ...fields,
 });
 
+const ownGlyph = (instrument: Instrument): string => (instrument.defaultIcon.trim() !== '' ? instrument.defaultIcon : instrument.groupIcon);
+
 export const displayFor = (displays: ReadonlyMap<string, ValueDisplay>, instrument: Instrument): ValueDisplay =>
-  displays.get(instrument.id) ?? ValueDisplay({ icon: instrument.defaultIcon });
+  displays.get(instrument.id) ?? ValueDisplay({ icon: ownGlyph(instrument) });
 
 export type HudSide = 'start' | 'end';
 
@@ -145,7 +151,12 @@ export const HUD_READING_GAP = 2;
 export const hudReadingHeight = (scale: number): number => Math.max(HUD_READING_HEIGHT * scale, HUD_LABEL_HEIGHT);
 
 export const hudIcon = (display: ValueDisplay, instrument: Instrument): string | null =>
-  displayIcon(display, instrument.raw) ?? (display.text.trim() === '' && instrument.defaultIcon.trim() !== '' ? instrument.defaultIcon : null);
+  displayIcon(display, instrument.raw) ?? (display.text.trim() === '' && ownGlyph(instrument).trim() !== '' ? ownGlyph(instrument) : null);
+
+export const hudTag = (display: ValueDisplay, instrument: Instrument): string | null =>
+  displayIcon(display, instrument.raw) === null && display.text.trim() === '' && instrument.defaultIcon.trim() === '' && instrument.groupIcon.trim() !== '' && instrument.tag.trim() !== ''
+    ? instrument.tag.toUpperCase()
+    : null;
 
 export const rowWidth = (count: number): number => (count <= 4 ? count : Math.trunc((count + 1) / 2));
 
@@ -195,6 +206,8 @@ export const instruments = (view: Json | null): readonly Instrument[] =>
             units: optBoolean(item, 'missing') ? '' : optText(item, 'units'),
             raw: rawReading(item),
             defaultIcon: optText(item, 'defaultIcon'),
+            groupIcon: optText(item, 'groupIcon'),
+            tag: optText(item, 'tag'),
           }),
         ];
   });
@@ -430,6 +443,7 @@ export const TelemetryRow = ({
 
 const HudReading = ({ instrument, display, silent, scale }: { instrument: Instrument; display: ValueDisplay; silent: boolean; scale: number }) => {
   const icon = hudIcon(display, instrument);
+  const tag = hudTag(display, instrument);
   const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
   const bare = useContext(LocalFlyOsd);
   return (
@@ -440,6 +454,13 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
             <ValueIcon name={icon} tint={tint} size={16} />
           </span>
           <span className="sr-only">{osdLabel(instrument.label)}</span>
+          {tag !== null ? (
+            <span aria-hidden className="contents">
+              <Text typography="labelLarge" color={tint} maxLines={1}>
+                {tag}
+              </Text>
+            </span>
+          ) : null}
         </>
       ) : (
         <Text typography="labelLarge" color={tint} maxLines={1}>
@@ -1304,7 +1325,16 @@ const InstrumentSheet = ({
                 <ListItem
                   key={fact.path}
                   headlineContent={sentenceCase(fact.label)}
-                  leadingContent={<Checkbox checked={chosen.includes(fact.path)} onCheckedChange={null} />}
+                  leadingContent={
+                    <div className="flex items-center gap-4">
+                      <Checkbox checked={chosen.includes(fact.path)} onCheckedChange={null} />
+                      {fact.icon.trim() !== '' ? (
+                        <span aria-hidden className="contents">
+                          <ValueIcon name={fact.icon} tint={md('onSurfaceVariant')} size={20} />
+                        </span>
+                      ) : null}
+                    </div>
+                  }
                   containerColor="transparent"
                   onClick={() => onToggle(fact.path)}
                 />

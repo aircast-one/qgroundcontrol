@@ -15,6 +15,7 @@ import {
   checklistStateValue,
   flightDeckEntries,
   hudIcon,
+  hudTag,
   hudReadingHeight,
   hudSide,
   instrumentKey,
@@ -321,5 +322,10 @@ describe('HudIconTest', () => {
     expect(hudIcon(ValueDisplay({ text: 'ALT' }), height)).toBeNull();
     expect(hudIcon(ValueDisplay({ showIcon: true, icon: 'home.svg' }), height)).toBe('home.svg');
     expect(hudIcon(ValueDisplay(), Instrument({ label: 'From you', reading: '40 m' }))).toBeNull();
+    const shake = Instrument({ label: 'Vibration X', reading: '50.5', id: 'vibration/xAxis', groupIcon: 'vibration.svg', tag: 'X' });
+    expect([hudIcon(ValueDisplay(), shake), hudTag(ValueDisplay(), shake)]).toEqual(['vibration.svg', 'X']);
+    expect(hudTag(ValueDisplay(), height)).toBeNull();
+    expect([hudIcon(ValueDisplay({ text: 'VIB' }), shake), hudTag(ValueDisplay({ text: 'VIB' }), shake)]).toEqual([null, null]);
+    expect(hudTag(ValueDisplay({ showIcon: true, icon: 'home.svg' }), shake)).toBeNull();
   });
 });
