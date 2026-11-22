@@ -53,6 +53,8 @@ export type Bounds = { readonly left: number; readonly top: number; readonly rig
 
 export type Size = { readonly width: number; readonly height: number };
 
+export type Carry = { readonly item: Element; readonly pointerId: number; readonly x: number; readonly y: number };
+
 const storedLayout = (): Record<string, unknown> =>
   Object.fromEntries(Object.entries(getSharedPreferences(LAYOUT_STORE).getAll()).map(([key, text]) => [key, text === 'true' ? true : text === 'false' ? false : text]));
 
@@ -62,6 +64,7 @@ export class OverlayLayoutState {
   readonly indicatorOrder: MutableState<readonly string[]>;
   readonly valueSize = mutableStateOf<ValueSize>(ValueSize.Default);
   readonly offsets: MutableState<ReadonlyMap<string, Offset>>;
+  carry: Carry | null = null;
 
   constructor(private readonly prefs: SharedPreferences) {
     const stored = storedLayout();
@@ -70,7 +73,8 @@ export class OverlayLayoutState {
     this.offsets = mutableStateOf(storedOffsets(stored));
   }
 
-  startEditing(): void {
+  startEditing(carry: Carry | null = null): void {
+    this.carry = carry;
     this.editing.value = true;
   }
 
@@ -186,9 +190,9 @@ export const READING_BAND_PX = 120;
 export const rowsCovered = ([x, y]: Offset, pitch: number, height: number): number[] =>
   Math.abs(x) >= READING_BAND_PX ? [] : Array.from({ length: Math.max(0, Math.ceil((height - y) / pitch) + 1) }, (_, row) => row).filter((row) => y - height < -row * pitch && y > -(row + 1) * pitch);
 
-export const homeRows = (unmoved: readonly string[], taken: ReadonlySet<number>): ReadonlyMap<string, number> => {
-  const free = Array.from({ length: unmoved.length + taken.size }, (_, row) => row).filter((row) => !taken.has(row));
-  return new Map(unmoved.toReversed().map((key, at) => [key, free[at] ?? at]));
+export const homeRows = (keys: readonly string[], taken: ReadonlySet<number>): ReadonlyMap<string, number> => {
+  const free = Array.from({ length: keys.length + taken.size }, (_, row) => row).filter((row) => !taken.has(row));
+  return new Map(keys.toReversed().map((key, at) => [key, free[at] ?? at]));
 };
 
 export const MINIMAP_KEY = 'minimap';
@@ -298,6 +302,11 @@ const within = (box: DOMRect, x: number, y: number): boolean => x >= box.left &&
 
 const overLayoutItem = (x: number, y: number): boolean => Array.from(document.querySelectorAll(`[${LAYOUT_ITEM}]`)).some((item) => within(item.getBoundingClientRect(), x, y));
 
+const itemUnder = (target: Element, x: number, y: number): Element | null => {
+  const under = Array.from(document.querySelectorAll(`[${LAYOUT_ITEM}]`)).filter((item) => within(item.getBoundingClientRect(), x, y));
+  return target.closest(`[${LAYOUT_ITEM}]`) ?? under.findLast((item) => !under.some((other) => other !== item && item.contains(other))) ?? null;
+};
+
 const KEEPS_EDITING = `[${LAYOUT_ITEM}], button, a, input, select, textarea, [role="button"], [role="slider"], [role="switch"], [role="checkbox"], [role="menuitem"]`;
 
 const OPEN_POPUP = '[role="dialog"], [role="menu"], [role="listbox"]';
@@ -321,9 +330,11 @@ const useHoldToEdit = (accepts: (event: PointerEvent<HTMLElement>) => boolean): 
     onPointerDownCapture: (event) => {
       cancel();
       if (!event.isPrimary || event.button !== 0 || !accepts(event)) return;
+      const [target, pointerId, x, y] = [event.target as Element, event.pointerId, event.clientX, event.clientY];
       const timer = setTimeout(() => {
         press.current = null;
-        layout.startEditing();
+        const item = itemUnder(target, x, y);
+        layout.startEditing(item === null ? null : { item, pointerId, x, y });
         if (layout.editing.value) swallowReleaseClick();
       }, LONG_PRESS_TIMEOUT_MS);
       press.current = { id: event.pointerId, x: event.clientX, y: event.clientY, timer };
@@ -393,9 +404,19 @@ export const arrowStep = (key: string, far: boolean): Offset | null => {
   return step === undefined ? null : [step[0] * scale, step[1] * scale];
 };
 
+const captured = (node: HTMLElement, pointerId: number): boolean => {
+  try {
+    node.setPointerCapture(pointerId);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const LayoutDragArea = ({
   widgetKey,
   home = NO_OFFSET,
+  item,
   correction,
   frame,
   onLift,
@@ -403,6 +424,7 @@ export const LayoutDragArea = ({
 }: {
   widgetKey: string;
   home?: Offset;
+  item: RefObject<HTMLElement | null>;
   correction: Offset;
   frame: RefObject<HTMLElement | null>;
   onLift: (lifted: boolean) => void;
@@ -412,6 +434,16 @@ export const LayoutDragArea = ({
   const area = useLayoutArea();
   const placedKey = useLayoutKey(widgetKey);
   const drag = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
+  const self = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const carry = layout.carry;
+    const node = self.current;
+    if (carry === null || node === null || item.current !== carry.item) return;
+    layout.carry = null;
+    if (!captured(node, carry.pointerId)) return;
+    drag.current = { id: carry.pointerId, x: carry.x, y: carry.y, dragging: false };
+    onLift(true);
+  }, []);
   const end = (event: PointerEvent<HTMLDivElement>) => {
     const held = drag.current;
     if (held === null || held.id !== event.pointerId) return;
@@ -421,6 +453,7 @@ export const LayoutDragArea = ({
   };
   return (
     <div
+      ref={self}
       data-gesture
       role="button"
       tabIndex={0}
@@ -555,11 +588,16 @@ export const LayoutWidget = ({
     return () => parent?.((count) => count - 1);
   }, [parent]);
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
+  const item = useRef<HTMLElement | null>(null);
   const sized = useCallback((node: HTMLElement | null) => {
+    item.current = node;
     if (!node || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => setSize((was) => (was.width === node.offsetWidth && was.height === node.offsetHeight ? was : { width: node.offsetWidth, height: node.offsetHeight })));
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      item.current = null;
+    };
   }, []);
   const decorated = editing && size.width > 0 && size.height > 0 && nested === 0;
   const jiggle = useJiggleAngle(widgetKey, decorated && !lifted && !carriedAloft, size);
@@ -578,8 +616,8 @@ export const LayoutWidget = ({
         >
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
-        {decorated && (movable || carried !== null) ? (
-          <LayoutDragArea widgetKey={carried?.key ?? widgetKey} home={carried === null ? home : NO_OFFSET} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} onLift={carried?.lift ?? setLifted} className="absolute inset-0" />
+        {decorated && !live && (movable || carried !== null) ? (
+          <LayoutDragArea widgetKey={carried?.key ?? widgetKey} home={carried === null ? home : NO_OFFSET} item={item} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} onLift={carried?.lift ?? setLifted} className="absolute inset-0" />
         ) : decorated && !live ? (
           <div data-gesture className="absolute inset-0" />
         ) : null}

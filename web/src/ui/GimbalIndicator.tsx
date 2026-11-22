@@ -443,6 +443,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
           send(pan, tilt, true);
         }}
         onPointerCancel={release}
+        onLostPointerCapture={release}
       />
     );
   }
@@ -472,6 +473,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
       }}
       onPointerUp={release}
       onPointerCancel={release}
+      onLostPointerCapture={release}
     />
   );
 };

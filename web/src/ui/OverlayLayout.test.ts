@@ -123,6 +123,10 @@ describe('ReadingPlacementTest', () => {
     expect(homeRows(['distance', 'altitude', 'airspeed'], new Set())).toEqual(new Map([['airspeed', 0], ['altitude', 1], ['distance', 2]]));
   });
 
+  it('a reading moved away keeps its row, so the readings nobody moved stay where they stand', () => {
+    expect(homeRows(['distance', 'altitude'], new Set()).get('distance')).toBe(1);
+  });
+
   it('a removed reading leaves no gap among the ones nobody moved', () => {
     expect(homeRows(['altitude'], new Set())).toEqual(new Map([['altitude', 0]]));
     expect(homeRows([], new Set())).toEqual(new Map());

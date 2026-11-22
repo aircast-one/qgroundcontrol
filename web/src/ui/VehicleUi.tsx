@@ -465,7 +465,7 @@ export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSP
     const readings = shown.filter((it) => hudSide(it) === side);
     const placed = (it: Instrument) => offsets.get(orientedKey(instrumentKey(it), landscape));
     const taken = new Set(readings.map(placed).flatMap((at) => (at === undefined ? [] : rowsCovered(at, pitch, height))));
-    const rows = homeRows(readings.filter((it) => placed(it) === undefined).map(instrumentKey), taken);
+    const rows = homeRows(readings.map(instrumentKey), taken);
     const stacked = Math.max(0, ...[...rows.values()].map((row) => row + 1));
     return readings.length === 0 ? null : (
       <div

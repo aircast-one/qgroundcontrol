@@ -740,8 +740,10 @@ test('on a phone the readings over the picture move on their own and stop at the
   const speed = telemetry(app, 'H.S');
   const climb = telemetry(app, 'V.S');
   await expect(speed).toBeVisible({ timeout: 30_000 });
+  const distance = telemetry(app, 'D');
   const map = app.getByRole('region', { name: 'Map' });
-  const still = await centre(climb);
+  const apart = async () => [(await centre(climb))[0] - (await centre(distance))[0], (await centre(climb))[1] - (await centre(distance))[1]];
+  const still = await apart();
   await editLayout(app);
   await dragBy(app, speed, 60, 900);
   const pictureBottom = (await map.boundingBox())!.y;
@@ -753,9 +755,9 @@ test('on a phone the readings over the picture move on their own and stop at the
   await dragBy(app, picker, 0, 900);
   expect((await picker.boundingBox())!.y + (await picker.boundingBox())!.height, 'the camera picker stays on the picture too').toBeLessThanOrEqual(pictureBottom + 1);
   await finishEditing(app);
-  const [climbX, climbY] = await centre(climb);
-  expect(climbY, 'the climb rate stayed on its row').toBeCloseTo(still[1], 0);
-  expect(Math.abs(climbX - still[0]), 'and in its place along it, give or take a digit').toBeLessThan(12);
+  const [climbX, climbY] = await apart();
+  expect(climbY, 'the climb rate stayed on its row beside the distance').toBeCloseTo(still[1]!, 0);
+  expect(Math.abs(climbX - still[0]!), 'and in its place along it, give or take a digit').toBeLessThan(12);
 });
 
 const withPicture = async (page: Page) => {
@@ -812,4 +814,42 @@ test('a click on empty space ends layout editing, while a click on an item or wi
   await vehicle.mouse.click(view.width * 0.35, view.height * 0.72);
   await expect(editBar(vehicle), 'a click on empty space ends editing, like tapping the iPhone home screen').toBeHidden();
   await expect(vehicle.getByRole('button', { name: 'Menu', exact: true })).toBeVisible();
+});
+
+const holdAndDrag = async (page: Page, target: Locator, dx: number, dy: number) => {
+  const [x, y] = await centre(target);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await expect(editBar(page), 'the hold started layout editing').toBeVisible();
+  await expect.poll(() => aloft(target), { message: 'and lifted the held item' }).toMatchObject({ scale: 1.1 });
+  await page.mouse.move(x + dx, y + dy, { steps: 12 });
+  await page.mouse.up();
+};
+
+test('a reading held outside layout editing lifts, and the same press drags it on its own', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const height = telemetry(vehicle, 'H');
+  const distance = telemetry(vehicle, 'D');
+  await expect(height).toBeVisible({ timeout: 30_000 });
+  const [x, y] = await centre(height);
+  const still = await topStart(distance);
+  await holdAndDrag(vehicle, height, 250, 200);
+  await expect(editBar(vehicle), 'still editing after the drag').toBeVisible();
+  await finishEditing(vehicle);
+  const [movedX, movedY] = await centre(height);
+  expect(movedX - x).toBeGreaterThan(200);
+  expect(movedY - y).toBeGreaterThan(150);
+  expect(await topStart(distance), 'the distance reading stayed').toEqual(still);
+});
+
+test('the camera panel held by its shutter outside layout editing drags in the same press', async ({ app }) => {
+  await withCamera(app);
+  const shutter = app.getByRole('button', { name: 'Start recording' });
+  const [x, y] = await centre(shutter);
+  await holdAndDrag(app, shutter, -300, 120);
+  await finishEditing(app);
+  await expect(app.getByRole('button', { name: 'Stop recording' }), 'the hold and drag did not record').toHaveCount(0);
+  const [movedX, movedY] = await centre(shutter);
+  expect(x - movedX).toBeGreaterThan(250);
+  expect(movedY - y).toBeGreaterThan(80);
 });
