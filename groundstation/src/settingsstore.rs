@@ -180,6 +180,14 @@ fn platform_meta(group: &str, fact: &str, meta: MetaData) -> MetaData {
             enums: language_enums(),
             ..meta
         },
+        ("LogManager", "diskLoggingEnabled") => MetaData {
+            default: Some(json!(!cfg!(any(
+                target_family = "wasm",
+                target_os = "android",
+                target_os = "ios"
+            )))),
+            ..meta
+        },
         ("FlightMap", "mapProvider") => MetaData {
             enums: text_enums(crate::maptypes::map_provider_list()),
             ..meta
@@ -2259,6 +2267,22 @@ mod tests {
             "past the list is not a choice"
         );
         assert_eq!(enum_index_raw(&palette.meta, &json!(-1)), None);
+    }
+
+    #[test]
+    fn the_desktop_keeps_its_app_log_on_disk_unless_the_pilot_turns_it_off() {
+        let at = address("settings.logManagerSettings.diskLoggingEnabled").unwrap();
+        assert_eq!(
+            held_in(None, at.group, &at.fact, &at.meta),
+            json!(true),
+            "a window that went blank leaves its trace in Logs/AppLog.log"
+        );
+        let off: BTreeMap<String, Setting> =
+            [(key(at.group, &at.fact), Setting::Text("false".to_string()))].into();
+        assert_eq!(
+            held_in(Some(&off), at.group, &at.fact, &at.meta),
+            json!(false)
+        );
     }
 
     #[test]
