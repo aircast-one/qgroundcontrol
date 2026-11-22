@@ -197,6 +197,8 @@ export const homeRows = (keys: readonly string[], taken: ReadonlySet<number>): R
 
 export const MINIMAP_KEY = 'minimap';
 
+export const HEADING_TAPE_KEY = 'headingTape';
+
 export const MINIMAP_NAME = 'Mini map';
 
 export const BATTERY_BAR_KEY = 'batteryBar';

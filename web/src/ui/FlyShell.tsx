@@ -48,7 +48,7 @@ import { OfflineGuideCard } from '@/ui/OfflineStatusSheet';
 import { LocalCompactHud, LocalFlyOsd, OSD_CONTROL_SIZE, OSD_SCRIM, compactHud, osdShadow, useOsdBackdrop, useOsdTint } from '@/ui/Osd';
 import { PayloadRailStrip } from '@/ui/PayloadRail';
 import { map3dToggleLabel, map3dToggleText, useMap3dDrawn } from '@/ui/Map3dView';
-import { BATTERY_BAR_KEY, LayoutEditingNotice, LayoutWidget, LocalLayoutBounds, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
+import { BATTERY_BAR_KEY, HEADING_TAPE_KEY, LayoutEditingNotice, LayoutWidget, LocalLayoutBounds, MINIMAP_KEY, MINIMAP_NAME, useHoldThroughToEditLayout, useJiggleAngle } from '@/ui/OverlayLayout';
 import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { nativeChosen } from '@/ui/SyntheticSurface';
@@ -544,7 +544,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     top={
                       <div className="relative">
                         <FlyTopBar status={status} statusRef={statusRow}>
-                          <LayoutWidget widgetKey="headingTape" hideable={false} className="self-center">
+                          <LayoutWidget widgetKey={HEADING_TAPE_KEY} className="self-center">
                             <HeadingTape />
                           </LayoutWidget>
                           {view === FlyView.Video ? <ApproximateAimNote /> : null}
@@ -648,7 +648,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               <TopScrim />
               <div className="relative size-full">
                 <FlyTopBar status={status} statusRef={undefined}>
-                  <HeadingTape className="self-center" />
+                  {hiddenWidgets.has(HEADING_TAPE_KEY) ? null : <HeadingTape className="self-center" />}
                 </FlyTopBar>
                 {sight}
               </div>

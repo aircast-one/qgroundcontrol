@@ -957,3 +957,14 @@ test('over the map the chosen readings, the payload strip and the map buttons ea
   await expect(vehicle.getByRole('img', { name: /^Pitch / })).toBeVisible();
   await expect.poll(() => topStart(height), { message: 'the same reading in the same place over the picture' }).toEqual(overMap);
 });
+
+test('the heading tape hides from layout editing', async ({ vehicle }) => {
+  const tape = vehicle.getByRole('img', { name: /^Heading / });
+  await expect(tape).toBeVisible();
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await editLayout(vehicle);
+  await tape.locator('xpath=ancestor::div[contains(@class,"relative")][1]').getByRole('button', { name: 'Hide' }).click();
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await expect(editBar(vehicle)).toBeHidden();
+  await expect(tape).toBeHidden();
+});
