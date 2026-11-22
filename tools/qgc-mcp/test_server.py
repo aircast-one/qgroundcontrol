@@ -335,6 +335,61 @@ def main() -> int:
     except RuntimeError as error:
         check("400" in str(error), "http error becomes RuntimeError", str(error))
 
+    print("gimbal_trace")
+    RESPONSES["/logging"] = {"rules": ""}
+    RESPONSES["/bridge/get"] = {
+        "active": [],
+        "entries": [
+            {"sequence": 4, "timestamp": "1.0", "message": 'D command {"op":"onScreen","pan":0.5}'},
+            {"sequence": 5, "timestamp": "1.1", "message": 'D command {"op":"ratesRepeat"}'},
+            {"sequence": 6, "timestamp": "1.2", "message": "D command not json"},
+        ],
+        "gimbals": [{"managerCompid": 1, "deviceId": 2, "pitch": -10.0, "bodyYaw": 179.0}],
+    }
+    REQUESTS.clear()
+    trace = _tool(module, "gimbal_trace")(0)
+    logging = [request for request in REQUESTS if request.startswith("/logging")]
+    check(
+        logging == ["/logging?rules=gimbal.debug%3Dtrue", "/logging?rules=gimbal.debug%3Dfalse"],
+        "the category is on only while watching",
+        str(logging),
+    )
+    check(
+        any("view.appLog%280%2Cgimbal%2Ccommand%2C0%2C5%29" in request for request in REQUESTS),
+        "reads only the commands after the last one seen",
+        str(REQUESTS),
+    )
+    check(
+        trace["ops"] == {"onScreen": 1, "ratesRepeat": 1},
+        "counts each command by its op",
+        str(trace["ops"]),
+    )
+    check(
+        "issued gimbal commands" in trace["verdict"],
+        "commands from this app are named as the cause",
+        trace["verdict"],
+    )
+    check(
+        module._turned([-10.0, 179.0], [-10.0, -179.0]) == 2.0,
+        "a turn across north is the short way round",
+    )
+    check(
+        "no command from this app" in module._gimbal_verdict({}, {"1/2": 3.0}),
+        "a turn with no command points away from this app",
+    )
+    check(
+        module._gimbal_verdict({}, {"1/2": 0.1}).startswith("no gimbal command"),
+        "a still gimbal with no command is quiet",
+    )
+    RESPONSES["/bridge/get"] = {"active": ["gimbal"], "entries": [], "gimbals": []}
+    REQUESTS.clear()
+    _tool(module, "gimbal_trace")(0)
+    check(
+        not any("debug%3Dfalse" in request for request in REQUESTS),
+        "a category the operator turned on stays on",
+        str(REQUESTS),
+    )
+
     _relay_checks(module)
 
     server.shutdown()

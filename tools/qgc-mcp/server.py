@@ -1020,6 +1020,109 @@ def vehicle_messages() -> dict:
     return _api("/vehicle/messages")
 
 
+GIMBAL_LOG = "gimbal"
+GIMBAL_TURNED_DEG = 0.5
+GIMBAL_COMMANDS_SHOWN = 8
+
+
+def _view(path: str) -> dict:
+    return _api(f"/bridge/get?path={quote(path)}")
+
+
+def _gimbal_commands(after: int | None) -> list[dict]:
+    tail = "" if after is None else f",{after}"
+    entries = _view(f"view.appLog(0,{GIMBAL_LOG},command,0{tail})").get("entries", [])
+    return [
+        {"at": entry.get("timestamp"), "sequence": entry.get("sequence"), **command}
+        for entry in entries
+        for command in [_gimbal_command(str(entry.get("message", "")))]
+        if command is not None
+    ]
+
+
+def _gimbal_command(message: str) -> dict | None:
+    _, found, body = message.partition("command ")
+    try:
+        command = json.loads(body) if found else None
+    except json.JSONDecodeError:
+        return None
+    return command if isinstance(command, dict) else None
+
+
+def _gimbal_aims(view: dict) -> dict[str, list[float | None]]:
+    return {
+        f"{gimbal.get('managerCompid')}/{gimbal.get('deviceId')}": [
+            gimbal.get("pitch"),
+            gimbal.get("bodyYaw"),
+        ]
+        for gimbal in view.get("gimbals") or []
+    }
+
+
+def _turned(before: list[float | None], after: list[float | None]) -> float:
+    return round(
+        max(
+            (
+                abs((now - then + 180) % 360 - 180)
+                for then, now in zip(before, after, strict=True)
+                if then is not None and now is not None
+            ),
+            default=0.0,
+        ),
+        2,
+    )
+
+
+def _gimbal_verdict(ops: dict[str, int], turned: dict[str, float]) -> str:
+    if ops:
+        issued = ", ".join(f"{count} {op}" for op, count in ops.items())
+        return (
+            f"this app issued gimbal commands ({issued}); with nobody pressing, dragging or "
+            "holding a stick, a press never got its release"
+        )
+    if any(degrees >= GIMBAL_TURNED_DEG for degrees in turned.values()):
+        return (
+            "a gimbal turned with no command from this app: another ground station, the radio's "
+            "camera channels or the autopilot is turning it"
+        )
+    return "no gimbal command from this app and no gimbal turned"
+
+
+@mcp.tool()
+def gimbal_trace(seconds: float = 10) -> dict:
+    """Who is turning the camera. Watches the attached app for `seconds` and reports every
+    gimbal command it issued (hold and drag, drag, tap, joystick rates, aim, their repeats)
+    beside how far each gimbal turned. Commands with nobody touching the picture mean a press
+    that never got its release; a gimbal turning with no commands means another ground station,
+    the radio or the autopilot.
+
+    Reads only, so it is safe on a live vehicle and on a release build. To watch the operator's
+    own app, start it with `open -a Aircast --args --port 8778`, then attach(8778)."""
+    was_on = GIMBAL_LOG in (_view("view.logCategories").get("active") or [])
+    earlier = _gimbal_commands(None)
+    last = earlier[-1]["sequence"] if earlier else None
+    _api(f"/logging?rules={quote(f'{GIMBAL_LOG}.debug=true')}")
+    try:
+        before = _gimbal_aims(_view("view.gimbal"))
+        time.sleep(seconds)
+        after = _gimbal_aims(_view("view.gimbal"))
+        commands = _gimbal_commands(last)
+    finally:
+        if not was_on:
+            _api(f"/logging?rules={quote(f'{GIMBAL_LOG}.debug=false')}")
+    names = [str(command.get("op")) for command in commands]
+    ops = {op: names.count(op) for op in dict.fromkeys(names)}
+    turned = {key: _turned(aim, after.get(key, aim)) for key, aim in before.items()}
+    return {
+        "seconds": seconds,
+        "commands": len(commands),
+        "ops": ops,
+        "last": commands[-GIMBAL_COMMANDS_SHOWN:],
+        "turnedDegrees": turned,
+        "verdict": _gimbal_verdict(ops, turned),
+    }
+
+
 @mcp.tool()
 def rc_channels() -> dict:
     """Live RC channel PWM values — verify transmitter sticks and switches."""

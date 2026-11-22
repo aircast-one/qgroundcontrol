@@ -153,6 +153,22 @@ pub fn set_category(args: &str) -> Value {
     json!({ "ok": true })
 }
 
+pub fn logging_rule(line: &str) -> Option<(&str, bool)> {
+    let (name, on) = line.trim().split_once('=')?;
+    let category = name.trim().strip_suffix(".debug").unwrap_or(name.trim());
+    let on = on.trim().parse().ok()?;
+    (!category.is_empty()).then_some((category, on))
+}
+
+pub fn apply_logging_rules(rules: &str) {
+    rules
+        .lines()
+        .filter_map(logging_rule)
+        .for_each(|(category, on)| {
+            set_category(&json!([category, on]).to_string());
+        });
+}
+
 pub fn reset_categories() -> Value {
     let mut enabled = ENABLED
         .lock()
@@ -725,6 +741,33 @@ mod tests {
         assert_eq!(view["entries"][0]["message"], "I handoff outcome=connected");
         assert_eq!(record(r#"["","no category"]"#)["ok"], false);
         assert_eq!(record("not json")["ok"], false);
+    }
+
+    #[test]
+    fn a_logging_rule_names_a_category_and_whether_its_debug_output_is_on() {
+        assert_eq!(logging_rule("gimbal.debug=true"), Some(("gimbal", true)));
+        assert_eq!(logging_rule(" link = false "), Some(("link", false)));
+        assert_eq!(logging_rule("gimbal.debug"), None);
+        assert_eq!(logging_rule("=true"), None);
+        assert_eq!(logging_rule("gimbal=maybe"), None);
+        install();
+        log::debug!(target: "applog-rule-test", "unheard");
+        apply_logging_rules("applog-rule-test.debug=true\nnot a rule");
+        log::debug!(target: "applog-rule-test", "heard");
+        apply_logging_rules("applog-rule-test.debug=false");
+        log::debug!(target: "applog-rule-test", "unheard again");
+        let view = log_view(
+            &Nothing,
+            &[
+                "0".into(),
+                "applog-rule-test".into(),
+                String::new(),
+                "0".into(),
+            ],
+        );
+        let seen = view["entries"].as_array().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0]["message"], "D heard");
     }
 
     #[test]

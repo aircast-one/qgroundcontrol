@@ -5351,6 +5351,7 @@ impl Vehicle {
             bytes.extend(expired);
         }
         if self.gimbal_rate_due.is_some_and(|due| now_ms >= due) {
+            log::debug!(target: crate::gimbal::COMMAND_LOG, r#"command {{"op":"ratesRepeat"}}"#);
             let outs = self.gimbals.set_rates(None, None, now_ms);
             bytes.extend(self.gimbal_outs(outs, now_ms).unwrap_or_default());
         }
@@ -7981,6 +7982,7 @@ impl Vehicle {
     }
 
     fn gimbal_action(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        log::debug!(target: crate::gimbal::COMMAND_LOG, "command {action}");
         let heading = self.facts.heading as f32;
         let outs = {
             let gimbals = &mut self.gimbals;

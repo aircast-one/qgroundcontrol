@@ -576,7 +576,9 @@ impl Host for CoreOnly {
                 .to_string()),
         }
     }
-    fn set_logging_rules(&self, _rules: &str) {}
+    fn set_logging_rules(&self, rules: &str) {
+        crate::applog::apply_logging_rules(rules);
+    }
     fn bridge_writes_allowed(&self) -> bool {
         std::env::var("QGC_DEBUG_API_ALLOW_ACTUATORS").is_ok_and(|v| v == "1")
     }

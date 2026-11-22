@@ -60,6 +60,7 @@ static ASKED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0
 pub const GIMBAL_CHANGED: &str = "core.gimbal@changed";
 pub const ANNOUNCE_INTERVAL_MS: u64 = 250;
 pub const DRAG_CONTINUES_MS: u64 = 1_000;
+pub const COMMAND_LOG: &str = "gimbal";
 static ANNOUNCED: std::sync::Mutex<(u64, u64, bool)> = std::sync::Mutex::new((0, 0, false));
 
 pub fn announce_due(now_ms: u64, live: bool) -> bool {
