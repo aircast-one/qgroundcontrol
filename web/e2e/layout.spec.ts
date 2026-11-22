@@ -853,3 +853,62 @@ test('the camera panel held by its shutter outside layout editing drags in the s
   expect(x - movedX).toBeGreaterThan(250);
   expect(movedY - y).toBeGreaterThan(80);
 });
+
+const moveHandleOf = (target: Locator) => target.locator('xpath=ancestor::*[@data-layout-item][1]/..').getByRole('button', { name: 'Move', exact: true });
+
+test('on the ground each deck action drags on its own, has no hide badge, and Reset puts it back', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const takeOff = vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Take off' });
+  await expect(takeOff).toBeVisible();
+  const [x, y] = await centre(takeOff);
+  await editLayout(vehicle);
+  await expect(hideBadgeOf(takeOff)).toHaveCount(0);
+  await dragBy(vehicle, takeOff, 300, -100);
+  const [movedX, movedY] = await centre(takeOff);
+  expect(movedX - x).toBeGreaterThan(250);
+  expect(y - movedY).toBeGreaterThan(80);
+  await editBar(vehicle).click();
+  await vehicle.getByRole('menuitem', { name: 'Reset positions and hidden items' }).click();
+  await vehicle.getByRole('menuitem', { name: /again to reset$/ }).click();
+  await finishEditing(vehicle);
+  await expect.poll(() => centre(takeOff)).toEqual([x, y]);
+});
+
+test('in flight each deck action moves by its own handle, none hides, and a tap still asks its confirm', async ({ vehicle }) => {
+  test.setTimeout(120_000);
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  const deck = vehicle.getByRole('group', { name: 'Flight actions' });
+  const actions = ['Return home', 'Slide to land', 'Kill motors'].map((name) => deck.getByRole('button', { name, exact: true }));
+  await expect(actions[0]!).toBeVisible();
+  const land = await centre(actions[1]!);
+  const [x, y] = await centre(actions[0]!);
+  await editLayout(vehicle);
+  await Promise.all(actions.map(async (action) => {
+    await expect(moveHandleOf(action)).toHaveCount(1);
+    await expect(hideBadgeOf(action)).toHaveCount(0);
+  }));
+  await dragBy(vehicle, moveHandleOf(actions[0]!), 260, 40);
+  expect((await centre(actions[0]!))[0] - x, 'return home moved').toBeGreaterThan(220);
+  expect(await centre(actions[1]!), 'land stayed').toEqual(land);
+  await actions[0]!.click();
+  await expect(vehicle.getByRole('button', { name: 'Slide to return home' }), 'a tap on the moved action still asks its confirm').toBeVisible();
+  await vehicle.getByRole('button', { name: 'Cancel' }).click();
+  await finishEditing(vehicle);
+  expect((await centre(actions[0]!))[1]).toBeCloseTo(y + 40, -1);
+});
+
+test('on a phone the deck buttons drag on their own and stop below the status strip', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await vehicle.setViewportSize({ width: 412, height: 860 });
+  const takeOff = vehicle.getByRole('group', { name: 'Flight actions' }).getByRole('button', { name: 'Take off' });
+  await expect(takeOff).toBeVisible();
+  await editLayout(vehicle);
+  await expect(hideBadgeOf(takeOff)).toHaveCount(0);
+  await dragBy(vehicle, takeOff, 0, -2000);
+  const strip = (await vehicle.locator('[data-status-row]').boundingBox())!;
+  expect((await takeOff.boundingBox())!.y, 'held below the status strip').toBeGreaterThanOrEqual(strip.y + strip.height - 1);
+  await finishEditing(vehicle);
+  await expect.poll(() => shownShare(takeOff), { message: 'shown whole after the drop' }).toBe(1);
+});

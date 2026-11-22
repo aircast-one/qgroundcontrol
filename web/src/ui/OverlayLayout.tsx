@@ -421,6 +421,8 @@ export const LayoutDragArea = ({
   frame,
   onLift,
   className,
+  style,
+  children,
 }: {
   widgetKey: string;
   home?: Offset;
@@ -429,6 +431,8 @@ export const LayoutDragArea = ({
   frame: RefObject<HTMLElement | null>;
   onLift: (lifted: boolean) => void;
   className?: string;
+  style?: CSSProperties;
+  children?: ReactNode;
 }) => {
   const layout = useContext(LocalFlyScreenState).layout;
   const area = useLayoutArea();
@@ -460,6 +464,7 @@ export const LayoutDragArea = ({
       aria-label="Move"
       aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
       className={`touch-none select-none cursor-grab outline-none focus-visible:ring-2 focus-visible:ring-primary active:cursor-grabbing ${className ?? ''}`}
+      style={style}
       onKeyDown={(event) => {
         const step = arrowStep(event.key, event.shiftKey);
         const placed = frame.current;
@@ -490,7 +495,9 @@ export const LayoutDragArea = ({
       }}
       onPointerUp={end}
       onPointerCancel={end}
-    />
+    >
+      {children}
+    </div>
   );
 };
 
@@ -616,8 +623,23 @@ export const LayoutWidget = ({
         >
           <LocalLayoutParent.Provider value={setNested}>{children}</LocalLayoutParent.Provider>
         </div>
-        {decorated && !live && (movable || carried !== null) ? (
-          <LayoutDragArea widgetKey={carried?.key ?? widgetKey} home={carried === null ? home : NO_OFFSET} item={item} correction={carried?.correction ?? correction} frame={carried?.frame ?? frame} onLift={carried?.lift ?? setLifted} className="absolute inset-0" />
+        {decorated && (movable || carried !== null) ? (
+          <LayoutDragArea
+            widgetKey={carried?.key ?? widgetKey}
+            home={carried === null ? home : NO_OFFSET}
+            item={item}
+            correction={carried?.correction ?? correction}
+            frame={carried?.frame ?? frame}
+            onLift={carried?.lift ?? setLifted}
+            className={live ? BADGE : 'absolute inset-0'}
+            style={live ? BADGE_PLACE : undefined}
+          >
+            {live ? (
+              <span className="grid size-full place-items-center rounded-full shadow" style={{ background: md('inverseSurface'), color: md('inverseOnSurface') }}>
+                <MaterialIcon name="open_with" size={BADGE_SIZE - 6} />
+              </span>
+            ) : null}
+          </LayoutDragArea>
         ) : decorated && !live ? (
           <div data-gesture className="absolute inset-0" />
         ) : null}

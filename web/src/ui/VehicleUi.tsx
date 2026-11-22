@@ -710,8 +710,10 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const stop = armedStopOffer(offers, armed);
   const stopEntry = stop === null ? null : DeckEntry({ id: 'stopMotors', label: STOP_MOTORS, icon: 'ic_warning', enabled: true, warning: true, onClick: () => setPending(emergencyStopAction(stop)) });
   const centreBox = (
-    <div ref={centre.ref} className="shrink-0 self-center empty:hidden">
-      {center}
+    <div ref={centre.ref} className="shrink-0 self-center empty:hidden has-[[data-layout-item]:empty]:hidden">
+      <LayoutWidget widgetKey="deckShutters" movable={false} hideable={false} live={armed}>
+        {center}
+      </LayoutWidget>
     </div>
   );
   const confirmTrack =
@@ -751,19 +753,25 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       {!deciding ? (
         <div className="absolute inset-y-0 left-0 flex flex-col" style={{ paddingLeft: 12, paddingBottom: RAIL_LIFT }}>
           <div ref={room.ref} role="group" aria-label={FLIGHT_ACTIONS} className="flex min-h-0 flex-1 flex-col items-center justify-center">
-            <LayoutWidget widgetKey="flightActions" movable={false} hideable={false} live={armed}>
-              <div className="flex flex-col items-center gap-2">
-                {deck.flatMap(([id, primary]) => {
-                  const entry = entries.find((it) => it.id === id);
-                  return entry === undefined ? [] : [<RailDeckButton key={id} entry={entry} primary={primary} labelled={railFit.labelled} />];
-                })}
-                {stopEntry !== null ? (
-                  <div style={{ marginTop: RAIL_STOP_GAP }}>
+            <div className="flex flex-col items-center gap-2">
+              {deck.flatMap(([id, primary]) => {
+                const entry = entries.find((it) => it.id === id);
+                return entry === undefined
+                  ? []
+                  : [
+                      <LayoutWidget key={id} widgetKey={deckKey(id)} hideable={false} live={armed}>
+                        <RailDeckButton entry={entry} primary={primary} labelled={railFit.labelled} />
+                      </LayoutWidget>,
+                    ];
+              })}
+              {stopEntry !== null ? (
+                <div style={{ marginTop: RAIL_STOP_GAP }}>
+                  <LayoutWidget widgetKey={deckKey(stopEntry.id)} hideable={false} live={armed}>
                     <RailDeckButton entry={stopEntry} primary={false} labelled={railFit.labelled} />
-                  </div>
-                ) : null}
-              </div>
-            </LayoutWidget>
+                  </LayoutWidget>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}
@@ -811,12 +819,10 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
         ) : null}
         {!deciding ? (
           <div ref={room.ref}>
-            <LayoutWidget widgetKey="flightActions" movable={false} hideable={false} live={armed}>
-              <div className="flex flex-col gap-3">
-                {bottomFit.centreInline ? null : centreBox}
-                <DeckRow deck={deck} entries={entries} extra={stopEntry} center={bottomFit.centreInline ? centreBox : null} />
-              </div>
-            </LayoutWidget>
+            <div className="flex flex-col gap-3">
+              {bottomFit.centreInline ? null : centreBox}
+              <DeckRow deck={deck} entries={entries} extra={stopEntry} center={bottomFit.centreInline ? centreBox : null} live={armed} />
+            </div>
           </div>
         ) : null}
       </div>
@@ -879,7 +885,9 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   );
 };
 
-const DeckRow = ({ deck, entries, extra, center }: { deck: DeckIds; entries: readonly DeckEntry[]; extra: DeckEntry | null; center: ReactNode }) => {
+export const deckKey = (id: string): string => `deck:${id}`;
+
+const DeckRow = ({ deck, entries, extra, center, live }: { deck: DeckIds; entries: readonly DeckEntry[]; extra: DeckEntry | null; center: ReactNode; live: boolean }) => {
   const buttons: readonly (readonly [DeckEntry, boolean])[] = deck.flatMap(([id, primary]) => {
     const entry = entries.find((it) => it.id === id);
     return entry === undefined ? [] : [[entry, primary] as const];
@@ -887,14 +895,22 @@ const DeckRow = ({ deck, entries, extra, center }: { deck: DeckIds; entries: rea
   const count = buttons.length + (extra === null ? 0 : 1);
   const leading = Math.trunc((buttons.length + 1) / 2);
   const button = ([entry, primary]: readonly [DeckEntry, boolean]) => (
-    <DeckButton key={entry.id} entry={entry} primary={primary} buttons={count} className="min-w-0 flex-1" />
+    <LayoutWidget key={entry.id} widgetKey={deckKey(entry.id)} hideable={false} live={live} className="min-w-0 flex-1">
+      <DeckButton entry={entry} primary={primary} buttons={count} className="w-full" />
+    </LayoutWidget>
   );
   return (
     <div role="group" aria-label={FLIGHT_ACTIONS} className="flex items-center gap-[10px]">
       {buttons.slice(0, leading).map(button)}
       {center}
       {buttons.slice(leading).map(button)}
-      {extra === null ? null : <DeckButton entry={extra} primary={false} buttons={count} className="min-w-0 flex-1" style={{ marginInlineStart: RAIL_STOP_GAP }} />}
+      {extra === null ? null : (
+        <div className="min-w-0 flex-1" style={{ marginInlineStart: RAIL_STOP_GAP }}>
+          <LayoutWidget widgetKey={deckKey(extra.id)} hideable={false} live={live}>
+            <DeckButton entry={extra} primary={false} buttons={count} className="w-full" />
+          </LayoutWidget>
+        </div>
+      )}
     </div>
   );
 };
