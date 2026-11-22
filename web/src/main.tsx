@@ -1,11 +1,12 @@
 import { CSPProvider } from '@base-ui/react';
 import { StrictMode } from 'react';
 import { DebugRelay } from '@/app/DebugRelay';
+import { DebugUi } from '@/app/DebugUi';
 import { DeviceLink } from '@/app/DeviceLink';
 import { HostPlatform } from '@/app/HostPlatform';
 import { Qgc } from '@/bridge/Qgc';
 import { MainActivity } from '@/app/MainActivity';
-import { recoveringRoot } from '@/app/RecoveringRoot';
+import { type PageFacts, recordPageErrors, recoveringRoot } from '@/app/RecoveringRoot';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { coreLoaded, coreReady } from '@/core/client';
 import { useValue } from '@/kotlin/State';
@@ -13,7 +14,11 @@ import { CircularProgressIndicator, Text } from '@/m3';
 import '@/theme/theme.css';
 
 const LOADING = 'Loading Aircast';
-const UI_LOG = 'Web.UI';
+const PAGE_LOG = 'page';
+const PAGE_FACTS: PageFacts = { screen: () => DebugUi.state, desktop: __DESKTOP__, version: import.meta.env.VITE_APP_VERSION ?? 'dev', sha: __BUILD_SHA__ };
+
+const logPageError = (line: string): void => void AppCommands.recordLog(PAGE_LOG, line, 'error').catch(() => false);
+recordPageErrors(logPageError, PAGE_FACTS);
 
 const keepsBrowserMenu = (target: EventTarget | null): boolean => target instanceof Element && target.closest('input, textarea, [contenteditable]') !== null;
 window.addEventListener('contextmenu', (event) => {
@@ -30,7 +35,8 @@ const CoreLoading = () => {
   );
 };
 
-const show = recoveringRoot(document.getElementById('root')!, (line) => void AppCommands.recordLog(UI_LOG, line).catch(() => false));
+const root = document.getElementById('root')!;
+const show = recoveringRoot(root, logPageError, PAGE_FACTS);
 show(<StrictMode><CoreLoading /></StrictMode>);
 const handoff = await DeviceLink.handoff();
 if ('to' in handoff) {

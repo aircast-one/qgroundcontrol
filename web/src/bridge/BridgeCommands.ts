@@ -153,7 +153,7 @@ export const AppCommands = {
   markFirstRunShown: (): Promise<boolean> => Qgc.invoke(FIRST_RUN_SHOWN),
   acceptBetaDiagnostics: (): Promise<boolean> => Qgc.invoke(BETA_DIAGNOSTICS_ACCEPT),
   dismissBetaDiagnostics: (): Promise<boolean> => Qgc.invoke(BETA_DIAGNOSTICS_DISMISS),
-  recordLog: (category: string, message: string): Promise<boolean> => Qgc.invoke(APP_LOG_RECORD, category, message),
+  recordLog: (category: string, message: string, level: 'error' | 'warn' | 'info' = 'info'): Promise<boolean> => Qgc.invoke(APP_LOG_RECORD, category, message, level),
   notice: (title: string, text: string): Promise<boolean> => Qgc.invoke(HOST_POST_NOTICE, MESSAGE_NOTICE, title, text),
   setSubtitleInstruments: (vehicleClass: string, instruments: string[]): Promise<boolean> => Qgc.invoke(SUBTITLES_INSTRUMENTS, vehicleClass, instruments.join(',')),
   acknowledgeNoticesThrough: (through: number): Promise<boolean> => Qgc.invoke(HOST_ACKNOWLEDGE, through),

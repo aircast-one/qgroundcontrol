@@ -120,6 +120,7 @@ jobs:
             echo "This build is signed ad hoc and not notarized: only a release or a manual run signs it."
             export APPLE_SIGNING_IDENTITY=-
           fi
+          export VITE_APP_VERSION="${SHORT#v}"
           config=$(jq -nc --arg version "${SHORT#v}" '{version: $version, build: {beforeBuildCommand: "npx vite build"}}')
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && [ "$RELEASING" == "true" ]; then
             channel=$([[ "$SHORT" == *-* ]] && echo beta || echo stable)
@@ -239,6 +240,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $config = Join-Path $env:RUNNER_TEMP 'version.json'
+          $env:VITE_APP_VERSION = $env:SHORT.TrimStart('v')
           $settings = @{ version = $env:SHORT.TrimStart('v'); build = @{ beforeBuildCommand = 'npx vite build' } }
           if ($env:TAURI_SIGNING_PRIVATE_KEY -and $env:RELEASING -eq 'true') {
             $channel = if ($env:SHORT.Contains('-')) { 'beta' } else { 'stable' }

@@ -532,7 +532,12 @@ pub fn record(args: &str) -> Value {
     ) else {
         return json!({ "ok": false, "reason": "appLog.record takes a category name and a message" });
     };
-    log::info!(target: category, "{message}");
+    let level = args
+        .get(2)
+        .and_then(Value::as_str)
+        .and_then(|level| level.parse().ok())
+        .unwrap_or(log::Level::Info);
+    log::log!(target: category, level, "{message}");
     json!({ "ok": true })
 }
 
@@ -739,6 +744,23 @@ mod tests {
             ],
         );
         assert_eq!(view["entries"][0]["message"], "I handoff outcome=connected");
+        assert_eq!(
+            record(r#"["applog-head-error-test","event=page_error kind=render","error"]"#)["ok"],
+            true
+        );
+        let errors = log_view(
+            &Nothing,
+            &[
+                "3".into(),
+                "applog-head-error-test".into(),
+                String::new(),
+                "0".into(),
+            ],
+        );
+        assert_eq!(
+            errors["entries"][0]["message"], "C event=page_error kind=render",
+            "a page error lands at error level, so a warnings-and-up filter still shows it"
+        );
         assert_eq!(record(r#"["","no category"]"#)["ok"], false);
         assert_eq!(record("not json")["ok"], false);
     }

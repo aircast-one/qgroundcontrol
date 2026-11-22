@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
@@ -11,11 +12,18 @@ const device = process.env.QGC_WEB_DEVICE?.replace(/^.*@/, '');
 const aircastd = device && `http://${device}`;
 const root = fileURLToPath(new URL('.', import.meta.url));
 const core = join(root, 'src/core/pkg/groundstation_bg.wasm');
+const commit = (): string => {
+  try {
+    return execFileSync('git', ['rev-parse', '--short=10', 'HEAD'], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return process.env.GITHUB_SHA?.slice(0, 10) ?? 'unknown';
+  }
+};
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), tailwindcss(), iconFont(root)],
   base: './',
-  define: { 'import.meta.env.CORE_BYTES': existsSync(core) ? statSync(core).size : 0, __DESKTOP__: JSON.stringify(Boolean(process.env.TAURI_ENV_PLATFORM)) },
+  define: { 'import.meta.env.CORE_BYTES': existsSync(core) ? statSync(core).size : 0, __DESKTOP__: JSON.stringify(Boolean(process.env.TAURI_ENV_PLATFORM)), __BUILD_SHA__: JSON.stringify(commit()) },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
