@@ -14,6 +14,7 @@ describe('DebugUiTest', () => {
     expect(command(debugCommand('layout-edit', 'off'))).toEqual({ kind: 'EditLayout', on: false });
     expect(command(debugCommand('layout-reset', null))).toEqual({ kind: 'ResetLayout' });
     expect(command(debugCommand('open', 'takeoff'))).toEqual({ kind: 'Open', target: 'takeoff' });
+    expect(command(debugCommand('crash', null))).toEqual({ kind: 'Crash' });
   });
 
   it('a bad command names what it accepts instead of guessing', () => {

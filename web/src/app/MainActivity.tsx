@@ -12,7 +12,7 @@ import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { md } from '@/theme/Colors';
 import { browserFullScreenSupported, toggleBrowserFullScreen, useBrowserFullScreen } from '@/app/BrowserFullScreen';
-import { DEBUG_UI_ACTION, DebugUi, DebugUiReceiver } from '@/app/DebugUi';
+import { DEBUG_CRASH, DEBUG_UI_ACTION, DebugUi, DebugUiReceiver } from '@/app/DebugUi';
 import { GamepadInput } from '@/app/GamepadInput';
 import { type MenuCommand, useMenuCommands } from '@/app/MenuCommands';
 import { SpeechOut } from '@/app/SpeechOut';
@@ -240,6 +240,7 @@ export const AircastShell = () => {
   const [popEpoch, setPopEpoch] = useState(0);
   const [flyView, setFlyView] = useState<FlyView>(loadFlyView);
   useEffect(() => saveFlyView(flyView), [flyView]);
+  const [crashing, setCrashing] = useState(false);
 
   const openRequested = (target: string) => {
     if (target === 'readings') flyScreen.choosingReadings.value = true;
@@ -263,6 +264,7 @@ export const AircastShell = () => {
             return undefined;
           case 'ResetLayout': return overlayLayout.reset();
           case 'Open': return openRequested(command.target);
+          case 'Crash': return setCrashing(true);
         }
       }),
     [],
@@ -679,6 +681,7 @@ export const AircastShell = () => {
   };
   const exitFullScreen = () => setVideoFullScreen(false);
   const contentInsets = onFly ? '' : `pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] ${landscape ? 'pb-[env(safe-area-inset-bottom)]' : 'pl-[env(safe-area-inset-left)]'}`;
+  if (crashing) throw new Error(DEBUG_CRASH);
 
   return (
     <AircastTheme dark={darkBars}>

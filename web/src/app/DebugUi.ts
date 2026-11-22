@@ -10,7 +10,8 @@ export type DebugCommand =
   | { kind: 'Orient'; orientation: OrientationLockType }
   | { kind: 'EditLayout'; on: boolean }
   | { kind: 'ResetLayout' }
-  | { kind: 'Open'; target: string };
+  | { kind: 'Open'; target: string }
+  | { kind: 'Crash' };
 
 export type DebugResult = { ok: true; command: DebugCommand } | { ok: false; message: string };
 
@@ -26,7 +27,9 @@ const SWITCHES: ReadonlyMap<string, boolean> = new Map([
   ['off', false],
 ]);
 
-export const DEBUG_COMMANDS = 'state, tab, fly-view, orientation, layout-edit, layout-reset, open';
+export const DEBUG_COMMANDS = 'state, tab, fly-view, orientation, layout-edit, layout-reset, open, crash';
+
+export const DEBUG_CRASH = 'The debug UI asked this screen to fail';
 
 const success = (command: DebugCommand): DebugResult => ({ ok: true, command });
 
@@ -46,6 +49,7 @@ export const debugCommand = (cmd: string | null, value: string | null): DebugRes
     case 'orientation': return named(value, ORIENTATIONS, 'orientation', (orientation) => ({ kind: 'Orient', orientation }));
     case 'layout-edit': return named(value, SWITCHES, 'layout-edit', (on) => ({ kind: 'EditLayout', on }));
     case 'layout-reset': return success({ kind: 'ResetLayout' });
+    case 'crash': return success({ kind: 'Crash' });
     case 'open':
       return value !== null && value.trim() !== ''
         ? success({ kind: 'Open', target: value })
