@@ -40,6 +40,8 @@ let LAYOUT_EDITING_IN_FLIGHT = "Editing the layout. Return, Land and Kill motors
 
 let MINIMAP_KEY = "minimap"
 
+let HEADING_TAPE_KEY = "headingTape"
+
 let MINIMAP_NAME = "Mini map"
 
 let BATTERY_BAR_KEY = "batteryBar"

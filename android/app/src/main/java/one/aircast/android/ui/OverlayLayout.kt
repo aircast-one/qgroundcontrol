@@ -94,6 +94,8 @@ internal const val LAYOUT_EDITING_IN_FLIGHT = "Editing the layout. Return, Land 
 
 internal const val MINIMAP_KEY = "minimap"
 
+internal const val HEADING_TAPE_KEY = "headingTape"
+
 internal const val MINIMAP_NAME = "Mini map"
 
 internal const val BATTERY_BAR_KEY = "batteryBar"
@@ -329,6 +331,7 @@ internal fun LayoutGroup(key: String, content: @Composable () -> Unit) {
 @Composable
 internal fun LayoutWidget(
     key: String,
+    modifier: Modifier = Modifier,
     movable: Boolean = true,
     hideable: Boolean = true,
     badged: Boolean = true,
@@ -351,7 +354,7 @@ internal fun LayoutWidget(
     val decorated = editing && shown
     val density = LocalDensity.current.density
     Box(
-        Modifier
+        modifier
             .offset(moved.first.dp, moved.second.dp)
             .then(if (movable) keptOnScreen(placedKey) else Modifier)
             .holdToEditLayout()
