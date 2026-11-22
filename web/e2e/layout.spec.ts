@@ -120,7 +120,7 @@ test('only widgets without layout widgets inside them jiggle, so the status pill
   expect((await jiggling()).nested, 'a jiggling widget inside another jiggling widget').toBe(0);
 });
 
-const EDIT_CONTROLS = ['Layout options', 'Done'];
+const EDIT_CONTROLS = ['Layout options', 'Add reading', 'Done'];
 
 const THIN_BAR = 24;
 
@@ -669,6 +669,23 @@ test('a reading over the picture drags to a place of its own, keeps it after a r
   expect(await topStart(height)).toEqual(before);
 });
 
+test('a reading drags up into the top bar, is picked up again from there and stays in the bar after editing', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const distance = telemetry(vehicle, 'D');
+  await expect(distance).toBeVisible({ timeout: 30_000 });
+  await editLayout(vehicle);
+  const strip = (await vehicle.locator('[data-status-row]').boundingBox())!;
+  await dragBy(vehicle, distance, 120, -900);
+  const inBar = (await distance.boundingBox())!;
+  expect(inBar.y, 'on screen').toBeGreaterThanOrEqual(0);
+  expect(inBar.y + inBar.height / 2, 'in the row of the top bar').toBeLessThan(strip.y + strip.height);
+  await dragBy(vehicle, distance, 60, 0);
+  expect((await distance.boundingBox())!.x - inBar.x, 'the bar does not cover it: it moves again').toBeGreaterThan(40);
+  await finishEditing(vehicle);
+  const kept = (await distance.boundingBox())!;
+  expect(kept.y + kept.height / 2, 'still in the row of the top bar').toBeLessThan(strip.y + strip.height);
+});
+
 test('a reading hides with its own badge and comes back from it, and the arrow keys move it', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const speed = telemetry(vehicle, 'H.S');
@@ -694,14 +711,13 @@ test('a reading hides with its own badge and comes back from it, and the arrow k
   expect(Math.round(movedY - y)).toBe(8);
 });
 
-test('from the layout options a reading is added where nothing else stands and a removed one leaves the layout', async ({ vehicle }) => {
+test('from Add reading on the editing bar a reading is added where nothing else stands and a removed one leaves the layout', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const readings = ['D', 'H', 'H.S', 'V.S'].map((label) => telemetry(vehicle, label));
   await expect(readings[0]!).toBeVisible({ timeout: 30_000 });
   await editLayout(vehicle);
   await dragBy(vehicle, readings[1]!, 0, 30);
-  await editBar(vehicle).click();
-  await vehicle.getByRole('menuitem', { name: 'Choose readings' }).click();
+  await vehicle.getByRole('button', { name: 'Add reading' }).click();
   const chooser = vehicle.getByRole('dialog', { name: 'Choose readings' });
   await chooser.getByText('Heading', { exact: true }).first().click();
   await chooser.getByText('Ground speed', { exact: true }).click();

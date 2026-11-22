@@ -11,7 +11,7 @@ import { AircastSpace, aircast, md } from '@/theme/Colors';
 import { LocalAvoidedByVideoMessage, STATUS_ROW_HEIGHT, useAvoidedByVideoMessage, useFlyIsPortrait } from '@/ui/FlyShell';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { useArmed } from '@/ui/FlyState';
-import { CHOOSE_READINGS, INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
+import { INSTRUMENTS_VIEW, ValueSize, instrumentVehicleClass, nextValueSize, valueSizePillText, writeValueSize } from '@/ui/InstrumentChoice';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 
 const LAYOUT_STORE = 'fly-overlay-layout';
@@ -263,9 +263,9 @@ const useLayoutArea = (): (() => Bounds) => {
   const flyScreen = useContext(LocalFlyScreenState);
   const bounds = useContext(LocalLayoutBounds);
   return () => {
-    const shown = shownArea(flyScreen.widgetInsets.value);
+    const reserved = flyScreen.widgetInsets.value;
     const box = bounds?.current?.getBoundingClientRect();
-    return box === undefined ? shown : intersected(shown, box);
+    return box === undefined ? shownArea(reserved) : intersected(shownArea({ ...reserved, top: 0 }), box);
   };
 };
 
@@ -692,13 +692,6 @@ export const LayoutOptionsMenu = () => {
       </Surface>
       <DropdownMenu expanded={open} onDismissRequest={() => setOpen(false)}>
         <DropdownMenuItem
-          text={CHOOSE_READINGS}
-          onClick={() => {
-            setOpen(false);
-            flyScreen.choosingReadings.value = true;
-          }}
-        />
-        <DropdownMenuItem
           text={valueSizePillText(valueSize)}
           closeOnClick={false}
           onClick={() => {
@@ -721,6 +714,31 @@ export const LayoutOptionsMenu = () => {
         />
       </DropdownMenu>
     </div>
+  );
+};
+
+export const ADD_READING = 'Add reading';
+
+export const LayoutAddReadingButton = () => {
+  const flyScreen = useContext(LocalFlyScreenState);
+  const backdrop = useOsdBackdrop(OSD_SCRIM);
+  return (
+    <Surface
+      onClick={() => {
+        flyScreen.choosingReadings.value = true;
+      }}
+      shape="full"
+      color={backdrop}
+      contentColor={aircast('outdoorForeground')}
+      label={ADD_READING}
+      className="flex shrink-0 items-center gap-1 ps-2 pe-3"
+      style={{ height: STATUS_ROW_HEIGHT + AircastSpace.s2 }}
+    >
+      <Drawable name="ic_add" size={22} />
+      <Text typography="labelLarge" color={aircast('outdoorForeground')}>
+        {ADD_READING}
+      </Text>
+    </Surface>
   );
 };
 

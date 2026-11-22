@@ -67,7 +67,7 @@ import { ObstacleArc } from '@/ui/ObstacleArc';
 import { ObstacleReadout } from '@/ui/ObstacleReadout';
 import { OrbitReadout } from '@/ui/OrbitReadout';
 import { useAppDarkTheme } from '@/ui/Palette';
-import { LayoutDoneButton, LayoutGroup, LayoutOptionsMenu, LayoutWidget, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
+import { LayoutAddReadingButton, LayoutDoneButton, LayoutGroup, LayoutOptionsMenu, LayoutWidget, OverlayLayoutState, overlayLayoutStore, useHoldToEditLayout } from '@/ui/OverlayLayout';
 import { PlanTab } from '@/ui/PlanTab';
 import { RcControlsLayer } from '@/ui/RcControlsLayer';
 import { ResumeFailedPrompt } from '@/ui/ResumeFailedPrompt';
@@ -619,6 +619,7 @@ export const AircastShell = () => {
   const flyStatus = (
     <>
       {layoutEditing ? <LayoutOptionsMenu /> : null}
+      {layoutEditing ? <LayoutAddReadingButton /> : null}
       <div className={`flex items-center justify-start ${layoutEditing ? 'grow shrink-0' : 'min-w-0 flex-1'}`}>
         <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false} className="min-w-0">
           <VehicleStateChip />
