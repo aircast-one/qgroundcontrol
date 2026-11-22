@@ -137,7 +137,7 @@ export const GimbalIndicatorCell = () => {
   return (
     <>
       <button type="button" className="text-left" onClick={() => setOpen(true)}>
-        <Text typography="labelMedium" color={md('onSurfaceVariant')} maxLines={1}>
+        <Text typography="labelMedium" color={md('onSurfaceVariant')} className="tabular-nums" maxLines={1}>
           {gimbalCellText(state)}
         </Text>
       </button>
@@ -153,7 +153,7 @@ export const GimbalIndicatorCell = () => {
                 ))}
               </div>
             ) : null}
-            <Text typography="bodyMedium">{gimbalCellText(state)}</Text>
+            <Text typography="bodyMedium" className="tabular-nums">{gimbalCellText(state)}</Text>
             {state.yawLockOffered ? (
               <OutlinedButton className="w-full" onClick={() => act('gimbal.yawLock', !state.yawLocked)}>
                 {state.yawLockLabel}
