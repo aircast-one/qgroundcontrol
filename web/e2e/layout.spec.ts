@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { WHEP_STREAM, addVideoSource, chooseCameraJoystick, connectMock, expect, flightMode, flyNow, slideAcross, takeOff, telemetry, test } from './fixtures';
+import { WHEP_STREAM, addVideoSource, chooseCameraJoystick, connectMock, expect, flightMode, flyNow, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 const LONG_PRESS_MS = 400;
 const CAMERA_PANEL_OFFSET = 'aircast.fly-overlay-layout.OverlayRigOffset-cameraControl@landscape';
@@ -911,4 +911,33 @@ test('on a phone the deck buttons drag on their own and stop below the status st
   expect((await takeOff.boundingBox())!.y, 'held below the status strip').toBeGreaterThanOrEqual(strip.y + strip.height - 1);
   await finishEditing(vehicle);
   await expect.poll(() => shownShare(takeOff), { message: 'shown whole after the drop' }).toBe(1);
+});
+
+test('over the map the chosen readings, the payload strip and the map buttons each move in Edit layout, and a reading keeps the place it has over the picture', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  const height = telemetry(vehicle, 'H');
+  await expect(height).toBeVisible({ timeout: 30_000 });
+  await showMapFull(vehicle);
+  const layers = vehicle.getByRole('button', { name: 'Map layers' });
+  const payload = vehicle.getByRole('group', { name: 'Payload' });
+  await expect(layers).toBeVisible();
+  await expect(payload).toBeVisible();
+  await expect(telemetry(vehicle, 'D'), 'one reading each, not a block').toBeVisible();
+  await editLayout(vehicle);
+  await expect(hideBadgeOf(height)).toHaveCount(1);
+  const moved = async (target: Locator, dx: number, dy: number) => {
+    const [x, y] = await centre(target);
+    await dragBy(vehicle, target, dx, dy);
+    const [toX, toY] = await centre(target);
+    expect(Math.abs(toX - x - dx), 'it went across').toBeLessThan(Math.abs(dx) * 0.2 + 2);
+    expect(Math.abs(toY - y - dy), 'it went up or down').toBeLessThan(Math.abs(dy) * 0.2 + 2);
+  };
+  await moved(height, 250, 150);
+  await moved(layers, -300, -100);
+  await moved(payload, 0, -200);
+  await finishEditing(vehicle);
+  const overMap = await topStart(height);
+  await vehicle.getByRole('button', { name: 'Video', exact: true }).click();
+  await expect(vehicle.getByRole('img', { name: /^Pitch / })).toBeVisible();
+  await expect.poll(() => topStart(height), { message: 'the same reading in the same place over the picture' }).toEqual(overMap);
 });

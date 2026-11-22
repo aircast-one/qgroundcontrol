@@ -58,7 +58,7 @@ import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
 import { LayoutWidget, homeRows, orientedKey, rowsCovered } from './OverlayLayout';
-import { LocalFlyOsd, osdShadow } from './Osd';
+import { LocalFlyOsd, OSD_SCRIM, osdShadow } from './Osd';
 import { ParameterForm } from './ParameterForm';
 import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
@@ -431,8 +431,9 @@ export const TelemetryRow = ({
 const HudReading = ({ instrument, display, silent, scale }: { instrument: Instrument; display: ValueDisplay; silent: boolean; scale: number }) => {
   const icon = hudIcon(display, instrument);
   const tint = silent ? md('onSurfaceVariant') : colourOf(display, instrument.raw) ?? aircast('outdoorForeground');
+  const bare = useContext(LocalFlyOsd);
   return (
-    <div className="flex items-center gap-1.5" style={{ height: hudReadingHeight(scale), opacity: silent ? STALE_OPACITY : 1 }}>
+    <div className={`flex items-center gap-1.5 ${bare ? '' : 'rounded-shape-sm px-1.5'}`} style={{ height: hudReadingHeight(scale), opacity: silent ? STALE_OPACITY : 1, background: bare ? undefined : OSD_SCRIM }}>
       {icon !== null ? (
         <>
           <span aria-hidden className="contents">
@@ -454,7 +455,7 @@ const HudReading = ({ instrument, display, silent, scale }: { instrument: Instru
 
 export const hudStartTop = (top: CSSProperties['top'], below: number): CSSProperties['top'] => (below > 0 ? `max(${String(top)}, ${below}px)` : top);
 
-export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSProperties; startInset: number; startBelow?: number }) => {
+export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: { style: CSSProperties; startInset: number; startBelow?: number; endLift?: number }) => {
   const { flyScreen, shown, displays, silent, stale, valueSize, sheets } = useTelemetryReadings();
   const offsets = useValue(flyScreen.layout.offsets);
   const landscape = !useFlyIsPortrait();
@@ -463,8 +464,9 @@ export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSP
   const noteSide: HudSide = shown.some((it) => hudSide(it) === 'start') ? 'start' : 'end';
   const column = (side: HudSide) => {
     const readings = shown.filter((it) => hudSide(it) === side);
+    const lift = side === 'end' ? endLift : 0;
     const placed = (it: Instrument) => offsets.get(orientedKey(instrumentKey(it), landscape));
-    const taken = new Set(readings.map(placed).flatMap((at) => (at === undefined ? [] : rowsCovered(at, pitch, height))));
+    const taken = new Set(readings.map(placed).flatMap((at) => (at === undefined ? [] : rowsCovered([at[0], at[1] + lift], pitch, height))));
     const rows = homeRows(readings.map(instrumentKey), taken);
     const stacked = Math.max(0, ...[...rows.values()].map((row) => row + 1));
     return readings.length === 0 ? null : (
@@ -477,10 +479,10 @@ export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSP
             {stale}
           </Text>
         ) : null}
-        <div className="relative shrink-0" style={{ height: Math.max(0, stacked * pitch - HUD_READING_GAP) }}>
+        <div className="relative shrink-0" style={{ height: Math.max(0, stacked * pitch - HUD_READING_GAP + lift) }}>
           {readings.map((it) => (
             <div key={instrumentKey(it)} className={`absolute bottom-0 w-max ${side === 'start' ? 'start-0' : 'end-0'}`}>
-              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch]} badgeBeside={side === 'start' ? 'end' : 'start'}>
+              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch - lift]} badgeBeside={side === 'start' ? 'end' : 'start'}>
                 <HudReading instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} />
               </LayoutWidget>
             </div>
@@ -490,11 +492,11 @@ export const HudReadings = ({ style, startInset, startBelow = 0 }: { style: CSSP
     );
   };
   return (
-    <LocalFlyOsd.Provider value>
+    <>
       {sheets}
       {column('start')}
       {column('end')}
-    </LocalFlyOsd.Provider>
+    </>
   );
 };
 

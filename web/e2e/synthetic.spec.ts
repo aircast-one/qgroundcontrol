@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { chooseCameraJoystick, connectMock, dropFromStrip, expect, flightMode, flyNow, showMapFull, takeOff, test } from './fixtures';
+import { chooseCameraJoystick, connectMock, dropFromStrip, expect, flightMode, flyNow, showMapFull, takeOff, telemetry, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -255,12 +255,12 @@ test('over the 3D map the readings and map buttons go bare like over the picture
   await showMapFull(vehicle);
   const layers = vehicle.getByRole('button', { name: 'Map layers' });
   const backing = () => layers.evaluate((node) => getComputedStyle(node).backgroundColor);
-  const boxedReadings = vehicle.locator('.bg-black\\/55').filter({ hasText: 'm/s' });
+  const readingBacking = () => telemetry(vehicle, 'H.S').evaluate((node) => getComputedStyle(node).backgroundColor);
   await expect.poll(backing, 'over the flat map the button keeps its backing').not.toBe('rgba(0, 0, 0, 0)');
-  await expect(boxedReadings, 'over the flat map the readings sit on a dark box').toHaveCount(1);
+  await expect.poll(readingBacking, 'over the flat map each reading sits on its own dark backing').not.toBe('rgba(0, 0, 0, 0)');
   await vehicle.getByRole('button', { name: 'Show the 3D map' }).click();
   await expect(vehicle.getByRole('button', { name: /^Compass\./ })).toBeVisible({ timeout: 30_000 });
   await expect.poll(backing, 'over the 3D map it is bare').toBe('rgba(0, 0, 0, 0)');
-  await expect(boxedReadings).toHaveCount(0);
+  await expect.poll(readingBacking, 'over the 3D map the readings are bare').toBe('rgba(0, 0, 0, 0)');
   expect(await vehicle.getByRole('button', { name: /^Compass\./ }).evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
 });

@@ -55,7 +55,7 @@ import { nativeChosen } from '@/ui/SyntheticSurface';
 import { SYNTHETIC_VIEW, VIDEO_CORNER_ROOM, useRememberSyntheticAims, useRememberSyntheticAvailable, useRememberSyntheticChosen } from '@/ui/SyntheticView';
 import { UpdateBanner } from '@/ui/AppUpdates';
 import { TrafficBanner } from '@/ui/TrafficBanner';
-import { HudReadings, TelemetryRow } from '@/ui/VehicleUi';
+import { HudReadings } from '@/ui/VehicleUi';
 import {
   VIDEO_SWIPE_DISTANCE,
   type VideoGestureHandlers,
@@ -398,7 +398,6 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const cutoutStart = direction === 'rtl' ? safeArea.right : safeArea.left;
   const cutoutEnd = direction === 'rtl' ? safeArea.left : safeArea.right;
   const controls = useElementSize();
-  const osd = useElementSize();
   const gimbalSwitch = useValue(gimbalSwitchShown);
   const corner = useElementSize();
   const mapButtons = useElementSize();
@@ -415,7 +414,6 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const gimbalRoom = view !== FlyView.Map && gimbalSwitch ? OSD_CONTROL_SIZE + AircastSpace.s2 : 0;
   const cornerStack = gimbalRoom + (stickInCorner && stickSlot.size.height > 0 ? corner.size.height + stickSlot.size.height + AircastSpace.s2 * 2 : corner.size.width > 0 ? corner.size.height + AircastSpace.s2 : 0);
   const switchEnd = view === FlyView.Map ? MAP_LAYERS_CLEARANCE : AircastSpace.s3;
-  const osdEndRoom = stickPad !== null || view === FlyView.Map ? MAP_LAYERS_CLEARANCE : switchEnd + (corner.size.width > 0 ? corner.size.width + AircastSpace.s2 : 0);
   const insets = stickInsets(stickPad, fullScreen, box.letterbox, cutoutStart, cutoutEnd, controls.size.width);
   const ornamentEnd = insets.ornamentEnd;
   useEffect(() => {
@@ -432,9 +430,8 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const armed = useArmed();
   const lostFlight = useValue(lostVehicle) !== null;
   const offlineSheet = useValue(shellState.offlineSheetOpen);
-  const mapAboveOsd = view === FlyView.Map && stickPad === null && hasVehicle && !deciding ? osd.size.height : 0;
-  const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : mapAboveOsd;
-  const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE + mapAboveOsd;
+  const cornerRoom = stickPad !== null ? MAP_LAYERS_CLEARANCE : 0;
+  const mapButtonsBottom = stickPad !== null ? AircastSpace.s3 : MAP_SCALE_CLEARANCE;
   const switchBottom = view === FlyView.Map ? mapButtonsBottom : AircastSpace.s3 + gimbalRoom;
   const syntheticChosen = useRememberSyntheticChosen();
   const overlaysBottom = useValue(shellState.mapInsets).top;
@@ -484,17 +481,18 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   }, []);
   const videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding !== true;
   const guideMessage = !hasVehicle && (view === FlyView.Map || (videoMessage && looksForAircraft(hasVehicle, videoReading(videoJson), syntheticChosen)));
-  const besideThumb = thumbShown ? thumb.width : 0;
   const showMap = () => onView(FlyView.Map);
   const showVideo = () => onView(FlyView.Video);
 
-  const sight = (
+  const railBottom = view === FlyView.Map ? railAboveMapButtons(mapButtonsBottom, mapButtons.size.height) : RAIL_CLEARANCE;
+  const railLift = Math.max(0, (railBottom - RAIL_CLEARANCE) / 2);
+  const readings = (
     <>
-      <HudLadders shellWidth={boxWidth} shellHeight={boxHeight} />
       <div ref={readingsArea} className="pointer-events-none absolute top-0" style={{ insetInlineStart: ACTION_RAIL_CLEARANCE, insetInlineEnd: 0, bottom: READINGS_FLOOR }} />
       <LocalLayoutBounds.Provider value={readingsArea}>
         <HudReadings
           startInset={ACTION_RAIL_CLEARANCE + AircastSpace.s3}
+          endLift={railLift}
           startBelow={fullScreen ? 0 : overlaysBottom + AircastSpace.s2}
           style={{
             zIndex: layer(2),
@@ -503,6 +501,12 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           }}
         />
       </LocalLayoutBounds.Provider>
+    </>
+  );
+  const sight = (
+    <>
+      <HudLadders shellWidth={boxWidth} shellHeight={boxHeight} />
+      {readings}
     </>
   );
   const deckLayer = (
@@ -516,9 +520,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
           {hasVehicle && !deciding ? (
             <div
               className="absolute inset-x-0 flex justify-center"
-              style={{ bottom: (view === FlyView.Video || fullScreen ? AircastSpace.s3 : Math.max(PAYLOAD_STRIP_CLEARANCE, osd.size.height + AircastSpace.s2)) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}
+              style={{ bottom: (view === FlyView.Video || fullScreen ? AircastSpace.s3 : PAYLOAD_STRIP_CLEARANCE) + (stickPad === null ? 0 : Math.max(stickBand, stickPad) + STICK_FLOOR) }}
             >
-              <LayoutWidget widgetKey="payload" movable={false} hideable={false} live={armed}>
+              <LayoutWidget widgetKey="payload" hideable={false} live={armed}>
                 <PayloadRailStrip />
               </LayoutWidget>
             </div>
@@ -587,7 +591,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                       style={{
                         zIndex: layer(1),
                         paddingTop: `calc(env(safe-area-inset-top, 0px) + ${RAIL_CLEARANCE + AircastSpace.s3}px)`,
-                        paddingBottom: view === FlyView.Map ? railAboveMapButtons(mapButtonsBottom, mapButtons.size.height) : RAIL_CLEARANCE,
+                        paddingBottom: railBottom,
                         paddingInlineEnd: AircastSpace.s3,
                       }}
                     >
@@ -615,17 +619,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                   {hasVehicle && !deciding && view === FlyView.Video ? (
                     sight
                   ) : hasVehicle && !deciding ? (
-                    <div
-                      ref={osd.ref}
-                      className={`absolute inset-x-0 bottom-0 flex items-end gap-6 ${osdShadow()} ${PASS_THROUGH}`}
-                      style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideThumb + AircastSpace.s3 * 2, paddingInlineEnd: osdEndRoom, paddingBottom: AircastSpace.s3 }}
-                    >
-                      <LayoutWidget widgetKey="telemetry" movable={false} hideable={false} className="shrink-0">
-                        <LocalFlyOsd.Provider value>
-                          <TelemetryRow valuesShown chooser={false} compact stacked className={pictured ? undefined : 'rounded-shape-md bg-black/55 px-3 py-1.5'} />
-                        </LocalFlyOsd.Provider>
-                      </LayoutWidget>
-                    </div>
+                    readings
                   ) : null}
                 </LocalFlyOsd.Provider>
                 {view === FlyView.Map ? (

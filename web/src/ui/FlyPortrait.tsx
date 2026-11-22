@@ -321,7 +321,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                 >
                   {deciding ? null : (
                     <div className="flex justify-center px-3 pb-2">
-                      <LayoutWidget widgetKey="payload" movable={false} hideable={false} live={armed}>
+                      <LayoutWidget widgetKey="payload" hideable={false} live={armed}>
                         <PayloadRailStrip />
                       </LayoutWidget>
                     </div>
