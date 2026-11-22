@@ -9,6 +9,7 @@ mod ingest;
 mod matroska;
 mod menu;
 mod mpegts;
+mod page;
 mod record;
 mod rtp;
 mod synthetic;
@@ -281,7 +282,7 @@ fn start_core(version: &str) {
 fn main() {
     let context = tauri::generate_context!();
     start_core(&context.package_info().version.to_string());
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -292,6 +293,7 @@ fn main() {
         .manage(synthetic::Views::default())
         .setup(|app| {
             forward_events(app.handle().clone());
+            page::keep_watch();
             let downloads = app.path().download_dir().ok();
             let dev = tauri::is_dev()
                 .then(|| app.config().build.dev_url.clone())
@@ -321,6 +323,7 @@ fn main() {
                     inside
                 })
                 .on_page_load(|shown, loading| {
+                    page::loading(loading.event(), loading.url());
                     if loading.event() == PageLoadEvent::Started {
                         let app = shown.app_handle().clone();
                         let streams = app.state::<video::Streams>().page_left();
@@ -342,10 +345,14 @@ fn main() {
                 window::guard_terminate(app.handle());
             }
             Ok(())
-        })
+        });
+    #[cfg(target_os = "macos")]
+    let builder = builder.on_web_content_process_terminate(page::terminated);
+    builder
         .invoke_handler(tauri::generate_handler![
             core,
             map_tile,
+            page::page_alive,
             video::video_open,
             video::video_close,
             video::video_restart,

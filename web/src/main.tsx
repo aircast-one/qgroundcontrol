@@ -6,6 +6,7 @@ import { DeviceLink } from '@/app/DeviceLink';
 import { HostPlatform } from '@/app/HostPlatform';
 import { Qgc } from '@/bridge/Qgc';
 import { MainActivity } from '@/app/MainActivity';
+import { PageHeartbeat } from '@/app/PageHeartbeat';
 import { type PageFacts, recordPageErrors, recoveringRoot } from '@/app/RecoveringRoot';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { coreLoaded, coreReady } from '@/core/client';
@@ -37,6 +38,7 @@ const CoreLoading = () => {
 
 const root = document.getElementById('root')!;
 const show = recoveringRoot(root, logPageError, PAGE_FACTS);
+PageHeartbeat.start(root);
 show(<StrictMode><CoreLoading /></StrictMode>);
 const handoff = await DeviceLink.handoff();
 if ('to' in handoff) {
