@@ -1,4 +1,5 @@
 import { type CSSProperties, Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Menu } from '@base-ui/react';
 import { type Json, isNull, jsonObjects, optBoolean, optDouble, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
@@ -60,7 +61,7 @@ import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapCl
 import { FlyViewMavlinkActions } from './MavlinkActions';
 import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, missionFlown, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { CHECK_DEVICE, OFFLINE_SHEET, OFFLINE_STATUS_VIEW, offlineStatus, openAddLink, openDeviceTelemetry } from './OfflineStatusSheet';
-import { LayoutWidget, homeRows, orientedKey, rowsCovered } from './OverlayLayout';
+import { LayoutWidget, barOrderWith, homeRows, orientedKey, rowsCovered } from './OverlayLayout';
 import { LocalFlyOsd, OSD_SCRIM, osdShadow } from './Osd';
 import { ParameterForm } from './ParameterForm';
 import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
@@ -498,6 +499,13 @@ export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: 
   const { flyScreen, shown, displays, silent, stale, valueSize, sheets } = useTelemetryReadings();
   const offsets = useValue(flyScreen.layout.offsets);
   const editing = useValue(flyScreen.layout.editing);
+  const docked = useValue(flyScreen.layout.docked);
+  const dockSlots = useValue(flyScreen.dockSlots);
+  const inBar = (it: Instrument) => docked.includes(instrumentKey(it));
+  const dock = (it: Instrument) => (x: number) => {
+    flyScreen.layout.saveIndicatorOrder(barOrderWith(instrumentKey(it), x));
+    flyScreen.layout.saveDocked([...docked.filter((key) => key !== instrumentKey(it)), instrumentKey(it)]);
+  };
   const actionsJson = useQgcPath(GUIDED_ACTIONS);
   const offers = useMemo(() => guidedOffers(actionsJson), [actionsJson]);
   const actFor = (it: Instrument): ReadingAct | null => {
@@ -517,7 +525,7 @@ export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: 
   const pitch = height + HUD_READING_GAP;
   const noteSide: HudSide = shown.some((it) => hudSide(it) === 'start') ? 'start' : 'end';
   const column = (side: HudSide) => {
-    const readings = shown.filter((it) => hudSide(it) === side);
+    const readings = shown.filter((it) => hudSide(it) === side && !inBar(it));
     const lift = side === 'end' ? endLift : 0;
     const placed = (it: Instrument) => offsets.get(orientedKey(instrumentKey(it), landscape));
     const taken = new Set(readings.map(placed).flatMap((at) => (at === undefined ? [] : rowsCovered([at[0], at[1] + lift], pitch, height))));
@@ -536,7 +544,7 @@ export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: 
         <div className="relative shrink-0" style={{ height: Math.max(0, stacked * pitch - HUD_READING_GAP + lift) }}>
           {readings.map((it) => (
             <div key={instrumentKey(it)} className={`absolute bottom-0 w-max ${side === 'start' ? 'start-0' : 'end-0'}`}>
-              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch - lift]} badgeBeside={side === 'start' ? 'end' : 'start'}>
+              <LayoutWidget widgetKey={instrumentKey(it)} home={[0, -(rows.get(instrumentKey(it)) ?? 0) * pitch - lift]} badgeBeside={side === 'start' ? 'end' : 'start'} onBar={dock(it)}>
                 <HudReading instrument={it} display={displayFor(displays, it)} silent={silent} scale={valueSize.scale} act={actFor(it)} />
               </LayoutWidget>
             </div>
@@ -550,6 +558,10 @@ export const HudReadings = ({ style, startInset, startBelow = 0, endLift = 0 }: 
       {sheets}
       {column('start')}
       {column('end')}
+      {shown.filter(inBar).map((it) => {
+        const slot = dockSlots.get(instrumentKey(it));
+        return slot === undefined ? null : createPortal(<HudReading instrument={it} display={displayFor(displays, it)} silent={silent} scale={1} act={actFor(it)} />, slot, instrumentKey(it));
+      })}
     </>
   );
 };

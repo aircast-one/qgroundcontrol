@@ -29,6 +29,8 @@ export class FlyScreenState {
   readonly mapInsets = mutableStateOf<MapInsets>(MapInsets({ top: 0, bottom: 0 }));
   readonly mapOrnamentEnd = mutableStateOf<number | null>(null);
   readonly cameraStickSlot = mutableStateOf<HTMLElement | null>(null);
+  readonly floatedIndicators = mutableStateOf<HTMLElement | null>(null);
+  readonly dockSlots = mutableStateMapOf<string, HTMLElement>();
   readonly widgetInsets = mutableStateOf<Insets>(NO_INSETS);
   readonly videoTucked = mutableStateOf(false);
   readonly pipCorner = mutableStateOf<PipCorner>(PipCorner.TopEnd);

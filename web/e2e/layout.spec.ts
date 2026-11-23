@@ -669,21 +669,85 @@ test('a reading over the picture drags to a place of its own, keeps it after a r
   expect(await topStart(height)).toEqual(before);
 });
 
-test('a reading drags up into the top bar, is picked up again from there and stays in the bar after editing', async ({ vehicle }) => {
+const pullFromBar = async (page: Page, cell: Locator, dx: number, dy: number) => {
+  const [x, y] = await centre(cell);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(300);
+  await page.mouse.move(x + dx, y + dy, { steps: 12 });
+  await page.mouse.up();
+};
+
+test('a reading dropped on the top bar joins its items, and pulled down from the bar it stands over the picture again', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const distance = telemetry(vehicle, 'D');
   await expect(distance).toBeVisible({ timeout: 30_000 });
   await editLayout(vehicle);
-  const strip = (await vehicle.locator('[data-status-row]').boundingBox())!;
-  await dragBy(vehicle, distance, 120, -900);
+  const strip = vehicle.locator('[data-status-row]');
+  const docked = vehicle.locator('[data-indicator="reading:vehicle/distanceToHome"]');
+  const flightTime = vehicle.locator('[data-indicator=flightTime]');
+  await expect
+    .poll(async () => {
+      const first = await centre(flightTime);
+      await vehicle.waitForTimeout(300);
+      return (await centre(flightTime))[0] - first[0];
+    }, { message: 'the bar has settled' })
+    .toBe(0);
+  const [fromX, fromY] = await centre(distance);
+  const [timeX, timeY] = await centre(flightTime);
+  await dragBy(vehicle, distance, timeX - 30 - fromX, timeY - fromY);
+  await expect(docked.getByText('D', { exact: true }), 'the reading is one of the bar items').toHaveCount(1);
+  const row = (await strip.boundingBox())!;
   const inBar = (await distance.boundingBox())!;
-  expect(inBar.y, 'on screen').toBeGreaterThanOrEqual(0);
-  expect(inBar.y + inBar.height / 2, 'in the row of the top bar').toBeLessThan(strip.y + strip.height);
-  await dragBy(vehicle, distance, 60, 0);
-  expect((await distance.boundingBox())!.x - inBar.x, 'the bar does not cover it: it moves again').toBeGreaterThan(40);
+  expect(inBar.y).toBeGreaterThanOrEqual(row.y - 1);
+  expect(inBar.y + inBar.height).toBeLessThanOrEqual(row.y + row.height + 1);
+  expect(inBar.x + inBar.width / 2, 'placed where it was dropped, before the flight time').toBeLessThan((await centre(flightTime))[0]);
+  expect(await overlaps(await boxesOf([distance, flightTime])), 'the bar made room for it').toEqual([]);
   await finishEditing(vehicle);
-  const kept = (await distance.boundingBox())!;
-  expect(kept.y + kept.height / 2, 'still in the row of the top bar').toBeLessThan(strip.y + strip.height);
+  await expect(docked.getByText('D', { exact: true })).toHaveCount(1);
+  await vehicle.reload();
+  await connectMock(vehicle);
+  await expect(docked.getByText('D', { exact: true }), 'kept in the bar after a reload').toHaveCount(1, { timeout: 30_000 });
+  await editLayout(vehicle);
+  await pullFromBar(vehicle, docked, -200, 260);
+  await expect(docked).toHaveCount(0);
+  const back = (await distance.boundingBox())!;
+  const rowNow = (await strip.boundingBox())!;
+  expect(back.y, 'over the picture, below the bar').toBeGreaterThan(rowNow.y + rowNow.height);
+  expect(Math.abs(back.y + back.height / 2 - (inBar.y + inBar.height / 2 + 260)), 'near where it was let go').toBeLessThan(60);
+  await finishEditing(vehicle);
+});
+
+test('a bar item pulled down stands over the picture where it was let go, keeps its place, and dropped on the bar it joins it again', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(telemetry(vehicle, 'D')).toBeVisible({ timeout: 30_000 });
+  await editLayout(vehicle);
+  const strip = vehicle.locator('[data-status-row]');
+  const inBar = vehicle.locator('[data-indicator=flightTime]');
+  const timer = vehicle.getByRole('timer', { name: 'Flight time' });
+  await expect(inBar).toHaveCount(1);
+  const [barX, barY] = await centre(inBar);
+  await pullFromBar(vehicle, inBar, -350, 150);
+  await expect(inBar, 'it left the bar').toHaveCount(0);
+  await expect(timer).toBeVisible();
+  const afloat = await centre(timer);
+  expect(Math.abs(afloat[0] - (barX - 350))).toBeLessThan(60);
+  expect(Math.abs(afloat[1] - (barY + 150))).toBeLessThan(60);
+  await finishEditing(vehicle);
+  await vehicle.reload();
+  await connectMock(vehicle);
+  await expect(timer).toBeVisible({ timeout: 30_000 });
+  expect(Math.abs((await centre(timer))[1] - afloat[1]), 'kept over the picture after a reload').toBeLessThan(8);
+  await expect(inBar).toHaveCount(0);
+  await editLayout(vehicle);
+  const row = (await strip.boundingBox())!;
+  const [x, y] = await centre(timer);
+  await dragBy(vehicle, timer, barX - x, row.y + row.height / 2 - y);
+  await expect(inBar, 'back among the bar items').toHaveCount(1);
+  const home = (await inBar.boundingBox())!;
+  expect(home.y).toBeGreaterThanOrEqual(row.y - 1);
+  expect(home.y + home.height).toBeLessThanOrEqual(row.y + row.height + 1);
+  await finishEditing(vehicle);
 });
 
 test('a reading hides with its own badge and comes back from it, and the arrow keys move it', async ({ vehicle }) => {

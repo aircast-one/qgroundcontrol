@@ -46,6 +46,8 @@ export const LAYOUT_EDITING_IN_FLIGHT = 'Editing the layout. Return, Land and Ki
 const LAYOUT_NOTICE_MAX_WIDTH = 560;
 
 const INDICATOR_ORDER = 'FlyViewIndicatorOrder';
+const DOCKED_READINGS = 'FlyViewDockedReadings';
+const FLOATED_INDICATORS = 'FlyViewFloatedIndicators';
 
 export type Offset = readonly [number, number];
 
@@ -54,6 +56,8 @@ export type Bounds = { readonly left: number; readonly top: number; readonly rig
 export type Size = { readonly width: number; readonly height: number };
 
 export type Carry = { readonly item: Element; readonly pointerId: number; readonly x: number; readonly y: number };
+
+export type Landing = { readonly key: string; readonly x: number; readonly y: number };
 
 const storedLayout = (): Record<string, unknown> =>
   Object.fromEntries(Object.entries(getSharedPreferences(LAYOUT_STORE).getAll()).map(([key, text]) => [key, text === 'true' ? true : text === 'false' ? false : text]));
@@ -64,13 +68,28 @@ export class OverlayLayoutState {
   readonly indicatorOrder: MutableState<readonly string[]>;
   readonly valueSize = mutableStateOf<ValueSize>(ValueSize.Default);
   readonly offsets: MutableState<ReadonlyMap<string, Offset>>;
+  readonly docked: MutableState<readonly string[]>;
+  readonly floated: MutableState<readonly string[]>;
   carry: Carry | null = null;
+  landing: Landing | null = null;
 
   constructor(private readonly prefs: SharedPreferences) {
     const stored = storedLayout();
     this.hidden = mutableStateOf(hiddenKeys(stored));
     this.indicatorOrder = mutableStateOf(storedIndicatorOrder(stored));
     this.offsets = mutableStateOf(storedOffsets(stored));
+    this.docked = mutableStateOf(storedKeys(stored, DOCKED_READINGS));
+    this.floated = mutableStateOf(storedKeys(stored, FLOATED_INDICATORS));
+  }
+
+  saveDocked(keys: readonly string[]): void {
+    this.prefs.putString(DOCKED_READINGS, keys.join(','));
+    this.docked.value = keys;
+  }
+
+  saveFloated(keys: readonly string[]): void {
+    this.prefs.putString(FLOATED_INDICATORS, keys.join(','));
+    this.floated.value = keys;
   }
 
   startEditing(carry: Carry | null = null): void {
@@ -98,6 +117,7 @@ export class OverlayLayoutState {
     placed.flatMap((key) => [OFFSET_PREFIX + key, HIDDEN_PREFIX + key]).forEach((name) => this.prefs.remove(name));
     this.offsets.value = new Map([...this.offsets.value].filter(([key]) => !placed.includes(key)));
     this.hidden.value = new Set([...this.hidden.value].filter((key) => !keys.includes(key)));
+    if (this.docked.value.some((key) => keys.includes(key))) this.saveDocked(this.docked.value.filter((key) => !keys.includes(key)));
   }
 
   saveOffset(key: string): void {
@@ -110,15 +130,42 @@ export class OverlayLayoutState {
     this.hidden.value = hiddenKeys({});
     this.indicatorOrder.value = [];
     this.offsets.value = new Map();
+    this.docked.value = [];
+    this.floated.value = [];
   }
 }
 
 export const overlayLayoutStore = (): SharedPreferences => getSharedPreferences(LAYOUT_STORE);
 
-export const storedIndicatorOrder = (stored: Readonly<Record<string, unknown>>): string[] => {
-  const order = stored[INDICATOR_ORDER];
-  return (typeof order === 'string' ? order : '').split(',').filter((it) => it.trim() !== '');
+const storedKeys = (stored: Readonly<Record<string, unknown>>, name: string): string[] => {
+  const keys = stored[name];
+  return (typeof keys === 'string' ? keys : '').split(',').filter((it) => it.trim() !== '');
 };
+
+export const storedIndicatorOrder = (stored: Readonly<Record<string, unknown>>): string[] => storedKeys(stored, INDICATOR_ORDER);
+
+export const INDICATOR_CELL = 'data-indicator';
+
+export const PULL_OUT_PX = 40;
+
+export type BarCell = { readonly key: string; readonly centre: number; readonly shown: boolean };
+
+export const droppedIntoBar = (cells: readonly BarCell[], key: string, x: number): string[] => {
+  const others = cells.filter((cell) => cell.key !== key);
+  const before = others.findIndex((cell) => cell.shown && cell.centre > x);
+  const keys = others.map((cell) => cell.key);
+  return before < 0 ? [...keys, key] : [...keys.slice(0, before), key, ...keys.slice(before)];
+};
+
+export const barOrderWith = (key: string, x: number): string[] =>
+  droppedIntoBar(
+    Array.from(document.querySelectorAll<HTMLElement>(`[${INDICATOR_CELL}]`)).map((node) => {
+      const box = node.getBoundingClientRect();
+      return { key: node.getAttribute(INDICATOR_CELL) ?? '', centre: (box.left + box.right) / 2, shown: box.width > 0 };
+    }),
+    key,
+    x,
+  );
 
 export const onScreenCorrection = (bounds: Bounds, area: Bounds, offset: Offset): Offset => {
   const [dx, dy] = clampedInto(bounds, area, 0, 0);
@@ -311,6 +358,11 @@ const LAYOUT_ITEM = 'data-layout-item';
 
 const within = (box: DOMRect, x: number, y: number): boolean => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
 
+export const overStatusRow = (x: number, y: number): boolean => {
+  const row = document.querySelector('[data-status-row]')?.getBoundingClientRect();
+  return row !== undefined && within(row, x, y);
+};
+
 const overLayoutItem = (x: number, y: number): boolean => Array.from(document.querySelectorAll(`[${LAYOUT_ITEM}]`)).some((item) => within(item.getBoundingClientRect(), x, y));
 
 const itemUnder = (target: Element, x: number, y: number): Element | null => {
@@ -431,6 +483,7 @@ export const LayoutDragArea = ({
   correction,
   frame,
   onLift,
+  onBar,
   className,
   style,
   children,
@@ -441,6 +494,7 @@ export const LayoutDragArea = ({
   correction: Offset;
   frame: RefObject<HTMLElement | null>;
   onLift: (lifted: boolean) => void;
+  onBar?: (x: number) => void;
   className?: string;
   style?: CSSProperties;
   children?: ReactNode;
@@ -464,7 +518,8 @@ export const LayoutDragArea = ({
     if (held === null || held.id !== event.pointerId) return;
     drag.current = null;
     onLift(false);
-    if (held.dragging) layout.saveOffset(placedKey);
+    if (held.dragging && onBar !== undefined && event.type === 'pointerup' && overStatusRow(event.clientX, event.clientY)) onBar(event.clientX);
+    else if (held.dragging) layout.saveOffset(placedKey);
   };
   return (
     <div
@@ -572,6 +627,7 @@ export const LayoutWidget = ({
   hideable = true,
   live = false,
   dragsWith,
+  onBar,
   name,
   className,
   children,
@@ -584,6 +640,7 @@ export const LayoutWidget = ({
   hideable?: boolean;
   live?: boolean;
   dragsWith?: string;
+  onBar?: (x: number) => void;
   className?: string;
   children?: ReactNode;
 }) => {
@@ -596,6 +653,17 @@ export const LayoutWidget = ({
   const osd = useContext(LocalFlyOsd);
   const placedKey = useLayoutKey(widgetKey);
   const [correction, kept, frame] = useKeptOnScreen(placedKey, home);
+  const area = useLayoutArea();
+  useLayoutEffect(() => {
+    const landing = layout.landing;
+    const node = frame.current;
+    if (landing === null || landing.key !== widgetKey || node === null) return;
+    layout.landing = null;
+    const box = node.getBoundingClientRect();
+    const [dx, dy] = clampedInto(box, area(), landing.x - (box.left + box.right) / 2, landing.y - (box.top + box.bottom) / 2);
+    layout.nudge(placedKey, dx, dy, home);
+    layout.saveOffset(placedKey);
+  }, []);
   const hold = useHoldToEditLayout();
   const group = useContext(LocalLayoutGroup);
   const parent = useContext(LocalLayoutParent);
@@ -644,6 +712,7 @@ export const LayoutWidget = ({
             correction={carried?.correction ?? correction}
             frame={carried?.frame ?? frame}
             onLift={carried?.lift ?? setLifted}
+            onBar={carried === null ? onBar : undefined}
             className={live ? BADGE : 'absolute inset-0'}
             style={live ? BADGE_PLACE : undefined}
           >

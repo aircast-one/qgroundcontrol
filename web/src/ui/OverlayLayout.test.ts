@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SharedPreferences } from '@/kotlin/Platform';
-import { ARROW_STEP_PX, OverlayLayoutState, RESET_ARM_MILLIS, ResetTap, arrowStep, clampedInto, homeRows, intersected, liftedBounds, rowsCovered, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
+import { ARROW_STEP_PX, OverlayLayoutState, RESET_ARM_MILLIS, ResetTap, arrowStep, clampedInto, droppedIntoBar, homeRows, intersected, liftedBounds, rowsCovered, droppedOrder, hiddenKeys, jiggleDegrees, movedAmongShown, movedKey, onScreenCorrection, orderedKeys, orientedKey, resetPillText, resetTap, shownCorrection, storedIndicatorOrder, storedOffsets, visibleArea, withHidden } from './OverlayLayout';
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
 
@@ -172,6 +172,30 @@ describe('LayoutStateTest', () => {
     layout.reset();
     expect(layout.offsets.value).toEqual(new Map());
     expect(layout.hidden.value).toEqual(new Set(['minimap']));
+  });
+
+  it('a reading docked in the top bar leaves it when the reading is forgotten, and a reset empties the bar of readings and brings floated items home', () => {
+    const layout = new OverlayLayoutState(memoryPrefs());
+    layout.saveDocked(['reading:vehicle/distanceToHome', 'reading:wind/speed']);
+    layout.saveFloated(['flightTime']);
+    layout.forget(['reading:vehicle/distanceToHome']);
+    expect(layout.docked.value).toEqual(['reading:wind/speed']);
+    expect(layout.floated.value).toEqual(['flightTime']);
+    layout.reset();
+    expect([layout.docked.value, layout.floated.value]).toEqual([[], []]);
+  });
+
+  it('an item dropped on the top bar goes before the first shown item to its right, and last when there is none', () => {
+    const cells = [
+      { key: 'battery', centre: 100, shown: true },
+      { key: 'flightTime', centre: 200, shown: true },
+      { key: 'gps', centre: 300, shown: false },
+      { key: 'health', centre: 400, shown: true },
+    ];
+    expect(droppedIntoBar(cells, 'reading:wind/speed', 150)).toEqual(['battery', 'reading:wind/speed', 'flightTime', 'gps', 'health']);
+    expect(droppedIntoBar(cells, 'reading:wind/speed', 350), 'an item with nothing to show is not a place to drop before').toEqual(['battery', 'flightTime', 'gps', 'reading:wind/speed', 'health']);
+    expect(droppedIntoBar(cells, 'reading:wind/speed', 999)).toEqual(['battery', 'flightTime', 'gps', 'health', 'reading:wind/speed']);
+    expect(droppedIntoBar(cells, 'battery', 350), 'an item already listed moves').toEqual(['flightTime', 'gps', 'battery', 'health']);
   });
 
   it('the arrow keys step a widget a few pixels, or four times as far with shift, and other keys do nothing', () => {

@@ -24,6 +24,7 @@ import {
   satsText,
   shownStatusCells,
   smoothedSeconds,
+  pulledOut,
   stripKeys,
   smoothedTick,
   type SmoothedSeconds,
@@ -39,6 +40,7 @@ describe('NarrowStripTest', () => {
   it('a phone strip keeps the battery and adds every indicator in alarm, wherever it sits in the order', () => {
     const ordered = ['battery', 'flightTime', 'gps', 'health', 'video', 'rc', 'links'];
     expect(stripKeys(ordered, shownStatusCells(true), new Set())).toEqual(['battery']);
+    expect([pulledOut(30, 100, false), pulledOut(30, 100, true), pulledOut(30, 60, false), pulledOut(30, -40, false)], 'a bar item leaves the bar only when let go well below it').toEqual([true, false, false, false]);
     expect(stripKeys(ordered, shownStatusCells(true), new Set(['gps', 'health', 'rc']))).toEqual(['battery', 'gps', 'health', 'rc']);
     expect(stripKeys(ordered, shownStatusCells(false), new Set(['rc', 'links']))).toEqual([...ordered.slice(0, COMPACT_STATUS_CELLS), 'links']);
   });

@@ -1,4 +1,5 @@
 import { type CSSProperties, Fragment, type HTMLAttributes, type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
@@ -44,7 +45,7 @@ import {
 import { JoystickIndicatorCell } from '@/ui/JoystickIndicator';
 import { USB_RADIO_VIEW, usbRadioBadge, usbRadioTone } from '@/ui/UsbRadioIndicator';
 import { useOsdBackdrop } from '@/ui/Osd';
-import { LayoutLifted, LayoutWidget, type Offset, badgeRoom, liftStyle, droppedOrder, movedAmongShown, orderedKeys, swallowReleaseClick } from '@/ui/OverlayLayout';
+import { INDICATOR_CELL, LayoutLifted, LayoutWidget, type Offset, PULL_OUT_PX, badgeRoom, barOrderWith, liftStyle, droppedOrder, movedAmongShown, orderedKeys, overStatusRow, swallowReleaseClick } from '@/ui/OverlayLayout';
 import { ParameterForm } from '@/ui/ParameterForm';
 import { RemoteIdIndicatorCell } from '@/ui/RemoteIdIndicator';
 import { RtkIndicatorCell, RtkSettingsSheetContent, type RtkStatus, useRememberRtkStatus } from '@/ui/RtkIndicator';
@@ -205,7 +206,22 @@ const REORDER_SLOP = 8;
 
 type ReorderPress = { readonly key: string; readonly id: number; readonly x: number; readonly y: number; readonly timer: ReturnType<typeof setTimeout>; readonly centres: ReadonlyMap<string, Offset> | null };
 
-const useIndicatorReorder = (keys: readonly string[], shown: ReadonlySet<string>, save: (keys: readonly string[]) => void) => {
+export const pulledOut = (pressedY: number, releasedY: number, overBar: boolean): boolean => !overBar && releasedY - pressedY > PULL_OUT_PX;
+
+const DockSlot = ({ name }: { name: string }) => {
+  const slots = useContext(LocalFlyScreenState).dockSlots;
+  const held = useCallback(
+    (node: HTMLElement | null) => {
+      if (node === null) return undefined;
+      slots.set(name, node);
+      return () => slots.remove(name);
+    },
+    [name, slots],
+  );
+  return <span ref={held} className="flex items-center empty:hidden" />;
+};
+
+const useIndicatorReorder = (keys: readonly string[], shown: ReadonlySet<string>, save: (keys: readonly string[]) => void, pull: (key: string, x: number, y: number) => void) => {
   const nodes = useRef(new Map<string, HTMLElement>());
   const press = useRef<ReorderPress | null>(null);
   const [dragged, setDragged] = useState<{ key: string; dx: number; dy: number } | null>(null);
@@ -257,7 +273,8 @@ const useIndicatorReorder = (keys: readonly string[], shown: ReadonlySet<string>
     onPointerUp: (event) => {
       const down = press.current;
       if (down !== null && down.id === event.pointerId && down.centres !== null) {
-        save(droppedOrder(keys, down.centres, down.key, event.clientX - down.x, event.clientY - down.y));
+        if (pulledOut(down.y, event.clientY, overStatusRow(event.clientX, event.clientY))) pull(down.key, event.clientX, event.clientY);
+        else save(droppedOrder(keys, down.centres, down.key, event.clientX - down.x, event.clientY - down.y));
         swallowReleaseClick();
       }
       stop();
@@ -401,9 +418,13 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
     (key: string, on: boolean) => setShown((current) => (current.has(key) === on ? current : new Set(on ? [...current, key] : [...current].filter((it) => it !== key)))),
     [],
   );
-  const layout = useContext(LocalFlyScreenState).layout;
+  const flyScreen = useContext(LocalFlyScreenState);
+  const layout = flyScreen.layout;
   const editing = useValue(layout.editing);
   const indicatorOrder = useValue(layout.indicatorOrder);
+  const docked = useValue(layout.docked);
+  const floated = useValue(layout.floated);
+  const floatHost = useValue(flyScreen.floatedIndicators);
   const compactStatus = useContext(LocalCompactStatus);
   const narrow = useContext(LocalNarrowStatus);
   const silentFor = useSilentSeconds(vehicleLinks(linksJson)?.contactLost === true);
@@ -441,17 +462,31 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
     ['gimbal', <GimbalIndicatorCell />],
     ['supportForwarding', <SupportForwardingCell />],
   ];
-  const byKey = new Map(cells);
+  const byKey = new Map<string, ReactNode>([...cells, ...docked.map((key): [string, ReactNode] => [key, <DockSlot name={key} />])]);
+  const afloat = floatHost === null ? [] : floated.filter((key) => cells.some(([cell]) => cell === key));
   const ordered = orderedKeys(
-    cells.map(([key]) => key),
+    [...byKey.keys()].filter((key) => !afloat.includes(key)),
     indicatorOrder,
   );
   const compact = compactStatus && !editing;
   const alarmed: ReadonlySet<string> = new Set([...(gps !== null && fix === FixLevel.None ? ['gps'] : []), ...osd.filter(osdAlarmed).map((line) => line.id), ...(rc?.lost === true ? ['rc'] : [])]);
-  const keys = compact ? stripKeys(ordered, shownStatusCells(narrow), alarmed) : ordered;
+  const keys = compact ? stripKeys(ordered, shownStatusCells(narrow), new Set([...alarmed, ...docked])) : ordered;
   const silence = silentFor === null ? null : silenceText(silentFor);
   const battery = detail === StripDetail.Battery;
-  const [dragged, reorder] = useIndicatorReorder(keys, shown, (moved) => layout.saveIndicatorOrder(moved));
+  const [dragged, reorder] = useIndicatorReorder(
+    keys,
+    shown,
+    (moved) => layout.saveIndicatorOrder(moved),
+    (key, x, y) => {
+      if (docked.includes(key)) {
+        layout.landing = { key, x, y };
+        layout.saveDocked(docked.filter((it) => it !== key));
+      } else if (floatHost !== null) {
+        layout.landing = { key: `indicator-${key}`, x, y };
+        layout.saveFloated([...floated.filter((it) => it !== key), key]);
+      }
+    },
+  );
   const rows = (() => {
     if (detail === StripDetail.Battery) {
       const draw = totalDraw(batteryJson);
@@ -471,13 +506,14 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
     <>
       <OpenOnRequest name={STATUS_ALL_SHEET} open={() => setAllStatus(true)} />
       <div
-        className={`flex items-center overflow-x-auto min-[1600px]:[zoom:1.25] ${className ?? ''}`}
+        className={`flex items-center ${dragged === null ? 'overflow-x-auto' : 'overflow-visible'} min-[1600px]:[zoom:1.25] ${className ?? ''}`}
         style={{ ...style, opacity: live ? 1 : 0.45, ...badgeRoom(editing, true) }}
       >
         {keys.map((key) => (
           <LeadingGap key={key} gap={shown.has(key) ? stripGap(narrow) : 0}>
             <div
               {...(editing && shown.has(key) ? { ...reorder(key), 'data-gesture': true, tabIndex: 0, 'aria-description': 'Move with the left and right arrow keys' } : {})}
+              {...{ [INDICATOR_CELL]: key }}
               className={editing ? 'relative touch-none select-none' : 'relative'}
               style={{ ...liftStyle(dragged?.key === key), ...(dragged?.key === key ? { translate: `${dragged.dx}px ${dragged.dy}px`, zIndex: 1 } : {}) }}
             >
@@ -492,13 +528,31 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
           </LeadingGap>
         ))}
       </div>
+      {floatHost === null
+        ? null
+        : createPortal(
+            afloat.map((key) => (
+              <div key={key} className="pointer-events-auto absolute start-0 top-0 w-max" style={{ opacity: live ? 1 : 0.45 }}>
+                <LayoutWidget
+                  widgetKey={`indicator-${key}`}
+                  onBar={(x) => {
+                    layout.saveFloated(floated.filter((it) => it !== key));
+                    layout.saveIndicatorOrder(barOrderWith(key, x));
+                  }}
+                >
+                  {byKey.get(key) ?? null}
+                </LayoutWidget>
+              </div>
+            )),
+            floatHost,
+          )}
       {allStatus ? (
         <AircastSheet onDismissRequest={() => setAllStatus(false)} label="Status">
           <LocalCompactStatus.Provider value={false}>
             <div className="flex flex-col items-start gap-[14px] px-sheet py-2">
               <Text typography="titleLarge">Status</Text>
-              {ordered.map((key) => (
-                <Fragment key={key}>{byKey.get(key) ?? null}</Fragment>
+              {cells.map(([key, cell]) => (
+                <Fragment key={key}>{cell}</Fragment>
               ))}
             </div>
           </LocalCompactStatus.Provider>

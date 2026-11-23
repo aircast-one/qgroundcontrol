@@ -403,6 +403,12 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const mapButtons = useElementSize();
   const stickSlot = useElementSize();
   const stickInCorner = stickPad === null && view === FlyView.Video && boxHeight >= CORNER_STICK_MIN_HEIGHT;
+  const holdFloated = useCallback((element: HTMLElement | null) => {
+    shellState.floatedIndicators.value = element;
+    return () => {
+      shellState.floatedIndicators.value = null;
+    };
+  }, []);
   const holdStick = useCallback((element: HTMLElement | null) => {
     shellState.cameraStickSlot.value = element;
     const release = stickSlot.ref(element);
@@ -489,6 +495,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const readings = (
     <>
       <div ref={readingsArea} className="pointer-events-none absolute top-0" style={{ insetInlineStart: ACTION_RAIL_CLEARANCE, insetInlineEnd: 0, bottom: READINGS_FLOOR }} />
+      <div ref={holdFloated} className="pointer-events-none absolute inset-0" style={{ zIndex: layer(2) }} />
       <LocalLayoutBounds.Provider value={readingsArea}>
         <HudReadings
           startInset={ACTION_RAIL_CLEARANCE + AircastSpace.s3}
