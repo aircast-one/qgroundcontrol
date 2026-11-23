@@ -742,7 +742,11 @@ test('a bar item pulled down stands over the picture where it was let go, keeps 
   await editLayout(vehicle);
   const row = (await strip.boundingBox())!;
   const [x, y] = await centre(timer);
-  await dragBy(vehicle, timer, barX - x, row.y + row.height / 2 - y);
+  await vehicle.mouse.move(x, y);
+  await vehicle.mouse.down();
+  await vehicle.mouse.move(barX, row.y + row.height / 2, { steps: 12 });
+  expect(Math.abs((await centre(timer))[1] - (row.y + row.height / 2)), 'it follows the pointer into the bar').toBeLessThan(12);
+  await vehicle.mouse.up();
   await expect(inBar, 'back among the bar items').toHaveCount(1);
   const home = (await inBar.boundingBox())!;
   expect(home.y).toBeGreaterThanOrEqual(row.y - 1);

@@ -501,6 +501,7 @@ export const LayoutDragArea = ({
 }) => {
   const layout = useContext(LocalFlyScreenState).layout;
   const area = useLayoutArea();
+  const reach = (): Bounds => (onBar === undefined ? area() : { ...area(), top: 0 });
   const placedKey = useLayoutKey(widgetKey);
   const drag = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
   const self = useRef<HTMLDivElement | null>(null);
@@ -554,7 +555,7 @@ export const LayoutDragArea = ({
         const distance = Math.hypot(rawX, rawY);
         if (!held.dragging && distance <= TOUCH_SLOP) return;
         const past = held.dragging ? 1 : (distance - TOUCH_SLOP) / distance;
-        const [dx, dy] = clampedInto(liftedBounds(placed.getBoundingClientRect()), area(), rawX * past, rawY * past);
+        const [dx, dy] = clampedInto(liftedBounds(placed.getBoundingClientRect()), reach(), rawX * past, rawY * past);
         const [foldX, foldY] = held.dragging ? NO_OFFSET : correction;
         drag.current = { id: held.id, x: event.clientX, y: event.clientY, dragging: true };
         layout.nudge(placedKey, dx + foldX, dy + foldY, home);
