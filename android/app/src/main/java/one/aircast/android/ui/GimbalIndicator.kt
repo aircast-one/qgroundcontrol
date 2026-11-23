@@ -52,6 +52,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -126,10 +129,22 @@ internal fun gimbalIndicator(view: JSONObject?): GimbalIndicatorState? =
         )
     }
 
-internal fun gimbalCellText(state: GimbalIndicatorState): String =
-    listOf(state.gimbals.takeIf { it.size > 1 }?.firstOrNull { it.active }?.name.orEmpty(), state.statusText, state.pitchText, state.yawText)
-        .filter { it.isNotBlank() }
-        .joinToString(" · ")
+internal const val WIDEST_PITCH = "-90.0"
+internal const val WIDEST_YAW = "-180.0"
+
+internal data class GimbalCellPart(val text: String, val widest: String? = null)
+
+internal fun gimbalCellParts(state: GimbalIndicatorState): List<GimbalCellPart> =
+    listOf(
+        GimbalCellPart(state.gimbals.takeIf { it.size > 1 }?.firstOrNull { it.active }?.name.orEmpty()),
+        GimbalCellPart(state.statusText),
+        GimbalCellPart(state.pitchText, WIDEST_PITCH),
+        GimbalCellPart(state.yawText, WIDEST_YAW),
+    ).filter { it.text.isNotBlank() }
+
+internal fun widestReading(text: String, widest: String): String = text.replace(Regex("-?[\\d.]+$"), widest)
+
+internal fun gimbalCellText(state: GimbalIndicatorState): String = gimbalCellParts(state).joinToString(" · ") { it.text }
 
 @Composable
 fun GimbalTakeControlDialog() {
@@ -177,13 +192,25 @@ internal fun GimbalIndicatorCell() {
     }
 
 
-    Text(
-        gimbalCellText(state),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
-        modifier = Modifier.clickable { open = true },
-    )
+    val cellStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+    val cellColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    Row(modifier = Modifier.clickable { open = true }) {
+        gimbalCellParts(state).forEachIndexed { index, part ->
+            if (index > 0) Text(" · ", style = cellStyle, color = cellColor, maxLines = 1)
+            Text(
+                part.text,
+                style = cellStyle,
+                color = cellColor,
+                maxLines = 1,
+                softWrap = false,
+                modifier = part.widest?.let { widest ->
+                    Modifier.width(with(density) { measurer.measure(widestReading(part.text, widest), cellStyle, maxLines = 1).size.width.toDp() })
+                } ?: Modifier,
+            )
+        }
+    }
 
     if (open) {
         AircastSheet(onDismissRequest = { open = false }) {

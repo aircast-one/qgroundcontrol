@@ -17,6 +17,8 @@ class GimbalIndicatorTest {
         )!!
         assertEquals("Yaw follow · P: -12.3 · Y: 5.0", gimbalCellText(state))
         val two = state.copy(gimbals = state.gimbals + GimbalChoice("1-155", 1, 155, false))
+        assertEquals("the slot a reading sits in is as wide as the widest value it can show", "P: -90.0", widestReading("P: 4.0", WIDEST_PITCH))
+        assertEquals("Az: -180.0", widestReading("Az: 157.5", WIDEST_YAW))
         assertEquals("with several gimbals the toolbar names the active one", "Gimbal 1 · Yaw follow · P: -12.3 · Y: 5.0", gimbalCellText(two))
         assertTrue(state.retractOffered)
         assertEquals(154, state.gimbals[0].deviceId)

@@ -72,9 +72,30 @@ func gimbalIndicator(_ view: JSON?) -> GimbalIndicatorState? {
     )
 }
 
-func gimbalCellText(_ state: GimbalIndicatorState) -> String {
+let WIDEST_PITCH = "-90.0"
+let WIDEST_YAW = "-180.0"
+
+struct GimbalCellPart {
+    let text: String
+    var widest: String?
+}
+
+func gimbalCellParts(_ state: GimbalIndicatorState) -> [GimbalCellPart] {
     let active = state.gimbals.count > 1 ? state.gimbals.first(where: \.active)?.name ?? "" : ""
-    return [active, state.statusText, state.pitchText, state.yawText].filter { !$0.isBlank }.joined(separator: " · ")
+    return [
+        GimbalCellPart(text: active),
+        GimbalCellPart(text: state.statusText),
+        GimbalCellPart(text: state.pitchText, widest: WIDEST_PITCH),
+        GimbalCellPart(text: state.yawText, widest: WIDEST_YAW),
+    ].filter { !$0.text.isBlank }
+}
+
+func widestReading(_ text: String, _ widest: String) -> String {
+    text.replacingOccurrences(of: "-?[\\d.]+$", with: widest, options: .regularExpression)
+}
+
+func gimbalCellText(_ state: GimbalIndicatorState) -> String {
+    gimbalCellParts(state).map(\.text).joined(separator: " · ")
 }
 
 struct GimbalTakeControlDialog: View {
@@ -117,10 +138,22 @@ struct GimbalIndicatorCell: View {
 
     var body: some View {
         if let state = gimbalIndicator(view) {
-            Text(gimbalCellText(state))
+            HStack(spacing: 0) {
+                ForEach(Array(gimbalCellParts(state).enumerated()), id: \.offset) { index, part in
+                    if index > 0 { Text(" · ") }
+                    if let widest = part.widest {
+                        Text(widestReading(part.text, widest)).hidden().overlay(alignment: .leading) { Text(part.text).fixedSize() }
+                    } else {
+                        Text(part.text)
+                    }
+                }
+            }
                 .font(.labelMedium)
+                .monospacedDigit()
                 .foregroundStyle(theme.colors.onSurfaceVariant)
                 .lineLimit(1)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(gimbalCellText(state))
                 .minimumTouchTarget()
                 .tapButton { open = true }
                 .background {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { makeFact } from '@/bridge/Qgc';
 import type { SettingsSectionRows } from './SettingsScreen';
-import { aimFraction, grabFraction, swiped, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalRefused, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, reportGimbalRefusal, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
+import { aimFraction, grabFraction, swiped, gimbalAsksForControl, gimbalCellText, gimbalIndicator, widestReading, WIDEST_PITCH, WIDEST_YAW, gimbalRefusal, gimbalRefused, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, reportGimbalRefusal, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
 
 describe('GimbalIndicatorTest', () => {
   it('the cell reads status, pitch and yaw as the toolbar does', () => {
@@ -14,6 +14,8 @@ describe('GimbalIndicatorTest', () => {
     )!;
     expect(gimbalCellText(state)).toBe('Yaw follow · P: -12.3 · Y: 5.0');
     const two = { ...state, gimbals: [...state.gimbals, { name: '1-155', managerCompid: 1, deviceId: 155, active: false }] };
+    expect(widestReading('P: 4.0', WIDEST_PITCH), 'the slot a reading sits in is as wide as the widest value it can show').toBe('P: -90.0');
+    expect(widestReading('Az: 157.5', WIDEST_YAW)).toBe('Az: -180.0');
     expect(gimbalCellText(two), 'with several gimbals the toolbar names the active one').toBe('Gimbal 1 · Yaw follow · P: -12.3 · Y: 5.0');
     expect(state.retractOffered).toBe(true);
     expect(state.gimbals[0]!.deviceId).toBe(154);

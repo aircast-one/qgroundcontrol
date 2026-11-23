@@ -1,4 +1,4 @@
-import { type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { type Json, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc, makeFact, refusal } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
@@ -85,10 +85,34 @@ export const gimbalIndicator = (view: Json | null): GimbalIndicatorState | null 
       }
     : null;
 
+export const WIDEST_PITCH = '-90.0';
+export const WIDEST_YAW = '-180.0';
+
+type GimbalCellPart = { text: string; widest?: string };
+
+export const gimbalCellParts = (state: GimbalIndicatorState): GimbalCellPart[] =>
+  [
+    { text: state.gimbals.length > 1 ? (state.gimbals.find((gimbal) => gimbal.active)?.name ?? '') : '' },
+    { text: state.statusText },
+    { text: state.pitchText, widest: WIDEST_PITCH },
+    { text: state.yawText, widest: WIDEST_YAW },
+  ].filter((part) => part.text.trim() !== '');
+
 export const gimbalCellText = (state: GimbalIndicatorState): string =>
-  [state.gimbals.length > 1 ? (state.gimbals.find((gimbal) => gimbal.active)?.name ?? '') : '', state.statusText, state.pitchText, state.yawText]
-    .filter((part) => part.trim() !== '')
+  gimbalCellParts(state)
+    .map((part) => part.text)
     .join(' · ');
+
+export const widestReading = (text: string, widest: string): string => text.replace(/-?[\d.]+$/, widest);
+
+const SteadyReading = ({ text, widest }: { text: string; widest: string }) => (
+  <span className="inline-grid">
+    <span aria-hidden className="invisible col-start-1 row-start-1">
+      {widestReading(text, widest)}
+    </span>
+    <span className="col-start-1 row-start-1">{text}</span>
+  </span>
+);
 
 export const GimbalTakeControlDialog = () => {
   const asking = useValue(gimbalAsksForControl);
@@ -136,9 +160,14 @@ export const GimbalIndicatorCell = () => {
 
   return (
     <>
-      <button type="button" className="text-left" onClick={() => setOpen(true)}>
+      <button type="button" className="text-left" aria-label={gimbalCellText(state)} onClick={() => setOpen(true)}>
         <Text typography="labelMedium" color={md('onSurfaceVariant')} className="tabular-nums" maxLines={1}>
-          {gimbalCellText(state)}
+          {gimbalCellParts(state).map((part, index) => (
+            <Fragment key={index}>
+              {index > 0 ? ' · ' : null}
+              {part.widest === undefined ? part.text : <SteadyReading text={part.text} widest={part.widest} />}
+            </Fragment>
+          ))}
         </Text>
       </button>
 

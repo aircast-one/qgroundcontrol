@@ -7,6 +7,8 @@ final class GimbalIndicatorTests: XCTestCase {
         XCTAssertEqual(gimbalCellText(state), "Yaw follow · P: -12.3 · Y: 5.0")
         var two = state
         two.gimbals.append(GimbalChoice(name: "1-155", managerCompid: 1, deviceId: 155, active: false))
+        XCTAssertEqual(widestReading("P: 4.0", WIDEST_PITCH), "P: -90.0", "the slot a reading sits in is as wide as the widest value it can show")
+        XCTAssertEqual(widestReading("Az: 157.5", WIDEST_YAW), "Az: -180.0")
         XCTAssertEqual(gimbalCellText(two), "Gimbal 1 · Yaw follow · P: -12.3 · Y: 5.0", "with several gimbals the toolbar names the active one")
         XCTAssertTrue(state.retractOffered)
         XCTAssertEqual(state.gimbals[0].deviceId, 154)
