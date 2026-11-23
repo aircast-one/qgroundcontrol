@@ -750,6 +750,30 @@ test('an added reading shows as a glyph and its value, with a short tag where re
   await finishEditing(vehicle);
 });
 
+test('a search in Choose readings narrows the list to what was typed, by reading or by group, and says when nothing matches', async ({ vehicle }) => {
+  await vehicle.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(telemetry(vehicle, 'D')).toBeVisible({ timeout: 30_000 });
+  await editLayout(vehicle);
+  await vehicle.getByRole('button', { name: 'Add reading' }).click();
+  const chooser = vehicle.getByRole('dialog', { name: 'Choose readings' });
+  const search = chooser.getByRole('textbox', { name: 'Search readings' });
+  await expect(chooser.getByText('Roll', { exact: true })).toBeVisible();
+  await chooser.getByText('Vibration Z', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(search, 'the search stays in reach however far the list is scrolled').toBeInViewport({ ratio: 1 });
+  await search.fill('vibration x');
+  await expect(chooser.getByText('Vibration X', { exact: true })).toBeVisible();
+  await expect(chooser.getByText('Roll', { exact: true })).toHaveCount(0);
+  await expect(chooser.getByText('Vibration Y', { exact: true })).toHaveCount(0);
+  await chooser.getByText('Vibration X', { exact: true }).click();
+  await search.fill('no such reading');
+  await expect(chooser.getByText('No reading matches "no such reading".')).toBeVisible();
+  await search.fill('');
+  await expect(chooser.getByText('Roll', { exact: true })).toBeVisible();
+  await vehicle.keyboard.press('Escape');
+  await expect(chooser).toBeHidden();
+  await expect(vehicle.locator('[data-layout-item] [role=img][aria-label=vibration]'), 'the reading found by search was added').toBeVisible();
+});
+
 test('reset in the layout options puts moved and hidden readings back', async ({ vehicle }) => {
   await vehicle.emulateMedia({ reducedMotion: 'reduce' });
   const distance = telemetry(vehicle, 'D');

@@ -43,8 +43,11 @@ import {
   movedInstrument,
   readChosen,
   readValueSize,
+  SEARCH_READINGS,
+  noReadingFound,
   removedInstrument,
   replacedInstrument,
+  searchedGroups,
   selectionId,
   shownFirst,
   showsInstruments,
@@ -64,7 +67,7 @@ import { PAYLOAD_RAIL_VIEW, payloadRailOf } from './PayloadRail';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
 import { PreflightChecklist, PreflightChecklistReset, useRememberPreflightChecklist } from './PreflightChecklistGate';
 import { FLIGHT_MODES_PAGE } from './SetupPages';
-import { FootNote, SectionHeader } from './SetupRow';
+import { FootNote, SearchPill, SectionHeader } from './SetupRow';
 import { useHasSetupPage } from './SetupScreen';
 import { ARM_REQUEST, deckRequestRefusal } from './VehicleStatusSheet';
 import { TAP_LOWER } from '@/kotlin/Platform';
@@ -1334,21 +1337,28 @@ const InstrumentSheet = ({
 }) => {
   const [groups, setGroups] = useState<readonly InstrumentGroup[]>([]);
   const [shownAtOpen] = useState(chosen);
+  const [query, setQuery] = useState('');
   const connected = useHasVehicle();
   useLaunchedEffect([connected], async (scope) => {
     const catalogue = await Qgc.get(INSTRUMENT_GROUPS);
     const own = vehicleOwnGroup(catalogue);
     if (scope.isActive()) setGroups([...(own !== null ? [own] : []), ...instrumentGroups(catalogue)]);
   });
+  const found = searchedGroups(shownFirst(groups, shownAtOpen), query);
   return (
     <AircastSheet onDismissRequest={onDismiss} label={title}>
-      <Text typography="titleLarge" className="block px-4">{title}</Text>
-      <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-4 pb-2">{instrumentChoiceNote(chosen)}</Text>
+      <div className="sticky top-0 z-10 bg-surface-container-low desktop:-top-dialog desktop:-mt-dialog desktop:pt-dialog">
+        <Text typography="titleLarge" className="block px-4">{title}</Text>
+        <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-4 pb-2">{instrumentChoiceNote(chosen)}</Text>
+        {groups.length === 0 ? null : <SearchPill value={query} onValueChange={setQuery} placeholder={SEARCH_READINGS} />}
+      </div>
       {groups.length === 0 ? (
         <FootNote text={emptyCatalogueText(connected)} />
+      ) : found.length === 0 ? (
+        <FootNote text={noReadingFound(query)} />
       ) : (
         <div className="w-full overflow-auto">
-          {shownFirst(groups, shownAtOpen).map((group: InstrumentGroup) => (
+          {found.map((group: InstrumentGroup) => (
             <Fragment key={`head${group.group}`}>
               <SectionHeader text={sentenceCase(group.title)} />
               {group.facts.map((fact: InstrumentFact) => (

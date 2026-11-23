@@ -120,6 +120,16 @@ export const writeValueSize = (vehicleClass: string, size: ValueSize): void => {
   getSharedPreferences(STORE).putInt(`${VALUE_SIZE_KEY}-${vehicleClass}`, size.ordinal);
 };
 
+export const SEARCH_READINGS = 'Search readings';
+
+export const noReadingFound = (query: string): string => `No reading matches "${query.trim()}".`;
+
+export const searchedGroups = (groups: readonly InstrumentGroup[], query: string): readonly InstrumentGroup[] => {
+  const asked = query.toLowerCase().split(/\s+/).filter((word) => word !== '');
+  const says = (group: InstrumentGroup, fact: InstrumentFact) => asked.every((word) => `${group.title} ${fact.label}`.toLowerCase().includes(word));
+  return asked.length === 0 ? groups : groups.map((group) => ({ ...group, facts: group.facts.filter((fact) => says(group, fact)) })).filter((group) => group.facts.length > 0);
+};
+
 const SHOWN_GROUP = 'shown';
 
 export const shownFirst = (groups: readonly InstrumentGroup[], shown: readonly string[]): readonly InstrumentGroup[] => {

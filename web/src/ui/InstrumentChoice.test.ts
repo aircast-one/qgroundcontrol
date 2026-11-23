@@ -18,6 +18,7 @@ import {
   removedInstrument,
   replacedInstrument,
   selectionId,
+  searchedGroups,
   shownFirst,
   showsInstruments,
   valueSizeAt,
@@ -41,6 +42,23 @@ describe('InstrumentChoiceTest', () => {
       ['Vehicle', ['Roll']],
     ]);
     expect(shownFirst(groups, []).map((it) => it.title)).toEqual(['Vehicle', 'Air']);
+  });
+
+  it('a search keeps the readings whose name or group says every word asked for', () => {
+    const groups = [
+      InstrumentGroup('vehicle', 'Vehicle', [InstrumentFact('roll', 'Roll', 'roll'), InstrumentFact('imuTemp', 'IMU Temperature', 'imuTemp')]),
+      InstrumentGroup('efi', 'Engine', [InstrumentFact('cylinderTemp', 'Cylinder Head Temperature', 'efi/cylinderTemp'), InstrumentFact('rpm', 'RPM', 'efi/rpm')]),
+    ];
+    const found = (query: string) => searchedGroups(groups, query).map((it) => [it.title, it.facts.map((fact) => fact.label)]);
+    expect(found('  ')).toEqual(found(''));
+    expect(found('').map(([title]) => title)).toEqual(['Vehicle', 'Engine']);
+    expect(found('TEMP')).toEqual([
+      ['Vehicle', ['IMU Temperature']],
+      ['Engine', ['Cylinder Head Temperature']],
+    ]);
+    expect(found('engine temp')).toEqual([['Engine', ['Cylinder Head Temperature']]]);
+    expect(found('engine'), 'a group name finds all of its readings').toEqual([['Engine', ['Cylinder Head Temperature', 'RPM']]]);
+    expect(found('wind')).toEqual([]);
   });
 
   const served = json(`
